@@ -7,6 +7,7 @@ import {
   type TrackingProjectKind,
 } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
+import { trackIframeLoad } from '../observability/iframe-error';
 import {
   trackArtifactExportResult,
   trackArtifactHeaderClick,
@@ -882,6 +883,22 @@ export function LiveArtifactViewer({
   );
   const previewScale = zoom / 100;
   const previewActive = mode === 'preview';
+
+  // Instrument the live-artifact iframe so failed loads — usually a
+  // missing artifact file or a stuck `od://` resolver — surface in
+  // PostHog. iframe load errors don't propagate to window.error, so
+  // observability/install.ts cannot catch them globally.
+  useEffect(() => {
+    if (mode !== 'preview') return undefined;
+    const node = iframeRef.current;
+    if (!node) return undefined;
+    return trackIframeLoad({
+      iframe: node,
+      surface: 'live_artifact_preview',
+      artifactId: liveArtifact.artifactId,
+      projectId,
+    });
+  }, [mode, previewUrl, liveArtifact.artifactId, projectId]);
 
   function bumpZoom(delta: number) {
     setZoom((z) => Math.max(25, Math.min(200, z + delta)));

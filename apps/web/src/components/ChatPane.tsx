@@ -247,7 +247,10 @@ interface Props {
   onRequestPluginFolderAgentAction?: (
     relativePath: string,
     action: PluginFolderAgentAction,
-  ) => Promise<void> | void;
+  ) => Promise<{ message?: string; url?: string } | void> | { message?: string; url?: string } | void;
+  activePluginActionPaths?: Set<string>;
+  hiddenPluginActionPaths?: Set<string>;
+  forceStreamingMessageIds?: Set<string>;
   initialDraft?: string;
   // Question-form submissions become a normal user message; the parent
   // routes that text through onSend (no attachments).
@@ -257,10 +260,6 @@ interface Props {
   // Header "+" button — kicks off ProjectView's create-conversation flow.
   onNewConversation?: () => void;
   newConversationDisabled?: boolean;
-  // Header "resume" button — synthesizes a handoff prompt from the
-  // current transcript and opens a fresh conversation seeded with it.
-  onResumeConversation?: () => void;
-  resumeConversationDisabled?: boolean;
   // Conversation list that used to live in the topbar. The chat tab now
   // owns the list so users can browse + switch conversations without
   // leaving the pane.
@@ -326,14 +325,15 @@ export function ChatPane({
   onStop,
   onRequestOpenFile,
   onRequestPluginFolderAgentAction,
+  activePluginActionPaths,
+  hiddenPluginActionPaths,
+  forceStreamingMessageIds,
   initialDraft,
   onSubmitForm,
   onContinueRemainingTasks,
   onAssistantFeedback,
   onNewConversation,
   newConversationDisabled = false,
-  onResumeConversation,
-  resumeConversationDisabled = false,
   conversations,
   activeConversationId,
   onSelectConversation,
@@ -897,19 +897,6 @@ export function ChatPane({
           >
             <Icon name="plus" size={16} />
           </button>
-          {onResumeConversation ? (
-            <button
-              type="button"
-              className="icon-only"
-              data-testid="resume-conversation"
-              title={t('chat.resumeConversation')}
-              aria-label={t('chat.resumeConversation')}
-              onClick={onResumeConversation}
-              disabled={resumeConversationDisabled}
-            >
-              <Icon name="reload" size={16} />
-            </button>
-          ) : null}
           {onCollapse ? (
             <button
               type="button"
@@ -984,6 +971,7 @@ export function ChatPane({
                   m,
                   streaming,
                   lastAssistantId,
+                  forceStreamingMessageIds,
                 );
                 return (
                   <Fragment key={m.id}>
@@ -1017,6 +1005,8 @@ export function ChatPane({
                         projectFileNames={projectFileNames}
                         onRequestOpenFile={onRequestOpenFile}
                         onRequestPluginFolderAgentAction={onRequestPluginFolderAgentAction}
+                        activePluginActionPaths={activePluginActionPaths}
+                        hiddenPluginActionPaths={hiddenPluginActionPaths}
                         isLast={m.id === lastAssistantId}
                         nextUserContent={nextUserContentByAssistantId.get(m.id)}
                         suppressDirectionForms={hasActiveDesignSystem}
@@ -1307,8 +1297,10 @@ export function isAssistantMessageStreaming(
   message: ChatMessage,
   paneStreaming: boolean,
   lastAssistantId: string | null | undefined,
+  forceStreamingMessageIds?: Set<string>,
 ): boolean {
   if (message.role !== 'assistant') return false;
+  if (forceStreamingMessageIds?.has(message.id)) return true;
   if (isActiveRunStatus(message.runStatus)) return true;
   if (message.id !== lastAssistantId) return false;
   if (!paneStreaming) return false;
