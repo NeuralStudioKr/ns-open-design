@@ -131,6 +131,9 @@ export interface Dict {
   'settings.onboardingStepConnect': string;
   'settings.onboardingStepDesignSystem': string;
   'settings.onboardingStepProfile': string;
+  'settings.onboardingStepNewsletter': string;
+  'settings.onboardingNewsletterTitle': string;
+  'settings.onboardingNewsletterBody': string;
   'settings.onboardingConnectTitle': string;
   'settings.onboardingConnectBody': string;
   'settings.onboardingRecommended': string;
@@ -778,6 +781,10 @@ export interface Dict {
   'updater.readyGeneric': string;
   'updater.readyVersion': string;
   'updater.upToDate': string;
+
+  // Newsletter email field on the onboarding About-you step.
+  'newsletter.label': string;
+  'newsletter.placeholder': string;
 
   // Entry view / tabs
   'entry.tabDesigns': string;

@@ -1969,39 +1969,6 @@ function AppInner() {
         onRenameProject={handleRenameProject}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
         onCreateDesignSystem={() => navigate({ kind: 'design-system-create' })}
-        renderDesignSystemCreation={(onBack, hooks) => (
-          <DesignSystemCreationFlow
-            chrome="embedded"
-            onBack={onBack}
-            onCreated={(projectId, project) => {
-              if (project) {
-                setProjects((curr) => [
-                  project,
-                  ...curr.filter((p) => p.id !== project.id),
-                ]);
-              }
-              // Creating a design system from the onboarding step 2 panel
-              // counts as completing onboarding, even though the user is
-              // about to leave the entry shell for the project view. The
-              // Skip path already marks completion via finishOnboarding;
-              // mirror that here so the first-run privacy banner can
-              // surface when the user later returns to home.
-              handleCompleteOnboarding();
-              navigate({ kind: 'project', projectId, conversationId: null, fileName: null });
-            }}
-            onProjectPrepared={(project) => {
-              setProjects((curr) => [
-                project,
-                ...curr.filter((p) => p.id !== project.id),
-              ]);
-            }}
-            onSystemsRefresh={refreshDesignSystems}
-            config={config}
-            onOpenConnectorsTab={() => openSettings('composio')}
-            {...(hooks?.onBeforeGenerate ? { onBeforeGenerate: hooks.onBeforeGenerate } : {})}
-            {...(hooks?.onGenerateSettled ? { onGenerateSettled: hooks.onGenerateSettled } : {})}
-          />
-        )}
         onOpenDesignSystem={(id: string) => navigate({ kind: 'design-system-detail', designSystemId: id })}
         onDesignSystemsRefresh={refreshDesignSystems}
         onPersistComposioKey={handleConfigPersistComposioKey}

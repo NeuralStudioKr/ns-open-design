@@ -767,6 +767,16 @@ export interface HomePageCopy {
     live: string;
     ribbon: string;
   };
+  newsletter: {
+    label: string;
+    title: string;
+    lead: string;
+    placeholder: string;
+    button: string;
+    success: string;
+    error: string;
+    dismiss: string;
+  };
   footer: {
     summary: string;
     downloadAria: string;
@@ -2659,6 +2669,16 @@ const HOME_PAGE_COPY_EN: HomePageCopy = {
     live: 'Live',
     ribbon: 'OPEN DESIGN · FIN.',
   },
+  newsletter: {
+    label: 'Stay updated',
+    title: 'The Open Design newsletter',
+    lead: 'New templates, design-system drops, ambassador work, and product updates — straight to your inbox.',
+    placeholder: 'you@studio.com',
+    button: 'Subscribe',
+    success: 'You’re in. Watch your inbox.',
+    error: 'Something went wrong. Try again.',
+    dismiss: 'Close',
+  },
   footer: {
     summary:
       'The open-source alternative to Claude Design. Built on the shoulders of huashu-design, guizang-ppt, multica-ai, and open-codesign.',
@@ -2935,6 +2955,16 @@ const HOME_PAGE_COPY: Partial<Record<LandingLocaleCode, HomePageCopy>> = {
       live: '在线',
       ribbon: 'OPEN DESIGN · 完。',
     },
+    newsletter: {
+      label: '保持关注',
+      title: 'Open Design 订阅',
+      lead: '新模版、设计系统更新、大使活动与产品动态，直接发到你的邮箱。',
+      placeholder: 'you@studio.com',
+      button: '订阅',
+      success: '订阅成功，注意查收邮件。',
+      error: '出了点问题，请重试。',
+      dismiss: '关闭',
+    },
     footer: {
       summary:
         'Claude Design 的开源替代方案。站在 huashu-design、guizang-ppt、multica-ai 和 open-codesign 的肩膀上构建。',
@@ -3208,6 +3238,16 @@ HOME_PAGE_COPY['zh-tw'] = {
     issue: '提交 issue',
     live: '在線',
     ribbon: 'OPEN DESIGN · 完。',
+  },
+  newsletter: {
+    label: '保持關注',
+    title: 'Open Design 訂閱',
+    lead: '新模版、設計系統更新、大使活動與產品動態，直接發到你的信箱。',
+    placeholder: 'you@studio.com',
+    button: '訂閱',
+    success: '訂閱成功，請注意查收郵件。',
+    error: '出了點問題，請重試。',
+    dismiss: '關閉',
   },
   footer: {
     ...HOME_PAGE_COPY.zh!.footer,
