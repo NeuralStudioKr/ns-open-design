@@ -1,0 +1,78 @@
+# Teamver Design 문서 (`docs-teamver`)
+
+**Teamver ↔ Open Design 연동** 설계·구현 가이드.  
+**코드 SSOT:** `deploy/teamver/` · **문서 SSOT:** 이 디렉터리.  
+**구현 누적:** **[00 구현 내역](./00_구현_내역_누적.md)** — 코드 변경 시 최상단에 항목 추가.
+
+---
+
+## 지금 할 일 (출시 1순위)
+
+| 문서 | 내용 |
+|------|------|
+| **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
+| **[05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** | 프록시·인증·브랜딩 — **출시 SSOT** |
+| [04 구현 우선순위](./04_구현_우선순위.md) | Track A/B/C |
+
+---
+
+## 연동 설계
+
+| # | 문서 |
+|---|------|
+| 00 | **[구현 내역 누적](./00_구현_내역_누적.md)** |
+| 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
+| 06 | **[Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)** |
+| 07 | **[EC2·배포·인프라](./07_VM_배포_인프라.md)** |
+| 08 | **[Teamver SDK vendor · 배포](./08_Teamver_SDK_vendor와_배포.md)** |
+| 04 | [구현 우선순위](./04_구현_우선순위.md) |
+| 01 | [통합 아키텍처](./01_통합_아키텍처.md) |
+| 02 | [design-app ↔ daemon](./02_design-app_daemon_연동.md) |
+| 03 | [키·Drive·DB](./03_키_저장소_Drive_DB.md) |
+
+**OD upstream 참고:** [open-design-index.md](./open-design-index.md) · `ns-open-design/docs/`
+
+---
+
+## 코드 위치
+
+| 항목 | 경로 |
+|------|------|
+| design-api BE | `deploy/teamver/be/` |
+| compose | `deploy/teamver/docker-compose.yml` |
+| nginx · Terraform | `deploy/teamver/devops/` · `ns-teamver-devops/terraform/services/teamver-design/` |
+| **Teamver SDK vendor** | `vendor/teamver/` — **[08 vendor·배포](./08_Teamver_SDK_vendor와_배포.md)** |
+| **인프라 SSOT** | **[07_VM_배포_인프라.md](./07_VM_배포_인프라.md)** |
+| 연동 SSOT | `deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md` |
+
+---
+
+## 관리 원칙
+
+- **구현 누적** — 코드·연동 변경 시 **[00_구현_내역_누적.md](./00_구현_내역_누적.md)** 최상단에 날짜 항목 추가 (`ns-teamver-be/docs/00_*` 동형)
+- **현행 설계** — `01~08` (출시 SSOT = `05`)
+- **보관** — `archive/` (삭제 안 함, 수정 안 함)
+- **OD 정본** — `ns-open-design/docs/` (Teamver Design 스펙은 `docs-teamver/`)
+
+### 보관 → 현행 매핑
+
+| archive/ | 현행 |
+|----------|------|
+| `01_1` 통합방안 | `01_통합_아키텍처` (Track B) |
+| `01_2`, `02`, `03` OD 분석 | `open-design-index` → upstream |
+| `04` 키·저장소 | `03_키_저장소_Drive_DB` |
+| `05` daemon 연동 | `02_design-app_daemon_연동` |
+
+---
+
+## 변경 이력
+
+| 일자 | 내용 |
+|------|------|
+| 2026-06-15 | [00 구현 내역 누적](./00_구현_내역_누적.md) — Track A 구현분·관리 원칙 |
+| 2026-06-15 | [08 Teamver SDK vendor·배포](./08_Teamver_SDK_vendor와_배포.md) — ECR 없는 EC2 배포 정책 |
+| 2026-06-15 | **`ns-teamver-design/docs` → `ns-open-design/docs-teamver` 이전** |
+| 2026-06-15 | [07_EC2·배포·인프라](./07_VM_배포_인프라.md) — Staging/Prod EC2 분리·Terraform SSOT |
+| 2026-06-15 | 구현 코드 → `deploy/teamver/be` |
+| 2026-06-15 | Track A OD UI 재사용 1순위 |
+| 2026-06-15 | 기존 6편 → `archive/` 보존 |
