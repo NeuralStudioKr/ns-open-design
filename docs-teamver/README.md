@@ -10,9 +10,10 @@
 
 | 문서 | 내용 |
 |------|------|
+| **[09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md)** | **Prod blocker — S3 · Litestream · registry · 진행 표** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
-| **[05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** | 프록시·인증·브랜딩 — **출시 SSOT** |
-| [04 구현 우선순위](./04_구현_우선순위.md) | Track A/B/C |
+| **[05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** | 프록시·인증·브랜딩 |
+| [04 구현 우선순위](./04_구현_우선순위.md) | Track A/B/C · Phase 요약 |
 
 ---
 
@@ -21,6 +22,7 @@
 | # | 문서 |
 |---|------|
 | 00 | **[구현 내역 누적](./00_구현_내역_누적.md)** |
+| 09 | **[저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
 | 06 | **[Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)** |
 | 07 | **[EC2·배포·인프라](./07_VM_배포_인프라.md)** |
@@ -42,6 +44,7 @@
 | compose | `deploy/teamver/docker-compose.yml` |
 | nginx · Terraform | `deploy/teamver/devops/` · `ns-teamver-devops/terraform/services/teamver-design/` |
 | **Teamver SDK vendor** | `vendor/teamver/` — **[08 vendor·배포](./08_Teamver_SDK_vendor와_배포.md)** |
+| **저장소 출시 게이트** | **[09](./09_Design_저장소_격리_출시게이트.md)** · OD `apps/daemon/src/storage/` |
 | **인프라 SSOT** | **[07_VM_배포_인프라.md](./07_VM_배포_인프라.md)** |
 | 연동 SSOT | `deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md` |
 
@@ -50,7 +53,8 @@
 ## 관리 원칙
 
 - **구현 누적** — 코드·연동 변경 시 **[00_구현_내역_누적.md](./00_구현_내역_누적.md)** 최상단에 날짜 항목 추가 (`ns-teamver-be/docs/00_*` 동형)
-- **현행 설계** — `01~08` (출시 SSOT = `05`)
+- **현행 설계** — `01~09` (출시 SSOT = `05` + **Prod 게이트 = `09`**)
+- **진행 표** — Phase 완료 시 [09 §4](./09_Design_저장소_격리_출시게이트.md#4-작업-우선순위--진행-상황) 상태를 ✅ 로 갱신
 - **보관** — `archive/` (삭제 안 함, 수정 안 함)
 - **OD 정본** — `ns-open-design/docs/` (Teamver Design 스펙은 `docs-teamver/`)
 
@@ -60,7 +64,7 @@
 |----------|------|
 | `01_1` 통합방안 | `01_통합_아키텍처` (Track B) |
 | `01_2`, `02`, `03` OD 분석 | `open-design-index` → upstream |
-| `04` 키·저장소 | `03_키_저장소_Drive_DB` |
+| `04` 키·저장소 | `03_키_저장소_Drive_DB` + **09 출시 게이트** |
 | `05` daemon 연동 | `02_design-app_daemon_연동` |
 
 ---
@@ -69,6 +73,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-15 | [09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md) — Prod blocker |
 | 2026-06-15 | [00 구현 내역 누적](./00_구현_내역_누적.md) — Track A 구현분·관리 원칙 |
 | 2026-06-15 | [08 Teamver SDK vendor·배포](./08_Teamver_SDK_vendor와_배포.md) — ECR 없는 EC2 배포 정책 |
 | 2026-06-15 | **`ns-teamver-design/docs` → `ns-open-design/docs-teamver` 이전** |

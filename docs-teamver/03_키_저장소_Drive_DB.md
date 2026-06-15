@@ -2,6 +2,8 @@
 
 open-design daemon의 **키·artifact·DB**가 어디에 있는지(배경)와, Teamver **Drive / 자체 DB**와 어떻게 맞출지 정리합니다.
 
+**Prod 출시 게이트 (저장소·격리):** **[09_Design_저장소_격리_출시게이트.md](./09_Design_저장소_격리_출시게이트.md)** — volume-only prod 불가, Phase 0~3 필수.
+
 **관련 문서 (integration)**
 
 | 문서 | 내용 |

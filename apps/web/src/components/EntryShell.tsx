@@ -84,6 +84,8 @@ import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
 import { UpdaterPopup } from './UpdaterPopup';
 import { GithubStarBadge } from './GithubStarBadge';
+import { TeamverSessionBanner } from './TeamverSessionBanner';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   formatDiscordPresenceCount,
   useDiscordPresence,
@@ -449,6 +451,7 @@ export function EntryShell({
   onCompleteOnboarding,
 }: Props) {
   const t = useT();
+  const teamverEmbed = isTeamverEmbedMode();
   const discordPresence = useDiscordPresence();
   // Each entry sub-view (home / projects / design-systems) is its own
   // URL now, so the browser back/forward buttons work and a deep link
@@ -726,28 +729,34 @@ export function EntryShell({
               <Icon name="panel-left" size={20} />
             </button>
             <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
-              <GithubStarBadge />
-              <a
-                className="entry-discord-badge od-tooltip"
-                href={DISCORD_URL}
-                aria-label={discordAriaLabel}
-                data-tooltip={discordAriaLabel}
-                data-tooltip-placement="bottom"
-                data-testid="entry-discord-badge"
-              >
-                <Icon name="discord" size={14} className="entry-discord-badge__icon" />
-                <span className="entry-discord-badge__label">{t('entry.discordLabel')}</span>
-                {discordOnlineLabel ? (
-                  <>
-                    <span className="entry-discord-badge__sep" aria-hidden>
-                      ·
-                    </span>
-                    <span className="entry-discord-badge__online">
-                      {discordOnlineLabel}
-                    </span>
-                  </>
-                ) : null}
-              </a>
+              {teamverEmbed ? (
+                <TeamverSessionBanner teamverEmbed />
+              ) : (
+                <>
+                  <GithubStarBadge />
+                  <a
+                    className="entry-discord-badge od-tooltip"
+                    href={DISCORD_URL}
+                    aria-label={discordAriaLabel}
+                    data-tooltip={discordAriaLabel}
+                    data-tooltip-placement="bottom"
+                    data-testid="entry-discord-badge"
+                  >
+                    <Icon name="discord" size={14} className="entry-discord-badge__icon" />
+                    <span className="entry-discord-badge__label">{t('entry.discordLabel')}</span>
+                    {discordOnlineLabel ? (
+                      <>
+                        <span className="entry-discord-badge__sep" aria-hidden>
+                          ·
+                        </span>
+                        <span className="entry-discord-badge__online">
+                          {discordOnlineLabel}
+                        </span>
+                      </>
+                    ) : null}
+                  </a>
+                </>
+              )}
               {executionSwitcher}
               <button
                 type="button"

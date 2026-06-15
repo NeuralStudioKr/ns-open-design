@@ -1,0 +1,86 @@
+# Teamver sidecar: OD daemon + Teamver wrapper BE (design-api).
+# See deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md
+
+name: teamver-open-design
+
+services:
+  open-design-daemon:
+    container_name: teamver-open-design-daemon
+    image: ${OPEN_DESIGN_IMAGE:-docker.io/vanjayak/open-design:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=512}
+      OD_BIND_HOST: 0.0.0.0
+      OD_PORT: 7456
+      OD_WEB_PORT: 7456
+      OD_API_TOKEN: ${OD_API_TOKEN:?Set OD_API_TOKEN in .env (openssl rand -hex 32)}
+      OD_DATA_DIR: /app/.od
+      OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
+    ports:
+      - "127.0.0.1:${OD_PORT:-7456}:7456"
+    volumes:
+      - teamver_od_data:/app/.od
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${OD_MEM_LIMIT:-512m}
+    pids_limit: 256
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:7456/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  design-db:
+    image: postgres:16-alpine
+    container_name: teamver-design-db
+    profiles:
+      - local-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teamver_design}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWD:-postgres}
+    volumes:
+      - design_pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:54320:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  teamver-design-api:
+    build:
+      context: ../../..
+      dockerfile: ns-open-design/deploy/teamver/be/Dockerfile
+    container_name: teamver-design-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
+    ports:
+      - "127.0.0.1:${BE_PORT:-16000}:8000"
+    depends_on:
+      design-db:
+        condition: service_healthy
+        required: false
+
+volumes:
+  teamver_od_data:
+  design_pg_data:

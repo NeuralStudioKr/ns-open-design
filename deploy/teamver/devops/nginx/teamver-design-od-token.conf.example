@@ -1,0 +1,7 @@
+# 서버에만 배치 (git 제외):
+#   sudo cp teamver-design-od-token.conf.example /etc/nginx/conf.d/teamver-design-od-token.conf
+#   sudo chmod 600 /etc/nginx/conf.d/teamver-design-od-token.conf
+# OD_API_TOKEN 은 deploy/teamver/.env 와 동일 값.
+map $host $teamver_od_api_token {
+    default "PASTE_OD_API_TOKEN_HERE";
+}

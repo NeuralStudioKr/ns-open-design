@@ -1,4 +1,8 @@
 node_modules/
+# Teamver SDK vendor (built artifacts — run scripts/sync-teamver-vendor.sh)
+vendor/teamver/app-sdk.tgz
+vendor/teamver/python/
+vendor/teamver/manifest.json
 dist/
 out/
 .next/
@@ -81,3 +85,13 @@ apps/landing-page/public/previews/
 e2e/scripts/test-fal-webui.ts
 e2e/scripts/fal-webui-*.png
 growth/**
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pyj
+*.pyjz
+*.pyjx

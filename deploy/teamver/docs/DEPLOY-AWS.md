@@ -1,0 +1,117 @@
+# Teamver Design — AWS 프로덕션 배포
+
+**Design Production EC2** — Staging EC2 와 **완전 분리**.  
+TLS는 **AWS ALB (ACM)**, EC2는 **HTTP :80** 백엔드만 (Page/Mail 패턴).
+
+**Design 인프라 SSOT:** [docs-teamver/07_VM_배포_인프라.md](../../../docs-teamver/07_VM_배포_인프라.md)  
+**Terraform:** `ns-teamver-devops/terraform/services/teamver-design/` — prod apply 후 이 문서 진행.
+
+스테이징: [devops/nginx/README.md](../devops/nginx/README.md)
+
+---
+
+## 아키텍처
+
+```text
+[브라우저] ──HTTPS──► [AWS ALB + ACM]
+                              ├─ design.teamver.com      → EC2 nginx → OD :7456
+                              └─ design-api.teamver.com  → EC2 nginx → design-api :16000
+                                        ↓
+                              api.teamver.com (Main BE, 별도 호스트)
+                                        ↓
+                              AWS RDS — database teamver_design
+```
+
+| 호스트 | 역할 |
+|--------|------|
+| **Design Staging EC2** | `stg-design*` — Nginx TLS (Let's Encrypt), EIP |
+| **Design Production EC2** | `design*` — Nginx HTTP, ALB 앞단, private subnet |
+| **Main BE** | `api.teamver.com` / `stg-api.teamver.com` |
+
+---
+
+## 1. Terraform (선행)
+
+```bash
+cd ns-teamver-devops/terraform/services/teamver-design
+export TF_VAR_teamver_aws_rds1_pass='...'
+terraform init -backend-config=backend-prod.hcl -reconfigure
+terraform apply -var-file=prod.terraform.tfvars
+```
+
+RDS (1회):
+
+```sql
+CREATE DATABASE teamver_design OWNER teamver_admin;
+```
+
+`terraform output post_deploy_checklist` 참고.
+
+---
+
+## 2. Production EC2 앱 배포
+
+**권장:** `t3.large`, EBS data 50GB (`OD_DATA_DIR`)
+
+```bash
+# EC2 (SSM 또는 ssh)
+sudo mkdir -p /opt/teamver-design && sudo chown ubuntu:ubuntu /opt/teamver-design
+cd /opt/teamver-design
+# git pull ns-open-design (vendor/teamver 포함 권장 — [08 vendor·배포](../../../docs-teamver/08_Teamver_SDK_vendor와_배포.md))
+
+cp .env.production.example .env.production
+# POSTGRES_HOST = terraform output postgres_host
+# POSTGRES_PASSWD = TF_VAR_teamver_aws_rds1_pass (또는 전용 DB user)
+# POSTGRES_SSLMODE=require
+
+chmod +x scripts/run_docker.sh
+bash scripts/run_docker.sh --production --rds
+```
+
+| 서비스 | 포트 |
+|--------|------|
+| open-design-daemon | 7456 |
+| teamver-design-api | 16000 |
+
+연동: [TEAMVER_APPS_INTEGRATION.md](./TEAMVER_APPS_INTEGRATION.md)
+
+### Nginx (HTTP only — ALB 뒤)
+
+```bash
+cd devops/nginx
+sudo cp teamver-design-od-token.conf.example /etc/nginx/conf.d/teamver-design-od-token.conf
+# OD_API_TOKEN 편집
+sudo bash ./apply_teamver_design_nginx_conf.sh ./design.teamver.com.http.conf
+```
+
+**금지:** `design.teamver.com.https.conf` enable (ALB + EC2 443 → 리다이렉트 루프).
+
+---
+
+## 3. ALB · DNS 검증
+
+Terraform이 Route53 ALIAS (`design*`, `design-api*`) 를 생성했다면:
+
+```bash
+curl -sf https://design.teamver.com/_nginx/health
+curl -sf https://design-api.teamver.com/_nginx/health
+```
+
+외부 DNS(Route53 외)인 경우: ALB DNS name에 CNAME/ALIAS 수동 설정 (`terraform output alb_dns_name`).
+
+ALB **idle timeout 3600s** — Terraform `alb_idle_timeout` 기본값.
+
+---
+
+## 4. 스키마
+
+design-api 최초 기동 시 `be/scripts/create_schema.sql` 또는 앱 bootstrap.  
+RDS에 `teamver_design` database 가 있어야 합니다.
+
+---
+
+## 5. 롤백
+
+- compose: `docker compose down` 후 이전 이미지 태그
+- ALB: unhealthy target 제거 또는 이전 EC2 AMI
+- DB: RDS snapshot 복원 (global 스택)

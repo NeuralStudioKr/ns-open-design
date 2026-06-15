@@ -21,6 +21,7 @@
     "src"
   ],
   "scripts": {
+    "preinstall": "node ../../scripts/check-teamver-vendor.mjs",
     "dev": "next dev --turbopack",
     "build": "next build",
     "build:sidecar": "tsc -p tsconfig.sidecar.json",
@@ -38,6 +39,7 @@
     "@open-design/platform": "workspace:*",
     "@open-design/sidecar": "workspace:*",
     "@open-design/sidecar-proto": "workspace:*",
+    "@teamver/app-sdk": "file:../../vendor/teamver/app-sdk.tgz",
     "@xterm/addon-fit": "0.10.0",
     "@xterm/xterm": "5.5.0",
     "lexical": "0.36.2",

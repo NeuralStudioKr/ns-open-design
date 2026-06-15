@@ -312,6 +312,9 @@ importers:
       '@open-design/sidecar-proto':
         specifier: workspace:*
         version: link:../../packages/sidecar-proto
+      '@teamver/app-sdk':
+        specifier: file:../../vendor/teamver/app-sdk.tgz
+        version: file:vendor/teamver/app-sdk.tgz
       '@xterm/addon-fit':
         specifier: 0.10.0
         version: 0.10.0(@xterm/xterm@5.5.0)
@@ -651,6 +654,25 @@ importers:
       vitest:
         specifier: 4.1.6
         version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.12.2)(jsdom@29.1.1)(vite@7.3.3(@types/node@24.12.2)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/teamver-integration:
+    dependencies:
+      '@open-design/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: 24.12.2
+        version: 24.12.2
+      esbuild:
+        specifier: 0.28.0
+        version: 0.28.0
+      tsx:
+        specifier: 4.22.3
+        version: 4.22.3
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
 
   tools/dev:
     dependencies:
@@ -2245,6 +2267,10 @@ packages:
 
   '@tailwindcss/postcss@4.3.0':
     resolution: {integrity: sha512-Jm05Tjx+9yCLGv5qw1c+84Psds8MnyrEQYCB+FFk2lgGiUjlRqdxke4mVTuYrj2xnVZqKim2Apr5ySuQRYAw/w==}
+
+  '@teamver/app-sdk@file:vendor/teamver/app-sdk.tgz':
+    resolution: {integrity: sha512-bACG+Ju0e/U1hrqYYmvE094n5/H2/fR3qGygnKGKvoG/bltGTyLJ34pFsz4byQVqimgXtFmlzgooF6witOEocQ==, tarball: file:vendor/teamver/app-sdk.tgz}
+    version: 0.0.1
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -6905,6 +6931,8 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       postcss: 8.5.15
       tailwindcss: 4.3.0
+
+  '@teamver/app-sdk@file:vendor/teamver/app-sdk.tgz': {}
 
   '@testing-library/dom@10.4.1':
     dependencies:
