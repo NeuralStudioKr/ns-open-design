@@ -73,7 +73,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
          ▼                              ▼
    design-api (RDS)              open-design daemon
    · design_projects            · run scratch (ephemeral)
-   · ai_model_token_usages      · CachingProjectStorage
+   · ai_model_token_usages      · MaterializingProjectStorage
          │                              │
          │                              ├─ read/write → S3 (SSOT)
          │                              └─ app.sqlite → Litestream → S3
@@ -101,7 +101,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 |---|------|------|------|
 | P0-1 | S3 bucket `teamver-design-{staging,prod}-data` | `ns-teamver-devops` | ☐ |
 | P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ☐ |
-| P0-3 | S3 lifecycle (noncurrent version, IA 선택) | `ns-teamver-devops` | ☐ |
+| P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ☐ |
 | P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | ☐ |
 | P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | ☐ |
 | P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) | 🟡 문서만 |
@@ -116,10 +116,11 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-3 | `resolveProjectStorage()` + unit tests | `apps/daemon` | ✅ |
 | P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | ☐ |
 | P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | ☐ |
-| P1-6 | **`CachingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ☐ |
+| P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ☐ |
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ☐ |
 | P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | ☐ |
 | P1-9 | MinIO/localstack integration test | `apps/daemon` | ☐ |
+| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | ☐ |
 
 **근거 코드 (기질 완료):** `apps/daemon/src/storage/project-storage.ts` — **라우트 미연결** (`OD_PROJECT_STORAGE=s3` env만으로는 동작 안 함).
 
@@ -142,6 +143,8 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P3-5 | OD web — list/create → design-api | `apps/web` | ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` 또는 nginx | ☐ |
 | P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ☐ |
+| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + S3 lifecycle | `deploy/teamver/be` | ☐ |
+| P3-9 | access 검증 방식 확정 (daemon middleware vs nginx subrequest) | 설계 → 구현 | ☐ |
 
 **스키마 (목표):**
 
@@ -179,6 +182,7 @@ OD_PROJECT_STORAGE=s3
 OD_S3_BUCKET=teamver-design-prod-data
 OD_S3_REGION=ap-northeast-2
 OD_S3_PREFIX=design/
+OD_SCRATCH_DIR=/app/.od/scratch   # optional; default under OD_DATA_DIR
 # IAM role preferred; fallback:
 # OD_S3_ACCESS_KEY_ID=...
 # OD_S3_SECRET_ACCESS_KEY=...
@@ -210,49 +214,215 @@ dbs:
 
 | 접근 | 이유 |
 |------|------|
+| **rclone/s3fs로 `OD_DATA_DIR`·`projects/` FUSE mount** | SQLite WAL·agent lock·rename/small file에 부적합; cache≠SSOT |
+| **`app.sqlite`를 S3 FUSE 위에 두기** | DB corruption; Litestream **replicate**만 허용 |
 | EBS snapshot만 추가하고 prod 오픈 | 격리·용량 근본 미해결 |
-| volume 통째 `aws s3 sync` cron | RPO 거침, tenant prefix 없음 |
+| volume 통째 `aws s3 sync` cron | RPO 거침, tenant prefix·access 없음 |
 | OD SQLite → Teamver RDS full mirror | 스키마 churn, PII 이중화 |
 | 격리 없이 S3만 | prefix 노출 시 타 사용자 데이터 |
 | 출시 게이트에 OD Postgres DaemonDb | 범위 과대 — Litestream으로 대체 |
+| S3를 git working tree / node_modules / plugin staging처럼 사용 | OD agent·plugin 가정과 충돌 |
+
+**운영 예외 (앱 경로 아님):** incident 조사 시 **`rclone mount --read-only`** 로 bucket 탐색만 허용.
 
 ---
 
-## 7. 일정 감 · 병렬
+## 7. 저장소 패턴 선택 (FUSE vs SDK vs Hybrid)
 
-| Phase | 기간 | Prod blocker |
-|-------|------|--------------|
-| 0 인프라 | ~1주 | ✅ |
-| 1 ProjectStorage | ~2~3주 | ✅ |
-| 2 Litestream | ~1주 | ✅ |
-| 3 registry + isolation | ~2주 | ✅ |
-| 4 Drive | ~1~2주 | 권장 (G7) |
+Object storage는 **key-value**이며 POSIX(append·rename·lock)와 다르다. Design daemon은 **agent CLI 로컬 CWD** + **SQLite**를 쓰므로 패턴별 적합성이 갈린다.
 
-**Phase 1 ∥ Phase 3** 병렬 가능. **0 → (1+3) → 2 → staging E2E → prod**.
+| 패턴 | 설명 | Design 적합 | 판단 |
+|------|------|-------------|------|
+| **A. FUSE mount** | rclone/s3fs → `/mnt/...` = `OD_DATA_DIR` | Agent는 동작해 보임 | ❌ Prod SSOT 금지 |
+| **B. SDK only (pure S3)** | 모든 read/write가 HTTP; scratch 없음 | Agent run 불가 | ❌ |
+| **C. Hybrid (채택)** | SSOT=S3 SDK, run=로컬 scratch, sync | Agent + 내구성 | ✅ **09 목표** |
+| **D. volume + cron sync** | EBS SSOT, 주기적 backup | 단기 MVP | ❌ prod blocker |
+
+**Teamver Drive/Main BE 패턴(앱 SDK 직접)** 과 동형인 것은 **C의 S3 레이어**이고, Design 추가분은 **MaterializingProjectStorage(scratch)** 이다.
+
+**개발:** `OD_PROJECT_STORAGE=local`. **Staging/Prod:** `s3` + IAM role. **CI:** MinIO/localstack (P1-9).  
+**배경 참고:** [archive/10_S3_저장소_패턴_참고.md](./archive/10_S3_저장소_패턴_참고.md)
 
 ---
 
-## 8. 검증 체크리스트 (Staging E2E)
+## 8. MaterializingProjectStorage (Phase 1 핵심)
+
+`ProjectStorage` 구현체 3층:
 
 ```text
-[ ] S3에 workspace/user/project prefix로 파일 생성 확인
-[ ] EC2 volume 삭제 시뮬레이션 후 S3+Litestream에서 복구
-[ ] 사용자 A 프로젝트 — 사용자 B access → 403
-[ ] design-api GET /projects — workspace 필터만 반환
-[ ] agent run 후 S3에 산출물 반영 (sync-up)
-[ ] 디스크 scratch 80% 알람 동작
+ProjectStorage (interface)
+├── LocalProjectStorage           # dev, scratch root
+├── S3ProjectStorage              # prod SSOT (SigV4)
+└── MaterializingProjectStorage   # scratch ↔ remote
+```
+
+### 8.1 run 단위 동작
+
+```text
+1. run/chat/export 시작 → S3 prefix → scratch/{projectId}/  (sync-down)
+2. agent cwd = scratch/{projectId}/
+3. run 종료 → dirty 파일만 S3 PUT (sync-up)
+4. 비-run API (preview 등) → S3 직접 또는 짧은 TTL cache (P1-4와 함께 확정)
+```
+
+**dirty 추적:** `RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS`, `projects.ts` run reconcile 재사용.
+
+### 8.2 scratch 디스크
+
+| 항목 | 권장 |
+|------|------|
+| 경로 | `$OD_SCRATCH_DIR/projects/` (기본 `$OD_DATA_DIR/scratch/projects/`) |
+| EC2 EBS | **10~20GB** (project SSOT 아님) |
+| 알람 | scratch 80% — [07](./07_VM_배포_인프라.md) |
+| eviction | run 완료 후 project scratch 삭제 가능 (SSOT=S3) |
+
+### 8.3 동시성 (v1)
+
+| 시나리오 | v1 |
+|----------|-----|
+| 동일 project 동시 run | **금지** (409 또는 Track B queue) |
+| workspace 내 다른 project | 허용 |
+| sync-up | project 단위 in-process lock |
+
+---
+
+## 9. 테넌트 격리 — 요청 흐름 (Phase 3)
+
+### 9.1 생성 · 목록
+
+```text
+POST design-api /api/v1/projects  → INSERT design_projects + s3_prefix
+GET  design-api /api/v1/projects  → workspace 필터 (daemon /api/projects 목록 금지)
+```
+
+### 9.2 project API access (P3-9)
+
+**권장:** daemon middleware → `GET design-api .../access` (204/403). nginx subrequest는 URI에서 project id 추출이 어려워 **차선**.
+
+### 9.3 S3 prefix
+
+```text
+s3://teamver-design-{env}-data/design/ws_{ws}/user_{uid}/proj_{od_project_id}/...
+```
+
+`design_projects.s3_prefix` = registry SSOT.
+
+### 9.4 design-api API (목표)
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/v1/projects` | registry + s3_prefix |
+| GET | `/api/v1/projects` | workspace 목록 |
+| GET | `/api/v1/projects/{id}/access` | daemon 검증 |
+| DELETE | `/api/v1/projects/{id}` | soft-delete (P3-8) |
+
+---
+
+## 10. 데이터 경계 — S3 vs 로컬
+
+| 데이터 | Prod SSOT | 로컬 (daemon) |
+|--------|-----------|---------------|
+| `projects/` 파일 | **S3** | scratch |
+| `app.sqlite` | **Litestream → S3** | 로컬 disk (FUSE 금지) |
+| app-config, memory, plugins | v1 로컬 + backup | volume |
+| skills/templates (공유) | 이미지/로컬 RO | OK |
+| import `metadata.baseDir` | **hosted 비활성** 권장 | sandbox 예외만 |
+
+---
+
+## 11. S3 · IAM · 버킷 (Phase 0)
+
+| 항목 | Staging | Production |
+|------|---------|------------|
+| Bucket | `teamver-design-staging-data` | `teamver-design-prod-data` |
+| Versioning | Enabled | Enabled |
+| Encryption | SSE-S3 or KMS | 동일 |
+| Public access | Block all | Block all |
+
+EC2 IAM: `ListBucket` on `design/*` prefix + `Get/Put/DeleteObject` on `.../design/*`.  
+design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03_키_저장소_Drive_DB.md) Publish.
+
+---
+
+## 12. 장애 · 관측 · 복구
+
+| 이벤트 | 대응 |
+|--------|------|
+| sync-up 실패 | retry 3회 + metric + 알람 (P1-10) |
+| S3 timeout | SDK retry; 새 run circuit |
+| scratch full | eviction + 80% 알람 |
+| Litestream lag | RPO 모니터; P2 restore runbook |
+| EC2 loss | S3 + Litestream restore; scratch 재생성 |
+
+| 레이어 | RPO (초안) |
+|--------|------------|
+| 프로젝트 파일 | 0 (PUT 후) |
+| app.sqlite | ≤ 1 min (Litestream) |
+| design_projects | RDS PITR |
+
+---
+
+## 13. volume → S3 마이그레이션
+
+1. maintenance — run 중단  
+2. `s3 sync` projects/ (registry backfill)  
+3. Litestream 초기 upload  
+4. `OD_PROJECT_STORAGE=s3`  
+5. E2E (§14)  
+6. 구 volume snapshot 7d 보관  
+
+---
+
+## 14. 검증 체크리스트 (Staging E2E)
+
+```text
+[ ] S3 workspace/user/project prefix 객체 생성
+[ ] EC2 volume 삭제 후 S3+Litestream 복구
+[ ] 사용자 A/B access 403
+[ ] design-api GET /projects workspace 필터
+[ ] agent run 후 S3 sync-up
+[ ] sync-up 실패 알람·retry
+[ ] scratch 80% 알람
+[ ] FUSE mount 미사용
+[ ] hosted에서 external baseDir import 거부(또는 문서화된 예외)
 ```
 
 ---
 
-## 9. Track A/B 재정의 (2026-06-15 결정)
+## 15. 일정 감 · 병렬
+
+| Phase | 기간 | Prod blocker |
+|-------|------|--------------|
+| 0 인프라 | ~1주 | ✅ |
+| 1 ProjectStorage + Materializing | ~2~3주 | ✅ |
+| 2 Litestream | ~1주 | ✅ |
+| 3 registry + isolation | ~2주 | ✅ |
+| 4 Drive | ~1~2주 | 권장 (G7) |
+
+**Phase 1 ∥ Phase 3** 병렬. **0 → (1+3) → 2 → §14 → prod**.
+
+---
+
+## 16. Track A/B 재정의 (2026-06-15 결정)
 
 | Track | 범위 |
 |-------|------|
-| **Track A (출시)** | SSO · nginx · **Phase 0~3 (본 문서)** · usage M2M |
-| **Track B (출시 후)** | job queue · multi-replica · Drive 자동화 · Postgres DaemonDb |
+| **Track A (출시)** | SSO · nginx · **Phase 0~3** · usage M2M |
+| **Track B (출시 후)** | job queue · multi-replica · Drive · Postgres DaemonDb |
 
-자세한 번호 매기기: [04 구현 우선순위](./04_구현_우선순위.md)
+자세한 번호: [04](./04_구현_우선순위.md)
+
+---
+
+## 17. 미결정 · 출시 후
+
+| 항목 | 시점 |
+|------|------|
+| tenant별 app-config / memory S3화 | Track B |
+| 동일 project concurrent run queue | Track B |
+| OD `DaemonDb` Postgres | upstream Phase 5 |
+| workspace quota (S3 bytes / project count) | prod+1 |
+| `@aws-sdk/client-s3` multipart | P1 이후 필요 시 |
 
 ---
 
@@ -260,4 +430,5 @@ dbs:
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-15 | §7~17 — FUSE vs Hybrid, MaterializingStorage, 격리 흐름, IAM, 장애·마이그레이션 |
 | 2026-06-15 | 초안 — volume-only prod blocker, Phase 0~4, 진행 표 |

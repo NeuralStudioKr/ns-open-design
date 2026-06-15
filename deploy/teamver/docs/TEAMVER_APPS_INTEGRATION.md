@@ -3,6 +3,7 @@
 **코드 SSOT:** `deploy/teamver/`  
 **문서 SSOT:** [`docs-teamver/README.md`](../../../docs-teamver/README.md) · **구현 누적:** [`00_구현_내역_누적.md`](../../../docs-teamver/00_구현_내역_누적.md)  
 **Prod 출시 게이트:** [`09_Design_저장소_격리_출시게이트.md`](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md)  
+**연동 보강:** [`10_세션·OD패치_보강.md`](../../../docs-teamver/10_세션·OD패치_보강.md) · [`11_Usage·Drive_Publish_보강.md`](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)  
 **설계 참고:** [`docs-teamver/06_Docs슬라이드형_연동.md`](../../../docs-teamver/06_Docs슬라이드형_연동.md)
 
 Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Teamver SSO·bootstrap·usage는 **`teamver-design-api`** 가 담당한다 (Docs/Slides 동형).
@@ -36,7 +37,8 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 |--------|------|------|
 | GET | `/api/v1/auth/session` | Cookie/Bearer SSO |
 | GET | `/api/v1/bootstrap` | Main BE bootstrap relay |
-| POST | `/api/v1/usage/events` | OD run usage (패치 연동 예정) |
+| POST | `/api/v1/usage/events` | OD run usage — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
+| POST | `/api/v1/projects/{id}/publish` | Drive Publish (Phase 4, TODO) — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | GET | `/api/token-usage/by-model` | M2M 집계 |
 
 ---
@@ -97,9 +99,13 @@ EC2 배포(ECR 없음): **vendor git commit 권장** → `git pull` + `run_docke
 | Main BE session-check + AppKey design | ✓ |
 | FE AI Apps Design 메뉴 | ✓ |
 | design-api BE (auth/bootstrap/usage) | ✓ (import·204 fix) |
-| OD web session 배너 + embed | ✓ (daemon usage hook 남음) |
+| OD web session 배너 + embed | ✓ (usage hook·브랜딩 남음 — [10](../../../docs-teamver/10_세션·OD패치_보강.md) · [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)) |
+| **세션·인증 (10 §3 Phase S)** | ☐ 401·refresh·design-api nginx |
+| **OD embed 브랜딩 (10 §4 Phase P)** | ☐ TeamverBrandingProvider |
+| **Usage Phase 1 (11 §3)** | ☐ FE hook·멱등·Main BE design M2M |
 | Staging/Prod 실배포 검증 | ☐ |
 | **저장소·격리 (09 Phase 0~3)** | ☐ **Prod blocker** |
+| **Drive Publish (11 §6 / G7)** | ☐ HTML+ZIP v1 |
 | Admin registry `design` | ☐ |
 | Registry billing Phase 2 | ☐ |
 
@@ -107,9 +113,13 @@ EC2 배포(ECR 없음): **vendor git commit 권장** → `git pull` + `run_docke
 
 ## Usage · billing
 
-- **Phase 1:** `POST /api/v1/usage/events` + M2M `by-model` (Docs/Slides 동형)
-- **Phase 2:** `be/app/services/teamver_billing.py` — Registry reserve/commit
-- OD run 완료 hook → `usage/events` (OD daemon/web 패치 필요)
+- **Phase 1:** `POST /api/v1/usage/events` + M2M `by-model` — 상세 [11 §3~§5](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)
+- **Phase 2:** `be/app/services/teamver_billing.py` — Registry reserve/commit — [11 §4](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)
+- FE `saveMessage` 종료 hook → `usage/events` ([11 §3.1](../../../docs-teamver/11_Usage·Drive_Publish_보강.md))
+
+## Drive Publish
+
+- **Phase 4 (G7):** `POST /api/v1/projects/{id}/publish` → SDK Drive upload — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)
 
 ---
 
@@ -130,5 +140,6 @@ EC2 배포(ECR 없음): **vendor git commit 권장** → `git pull` + `run_docke
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-15 | **10·11 연동 보강** — 세션·Usage·Drive checklist |
 | 2026-06-15 | **09 저장소·격리 출시 게이트** — Track A checklist |
 | 2026-06-15 | `deploy/teamver/be` — Docs/Slides형 wrapper BE (ns-open-design) |

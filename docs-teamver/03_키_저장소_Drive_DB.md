@@ -34,14 +34,14 @@ open-design daemon의 **키·artifact·DB**가 어디에 있는지(배경)와, T
 | 1 | AI 연동 API key는 어떻게·어디서 설정? | **에이전트 CLI 모드**는 사용자 머신의 CLI 로그인·`agentCliEnv`(daemon `app-config.json`). **BYOK/API 모드**는 web Settings → daemon `app-config` + 브라우저 localStorage(Topology C). **미디어**는 Settings → `media-config.json` 또는 `OD_*_API_KEY` env. **원격 daemon**은 (비루프백 시) `OD_API_TOKEN` Bearer. |
 | 2 | daemon 결과 artifacts는 어디? | **본문 파일**은 프로젝트 워크스페이스: 기본 `<OD_DATA_DIR>/projects/<id>/` (또는 import 시 `metadata.baseDir`). 레거시 문서의 `./.od/artifacts/<slug>/` 흐름은 스킬 CWD 관점; 제품 기본은 **project 디렉터리** 안 HTML/JSX/에셋. |
 | 3 | daemon이 DB에도 저장하나? | **예.** 기본 **SQLite** `<dataDir>/app.sqlite` — 프로젝트·대화·메시지·코멘트·플러그인·미디어 태스크 등 **메타데이터**. **실제 디자인 파일 바이트**는 DB가 아니라 프로젝트 폴더. |
-| 4 | Teamver Drive / Teamver DB? | **권장:** OD는 로컬/컨테이너에 그대로 두고, wrapper가 **export/finalize**로 바이트 확보 → **`teamver-app-sdk` Drive presigned** 업로드. Teamver DB에는 **job·workspace·user·asset_id·od_project_id** 등 **참조·과금·권한**만; OD SQLite **전체 미러는 비권장**. |
+| 4 | Teamver Drive / Teamver DB? | **Prod:** 프로젝트 SSOT=**S3**, 메타=**Litestream+SQLite**, registry=**design-api RDS** ([09](./09_Design_저장소_격리_출시게이트.md)). Drive=Publish 복사본. |
 
 ### 판단 요약
 
 | 질문 | 답 |
 |------|-----|
 | Teamver가 OD API 키를 대신 보관해야 하나? | **아니요.** 사용자/테넌트별 BYOK·CLI 인증은 **OD daemon 데이터 디렉터리** 또는 런타임 env. Teamver는 wrapper **서비스 계정**과 Main BE JWT만. |
-| 산출물 SSOT는 어디? | 생성 직후 **OD 프로젝트 디스크**; Teamver Drive는 **게시(publish) 복사본** + 메타데이터. |
+| 산출물 SSOT는 어디? | **Prod:** 편집 중 **S3**; Publish 후 **Teamver Drive**. dev/local은 disk. |
 | Teamver DB에 conversation 전체를 넣을까? | **기본 No** — 검색/감사 필요 시 **요약·asset 링크·run 상태**만. 전문은 OD 또는 Drive 파일. |
 
 ---
@@ -171,34 +171,46 @@ OD는 **“아티팩트 = 프로젝트 워크스페이스 안의 파일”** 모
 
 ## 4. Teamver Drive·자체 DB 연동 검토 (상세)
 
+> **Drive Publish v1 (HTML+ZIP), `design_outputs` DDL, `/publish` API 계약의 SSOT는 [11 Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md) §6 입니다.**  
+> 본 §4는 배경·데이터 경계 요약만 유지합니다.
+
 전제: [01_통합_아키텍처](./01_통합_아키텍처.md) — **open-design fork 대량 수정 비권장**, **teamver-design-app wrapper**가 Teamver SDK 사용.
 
 ### 4.1 권장 데이터 흐름 (Publish 모델)
 
+**Prod (09 Phase 0~3 적용 후):**
+
 ```text
-User (Teamver) → Teamver AI Apps BE → teamver-design-app
-  → OD daemon: POST /api/projects, POST /api/chat (SSE)
-  → OD disk: <dataDir>/projects/<odProjectId>/...
-  → wrapper: GET export / POST finalize → bytes + filename + mime
-  → teamver-app-sdk: upload_bytes_to_personal_drive (또는 workspace drive 정책)
-  → Teamver Main BE: asset_id, usage, audit
-  → Teamver DB: job row 갱신 (status, drive_asset_ids, od_project_id)
+User → design-api (registry) → OD daemon (scratch + MaterializingProjectStorage)
+  → SSOT: S3 projects/ + Litestream app.sqlite
+  → export/finalize → teamver-app-sdk Drive upload
+  → Main BE: asset_id, usage
 ```
 
-| 단계 | SSOT |
-|------|------|
-| 편집·재생성·채팅 이력 | **OD** (`app.sqlite` + project folder) |
-| 사용자에게 “Teamver에서 열기” 최종 파일 | **Teamver Drive** (버전은 Drive/앱 정책) |
-| 과금·권한·워크스페이스 | **Teamver Main BE** |
+**Dev / local (legacy diagram):**
+
+```text
+User → OD daemon → <OD_DATA_DIR>/projects/<id>/ ...
+  → export → Drive (Phase 4)
+```
+
+| 단계 | SSOT (Prod) |
+|------|-------------|
+| 편집·재생성·채팅 이력 | **S3** (files) + **Litestream** (sqlite) — [09](./09_Design_저장소_격리_출시게이트.md) |
+| registry·격리 | **design-api RDS** (`design_projects`) |
+| 사용자-facing 최종 파일 | **Teamver Drive** (Publish) |
+| 과금·권한 | **Main BE** |
 
 ### 4.2 Teamver Drive 연동 옵션
 
-| 옵션 | 설명 | 장단점 |
-|------|------|--------|
-| **A. 완료 시 1회 업로드** (권장) | job `succeeded` 시 export manifest에서 primary file만 Drive | 단순, OD upstream과 분리 좋음 |
-| **B. 다중 파일 zip** | `POST .../export` zip 전체 업로드 | 디자인 패키지·핸드오프용 |
-| **C. 주기적 동기화** | project folder watch → incremental upload | 충돌·중복 관리 비용 큼, 특수 케이스만 |
-| **D. Drive만 SSOT** | OD 경로를 Drive FUSE로 마운트 | **비권장** — OD 경로·샌드박스 가정 깨짐 |
+상세 orchestration·API·DDL: **[11 §6](./11_Usage·Drive_Publish_보강.md)**.
+
+| 옵션 | 설명 | v1 |
+|------|------|-----|
+| **A. 완료 시 1회 업로드** (권장) | export manifest primary → Drive | ✅ HTML |
+| **B. 다중 파일 zip** | archive endpoint → Drive | ✅ ZIP |
+| **C. 주기적 동기화** | project folder watch | ❌ |
+| **D. Drive만 SSOT** | FUSE mount | ❌ |
 
 Drive API는 **`teamver-app-sdk`** (`upload-request` → S3 PUT → `upload-confirm`) — [platform 02_2 설계](https://github.com/NeuralStudioKr/ns-teamver-platform) 및 `03` daemon 규격과 **별개 HTTP면**.
 
@@ -207,7 +219,7 @@ Drive API는 **`teamver-app-sdk`** (`upload-request` → S3 PUT → `upload-conf
 | 저장 대상 | 권장 | 비고 |
 |-----------|------|------|
 | `teamver_design_job` | id, user_id, workspace_id, status, od_project_id, od_conversation_id, created_at | wrapper가 OD id 보관 |
-| `teamver_design_output` | job_id, drive_asset_id, kind(html/pdf/pptx), filename, size | Drive 메타 **캐시** |
+| `teamver_design_output` | job_id, drive_asset_id, kind, filename, size | → **`design_outputs`** ([11 §6.3](./11_Usage·Drive_Publish_보강.md)) |
 | 채팅 전문·`events_json` | 기본 **미저장** | 필요 시 요약·해시만 |
 | OD `app.sqlite` 복제 | **비권장** | 스키마 churn·용량·PII 이중화 |
 
@@ -233,4 +245,5 @@ Drive API는 **`teamver-app-sdk`** (`upload-request` → S3 PUT → `upload-conf
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-15 | Drive Publish SSOT → [11](./11_Usage·Drive_Publish_보강.md) §6 위임 |
 | 2026-06-12 | 초안 — 키·artifact·SQLite·Teamver Drive/DB 검토 |
