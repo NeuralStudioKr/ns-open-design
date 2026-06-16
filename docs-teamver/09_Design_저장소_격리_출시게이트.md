@@ -136,10 +136,10 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| P3-1 | `design_projects` DDL + migration | `deploy/teamver/be` | ☐ |
-| P3-2 | `POST /api/v1/projects` — registry 생성 | `deploy/teamver/be` | ☐ |
-| P3-3 | `GET /api/v1/projects` — workspace 필터 목록 | `deploy/teamver/be` | ☐ |
-| P3-4 | `GET /api/v1/projects/{id}/access` — 204/403 | `deploy/teamver/be` | ☐ |
+| P3-1 | `design_projects` DDL + migration | `deploy/teamver/be` | ✅ |
+| P3-2 | `POST /api/v1/projects` — registry 생성 | `deploy/teamver/be` | ✅ |
+| P3-3 | `GET /api/v1/projects` — workspace 필터 목록 | `deploy/teamver/be` | ✅ |
+| P3-4 | `GET /api/v1/projects/{id}/access` — 204/403 | `deploy/teamver/be` | ✅ v1(owner) |
 | P3-5 | OD web — list/create → design-api | `apps/web` | ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` 또는 nginx | ☐ |
 | P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ☐ |
@@ -162,6 +162,13 @@ CREATE TABLE design_projects (
 );
 CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, updated_at DESC);
 ```
+
+**2026-06-16 구현(v1):**
+
+- `deploy/teamver/be/app/routers/projects.py` — create/list/access API.
+- `design_projects.s3_prefix`는 `{workspace_id}/{owner_user_id}/{od_project_id}/`.
+- 접근 검증은 v1에서 workspace + owner user + active status 기준.
+- 남음: nginx `/api/v1/projects` 보호 라우트, OD web list/create 경유, daemon middleware access 검증.
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
 

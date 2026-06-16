@@ -77,6 +77,23 @@ def apply_postgres_schema_patches() -> None:
           ON ai_model_token_usages (workspace_id, run_id)
           WHERE run_id IS NOT NULL AND run_id <> '';
         """,
+        """
+        CREATE TABLE IF NOT EXISTS design_projects (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          owner_user_id TEXT NOT NULL,
+          od_project_id TEXT NOT NULL UNIQUE,
+          s3_prefix TEXT NOT NULL,
+          title TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_design_projects_workspace
+          ON design_projects (workspace_id, updated_at DESC);
+        """,
     ]
     with psycopg.connect(settings.postgres_conninfo) as conn:
         for stmt in patches:

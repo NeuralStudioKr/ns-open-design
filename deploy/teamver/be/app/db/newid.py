@@ -18,6 +18,10 @@ def new_token_usage_id() -> str:
     return _id("ATU")
 
 
+def new_design_project_id() -> str:
+    return _id("DPRJ")
+
+
 def new_document_id() -> str:
     return _id("DOC")
 
