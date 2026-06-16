@@ -50,6 +50,7 @@ import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmb
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import { registerTeamverProjectIfNeeded } from './teamver/projectRegistry';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -1604,6 +1605,7 @@ function AppInner() {
     rememberLocalProject(result.projectId);
     const project = await getProject(result.projectId);
     if (project != null) {
+      await registerTeamverProjectIfNeeded(project);
       setProjects((curr) => [project, ...curr.filter((p) => p.id !== project.id)]);
     } else {
       // Daemon hasn't materialized the full record yet (race between the

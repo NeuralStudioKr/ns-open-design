@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class CreateDesignProjectBody(BaseModel):
-    od_project_id: str | None = Field(default=None, min_length=1)
+    model_config = ConfigDict(populate_by_name=True)
+
+    od_project_id: str | None = Field(
+        default=None,
+        min_length=1,
+        validation_alias=AliasChoices("od_project_id", "odProjectId"),
+    )
     title: str | None = None
 
 

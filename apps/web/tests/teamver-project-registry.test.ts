@@ -75,4 +75,20 @@ describe('Teamver project registry list', () => {
       ]),
     ).resolves.toEqual([{ id: 'p1' }, { id: 'p3' }]);
   });
+
+  it('accepts snake_case od_project_id from design-api JSON', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => ({
+          projects: [{ od_project_id: 'p9' }],
+        })),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      filterProjectsByTeamverRegistryIfNeeded([{ id: 'p9' }, { id: 'p0' }]),
+    ).resolves.toEqual([{ id: 'p9' }]);
+  });
 });

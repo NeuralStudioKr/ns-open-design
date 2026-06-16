@@ -8,8 +8,16 @@ export type TeamverProjectRegistryPayload = {
 };
 
 export type TeamverRegisteredProject = {
-  odProjectId: string;
+  odProjectId?: string;
+  od_project_id?: string;
+  ownerUserId?: string;
+  owner_user_id?: string;
 };
+
+function readRegistryOdProjectId(project: TeamverRegisteredProject): string | undefined {
+  const id = project.odProjectId?.trim() || project.od_project_id?.trim();
+  return id || undefined;
+}
 
 export function buildTeamverProjectRegistryPayload(
   project: Pick<Project, "id" | "name">,
@@ -64,7 +72,8 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
     );
     const ids = new Set<string>();
     for (const project of result.projects ?? []) {
-      if (project.odProjectId) ids.add(project.odProjectId);
+      const odProjectId = readRegistryOdProjectId(project);
+      if (odProjectId) ids.add(odProjectId);
     }
     return ids;
   } catch (err) {

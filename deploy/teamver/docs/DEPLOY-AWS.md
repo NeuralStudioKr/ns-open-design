@@ -63,6 +63,7 @@ cp .env.production.example .env.production
 chmod +x scripts/run_docker.sh
 bash scripts/run_docker.sh --production --rds
 bash scripts/seed_od_runtime_config.sh --production
+bash scripts/smoke_design.sh --production   # 배포 후 health·auth gate
 ```
 
 | 서비스 | 포트 |

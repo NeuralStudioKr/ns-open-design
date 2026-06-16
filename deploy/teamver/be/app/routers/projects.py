@@ -75,6 +75,7 @@ async def list_projects(
     rows = await design_project_crud.alist_active_projects(
         db,
         workspace_id=workspace_id,
+        owner_user_id=auth.user_id,
     )
     return DesignProjectListResponse(projects=[_to_response(row) for row in rows])
 

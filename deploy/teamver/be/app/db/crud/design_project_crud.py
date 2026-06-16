@@ -49,6 +49,7 @@ async def alist_active_projects(
     db: AsyncSession,
     *,
     workspace_id: str,
+    owner_user_id: str | None = None,
 ) -> list[DesignProject]:
     stmt = (
         select(DesignProject)
@@ -58,6 +59,8 @@ async def alist_active_projects(
         )
         .order_by(DesignProject.updated_at.desc())
     )
+    if owner_user_id:
+        stmt = stmt.where(DesignProject.owner_user_id == owner_user_id)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

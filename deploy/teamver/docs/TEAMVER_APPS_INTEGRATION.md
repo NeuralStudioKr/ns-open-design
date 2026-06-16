@@ -38,6 +38,7 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | GET | `/api/v1/auth/session` | Cookie/Bearer SSO |
 | GET | `/api/v1/bootstrap` | Main BE bootstrap relay |
 | GET | `/api/v1/runtime-config` | Embed managed API mode (server env → authenticated FE) |
+| GET/POST | `/api/v1/projects` | Project registry (list owner-scoped · create) |
 | POST | `/api/v1/usage/events` | OD run usage — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/v1/projects/{id}/publish` | Drive Publish (Phase 4, TODO) — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | GET | `/api/token-usage/by-model` | M2M 집계 |
@@ -89,6 +90,32 @@ pnpm install
 ```
 
 EC2 배포(ECR 없음): **vendor git commit 권장** → `git pull` + `run_docker.sh`. EC2 런타임 sync 불필요.
+
+---
+
+## Embed runtime env (design-api, git 커밋 금지)
+
+Managed BYOK — 브라우저 `VITE_*` 주입 없이 design-api가 세션 인증 후 FE에 전달:
+
+```bash
+TEAMVER_OD_API_KEY=sk-...
+TEAMVER_OD_API_PROTOCOL=anthropic
+TEAMVER_OD_API_BASE_URL=https://api.anthropic.com
+TEAMVER_OD_API_MODEL=claude-sonnet-4-5
+```
+
+미설정 시 `GET /api/v1/runtime-config` → `{ "configured": false }` (embed lock은 유지, chat은 Settings/BYOK 필요).
+
+---
+
+## Smoke (배포 후)
+
+```bash
+bash scripts/smoke_design.sh --staging
+# 선택: TEAMVER_COOKIE='teamver_access_token=…' bash scripts/smoke_design.sh --staging
+```
+
+체크: OD `/api/health`, design-api `/api/healthz`, unauthenticated `runtime-config`/`bootstrap` → 401/403.
 
 ---
 
