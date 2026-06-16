@@ -169,7 +169,7 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - `design_projects.s3_prefix`는 `{workspace_id}/{owner_user_id}/{od_project_id}/`.
 - 접근 검증은 v1에서 workspace + owner user + active status 기준.
 - nginx `/api/v1/projects` 보호 라우트는 staging/prod design-api에 반영.
-- OD web daemon project create, folder/ZIP import, plugin-share project 성공 후 design-api registry best-effort 등록 반영.
+- OD web daemon project create, folder/ZIP import, plugin-share project, host import response 성공 후 design-api registry best-effort 등록 반영.
 - Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). 조회 실패 시 전환기 fallback으로 daemon list 유지.
 - **smoke**: `scripts/smoke_design.sh --staging`.
 - 남음: daemon middleware access 검증 (P3-6), staging E2E.
