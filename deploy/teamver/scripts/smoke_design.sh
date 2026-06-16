@@ -25,7 +25,9 @@ smoke_design.sh — OD daemon + design-api health & auth gate checks
   bash scripts/smoke_design.sh --production
 
 Env overrides:
-  DESIGN_HOST, DESIGN_API_HOST, TEAMVER_COOKIE (optional session cookie)
+  DESIGN_HOST, DESIGN_API_HOST
+  TEAMVER_COOKIE (optional session cookie)
+  TEAMVER_WORKSPACE_ID (optional — projects list check)
 EOF
 }
 
@@ -123,6 +125,15 @@ else
   fail=$((fail + 1))
 fi
 
+projects_code="$(curl_status "${API_BASE}/api/v1/projects")"
+if [[ "$projects_code" == "401" || "$projects_code" == "403" ]]; then
+  echo "✓ design-api /api/v1/projects unauthenticated → $projects_code"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api /api/v1/projects unauthenticated → $projects_code (expected 401/403)"
+  fail=$((fail + 1))
+fi
+
 if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
   authed_runtime="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
     -H "Cookie: ${TEAMVER_COOKIE}" \
@@ -141,6 +152,25 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
     fi
   else
     echo "✗ design-api /api/v1/runtime-config (cookie) → $authed_runtime (expected 200)"
+    fail=$((fail + 1))
+  fi
+
+  workspace_hdr=()
+  if [[ -n "${TEAMVER_WORKSPACE_ID:-}" ]]; then
+    workspace_hdr=(-H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}")
+  fi
+
+  projects_list="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    "${workspace_hdr[@]}" \
+    "${API_BASE}/api/v1/projects")"
+  if [[ "$projects_list" == "200" ]]; then
+    echo "✓ design-api /api/v1/projects (cookie) → 200"
+    pass=$((pass + 1))
+  elif [[ "$projects_list" == "401" || "$projects_list" == "403" ]]; then
+    echo "○ design-api /api/v1/projects (cookie) → $projects_list (set TEAMVER_WORKSPACE_ID?)"
+  else
+    echo "✗ design-api /api/v1/projects (cookie) → $projects_list (expected 200)"
     fail=$((fail + 1))
   fi
 else
