@@ -169,8 +169,8 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - `design_projects.s3_prefix`는 `{workspace_id}/{owner_user_id}/{od_project_id}/`.
 - 접근 검증은 v1에서 workspace + owner user + active status 기준.
 - nginx `/api/v1/projects` 보호 라우트는 staging/prod design-api에 반영.
-- OD web daemon project create 성공 후 design-api registry best-effort 등록 반영.
-- 남음: OD web list 필터/병합, import 경로 registry 등록, daemon middleware access 검증.
+- OD web daemon project create, folder/ZIP import, plugin-share project 성공 후 design-api registry best-effort 등록 반영.
+- 남음: OD web list 필터/병합, host import response 경로 registry 등록, daemon middleware access 검증.
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
 

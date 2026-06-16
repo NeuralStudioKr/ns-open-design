@@ -162,7 +162,9 @@ export async function importFolderProject(
     } catch { /* use default message */ }
     throw new Error(message);
   }
-  return (await resp.json()) as ImportFolderResponse;
+  const result = (await resp.json()) as ImportFolderResponse;
+  await registerTeamverProjectIfNeeded(result.project);
+  return result;
 }
 
 export async function importClaudeDesignZip(
@@ -184,11 +186,13 @@ export async function importClaudeDesignZip(
         : `Import failed (${resp.status})`;
     throw new Error(message);
   }
-  return (await resp.json()) as {
+  const result = (await resp.json()) as {
     project: Project;
     conversationId: string;
     entryFile: string;
   };
+  await registerTeamverProjectIfNeeded(result.project);
+  return result;
 }
 
 // ---------- templates ----------
@@ -944,7 +948,9 @@ export async function createPluginShareProject(
         })
       | null;
     if (resp.ok && body?.ok && body.project && body.conversationId) {
-      return body as CreatePluginShareProjectResponse & { ok: true };
+      const outcome = body as CreatePluginShareProjectResponse & { ok: true };
+      await registerTeamverProjectIfNeeded(outcome.project);
+      return outcome;
     }
     const errorMessage =
       typeof body?.error === 'string' ? body.error : body?.error?.message;
