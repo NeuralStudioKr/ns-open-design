@@ -912,7 +912,7 @@ function AppInner() {
           baseConfig.mediaProviders,
           daemonMediaProvidersLoaded,
         );
-        const next = mergeDaemonMediaProviders(
+        let next = mergeDaemonMediaProviders(
           clearStaleAmrModelChoiceOnProfileChange(
             baseConfig,
             mergeDaemonConfig(baseConfig, daemonConfig),
