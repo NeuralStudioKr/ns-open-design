@@ -312,6 +312,10 @@ if [[ -x "$ROOT/scripts/seed_od_runtime_config.sh" ]]; then
   echo "○ seed_od_runtime_config.sh present (run manually after compose up)"
 fi
 
+if [[ -x "$ROOT/scripts/run_staging_track_a_e2e.sh" ]]; then
+  echo "○ full Track A E2E: bash scripts/run_staging_track_a_e2e.sh (smoke + manual checklist)"
+fi
+
 echo
 echo "==> $pass passed, $fail failed"
 if (( fail > 0 )); then

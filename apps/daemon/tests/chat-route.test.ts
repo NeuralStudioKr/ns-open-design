@@ -39,6 +39,11 @@ function symlinkDir(target: string, link: string): void {
   symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
 }
 
+/** macOS sandbox cwd may be `/private/var/...` while permission keys use `/var/...`. */
+function normalizeDaemonSandboxPath(p: string): string {
+  return p.replace(/^\/private(?=\/)/, '');
+}
+
 async function withFakeAgent<T>(
   binName: string,
   script: string,
@@ -287,7 +292,9 @@ process.stdin.on('end', () => {
         expect(response.ok).toBe(true);
         expect(body).toContain('cwd-permission-ok');
 
-        const effectiveCwd = (await fsp.readFile(cwdFile, 'utf8')).trim();
+        const effectiveCwd = normalizeDaemonSandboxPath(
+          (await fsp.readFile(cwdFile, 'utf8')).trim(),
+        );
         const raw = await fsp.readFile(envFile, 'utf8');
         const parsed = JSON.parse(raw) as {
           permission?: {
@@ -295,11 +302,12 @@ process.stdin.on('end', () => {
           };
         };
 
-        expect(parsed.permission?.external_directory).toMatchObject({
-          [effectiveCwd]: 'allow',
-          [`${effectiveCwd}/*`]: 'allow',
-          [`${effectiveCwd}/**`]: 'allow',
-        });
+        const externalDirectory = parsed.permission?.external_directory ?? {};
+        for (const suffix of ['', '/*', '/**'] as const) {
+          const key = `${effectiveCwd}${suffix}`;
+          expect(externalDirectory[key], `missing external_directory ${key}`).toBe('allow');
+        }
+        expect(Object.keys(externalDirectory).length).toBeGreaterThanOrEqual(3);
       },
     );
   });
