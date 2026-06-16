@@ -26,6 +26,7 @@ smoke_design.sh — OD daemon + design-api health & auth gate checks
 
 Env overrides:
   DESIGN_HOST, DESIGN_API_HOST
+  DESIGN_API_LOCAL_URL (optional — loopback M2M when nginx blocks /api/internal/ publicly)
   TEAMVER_COOKIE (optional session cookie)
   TEAMVER_WORKSPACE_ID (optional — projects list + M2M by-model check)
   TEAMVER_INTERNAL_API_KEY (optional — internal usage + token-usage M2M)
@@ -148,19 +149,60 @@ else
   fail=$((fail + 1))
 fi
 
+# nginx gate (10 §3.3): /api/internal/ blocked from public internet
+internal_public_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"x","workspace_id":"y","model_name":"m","input_tokens":0,"output_tokens":0,"run_id":"r"}' \
+  "${API_BASE}/api/internal/usage/events")"
+if [[ "$internal_public_code" == "403" ]]; then
+  echo "✓ design-api POST /api/internal/usage/events (public) → 403 (nginx deny)"
+  pass=$((pass + 1))
+elif [[ "$internal_public_code" == "404" ]]; then
+  echo "✓ design-api POST /api/internal/usage/events (public) → 404 (blocked)"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api POST /api/internal/usage/events (public) → $internal_public_code (expected 403/404)"
+  fail=$((fail + 1))
+fi
+
+token_usage_public_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+  "${API_BASE}/api/token-usage/by-model?user_id=x&workspace_id=y&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z")"
+if [[ "$token_usage_public_code" == "401" || "$token_usage_public_code" == "403" || "$token_usage_public_code" == "422" ]]; then
+  echo "✓ design-api GET /api/token-usage without M2M key → $token_usage_public_code"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api GET /api/token-usage without M2M key → $token_usage_public_code (expected 401/403/422)"
+  fail=$((fail + 1))
+fi
+
+design_api_root_code="$(curl_status "${API_BASE}/")"
+if [[ "$design_api_root_code" == "404" ]]; then
+  echo "✓ design-api / catch-all → 404 (no silent proxy)"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api / catch-all → $design_api_root_code (expected 404 after nginx hardening)"
+  fail=$((fail + 1))
+fi
+
 if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
+  internal_base="${DESIGN_API_LOCAL_URL:-$API_BASE}"
+  if [[ "$internal_base" == "$API_BASE" && "$internal_public_code" == "403" ]]; then
+    echo "○ skip internal usage M2M via public URL (nginx blocks /api/internal/; set DESIGN_API_LOCAL_URL=http://127.0.0.1:16000 on VM)"
+  else
   usage_internal_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
     -X POST \
     -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
     -H "Content-Type: application/json" \
     -d '{"user_id":"smoke-u","workspace_id":"smoke-w","model_name":"smoke-model","input_tokens":0,"output_tokens":0,"run_id":"smoke-run"}' \
-    "${API_BASE}/api/internal/usage/events")"
+    "${internal_base}/api/internal/usage/events")"
   if [[ "$usage_internal_code" == "204" ]]; then
     echo "✓ design-api POST /api/internal/usage/events (M2M) → 204"
     pass=$((pass + 1))
   else
     echo "✗ design-api POST /api/internal/usage/events (M2M) → $usage_internal_code (expected 204)"
     fail=$((fail + 1))
+  fi
   fi
 else
   echo "○ skip internal usage M2M (set TEAMVER_INTERNAL_API_KEY to enable)"

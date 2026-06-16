@@ -45,10 +45,11 @@ export default defineConfig({
   webServer: {
     command:
       `OD_DATA_DIR=${shellQuote(dataDir)} ` +
+      `VITE_TEAMVER_EMBED=1 ` +
       `pnpm --dir .. tools-dev run web --namespace ${shellQuote(namespace)} --daemon-port ${daemonPort} --web-port ${webPort}`,
     url: baseURL,
-    reuseExistingServer: false,
-    timeout: 120_000,
+    reuseExistingServer: !process.env.CI,
+    timeout: Number(process.env.OD_PLAYWRIGHT_WEBSERVER_TIMEOUT) || 180_000,
   },
   projects: [
     {

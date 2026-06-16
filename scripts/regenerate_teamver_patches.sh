@@ -2,7 +2,7 @@
 # Regenerate patches/teamver/*.patch from upstream/main (web touchpoints only).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PATCH_DIR="$ROOT/patches/teamver"
 
 cd "$ROOT"
