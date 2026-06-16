@@ -248,6 +248,14 @@ import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
+import { createMaterializingProjectStorage } from './storage/materializing-project-storage.js';
+import {
+  createProjectMaterializationRuntime,
+  type ProjectMaterializationRuntime,
+} from './storage/project-materialization-runtime.js';
+import { resolveProjectStorageLayout } from './storage/project-storage-layout.js';
+import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import { createProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { deriveRunErrorCode, runResultFromStatus } from './run-result.js';
 import { classifyRunFailure, isResumableFailure } from './run-failure-classification.js';
 import { decideSafeRunRetry } from './run-retry-policy.js';
@@ -1626,7 +1634,8 @@ const ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'artifacts');
 // `/artifacts` tree. The per-run artifact endpoint is the sanctioned
 // read path so project-membership, size, and CSP guards cannot be bypassed.
 const CRITIQUE_ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'critique-artifacts');
-const PROJECTS_DIR = path.join(RUNTIME_DATA_DIR, 'projects');
+const PROJECT_STORAGE_LAYOUT = resolveProjectStorageLayout(process.env, RUNTIME_DATA_DIR);
+const PROJECTS_DIR = PROJECT_STORAGE_LAYOUT.projectsDir;
 const USER_SKILLS_DIR = path.join(RUNTIME_DATA_DIR, 'skills');
 const USER_DESIGN_SYSTEMS_DIR = path.join(RUNTIME_DATA_DIR, 'design-systems');
 const PLUGIN_REGISTRY_ROOTS = registryRootsForDataDir(RUNTIME_DATA_DIR);
@@ -1654,6 +1663,9 @@ const ALL_SKILL_LIKE_ROOTS = [
   DESIGN_TEMPLATES_DIR,
 ];
 fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+if (PROJECT_STORAGE_LAYOUT.mode === 's3') {
+  fs.mkdirSync(PROJECT_STORAGE_LAYOUT.scratchDir, { recursive: true });
+}
 for (const dir of [USER_SKILLS_DIR, USER_DESIGN_SYSTEMS_DIR, USER_DESIGN_TEMPLATES_DIR, PLUGIN_REGISTRY_ROOTS.userPluginsRoot]) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -4735,6 +4747,11 @@ export function bufferedAntigravityGeminiFirstTokenAt(
   return null;
 }
 
+function withTeamverRunIdentity(req, meta) {
+  const teamverIdentity = readTeamverIdentityFromRequest(req);
+  return teamverIdentity ? { ...meta, teamverIdentity } : meta;
+}
+
 export async function startServer({
   port = 7456,
   host = normalizeDaemonBindHost(process.env.OD_BIND_HOST),
@@ -5785,6 +5802,34 @@ export async function startServer({
     readAnalyticsContext,
   };
 
+  let projectMaterialization: ProjectMaterializationRuntime = createProjectMaterializationRuntime(
+    PROJECT_STORAGE_LAYOUT,
+    null,
+  );
+  if (PROJECT_STORAGE_LAYOUT.mode === 's3') {
+    try {
+      const materializingStorage = await createMaterializingProjectStorage({
+        scratchProjectsRoot: PROJECTS_DIR,
+        env: process.env,
+      });
+      projectMaterialization = createProjectMaterializationRuntime(
+        PROJECT_STORAGE_LAYOUT,
+        materializingStorage,
+      );
+      console.info(
+        `[project-materialization] S3 mode enabled — scratch=${PROJECTS_DIR} bucket=${process.env.OD_S3_BUCKET ?? ''}`,
+      );
+    } catch (err) {
+      console.warn(
+        '[project-materialization] failed to initialize S3 storage; falling back to scratch-only:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  const baseFinishRun = design.runs.finish.bind(design.runs);
+  design.runs.finish = projectMaterialization.wrapFinish(baseFinishRun);
+  const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization);
+
   // Interactive Terminal sessions (node-pty). In-memory, process-local, and
   // killed on daemon shutdown — see shutdownDaemonRuns below.
   const terminalService = createTerminalService();
@@ -6407,6 +6452,7 @@ export async function startServer({
     documents: { buildDocumentPreview },
     artifacts: artifactDeps,
     projectPreviewScopes,
+    projectStorageHooks,
   });
 
   registerMediaRoutes(app, {
@@ -11593,6 +11639,22 @@ export async function startServer({
     if (run.cancelRequested || design.runs.isTerminal(run.status)) return;
     const runId = run.id;
 
+    if (typeof projectId === 'string' && projectId) {
+      try {
+        await projectMaterialization.beforeChatRun(run);
+      } catch (err) {
+        console.warn(
+          '[project-materialization] sync-down failed:',
+          err instanceof Error ? err.message : err,
+        );
+        return design.runs.fail(
+          run,
+          'INTERNAL_ERROR',
+          'Failed to prepare project storage for this run.',
+        );
+      }
+    }
+
     // Auto-memory hook. Pulls explicit "remember:" / "我是 X" / "I prefer Y"
     // markers out of the just-arrived user message and writes them as MD
     // files under <dataDir>/memory/. We await so the very next
@@ -14716,7 +14778,7 @@ export async function startServer({
         console.warn('[runs] mcp conversation fallback failed', err);
       }
     }
-    const run = design.runs.create(meta);
+    const run = design.runs.create(withTeamverRunIdentity(req, meta));
     try {
       pinAssistantMessageOnRunCreate(db, run);
     } catch (err) {
@@ -15342,7 +15404,7 @@ export async function startServer({
       toolBundle: toolBundle.bundle,
       ...(chatProject?.metadata ? { projectMetadata: chatProject.metadata } : {}),
     };
-    const run = design.runs.create(meta);
+    const run = design.runs.create(withTeamverRunIdentity(req, meta));
     design.runs.stream(run, req, res);
     design.runs.start(run, () => startChatRun(meta, run));
   });

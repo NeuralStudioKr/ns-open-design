@@ -1,0 +1,16 @@
+# Litestream replica for OD app.sqlite (09 Phase 2 / P0-5).
+# Requires EC2 IAM access to litestream/* on the project-data bucket.
+#
+# Usage (Teamver EC2):
+#   litestream replicate -config /opt/teamver-design/litestream.yml
+#
+# Env substitution: set LITESTREAM_BUCKET / LITESTREAM_REGION before start.
+
+dbs:
+  - path: /data/app.sqlite
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: litestream/app.sqlite
+        region: ${LITESTREAM_REGION:-ap-northeast-2}
+        sync-interval: 1s

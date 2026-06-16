@@ -2,6 +2,12 @@ import type { Request, RequestHandler } from 'express';
 
 const DEFAULT_TIMEOUT_MS = 2500;
 
+export type TeamverRequestIdentity = {
+  userId: string;
+  workspaceId: string;
+  authorization?: string;
+};
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
@@ -21,30 +27,48 @@ function firstHeaderValue(value: string | string[] | undefined): string {
   return String(value ?? '').trim();
 }
 
-function teamverIdentityHeaders(req: Request): HeadersInit | null {
+export function readTeamverIdentityFromRequest(req: Request): TeamverRequestIdentity | null {
   const userId = firstHeaderValue(req.headers['x-teamver-user-id']);
   const workspaceId = firstHeaderValue(req.headers['x-teamver-workspace-id']);
   if (!userId || !workspaceId) return null;
 
-  const headers: Record<string, string> = {
-    'X-Teamver-User-Id': userId,
-    'X-Teamver-Workspace-Id': workspaceId,
-    'X-Workspace-Id': workspaceId,
-  };
-
+  const identity: TeamverRequestIdentity = { userId, workspaceId };
   const authorization = firstHeaderValue(req.headers.authorization);
-  if (authorization) headers.Authorization = authorization;
+  if (authorization) identity.authorization = authorization;
+  return identity;
+}
+
+export function teamverIdentityHeadersFromIdentity(
+  identity: TeamverRequestIdentity,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'X-Teamver-User-Id': identity.userId,
+    'X-Teamver-Workspace-Id': identity.workspaceId,
+    'X-Workspace-Id': identity.workspaceId,
+  };
+  if (identity.authorization) headers.Authorization = identity.authorization;
   return headers;
 }
 
-function accessTimeoutMs(): number {
+function teamverIdentityHeaders(req: Request): Record<string, string> | null {
+  const identity = readTeamverIdentityFromRequest(req);
+  return identity ? teamverIdentityHeadersFromIdentity(identity) : null;
+}
+
+export function teamverAccessTimeoutMs(): number {
   const parsed = Number(process.env.TEAMVER_PROJECT_ACCESS_TIMEOUT_MS ?? '');
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
+function accessTimeoutMs(): number {
+  return teamverAccessTimeoutMs();
+}
+
 export function createTeamverProjectAccessMiddleware(sendApiError: (...args: any[]) => any): RequestHandler {
   return async (req, res, next) => {
-    const url = teamverProjectAccessCheckUrl(req.params.id);
+    const projectId = req.params.id;
+    if (typeof projectId !== 'string' || !projectId.trim()) return next();
+    const url = teamverProjectAccessCheckUrl(projectId);
     if (!url) return next();
 
     const headers = teamverIdentityHeaders(req);

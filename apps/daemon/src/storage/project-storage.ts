@@ -71,7 +71,7 @@ export class StorageError extends Error {
  * traversal guard the legacy `projects.ts` helpers already enforce.
  */
 export class LocalProjectStorage implements ProjectStorage {
-  constructor(private readonly projectsRoot: string) {}
+  constructor(public readonly projectsRoot: string) {}
 
   async readFile(projectId: string, relpath: string): Promise<Buffer> {
     const abs = this.resolvePath(projectId, relpath);
@@ -285,6 +285,87 @@ export class S3ProjectStorage implements ProjectStorage {
     return out;
   }
 
+  /** List objects under an absolute object key prefix (registry tenant layout). */
+  async listUnderObjectPrefix(objectPrefix: string): Promise<ProjectFileMeta[]> {
+    const normalizedPrefix = normalizeObjectPrefix(objectPrefix);
+    const out: ProjectFileMeta[] = [];
+    let continuationToken: string | undefined;
+    for (let pages = 0; pages < 1000; pages++) {
+      const params: Array<[string, string]> = [
+        ['list-type', '2'],
+        ['prefix', normalizedPrefix],
+      ];
+      if (continuationToken) params.push(['continuation-token', continuationToken]);
+      params.sort((a, b) => a[0].localeCompare(b[0]));
+      const query = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+      const res = await this.signedRequest({ method: 'GET', key: '', extraQuery: query });
+      if (!res.ok) {
+        throw new StorageError('IO', `S3 LIST ${normalizedPrefix} \u2192 ${res.status} ${res.statusText}: ${await safeText(res)}`);
+      }
+      const xml = await res.text();
+      const { entries, isTruncated, nextToken } = parseListBucketV2Xml(xml);
+      for (const e of entries) {
+        const rel = e.key.slice(normalizedPrefix.length).replace(/^\/+/, '');
+        if (!rel) continue;
+        out.push({ path: rel, size: e.size, mtimeMs: e.lastModifiedMs });
+      }
+      if (!isTruncated || !nextToken) break;
+      continuationToken = nextToken;
+    }
+    return out;
+  }
+
+  async readObjectAtKey(key: string): Promise<Buffer> {
+    const objectKey = normalizeObjectKey(key);
+    const res = await this.signedRequest({ method: 'GET', key: objectKey });
+    if (res.status === 404) throw new StorageError('NOT_FOUND', `${objectKey} not found`);
+    if (!res.ok) throw new StorageError('IO', `S3 GET ${objectKey} \u2192 ${res.status} ${res.statusText}: ${await safeText(res)}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  async writeObjectAtKey(key: string, body: Buffer): Promise<ProjectFileMeta> {
+    const objectKey = normalizeObjectKey(key);
+    const res = await this.signedRequest({ method: 'PUT', key: objectKey, body });
+    if (!res.ok) throw new StorageError('IO', `S3 PUT ${objectKey} \u2192 ${res.status} ${res.statusText}: ${await safeText(res)}`);
+    return {
+      path: objectKey,
+      size: body.byteLength,
+      mtimeMs: Date.now(),
+    };
+  }
+
+  async deleteObjectAtKey(key: string): Promise<void> {
+    const objectKey = normalizeObjectKey(key);
+    const res = await this.signedRequest({ method: 'DELETE', key: objectKey });
+    if (!res.ok && res.status !== 404) {
+      throw new StorageError('IO', `S3 DELETE ${objectKey} \u2192 ${res.status} ${res.statusText}: ${await safeText(res)}`);
+    }
+  }
+
+  async statObjectAtKey(key: string): Promise<ProjectFileMeta | null> {
+    const objectKey = normalizeObjectKey(key);
+    const res = await this.signedRequest({ method: 'HEAD', key: objectKey });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new StorageError('IO', `S3 HEAD ${objectKey} \u2192 ${res.status} ${res.statusText}`);
+    const contentLength = Number(res.headers.get('content-length') ?? '0');
+    const lastModified = res.headers.get('last-modified');
+    const rel = objectKey.includes('/') ? objectKey.slice(objectKey.lastIndexOf('/') + 1) : objectKey;
+    return {
+      path: rel,
+      size: Number.isFinite(contentLength) ? contentLength : 0,
+      mtimeMs: lastModified ? Date.parse(lastModified) : Date.now(),
+    };
+  }
+
+  objectKeyForPrefixAndRel(objectPrefix: string, relpath: string): string {
+    const root = normalizeObjectPrefix(objectPrefix);
+    const normalized = relpath ? normalizeRel(relpath) : '';
+    if (normalized.split('/').some((seg) => seg === '..' || seg === '.')) {
+      throw new StorageError('TRAVERSAL', `unsafe relpath ${relpath}`);
+    }
+    return normalized ? `${root}${normalized}` : root.slice(0, -1);
+  }
+
   // Build the canonical S3 key the impl uses. Exposed for tests so
   // the prefix / projectId / relpath join is stable.
   keyFor(projectId: string, relpath: string): string {
@@ -433,4 +514,22 @@ function normalizeRel(relpath: string): string {
     .replace(/^[\\/]+/, '')
     .replace(/[\\]+/g, '/')
     .replace(/\/+/g, '/');
+}
+
+function normalizeObjectPrefix(objectPrefix: string): string {
+  const trimmed = String(objectPrefix || '').replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!trimmed) throw new StorageError('TRAVERSAL', 'empty object prefix');
+  if (trimmed.split('/').some((seg) => seg === '..' || seg === '.')) {
+    throw new StorageError('TRAVERSAL', `unsafe object prefix ${objectPrefix}`);
+  }
+  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
+}
+
+function normalizeObjectKey(key: string): string {
+  const normalized = String(key || '').replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!normalized) throw new StorageError('TRAVERSAL', 'empty object key');
+  if (normalized.split('/').some((seg) => seg === '..' || seg === '.')) {
+    throw new StorageError('TRAVERSAL', `unsafe object key ${key}`);
+  }
+  return normalized;
 }

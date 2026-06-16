@@ -110,7 +110,31 @@ RDS에 `teamver_design_production` database 가 있어야 합니다.
 
 ---
 
-## 5. 롤백
+## 5. Litestream restore (app.sqlite)
+
+`docker compose --profile litestream up -d` 사용 시 S3 replica: `litestream/app.sqlite`.
+
+**EC2 유실 후 복구 (초안):**
+
+```bash
+# 1. compose down
+docker compose down
+
+# 2. OD volume 백업 경로 확인 (예: teamver_od_data)
+# 3. Litestream restore (호스트에 litestream CLI 설치)
+export LITESTREAM_BUCKET=teamver-design-prod-data
+export AWS_REGION=ap-northeast-2
+litestream restore -config deploy/teamver/litestream.yml /data/app.sqlite
+
+# 4. compose up
+bash scripts/run_docker.sh --production --rds
+```
+
+프로젝트 파일 SSOT는 S3 tenant prefix — scratch는 재생성. 상세: [09 §12](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md).
+
+---
+
+## 6. 롤백
 
 - compose: `docker compose down` 후 이전 이미지 태그
 - ALB: unhealthy target 제거 또는 이전 EC2 AMI

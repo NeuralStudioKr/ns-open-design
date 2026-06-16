@@ -38,7 +38,17 @@ def test_build_project_s3_prefix_scopes_by_workspace_user_and_project():
         od_project_id="od1",
     )
 
-    assert prefix == "ws1/u1/od1/"
+    assert prefix == "design/ws_ws1/user_u1/proj_od1/"
+
+
+def test_build_project_s3_prefix_sanitizes_unsafe_segments():
+    prefix = design_project_crud.build_project_s3_prefix(
+        workspace_id="ws/with/slash",
+        owner_user_id="user@id",
+        od_project_id="od proj",
+    )
+
+    assert prefix == "design/ws_with_slash/user_id/od_proj/"
 
 
 @pytest.mark.asyncio
@@ -59,7 +69,7 @@ async def test_acreate_project_uses_given_od_project_id_for_prefix():
     assert row.workspace_id == "ws1"
     assert row.owner_user_id == "u1"
     assert row.od_project_id == "od1"
-    assert row.s3_prefix == "ws1/u1/od1/"
+    assert row.s3_prefix == "design/ws_ws1/user_u1/proj_od1/"
     assert row.title == "Demo"
     db.add.assert_called_once()
 
@@ -81,3 +91,30 @@ def test_ensure_project_access_rejects_other_owner():
 def test_ensure_project_access_rejects_deleted_project():
     with pytest.raises(NotFoundError):
         _ensure_project_access(_project(status="deleted"), _auth())
+
+
+@pytest.mark.asyncio
+async def test_check_project_access_returns_s3_prefix_header(monkeypatch):
+    from app.routers import projects as projects_router
+
+    row = MagicMock()
+    row.workspace_id = "ws1"
+    row.owner_user_id = "u1"
+    row.od_project_id = "od1"
+    row.s3_prefix = "design/ws_ws1/user_u1/proj_od1/"
+    row.status = "active"
+
+    db = AsyncMock()
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=row),
+    )
+    response = await projects_router.check_project_access(
+        "od1",
+        _auth(),
+        db,
+    )
+
+    assert response.status_code == 204
+    assert response.headers["X-Teamver-S3-Prefix"] == "design/ws_ws1/user_u1/proj_od1/"

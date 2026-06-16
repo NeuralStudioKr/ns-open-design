@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import DesignProject
 from ..newid import new_design_project_id
+
+_S3_SEGMENT_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+
+
+def sanitize_s3_path_segment(value: str) -> str:
+    cleaned = _S3_SEGMENT_RE.sub("_", value.strip())
+    return (cleaned[:128] or "unknown")
 
 
 def build_project_s3_prefix(
@@ -13,7 +22,10 @@ def build_project_s3_prefix(
     owner_user_id: str,
     od_project_id: str,
 ) -> str:
-    return f"{workspace_id}/{owner_user_id}/{od_project_id}/"
+    ws = sanitize_s3_path_segment(workspace_id)
+    user = sanitize_s3_path_segment(owner_user_id)
+    proj = sanitize_s3_path_segment(od_project_id)
+    return f"design/ws_{ws}/user_{user}/proj_{proj}/"
 
 
 async def acreate_project(

@@ -93,7 +93,7 @@ async def check_project_access(
     if row is None:
         raise NotFoundError("project_not_found")
     _ensure_project_access(row, auth)
-    return Response(status_code=204)
+    return Response(status_code=204, headers={"X-Teamver-S3-Prefix": row.s3_prefix})
 
 
 @router.delete("/{od_project_id}", status_code=204, response_class=Response)

@@ -5,6 +5,7 @@ import {
   buildTeamverProjectRegistryPayload,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
+  unregisterTeamverProjectFromRegistryIfNeeded,
 } from '../src/teamver/projectRegistry';
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
@@ -131,5 +132,31 @@ describe('Teamver project registry access', () => {
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
     await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(true);
+  });
+});
+
+describe('Teamver project registry delete', () => {
+  afterEach(() => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+  });
+
+  it('no-ops outside embed mode', async () => {
+    await expect(unregisterTeamverProjectFromRegistryIfNeeded('p1')).resolves.toBeUndefined();
+  });
+
+  it('calls design-api DELETE with workspace scope', async () => {
+    const del = vi.fn(async () => undefined);
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { delete: del },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await unregisterTeamverProjectFromRegistryIfNeeded('p-del');
+    expect(del).toHaveBeenCalledWith('/projects/p-del', {
+      workspaceId: 'ws1',
+      skipAuthHeader: true,
+    });
   });
 });

@@ -99,11 +99,11 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| P0-1 | S3 bucket `teamver-design-{staging,prod}-data` | `ns-teamver-devops` | ☐ |
-| P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ☐ |
-| P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ☐ |
-| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | ☐ |
-| P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | ☐ |
+| P0-1 | S3 bucket `teamver-design-{staging,prod}-data` | `ns-teamver-devops` | ✅ |
+| P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ✅ |
+| P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ✅ |
+| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · s3 활성화는 wiring 후 |
+| P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 config·profile ✅ · prod 검증 ☐ |
 | P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) | 🟡 문서만 |
 | P0-7 | RDS `teamver_design_*` database | Terraform + SQL | ✅ |
 
@@ -114,22 +114,22 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-1 | `ProjectStorage` interface + `LocalProjectStorage` | `apps/daemon` | ✅ |
 | P1-2 | `S3ProjectStorage` (SigV4) | `apps/daemon` | ✅ |
 | P1-3 | `resolveProjectStorage()` + unit tests | `apps/daemon` | ✅ |
-| P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | ☐ |
-| P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | ☐ |
-| P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ☐ |
-| P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ☐ |
+| P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | 🟡 lazy file-route materialize ✅ · projects.ts 전면 ☐ |
+| P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | 🟡 PROJECTS_DIR scratch + materialization ✅ |
+| P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ✅ |
+| P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
 | P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | ☐ |
 | P1-9 | MinIO/localstack integration test | `apps/daemon` | ☐ |
-| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | ☐ |
+| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy metrics log ✅ · CloudWatch ☐ |
 
-**근거 코드 (기질 완료):** `apps/daemon/src/storage/project-storage.ts` — **라우트 미연결** (`OD_PROJECT_STORAGE=s3` env만으로는 동작 안 함).
+**근거 코드:** `apps/daemon/src/storage/` — run hook + lazy file-route materialize (`OD_PROJECT_STORAGE=s3`).
 
 ### Phase 2 — SQLite 내구성 (약 1주)
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| P2-1 | Litestream → S3 replica config | `deploy/teamver` | ☐ |
-| P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` | ☐ |
+| P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 config·profile ✅ |
+| P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` | 🟡 Litestream 초안 ✅ |
 | P2-3 | (대안) cron `app.sqlite` → S3 — Litestream 불가 시 | `deploy/teamver` | ☐ |
 
 ### Phase 3 — 테넌트 격리 + design-api registry (약 2주)
@@ -140,9 +140,9 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P3-2 | `POST /api/v1/projects` — registry 생성 | `deploy/teamver/be` | ✅ |
 | P3-3 | `GET /api/v1/projects` — workspace + **owner** 필터 목록 | `deploy/teamver/be` | ✅ |
 | P3-4 | `GET /api/v1/projects/{id}/access` — 204/403 | `deploy/teamver/be` | ✅ v1(owner) |
-| P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create/import sync ✅ · list filter ✅ · E2E ☐ |
+| P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create/import/delete sync ✅ · list filter ✅ · E2E ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` | ✅ env-gated · E2E ☐ |
-| P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ☐ |
+| P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ✅ design-api SSOT + daemon tenant scope |
 | P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + S3 lifecycle | `deploy/teamver/be` | ✅ registry soft-delete · S3 lifecycle ☐ |
 | P3-9 | access 검증 방식 확정 (daemon middleware vs nginx subrequest) | 설계 → 구현 | ✅ daemon middleware |
 

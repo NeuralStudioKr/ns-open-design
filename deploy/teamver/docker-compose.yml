@@ -22,6 +22,13 @@ services:
       OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
       TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
       TEAMVER_PROJECT_ACCESS_TIMEOUT_MS: ${TEAMVER_PROJECT_ACCESS_TIMEOUT_MS:-2500}
+      # Project storage (09 — default local; s3 + MaterializingProjectStorage when OD_PROJECT_STORAGE=s3)
+      OD_PROJECT_STORAGE: ${OD_PROJECT_STORAGE:-local}
+      OD_S3_BUCKET: ${OD_S3_BUCKET:-}
+      OD_S3_REGION: ${OD_S3_REGION:-}
+      OD_S3_PREFIX: ${OD_S3_PREFIX:-}
+      OD_SCRATCH_DIR: ${OD_SCRATCH_DIR:-}
+      AWS_REGION: ${AWS_REGION:-}
       # LLM provider keys (optional — daemon env, never commit). API-mode chat
       # still reads browser BYOK; these power memory/media fallbacks.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -49,6 +56,23 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # Litestream sidecar — enable with: docker compose --profile litestream up -d
+  litestream:
+    profiles:
+      - litestream
+    image: litestream/litestream:0.3.13
+    container_name: teamver-design-litestream
+    restart: unless-stopped
+    command: ["replicate", "-config", "/etc/litestream.yml"]
+    environment:
+      OD_DATA_DIR: /data
+      LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:?Set LITESTREAM_BUCKET (terraform output project_data_bucket)}
+      LITESTREAM_REGION: ${LITESTREAM_REGION:-ap-northeast-2}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+    volumes:
+      - teamver_od_data:/data:ro
+      - ./litestream.yml:/etc/litestream.yml:ro
 
   design-db:
     image: postgres:16-alpine

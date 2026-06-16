@@ -53,6 +53,7 @@ import { isTeamverEmbedMode } from './teamver/designApiBase';
 import {
   assertTeamverProjectAccessIfNeeded,
   registerTeamverProjectIfNeeded,
+  unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
@@ -1711,6 +1712,7 @@ function AppInner() {
   const handleDeleteProject = useCallback(async (id: string) => {
     const ok = await deleteProjectApi(id);
     if (!ok) return false;
+    await unregisterTeamverProjectFromRegistryIfNeeded(id);
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     setProjects((curr) => curr.filter((p) => p.id !== id));

@@ -38,7 +38,8 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | GET | `/api/v1/auth/session` | Cookie/Bearer SSO |
 | GET | `/api/v1/bootstrap` | Main BE bootstrap relay |
 | GET | `/api/v1/runtime-config` | Embed managed API mode (server env → authenticated FE) |
-| GET/POST | `/api/v1/projects` | Project registry (list owner-scoped · create) |
+| GET/POST | `/api/v1/projects` | Project registry (list owner-scoped · create + `s3_prefix`) |
+| GET | `/api/v1/projects/{od_project_id}/access` | Daemon access gate (204 + `X-Teamver-S3-Prefix`) |
 | DELETE | `/api/v1/projects/{od_project_id}` | Registry soft-delete (status=`deleted`) |
 | POST | `/api/v1/usage/events` | OD run usage — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/v1/projects/{id}/publish` | Drive Publish (Phase 4, TODO) — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
@@ -109,6 +110,33 @@ TEAMVER_OD_API_MODEL=claude-sonnet-4-5
 
 ---
 
+## Project registry · S3 (daemon, staging/prod)
+
+nginx `auth_request` 후 OD `/api/` 프록시에 `X-Teamver-User-Id`, `X-Teamver-Workspace-Id` 전달 → daemon access gate + tenant S3 prefix.
+
+| 레이어 | 역할 |
+|--------|------|
+| **FE** | create/import/delete → design-api registry sync; list owner 필터 |
+| **design-api** | `design_projects` + `s3_prefix` (`design/ws_*/user_*/proj_*/`) |
+| **daemon** | `TEAMVER_DESIGN_API_URL` 시 access subrequest; run/lazy materialize |
+
+**daemon env (S3 활성화 시 — MaterializingProjectStorage wiring 완료 후 `OD_PROJECT_STORAGE=s3`):**
+
+```bash
+OD_PROJECT_STORAGE=s3
+OD_S3_BUCKET=teamver-design-staging-data   # terraform output project_data_bucket
+OD_S3_REGION=ap-northeast-2
+OD_SCRATCH_DIR=/app/.od/scratch
+TEAMVER_DESIGN_API_URL=http://teamver-design-api:8000
+OD_PROJECT_LAZY_SYNC_TTL_MS=60000
+```
+
+EC2 IAM instance profile 사용 시 `OD_S3_ACCESS_KEY_ID` 불필요. Litestream: `docker compose --profile litestream up -d`.
+
+상세: [09 Phase 0~3](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md)
+
+---
+
 ## Smoke (배포 후)
 
 ```bash
@@ -129,11 +157,11 @@ bash scripts/smoke_design.sh --staging
 | FE AI Apps Design 메뉴 | ✓ |
 | design-api BE (auth/bootstrap/usage) | ✓ (import·204 fix) |
 | OD web session 배너 + embed | ✓ (usage hook·브랜딩 남음 — [10](../../../docs-teamver/10_세션·OD패치_보강.md) · [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)) |
-| **세션·인증 (10 §3 Phase S)** | ☐ 401·refresh·design-api nginx |
-| **OD embed 브랜딩 (10 §4 Phase P)** | ☐ TeamverBrandingProvider |
+| **세션·인증 (10 §3 Phase S)** | ✅ 코드 · staging E2E ☐ |
+| **OD embed 브랜딩 (10 §4 Phase P)** | ✅ 코드 · browser E2E ☐ |
 | **Usage Phase 1 (11 §3)** | ☐ FE hook·멱등·Main BE design M2M |
 | Staging/Prod 실배포 검증 | ☐ |
-| **저장소·격리 (09 Phase 0~3)** | ☐ **Prod blocker** |
+| **저장소·격리 (09 Phase 0~3)** | 🟡 registry·materialize·S3 TF ✅ · staging S3 활성화 ☐ |
 | **Drive Publish (11 §6 / G7)** | ☐ HTML+ZIP v1 |
 | Admin registry `design` | ☐ |
 | Registry billing Phase 2 | ☐ |
@@ -169,6 +197,7 @@ bash scripts/smoke_design.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-16 | registry access·S3 materialize·daemon env 연동 문서 |
 | 2026-06-15 | **10·11 연동 보강** — 세션·Usage·Drive checklist |
 | 2026-06-15 | **09 저장소·격리 출시 게이트** — Track A checklist |
 | 2026-06-15 | `deploy/teamver/be` — Docs/Slides형 wrapper BE (ns-open-design) |

@@ -1,0 +1,123 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { Request, Response } from 'express';
+
+import {
+  createLazyProjectMaterializationMiddleware,
+  createProjectStorageAccessHooks,
+} from '../src/storage/lazy-project-materialization.js';
+import { MaterializingProjectStorage } from '../src/storage/materializing-project-storage.js';
+import { LocalProjectStorage } from '../src/storage/project-storage.js';
+import { createProjectMaterializationRuntime } from '../src/storage/project-materialization-runtime.js';
+import { resolveProjectStorageLayout } from '../src/storage/project-storage-layout.js';
+
+function mockReq(method: string, path: string, projectId = 'p1'): Request {
+  return {
+    method,
+    path,
+    params: { id: projectId },
+    headers: {},
+  } as unknown as Request;
+}
+
+function mockRes(): Response {
+  const listeners: Record<string, Array<() => void>> = {};
+  return {
+    statusCode: 200,
+    on(event: string, fn: () => void) {
+      listeners[event] = listeners[event] ?? [];
+      listeners[event].push(fn);
+      return this;
+    },
+    emit(event: string) {
+      for (const fn of listeners[event] ?? []) fn();
+    },
+  } as unknown as Response;
+}
+
+describe('createProjectStorageAccessHooks', () => {
+  it('returns null outside s3 layout', () => {
+    const layout = resolveProjectStorageLayout({}, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, null);
+    expect(createProjectStorageAccessHooks(runtime)).toBeNull();
+  });
+
+  it('lazy sync-down copies remote files once per TTL window', async () => {
+    const previousTtl = process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+    process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = '60000';
+    const scratchRoot = '/tmp/scratch';
+    const remoteRoot = '/tmp/remote';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    expect(hooks).not.toBeNull();
+
+    const remote = storage.flatRemote();
+    const syncDown = vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 0 });
+
+    try {
+      await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/files'), 'p1');
+      await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/files'), 'p1');
+
+      expect(syncDown).toHaveBeenCalledTimes(1);
+      expect(syncDown.mock.calls[0]?.[1]).toBe(remote);
+    } finally {
+      if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+      else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
+    }
+  });
+});
+
+describe('createLazyProjectMaterializationMiddleware', () => {
+  it('no-ops when hooks are null', async () => {
+    const next = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(null, vi.fn());
+    await middleware(mockReq('GET', '/api/projects/p1/files'), mockRes(), next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('runs persistAfterMutation on successful write responses', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
+    const next = vi.fn();
+    const res = mockRes();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    await middleware(mockReq('POST', '/api/projects/p1/files'), res, next);
+    expect(next).toHaveBeenCalled();
+    res.emit('finish');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(persist).toHaveBeenCalled();
+  });
+
+  it('runs persistAfterMutation on successful upload responses', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
+    const next = vi.fn();
+    const res = mockRes();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    await middleware(mockReq('POST', '/api/projects/p1/upload'), res, next);
+    expect(next).toHaveBeenCalled();
+    res.emit('finish');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(persist).toHaveBeenCalled();
+  });
+});

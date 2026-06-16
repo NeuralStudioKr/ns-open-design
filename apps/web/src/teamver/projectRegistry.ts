@@ -126,3 +126,31 @@ export async function assertTeamverProjectAccessIfNeeded(
     return true;
   }
 }
+
+/** Embed: daemon project delete 후 design-api registry soft-delete (best-effort). */
+export async function unregisterTeamverProjectFromRegistryIfNeeded(
+  projectId: string,
+): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+
+  const trimmedId = projectId.trim();
+  if (!trimmedId) return;
+
+  const client = getDesignBffClient();
+  if (!client) return;
+
+  try {
+    const workspaceId = await client.workspaceStore?.get();
+    if (!workspaceId?.trim()) return;
+
+    await client.http.delete<void>(
+      `/projects/${encodeURIComponent(trimmedId)}`,
+      {
+        workspaceId: workspaceId.trim(),
+        skipAuthHeader: true,
+      },
+    );
+  } catch (err) {
+    console.warn("[teamver] project registry delete failed", err);
+  }
+}
