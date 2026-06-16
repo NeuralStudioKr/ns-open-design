@@ -7,6 +7,7 @@ import { TeamverBrandingHead } from "./TeamverBrandingHead";
 const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   enabled: false,
   title: "Open Design",
+  subtitle: "",
   faviconUrl: "/app-icon.png",
   hideExternalLinks: false,
 });

@@ -11,6 +11,8 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { EntryHelpMenu } from './EntryHelpMenu';
 import { Icon } from './Icon';
+import { useBrandLabel } from '../teamver/branding/useBrandLabel';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { useT } from '../i18n';
 
 export type EntryView =
@@ -59,7 +61,9 @@ function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: Na
 
 export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }: Props) {
   const t = useT();
-  const brandLabel = t('app.brand');
+  const brandLabel = useBrandLabel();
+  const { enabled: teamverEmbed, faviconUrl } = useTeamverBranding();
+  const logoSrc = teamverEmbed ? faviconUrl : '/app-icon.svg';
   const homeLabel = t('entry.navHome');
   const isHome = view === 'home';
 
@@ -103,7 +107,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
             data-testid="entry-nav-logo"
           >
             <img
-              src="/app-icon.svg"
+              src={logoSrc}
               alt=""
               className="entry-nav-rail__logo-img"
               draggable={false}

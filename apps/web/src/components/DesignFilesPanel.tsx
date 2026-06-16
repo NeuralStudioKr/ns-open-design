@@ -3,6 +3,7 @@ import { useAnalytics } from '../analytics/provider';
 import { trackFileManagerClick } from '../analytics/events';
 import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
 import { buildSrcdoc } from '../runtime/srcdoc';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind, ProjectFolder } from '../types';
@@ -191,13 +192,18 @@ function prefersReducedMotion(): boolean {
 // prefers-reduced-motion the full tip is shown immediately and just cycles.
 function RotatingTip() {
   const t = useT();
+  const { hideExternalLinks } = useTeamverBranding();
+  const usefulTips = useMemo(
+    () => (hideExternalLinks ? USEFUL_TIPS.filter((tip) => !tip.url) : USEFUL_TIPS),
+    [hideExternalLinks],
+  );
   const [index, setIndex] = useState(0);
   const [typed, setTyped] = useState('');
   // Resolve tips each render but read them through a ref so the typing effect
   // depends only on `index` — depending on the (re-created) array would reset
   // the typewriter on every render and never advance.
   const tipsRef = useRef<string[]>([]);
-  tipsRef.current = USEFUL_TIPS.map(({ key }) => t(key));
+  tipsRef.current = usefulTips.map(({ key }) => t(key));
 
   useEffect(() => {
     const tips = tipsRef.current;
@@ -244,8 +250,8 @@ function RotatingTip() {
         <span className="df-useful-info-label">{t('designFiles.usefulInfoLabel')}</span>
       </div>
       <span className="df-useful-info-tip">
-        {USEFUL_TIPS[index]?.url ? (
-          <a className="df-tip-link" href={USEFUL_TIPS[index].url} target="_blank" rel="noreferrer">
+        {usefulTips[index]?.url ? (
+          <a className="df-tip-link" href={usefulTips[index].url} target="_blank" rel="noreferrer">
             {typed}
           </a>
         ) : (

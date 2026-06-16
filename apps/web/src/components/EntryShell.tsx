@@ -83,13 +83,8 @@ import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
 import { UpdaterPopup } from './UpdaterPopup';
-import { GithubStarBadge } from './GithubStarBadge';
-import { TeamverSessionBanner } from './TeamverSessionBanner';
+import { EntryTopbarChips } from '../teamver/components/EntryTopbarChips';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import {
-  formatDiscordPresenceCount,
-  useDiscordPresence,
-} from './useDiscordPresence';
 import { HomeView } from './HomeView';
 import {
   createPluginAuthoringHandoff,
@@ -167,7 +162,6 @@ function writeStoredRailOpen(open: boolean): void {
   }
 }
 
-const DISCORD_URL = 'https://discord.gg/mHAjSMV6gz';
 const X_URL = 'https://x.com/nexudotio';
 const ONBOARDING_DROPDOWN_OPEN_EVENT = 'open-design:onboarding-dropdown-open';
 
@@ -452,7 +446,6 @@ export function EntryShell({
 }: Props) {
   const t = useT();
   const teamverEmbed = isTeamverEmbedMode();
-  const discordPresence = useDiscordPresence();
   // Each entry sub-view (home / projects / design-systems) is its own
   // URL now, so the browser back/forward buttons work and a deep link
   // to /design-systems lands on that section. We derive the active
@@ -489,14 +482,6 @@ export function EntryShell({
   const [homePromptHandoff, setHomePromptHandoff] = useState<HomePromptHandoff | null>(null);
   const entryMainScrollRef = useRef<HTMLElement | null>(null);
   const analytics = useAnalytics();
-  const discordOnlineLabel = discordPresence
-    ? t('entry.discordOnlineLabel', {
-        count: formatDiscordPresenceCount(discordPresence.onlineCount),
-      })
-    : null;
-  const discordAriaLabel = discordOnlineLabel
-    ? t('entry.discordAriaWithOnline', { online: discordOnlineLabel })
-    : t('entry.discordAria');
   function changeView(next: EntryViewKind) {
     const navElement = navElementForView(next);
     if (navElement) {
@@ -729,34 +714,7 @@ export function EntryShell({
               <Icon name="panel-left" size={20} />
             </button>
             <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
-              {teamverEmbed ? (
-                <TeamverSessionBanner teamverEmbed />
-              ) : (
-                <>
-                  <GithubStarBadge />
-                  <a
-                    className="entry-discord-badge od-tooltip"
-                    href={DISCORD_URL}
-                    aria-label={discordAriaLabel}
-                    data-tooltip={discordAriaLabel}
-                    data-tooltip-placement="bottom"
-                    data-testid="entry-discord-badge"
-                  >
-                    <Icon name="discord" size={14} className="entry-discord-badge__icon" />
-                    <span className="entry-discord-badge__label">{t('entry.discordLabel')}</span>
-                    {discordOnlineLabel ? (
-                      <>
-                        <span className="entry-discord-badge__sep" aria-hidden>
-                          ·
-                        </span>
-                        <span className="entry-discord-badge__online">
-                          {discordOnlineLabel}
-                        </span>
-                      </>
-                    ) : null}
-                  </a>
-                </>
-              )}
+              <EntryTopbarChips />
               {executionSwitcher}
               <button
                 type="button"
@@ -782,7 +740,7 @@ export function EntryShell({
                 </span>
               </button>
             </div>
-            <UpdaterPopup />
+            {!teamverEmbed ? <UpdaterPopup /> : null}
             {avatarMenu}
           </div>
           <div

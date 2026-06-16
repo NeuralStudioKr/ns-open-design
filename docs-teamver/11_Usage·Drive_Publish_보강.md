@@ -524,7 +524,7 @@ Browser
 | U-4 | `reportUsage.ts` + auth recovery (10 연동) | `apps/web` | ✅ |
 | U-5 | Main BE design M2M by-model | `ns-teamver-be` | ✅ |
 | U-6 | Staging E2E — run → usage row | — | ☐ |
-| U-7 | usage/events 테스트 | `deploy/teamver/be/tests` | ☐ |
+| U-7 | usage/events 멱등 테스트 | `deploy/teamver/be/tests` | ✅ |
 
 ### Phase B — Registry billing (출시 후)
 

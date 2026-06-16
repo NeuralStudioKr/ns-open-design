@@ -8,6 +8,7 @@ import {
 import { asInProjectFilePath } from "../runtime/in-project-link";
 import { projectFileUrl } from "../providers/registry";
 import { useAnalytics } from "../analytics/provider";
+import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
 import {
   trackAssistantFeedbackButtonClick,
   trackAssistantFeedbackClick,
@@ -1140,6 +1141,7 @@ function AssistantFeedback({
   producedFileCount: number;
 }) {
   const t = useT();
+  const { hideExternalLinks } = useTeamverBranding();
   const analytics = useAnalytics();
   // Analytics context the feedback events need. The four ids are either
   // user-anchored (projectId / assistantMessageId) or run-anchored (runId),
@@ -1475,7 +1477,7 @@ function AssistantFeedback({
               onChange={(event) => setCustomReason(event.target.value)}
             />
           ) : null}
-          {reasonRating === "positive" ? (
+          {!hideExternalLinks && reasonRating === "positive" ? (
             <p className="assistant-feedback-discord-note">
               Share what you made with the{" "}
               <a
@@ -1486,7 +1488,7 @@ function AssistantFeedback({
               </a>{" "}
               community, or drop a screenshot and tell us what worked well.
             </p>
-          ) : (
+          ) : !hideExternalLinks ? (
             <p className="assistant-feedback-discord-note">
               Share more context in{" "}
               <a
@@ -1497,7 +1499,7 @@ function AssistantFeedback({
               </a>{" "}
               so the team can understand what went wrong and follow up directly.
             </p>
-          )}
+          ) : null}
           <div className="assistant-feedback-actions">
             <button
               type="button"
