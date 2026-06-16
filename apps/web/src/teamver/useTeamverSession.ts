@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchDesignAuthSession } from "./designBffClient";
 import { isTeamverEmbedMode, resolveTeamverLoginUrl } from "./designApiBase";
+import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import { NetworkError } from "@teamver/app-sdk";
 
 export type TeamverSessionState = {
@@ -48,6 +49,7 @@ export function useTeamverSession(enabled: boolean): TeamverSessionState {
         user?.email?.trim() ||
         user?.userId?.trim() ||
         null;
+      await syncTeamverWorkspaceFromSession(data);
       setState({
         loading: false,
         authenticated: Boolean(data.authenticated),

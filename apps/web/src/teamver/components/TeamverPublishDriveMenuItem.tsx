@@ -32,11 +32,13 @@ export function TeamverPublishDriveMenuItem({
       const result = await publishTeamverDesignToDrive({
         projectId,
         artifactFile,
-        formats: ["html"],
+        formats: ["html", "zip"],
       });
       const output = pickReadyPublishOutputs(result.outputs)[0] ?? result.outputs[0];
       if (output?.publishStatus === "ready") onSuccess?.(output);
-      else onError?.(new Error(output?.errorCode ?? "publish_failed"));
+      else if (result.partial && pickReadyPublishOutputs(result.outputs).length > 0) {
+        onSuccess?.(pickReadyPublishOutputs(result.outputs)[0]!);
+      } else onError?.(new Error(output?.errorCode ?? "publish_failed"));
     } catch (err) {
       onError?.(err);
     } finally {

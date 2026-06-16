@@ -10,8 +10,11 @@ import {
 } from './inline-assets.js';
 import { sandboxImportedProjectRootUnavailableReason } from './sandbox-mode.js';
 import { parseOrchestratorWorkspace } from './workspace-contract.js';
+import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 
-export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {}
+export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
   const { db } = ctx;
@@ -79,6 +82,9 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
           updatedAt: now,
         });
         setTabs(db, id, [imported.entryFile], imported.entryFile);
+        if (ctx.projectStorageHooks) {
+          void ctx.projectStorageHooks.persistAfterMutation(req, id);
+        }
         res.json({
           project,
           conversationId: cid,

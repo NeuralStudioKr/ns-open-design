@@ -48,8 +48,9 @@ import {
 } from './teamver/branding/config';
 import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
-import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
+import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
 import {
   assertTeamverProjectAccessIfNeeded,
   registerTeamverProjectIfNeeded,
@@ -881,7 +882,12 @@ function AppInner() {
         fetchDaemonConfig(),
         fetchComposioConfigFromDaemon(),
         fetchMediaProvidersFromDaemon(),
-        isTeamverEmbedMode() ? fetchTeamverRuntimeConfig() : Promise.resolve(null),
+        isTeamverEmbedMode()
+          ? fetchDesignAuthSession().then(async (session) => {
+              if (session) await syncTeamverWorkspaceFromSession(session);
+              return fetchTeamverRuntimeConfig();
+            })
+          : Promise.resolve(null),
       ]).then(([
         daemonConfig,
         daemonComposioConfig,
