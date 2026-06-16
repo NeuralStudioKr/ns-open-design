@@ -46,6 +46,8 @@ import {
   clampTeamverEmbedSettingsSection,
   resolveTeamverBranding,
 } from './teamver/branding/config';
+import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
+import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -912,31 +914,25 @@ function AppInner() {
         if (!hasLocalComposioKey && daemonComposioConfig) {
           next.composio = daemonComposioConfig;
         }
-        saveConfig(next);
+        const lockedNext = applyTeamverEmbedConfigLockIfNeeded(next);
+        saveConfig(lockedNext);
         if (
           daemonMediaProvidersResult.status === 'ok' &&
           migratedLocalMediaProviders &&
-          hasAnyConfiguredProvider(next.mediaProviders)
+          hasAnyConfiguredProvider(lockedNext.mediaProviders)
         ) {
-          void syncMediaProvidersToDaemon(next.mediaProviders, {
+          void syncMediaProvidersToDaemon(lockedNext.mediaProviders, {
             daemonProviders: daemonMediaProvidersLoaded,
           });
         }
-        // Migrate localStorage prefs to daemon on first boot with the new
-        // endpoint. If daemon already had values the merge above used them;
-        // writing back is idempotent and keeps both sides in sync.
-        void syncConfigToDaemon(next);
-        void syncComposioConfigToDaemon(next.composio);
-        latestPersistedConfigRef.current = next;
-        setConfig(next);
+        void syncConfigToDaemon(lockedNext);
+        void syncComposioConfigToDaemon(lockedNext.composio);
+        latestPersistedConfigRef.current = lockedNext;
+        setConfig(lockedNext);
 
         // Route first-run users through the global onboarding panel.
-        // The onboarding panel and the privacy banner have independent
-        // lifecycles: onboarding keys off `onboardingCompleted`, the
-        // banner keys off `privacyDecisionAt`. They may coexist on the
-        // first launch; the banner sits above the modal layer so it
-        // stays actionable regardless of the active view.
-        if (!next.onboardingCompleted) {
+        // Embed skips onboarding — execution is server-managed (API mode lock).
+        if (!lockedNext.onboardingCompleted && !isTeamverEmbedMode()) {
           navigate({ kind: 'home', view: 'onboarding' }, { replace: true });
         }
         setDaemonConfigLoaded(true);
@@ -975,6 +971,7 @@ function AppInner() {
   // backfills an empty slot for returning users.
   useEffect(() => {
     if (!daemonConfigLoaded || agentsLoading) return;
+    if (isTeamverEmbedMode()) return;
     if (config.onboardingCompleted !== true) return;
     if (config.agentId) return;
     const firstAvailable = agents.find((a) => a.available);
@@ -993,6 +990,17 @@ function AppInner() {
     config.agentId,
     config.onboardingCompleted,
   ]);
+
+  // Embed: daemon merge or config writers can drift mode/agent — re-apply lock.
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const locked = applyTeamverEmbedConfigLockIfNeeded(config);
+    if (locked === config) return;
+    latestPersistedConfigRef.current = locked;
+    saveConfig(locked);
+    setConfig(locked);
+    void syncConfigToDaemon(locked);
+  }, [config]);
 
   // Auto-pick the default design system the same way — only after daemon
   // config has merged so we never overwrite a daemon-stored selection.
@@ -1277,10 +1285,11 @@ function AppInner() {
   useEffect(() => {
     const handleAppConfigChanged = () => {
       void fetchDaemonConfig().then((daemonConfig) => {
-        const next = clearStaleAmrModelChoiceOnProfileChange(
+        const merged = clearStaleAmrModelChoiceOnProfileChange(
           latestPersistedConfigRef.current,
           mergeDaemonConfig(latestPersistedConfigRef.current, daemonConfig),
         );
+        const next = applyTeamverEmbedConfigLockIfNeeded(merged);
         latestPersistedConfigRef.current = next;
         saveConfig(next);
         setConfig(next);

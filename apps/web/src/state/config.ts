@@ -10,6 +10,7 @@ import type {
   PetConfig,
 } from '../types';
 import { resolveFixedOriginBaseUrl } from './apiProtocols';
+import { applyTeamverEmbedConfigLockIfNeeded } from '../teamver/branding/applyEmbedConfigLock';
 import {
   DEFAULT_ACCENT_COLOR,
   normalizeAccentColor,
@@ -392,12 +393,12 @@ export function loadConfig(): AppConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return {
+      return applyTeamverEmbedConfigLockIfNeeded({
         ...DEFAULT_CONFIG,
         pet: normalizePet(DEFAULT_PET),
         notifications: normalizeNotifications(DEFAULT_NOTIFICATIONS),
         orbit: normalizeOrbit(DEFAULT_ORBIT),
-      };
+      });
     }
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
     // Strip daemon-owned privacy fields if a stale localStorage payload
@@ -461,14 +462,14 @@ export function loadConfig(): AppConfig {
       merged.baseUrl = resolveFixedOriginBaseUrl(merged.apiProtocol, merged.baseUrl);
     }
 
-    return merged;
+    return applyTeamverEmbedConfigLockIfNeeded(merged);
   } catch {
-    return {
+    return applyTeamverEmbedConfigLockIfNeeded({
       ...DEFAULT_CONFIG,
       pet: normalizePet(DEFAULT_PET),
       notifications: normalizeNotifications(DEFAULT_NOTIFICATIONS),
       orbit: normalizeOrbit(DEFAULT_ORBIT),
-    };
+    });
   }
 }
 
@@ -682,12 +683,14 @@ function sanitizeAgentCliEnv(agentCliEnv: AppConfig['agentCliEnv']): AppConfig['
   return sanitized;
 }
 
-export function saveConfig(config: AppConfig): void {
+export function saveConfig(config: AppConfig): AppConfig {
   const sanitized: AppConfig = { ...config, agentCliEnv: sanitizeAgentCliEnv(config.agentCliEnv) };
   for (const key of DAEMON_OWNED_KEYS) {
     delete (sanitized as unknown as Record<string, unknown>)[key];
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+  const locked = applyTeamverEmbedConfigLockIfNeeded(sanitized);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(locked));
+  return locked;
 }
 
 export function mergeDaemonConfig(

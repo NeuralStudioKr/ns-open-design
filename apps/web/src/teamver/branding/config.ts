@@ -29,6 +29,8 @@ export type TeamverBrandingConfig = {
   hideHandoffButton: boolean;
   /** Chat assistant role header — hide provider/model labels. */
   hideAssistantModelLabels: boolean;
+  /** Force API (BYOK) mode and skip onboarding — prevents CLI/BYOK drift. */
+  lockExecutionConfig: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -91,6 +93,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideUsefulTips: true,
         hideHandoffButton: true,
         hideAssistantModelLabels: true,
+        lockExecutionConfig: true,
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -102,6 +105,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideUsefulTips: false,
         hideHandoffButton: false,
         hideAssistantModelLabels: false,
+        lockExecutionConfig: false,
       };
 
   return {
