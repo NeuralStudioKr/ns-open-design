@@ -34,7 +34,12 @@ export async function resolveTeamverTenantRemoteStorage(
   identity: TeamverRequestIdentity | null | undefined,
   createTenantRemote: (objectPrefix: string) => import('./project-storage.js').ProjectStorage,
   fallbackRemote: () => import('./project-storage.js').ProjectStorage,
+  s3PrefixOverride?: string | null,
 ): Promise<{ remote: import('./project-storage.js').ProjectStorage; s3Prefix: string | null }> {
+  const override = s3PrefixOverride?.trim();
+  if (override) {
+    return { remote: createTenantRemote(override), s3Prefix: override };
+  }
   if (!identity || !teamverDesignApiBaseUrl()) {
     return { remote: fallbackRemote(), s3Prefix: null };
   }

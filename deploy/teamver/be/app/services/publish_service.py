@@ -11,7 +11,7 @@ from teamver_app_sdk.errors import TeamverAPIError
 from ..db.crud import design_output_crud
 from ..db.models import DesignOutput, DesignProject
 from ..errors import BadGatewayError, BadRequestError, UnauthorizedError
-from ..services.od_daemon_client import OdDaemonClient
+from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,16 @@ async def publish_project(
         )
 
     daemon = od_daemon or OdDaemonClient()
-    manifest = await daemon.get_export_manifest(project.od_project_id)
+    daemon_identity = OdDaemonIdentity(
+        user_id=project.owner_user_id,
+        workspace_id=project.workspace_id,
+        access_token=access_token,
+        s3_prefix=project.s3_prefix,
+    )
+    manifest = await daemon.get_export_manifest(
+        project.od_project_id,
+        identity=daemon_identity,
+    )
     manifest_entry = _entry_file_from_manifest(manifest)
 
     outputs: list[PublishFormatResult] = []
@@ -147,14 +156,21 @@ async def publish_project(
                 path = (artifact_file or manifest_entry or "").strip()
                 if not path:
                     raise BadRequestError("artifact_file_required")
-                content = await daemon.get_export_inline(project.od_project_id, path)
+                content = await daemon.get_export_inline(
+                    project.od_project_id,
+                    path,
+                    identity=daemon_identity,
+                )
                 mime_type = "text/html"
                 filename = _safe_filename(project.title, suffix=".html")
                 source_path = path
                 entry_file = manifest_entry
                 artifact = artifact_file or path
             elif fmt == "zip":
-                content = await daemon.get_archive(project.od_project_id)
+                content = await daemon.get_archive(
+                    project.od_project_id,
+                    identity=daemon_identity,
+                )
                 mime_type = "application/zip"
                 filename = _safe_filename(project.title, suffix=".zip")
                 source_path = None

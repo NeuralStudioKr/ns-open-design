@@ -38,6 +38,11 @@ export function readTeamverIdentityFromRequest(req: Request): TeamverRequestIden
   return identity;
 }
 
+export function readTeamverS3PrefixFromRequest(req: Request): string | null {
+  const prefix = firstHeaderValue(req.headers['x-teamver-s3-prefix']);
+  return prefix || null;
+}
+
 export function teamverIdentityHeadersFromIdentity(
   identity: TeamverRequestIdentity,
 ): Record<string, string> {

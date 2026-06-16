@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -9,6 +10,16 @@ from ..config import settings
 from ..errors import BadGatewayError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OdDaemonIdentity:
+    """Teamver identity for daemon access gate + tenant S3 materialization."""
+
+    user_id: str
+    workspace_id: str
+    access_token: str | None = None
+    s3_prefix: str | None = None
 
 
 class OdDaemonClient:
@@ -23,43 +34,83 @@ class OdDaemonClient:
         self.api_token = (api_token or settings.od_api_token).strip()
         self.timeout_seconds = timeout_seconds or settings.od_daemon_timeout_seconds
 
-    def _headers(self, *, accept: str = "application/json") -> dict[str, str]:
+    def _headers(
+        self,
+        *,
+        accept: str = "application/json",
+        identity: OdDaemonIdentity | None = None,
+    ) -> dict[str, str]:
         headers = {
             "accept": accept,
             "x-od-client": "teamver-design-api",
         }
         if self.api_token:
             headers["authorization"] = f"Bearer {self.api_token}"
+        if identity is not None:
+            headers["X-Teamver-User-Id"] = identity.user_id.strip()
+            headers["X-Teamver-Workspace-Id"] = identity.workspace_id.strip()
+            headers["X-Workspace-Id"] = identity.workspace_id.strip()
+            token = (identity.access_token or "").strip()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            prefix = (identity.s3_prefix or "").strip()
+            if prefix:
+                headers["X-Teamver-S3-Prefix"] = prefix
         return headers
 
-    async def get_export_manifest(self, od_project_id: str) -> dict[str, Any]:
+    async def get_export_manifest(
+        self,
+        od_project_id: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> dict[str, Any]:
         return await self._request_json(
             "GET",
             f"/api/projects/{od_project_id}/export/manifest",
+            identity=identity,
         )
 
-    async def get_export_inline(self, od_project_id: str, artifact_path: str) -> bytes:
+    async def get_export_inline(
+        self,
+        od_project_id: str,
+        artifact_path: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> bytes:
         encoded = "/".join(artifact_path.strip("/").split("/"))
         return await self._request_bytes(
             "GET",
             f"/api/projects/{od_project_id}/export/{encoded}",
             params={"inline": "1"},
             accept="text/html,*/*",
+            identity=identity,
         )
 
-    async def get_archive(self, od_project_id: str) -> bytes:
+    async def get_archive(
+        self,
+        od_project_id: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> bytes:
         return await self._request_bytes(
             "GET",
             f"/api/projects/{od_project_id}/archive",
             accept="application/zip,*/*",
+            identity=identity,
         )
 
-    async def _request_json(self, method: str, path: str) -> dict[str, Any]:
+    async def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.request(
                 method,
                 f"{self.base_url}{path}",
-                headers=self._headers(),
+                headers=self._headers(identity=identity),
             )
         if response.status_code >= 400:
             logger.warning(
@@ -85,12 +136,13 @@ class OdDaemonClient:
         *,
         params: dict[str, str] | None = None,
         accept: str,
+        identity: OdDaemonIdentity,
     ) -> bytes:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.request(
                 method,
                 f"{self.base_url}{path}",
-                headers=self._headers(accept=accept),
+                headers=self._headers(accept=accept, identity=identity),
                 params=params,
             )
         if response.status_code >= 400:

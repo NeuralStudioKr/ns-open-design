@@ -1,6 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 
-import { readTeamverIdentityFromRequest } from '../teamver-project-access.js';
+import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest } from '../teamver-project-access.js';
 import type { ProjectMaterializationRuntime } from './project-materialization-runtime.js';
 import { resolveTeamverTenantRemoteStorage } from './teamver-project-storage-meta.js';
 import { isS3ProjectStorageLayout } from './project-storage-layout.js';
@@ -44,11 +44,13 @@ export function createProjectStorageAccessHooks(
 
   async function resolveRemote(req: Request, projectId: string) {
     const identity = readTeamverIdentityFromRequest(req);
+    const s3PrefixOverride = readTeamverS3PrefixFromRequest(req);
     const resolved = await resolveTeamverTenantRemoteStorage(
       projectId,
       identity,
       (objectPrefix) => storage.remoteForTenantPrefix(objectPrefix),
       () => storage.flatRemote(),
+      s3PrefixOverride,
     );
     return resolved.remote;
   }

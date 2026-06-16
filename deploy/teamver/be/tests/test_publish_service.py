@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 from teamver_app_sdk.errors import TeamverAPIError
@@ -98,7 +98,8 @@ async def test_publish_project_html_uploads_and_persists():
     assert result.outputs[0].kind == "html"
     assert result.outputs[0].publish_status == "ready"
     assert result.outputs[0].drive_asset_id == "AST-123"
-    daemon.get_export_inline.assert_awaited_once_with("od1", "deck/index.html")
+    daemon.get_export_manifest.assert_awaited_once_with("od1", identity=ANY)
+    daemon.get_export_inline.assert_awaited_once_with("od1", "deck/index.html", identity=ANY)
     teamver_client.drive.upload_bytes_to_personal_drive.assert_awaited_once()
 
 

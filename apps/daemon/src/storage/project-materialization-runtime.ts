@@ -59,6 +59,7 @@ export function createProjectMaterializationRuntime(
       run.teamverIdentity,
       (objectPrefix) => storage.remoteForTenantPrefix(objectPrefix),
       () => storage.flatRemote(),
+      run.teamverS3Prefix,
     );
     run.teamverS3Prefix = resolved.s3Prefix;
     run.teamverRemote = resolved.remote;
