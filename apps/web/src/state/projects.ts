@@ -30,6 +30,7 @@ import type {
   ProjectTemplate,
 } from '../types';
 import { maybeReportTeamverUsageAfterSave } from '../teamver/maybeReportTeamverUsageAfterSave';
+import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
@@ -102,11 +103,13 @@ export async function createProject(input: {
       }
       throw new Error(message);
     }
-    return (await resp.json()) as {
+    const result = (await resp.json()) as {
       project: Project;
       conversationId: string;
       appliedPluginSnapshotId?: string;
     };
+    await registerTeamverProjectIfNeeded(result.project);
+    return result;
   } catch (err) {
     throw err instanceof Error ? err : new Error('Could not create project');
   }
