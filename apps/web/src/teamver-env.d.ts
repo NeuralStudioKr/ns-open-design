@@ -1,0 +1,25 @@
+/** Teamver embed build-time env (Next static export / Turbopack). */
+interface ImportMetaEnv {
+  readonly VITE_TEAMVER_EMBED?: string;
+  readonly VITE_TEAMVER_API_PROTOCOL?: string;
+  readonly VITE_TEAMVER_API_MODEL?: string;
+  readonly VITE_TEAMVER_API_BASE_URL?: string;
+  readonly VITE_TEAMVER_DESIGN_API_URL?: string;
+  readonly VITE_TEAMVER_MAIN_API_URL?: string;
+  readonly VITE_TEAMVER_BRAND_SUBTITLE?: string;
+  readonly VITE_TEAMVER_BRAND_TITLE?: string;
+  readonly VITE_TEAMVER_FAVICON_URL?: string;
+  readonly VITE_TEAMVER_LOGO_URL?: string;
+  readonly VITE_TEAMVER_LOGO_DARK_URL?: string;
+  readonly VITE_TEAMVER_NAV_MARK_URL?: string;
+  readonly VITE_TEAMVER_HERO_TITLE?: string;
+  readonly VITE_TEAMVER_HERO_SUBTITLE?: string;
+  readonly DEV: boolean;
+  readonly PROD: boolean;
+  readonly MODE: string;
+  readonly [key: string]: string | boolean | undefined;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
