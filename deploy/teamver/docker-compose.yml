@@ -20,6 +20,10 @@ services:
       OD_API_TOKEN: ${OD_API_TOKEN:?Set OD_API_TOKEN in .env (openssl rand -hex 32)}
       OD_DATA_DIR: /app/.od
       OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
+      # LLM provider keys (optional — daemon env, never commit). API-mode chat
+      # still reads browser BYOK; these power memory/media fallbacks.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "127.0.0.1:${OD_PORT:-7456}:7456"
     volumes:

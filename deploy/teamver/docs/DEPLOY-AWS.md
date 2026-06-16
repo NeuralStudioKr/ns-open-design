@@ -62,6 +62,7 @@ cp .env.production.example .env.production
 
 chmod +x scripts/run_docker.sh
 bash scripts/run_docker.sh --production --rds
+bash scripts/seed_od_runtime_config.sh --production
 ```
 
 | 서비스 | 포트 |
@@ -70,6 +71,8 @@ bash scripts/run_docker.sh --production --rds
 | teamver-design-api | 16000 |
 
 연동: [TEAMVER_APPS_INTEGRATION.md](./TEAMVER_APPS_INTEGRATION.md)
+
+**OD runtime seed:** 최초 기동 후 `bash scripts/seed_od_runtime_config.sh --production` — daemon `app-config.json`에 `onboardingCompleted: true` (idempotent). LLM provider key는 `.env`의 `ANTHROPIC_API_KEY` 등 → compose env (git 커밋 금지). embed FE lock과 함께 onboarding 재진입을 막는다.
 
 ### Nginx (HTTP only — ALB 뒤)
 

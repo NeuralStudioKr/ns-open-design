@@ -82,3 +82,9 @@ fi
 
 docker compose "${COMPOSE_ARGS[@]}" up -d --build "${SERVICES[@]}"
 docker compose "${COMPOSE_ARGS[@]}" ps
+
+if [[ -x "$ROOT/scripts/seed_od_runtime_config.sh" ]]; then
+  bash "$ROOT/scripts/seed_od_runtime_config.sh" \
+    "$([[ "$ENV_FILE" == ".env.staging" ]] && echo --staging || echo --production)" \
+    || echo "⚠ seed_od_runtime_config skipped (daemon not ready yet — run manually)"
+fi
