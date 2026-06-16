@@ -5,10 +5,16 @@ const webPort = Number(process.env.OD_WEB_PORT) || 17_573;
 const baseURL = `http://127.0.0.1:${webPort}`;
 const namespace = process.env.OD_E2E_NAMESPACE || `playwright-${process.pid}`;
 const dataDir = process.env.OD_E2E_DATA_DIR || `e2e/ui/.od-data/${namespace}`;
+const skipWebServer = process.env.OD_SKIP_WEBSERVER === '1';
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
+
+const webServerCommand =
+  `OD_DATA_DIR=${shellQuote(dataDir)} ` +
+  `VITE_TEAMVER_EMBED=1 ` +
+  `pnpm --dir .. tools-dev run web --namespace ${shellQuote(namespace)} --daemon-port ${daemonPort} --web-port ${webPort}`;
 
 export default defineConfig({
   testDir: './ui',
@@ -42,15 +48,14 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command:
-      `OD_DATA_DIR=${shellQuote(dataDir)} ` +
-      `VITE_TEAMVER_EMBED=1 ` +
-      `pnpm --dir .. tools-dev run web --namespace ${shellQuote(namespace)} --daemon-port ${daemonPort} --web-port ${webPort}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: Number(process.env.OD_PLAYWRIGHT_WEBSERVER_TIMEOUT) || 180_000,
-  },
+  webServer: skipWebServer
+    ? undefined
+    : {
+        command: webServerCommand,
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: Number(process.env.OD_PLAYWRIGHT_WEBSERVER_TIMEOUT) || 180_000,
+      },
   projects: [
     {
       name: 'chromium',
