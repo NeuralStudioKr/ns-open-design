@@ -525,6 +525,7 @@ Browser
 | U-5 | Main BE design M2M by-model | `ns-teamver-be` | ✅ |
 | U-6 | Staging E2E — run → usage row | — | ☐ |
 | U-7 | usage/events 멱등 테스트 | `deploy/teamver/be/tests` | ✅ |
+| U-8 | Daemon M2M `POST /api/internal/usage/events` | `deploy/teamver/be` + `apps/daemon` | ✅ |
 
 ### Phase B — Registry billing (출시 후)
 
@@ -538,12 +539,12 @@ Browser
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| D-1 | `design_outputs` DDL + CRUD | `deploy/teamver/be` | ☐ |
-| D-2 | `OdDaemonClient` | `deploy/teamver/be` | ☐ |
-| D-3 | `PublishService` + router | `deploy/teamver/be` | ☐ |
-| D-4 | `POST /api/v1/projects/{id}/publish` | `deploy/teamver/be` | ☐ |
+| D-1 | `design_outputs` DDL + CRUD | `deploy/teamver/be` | ✅ |
+| D-2 | `OdDaemonClient` | `deploy/teamver/be` | ✅ |
+| D-3 | `PublishService` + router | `deploy/teamver/be` | ✅ |
+| D-4 | `POST /api/v1/projects/{id}/publish` | `deploy/teamver/be` | ✅ |
 | D-5 | Staging E2E — HTML → Drive | — | ☐ |
-| D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | ☐ |
+| D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | 🟡 embed Download 메뉴 ✅ · Main Drive 딥링크 남음 |
 
 **의존:** Phase D는 [09 Phase 3](./09_Design_저장소_격리_출시게이트.md) `design_projects` 완료 후.
 

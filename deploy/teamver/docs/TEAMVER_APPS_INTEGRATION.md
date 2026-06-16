@@ -41,8 +41,9 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | GET/POST | `/api/v1/projects` | Project registry (list owner-scoped · create + `s3_prefix`) |
 | GET | `/api/v1/projects/{od_project_id}/access` | Daemon access gate (204 + `X-Teamver-S3-Prefix`) |
 | DELETE | `/api/v1/projects/{od_project_id}` | Registry soft-delete (status=`deleted`) |
-| POST | `/api/v1/usage/events` | OD run usage — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
-| POST | `/api/v1/projects/{id}/publish` | Drive Publish (Phase 4, TODO) — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
+| POST | `/api/v1/usage/events` | OD run usage (user JWT) — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
+| POST | `/api/internal/usage/events` | Daemon M2M usage (internal key) — [11 §3.4](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
+| POST | `/api/v1/projects/{id}/publish` | Drive Publish HTML+ZIP — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | GET | `/api/token-usage/by-model` | M2M 집계 |
 
 ---
@@ -162,7 +163,7 @@ bash scripts/smoke_design.sh --staging
 | **Usage Phase 1 (11 §3)** | ☐ FE hook·멱등·Main BE design M2M |
 | Staging/Prod 실배포 검증 | ☐ |
 | **저장소·격리 (09 Phase 0~3)** | 🟡 registry·materialize·S3 TF ✅ · staging S3 활성화 ☐ |
-| **Drive Publish (11 §6 / G7)** | ☐ HTML+ZIP v1 |
+| **Drive Publish (11 §6 / G7)** | ✅ HTML+ZIP v1 (`PublishService`) |
 | Admin registry `design` | ☐ |
 | Registry billing Phase 2 | ☐ |
 
@@ -176,7 +177,7 @@ bash scripts/smoke_design.sh --staging
 
 ## Drive Publish
 
-- **Phase 4 (G7):** `POST /api/v1/projects/{id}/publish` → SDK Drive upload — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)
+- **Phase 4 (G7):** `POST /api/v1/projects/{id}/publish` → SDK Drive upload — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) ✅
 
 ---
 

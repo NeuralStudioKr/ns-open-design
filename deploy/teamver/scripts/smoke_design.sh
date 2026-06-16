@@ -27,7 +27,8 @@ smoke_design.sh — OD daemon + design-api health & auth gate checks
 Env overrides:
   DESIGN_HOST, DESIGN_API_HOST
   TEAMVER_COOKIE (optional session cookie)
-  TEAMVER_WORKSPACE_ID (optional — projects list check)
+  TEAMVER_WORKSPACE_ID (optional — projects list + M2M by-model check)
+  TEAMVER_INTERNAL_API_KEY (optional — internal usage + token-usage M2M)
 EOF
 }
 
@@ -132,6 +133,56 @@ if [[ "$projects_code" == "401" || "$projects_code" == "403" ]]; then
 else
   echo "✗ design-api /api/v1/projects unauthenticated → $projects_code (expected 401/403)"
   fail=$((fail + 1))
+fi
+
+publish_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"formats":["html"]}' \
+  "${API_BASE}/api/v1/projects/demo-project/publish")"
+if [[ "$publish_code" == "401" || "$publish_code" == "403" ]]; then
+  echo "✓ design-api POST /projects/{id}/publish unauthenticated → $publish_code"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api POST /projects/{id}/publish unauthenticated → $publish_code (expected 401/403)"
+  fail=$((fail + 1))
+fi
+
+if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
+  usage_internal_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -X POST \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{"user_id":"smoke-u","workspace_id":"smoke-w","model_name":"smoke-model","input_tokens":0,"output_tokens":0,"run_id":"smoke-run"}' \
+    "${API_BASE}/api/internal/usage/events")"
+  if [[ "$usage_internal_code" == "204" ]]; then
+    echo "✓ design-api POST /api/internal/usage/events (M2M) → 204"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api POST /api/internal/usage/events (M2M) → $usage_internal_code (expected 204)"
+    fail=$((fail + 1))
+  fi
+else
+  echo "○ skip internal usage M2M (set TEAMVER_INTERNAL_API_KEY to enable)"
+fi
+
+if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" && -n "${TEAMVER_WORKSPACE_ID:-}" ]]; then
+  token_usage_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    "${API_BASE}/api/token-usage/by-model?user_id=smoke-u&workspace_id=${TEAMVER_WORKSPACE_ID}&from=2026-06-01T00:00:00Z&to=2026-12-31T23:59:59Z")"
+  if [[ "$token_usage_code" == "200" ]]; then
+    echo "✓ design-api GET /api/token-usage/by-model (M2M) → 200"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api GET /api/token-usage/by-model (M2M) → $token_usage_code (expected 200)"
+    fail=$((fail + 1))
+  fi
+else
+  echo "○ skip token-usage by-model M2M (TEAMVER_INTERNAL_API_KEY + TEAMVER_WORKSPACE_ID)"
+fi
+
+if [[ -x "$ROOT/scripts/print_staging_s3_env.sh" ]]; then
+  echo "○ S3 activation template: bash scripts/print_staging_s3_env.sh [--from-terraform]"
 fi
 
 if [[ -n "${TEAMVER_COOKIE:-}" ]]; then

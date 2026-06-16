@@ -276,6 +276,7 @@ import {
   reportRunCompletedFromDaemon,
   reportRunFeedbackFromDaemon,
 } from './langfuse-bridge.js';
+import { reportTeamverUsageFromDaemon } from './teamver-usage-bridge.js';
 import {
   deriveLangfuseDeliveryState,
   readTelemetrySinkConfig,
@@ -3145,6 +3146,11 @@ export function createFinalizedMessageTelemetryReporter({
         persistedRunStatus: saved.runStatus,
         persistedEndedAt: saved.endedAt,
         appVersion: getAppVersion(),
+      });
+      void reportTeamverUsageFromDaemon({
+        run,
+        persistedRunStatus: saved.runStatus,
+        reportedRuns,
       });
       const state = delivery ?? {
         langfuse_expected: true,

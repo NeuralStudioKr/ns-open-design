@@ -1,0 +1,497 @@
+From 34244b4c5b320c8519000fc3b5882bec9ed92d91 Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 11:22:33 +0900
+Subject: [PATCH 1/6] =?UTF-8?q?feat(teamver):=20embed=20UI=20=EB=8B=A8?=
+ =?UTF-8?q?=EC=88=9C=ED=99=94=20=EB=B0=8F=20fe-v2/slide=20=EB=B8=8C?=
+ =?UTF-8?q?=EB=9E=9C=EB=93=9C=20asset=20=EC=97=B0=EB=8F=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Teamver embed(design.teamver.com)에서 Open Design UI를 출시용으로 폐쇄한다.
+런타임(API key·Drive)에 영향 없는 nav/topbar/설정/스튜디오 표시만 중앙 정책으로
+게이트하고, ns-teamver-fe-v2·ns-teamver-slide와 동일한 로고·파비콘을 사용한다.
+
+## 중앙 정책 (teamver/branding/config.ts)
+- TeamverBrandingConfig에 embed UI 플래그 일원화
+  (hideNavViews, hideTopbarExecutionSwitcher, hideSettingsDialogLink 등)
+- 브랜드 asset 기본값은 embed 모드에서만 /teamver/* 적용 (standalone OD 무영향)
+- SettingsDialog 섹션은 language·appearance만 허용 (clampTeamverEmbedSettingsSection)
+
+## 브랜드 asset (public/teamver/)
+- fe-v2: Logo.svg, Logo-dark.svg, favicon.ico
+- slide: Logo-icon.svg (nav rail mark)
+- TeamverLogo 컴포넌트 + teamver-branding.css (라이트/다크 워드마크 전환)
+
+## UI 변경
+- EntryNavRail: tasks/plugins/integrations 숨김, nav mark 로고
+- EntryShell: 실행 모드 스위처·Use everywhere 숨김
+- EntrySettingsMenu: 언어·테마만, "설정" 진입 제거
+- SettingsDialog: embed 시 sidebar language/appearance만
+- HomeHero: Teamver 워드마크 + hero i18n override
+- ProjectView: AvatarMenu(모델 선택)·HandoffButton 숨김
+- AssistantMessage: API 모델명·status detail 숨김
+- DesignFilesPanel: "유용한 기능" RotatingTip 전체 숨김
+
+## 검증·개선
+- favicon link 없을 때 head에 동적 생성 (TeamverBrandingHead)
+- 중복 Logo_dark.svg 제거, nav mark 높이 slide 기준 16px
+
+보류: API key/model 고정, Drive·working directory, PPT 변환 (별도 작업)
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/App.tsx | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index 1f38ea04e..9533ce174 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -42,6 +42,10 @@ import {
+   type SettingsSection,
+   type SettingsHighlight,
+ } from './components/SettingsDialog';
++import {
++  clampTeamverEmbedSettingsSection,
++  resolveTeamverBranding,
++} from './teamver/branding/config';
+ import { PrivacyConsentModal } from './components/PrivacyConsentModal';
+ import {
+   daemonIsLive,
+@@ -1828,7 +1832,15 @@ function AppInner() {
+     section: SettingsSection = 'execution',
+     opts?: { highlight?: SettingsHighlight },
+   ) => {
++    const branding = resolveTeamverBranding();
+     if (section === 'composio' || section === 'mcpClient' || section === 'integrations') {
++      if (branding.enabled) {
++        setSettingsWelcome(false);
++        setSettingsInitialSection('language');
++        setSettingsHighlight(null);
++        setSettingsOpen(true);
++        return;
++      }
+       setIntegrationInitialTab(
+         section === 'composio'
+           ? 'connectors'
+@@ -1839,9 +1851,12 @@ function AppInner() {
+       navigate({ kind: 'home', view: 'integrations' });
+       return;
+     }
++    const safeSection: SettingsSection = branding.enabled
++      ? clampTeamverEmbedSettingsSection(section, branding)
++      : section;
+     setSettingsWelcome(false);
+-    setSettingsInitialSection(section);
+-    setSettingsHighlight(opts?.highlight ?? null);
++    setSettingsInitialSection(safeSection);
++    setSettingsHighlight(branding.enabled ? null : (opts?.highlight ?? null));
+     setSettingsOpen(true);
+   }, []);
+ 
+-- 
+2.43.2
+
+
+From 3b72d51bd77faf28a590321bc3e67e175f983120 Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 11:34:19 +0900
+Subject: [PATCH 2/6] =?UTF-8?q?feat(teamver):=20embed=20=EC=8B=A4=ED=96=89?=
+ =?UTF-8?q?=20=EC=84=A4=EC=A0=95=20=EA=B3=A0=EC=A0=95=20(API=20mode=20lock?=
+ =?UTF-8?q?,=20onboarding=20skip)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+embed에서 BYOK/CLI drift를 막기 위해 mode·onboarding·agent 선택을
+고정하고, load/save/bootstrap/daemon merge 경로에 lock을 적용한다.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/App.tsx | 43 ++++++++++++++++++++++++++-----------------
+ 1 file changed, 26 insertions(+), 17 deletions(-)
+
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index 9533ce174..a83473eeb 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -46,6 +46,8 @@ import {
+   clampTeamverEmbedSettingsSection,
+   resolveTeamverBranding,
+ } from './teamver/branding/config';
++import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
++import { isTeamverEmbedMode } from './teamver/designApiBase';
+ import { PrivacyConsentModal } from './components/PrivacyConsentModal';
+ import {
+   daemonIsLive,
+@@ -912,31 +914,25 @@ function AppInner() {
+         if (!hasLocalComposioKey && daemonComposioConfig) {
+           next.composio = daemonComposioConfig;
+         }
+-        saveConfig(next);
++        const lockedNext = applyTeamverEmbedConfigLockIfNeeded(next);
++        saveConfig(lockedNext);
+         if (
+           daemonMediaProvidersResult.status === 'ok' &&
+           migratedLocalMediaProviders &&
+-          hasAnyConfiguredProvider(next.mediaProviders)
++          hasAnyConfiguredProvider(lockedNext.mediaProviders)
+         ) {
+-          void syncMediaProvidersToDaemon(next.mediaProviders, {
++          void syncMediaProvidersToDaemon(lockedNext.mediaProviders, {
+             daemonProviders: daemonMediaProvidersLoaded,
+           });
+         }
+-        // Migrate localStorage prefs to daemon on first boot with the new
+-        // endpoint. If daemon already had values the merge above used them;
+-        // writing back is idempotent and keeps both sides in sync.
+-        void syncConfigToDaemon(next);
+-        void syncComposioConfigToDaemon(next.composio);
+-        latestPersistedConfigRef.current = next;
+-        setConfig(next);
++        void syncConfigToDaemon(lockedNext);
++        void syncComposioConfigToDaemon(lockedNext.composio);
++        latestPersistedConfigRef.current = lockedNext;
++        setConfig(lockedNext);
+ 
+         // Route first-run users through the global onboarding panel.
+-        // The onboarding panel and the privacy banner have independent
+-        // lifecycles: onboarding keys off `onboardingCompleted`, the
+-        // banner keys off `privacyDecisionAt`. They may coexist on the
+-        // first launch; the banner sits above the modal layer so it
+-        // stays actionable regardless of the active view.
+-        if (!next.onboardingCompleted) {
++        // Embed skips onboarding — execution is server-managed (API mode lock).
++        if (!lockedNext.onboardingCompleted && !isTeamverEmbedMode()) {
+           navigate({ kind: 'home', view: 'onboarding' }, { replace: true });
+         }
+         setDaemonConfigLoaded(true);
+@@ -975,6 +971,7 @@ function AppInner() {
+   // backfills an empty slot for returning users.
+   useEffect(() => {
+     if (!daemonConfigLoaded || agentsLoading) return;
++    if (isTeamverEmbedMode()) return;
+     if (config.onboardingCompleted !== true) return;
+     if (config.agentId) return;
+     const firstAvailable = agents.find((a) => a.available);
+@@ -994,6 +991,17 @@ function AppInner() {
+     config.onboardingCompleted,
+   ]);
+ 
++  // Embed: daemon merge or config writers can drift mode/agent — re-apply lock.
++  useEffect(() => {
++    if (!isTeamverEmbedMode()) return;
++    const locked = applyTeamverEmbedConfigLockIfNeeded(config);
++    if (locked === config) return;
++    latestPersistedConfigRef.current = locked;
++    saveConfig(locked);
++    setConfig(locked);
++    void syncConfigToDaemon(locked);
++  }, [config]);
++
+   // Auto-pick the default design system the same way — only after daemon
+   // config has merged so we never overwrite a daemon-stored selection.
+   useEffect(() => {
+@@ -1277,10 +1285,11 @@ function AppInner() {
+   useEffect(() => {
+     const handleAppConfigChanged = () => {
+       void fetchDaemonConfig().then((daemonConfig) => {
+-        const next = clearStaleAmrModelChoiceOnProfileChange(
++        const merged = clearStaleAmrModelChoiceOnProfileChange(
+           latestPersistedConfigRef.current,
+           mergeDaemonConfig(latestPersistedConfigRef.current, daemonConfig),
+         );
++        const next = applyTeamverEmbedConfigLockIfNeeded(merged);
+         latestPersistedConfigRef.current = next;
+         saveConfig(next);
+         setConfig(next);
+-- 
+2.43.2
+
+
+From 8c53331755fe839614453a0b6b49f2a4551fc3f3 Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 11:38:04 +0900
+Subject: [PATCH 3/6] =?UTF-8?q?feat(teamver):=20design-api=20runtime-confi?=
+ =?UTF-8?q?g=EB=A1=9C=20embed=20API=20=ED=82=A4=20=EC=A3=BC=EC=9E=85?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+인증된 embed FE가 design-api에서 server env 기반 execution config를
+받아 API mode chat에 사용한다 (VITE 빌드 주입 없음).
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/App.tsx | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index a83473eeb..fbdfb4122 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -47,6 +47,8 @@ import {
+   resolveTeamverBranding,
+ } from './teamver/branding/config';
+ import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
++import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
++import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
+ import { isTeamverEmbedMode } from './teamver/designApiBase';
+ import { PrivacyConsentModal } from './components/PrivacyConsentModal';
+ import {
+@@ -874,10 +876,12 @@ function AppInner() {
+         fetchDaemonConfig(),
+         fetchComposioConfigFromDaemon(),
+         fetchMediaProvidersFromDaemon(),
++        isTeamverEmbedMode() ? fetchTeamverRuntimeConfig() : Promise.resolve(null),
+       ]).then(([
+         daemonConfig,
+         daemonComposioConfig,
+         daemonMediaProvidersResult,
++        teamverRuntimeConfig,
+       ]) => {
+         if (cancelled) return;
+         const daemonMediaProvidersLoaded =
+@@ -914,6 +918,9 @@ function AppInner() {
+         if (!hasLocalComposioKey && daemonComposioConfig) {
+           next.composio = daemonComposioConfig;
+         }
++        if (teamverRuntimeConfig?.configured) {
++          next = mergeTeamverRuntimeConfigIntoAppConfig(next, teamverRuntimeConfig);
++        }
+         const lockedNext = applyTeamverEmbedConfigLockIfNeeded(next);
+         saveConfig(lockedNext);
+         if (
+-- 
+2.43.2
+
+
+From b8d76e2e0d2381cd53dc6d79c0b12cbe41762e9d Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 11:46:58 +0900
+Subject: [PATCH 4/6] =?UTF-8?q?feat(teamver):=20docs=20SSOT=C2=B7smoke=20s?=
+ =?UTF-8?q?cript=C2=B7registry=20list=20=EB=B3=B4=EA=B0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+docs-teamver 진행 상태 동기화, smoke_design.sh 추가, registry list
+owner 스코프·snake_case 파싱·create body alias를 정리한다.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/App.tsx | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index fbdfb4122..a166c8a32 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -50,6 +50,7 @@ import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmb
+ import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
+ import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
+ import { isTeamverEmbedMode } from './teamver/designApiBase';
++import { registerTeamverProjectIfNeeded } from './teamver/projectRegistry';
+ import { PrivacyConsentModal } from './components/PrivacyConsentModal';
+ import {
+   daemonIsLive,
+@@ -1604,6 +1605,7 @@ function AppInner() {
+     rememberLocalProject(result.projectId);
+     const project = await getProject(result.projectId);
+     if (project != null) {
++      await registerTeamverProjectIfNeeded(project);
+       setProjects((curr) => [project, ...curr.filter((p) => p.id !== project.id)]);
+     } else {
+       // Daemon hasn't materialized the full record yet (race between the
+-- 
+2.43.2
+
+
+From e2dea69b078bd38ddf45d8bc7c9b1cdc816fcb16 Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 11:51:51 +0900
+Subject: [PATCH 5/6] feat(teamver): project access guard, registry
+ soft-delete, daemon gate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+embed FE는 design-api access pre-check로 프로젝트 진입을 제한하고,
+daemon은 TEAMVER_DESIGN_API_URL 설정 시 registry subrequest gate를 적용한다.
+registry DELETE soft-delete와 embed branding 회귀 테스트를 추가한다.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/App.tsx | 54 ++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 47 insertions(+), 7 deletions(-)
+
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index a166c8a32..d65b99408 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -50,7 +50,10 @@ import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmb
+ import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
+ import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
+ import { isTeamverEmbedMode } from './teamver/designApiBase';
+-import { registerTeamverProjectIfNeeded } from './teamver/projectRegistry';
++import {
++  assertTeamverProjectAccessIfNeeded,
++  registerTeamverProjectIfNeeded,
++} from './teamver/projectRegistry';
+ import { PrivacyConsentModal } from './components/PrivacyConsentModal';
+ import {
+   daemonIsLive,
+@@ -1636,9 +1639,44 @@ function AppInner() {
+     });
+   }, [beginProjectListRequest, rememberLocalProject, reconcileFetchedProjects]);
+ 
+-  const handleOpenProject = useCallback((id: string) => {
+-    navigate({ kind: 'project', projectId: id, fileName: null });
+-  }, []);
++  const navigateToProject = useCallback(
++    async (
++      projectId: string,
++      extras: { fileName?: string | null; conversationId?: string | null } = {},
++    ) => {
++      const allowed = await assertTeamverProjectAccessIfNeeded(projectId);
++      if (!allowed) return;
++      navigate({
++        kind: 'project',
++        projectId,
++        fileName: extras.fileName ?? null,
++        ...(extras.conversationId !== undefined
++          ? { conversationId: extras.conversationId }
++          : {}),
++      });
++    },
++    [],
++  );
++
++  const activeProjectRouteId = route.kind === 'project' ? route.projectId : null;
++  useEffect(() => {
++    if (!activeProjectRouteId) return;
++    let cancelled = false;
++    void assertTeamverProjectAccessIfNeeded(activeProjectRouteId).then((allowed) => {
++      if (cancelled || allowed) return;
++      navigate({ kind: 'home', view: 'home' }, { replace: true });
++    });
++    return () => {
++      cancelled = true;
++    };
++  }, [activeProjectRouteId]);
++
++  const handleOpenProject = useCallback(
++    (id: string) => {
++      void navigateToProject(id);
++    },
++    [navigateToProject],
++  );
+ 
+   useEffect(() => {
+     if (!config.pet?.enabled || !daemonLive) {
+@@ -1667,8 +1705,8 @@ function AppInner() {
+   }, [config.pet?.enabled, daemonLive, projects]);
+ 
+   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
+-    navigate({ kind: 'project', projectId, fileName: liveArtifactTabId(artifactId) });
+-  }, []);
++    void navigateToProject(projectId, { fileName: liveArtifactTabId(artifactId) });
++  }, [navigateToProject]);
+ 
+   const handleDeleteProject = useCallback(async (id: string) => {
+     const ok = await deleteProjectApi(id);
+@@ -2074,7 +2112,9 @@ function AppInner() {
+         config={config}
+         agents={agents}
+         onBack={() => navigate({ kind: 'home', view: 'design-systems' })}
+-        onOpenProject={(projectId) => navigate({ kind: 'project', projectId, conversationId: null, fileName: null })}
++        onOpenProject={(projectId) => {
++          void navigateToProject(projectId, { conversationId: null, fileName: null });
++        }}
+         onSetDefault={handleChangeDefaultDesignSystem}
+         onSystemsRefresh={refreshDesignSystems}
+         onProjectsRefresh={refreshProjects}
+-- 
+2.43.2
+
+
+From baa8ca2fc1c31bdda9d9b8819b83ff265b0c787c Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 13:28:59 +0900
+Subject: [PATCH 6/6] feat(teamver): S3 materialization, tenant prefix,
+ registry delete, embed E2E
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Teamver Design 출시 연동을 위해 registry·저장소·embed 경로를 한 커밋으로
+묶는다. CloudWatch/알람은 보류하고 서비스 연동(nginx identity → daemon →
+design-api registry)을 최우선으로 맞춘다.
+
+## design-api (registry)
+- s3_prefix SSOT: design/ws_{ws}/user_{uid}/proj_{od}/ (segment sanitize)
+- GET /api/v1/projects/{id}/access → 204 + X-Teamver-S3-Prefix
+- registry soft-delete는 기존 DELETE 유지
+
+## daemon (S3 hybrid)
+- MaterializingProjectStorage: run 전 sync-down / 후 sync-up (mtime grace)
+- TenantScopedProjectStorage + design-api prefix fetch (Teamver identity)
+- EC2 IMDS credentials fallback (instance profile)
+- Lazy file-route materialize: GET files/folders/search/preview/upload,
+  mutation 후 sync-up (TTL cache)
+- TEAMVER_DESIGN_API_URL + X-Teamver-* nginx 헤더 연동 (access gate 유지)
+- POST /api/runs·/api/chat run에 teamverIdentity stash
+
+## FE (embed)
+- unregisterTeamverProjectFromRegistryIfNeeded on project delete
+- Playwright embed external-links smoke (P-7)
+
+## deploy
+- docker-compose OD_S3_* / Litestream profile
+- litestream.yml, .env.* examples, DEPLOY-AWS restore 초안
+- TEAMVER_APPS_INTEGRATION.md registry·S3 env 연동
+
+## docs / patches
+- docs-teamver 00/09/10 Phase 상태 갱신
+- patches/teamver README + UPSTREAM_TOUCHPOINTS (format-patch 본문은 후속)
+
+## 검증
+- daemon: lazy + materializing + teamver-access + storage tests pass
+- web: teamver registry + embed branding tests pass
+- daemon npm run build pass
+
+## 남음 (의도적 미포함)
+- OD_PROJECT_STORAGE=s3 staging 활성화 (ops)
+- projects.ts 전면 ProjectStorage 리팩터
+- CloudWatch/metric 알람
+- patches/teamver/*.patch 본문 생성
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/App.tsx | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index d65b99408..7af832147 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -53,6 +53,7 @@ import { isTeamverEmbedMode } from './teamver/designApiBase';
+ import {
+   assertTeamverProjectAccessIfNeeded,
+   registerTeamverProjectIfNeeded,
++  unregisterTeamverProjectFromRegistryIfNeeded,
+ } from './teamver/projectRegistry';
+ import { PrivacyConsentModal } from './components/PrivacyConsentModal';
+ import {
+@@ -1711,6 +1712,7 @@ function AppInner() {
+   const handleDeleteProject = useCallback(async (id: string) => {
+     const ok = await deleteProjectApi(id);
+     if (!ok) return false;
++    await unregisterTeamverProjectFromRegistryIfNeeded(id);
+     clearLocalProject(id, { deleted: true });
+     iframeKeepAlivePool.evictProject(id, { includeActive: true });
+     setProjects((curr) => curr.filter((p) => p.id !== id));
+-- 
+2.43.2
+

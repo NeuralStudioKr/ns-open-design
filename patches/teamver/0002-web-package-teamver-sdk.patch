@@ -1,0 +1,66 @@
+From ab7235ca98a7383f36dc420e9c2a9272e2669c4f Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Mon, 15 Jun 2026 18:19:58 +0900
+Subject: [PATCH] feat(teamver): Design Track A integration and storage
+ launch-gate docs (staging)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Prod 공개 출시 전 volume-only 배포가 blocker임을 문서화하고, S3 SSOT +
+Litestream + design-api registry(Phase 0~3) 출시 게이트를 SSOT로 추가한다.
+동시에 Teamver Design Track A(sidecar) 구현·runbook을 staging에 포함한다.
+
+Documentation (docs-teamver):
+- Add 09_Design_저장소_격리_출시게이트.md — Hybrid SSOT, Phase 0~4 진행 표,
+  Acceptance Criteria, tenant isolation, Litestream; volume-only prod 금지
+- Update 04_구현_우선순위 — storage/isolation을 Track A prod 필수로 재정의
+- Update 00/03/05/07/README — 09 cross-link, 미완·체크리스트·scratch volume
+- deploy/teamver/docs — TEAMVER_APPS_INTEGRATION, DEPLOY-AWS, SDK vendor runbook
+
+deploy/teamver (design-api sidecar):
+- FastAPI design-api: auth/session, bootstrap relay, usage/events, M2M token-usage
+- teamver-app-sdk-python integration (teamver_sdk.py); Postgres schema bootstrap
+- docker-compose (OD daemon + design-api + optional local-db), run_docker.sh
+- nginx conf for stg-design* / design* (auth_request, OD_API_TOKEN)
+- env examples (.env.staging/.production), deploy .gitignore
+
+OD web embed (apps/web):
+- @teamver/app-sdk BFF client, session banner, embed mode (designApiBase)
+- TeamverSessionBanner, teamver.css; EntryShell wiring
+
+Tooling:
+- scripts/sync-teamver-vendor.sh, check-teamver-vendor.mjs
+- packages/teamver-integration (Track B headless OdDaemonClient)
+- vendor/teamver/README.md; root .gitignore for vendor binaries
+
+Phase 0~3(09) 완료 전 Production 공개 오픈하지 않는다.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/package.json | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 76147ea9c..4c9a34774 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -21,6 +21,7 @@
+     "src"
+   ],
+   "scripts": {
++    "preinstall": "node ../../scripts/check-teamver-vendor.mjs",
+     "dev": "next dev --turbopack",
+     "build": "next build",
+     "build:sidecar": "tsc -p tsconfig.sidecar.json",
+@@ -38,6 +39,7 @@
+     "@open-design/platform": "workspace:*",
+     "@open-design/sidecar": "workspace:*",
+     "@open-design/sidecar-proto": "workspace:*",
++    "@teamver/app-sdk": "file:../../vendor/teamver/app-sdk.tgz",
+     "@xterm/addon-fit": "0.10.0",
+     "@xterm/xterm": "5.5.0",
+     "lexical": "0.36.2",
+-- 
+2.43.2
+

@@ -21,6 +21,7 @@ services:
       OD_DATA_DIR: /app/.od
       OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
       TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
+      TEAMVER_INTERNAL_API_KEY: ${TEAMVER_INTERNAL_API_KEY:-}
       TEAMVER_PROJECT_ACCESS_TIMEOUT_MS: ${TEAMVER_PROJECT_ACCESS_TIMEOUT_MS:-2500}
       # Project storage (09 — default local; s3 + MaterializingProjectStorage when OD_PROJECT_STORAGE=s3)
       OD_PROJECT_STORAGE: ${OD_PROJECT_STORAGE:-local}
@@ -104,6 +105,8 @@ services:
       - .env
     environment:
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
+      OD_DAEMON_BASE_URL: ${OD_DAEMON_BASE_URL:-http://open-design-daemon:7456}
+      OD_API_TOKEN: ${OD_API_TOKEN:-}
     ports:
       - "127.0.0.1:${BE_PORT:-16000}:8000"
     depends_on:

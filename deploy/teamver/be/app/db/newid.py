@@ -22,6 +22,10 @@ def new_design_project_id() -> str:
     return _id("DPRJ")
 
 
+def new_design_output_id() -> str:
+    return _id("DOUT")
+
+
 def new_document_id() -> str:
     return _id("DOC")
 

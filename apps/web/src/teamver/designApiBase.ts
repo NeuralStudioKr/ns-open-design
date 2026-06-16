@@ -23,6 +23,15 @@ export function resolveTeamverLoginUrl(): string {
   return "https://teamver.com/auth/login";
 }
 
+export function resolveTeamverMainOrigin(): string {
+  if (typeof window === "undefined") return "https://teamver.com";
+  const host = window.location.hostname.toLowerCase();
+  if (host.startsWith("stg-") || host === "localhost" || host === "127.0.0.1") {
+    return "https://stg.teamver.com";
+  }
+  return "https://teamver.com";
+}
+
 export function resolveTeamverDesignApiBase(): string | null {
   const fromEnv = (import.meta.env.VITE_TEAMVER_DESIGN_API_URL as string | undefined)?.trim();
   if (fromEnv) return fromEnv.replace(/\/+$/, "");

@@ -48,7 +48,7 @@ def test_build_project_s3_prefix_sanitizes_unsafe_segments():
         od_project_id="od proj",
     )
 
-    assert prefix == "design/ws_with_slash/user_id/od_proj/"
+    assert prefix == "design/ws_ws_with_slash/user_user_id/proj_od_proj/"
 
 
 @pytest.mark.asyncio

@@ -94,6 +94,35 @@ def apply_postgres_schema_patches() -> None:
         CREATE INDEX IF NOT EXISTS idx_design_projects_workspace
           ON design_projects (workspace_id, updated_at DESC);
         """,
+        """
+        CREATE TABLE IF NOT EXISTS design_outputs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          owner_user_id TEXT NOT NULL,
+          od_project_id TEXT NOT NULL,
+          drive_asset_id TEXT NOT NULL,
+          drive_folder_id TEXT,
+          kind TEXT NOT NULL,
+          mime_type TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          size_bytes BIGINT NOT NULL,
+          source_path TEXT,
+          manifest_entry_file TEXT,
+          artifact_file TEXT,
+          publish_status TEXT NOT NULL DEFAULT 'ready',
+          published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_design_outputs_project
+          ON design_outputs (project_id, published_at DESC);
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_design_outputs_drive_asset
+          ON design_outputs (drive_asset_id);
+        """,
     ]
     with psycopg.connect(settings.postgres_conninfo) as conn:
         for stmt in patches:

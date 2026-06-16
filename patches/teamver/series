@@ -1,2 +1,4 @@
-# Patch apply order (one filename per line)
-# Add entries when 0001-*.patch files are generated from upstream.
+0001-entry-shell-teamver-hooks.patch
+0002-web-package-teamver-sdk.patch
+0003-web-index-css-teamver-embed.patch
+0004-app-teamver-embed-integration.patch

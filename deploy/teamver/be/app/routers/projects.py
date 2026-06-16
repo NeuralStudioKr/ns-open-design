@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,13 @@ from ..schemas.design_project import (
     DesignProjectListResponse,
     DesignProjectResponse,
 )
+from ..schemas.publish import (
+    DesignOutputResponse,
+    PublishProjectBody,
+    PublishProjectResponse,
+)
+from ..services.publish_service import publish_project
+from ..teamver_sdk import extract_request_access_token, get_teamver_client
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -116,3 +123,44 @@ async def delete_project(
         )
         await db.commit()
     return Response(status_code=204)
+
+
+@router.post("/{project_ref}/publish", response_model=PublishProjectResponse, status_code=201)
+async def publish_project_to_drive(
+    project_ref: str,
+    body: PublishProjectBody,
+    request: Request,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> PublishProjectResponse:
+    row = await design_project_crud.aget_project_by_ref(db, project_ref=project_ref)
+    if row is None:
+        raise NotFoundError("project_not_found")
+    _ensure_project_access(row, auth)
+
+    access_token = auth.raw_token or extract_request_access_token(request)
+    result = await publish_project(
+        db,
+        teamver_client=get_teamver_client(),
+        access_token=access_token,
+        project=row,
+        formats=body.formats,
+        artifact_file=body.artifact_file,
+        folder_id=body.folder_id,
+    )
+    await db.commit()
+    return PublishProjectResponse(
+        project_id=result.project_id,
+        outputs=[
+            DesignOutputResponse(
+                id=output.id,
+                kind=output.kind,
+                drive_asset_id=output.drive_asset_id,
+                filename=output.filename,
+                size_bytes=int(output.size_bytes),
+                mime_type=output.mime_type,
+                publish_status=output.publish_status,
+            )
+            for output in result.outputs
+        ],
+    )

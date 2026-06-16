@@ -8,6 +8,23 @@ TLS는 **AWS ALB (ACM)**, EC2는 **HTTP :80** 백엔드만 (Page/Mail 패턴).
 
 스테이징: [devops/nginx/README.md](../devops/nginx/README.md)
 
+### Staging S3 활성화 (09 Phase 0)
+
+Terraform apply 후 EC2 `.env.staging`에 S3 블록을 추가합니다.
+
+```bash
+cd deploy/teamver
+bash scripts/print_staging_s3_env.sh --from-terraform >> .env.staging
+# 또는 수동: OD_PROJECT_STORAGE=s3, OD_S3_BUCKET=teamver-design-staging-data, …
+
+docker compose down
+bash scripts/run_docker.sh --staging --rds
+# (선택) Litestream: docker compose --profile litestream up -d
+bash scripts/smoke_design.sh --staging
+```
+
+EC2 IAM instance profile이 버킷에 접근 가능해야 합니다 (`terraform output project_data_bucket`). 키 파일 불필요.
+
 ---
 
 ## 아키텍처

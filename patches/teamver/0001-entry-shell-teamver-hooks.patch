@@ -1,0 +1,340 @@
+From ab7235ca98a7383f36dc420e9c2a9272e2669c4f Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Mon, 15 Jun 2026 18:19:58 +0900
+Subject: [PATCH 1/3] feat(teamver): Design Track A integration and storage
+ launch-gate docs (staging)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Prod 공개 출시 전 volume-only 배포가 blocker임을 문서화하고, S3 SSOT +
+Litestream + design-api registry(Phase 0~3) 출시 게이트를 SSOT로 추가한다.
+동시에 Teamver Design Track A(sidecar) 구현·runbook을 staging에 포함한다.
+
+Documentation (docs-teamver):
+- Add 09_Design_저장소_격리_출시게이트.md — Hybrid SSOT, Phase 0~4 진행 표,
+  Acceptance Criteria, tenant isolation, Litestream; volume-only prod 금지
+- Update 04_구현_우선순위 — storage/isolation을 Track A prod 필수로 재정의
+- Update 00/03/05/07/README — 09 cross-link, 미완·체크리스트·scratch volume
+- deploy/teamver/docs — TEAMVER_APPS_INTEGRATION, DEPLOY-AWS, SDK vendor runbook
+
+deploy/teamver (design-api sidecar):
+- FastAPI design-api: auth/session, bootstrap relay, usage/events, M2M token-usage
+- teamver-app-sdk-python integration (teamver_sdk.py); Postgres schema bootstrap
+- docker-compose (OD daemon + design-api + optional local-db), run_docker.sh
+- nginx conf for stg-design* / design* (auth_request, OD_API_TOKEN)
+- env examples (.env.staging/.production), deploy .gitignore
+
+OD web embed (apps/web):
+- @teamver/app-sdk BFF client, session banner, embed mode (designApiBase)
+- TeamverSessionBanner, teamver.css; EntryShell wiring
+
+Tooling:
+- scripts/sync-teamver-vendor.sh, check-teamver-vendor.mjs
+- packages/teamver-integration (Track B headless OdDaemonClient)
+- vendor/teamver/README.md; root .gitignore for vendor binaries
+
+Phase 0~3(09) 완료 전 Production 공개 오픈하지 않는다.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/components/EntryShell.tsx | 53 +++++++++++++++-----------
+ 1 file changed, 31 insertions(+), 22 deletions(-)
+
+diff --git a/apps/web/src/components/EntryShell.tsx b/apps/web/src/components/EntryShell.tsx
+index 1d76f472e..3f76de7f8 100644
+--- a/apps/web/src/components/EntryShell.tsx
++++ b/apps/web/src/components/EntryShell.tsx
+@@ -84,6 +84,8 @@ import { DesignSystemsTab } from './DesignSystemsTab';
+ import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
+ import { UpdaterPopup } from './UpdaterPopup';
+ import { GithubStarBadge } from './GithubStarBadge';
++import { TeamverSessionBanner } from './TeamverSessionBanner';
++import { isTeamverEmbedMode } from '../teamver/designApiBase';
+ import {
+   formatDiscordPresenceCount,
+   useDiscordPresence,
+@@ -449,6 +451,7 @@ export function EntryShell({
+   onCompleteOnboarding,
+ }: Props) {
+   const t = useT();
++  const teamverEmbed = isTeamverEmbedMode();
+   const discordPresence = useDiscordPresence();
+   // Each entry sub-view (home / projects / design-systems) is its own
+   // URL now, so the browser back/forward buttons work and a deep link
+@@ -726,28 +729,34 @@ export function EntryShell({
+               <Icon name="panel-left" size={20} />
+             </button>
+             <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
+-              <GithubStarBadge />
+-              <a
+-                className="entry-discord-badge od-tooltip"
+-                href={DISCORD_URL}
+-                aria-label={discordAriaLabel}
+-                data-tooltip={discordAriaLabel}
+-                data-tooltip-placement="bottom"
+-                data-testid="entry-discord-badge"
+-              >
+-                <Icon name="discord" size={14} className="entry-discord-badge__icon" />
+-                <span className="entry-discord-badge__label">{t('entry.discordLabel')}</span>
+-                {discordOnlineLabel ? (
+-                  <>
+-                    <span className="entry-discord-badge__sep" aria-hidden>
+-                      ·
+-                    </span>
+-                    <span className="entry-discord-badge__online">
+-                      {discordOnlineLabel}
+-                    </span>
+-                  </>
+-                ) : null}
+-              </a>
++              {teamverEmbed ? (
++                <TeamverSessionBanner teamverEmbed />
++              ) : (
++                <>
++                  <GithubStarBadge />
++                  <a
++                    className="entry-discord-badge od-tooltip"
++                    href={DISCORD_URL}
++                    aria-label={discordAriaLabel}
++                    data-tooltip={discordAriaLabel}
++                    data-tooltip-placement="bottom"
++                    data-testid="entry-discord-badge"
++                  >
++                    <Icon name="discord" size={14} className="entry-discord-badge__icon" />
++                    <span className="entry-discord-badge__label">{t('entry.discordLabel')}</span>
++                    {discordOnlineLabel ? (
++                      <>
++                        <span className="entry-discord-badge__sep" aria-hidden>
++                          ·
++                        </span>
++                        <span className="entry-discord-badge__online">
++                          {discordOnlineLabel}
++                        </span>
++                      </>
++                    ) : null}
++                  </a>
++                </>
++              )}
+               {executionSwitcher}
+               <button
+                 type="button"
+-- 
+2.43.2
+
+
+From 018d5df486a77b0c961fccf01602cb3c979d58c2 Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 10:24:29 +0900
+Subject: [PATCH 2/3] =?UTF-8?q?feat(teamver):=20embed=20=EB=B8=8C=EB=9E=9C?=
+ =?UTF-8?q?=EB=94=A9=20=EB=B3=B4=EA=B0=95=20=E2=80=94=20EntryTopbarChips?=
+ =?UTF-8?q?=C2=B7i18n=C2=B7=EC=99=B8=EB=B6=80=20=EB=A7=81=ED=81=AC=20?=
+ =?UTF-8?q?=EA=B2=8C=EC=9D=B4=ED=8A=B8?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+10 §4 Phase P:
+- EntryTopbarChips: EntryShell topbar GitHub/Discord/Session 분기 추출
+- TeamverBrandingProvider: subtitle env, NavRail logo/favicon
+- embed 시 UpdaterPopup·AssistantMessage Discord·DesignFilesPanel 외부 팁 숨김
+- teamver/locales/embedOverrides + useTeamverT / useBrandLabel
+
+11 §3:
+- test_token_usage_crud: run_id 멱등 단위 테스트 (5 passed)
+
+docs: 00/04/10/11 진행 표 갱신
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/components/EntryShell.tsx | 48 ++------------------------
+ 1 file changed, 3 insertions(+), 45 deletions(-)
+
+diff --git a/apps/web/src/components/EntryShell.tsx b/apps/web/src/components/EntryShell.tsx
+index 3f76de7f8..2e74fe39d 100644
+--- a/apps/web/src/components/EntryShell.tsx
++++ b/apps/web/src/components/EntryShell.tsx
+@@ -83,13 +83,8 @@ import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
+ import { DesignSystemsTab } from './DesignSystemsTab';
+ import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
+ import { UpdaterPopup } from './UpdaterPopup';
+-import { GithubStarBadge } from './GithubStarBadge';
+-import { TeamverSessionBanner } from './TeamverSessionBanner';
++import { EntryTopbarChips } from '../teamver/components/EntryTopbarChips';
+ import { isTeamverEmbedMode } from '../teamver/designApiBase';
+-import {
+-  formatDiscordPresenceCount,
+-  useDiscordPresence,
+-} from './useDiscordPresence';
+ import { HomeView } from './HomeView';
+ import {
+   createPluginAuthoringHandoff,
+@@ -167,7 +162,6 @@ function writeStoredRailOpen(open: boolean): void {
+   }
+ }
+ 
+-const DISCORD_URL = 'https://discord.gg/mHAjSMV6gz';
+ const X_URL = 'https://x.com/nexudotio';
+ const ONBOARDING_DROPDOWN_OPEN_EVENT = 'open-design:onboarding-dropdown-open';
+ 
+@@ -452,7 +446,6 @@ export function EntryShell({
+ }: Props) {
+   const t = useT();
+   const teamverEmbed = isTeamverEmbedMode();
+-  const discordPresence = useDiscordPresence();
+   // Each entry sub-view (home / projects / design-systems) is its own
+   // URL now, so the browser back/forward buttons work and a deep link
+   // to /design-systems lands on that section. We derive the active
+@@ -489,14 +482,6 @@ export function EntryShell({
+   const [homePromptHandoff, setHomePromptHandoff] = useState<HomePromptHandoff | null>(null);
+   const entryMainScrollRef = useRef<HTMLElement | null>(null);
+   const analytics = useAnalytics();
+-  const discordOnlineLabel = discordPresence
+-    ? t('entry.discordOnlineLabel', {
+-        count: formatDiscordPresenceCount(discordPresence.onlineCount),
+-      })
+-    : null;
+-  const discordAriaLabel = discordOnlineLabel
+-    ? t('entry.discordAriaWithOnline', { online: discordOnlineLabel })
+-    : t('entry.discordAria');
+   function changeView(next: EntryViewKind) {
+     const navElement = navElementForView(next);
+     if (navElement) {
+@@ -729,34 +714,7 @@ export function EntryShell({
+               <Icon name="panel-left" size={20} />
+             </button>
+             <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
+-              {teamverEmbed ? (
+-                <TeamverSessionBanner teamverEmbed />
+-              ) : (
+-                <>
+-                  <GithubStarBadge />
+-                  <a
+-                    className="entry-discord-badge od-tooltip"
+-                    href={DISCORD_URL}
+-                    aria-label={discordAriaLabel}
+-                    data-tooltip={discordAriaLabel}
+-                    data-tooltip-placement="bottom"
+-                    data-testid="entry-discord-badge"
+-                  >
+-                    <Icon name="discord" size={14} className="entry-discord-badge__icon" />
+-                    <span className="entry-discord-badge__label">{t('entry.discordLabel')}</span>
+-                    {discordOnlineLabel ? (
+-                      <>
+-                        <span className="entry-discord-badge__sep" aria-hidden>
+-                          ·
+-                        </span>
+-                        <span className="entry-discord-badge__online">
+-                          {discordOnlineLabel}
+-                        </span>
+-                      </>
+-                    ) : null}
+-                  </a>
+-                </>
+-              )}
++              <EntryTopbarChips />
+               {executionSwitcher}
+               <button
+                 type="button"
+@@ -782,7 +740,7 @@ export function EntryShell({
+                 </span>
+               </button>
+             </div>
+-            <UpdaterPopup />
++            {!teamverEmbed ? <UpdaterPopup /> : null}
+             {avatarMenu}
+           </div>
+           <div
+-- 
+2.43.2
+
+
+From 34244b4c5b320c8519000fc3b5882bec9ed92d91 Mon Sep 17 00:00:00 2001
+From: soyeon812 <soyeon@neuralworks.io>
+Date: Tue, 16 Jun 2026 11:22:33 +0900
+Subject: [PATCH 3/3] =?UTF-8?q?feat(teamver):=20embed=20UI=20=EB=8B=A8?=
+ =?UTF-8?q?=EC=88=9C=ED=99=94=20=EB=B0=8F=20fe-v2/slide=20=EB=B8=8C?=
+ =?UTF-8?q?=EB=9E=9C=EB=93=9C=20asset=20=EC=97=B0=EB=8F=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Teamver embed(design.teamver.com)에서 Open Design UI를 출시용으로 폐쇄한다.
+런타임(API key·Drive)에 영향 없는 nav/topbar/설정/스튜디오 표시만 중앙 정책으로
+게이트하고, ns-teamver-fe-v2·ns-teamver-slide와 동일한 로고·파비콘을 사용한다.
+
+## 중앙 정책 (teamver/branding/config.ts)
+- TeamverBrandingConfig에 embed UI 플래그 일원화
+  (hideNavViews, hideTopbarExecutionSwitcher, hideSettingsDialogLink 등)
+- 브랜드 asset 기본값은 embed 모드에서만 /teamver/* 적용 (standalone OD 무영향)
+- SettingsDialog 섹션은 language·appearance만 허용 (clampTeamverEmbedSettingsSection)
+
+## 브랜드 asset (public/teamver/)
+- fe-v2: Logo.svg, Logo-dark.svg, favicon.ico
+- slide: Logo-icon.svg (nav rail mark)
+- TeamverLogo 컴포넌트 + teamver-branding.css (라이트/다크 워드마크 전환)
+
+## UI 변경
+- EntryNavRail: tasks/plugins/integrations 숨김, nav mark 로고
+- EntryShell: 실행 모드 스위처·Use everywhere 숨김
+- EntrySettingsMenu: 언어·테마만, "설정" 진입 제거
+- SettingsDialog: embed 시 sidebar language/appearance만
+- HomeHero: Teamver 워드마크 + hero i18n override
+- ProjectView: AvatarMenu(모델 선택)·HandoffButton 숨김
+- AssistantMessage: API 모델명·status detail 숨김
+- DesignFilesPanel: "유용한 기능" RotatingTip 전체 숨김
+
+## 검증·개선
+- favicon link 없을 때 head에 동적 생성 (TeamverBrandingHead)
+- 중복 Logo_dark.svg 제거, nav mark 높이 slide 기준 16px
+
+보류: API key/model 고정, Drive·working directory, PPT 변환 (별도 작업)
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ apps/web/src/components/EntryShell.tsx | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/apps/web/src/components/EntryShell.tsx b/apps/web/src/components/EntryShell.tsx
+index 2e74fe39d..2414ab3e6 100644
+--- a/apps/web/src/components/EntryShell.tsx
++++ b/apps/web/src/components/EntryShell.tsx
+@@ -84,6 +84,7 @@ import { DesignSystemsTab } from './DesignSystemsTab';
+ import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
+ import { UpdaterPopup } from './UpdaterPopup';
+ import { EntryTopbarChips } from '../teamver/components/EntryTopbarChips';
++import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+ import { isTeamverEmbedMode } from '../teamver/designApiBase';
+ import { HomeView } from './HomeView';
+ import {
+@@ -446,6 +447,10 @@ export function EntryShell({
+ }: Props) {
+   const t = useT();
+   const teamverEmbed = isTeamverEmbedMode();
++  const {
++    hideTopbarExecutionSwitcher,
++    hideUseEverywhereChip,
++  } = useTeamverBranding();
+   // Each entry sub-view (home / projects / design-systems) is its own
+   // URL now, so the browser back/forward buttons work and a deep link
+   // to /design-systems lands on that section. We derive the active
+@@ -715,7 +720,8 @@ export function EntryShell({
+             </button>
+             <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
+               <EntryTopbarChips />
+-              {executionSwitcher}
++              {!hideTopbarExecutionSwitcher ? executionSwitcher : null}
++              {!hideUseEverywhereChip ? (
+               <button
+                 type="button"
+                 className="use-everywhere-chip od-tooltip"
+@@ -739,6 +745,7 @@ export function EntryShell({
+                   {t('entry.useEverywhereTitle')}
+                 </span>
+               </button>
++              ) : null}
+             </div>
+             {!teamverEmbed ? <UpdaterPopup /> : null}
+             {avatarMenu}
+-- 
+2.43.2
+

@@ -87,6 +87,30 @@ async def aget_project_by_od_id(
     return result.scalar_one_or_none()
 
 
+async def aget_project_by_id(
+    db: AsyncSession,
+    *,
+    project_id: str,
+) -> DesignProject | None:
+    stmt = select(DesignProject).where(DesignProject.id == project_id)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def aget_project_by_ref(
+    db: AsyncSession,
+    *,
+    project_ref: str,
+) -> DesignProject | None:
+    ref = project_ref.strip()
+    if not ref:
+        return None
+    row = await aget_project_by_id(db, project_id=ref)
+    if row is not None:
+        return row
+    return await aget_project_by_od_id(db, od_project_id=ref)
+
+
 async def asoft_delete_by_od_id(
     db: AsyncSession,
     *,

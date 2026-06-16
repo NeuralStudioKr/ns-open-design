@@ -28,6 +28,8 @@ import {
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useT, useI18n } from '../i18n';
+import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
+import { resolveTeamverMainOrigin } from '../teamver/designApiBase';
 import type { Dict, Locale } from '../i18n/types';
 import {
   fetchLiveArtifact,
@@ -8443,6 +8445,19 @@ function HtmlViewer({
                     <span className="share-menu-icon"><RemixIcon name="file-zip-line" size={15} /></span>
                     <span>{t('fileViewer.exportZip')}</span>
                   </button>
+                  <TeamverPublishDriveMenuItem
+                    projectId={projectId}
+                    artifactFile={file.name}
+                    onCloseMenu={() => setDownloadMenuOpen(false)}
+                    onSuccess={(output) => setDeploySavedToast({
+                      message: 'Published to Teamver Drive',
+                      details: `${output.filename} — ${resolveTeamverMainOrigin()}/drive`,
+                    })}
+                    onError={() => setDeploySavedToast({
+                      message: 'Teamver Drive publish failed',
+                      details: 'Check your session and try again.',
+                    })}
+                  />
                   <button
                     type="button"
                     className="share-menu-item"

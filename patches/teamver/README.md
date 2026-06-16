@@ -44,15 +44,16 @@ git format-patch upstream/main --stdout -- apps/web/src/components/EntryShell.ts
 | Upstream touch | `EntryShell.tsx`, `App.tsx`, `package.json`, … | `patches/teamver/*.patch` |
 | Vendor | `vendor/teamver/` | [08](../docs-teamver/08_Teamver_SDK_vendor와_배포.md) |
 
-## 초기 series (TODO — upstream tag 기준 재생성)
+## 초기 series (upstream/main @ format-patch 재생성)
 
 | # | 파일 | 설명 |
 |---|------|------|
 | 0001 | `EntryShell.tsx` | EntryTopbarChips, TeamverBranding, embed 분기 |
 | 0002 | `apps/web/package.json` | `@teamver/app-sdk`, preinstall |
-| 0003 | `apps/web/src/index.css` | Teamver embed CSS import (있을 경우) |
+| 0003 | `apps/web/src/index.css` | Teamver embed CSS import |
+| 0004 | `App.tsx` | embed bootstrap, registry sync, runtime-config |
 
-> **Note:** patch 파일 본문은 upstream SHA에 종속됩니다. 최초 `format-patch`는 release/tag 고정 후 팀에서 1회 생성하세요.
+> **Note:** patch 본문은 `upstream/main` 대비 현재 fork HEAD 기준입니다. upstream bump 후 `bash scripts/regenerate_teamver_patches.sh` 로 재생성하세요.
 
 ## 검증
 

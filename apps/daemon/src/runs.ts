@@ -86,6 +86,13 @@ export function createChatRunService({
       cancelRequested: false,
       eventsLogPath: runsLogDir ? path.join(runsLogDir, id, 'events.jsonl') : null,
       eventsLogStream: null,
+      teamverIdentity:
+        meta.teamverIdentity &&
+        typeof meta.teamverIdentity === 'object' &&
+        typeof meta.teamverIdentity.userId === 'string' &&
+        typeof meta.teamverIdentity.workspaceId === 'string'
+          ? meta.teamverIdentity
+          : null,
     };
     runs.set(run.id, run);
     return run;
