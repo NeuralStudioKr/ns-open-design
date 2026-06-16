@@ -17,6 +17,7 @@ import { fetchHostEditors, openProjectInEditor } from '../providers/registry';
 import { useAnalytics } from '../analytics/provider';
 import { trackHandoffClick } from '../analytics/events';
 import { useT } from '../i18n';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { Icon } from './Icon';
 import { EditorIcon } from './EditorIcon';
@@ -293,6 +294,8 @@ export function HandoffButton({
   onRequestRevealInFinder,
 }: Props) {
   const t = useT();
+  const { hideHandoffButton } = useTeamverBranding();
+  if (hideHandoffButton) return null;
   const analytics = useAnalytics();
   // One-liner so every hand-off interaction emits the same
   // `ui_click` / `area=handoff` shape; callers pass only what varies. The

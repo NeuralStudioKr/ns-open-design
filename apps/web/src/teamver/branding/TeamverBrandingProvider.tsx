@@ -8,8 +8,22 @@ const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   enabled: false,
   title: "Open Design",
   subtitle: "",
-  faviconUrl: "/app-icon.png",
+  faviconUrl: "/app-icon.svg",
+  logoUrl: "/app-icon.svg",
+  logoUrlDark: "/app-icon.svg",
+  navMarkUrl: "/app-icon.svg",
+  heroTitle: "Open Design",
+  heroSubtitle: "",
   hideExternalLinks: false,
+  hideNavViews: new Set(),
+  hideTopbarExecutionSwitcher: false,
+  hideUseEverywhereChip: false,
+  hideSettingsDialogLink: false,
+  allowedSettingsSections: null,
+  hideStudioExecutionControls: false,
+  hideUsefulTips: false,
+  hideHandoffButton: false,
+  hideAssistantModelLabels: false,
 });
 
 export function TeamverBrandingProvider({ children }: { children: ReactNode }) {

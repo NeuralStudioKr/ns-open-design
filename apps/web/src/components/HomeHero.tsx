@@ -31,6 +31,10 @@ import type {
   McpServerConfig,
 } from '@open-design/contracts';
 import { DesignSystemPicker } from './DesignSystemPicker';
+import { useBrandLabel } from '../teamver/branding/useBrandLabel';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { TeamverLogo } from '../teamver/branding/TeamverLogo';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import type { SkillSummary } from '../types';
 import { Icon, type IconName } from './Icon';
 import { useAnalytics } from '../analytics/provider';
@@ -295,6 +299,9 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   ref,
 ) {
   const { locale, t } = useI18n();
+  const teamverT = useTeamverT();
+  const brandLabel = useBrandLabel();
+  const { enabled: teamverEmbed } = useTeamverBranding();
   const analytics = useAnalytics();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionTab, setMentionTab] = useState<HomeMentionTab>('all');
@@ -949,14 +956,20 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   return (
     <section className="home-hero" data-testid="home-hero">
       <div className="home-hero__brand" aria-hidden>
-        <span className="home-hero__brand-mark">
-          <img src="/app-icon.svg" alt="" draggable={false} />
-        </span>
-        <span className="home-hero__brand-name">Open Design</span>
+        {teamverEmbed ? (
+          <TeamverLogo variant="wordmark" height={40} />
+        ) : (
+          <>
+            <span className="home-hero__brand-mark">
+              <img src="/app-icon.svg" alt="" draggable={false} />
+            </span>
+            <span className="home-hero__brand-name">{brandLabel}</span>
+          </>
+        )}
       </div>
-      <h1 className="home-hero__title">{t('homeHero.title')}</h1>
+      <h1 className="home-hero__title">{teamverT('homeHero.title')}</h1>
       <p className="home-hero__subtitle">
-        {t('homeHero.subtitlePrefix')}
+        {teamverT('homeHero.subtitlePrefix')}
       </p>
 
       <div

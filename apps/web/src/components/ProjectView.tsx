@@ -166,6 +166,7 @@ import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -828,6 +829,7 @@ export function ProjectView({
 }: Props) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
+  const { hideStudioExecutionControls, hideHandoffButton } = useTeamverBranding();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const handleThemeChange = onThemeChange ?? (() => {});
   // P0 page_view page_name=chat_panel — fire once per project mount.
@@ -5728,7 +5730,9 @@ export function ProjectView({
               }}
               onBack={onBack}
               backLabel={t('project.backToProjects')}
-              composerFooterAccessory={executionControls}
+              composerFooterAccessory={
+                hideStudioExecutionControls ? undefined : executionControls
+              }
               projectHeader={(
                 <span className="chat-project-title-line">
                   <span
@@ -5863,6 +5867,7 @@ export function ProjectView({
           conversationId={activeConversationId}
           headerActions={(
             <>
+              {!hideHandoffButton ? (
               <HandoffButton
                 projectId={project.id}
                 projectName={project.name}
@@ -5871,6 +5876,7 @@ export function ProjectView({
                 artifactId={headerArtifact.artifact_id}
                 artifactKind={headerArtifact.artifact_kind}
               />
+              ) : null}
               <EntrySettingsMenu
                 config={config}
                 onThemeChange={handleThemeChange}

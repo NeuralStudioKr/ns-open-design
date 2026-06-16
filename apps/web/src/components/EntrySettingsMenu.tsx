@@ -83,7 +83,7 @@ export function EntrySettingsMenu({
   const analytics = useAnalytics();
   const t = useT();
   const { locale, setLocale } = useI18n();
-  const { hideExternalLinks } = useTeamverBranding();
+  const { hideExternalLinks, hideSettingsDialogLink } = useTeamverBranding();
   const discordPresence = useDiscordPresence();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -395,6 +395,7 @@ export function EntrySettingsMenu({
           </>
           ) : null}
 
+          {!hideSettingsDialogLink ? (
           <button
             type="button"
             className="entry-settings-menu__item entry-settings-menu__item--primary"
@@ -418,6 +419,7 @@ export function EntrySettingsMenu({
               {t('homeHero.details')}
             </span>
           </button>
+          ) : null}
         </div>
       ) : null}
     </div>

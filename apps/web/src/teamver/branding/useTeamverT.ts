@@ -13,9 +13,18 @@ export function useTeamverT() {
   const overrides = useMemo(
     () =>
       branding.enabled
-        ? teamverEmbedOverrides(branding.title, branding.subtitle)
+        ? teamverEmbedOverrides(branding.title, branding.subtitle, {
+            title: branding.heroTitle,
+            subtitle: branding.heroSubtitle,
+          })
         : {},
-    [branding.enabled, branding.title, branding.subtitle],
+    [
+      branding.enabled,
+      branding.title,
+      branding.subtitle,
+      branding.heroTitle,
+      branding.heroSubtitle,
+    ],
   );
 
   return useCallback(

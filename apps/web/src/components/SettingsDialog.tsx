@@ -159,6 +159,8 @@ import {
   requestNotificationPermission,
   showCompletionNotification,
 } from '../utils/notifications';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import type { TeamverEmbedSettingsSection } from '../teamver/branding/config';
 
 export type SettingsSection =
   | 'execution'
@@ -191,6 +193,15 @@ export type SettingsSection =
 // card into view on the execution section and plays a highlight (plus a
 // sign-in coachmark when the user has not authorized AMR yet).
 export type SettingsHighlight = 'amr' | null;
+
+function isEmbedSettingsNavVisible(
+  section: SettingsSection,
+  embed: boolean,
+  allowed: ReadonlySet<TeamverEmbedSettingsSection> | null,
+): boolean {
+  if (!embed || !allowed) return true;
+  return allowed.has(section as TeamverEmbedSettingsSection);
+}
 
 interface Props {
   initial: AppConfig;
@@ -1068,6 +1079,14 @@ export function SettingsDialog({
 }: Props) {
   const { t, locale, setLocale } = useI18n();
   const analytics = useAnalytics();
+  const { enabled: teamverEmbed, allowedSettingsSections } = useTeamverBranding();
+  const showSettingsNav = (section: SettingsSection) =>
+    isEmbedSettingsNavVisible(section, teamverEmbed, allowedSettingsSections);
+  const embedSafeInitialSection: SettingsSection =
+    teamverEmbed && allowedSettingsSections
+      && !allowedSettingsSections.has(initialSection as TeamverEmbedSettingsSection)
+      ? 'language'
+      : initialSection;
   // Backfill the fixed-origin base URL on mount too, so a config persisted with
   // an empty baseUrl (e.g. selected AIHubMix before this resolution existed)
   // isn't stuck blocking the live model fetch until the user re-selects the tab.
@@ -1141,7 +1160,17 @@ export function SettingsDialog({
     };
   }, []);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
+  const [activeSection, setActiveSection] = useState<SettingsSection>(embedSafeInitialSection);
+
+  useEffect(() => {
+    if (
+      teamverEmbed &&
+      allowedSettingsSections &&
+      !allowedSettingsSections.has(activeSection as TeamverEmbedSettingsSection)
+    ) {
+      setActiveSection('language');
+    }
+  }, [teamverEmbed, allowedSettingsSections, activeSection]);
   // Scroll the right-hand content pane back to the top whenever the user
   // picks a different settings section. Without this, switching from a
   // long section the user had scrolled (e.g. Library) into a short one
@@ -3085,6 +3114,7 @@ export function SettingsDialog({
 
         <div className="modal-body">
           <aside className="settings-sidebar" aria-label="Settings sections">
+            {showSettingsNav('execution') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'execution' ? ' active' : ''}`}
@@ -3096,6 +3126,8 @@ export function SettingsDialog({
                 <small>{`${t('settings.localCli')} / ${t('settings.modeApiMeta')}`}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('instructions') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'instructions' ? ' active' : ''}`}
@@ -3107,6 +3139,8 @@ export function SettingsDialog({
                 <small>{t('settings.instructionsNavSub')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('memory') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'memory' ? ' active' : ''}`}
@@ -3118,6 +3152,8 @@ export function SettingsDialog({
                 <small>{t('settings.memoryHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('media') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'media' ? ' active' : ''}`}
@@ -3129,6 +3165,8 @@ export function SettingsDialog({
                 <small>Image / video / audio</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('skills') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'skills' ? ' active' : ''}`}
@@ -3140,6 +3178,8 @@ export function SettingsDialog({
                 <small>{t('settings.skillsHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('mcpClient') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'mcpClient' ? ' active' : ''}`}
@@ -3151,6 +3191,8 @@ export function SettingsDialog({
                 <small>{t('settings.externalMcpHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('composio') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'composio' ? ' active' : ''}`}
@@ -3162,6 +3204,8 @@ export function SettingsDialog({
                 <small>{t('settings.connectorsNavHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('integrations') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'integrations' ? ' active' : ''}`}
@@ -3173,6 +3217,7 @@ export function SettingsDialog({
                 <small>{t('settings.mcpServerHint')}</small>
               </span>
             </button>
+            ) : null}
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'language' ? ' active' : ''}`}
@@ -3195,6 +3240,7 @@ export function SettingsDialog({
                 <small>{t('settings.appearanceHint')}</small>
               </span>
             </button>
+            {showSettingsNav('critiqueTheater') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'critiqueTheater' ? ' active' : ''}`}
@@ -3206,6 +3252,8 @@ export function SettingsDialog({
                 <small>{t('critiqueTheater.settingsNavHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('notifications') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'notifications' ? ' active' : ''}`}
@@ -3217,6 +3265,8 @@ export function SettingsDialog({
                 <small>{t('settings.notificationsHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('pet') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'pet' ? ' active' : ''}`}
@@ -3228,6 +3278,8 @@ export function SettingsDialog({
                 <small>{t('pet.navHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('designSystems') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'designSystems' ? ' active' : ''}`}
@@ -3239,6 +3291,8 @@ export function SettingsDialog({
                 <small>{t('settings.designSystemsHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('projectLocations') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'projectLocations' ? ' active' : ''}`}
@@ -3250,6 +3304,8 @@ export function SettingsDialog({
                 <small>{t('settings.projectLocationsHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('privacy') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'privacy' ? ' active' : ''}`}
@@ -3261,6 +3317,8 @@ export function SettingsDialog({
                 <small>{t('settings.privacyHint')}</small>
               </span>
             </button>
+            ) : null}
+            {showSettingsNav('about') ? (
             <button
               type="button"
               className={`settings-nav-item${activeSection === 'about' ? ' active' : ''}`}
@@ -3272,6 +3330,7 @@ export function SettingsDialog({
                 <small>{t('settings.aboutHint')}</small>
               </span>
             </button>
+            ) : null}
           </aside>
           <div className="settings-content" ref={settingsContentRef}>
           {activeSection === 'execution' ? (

@@ -42,6 +42,10 @@ import {
   type SettingsSection,
   type SettingsHighlight,
 } from './components/SettingsDialog';
+import {
+  clampTeamverEmbedSettingsSection,
+  resolveTeamverBranding,
+} from './teamver/branding/config';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -1828,7 +1832,15 @@ function AppInner() {
     section: SettingsSection = 'execution',
     opts?: { highlight?: SettingsHighlight },
   ) => {
+    const branding = resolveTeamverBranding();
     if (section === 'composio' || section === 'mcpClient' || section === 'integrations') {
+      if (branding.enabled) {
+        setSettingsWelcome(false);
+        setSettingsInitialSection('language');
+        setSettingsHighlight(null);
+        setSettingsOpen(true);
+        return;
+      }
       setIntegrationInitialTab(
         section === 'composio'
           ? 'connectors'
@@ -1839,9 +1851,12 @@ function AppInner() {
       navigate({ kind: 'home', view: 'integrations' });
       return;
     }
+    const safeSection: SettingsSection = branding.enabled
+      ? clampTeamverEmbedSettingsSection(section, branding)
+      : section;
     setSettingsWelcome(false);
-    setSettingsInitialSection(section);
-    setSettingsHighlight(opts?.highlight ?? null);
+    setSettingsInitialSection(safeSection);
+    setSettingsHighlight(branding.enabled ? null : (opts?.highlight ?? null));
     setSettingsOpen(true);
   }, []);
 

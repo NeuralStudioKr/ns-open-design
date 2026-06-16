@@ -1,0 +1,22 @@
+/* Teamver wordmark — light/dark swap (fe-v2 Logo.svg / Logo-dark.svg). */
+[data-theme="dark"] .teamver-logo--light {
+  display: none !important;
+}
+
+[data-theme="dark"] .teamver-logo--dark {
+  display: inline !important;
+}
+
+[data-theme="light"] .teamver-logo--dark {
+  display: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) .teamver-logo--light {
+    display: none !important;
+  }
+
+  html:not([data-theme]) .teamver-logo--dark {
+    display: inline !important;
+  }
+}

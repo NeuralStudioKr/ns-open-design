@@ -84,6 +84,7 @@ import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
 import { UpdaterPopup } from './UpdaterPopup';
 import { EntryTopbarChips } from '../teamver/components/EntryTopbarChips';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { HomeView } from './HomeView';
 import {
@@ -446,6 +447,10 @@ export function EntryShell({
 }: Props) {
   const t = useT();
   const teamverEmbed = isTeamverEmbedMode();
+  const {
+    hideTopbarExecutionSwitcher,
+    hideUseEverywhereChip,
+  } = useTeamverBranding();
   // Each entry sub-view (home / projects / design-systems) is its own
   // URL now, so the browser back/forward buttons work and a deep link
   // to /design-systems lands on that section. We derive the active
@@ -715,7 +720,8 @@ export function EntryShell({
             </button>
             <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
               <EntryTopbarChips />
-              {executionSwitcher}
+              {!hideTopbarExecutionSwitcher ? executionSwitcher : null}
+              {!hideUseEverywhereChip ? (
               <button
                 type="button"
                 className="use-everywhere-chip od-tooltip"
@@ -739,6 +745,7 @@ export function EntryShell({
                   {t('entry.useEverywhereTitle')}
                 </span>
               </button>
+              ) : null}
             </div>
             {!teamverEmbed ? <UpdaterPopup /> : null}
             {avatarMenu}

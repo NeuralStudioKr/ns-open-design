@@ -192,7 +192,8 @@ function prefersReducedMotion(): boolean {
 // prefers-reduced-motion the full tip is shown immediately and just cycles.
 function RotatingTip() {
   const t = useT();
-  const { hideExternalLinks } = useTeamverBranding();
+  const { hideExternalLinks, hideUsefulTips } = useTeamverBranding();
+  if (hideUsefulTips) return null;
   const usefulTips = useMemo(
     () => (hideExternalLinks ? USEFUL_TIPS.filter((tip) => !tip.url) : USEFUL_TIPS),
     [hideExternalLinks],

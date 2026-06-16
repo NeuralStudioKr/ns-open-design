@@ -417,6 +417,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
+  const { hideAssistantModelLabels, title: brandTitle } = useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
   // we strip TodoWrite tool-groups out of the per-message flow to avoid the
@@ -539,7 +540,9 @@ function AssistantMessageImpl({
   const usage = events.find((e) => e.kind === "usage") as
     | Extract<AgentEvent, { kind: "usage" }>
     | undefined;
-  const roleName = assistantRoleName(message, t);
+  const roleName = hideAssistantModelLabels
+    ? brandTitle
+    : assistantRoleName(message, t);
   const roleIconId = agentIconId(message.agentId, message.agentName);
   const hasEmptyResponse = events.some(
     (e) => e.kind === "status" && e.label === "empty_response"
@@ -684,7 +687,8 @@ function AssistantMessageImpl({
             // The pre-output "initializing" status is surfaced by the footer's
             // shimmering "Preparing…" label instead of its own pill.
             if (b.label === "initializing") return null;
-            return <StatusPill key={i} label={b.label} detail={b.detail} />;
+            const statusDetail = hideAssistantModelLabels ? undefined : b.detail;
+            return <StatusPill key={i} label={b.label} detail={statusDetail} />;
           }
           return null;
         })}

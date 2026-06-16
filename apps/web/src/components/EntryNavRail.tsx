@@ -13,6 +13,7 @@ import { EntryHelpMenu } from './EntryHelpMenu';
 import { Icon } from './Icon';
 import { useBrandLabel } from '../teamver/branding/useBrandLabel';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { TeamverLogo } from '../teamver/branding/TeamverLogo';
 import { useT } from '../i18n';
 
 export type EntryView =
@@ -62,8 +63,7 @@ function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: Na
 export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }: Props) {
   const t = useT();
   const brandLabel = useBrandLabel();
-  const { enabled: teamverEmbed, faviconUrl } = useTeamverBranding();
-  const logoSrc = teamverEmbed ? faviconUrl : '/app-icon.svg';
+  const { enabled: teamverEmbed, hideNavViews } = useTeamverBranding();
   const homeLabel = t('entry.navHome');
   const isHome = view === 'home';
 
@@ -106,12 +106,16 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
             aria-label={brandLabel}
             data-testid="entry-nav-logo"
           >
-            <img
-              src={logoSrc}
-              alt=""
-              className="entry-nav-rail__logo-img"
-              draggable={false}
-            />
+            {teamverEmbed ? (
+              <TeamverLogo variant="navMark" height={16} className="entry-nav-rail__logo-img" />
+            ) : (
+              <img
+                src="/app-icon.svg"
+                alt=""
+                className="entry-nav-rail__logo-img"
+                draggable={false}
+              />
+            )}
           </button>
           <button
             type="button"
@@ -151,6 +155,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
         >
           <Icon name="folder" size={18} />
         </NavButton>
+        {!hideNavViews.has('tasks') ? (
         <NavButton
           active={view === 'tasks'}
           ariaLabel={t('entry.navTasks')}
@@ -160,6 +165,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
         >
           <Icon name="kanban" size={18} />
         </NavButton>
+        ) : null}
         <NavButton
           active={view === 'design-systems'}
           ariaLabel={t('entry.navDesignSystems')}
@@ -169,6 +175,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
         >
           <Icon name="blocks" size={18} />
         </NavButton>
+        {!hideNavViews.has('plugins') ? (
         <NavButton
           active={view === 'plugins'}
           ariaLabel={t('entry.navPlugins')}
@@ -178,6 +185,8 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
         >
           <Icon name="grid" size={18} />
         </NavButton>
+        ) : null}
+        {!hideNavViews.has('integrations') ? (
         <NavButton
           active={view === 'integrations'}
           ariaLabel={t('entry.navIntegrations')}
@@ -187,6 +196,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
         >
           <Icon name="link" size={18} />
         </NavButton>
+        ) : null}
       </div>
       <div className="entry-nav-rail__footer">
         <div className="entry-nav-rail__divider" role="separator" />
