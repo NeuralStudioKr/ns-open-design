@@ -81,7 +81,15 @@ check() {
 
 curl_ok() {
   local url="$1"
-  curl -sf --max-time 15 "$url" >/dev/null
+  if curl -sf --max-time 15 "$url" >/dev/null 2>&1; then
+    return 0
+  fi
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" 2>/dev/null || echo "000")"
+  if [[ "$code" == "000" ]]; then
+    echo "    (connection failed — check VPN/DNS or staging EC2 is up)" >&2
+  fi
+  return 1
 }
 
 curl_status() {

@@ -255,7 +255,10 @@ import {
 } from './storage/project-materialization-runtime.js';
 import { resolveProjectStorageLayout } from './storage/project-storage-layout.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
-import { createProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
+import {
+  createLazyProjectMaterializationMiddleware,
+  createProjectStorageAccessHooks,
+} from './storage/lazy-project-materialization.js';
 import { deriveRunErrorCode, runResultFromStatus } from './run-result.js';
 import { classifyRunFailure, isResumableFailure } from './run-failure-classification.js';
 import { decideSafeRunRetry } from './run-retry-policy.js';
@@ -6438,6 +6441,12 @@ export async function startServer({
   });
   registerDeploymentCheckRoutes(app, { db, http: httpDeps, deploy: deployDeps });
   app.use('/frames', express.static(FRAMES_DIR));
+  if (projectStorageHooks) {
+    app.use(
+      '/api/projects/:id',
+      createLazyProjectMaterializationMiddleware(projectStorageHooks, httpDeps.sendApiError),
+    );
+  }
   registerProjectExportRoutes(app, {
     db,
     http: httpDeps,
@@ -6458,7 +6467,6 @@ export async function startServer({
     documents: { buildDocumentPreview },
     artifacts: artifactDeps,
     projectPreviewScopes,
-    projectStorageHooks,
   });
 
   registerMediaRoutes(app, {

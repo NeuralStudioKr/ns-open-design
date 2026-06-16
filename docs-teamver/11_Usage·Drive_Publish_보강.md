@@ -498,9 +498,10 @@ Browser
 
 ### 6.8 Main FE Drive UX (P4-3)
 
-- Design 앱 또는 workspace Drive에서 `design_outputs.drive_asset_id` 조회
-- `GET /api/drive/asset/{id}/download-url` → download
-- (선택) Publish 완료 toast + "Drive에서 보기" 링크
+- Design embed publish toast → `https://{main}/drive?asset={drive_asset_id}`
+- Main FE (`ns-teamver-fe-v2` `staging`): `useDriveAssetDeepLink` — URL `?asset=` 수신 시 asset detail 모달 오픈, folder navigation, query strip
+- `fetchDriveAsset` + `mapDriveAssetDetailToItem` + unit test `driveAssetDeepLink.test.ts`
+- embed 측: `resolveTeamverDriveAssetUrl`, FileViewer Download 메뉴 (`TeamverPublishDriveMenuItem`)
 
 ### 6.9 향후
 
@@ -544,7 +545,7 @@ Browser
 | D-3 | `PublishService` + router | `deploy/teamver/be` | ✅ |
 | D-4 | `POST /api/v1/projects/{id}/publish` | `deploy/teamver/be` | ✅ |
 | D-5 | Staging E2E — HTML → Drive | — | ☐ |
-| D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | 🟡 embed Download 메뉴 ✅ · Main Drive 딥링크 남음 |
+| D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | ✅ `?asset=` 딥링크 (`staging`) · embed publish 메뉴 ✅ |
 
 **의존:** Phase D는 [09 Phase 3](./09_Design_저장소_격리_출시게이트.md) `design_projects` 완료 후.
 

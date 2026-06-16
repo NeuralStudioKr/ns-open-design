@@ -36,6 +36,8 @@ RUN corepack enable && \
     pnpm install --frozen-lockfile
 
 COPY apps ./apps
+# Teamver Design docker image — embed static export (SSR-safe via teamverViteEnv + process.env)
+ENV VITE_TEAMVER_EMBED=1
 RUN pnpm --filter @open-design/daemon build && \
     pnpm --filter @open-design/web build && \
     pnpm --filter @open-design/daemon deploy --legacy --prod /app/deploy/daemon && \

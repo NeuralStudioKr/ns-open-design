@@ -114,12 +114,12 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-1 | `ProjectStorage` interface + `LocalProjectStorage` | `apps/daemon` | ✅ |
 | P1-2 | `S3ProjectStorage` (SigV4) | `apps/daemon` | ✅ |
 | P1-3 | `resolveProjectStorage()` + unit tests | `apps/daemon` | ✅ |
-| P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | 🟡 lazy file-route materialize ✅ · projects.ts 전면 ☐ |
+| P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | 🟡 lazy file+export/archive materialize ✅ · projects.ts 전면 ☐ |
 | P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | 🟡 PROJECTS_DIR scratch + materialization ✅ |
 | P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ✅ |
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
 | P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | ☐ |
-| P1-9 | MinIO/localstack integration test | `apps/daemon` | ☐ |
+| P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + `run_s3_integration_test.sh` ✅ · Docker 실기동 ☐ |
 | P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy metrics log ✅ · CloudWatch ☐ |
 
 **근거 코드:** `apps/daemon/src/storage/` — run hook + lazy file-route materialize (`OD_PROJECT_STORAGE=s3`).

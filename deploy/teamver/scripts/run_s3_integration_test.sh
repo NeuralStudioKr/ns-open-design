@@ -5,6 +5,9 @@
 #   bash deploy/teamver/scripts/run_s3_integration_test.sh
 #
 # Requires: docker, pnpm, @open-design/daemon deps installed.
+#
+#   bash deploy/teamver/scripts/run_s3_integration_test.sh
+#   bash deploy/teamver/scripts/run_s3_integration_test.sh --skip-if-no-docker
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -13,6 +16,13 @@ MINIO_PORT="${MINIO_PORT:-19000}"
 BUCKET="${OD_S3_TEST_BUCKET:-teamver-design-test}"
 ACCESS_KEY="${OD_S3_TEST_ACCESS_KEY_ID:-minioadmin}"
 SECRET_KEY="${OD_S3_TEST_SECRET_ACCESS_KEY:-minioadmin}"
+SKIP_IF_NO_DOCKER=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --skip-if-no-docker) SKIP_IF_NO_DOCKER=1 ;;
+  esac
+done
 
 cleanup() {
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -20,7 +30,20 @@ cleanup() {
 trap cleanup EXIT
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo "❌ docker required for MinIO integration test" >&2
+  if [[ "$SKIP_IF_NO_DOCKER" -eq 1 ]]; then
+    echo "○ skip S3 integration (docker not installed)"
+    exit 0
+  fi
+  echo "❌ docker required for MinIO integration test (or pass --skip-if-no-docker)" >&2
+  exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  if [[ "$SKIP_IF_NO_DOCKER" -eq 1 ]]; then
+    echo "○ skip S3 integration (docker daemon not running)"
+    exit 0
+  fi
+  echo "❌ docker daemon not running (or pass --skip-if-no-docker)" >&2
   exit 1
 fi
 

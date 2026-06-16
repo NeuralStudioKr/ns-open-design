@@ -1,9 +1,10 @@
 import type { ApiProtocol, AppConfig } from "../../types";
 import { resolveFixedOriginBaseUrl } from "../../state/apiProtocols";
+import { readTeamverViteEnv } from "../teamverViteEnv";
 import { resolveTeamverBranding } from "./config";
 
 function readEnv(key: string): string | undefined {
-  return (import.meta.env[key] as string | undefined)?.trim() || undefined;
+  return readTeamverViteEnv(key);
 }
 
 function readFixedProtocol(): ApiProtocol | undefined {

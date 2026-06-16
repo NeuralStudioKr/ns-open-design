@@ -1,4 +1,5 @@
 import { isTeamverEmbedMode } from "../designApiBase";
+import { readTeamverViteEnv } from "../teamverViteEnv";
 import { TEAMVER_BRAND_ASSETS } from "./assets";
 
 /** SettingsDialog / EntrySettingsMenu sections exposed in Teamver embed. */
@@ -34,7 +35,7 @@ export type TeamverBrandingConfig = {
 };
 
 function readEnv(key: string): string | undefined {
-  return (import.meta.env[key] as string | undefined)?.trim() || undefined;
+  return readTeamverViteEnv(key);
 }
 
 function readBrandSubtitle(): string {

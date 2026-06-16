@@ -15,8 +15,18 @@ function lazySyncTtlMs(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000;
 }
 
-function isProjectFileApiPath(pathname: string): boolean {
-  return /^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload)(\/|$)/.test(pathname);
+function isProjectMaterializationPath(pathname: string): boolean {
+  if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload)(\/|$)/.test(pathname)) {
+    return true;
+  }
+  // Publish (design-api OdDaemonClient) reads manifest + inline artifacts from S3-backed projects.
+  if (/^\/api\/projects\/[^/]+\/export(\/|$)/.test(pathname)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/archive(\/|$)/.test(pathname)) {
+    return true;
+  }
+  return false;
 }
 
 function isMutatingMethod(method: string): boolean {
@@ -111,7 +121,7 @@ export function createLazyProjectMaterializationMiddleware(
   sendApiError: (...args: unknown[]) => unknown,
 ): RequestHandler {
   return async (req, res, next) => {
-    if (!hooks || !isProjectFileApiPath(req.path)) return next();
+    if (!hooks || !isProjectMaterializationPath(req.path)) return next();
 
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();

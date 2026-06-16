@@ -2,15 +2,17 @@
  * Teamver design-api origin — Cookie SSO (Plan B).
  * Hostname-based default; override with VITE_TEAMVER_DESIGN_API_URL at build time.
  */
+import { isTeamverViteDev, readTeamverViteEnv } from "./teamverViteEnv";
+
 export function isTeamverEmbedMode(): boolean {
-  const flag = (import.meta.env.VITE_TEAMVER_EMBED as string | undefined)?.trim().toLowerCase();
+  const flag = readTeamverViteEnv("VITE_TEAMVER_EMBED")?.toLowerCase();
   if (flag === "1" || flag === "true" || flag === "yes") return true;
   if (typeof window === "undefined") return false;
   const host = window.location.hostname.toLowerCase();
   return (
     host.endsWith(".teamver.com") ||
     host === "teamver.com" ||
-    (import.meta.env.DEV && (host === "localhost" || host === "127.0.0.1"))
+    (isTeamverViteDev() && (host === "localhost" || host === "127.0.0.1"))
   );
 }
 
@@ -35,7 +37,7 @@ export function resolveTeamverMainOrigin(): string {
 
 /** Main BE API base — cookie SSO refresh target (10 §3.2). */
 export function resolveTeamverMainApiBaseUrl(): string {
-  const fromEnv = (import.meta.env.VITE_TEAMVER_MAIN_API_URL as string | undefined)?.trim();
+  const fromEnv = readTeamverViteEnv("VITE_TEAMVER_MAIN_API_URL");
   if (fromEnv) return fromEnv.replace(/\/+$/, "");
 
   if (typeof window === "undefined") return "https://api.teamver.com";
@@ -57,14 +59,14 @@ export function resolveTeamverDriveAssetUrl(assetId: string): string {
 }
 
 export function resolveTeamverDesignApiBase(): string | null {
-  const fromEnv = (import.meta.env.VITE_TEAMVER_DESIGN_API_URL as string | undefined)?.trim();
+  const fromEnv = readTeamverViteEnv("VITE_TEAMVER_DESIGN_API_URL");
   if (fromEnv) return fromEnv.replace(/\/+$/, "");
 
   if (typeof window === "undefined") return null;
   const host = window.location.hostname.toLowerCase();
   if (host === "localhost" || host === "127.0.0.1") {
     // Same-origin via Next.js dev rewrite (/teamver-bff → design-api :16000)
-    if (import.meta.env.DEV) {
+    if (isTeamverViteDev()) {
       return "";
     }
     return "http://127.0.0.1:16000";
