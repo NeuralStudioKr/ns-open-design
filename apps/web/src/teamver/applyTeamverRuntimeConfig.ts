@@ -2,7 +2,8 @@ import type { ApiProtocol, AppConfig } from "../types";
 
 export type TeamverRuntimeConfig = {
   configured: boolean;
-  apiProtocol?: ApiProtocol;
+  /** Raw protocol from design-api / env — normalized inside merge. */
+  apiProtocol?: string;
   baseUrl?: string;
   model?: string;
   apiKey?: string;
