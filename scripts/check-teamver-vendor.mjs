@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,12 +6,15 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const vendorDir = resolve(repoRoot, "vendor/teamver");
 const manifestPath = resolve(vendorDir, "manifest.json");
 const appSdkTgz = resolve(vendorDir, "app-sdk.tgz");
-const pythonWheel = resolve(vendorDir, "python/teamver-app-sdk.whl");
+const pythonWheelDir = resolve(vendorDir, "python");
+const pep427Wheels = existsSync(pythonWheelDir)
+  ? readdirSync(pythonWheelDir).filter((name) => /^teamver_app_sdk-.+\.whl$/.test(name))
+  : [];
 
 const missing = [];
 if (!existsSync(manifestPath)) missing.push("vendor/teamver/manifest.json");
 if (!existsSync(appSdkTgz)) missing.push("vendor/teamver/app-sdk.tgz");
-if (!existsSync(pythonWheel)) missing.push("vendor/teamver/python/teamver-app-sdk.whl");
+if (pep427Wheels.length === 0) missing.push("vendor/teamver/python/teamver_app_sdk-*.whl");
 
 if (missing.length > 0) {
   console.error(

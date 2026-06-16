@@ -56,8 +56,11 @@ if [[ -z "$WHEEL" || ! -f "$WHEEL" ]]; then
   exit 1
 fi
 PY_VERSION="$(basename "$WHEEL" | sed -E 's/^teamver_app_sdk-(.+)-py3-none-any\.whl$/\1/')"
-rm -f "$VENDOR/python/teamver-app-sdk.whl"
-cp "$WHEEL" "$VENDOR/python/teamver-app-sdk.whl"
+WHEEL_BASENAME="$(basename "$WHEEL")"
+rm -f "$VENDOR/python/"*.whl "$VENDOR/python/teamver-app-sdk.whl"
+cp "$WHEEL" "$VENDOR/python/$WHEEL_BASENAME"
+# Legacy alias (docs); Docker installs the PEP 427–named file above.
+ln -sf "$WHEEL_BASENAME" "$VENDOR/python/teamver-app-sdk.whl"
 
 GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 cat > "$VENDOR/manifest.json" <<EOF
@@ -70,11 +73,11 @@ cat > "$VENDOR/manifest.json" <<EOF
   },
   "teamver-app-sdk": {
     "version": "$PY_VERSION",
-    "file": "python/teamver-app-sdk.whl"
+    "file": "python/$WHEEL_BASENAME"
   }
 }
 EOF
 
 echo "✅ vendor/teamver refreshed"
 echo "   @teamver/app-sdk $SDK_VERSION → vendor/teamver/app-sdk.tgz"
-echo "   teamver-app-sdk $PY_VERSION → vendor/teamver/python/teamver-app-sdk.whl"
+echo "   teamver-app-sdk $PY_VERSION → vendor/teamver/python/$WHEEL_BASENAME (+ teamver-app-sdk.whl symlink)"
