@@ -118,8 +118,8 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | 🟡 PROJECTS_DIR scratch + materialization ✅ |
 | P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ✅ |
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
-| P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | ☐ |
-| P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + `run_s3_integration_test.sh` ✅ · Docker 실기동 ☐ |
+| P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · EC2 apply ☐ |
+| P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + compose `--profile minio` ✅ · EC2 ☐ |
 | P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy metrics log ✅ · CloudWatch ☐ |
 
 **근거 코드:** `apps/daemon/src/storage/` — run hook + lazy file-route materialize (`OD_PROJECT_STORAGE=s3`).
@@ -143,7 +143,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create/import/delete sync ✅ · list filter ✅ · E2E ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` | ✅ env-gated · E2E ☐ |
 | P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ✅ design-api SSOT + daemon tenant scope |
-| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + S3 lifecycle | `deploy/teamver/be` | ✅ registry soft-delete · S3 lifecycle ☐ |
+| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + scratch evict | `deploy/teamver/be` + daemon | ✅ soft-delete + `POST …/scratch/evict` · S3 lifecycle ☐ |
 | P3-9 | access 검증 방식 확정 (daemon middleware vs nginx subrequest) | 설계 → 구현 | ✅ daemon middleware |
 
 **P3-6 구현 메모:** `TEAMVER_DESIGN_API_URL`이 설정된 배포에서 daemon은 `/api/projects/:id/**` 요청 전에 design-api access endpoint를 호출한다. 목록/생성(`/api/projects`)은 web registry sync/filter 경로가 담당하므로 middleware 대상에서 제외한다. design-api 거부(403/404)는 daemon에서 `PROJECT_NOT_FOUND`로 반환해 cross-workspace project id 노출을 줄인다.
@@ -173,16 +173,17 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - nginx `/api/v1/projects` 보호 라우트는 staging/prod design-api에 반영.
 - OD web daemon project create, folder/ZIP import, plugin-share project, host import response 성공 후 design-api registry best-effort 등록 반영.
 - Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). 조회 실패 시 전환기 fallback으로 daemon list 유지.
-- **smoke**: `scripts/smoke_design.sh --staging`.
-- 남음: daemon middleware access 검증 (P3-6), staging E2E.
+- **smoke**: `scripts/smoke_design.sh --staging` (+ `/access`, `/outputs`, healthz tables).
+- 남음: staging E2E (S3 객체·403·publish).
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| P4-1 | export/finalize → Drive upload (`teamver-app-sdk`) | `deploy/teamver/be` | ☐ |
-| P4-2 | `design_outputs` 테이블 | `deploy/teamver/be` | ☐ |
-| P4-3 | Main FE / Drive 연동 UX | `ns-teamver-fe-v2` | ☐ |
+| P4-1 | export/finalize → Drive upload (`teamver-app-sdk`) | `deploy/teamver/be` | ✅ `PublishService` |
+| P4-2 | `design_outputs` 테이블 + `GET /outputs` | `deploy/teamver/be` | ✅ |
+| P4-3 | Main FE / Drive 연동 UX | `ns-teamver-fe-v2` + embed | ✅ `?asset=` · Open in Drive menu |
+| P4-4 | registry create → scratch sync-up (S3) | design-api + daemon | ✅ `POST …/scratch/sync-up` |
 
 ---
 
@@ -218,7 +219,7 @@ dbs:
 
 | 변수 / DB | 용도 | 상태 |
 |-----------|------|------|
-| `POSTGRES_*` → `teamver_design_*` | usage + **design_projects** | usage ✅ · registry ☐ |
+| `POSTGRES_*` → `teamver_design_*` | usage + **design_projects** + **design_outputs** | usage·registry·publish ✅ · staging E2E ☐ |
 | `TEAMVER_*` | Main BE bootstrap | ✅ |
 
 ---
@@ -253,7 +254,7 @@ Object storage는 **key-value**이며 POSIX(append·rename·lock)와 다르다. 
 
 **Teamver Drive/Main BE 패턴(앱 SDK 직접)** 과 동형인 것은 **C의 S3 레이어**이고, Design 추가분은 **MaterializingProjectStorage(scratch)** 이다.
 
-**개발:** `OD_PROJECT_STORAGE=local`. **Staging/Prod:** `s3` + IAM role. **CI:** MinIO/localstack (P1-9).  
+**개발:** `OD_PROJECT_STORAGE=local`. **Staging/Prod:** `s3` + IAM role. **로컬 S3 경로만 검증:** MinIO (P1-9, 선택). **로컬→staging bucket 직접 연결은 비권장** — [§10.1](./09_Design_저장소_격리_출시게이트.md#101-로컬-개발--storage-모드-선택-ssot).  
 **배경 참고:** [archive/10_S3_저장소_패턴_참고.md](./archive/10_S3_저장소_패턴_참고.md)
 
 ---
@@ -340,6 +341,54 @@ s3://teamver-design-{env}-data/design/ws_{ws}/user_{uid}/proj_{od_project_id}/..
 | app-config, memory, plugins | v1 로컬 + backup | volume |
 | skills/templates (공유) | 이미지/로컬 RO | OK |
 | import `metadata.baseDir` | **hosted 비활성** 권장 | sandbox 예외만 |
+
+### 10.1 로컬 개발 — storage 모드 선택 (SSOT)
+
+**MinIO는 필수가 아니다.** 환경별로 `OD_PROJECT_STORAGE`와 S3 endpoint를 나눈다.
+
+| 환경 | `OD_PROJECT_STORAGE` | S3 / endpoint | 용도 |
+|------|------------------------|---------------|------|
+| **로컬 일반 개발** | `local` (기본) | 없음 | embed UI·BFF·SSO·publish API·registry 대부분 |
+| **로컬 S3 경로 검증** | `s3` | **MinIO** (`OD_S3_ENDPOINT=http://minio:9000`) | materialize·scratch sync-up/evict·daemon S3 통합 테스트 (P1-9) |
+| **Staging EC2** | `s3` | **AWS S3** (`teamver-design-staging-data`, endpoint 없음) | 실제 격리·E2E·smoke |
+| **Production EC2** | `s3` | **AWS S3** + IAM instance profile | 출시 |
+
+```text
+로컬 laptop (일반)     → local          (MinIO 불필요)
+로컬 S3 코드만 검증    → s3 + MinIO     (run_minio_s3_dev.sh / --with-minio)
+Staging/Prod 검증      → EC2 + AWS S3   (VPN·smoke·browser E2E)
+```
+
+#### 로컬에서 Staging AWS S3 bucket을 그대로 써도 되나?
+
+**기술적으로는 가능**하다 (동일 `OD_S3_BUCKET`·region + 로컬 AWS 자격증명).  
+**운영상 권장하지 않는다.**
+
+| 리스크 | 설명 |
+|--------|------|
+| 데이터 오염 | 로컬 실험 프로젝트·scratch sync가 staging bucket·prefix에 섞임 |
+| 실수 피해 | registry delete → `scratch/evict`, sync-up이 **공유 staging 객체** 변경 |
+| 격리 검증 무의미 | tenant prefix E2E는 **전용 EC2 + staging bucket**에서 하는 것이 SSOT |
+| 보안 | 개발자 PC에 staging write 권한·장기 키 배포 부담 |
+
+**Staging과 동일 인프라 E2E**는 로컬 daemon이 아니라 `stg-design.teamver.com` + EC2 smoke / browser checklist ([10 §6](./10_세션·OD패치_보강.md) · [11 §8](./11_Usage·Drive_Publish_보강.md)).
+
+#### MinIO가 필요한 경우 (선택)
+
+- daemon `S3ProjectStorage` / `MaterializingProjectStorage` 동작 확인
+- `run_s3_integration_test.sh` · `run_minio_s3_dev.sh --integration-test`
+- `validate_deploy_env.sh`가 `OD_S3_ENDPOINT`에 minio/localhost를 보면 **dev 전용** 경고 (staging/prod EC2에는 넣지 않음)
+
+#### 관련 ops 스크립트
+
+| 스크립트 | 대상 |
+|----------|------|
+| `run_minio_s3_dev.sh` | 로컬 MinIO 기동 + env 안내 |
+| `run_docker.sh --with-minio` | compose MinIO profile |
+| `print_staging_s3_env.sh` | **EC2** `.env.staging` S3 블록 출력 |
+| `apply_staging_s3_env.sh` | **EC2** `.env.staging`에 S3 키 병합 (P1-8) |
+
+상세 runbook: [`deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md`](../deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md) §로컬 vs Staging S3.
 
 ---
 

@@ -93,11 +93,25 @@ fi
 
 if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
   require_nonempty OD_S3_BUCKET
+  require_nonempty TEAMVER_DESIGN_API_URL
   if [[ -z "${OD_S3_REGION:-}" && -z "${AWS_REGION:-}" ]]; then
     fail "OD_PROJECT_STORAGE=s3 인데 OD_S3_REGION 또는 AWS_REGION 필요"
   fi
   if [[ -z "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
     fail "S3 + usage M2M: TEAMVER_INTERNAL_API_KEY 필요 (daemon → design-api)"
+  fi
+  if [[ -n "${OD_S3_ENDPOINT:-}" ]]; then
+    if [[ "${OD_S3_ENDPOINT}" == *"minio"* || "${OD_S3_ENDPOINT}" == *"127.0.0.1"* || "${OD_S3_ENDPOINT}" == *"localhost"* ]]; then
+      warn "OD_S3_ENDPOINT=${OD_S3_ENDPOINT} — MinIO/로컬 dev용; staging/prod EC2는 AWS 기본 endpoint 권장"
+    else
+      warn "OD_S3_ENDPOINT 설정됨 — custom S3-compatible endpoint (의도 확인)"
+    fi
+  fi
+  if [[ "${OD_S3_FORCE_PATH_STYLE:-}" == "true" || "${OD_S3_FORCE_PATH_STYLE:-}" == "1" ]]; then
+    warn "OD_S3_FORCE_PATH_STYLE=true — MinIO typical; AWS S3 prod에서는 보통 불필요"
+  fi
+  if [[ -z "${OD_S3_ACCESS_KEY_ID:-}" && -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
+    warn "OD_S3_ACCESS_KEY_ID·AWS_ACCESS_KEY_ID 없음 — EC2 instance role(IAM) 사용 가정"
   fi
 else
   warn "OD_PROJECT_STORAGE=${OD_PROJECT_STORAGE:-local} — staging Track A S3 격리는 s3 권장"

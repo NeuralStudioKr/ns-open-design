@@ -154,3 +154,43 @@ class OdDaemonClient:
             )
             raise BadGatewayError("od_daemon_export_failed")
         return response.content
+
+    async def evict_scratch_project(
+        self,
+        od_project_id: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> None:
+        """Best-effort scratch eviction after registry delete (S3 mode)."""
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/projects/{od_project_id}/scratch/evict",
+                headers=self._headers(identity=identity),
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                "[od-daemon] scratch evict failed project=%s status=%s",
+                od_project_id,
+                response.status_code,
+            )
+            raise BadGatewayError("od_daemon_scratch_evict_failed")
+
+    async def sync_scratch_project(
+        self,
+        od_project_id: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> None:
+        """Best-effort scratch → S3 sync after registry create (S3 mode)."""
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/projects/{od_project_id}/scratch/sync-up",
+                headers=self._headers(identity=identity),
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                "[od-daemon] scratch sync-up failed project=%s status=%s",
+                od_project_id,
+                response.status_code,
+            )
+            raise BadGatewayError("od_daemon_scratch_sync_up_failed")

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertTeamverProjectAccessIfNeeded,
   buildTeamverProjectRegistryPayload,
+  fetchTeamverProject,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
   registerTeamverProjectIfNeeded,
@@ -124,6 +125,38 @@ describe('Teamver project registry access', () => {
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+  });
+
+  it('fetchTeamverProject returns registry row', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => ({
+          odProjectId: 'od1',
+          s3Prefix: 'design/ws_ws1/user_u1/proj_od1/',
+        })),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(fetchTeamverProject('od1')).resolves.toMatchObject({
+      odProjectId: 'od1',
+      s3Prefix: 'design/ws_ws1/user_u1/proj_od1/',
+    });
+  });
+
+  it('fetchTeamverProject returns null on 404', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => {
+          throw new NetworkError({ message: 'missing', status: 404 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(fetchTeamverProject('missing')).resolves.toBeNull();
   });
 
   it('allows access outside embed mode', async () => {

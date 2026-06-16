@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -9,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
-from ..db.crud import design_project_crud
-from ..db.models import DesignProject
+from ..db.crud import design_output_crud, design_project_crud
+from ..db.models import DesignOutput, DesignProject
 from ..errors import ApiError, ForbiddenError, NotFoundError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
@@ -18,14 +19,17 @@ from ..schemas.design_project import (
     DesignProjectResponse,
 )
 from ..schemas.publish import (
+    DesignOutputListResponse,
     DesignOutputResponse,
     PublishProjectBody,
     PublishProjectResponse,
 )
+from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 from ..services.publish_service import publish_project
 from ..teamver_sdk import extract_request_access_token, get_teamver_client
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(row: DesignProject) -> DesignProjectResponse:
@@ -39,6 +43,20 @@ def _to_response(row: DesignProject) -> DesignProjectResponse:
         status=row.status,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _output_to_response(row: DesignOutput) -> DesignOutputResponse:
+    return DesignOutputResponse(
+        id=row.id,
+        kind=row.kind,
+        drive_asset_id=row.drive_asset_id,
+        drive_folder_id=row.drive_folder_id,
+        filename=row.filename,
+        size_bytes=row.size_bytes,
+        mime_type=row.mime_type,
+        publish_status=row.publish_status,
+        published_at=row.published_at,
     )
 
 
@@ -71,6 +89,21 @@ async def create_project(
     except IntegrityError as exc:
         await db.rollback()
         raise ApiError(409, "project_already_registered", code="conflict") from exc
+    try:
+        await OdDaemonClient().sync_scratch_project(
+            row.od_project_id,
+            identity=OdDaemonIdentity(
+                user_id=auth.user_id,
+                workspace_id=workspace_id,
+                s3_prefix=row.s3_prefix,
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "registry create: daemon scratch sync-up failed od_project_id=%s",
+            row.od_project_id,
+            exc_info=True,
+        )
     return _to_response(row)
 
 
@@ -86,6 +119,19 @@ async def list_projects(
         owner_user_id=auth.user_id,
     )
     return DesignProjectListResponse(projects=[_to_response(row) for row in rows])
+
+
+@router.get("/{project_ref}", response_model=DesignProjectResponse)
+async def get_project(
+    project_ref: str,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> DesignProjectResponse:
+    row = await design_project_crud.aget_project_by_ref(db, project_ref=project_ref)
+    if row is None:
+        raise NotFoundError("project_not_found")
+    _ensure_project_access(row, auth)
+    return _to_response(row)
 
 
 @router.get("/{od_project_id}/access", status_code=204, response_class=Response)
@@ -104,6 +150,23 @@ async def check_project_access(
     return Response(status_code=204, headers={"X-Teamver-S3-Prefix": row.s3_prefix})
 
 
+@router.get("/{project_ref}/outputs", response_model=DesignOutputListResponse)
+async def list_project_outputs(
+    project_ref: str,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> DesignOutputListResponse:
+    row = await design_project_crud.aget_project_by_ref(db, project_ref=project_ref)
+    if row is None:
+        raise NotFoundError("project_not_found")
+    _ensure_project_access(row, auth)
+    outputs = await design_output_crud.alist_outputs_for_project(db, project_id=row.id)
+    return DesignOutputListResponse(
+        project_id=row.id,
+        outputs=[_output_to_response(output) for output in outputs],
+    )
+
+
 @router.delete("/{od_project_id}", status_code=204, response_class=Response)
 async def delete_project(
     od_project_id: str,
@@ -117,12 +180,28 @@ async def delete_project(
     if row is None:
         raise NotFoundError("project_not_found")
     _ensure_project_access(row, auth)
+    workspace_id = require_workspace_context(auth)
     if row.status == "active":
         await design_project_crud.asoft_delete_by_od_id(
             db,
             od_project_id=od_project_id,
         )
         await db.commit()
+        try:
+            await OdDaemonClient().evict_scratch_project(
+                row.od_project_id,
+                identity=OdDaemonIdentity(
+                    user_id=auth.user_id,
+                    workspace_id=workspace_id,
+                    s3_prefix=row.s3_prefix,
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "registry delete: daemon scratch evict failed od_project_id=%s",
+                row.od_project_id,
+                exc_info=True,
+            )
     return Response(status_code=204)
 
 
@@ -174,6 +253,9 @@ async def publish_project_to_drive(
             for output in result.outputs
         ],
     )
-    if result.http_status == 207:
-        return JSONResponse(status_code=207, content=payload.model_dump(mode="json"))
+    if result.http_status in (207, 502):
+        return JSONResponse(
+            status_code=result.http_status,
+            content=payload.model_dump(mode="json", by_alias=True),
+        )
     return payload

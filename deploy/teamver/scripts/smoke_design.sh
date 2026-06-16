@@ -29,7 +29,9 @@ Env overrides:
   DESIGN_API_LOCAL_URL (optional — loopback M2M when nginx blocks /api/internal/ publicly)
   TEAMVER_COOKIE (optional session cookie)
   TEAMVER_WORKSPACE_ID (optional — projects list + M2M by-model check)
+  TEAMVER_OD_PROJECT_ID (optional — /projects/{id}/access + S3 prefix header)
   TEAMVER_INTERNAL_API_KEY (optional — internal usage + token-usage M2M)
+  OD_PROJECT_STORAGE (optional — deps config.project_storage 일치 검증)
 EOF
 }
 
@@ -105,6 +107,46 @@ echo
 check "OD daemon /api/health" curl_ok "${DESIGN_BASE}/api/health"
 check "design-api /api/healthz" curl_ok "${API_BASE}/api/healthz"
 check "design-api /api/healthz/deps" curl_ok "${API_BASE}/api/healthz/deps"
+
+scratch_sync_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+  -X POST \
+  "${DESIGN_BASE}/api/projects/_smoke_probe_/scratch/sync-up" 2>/dev/null || echo "000")"
+if [[ "$scratch_sync_code" == "401" ]]; then
+  echo "✓ OD daemon POST …/scratch/sync-up → 401 (teamver access gate)"
+  pass=$((pass + 1))
+elif [[ "$scratch_sync_code" == "204" ]]; then
+  echo "○ OD daemon scratch/sync-up → 204 (TEAMVER_DESIGN_API_URL unset on daemon — local mode)"
+elif [[ "$scratch_sync_code" == "404" ]]; then
+  echo "✗ OD daemon scratch/sync-up → 404 (route missing — redeploy daemon image)"
+  fail=$((fail + 1))
+else
+  echo "○ OD daemon scratch/sync-up → $scratch_sync_code"
+fi
+
+healthz_json="$(curl -sf --max-time 15 "${API_BASE}/api/healthz" 2>/dev/null || echo "")"
+if [[ -n "$healthz_json" ]] \
+  && echo "$healthz_json" | grep -q '"design_projects":"ok"' \
+  && echo "$healthz_json" | grep -q '"design_outputs":"ok"'; then
+  echo "✓ design-api /api/healthz registry tables ok"
+  pass=$((pass + 1))
+elif [[ -n "$healthz_json" ]]; then
+  echo "○ design-api /api/healthz registry tables — $healthz_json"
+else
+  echo "○ skip healthz table probe (unreachable)"
+fi
+
+deps_json="$(curl -sf --max-time 15 "${API_BASE}/api/healthz/deps" 2>/dev/null || echo "")"
+if [[ -n "$deps_json" ]] && [[ -n "${OD_PROJECT_STORAGE:-}" ]]; then
+  storage="$(echo "$deps_json" | sed -n 's/.*"project_storage":"\([^"]*\)".*/\1/p' | head -1)"
+  expected="$(printf '%s' "$OD_PROJECT_STORAGE" | tr '[:upper:]' '[:lower:]')"
+  if [[ -n "$storage" && "$storage" == "$expected" ]]; then
+    echo "✓ design-api deps config.project_storage=$storage"
+    pass=$((pass + 1))
+  elif [[ -n "$storage" ]]; then
+    echo "✗ design-api deps project_storage=$storage (expected $expected)"
+    fail=$((fail + 1))
+  fi
+fi
 
 session_code="$(curl_status "${API_BASE}/api/v1/auth/session")"
 if [[ "$session_code" == "200" ]]; then
@@ -185,6 +227,24 @@ if [[ "$publish_code" == "401" || "$publish_code" == "403" ]]; then
   pass=$((pass + 1))
 else
   echo "✗ design-api POST /projects/{id}/publish unauthenticated → $publish_code (expected 401/403)"
+  fail=$((fail + 1))
+fi
+
+outputs_code="$(curl_status "${API_BASE}/api/v1/projects/demo-project/outputs")"
+if [[ "$outputs_code" == "401" || "$outputs_code" == "403" ]]; then
+  echo "✓ design-api GET /projects/{id}/outputs unauthenticated → $outputs_code"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api GET /projects/{id}/outputs unauthenticated → $outputs_code (expected 401/403)"
+  fail=$((fail + 1))
+fi
+
+project_get_code="$(curl_status "${API_BASE}/api/v1/projects/demo-project")"
+if [[ "$project_get_code" == "401" || "$project_get_code" == "403" ]]; then
+  echo "✓ design-api GET /projects/{id} unauthenticated → $project_get_code"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api GET /projects/{id} unauthenticated → $project_get_code (expected 401/403)"
   fail=$((fail + 1))
 fi
 
@@ -339,6 +399,68 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
   else
     echo "✗ design-api /api/v1/bootstrap (cookie) → $bootstrap_code (expected 200)"
     fail=$((fail + 1))
+  fi
+
+  access_project_id="${TEAMVER_OD_PROJECT_ID:-}"
+  if [[ -z "$access_project_id" && "$projects_list" == "200" ]]; then
+    access_project_id="$(curl -sf --max-time 15 \
+      -H "Cookie: ${TEAMVER_COOKIE}" \
+      "${workspace_hdr[@]}" \
+      "${API_BASE}/api/v1/projects" \
+      | python3 -c "import json,sys; d=json.load(sys.stdin); ps=d.get('projects') or []; print((ps[0].get('odProjectId') or ps[0].get('od_project_id') or '').strip())" 2>/dev/null || true)"
+  fi
+  if [[ -n "$access_project_id" && -n "${TEAMVER_WORKSPACE_ID:-}" ]]; then
+    access_headers="$(curl -s -D - -o /dev/null --max-time 15 \
+      -H "Cookie: ${TEAMVER_COOKIE}" \
+      -H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}" \
+      "${API_BASE}/api/v1/projects/${access_project_id}/access" 2>/dev/null || true)"
+    access_code="$(echo "$access_headers" | awk 'toupper($1) ~ /^HTTP/ { print $2; exit }')"
+    s3_prefix="$(echo "$access_headers" | awk -F': ' 'tolower($1)=="x-teamver-s3-prefix" { print $2; exit }' | tr -d '\r')"
+    if [[ "$access_code" == "204" ]]; then
+      echo "✓ design-api GET /projects/{id}/access → 204"
+      pass=$((pass + 1))
+      if [[ -n "$s3_prefix" ]]; then
+        echo "✓ design-api access X-Teamver-S3-Prefix present"
+        pass=$((pass + 1))
+      else
+        echo "○ design-api access without X-Teamver-S3-Prefix (OD_PROJECT_STORAGE=local?)"
+      fi
+    elif [[ "$access_code" == "401" || "$access_code" == "403" || "$access_code" == "404" ]]; then
+      echo "○ design-api GET /projects/{id}/access → $access_code (project $access_project_id)"
+    else
+      echo "✗ design-api GET /projects/{id}/access → ${access_code:-000} (expected 204)"
+      fail=$((fail + 1))
+    fi
+
+    outputs_list_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+      -H "Cookie: ${TEAMVER_COOKIE}" \
+      -H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}" \
+      "${API_BASE}/api/v1/projects/${access_project_id}/outputs")"
+    if [[ "$outputs_list_code" == "200" ]]; then
+      echo "✓ design-api GET /projects/{id}/outputs (cookie) → 200"
+      pass=$((pass + 1))
+    elif [[ "$outputs_list_code" == "401" || "$outputs_list_code" == "403" || "$outputs_list_code" == "404" ]]; then
+      echo "○ design-api GET /projects/{id}/outputs → $outputs_list_code"
+    else
+      echo "✗ design-api GET /projects/{id}/outputs → $outputs_list_code (expected 200)"
+      fail=$((fail + 1))
+    fi
+
+    project_detail_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+      -H "Cookie: ${TEAMVER_COOKIE}" \
+      -H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}" \
+      "${API_BASE}/api/v1/projects/${access_project_id}")"
+    if [[ "$project_detail_code" == "200" ]]; then
+      echo "✓ design-api GET /projects/{id} (cookie) → 200"
+      pass=$((pass + 1))
+    elif [[ "$project_detail_code" == "401" || "$project_detail_code" == "403" || "$project_detail_code" == "404" ]]; then
+      echo "○ design-api GET /projects/{id} → $project_detail_code"
+    else
+      echo "✗ design-api GET /projects/{id} → $project_detail_code (expected 200)"
+      fail=$((fail + 1))
+    fi
+  else
+    echo "○ skip project /access smoke (set TEAMVER_OD_PROJECT_ID or ensure registered projects)"
   fi
 else
   echo "○ skip authenticated runtime-config (set TEAMVER_COOKIE to enable)"

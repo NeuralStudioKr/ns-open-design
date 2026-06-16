@@ -24,6 +24,9 @@ async def test_collect_dependency_status_shape(monkeypatch: pytest.MonkeyPatch) 
 
     assert payload["status"] == "ok"
     assert payload["checks"] == {"db": "ok", "daemon": "ok", "main_be": "ok"}
+    assert payload["config"]["m2m_key"] in {"configured", "missing"}
+    assert "proxy_headers" in payload["config"]
+    assert payload["config"]["project_storage"] in {"local", "s3"}
 
 
 @pytest.mark.asyncio

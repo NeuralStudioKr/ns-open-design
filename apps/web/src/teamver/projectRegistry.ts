@@ -9,8 +9,12 @@ export type TeamverProjectRegistryPayload = {
 };
 
 export type TeamverRegisteredProject = {
+  id?: string;
   odProjectId?: string;
   od_project_id?: string;
+  s3Prefix?: string;
+  s3_prefix?: string;
+  title?: string;
   ownerUserId?: string;
   owner_user_id?: string;
 };
@@ -90,6 +94,38 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
   const registeredIds = await listTeamverRegisteredProjectIds();
   if (registeredIds === null) return projects;
   return projects.filter((project) => registeredIds.has(project.id));
+}
+
+/** Embed: single registry row (od id or DPRJ id). */
+export async function fetchTeamverProject(
+  projectRef: string,
+): Promise<TeamverRegisteredProject | null> {
+  if (!isTeamverEmbedMode()) return null;
+
+  const trimmedRef = projectRef.trim();
+  if (!trimmedRef) return null;
+
+  const client = getDesignBffClient();
+  if (!client) return null;
+
+  try {
+    const workspaceId = await client.workspaceStore?.get();
+    if (!workspaceId?.trim()) return null;
+
+    return await client.http.get<TeamverRegisteredProject>(
+      `/projects/${encodeURIComponent(trimmedRef)}`,
+      {
+        workspaceId: workspaceId.trim(),
+        skipAuthHeader: true,
+      },
+    );
+  } catch (err) {
+    if (err instanceof NetworkError && (err.status === 403 || err.status === 404)) {
+      return null;
+    }
+    console.warn("[teamver] project fetch failed", err);
+    return null;
+  }
 }
 
 /** Embed: design-api registry access gate (204 ok · 403/404 deny). */

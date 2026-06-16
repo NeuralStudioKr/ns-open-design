@@ -18,6 +18,7 @@ run_docker.sh — Teamver Design (OD + design-api)
   bash scripts/run_docker.sh --production
   bash scripts/run_docker.sh --staging --rds       # EC2 + AWS RDS
   bash scripts/run_docker.sh --staging --local-db  # compose Postgres (dev)
+  bash scripts/run_docker.sh --staging --with-minio  # local S3-compat (MinIO profile)
   bash scripts/run_docker.sh --staging --skip-validate  # skip env preflight
 
 선행: cp .env.staging.example .env.staging  (또는 .env.production.example)
@@ -27,6 +28,7 @@ EOF
 ENV_FILE=""
 USE_RDS=false
 USE_LOCAL_DB=false
+USE_MINIO=false
 SKIP_VALIDATE=false
 
 while (( $# )); do
@@ -35,6 +37,7 @@ while (( $# )); do
     --production) ENV_FILE=".env.production" ;;
     --rds) USE_RDS=true ;;
     --local-db) USE_LOCAL_DB=true ;;
+    --with-minio) USE_MINIO=true ;;
     --skip-validate) SKIP_VALIDATE=true ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
@@ -59,6 +62,16 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 ln -sf "$ENV_FILE" .env
+
+if [[ "$USE_MINIO" == true ]]; then
+  echo "==> MinIO profile — local S3-compat (OD_PROJECT_STORAGE=s3)"
+  export OD_PROJECT_STORAGE="${OD_PROJECT_STORAGE:-s3}"
+  export OD_S3_BUCKET="${OD_S3_BUCKET:-teamver-design-local}"
+  export OD_S3_REGION="${OD_S3_REGION:-us-east-1}"
+  export OD_S3_ENDPOINT="${OD_S3_ENDPOINT:-http://minio:9000}"
+  export OD_S3_ACCESS_KEY_ID="${OD_S3_ACCESS_KEY_ID:-minioadmin}"
+  export OD_S3_SECRET_ACCESS_KEY="${OD_S3_SECRET_ACCESS_KEY:-minioadmin}"
+fi
 
 VALIDATE_ARGS=(--"$([[ "$ENV_FILE" == ".env.staging" ]] && echo staging || echo production)")
 if [[ "$USE_RDS" == true ]]; then
@@ -85,10 +98,16 @@ COMPOSE_ARGS=(--env-file "$ENV_FILE")
 if [[ "$USE_LOCAL_DB" == true ]]; then
   COMPOSE_ARGS+=(--profile local-db)
 fi
+if [[ "$USE_MINIO" == true ]]; then
+  COMPOSE_ARGS+=(--profile minio)
+fi
 
 SERVICES=(open-design-daemon teamver-design-api)
 if [[ "$USE_LOCAL_DB" == true ]]; then
   SERVICES=(design-db "${SERVICES[@]}")
+fi
+if [[ "$USE_MINIO" == true ]]; then
+  SERVICES=(minio minio-init "${SERVICES[@]}")
 fi
 
 docker compose "${COMPOSE_ARGS[@]}" up -d --build "${SERVICES[@]}"

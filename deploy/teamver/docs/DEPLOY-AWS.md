@@ -23,6 +23,16 @@ bash scripts/run_docker.sh --staging --rds
 bash scripts/smoke_design.sh --staging
 ```
 
+**로컬 S3 (MinIO, P1-9 — 선택):** S3 materialize 경로만 로컬에서 검증할 때 사용. **일반 로컬 개발은 `OD_PROJECT_STORAGE=local`이면 MinIO 불필요.**
+
+```bash
+bash scripts/run_docker.sh --staging --local-db --with-minio
+# 또는
+bash scripts/run_minio_s3_dev.sh --integration-test
+```
+
+**로컬에서 staging AWS bucket 직접 연결은 비권장** (데이터 오염·scratch evict 실수). 상세: [09 §10.1](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md#101-로컬-개발--storage-모드-선택-ssot) · [TEAMVER_APPS_INTEGRATION §로컬 vs Staging S3](./TEAMVER_APPS_INTEGRATION.md#로컬-vs-staging-s3-vs-minio).
+
 EC2 IAM instance profile이 버킷에 접근 가능해야 합니다 (`terraform output project_data_bucket`). 키 파일 불필요.
 
 ---

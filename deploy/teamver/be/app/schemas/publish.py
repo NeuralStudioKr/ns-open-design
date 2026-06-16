@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
@@ -23,11 +25,20 @@ class DesignOutputResponse(BaseModel):
     id: str | None = None
     kind: str
     drive_asset_id: str | None = Field(default=None, serialization_alias="driveAssetId")
+    drive_folder_id: str | None = Field(default=None, serialization_alias="driveFolderId")
     filename: str | None = None
     size_bytes: int | None = Field(default=None, serialization_alias="sizeBytes")
     mime_type: str | None = Field(default=None, serialization_alias="mimeType")
     publish_status: str = Field(serialization_alias="publishStatus")
     error_code: str | None = Field(default=None, serialization_alias="errorCode")
+    published_at: datetime | None = Field(default=None, serialization_alias="publishedAt")
+
+
+class DesignOutputListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    project_id: str = Field(serialization_alias="projectId")
+    outputs: list[DesignOutputResponse]
 
 
 class PublishProjectResponse(BaseModel):

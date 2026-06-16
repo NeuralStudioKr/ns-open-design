@@ -1324,6 +1324,22 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   app.use('/api/projects/:id', createTeamverProjectAccessMiddleware(sendApiError));
 
+  app.post('/api/projects/:id/scratch/evict', async (req, res) => {
+    const projectId = req.params.id;
+    if (ctx.projectStorageHooks) {
+      await ctx.projectStorageHooks.onProjectRemoved(projectId);
+    }
+    res.status(204).end();
+  });
+
+  app.post('/api/projects/:id/scratch/sync-up', async (req, res) => {
+    const projectId = req.params.id;
+    if (ctx.projectStorageHooks) {
+      await ctx.projectStorageHooks.persistAfterMutation(req, projectId);
+    }
+    res.status(204).end();
+  });
+
   app.get('/api/projects/:id', async (req, res) => {
     const project = getProject(db, req.params.id);
     const locations = await configuredProjectLocations();

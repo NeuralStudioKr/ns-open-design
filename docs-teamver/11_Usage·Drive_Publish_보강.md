@@ -75,7 +75,7 @@ class UsageEventBody(BaseModel):
 
 **트리거 조건:** `saved.runStatus` ∈ `{succeeded, failed, canceled}` + `body.telemetryFinalized === true`
 
-### 2.3 Drive (Phase 4 미착수)
+### 2.3 Drive (Phase 4 — v1 코드 ✅, staging E2E ☐)
 
 | 항목 | 상태 |
 |------|------|
@@ -533,7 +533,7 @@ Browser
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
 | B-1 | `run_lifecycle.py` reserve/commit/refund | `deploy/teamver/be` | ☐ |
-| B-2 | Admin registry `design` key | Main BE Admin | ☐ |
+| B-2 | Admin registry `design` key | Main BE Admin | 🟡 `seed_main_be_design_app.sql` (전역 비활성화 시) |
 | B-3 | amount 산정 정책 | design-api | ☐ |
 
 ### Phase D — Drive Publish v1 (약 1.5~2주, G7)
@@ -546,6 +546,8 @@ Browser
 | D-4 | `POST /api/v1/projects/{id}/publish` | `deploy/teamver/be` | ✅ |
 | D-5 | Staging E2E — HTML → Drive | — | ☐ |
 | D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | ✅ `?asset=` 딥링크 (`staging`) · embed publish 메뉴 ✅ |
+| D-7 | `GET /projects/{id}/outputs` + Open in Drive | `deploy/teamver/be` + embed | ✅ |
+| D-8 | Publish 207/502 structured JSON (camelCase) | `deploy/teamver/be` + embed | ✅ |
 
 **의존:** Phase D는 [09 Phase 3](./09_Design_저장소_격리_출시게이트.md) `design_projects` 완료 후.
 

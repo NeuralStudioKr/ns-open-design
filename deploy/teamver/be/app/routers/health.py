@@ -11,18 +11,34 @@ from ..services.health_deps import collect_dependency_status
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
 
+_SCHEMA_TABLES = (
+    "ai_model_token_usages",
+    "design_projects",
+    "design_outputs",
+)
+
+
+async def _check_schema_tables() -> dict[str, str]:
+    results: dict[str, str] = {}
+    for table in _SCHEMA_TABLES:
+        try:
+            ok = await asyncio.to_thread(lambda t=table: _table_exists(t))
+        except Exception:
+            logger.exception("healthz table check failed table=%s", table)
+            results[table] = "unavailable"
+            continue
+        results[table] = "ok" if ok else "missing"
+    return results
+
 
 @router.get("/healthz")
-async def healthz() -> dict[str, str]:
-    try:
-        db_ok = await asyncio.to_thread(lambda: _table_exists("ai_model_token_usages"))
-    except Exception:
-        logger.exception("healthz database check failed")
-        return {"status": "degraded", "db": "unavailable"}
-    return {
-        "status": "ok" if db_ok else "degraded",
-        "db": "ok" if db_ok else "schema_missing",
-    }
+async def healthz() -> dict[str, object]:
+    tables = await _check_schema_tables()
+    if any(status == "unavailable" for status in tables.values()):
+        return {"status": "degraded", "db": "unavailable", "tables": tables}
+    if any(status != "ok" for status in tables.values()):
+        return {"status": "degraded", "db": "schema_missing", "tables": tables}
+    return {"status": "ok", "db": "ok", "tables": tables}
 
 
 @router.get("/healthz/deps")

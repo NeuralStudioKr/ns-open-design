@@ -81,12 +81,12 @@ async def test_publish_router_returns_207_json_on_partial_success(monkeypatch: p
     assert isinstance(response, JSONResponse)
     assert response.status_code == 207
     body = json.loads(response.body)
-    assert body["project_id"] == "DPRJ-TEST"
+    assert body["projectId"] == "DPRJ-TEST"
     assert len(body["outputs"]) == 2
-    assert body["outputs"][0]["publish_status"] == "ready"
-    assert body["outputs"][0]["drive_asset_id"] == "AST-1"
-    assert body["outputs"][1]["publish_status"] == "failed"
-    assert body["outputs"][1]["error_code"] == "daemon_export_failed"
+    assert body["outputs"][0]["publishStatus"] == "ready"
+    assert body["outputs"][0]["driveAssetId"] == "AST-1"
+    assert body["outputs"][1]["publishStatus"] == "failed"
+    assert body["outputs"][1]["errorCode"] == "daemon_export_failed"
     db.commit.assert_awaited_once()
 
 
@@ -132,3 +132,50 @@ async def test_publish_router_returns_201_model_on_full_success(monkeypatch: pyt
     assert response.project_id == "DPRJ-TEST"
     assert response.outputs[0].publish_status == "ready"
     assert response.outputs[0].drive_asset_id == "AST-1"
+
+
+@pytest.mark.asyncio
+async def test_publish_router_returns_502_json_when_all_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_ref",
+        AsyncMock(return_value=row),
+    )
+
+    failed = PublishResult(
+        project_id="DPRJ-TEST",
+        outputs=[
+            PublishFormatResult(
+                kind="html",
+                publish_status="failed",
+                error_code="od_daemon_export_failed",
+            ),
+            PublishFormatResult(
+                kind="zip",
+                publish_status="failed",
+                error_code="drive_upload_failed",
+            ),
+        ],
+    )
+    monkeypatch.setattr(projects_router, "publish_project", AsyncMock(return_value=failed))
+    monkeypatch.setattr(projects_router, "get_teamver_client", lambda: MagicMock())
+
+    request = MagicMock()
+    response = await projects_router.publish_project_to_drive(
+        "od1",
+        PublishProjectBody(formats=["html", "zip"], artifact_file="index.html"),
+        request,
+        _auth(),
+        db,
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 502
+    body = json.loads(response.body)
+    assert body["projectId"] == "DPRJ-TEST"
+    assert body["outputs"][0]["publishStatus"] == "failed"
+    assert body["outputs"][0]["errorCode"] == "od_daemon_export_failed"

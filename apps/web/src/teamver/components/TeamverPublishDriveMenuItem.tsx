@@ -11,7 +11,7 @@ type Props = {
   projectId: string;
   artifactFile: string;
   onCloseMenu: () => void;
-  onSuccess?: (output: TeamverPublishDriveOutput) => void;
+  onSuccess?: (output: TeamverPublishDriveOutput, meta?: { partial: boolean }) => void;
   onError?: (err: unknown) => void;
 };
 
@@ -35,9 +35,9 @@ export function TeamverPublishDriveMenuItem({
         formats: ["html", "zip"],
       });
       const output = pickReadyPublishOutputs(result.outputs)[0] ?? result.outputs[0];
-      if (output?.publishStatus === "ready") onSuccess?.(output);
+      if (output?.publishStatus === "ready") onSuccess?.(output, { partial: result.partial });
       else if (result.partial && pickReadyPublishOutputs(result.outputs).length > 0) {
-        onSuccess?.(pickReadyPublishOutputs(result.outputs)[0]!);
+        onSuccess?.(pickReadyPublishOutputs(result.outputs)[0]!, { partial: true });
       } else onError?.(new Error(output?.errorCode ?? "publish_failed"));
     } catch (err) {
       onError?.(err);

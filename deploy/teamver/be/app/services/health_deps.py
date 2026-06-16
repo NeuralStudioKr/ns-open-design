@@ -9,16 +9,44 @@ import httpx
 from ..config import settings
 from ..db.schema_bootstrap import _table_exists
 
+from ..config import settings
+
 logger = logging.getLogger(__name__)
+
+
+def collect_config_summary() -> dict[str, object]:
+    """Non-secret deploy flags for ops smoke / healthz/deps."""
+    managed_key = (
+        (settings.teamver_od_api_key or "").strip()
+        or (settings.teamver_od_anthropic_api_key or "").strip()
+    )
+    return {
+        "m2m_key": "configured" if settings.teamver_internal_api_key.strip() else "missing",
+        "proxy_headers": settings.trust_teamver_proxy_headers,
+        "od_token": "configured" if settings.od_api_token.strip() else "missing",
+        "managed_api": "configured" if managed_key else "missing",
+        "drive_publish_folder": (
+            "configured" if settings.teamver_drive_publish_folder_id.strip() else "default"
+        ),
+        "bootstrap": "enabled" if settings.teamver_bootstrap_enabled else "disabled",
+        "project_storage": (settings.od_project_storage or "local").strip().lower() or "local",
+    }
 
 
 async def _check_db() -> str:
     try:
-        ok = await asyncio.to_thread(lambda: _table_exists("ai_model_token_usages"))
+        tables = await asyncio.gather(
+            *[
+                asyncio.to_thread(lambda t=table: _table_exists(t))
+                for table in ("ai_model_token_usages", "design_projects", "design_outputs")
+            ]
+        )
     except Exception:
         logger.exception("deps check: database failed")
         return "unavailable"
-    return "ok" if ok else "schema_missing"
+    if not all(tables):
+        return "schema_missing"
+    return "ok"
 
 
 async def _check_daemon() -> str:
@@ -63,4 +91,8 @@ async def collect_dependency_status() -> dict[str, Any]:
         status = "degraded"
     if daemon == "unavailable" or main_be == "unavailable":
         status = "degraded"
-    return {"status": status, "checks": checks}
+    return {
+        "status": status,
+        "checks": checks,
+        "config": collect_config_summary(),
+    }

@@ -15,11 +15,21 @@ OD_PORT="${OD_PORT:-7456}"
 
 while (( $# )); do
   case "$1" in
-    --staging|--production)
-      if [[ -f ".env${1#--}" ]]; then
+    --staging)
+      if [[ -f ".env.staging" ]]; then
         # shellcheck disable=SC1090
         set -a
-        source ".env${1#--}"
+        source ".env.staging"
+        set +a
+        BE_PORT="${BE_PORT:-16000}"
+        OD_PORT="${OD_PORT:-7456}"
+      fi
+      ;;
+    --production)
+      if [[ -f ".env.production" ]]; then
+        # shellcheck disable=SC1090
+        set -a
+        source ".env.production"
         set +a
         BE_PORT="${BE_PORT:-16000}"
         OD_PORT="${OD_PORT:-7456}"
@@ -55,6 +65,21 @@ echo
 
 check "design-api /api/healthz" curl -sf --max-time 5 "http://127.0.0.1:${BE_PORT}/api/healthz" >/dev/null
 
+healthz_json="$(curl -sf --max-time 5 "http://127.0.0.1:${BE_PORT}/api/healthz" 2>/dev/null || echo "")"
+if [[ -n "$healthz_json" ]]; then
+  if echo "$healthz_json" | grep -q '"design_projects":"ok"' \
+    && echo "$healthz_json" | grep -q '"design_outputs":"ok"'; then
+    echo "✓ design-api /api/healthz schema tables (design_projects, design_outputs)"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api /api/healthz missing registry tables — $healthz_json"
+    fail=$((fail + 1))
+  fi
+else
+  echo "✗ design-api /api/healthz json"
+  fail=$((fail + 1))
+fi
+
 deps_json="$(curl -sf --max-time 8 "http://127.0.0.1:${BE_PORT}/api/healthz/deps" 2>/dev/null || echo "")"
 if [[ -n "$deps_json" ]]; then
   echo "✓ design-api /api/healthz/deps"
@@ -63,6 +88,23 @@ if [[ -n "$deps_json" ]]; then
   if echo "$deps_json" | grep -q '"daemon":"unavailable"'; then
     echo "✗ daemon dependency unavailable"
     fail=$((fail + 1))
+  fi
+  if echo "$deps_json" | grep -q '"managed_api":"missing"'; then
+    echo "○ config.managed_api missing (embed BYOK only unless TEAMVER_OD_API_KEY set)"
+  fi
+  storage="$(echo "$deps_json" | sed -n 's/.*"project_storage":"\([^"]*\)".*/\1/p' | head -1)"
+  expected="${OD_PROJECT_STORAGE:-local}"
+  expected="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
+  if [[ -n "$storage" ]]; then
+    if [[ "$storage" == "$expected" ]]; then
+      echo "✓ config.project_storage=$storage"
+      pass=$((pass + 1))
+    else
+      echo "✗ config.project_storage=$storage (expected $expected from OD_PROJECT_STORAGE)"
+      fail=$((fail + 1))
+    fi
+  else
+    echo "○ config.project_storage not reported in deps"
   fi
 else
   echo "✗ design-api /api/healthz/deps"

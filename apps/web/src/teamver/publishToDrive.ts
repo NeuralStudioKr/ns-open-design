@@ -18,6 +18,25 @@ export type TeamverPublishDriveOutput = {
   mimeType: string;
   publishStatus: "ready" | "failed";
   errorCode?: string | null;
+  publishedAt?: string | null;
+};
+
+type PublishOutputRaw = {
+  id?: string | null;
+  kind: string;
+  driveAssetId?: string | null;
+  drive_asset_id?: string | null;
+  filename?: string | null;
+  sizeBytes?: number | null;
+  size_bytes?: number | null;
+  mimeType?: string | null;
+  mime_type?: string | null;
+  publishStatus?: string | null;
+  publish_status?: string | null;
+  errorCode?: string | null;
+  error_code?: string | null;
+  publishedAt?: string | null;
+  published_at?: string | null;
 };
 
 export type TeamverPublishDriveResult = {
@@ -29,24 +48,10 @@ export type TeamverPublishDriveResult = {
 type PublishResponse = {
   projectId?: string;
   project_id?: string;
-  outputs?: Array<{
-    id?: string | null;
-    kind: string;
-    driveAssetId?: string | null;
-    drive_asset_id?: string | null;
-    filename?: string | null;
-    sizeBytes?: number | null;
-    size_bytes?: number | null;
-    mimeType?: string | null;
-    mime_type?: string | null;
-    publishStatus?: string | null;
-    publish_status?: string | null;
-    errorCode?: string | null;
-    error_code?: string | null;
-  }>;
+  outputs?: PublishOutputRaw[];
 };
 
-function normalizeOutput(raw: NonNullable<PublishResponse["outputs"]>[number]): TeamverPublishDriveOutput {
+export function normalizePublishOutput(raw: PublishOutputRaw): TeamverPublishDriveOutput {
   const publishStatus = (raw.publishStatus ?? raw.publish_status ?? "ready").toLowerCase();
   const status: "ready" | "failed" = publishStatus === "failed" ? "failed" : "ready";
   return {
@@ -58,11 +63,63 @@ function normalizeOutput(raw: NonNullable<PublishResponse["outputs"]>[number]): 
     mimeType: raw.mimeType ?? raw.mime_type ?? "application/octet-stream",
     publishStatus: status,
     errorCode: raw.errorCode ?? raw.error_code ?? null,
+    publishedAt: raw.publishedAt ?? raw.published_at ?? null,
   };
+}
+
+function normalizeOutput(raw: PublishOutputRaw): TeamverPublishDriveOutput {
+  return normalizePublishOutput(raw);
 }
 
 export function pickReadyPublishOutputs(outputs: TeamverPublishDriveOutput[]): TeamverPublishDriveOutput[] {
   return outputs.filter((output) => output.publishStatus === "ready" && output.driveAssetId.trim() !== "");
+}
+
+export function buildPublishResultFromResponse(
+  response: PublishResponse,
+  fallbackProjectId: string,
+): TeamverPublishDriveResult {
+  const outputs = (response.outputs ?? []).map(normalizeOutput);
+  const ready = pickReadyPublishOutputs(outputs);
+  return {
+    projectId: response.projectId ?? response.project_id ?? fallbackProjectId,
+    outputs: ready.length > 0 ? ready : outputs,
+    partial: outputs.some((output) => output.publishStatus === "failed"),
+  };
+}
+
+/** design-api may return structured 502 JSON — parse per-output error codes from SDK NetworkError. */
+export function parsePublishFailureFromError(err: unknown): TeamverPublishDriveResult | null {
+  if (!(err instanceof NetworkError) || err.status !== 502) return null;
+  const body = err.responseBody;
+  if (!body || typeof body !== "object") return null;
+  const raw = body as PublishResponse;
+  if (!Array.isArray(raw.outputs) || raw.outputs.length === 0) return null;
+  return buildPublishResultFromResponse(raw, "");
+}
+
+export function resolvePublishErrorCode(result: TeamverPublishDriveResult): string {
+  const failed = result.outputs.find((output) => output.publishStatus === "failed");
+  return failed?.errorCode ?? "publish_failed";
+}
+
+/** User-facing design-api error detail (502 publish body, Error.message, or fallback). */
+export function formatTeamverDesignErrorMessage(
+  err: unknown,
+  fallback = "Check your session and try again.",
+): string {
+  const from502 = parsePublishFailureFromError(err);
+  if (from502) return resolvePublishErrorCode(from502);
+  if (err instanceof Error) {
+    const message = err.message.trim();
+    if (message && message !== "publish_failed") return message;
+  }
+  return fallback;
+}
+
+/** @deprecated alias — use formatTeamverDesignErrorMessage */
+export function formatPublishErrorMessage(err: unknown): string {
+  return formatTeamverDesignErrorMessage(err);
 }
 
 function resolveDefaultPublishFolderId(): string | null {
@@ -90,26 +147,32 @@ export async function publishTeamverDesignToDrive(
     folderId: params.folderId ?? resolveDefaultPublishFolderId(),
   };
 
-  const response = await client.http.post<PublishResponse>(
-    `/projects/${encodeURIComponent(params.projectId)}/publish`,
-    body,
-    {
-      workspaceId: workspaceId.trim(),
-      skipAuthHeader: true,
-    },
-  );
+  try {
+    const response = await client.http.post<PublishResponse>(
+      `/projects/${encodeURIComponent(params.projectId)}/publish`,
+      body,
+      {
+        workspaceId: workspaceId.trim(),
+        skipAuthHeader: true,
+      },
+    );
 
-  const outputs = (response.outputs ?? []).map(normalizeOutput);
-  const ready = pickReadyPublishOutputs(outputs);
-  if (ready.length === 0 && outputs.some((output) => output.publishStatus === "failed")) {
-    const firstFailed = outputs.find((output) => output.publishStatus === "failed");
-    throw new Error(firstFailed?.errorCode ?? "publish_failed");
+    const result = buildPublishResultFromResponse(response, params.projectId);
+    if (
+      result.outputs.length > 0
+      && pickReadyPublishOutputs(result.outputs).length === 0
+      && result.outputs.some((output) => output.publishStatus === "failed")
+    ) {
+      throw new Error(resolvePublishErrorCode(result));
+    }
+    return result;
+  } catch (err) {
+    const failed = parsePublishFailureFromError(err);
+    if (failed) {
+      throw new Error(resolvePublishErrorCode(failed));
+    }
+    throw err;
   }
-  return {
-    projectId: response.projectId ?? response.project_id ?? params.projectId,
-    outputs: ready.length > 0 ? ready : outputs,
-    partial: outputs.some((output) => output.publishStatus === "failed"),
-  };
 }
 
 export function isRetryablePublishError(err: unknown): boolean {

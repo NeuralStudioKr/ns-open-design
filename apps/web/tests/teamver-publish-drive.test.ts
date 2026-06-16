@@ -17,7 +17,14 @@ vi.mock("../src/teamver/designBffClient", () => ({
   })),
 }));
 
-import { publishTeamverDesignToDrive } from "../src/teamver/publishToDrive";
+import { NetworkError } from "@teamver/app-sdk";
+import {
+  formatPublishErrorMessage,
+  formatTeamverDesignErrorMessage,
+  parsePublishFailureFromError,
+  publishTeamverDesignToDrive,
+  resolvePublishErrorCode,
+} from "../src/teamver/publishToDrive";
 
 describe("publishTeamverDesignToDrive", () => {
   beforeEach(() => {
@@ -88,5 +95,71 @@ describe("publishTeamverDesignToDrive", () => {
     expect(result.partial).toBe(true);
     expect(result.outputs).toHaveLength(1);
     expect(result.outputs[0]?.driveAssetId).toBe("AST-2");
+  });
+
+  it("throws per-format error code from 502 response body", async () => {
+    postMock.mockRejectedValue(
+      new NetworkError({
+        message: "publish failed",
+        status: 502,
+        responseBody: {
+          projectId: "DPRJ-1",
+          outputs: [
+            {
+              kind: "html",
+              publishStatus: "failed",
+              errorCode: "od_daemon_export_failed",
+            },
+          ],
+        },
+      }),
+    );
+
+    await expect(
+      publishTeamverDesignToDrive({ projectId: "od-1", artifactFile: "index.html" }),
+    ).rejects.toThrow("od_daemon_export_failed");
+  });
+});
+
+describe("parsePublishFailureFromError", () => {
+  it("extracts structured 502 publish payload", () => {
+    const err = new NetworkError({
+      message: "bad gateway",
+      status: 502,
+      responseBody: {
+        projectId: "DPRJ-9",
+        outputs: [{ kind: "zip", publish_status: "failed", error_code: "drive_upload_failed" }],
+      },
+    });
+    const parsed = parsePublishFailureFromError(err);
+    expect(parsed?.projectId).toBe("DPRJ-9");
+    expect(resolvePublishErrorCode(parsed!)).toBe("drive_upload_failed");
+  });
+});
+
+describe("formatTeamverDesignErrorMessage", () => {
+  it("uses custom fallback for generic errors", () => {
+    expect(
+      formatTeamverDesignErrorMessage(new Error("publish_failed"), "Try publish first."),
+    ).toBe("Try publish first.");
+  });
+});
+
+describe("formatPublishErrorMessage", () => {
+  it("maps 502 publish body to error code", () => {
+    const err = new NetworkError({
+      message: "bad gateway",
+      status: 502,
+      responseBody: {
+        outputs: [{ publish_status: "failed", error_code: "od_daemon_export_failed" }],
+      },
+    });
+    expect(formatPublishErrorMessage(err)).toBe("od_daemon_export_failed");
+  });
+
+  it("falls back for generic errors", () => {
+    expect(formatPublishErrorMessage(new Error("publish_failed"))).toBe(
+      "Check your session and try again.",
+    );
   });
 });

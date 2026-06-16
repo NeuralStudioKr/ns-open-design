@@ -38,13 +38,45 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | GET | `/api/v1/auth/session` | Cookie/Bearer SSO |
 | GET | `/api/v1/bootstrap` | Main BE bootstrap relay |
 | GET | `/api/v1/runtime-config` | Embed managed API mode (server env → authenticated FE) |
-| GET/POST | `/api/v1/projects` | Project registry (list owner-scoped · create + `s3_prefix`) |
+| GET | `/api/v1/projects` | Project registry list (owner-scoped) |
+| GET | `/api/v1/projects/{id}` | Single registry row (od id or DPRJ id) |
+| POST | `/api/v1/projects` | Project registry create + daemon scratch sync-up (best-effort) |
 | GET | `/api/v1/projects/{od_project_id}/access` | Daemon access gate (204 + `X-Teamver-S3-Prefix`) |
-| DELETE | `/api/v1/projects/{od_project_id}` | Registry soft-delete (status=`deleted`) |
+| DELETE | `/api/v1/projects/{od_project_id}` | Registry soft-delete + daemon scratch evict (best-effort) |
 | POST | `/api/v1/usage/events` | OD run usage (user JWT) — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/internal/usage/events` | Daemon M2M usage (internal key) — [11 §3.4](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/v1/projects/{id}/publish` | Drive Publish HTML+ZIP — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
+| GET | `/api/v1/projects/{id}/outputs` | Published `design_outputs` list (Drive asset history) |
 | GET | `/api/token-usage/by-model` | M2M 집계 |
+| GET | `/api/healthz` | DB + `design_projects`·`design_outputs` schema |
+| GET | `/api/healthz/deps` | Postgres·daemon·Main BE + `config` (m2m, `project_storage`, …) |
+
+### daemon (S3 materialization, design-api 연동)
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/projects/:id/scratch/sync-up` | registry create 후 scratch→S3 (access gate) |
+| POST | `/api/projects/:id/scratch/evict` | registry delete 후 scratch 정리 (access gate) |
+
+---
+
+## Ops scripts (Track A)
+
+| Script | 용도 |
+|--------|------|
+| `validate_deploy_env.sh` | `.env` 필수 키 preflight (S3·MinIO endpoint 경고) |
+| `print_track_a_status.sh` | Track A env 요약 + `--probe` health |
+| `run_docker.sh` | compose up (`--rds`, `--local-db`, `--with-minio`) |
+| `check_sidecar_deps.sh` | EC2 loopback healthz + deps (`project_storage` 일치) |
+| `smoke_design.sh` | staging/prod curl smoke |
+| `run_track_a_unit_tests.sh` | design-api pytest + embed vitest (로컬 CI) |
+| `run_staging_track_a_e2e.sh` | smoke + manual E2E checklist |
+| `print_staging_s3_env.sh` | terraform → S3 env snippet |
+| `apply_staging_s3_env.sh` | `.env.staging`에 S3 키 병합 (P1-8) |
+| `run_minio_s3_dev.sh` | local MinIO + optional integration test |
+| `seed_main_be_design_app.sql` | Main BE `ai_app` design (A8) |
+| `seed_main_be_design_app.sh` | 위 SQL `psql` 적용 wrapper |
+| `seed_od_runtime_config.sh` | OD onboarding seed |
 
 ---
 
@@ -138,6 +170,37 @@ EC2 IAM instance profile 사용 시 `OD_S3_ACCESS_KEY_ID` 불필요. Litestream:
 
 ---
 
+## 로컬 vs Staging S3 vs MinIO
+
+**요약:** 로컬 laptop은 대부분 `OD_PROJECT_STORAGE=local`로 충분하다. MinIO는 **S3 코드 경로를 로컬에서만 검증**할 때 쓰는 선택 도구이며, staging AWS bucket을 laptop에 붙이는 방식은 **비권장**이다. SSOT: [09 §10.1](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md#101-로컬-개발--storage-모드-선택-ssot).
+
+| 시나리오 | 설정 | 비고 |
+|----------|------|------|
+| 로컬 UI·BFF·registry·publish 개발 | `OD_PROJECT_STORAGE=local` | MinIO·staging bucket 불필요 |
+| 로컬 daemon S3/materialize 테스트 | `s3` + MinIO (`run_minio_s3_dev.sh`) | `OD_S3_ENDPOINT=http://minio:9000` |
+| Staging 실연동·격리 E2E | EC2 `.env.staging` + AWS S3 | `apply_staging_s3_env.sh` · IAM role |
+| 로컬에서 staging bucket 직접 사용 | 가능하나 **금지 권장** | 데이터 오염·evict 실수·보안 |
+
+```bash
+# 로컬 — 일반 (권장)
+OD_PROJECT_STORAGE=local
+bash scripts/run_docker.sh --staging --local-db
+
+# 로컬 — S3 경로만 (선택)
+bash scripts/run_minio_s3_dev.sh
+# 출력 env를 .env에 반영 후
+bash scripts/run_docker.sh --staging --local-db --with-minio
+
+# Staging EC2 — AWS S3 (P1-8)
+bash scripts/apply_staging_s3_env.sh --from-terraform
+bash scripts/validate_deploy_env.sh --staging --rds
+bash scripts/run_docker.sh --staging --rds
+```
+
+`validate_deploy_env.sh`는 staging/prod `.env`에 MinIO endpoint가 있으면 경고한다 (dev 전용 설정이 EC2에 섞였는지 검출).
+
+---
+
 ## Deploy preflight (EC2)
 
 ```bash
@@ -170,14 +233,14 @@ bash scripts/smoke_design.sh --staging
 | Main BE session-check + AppKey design | ✓ |
 | FE AI Apps Design 메뉴 | ✓ |
 | design-api BE (auth/bootstrap/usage) | ✓ (import·204 fix) |
-| OD web session 배너 + embed | ✓ (usage hook·브랜딩 남음 — [10](../../../docs-teamver/10_세션·OD패치_보강.md) · [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)) |
-| **세션·인증 (10 §3 Phase S)** | ✅ 코드 · staging E2E ☐ |
-| **OD embed 브랜딩 (10 §4 Phase P)** | ✅ 코드 · browser E2E ☐ |
-| **Usage Phase 1 (11 §3)** | ☐ FE hook·멱등·Main BE design M2M |
-| Staging/Prod 실배포 검증 | ☐ |
-| **저장소·격리 (09 Phase 0~3)** | 🟡 registry·materialize·S3 TF ✅ · staging S3 활성화 ☐ |
-| **Drive Publish (11 §6 / G7)** | ✅ HTML+ZIP v1 (`PublishService`) |
-| Admin registry `design` | ☐ |
+| OD web session 배너 + embed | ✓ (usage hook ✅ · [10](../../../docs-teamver/10_세션·OD패치_보강.md) · [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)) |
+| **세션·인증 (10 §3 Phase S)** | ✅ 코드 · smoke ✅ · staging browser E2E ☐ |
+| **OD embed 브랜딩 (10 §4 Phase P)** | ✅ 코드 · Playwright P-7 ✅ · staging browser ☐ |
+| **Usage Phase 1 (11 §3)** | ✅ FE hook·멱등·M2M·smoke · staging E2E ☐ |
+| Staging/Prod 실배포 검증 | ☐ ops |
+| **저장소·격리 (09 Phase 0~3)** | 🟡 materialize·registry·scratch sync/evict ✅ · staging S3 활성화 ☐ |
+| **Drive Publish (11 §6 / G7)** | ✅ HTML+ZIP v1 · outputs list · Open in Drive · staging E2E ☐ |
+| Admin registry `design` | 🟡 `scripts/seed_main_be_design_app.sql` (전역 비활성화 시에만 필요) |
 | Registry billing Phase 2 | ☐ |
 
 ---
