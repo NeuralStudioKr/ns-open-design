@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchDesignAuthSession } from "./designBffClient";
-import { isTeamverEmbedMode } from "./designApiBase";
+import { isTeamverEmbedMode, resolveTeamverLoginUrl } from "./designApiBase";
+import { NetworkError } from "@teamver/app-sdk";
 
 export type TeamverSessionState = {
   loading: boolean;
@@ -17,6 +18,13 @@ const INITIAL: TeamverSessionState = {
   defaultWorkspaceId: null,
   error: null,
 };
+
+function isSessionExpiredError(err: unknown): boolean {
+  if (err instanceof NetworkError) {
+    return err.status === 401;
+  }
+  return false;
+}
 
 export function useTeamverSession(enabled: boolean): TeamverSessionState {
   const [state, setState] = useState<TeamverSessionState>(INITIAL);
@@ -47,7 +55,11 @@ export function useTeamverSession(enabled: boolean): TeamverSessionState {
         defaultWorkspaceId: data.defaultWorkspaceId ?? null,
         error: data.authenticated ? null : "not_authenticated",
       });
-    } catch {
+    } catch (err) {
+      if (isSessionExpiredError(err) && typeof window !== "undefined") {
+        window.location.assign(resolveTeamverLoginUrl());
+        return;
+      }
       setState({ ...INITIAL, loading: false, error: "session_unreachable" });
     }
   }, [enabled]);

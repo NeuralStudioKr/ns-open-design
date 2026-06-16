@@ -17,6 +17,7 @@ class UsageScope:
     user_id: str | None
     workspace_id: str | None
     project_id: str | None = None
+    run_id: str | None = None
     operation: str = "design_run"
 
 
@@ -38,6 +39,7 @@ async def alog_token_usage(
             used_at=utcnow(),
             operation=scope.operation,
             project_id=scope.project_id,
+            run_id=scope.run_id,
         )
         await db.commit()
 

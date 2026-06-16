@@ -30,6 +30,10 @@ export function resolveTeamverDesignApiBase(): string | null {
   if (typeof window === "undefined") return null;
   const host = window.location.hostname.toLowerCase();
   if (host === "localhost" || host === "127.0.0.1") {
+    // Same-origin via Next.js dev rewrite (/teamver-bff → design-api :16000)
+    if (import.meta.env.DEV) {
+      return "";
+    }
     return "http://127.0.0.1:16000";
   }
   if (host === "stg-design.teamver.com") {

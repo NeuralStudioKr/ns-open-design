@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends
 from teamver_app_sdk.errors import TeamverAPIError
 
+from ..auth_context import AuthContext, require_auth
 from ..config import settings
 from ..teamver_sdk import (
-    extract_request_access_token,
-    fetch_bootstrap_optional,
-    get_teamver_client,
-    raise_http_for_teamver_error,
+    build_dev_bootstrap_payload,
+    build_dev_permissions_payload,
+    fetch_bootstrap,
+    fetch_workspace_permissions,
+    raise_for_teamver_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,29 +22,62 @@ router = APIRouter(prefix="/api/v1", tags=["bootstrap"])
 
 
 @router.get("/bootstrap", response_model=None)
-async def get_bootstrap(request: Request) -> Any:
-    """Main BE bootstrap relay — ``teamver_app_sdk.auth.get_bootstrap``."""
-    token = extract_request_access_token(request)
-    if not token:
-        return {
-            "app_key": settings.teamver_app_key,
-            "user": None,
-            "default_workspace_id": None,
-            "workspaces": [],
-        }
+async def get_bootstrap(
+    auth: Annotated[AuthContext, Depends(require_auth)],
+) -> Any:
+    """진입 1회 부트스트랩 — Slide BFF 동형 (dev fallback·SDK relay)."""
+    if auth.is_dev_fallback:
+        return build_dev_bootstrap_payload(
+            user_id=auth.user_id,
+            email=auth.email or settings.dev_email,
+            display_name=settings.dev_display_name,
+            workspace_id=auth.workspace_id or settings.dev_workspace_id,
+            app_key=settings.teamver_app_key,
+        )
 
     if not settings.teamver_bootstrap_enabled:
         return {
             "app_key": settings.teamver_app_key,
-            "user": None,
-            "default_workspace_id": None,
+            "user": {"user_id": auth.user_id, "email": auth.email},
+            "default_workspace_id": auth.workspace_id,
             "workspaces": [],
         }
 
+    assert auth.raw_token
     try:
-        bootstrap = await get_teamver_client().auth.get_bootstrap(access_token=token)
+        bootstrap = await fetch_bootstrap(auth.raw_token)
     except TeamverAPIError as exc:
-        raise_http_for_teamver_error(exc)
-        return {}
+        logger.warning("[bootstrap] main BE rejected code=%s", exc.code)
+        raise_for_teamver_error(exc)
 
     return bootstrap.model_dump()
+
+
+@router.get("/permissions/{workspace_id}", response_model=None)
+async def get_permissions(
+    workspace_id: str,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+) -> Any:
+    """민감 작업 직전 단건 권한 재검증 — Slide BFF ``GET /permissions/{workspace_id}`` 동형."""
+    if auth.is_dev_fallback:
+        return build_dev_permissions_payload(
+            workspace_id=workspace_id,
+            app_key=settings.teamver_app_key,
+            user_id=auth.user_id,
+        )
+
+    if not settings.teamver_bootstrap_enabled:
+        return build_dev_permissions_payload(
+            workspace_id=workspace_id,
+            app_key=settings.teamver_app_key,
+            user_id=auth.user_id,
+        )
+
+    assert auth.raw_token
+    try:
+        permissions = await fetch_workspace_permissions(auth.raw_token, workspace_id)
+    except TeamverAPIError as exc:
+        logger.warning("[permissions] main BE rejected code=%s", exc.code)
+        raise_for_teamver_error(exc)
+
+    return permissions.model_dump()

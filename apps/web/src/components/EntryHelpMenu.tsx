@@ -21,6 +21,7 @@ import {
 } from '../analytics/events';
 import { Icon } from './Icon';
 import { useT } from '../i18n';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 
 const REPO = 'https://github.com/nexu-io/open-design';
 const ISSUES_URL = `${REPO}/issues/new`;
@@ -34,6 +35,7 @@ const ext = { target: '_blank', rel: 'noreferrer noopener' } as const;
 
 export function EntryHelpMenu() {
   const t = useT();
+  const { hideExternalLinks } = useTeamverBranding();
   const analytics = useAnalytics();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -65,6 +67,8 @@ export function EntryHelpMenu() {
       area: 'help_resources_popover',
     });
   }, [open, analytics.track]);
+
+  if (hideExternalLinks) return null;
 
   return (
     <div className="entry-help-menu" ref={wrapRef}>

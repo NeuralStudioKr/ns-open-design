@@ -27,3 +27,4 @@ class AiModelTokenUsage(Base):
     used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     operation: Mapped[str | None] = mapped_column(String, nullable=True)
     project_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String, nullable=True)

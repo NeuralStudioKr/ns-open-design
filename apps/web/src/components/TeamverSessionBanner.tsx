@@ -30,7 +30,7 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
 
   return (
     <div className="teamver-session-banner" data-state="warn">
-      <a href={resolveTeamverLoginUrl()} target="_blank" rel="noreferrer">
+      <a href={resolveTeamverLoginUrl()}>
         Teamver 로그인
       </a>
     </div>

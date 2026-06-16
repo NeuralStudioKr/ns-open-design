@@ -15,3 +15,9 @@ CREATE TABLE IF NOT EXISTS ai_model_token_usages (
 CREATE INDEX IF NOT EXISTS idx_ai_token_usages_used_at ON ai_model_token_usages (used_at);
 CREATE INDEX IF NOT EXISTS idx_ai_token_usages_workspace_id ON ai_model_token_usages (workspace_id);
 CREATE INDEX IF NOT EXISTS idx_ai_token_usages_project_id ON ai_model_token_usages (project_id);
+
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS run_id TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_token_usage_workspace_run
+  ON ai_model_token_usages (workspace_id, run_id)
+  WHERE run_id IS NOT NULL AND run_id <> '';

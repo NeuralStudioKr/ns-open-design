@@ -27,6 +27,7 @@ import type { AppConfig, AppTheme } from '../types';
 import { formatDiscordPresenceCount, useDiscordPresence } from './useDiscordPresence';
 import { Icon } from './Icon';
 import { SocialShareGrid } from './SocialShareGrid';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 
 const DISCORD_URL = 'https://discord.gg/mHAjSMV6gz';
 const X_URL = 'https://x.com/nexudotio';
@@ -82,6 +83,7 @@ export function EntrySettingsMenu({
   const analytics = useAnalytics();
   const t = useT();
   const { locale, setLocale } = useI18n();
+  const { hideExternalLinks } = useTeamverBranding();
   const discordPresence = useDiscordPresence();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -314,6 +316,8 @@ export function EntrySettingsMenu({
             </div>
           </section>
 
+          {!hideExternalLinks ? (
+          <>
           <section className="entry-settings-menu__section">
             <div className="entry-settings-menu__section-title">
               <Icon name="external-link" size={13} />
@@ -388,6 +392,8 @@ export function EntrySettingsMenu({
           </a>
 
           <div className="entry-settings-menu__divider" aria-hidden />
+          </>
+          ) : null}
 
           <button
             type="button"

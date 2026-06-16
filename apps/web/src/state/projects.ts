@@ -29,6 +29,7 @@ import type {
   ProjectMetadata,
   ProjectTemplate,
 } from '../types';
+import { maybeReportTeamverUsageAfterSave } from '../teamver/maybeReportTeamverUsageAfterSave';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
@@ -410,18 +411,21 @@ export async function saveMessage(
   options: SaveMessageOptions = {},
 ): Promise<void> {
   try {
-    const body = options.telemetryFinalized
+    const savedMessage = options.telemetryFinalized
       ? { ...message, telemetryFinalized: true }
       : message;
-    await fetch(
+    const resp = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(savedMessage),
         ...(options.keepalive ? { keepalive: true } : {}),
       },
     );
+    if (resp.ok) {
+      void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
+    }
   } catch {
     // best-effort persistence — UI keeps the message in-memory either way
   }

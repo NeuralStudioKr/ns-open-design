@@ -17,13 +17,13 @@
 
 ## 1. As-Is vs To-Be
 
-| # | 영역 | As-Is | To-Be | 우선 |
-|---|------|-------|-------|------|
-| U1 | usage 이벤트 생산 | BE `/usage/events` ✅, **호출 주체 0** | FE `saveMessage` 종료 hook | **P0** |
-| U2 | 멱등성 | 매 POST INSERT, 중복 가능 | `(workspace_id, run_id)` unique | **P0** |
-| U3 | token attribution | daemon scan 로직 존재, FE 미연결 | message.events `usage` + model | **P0** |
-| U4 | 에러 가시성 | 항상 204, async 실패 숨김 | 202 + request id; dead letter (Phase 2) | **P1** |
-| U5 | Main BE design M2M | slides/meetings/startup만 | `app_key=design` by-model fetch | **P0** |
+| # | 영역 | As-Is | To-Be | 우선 | 상태 |
+|---|------|-------|-------|------|------|
+| U1 | usage 이벤트 생산 | BE ✅, 호출 주체 없음 | FE `saveMessage` hook | **P0** | ✅ |
+| U2 | 멱등성 | 중복 INSERT | `(workspace_id, run_id)` unique | **P0** | ✅ |
+| U3 | token attribution | daemon만 | message.events `usage` | **P0** | ✅ |
+| U4 | 에러 가시성 | 항상 204 | 202 + request id (Phase 2) | **P1** | ☐ |
+| U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
 | U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit | **출시 후** |
 | D1 | Drive Publish | design-api 코드 **0건** | `POST /projects/{id}/publish` | **G7** |
 | D2 | design_outputs DDL | 없음 | Phase 3 `design_projects` FK | **G7** |
@@ -44,7 +44,8 @@
 | `GET /api/token-usage/by-model` | `routers/token_usage.py` L17–33 | ✅ M2M |
 | async log | `services/token_usage_log.py` L45–72 | ✅ fire-and-forget |
 | DB | `ai_model_token_usages` | ✅ |
-| FE helper | `apps/web/src/teamver/reportUsage.ts` L13–37 | 🟡 정의만, **호출 0** |
+| FE helper | `maybeReportTeamverUsageAfterSave.ts` + `reportUsage.ts` | ✅ |
+| FE in-memory 멱등 | `reportedRunIds` Set | ✅ |
 | Phase 2 wrapper | `services/teamver_billing.py` L24–49 | 🟡 import 0 |
 
 **UsageEventBody** (`usage_report.py` L36–45):
@@ -517,11 +518,11 @@ Browser
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| U-1 | FE `saveMessage` → `reportTeamverDesignUsage` | `apps/web` | ☐ |
-| U-2 | token attribution helper | `apps/web/src/teamver` | ☐ |
-| U-3 | DB unique `(workspace_id, run_id)` | `deploy/teamver/be` | ☐ |
-| U-4 | `reportUsage.ts` + auth recovery (10 연동) | `apps/web` | ☐ |
-| U-5 | Main BE design M2M by-model | `ns-teamver-be` | ☐ |
+| U-1 | FE `saveMessage` → `reportTeamverDesignUsage` | `apps/web` | ✅ |
+| U-2 | token attribution helper | `apps/web/src/teamver` | ✅ |
+| U-3 | DB unique `(workspace_id, run_id)` | `deploy/teamver/be` | ✅ |
+| U-4 | `reportUsage.ts` + auth recovery (10 연동) | `apps/web` | ✅ |
+| U-5 | Main BE design M2M by-model | `ns-teamver-be` | ✅ |
 | U-6 | Staging E2E — run → usage row | — | ☐ |
 | U-7 | usage/events 테스트 | `deploy/teamver/be/tests` | ☐ |
 

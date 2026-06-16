@@ -1,8 +1,6 @@
 node_modules/
-# Teamver SDK vendor (built artifacts — run scripts/sync-teamver-vendor.sh)
-vendor/teamver/app-sdk.tgz
-vendor/teamver/python/
-vendor/teamver/manifest.json
+# Teamver SDK vendor — git commit 권장 (08). sync: scripts/sync-teamver-vendor.sh
+# vendor/teamver/README.md 는 추적 유지
 dist/
 out/
 .next/

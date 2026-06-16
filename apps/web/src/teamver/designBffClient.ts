@@ -28,10 +28,11 @@ let cachedClient: TeamverClient | null = null;
 export function getDesignBffClient(): TeamverClient | null {
   if (!isTeamverEmbedMode()) return null;
   const base = resolveTeamverDesignApiBase();
-  if (!base) return null;
+  if (base === null) return null;
   if (!cachedClient) {
+    const apiBaseUrl = base === "" ? "/teamver-bff" : `${base}/api/v1`;
     cachedClient = new TeamverClient({
-      apiBaseUrl: `${base}/api/v1`,
+      apiBaseUrl,
       appKey: "design",
       tokenStore: null,
       workspaceStore: createLocalStorageWorkspaceStore({
@@ -54,6 +55,5 @@ export async function fetchDesignAuthSession(): Promise<DesignAuthSession | null
   if (!client) return null;
   return client.http.get<DesignAuthSession>("/auth/session", {
     skipAuthHeader: true,
-    skipAuthRecovery: true,
   });
 }

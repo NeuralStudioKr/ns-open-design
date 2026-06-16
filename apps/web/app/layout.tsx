@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { I18nProvider } from '../src/i18n';
 import { AnalyticsProvider } from '../src/analytics/provider';
+import { TeamverBrandingProvider } from '../src/teamver/branding/TeamverBrandingProvider';
 import '../src/index.css';
 import '../src/styles/home/index.css';
 
@@ -36,9 +37,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body suppressHydrationWarning>
-        <I18nProvider>
-          <AnalyticsProvider>{children}</AnalyticsProvider>
-        </I18nProvider>
+        <TeamverBrandingProvider>
+          <I18nProvider>
+            <AnalyticsProvider>{children}</AnalyticsProvider>
+          </I18nProvider>
+        </TeamverBrandingProvider>
       </body>
     </html>
   );

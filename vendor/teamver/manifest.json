@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-06-15T08:24:15Z",
+  "platformRoot": "/Users/neuralworks/Documents/GitHub/teamver/ns-teamver-platform",
+  "@teamver/app-sdk": {
+    "version": "0.0.1",
+    "file": "app-sdk.tgz"
+  },
+  "teamver-app-sdk": {
+    "version": "0.1.1",
+    "file": "python/teamver-app-sdk.whl"
+  }
+}

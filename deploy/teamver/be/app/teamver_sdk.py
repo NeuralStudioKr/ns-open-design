@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 from teamver_app_sdk import TeamverAppClient
 from teamver_app_sdk.auth import extract_access_token_from_headers
 from teamver_app_sdk.errors import (
@@ -19,7 +19,9 @@ from teamver_app_sdk.integrations.fastapi import (
     create_teamver_context_dependency,
     require_teamver_internal_api_key,
 )
-from teamver_app_sdk.models import AppBootstrap
+from teamver_app_sdk.models import AppBootstrap, WorkspacePermissions
+
+from .errors import ApiError, BadGatewayError, UnauthorizedError
 
 _teamver_client: TeamverAppClient | None = None
 
@@ -81,17 +83,106 @@ async def fetch_bootstrap_optional(access_token: str) -> AppBootstrap | None:
         return None
 
 
-def raise_http_for_teamver_error(exc: TeamverAPIError) -> None:
-    status_code = exc.status_code
+async def fetch_bootstrap(access_token: str) -> AppBootstrap:
+    return await get_teamver_client().auth.get_bootstrap(access_token=access_token)
+
+
+async def fetch_workspace_permissions(
+    access_token: str,
+    workspace_id: str,
+) -> WorkspacePermissions:
+    return await get_teamver_client().workspace.get_permissions(
+        access_token=access_token,
+        workspace_id=workspace_id,
+    )
+
+
+def build_dev_bootstrap_payload(
+    *,
+    user_id: str,
+    email: str,
+    display_name: str,
+    workspace_id: str,
+    app_key: str,
+) -> dict[str, Any]:
+    """``is_dev_fallback`` 경로 — 메인 BE 호출 없이 합성 부트스트랩 (Slide BFF 동형)."""
+    return {
+        "app_key": app_key,
+        "user": {
+            "user_id": user_id,
+            "email": email,
+            "display_name": display_name,
+            "image_url": None,
+        },
+        "default_workspace_id": workspace_id,
+        "workspaces": [
+            {
+                "workspace_id": workspace_id,
+                "name": "Local Dev Workspace",
+                "role": "owner",
+                "membership_status": "active",
+                "is_account_default_workspace": True,
+                "is_workspace_owner": True,
+                "plan_id": None,
+                "plan_name": None,
+                "subscription_status": None,
+                "member_count": 1,
+                "app_enabled": True,
+                "app_disabled_reason": None,
+            }
+        ],
+    }
+
+
+def build_dev_permissions_payload(
+    *,
+    workspace_id: str,
+    app_key: str,
+    user_id: str,
+) -> dict[str, Any]:
+    return {
+        "workspace_id": workspace_id,
+        "app_key": app_key,
+        "user_id": user_id,
+        "is_member": True,
+        "role": "owner",
+        "is_workspace_owner": True,
+        "membership_status": "active",
+        "app_enabled": True,
+        "app_disabled_reason": None,
+        "plan_id": None,
+        "plan_name": None,
+        "subscription_status": None,
+    }
+
+
+def raise_for_teamver_error(exc: TeamverAPIError) -> None:
     if isinstance(exc, AuthenticationError):
-        status_code = 401
-    elif isinstance(exc, (AppDisabledError, PermissionDeniedError)):
+        raise UnauthorizedError("session_expired") from exc
+    if isinstance(exc, MainBEUnavailableError):
+        raise BadGatewayError("teamver_unreachable") from exc
+
+    status_code = exc.status_code
+    if isinstance(exc, (AppDisabledError, PermissionDeniedError)):
         status_code = 403
     elif isinstance(exc, WorkspaceNotFoundError):
         status_code = 404
-    elif isinstance(exc, MainBEUnavailableError):
-        status_code = 502
     elif status_code is None:
         status_code = 502
-    detail: object = exc.response_body if exc.response_body is not None else (exc.code or str(exc))
-    raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    message: str
+    if isinstance(exc.response_body, dict):
+        err = exc.response_body.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            message = str(err["message"])
+        else:
+            message = exc.code or str(exc)
+    else:
+        message = exc.code or str(exc)
+
+    raise ApiError(status_code, message, code=exc.code) from exc
+
+
+def raise_http_for_teamver_error(exc: TeamverAPIError) -> None:
+    """하위 호환 — ``HTTPException`` 대신 ``raise_for_teamver_error`` 권장."""
+    raise_for_teamver_error(exc)

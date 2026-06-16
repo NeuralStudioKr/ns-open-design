@@ -56,6 +56,29 @@ def apply_postgres_schema() -> None:
 
 
 def ensure_postgres_schema() -> None:
+    """API startup: create missing tables only — never DROP."""
     if _table_exists():
+        logger.info("Postgres schema already present")
+        apply_postgres_schema_patches()
         return
+    logger.warning("Postgres schema incomplete — applying create_schema.sql")
     apply_postgres_schema()
+    apply_postgres_schema_patches()
+
+
+def apply_postgres_schema_patches() -> None:
+    """Idempotent ALTER/INDEX for existing deployments."""
+    import psycopg
+
+    patches = [
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS run_id TEXT;",
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_token_usage_workspace_run
+          ON ai_model_token_usages (workspace_id, run_id)
+          WHERE run_id IS NOT NULL AND run_id <> '';
+        """,
+    ]
+    with psycopg.connect(settings.postgres_conninfo) as conn:
+        for stmt in patches:
+            conn.execute(stmt)
+        conn.commit()

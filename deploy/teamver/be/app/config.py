@@ -35,6 +35,16 @@ class Settings(BaseModel):
         default_factory=lambda: _env_bool("TEAMVER_BOOTSTRAP_ENABLED", default=True)
     )
 
+    # 로컬·데모 — Slide BFF ``ALLOW_NO_JWT_LOCAL_MODE`` 동형
+    auth_disabled: bool = Field(default_factory=lambda: _env_bool("AUTH_DISABLED", default=False))
+    allow_no_jwt_local_mode: bool = Field(
+        default_factory=lambda: _env_bool("ALLOW_NO_JWT_LOCAL_MODE", default=True)
+    )
+    dev_user_id: str = os.getenv("DEV_USER_ID", "dev-user")
+    dev_email: str = os.getenv("DEV_EMAIL", "dev@local.teamver")
+    dev_display_name: str = os.getenv("DEV_DISPLAY_NAME", "Dev User")
+    dev_workspace_id: str = os.getenv("DEV_WORKSPACE_ID", "dev-workspace")
+
     # Registry billing (Phase 2) — Admin 발급
     teamver_registry_app_id: str = os.getenv("TEAMVER_REGISTRY_APP_ID", "")
     teamver_registry_key_id: str = os.getenv("TEAMVER_REGISTRY_KEY_ID", "")

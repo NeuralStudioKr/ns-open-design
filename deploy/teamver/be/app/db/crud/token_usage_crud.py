@@ -15,6 +15,20 @@ def _as_utc_aware(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+async def afind_usage_by_run(
+    db: AsyncSession,
+    *,
+    workspace_id: str,
+    run_id: str,
+) -> AiModelTokenUsage | None:
+    stmt = select(AiModelTokenUsage).where(
+        AiModelTokenUsage.workspace_id == workspace_id,
+        AiModelTokenUsage.run_id == run_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def acreate_usage(
     db: AsyncSession,
     *,
@@ -26,7 +40,13 @@ async def acreate_usage(
     used_at: datetime,
     operation: str | None,
     project_id: str | None,
-) -> AiModelTokenUsage:
+    run_id: str | None = None,
+) -> AiModelTokenUsage | None:
+    if workspace_id and run_id:
+        existing = await afind_usage_by_run(db, workspace_id=workspace_id, run_id=run_id)
+        if existing is not None:
+            return existing
+
     row = AiModelTokenUsage(
         id=new_token_usage_id(),
         model_name=model_name,
@@ -37,6 +57,7 @@ async def acreate_usage(
         used_at=used_at,
         operation=operation,
         project_id=project_id,
+        run_id=run_id,
     )
     db.add(row)
     await db.flush()

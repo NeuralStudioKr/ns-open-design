@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 // daemon instance during `next dev`.
 const DAEMON_PORT = Number(process.env.OD_PORT) || 7456;
 const DAEMON_ORIGIN = `http://127.0.0.1:${DAEMON_PORT}`;
+const DESIGN_API_PORT = Number(process.env.BE_PORT) || 16000;
+const DESIGN_API_ORIGIN = `http://127.0.0.1:${DESIGN_API_PORT}`;
 
 // The regular CLI build still ships as a static export so the `od` daemon can
 // serve a single-process production build. Packaged desktop builds opt into a
@@ -197,6 +199,10 @@ const nextConfig: NextConfig = {
             { source: '/api/:path*', destination: `${DAEMON_ORIGIN}/api/:path*` },
             { source: '/artifacts/:path*', destination: `${DAEMON_ORIGIN}/artifacts/:path*` },
             { source: '/frames/:path*', destination: `${DAEMON_ORIGIN}/frames/:path*` },
+            {
+              source: '/teamver-bff/:path*',
+              destination: `${DESIGN_API_ORIGIN}/api/v1/:path*`,
+            },
           ];
         },
         devIndicators: {
