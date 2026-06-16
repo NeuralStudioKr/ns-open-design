@@ -84,13 +84,56 @@ def _dev_auth_context(
     )
 
 
+def _proxy_header_auth_context(
+    *,
+    x_teamver_user_id: Optional[str],
+    x_teamver_workspace_id: Optional[str],
+    x_workspace_id: Optional[str],
+) -> Optional[AuthContext]:
+    if not settings.trust_teamver_proxy_headers:
+        return None
+
+    user_id = (x_teamver_user_id or "").strip()
+    if not user_id:
+        return None
+
+    workspace_id = _resolve_workspace_id(
+        header_value=x_workspace_id,
+        token_org_id=x_teamver_workspace_id,
+        fallback="",
+    )
+    return AuthContext(
+        user_id=user_id,
+        email=None,
+        organization_id_from_token=workspace_id,
+        workspace_id=workspace_id,
+        raw_token=None,
+        auth_source="teamver_proxy_header",
+        is_dev_fallback=False,
+    )
+
+
 def require_auth(
     request: Request,
     authorization: Annotated[Optional[str], Header(alias="Authorization")] = None,
     x_workspace_id: Annotated[
         Optional[str], Header(alias="X-Workspace-Id")
     ] = None,
+    x_teamver_user_id: Annotated[
+        Optional[str], Header(alias="X-Teamver-User-Id")
+    ] = None,
+    x_teamver_workspace_id: Annotated[
+        Optional[str], Header(alias="X-Teamver-Workspace-Id")
+    ] = None,
 ) -> AuthContext:
+    proxy_ctx = _proxy_header_auth_context(
+        x_teamver_user_id=x_teamver_user_id,
+        x_teamver_workspace_id=x_teamver_workspace_id,
+        x_workspace_id=x_workspace_id,
+    )
+    if proxy_ctx is not None:
+        return proxy_ctx
+
     token = extract_request_access_token(request) or _extract_bearer(authorization)
 
     if token is None:
@@ -139,6 +182,7 @@ def ensure_workspace_match(auth: AuthContext, resource_workspace_id: str) -> Non
 __all__ = [
     "AuthContext",
     "ensure_workspace_match",
+    "_proxy_header_auth_context",
     "require_auth",
     "require_workspace_context",
 ]

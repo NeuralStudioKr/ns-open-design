@@ -34,6 +34,9 @@ class Settings(BaseModel):
     teamver_bootstrap_enabled: bool = Field(
         default_factory=lambda: _env_bool("TEAMVER_BOOTSTRAP_ENABLED", default=True)
     )
+    trust_teamver_proxy_headers: bool = Field(
+        default_factory=lambda: _env_bool("TRUST_TEAMVER_PROXY_HEADERS", default=False)
+    )
 
     # 로컬·데모 — Slide BFF ``ALLOW_NO_JWT_LOCAL_MODE`` 동형
     auth_disabled: bool = Field(default_factory=lambda: _env_bool("AUTH_DISABLED", default=False))
