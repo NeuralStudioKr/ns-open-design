@@ -51,6 +51,7 @@ export async function registerTeamverProjectIfNeeded(
       },
     );
   } catch (err) {
+    if (err instanceof NetworkError && err.status === 409) return;
     console.warn("[teamver] project registry sync failed", err);
   }
 }

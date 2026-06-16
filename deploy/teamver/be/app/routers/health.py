@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter
 
 from ..db.schema_bootstrap import _table_exists
+from ..services.health_deps import collect_dependency_status
 
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
@@ -22,3 +23,9 @@ async def healthz() -> dict[str, str]:
         "status": "ok" if db_ok else "degraded",
         "db": "ok" if db_ok else "schema_missing",
     }
+
+
+@router.get("/healthz/deps")
+async def healthz_deps() -> dict[str, object]:
+    """Sidecar dependency probe — Postgres, OD daemon, Main BE reachability."""
+    return await collect_dependency_status()

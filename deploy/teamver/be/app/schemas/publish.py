@@ -18,16 +18,20 @@ class PublishProjectBody(BaseModel):
 
 
 class DesignOutputResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
     id: str | None = None
     kind: str
-    drive_asset_id: str | None = None
+    drive_asset_id: str | None = Field(default=None, serialization_alias="driveAssetId")
     filename: str | None = None
-    size_bytes: int | None = None
-    mime_type: str | None = None
-    publish_status: str
-    error_code: str | None = None
+    size_bytes: int | None = Field(default=None, serialization_alias="sizeBytes")
+    mime_type: str | None = Field(default=None, serialization_alias="mimeType")
+    publish_status: str = Field(serialization_alias="publishStatus")
+    error_code: str | None = Field(default=None, serialization_alias="errorCode")
 
 
 class PublishProjectResponse(BaseModel):
-    project_id: str
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    project_id: str = Field(serialization_alias="projectId")
     outputs: list[DesignOutputResponse]

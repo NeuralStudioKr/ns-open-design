@@ -153,6 +153,7 @@ bash scripts/run_docker.sh --staging --rds
 ## Smoke (배포 후)
 
 ```bash
+bash scripts/check_sidecar_deps.sh --staging   # EC2 loopback: healthz + deps
 bash scripts/smoke_design.sh --staging
 # 선택: TEAMVER_COOKIE='teamver_access_token=…' bash scripts/smoke_design.sh --staging
 ```

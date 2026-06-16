@@ -5,6 +5,7 @@ import {
   buildTeamverProjectRegistryPayload,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
+  registerTeamverProjectIfNeeded,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from '../src/teamver/projectRegistry';
 import * as designApiBase from '../src/teamver/designApiBase';
@@ -93,6 +94,29 @@ describe('Teamver project registry list', () => {
     await expect(
       filterProjectsByTeamverRegistryIfNeeded([{ id: 'p9' }, { id: 'p0' }]),
     ).resolves.toEqual([{ id: 'p9' }]);
+  });
+});
+
+describe('Teamver project registry register', () => {
+  afterEach(() => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+  });
+
+  it('ignores 409 when project is already registered', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        post: vi.fn(async () => {
+          throw new NetworkError({ message: 'conflict', status: 409 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
+    ).resolves.toBeUndefined();
   });
 });
 

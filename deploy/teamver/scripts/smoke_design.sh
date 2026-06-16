@@ -104,6 +104,7 @@ echo
 
 check "OD daemon /api/health" curl_ok "${DESIGN_BASE}/api/health"
 check "design-api /api/healthz" curl_ok "${API_BASE}/api/healthz"
+check "design-api /api/healthz/deps" curl_ok "${API_BASE}/api/healthz/deps"
 
 session_code="$(curl_status "${API_BASE}/api/v1/auth/session")"
 if [[ "$session_code" == "200" ]]; then
@@ -325,6 +326,19 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
     fi
   else
     echo "○ skip FE usage/events smoke (set TEAMVER_WORKSPACE_ID with TEAMVER_COOKIE)"
+  fi
+
+  bootstrap_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    "${API_BASE}/api/v1/bootstrap")"
+  if [[ "$bootstrap_code" == "200" ]]; then
+    echo "✓ design-api /api/v1/bootstrap (cookie) → 200"
+    pass=$((pass + 1))
+  elif [[ "$bootstrap_code" == "401" || "$bootstrap_code" == "403" ]]; then
+    echo "○ design-api /api/v1/bootstrap (cookie) → $bootstrap_code (session expired?)"
+  else
+    echo "✗ design-api /api/v1/bootstrap (cookie) → $bootstrap_code (expected 200)"
+    fail=$((fail + 1))
   fi
 else
   echo "○ skip authenticated runtime-config (set TEAMVER_COOKIE to enable)"

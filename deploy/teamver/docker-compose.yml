@@ -107,6 +107,9 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
       OD_DAEMON_BASE_URL: ${OD_DAEMON_BASE_URL:-http://open-design-daemon:7456}
       OD_API_TOKEN: ${OD_API_TOKEN:-}
+      TRUST_TEAMVER_PROXY_HEADERS: ${TRUST_TEAMVER_PROXY_HEADERS:-false}
+      TEAMVER_INTERNAL_API_KEY: ${TEAMVER_INTERNAL_API_KEY:-}
+      TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
     ports:
       - "127.0.0.1:${BE_PORT:-16000}:8000"
     depends_on:

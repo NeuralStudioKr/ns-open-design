@@ -99,3 +99,9 @@ if [[ -x "$ROOT/scripts/seed_od_runtime_config.sh" ]]; then
     "$([[ "$ENV_FILE" == ".env.staging" ]] && echo --staging || echo --production)" \
     || echo "⚠ seed_od_runtime_config skipped (daemon not ready yet — run manually)"
 fi
+
+if [[ -x "$ROOT/scripts/check_sidecar_deps.sh" ]]; then
+  bash "$ROOT/scripts/check_sidecar_deps.sh" \
+    "$([[ "$ENV_FILE" == ".env.staging" ]] && echo --staging || echo --production)" \
+    || echo "⚠ check_sidecar_deps failed — inspect compose logs"
+fi
