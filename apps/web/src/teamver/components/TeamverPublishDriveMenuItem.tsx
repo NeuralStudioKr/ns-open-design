@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { isTeamverEmbedMode } from "../designApiBase";
 import {
+  pickReadyPublishOutputs,
   publishTeamverDesignToDrive,
   type TeamverPublishDriveOutput,
 } from "../publishToDrive";
@@ -33,8 +34,9 @@ export function TeamverPublishDriveMenuItem({
         artifactFile,
         formats: ["html"],
       });
-      const output = result.outputs[0];
-      if (output) onSuccess?.(output);
+      const output = pickReadyPublishOutputs(result.outputs)[0] ?? result.outputs[0];
+      if (output?.publishStatus === "ready") onSuccess?.(output);
+      else onError?.(new Error(output?.errorCode ?? "publish_failed"));
     } catch (err) {
       onError?.(err);
     } finally {

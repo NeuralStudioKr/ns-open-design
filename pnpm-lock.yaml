@@ -2269,7 +2269,7 @@ packages:
     resolution: {integrity: sha512-Jm05Tjx+9yCLGv5qw1c+84Psds8MnyrEQYCB+FFk2lgGiUjlRqdxke4mVTuYrj2xnVZqKim2Apr5ySuQRYAw/w==}
 
   '@teamver/app-sdk@file:vendor/teamver/app-sdk.tgz':
-    resolution: {integrity: sha512-bACG+Ju0e/U1hrqYYmvE094n5/H2/fR3qGygnKGKvoG/bltGTyLJ34pFsz4byQVqimgXtFmlzgooF6witOEocQ==, tarball: file:vendor/teamver/app-sdk.tgz}
+    resolution: {integrity: sha512-J66Gpv4EiBOMEOwppjlJruh+iwCIWvmYqSlCyZDGTlmcKD2nvhiZSKsW6CjPYR/X2FV00Bof5AfOHJYBkUejCw==, tarball: file:vendor/teamver/app-sdk.tgz}
     version: 0.0.1
 
   '@testing-library/dom@10.4.1':

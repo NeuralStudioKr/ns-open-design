@@ -18,13 +18,14 @@ class PublishProjectBody(BaseModel):
 
 
 class DesignOutputResponse(BaseModel):
-    id: str
+    id: str | None = None
     kind: str
-    drive_asset_id: str
-    filename: str
-    size_bytes: int
-    mime_type: str
-    publish_status: str = "ready"
+    drive_asset_id: str | None = None
+    filename: str | None = None
+    size_bytes: int | None = None
+    mime_type: str | None = None
+    publish_status: str
+    error_code: str | None = None
 
 
 class PublishProjectResponse(BaseModel):

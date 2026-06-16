@@ -23,6 +23,7 @@ export function resolveTeamverLoginUrl(): string {
   return "https://teamver.com/auth/login";
 }
 
+/** Main FE origin — stg.teamver.com / teamver.com */
 export function resolveTeamverMainOrigin(): string {
   if (typeof window === "undefined") return "https://teamver.com";
   const host = window.location.hostname.toLowerCase();
@@ -30,6 +31,29 @@ export function resolveTeamverMainOrigin(): string {
     return "https://stg.teamver.com";
   }
   return "https://teamver.com";
+}
+
+/** Main BE API base — cookie SSO refresh target (10 §3.2). */
+export function resolveTeamverMainApiBaseUrl(): string {
+  const fromEnv = (import.meta.env.VITE_TEAMVER_MAIN_API_URL as string | undefined)?.trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
+
+  if (typeof window === "undefined") return "https://api.teamver.com";
+  const host = window.location.hostname.toLowerCase();
+  if (host.startsWith("stg-") || host === "localhost" || host === "127.0.0.1") {
+    return "https://stg-api.teamver.com";
+  }
+  if (host.endsWith(".teamver.com") || host === "teamver.com") {
+    return "https://api.teamver.com";
+  }
+  return "http://127.0.0.1:8000";
+}
+
+/** Main FE Drive asset deep link — opens detail modal via `?asset=` (D-6). */
+export function resolveTeamverDriveAssetUrl(assetId: string): string {
+  const id = assetId.trim();
+  const origin = resolveTeamverMainOrigin().replace(/\/+$/, "");
+  return `${origin}/drive?asset=${encodeURIComponent(id)}`;
 }
 
 export function resolveTeamverDesignApiBase(): string | null {

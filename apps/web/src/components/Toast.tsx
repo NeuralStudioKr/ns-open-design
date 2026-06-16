@@ -19,6 +19,8 @@ import { toastSlideUp } from '../motion';
 export interface ToastProps {
   message: string;
   details?: string | null;
+  /** When set with `details`, renders the details line as an external link. */
+  detailsHref?: string | null;
   // Optional code/preformatted body. When present the toast pins
   // itself open (no auto-dismiss) so the user has time to manually
   // copy the content. Used for the clipboard-failure recovery path
@@ -53,7 +55,7 @@ const TONE_ICON: Record<NonNullable<ToastProps['tone']>, 'check' | 'close' | 'sp
   loading: 'spinner',
 };
 
-export function Toast({ message, details, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom' }: ToastProps) {
+export function Toast({ message, details, detailsHref, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom' }: ToastProps) {
   // When code is present the toast is a manual-action surface; never
   // auto-dismiss it out from under the user mid-copy.
   const effectiveTtl = code ? 0 : ttlMs;
@@ -96,7 +98,17 @@ export function Toast({ message, details, code, ttlMs = DEFAULT_TTL, onDismiss, 
         ) : null}
         <div className="od-toast-message">{message}</div>
       </div>
-      {details ? <div className="od-toast-details">{details}</div> : null}
+      {details ? (
+        <div className="od-toast-details">
+          {detailsHref ? (
+            <a href={detailsHref} target="_blank" rel="noreferrer noopener">
+              {details}
+            </a>
+          ) : (
+            details
+          )}
+        </div>
+      ) : null}
       {code ? (
         <pre className="od-toast-code">{code}</pre>
       ) : null}

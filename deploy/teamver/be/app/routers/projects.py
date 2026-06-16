@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,14 +126,22 @@ async def delete_project(
     return Response(status_code=204)
 
 
-@router.post("/{project_ref}/publish", response_model=PublishProjectResponse, status_code=201)
+@router.post(
+    "/{project_ref}/publish",
+    response_model=PublishProjectResponse,
+    responses={
+        201: {"description": "All requested outputs published"},
+        207: {"description": "Partial success — see per-output publish_status"},
+        502: {"description": "All outputs failed"},
+    },
+)
 async def publish_project_to_drive(
     project_ref: str,
     body: PublishProjectBody,
     request: Request,
     auth: Annotated[AuthContext, Depends(require_auth)],
     db: AsyncSession = Depends(get_async_session),
-) -> PublishProjectResponse:
+) -> PublishProjectResponse | JSONResponse:
     row = await design_project_crud.aget_project_by_ref(db, project_ref=project_ref)
     if row is None:
         raise NotFoundError("project_not_found")
@@ -149,7 +158,7 @@ async def publish_project_to_drive(
         folder_id=body.folder_id,
     )
     await db.commit()
-    return PublishProjectResponse(
+    payload = PublishProjectResponse(
         project_id=result.project_id,
         outputs=[
             DesignOutputResponse(
@@ -157,10 +166,14 @@ async def publish_project_to_drive(
                 kind=output.kind,
                 drive_asset_id=output.drive_asset_id,
                 filename=output.filename,
-                size_bytes=int(output.size_bytes),
+                size_bytes=output.size_bytes,
                 mime_type=output.mime_type,
                 publish_status=output.publish_status,
+                error_code=output.error_code,
             )
             for output in result.outputs
         ],
     )
+    if result.http_status == 207:
+        return JSONResponse(status_code=207, content=payload.model_dump(mode="json"))
+    return payload

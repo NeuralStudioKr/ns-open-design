@@ -29,7 +29,7 @@ import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/rendere
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useT, useI18n } from '../i18n';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
-import { resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
 import type { Dict, Locale } from '../i18n/types';
 import {
   fetchLiveArtifact,
@@ -4965,7 +4965,11 @@ function HtmlViewer({
   }, [boardImages]);
   const [commentSavedToast, setCommentSavedToast] = useState<string | null>(null);
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
-  const [deploySavedToast, setDeploySavedToast] = useState<{ message: string; details: string } | null>(null);
+  const [deploySavedToast, setDeploySavedToast] = useState<{
+    message: string;
+    details: string;
+    detailsHref?: string | null;
+  } | null>(null);
   const [deployActionToast, setDeployActionToast] = useState<string | null>(null);
   const [imageExportModalOpen, setImageExportModalOpen] = useState(false);
   const [imageExportFormat, setImageExportFormat] = useState<ImageExportFormat>('png');
@@ -8449,10 +8453,18 @@ function HtmlViewer({
                     projectId={projectId}
                     artifactFile={file.name}
                     onCloseMenu={() => setDownloadMenuOpen(false)}
-                    onSuccess={(output) => setDeploySavedToast({
-                      message: 'Published to Teamver Drive',
-                      details: `${output.filename} — ${resolveTeamverMainOrigin()}/drive`,
-                    })}
+                    onSuccess={(output) => {
+                      const driveUrl = output.driveAssetId
+                        ? resolveTeamverDriveAssetUrl(output.driveAssetId)
+                        : `${resolveTeamverMainOrigin()}/drive`;
+                      setDeploySavedToast({
+                        message: 'Published to Teamver Drive',
+                        details: output.driveAssetId
+                          ? 'View in Teamver Drive'
+                          : `${output.filename} — open Drive`,
+                        detailsHref: driveUrl,
+                      });
+                    }}
                     onError={() => setDeploySavedToast({
                       message: 'Teamver Drive publish failed',
                       details: 'Check your session and try again.',
@@ -9346,6 +9358,7 @@ function HtmlViewer({
         <Toast
           message={deploySavedToast.message}
           details={deploySavedToast.details}
+          detailsHref={deploySavedToast.detailsHref}
           tone="success"
           placement="top"
           ttlMs={3600}

@@ -55,5 +55,38 @@ describe("publishTeamverDesignToDrive", () => {
       expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
     );
     expect(result.outputs[0]?.driveAssetId).toBe("AST-1");
+    expect(result.partial).toBe(false);
+  });
+
+  it("returns ready outputs only on 207 partial", async () => {
+    postMock.mockResolvedValue({
+      project_id: "DPRJ-1",
+      outputs: [
+        {
+          kind: "html",
+          publish_status: "failed",
+          error_code: "od_daemon_export_failed",
+        },
+        {
+          id: "DOUT-2",
+          kind: "zip",
+          drive_asset_id: "AST-2",
+          filename: "Landing.zip",
+          publish_status: "ready",
+          size_bytes: 200,
+          mime_type: "application/zip",
+        },
+      ],
+    });
+
+    const result = await publishTeamverDesignToDrive({
+      projectId: "od-1",
+      artifactFile: "deck/index.html",
+      formats: ["html", "zip"],
+    });
+
+    expect(result.partial).toBe(true);
+    expect(result.outputs).toHaveLength(1);
+    expect(result.outputs[0]?.driveAssetId).toBe("AST-2");
   });
 });

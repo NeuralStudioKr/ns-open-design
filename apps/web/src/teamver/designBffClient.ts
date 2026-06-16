@@ -7,6 +7,7 @@ import {
   isTeamverEmbedMode,
   resolveTeamverDesignApiBase,
   resolveTeamverLoginUrl,
+  resolveTeamverMainApiBaseUrl,
 } from "./designApiBase";
 
 export type DesignAuthSession = {
@@ -31,8 +32,10 @@ export function getDesignBffClient(): TeamverClient | null {
   if (base === null) return null;
   if (!cachedClient) {
     const apiBaseUrl = base === "" ? "/teamver-bff" : `${base}/api/v1`;
+    const mainApiBase = resolveTeamverMainApiBaseUrl();
     cachedClient = new TeamverClient({
       apiBaseUrl,
+      refreshUrl: `${mainApiBase}/api/auth/refresh`,
       appKey: "design",
       tokenStore: null,
       workspaceStore: createLocalStorageWorkspaceStore({
