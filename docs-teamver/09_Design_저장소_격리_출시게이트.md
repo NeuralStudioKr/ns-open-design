@@ -168,7 +168,8 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - `deploy/teamver/be/app/routers/projects.py` — create/list/access API.
 - `design_projects.s3_prefix`는 `{workspace_id}/{owner_user_id}/{od_project_id}/`.
 - 접근 검증은 v1에서 workspace + owner user + active status 기준.
-- 남음: nginx `/api/v1/projects` 보호 라우트, OD web list/create 경유, daemon middleware access 검증.
+- nginx `/api/v1/projects` 보호 라우트는 staging/prod design-api에 반영.
+- 남음: OD web list/create 경유, daemon middleware access 검증.
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
 
