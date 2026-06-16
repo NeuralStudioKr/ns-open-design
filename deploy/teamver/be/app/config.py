@@ -53,6 +53,15 @@ class Settings(BaseModel):
     teamver_registry_key_id: str = os.getenv("TEAMVER_REGISTRY_KEY_ID", "")
     teamver_registry_access_key: str = os.getenv("TEAMVER_REGISTRY_ACCESS_KEY", "")
 
+    # Embed managed API mode — server env only (never VITE_* / git)
+    teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "anthropic")
+    teamver_od_api_base_url: str = os.getenv(
+        "TEAMVER_OD_API_BASE_URL", "https://api.anthropic.com"
+    )
+    teamver_od_api_model: str = os.getenv("TEAMVER_OD_API_MODEL", "claude-sonnet-4-5")
+    teamver_od_api_key: str = os.getenv("TEAMVER_OD_API_KEY", "")
+    teamver_od_anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+
     cors_origins: str = os.getenv("CORS_ORIGINS", "")
     cors_teamver_subdomain_regex: bool = Field(
         default_factory=lambda: _env_bool("CORS_TEAMVER_SUBDOMAIN_REGEX", default=True)

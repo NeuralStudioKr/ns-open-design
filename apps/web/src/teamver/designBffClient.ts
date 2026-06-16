@@ -57,3 +57,23 @@ export async function fetchDesignAuthSession(): Promise<DesignAuthSession | null
     skipAuthHeader: true,
   });
 }
+
+export async function fetchTeamverRuntimeConfig(): Promise<TeamverRuntimeConfigResponse | null> {
+  const client = getDesignBffClient();
+  if (!client) return null;
+  try {
+    return await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
+      skipAuthHeader: true,
+    });
+  } catch {
+    return null;
+  }
+}
+
+export type TeamverRuntimeConfigResponse = {
+  configured: boolean;
+  apiProtocol?: string;
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+};

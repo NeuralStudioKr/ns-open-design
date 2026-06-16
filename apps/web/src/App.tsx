@@ -47,6 +47,8 @@ import {
   resolveTeamverBranding,
 } from './teamver/branding/config';
 import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
+import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
+import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
@@ -874,10 +876,12 @@ function AppInner() {
         fetchDaemonConfig(),
         fetchComposioConfigFromDaemon(),
         fetchMediaProvidersFromDaemon(),
+        isTeamverEmbedMode() ? fetchTeamverRuntimeConfig() : Promise.resolve(null),
       ]).then(([
         daemonConfig,
         daemonComposioConfig,
         daemonMediaProvidersResult,
+        teamverRuntimeConfig,
       ]) => {
         if (cancelled) return;
         const daemonMediaProvidersLoaded =
@@ -913,6 +917,9 @@ function AppInner() {
         const hasLocalComposioKey = Boolean(next.composio?.apiKey?.trim());
         if (!hasLocalComposioKey && daemonComposioConfig) {
           next.composio = daemonComposioConfig;
+        }
+        if (teamverRuntimeConfig?.configured) {
+          next = mergeTeamverRuntimeConfigIntoAppConfig(next, teamverRuntimeConfig);
         }
         const lockedNext = applyTeamverEmbedConfigLockIfNeeded(next);
         saveConfig(lockedNext);
