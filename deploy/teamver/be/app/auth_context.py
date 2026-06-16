@@ -126,15 +126,22 @@ def require_auth(
         Optional[str], Header(alias="X-Teamver-Workspace-Id")
     ] = None,
 ) -> AuthContext:
+    token = extract_request_access_token(request) or _extract_bearer(authorization)
+
     proxy_ctx = _proxy_header_auth_context(
         x_teamver_user_id=x_teamver_user_id,
         x_teamver_workspace_id=x_teamver_workspace_id,
         x_workspace_id=x_workspace_id,
     )
     if proxy_ctx is not None:
+        if token:
+            return proxy_ctx.model_copy(
+                update={
+                    "raw_token": token,
+                    "auth_source": auth_source_for_request(request) or proxy_ctx.auth_source,
+                }
+            )
         return proxy_ctx
-
-    token = extract_request_access_token(request) or _extract_bearer(authorization)
 
     if token is None:
         if settings.auth_disabled or settings.allow_no_jwt_local_mode:

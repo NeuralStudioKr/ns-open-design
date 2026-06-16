@@ -8,6 +8,7 @@ from teamver_app_sdk.errors import TeamverAPIError
 
 from ..auth_context import AuthContext, require_auth
 from ..config import settings
+from ..errors import UnauthorizedError
 from ..teamver_sdk import (
     build_dev_bootstrap_payload,
     build_dev_permissions_payload,
@@ -19,6 +20,13 @@ from ..teamver_sdk import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["bootstrap"])
+
+
+def _require_access_token(auth: AuthContext) -> str:
+    token = (auth.raw_token or "").strip()
+    if not token:
+        raise UnauthorizedError("missing_access_token")
+    return token
 
 
 @router.get("/bootstrap", response_model=None)
@@ -43,9 +51,9 @@ async def get_bootstrap(
             "workspaces": [],
         }
 
-    assert auth.raw_token
+    token = _require_access_token(auth)
     try:
-        bootstrap = await fetch_bootstrap(auth.raw_token)
+        bootstrap = await fetch_bootstrap(token)
     except TeamverAPIError as exc:
         logger.warning("[bootstrap] main BE rejected code=%s", exc.code)
         raise_for_teamver_error(exc)
@@ -73,9 +81,9 @@ async def get_permissions(
             user_id=auth.user_id,
         )
 
-    assert auth.raw_token
+    token = _require_access_token(auth)
     try:
-        permissions = await fetch_workspace_permissions(auth.raw_token, workspace_id)
+        permissions = await fetch_workspace_permissions(token, workspace_id)
     except TeamverAPIError as exc:
         logger.warning("[permissions] main BE rejected code=%s", exc.code)
         raise_for_teamver_error(exc)

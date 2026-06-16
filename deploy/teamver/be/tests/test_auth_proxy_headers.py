@@ -45,3 +45,31 @@ def test_proxy_header_auth_context_prefers_explicit_workspace_header(monkeypatch
 
     assert ctx is not None
     assert ctx.workspace_id == "ws-explicit"
+
+
+def test_require_auth_merges_cookie_token_into_proxy_context(monkeypatch):
+    monkeypatch.setattr(auth_context.settings, "trust_teamver_proxy_headers", True)
+    monkeypatch.setattr(
+        auth_context,
+        "extract_request_access_token",
+        lambda _request: "session-jwt",
+    )
+    monkeypatch.setattr(
+        auth_context,
+        "auth_source_for_request",
+        lambda _request: "cookie",
+    )
+
+    request = object()
+    ctx = auth_context.require_auth(
+        request=request,
+        authorization=None,
+        x_workspace_id=None,
+        x_teamver_user_id="u1",
+        x_teamver_workspace_id="ws1",
+    )
+
+    assert ctx.user_id == "u1"
+    assert ctx.workspace_id == "ws1"
+    assert ctx.raw_token == "session-jwt"
+    assert ctx.auth_source == "cookie"
