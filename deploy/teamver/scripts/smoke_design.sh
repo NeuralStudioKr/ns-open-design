@@ -304,6 +304,28 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
     echo "✗ design-api /api/v1/projects (cookie) → $projects_list (expected 200)"
     fail=$((fail + 1))
   fi
+
+  if [[ -n "${TEAMVER_WORKSPACE_ID:-}" ]]; then
+    usage_run_id="smoke-fe-$(date +%s)"
+    usage_fe_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+      -X POST \
+      -H "Cookie: ${TEAMVER_COOKIE}" \
+      -H "Content-Type: application/json" \
+      -H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}" \
+      -d "{\"workspaceId\":\"${TEAMVER_WORKSPACE_ID}\",\"modelName\":\"smoke-model\",\"inputTokens\":1,\"outputTokens\":2,\"runId\":\"${usage_run_id}\"}" \
+      "${API_BASE}/api/v1/usage/events")"
+    if [[ "$usage_fe_code" == "204" ]]; then
+      echo "✓ design-api POST /api/v1/usage/events (cookie+camelCase) → 204"
+      pass=$((pass + 1))
+    elif [[ "$usage_fe_code" == "403" ]]; then
+      echo "○ design-api POST /api/v1/usage/events (cookie) → 403 (design app disabled for workspace?)"
+    else
+      echo "✗ design-api POST /api/v1/usage/events (cookie+camelCase) → $usage_fe_code (expected 204)"
+      fail=$((fail + 1))
+    fi
+  else
+    echo "○ skip FE usage/events smoke (set TEAMVER_WORKSPACE_ID with TEAMVER_COOKIE)"
+  fi
 else
   echo "○ skip authenticated runtime-config (set TEAMVER_COOKIE to enable)"
 fi

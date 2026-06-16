@@ -18,6 +18,7 @@ run_docker.sh — Teamver Design (OD + design-api)
   bash scripts/run_docker.sh --production
   bash scripts/run_docker.sh --staging --rds       # EC2 + AWS RDS
   bash scripts/run_docker.sh --staging --local-db  # compose Postgres (dev)
+  bash scripts/run_docker.sh --staging --skip-validate  # skip env preflight
 
 선행: cp .env.staging.example .env.staging  (또는 .env.production.example)
 EOF
@@ -26,6 +27,7 @@ EOF
 ENV_FILE=""
 USE_RDS=false
 USE_LOCAL_DB=false
+SKIP_VALIDATE=false
 
 while (( $# )); do
   case "$1" in
@@ -33,6 +35,7 @@ while (( $# )); do
     --production) ENV_FILE=".env.production" ;;
     --rds) USE_RDS=true ;;
     --local-db) USE_LOCAL_DB=true ;;
+    --skip-validate) SKIP_VALIDATE=true ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -56,6 +59,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 ln -sf "$ENV_FILE" .env
+
+VALIDATE_ARGS=(--"$([[ "$ENV_FILE" == ".env.staging" ]] && echo staging || echo production)")
+if [[ "$USE_RDS" == true ]]; then
+  VALIDATE_ARGS+=(--rds)
+fi
+if [[ "$SKIP_VALIDATE" != true ]]; then
+  bash "$ROOT/scripts/validate_deploy_env.sh" "${VALIDATE_ARGS[@]}"
+fi
 
 if [[ "$USE_RDS" == true ]]; then
   if ! grep -q '^POSTGRES_HOST=' "$ENV_FILE" || grep -q '^POSTGRES_HOST=design-db' "$ENV_FILE"; then

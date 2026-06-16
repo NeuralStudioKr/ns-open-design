@@ -32,9 +32,14 @@ import {
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import { createTeamverProjectAccessMiddleware } from './teamver-project-access.js';
-import { createProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
+import {
+  scheduleProjectStoragePersistAfterResponse,
+  type ProjectStorageAccessHooks,
+} from './storage/lazy-project-materialization.js';
 
-export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {}
+export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 function projectDetailResolvedDir(
   projectsRoot: string,
@@ -1308,6 +1313,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
           ? { appliedPluginSnapshotId: resolvedSnapshot.snapshotId }
           : {}),
       };
+      if (!externalProjectDir && ctx.projectStorageHooks) {
+        scheduleProjectStoragePersistAfterResponse(ctx.projectStorageHooks, req, res, id);
+      }
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
@@ -1436,8 +1444,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   app.delete('/api/projects/:id', async (req, res) => {
     try {
-      dbDeleteProject(db, req.params.id);
-      await removeProjectDir(PROJECTS_DIR, req.params.id).catch(() => {});
+      const projectId = req.params.id;
+      dbDeleteProject(db, projectId);
+      await removeProjectDir(PROJECTS_DIR, projectId).catch(() => {});
+      if (ctx.projectStorageHooks) {
+        void ctx.projectStorageHooks.onProjectRemoved(projectId);
+      }
       /** @type {import('@open-design/contracts').OkResponse} */
       const body = { ok: true };
       res.json(body);

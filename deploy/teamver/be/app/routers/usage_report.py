@@ -4,28 +4,16 @@ import logging
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Header, Response
-from pydantic import BaseModel, Field
 from teamver_app_sdk.models import AppContext
 
 from ..deps import require_teamver_context
 from ..errors import BadRequestError
+from ..schemas.usage_event import UsageEventBody
 from ..services.token_usage_log import UsageScope, schedule_token_usage_log
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["usage"])
-
-
-class UsageEventBody(BaseModel):
-    model_config = {"protected_namespaces": ()}
-
-    workspace_id: str = Field(min_length=1)
-    model_name: str = Field(min_length=1)
-    input_tokens: int = Field(ge=0, default=0)
-    output_tokens: int = Field(ge=0, default=0)
-    operation: str = "design_run"
-    project_id: Optional[str] = None
-    run_id: Optional[str] = None
 
 
 @router.post("/usage/events", status_code=204, response_class=Response)

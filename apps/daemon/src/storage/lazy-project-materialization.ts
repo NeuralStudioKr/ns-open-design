@@ -1,4 +1,4 @@
-import type { Request, RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 
 import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest } from '../teamver-project-access.js';
 import type { ProjectMaterializationRuntime } from './project-materialization-runtime.js';
@@ -8,6 +8,7 @@ import { isS3ProjectStorageLayout } from './project-storage-layout.js';
 export type ProjectStorageAccessHooks = {
   ensureMaterialized: (req: Request, projectId: string) => Promise<void>;
   persistAfterMutation: (req: Request, projectId: string) => Promise<void>;
+  onProjectRemoved: (projectId: string) => Promise<void>;
 };
 
 function lazySyncTtlMs(): number {
@@ -115,7 +116,38 @@ export function createProjectStorageAccessHooks(
     }
   }
 
-  return { ensureMaterialized, persistAfterMutation };
+  async function onProjectRemoved(projectId: string): Promise<void> {
+    const trimmedId = projectId.trim();
+    if (!trimmedId) return;
+    lastSyncAt.delete(trimmedId);
+    inflight.delete(trimmedId);
+    try {
+      await storage.evictScratchProject(trimmedId);
+    } catch (err) {
+      console.warn(
+        `[project-materialization] scratch evict failed for ${trimmedId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return { ensureMaterialized, persistAfterMutation, onProjectRemoved };
+}
+
+/** Scratch project mutations outside file-route middleware (e.g. POST /api/projects). */
+export function scheduleProjectStoragePersistAfterResponse(
+  hooks: ProjectStorageAccessHooks | null | undefined,
+  req: Request,
+  res: Response,
+  projectId: string,
+): void {
+  if (!hooks) return;
+  const trimmedId = projectId.trim();
+  if (!trimmedId) return;
+  res.on('finish', () => {
+    if (res.statusCode < 200 || res.statusCode >= 300) return;
+    void hooks.persistAfterMutation(req, trimmedId);
+  });
 }
 
 export function createLazyProjectMaterializationMiddleware(

@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator
 
 from fastapi import Request
 from teamver_app_sdk import TeamverAppClient
+from teamver_app_sdk.enums import AppKey
 from teamver_app_sdk.auth import extract_access_token_from_headers
 from teamver_app_sdk.errors import (
     AppDisabledError,
@@ -35,7 +36,7 @@ def get_teamver_client() -> TeamverAppClient:
 @asynccontextmanager
 async def teamver_client_lifespan() -> AsyncIterator[TeamverAppClient]:
     global _teamver_client
-    client = TeamverAppClient.from_env(app_key="design")
+    client = TeamverAppClient.from_env(app_key=AppKey.DESIGN)
     _teamver_client = client
     try:
         yield client

@@ -83,6 +83,13 @@ def _ensure_teamver_sdk_stub() -> None:
     models.AppBootstrap = object
     models.WorkspacePermissions = object
 
+    enums = types.ModuleType("teamver_app_sdk.enums")
+
+    class AppKey:
+        DESIGN = "design"
+
+    enums.AppKey = AppKey
+
     fastapi_mod = types.ModuleType("teamver_app_sdk.integrations.fastapi")
 
     def create_teamver_context_dependency(*_: Any, **__: Any):
@@ -116,6 +123,7 @@ def _ensure_teamver_sdk_stub() -> None:
     sys.modules["teamver_app_sdk.errors"] = errors
     sys.modules["teamver_app_sdk.auth"] = auth
     sys.modules["teamver_app_sdk.models"] = models
+    sys.modules["teamver_app_sdk.enums"] = enums
     sys.modules["teamver_app_sdk.integrations"] = types.ModuleType("teamver_app_sdk.integrations")
     sys.modules["teamver_app_sdk.integrations.fastapi"] = fastapi_mod
 

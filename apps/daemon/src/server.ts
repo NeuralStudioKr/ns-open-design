@@ -6337,6 +6337,7 @@ export async function startServer({
     telemetry: { reportFinalizedMessage },
     appConfig: appConfigDeps,
     validation: validationDeps,
+    projectStorageHooks,
   });
   registerTerminalRoutes(app, {
     db,

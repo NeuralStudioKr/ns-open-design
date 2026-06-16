@@ -14,11 +14,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class OdDaemonIdentity:
-    """Teamver identity for daemon access gate + tenant S3 materialization."""
+    """Teamver identity for daemon access gate + tenant S3 materialization.
+
+    Daemon bearer auth uses ``OD_API_TOKEN`` only. User/workspace identity is
+    carried via ``X-Teamver-*`` headers (design-api ``/access`` gate).
+    """
 
     user_id: str
     workspace_id: str
-    access_token: str | None = None
     s3_prefix: str | None = None
 
 
@@ -45,14 +48,11 @@ class OdDaemonClient:
             "x-od-client": "teamver-design-api",
         }
         if self.api_token:
-            headers["authorization"] = f"Bearer {self.api_token}"
+            headers["Authorization"] = f"Bearer {self.api_token}"
         if identity is not None:
             headers["X-Teamver-User-Id"] = identity.user_id.strip()
             headers["X-Teamver-Workspace-Id"] = identity.workspace_id.strip()
             headers["X-Workspace-Id"] = identity.workspace_id.strip()
-            token = (identity.access_token or "").strip()
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
             prefix = (identity.s3_prefix or "").strip()
             if prefix:
                 headers["X-Teamver-S3-Prefix"] = prefix

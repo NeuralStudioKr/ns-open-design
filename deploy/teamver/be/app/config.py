@@ -72,6 +72,8 @@ class Settings(BaseModel):
     od_daemon_base_url: str = os.getenv("OD_DAEMON_BASE_URL", "http://127.0.0.1:7456")
     od_api_token: str = os.getenv("OD_API_TOKEN", "")
     od_daemon_timeout_seconds: float = float(os.getenv("OD_DAEMON_TIMEOUT_SECONDS", "120"))
+    # Optional default Drive folder for publish (workspace folder id).
+    teamver_drive_publish_folder_id: str = os.getenv("TEAMVER_DRIVE_PUBLISH_FOLDER_ID", "")
 
     postgres_host: str = os.getenv("POSTGRES_HOST", "design-db")
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))

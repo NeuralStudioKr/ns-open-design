@@ -10,6 +10,7 @@ from teamver_app_sdk.errors import TeamverAPIError
 
 from ..db.crud import design_output_crud
 from ..db.models import DesignOutput, DesignProject
+from ..config import settings
 from ..errors import BadGatewayError, BadRequestError, UnauthorizedError
 from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 
@@ -136,11 +137,14 @@ async def publish_project(
             f"unsupported_formats:{','.join(unsupported)}",
         )
 
+    resolved_folder_id = (folder_id or "").strip() or (
+        settings.teamver_drive_publish_folder_id or ""
+    ).strip() or None
+
     daemon = od_daemon or OdDaemonClient()
     daemon_identity = OdDaemonIdentity(
         user_id=project.owner_user_id,
         workspace_id=project.workspace_id,
-        access_token=access_token,
         s3_prefix=project.s3_prefix,
     )
     manifest = await daemon.get_export_manifest(
@@ -185,7 +189,7 @@ async def publish_project(
                     filename=filename,
                     content=content,
                     content_type=mime_type,
-                    folder_id=folder_id,
+                    folder_id=resolved_folder_id,
                 )
             except TeamverAPIError as exc:
                 outputs.append(_failed_output(fmt, error_code=_teamver_upload_error_code(exc)))
@@ -198,7 +202,7 @@ async def publish_project(
                 owner_user_id=project.owner_user_id,
                 od_project_id=project.od_project_id,
                 drive_asset_id=asset.asset_id,
-                drive_folder_id=folder_id,
+                drive_folder_id=resolved_folder_id,
                 kind=fmt,
                 mime_type=mime_type,
                 filename=filename,

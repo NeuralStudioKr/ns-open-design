@@ -138,6 +138,18 @@ EC2 IAM instance profile 사용 시 `OD_S3_ACCESS_KEY_ID` 불필요. Litestream:
 
 ---
 
+## Deploy preflight (EC2)
+
+```bash
+cp .env.staging.example .env.staging   # 값 채움 (S3: print_staging_s3_env.sh)
+bash scripts/validate_deploy_env.sh --staging --rds
+bash scripts/run_docker.sh --staging --rds
+```
+
+`validate_deploy_env.sh`는 `OD_API_TOKEN`, `TEAMVER_JWT_SECRET`, `TEAMVER_INTERNAL_API_KEY`, RDS, S3 bucket 등 필수 키를 검사한다. `run_docker.sh`가 기본으로 호출한다 (`--skip-validate`로 생략 가능).
+
+---
+
 ## Smoke (배포 후)
 
 ```bash

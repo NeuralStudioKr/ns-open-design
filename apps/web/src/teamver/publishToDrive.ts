@@ -1,5 +1,6 @@
 import { NetworkError } from "@teamver/app-sdk";
 import { getDesignBffClient } from "./designBffClient";
+import { readTeamverViteEnv } from "./teamverViteEnv";
 
 export type TeamverPublishDriveParams = {
   projectId: string;
@@ -64,6 +65,11 @@ export function pickReadyPublishOutputs(outputs: TeamverPublishDriveOutput[]): T
   return outputs.filter((output) => output.publishStatus === "ready" && output.driveAssetId.trim() !== "");
 }
 
+function resolveDefaultPublishFolderId(): string | null {
+  const fromEnv = readTeamverViteEnv("VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID");
+  return fromEnv?.trim() || null;
+}
+
 export async function publishTeamverDesignToDrive(
   params: TeamverPublishDriveParams,
 ): Promise<TeamverPublishDriveResult> {
@@ -81,7 +87,7 @@ export async function publishTeamverDesignToDrive(
   const body = {
     formats,
     artifactFile: params.artifactFile,
-    folderId: params.folderId ?? null,
+    folderId: params.folderId ?? resolveDefaultPublishFolderId(),
   };
 
   const response = await client.http.post<PublishResponse>(
