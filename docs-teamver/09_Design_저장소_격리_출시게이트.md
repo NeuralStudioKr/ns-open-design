@@ -140,7 +140,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P3-2 | `POST /api/v1/projects` — registry 생성 | `deploy/teamver/be` | ✅ |
 | P3-3 | `GET /api/v1/projects` — workspace 필터 목록 | `deploy/teamver/be` | ✅ |
 | P3-4 | `GET /api/v1/projects/{id}/access` — 204/403 | `deploy/teamver/be` | ✅ v1(owner) |
-| P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create sync ✅ · list ☐ |
+| P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create/import sync ✅ · list filter ✅ · E2E ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` 또는 nginx | ☐ |
 | P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ☐ |
 | P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + S3 lifecycle | `deploy/teamver/be` | ☐ |
@@ -170,7 +170,8 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - 접근 검증은 v1에서 workspace + owner user + active status 기준.
 - nginx `/api/v1/projects` 보호 라우트는 staging/prod design-api에 반영.
 - OD web daemon project create, folder/ZIP import, plugin-share project 성공 후 design-api registry best-effort 등록 반영.
-- 남음: OD web list 필터/병합, host import response 경로 registry 등록, daemon middleware access 검증.
+- Teamver embed list는 registry 조회 성공 시 `odProjectId` 기준으로 daemon list를 필터하고, 조회 실패 시 전환기 fallback으로 daemon list를 유지.
+- 남음: host import response 경로 registry 등록, daemon middleware access 검증, staging E2E.
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
 

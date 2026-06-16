@@ -1,8 +1,27 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildTeamverProjectRegistryPayload } from '../src/teamver/projectRegistry';
+import {
+  buildTeamverProjectRegistryPayload,
+  filterProjectsByTeamverRegistryIfNeeded,
+  listTeamverRegisteredProjectIds,
+} from '../src/teamver/projectRegistry';
+import * as designApiBase from '../src/teamver/designApiBase';
+import * as designBffClient from '../src/teamver/designBffClient';
+
+vi.mock('../src/teamver/designApiBase', () => ({
+  isTeamverEmbedMode: vi.fn(() => false),
+}));
+
+vi.mock('../src/teamver/designBffClient', () => ({
+  getDesignBffClient: vi.fn(() => null),
+}));
 
 describe('Teamver project registry payload', () => {
+  afterEach(() => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+  });
+
   it('maps OD project id and title to SDK camelCase payload', () => {
     expect(
       buildTeamverProjectRegistryPayload({
@@ -24,5 +43,36 @@ describe('Teamver project registry payload', () => {
     ).toEqual({
       odProjectId: 'od-2',
     });
+  });
+});
+
+describe('Teamver project registry list', () => {
+  afterEach(() => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+  });
+
+  it('returns null outside Teamver embed mode', async () => {
+    await expect(listTeamverRegisteredProjectIds()).resolves.toBeNull();
+  });
+
+  it('filters projects when registry ids are available', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => ({
+          projects: [{ odProjectId: 'p1' }, { odProjectId: 'p3' }],
+        })),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      filterProjectsByTeamverRegistryIfNeeded([
+        { id: 'p1' },
+        { id: 'p2' },
+        { id: 'p3' },
+      ]),
+    ).resolves.toEqual([{ id: 'p1' }, { id: 'p3' }]);
   });
 });

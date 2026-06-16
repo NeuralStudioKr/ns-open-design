@@ -30,7 +30,10 @@ import type {
   ProjectTemplate,
 } from '../types';
 import { maybeReportTeamverUsageAfterSave } from '../teamver/maybeReportTeamverUsageAfterSave';
-import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
+import {
+  filterProjectsByTeamverRegistryIfNeeded,
+  registerTeamverProjectIfNeeded,
+} from '../teamver/projectRegistry';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
@@ -40,7 +43,7 @@ export async function listProjects(): Promise<Project[]> {
     const resp = await fetch('/api/projects');
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects: Project[] };
-    return json.projects ?? [];
+    return await filterProjectsByTeamverRegistryIfNeeded(json.projects ?? []);
   } catch {
     return [];
   }
