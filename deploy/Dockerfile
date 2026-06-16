@@ -28,6 +28,8 @@ COPY tools ./tools
 COPY apps/daemon/package.json ./apps/daemon/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY e2e/package.json ./e2e/package.json
+# @teamver/app-sdk — file:../../vendor/teamver/app-sdk.tgz (apps/web)
+COPY vendor/teamver ./vendor/teamver
 RUN corepack enable && \
     corepack prepare pnpm@10.33.2 --activate && \
     pnpm install --frozen-lockfile
