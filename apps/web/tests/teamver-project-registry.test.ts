@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  assertTeamverProjectAccessIfNeeded,
   buildTeamverProjectRegistryPayload,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
 } from '../src/teamver/projectRegistry';
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
+import { NetworkError } from '@teamver/app-sdk';
 
 vi.mock('../src/teamver/designApiBase', () => ({
   isTeamverEmbedMode: vi.fn(() => false),
@@ -90,5 +92,44 @@ describe('Teamver project registry list', () => {
     await expect(
       filterProjectsByTeamverRegistryIfNeeded([{ id: 'p9' }, { id: 'p0' }]),
     ).resolves.toEqual([{ id: 'p9' }]);
+  });
+});
+
+describe('Teamver project registry access', () => {
+  afterEach(() => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+  });
+
+  it('allows access outside embed mode', async () => {
+    await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(true);
+  });
+
+  it('returns false on 403 from design-api', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => {
+          throw new NetworkError({ message: 'forbidden', status: 403 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(false);
+  });
+
+  it('returns true on transient errors (fail-open)', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => {
+          throw new NetworkError({ message: 'upstream', status: 502 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(true);
   });
 });

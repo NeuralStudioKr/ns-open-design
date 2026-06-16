@@ -50,7 +50,10 @@ import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmb
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
-import { registerTeamverProjectIfNeeded } from './teamver/projectRegistry';
+import {
+  assertTeamverProjectAccessIfNeeded,
+  registerTeamverProjectIfNeeded,
+} from './teamver/projectRegistry';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -1636,9 +1639,44 @@ function AppInner() {
     });
   }, [beginProjectListRequest, rememberLocalProject, reconcileFetchedProjects]);
 
-  const handleOpenProject = useCallback((id: string) => {
-    navigate({ kind: 'project', projectId: id, fileName: null });
-  }, []);
+  const navigateToProject = useCallback(
+    async (
+      projectId: string,
+      extras: { fileName?: string | null; conversationId?: string | null } = {},
+    ) => {
+      const allowed = await assertTeamverProjectAccessIfNeeded(projectId);
+      if (!allowed) return;
+      navigate({
+        kind: 'project',
+        projectId,
+        fileName: extras.fileName ?? null,
+        ...(extras.conversationId !== undefined
+          ? { conversationId: extras.conversationId }
+          : {}),
+      });
+    },
+    [],
+  );
+
+  const activeProjectRouteId = route.kind === 'project' ? route.projectId : null;
+  useEffect(() => {
+    if (!activeProjectRouteId) return;
+    let cancelled = false;
+    void assertTeamverProjectAccessIfNeeded(activeProjectRouteId).then((allowed) => {
+      if (cancelled || allowed) return;
+      navigate({ kind: 'home', view: 'home' }, { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectRouteId]);
+
+  const handleOpenProject = useCallback(
+    (id: string) => {
+      void navigateToProject(id);
+    },
+    [navigateToProject],
+  );
 
   useEffect(() => {
     if (!config.pet?.enabled || !daemonLive) {
@@ -1667,8 +1705,8 @@ function AppInner() {
   }, [config.pet?.enabled, daemonLive, projects]);
 
   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
-    navigate({ kind: 'project', projectId, fileName: liveArtifactTabId(artifactId) });
-  }, []);
+    void navigateToProject(projectId, { fileName: liveArtifactTabId(artifactId) });
+  }, [navigateToProject]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     const ok = await deleteProjectApi(id);
@@ -2074,7 +2112,9 @@ function AppInner() {
         config={config}
         agents={agents}
         onBack={() => navigate({ kind: 'home', view: 'design-systems' })}
-        onOpenProject={(projectId) => navigate({ kind: 'project', projectId, conversationId: null, fileName: null })}
+        onOpenProject={(projectId) => {
+          void navigateToProject(projectId, { conversationId: null, fileName: null });
+        }}
         onSetDefault={handleChangeDefaultDesignSystem}
         onSystemsRefresh={refreshDesignSystems}
         onProjectsRefresh={refreshProjects}

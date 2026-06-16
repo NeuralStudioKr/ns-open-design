@@ -31,6 +31,7 @@ import {
   writeProjectManifest,
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
+import { createTeamverProjectAccessMiddleware } from './teamver-project-access.js';
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {}
 
@@ -1311,6 +1312,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
     }
   });
+
+  app.use('/api/projects/:id', createTeamverProjectAccessMiddleware(sendApiError));
 
   app.get('/api/projects/:id', async (req, res) => {
     const project = getProject(db, req.params.id);

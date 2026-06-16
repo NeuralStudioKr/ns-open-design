@@ -94,3 +94,25 @@ async def check_project_access(
         raise NotFoundError("project_not_found")
     _ensure_project_access(row, auth)
     return Response(status_code=204)
+
+
+@router.delete("/{od_project_id}", status_code=204, response_class=Response)
+async def delete_project(
+    od_project_id: str,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> Response:
+    row = await design_project_crud.aget_project_by_od_id(
+        db,
+        od_project_id=od_project_id,
+    )
+    if row is None:
+        raise NotFoundError("project_not_found")
+    _ensure_project_access(row, auth)
+    if row.status == "active":
+        await design_project_crud.asoft_delete_by_od_id(
+            db,
+            od_project_id=od_project_id,
+        )
+        await db.commit()
+    return Response(status_code=204)

@@ -73,3 +73,17 @@ async def aget_project_by_od_id(
     stmt = select(DesignProject).where(DesignProject.od_project_id == od_project_id)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def asoft_delete_by_od_id(
+    db: AsyncSession,
+    *,
+    od_project_id: str,
+) -> DesignProject | None:
+    row = await aget_project_by_od_id(db, od_project_id=od_project_id)
+    if row is None:
+        return None
+    row.status = "deleted"
+    await db.flush()
+    await db.refresh(row)
+    return row

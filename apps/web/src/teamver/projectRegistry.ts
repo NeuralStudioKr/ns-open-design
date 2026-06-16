@@ -1,3 +1,4 @@
+import { NetworkError } from "@teamver/app-sdk";
 import type { Project } from "../types";
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
@@ -88,4 +89,40 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
   const registeredIds = await listTeamverRegisteredProjectIds();
   if (registeredIds === null) return projects;
   return projects.filter((project) => registeredIds.has(project.id));
+}
+
+/** Embed: design-api registry access gate (204 ok · 403/404 deny). */
+export async function assertTeamverProjectAccessIfNeeded(
+  projectId: string,
+): Promise<boolean> {
+  if (!isTeamverEmbedMode()) return true;
+
+  const trimmedId = projectId.trim();
+  if (!trimmedId) return false;
+
+  const client = getDesignBffClient();
+  if (!client) return true;
+
+  try {
+    const workspaceId = await client.workspaceStore?.get();
+    if (!workspaceId?.trim()) return true;
+
+    await client.http.get<void>(
+      `/projects/${encodeURIComponent(trimmedId)}/access`,
+      {
+        workspaceId: workspaceId.trim(),
+        skipAuthHeader: true,
+      },
+    );
+    return true;
+  } catch (err) {
+    if (
+      err instanceof NetworkError
+      && (err.status === 403 || err.status === 404)
+    ) {
+      return false;
+    }
+    console.warn("[teamver] project access check failed", err);
+    return true;
+  }
 }

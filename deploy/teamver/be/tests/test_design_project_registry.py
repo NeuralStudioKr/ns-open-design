@@ -11,7 +11,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 from app.auth_context import AuthContext
 from app.db.crud import design_project_crud
 from app.routers.projects import _ensure_project_access
-from app.errors import ForbiddenError
+from app.errors import ForbiddenError, NotFoundError
 
 
 def _project(**overrides):
@@ -76,3 +76,8 @@ def test_ensure_project_access_rejects_other_workspace():
 def test_ensure_project_access_rejects_other_owner():
     with pytest.raises(ForbiddenError):
         _ensure_project_access(_project(owner_user_id="u2"), _auth())
+
+
+def test_ensure_project_access_rejects_deleted_project():
+    with pytest.raises(NotFoundError):
+        _ensure_project_access(_project(status="deleted"), _auth())

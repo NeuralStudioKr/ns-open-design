@@ -20,6 +20,8 @@ services:
       OD_API_TOKEN: ${OD_API_TOKEN:?Set OD_API_TOKEN in .env (openssl rand -hex 32)}
       OD_DATA_DIR: /app/.od
       OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
+      TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
+      TEAMVER_PROJECT_ACCESS_TIMEOUT_MS: ${TEAMVER_PROJECT_ACCESS_TIMEOUT_MS:-2500}
       # LLM provider keys (optional — daemon env, never commit). API-mode chat
       # still reads browser BYOK; these power memory/media fallbacks.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

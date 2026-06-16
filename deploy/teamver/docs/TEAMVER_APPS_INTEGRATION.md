@@ -39,6 +39,7 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | GET | `/api/v1/bootstrap` | Main BE bootstrap relay |
 | GET | `/api/v1/runtime-config` | Embed managed API mode (server env → authenticated FE) |
 | GET/POST | `/api/v1/projects` | Project registry (list owner-scoped · create) |
+| DELETE | `/api/v1/projects/{od_project_id}` | Registry soft-delete (status=`deleted`) |
 | POST | `/api/v1/usage/events` | OD run usage — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/v1/projects/{id}/publish` | Drive Publish (Phase 4, TODO) — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | GET | `/api/token-usage/by-model` | M2M 집계 |
