@@ -19,7 +19,7 @@ TLS는 **AWS ALB (ACM)**, EC2는 **HTTP :80** 백엔드만 (Page/Mail 패턴).
                                         ↓
                               api.teamver.com (Main BE, 별도 호스트)
                                         ↓
-                              AWS RDS — database teamver_design
+                              AWS RDS — database teamver_design_production
 ```
 
 | 호스트 | 역할 |
@@ -39,11 +39,7 @@ terraform init -backend-config=backend-prod.hcl -reconfigure
 terraform apply -var-file=prod.terraform.tfvars
 ```
 
-RDS (1회):
-
-```sql
-CREATE DATABASE teamver_design OWNER teamver_admin;
-```
+RDS: Terraform apply로 **전용 인스턴스** + `teamver_design_production` 생성. `CREATE DATABASE` 수동 불필요.
 
 `terraform output post_deploy_checklist` 참고.
 
@@ -106,7 +102,7 @@ ALB **idle timeout 3600s** — Terraform `alb_idle_timeout` 기본값.
 ## 4. 스키마
 
 design-api 최초 기동 시 `be/scripts/create_schema.sql` 또는 앱 bootstrap.  
-RDS에 `teamver_design` database 가 있어야 합니다.
+RDS에 `teamver_design_production` database 가 있어야 합니다.
 
 ---
 
