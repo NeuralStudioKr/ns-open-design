@@ -133,13 +133,19 @@ beforeEach(() => {
   vi.mocked(fetchDaemonConfig).mockResolvedValue({});
   vi.mocked(fetchComposioConfigFromDaemon).mockResolvedValue(null);
   vi.mocked(mergeDaemonConfig).mockImplementation((local) => local);
-  vi.mocked(saveConfig).mockImplementation(() => {});
+  vi.mocked(saveConfig).mockImplementation((config) => config);
   vi.mocked(syncConfigToDaemon).mockResolvedValue(undefined);
   vi.mocked(syncComposioConfigToDaemon).mockResolvedValue(true);
   vi.mocked(loadConfig).mockReturnValue({ ...baseConfig });
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }),
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: vi.fn(() => 'application/json') },
+      json: async () => ({}),
+      text: async () => '{}',
+    }),
   );
 });
 

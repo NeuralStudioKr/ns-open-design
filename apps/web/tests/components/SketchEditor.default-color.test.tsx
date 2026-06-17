@@ -26,7 +26,7 @@ function renderEditor() {
 describe('SketchEditor default color', () => {
   beforeEach(() => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    const context = {
       setTransform: vi.fn(),
       clearRect: vi.fn(),
       save: vi.fn(),
@@ -38,7 +38,11 @@ describe('SketchEditor default color', () => {
       stroke: vi.fn(),
       strokeRect: vi.fn(),
       fillText: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
+    } as unknown as CanvasRenderingContext2D;
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    getContext.mockReturnValue(context);
   });
 
   afterEach(() => {
