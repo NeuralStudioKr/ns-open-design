@@ -51,6 +51,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
     npm test -- tests/teamver-publish-drive.test.ts \
       tests/teamver-list-project-outputs.test.ts \
       tests/teamver-open-drive-publish-menu-item.test.tsx \
+      tests/teamver-branding-head.test.tsx \
       tests/teamver-project-registry.test.ts \
       tests/teamver-workspace-utils.test.ts \
       tests/teamver-workspace-switcher.test.tsx
