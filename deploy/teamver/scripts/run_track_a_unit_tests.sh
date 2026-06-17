@@ -44,8 +44,24 @@ echo "==> design-api pytest"
 echo "==> validate_deploy_env fixture"
 bash "$ROOT/scripts/test_validate_deploy_env.sh"
 bash "$ROOT/scripts/test_seed_main_be_design_app.sh"
+bash "$ROOT/scripts/test_run_post_deploy_track_a.sh"
+bash "$ROOT/scripts/test_print_cloudwatch_alarm_commands.sh"
+bash "$ROOT/scripts/test_apply_staging_s3_env.sh"
+bash "$ROOT/scripts/test_run_s3_integration_test.sh"
+bash "$ROOT/scripts/test_restore_app_sqlite_from_s3.sh"
+bash "$ROOT/scripts/test_s3_lifecycle_policy.sh"
 
 if [[ "$SKIP_WEB" -eq 0 ]]; then
+  echo "==> daemon teamver vitest"
+  (
+    cd "$OD_ROOT/apps/daemon"
+    npm test -- --run \
+      tests/teamver-billing-bridge.test.ts \
+      tests/teamver-usage-bridge.test.ts \
+      tests/teamver-project-access.test.ts \
+      tests/teamver-linked-dirs-gate.test.ts
+  )
+
   echo "==> web teamver vitest"
   (
     cd "$OD_ROOT/apps/web"

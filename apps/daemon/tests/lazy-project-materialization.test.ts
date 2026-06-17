@@ -143,4 +143,60 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
     expect(next).toHaveBeenCalled();
   });
+
+  it('materializes media/finalize/deploy/design-system file-touching routes', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    for (const path of [
+      '/api/projects/p1/media/tasks',
+      '/api/projects/p1/design-system-package-audit',
+      '/api/projects/p1/finalize/anthropic',
+      '/api/projects/p1/deploy/preflight',
+    ]) {
+      ensure.mockClear();
+      const next = vi.fn();
+      await middleware(mockReq('GET', path), mockRes(), next);
+      expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
+      expect(next).toHaveBeenCalled();
+    }
+  });
+
+  it('schedules persistAfterMutation for plugin install/publish and finalize/deploy POSTs', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    for (const path of [
+      '/api/projects/p1/plugins/install-folder',
+      '/api/projects/p1/plugins/publish-github',
+      '/api/projects/p1/plugins/share-tasks',
+      '/api/projects/p1/finalize/anthropic',
+      '/api/projects/p1/deploy',
+    ]) {
+      persist.mockClear();
+      const res = mockRes();
+      const next = vi.fn();
+      await middleware(mockReq('POST', path), res, next);
+      expect(next).toHaveBeenCalled();
+      res.emit('finish');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(persist).toHaveBeenCalled();
+    }
+  });
 });

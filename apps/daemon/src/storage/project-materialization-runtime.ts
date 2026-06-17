@@ -8,6 +8,11 @@ import {
   resolveTeamverTenantRemoteStorage,
   type TeamverRequestIdentity,
 } from './teamver-project-storage-meta.js';
+import {
+  buildScratchDiskUsageMarker,
+  measureScratchDiskUsage,
+  scratchDiskMetricsEnabled,
+} from './scratch-disk-usage.js';
 
 type RunLike = {
   id?: string;
@@ -109,14 +114,42 @@ export function createProjectMaterializationRuntime(
           console.info(
             `[project-materialization] sync-up ${projectId}: uploaded=${result.uploaded} skipped=${result.skipped} failed=${result.failed}`,
           );
+          if (result.failed > 0) {
+            // Structured marker for CloudWatch log metric filter (09 P1-10).
+            console.info(
+              JSON.stringify({
+                metric: 'od_s3_sync_up_failed',
+                stage: 'run_end',
+                projectId,
+                runId: typeof run.id === 'string' ? run.id : undefined,
+                failed: result.failed,
+                uploaded: result.uploaded,
+                skipped: result.skipped,
+              }),
+            );
+          }
           if (process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1') {
             await storage.evictScratchProject(projectId);
           }
+          await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end');
         } catch (err) {
+          // sync-up threw outright (e.g. remote unreachable, signing failure).
+          // Surface the same CW marker as per-file failures so the alarm
+          // catches catastrophic uploads, not just partial.
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_sync_up_failed',
+              stage: 'run_end_exception',
+              projectId,
+              runId: typeof run.id === 'string' ? run.id : undefined,
+              reason: err instanceof Error ? err.message : String(err),
+            }),
+          );
           console.warn(
             `[project-materialization] sync-up failed for ${projectId}:`,
             err instanceof Error ? err.message : err,
           );
+          await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end_exception');
         }
       });
       return;
@@ -131,6 +164,33 @@ export function createProjectMaterializationRuntime(
       void afterChatRun(run);
       return result;
     }) as T;
+  }
+
+  async function emitScratchDiskUsageMarker(
+    layoutArg: ProjectStorageLayout,
+    run: RunLike,
+    projectId: string,
+    stage: string,
+  ): Promise<void> {
+    if (!scratchDiskMetricsEnabled()) return;
+    if (!isS3ProjectStorageLayout(layoutArg)) return;
+    try {
+      const sample = await measureScratchDiskUsage(layoutArg.scratchDir);
+      const runId = typeof run.id === 'string' && run.id ? run.id : undefined;
+      const args: Parameters<typeof buildScratchDiskUsageMarker>[0] = {
+        sample,
+        stage,
+        projectId,
+      };
+      if (runId !== undefined) args.runId = runId;
+      const marker = buildScratchDiskUsageMarker(args);
+      console.info(JSON.stringify(marker));
+    } catch (err) {
+      console.warn(
+        '[project-materialization] scratch disk-usage probe failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   return {

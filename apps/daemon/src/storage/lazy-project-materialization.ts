@@ -17,7 +17,10 @@ function lazySyncTtlMs(): number {
 }
 
 function isProjectMaterializationPath(pathname: string): boolean {
-  if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload)(\/|$)/.test(pathname)) {
+  if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit)(\/|$)/.test(pathname)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(pathname)) {
     return true;
   }
   // Publish (design-api OdDaemonClient) reads manifest + inline artifacts from S3-backed projects.

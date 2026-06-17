@@ -185,4 +185,92 @@ describe('createProjectMaterializationRuntime', () => {
       await rm(remoteRoot, { recursive: true, force: true });
     }
   });
+
+  it('emits od_s3_sync_up_failed marker when run-end sync-up throws', async () => {
+    const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-throw-'));
+    try {
+      const fakeRemote = {
+        listFiles: async () => [],
+        readFile: async () => Buffer.alloc(0),
+        writeFile: async () => ({ path: '', size: 0, mtimeMs: 0 }),
+        deleteFile: async () => {},
+        statFile: async () => null,
+      };
+      const storage = new MaterializingProjectStorage(
+        new LocalProjectStorage(scratchRoot),
+        fakeRemote as any,
+      );
+      const boom = new Error('s3 unreachable');
+      vi.spyOn(storage, 'syncUp').mockRejectedValue(boom);
+      const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+      const runtime = createProjectMaterializationRuntime(layout, storage);
+      const infos: string[] = [];
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation((m: unknown) => {
+        if (typeof m === 'string') infos.push(m);
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const run = { id: 'r-1', projectId: 'p-fail', projectMaterializationStartedAt: Date.now() };
+        await runtime.beforeChatRun(run);
+        const finish = vi.fn();
+        runtime.wrapFinish(finish)(run, 'failed', 0, null);
+        await new Promise((r) => setTimeout(r, 20));
+
+        const marker = infos.find((line) => line.includes('"metric":"od_s3_sync_up_failed"'));
+        expect(marker, infos.join('\n')).toBeTruthy();
+        expect(marker).toContain('"stage":"run_end_exception"');
+        expect(marker).toContain('"projectId":"p-fail"');
+      } finally {
+        infoSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    } finally {
+      await rm(scratchRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('emits od_s3_sync_up_failed marker when some files fail on sync-up', async () => {
+    const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-fail-'));
+    try {
+      const fakeRemote = {
+        listFiles: async () => [],
+        readFile: async () => Buffer.alloc(0),
+        writeFile: async () => ({ path: '', size: 0, mtimeMs: 0 }),
+        deleteFile: async () => {},
+        statFile: async () => null,
+      };
+      const storage = new MaterializingProjectStorage(
+        new LocalProjectStorage(scratchRoot),
+        fakeRemote as any,
+      );
+      vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 2, skipped: 1, failed: 1 });
+      const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+      const runtime = createProjectMaterializationRuntime(layout, storage);
+      const infos: string[] = [];
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation((m: unknown) => {
+        if (typeof m === 'string') infos.push(m);
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const run = { id: 'r-2', projectId: 'p-partial', projectMaterializationStartedAt: Date.now() };
+        await runtime.beforeChatRun(run);
+        const finish = vi.fn();
+        runtime.wrapFinish(finish)(run, 'succeeded', 0, null);
+        await new Promise((r) => setTimeout(r, 20));
+
+        const marker = infos.find((line) => line.includes('"metric":"od_s3_sync_up_failed"'));
+        expect(marker, infos.join('\n')).toBeTruthy();
+        expect(marker).toContain('"stage":"run_end"');
+        expect(marker).toContain('"failed":1');
+        expect(marker).toContain('"uploaded":2');
+      } finally {
+        infoSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    } finally {
+      await rm(scratchRoot, { recursive: true, force: true });
+    }
+  });
 });

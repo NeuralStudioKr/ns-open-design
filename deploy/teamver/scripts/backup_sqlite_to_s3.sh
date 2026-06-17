@@ -66,13 +66,17 @@ if [[ "$STOP_DAEMON" != true && "$ALLOW_LIVE_COPY" != true ]]; then
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo "❌ docker CLI 필요"
-  exit 1
+  if [[ "$DRY_RUN" != true ]]; then
+    echo "❌ docker CLI 필요"
+    exit 1
+  fi
 fi
 
 if ! command -v aws >/dev/null 2>&1; then
-  echo "❌ aws CLI 필요"
-  exit 1
+  if [[ "$DRY_RUN" != true ]]; then
+    echo "❌ aws CLI 필요 (또는 --dry-run으로 명령만 출력)"
+    exit 1
+  fi
 fi
 
 # shellcheck disable=SC1090
@@ -101,19 +105,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
+dest="s3://${BUCKET}/${BACKUP_PREFIX}/${ENV_NAME}/${ts}/"
+latest="s3://${BUCKET}/${BACKUP_PREFIX}/${ENV_NAME}/LATEST.json"
+
+echo "==> mode=fallback env=$ENV_NAME bucket=$BUCKET region=$REGION dest=$dest"
+
 if [[ "$STOP_DAEMON" == true ]]; then
   echo "==> stopping open-design-daemon for offline sqlite copy"
-  docker compose --env-file "$ENV_FILE" stop open-design-daemon >/dev/null
-  restore_needed=true
+  if [[ "$DRY_RUN" != true ]]; then
+    docker compose --env-file "$ENV_FILE" stop open-design-daemon >/dev/null
+    restore_needed=true
+  else
+    echo "DRYRUN: docker compose --env-file $ENV_FILE stop open-design-daemon"
+  fi
 fi
 
 echo "==> copying app.sqlite bundle from open-design-daemon"
-docker compose --env-file "$ENV_FILE" cp \
-  open-design-daemon:/app/.od/app.sqlite "$tmp_dir/app.sqlite" >/dev/null
-docker compose --env-file "$ENV_FILE" cp \
-  open-design-daemon:/app/.od/app.sqlite-wal "$tmp_dir/app.sqlite-wal" >/dev/null 2>&1 || true
-docker compose --env-file "$ENV_FILE" cp \
-  open-design-daemon:/app/.od/app.sqlite-shm "$tmp_dir/app.sqlite-shm" >/dev/null 2>&1 || true
+if [[ "$DRY_RUN" == true ]]; then
+  echo "DRYRUN: docker compose --env-file $ENV_FILE cp open-design-daemon:/app/.od/app.sqlite{,-wal,-shm} $tmp_dir/"
+else
+  docker compose --env-file "$ENV_FILE" cp \
+    open-design-daemon:/app/.od/app.sqlite "$tmp_dir/app.sqlite" >/dev/null
+  docker compose --env-file "$ENV_FILE" cp \
+    open-design-daemon:/app/.od/app.sqlite-wal "$tmp_dir/app.sqlite-wal" >/dev/null 2>&1 || true
+  docker compose --env-file "$ENV_FILE" cp \
+    open-design-daemon:/app/.od/app.sqlite-shm "$tmp_dir/app.sqlite-shm" >/dev/null 2>&1 || true
+fi
 
 cat > "$tmp_dir/manifest.json" <<EOF
 {
@@ -126,13 +143,10 @@ cat > "$tmp_dir/manifest.json" <<EOF
 }
 EOF
 
-dest="s3://${BUCKET}/${BACKUP_PREFIX}/${ENV_NAME}/${ts}/"
-latest="s3://${BUCKET}/${BACKUP_PREFIX}/${ENV_NAME}/LATEST.json"
-
 echo "==> uploading to $dest"
 if [[ "$DRY_RUN" == true ]]; then
-  aws s3 cp "$tmp_dir/" "$dest" --recursive --region "$REGION" --dryrun
-  aws s3 cp "$tmp_dir/manifest.json" "$latest" --region "$REGION" --dryrun
+  echo "DRYRUN: aws s3 cp $tmp_dir/ $dest --recursive --region $REGION"
+  echo "DRYRUN: aws s3 cp $tmp_dir/manifest.json $latest --region $REGION"
 else
   aws s3 cp "$tmp_dir/" "$dest" --recursive --region "$REGION"
   aws s3 cp "$tmp_dir/manifest.json" "$latest" --region "$REGION"
