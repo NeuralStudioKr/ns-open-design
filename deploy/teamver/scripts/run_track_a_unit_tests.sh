@@ -30,6 +30,9 @@ echo "==> design-api pytest"
   python -m pytest -q
 )
 
+echo "==> validate_deploy_env fixture"
+bash "$ROOT/scripts/test_validate_deploy_env.sh"
+
 if [[ "$SKIP_WEB" -eq 0 ]]; then
   echo "==> web teamver vitest"
   (

@@ -71,10 +71,11 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | `smoke_design.sh` | staging/prod curl smoke |
 | `run_track_a_unit_tests.sh` | design-api pytest + embed vitest (로컬 CI) |
 | `run_staging_track_a_e2e.sh` | smoke + manual E2E checklist |
+| `run_post_deploy_track_a.sh` | EC2: validate → compose → deps → optional smoke |
 | `print_staging_s3_env.sh` | terraform → S3 env snippet |
 | `apply_staging_s3_env.sh` | `.env.staging`에 S3 키 병합 (P1-8) |
 | `run_minio_s3_dev.sh` | local MinIO + optional integration test |
-| `seed_main_be_design_app.sql` | Main BE `ai_app` design (A8) |
+| `seed_main_be_design_app.sql` | Main BE `ai_app` ai-design (bootstrap app_key=design) |
 | `seed_main_be_design_app.sh` | 위 SQL `psql` 적용 wrapper |
 | `seed_od_runtime_config.sh` | OD onboarding seed |
 
@@ -204,9 +205,11 @@ bash scripts/run_docker.sh --staging --rds
 ## Deploy preflight (EC2)
 
 ```bash
-cp .env.staging.example .env.staging   # 값 채움 (S3: print_staging_s3_env.sh)
+cp .env.staging.example .env.staging   # 값 채움 (S3: apply_staging_s3_env.sh)
 bash scripts/validate_deploy_env.sh --staging --rds
 bash scripts/run_docker.sh --staging --rds
+# 또는 일괄:
+bash scripts/run_post_deploy_track_a.sh --staging --rds --status-probe
 ```
 
 `validate_deploy_env.sh`는 `OD_API_TOKEN`, `TEAMVER_JWT_SECRET`, `TEAMVER_INTERNAL_API_KEY`, RDS, S3 bucket 등 필수 키를 검사한다. `run_docker.sh`가 기본으로 호출한다 (`--skip-validate`로 생략 가능).
@@ -240,7 +243,7 @@ bash scripts/smoke_design.sh --staging
 | Staging/Prod 실배포 검증 | ☐ ops |
 | **저장소·격리 (09 Phase 0~3)** | 🟡 materialize·registry·scratch sync/evict ✅ · staging S3 활성화 ☐ |
 | **Drive Publish (11 §6 / G7)** | ✅ HTML+ZIP v1 · outputs list · Open in Drive · staging E2E ☐ |
-| Admin registry `design` | 🟡 `scripts/seed_main_be_design_app.sql` (전역 비활성화 시에만 필요) |
+| Admin registry `ai-design` | 🟡 `scripts/seed_main_be_design_app.sh` (전역 비활성화·FE 카드 메타 시) |
 | Registry billing Phase 2 | ☐ |
 
 ---

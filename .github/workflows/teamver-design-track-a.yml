@@ -1,0 +1,76 @@
+name: teamver-design-track-a
+
+# Teamver Design Track A — design-api pytest (+ embed vitest when vendor present).
+# Fork/staging branch CI; does not replace upstream OD main CI.
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - 'deploy/teamver/**'
+      - 'apps/web/src/teamver/**'
+      - 'apps/web/tests/teamver-*'
+      - 'apps/daemon/src/teamver-*'
+      - 'apps/daemon/src/project-routes.ts'
+      - '.github/workflows/teamver-design-track-a.yml'
+  pull_request:
+    paths:
+      - 'deploy/teamver/**'
+      - 'apps/web/src/teamver/**'
+      - 'apps/web/tests/teamver-*'
+      - 'apps/daemon/src/teamver-*'
+      - 'apps/daemon/src/project-routes.ts'
+      - '.github/workflows/teamver-design-track-a.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: teamver-design-track-a-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Track A unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: deploy/teamver/be/requirements.txt
+
+      - name: Install design-api test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r deploy/teamver/be/requirements.txt
+
+      - name: design-api pytest
+        working-directory: deploy/teamver/be
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWD: test
+        run: python -m pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: embed teamver vitest (when vendor present)
+        run: |
+          if [[ ! -f vendor/teamver/app-sdk.tgz ]]; then
+            echo "○ skip web vitest — vendor/teamver/app-sdk.tgz missing (run sync-teamver-vendor.sh locally)"
+            exit 0
+          fi
+          cd apps/web
+          npm test -- tests/teamver-publish-drive.test.ts \
+            tests/teamver-list-project-outputs.test.ts \
+            tests/teamver-open-drive-publish-menu-item.test.tsx \
+            tests/teamver-project-registry.test.ts

@@ -113,6 +113,21 @@ fi
 
 check "OD daemon /api/health" curl -sf --max-time 5 "http://127.0.0.1:${OD_PORT}/api/health" >/dev/null
 
+scratch_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+  -X POST \
+  "http://127.0.0.1:${OD_PORT}/api/projects/_sidecar_probe_/scratch/sync-up" 2>/dev/null || echo "000")"
+if [[ "$scratch_code" == "401" ]]; then
+  echo "✓ OD daemon scratch/sync-up → 401 (teamver access gate)"
+  pass=$((pass + 1))
+elif [[ "$scratch_code" == "204" ]]; then
+  echo "○ OD daemon scratch/sync-up → 204 (TEAMVER_DESIGN_API_URL unset — local mode)"
+elif [[ "$scratch_code" == "404" ]]; then
+  echo "✗ OD daemon scratch/sync-up → 404 (route missing — redeploy daemon)"
+  fail=$((fail + 1))
+else
+  echo "○ OD daemon scratch/sync-up → $scratch_code"
+fi
+
 echo
 echo "==> $pass passed, $fail failed"
 if (( fail > 0 )); then

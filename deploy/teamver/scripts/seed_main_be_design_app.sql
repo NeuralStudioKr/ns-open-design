@@ -1,10 +1,14 @@
--- Idempotent Main BE ai_app row for Teamver Design (AppKey.DESIGN / bootstrap app_key=design).
+-- Idempotent Main BE ai_app row for Teamver Design.
+-- Registry app_id: ai-design (Admin UI) · internal bootstrap app_key: design
 --
 -- Usage (Main BE Postgres, staging example):
 --   psql "$MAIN_BE_DATABASE_URL" -f deploy/teamver/scripts/seed_main_be_design_app.sql
 --
 -- Ops: only required when globally disabling design via ai_app.is_active=false.
 -- Without a row, bootstrap treats design as enabled (see app_bootstrap_service.py).
+--
+-- psql variables (set by seed_main_be_design_app.sh):
+--   frontend_url, backend_url
 
 INSERT INTO public.ai_app (
   id,
@@ -20,7 +24,7 @@ INSERT INTO public.ai_app (
   sort_order,
   is_featured
 ) VALUES (
-  'design',
+  'ai-design',
   'design',
   'Teamver AI Design — Open Design embed (design.teamver.com)',
   'AI Design',
@@ -28,8 +32,8 @@ INSERT INTO public.ai_app (
   'productivity',
   TRUE,
   'live',
-  'https://stg-design.teamver.com',
-  'https://stg-design-api.teamver.com',
+  :'frontend_url',
+  :'backend_url',
   520,
   FALSE
 )
@@ -44,7 +48,3 @@ ON CONFLICT (id) DO UPDATE SET
   backend_url = EXCLUDED.backend_url,
   sort_order = EXCLUDED.sort_order,
   updated_at = NOW();
-
--- Production URLs (run manually or duplicate with prod hosts):
--- frontend_url = 'https://design.teamver.com'
--- backend_url  = 'https://design-api.teamver.com'
