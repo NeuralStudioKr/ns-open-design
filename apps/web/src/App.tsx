@@ -51,6 +51,7 @@ import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRu
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
+import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
 import {
   assertTeamverProjectAccessIfNeeded,
   registerTeamverProjectIfNeeded,
@@ -1070,6 +1071,13 @@ function AppInner() {
     const list = await listProjects();
     reconcileFetchedProjects(list, request);
   }, [beginProjectListRequest, reconcileFetchedProjects]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverWorkspaceChanged(() => {
+      void refreshProjects();
+    });
+  }, [refreshProjects]);
 
   const refreshDesignSystems = useCallback(async () => {
     const list = await fetchDesignSystems();

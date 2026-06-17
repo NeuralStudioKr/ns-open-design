@@ -1,0 +1,105 @@
+import type { WorkspaceListItem } from "@teamver/app-sdk";
+
+type WorkspaceLike = {
+  id?: string | null;
+  workspaceId?: string | null;
+  workspace_id?: string | null;
+  name?: string | null;
+  displayName?: string | null;
+  display_name?: string | null;
+  code?: string | null;
+  role?: WorkspaceListItem["role"] | null;
+  workspaceKind?: string | null;
+  workspace_kind?: string | null;
+  isAccountDefaultWorkspace?: boolean | null;
+  is_account_default_workspace?: boolean | null;
+  appEnabled?: boolean | null;
+  app_enabled?: boolean | null;
+};
+
+export function readWorkspaceId(workspace: WorkspaceLike | null | undefined): string | null {
+  const id =
+    workspace?.id?.trim() ||
+    workspace?.workspaceId?.trim() ||
+    workspace?.workspace_id?.trim() ||
+    null;
+  return id || null;
+}
+
+export function readWorkspaceLabel(workspace: WorkspaceLike | null | undefined): string {
+  const name =
+    workspace?.name?.trim() ||
+    workspace?.displayName?.trim() ||
+    workspace?.display_name?.trim() ||
+    workspace?.code?.trim() ||
+    readWorkspaceId(workspace) ||
+    "Workspace";
+  return name;
+}
+
+export function workspaceInitial(workspace: WorkspaceLike | null | undefined): string {
+  const label = readWorkspaceLabel(workspace);
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
+  }
+  return (label.slice(0, 2) || "WS").toUpperCase();
+}
+
+export function isAccountDefaultWorkspace(workspace: WorkspaceLike): boolean {
+  return Boolean(workspace.isAccountDefaultWorkspace ?? workspace.is_account_default_workspace);
+}
+
+export function isWorkspaceAppEnabled(workspace: WorkspaceLike): boolean {
+  const flag = workspace.appEnabled ?? workspace.app_enabled;
+  return flag !== false;
+}
+
+export function normalizeWorkspaceList(
+  workspaces: WorkspaceLike[] | undefined | null,
+): WorkspaceListItem[] {
+  const seen = new Set<string>();
+  const normalized: WorkspaceListItem[] = [];
+  for (const workspace of workspaces ?? []) {
+    const id = readWorkspaceId(workspace);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    normalized.push({
+      ...workspace,
+      id,
+      name: readWorkspaceLabel(workspace),
+      role: workspace.role ?? "member",
+      workspaceKind: workspace.workspaceKind ?? workspace.workspace_kind ?? undefined,
+      isAccountDefaultWorkspace: isAccountDefaultWorkspace(workspace),
+    });
+  }
+  return normalized;
+}
+
+export function pickDefaultWorkspaceId(
+  workspaces: WorkspaceListItem[],
+  options?: {
+    preferredId?: string | null;
+    defaultWorkspaceId?: string | null;
+  },
+): string | null {
+  const enabled = workspaces.filter(isWorkspaceAppEnabled);
+  const pool = enabled.length > 0 ? enabled : workspaces;
+  if (pool.length === 0) return null;
+
+  const preferred = options?.preferredId?.trim();
+  if (preferred && pool.some((workspace) => readWorkspaceId(workspace) === preferred)) {
+    return preferred;
+  }
+
+  const defaultId = options?.defaultWorkspaceId?.trim();
+  if (defaultId && pool.some((workspace) => readWorkspaceId(workspace) === defaultId)) {
+    return defaultId;
+  }
+
+  const accountDefault = pool.find(isAccountDefaultWorkspace);
+  const fromAccountDefault = readWorkspaceId(accountDefault);
+  if (fromAccountDefault) return fromAccountDefault;
+
+  return readWorkspaceId(pool[0]);
+}

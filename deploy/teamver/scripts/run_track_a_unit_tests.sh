@@ -3,6 +3,8 @@
 #
 # Usage (ns-open-design repo):
 #   bash deploy/teamver/scripts/run_track_a_unit_tests.sh
+#   PYTEST_BIN=pytest bash deploy/teamver/scripts/run_track_a_unit_tests.sh
+#   PYTHON_BIN=python3 bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 #   bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 
 set -euo pipefail
@@ -10,6 +12,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OD_ROOT="$(cd "$ROOT/../.." && pwd)"
 SKIP_WEB=0
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTEST_BIN="${PYTEST_BIN:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -27,7 +31,14 @@ echo "==> design-api pytest"
   cd "$ROOT/be"
   export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-test}"
   export POSTGRES_PASSWD="${POSTGRES_PASSWD:-test}"
-  python -m pytest -q
+  export PYTHONPATH="${PYTHONPATH:-.}"
+  if [[ -n "$PYTEST_BIN" ]]; then
+    "$PYTEST_BIN" -q
+  elif command -v pytest >/dev/null 2>&1; then
+    pytest -q
+  else
+    "$PYTHON_BIN" -m pytest -q
+  fi
 )
 
 echo "==> validate_deploy_env fixture"
@@ -40,7 +51,9 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
     npm test -- tests/teamver-publish-drive.test.ts \
       tests/teamver-list-project-outputs.test.ts \
       tests/teamver-open-drive-publish-menu-item.test.tsx \
-      tests/teamver-project-registry.test.ts
+      tests/teamver-project-registry.test.ts \
+      tests/teamver-workspace-utils.test.ts \
+      tests/teamver-workspace-switcher.test.tsx
   )
 fi
 

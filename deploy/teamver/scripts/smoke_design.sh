@@ -347,6 +347,18 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
     fail=$((fail + 1))
   fi
 
+  session_json="$(curl -sf --max-time 15 -H "Cookie: ${TEAMVER_COOKIE}" \
+    "${API_BASE}/api/v1/auth/session" 2>/dev/null || echo "")"
+  if [[ -n "$session_json" ]] && echo "$session_json" | grep -q '"authenticated":true'; then
+    workspace_count="$(echo "$session_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('workspaces') or []))" 2>/dev/null || echo "0")"
+    if [[ "$workspace_count" -ge 1 ]]; then
+      echo "✓ design-api /api/v1/auth/session workspaces=$workspace_count"
+      pass=$((pass + 1))
+    else
+      echo "○ design-api /api/v1/auth/session authenticated but workspaces empty"
+    fi
+  fi
+
   workspace_hdr=()
   if [[ -n "${TEAMVER_WORKSPACE_ID:-}" ]]; then
     workspace_hdr=(-H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}")
