@@ -74,6 +74,21 @@ describe('Teamver project access gate', () => {
     }
   }
 
+  it('keeps default OD project routes open when the Teamver gate is not configured', async () => {
+    const projectId = `od-default-access-${Date.now()}`;
+    await createProject(projectId);
+
+    const detailResponse = await fetch(`${baseUrl}/api/projects/${projectId}`);
+    expect(detailResponse.status).toBe(200);
+    const detailBody = (await detailResponse.json()) as { project?: { id?: string } };
+    expect(detailBody.project?.id).toBe(projectId);
+
+    const filesResponse = await fetch(`${baseUrl}/api/projects/${projectId}/files`);
+    expect(filesResponse.status).toBe(200);
+    const filesBody = (await filesResponse.json()) as { files?: unknown[] };
+    expect(Array.isArray(filesBody.files)).toBe(true);
+  });
+
   it('allows project detail when design-api grants access', async () => {
     const projectId = `teamver-access-allow-${Date.now()}`;
     await createProject(projectId);

@@ -12,6 +12,20 @@ describe('reportTeamverDesignUsage', () => {
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
   });
 
+  it('no-ops outside Teamver embed mode when the design BFF client is unavailable', async () => {
+    const requestId = await reportTeamverDesignUsage({
+      workspace_id: 'ws-default',
+      model_name: 'claude-sonnet-4-5',
+      input_tokens: 3,
+      output_tokens: 5,
+      project_id: 'od-default',
+      run_id: 'run-default',
+    });
+
+    expect(requestId).toBeNull();
+    expect(designBffClient.getDesignBffClient).toHaveBeenCalledOnce();
+  });
+
   it('returns the accepted request id from design-api', async () => {
     const post = vi.fn(async () => ({ accepted: true, requestId: 'UREQ-123' }));
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
