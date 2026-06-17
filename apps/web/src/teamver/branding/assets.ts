@@ -6,6 +6,7 @@ export const TEAMVER_BRAND_ASSETS = {
   logoDark: "/teamver/Logo-dark.svg",
   /** Compact rail mark (slide `Logo-icon.svg`). */
   navMark: "/teamver/Logo-icon.svg",
-  favicon: "/teamver/favicon.ico",
-  favicon32: "/teamver/favicon-32x32.png",
+  /** fe-v2 favicon assets are not vendored; compact mark works in tab + apple-touch. */
+  favicon: "/teamver/Logo-icon.svg",
+  favicon32: "/teamver/Logo-icon.svg",
 } as const;

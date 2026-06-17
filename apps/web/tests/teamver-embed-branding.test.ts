@@ -26,6 +26,9 @@ describe('Teamver embed branding policy', () => {
     const branding = resolveTeamverBranding();
 
     expect(branding.enabled).toBe(true);
+    expect(branding.title).toBe('Teamver Design');
+    expect(branding.heroSubtitle).toContain('workspace context');
+    expect(branding.faviconUrl).toBe('/teamver/Logo-icon.svg');
     expect(branding.hideExternalLinks).toBe(true);
     expect(branding.hideTopbarExecutionSwitcher).toBe(true);
     expect(branding.hideSettingsDialogLink).toBe(true);

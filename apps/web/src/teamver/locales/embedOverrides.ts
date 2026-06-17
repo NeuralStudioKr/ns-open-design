@@ -8,6 +8,7 @@ export function teamverEmbedOverrides(
 ): Partial<Dict> {
   const overrides: Partial<Dict> = {
     "app.brand": title,
+    "app.brandPill": "",
   };
   if (subtitle?.trim()) {
     overrides["app.brandSubtitle"] = subtitle.trim();

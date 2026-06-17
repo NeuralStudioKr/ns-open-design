@@ -3,16 +3,11 @@ import type { ReactNode } from 'react';
 import { I18nProvider } from '../src/i18n';
 import { AnalyticsProvider } from '../src/analytics/provider';
 import { TeamverBrandingProvider } from '../src/teamver/branding/TeamverBrandingProvider';
+import { buildRootLayoutMetadata } from '../src/teamver/branding/siteMetadata';
 import '../src/index.css';
 import '../src/styles/home/index.css';
 
-export const metadata: Metadata = {
-  title: 'Open Design',
-  icons: {
-    icon: '/app-icon.png',
-    apple: '/app-icon.png',
-  },
-};
+export const metadata: Metadata = buildRootLayoutMetadata();
 
 export const viewport: Viewport = {
   themeColor: '#F4EFE6',

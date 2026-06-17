@@ -1,6 +1,11 @@
 import { isTeamverEmbedMode } from "../designApiBase";
 import { readTeamverViteEnv } from "../teamverViteEnv";
 import { TEAMVER_BRAND_ASSETS } from "./assets";
+import {
+  TEAMVER_DEFAULT_BRAND_SUBTITLE,
+  TEAMVER_DEFAULT_BRAND_TITLE,
+  TEAMVER_DEFAULT_HERO_SUBTITLE,
+} from "./siteMetadata";
 
 /** SettingsDialog / EntrySettingsMenu sections exposed in Teamver embed. */
 export const TEAMVER_EMBED_SETTINGS_SECTIONS = ["language", "appearance"] as const;
@@ -39,11 +44,11 @@ function readEnv(key: string): string | undefined {
 }
 
 function readBrandSubtitle(): string {
-  return readEnv("VITE_TEAMVER_BRAND_SUBTITLE") || "AI Design Studio";
+  return readEnv("VITE_TEAMVER_BRAND_SUBTITLE") || TEAMVER_DEFAULT_BRAND_SUBTITLE;
 }
 
 function readBrandTitle(): string {
-  return readEnv("VITE_TEAMVER_BRAND_TITLE") || "Teamver Design";
+  return readEnv("VITE_TEAMVER_BRAND_TITLE") || TEAMVER_DEFAULT_BRAND_TITLE;
 }
 
 function readFaviconUrl(): string {
@@ -66,8 +71,8 @@ function readHeroTitle(brandTitle: string): string {
   return readEnv("VITE_TEAMVER_HERO_TITLE") || brandTitle;
 }
 
-function readHeroSubtitle(brandSubtitle: string): string {
-  return readEnv("VITE_TEAMVER_HERO_SUBTITLE") || brandSubtitle;
+function readHeroSubtitle(_brandSubtitle: string): string {
+  return readEnv("VITE_TEAMVER_HERO_SUBTITLE") || TEAMVER_DEFAULT_HERO_SUBTITLE;
 }
 
 export function resolveTeamverBranding(): TeamverBrandingConfig {
