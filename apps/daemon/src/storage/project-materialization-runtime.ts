@@ -28,6 +28,8 @@ export type ProjectMaterializationRuntime = {
   storage: MaterializingProjectStorage | null;
   beforeChatRun: (run: RunLike) => Promise<void>;
   wrapFinish: <T extends (...args: unknown[]) => unknown>(finish: T) => T;
+  /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
+  dispose: () => void;
 };
 
 export function createProjectMaterializationRuntime(
@@ -193,10 +195,48 @@ export function createProjectMaterializationRuntime(
     }
   }
 
+  async function emitPeriodicScratchDiskUsageMarker(scratchDir: string): Promise<void> {
+    try {
+      const sample = await measureScratchDiskUsage(scratchDir);
+      const marker = buildScratchDiskUsageMarker({ sample, stage: 'periodic' });
+      console.info(JSON.stringify(marker));
+    } catch (err) {
+      console.warn(
+        '[project-materialization] scratch disk-usage periodic probe failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // Optional periodic disk-usage sampler so idle daemons still emit a metric
+  // when scratch slowly grows (e.g. failed evict, stuck materialization). The
+  // run-end path covers active workloads; this catches the long-tail case.
+  let periodicTimer: NodeJS.Timeout | null = null;
+  if (isS3ProjectStorageLayout(layout) && scratchDiskMetricsEnabled()) {
+    const raw = (process.env.OD_SCRATCH_DISK_METRIC_INTERVAL_MS ?? '').trim();
+    const intervalMs = raw ? Number(raw) : 5 * 60 * 1000;
+    if (Number.isFinite(intervalMs) && intervalMs > 0) {
+      const scratchDir = layout.scratchDir;
+      periodicTimer = setInterval(() => {
+        void emitPeriodicScratchDiskUsageMarker(scratchDir);
+      }, intervalMs);
+      // Don't block process exit on this metric timer.
+      if (typeof periodicTimer.unref === 'function') periodicTimer.unref();
+    }
+  }
+
+  function dispose(): void {
+    if (periodicTimer !== null) {
+      clearInterval(periodicTimer);
+      periodicTimer = null;
+    }
+  }
+
   return {
     layout,
     storage,
     beforeChatRun,
     wrapFinish,
+    dispose,
   };
 }

@@ -111,4 +111,17 @@ describe('scratch-disk-usage', () => {
       expect(scratchDiskMetricsEnabled({})).toBe(false);
     });
   });
+
+  describe('periodic stage marker', () => {
+    it('builds a periodic marker without projectId/runId', () => {
+      const marker = buildScratchDiskUsageMarker({
+        sample: { scratchDir: '/scratch', bytes: 12345, files: 3, errors: 0 },
+        stage: 'periodic',
+      });
+      expect(marker.stage).toBe('periodic');
+      expect(marker.projectId).toBeUndefined();
+      expect(marker.runId).toBeUndefined();
+      expect(marker.bytes).toBe(12345);
+    });
+  });
 });

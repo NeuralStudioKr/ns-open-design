@@ -141,21 +141,82 @@ RDS에 `teamver_design_production` database 가 있어야 합니다.
 
 `docker compose --profile litestream up -d` 사용 시 S3 replica: `litestream/app.sqlite`.
 
-**EC2 유실 후 복구 (초안):**
+**EC2 유실 후 복구 (Phase 2 P2-2 helper 사용 권장):**
 
 ```bash
 # 1. compose down
 docker compose down
 
-# 2. OD volume 백업 경로 확인 (예: teamver_od_data)
-# 3. Litestream restore (호스트에 litestream CLI 설치)
-export LITESTREAM_BUCKET=teamver-design-prod-data
-export AWS_REGION=ap-northeast-2
-litestream restore -config deploy/teamver/litestream.yml /data/app.sqlite
+# 2. Litestream replica → 격리된 restore/<env>/<ts>/ 디렉토리에 복원
+#    (실행 중인 /data/app.sqlite 우발 덮어쓰기 방지)
+bash scripts/restore_app_sqlite_from_s3.sh --production --litestream
+
+# 3. 검증 후 daemon 컨테이너에 적용
+bash scripts/restore_app_sqlite_from_s3.sh --production --litestream --apply
 
 # 4. compose up
 bash scripts/run_docker.sh --production --rds
 ```
+
+**fallback (Litestream 없을 때 — `backup_sqlite_to_s3.sh` snapshot 사용):**
+
+```bash
+bash scripts/restore_app_sqlite_from_s3.sh --production \
+  --from-snapshot LATEST.json --apply
+```
+
+`--at <ISO8601>` / `--generation <id>` 로 PITR 가능. `--dry-run` 으로 어떤 명령이 실행될지 미리 확인.
+
+---
+
+## 6. S3 lifecycle 정책 (P3-8 — 비용 위생)
+
+soft-delete 된 프로젝트 scratch debris, fallback sqlite-backups, 미완료 multipart 를 만료시킵니다.
+
+```bash
+# JSON 정책 stdout 으로 확인
+bash scripts/s3_lifecycle_policy.sh --production
+
+# live 정책과 diff
+bash scripts/s3_lifecycle_policy.sh --production --diff
+
+# 적용
+bash scripts/s3_lifecycle_policy.sh --production --apply
+```
+
+기본:
+- abort-incomplete-multipart 7d (버킷 전체)
+- sqlite-backups expire 30d (`SQLITE_BACKUP_PREFIX` 아래)
+- scratch evict expire 14d (`OD_S3_PREFIX$S3_LIFECYCLE_SCRATCH_PREFIX/`)
+
+기간/prefix 조정: `.env.production` 에 `S3_LIFECYCLE_SQLITE_BACKUP_DAYS` / `S3_LIFECYCLE_SCRATCH_PREFIX` / `S3_LIFECYCLE_SCRATCH_DAYS`.
+
+---
+
+## 7. Track A 알람·메트릭
+
+CloudWatch log metric filter + 알람을 일괄 출력/적용:
+
+```bash
+SNS_TOPIC_ARN=arn:aws:sns:ap-northeast-2:<acct>:teamver-design-alerts \
+  INSTANCE_ID=i-... \
+  bash scripts/print_cloudwatch_alarm_commands.sh --production --apply
+```
+
+생성되는 신호:
+1. `od_s3_sync_up_failed` 마커 → `TeamverDesignS3SyncUpFailed` 알람
+2. `teamver_usage_5xx` 마커 → `TeamverDesignUsage5xx` 알람 (>=5 / 5min)
+3. CW Agent `disk_used_percent` (`OD_SCRATCH_DIR` path) → 80% 알람
+4. `od_scratch_disk_usage` + `overThreshold:true` → `TeamverDesignScratchOverThreshold` 알람
+
+`od_scratch_disk_usage` 활성화는 `.env.production`:
+- `OD_SCRATCH_DISK_METRICS=1`
+- `OD_SCRATCH_DISK_THRESHOLD_MB=2048` (기본)
+- `OD_SCRATCH_DISK_METRIC_INTERVAL_MS=300000` (기본 5분)
+
+`OD_SCRATCH_EVICT_AFTER_RUN=1` + `OD_S3_SYNC_UP_METRICS=1` 도 같이 set 권장.
+
+---
 
 프로젝트 파일 SSOT는 S3 tenant prefix — scratch는 재생성. 상세: [09 §12](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md).
 
@@ -172,20 +233,11 @@ bash scripts/backup_sqlite_to_s3.sh --production --stop-daemon
 
 업로드 경로: `s3://$LITESTREAM_BUCKET/sqlite-backups/<env>/<timestamp>/`.
 `--allow-live-copy`는 일관성 보장이 약하므로 incident triage 외에는 쓰지 않습니다.
-
-### CloudWatch alarm commands
-
-```bash
-cd deploy/teamver
-INSTANCE_ID=i-... SNS_TOPIC_ARN=arn:aws:sns:... \
-  bash scripts/print_cloudwatch_alarm_commands.sh --production
-```
-
-출력된 AWS CLI 명령은 daemon 로그의 `od_s3_sync_up_failed` metric filter와 scratch disk 80% alarm 템플릿을 생성합니다.
+복구는 §5 의 `restore_app_sqlite_from_s3.sh --from-snapshot LATEST.json --apply` 사용.
 
 ---
 
-## 6. 롤백
+## 8. 롤백
 
 - compose: `docker compose down` 후 이전 이미지 태그
 - ALB: unhealthy target 제거 또는 이전 EC2 AMI

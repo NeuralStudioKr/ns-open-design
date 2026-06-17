@@ -17,21 +17,34 @@ BACKUP_PREFIX="${SQLITE_BACKUP_PREFIX:-sqlite-backups}"
 
 usage() {
   cat <<'EOF'
-backup_sqlite_to_s3.sh — fallback OD app.sqlite backup to S3
+backup_sqlite_to_s3.sh — fallback OD app.sqlite backup to S3 (09 P2-3)
 
   bash scripts/backup_sqlite_to_s3.sh --staging --stop-daemon
   bash scripts/backup_sqlite_to_s3.sh --production --stop-daemon
   bash scripts/backup_sqlite_to_s3.sh --staging --allow-live-copy --dry-run
 
+Flags:
+  --staging | --production         pick deploy/teamver/.env.<env>
+  --stop-daemon                    stop open-design-daemon for offline copy
+  --allow-live-copy                copy live (no consistency guarantee)
+  --prefix <s3-prefix>             override SQLITE_BACKUP_PREFIX (default: sqlite-backups)
+  --dry-run                        echo docker / aws commands without executing
+  -h | --help
+
 Requires:
-  - AWS CLI on the host
-  - docker compose service `open-design-daemon`
+  - aws CLI (real run)
+  - docker compose service `open-design-daemon` (real run)
   - LITESTREAM_BUCKET or OD_S3_BUCKET in the selected env file
 
 Notes:
-  - Normal path is Litestream. This fallback copies app.sqlite(+wal/shm) into
-    s3://<bucket>/<SQLITE_BACKUP_PREFIX>/<env>/<timestamp>/.
-  - Use --stop-daemon for a consistent offline copy.
+  - Normal path is Litestream replication. This fallback copies app.sqlite
+    (+wal/shm) into s3://<bucket>/<SQLITE_BACKUP_PREFIX>/<env>/<timestamp>/
+    plus an in-place LATEST.json manifest for restore.
+  - Use --stop-daemon for a consistent offline copy. --allow-live-copy is
+    for emergency runbooks only.
+  - --dry-run is fully offline: aws/docker are NOT invoked, commands print as
+    `DRYRUN: …` so the fixture (test_backup_sqlite_to_s3.sh) can lock the
+    contract without credentials.
 EOF
 }
 

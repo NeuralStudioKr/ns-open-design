@@ -42,3 +42,17 @@ async def test_healthz_degraded_when_registry_table_missing(monkeypatch: pytest.
 
     assert payload["status"] == "degraded"
     assert payload["db"] == "schema_missing"
+
+
+def test_collect_config_summary_reports_registry_creds(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import health_deps, run_lifecycle
+
+    # missing creds → "missing"
+    monkeypatch.setattr(run_lifecycle, "registry_configured", lambda: False)
+    summary = health_deps.collect_config_summary()
+    assert summary["registry_creds"] == "missing"
+
+    # configured → "configured"
+    monkeypatch.setattr(run_lifecycle, "registry_configured", lambda: True)
+    summary = health_deps.collect_config_summary()
+    assert summary["registry_creds"] == "configured"

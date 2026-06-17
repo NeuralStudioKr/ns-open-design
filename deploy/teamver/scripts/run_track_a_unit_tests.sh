@@ -49,6 +49,7 @@ bash "$ROOT/scripts/test_print_cloudwatch_alarm_commands.sh"
 bash "$ROOT/scripts/test_apply_staging_s3_env.sh"
 bash "$ROOT/scripts/test_run_s3_integration_test.sh"
 bash "$ROOT/scripts/test_restore_app_sqlite_from_s3.sh"
+bash "$ROOT/scripts/test_backup_sqlite_to_s3.sh"
 bash "$ROOT/scripts/test_s3_lifecycle_policy.sh"
 
 if [[ "$SKIP_WEB" -eq 0 ]]; then
@@ -59,6 +60,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-billing-bridge.test.ts \
       tests/teamver-usage-bridge.test.ts \
       tests/teamver-project-access.test.ts \
+      tests/teamver-project-storage-meta.test.ts \
       tests/teamver-linked-dirs-gate.test.ts
   )
 

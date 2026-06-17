@@ -186,7 +186,7 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
     warn "OD_S3_SYNC_UP_METRICS!=1 — lazy/run-end sync-up failed JSON 마커가 비활성 (CW od_s3_sync_up_failed 알람 영향 없음 — run-end는 항상 emit)"
   fi
   if [[ "${OD_SCRATCH_DISK_METRICS:-}" == "1" ]]; then
-    warn "OD_SCRATCH_DISK_METRICS=1 — run 종료 시 od_scratch_disk_usage JSON 마커 emit (threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048})"
+    warn "OD_SCRATCH_DISK_METRICS=1 — run 종료 시 od_scratch_disk_usage JSON 마커 emit (threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048}, periodic interval ms=${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-300000})"
   else
     warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성 (CW od_scratch_disk_usage 알람 무효)"
   fi

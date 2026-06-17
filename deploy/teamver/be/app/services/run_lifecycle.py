@@ -48,6 +48,16 @@ def _registry_configured() -> bool:
     )
 
 
+def registry_configured() -> bool:
+    """Public read-only accessor for healthz / status reporting.
+
+    External callers (e.g. ``services/health_deps``) should use this instead
+    of poking into ``settings`` directly so any future credential-source
+    refactor (vault, instance metadata, …) stays encapsulated here.
+    """
+    return _registry_configured()
+
+
 def _extract_usage_id(payload: dict[str, Any] | None) -> str | None:
     if not isinstance(payload, dict):
         return None

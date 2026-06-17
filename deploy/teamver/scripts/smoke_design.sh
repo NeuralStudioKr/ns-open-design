@@ -167,6 +167,22 @@ if [[ -n "$deps_json" ]] && [[ -n "${OD_PROJECT_STORAGE:-}" ]]; then
   fi
 fi
 
+# Registry creds presence — healthz/deps surfaces "configured"/"missing".
+# We don't fail when registry is missing (single-tenant safe), but we DO
+# fail when prod-y env signals creds were intended (env override flag).
+if [[ -n "$deps_json" ]]; then
+  registry_status="$(echo "$deps_json" | sed -n 's/.*"registry_creds":"\([^"]*\)".*/\1/p' | head -1)"
+  if [[ -n "$registry_status" ]]; then
+    if [[ "${SMOKE_REQUIRE_REGISTRY_CREDS:-0}" == "1" && "$registry_status" != "configured" ]]; then
+      echo "✗ design-api deps config.registry_creds=$registry_status (expected configured)"
+      fail=$((fail + 1))
+    else
+      echo "✓ design-api deps config.registry_creds=$registry_status"
+      pass=$((pass + 1))
+    fi
+  fi
+fi
+
 session_code="$(curl_status "${API_BASE}/api/v1/auth/session")"
 if [[ "$session_code" == "200" ]]; then
   echo "✓ design-api /api/v1/auth/session → 200 (unauthenticated ok)"

@@ -130,7 +130,7 @@ if [[ "$storage" == "s3" ]]; then
     flag "od_s3_sync_up_failed JSON" "run-end only (set OD_S3_SYNC_UP_METRICS=1 to also emit on lazy)"
   fi
   if [[ "${OD_SCRATCH_DISK_METRICS:-}" == "1" ]]; then
-    flag "od_scratch_disk_usage JSON" "run-end emit (threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048})"
+    flag "od_scratch_disk_usage JSON" "run-end + periodic (interval ms=${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-300000}, threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048})"
   else
     flag "od_scratch_disk_usage JSON" "(disabled — set OD_SCRATCH_DISK_METRICS=1 for CW disk alarm)"
   fi

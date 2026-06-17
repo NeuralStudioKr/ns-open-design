@@ -9,13 +9,13 @@ import httpx
 from ..config import settings
 from ..db.schema_bootstrap import _table_exists
 
-from ..config import settings
-
 logger = logging.getLogger(__name__)
 
 
 def collect_config_summary() -> dict[str, object]:
     """Non-secret deploy flags for ops smoke / healthz/deps."""
+    from .run_lifecycle import registry_configured
+
     managed_key = (
         (settings.teamver_od_api_key or "").strip()
         or (settings.teamver_od_anthropic_api_key or "").strip()
@@ -30,6 +30,7 @@ def collect_config_summary() -> dict[str, object]:
         ),
         "bootstrap": "enabled" if settings.teamver_bootstrap_enabled else "disabled",
         "project_storage": (settings.od_project_storage or "local").strip().lower() or "local",
+        "registry_creds": "configured" if registry_configured() else "missing",
     }
 
 

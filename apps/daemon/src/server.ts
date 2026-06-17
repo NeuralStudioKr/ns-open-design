@@ -5850,6 +5850,9 @@ export async function startServer({
         scratchProjectsRoot: PROJECTS_DIR,
         env: process.env,
       });
+      // Tear down the placeholder (releases its periodic timer, if any)
+      // before swapping in the real S3-backed runtime.
+      projectMaterialization.dispose();
       projectMaterialization = createProjectMaterializationRuntime(
         PROJECT_STORAGE_LAYOUT,
         materializingStorage,
