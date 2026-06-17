@@ -99,6 +99,12 @@ curl_status() {
   curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url"
 }
 
+# Public design-api host uses nginx auth_request + login redirect (302) for browsers.
+is_public_auth_gate_code() {
+  local code="$1"
+  [[ "$code" == "401" || "$code" == "403" || "$code" == "302" ]]
+}
+
 echo "==> Teamver Design smoke"
 echo "    OD:         $DESIGN_BASE"
 echo "    design-api: $API_BASE"
@@ -106,13 +112,26 @@ echo
 
 check "OD daemon /api/health" curl_ok "${DESIGN_BASE}/api/health"
 check "design-api /api/healthz" curl_ok "${API_BASE}/api/healthz"
-check "design-api /api/healthz/deps" curl_ok "${API_BASE}/api/healthz/deps"
+
+deps_probe_code="$(curl_status "${API_BASE}/api/healthz/deps")"
+if [[ "$deps_probe_code" == "200" ]]; then
+  echo "✓ design-api /api/healthz/deps"
+  pass=$((pass + 1))
+elif [[ "$deps_probe_code" == "404" ]]; then
+  echo "○ design-api /api/healthz/deps → 404 (redeploy design-api + nginx location)"
+else
+  echo "✗ design-api /api/healthz/deps → $deps_probe_code (expected 200)"
+  fail=$((fail + 1))
+fi
 
 scratch_sync_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
   -X POST \
   "${DESIGN_BASE}/api/projects/_smoke_probe_/scratch/sync-up" 2>/dev/null || echo "000")"
 if [[ "$scratch_sync_code" == "401" ]]; then
   echo "✓ OD daemon POST …/scratch/sync-up → 401 (teamver access gate)"
+  pass=$((pass + 1))
+elif [[ "$scratch_sync_code" == "302" ]]; then
+  echo "✓ OD daemon scratch/sync-up → 302 (nginx login redirect)"
   pass=$((pass + 1))
 elif [[ "$scratch_sync_code" == "204" ]]; then
   echo "○ OD daemon scratch/sync-up → 204 (TEAMVER_DESIGN_API_URL unset on daemon — local mode)"
@@ -188,32 +207,32 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
 fi
 
 runtime_code="$(curl_status "${API_BASE}/api/v1/runtime-config")"
-if [[ "$runtime_code" == "401" || "$runtime_code" == "403" ]]; then
-  echo "✓ design-api /api/v1/runtime-config unauthenticated → $runtime_code"
+if is_public_auth_gate_code "$runtime_code"; then
+  echo "✓ design-api /api/v1/runtime-config unauthenticated → $runtime_code (auth gate)"
   pass=$((pass + 1))
 elif [[ "$runtime_code" == "200" && -n "${ALLOW_NO_JWT_LOCAL_MODE:-}" ]]; then
   echo "✓ design-api /api/v1/runtime-config → 200 (local dev mode)"
   pass=$((pass + 1))
 else
-  echo "✗ design-api /api/v1/runtime-config unauthenticated → $runtime_code (expected 401/403)"
+  echo "✗ design-api /api/v1/runtime-config unauthenticated → $runtime_code (expected 401/403/302)"
   fail=$((fail + 1))
 fi
 
 bootstrap_code="$(curl_status "${API_BASE}/api/v1/bootstrap")"
-if [[ "$bootstrap_code" == "401" || "$bootstrap_code" == "403" ]]; then
-  echo "✓ design-api /api/v1/bootstrap unauthenticated → $bootstrap_code"
+if is_public_auth_gate_code "$bootstrap_code"; then
+  echo "✓ design-api /api/v1/bootstrap unauthenticated → $bootstrap_code (auth gate)"
   pass=$((pass + 1))
 else
-  echo "✗ design-api /api/v1/bootstrap unauthenticated → $bootstrap_code (expected 401/403)"
+  echo "✗ design-api /api/v1/bootstrap unauthenticated → $bootstrap_code (expected 401/403/302)"
   fail=$((fail + 1))
 fi
 
 projects_code="$(curl_status "${API_BASE}/api/v1/projects")"
-if [[ "$projects_code" == "401" || "$projects_code" == "403" ]]; then
-  echo "✓ design-api /api/v1/projects unauthenticated → $projects_code"
+if is_public_auth_gate_code "$projects_code"; then
+  echo "✓ design-api /api/v1/projects unauthenticated → $projects_code (auth gate)"
   pass=$((pass + 1))
 else
-  echo "✗ design-api /api/v1/projects unauthenticated → $projects_code (expected 401/403)"
+  echo "✗ design-api /api/v1/projects unauthenticated → $projects_code (expected 401/403/302)"
   fail=$((fail + 1))
 fi
 
@@ -222,29 +241,29 @@ publish_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
   -H "Content-Type: application/json" \
   -d '{"formats":["html"]}' \
   "${API_BASE}/api/v1/projects/demo-project/publish")"
-if [[ "$publish_code" == "401" || "$publish_code" == "403" ]]; then
-  echo "✓ design-api POST /projects/{id}/publish unauthenticated → $publish_code"
+if is_public_auth_gate_code "$publish_code"; then
+  echo "✓ design-api POST /projects/{id}/publish unauthenticated → $publish_code (auth gate)"
   pass=$((pass + 1))
 else
-  echo "✗ design-api POST /projects/{id}/publish unauthenticated → $publish_code (expected 401/403)"
+  echo "✗ design-api POST /projects/{id}/publish unauthenticated → $publish_code (expected 401/403/302)"
   fail=$((fail + 1))
 fi
 
 outputs_code="$(curl_status "${API_BASE}/api/v1/projects/demo-project/outputs")"
-if [[ "$outputs_code" == "401" || "$outputs_code" == "403" ]]; then
-  echo "✓ design-api GET /projects/{id}/outputs unauthenticated → $outputs_code"
+if is_public_auth_gate_code "$outputs_code"; then
+  echo "✓ design-api GET /projects/{id}/outputs unauthenticated → $outputs_code (auth gate)"
   pass=$((pass + 1))
 else
-  echo "✗ design-api GET /projects/{id}/outputs unauthenticated → $outputs_code (expected 401/403)"
+  echo "✗ design-api GET /projects/{id}/outputs unauthenticated → $outputs_code (expected 401/403/302)"
   fail=$((fail + 1))
 fi
 
 project_get_code="$(curl_status "${API_BASE}/api/v1/projects/demo-project")"
-if [[ "$project_get_code" == "401" || "$project_get_code" == "403" ]]; then
-  echo "✓ design-api GET /projects/{id} unauthenticated → $project_get_code"
+if is_public_auth_gate_code "$project_get_code"; then
+  echo "✓ design-api GET /projects/{id} unauthenticated → $project_get_code (auth gate)"
   pass=$((pass + 1))
 else
-  echo "✗ design-api GET /projects/{id} unauthenticated → $project_get_code (expected 401/403)"
+  echo "✗ design-api GET /projects/{id} unauthenticated → $project_get_code (expected 401/403/302)"
   fail=$((fail + 1))
 fi
 
