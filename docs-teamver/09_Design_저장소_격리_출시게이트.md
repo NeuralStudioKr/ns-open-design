@@ -104,7 +104,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ✅ |
 | P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · s3 활성화는 wiring 후 |
 | P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 config·profile ✅ · prod 검증 ☐ |
-| P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) | 🟡 문서만 |
+| P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) + `deploy/teamver/scripts` | 🟡 alarm command ✅ · EC2 apply ☐ |
 | P0-7 | RDS `teamver_design_*` database | Terraform + SQL | ✅ |
 
 ### Phase 1 — OD ProjectStorage 연결 (약 2~3주)
@@ -120,7 +120,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
 | P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · EC2 apply ☐ |
 | P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + compose `--profile minio` ✅ · EC2 ☐ |
-| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy metrics log ✅ · CloudWatch ☐ |
+| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy metrics log + alarm command ✅ · CloudWatch apply ☐ |
 
 **근거 코드:** `apps/daemon/src/storage/` — run hook + lazy file-route materialize (`OD_PROJECT_STORAGE=s3`).
 
@@ -130,7 +130,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 |---|------|------|------|
 | P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 config·profile ✅ |
 | P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` | 🟡 Litestream 초안 ✅ |
-| P2-3 | (대안) cron `app.sqlite` → S3 — Litestream 불가 시 | `deploy/teamver` | ☐ |
+| P2-3 | (대안) `app.sqlite` → S3 fallback — Litestream 불가 시 | `deploy/teamver` | 🟡 manual fallback script ✅ · cron 미사용 |
 
 ### Phase 3 — 테넌트 격리 + design-api registry (약 2주)
 
@@ -205,7 +205,7 @@ OD_SCRATCH_DIR=/app/.od/scratch   # optional; default under OD_DATA_DIR
 ### Litestream (예시)
 
 ```yaml
-# deploy/teamver/litestream.yml (TODO)
+# deploy/teamver/litestream.yml
 dbs:
   - path: /data/app.sqlite
     replicas:

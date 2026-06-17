@@ -74,6 +74,8 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | `run_post_deploy_track_a.sh` | EC2: validate → compose → deps → optional smoke |
 | `print_staging_s3_env.sh` | terraform → S3 env snippet |
 | `apply_staging_s3_env.sh` | `.env.staging`에 S3 키 병합 (P1-8) |
+| `backup_sqlite_to_s3.sh` | Litestream 장애 시 `app.sqlite` 수동 S3 fallback (P2-3) |
+| `print_cloudwatch_alarm_commands.sh` | sync-up 실패·scratch disk alarm AWS CLI 출력 (P1-10/P0-6) |
 | `run_minio_s3_dev.sh` | local MinIO + optional integration test |
 | `seed_main_be_design_app.sql` | Main BE `ai_app` ai-design (bootstrap app_key=design) |
 | `seed_main_be_design_app.sh` | 위 SQL `psql` 적용 wrapper |

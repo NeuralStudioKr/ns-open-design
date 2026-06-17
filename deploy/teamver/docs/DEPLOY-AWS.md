@@ -159,6 +159,30 @@ bash scripts/run_docker.sh --production --rds
 
 프로젝트 파일 SSOT는 S3 tenant prefix — scratch는 재생성. 상세: [09 §12](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md).
 
+### Litestream 장애 시 수동 fallback
+
+Litestream을 바로 사용할 수 없을 때만 짧은 정지 창을 잡고 `app.sqlite` bundle을 S3에 업로드합니다.
+
+```bash
+cd deploy/teamver
+bash scripts/backup_sqlite_to_s3.sh --production --stop-daemon
+# staging:
+# bash scripts/backup_sqlite_to_s3.sh --staging --stop-daemon
+```
+
+업로드 경로: `s3://$LITESTREAM_BUCKET/sqlite-backups/<env>/<timestamp>/`.
+`--allow-live-copy`는 일관성 보장이 약하므로 incident triage 외에는 쓰지 않습니다.
+
+### CloudWatch alarm commands
+
+```bash
+cd deploy/teamver
+INSTANCE_ID=i-... SNS_TOPIC_ARN=arn:aws:sns:... \
+  bash scripts/print_cloudwatch_alarm_commands.sh --production
+```
+
+출력된 AWS CLI 명령은 daemon 로그의 `od_s3_sync_up_failed` metric filter와 scratch disk 80% alarm 템플릿을 생성합니다.
+
 ---
 
 ## 6. 롤백
