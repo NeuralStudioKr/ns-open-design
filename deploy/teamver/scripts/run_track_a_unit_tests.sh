@@ -43,6 +43,7 @@ echo "==> design-api pytest"
 
 echo "==> validate_deploy_env fixture"
 bash "$ROOT/scripts/test_validate_deploy_env.sh"
+bash "$ROOT/scripts/test_seed_main_be_design_app.sh"
 
 if [[ "$SKIP_WEB" -eq 0 ]]; then
   echo "==> web teamver vitest"
@@ -57,6 +58,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-workspace-utils.test.ts \
       tests/teamver-design-access.test.ts \
       tests/teamver-embed-local-ui.test.ts \
+      tests/teamver-embed-local-workspace-policy.test.ts \
+      tests/teamver-embed-project-sanitize.test.ts \
       tests/teamver-workspace-switcher.test.tsx
   )
 fi

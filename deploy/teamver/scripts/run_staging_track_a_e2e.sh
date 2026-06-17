@@ -74,6 +74,9 @@ Session (10 §6 S-8):
   [ ] stg-design.teamver.com — login, embed loads, no GitHub/Discord links
   [ ] Expired cookie → 401 banner → refresh or re-login
   [ ] Settings/runtime-config shows managed API (TEAMVER_OD_API_KEY on server)
+  [ ] Home / composer / new project — no "Select working directory" or "Open folder"
+  [ ] Workspace switcher — disabled WS shows (Disabled), cannot switch to it
+  [ ] app_enabled=false WS — embed bar warns, publish/usage blocked until enabled in Main FE
 
 Usage (11 §8 U-6):
   [ ] embed run 완료 → FE POST /api/v1/usage/events 202 + requestId

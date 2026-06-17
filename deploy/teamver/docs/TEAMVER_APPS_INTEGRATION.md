@@ -67,7 +67,7 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | `validate_deploy_env.sh` | `.env` 필수 키 preflight (S3·MinIO endpoint 경고) |
 | `print_track_a_status.sh` | Track A env 요약 + `--probe` health |
 | `run_docker.sh` | compose up (`--rds`, `--local-db`, `--with-minio`) |
-| `check_sidecar_deps.sh` | EC2 loopback healthz + deps (`project_storage` 일치) |
+| `check_sidecar_deps.sh` | EC2 loopback healthz + deps (`project_storage` 일치) + embed folder/linkedDirs gates |
 | `smoke_design.sh` | staging/prod curl smoke |
 | `run_track_a_unit_tests.sh` | design-api pytest + embed vitest (로컬 CI) |
 | `run_staging_track_a_e2e.sh` | smoke + manual E2E checklist |
@@ -78,7 +78,7 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | `print_cloudwatch_alarm_commands.sh` | sync-up 실패·scratch disk alarm AWS CLI 출력 (P1-10/P0-6) |
 | `run_minio_s3_dev.sh` | local MinIO + optional integration test |
 | `seed_main_be_design_app.sql` | Main BE `ai_app` ai-design (bootstrap app_key=design) |
-| `seed_main_be_design_app.sh` | 위 SQL `psql` 적용 wrapper |
+| `seed_main_be_design_app.sh` | 위 SQL `psql` 적용 wrapper (`--verify-only`로 행 확인) |
 | `seed_od_runtime_config.sh` | OD onboarding seed |
 
 ---
@@ -221,8 +221,11 @@ bash scripts/run_post_deploy_track_a.sh --staging --rds --status-probe
 ## Smoke (배포 후)
 
 ```bash
-bash scripts/check_sidecar_deps.sh --staging   # EC2 loopback: healthz + deps
+bash scripts/check_sidecar_deps.sh --staging   # EC2 loopback: healthz + deps + embed folder gates
 bash scripts/smoke_design.sh --staging
+# Main BE ai_app (A8) — RDS URL 필요:
+# MAIN_BE_DATABASE_URL='postgresql://…' bash scripts/seed_main_be_design_app.sh --staging
+# MAIN_BE_DATABASE_URL='postgresql://…' bash scripts/seed_main_be_design_app.sh --staging --verify-only
 # 선택: TEAMVER_COOKIE='teamver_access_token=…' bash scripts/smoke_design.sh --staging
 ```
 

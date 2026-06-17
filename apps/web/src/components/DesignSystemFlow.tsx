@@ -70,6 +70,8 @@ import { FileWorkspace } from './FileWorkspace';
 import { Icon, type IconName } from './Icon';
 import { Spinner } from './Loading';
 import { useAnalytics } from '../analytics/provider';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import {
   trackDesignSystemCreateResult,
   trackDesignSystemReviewResult,
@@ -322,6 +324,7 @@ export function DesignSystemCreationFlow({
   const githubConnectorRef = useRef<ConnectorDetail | null>(null);
   const githubConnectorLoadedRef = useRef(false);
   const embedded = chrome === 'embedded';
+  const { hideLocalWorkspaceControls } = useTeamverBranding();
 
   // DS create page_view (v2 doc). Only fires for the standalone
   // /design-systems/create route — the embedded variant lives inside
@@ -539,6 +542,7 @@ export function DesignSystemCreationFlow({
   }
 
   async function handlePickCodeFolder() {
+    if (hideLocalWorkspaceControls) return;
     emitCreateFormClick('browse_folder');
     const selected = await openFolderDialog();
     if (!selected) return;
@@ -830,28 +834,30 @@ export function DesignSystemCreationFlow({
                 onDisconnect={() => void handleDisconnectGithub()}
               />
             </div>
-            <DropZone
-              label="Link local code"
-              helper="Use a folder or selected files from this computer."
-              prompt="Drag a folder here or browse"
-              names={localCodeSourceLabels(state)}
-              directory
-              onZoneClick={() => emitCreateFormClick('browse_folder')}
-              onBrowseFolder={() => void handlePickCodeFolder()}
-              onRemoveName={handleRemoveCodeFolder}
-              onError={setError}
-              onProcessingStart={beginSourceProcessing}
-              onFiles={(_names, files) => {
-                const stagedFiles = selectLocalCodeFiles(files);
-                const stagedNames = stagedFiles.map((file) => localCodeRelativePath(file));
-                emitDsFileUpload('local_code', files, stagedFiles);
-                setState((curr) => ({
-                  ...curr,
-                  codeFiles: Array.from(new Set([...curr.codeFiles, ...stagedNames])),
-                  codeFileObjects: dedupeLocalCodeFiles([...curr.codeFileObjects, ...stagedFiles]),
-                }));
-              }}
-            />
+            {!hideLocalWorkspaceControls ? (
+              <DropZone
+                label="Link local code"
+                helper="Use a folder or selected files from this computer."
+                prompt="Drag a folder here or browse"
+                names={localCodeSourceLabels(state)}
+                directory
+                onZoneClick={() => emitCreateFormClick('browse_folder')}
+                onBrowseFolder={() => void handlePickCodeFolder()}
+                onRemoveName={handleRemoveCodeFolder}
+                onError={setError}
+                onProcessingStart={beginSourceProcessing}
+                onFiles={(_names, files) => {
+                  const stagedFiles = selectLocalCodeFiles(files);
+                  const stagedNames = stagedFiles.map((file) => localCodeRelativePath(file));
+                  emitDsFileUpload('local_code', files, stagedFiles);
+                  setState((curr) => ({
+                    ...curr,
+                    codeFiles: Array.from(new Set([...curr.codeFiles, ...stagedNames])),
+                    codeFileObjects: dedupeLocalCodeFiles([...curr.codeFileObjects, ...stagedFiles]),
+                  }));
+                }}
+              />
+            ) : null}
             <DropZone
               label="Upload .fig"
               helper="Parsed locally; only a summary is added."
@@ -3479,7 +3485,10 @@ async function prepareCreatedDesignSystemProject({
         stagedAssets,
       }),
     );
-    const metadata = mergeLinkedCodeFolders(project.metadata, state.codeFolders);
+    const metadata = mergeLinkedCodeFolders(
+      project.metadata,
+      mayMutateProjectLinkedDirs() ? state.codeFolders : [],
+    );
     const prompt = buildCreationAgentPrompt(
       state,
       stagedLocalCode,

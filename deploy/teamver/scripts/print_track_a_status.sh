@@ -88,6 +88,11 @@ flag "TEAMVER_INTERNAL_API_KEY" "$([[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]] && e
 flag "TEAMVER_OD_API_KEY" "$([[ -n "${TEAMVER_OD_API_KEY:-}" ]] && echo set || true)"
 flag "ANTHROPIC_API_KEY" "$([[ -n "${ANTHROPIC_API_KEY:-}" ]] && echo set || true)"
 flag "OD_API_TOKEN" "$([[ -n "${OD_API_TOKEN:-}" ]] && echo set || true)"
+if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
+  flag "embed local-folder gates" "enabled (daemon rejects linkedDirs/import)"
+else
+  flag "embed local-folder gates" "(standalone — TEAMVER_DESIGN_API_URL unset)"
+fi
 echo
 
 echo "Postgres"

@@ -29,6 +29,11 @@ import type {
   ProjectMetadata,
   ProjectTemplate,
 } from '../types';
+import {
+  mayMutateProjectLinkedDirs,
+  sanitizeProjectForEmbed,
+  stripLinkedDirsFromMetadata,
+} from '../teamver/embedLocalWorkspacePolicy';
 import { maybeReportTeamverUsageAfterSave } from '../teamver/maybeReportTeamverUsageAfterSave';
 import {
   filterProjectsByTeamverRegistryIfNeeded,
@@ -43,7 +48,10 @@ export async function listProjects(): Promise<Project[]> {
     const resp = await fetch('/api/projects');
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects: Project[] };
-    return await filterProjectsByTeamverRegistryIfNeeded(json.projects ?? []);
+    const projects = json.projects ?? [];
+    return await filterProjectsByTeamverRegistryIfNeeded(
+      projects.map((project) => sanitizeProjectForEmbed(project)),
+    );
   } catch {
     return [];
   }
@@ -54,7 +62,7 @@ export async function getProject(id: string): Promise<Project | null> {
     const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`);
     if (!resp.ok) return null;
     const json = (await resp.json()) as { project: Project };
-    return json.project;
+    return sanitizeProjectForEmbed(json.project);
   } catch {
     return null;
   }
@@ -76,6 +84,9 @@ export async function createProject(input: {
   pluginInputs?: Record<string, unknown>;
 }): Promise<{ project: Project; conversationId: string; appliedPluginSnapshotId?: string }> {
   try {
+    const metadata = input.metadata
+      ? stripLinkedDirsFromMetadata(input.metadata)
+      : input.metadata;
     // `randomUUID` falls back to `crypto.getRandomValues` / `Math.random`
     // when `crypto.randomUUID` is unavailable. Open Design served over
     // plain HTTP on a LAN IP (Docker / unRAID self-hosting) is a
@@ -86,7 +97,7 @@ export async function createProject(input: {
     const resp = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...input }),
+      body: JSON.stringify({ id, ...input, ...(metadata ? { metadata } : {}) }),
     });
     if (!resp.ok) {
       let message = 'Could not create project';
@@ -112,13 +123,19 @@ export async function createProject(input: {
       appliedPluginSnapshotId?: string;
     };
     await registerTeamverProjectIfNeeded(result.project);
-    return result;
+    return {
+      ...result,
+      project: sanitizeProjectForEmbed(result.project),
+    };
   } catch (err) {
     throw err instanceof Error ? err : new Error('Could not create project');
   }
 }
 
 export async function pickLocalFolderPath(): Promise<string | null> {
+  if (!mayMutateProjectLinkedDirs()) {
+    throw new Error('local_folder_picker_unavailable');
+  }
   const resp = await fetch('/api/dialog/open-folder', {
     method: 'POST',
   });
@@ -152,6 +169,9 @@ export async function pickLocalFolderPath(): Promise<string | null> {
 export async function importFolderProject(
   input: ImportFolderRequest,
 ): Promise<ImportFolderResponse> {
+  if (!mayMutateProjectLinkedDirs()) {
+    throw new Error('folder_import_unavailable');
+  }
   const resp = await fetch('/api/import/folder', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -261,15 +281,19 @@ export async function patchProject(
   id: string,
   patch: ProjectPatch,
 ): Promise<Project | null> {
+  const sanitized: ProjectPatch = { ...patch };
+  if (sanitized.metadata) {
+    sanitized.metadata = stripLinkedDirsFromMetadata(sanitized.metadata);
+  }
   try {
     const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
+      body: JSON.stringify(sanitized),
     });
     if (!resp.ok) return null;
     const json = (await resp.json()) as { project: Project };
-    return json.project;
+    return sanitizeProjectForEmbed(json.project);
   } catch {
     return null;
   }

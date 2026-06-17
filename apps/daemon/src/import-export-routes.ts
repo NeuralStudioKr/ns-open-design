@@ -11,6 +11,7 @@ import {
 import { sandboxImportedProjectRootUnavailableReason } from './sandbox-mode.js';
 import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
+import { isTeamverDesignManaged } from './teamver-project-access.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -108,6 +109,14 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
   // but updates metadata.baseDir on an existing project record.
   app.post('/api/projects/:id/working-dir', async (req, res) => {
     try {
+      if (isTeamverDesignManaged()) {
+        return sendApiError(
+          res,
+          400,
+          'WORKING_DIR_UNAVAILABLE',
+          'local working directory changes are not available in Teamver embed mode',
+        );
+      }
       const projectId = req.params.id;
       const existing = getProject(db, projectId);
       if (!existing) {
@@ -235,6 +244,14 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
 
   app.post('/api/import/folder', async (req, res) => {
     try {
+      if (isTeamverDesignManaged()) {
+        return sendApiError(
+          res,
+          400,
+          'FOLDER_IMPORT_UNAVAILABLE',
+          'folder import is not available in Teamver embed mode',
+        );
+      }
       const { baseDir, name, skillId, designSystemId, orchestratorWorkspace } = req.body || {};
       if (typeof baseDir !== 'string' || !baseDir.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'baseDir required');

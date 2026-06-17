@@ -16,6 +16,10 @@ export function teamverDesignApiBaseUrl(): string {
   return trimTrailingSlash((process.env.TEAMVER_DESIGN_API_URL ?? '').trim());
 }
 
+export function isTeamverDesignManaged(): boolean {
+  return Boolean(teamverDesignApiBaseUrl());
+}
+
 export function teamverProjectAccessCheckUrl(projectId: string): string | null {
   const baseUrl = teamverDesignApiBaseUrl();
   if (!baseUrl) return null;

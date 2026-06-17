@@ -1228,12 +1228,17 @@ export function formatDesignFilesWorkspaceHint(
   const totalFiles = safeFiles.length;
   const omittedFolders = Math.max(0, totalFolders - folderLines.length);
   const omittedFiles = Math.max(0, totalFiles - fileLines.length);
+  const teamverManaged = Boolean(String(process.env.TEAMVER_DESIGN_API_URL ?? '').trim());
+
+  const workspaceIntro = teamverManaged
+    ? 'The Design Files panel lists this project\'s workspace files (Teamver-managed project storage). Write project files relative to the project root (for example `index.html` or `assets/x.png`). The user can browse these files in real time.'
+    : `The Design Files panel is backed by your current working directory: \`${cwd}\`. Write project files relative to this directory (for example \`index.html\` or \`assets/x.png\`). The user can browse these files in real time.`;
 
   const lines = [
     '',
     '',
     '## Design Files workspace',
-    `The Design Files panel is backed by your current working directory: \`${cwd}\`. Write project files relative to this directory (for example \`index.html\` or \`assets/x.png\`). The user can browse these files in real time.`,
+    workspaceIntro,
     'The selected/attached files for a turn are only a shortcut for priority and ordering. If the user did not attach any file, do not assume there are no relevant Design Files.',
     'When the request refers to existing files, asks you to choose a file, says "current", "this design", "the deck", "the image", "the folder", or depends on project state, inspect/search/read this workspace before answering or editing. Prefer project-relative paths, use the active workspace context as the default target, and ask only if multiple plausible targets remain after inspection.',
     'For non-trivial inspection or edits, surface progress through visible planning/status/tool events instead of silently guessing.',

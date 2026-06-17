@@ -604,7 +604,9 @@ export function EntryShell({
       // project's `linkedDirs` rather than its `baseDir`/`userWorkingDir`:
       // Design Files stays the managed `.od/projects/<id>` artifact store,
       // independent of the user's local files.
-      ...(payload.workingDir ? { linkedDirs: [payload.workingDir] } : {}),
+      ...(!hideLocalWorkspaceControls && payload.workingDir
+        ? { linkedDirs: [payload.workingDir] }
+        : {}),
       ...(payload.examplePromptContext ? {
         examplePrompt: true,
         examplePromptTitle: payload.examplePromptContext.title,

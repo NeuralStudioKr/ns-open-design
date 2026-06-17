@@ -48,14 +48,16 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  webServer: skipWebServer
-    ? undefined
+  ...(skipWebServer
+    ? {}
     : {
-        command: webServerCommand,
-        url: baseURL,
-        reuseExistingServer: !process.env.CI,
-        timeout: Number(process.env.OD_PLAYWRIGHT_WEBSERVER_TIMEOUT) || 180_000,
-      },
+        webServer: {
+          command: webServerCommand,
+          url: baseURL,
+          reuseExistingServer: !process.env.CI,
+          timeout: Number(process.env.OD_PLAYWRIGHT_WEBSERVER_TIMEOUT) || 180_000,
+        },
+      }),
   projects: [
     {
       name: 'chromium',

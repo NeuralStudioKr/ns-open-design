@@ -52,7 +52,7 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('http://design-api:16000/api/internal/usage/events');
     expect(init?.method).toBe('POST');
     expect((init?.headers as Record<string, string>)['X-Teamver-Internal-Api-Key']).toBe('secret-key');

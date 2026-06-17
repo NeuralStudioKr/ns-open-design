@@ -23,6 +23,7 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(homeView).toContain("hideLocalWorkspaceControls ? undefined : handlePickWorkingDir");
     expect(homeView).toContain("hideLocalWorkspaceControls ? null : workingDir");
     expect(chatComposer).toContain("projectId && !hideLocalWorkspaceControls");
+    expect(chatComposer).toContain("mayMutateProjectLinkedDirs()");
   });
 
   it("hides New Project local folder controls and strips working-dir metadata", () => {
@@ -42,5 +43,21 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(appSource).toContain("onImportFolder: handleImportFolder");
     expect(entryShell).toContain("!hideLocalWorkspaceControls && onImportFolder");
     expect(entryShell).toContain("!hideLocalWorkspaceControls && onImportFolderResponse");
+  });
+
+  it("hides design-system local code linking and prevents linkedDirs merge in embed", () => {
+    const source = readRepoFile("apps/web/src/components/DesignSystemFlow.tsx");
+
+    expect(source).toContain("{!hideLocalWorkspaceControls ? (");
+    expect(source).toContain('label="Link local code"');
+    expect(source).toContain("mayMutateProjectLinkedDirs() ? state.codeFolders : []");
+  });
+
+  it("strips linkedDirs on project fetch and patch in embed", () => {
+    const source = readRepoFile("apps/web/src/state/projects.ts");
+
+    expect(source).toContain("sanitizeProjectForEmbed");
+    expect(source).toContain("stripLinkedDirsFromMetadata");
+    expect(source).toContain("folder_import_unavailable");
   });
 });

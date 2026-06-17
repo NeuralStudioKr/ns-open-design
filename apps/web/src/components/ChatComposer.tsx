@@ -36,6 +36,7 @@ import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -1588,7 +1589,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }
 
     async function handleLinkFolder() {
-      if (!projectId) return;
+      if (!projectId || !mayMutateProjectLinkedDirs()) return;
       const selected = await openFolderDialog();
       if (!selected) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
@@ -1604,7 +1605,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // read-only awareness for the agent (→ `--add-dir`), not a Design Files
     // import, and `baseDir` is never touched.
     async function setWorkingDirFolder(dir: string) {
-      if (!projectId) return;
+      if (!projectId || !mayMutateProjectLinkedDirs()) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
       const metadata: ProjectMetadata = { ...base, linkedDirs: [dir] };
       const result = await patchProject(projectId, { metadata });
@@ -1625,7 +1626,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (selected) await setWorkingDirFolder(selected);
     }
     async function clearWorkingDir() {
-      if (!projectId) return;
+      if (!projectId || !mayMutateProjectLinkedDirs()) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
       const metadata: ProjectMetadata = { ...base, linkedDirs: [] };
       const result = await patchProject(projectId, { metadata });

@@ -64,4 +64,17 @@ describe('formatDesignFilesWorkspaceHint', () => {
     expect(hint).toContain('Files:\n- `slides/pitch.html` (html, 2 KB)');
     expect(hint).toContain('- `image.png` (image, 192 KB)');
   });
+
+  it('uses Teamver-managed workspace wording when design-api is configured', () => {
+    const previous = process.env.TEAMVER_DESIGN_API_URL;
+    process.env.TEAMVER_DESIGN_API_URL = 'http://teamver-design-api:8000';
+    try {
+      const hint = formatDesignFilesWorkspaceHint('/tmp/open-design/project-1', [], []);
+      expect(hint).toContain('Teamver-managed project storage');
+      expect(hint).not.toContain('current working directory');
+    } finally {
+      if (previous === undefined) delete process.env.TEAMVER_DESIGN_API_URL;
+      else process.env.TEAMVER_DESIGN_API_URL = previous;
+    }
+  });
 });

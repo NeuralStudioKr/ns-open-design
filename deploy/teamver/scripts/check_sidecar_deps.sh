@@ -128,6 +128,39 @@ else
   echo "○ OD daemon scratch/sync-up → $scratch_code"
 fi
 
+if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
+  import_body="$(mktemp)"
+  import_code="$(curl -s -o "$import_body" -w '%{http_code}' --max-time 8 \
+    -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"baseDir":"/tmp","name":"probe"}' \
+    "http://127.0.0.1:${OD_PORT}/api/import/folder" 2>/dev/null || echo "000")"
+  if [[ "$import_code" == "400" ]] && grep -q 'FOLDER_IMPORT_UNAVAILABLE' "$import_body" 2>/dev/null; then
+    echo "✓ OD daemon /api/import/folder → 400 FOLDER_IMPORT_UNAVAILABLE (embed gate)"
+    pass=$((pass + 1))
+  else
+    echo "✗ OD daemon folder import gate — http=$import_code body=$(tr -d '\n' < "$import_body" | head -c 200)"
+    fail=$((fail + 1))
+  fi
+
+  linked_body="$(mktemp)"
+  linked_code="$(curl -s -o "$linked_body" -w '%{http_code}' --max-time 8 \
+    -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"id":"_sidecar_linked_dirs_probe_","name":"probe","metadata":{"kind":"prototype","linkedDirs":["/tmp"]}}' \
+    "http://127.0.0.1:${OD_PORT}/api/projects" 2>/dev/null || echo "000")"
+  if [[ "$linked_code" == "400" ]] && grep -q 'LINKED_DIRS_UNAVAILABLE' "$linked_body" 2>/dev/null; then
+    echo "✓ OD daemon POST /api/projects linkedDirs → 400 LINKED_DIRS_UNAVAILABLE"
+    pass=$((pass + 1))
+  else
+    echo "✗ OD daemon linkedDirs gate — http=$linked_code body=$(tr -d '\n' < "$linked_body" | head -c 200)"
+    fail=$((fail + 1))
+  fi
+  rm -f "$import_body" "$linked_body"
+else
+  echo "○ skip embed local-folder gates (TEAMVER_DESIGN_API_URL unset)"
+fi
+
 echo
 echo "==> $pass passed, $fail failed"
 if (( fail > 0 )); then

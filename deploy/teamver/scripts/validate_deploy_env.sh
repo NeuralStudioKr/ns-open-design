@@ -117,8 +117,10 @@ else
   warn "OD_PROJECT_STORAGE=${OD_PROJECT_STORAGE:-local} — staging Track A S3 격리는 s3 권장"
 fi
 
-if [[ -z "${TEAMVER_DESIGN_API_URL:-}" ]]; then
-  warn "TEAMVER_DESIGN_API_URL 미설정 — daemon usage M2M 비활성"
+if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
+  warn "TEAMVER_DESIGN_API_URL 설정됨 — daemon이 folder import/linkedDirs 차단 (check_sidecar_deps 게이트 probe)"
+else
+  warn "TEAMVER_DESIGN_API_URL 미설정 — daemon usage M2M·embed folder gates 비활성"
 fi
 
 if [[ "${TRUST_TEAMVER_PROXY_HEADERS:-}" != "true" ]]; then

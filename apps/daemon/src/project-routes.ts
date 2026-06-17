@@ -31,7 +31,7 @@ import {
   writeProjectManifest,
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
-import { createTeamverProjectAccessMiddleware } from './teamver-project-access.js';
+import { createTeamverProjectAccessMiddleware, isTeamverDesignManaged } from './teamver-project-access.js';
 import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
@@ -1099,6 +1099,14 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         // can surface it rather than creating a project + auto-running a turn
         // whose linked-dir access never materialises.
         if (Array.isArray(metadata.linkedDirs)) {
+          if (isTeamverDesignManaged() && metadata.linkedDirs.length > 0) {
+            return sendApiError(
+              res,
+              400,
+              'LINKED_DIRS_UNAVAILABLE',
+              'linked local folders are not available in Teamver embed mode',
+            );
+          }
           const validated = validateLinkedDirs(metadata.linkedDirs);
           if (validated.error) {
             return sendApiError(res, 400, 'INVALID_LINKED_DIR', validated.error);
@@ -1410,6 +1418,14 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         }
       }
       if (patch.metadata?.linkedDirs) {
+        if (isTeamverDesignManaged()) {
+          return sendApiError(
+            res,
+            400,
+            'LINKED_DIRS_UNAVAILABLE',
+            'linked local folders are not available in Teamver embed mode',
+          );
+        }
         const existing = getProject(db, req.params.id);
         const validated = validateLinkedDirs(patch.metadata.linkedDirs);
         if (validated.error) {

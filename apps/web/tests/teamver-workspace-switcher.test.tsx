@@ -61,4 +61,30 @@ describe("TeamverWorkspaceSwitcher", () => {
       }),
     ).toBeTruthy();
   });
+
+  it("does not switch to a disabled workspace", () => {
+    const onSwitch = vi.fn();
+    const view = render(
+      <TeamverWorkspaceSwitcher
+        workspaces={[
+          { id: "WS-1", name: "Alpha", role: "owner", app_enabled: true },
+          { id: "WS-2", name: "Beta Team", role: "member", app_enabled: false },
+        ]}
+        activeWorkspaceId="WS-1"
+        onSwitch={onSwitch}
+      />,
+    );
+
+    fireEvent.click(
+      within(view.getByTestId("teamver-workspace-switcher")).getByRole("button", {
+        name: /Workspace: Alpha/i,
+      }),
+    );
+    fireEvent.click(
+      within(view.getByTestId("teamver-workspace-switcher")).getByRole("option", {
+        name: /Beta Team \(Disabled\)/i,
+      }),
+    );
+    expect(onSwitch).not.toHaveBeenCalled();
+  });
 });

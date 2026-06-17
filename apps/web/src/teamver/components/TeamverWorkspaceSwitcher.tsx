@@ -35,7 +35,8 @@ export function TeamverWorkspaceSwitcher({
   }, [open]);
 
   const handleSelect = useCallback(
-    (workspaceId: string) => {
+    (workspaceId: string, appEnabled: boolean) => {
+      if (!appEnabled) return;
       setOpen(false);
       void onSwitch(workspaceId);
     },
@@ -90,7 +91,8 @@ export function TeamverWorkspaceSwitcher({
                 aria-disabled={!appEnabled}
                 className={`teamver-workspace-menu__item${selected ? " is-active" : ""}${appEnabled ? "" : " is-disabled"}`}
                 title={menuLabel}
-                onClick={() => handleSelect(id)}
+                onClick={() => handleSelect(id, appEnabled)}
+                disabled={!appEnabled}
               >
                 <span className="teamver-workspace-menu__initial" aria-hidden>
                   {workspaceInitial(workspace)}

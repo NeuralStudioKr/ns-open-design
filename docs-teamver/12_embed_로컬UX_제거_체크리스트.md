@@ -55,17 +55,17 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | Nav: tasks / plugins / integrations | `hideNavViews` |
 | Updater popup | `EntryShell` embed 분기 |
 
-### 2.3 P2 — 후속 (문서화만 / 별도 루프)
+### 2.3 P2 — 완료 (Loop 74–77)
 
-| ID | 위치 | 비고 |
+| ID | Loop | 내용 |
 |----|------|------|
-| L-8 | `DesignSystemFlow.tsx` | DS 생성 시 로컬 code folder picker |
-| L-9 | `SettingsDialog` onboarding copy | "Upload local files" 등 — embed에서 섹션 자체가 숨겨짐 |
-| L-10 | Daemon agent system prompt | "working directory: \`cwd\`" — scratch 경로 설명을 tenant 문맥으로 완화 (daemon 패치) |
-| L-11 | `DesignFilesPanel` Discord 팁 | `hideUsefulTips` ✅ |
-| L-12 | Desktop host bridge | embed web에서는 `isOpenDesignHostAvailable()` = false — 별도 처리 불필요 |
-| L-13 | `linkedDirs` 기존 프로젝트 | 마이그레이션 전 프로젝트에 metadata 잔존 시 composer에 picker 노출 가능 → embed에서 PATCH 차단 검토 |
-| L-14 | i18n | `workingDirPicker.*`, `homeWorkingDir.*` — UI 숨김으로 충분; 필요 시 `teamverEmbedOverrides` |
+| L-8 | 74 | `DesignSystemCreationFlow` — "Link local code" DropZone 숨김, metadata `linkedDirs` 미병합 |
+| L-13 | 75 | `embedLocalWorkspacePolicy` — Composer `linkedDirs` PATCH 차단 |
+| L-13 | 76 | `EntryShell` home create — `workingDir` → `linkedDirs` 미설정 |
+| L-13 | 78 | `patchProject` / `replaceProjectWorkingDir` — embed에서 linkedDirs·working-dir API 차단 |
+| L-10 | 77 | daemon `formatDesignFilesWorkspaceHint` — Teamver-managed wording |
+| L-15 | 78–79 | `TeamverWorkspaceSwitcher` — `app_enabled=false` WS 선택 불가 |
+| L-13 | 80–81 | FE `sanitizeProjectForEmbed` + daemon `linkedDirs`/folder import/working-dir API 거부 |
 
 ### 2.4 P3 — 인프라/저장 (09, VM)
 
@@ -84,8 +84,11 @@ apps/web/src/teamver/branding/config.ts          — hideLocalWorkspaceControls
 apps/web/src/components/HomeView.tsx
 apps/web/src/components/ChatComposer.tsx
 apps/web/src/components/NewProjectPanel.tsx
-apps/web/src/App.tsx
-apps/web/tests/teamver-embed-local-ui.test.tsx
+apps/web/src/teamver/embedLocalWorkspacePolicy.ts
+apps/web/src/components/DesignSystemFlow.tsx
+apps/web/src/state/projects.ts              — patchProject linkedDirs strip
+apps/web/src/providers/registry.ts          — replaceProjectWorkingDir gate
+apps/web/src/teamver/components/TeamverWorkspaceSwitcher.tsx
 ```
 
 ---
@@ -104,6 +107,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 - [ ] 프로젝트 composer에 "Select working directory" / "Link code folder" 없음
 - [ ] New project에 "Local storage" / "Open folder" 없음
 - [ ] 새 프로젝트 생성 → Design Files는 daemon 관리 경로만
+- [ ] Design system create에 "Link local code" 없음
 - [ ] Settings → language/appearance만
 
 ---
@@ -112,4 +116,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-17 | Loop 78 — patchProject/working-dir gate, disabled WS switch block |
+| 2026-06-17 | Loop 79–82 — disabled WS guard, project sanitize, daemon linkedDirs gate, E2E checklist |
+| 2026-06-17 | Loop 74–77 P2 — DS local code UI, linkedDirs policy, daemon hint |
 | 2026-06-17 | 초안 + Loop 73 P0 구현 (`hideLocalWorkspaceControls`) |

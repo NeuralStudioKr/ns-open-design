@@ -67,6 +67,7 @@ import {
   isOpenDesignHostAvailable,
   openHostExternalUrl,
 } from '@open-design/host';
+import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 
 export const DEFAULT_DEPLOY_PROVIDER_ID = 'vercel-self';
 export const CLOUDFLARE_PAGES_PROVIDER_ID = 'cloudflare-pages';
@@ -2076,6 +2077,9 @@ export async function replaceProjectWorkingDir(
   baseDir: string,
   desktopImportToken?: string,
 ): Promise<ReplaceProjectWorkingDirResponse> {
+  if (!mayMutateProjectLinkedDirs()) {
+    throw new Error('local_working_dir_unavailable');
+  }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (desktopImportToken) {
     headers['x-od-desktop-import-token'] = desktopImportToken;

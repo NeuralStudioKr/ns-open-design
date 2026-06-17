@@ -25,7 +25,7 @@ function testStorage(): S3ProjectStorage {
     bucket,
     region,
     prefix,
-    endpoint,
+    ...(endpoint ? { endpoint } : {}),
     credentials: { accessKeyId, secretAccessKey },
   });
 }
