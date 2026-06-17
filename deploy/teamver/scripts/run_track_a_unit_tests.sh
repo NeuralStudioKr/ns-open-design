@@ -56,6 +56,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-use-embed.test.tsx \
       tests/teamver-workspace-utils.test.ts \
       tests/teamver-design-access.test.ts \
+      tests/teamver-embed-local-ui.test.ts \
       tests/teamver-workspace-switcher.test.tsx
   )
 fi

@@ -450,6 +450,7 @@ export function EntryShell({
   const {
     hideTopbarExecutionSwitcher,
     hideUseEverywhereChip,
+    hideLocalWorkspaceControls,
   } = useTeamverBranding();
   // Each entry sub-view (home / projects / design-systems) is its own
   // URL now, so the browser back/forward buttons work and a deep link
@@ -869,8 +870,8 @@ export function EntryShell({
         loading={skillsLoading}
         onCreate={handleCreate}
         onImportClaudeDesign={onImportClaudeDesign}
-        {...(onImportFolder ? { onImportFolder } : {})}
-        {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
+        {...(!hideLocalWorkspaceControls && onImportFolder ? { onImportFolder } : {})}
+        {...(!hideLocalWorkspaceControls && onImportFolderResponse ? { onImportFolderResponse } : {})}
         onOpenConnectorsTab={() => {
           setNewProjectOpen(false);
           openIntegrationTab('connectors');

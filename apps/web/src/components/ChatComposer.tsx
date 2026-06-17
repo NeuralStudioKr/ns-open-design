@@ -35,6 +35,7 @@ import type {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -371,6 +372,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     ref
   ) {
     const t = useT();
+    const { hideLocalWorkspaceControls } = useTeamverBranding();
     const analytics = useAnalytics();
     const activeFileContext =
       projectMetadata?.importedFrom === 'folder' && activeProjectFileName
@@ -2465,7 +2467,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ) : null}
           </div>
         </div>
-        {projectId ? (
+        {projectId && !hideLocalWorkspaceControls ? (
           <div className="composer-workdir-row">
             <WorkingDirPicker
               placement="up"
@@ -4312,7 +4314,7 @@ function ToolsImportPanel({
   onSwitchDesignSystem,
 }: {
   t: TranslateFn;
-  onLinkFolder: () => Promise<void> | void;
+  onLinkFolder?: () => Promise<void> | void;
   currentDesignSystemId?: string | null;
   // When omitted (no active project) the design-system import row stays
   // disabled with the existing "Coming soon" affordance so users aren't
@@ -4341,6 +4343,7 @@ function ToolsImportPanel({
     <div className="composer-tools-list">
       <ImportItem icon="upload" label={t('chat.importFig')} t={t} />
       <ImportItem icon="grid" label={t('chat.importWeb')} t={t} />
+      {onLinkFolder ? (
       <ImportItem
         icon="folder"
         label={t('chat.importFolder')}
@@ -4348,6 +4351,7 @@ function ToolsImportPanel({
         enabled
         onClick={() => void onLinkFolder()}
       />
+      ) : null}
       <ImportItem
         icon="sparkles"
         label={t('chat.importSkills')}

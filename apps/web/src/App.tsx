@@ -1421,7 +1421,9 @@ function AppInner() {
       // from Design Files and the first auto-send context once the working
       // dir flips. Doing the handoff first means the initial upload lands in
       // the final tree.
-      const userWorkingDir = input.metadata?.userWorkingDir;
+      const userWorkingDir = isTeamverEmbedMode()
+        ? undefined
+        : input.metadata?.userWorkingDir;
       let workingDirHandoffFailed = false;
       if (userWorkingDir) {
         try {
@@ -2210,8 +2212,12 @@ function AppInner() {
         onCreateProject={handleCreateProject}
         onCreatePluginShareProject={handleCreatePluginShareProject}
         onImportClaudeDesign={handleImportClaudeDesign}
-        onImportFolder={handleImportFolder}
-        onImportFolderResponse={handleImportFolderResponse}
+        {...(isTeamverEmbedMode()
+          ? {}
+          : {
+              onImportFolder: handleImportFolder,
+              onImportFolderResponse: handleImportFolderResponse,
+            })}
         onOpenProject={handleOpenProject}
         onOpenLiveArtifact={handleOpenLiveArtifact}
         onDeleteProject={handleDeleteProject}

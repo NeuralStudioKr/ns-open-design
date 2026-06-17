@@ -37,6 +37,8 @@ export type TeamverBrandingConfig = {
   hideAssistantModelLabels: boolean;
   /** Force API (BYOK) mode and skip onboarding — prevents CLI/BYOK drift. */
   lockExecutionConfig: boolean;
+  /** Hide local folder pickers, linked-dir UI, and folder import (embed = tenant S3). */
+  hideLocalWorkspaceControls: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -100,6 +102,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideHandoffButton: true,
         hideAssistantModelLabels: true,
         lockExecutionConfig: true,
+        hideLocalWorkspaceControls: true,
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -112,6 +115,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideHandoffButton: false,
         hideAssistantModelLabels: false,
         lockExecutionConfig: false,
+        hideLocalWorkspaceControls: false,
       };
 
   return {

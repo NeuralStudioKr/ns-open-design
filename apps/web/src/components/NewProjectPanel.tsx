@@ -18,6 +18,7 @@ import type {
 } from '@open-design/contracts/analytics';
 
 import { useT } from '../i18n';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import type { Dict } from '../i18n/types';
 import { fetchPromptTemplate, openFolderDialog } from '../providers/registry';
 import { isStoredMediaProviderEntryPresent } from '../state/config';
@@ -273,6 +274,7 @@ export function NewProjectPanel({
   initialTab = 'prototype',
 }: Props) {
   const t = useT();
+  const { hideLocalWorkspaceControls } = useTeamverBranding();
   const analytics = useAnalytics();
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
@@ -717,9 +719,9 @@ export function NewProjectPanel({
       metadata: {
         ...metadata,
         nameSource: trimmedName ? 'user' : 'generated',
-        ...(workingDir ? { userWorkingDir: workingDir } : {}),
+        ...(!hideLocalWorkspaceControls && workingDir ? { userWorkingDir: workingDir } : {}),
       },
-      ...(workingDirToken ? { userWorkingDirToken: workingDirToken } : {}),
+      ...(!hideLocalWorkspaceControls && workingDirToken ? { userWorkingDirToken: workingDirToken } : {}),
       requestId,
     });
   }
@@ -848,38 +850,40 @@ export function NewProjectPanel({
           />
         </div>
 
-        <div className="newproj-working-dir-row">
-          <button
-            type="button"
-            className={`ghost newproj-working-dir od-tooltip${workingDir ? ' picked' : ''}`}
-            onClick={() => void handlePickWorkingDir()}
-            disabled={workingDirPicking}
-            title={workingDir ?? t('workingDirPicker.homeTitle')}
-            data-tooltip={workingDir ?? t('workingDirPicker.homeTitle')}
-          >
-            <Icon name="folder" size={13} />
-            <span>
-              {workingDirPicking
-                ? t('workingDirPicker.processing')
-                : workingDir
-                  ? displayFolderName(workingDir)
-                  : t('workingDirPicker.select')}
-            </span>
-          </button>
-          {workingDir ? (
+        {!hideLocalWorkspaceControls ? (
+          <div className="newproj-working-dir-row">
             <button
               type="button"
-              className="newproj-working-dir-clear"
-              onClick={() => {
-                setWorkingDir(null);
-                setWorkingDirToken(null);
-              }}
-              aria-label={t('workingDirPicker.clearAria')}
+              className={`ghost newproj-working-dir od-tooltip${workingDir ? ' picked' : ''}`}
+              onClick={() => void handlePickWorkingDir()}
+              disabled={workingDirPicking}
+              title={workingDir ?? t('workingDirPicker.homeTitle')}
+              data-tooltip={workingDir ?? t('workingDirPicker.homeTitle')}
             >
-              <Icon name="close" size={10} />
+              <Icon name="folder" size={13} />
+              <span>
+                {workingDirPicking
+                  ? t('workingDirPicker.processing')
+                  : workingDir
+                    ? displayFolderName(workingDir)
+                    : t('workingDirPicker.select')}
+              </span>
             </button>
-          ) : null}
-        </div>
+            {workingDir ? (
+              <button
+                type="button"
+                className="newproj-working-dir-clear"
+                onClick={() => {
+                  setWorkingDir(null);
+                  setWorkingDirToken(null);
+                }}
+                aria-label={t('workingDirPicker.clearAria')}
+              >
+                <Icon name="close" size={10} />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {showDesignSystemPicker ? (
           <DesignSystemPicker
@@ -1076,7 +1080,7 @@ export function NewProjectPanel({
             </button>
           </>
         ) : null}
-        {folderImport.available ? (
+        {!hideLocalWorkspaceControls && folderImport.available ? (
           <div className="newproj-open-folder">
             <button
               type="button"

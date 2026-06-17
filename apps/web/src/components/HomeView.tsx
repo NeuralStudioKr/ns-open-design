@@ -90,6 +90,7 @@ import { examplePresetSeedPrompt } from './plugins-home/presetSeedPrompt';
 import { localizePluginDescription } from './plugins-home/localization';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { AnimatePresence } from 'motion/react';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 
 export interface ActivePlugin {
   record: InstalledPluginRecord;
@@ -240,6 +241,7 @@ export function HomeView({
   executionSwitcher,
 }: Props) {
   const { locale, t } = useI18n();
+  const { hideLocalWorkspaceControls } = useTeamverBranding();
   const analytics = useAnalytics();
   // P0 page_view page_name=home — fire once on mount. ref-keyed to survive
   // re-renders that flip parent state without remounting HomeView.
@@ -1546,8 +1548,8 @@ export function HomeView({
       contextMcpServers,
       contextConnectors,
       attachments: stagedFiles,
-      ...(workingDir ? { workingDir } : {}),
-      ...(workingDirToken ? { workingDirToken } : {}),
+      ...(hideLocalWorkspaceControls || !workingDir ? {} : { workingDir }),
+      ...(hideLocalWorkspaceControls || !workingDirToken ? {} : { workingDirToken }),
       conversationMode: sessionMode,
       ...(() => {
         if (!examplePromptInfoRef.current) return {};
@@ -1630,17 +1632,23 @@ export function HomeView({
         onPickChip={pickChip}
         contextItemCount={contextItemCount}
         error={error}
-        workingDir={workingDir}
-        recentDirs={recentDirs}
-        onPickWorkingDir={handlePickWorkingDir}
-        onSelectRecentWorkingDir={(dir) => {
+        workingDir={hideLocalWorkspaceControls ? null : workingDir}
+        recentDirs={hideLocalWorkspaceControls ? [] : recentDirs}
+        onPickWorkingDir={hideLocalWorkspaceControls ? undefined : handlePickWorkingDir}
+        onSelectRecentWorkingDir={
+          hideLocalWorkspaceControls
+            ? undefined
+            : (dir) => {
           setWorkingDir(dir);
           // Recents come from the browser-side picker only; they carry no
           // desktop trust token (and linkedDirs don't need one).
           setWorkingDirToken(null);
           void rememberRecentDir(dir);
         }}
-        onClearWorkingDir={() => {
+        onClearWorkingDir={
+          hideLocalWorkspaceControls
+            ? undefined
+            : () => {
           setWorkingDir(null);
           setWorkingDirToken(null);
         }}

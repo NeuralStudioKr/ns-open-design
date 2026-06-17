@@ -18,6 +18,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideExternalLinks).toBe(false);
     expect(branding.hideHandoffButton).toBe(false);
     expect(branding.lockExecutionConfig).toBe(false);
+    expect(branding.hideLocalWorkspaceControls).toBe(false);
     expect(branding.hideNavViews.size).toBe(0);
   });
 
@@ -37,6 +38,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideHandoffButton).toBe(true);
     expect(branding.hideAssistantModelLabels).toBe(true);
     expect(branding.lockExecutionConfig).toBe(true);
+    expect(branding.hideLocalWorkspaceControls).toBe(true);
     expect(branding.hideNavViews.has('tasks')).toBe(true);
     expect(branding.hideNavViews.has('plugins')).toBe(true);
     expect(branding.hideNavViews.has('integrations')).toBe(true);
