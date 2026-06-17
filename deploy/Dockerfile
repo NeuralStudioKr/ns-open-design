@@ -38,8 +38,8 @@ RUN corepack enable && \
 COPY apps ./apps
 # Teamver Design docker image — embed static export (SSR-safe via teamverViteEnv + process.env)
 ENV VITE_TEAMVER_EMBED=1
-ENV VITE_TEAMVER_BRAND_TITLE=Teamver Design
-ENV VITE_TEAMVER_BRAND_SUBTITLE=AI Design Studio
+ENV VITE_TEAMVER_BRAND_TITLE="Teamver Design"
+ENV VITE_TEAMVER_BRAND_SUBTITLE="AI Design Studio"
 ARG VITE_TEAMVER_SITE_URL=https://design.teamver.com
 ARG VITE_TEAMVER_OG_IMAGE_URL=https://teamver.com/images/teamver_og_img_v0.png
 ENV VITE_TEAMVER_SITE_URL=${VITE_TEAMVER_SITE_URL}
