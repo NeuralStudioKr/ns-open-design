@@ -93,6 +93,50 @@ if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
 else
   flag "embed local-folder gates" "(standalone — TEAMVER_DESIGN_API_URL unset)"
 fi
+registry_set_count=0
+[[ -n "${TEAMVER_REGISTRY_APP_ID:-}" ]] && registry_set_count=$((registry_set_count + 1))
+[[ -n "${TEAMVER_REGISTRY_KEY_ID:-}" ]] && registry_set_count=$((registry_set_count + 1))
+[[ -n "${TEAMVER_REGISTRY_ACCESS_KEY:-}" ]] && registry_set_count=$((registry_set_count + 1))
+case "$registry_set_count" in
+  0) flag "registry billing" "(disabled — TEAMVER_REGISTRY_* unset, run_lifecycle skips)" ;;
+  3) flag "registry billing" "enabled (reserve/commit/refund active)" ;;
+  *) flag "registry billing" "PARTIAL — fix or clear all three TEAMVER_REGISTRY_*" ;;
+esac
+if [[ -n "${TEAMVER_DRIVE_PUBLISH_FOLDER_ID:-}" ]]; then
+  flag "drive publish folder" "set (export → Teamver Drive folder ${TEAMVER_DRIVE_PUBLISH_FOLDER_ID:0:8}…)"
+else
+  flag "drive publish folder" "(unset — publish lands at Drive root; G7 isolation 권장)"
+fi
+if [[ "${TEAMVER_BILLING_DISABLED:-}" == "1" ]]; then
+  flag "daemon billing bridge" "DISABLED (TEAMVER_BILLING_DISABLED=1; run lifecycle skip)"
+elif [[ -n "${TEAMVER_DESIGN_API_URL:-}" && -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
+  flag "daemon billing bridge" "enabled (reserve→commit/refund on terminal run)"
+else
+  flag "daemon billing bridge" "(off — TEAMVER_DESIGN_API_URL·TEAMVER_INTERNAL_API_KEY 미설정)"
+fi
+echo
+
+echo "Scratch & sync-up (storage hardening)"
+if [[ "$storage" == "s3" ]]; then
+  flag "OD_SCRATCH_DIR" "${OD_SCRATCH_DIR:-/app/.od/scratch (default)}"
+  if [[ "${OD_SCRATCH_EVICT_AFTER_RUN:-}" == "1" ]]; then
+    flag "scratch eviction" "post-run evict (OD_SCRATCH_EVICT_AFTER_RUN=1)"
+  else
+    flag "scratch eviction" "(lazy TTL only — set OD_SCRATCH_EVICT_AFTER_RUN=1 for tight disk)"
+  fi
+  if [[ "${OD_S3_SYNC_UP_METRICS:-}" == "1" ]]; then
+    flag "od_s3_sync_up_failed JSON" "lazy + run-end emit (CW metric filter ready)"
+  else
+    flag "od_s3_sync_up_failed JSON" "run-end only (set OD_S3_SYNC_UP_METRICS=1 to also emit on lazy)"
+  fi
+  if [[ "${OD_SCRATCH_DISK_METRICS:-}" == "1" ]]; then
+    flag "od_scratch_disk_usage JSON" "run-end emit (threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048})"
+  else
+    flag "od_scratch_disk_usage JSON" "(disabled — set OD_SCRATCH_DISK_METRICS=1 for CW disk alarm)"
+  fi
+else
+  flag "scratch / sync-up" "(disabled — OD_PROJECT_STORAGE!=s3)"
+fi
 echo
 
 echo "Postgres"

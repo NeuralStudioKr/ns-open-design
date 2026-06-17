@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# EC2 Track A post-deploy — validate → compose → sidecar deps → optional smoke/status.
+# EC2 Track A post-deploy — validate → compose → sidecar deps → optional smoke/status/seed verify.
 #
 # Usage (on staging EC2, deploy/teamver):
 #   bash scripts/run_post_deploy_track_a.sh --staging --rds
 #   bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke
 #   bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke --status-probe
+#   MAIN_BE_DATABASE_URL='postgresql://…' \
+#     bash scripts/run_post_deploy_track_a.sh --staging --rds --seed-verify
 #
 # Skips compose when --deps-only (sidecar + smoke after manual compose).
 
@@ -19,9 +21,10 @@ RUN_SMOKE=0
 STATUS_PROBE=0
 DEPS_ONLY=0
 WITH_MINIO=0
+SEED_VERIFY=0
 
 usage() {
-  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while (( $# )); do
@@ -33,6 +36,7 @@ while (( $# )); do
     --smoke) RUN_SMOKE=1 ;;
     --status-probe) STATUS_PROBE=1 ;;
     --deps-only) DEPS_ONLY=1 ;;
+    --seed-verify) SEED_VERIFY=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -88,6 +92,16 @@ if [[ "$RUN_SMOKE" -eq 1 ]]; then
   echo
   echo "==> Phase 5: smoke_design (curl)"
   bash "$ROOT/scripts/smoke_design.sh" "${SMOKE_ARGS[@]}"
+fi
+
+if [[ "$SEED_VERIFY" -eq 1 ]]; then
+  echo
+  echo "==> Phase 6: Main BE ai_app seed verify (A8)"
+  if [[ -z "${MAIN_BE_DATABASE_URL:-}" ]]; then
+    echo "❌ MAIN_BE_DATABASE_URL required for --seed-verify"
+    exit 1
+  fi
+  bash "$ROOT/scripts/seed_main_be_design_app.sh" "$ENV_FLAG" --verify-only
 fi
 
 echo

@@ -161,6 +161,38 @@ else
   echo "○ skip embed local-folder gates (TEAMVER_DESIGN_API_URL unset)"
 fi
 
+# design-api internal billing endpoints reachable from daemon loopback (M2M).
+billing_unauth_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"workspace_id":"sidecar-probe","amount":0}' \
+  "http://127.0.0.1:${BE_PORT}/api/internal/billing/reserve" 2>/dev/null || echo "000")"
+if [[ "$billing_unauth_code" == "401" || "$billing_unauth_code" == "403" ]]; then
+  echo "✓ design-api /api/internal/billing/reserve unauthenticated → $billing_unauth_code"
+  pass=$((pass + 1))
+elif [[ "$billing_unauth_code" == "404" ]]; then
+  echo "✗ design-api /api/internal/billing/reserve → 404 (endpoint missing — redeploy design-api)"
+  fail=$((fail + 1))
+else
+  echo "○ design-api /api/internal/billing/reserve unauthenticated → $billing_unauth_code"
+fi
+
+if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
+  billing_auth_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+    -X POST \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    -H 'Content-Type: application/json' \
+    -d '{"workspace_id":"sidecar-probe","amount":0,"reason":"sidecar"}' \
+    "http://127.0.0.1:${BE_PORT}/api/internal/billing/reserve" 2>/dev/null || echo "000")"
+  if [[ "$billing_auth_code" == "200" ]]; then
+    echo "✓ design-api /api/internal/billing/reserve (M2M) → 200"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api /api/internal/billing/reserve (M2M) → $billing_auth_code (expected 200)"
+    fail=$((fail + 1))
+  fi
+fi
+
 echo
 echo "==> $pass passed, $fail failed"
 if (( fail > 0 )); then

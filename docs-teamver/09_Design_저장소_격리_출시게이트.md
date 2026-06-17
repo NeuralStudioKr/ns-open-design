@@ -114,13 +114,13 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-1 | `ProjectStorage` interface + `LocalProjectStorage` | `apps/daemon` | ✅ |
 | P1-2 | `S3ProjectStorage` (SigV4) | `apps/daemon` | ✅ |
 | P1-3 | `resolveProjectStorage()` + unit tests | `apps/daemon` | ✅ |
-| P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | 🟡 lazy file+export/archive materialize ✅ · projects.ts 전면 ☐ |
+| P1-4 | `projects.ts` → `ProjectStorage` 경유 리팩터 | `apps/daemon` | 🟡 lazy file+export/archive+**media/finalize/deploy/plugins/design-system** materialize ✅ · projects.ts 전면 ☐ |
 | P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | 🟡 PROJECTS_DIR scratch + materialization ✅ |
 | P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ✅ |
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
 | P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · EC2 apply ☐ |
-| P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + compose `--profile minio` ✅ · EC2 ☐ |
-| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy metrics log + alarm command ✅ · CloudWatch apply ☐ |
+| P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + compose `--profile minio` ✅ · ops fixture `test_run_s3_integration_test.sh` ✅ · EC2 ☐ |
+| P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy + **run-end** `od_s3_sync_up_failed` JSON 마커 ✅ · CloudWatch apply ☐ |
 
 **근거 코드:** `apps/daemon/src/storage/` — run hook + lazy file-route materialize (`OD_PROJECT_STORAGE=s3`).
 
@@ -129,7 +129,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
 | P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 config·profile ✅ |
-| P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` | 🟡 Litestream 초안 ✅ |
+| P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` + `scripts/restore_app_sqlite_from_s3.sh` | ✅ Litestream + fallback snapshot 모드, `--apply`로 daemon 컨테이너 직접 적용, fixture `test_restore_app_sqlite_from_s3.sh` |
 | P2-3 | (대안) `app.sqlite` → S3 fallback — Litestream 불가 시 | `deploy/teamver` | 🟡 manual fallback script ✅ · cron 미사용 |
 
 ### Phase 3 — 테넌트 격리 + design-api registry (약 2주)
@@ -143,7 +143,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create/import/delete sync ✅ · list filter ✅ · E2E ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` | ✅ env-gated · E2E ☐ |
 | P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ✅ design-api SSOT + daemon tenant scope |
-| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + scratch evict | `deploy/teamver/be` + daemon | ✅ soft-delete + `POST …/scratch/evict` · S3 lifecycle ☐ |
+| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + scratch evict | `deploy/teamver/be` + daemon | ✅ soft-delete + `POST …/scratch/evict` · S3 lifecycle `scripts/s3_lifecycle_policy.sh` (sqlite-backups expire + multipart cleanup + 옵션 scratch evict, `--apply`/`--diff`) |
 | P3-9 | access 검증 방식 확정 (daemon middleware vs nginx subrequest) | 설계 → 구현 | ✅ daemon middleware |
 
 **P3-6 구현 메모:** `TEAMVER_DESIGN_API_URL`이 설정된 배포에서 daemon은 `/api/projects/:id/**` 요청 전에 design-api access endpoint를 호출한다. 목록/생성(`/api/projects`)은 web registry sync/filter 경로가 담당하므로 middleware 대상에서 제외한다. design-api 거부(403/404)는 daemon에서 `PROJECT_NOT_FOUND`로 반환해 cross-workspace project id 노출을 줄인다.
@@ -386,7 +386,9 @@ Staging/Prod 검증      → EC2 + AWS S3   (VPN·smoke·browser E2E)
 | `run_minio_s3_dev.sh` | 로컬 MinIO 기동 + env 안내 |
 | `run_docker.sh --with-minio` | compose MinIO profile |
 | `print_staging_s3_env.sh` | **EC2** `.env.staging` S3 블록 출력 |
-| `apply_staging_s3_env.sh` | **EC2** `.env.staging`에 S3 키 병합 (P1-8) |
+| `apply_staging_s3_env.sh` | **EC2** `.env.staging`에 S3 키 병합 (P1-8) — `--dry-run` 지원, `test_apply_staging_s3_env.sh` fixture |
+| `run_post_deploy_track_a.sh` | EC2 validate → compose → sidecar deps → smoke / `--seed-verify`(A8) |
+| `print_cloudwatch_alarm_commands.sh` | sync-up · **usage 5xx** · scratch alarm (`--apply` 직접 실행 가능) |
 
 상세 runbook: [`deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md`](../deploy/teamver/docs/TEAMVER_APPS_INTEGRATION.md) §로컬 vs Staging S3.
 

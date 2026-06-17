@@ -24,7 +24,8 @@
 | U3 | token attribution | daemon만 | message.events `usage` | **P0** | ✅ |
 | U4 | 에러 가시성 | 항상 204 | 202 + request id | **P1** | ✅ |
 | U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
-| U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit | **출시 후** |
+| U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit | **출시 후** | 🟡 `services/run_lifecycle.py` orchestrator ✅ · run-path 통합 ☐ |
+| U7 | usage 5xx 알람 | 없음 | CW `teamver_usage_5xx` log metric + alarm | **P1** | ✅ |
 | D1 | Drive Publish | design-api 코드 **0건** | `POST /projects/{id}/publish` | **G7** |
 | D2 | design_outputs DDL | 없음 | Phase 3 `design_projects` FK | **G7** |
 | D3 | export formats v1 | daemon HTML/ZIP ready, PDF 501 | HTML + ZIP only | **G7** |
@@ -47,6 +48,10 @@
 | FE helper | `maybeReportTeamverUsageAfterSave.ts` + `reportUsage.ts` | ✅ |
 | FE in-memory 멱등 | `reportedRunIds` Set | ✅ |
 | Phase 2 wrapper | `services/teamver_billing.py` L24–49 | 🟡 import 0 |
+| Run lifecycle | `services/run_lifecycle.py` reserve/commit/refund | ✅ orchestrator + tests · daemon bridge wiring ✅ |
+| Internal billing M2M | `routers/internal_billing.py` `/api/internal/billing/{reserve,commit,refund}` | ✅ M2M endpoints + 6 unit tests + smoke probe (reserve/commit/refund 모두) |
+| Daemon billing bridge | `apps/daemon/src/teamver-billing-bridge.ts` reserve→commit/refund | ✅ best-effort + 구조화 `teamver_usage_5xx` JSON 마커 + `TEAMVER_BILLING_RESERVE_AMOUNT` / `TEAMVER_BILLING_TIMEOUT_MS` / `TEAMVER_BILLING_DISABLED` env knobs + 18 unit tests |
+| CW usage 5xx marker | `token_usage_log.py` + `print_cloudwatch_alarm_commands.sh` | ✅ |
 
 **UsageEventBody** (`usage_report.py`):
 
@@ -538,7 +543,7 @@ Browser
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| B-1 | `run_lifecycle.py` reserve/commit/refund | `deploy/teamver/be` | ☐ |
+| B-1 | `run_lifecycle.py` reserve/commit/refund + daemon bridge | `deploy/teamver/be` + `apps/daemon` | ✅ orchestrator + `teamver-billing-bridge.ts` + run-path wiring + tests |
 | B-2 | Admin registry `design` key | Main BE Admin | 🟡 `seed_main_be_design_app.sql` (전역 비활성화 시) |
 | B-3 | amount 산정 정책 | design-api | ☐ |
 
