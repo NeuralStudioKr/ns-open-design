@@ -564,7 +564,7 @@ Browser
 ### Usage E2E
 
 ```text
-[ ] embed run 완료 → POST /usage/events 201/204
+[ ] embed run 완료 → POST /usage/events 202 + requestId
 [ ] ai_model_token_usages row — workspace_id, run_id, model_name, tokens
 [ ] duplicate run_id → no double count (unique index)
 [ ] Main BE fetch_token_usage_by_model(app=design) returns items

@@ -76,6 +76,7 @@ Session (10 §6 S-8):
   [ ] Settings/runtime-config shows managed API (TEAMVER_OD_API_KEY on server)
 
 Usage (11 §8 U-6):
+  [ ] embed run 완료 → FE POST /api/v1/usage/events 202 + requestId
   [ ] embed run 완료 → design-api POST /api/internal/usage/events 204 (daemon M2M)
   [ ] Main BE ai_model_token_usages row for workspace + run_id
   [ ] GET /api/token-usage/by-model?app=design returns the run

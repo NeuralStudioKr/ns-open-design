@@ -368,22 +368,29 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
 
   if [[ -n "${TEAMVER_WORKSPACE_ID:-}" ]]; then
     usage_run_id="smoke-fe-$(date +%s)"
-    usage_fe_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    usage_body="$(mktemp)"
+    usage_fe_code="$(curl -s -o "$usage_body" -w '%{http_code}' --max-time 15 \
       -X POST \
       -H "Cookie: ${TEAMVER_COOKIE}" \
       -H "Content-Type: application/json" \
       -H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}" \
       -d "{\"workspaceId\":\"${TEAMVER_WORKSPACE_ID}\",\"modelName\":\"smoke-model\",\"inputTokens\":1,\"outputTokens\":2,\"runId\":\"${usage_run_id}\"}" \
       "${API_BASE}/api/v1/usage/events")"
-    if [[ "$usage_fe_code" == "204" ]]; then
-      echo "✓ design-api POST /api/v1/usage/events (cookie+camelCase) → 204"
+    if [[ "$usage_fe_code" == "202" ]]; then
+      usage_request_id="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('requestId') or d.get('request_id') or '')" "$usage_body" 2>/dev/null || true)"
+      if [[ -n "$usage_request_id" ]]; then
+        echo "✓ design-api POST /api/v1/usage/events (cookie+camelCase) → 202 requestId=${usage_request_id}"
+      else
+        echo "✓ design-api POST /api/v1/usage/events (cookie+camelCase) → 202"
+      fi
       pass=$((pass + 1))
     elif [[ "$usage_fe_code" == "403" ]]; then
       echo "○ design-api POST /api/v1/usage/events (cookie) → 403 (design app disabled for workspace?)"
     else
-      echo "✗ design-api POST /api/v1/usage/events (cookie+camelCase) → $usage_fe_code (expected 204)"
+      echo "✗ design-api POST /api/v1/usage/events (cookie+camelCase) → $usage_fe_code (expected 202)"
       fail=$((fail + 1))
     fi
+    rm -f "$usage_body"
   else
     echo "○ skip FE usage/events smoke (set TEAMVER_WORKSPACE_ID with TEAMVER_COOKIE)"
   fi
