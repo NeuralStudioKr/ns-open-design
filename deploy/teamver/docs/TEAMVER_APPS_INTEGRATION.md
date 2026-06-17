@@ -43,7 +43,7 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | POST | `/api/v1/projects` | Project registry create + daemon scratch sync-up (best-effort) |
 | GET | `/api/v1/projects/{od_project_id}/access` | Daemon access gate (204 + `X-Teamver-S3-Prefix`) |
 | DELETE | `/api/v1/projects/{od_project_id}` | Registry soft-delete + daemon scratch evict (best-effort) |
-| POST | `/api/v1/usage/events` | OD run usage (user JWT) — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
+| POST | `/api/v1/usage/events` | OD run usage (user JWT), `202 {requestId}` — [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/internal/usage/events` | Daemon M2M usage (internal key) — [11 §3.4](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | POST | `/api/v1/projects/{id}/publish` | Drive Publish HTML+ZIP — [11 §6](../../../docs-teamver/11_Usage·Drive_Publish_보강.md) |
 | GET | `/api/v1/projects/{id}/outputs` | Published `design_outputs` list (Drive asset history) |

@@ -11,6 +11,11 @@ export type TeamverUsageEvent = {
   run_id?: string;
 };
 
+export type TeamverUsageAcceptedResponse = {
+  accepted?: boolean;
+  requestId?: string;
+};
+
 function isRetryableUsageError(err: unknown): boolean {
   if (err instanceof NetworkError) {
     const status = err.status ?? 0;
@@ -22,8 +27,8 @@ function isRetryableUsageError(err: unknown): boolean {
 async function postUsageEvent(
   client: NonNullable<ReturnType<typeof getDesignBffClient>>,
   event: TeamverUsageEvent,
-): Promise<void> {
-  await client.http.post(
+): Promise<string | null> {
+  const response = await client.http.post<TeamverUsageAcceptedResponse>(
     "/usage/events",
     {
       workspaceId: event.workspace_id,
@@ -39,23 +44,25 @@ async function postUsageEvent(
       skipAuthHeader: true,
     },
   );
+  return typeof response?.requestId === "string" && response.requestId ? response.requestId : null;
 }
 
-export async function reportTeamverDesignUsage(event: TeamverUsageEvent): Promise<void> {
+export async function reportTeamverDesignUsage(event: TeamverUsageEvent): Promise<string | null> {
   const client = getDesignBffClient();
-  if (!client) return;
+  if (!client) return null;
 
   try {
-    await postUsageEvent(client, event);
+    return await postUsageEvent(client, event);
   } catch (err) {
     if (!isRetryableUsageError(err)) {
       console.warn("[teamver] usage/events failed", err);
-      return;
+      return null;
     }
     try {
-      await postUsageEvent(client, event);
+      return await postUsageEvent(client, event);
     } catch (retryErr) {
       console.warn("[teamver] usage/events retry failed", retryErr);
+      return null;
     }
   }
 }

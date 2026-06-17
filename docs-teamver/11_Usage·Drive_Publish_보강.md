@@ -22,7 +22,7 @@
 | U1 | usage 이벤트 생산 | BE ✅, 호출 주체 없음 | FE `saveMessage` hook | **P0** | ✅ |
 | U2 | 멱등성 | 중복 INSERT | `(workspace_id, run_id)` unique | **P0** | ✅ |
 | U3 | token attribution | daemon만 | message.events `usage` | **P0** | ✅ |
-| U4 | 에러 가시성 | 항상 204 | 202 + request id (Phase 2) | **P1** | ☐ |
+| U4 | 에러 가시성 | 항상 204 | 202 + request id | **P1** | ✅ |
 | U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
 | U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit | **출시 후** |
 | D1 | Drive Publish | design-api 코드 **0건** | `POST /projects/{id}/publish` | **G7** |
@@ -40,7 +40,7 @@
 
 | 구성 | 경로 | 상태 |
 |------|------|------|
-| `POST /api/v1/usage/events` | `deploy/teamver/be/app/routers/usage_report.py` L48–72 | ✅ |
+| `POST /api/v1/usage/events` | `deploy/teamver/be/app/routers/usage_report.py` | ✅ 202 + `requestId` |
 | `GET /api/token-usage/by-model` | `routers/token_usage.py` L17–33 | ✅ M2M |
 | async log | `services/token_usage_log.py` L45–72 | ✅ fire-and-forget |
 | DB | `ai_model_token_usages` | ✅ |
@@ -48,7 +48,7 @@
 | FE in-memory 멱등 | `reportedRunIds` Set | ✅ |
 | Phase 2 wrapper | `services/teamver_billing.py` L24–49 | 🟡 import 0 |
 
-**UsageEventBody** (`usage_report.py` L36–45):
+**UsageEventBody** (`usage_report.py`):
 
 ```python
 class UsageEventBody(BaseModel):
@@ -59,6 +59,12 @@ class UsageEventBody(BaseModel):
     operation: str = "design_run"
     project_id: Optional[str] = None
     run_id: Optional[str] = None
+```
+
+**Accepted response (U4):**
+
+```json
+{ "accepted": true, "requestId": "UREQ-..." }
 ```
 
 인증: user JWT + `X-Workspace-Id` + workspace 일치 검증.

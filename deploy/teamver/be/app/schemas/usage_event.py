@@ -35,3 +35,10 @@ class UsageEventBody(BaseModel):
         default=None,
         validation_alias=AliasChoices("run_id", "runId"),
     )
+
+
+class UsageEventAcceptedResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    accepted: bool = True
+    request_id: str = Field(serialization_alias="requestId")
