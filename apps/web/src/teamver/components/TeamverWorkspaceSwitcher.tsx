@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
-import { readWorkspaceId, readWorkspaceLabel, workspaceInitial } from "../workspaceUtils";
+import { readWorkspaceId, readWorkspaceLabel, workspaceInitial, formatWorkspaceMenuLabel, isWorkspaceAppEnabled } from "../workspaceUtils";
 
 type Props = {
   workspaces: WorkspaceListItem[];
@@ -78,7 +78,8 @@ export function TeamverWorkspaceSwitcher({
           {workspaces.map((workspace) => {
             const id = readWorkspaceId(workspace);
             if (!id) return null;
-            const label = readWorkspaceLabel(workspace);
+            const menuLabel = formatWorkspaceMenuLabel(workspace);
+            const appEnabled = isWorkspaceAppEnabled(workspace);
             const selected = id === activeWorkspaceId;
             return (
               <button
@@ -86,13 +87,15 @@ export function TeamverWorkspaceSwitcher({
                 type="button"
                 role="option"
                 aria-selected={selected}
-                className={`teamver-workspace-menu__item${selected ? " is-active" : ""}`}
+                aria-disabled={!appEnabled}
+                className={`teamver-workspace-menu__item${selected ? " is-active" : ""}${appEnabled ? "" : " is-disabled"}`}
+                title={menuLabel}
                 onClick={() => handleSelect(id)}
               >
                 <span className="teamver-workspace-menu__initial" aria-hidden>
                   {workspaceInitial(workspace)}
                 </span>
-                <span className="teamver-workspace-menu__label">{label}</span>
+                <span className="teamver-workspace-menu__label">{menuLabel}</span>
               </button>
             );
           })}

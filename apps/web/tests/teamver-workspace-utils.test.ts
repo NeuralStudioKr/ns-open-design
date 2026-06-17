@@ -5,6 +5,8 @@ import {
   readWorkspaceId,
   readWorkspaceLabel,
   workspaceInitial,
+  formatWorkspaceMenuLabel,
+  isWorkspaceAppEnabled,
 } from "../src/teamver/workspaceUtils";
 
 describe("workspaceUtils", () => {
@@ -48,5 +50,22 @@ describe("workspaceUtils", () => {
   it("builds workspace label and initial", () => {
     expect(readWorkspaceLabel({ name: "Acme Design" })).toBe("Acme Design");
     expect(workspaceInitial({ name: "Acme Design" })).toBe("AD");
+  });
+
+  it("formats disabled workspace menu label", () => {
+    expect(
+      formatWorkspaceMenuLabel({ name: "Acme", app_enabled: false }),
+    ).toBe("Acme (Disabled)");
+    expect(isWorkspaceAppEnabled({ app_enabled: false })).toBe(false);
+  });
+
+  it("prefers enabled workspaces for default pick", () => {
+    const workspaces = normalizeWorkspaceList([
+      { id: "WS-1", name: "Disabled", app_enabled: false },
+      { id: "WS-2", name: "Enabled", app_enabled: true },
+    ]);
+    expect(pickDefaultWorkspaceId(workspaces)).toBe("WS-2");
+    expect(workspaces[0]?.appEnabled).toBe(false);
+    expect(workspaces[1]?.appEnabled).toBe(true);
   });
 });

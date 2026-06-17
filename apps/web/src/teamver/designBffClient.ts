@@ -80,3 +80,34 @@ export type TeamverRuntimeConfigResponse = {
   model?: string;
   apiKey?: string;
 };
+
+export type TeamverWorkspacePermissions = {
+  workspaceId?: string;
+  workspace_id?: string;
+  appEnabled?: boolean;
+  app_enabled?: boolean;
+  appDisabledReason?: string | null;
+  app_disabled_reason?: string | null;
+  isMember?: boolean;
+  is_member?: boolean;
+};
+
+export async function fetchTeamverWorkspacePermissions(
+  workspaceId: string,
+): Promise<TeamverWorkspacePermissions | null> {
+  const client = getDesignBffClient();
+  if (!client) return null;
+  const trimmed = workspaceId.trim();
+  if (!trimmed) return null;
+  try {
+    return await client.http.get<TeamverWorkspacePermissions>(
+      `/permissions/${encodeURIComponent(trimmed)}`,
+      {
+        workspaceId: trimmed,
+        skipAuthHeader: true,
+      },
+    );
+  } catch {
+    return null;
+  }
+}

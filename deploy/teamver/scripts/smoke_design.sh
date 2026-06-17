@@ -354,6 +354,13 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
     if [[ "$workspace_count" -ge 1 ]]; then
       echo "✓ design-api /api/v1/auth/session workspaces=$workspace_count"
       pass=$((pass + 1))
+      app_enabled_count="$(echo "$session_json" | python3 -c "import json,sys; d=json.load(sys.stdin); ws=d.get('workspaces') or []; print(sum(1 for w in ws if w.get('app_enabled') is not False))" 2>/dev/null || echo "0")"
+      if [[ "$app_enabled_count" -ge 1 ]]; then
+        echo "✓ design-api session workspaces include app_enabled metadata ($app_enabled_count enabled)"
+        pass=$((pass + 1))
+      else
+        echo "○ design-api session workspaces missing app_enabled=true entries"
+      fi
     else
       echo "○ design-api /api/v1/auth/session authenticated but workspaces empty"
     fi

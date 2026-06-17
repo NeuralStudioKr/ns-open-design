@@ -53,7 +53,9 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-open-drive-publish-menu-item.test.tsx \
       tests/teamver-branding-head.test.tsx \
       tests/teamver-project-registry.test.ts \
+      tests/teamver-use-embed.test.tsx \
       tests/teamver-workspace-utils.test.ts \
+      tests/teamver-design-access.test.ts \
       tests/teamver-workspace-switcher.test.tsx
   )
 fi

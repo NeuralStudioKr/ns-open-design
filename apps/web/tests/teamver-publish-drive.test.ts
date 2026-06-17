@@ -11,10 +11,17 @@ vi.mock("../src/teamver/designApiBase", () => ({
 }));
 
 vi.mock("../src/teamver/designBffClient", () => ({
+  fetchTeamverWorkspacePermissions: vi.fn(async () => null),
   getDesignBffClient: vi.fn(() => ({
     http: { post: postMock },
     workspaceStore: { get: getWorkspaceMock },
   })),
+}));
+
+const assertAppEnabledMock = vi.fn(async (_workspaceId: string) => undefined);
+
+vi.mock("../src/teamver/teamverDesignAccess", () => ({
+  assertTeamverDesignAppEnabled: (workspaceId: string) => assertAppEnabledMock(workspaceId),
 }));
 
 import { NetworkError } from "@teamver/app-sdk";
@@ -30,6 +37,15 @@ describe("publishTeamverDesignToDrive", () => {
   beforeEach(() => {
     postMock.mockReset();
     getWorkspaceMock.mockClear();
+    assertAppEnabledMock.mockClear();
+  });
+
+  it("checks app_enabled before publish", async () => {
+    assertAppEnabledMock.mockRejectedValueOnce(new Error("app_disabled_globally"));
+    await expect(
+      publishTeamverDesignToDrive({ projectId: "od-1" }),
+    ).rejects.toThrow("app_disabled_globally");
+    expect(postMock).not.toHaveBeenCalled();
   });
 
   it("posts publish with workspace header", async () => {

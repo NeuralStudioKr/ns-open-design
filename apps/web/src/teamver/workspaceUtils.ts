@@ -15,6 +15,8 @@ type WorkspaceLike = {
   is_account_default_workspace?: boolean | null;
   appEnabled?: boolean | null;
   app_enabled?: boolean | null;
+  appDisabledReason?: string | null;
+  app_disabled_reason?: string | null;
 };
 
 export function readWorkspaceId(workspace: WorkspaceLike | null | undefined): string | null {
@@ -55,6 +57,22 @@ export function isWorkspaceAppEnabled(workspace: WorkspaceLike): boolean {
   return flag !== false;
 }
 
+export function readAppDisabledReason(workspace: WorkspaceLike | null | undefined): string | null {
+  const reason =
+    workspace?.appDisabledReason?.trim() ||
+    workspace?.app_disabled_reason?.trim() ||
+    null;
+  return reason || null;
+}
+
+export function formatWorkspaceMenuLabel(
+  workspace: WorkspaceLike,
+  disabledHint = "Disabled",
+): string {
+  const label = readWorkspaceLabel(workspace);
+  return isWorkspaceAppEnabled(workspace) ? label : `${label} (${disabledHint})`;
+}
+
 export function normalizeWorkspaceList(
   workspaces: WorkspaceLike[] | undefined | null,
 ): WorkspaceListItem[] {
@@ -71,6 +89,8 @@ export function normalizeWorkspaceList(
       role: workspace.role ?? "member",
       workspaceKind: workspace.workspaceKind ?? workspace.workspace_kind ?? undefined,
       isAccountDefaultWorkspace: isAccountDefaultWorkspace(workspace),
+      appEnabled: isWorkspaceAppEnabled(workspace),
+      appDisabledReason: readAppDisabledReason(workspace),
     });
   }
   return normalized;

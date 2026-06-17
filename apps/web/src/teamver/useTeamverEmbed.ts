@@ -10,7 +10,10 @@ import {
   pickDefaultWorkspaceId,
   readWorkspaceId,
   readWorkspaceLabel,
+  isWorkspaceAppEnabled,
+  readAppDisabledReason,
 } from "./workspaceUtils";
+import { snapshotFromWorkspace } from "./teamverDesignAccess";
 
 export type TeamverEmbedState = {
   loading: boolean;
@@ -19,6 +22,8 @@ export type TeamverEmbedState = {
   userId: string | null;
   activeWorkspaceId: string | null;
   activeWorkspaceLabel: string | null;
+  designAppEnabled: boolean;
+  designDisabledReason: string | null;
   workspaces: WorkspaceListItem[];
   error: string | null;
   switchWorkspace: (workspaceId: string) => Promise<void>;
@@ -32,6 +37,8 @@ const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
   userId: null,
   activeWorkspaceId: null,
   activeWorkspaceLabel: null,
+  designAppEnabled: true,
+  designDisabledReason: null,
   workspaces: [],
   error: null,
 };
@@ -90,6 +97,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session, workspaces);
       const activeWorkspace =
         workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null;
+      const designAppEnabled = activeWorkspace ? isWorkspaceAppEnabled(activeWorkspace) : true;
+      const designDisabledReason = activeWorkspace
+        ? readAppDisabledReason(activeWorkspace)
+        : null;
+      if (activeWorkspaceId && activeWorkspace) {
+        snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
+      }
 
       setState({
         loading: false,
@@ -98,6 +112,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         userId,
         activeWorkspaceId,
         activeWorkspaceLabel: activeWorkspace ? readWorkspaceLabel(activeWorkspace) : null,
+        designAppEnabled,
+        designDisabledReason,
         workspaces,
         error: session.authenticated ? null : "not_authenticated",
       });
@@ -120,10 +136,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     if (!target) return;
 
     await setActiveTeamverWorkspace(trimmed, stateRef.current.userId);
+    snapshotFromWorkspace(trimmed, target);
     setState((prev) => ({
       ...prev,
       activeWorkspaceId: trimmed,
       activeWorkspaceLabel: readWorkspaceLabel(target),
+      designAppEnabled: isWorkspaceAppEnabled(target),
+      designDisabledReason: readAppDisabledReason(target),
     }));
   }, []);
 

@@ -7,6 +7,7 @@ import {
   isTerminalRunStatus,
 } from "./usageAttribution";
 import { reportTeamverDesignUsage } from "./reportUsage";
+import { isTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 const reportedRunIds = new Set<string>();
 
@@ -31,6 +32,7 @@ export async function maybeReportTeamverUsageAfterSave(
       ? window.localStorage.getItem("teamver_design_active_workspace_id")
       : null);
   if (!workspaceId?.trim()) return;
+  if (!isTeamverDesignAppEnabled(workspaceId.trim())) return;
 
   const usage = extractLatestUsageFromEvents(message.events);
   const modelName = extractModelNameFromEvents(message.events) ?? "unknown";

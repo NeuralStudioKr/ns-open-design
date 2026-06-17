@@ -152,7 +152,7 @@ nginx `auth_request` 후 OD `/api/` 프록시에 `X-Teamver-User-Id`, `X-Teamver
 
 | 레이어 | 역할 |
 |--------|------|
-| **embed FE** | create/import/delete → design-api registry sync; list owner 필터; **workspace switcher** + user topbar |
+| **embed FE** | create/import/delete → design-api registry sync; list owner 필터; **workspace switcher** + user topbar; **`app_enabled` 비활성 WS 경고**; publish 전 `GET /permissions/{id}` |
 | **design-api** | `design_projects` + `s3_prefix` (`design/ws_*/user_*/proj_*/`) |
 | **daemon** | `TEAMVER_DESIGN_API_URL` 시 access subrequest; run/lazy materialize |
 

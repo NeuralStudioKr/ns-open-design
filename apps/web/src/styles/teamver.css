@@ -6,7 +6,9 @@
 }
 
 .teamver-embed-bar__status,
-.teamver-embed-bar__user {
+.teamver-embed-bar__user,
+.teamver-embed-bar__warn,
+.teamver-embed-bar__home {
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.65rem;
@@ -26,7 +28,26 @@
   border-color: rgba(52, 199, 89, 0.35);
 }
 
-.teamver-embed-bar[data-state='warn'] a {
+.teamver-embed-bar[data-state='warn'] .teamver-embed-bar__warn {
+  border-color: rgba(255, 159, 10, 0.45);
+  color: rgba(255, 196, 120, 0.95);
+}
+
+.teamver-embed-bar__home {
+  text-decoration: none;
+  color: inherit;
+}
+
+.teamver-embed-bar__home:hover {
+  text-decoration: underline;
+}
+
+.teamver-embed-bar[data-state='ok'] .teamver-embed-bar__home {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.teamver-embed-bar[data-state='warn'] a,
+.teamver-embed-bar[data-state='warn'] .teamver-embed-bar__home {
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.65rem;
@@ -96,6 +117,14 @@
 .teamver-workspace-menu__item:hover,
 .teamver-workspace-menu__item.is-active {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.teamver-workspace-menu__item.is-disabled {
+  opacity: 0.62;
+}
+
+.teamver-workspace-menu__item.is-disabled .teamver-workspace-menu__label {
+  font-style: italic;
 }
 
 .teamver-workspace-menu__initial {

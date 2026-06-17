@@ -1,4 +1,4 @@
-import { resolveTeamverLoginUrl } from "../teamver/designApiBase";
+import { resolveTeamverLoginUrl, resolveTeamverMainOrigin } from "../teamver/designApiBase";
 import { TeamverWorkspaceSwitcher } from "../teamver/components/TeamverWorkspaceSwitcher";
 import { useTeamverEmbed } from "../teamver/useTeamverEmbed";
 
@@ -20,13 +20,30 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
   }
 
   if (embed.authenticated) {
+    const barState = embed.designAppEnabled ? "ok" : "warn";
     return (
-      <div className="teamver-embed-bar" data-state="ok" data-testid="teamver-embed-bar">
+      <div className="teamver-embed-bar" data-state={barState} data-testid="teamver-embed-bar">
         <TeamverWorkspaceSwitcher
           workspaces={embed.workspaces}
           activeWorkspaceId={embed.activeWorkspaceId}
           onSwitch={embed.switchWorkspace}
         />
+        {!embed.designAppEnabled ? (
+          <span
+            className="teamver-embed-bar__warn"
+            title={embed.designDisabledReason ?? undefined}
+            data-testid="teamver-embed-app-disabled"
+          >
+            Design unavailable
+          </span>
+        ) : null}
+        <a
+          className="teamver-embed-bar__home"
+          href={resolveTeamverMainOrigin()}
+          data-testid="teamver-embed-main-link"
+        >
+          Teamver
+        </a>
         {embed.userLabel ? (
           <span className="teamver-embed-bar__user" title={embed.userId ?? undefined}>
             {embed.userLabel}

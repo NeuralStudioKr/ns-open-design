@@ -1,6 +1,7 @@
 import { NetworkError } from "@teamver/app-sdk";
 import { getDesignBffClient } from "./designBffClient";
 import { readTeamverViteEnv } from "./teamverViteEnv";
+import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 export type TeamverPublishDriveParams = {
   projectId: string;
@@ -139,6 +140,8 @@ export async function publishTeamverDesignToDrive(
   if (!workspaceId?.trim()) {
     throw new Error("teamver_workspace_required");
   }
+
+  await assertTeamverDesignAppEnabled(workspaceId.trim());
 
   const formats = params.formats?.length ? params.formats : ["html"];
   const body = {
