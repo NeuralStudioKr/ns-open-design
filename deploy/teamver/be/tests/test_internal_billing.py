@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+import os
+
+import pytest
+
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+
+from app.routers import internal_billing
+from app.routers.internal_billing import (
+    CommitBody,
+    RefundBody,
+    ReserveBody,
+    commit_run,
+    refund_run,
+    reserve_run,
+)
+from app.services import run_lifecycle
+
+
+@pytest.fixture(autouse=True)
+def _registry_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(internal_billing.run_lifecycle.settings, "teamver_registry_app_id", "ai-design")
+    monkeypatch.setattr(internal_billing.run_lifecycle.settings, "teamver_registry_key_id", "key-1")
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings,
+        "teamver_registry_access_key",
+        "secret-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_reserve_endpoint_returns_usage_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake(**kwargs):
+        return {"usage_id": "u-1", "approved": True}
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "reserve_credits", fake)
+
+    body = ReserveBody(workspace_id="ws-1", amount=10, reason="design_run")
+    response = await reserve_run(body, True)
+    assert response.ok is True
+    assert response.usage_id == "u-1"
+    assert response.error is None
+
+
+@pytest.mark.asyncio
+async def test_reserve_endpoint_passes_registry_not_configured_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings, "teamver_registry_app_id", ""
+    )
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings, "teamver_registry_key_id", ""
+    )
+    monkeypatch.setattr(
+        internal_billing.run_lifecycle.settings, "teamver_registry_access_key", ""
+    )
+
+    async def must_not_call(**kwargs):  # pragma: no cover - safety
+        raise AssertionError("billing must be skipped when creds are missing")
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "reserve_credits", must_not_call)
+
+    body = ReserveBody(workspace_id="ws-1", amount=5)
+    response = await reserve_run(body, True)
+    assert response.ok is True
+    assert response.usage_id is None
+    assert response.error == "registry_not_configured"
+
+
+@pytest.mark.asyncio
+async def test_commit_endpoint_returns_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        return {"usage_id": kwargs["usage_id"], "committed": True}
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "commit_usage", fake)
+
+    response = await commit_run(CommitBody(usage_id="u-1"), True)
+    assert response.ok is True
+    assert response.error is None
+    assert captured == {"usage_id": "u-1"}
+
+
+@pytest.mark.asyncio
+async def test_commit_endpoint_surfaces_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def boom(**kwargs):
+        raise RuntimeError("registry 500")
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "commit_usage", boom)
+
+    response = await commit_run(CommitBody(usage_id="u-1"), True)
+    assert response.ok is False
+    assert response.error == "commit_failed"
+
+
+@pytest.mark.asyncio
+async def test_refund_endpoint_returns_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake(**kwargs):
+        captured.update(kwargs)
+        return {"usage_id": kwargs["usage_id"], "refunded": True}
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "refund_usage", fake)
+
+    body = RefundBody(usage_id="u-1", reason="design_run_failed")
+    response = await refund_run(body, True)
+    assert response.ok is True
+    assert captured == {"usage_id": "u-1", "reason": "design_run_failed"}
+
+
+@pytest.mark.asyncio
+async def test_refund_endpoint_surfaces_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def boom(**kwargs):
+        raise RuntimeError("registry 500")
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "refund_usage", boom)
+
+    response = await refund_run(RefundBody(usage_id="u-1"), True)
+    assert response.ok is False
+    assert response.error == "refund_failed"

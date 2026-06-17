@@ -255,6 +255,7 @@ import {
 } from './storage/project-materialization-runtime.js';
 import { resolveProjectStorageLayout } from './storage/project-storage-layout.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import {
   createLazyProjectMaterializationMiddleware,
   createProjectStorageAccessHooks,
@@ -280,6 +281,11 @@ import {
   reportRunFeedbackFromDaemon,
 } from './langfuse-bridge.js';
 import { reportTeamverUsageFromDaemon } from './teamver-usage-bridge.js';
+import {
+  commitTeamverBillingFromDaemon,
+  refundTeamverBillingFromDaemon,
+  reserveTeamverBillingFromDaemon,
+} from './teamver-billing-bridge.js';
 import {
   deriveLangfuseDeliveryState,
   readTelemetrySinkConfig,
@@ -3160,6 +3166,24 @@ export function createFinalizedMessageTelemetryReporter({
         persistedRunStatus: saved.runStatus,
         reportedRuns,
       });
+      // Teamver Registry billing (Phase 2) — commit on success, refund on
+      // fail/cancel. usageId is stashed on the run object by the reserve
+      // path. No-op when reservation was skipped (registry creds unset or
+      // workspace identity missing).
+      void (async () => {
+        const usageId = (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId ?? null;
+        if (!usageId) return;
+        const status = saved.runStatus;
+        if (status === 'succeeded') {
+          await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
+        } else if (status === 'failed' || status === 'canceled') {
+          await refundTeamverBillingFromDaemon({
+            runId: run.id,
+            usageId,
+            reason: status === 'canceled' ? 'design_run_canceled' : 'design_run_failed',
+          });
+        }
+      })();
       const state = delivery ?? {
         langfuse_expected: true,
         langfuse_delivery_status: 'accepted',
@@ -11674,6 +11698,28 @@ export async function startServer({
           'Failed to prepare project storage for this run.',
         );
       }
+    }
+
+    // Teamver Registry billing (Phase 2 / 09 §3 / A9) — reserve credits before
+    // the agent starts. Best-effort: when Teamver wiring or registry creds
+    // are absent the bridge no-ops; failures log to console and emit
+    // `teamver_usage_5xx` on the design-api side. Run is NEVER aborted.
+    try {
+      const identity = (run as { teamverIdentity?: TeamverRequestIdentity | null }).teamverIdentity ?? null;
+      const reserve = await reserveTeamverBillingFromDaemon({
+        runId: run.id,
+        identity,
+        amount: 0,
+        reason: 'design_run',
+      });
+      if (reserve.ok && reserve.usageId) {
+        (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId = reserve.usageId;
+      }
+    } catch (err) {
+      console.warn(
+        '[teamver-billing-bridge] reserve threw (continuing run):',
+        err instanceof Error ? err.message : err,
+      );
     }
 
     // Auto-memory hook. Pulls explicit "remember:" / "我是 X" / "I prefer Y"

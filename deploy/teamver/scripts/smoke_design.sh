@@ -284,6 +284,34 @@ else
   fail=$((fail + 1))
 fi
 
+billing_public_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"workspace_id":"smoke-w","amount":0}' \
+  "${API_BASE}/api/internal/billing/reserve")"
+if [[ "$billing_public_code" == "403" || "$billing_public_code" == "404" ]]; then
+  echo "✓ design-api POST /api/internal/billing/reserve (public) → $billing_public_code (nginx deny)"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api POST /api/internal/billing/reserve (public) → $billing_public_code (expected 403/404)"
+  fail=$((fail + 1))
+fi
+
+for billing_path in commit refund; do
+  billing_pub_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"usage_id":"smoke"}' \
+    "${API_BASE}/api/internal/billing/${billing_path}")"
+  if [[ "$billing_pub_code" == "403" || "$billing_pub_code" == "404" ]]; then
+    echo "✓ design-api POST /api/internal/billing/${billing_path} (public) → $billing_pub_code (nginx deny)"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api POST /api/internal/billing/${billing_path} (public) → $billing_pub_code (expected 403/404)"
+    fail=$((fail + 1))
+  fi
+done
+
 token_usage_public_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
   "${API_BASE}/api/token-usage/by-model?user_id=x&workspace_id=y&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z")"
 if [[ "$token_usage_public_code" == "401" || "$token_usage_public_code" == "403" || "$token_usage_public_code" == "422" ]]; then
@@ -319,6 +347,20 @@ if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
     pass=$((pass + 1))
   else
     echo "✗ design-api POST /api/internal/usage/events (M2M) → $usage_internal_code (expected 204)"
+    fail=$((fail + 1))
+  fi
+
+  billing_reserve_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -X POST \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{"workspace_id":"smoke-w","amount":0,"reason":"smoke"}' \
+    "${internal_base}/api/internal/billing/reserve")"
+  if [[ "$billing_reserve_code" == "200" ]]; then
+    echo "✓ design-api POST /api/internal/billing/reserve (M2M) → 200"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api POST /api/internal/billing/reserve (M2M) → $billing_reserve_code (expected 200)"
     fail=$((fail + 1))
   fi
   fi

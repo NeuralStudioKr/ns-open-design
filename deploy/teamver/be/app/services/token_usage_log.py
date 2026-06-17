@@ -28,20 +28,30 @@ async def alog_token_usage(
     output_tokens: int,
     scope: UsageScope,
 ) -> None:
-    async with async_session_maker() as db:
-        await token_usage_crud.acreate_usage(
-            db,
-            model_name=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            user_id=scope.user_id,
-            workspace_id=scope.workspace_id,
-            used_at=utcnow(),
-            operation=scope.operation,
-            project_id=scope.project_id,
-            run_id=scope.run_id,
+    try:
+        async with async_session_maker() as db:
+            await token_usage_crud.acreate_usage(
+                db,
+                model_name=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                user_id=scope.user_id,
+                workspace_id=scope.workspace_id,
+                used_at=utcnow(),
+                operation=scope.operation,
+                project_id=scope.project_id,
+                run_id=scope.run_id,
+            )
+            await db.commit()
+    except Exception:
+        # CloudWatch log metric filter watches for this marker (11 §3 U-7).
+        logger.exception(
+            "teamver_usage_5xx token usage write failed op=%s model=%s workspace=%s",
+            scope.operation,
+            model_name,
+            scope.workspace_id,
         )
-        await db.commit()
+        raise
 
 
 def schedule_token_usage_log(
@@ -66,7 +76,12 @@ def schedule_token_usage_log(
             try:
                 asyncio.run(coro)
             except Exception:
-                logger.exception("token usage log failed op=%s model=%s", scope.operation, model_name)
+                # CloudWatch log metric filter — 11 §3 U-7.
+                logger.exception(
+                    "teamver_usage_5xx token usage log failed op=%s model=%s",
+                    scope.operation,
+                    model_name,
+                )
 
         threading.Thread(target=_thread_worker, daemon=True, name="design-token-usage").start()
         return
