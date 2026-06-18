@@ -20,6 +20,7 @@ run_docker.sh — Teamver Design (OD + design-api)
   bash scripts/run_docker.sh --staging --local-db  # compose Postgres (dev)
   bash scripts/run_docker.sh --staging --with-minio  # local S3-compat (MinIO profile)
   bash scripts/run_docker.sh --staging --skip-validate  # skip env preflight
+  bash scripts/run_docker.sh --staging --vendor-check-only  # check SDK vendor artifacts and exit
 
 선행: cp .env.staging.example .env.staging  (또는 .env.production.example)
 EOF
@@ -30,6 +31,56 @@ USE_RDS=false
 USE_LOCAL_DB=false
 USE_MINIO=false
 SKIP_VALIDATE=false
+VENDOR_CHECK_ONLY=false
+
+missing_teamver_vendor() {
+  local od_root="$1"
+  local missing=()
+
+  [[ -f "$od_root/vendor/teamver/manifest.json" ]] || missing+=("vendor/teamver/manifest.json")
+  [[ -f "$od_root/vendor/teamver/app-sdk.tgz" ]] || missing+=("vendor/teamver/app-sdk.tgz")
+  if ! compgen -G "$od_root/vendor/teamver/python/teamver_app_sdk-*.whl" >/dev/null; then
+    missing+=("vendor/teamver/python/teamver_app_sdk-*.whl")
+  fi
+
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  printf '%s\n' "${missing[@]}"
+  return 1
+}
+
+ensure_teamver_vendor() {
+  local od_root="$1"
+  local missing=""
+
+  if missing="$(missing_teamver_vendor "$od_root")"; then
+    echo "✓ Teamver vendor artifacts ready"
+    return 0
+  fi
+
+  echo "==> Teamver vendor artifacts missing:"
+  sed 's/^/  - /' <<< "$missing"
+
+  if [[ -f "$od_root/scripts/sync-teamver-vendor.sh" ]]; then
+    echo "==> running sync-teamver-vendor.sh"
+    bash "$od_root/scripts/sync-teamver-vendor.sh"
+  else
+    echo "❌ $od_root/scripts/sync-teamver-vendor.sh 파일 없음"
+    echo "   ns-open-design repo root에서 bash scripts/sync-teamver-vendor.sh 후 vendor 산출물을 commit/pull 하세요."
+    exit 1
+  fi
+
+  if missing="$(missing_teamver_vendor "$od_root")"; then
+    echo "✓ Teamver vendor artifacts ready"
+    return 0
+  fi
+
+  echo "❌ Teamver vendor artifacts still missing after sync:"
+  sed 's/^/  - /' <<< "$missing"
+  exit 1
+}
 
 while (( $# )); do
   case "$1" in
@@ -39,6 +90,7 @@ while (( $# )); do
     --local-db) USE_LOCAL_DB=true ;;
     --with-minio) USE_MINIO=true ;;
     --skip-validate) SKIP_VALIDATE=true ;;
+    --vendor-check-only) VENDOR_CHECK_ONLY=true ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -88,10 +140,10 @@ if [[ "$USE_RDS" == true ]]; then
   fi
 fi
 
-OD_ROOT="$(cd "$ROOT/../.." && pwd)"
-if [[ ! -f "$OD_ROOT/vendor/teamver/app-sdk.tgz" ]]; then
-  echo "==> Teamver vendor missing — running sync-teamver-vendor.sh"
-  bash "$OD_ROOT/scripts/sync-teamver-vendor.sh"
+OD_ROOT="${TEAMVER_OD_ROOT_OVERRIDE:-$(cd "$ROOT/../.." && pwd)}"
+ensure_teamver_vendor "$OD_ROOT"
+if [[ "$VENDOR_CHECK_ONLY" == true ]]; then
+  exit 0
 fi
 
 COMPOSE_ARGS=(--env-file "$ENV_FILE")
