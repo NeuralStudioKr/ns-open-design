@@ -28,6 +28,7 @@ import type {
   RunContextSelection,
   SseErrorPayload,
 } from '@open-design/contracts';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import type { StreamHandlers } from './anthropic';
 
 /**
@@ -752,7 +753,14 @@ export interface VelaLoginStatus {
 //   POST /api/integrations/vela/login/cancel — terminate a still-pending login
 //   POST /api/integrations/vela/logout   — clear ~/.amr auth and Settings-backed AMR auth env
 // The Settings UI polls /status after kicking off /login to detect completion.
+//
+// In Teamver embed mode the staging/prod containers ship without the vela
+// binary, so every poll resolved to a graceful 503 (`available:false`) and
+// produced log noise for nothing. Skip the round-trip entirely there — the
+// Settings AMR card and onboarding model picker are already hidden via
+// `isTeamverEmbedMode()` upstream.
 export async function fetchVelaLoginStatus(): Promise<VelaLoginStatus | null> {
+  if (isTeamverEmbedMode()) return null;
   try {
     const resp = await fetch('/api/integrations/vela/status');
     if (!resp.ok) return null;
@@ -763,6 +771,7 @@ export async function fetchVelaLoginStatus(): Promise<VelaLoginStatus | null> {
 }
 
 export async function fetchAmrModels(): Promise<AmrModelsResponse | null> {
+  if (isTeamverEmbedMode()) return null;
   try {
     const resp = await fetch('/api/amr/models', { cache: 'no-store' });
     if (!resp.ok) return null;
@@ -783,6 +792,9 @@ export interface StartVelaLoginResult {
 export async function startVelaLogin(
   attribution?: AmrEntryAttribution | null,
 ): Promise<StartVelaLoginResult> {
+  if (isTeamverEmbedMode()) {
+    return { ok: false, status: 0, error: 'amr_disabled_in_embed' };
+  }
   try {
     const resp = await fetch('/api/integrations/vela/login', {
       method: 'POST',
@@ -806,6 +818,7 @@ export async function startVelaLogin(
 }
 
 export async function cancelVelaLogin(): Promise<{ ok: boolean; canceled?: boolean }> {
+  if (isTeamverEmbedMode()) return { ok: true, canceled: false };
   try {
     const resp = await fetch('/api/integrations/vela/login/cancel', { method: 'POST' });
     if (!resp.ok) return { ok: false };
@@ -817,6 +830,7 @@ export async function cancelVelaLogin(): Promise<{ ok: boolean; canceled?: boole
 }
 
 export async function velaLogout(): Promise<{ ok: boolean }> {
+  if (isTeamverEmbedMode()) return { ok: true };
   try {
     const resp = await fetch('/api/integrations/vela/logout', { method: 'POST' });
     return { ok: resp.ok };

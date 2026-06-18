@@ -1,8 +1,17 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchAmrModels } from '../../src/providers/daemon';
+vi.mock('../../src/teamver/designApiBase', () => ({
+  isTeamverEmbedMode: vi.fn(() => false),
+}));
+
+import { fetchAmrModels, fetchVelaLoginStatus } from '../../src/providers/daemon';
+import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
 
 describe('fetchAmrModels', () => {
+  beforeEach(() => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -33,5 +42,23 @@ describe('fetchAmrModels', () => {
     );
 
     await expect(fetchAmrModels()).resolves.toBeNull();
+  });
+
+  it('skips AMR model polling in Teamver embed mode', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchAmrModels()).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('skips Vela login status polling in Teamver embed mode', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchVelaLoginStatus()).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

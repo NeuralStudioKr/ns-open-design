@@ -80,6 +80,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-embed-local-ui.test.ts \
       tests/teamver-embed-local-workspace-policy.test.ts \
       tests/teamver-embed-project-sanitize.test.ts \
+      tests/providers/daemon-amr-models.test.ts \
+      tests/teamver-amr-embed-skip.test.ts \
       tests/teamver-workspace-switcher.test.tsx
   )
 fi
