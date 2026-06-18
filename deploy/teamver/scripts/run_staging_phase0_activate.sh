@@ -41,7 +41,40 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+env_value() {
+  local key="$1"
+  awk -F= -v key="$key" '
+    $1 == key {
+      value = substr($0, index($0, "=") + 1)
+      gsub(/^["'\'' ]+|["'\'' ]+$/, "", value)
+      print value
+      exit
+    }
+  ' "$ENV_FILE"
+}
+
 echo "==> Phase 0 staging activation (S3 + preflight)"
+echo
+
+echo "==> Step 0: staging RDS database prerequisite"
+db_name="$(env_value POSTGRES_DB)"
+db_user="$(env_value POSTGRES_USER)"
+echo "  run once on teamver-staging RDS if database is missing:"
+echo "    CREATE DATABASE ${db_name:-teamver_design_staging} OWNER ${db_user:-teamver_be_admin};"
+if command -v terraform >/dev/null 2>&1 && [[ -d "$ROOT/../../ns-teamver-devops/terraform/services/teamver-design" ]]; then
+  (
+    cd "$ROOT/../../ns-teamver-devops/terraform/services/teamver-design"
+    db_sql="$(terraform output -raw rds_create_database_sql 2>/dev/null || true)"
+    if [[ -n "$db_sql" && "$db_sql" != "null" ]]; then
+      echo "  terraform output rds_create_database_sql:"
+      echo "    $db_sql"
+    else
+      echo "  ○ no shared-RDS CREATE DATABASE output (dedicated RDS or terraform not initialized)"
+    fi
+  )
+else
+  echo "  (or from ns-teamver-devops: terraform output -raw rds_create_database_sql)"
+fi
 echo
 
 APPLY_ARGS=()

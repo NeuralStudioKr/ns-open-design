@@ -27,20 +27,25 @@ TEAMVER_JWT_SECRET=fixture-jwt
 POSTGRES_HOST=teamver-design-staging.x.rds.amazonaws.com
 POSTGRES_PASSWD=secret
 POSTGRES_DB=teamver_design_staging
-POSTGRES_USER=teamver_design_admin
+POSTGRES_USER=teamver_be_admin
 TEAMVER_API_BASE_URL=https://stg-api.teamver.com
 TEAMVER_INTERNAL_API_KEY=shared-key
 EOF
 
-before_hash="$(shasum -a 256 "$ENV_FILE" | awk '{print $1}')"
+before_hash="$(cksum "$ENV_FILE" | awk '{print $1 ":" $2}')"
 dry_out="$(ENV_FILE="$ENV_FILE" bash "$SCRIPT" --dry-run 2>&1)"
-after_hash="$(shasum -a 256 "$ENV_FILE" | awk '{print $1}')"
+after_hash="$(cksum "$ENV_FILE" | awk '{print $1 ":" $2}')"
 if [[ "$before_hash" != "$after_hash" ]]; then
   echo "❌ dry-run mutated env file"
   exit 1
 fi
 if ! grep -q 'dry-run complete' <<< "$dry_out"; then
   echo "❌ dry-run path failed"
+  echo "$dry_out"
+  exit 1
+fi
+if ! grep -q 'CREATE DATABASE teamver_design_staging OWNER teamver_be_admin;' <<< "$dry_out"; then
+  echo "❌ dry-run output missing staging CREATE DATABASE prerequisite"
   echo "$dry_out"
   exit 1
 fi
@@ -57,8 +62,8 @@ if bash "$SCRIPT" --not-a-flag >/dev/null 2>&1; then
   exit 1
 fi
 
-if bash "$SCRIPT" 2>/dev/null; then
-  echo "❌ expected failure without .env.staging in deploy root"
+if ENV_FILE="$WORK/missing.env.staging" bash "$SCRIPT" >/dev/null 2>&1; then
+  echo "❌ expected failure with missing ENV_FILE"
   exit 1
 fi
 
