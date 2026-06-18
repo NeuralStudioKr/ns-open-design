@@ -212,6 +212,7 @@ export function createProjectMaterializationRuntime(
   // when scratch slowly grows (e.g. failed evict, stuck materialization). The
   // run-end path covers active workloads; this catches the long-tail case.
   let periodicTimer: NodeJS.Timeout | null = null;
+  let disposed = false;
   if (isS3ProjectStorageLayout(layout) && scratchDiskMetricsEnabled()) {
     const raw = (process.env.OD_SCRATCH_DISK_METRIC_INTERVAL_MS ?? '').trim();
     const intervalMs = raw ? Number(raw) : 5 * 60 * 1000;
@@ -226,13 +227,15 @@ export function createProjectMaterializationRuntime(
   }
 
   function dispose(): void {
+    if (disposed) return;
+    disposed = true;
     if (periodicTimer !== null) {
       clearInterval(periodicTimer);
       periodicTimer = null;
     }
     // Best-effort drain sample so the last datapoint reflects scratch
     // state at shutdown. Emitted async — caller does NOT await dispose()
-    // (it's a sync teardown contract used by server.ts swap path).
+    // (it's a sync teardown contract used by server.ts swap + SIGTERM path).
     if (isS3ProjectStorageLayout(layout) && scratchDiskMetricsEnabled()) {
       void emitPeriodicScratchDiskUsageMarker(layout.scratchDir, 'drain');
     }

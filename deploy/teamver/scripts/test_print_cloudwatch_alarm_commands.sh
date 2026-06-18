@@ -19,9 +19,12 @@ staging_out="$(SNS_TOPIC_ARN='arn:aws:sns:ap-northeast-2:000000000000:teamver-de
 for needle in \
   'TeamverDesignS3SyncUpFailed' \
   'TeamverDesignUsage5xx' \
+  'TeamverDesignProjectAccess5xx' \
   'TeamverDesignScratchOverThreshold' \
   'teamver-design-staging-scratch-disk-80pct' \
   'teamver-design-staging-scratch-over-threshold' \
+  'teamver-design-staging-project-access-5xx' \
+  'teamver_project_access_5xx' \
   'od_scratch_disk_usage' \
   'overThreshold' \
   'aws cloudwatch put-metric-alarm' \

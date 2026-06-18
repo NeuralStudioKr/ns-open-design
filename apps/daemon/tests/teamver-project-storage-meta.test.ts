@@ -57,7 +57,9 @@ describe('teamver-project-storage-meta', () => {
 
       expect(result).toBe('design/ws_a/user_b/proj_proj-1');
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchMock.mock.calls[0];
+      const call = fetchMock.mock.calls[0];
+      expect(call).toBeDefined();
+      const [url, init] = call as [string, RequestInit];
       expect(url).toBe('http://design-api:16000/api/v1/projects/proj-1/access');
       expect(init?.method).toBe('GET');
       expect(init?.headers).toMatchObject({
@@ -121,7 +123,9 @@ describe('teamver-project-storage-meta', () => {
 
       await fetchTeamverProjectS3Prefix('weird id/with slash', identity);
 
-      const [url] = fetchMock.mock.calls[0];
+      const call = fetchMock.mock.calls[0];
+      expect(call).toBeDefined();
+      const [url] = call as [string, RequestInit];
       expect(url).toBe(
         'http://design-api:16000/api/v1/projects/weird%20id%2Fwith%20slash/access',
       );

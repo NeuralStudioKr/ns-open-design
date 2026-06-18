@@ -16014,6 +16014,10 @@ export async function startServer({
       if (daemonShutdownStarted) return;
       daemonShutdownStarted = true;
       daemonShuttingDown = true;
+      // Stop the periodic scratch sampler and emit a final drain marker
+      // while scratch still reflects the last run's footprint (before
+      // active-run teardown triggers sync-up / evict).
+      projectMaterialization.dispose();
       await design.runs.shutdownActive({ graceMs: resolveChatRunShutdownGraceMs() });
       await terminalService.shutdownActive();
       await design.analytics.shutdown();

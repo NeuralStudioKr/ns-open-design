@@ -175,6 +175,7 @@ probe() {
 }
 
 probe "OD /api/health" "${DESIGN_BASE}/api/health"
+probe "OD /api/health/storage" "${DESIGN_BASE}/api/health/storage"
 probe "design-api /api/healthz" "${API_BASE}/api/healthz"
 
 healthz_json="$(curl -sf --max-time 12 "${API_BASE}/api/healthz" 2>/dev/null || echo "")"
@@ -194,5 +195,13 @@ if [[ -n "$deps_json" ]]; then
     fi
   elif [[ -n "$storage_remote" ]]; then
     echo "    deps project_storage=$storage_remote"
+  fi
+  od_storage_remote="$(echo "$deps_json" | sed -n 's/.*"od_storage":"\([^"]*\)".*/\1/p' | head -1)"
+  if [[ -n "$od_storage_remote" ]]; then
+    if [[ "$od_storage_remote" == "ok" ]]; then
+      echo "  ✓ deps checks.od_storage=ok"
+    else
+      echo "  ✗ deps checks.od_storage=$od_storage_remote"
+    fi
   fi
 fi

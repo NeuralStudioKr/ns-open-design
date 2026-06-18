@@ -32,6 +32,7 @@ Env overrides:
   TEAMVER_OD_PROJECT_ID (optional — /projects/{id}/access + S3 prefix header)
   TEAMVER_INTERNAL_API_KEY (optional — internal usage + token-usage M2M)
   OD_PROJECT_STORAGE (optional — deps config.project_storage 일치 검증)
+  SMOKE_REQUIRE_OD_STORAGE (optional — checks.od_storage!=ok 이면 fail; OD_PROJECT_STORAGE=s3 일 때도 동일)
 EOF
 }
 
@@ -198,8 +199,18 @@ if [[ -n "$deps_json" ]]; then
         echo "○ design-api deps checks.od_storage=not_configured (daemon URL unset on BFF)"
         ;;
       degraded|unavailable)
-        echo "✗ design-api deps checks.od_storage=$od_storage_status (probe /api/health/storage on the daemon)"
-        fail=$((fail + 1))
+        require_storage=false
+        if [[ "${SMOKE_REQUIRE_OD_STORAGE:-0}" == "1" ]]; then
+          require_storage=true
+        elif [[ -n "${OD_PROJECT_STORAGE:-}" ]] && [[ "$(printf '%s' "$OD_PROJECT_STORAGE" | tr '[:upper:]' '[:lower:]')" == "s3" ]]; then
+          require_storage=true
+        fi
+        if [[ "$require_storage" == true ]]; then
+          echo "✗ design-api deps checks.od_storage=$od_storage_status (S3 reachability required — probe daemon /api/health/storage)"
+          fail=$((fail + 1))
+        else
+          echo "○ design-api deps checks.od_storage=$od_storage_status (set OD_PROJECT_STORAGE=s3 or SMOKE_REQUIRE_OD_STORAGE=1 to enforce)"
+        fi
         ;;
       *)
         echo "○ design-api deps checks.od_storage=$od_storage_status"

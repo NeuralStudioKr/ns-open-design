@@ -16,6 +16,8 @@
 #   - alarm template: scratch disk percent used (CW Agent metric)
 #   - log metric filter + alarm: daemon scratch over threshold
 #     (`od_scratch_disk_usage` + `"overThreshold":true`)
+#   - log metric filter + alarm: daemon project-access upstream failures
+#     (`teamver_project_access_5xx`)
 
 set -euo pipefail
 
@@ -115,6 +117,30 @@ declare -a USAGE_ALARM=(
   --treat-missing-data notBreaching
 )
 
+declare -a PROJECT_ACCESS_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-project-access-5xx"
+  --filter-pattern '"teamver_project_access_5xx"'
+  --metric-transformations
+    "metricName=TeamverDesignProjectAccess5xx,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a PROJECT_ACCESS_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-project-access-5xx"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignProjectAccess5xx"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 5
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
 declare -a SCRATCH_ALARM=(
   aws cloudwatch put-metric-alarm
   --region "$REGION"
@@ -159,6 +185,7 @@ declare -a SCRATCH_BYTES_ALARM=(
 if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SYNC_UP_ALARM+=("${alarm_action_args[@]}")
   USAGE_ALARM+=("${alarm_action_args[@]}")
+  PROJECT_ACCESS_ALARM+=("${alarm_action_args[@]}")
   SCRATCH_ALARM+=("${alarm_action_args[@]}")
   SCRATCH_BYTES_ALARM+=("${alarm_action_args[@]}")
 fi
@@ -191,6 +218,8 @@ run_or_emit "4) Alarm: usage 5xx burst (>=5 in 5 minutes)" "${USAGE_ALARM[@]}"
 run_or_emit "5) Alarm template: scratch disk > 80% (requires CW Agent dimension Name/Value above)" "${SCRATCH_ALARM[@]}"
 run_or_emit "6) Log metric filter: daemon scratch over threshold" "${SCRATCH_BYTES_FILTER[@]}"
 run_or_emit "7) Alarm: scratch over threshold (any overThreshold:true in 5 minutes)" "${SCRATCH_BYTES_ALARM[@]}"
+run_or_emit "8) Log metric filter: daemon project-access upstream failures" "${PROJECT_ACCESS_FILTER[@]}"
+run_or_emit "9) Alarm: project-access 5xx burst (≥5 in 5 minutes)" "${PROJECT_ACCESS_ALARM[@]}"
 
 if [[ "$APPLY" -eq 0 ]]; then
   echo "# Tip: re-run with --apply to execute (requires aws CLI + IAM)."

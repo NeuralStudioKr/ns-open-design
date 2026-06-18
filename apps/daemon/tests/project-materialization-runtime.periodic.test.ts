@@ -34,11 +34,14 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  function infoLines(): string[] {
+    return (infoSpy.mock.calls as unknown[][]).map((call) => String(call[0] ?? ''));
+  }
+
   it('does not start a timer when scratch metrics are disabled', async () => {
     const runtime = createProjectMaterializationRuntime(s3Layout(), null);
     await sleep(120);
-    const periodicCalls = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const periodicCalls = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"'));
     expect(periodicCalls).toHaveLength(0);
     runtime.dispose();
@@ -51,8 +54,7 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
       null,
     );
     await sleep(120);
-    const periodicCalls = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const periodicCalls = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"'));
     expect(periodicCalls).toHaveLength(0);
     runtime.dispose();
@@ -65,8 +67,7 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
     const runtime = createProjectMaterializationRuntime(s3Layout(), null);
     await sleep(150);
 
-    const periodicCalls = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const periodicCalls = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"periodic"'));
     expect(periodicCalls.length).toBeGreaterThanOrEqual(1);
     const parsed = JSON.parse(periodicCalls[0]!);
@@ -78,26 +79,29 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
     // Drain marker is emitted async — give the event loop a chance.
     await sleep(80);
 
-    const periodicAfter = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const periodicAfter = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"periodic"'));
     expect(periodicAfter.length).toBe(periodicCalls.length);
 
-    const drainCalls = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const drainCalls = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"drain"'));
     expect(drainCalls.length).toBe(1);
     const drained = JSON.parse(drainCalls[0]!);
     expect(drained.stage).toBe('drain');
     expect(drained.scratchDir).toBe(scratchRoot);
+
+    runtime.dispose();
+    await sleep(80);
+    const drainAfter = infoLines()
+      .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"drain"'));
+    expect(drainAfter).toHaveLength(1);
   });
 
   it('does not emit a drain marker when metrics are disabled', async () => {
     const runtime = createProjectMaterializationRuntime(s3Layout(), null);
     runtime.dispose();
     await sleep(80);
-    const calls = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const calls = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"'));
     expect(calls).toHaveLength(0);
   });
@@ -108,15 +112,13 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
 
     const runtime = createProjectMaterializationRuntime(s3Layout(), null);
     await sleep(120);
-    const periodic = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const periodic = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"periodic"'));
     expect(periodic).toHaveLength(0);
 
     runtime.dispose();
     await sleep(80);
-    const drain = infoSpy.mock.calls
-      .map((c) => String(c[0] ?? ''))
+    const drain = infoLines()
       .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"drain"'));
     expect(drain).toHaveLength(1);
   });

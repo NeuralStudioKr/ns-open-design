@@ -220,6 +220,7 @@ SNS_TOPIC_ARN=arn:aws:sns:ap-northeast-2:<acct>:teamver-design-alerts \
 2. `teamver_usage_5xx` 마커 → `TeamverDesignUsage5xx` 알람 (>=5 / 5min)
 3. CW Agent `disk_used_percent` (`OD_SCRATCH_DIR` path) → 80% 알람
 4. `od_scratch_disk_usage` + `overThreshold:true` → `TeamverDesignScratchOverThreshold` 알람
+5. `teamver_project_access_5xx` 마커 → `TeamverDesignProjectAccess5xx` 알람 (>=5 / 5min)
 
 `od_scratch_disk_usage` 활성화는 `.env.production`:
 - `OD_SCRATCH_DISK_METRICS=1`
