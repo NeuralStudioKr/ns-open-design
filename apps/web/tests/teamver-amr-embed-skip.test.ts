@@ -56,7 +56,7 @@ describe("vela login lifecycle helpers — Teamver embed skip", () => {
       const result = await startVelaLogin();
 
       expect(result).toEqual({ ok: true, status: 200, pid: 123 });
-      expect(fetchSpy.mock.calls[0][0]).toBe("/api/integrations/vela/login");
+      expect(fetchSpy).toHaveBeenCalledWith("/api/integrations/vela/login", expect.any(Object));
     });
   });
 
@@ -83,7 +83,10 @@ describe("vela login lifecycle helpers — Teamver embed skip", () => {
       const result = await cancelVelaLogin();
 
       expect(result).toEqual({ ok: true, canceled: true });
-      expect(fetchSpy.mock.calls[0][0]).toBe("/api/integrations/vela/login/cancel");
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/integrations/vela/login/cancel",
+        expect.any(Object),
+      );
     });
   });
 
@@ -107,7 +110,7 @@ describe("vela login lifecycle helpers — Teamver embed skip", () => {
       const result = await velaLogout();
 
       expect(result).toEqual({ ok: true });
-      expect(fetchSpy.mock.calls[0][0]).toBe("/api/integrations/vela/logout");
+      expect(fetchSpy).toHaveBeenCalledWith("/api/integrations/vela/logout", expect.any(Object));
     });
   });
 });
