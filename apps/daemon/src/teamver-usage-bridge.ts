@@ -20,6 +20,27 @@ function teamverInternalApiKey(): string | null {
   return key || null;
 }
 
+// Structured warn marker so the CloudWatch metric filter
+// (`'"teamver_usage_5xx"'` literal in `print_cloudwatch_alarm_commands.sh`)
+// catches usage-bridge failures alongside the billing-bridge ones.
+// The billing bridge already emits the same shape with stage="billing.<phase>";
+// here we use stage="usage.events" so operators can split the two via
+// CloudWatch Logs Insights `$.stage`.
+function emitUsage5xxMarker(stage: string, fields: Record<string, unknown>): void {
+  try {
+    console.warn(
+      JSON.stringify({
+        metric: 'teamver_usage_5xx',
+        stage,
+        ts: Date.now(),
+        ...fields,
+      }),
+    );
+  } catch {
+    // structured warn must never bubble — usage report is best-effort.
+  }
+}
+
 function shouldReportTeamverUsageFromDaemon(
   run: DaemonRunForUsage,
   persistedRunStatus?: string,
@@ -78,13 +99,23 @@ export async function reportTeamverUsageFromDaemon({
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) {
-      console.warn(
-        '[teamver-usage-bridge] usage/events failed:',
-        response.status,
-        (await response.text().catch(() => '')).slice(0, 200),
-      );
+      const body = (await response.text().catch(() => '')).slice(0, 200);
+      emitUsage5xxMarker('usage.events', {
+        runId: run.id,
+        workspaceId: identity.workspaceId,
+        projectId: run.projectId ?? null,
+        modelName,
+        httpStatus: response.status,
+        body,
+      });
     }
   } catch (err) {
-    console.warn('[teamver-usage-bridge] report failed:', String(err));
+    emitUsage5xxMarker('usage.events', {
+      runId: run.id,
+      workspaceId: identity.workspaceId,
+      projectId: run.projectId ?? null,
+      modelName,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
