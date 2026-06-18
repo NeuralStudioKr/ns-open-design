@@ -8,6 +8,7 @@ import {
   StorageError,
   type ProjectFileMeta,
   type ProjectStorage,
+  type ProjectStorageProbeResult,
 } from './project-storage.js';
 import { fetchEc2InstanceRoleCredentials } from './aws-imds-credentials.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
@@ -70,6 +71,16 @@ export class MaterializingProjectStorage implements ProjectStorage {
 
   statFile(projectId: string, relpath: string): Promise<ProjectFileMeta | null> {
     return this.scratch.statFile(projectId, relpath);
+  }
+
+  // Reachability probe — defers to the S3 backend since scratch is
+  // local and only meaningful as a write target. Returns the remote
+  // result verbatim so /api/health/storage surfaces S3 errors.
+  async probe(): Promise<ProjectStorageProbeResult> {
+    if (typeof this.baseRemote.probe === 'function') {
+      return await this.baseRemote.probe();
+    }
+    return await this.scratch.probe!();
   }
 
   remoteForTenantPrefix(objectPrefix: string): ProjectStorage {

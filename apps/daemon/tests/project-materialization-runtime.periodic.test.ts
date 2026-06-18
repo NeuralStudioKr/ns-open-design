@@ -75,24 +75,49 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
     expect(parsed.scratchDir).toBe(scratchRoot);
 
     runtime.dispose();
-    const calls_before_pause = periodicCalls.length;
-    await sleep(120);
-    const after = infoSpy.mock.calls
+    // Drain marker is emitted async — give the event loop a chance.
+    await sleep(80);
+
+    const periodicAfter = infoSpy.mock.calls
       .map((c) => String(c[0] ?? ''))
       .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"periodic"'));
-    expect(after.length).toBe(calls_before_pause);
+    expect(periodicAfter.length).toBe(periodicCalls.length);
+
+    const drainCalls = infoSpy.mock.calls
+      .map((c) => String(c[0] ?? ''))
+      .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"drain"'));
+    expect(drainCalls.length).toBe(1);
+    const drained = JSON.parse(drainCalls[0]!);
+    expect(drained.stage).toBe('drain');
+    expect(drained.scratchDir).toBe(scratchRoot);
   });
 
-  it('skips timer setup when OD_SCRATCH_DISK_METRIC_INTERVAL_MS<=0', async () => {
+  it('does not emit a drain marker when metrics are disabled', async () => {
+    const runtime = createProjectMaterializationRuntime(s3Layout(), null);
+    runtime.dispose();
+    await sleep(80);
+    const calls = infoSpy.mock.calls
+      .map((c) => String(c[0] ?? ''))
+      .filter((line) => line.includes('"od_scratch_disk_usage"'));
+    expect(calls).toHaveLength(0);
+  });
+
+  it('skips timer setup when OD_SCRATCH_DISK_METRIC_INTERVAL_MS<=0 but still drains on dispose', async () => {
     vi.stubEnv('OD_SCRATCH_DISK_METRICS', '1');
     vi.stubEnv('OD_SCRATCH_DISK_METRIC_INTERVAL_MS', '0');
 
     const runtime = createProjectMaterializationRuntime(s3Layout(), null);
     await sleep(120);
-    const periodicCalls = infoSpy.mock.calls
+    const periodic = infoSpy.mock.calls
       .map((c) => String(c[0] ?? ''))
-      .filter((line) => line.includes('"od_scratch_disk_usage"'));
-    expect(periodicCalls).toHaveLength(0);
+      .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"periodic"'));
+    expect(periodic).toHaveLength(0);
+
     runtime.dispose();
+    await sleep(80);
+    const drain = infoSpy.mock.calls
+      .map((c) => String(c[0] ?? ''))
+      .filter((line) => line.includes('"od_scratch_disk_usage"') && line.includes('"stage":"drain"'));
+    expect(drain).toHaveLength(1);
   });
 });

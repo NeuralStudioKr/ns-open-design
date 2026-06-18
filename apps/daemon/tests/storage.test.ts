@@ -67,6 +67,22 @@ describe('LocalProjectStorage', () => {
       code: 'NOT_FOUND',
     });
   });
+
+  it('probe() returns ok=true when the projects root is accessible', async () => {
+    const storage = new LocalProjectStorage(tmp);
+    const result = await storage.probe();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.sampled).toBe(0);
+    }
+  });
+
+  it('probe() creates the projects root if it does not exist', async () => {
+    const nested = path.join(tmp, 'missing-root');
+    const storage = new LocalProjectStorage(nested);
+    const result = await storage.probe();
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('S3ProjectStorage', () => {
@@ -217,6 +233,55 @@ describe('S3ProjectStorage', () => {
     });
     await storage.writeFile('p1', 'a.txt', Buffer.from('x'));
     expect(seen[0]).toBe('https://oss.aliyuncs.com/od-bucket/p1/a.txt');
+  });
+
+  it('probe() issues list-type=2&max-keys=1 against the bucket and returns ok on 200', async () => {
+    const seen: Array<{ url: string; method: string }> = [];
+    const fetchFn = (async (url: string, init: RequestInit) => {
+      seen.push({ url, method: init.method ?? 'GET' });
+      return new Response('<ListBucketResult/>', { status: 200 });
+    }) as unknown as typeof fetch;
+    const storage = new S3ProjectStorage({
+      bucket: 'od-bucket', region: 'us-east-1', prefix: 'tenant-a/',
+      credentials, fetchFn, now: fixedNow,
+    });
+    const result = await storage.probe();
+    expect(result.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.method).toBe('GET');
+    expect(seen[0]?.url).toContain('list-type=2');
+    expect(seen[0]?.url).toContain('max-keys=1');
+    expect(seen[0]?.url).toContain('prefix=tenant-a%2F');
+  });
+
+  it('probe() returns ok=false with status on 403', async () => {
+    const fetchFn = (async () =>
+      new Response('AccessDenied', { status: 403, statusText: 'Forbidden' })) as unknown as typeof fetch;
+    const storage = new S3ProjectStorage({
+      bucket: 'od-bucket', region: 'us-east-1',
+      credentials, fetchFn, now: fixedNow,
+    });
+    const result = await storage.probe();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(403);
+      expect(result.reason).toContain('Forbidden');
+    }
+  });
+
+  it('probe() catches network errors and returns reason', async () => {
+    const fetchFn = (async () => {
+      throw new Error('ENOTFOUND od-bucket.s3');
+    }) as unknown as typeof fetch;
+    const storage = new S3ProjectStorage({
+      bucket: 'od-bucket', region: 'us-east-1',
+      credentials, fetchFn, now: fixedNow,
+    });
+    const result = await storage.probe();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('ENOTFOUND');
+    }
   });
 });
 

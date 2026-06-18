@@ -16,14 +16,23 @@ async def test_collect_dependency_status_shape(monkeypatch: pytest.MonkeyPatch) 
     async def fake_main() -> str:
         return "ok"
 
+    async def fake_od_storage() -> str:
+        return "ok"
+
     monkeypatch.setattr(health_deps, "_check_db", fake_db)
     monkeypatch.setattr(health_deps, "_check_daemon", fake_daemon)
     monkeypatch.setattr(health_deps, "_check_main_be", fake_main)
+    monkeypatch.setattr(health_deps, "_check_od_storage", fake_od_storage)
 
     payload = await health_deps.collect_dependency_status()
 
     assert payload["status"] == "ok"
-    assert payload["checks"] == {"db": "ok", "daemon": "ok", "main_be": "ok"}
+    assert payload["checks"] == {
+        "db": "ok",
+        "daemon": "ok",
+        "main_be": "ok",
+        "od_storage": "ok",
+    }
     assert payload["config"]["m2m_key"] in {"configured", "missing"}
     assert "proxy_headers" in payload["config"]
     assert payload["config"]["project_storage"] in {"local", "s3"}

@@ -183,6 +183,54 @@ if [[ -n "$deps_json" ]]; then
   fi
 fi
 
+# OD storage reachability — design-api brokers daemon's /api/health/storage.
+# Treat "ok" as pass, "not_configured" as info (local-mode daemon),
+# everything else as fail when storage is expected to be reachable.
+if [[ -n "$deps_json" ]]; then
+  od_storage_status="$(echo "$deps_json" | sed -n 's/.*"od_storage":"\([^"]*\)".*/\1/p' | head -1)"
+  if [[ -n "$od_storage_status" ]]; then
+    case "$od_storage_status" in
+      ok)
+        echo "✓ design-api deps checks.od_storage=ok"
+        pass=$((pass + 1))
+        ;;
+      not_configured)
+        echo "○ design-api deps checks.od_storage=not_configured (daemon URL unset on BFF)"
+        ;;
+      degraded|unavailable)
+        echo "✗ design-api deps checks.od_storage=$od_storage_status (probe /api/health/storage on the daemon)"
+        fail=$((fail + 1))
+        ;;
+      *)
+        echo "○ design-api deps checks.od_storage=$od_storage_status"
+        ;;
+    esac
+  fi
+fi
+
+# Daemon-direct storage probe — also surfaces local-mode (no S3) cleanly.
+storage_probe_code="$(curl_status "${DESIGN_BASE}/api/health/storage")"
+if [[ "$storage_probe_code" == "200" || "$storage_probe_code" == "503" || "$storage_probe_code" == "504" ]]; then
+  storage_probe_json="$(curl -s --max-time 8 "${DESIGN_BASE}/api/health/storage" 2>/dev/null || echo "")"
+  storage_mode="$(echo "$storage_probe_json" | sed -n 's/.*"mode":"\([^"]*\)".*/\1/p' | head -1)"
+  storage_ok="$(echo "$storage_probe_json" | sed -n 's/.*"ok":\(true\|false\).*/\1/p' | head -1)"
+  if [[ "$storage_ok" == "true" ]]; then
+    echo "✓ OD daemon /api/health/storage → 200 ok mode=${storage_mode:-?}"
+    pass=$((pass + 1))
+  elif [[ "$storage_ok" == "false" ]]; then
+    storage_reason="$(echo "$storage_probe_json" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p' | head -1)"
+    echo "✗ OD daemon /api/health/storage ok=false mode=${storage_mode:-?} reason=${storage_reason:-?}"
+    fail=$((fail + 1))
+  else
+    echo "○ OD daemon /api/health/storage → $storage_probe_code (no JSON body)"
+  fi
+elif [[ "$storage_probe_code" == "404" ]]; then
+  echo "○ OD daemon /api/health/storage → 404 (redeploy daemon for storage probe)"
+else
+  echo "✗ OD daemon /api/health/storage → $storage_probe_code"
+  fail=$((fail + 1))
+fi
+
 session_code="$(curl_status "${API_BASE}/api/v1/auth/session")"
 if [[ "$session_code" == "200" ]]; then
   echo "✓ design-api /api/v1/auth/session → 200 (unauthenticated ok)"
@@ -401,6 +449,36 @@ fi
 
 if [[ -x "$ROOT/scripts/print_staging_s3_env.sh" ]]; then
   echo "○ S3 activation template: bash scripts/print_staging_s3_env.sh [--from-terraform]"
+fi
+
+# Self-probe: restore_app_sqlite_from_s3.sh --dry-run.
+# Confirms the runbook script still parses and resolves env-file paths
+# correctly. We use --dry-run so no aws/litestream/docker calls fire.
+# Skipped when the matching env file is missing (developer laptops).
+restore_script="$ROOT/scripts/restore_app_sqlite_from_s3.sh"
+if [[ -x "$restore_script" ]]; then
+  restore_env_flag=""
+  case "$DESIGN_HOST" in
+    stg-*|staging*) restore_env_flag="--staging" ;;
+    design.teamver.com) restore_env_flag="--production" ;;
+  esac
+  env_file_candidate=""
+  if [[ "$restore_env_flag" == "--staging" ]]; then
+    env_file_candidate="$ROOT/.env.staging"
+  elif [[ "$restore_env_flag" == "--production" ]]; then
+    env_file_candidate="$ROOT/.env.production"
+  fi
+  if [[ -n "$restore_env_flag" && -n "$env_file_candidate" && -f "$env_file_candidate" ]]; then
+    if bash "$restore_script" "$restore_env_flag" --litestream --dry-run >/dev/null 2>&1; then
+      echo "✓ restore_app_sqlite_from_s3.sh ${restore_env_flag} --litestream --dry-run"
+      pass=$((pass + 1))
+    else
+      echo "✗ restore_app_sqlite_from_s3.sh ${restore_env_flag} --litestream --dry-run failed"
+      fail=$((fail + 1))
+    fi
+  else
+    echo "○ skip restore_app_sqlite_from_s3.sh probe (no matching .env.${restore_env_flag#--} on host)"
+  fi
 fi
 
 if [[ -n "${TEAMVER_COOKIE:-}" ]]; then

@@ -90,7 +90,7 @@ cp .env.production.example .env.production
 chmod +x scripts/run_docker.sh
 bash scripts/run_docker.sh --production --rds
 bash scripts/seed_od_runtime_config.sh --production
-bash scripts/smoke_design.sh --production   # 배포 후 health·auth gate
+bash scripts/smoke_design.sh --production   # 배포 후 health·auth gate·od_storage probe
 ```
 
 | 서비스 | 포트 |
@@ -99,6 +99,18 @@ bash scripts/smoke_design.sh --production   # 배포 후 health·auth gate
 | teamver-design-api | 16000 |
 
 연동: [TEAMVER_APPS_INTEGRATION.md](./TEAMVER_APPS_INTEGRATION.md)
+
+**Health endpoints**
+
+| Endpoint | 출처 | 용도 |
+|----------|------|------|
+| `GET /api/health` | OD daemon | 버전·alive |
+| `GET /api/ready` | OD daemon | shutdown 직전 503 (drain 알림) |
+| `GET /api/health/storage` | OD daemon | S3 모드 reachability (`list-type=2&max-keys=1`) / local 모드 projectsDir mkdir+access. 6s 내부 timeout. 200=ok / 503=ok:false / 504=probe_timeout |
+| `GET /api/healthz` | design-api | DB schema 표 + status |
+| `GET /api/healthz/deps` | design-api | `checks.{db,daemon,main_be,od_storage}` 및 `config.{m2m_key,od_token,managed_api,drive_publish_folder,bootstrap,project_storage,registry_creds}` broker. `od_storage=degraded` 면 daemon 의 `/api/health/storage` 를 직접 확인 |
+
+`smoke_design.sh` 가 위 6개 엔드포인트와 별도로 `restore_app_sqlite_from_s3.sh --litestream --dry-run` 까지 자체 호출해 runbook 스크립트가 깨지지 않았는지 검증 (env 파일 있는 host 한정).
 
 **OD runtime seed:** 최초 기동 후 `bash scripts/seed_od_runtime_config.sh --production` — daemon `app-config.json`에 `onboardingCompleted: true` (idempotent). LLM provider key는 `.env`의 `ANTHROPIC_API_KEY` 등 → compose env (git 커밋 금지). embed FE lock과 함께 onboarding 재진입을 막는다.
 

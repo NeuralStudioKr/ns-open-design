@@ -195,14 +195,14 @@ export function createProjectMaterializationRuntime(
     }
   }
 
-  async function emitPeriodicScratchDiskUsageMarker(scratchDir: string): Promise<void> {
+  async function emitPeriodicScratchDiskUsageMarker(scratchDir: string, stage = 'periodic'): Promise<void> {
     try {
       const sample = await measureScratchDiskUsage(scratchDir);
-      const marker = buildScratchDiskUsageMarker({ sample, stage: 'periodic' });
+      const marker = buildScratchDiskUsageMarker({ sample, stage });
       console.info(JSON.stringify(marker));
     } catch (err) {
       console.warn(
-        '[project-materialization] scratch disk-usage periodic probe failed:',
+        `[project-materialization] scratch disk-usage ${stage} probe failed:`,
         err instanceof Error ? err.message : err,
       );
     }
@@ -229,6 +229,12 @@ export function createProjectMaterializationRuntime(
     if (periodicTimer !== null) {
       clearInterval(periodicTimer);
       periodicTimer = null;
+    }
+    // Best-effort drain sample so the last datapoint reflects scratch
+    // state at shutdown. Emitted async — caller does NOT await dispose()
+    // (it's a sync teardown contract used by server.ts swap path).
+    if (isS3ProjectStorageLayout(layout) && scratchDiskMetricsEnabled()) {
+      void emitPeriodicScratchDiskUsageMarker(layout.scratchDir, 'drain');
     }
   }
 

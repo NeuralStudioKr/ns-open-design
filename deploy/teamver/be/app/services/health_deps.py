@@ -67,6 +67,51 @@ async def _check_daemon() -> str:
         return "unavailable"
 
 
+async def _check_od_storage() -> str:
+    """Brokers /api/health/storage on the daemon.
+
+    We surface a *coarse* status string so deps stays JSON-friendly:
+      - "ok"           — daemon storage probe returned ok:true
+      - "not_configured" — daemon URL missing
+      - "degraded"     — daemon responded with ok:false (S3 unreachable, IAM, etc.)
+      - "unavailable"  — daemon itself didn't respond / 5xx / timeout
+
+    design-api never touches S3 directly; this endpoint is purely a
+    transparent broker so ops smoke can fail fast on S3 misconfig
+    without grepping daemon logs.
+    """
+    base = (settings.od_daemon_base_url or "").strip().rstrip("/")
+    if not base:
+        return "not_configured"
+    headers: dict[str, str] = {}
+    token = (settings.od_api_token or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(f"{base}/api/health/storage", headers=headers)
+    except Exception:
+        logger.exception("deps check: od storage probe unreachable")
+        return "unavailable"
+    # The daemon returns 200 + {ok:true} on success, 503 + {ok:false}
+    # when the probe ran but failed (S3 AccessDenied, bucket missing,
+    # creds invalid). 504 is reserved for our wrapped probe timeout.
+    # Anything else 5xx means the daemon itself is sick.
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if response.status_code < 400 and isinstance(payload, dict) and payload.get("ok") is True:
+        return "ok"
+    if response.status_code in (503, 504):
+        return "degraded"
+    if response.status_code >= 500:
+        return "unavailable"
+    if isinstance(payload, dict) and payload.get("ok") is False:
+        return "degraded"
+    return "degraded"
+
+
 async def _check_main_be() -> str:
     base = (settings.teamver_api_base_url or "").strip().rstrip("/")
     if not base:
@@ -81,16 +126,24 @@ async def _check_main_be() -> str:
 
 
 async def collect_dependency_status() -> dict[str, Any]:
-    db, daemon, main_be = await asyncio.gather(
+    db, daemon, main_be, od_storage = await asyncio.gather(
         _check_db(),
         _check_daemon(),
         _check_main_be(),
+        _check_od_storage(),
     )
-    checks = {"db": db, "daemon": daemon, "main_be": main_be}
+    checks = {"db": db, "daemon": daemon, "main_be": main_be, "od_storage": od_storage}
     status = "ok"
     if db != "ok" or daemon not in {"ok", "not_configured"}:
         status = "degraded"
     if daemon == "unavailable" or main_be == "unavailable":
+        status = "degraded"
+    # od_storage degrades the overall status but only when the daemon
+    # itself is reachable — otherwise we already counted it above and
+    # don't want to double-degrade in local-mode deployments.
+    if od_storage == "unavailable":
+        status = "degraded"
+    elif od_storage == "degraded" and daemon == "ok":
         status = "degraded"
     return {
         "status": status,

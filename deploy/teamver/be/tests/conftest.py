@@ -90,6 +90,33 @@ def _ensure_teamver_sdk_stub() -> None:
 
     enums.AppKey = AppKey
 
+    registry = types.ModuleType("teamver_app_sdk.registry")
+
+    class AppServiceRegistryCredentials:
+        def __init__(self, **kwargs: Any) -> None:
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class BillingClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.args = args
+            self.kwargs = kwargs
+
+        async def reserve(self, *args: Any, **kwargs: Any) -> Any:
+            return None
+
+        async def commit(self, *args: Any, **kwargs: Any) -> Any:
+            return None
+
+        async def refund(self, *args: Any, **kwargs: Any) -> Any:
+            return None
+
+        async def aclose(self) -> None:
+            return None
+
+    registry.AppServiceRegistryCredentials = AppServiceRegistryCredentials
+    registry.BillingClient = BillingClient
+
     fastapi_mod = types.ModuleType("teamver_app_sdk.integrations.fastapi")
 
     def create_teamver_context_dependency(*_: Any, **__: Any):
@@ -124,6 +151,7 @@ def _ensure_teamver_sdk_stub() -> None:
     sys.modules["teamver_app_sdk.auth"] = auth
     sys.modules["teamver_app_sdk.models"] = models
     sys.modules["teamver_app_sdk.enums"] = enums
+    sys.modules["teamver_app_sdk.registry"] = registry
     sys.modules["teamver_app_sdk.integrations"] = types.ModuleType("teamver_app_sdk.integrations")
     sys.modules["teamver_app_sdk.integrations.fastapi"] = fastapi_mod
 

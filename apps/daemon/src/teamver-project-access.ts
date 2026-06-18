@@ -59,11 +59,6 @@ export function teamverIdentityHeadersFromIdentity(
   return headers;
 }
 
-function teamverIdentityHeaders(req: Request): Record<string, string> | null {
-  const identity = readTeamverIdentityFromRequest(req);
-  return identity ? teamverIdentityHeadersFromIdentity(identity) : null;
-}
-
 export function teamverAccessTimeoutMs(): number {
   const parsed = Number(process.env.TEAMVER_PROJECT_ACCESS_TIMEOUT_MS ?? '');
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
@@ -73,6 +68,41 @@ function accessTimeoutMs(): number {
   return teamverAccessTimeoutMs();
 }
 
+// Structured warn marker so EC2 / CloudWatch log metric filters can pick up
+// the upstream-failure cause behind a 502 from this middleware.
+//
+// Filter (CloudWatch Logs Insights):
+//   { $.metric = "teamver_project_access_5xx" && $.reason != "ok" }
+//
+// We never throw from here — the middleware always returns a structured
+// API error to the caller; the warn is observability only.
+function emitProjectAccessFailureMarker(fields: Record<string, unknown>): void {
+  try {
+    const payload = {
+      metric: 'teamver_project_access_5xx',
+      ts: Date.now(),
+      ...fields,
+    };
+    console.warn(JSON.stringify(payload));
+  } catch {
+    // structured warn must never bubble — keep middleware non-blocking.
+  }
+}
+
+function classifyFetchFailure(err: unknown): {
+  reason: 'timeout' | 'network';
+  message: string;
+} {
+  const message = err instanceof Error ? err.message : String(err);
+  // AbortSignal.timeout fires AbortError with name 'TimeoutError' on Node 18+ /
+  // 'AbortError' on older runtimes. Treat both as timeout.
+  const name = err instanceof Error ? err.name : '';
+  if (name === 'TimeoutError' || name === 'AbortError' || /aborted|timed out/i.test(message)) {
+    return { reason: 'timeout', message };
+  }
+  return { reason: 'network', message };
+}
+
 export function createTeamverProjectAccessMiddleware(sendApiError: (...args: any[]) => any): RequestHandler {
   return async (req, res, next) => {
     const projectId = req.params.id;
@@ -80,10 +110,12 @@ export function createTeamverProjectAccessMiddleware(sendApiError: (...args: any
     const url = teamverProjectAccessCheckUrl(projectId);
     if (!url) return next();
 
-    const headers = teamverIdentityHeaders(req);
-    if (!headers) {
+    const identity = readTeamverIdentityFromRequest(req);
+    if (!identity) {
       return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver identity headers required');
     }
+    const headers = teamverIdentityHeadersFromIdentity(identity);
+    const startedAt = Date.now();
 
     try {
       const response = await fetch(url, {
@@ -98,8 +130,25 @@ export function createTeamverProjectAccessMiddleware(sendApiError: (...args: any
       if (response.status === 403 || response.status === 404) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
+      // Anything else (5xx, redirects, …) → emit marker + 502.
+      emitProjectAccessFailureMarker({
+        reason: 'http_5xx',
+        projectId,
+        workspaceId: identity.workspaceId,
+        httpStatus: response.status,
+        elapsedMs: Date.now() - startedAt,
+      });
       return sendApiError(res, 502, 'UPSTREAM_UNAVAILABLE', 'teamver project access check failed');
-    } catch {
+    } catch (err) {
+      const classified = classifyFetchFailure(err);
+      emitProjectAccessFailureMarker({
+        reason: classified.reason,
+        projectId,
+        workspaceId: identity.workspaceId,
+        timeoutMs: accessTimeoutMs(),
+        elapsedMs: Date.now() - startedAt,
+        error: classified.message,
+      });
       return sendApiError(res, 502, 'UPSTREAM_UNAVAILABLE', 'teamver project access check unavailable');
     }
   };

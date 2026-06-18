@@ -85,6 +85,7 @@ import {
   classifyAmrAccountFailure,
 } from './integrations/vela-errors.js';
 import { amrModelLoadingCache } from './runtimes/amr-model-cache.js';
+import { classifyAmrModelProbeError } from './amr-model-probe-error.js';
 import {
   fetchVelaPresetModels,
   fetchVelaRemoteModelsWithRetry,
@@ -248,7 +249,11 @@ import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
-import { createMaterializingProjectStorage } from './storage/materializing-project-storage.js';
+import {
+  createMaterializingProjectStorage,
+  type MaterializingProjectStorage,
+} from './storage/materializing-project-storage.js';
+import { LocalProjectStorage } from './storage/project-storage.js';
 import {
   createProjectMaterializationRuntime,
   type ProjectMaterializationRuntime,
@@ -5367,6 +5372,78 @@ export async function startServer({
     res.json({ ok: true, version: versionInfo.version });
   });
 
+  // Reachability probe for the project storage backend. In `s3` mode
+  // we issue a `list-type=2&max-keys=1` against the configured bucket
+  // + prefix — exercises DNS, TLS, SigV4 signing, and IAM listBucket
+  // in one round-trip. In `local` mode we check the projects root is
+  // readable/writable. Wrapped in a 6s timeout so a misconfigured
+  // bucket can't hang ops smoke. design-api `/api/healthz/deps`
+  // brokers this endpoint and surfaces the result as `od_storage`.
+  app.get('/api/health/storage', async (_req, res) => {
+    const startedAt = Date.now();
+    const layout = PROJECT_STORAGE_LAYOUT;
+    const respondTimeout = (): NodeJS.Timeout =>
+      setTimeout(() => {
+        if (!res.headersSent) {
+          res.status(504).json({
+            ok: false,
+            mode: layout.mode,
+            reason: 'probe_timeout',
+            elapsedMs: Date.now() - startedAt,
+          });
+        }
+      }, 6000);
+    const timer = respondTimeout();
+    timer.unref?.();
+    try {
+      if (layout.mode === 's3') {
+        if (!materializingProjectStorage) {
+          clearTimeout(timer);
+          if (res.headersSent) return;
+          res.status(503).json({
+            ok: false,
+            mode: 's3',
+            reason: 'storage_not_initialized',
+            elapsedMs: Date.now() - startedAt,
+          });
+          return;
+        }
+        const result = await materializingProjectStorage.probe();
+        clearTimeout(timer);
+        if (res.headersSent) return;
+        res.status(result.ok ? 200 : 503).json({
+          ...result,
+          mode: 's3',
+          bucket: (process.env.OD_S3_BUCKET ?? '').trim(),
+          region: (process.env.OD_S3_REGION ?? process.env.AWS_REGION ?? '').trim(),
+          prefix: (process.env.OD_S3_PREFIX ?? '').trim(),
+          elapsedMs: Date.now() - startedAt,
+        });
+        return;
+      }
+      // local mode — verify projects root.
+      const localStorage = new LocalProjectStorage(PROJECTS_DIR);
+      const result = await localStorage.probe();
+      clearTimeout(timer);
+      if (res.headersSent) return;
+      res.status(result.ok ? 200 : 503).json({
+        ...result,
+        mode: 'local',
+        projectsDir: PROJECTS_DIR,
+        elapsedMs: Date.now() - startedAt,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      if (res.headersSent) return;
+      res.status(503).json({
+        ok: false,
+        mode: layout.mode,
+        reason: err instanceof Error ? err.message : String(err),
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+  });
+
   app.get('/api/ready', async (_req, res) => {
     const versionInfo = await readCurrentAppVersionInfo();
     const ready = !daemonShuttingDown;
@@ -5844,6 +5921,10 @@ export async function startServer({
     PROJECT_STORAGE_LAYOUT,
     null,
   );
+  // Held for /api/health/storage; null until the S3 backend has been
+  // resolved (or stays null in local mode, where we probe the scratch
+  // root directly).
+  let materializingProjectStorage: MaterializingProjectStorage | null = null;
   if (PROJECT_STORAGE_LAYOUT.mode === 's3') {
     try {
       const materializingStorage = await createMaterializingProjectStorage({
@@ -5857,6 +5938,7 @@ export async function startServer({
         PROJECT_STORAGE_LAYOUT,
         materializingStorage,
       );
+      materializingProjectStorage = materializingStorage;
       console.info(
         `[project-materialization] S3 mode enabled — scratch=${PROJECTS_DIR} bucket=${process.env.OD_S3_BUCKET ?? ''}`,
       );
@@ -6955,6 +7037,7 @@ export async function startServer({
   // The vela CLI owns the device-authorization UX (URL + code + browser open);
   // these routes only surface enough state for Open Design's Settings card to
   // show login status and trigger a login from a button.
+
   async function resolveAmrModelProbe() {
     const appConfig = await readAppConfig(RUNTIME_DATA_DIR);
     const configuredEnv = agentCliEnvForAgent(appConfig.agentCliEnv, 'amr');
@@ -6998,7 +7081,22 @@ export async function startServer({
       });
       res.json(response);
     } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      // The probe throws a known message when the vela CLI / runtime def is
+      // missing (e.g. Teamver Design staging containers ship without the AMR
+      // bundle). Returning a hard 500 there made every call from the embed UI
+      // look like a real failure and spammed the logs. Surface "vela not
+      // available here" as a structured 503 with `available:false` so the FE
+      // can hide AMR gracefully while preserving the 500 path for unexpected
+      // bugs (filesystem, JSON, vela returning malformed catalogue, …).
+      const message = err instanceof Error ? err.message : String(err);
+      const reason = classifyAmrModelProbeError(message);
+      if (reason) {
+        res
+          .status(503)
+          .json({ available: false, reason, models: [], presets: [], error: message });
+        return;
+      }
+      res.status(500).json({ error: message });
     }
   });
 

@@ -1,8 +1,24 @@
 import type http from 'node:http';
 import { createServer } from 'node:http';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { startServer } from '../src/server.js';
+
+function findProjectAccessMarker(spy: ReturnType<typeof vi.spyOn>, reason: string) {
+  for (const call of spy.mock.calls) {
+    const arg = call[0];
+    if (typeof arg !== 'string') continue;
+    try {
+      const parsed = JSON.parse(arg) as Record<string, unknown>;
+      if (parsed.metric === 'teamver_project_access_5xx' && parsed.reason === reason) {
+        return parsed;
+      }
+    } catch {
+      // ignore non-JSON warns
+    }
+  }
+  return null;
+}
 
 type AccessRequest = {
   url: string | undefined;
@@ -140,5 +156,120 @@ describe('Teamver project access gate', () => {
       const body = (await response.json()) as { error?: { code?: string } };
       expect(body.error?.code).toBe('PROJECT_NOT_FOUND');
     });
+  });
+
+  it('emits structured teamver_project_access_5xx marker on upstream 5xx → 502', async () => {
+    const projectId = `teamver-access-5xx-${Date.now()}`;
+    await createProject(projectId);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await withAccessServer(503, async (url) => {
+        process.env.TEAMVER_DESIGN_API_URL = url;
+        const response = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+          headers: {
+            'X-Teamver-User-Id': 'user-3',
+            'X-Teamver-Workspace-Id': 'workspace-3',
+          },
+        });
+        expect(response.status).toBe(502);
+        const body = (await response.json()) as { error?: { code?: string } };
+        expect(body.error?.code).toBe('UPSTREAM_UNAVAILABLE');
+      });
+
+      const marker = findProjectAccessMarker(warnSpy, 'http_5xx');
+      expect(marker).not.toBeNull();
+      expect(marker).toMatchObject({
+        metric: 'teamver_project_access_5xx',
+        reason: 'http_5xx',
+        projectId,
+        workspaceId: 'workspace-3',
+        httpStatus: 503,
+      });
+      expect(typeof marker?.elapsedMs).toBe('number');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('emits timeout marker when design-api hangs past the configured budget', async () => {
+    const projectId = `teamver-access-timeout-${Date.now()}`;
+    await createProject(projectId);
+
+    process.env.TEAMVER_PROJECT_ACCESS_TIMEOUT_MS = '50';
+
+    // Slow access server that never responds — forces AbortSignal.timeout.
+    const slowRequests: Array<{ socket: import('node:net').Socket }> = [];
+    const slowServer = createServer((req) => {
+      slowRequests.push({ socket: req.socket });
+      // intentionally do not call res.writeHead / res.end
+    });
+    await new Promise<void>((resolve) => slowServer.listen(0, '127.0.0.1', resolve));
+    const address = slowServer.address();
+    if (!address || typeof address === 'string') throw new Error('no slow address');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      process.env.TEAMVER_DESIGN_API_URL = `http://127.0.0.1:${address.port}`;
+      const response = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        headers: {
+          'X-Teamver-User-Id': 'user-4',
+          'X-Teamver-Workspace-Id': 'workspace-4',
+        },
+      });
+      expect(response.status).toBe(502);
+      const body = (await response.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe('UPSTREAM_UNAVAILABLE');
+
+      const marker = findProjectAccessMarker(warnSpy, 'timeout');
+      expect(marker).not.toBeNull();
+      expect(marker).toMatchObject({
+        metric: 'teamver_project_access_5xx',
+        reason: 'timeout',
+        projectId,
+        workspaceId: 'workspace-4',
+        timeoutMs: 50,
+      });
+      expect(typeof marker?.elapsedMs).toBe('number');
+    } finally {
+      warnSpy.mockRestore();
+      // Force-close any hung sockets so the slow server can close cleanly.
+      for (const r of slowRequests) {
+        r.socket.destroy();
+      }
+      await new Promise<void>((resolve) => slowServer.close(() => resolve()));
+    }
+  });
+
+  it('emits network marker when design-api host is unreachable', async () => {
+    const projectId = `teamver-access-network-${Date.now()}`;
+    await createProject(projectId);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // Port 1 is reserved (tcpmux); on most hosts ECONNREFUSED is immediate.
+      process.env.TEAMVER_DESIGN_API_URL = 'http://127.0.0.1:1';
+      const response = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        headers: {
+          'X-Teamver-User-Id': 'user-5',
+          'X-Teamver-Workspace-Id': 'workspace-5',
+        },
+      });
+      expect(response.status).toBe(502);
+
+      // Either ECONNREFUSED → 'network' or AbortSignal triggered → 'timeout'.
+      const marker =
+        findProjectAccessMarker(warnSpy, 'network') ??
+        findProjectAccessMarker(warnSpy, 'timeout');
+      expect(marker).not.toBeNull();
+      expect(marker).toMatchObject({
+        metric: 'teamver_project_access_5xx',
+        projectId,
+        workspaceId: 'workspace-5',
+      });
+      expect(typeof marker?.error).toBe('string');
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

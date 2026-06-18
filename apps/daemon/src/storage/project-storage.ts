@@ -37,6 +37,10 @@ export interface ProjectFileMeta {
   mtimeMs: number;
 }
 
+export type ProjectStorageProbeResult =
+  | { ok: true; checkedAt: number; sampled: number }
+  | { ok: false; checkedAt: number; status?: number; reason: string };
+
 export interface ProjectStorage {
   // Reads `<projectId>/<relpath>` into a Buffer. Throws ENOENT-style
   // errors when missing; the caller maps to HTTP 404.
@@ -54,6 +58,10 @@ export interface ProjectStorage {
   // Reports metadata for a single file without reading its bytes.
   // Returns null when the file is missing.
   statFile(projectId: string, relpath: string): Promise<ProjectFileMeta | null>;
+  // Cheap reachability probe — at most one round-trip. Used by
+  // /api/health/storage. Implementations SHOULD avoid mutating state
+  // and SHOULD return within a few seconds even on failure.
+  probe?(): Promise<ProjectStorageProbeResult>;
 }
 
 export class StorageError extends Error {
@@ -145,6 +153,17 @@ export class LocalProjectStorage implements ProjectStorage {
       };
     } catch {
       return null;
+    }
+  }
+
+  async probe(): Promise<ProjectStorageProbeResult> {
+    const startedAt = Date.now();
+    try {
+      await fsp.mkdir(this.projectsRoot, { recursive: true });
+      await fsp.access(this.projectsRoot);
+      return { ok: true, checkedAt: startedAt, sampled: 0 };
+    } catch (err) {
+      return { ok: false, checkedAt: startedAt, reason: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -251,6 +270,32 @@ export class S3ProjectStorage implements ProjectStorage {
       size:    Number.isFinite(contentLength) ? contentLength : 0,
       mtimeMs: lastModified ? Date.parse(lastModified) : Date.now(),
     };
+  }
+
+  // Cheap reachability probe — runs a `list-type=2&max-keys=1` against
+  // the bucket (+ optional prefix). Exercises DNS, TCP, TLS, SigV4
+  // signing, and bucket existence/perms in a single signed request.
+  async probe(): Promise<ProjectStorageProbeResult> {
+    const startedAt = Date.now();
+    try {
+      const params: Array<[string, string]> = [
+        ['list-type', '2'],
+        ['max-keys', '1'],
+      ];
+      const rawPrefix = (this.options.prefix ?? '').replace(/^\/+/, '').replace(/\\/g, '/');
+      if (rawPrefix) params.push(['prefix', rawPrefix]);
+      params.sort((a, b) => a[0].localeCompare(b[0]));
+      const query = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+      const res = await this.signedRequest({ method: 'GET', key: '', extraQuery: query });
+      if (!res.ok) {
+        return { ok: false, checkedAt: startedAt, status: res.status, reason: res.statusText || `HTTP_${res.status}` };
+      }
+      // We don't parse the body — a 200 from list-objects-v2 is enough
+      // to confirm reachability + IAM listBucket on this prefix.
+      return { ok: true, checkedAt: startedAt, sampled: 1 };
+    } catch (err) {
+      return { ok: false, checkedAt: startedAt, reason: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   async listFiles(projectId: string): Promise<ProjectFileMeta[]> {
