@@ -10,17 +10,20 @@ TLS는 **AWS ALB (ACM)**, EC2는 **HTTP :80** 백엔드만 (Page/Mail 패턴).
 
 ### Staging S3 활성화 (09 Phase 0)
 
-Terraform apply 후 EC2 `.env.staging`에 S3 블록을 추가합니다.
+Terraform apply 후 EC2에서 Phase 0 activation 스크립트를 실행합니다.
 
 ```bash
 cd deploy/teamver
-bash scripts/print_staging_s3_env.sh --from-terraform >> .env.staging
-# 또는 수동: OD_PROJECT_STORAGE=s3, OD_S3_BUCKET=teamver-design-staging-data, …
-
-docker compose down
+cp .env.staging.example .env.staging   # secrets: OD_API_TOKEN, JWT, POSTGRES_PASSWD, …
+bash scripts/run_staging_phase0_activate.sh --from-terraform
 bash scripts/run_docker.sh --staging --rds
-# (선택) Litestream: docker compose --profile litestream up -d
-bash scripts/smoke_design.sh --staging
+bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke
+```
+
+S3/RDS env만 출력하려면:
+
+```bash
+bash scripts/print_staging_s3_env.sh --from-terraform
 ```
 
 **로컬 S3 (MinIO, P1-9 — 선택):** S3 materialize 경로만 로컬에서 검증할 때 사용. **일반 로컬 개발은 `OD_PROJECT_STORAGE=local`이면 MinIO 불필요.**

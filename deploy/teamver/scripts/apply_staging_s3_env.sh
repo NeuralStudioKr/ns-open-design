@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Merge S3 activation env into deploy/teamver/.env.staging (09 P1-8).
+# Merge terraform/RDS + S3 activation env into deploy/teamver/.env.staging (09 P1-8).
 #
 # Usage:
 #   bash scripts/apply_staging_s3_env.sh

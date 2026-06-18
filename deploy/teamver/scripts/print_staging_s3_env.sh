@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print staging S3 env lines for deploy/teamver/.env.staging (09 Phase 0 activation).
+# Print staging terraform → .env.staging lines (RDS + S3 + Litestream hints).
 #
 # Usage:
 #   bash scripts/print_staging_s3_env.sh
@@ -28,6 +28,9 @@ done
 bucket="${OD_S3_BUCKET:-teamver-design-staging-data}"
 region="${OD_S3_REGION:-ap-northeast-2}"
 prefix="${OD_S3_PREFIX:-design/}"
+postgres_host=""
+postgres_user=""
+postgres_db="${POSTGRES_DB:-teamver_design_staging}"
 
 if [[ "$FROM_TF" == true && -d "$TF_DIR" ]]; then
   if command -v terraform >/dev/null 2>&1; then
@@ -36,6 +39,15 @@ if [[ "$FROM_TF" == true && -d "$TF_DIR" ]]; then
       bucket="$(terraform output -raw project_data_bucket)"
       region="$(terraform output -raw project_data_s3_region 2>/dev/null || echo "$region")"
       prefix="$(terraform output -raw project_data_s3_prefix 2>/dev/null || echo "$prefix")"
+      postgres_host="$(terraform output -raw postgres_host 2>/dev/null || true)"
+      postgres_user="$(terraform output -raw postgres_username 2>/dev/null || true)"
+      db_sql="$(terraform output -raw rds_create_database_sql 2>/dev/null || true)"
+      if [[ -n "$db_sql" && "$db_sql" != "null" ]]; then
+        parsed_db="$(printf '%s' "$db_sql" | sed -n 's/^CREATE DATABASE \([^ ]*\).*/\1/p')"
+        if [[ -n "$parsed_db" ]]; then
+          postgres_db="$parsed_db"
+        fi
+      fi
     else
       echo "# terraform output unavailable — using defaults" >&2
     fi
@@ -43,6 +55,19 @@ if [[ "$FROM_TF" == true && -d "$TF_DIR" ]]; then
   else
     echo "# terraform CLI not found — using defaults" >&2
   fi
+fi
+
+if [[ -n "$postgres_host" && "$postgres_host" != "null" ]]; then
+  cat <<EOF
+# --- RDS (teamver-design terraform --from-terraform) ---
+POSTGRES_HOST=${postgres_host}
+POSTGRES_DB=${postgres_db}
+EOF
+  if [[ -n "$postgres_user" && "$postgres_user" != "null" ]]; then
+    echo "POSTGRES_USER=${postgres_user}"
+  fi
+  echo "POSTGRES_SSLMODE=require"
+  echo
 fi
 
 cat <<EOF
