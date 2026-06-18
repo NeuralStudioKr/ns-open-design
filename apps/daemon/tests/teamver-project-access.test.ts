@@ -128,6 +128,24 @@ describe('Teamver project access gate', () => {
     });
   });
 
+  it('reuses cached access checks for subsequent project subroutes', async () => {
+    const projectId = `teamver-access-cache-${Date.now()}`;
+    await createProject(projectId);
+
+    await withAccessServer(204, async (url, requests) => {
+      process.env.TEAMVER_DESIGN_API_URL = url;
+      const headers = {
+        'X-Teamver-User-Id': 'user-cache',
+        'X-Teamver-Workspace-Id': 'workspace-cache',
+      };
+      const detailResponse = await fetch(`${baseUrl}/api/projects/${projectId}`, { headers });
+      expect(detailResponse.status).toBe(200);
+      const filesResponse = await fetch(`${baseUrl}/api/projects/${projectId}/files`, { headers });
+      expect(filesResponse.status).toBe(200);
+      expect(requests).toHaveLength(1);
+    });
+  });
+
   it('requires Teamver identity headers when the gate is configured', async () => {
     const projectId = `teamver-access-headers-${Date.now()}`;
     await createProject(projectId);

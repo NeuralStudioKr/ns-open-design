@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertTeamverProjectAccessIfNeeded,
   buildTeamverProjectRegistryPayload,
+  ensureTeamverProjectRegisteredById,
   fetchTeamverProject,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
@@ -109,6 +110,80 @@ describe('Teamver project registry access', () => {
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('registers legacy daemon projects before access check', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi.fn(async () => ({}));
+    const get = vi.fn(async (path: string) => {
+      if (path.startsWith('/projects/') && path.endsWith('/access')) return undefined;
+      return { projects: [] };
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get, post },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          projects: [{ id: 'legacy-1', name: 'Legacy', skillId: null, designSystemId: null }],
+        }),
+      ),
+    );
+
+    await expect(assertTeamverProjectAccessIfNeeded('legacy-1')).resolves.toBe(true);
+    expect(post).toHaveBeenCalledWith(
+      '/projects',
+      { odProjectId: 'legacy-1', title: 'Legacy' },
+      expect.objectContaining({ workspaceId: 'ws1' }),
+    );
+    expect(get).toHaveBeenCalledWith(
+      '/projects/legacy-1/access',
+      expect.objectContaining({ workspaceId: 'ws1' }),
+    );
+  });
+
+  it('caches repeated access checks for the same project', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const get = vi.fn(async () => undefined);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get, post: vi.fn() },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ projects: [] })),
+    );
+
+    await expect(assertTeamverProjectAccessIfNeeded('cached-1')).resolves.toBe(true);
+    await expect(assertTeamverProjectAccessIfNeeded('cached-1')).resolves.toBe(true);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('ensureTeamverProjectRegisteredById upserts from daemon list', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi.fn(async () => ({}));
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { post },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          projects: [{ id: 'od-legacy', name: 'Old project', skillId: null, designSystemId: null }],
+        }),
+      ),
+    );
+
+    await ensureTeamverProjectRegisteredById('od-legacy');
+    expect(post).toHaveBeenCalledWith(
+      '/projects',
+      { odProjectId: 'od-legacy', title: 'Old project' },
+      expect.any(Object),
+    );
   });
 
   it('fetchTeamverProject returns registry row', async () => {
@@ -157,8 +232,9 @@ describe('Teamver project registry access', () => {
         }),
       },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
 
-    await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(false);
+    await expect(assertTeamverProjectAccessIfNeeded('p1-deny')).resolves.toBe(false);
   });
 
   it('returns true on transient errors (fail-open)', async () => {
@@ -171,8 +247,9 @@ describe('Teamver project registry access', () => {
         }),
       },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
 
-    await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(true);
+    await expect(assertTeamverProjectAccessIfNeeded('p1-transient')).resolves.toBe(true);
   });
 });
 

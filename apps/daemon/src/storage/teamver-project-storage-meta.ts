@@ -1,9 +1,7 @@
 import {
+  verifyTeamverProjectAccess,
   teamverDesignApiBaseUrl,
-  teamverProjectAccessCheckUrl,
   type TeamverRequestIdentity,
-  teamverIdentityHeadersFromIdentity,
-  teamverAccessTimeoutMs,
 } from '../teamver-project-access.js';
 
 export type { TeamverRequestIdentity };
@@ -12,21 +10,11 @@ export async function fetchTeamverProjectS3Prefix(
   projectId: string,
   identity: TeamverRequestIdentity,
 ): Promise<string | null> {
-  const url = teamverProjectAccessCheckUrl(projectId);
-  if (!url) return null;
+  if (!teamverDesignApiBaseUrl()) return null;
 
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: teamverIdentityHeadersFromIdentity(identity),
-      signal: AbortSignal.timeout(teamverAccessTimeoutMs()),
-    });
-    if (response.status !== 204) return null;
-    const prefix = response.headers.get('x-teamver-s3-prefix')?.trim();
-    return prefix || null;
-  } catch {
-    return null;
-  }
+  const result = await verifyTeamverProjectAccess(projectId, identity);
+  if (!result.ok) return null;
+  return result.s3Prefix;
 }
 
 export async function resolveTeamverTenantRemoteStorage(

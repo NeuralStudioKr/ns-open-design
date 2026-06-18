@@ -55,6 +55,7 @@ import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace'
 import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
 import {
   assertTeamverProjectAccessIfNeeded,
+  ensureTeamverProjectRegisteredById,
   registerTeamverProjectIfNeeded,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
@@ -1877,6 +1878,7 @@ function AppInner() {
     if (projects.some((p) => p.id === route.projectId)) return;
     let cancelled = false;
     (async () => {
+      await ensureTeamverProjectRegisteredById(route.projectId);
       const project = await getProject(route.projectId);
       if (cancelled) return;
       if (project) {
