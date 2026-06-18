@@ -38,12 +38,12 @@ export async function maybeReportTeamverUsageAfterSave(
   const modelName = extractModelNameFromEvents(message.events) ?? "unknown";
 
   await reportTeamverDesignUsage({
-    workspace_id: workspaceId.trim(),
-    model_name: modelName,
-    input_tokens: usage?.inputTokens ?? 0,
-    output_tokens: usage?.outputTokens ?? 0,
-    project_id: projectId,
-    run_id: runId,
+    workspaceId: workspaceId.trim(),
+    modelName,
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0,
+    projectId,
+    runId,
   });
 
   if (runId) reportedRunIds.add(runId);

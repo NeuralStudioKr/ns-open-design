@@ -2,13 +2,13 @@ import { NetworkError } from "@teamver/app-sdk";
 import { getDesignBffClient } from "./designBffClient";
 
 export type TeamverUsageEvent = {
-  workspace_id: string;
-  model_name: string;
-  input_tokens: number;
-  output_tokens: number;
+  workspaceId: string;
+  modelName: string;
+  inputTokens: number;
+  outputTokens: number;
   operation?: string;
-  project_id?: string;
-  run_id?: string;
+  projectId?: string;
+  runId?: string;
 };
 
 export type TeamverUsageAcceptedResponse = {
@@ -31,16 +31,16 @@ async function postUsageEvent(
   const response = await client.http.post<TeamverUsageAcceptedResponse>(
     "/usage/events",
     {
-      workspaceId: event.workspace_id,
-      modelName: event.model_name,
-      inputTokens: event.input_tokens,
-      outputTokens: event.output_tokens,
+      workspaceId: event.workspaceId,
+      modelName: event.modelName,
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
       operation: event.operation ?? "design_run",
-      projectId: event.project_id,
-      runId: event.run_id,
+      projectId: event.projectId,
+      runId: event.runId,
     },
     {
-      workspaceId: event.workspace_id,
+      workspaceId: event.workspaceId,
       skipAuthHeader: true,
     },
   );

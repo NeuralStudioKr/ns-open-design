@@ -3,28 +3,18 @@ import type { WorkspaceListItem } from "@teamver/app-sdk";
 type WorkspaceLike = {
   id?: string | null;
   workspaceId?: string | null;
-  workspace_id?: string | null;
   name?: string | null;
   displayName?: string | null;
-  display_name?: string | null;
   code?: string | null;
   role?: WorkspaceListItem["role"] | null;
   workspaceKind?: string | null;
-  workspace_kind?: string | null;
   isAccountDefaultWorkspace?: boolean | null;
-  is_account_default_workspace?: boolean | null;
   appEnabled?: boolean | null;
-  app_enabled?: boolean | null;
   appDisabledReason?: string | null;
-  app_disabled_reason?: string | null;
 };
 
 export function readWorkspaceId(workspace: WorkspaceLike | null | undefined): string | null {
-  const id =
-    workspace?.id?.trim() ||
-    workspace?.workspaceId?.trim() ||
-    workspace?.workspace_id?.trim() ||
-    null;
+  const id = workspace?.id?.trim() || workspace?.workspaceId?.trim() || null;
   return id || null;
 }
 
@@ -32,7 +22,6 @@ export function readWorkspaceLabel(workspace: WorkspaceLike | null | undefined):
   const name =
     workspace?.name?.trim() ||
     workspace?.displayName?.trim() ||
-    workspace?.display_name?.trim() ||
     workspace?.code?.trim() ||
     readWorkspaceId(workspace) ||
     "Workspace";
@@ -49,19 +38,15 @@ export function workspaceInitial(workspace: WorkspaceLike | null | undefined): s
 }
 
 export function isAccountDefaultWorkspace(workspace: WorkspaceLike): boolean {
-  return Boolean(workspace.isAccountDefaultWorkspace ?? workspace.is_account_default_workspace);
+  return Boolean(workspace.isAccountDefaultWorkspace);
 }
 
 export function isWorkspaceAppEnabled(workspace: WorkspaceLike): boolean {
-  const flag = workspace.appEnabled ?? workspace.app_enabled;
-  return flag !== false;
+  return workspace.appEnabled !== false;
 }
 
 export function readAppDisabledReason(workspace: WorkspaceLike | null | undefined): string | null {
-  const reason =
-    workspace?.appDisabledReason?.trim() ||
-    workspace?.app_disabled_reason?.trim() ||
-    null;
+  const reason = workspace?.appDisabledReason?.trim() || null;
   return reason || null;
 }
 
@@ -87,7 +72,7 @@ export function normalizeWorkspaceList(
       id,
       name: readWorkspaceLabel(workspace),
       role: workspace.role ?? "member",
-      workspaceKind: workspace.workspaceKind ?? workspace.workspace_kind ?? undefined,
+      workspaceKind: workspace.workspaceKind ?? undefined,
       isAccountDefaultWorkspace: isAccountDefaultWorkspace(workspace),
       appEnabled: isWorkspaceAppEnabled(workspace),
       appDisabledReason: readAppDisabledReason(workspace),

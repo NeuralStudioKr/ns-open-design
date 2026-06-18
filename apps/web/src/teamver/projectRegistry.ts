@@ -11,16 +11,13 @@ export type TeamverProjectRegistryPayload = {
 export type TeamverRegisteredProject = {
   id?: string;
   odProjectId?: string;
-  od_project_id?: string;
   s3Prefix?: string;
-  s3_prefix?: string;
   title?: string;
   ownerUserId?: string;
-  owner_user_id?: string;
 };
 
 function readRegistryOdProjectId(project: TeamverRegisteredProject): string | undefined {
-  const id = project.odProjectId?.trim() || project.od_project_id?.trim();
+  const id = project.odProjectId?.trim();
   return id || undefined;
 }
 

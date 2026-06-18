@@ -42,8 +42,8 @@ describe("TeamverWorkspaceSwitcher", () => {
     const view = render(
       <TeamverWorkspaceSwitcher
         workspaces={[
-          { id: "WS-1", name: "Alpha", role: "owner", app_enabled: true },
-          { id: "WS-2", name: "Beta Team", role: "member", app_enabled: false },
+          { id: "WS-1", name: "Alpha", role: "owner", appEnabled: true },
+          { id: "WS-2", name: "Beta Team", role: "member", appEnabled: false },
         ]}
         activeWorkspaceId="WS-1"
         onSwitch={vi.fn()}
@@ -67,8 +67,8 @@ describe("TeamverWorkspaceSwitcher", () => {
     const view = render(
       <TeamverWorkspaceSwitcher
         workspaces={[
-          { id: "WS-1", name: "Alpha", role: "owner", app_enabled: true },
-          { id: "WS-2", name: "Beta Team", role: "member", app_enabled: false },
+          { id: "WS-1", name: "Alpha", role: "owner", appEnabled: true },
+          { id: "WS-2", name: "Beta Team", role: "member", appEnabled: false },
         ]}
         activeWorkspaceId="WS-1"
         onSwitch={onSwitch}

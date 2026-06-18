@@ -85,12 +85,12 @@ describe('maybeReportTeamverUsageAfterSave', () => {
 
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith({
-      workspace_id: 'ws1',
-      model_name: 'claude-sonnet-4-5',
-      input_tokens: 100,
-      output_tokens: 50,
-      project_id: 'p1',
-      run_id: 'run-abc',
+      workspaceId: 'ws1',
+      modelName: 'claude-sonnet-4-5',
+      inputTokens: 100,
+      outputTokens: 50,
+      projectId: 'p1',
+      runId: 'run-abc',
     });
   });
 });

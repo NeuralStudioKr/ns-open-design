@@ -10,16 +10,22 @@ import {
   resolveTeamverMainApiBaseUrl,
 } from "./designApiBase";
 
+/** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
+export type DesignAuthSessionUser = {
+  userId?: string;
+  email?: string;
+  displayName?: string;
+  name?: string;
+  imageUrl?: string | null;
+  s3ImageUrl?: string | null;
+  profileImageUrl?: string | null;
+};
+
 export type DesignAuthSession = {
   authenticated: boolean;
   authSource?: string | null;
   appKey?: string | null;
-  user?: {
-    userId?: string;
-    email?: string;
-    displayName?: string;
-    name?: string;
-  } | null;
+  user?: DesignAuthSessionUser | null;
   defaultWorkspaceId?: string | null;
   workspaces?: WorkspaceListItem[];
 };
@@ -81,13 +87,9 @@ export type TeamverRuntimeConfigResponse = {
 
 export type TeamverWorkspacePermissions = {
   workspaceId?: string;
-  workspace_id?: string;
   appEnabled?: boolean;
-  app_enabled?: boolean;
   appDisabledReason?: string | null;
-  app_disabled_reason?: string | null;
   isMember?: boolean;
-  is_member?: boolean;
 };
 
 export async function fetchTeamverWorkspacePermissions(

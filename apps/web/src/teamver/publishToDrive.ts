@@ -29,22 +29,14 @@ type PublishOutputRaw = {
   id?: string | null;
   kind: string;
   driveAssetId?: string | null;
-  drive_asset_id?: string | null;
   driveFolderId?: string | null;
-  drive_folder_id?: string | null;
   driveSharedDriveId?: string | null;
-  drive_shared_drive_id?: string | null;
   filename?: string | null;
   sizeBytes?: number | null;
-  size_bytes?: number | null;
   mimeType?: string | null;
-  mime_type?: string | null;
   publishStatus?: string | null;
-  publish_status?: string | null;
   errorCode?: string | null;
-  error_code?: string | null;
   publishedAt?: string | null;
-  published_at?: string | null;
 };
 
 export type TeamverPublishDriveResult = {
@@ -55,25 +47,24 @@ export type TeamverPublishDriveResult = {
 
 type PublishResponse = {
   projectId?: string;
-  project_id?: string;
   outputs?: PublishOutputRaw[];
 };
 
 export function normalizePublishOutput(raw: PublishOutputRaw): TeamverPublishDriveOutput {
-  const publishStatus = (raw.publishStatus ?? raw.publish_status ?? "ready").toLowerCase();
+  const publishStatus = (raw.publishStatus ?? "ready").toLowerCase();
   const status: "ready" | "failed" = publishStatus === "failed" ? "failed" : "ready";
   return {
     id: raw.id ?? "",
     kind: raw.kind,
-    driveAssetId: raw.driveAssetId ?? raw.drive_asset_id ?? "",
-    driveFolderId: raw.driveFolderId ?? raw.drive_folder_id ?? null,
-    driveSharedDriveId: raw.driveSharedDriveId ?? raw.drive_shared_drive_id ?? null,
+    driveAssetId: raw.driveAssetId ?? "",
+    driveFolderId: raw.driveFolderId ?? null,
+    driveSharedDriveId: raw.driveSharedDriveId ?? null,
     filename: raw.filename ?? raw.kind,
-    sizeBytes: raw.sizeBytes ?? raw.size_bytes ?? 0,
-    mimeType: raw.mimeType ?? raw.mime_type ?? "application/octet-stream",
+    sizeBytes: raw.sizeBytes ?? 0,
+    mimeType: raw.mimeType ?? "application/octet-stream",
     publishStatus: status,
-    errorCode: raw.errorCode ?? raw.error_code ?? null,
-    publishedAt: raw.publishedAt ?? raw.published_at ?? null,
+    errorCode: raw.errorCode ?? null,
+    publishedAt: raw.publishedAt ?? null,
   };
 }
 
@@ -88,7 +79,7 @@ export function buildPublishResultFromResponse(
   const outputs = (response.outputs ?? []).map(normalizePublishOutput);
   const ready = pickReadyPublishOutputs(outputs);
   return {
-    projectId: response.projectId ?? response.project_id ?? fallbackProjectId,
+    projectId: response.projectId ?? fallbackProjectId,
     outputs: ready.length > 0 ? ready : outputs,
     partial: outputs.some((output) => output.publishStatus === "failed"),
   };

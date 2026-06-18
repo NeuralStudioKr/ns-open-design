@@ -13,7 +13,6 @@ export type TeamverProjectOutputsResult = {
 
 type OutputsListResponse = {
   projectId?: string;
-  project_id?: string;
   outputs?: Parameters<typeof normalizePublishOutput>[0][];
 };
 
@@ -42,7 +41,7 @@ export async function listTeamverProjectOutputs(
 
   const outputs = (response.outputs ?? []).map(normalizePublishOutput);
   return {
-    projectId: response.projectId ?? response.project_id ?? trimmedId,
+    projectId: response.projectId ?? trimmedId,
     outputs,
   };
 }

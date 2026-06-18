@@ -89,8 +89,8 @@ describe("useTeamverEmbed", () => {
           id: "WS-1",
           name: "Blocked",
           role: "owner",
-          app_enabled: false,
-          app_disabled_reason: "app_disabled_globally",
+          appEnabled: false,
+          appDisabledReason: "app_disabled_globally",
         },
       ],
     });

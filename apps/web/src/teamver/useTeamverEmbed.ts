@@ -50,25 +50,15 @@ function isSessionExpiredError(err: unknown): boolean {
   return err instanceof NetworkError && err.status === 401;
 }
 
-function readUserId(user: {
-  userId?: string;
-  user_id?: string;
-  email?: string;
-} | null | undefined): string | null {
-  return user?.userId?.trim() || user?.user_id?.trim() || null;
+import type { DesignAuthSessionUser } from "./designBffClient";
+
+function readUserId(user: DesignAuthSessionUser | null | undefined): string | null {
+  return user?.userId?.trim() || null;
 }
 
-function readUserLabel(user: {
-  displayName?: string;
-  display_name?: string;
-  name?: string;
-  email?: string;
-  userId?: string;
-  user_id?: string;
-} | null | undefined): string | null {
+function readUserLabel(user: DesignAuthSessionUser | null | undefined): string | null {
   return (
     user?.displayName?.trim() ||
-    user?.display_name?.trim() ||
     user?.name?.trim() ||
     user?.email?.trim() ||
     readUserId(user) ||

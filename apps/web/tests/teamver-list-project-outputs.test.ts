@@ -56,16 +56,16 @@ describe("listTeamverProjectOutputs", () => {
     expect(result?.outputs[0]?.publishedAt).toBe("2026-06-15T12:00:00Z");
   });
 
-  it("normalizes snake_case publish history", async () => {
+  it("returns publish history in camelCase", async () => {
     getMock.mockResolvedValue({
-      project_id: "DPRJ-2",
+      projectId: "DPRJ-2",
       outputs: [
         {
           kind: "zip",
-          drive_asset_id: "AST-2",
-          drive_folder_id: "FLD-2",
-          drive_shared_drive_id: "SD-2",
-          publish_status: "ready",
+          driveAssetId: "AST-2",
+          driveFolderId: "FLD-2",
+          driveSharedDriveId: "SD-2",
+          publishStatus: "ready",
           filename: "Landing.zip",
         },
       ],

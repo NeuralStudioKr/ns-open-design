@@ -26,20 +26,20 @@ describe("teamverEmbedVisuals", () => {
     );
   });
 
-  it("readUserImageUrl reads bootstrap image_url", () => {
+  it("readUserImageUrl reads bootstrap imageUrl", () => {
     expect(
       readUserImageUrl({
-        display_name: "Kim",
-        image_url: "https://cdn.example.com/u.png",
+        displayName: "Kim",
+        imageUrl: "https://cdn.example.com/u.png",
       }),
     ).toBe("https://cdn.example.com/u.png");
   });
 
-  it("readWorkspaceImageUrl reads snake_case fields", () => {
+  it("readWorkspaceImageUrl reads s3ImageUrl", () => {
     expect(
       readWorkspaceImageUrl({
         name: "Alpha",
-        s3_image_url: "https://cdn.example.com/ws.png",
+        s3ImageUrl: "https://cdn.example.com/ws.png",
       }),
     ).toBe("https://cdn.example.com/ws.png");
   });

@@ -37,21 +37,14 @@ export function isTeamverDesignAppEnabled(workspaceId: string): boolean {
 
 function readPermissionsAppEnabled(permissions: {
   appEnabled?: boolean;
-  app_enabled?: boolean;
 } | null | undefined): boolean {
-  const flag = permissions?.appEnabled ?? permissions?.app_enabled;
-  return flag !== false;
+  return permissions?.appEnabled !== false;
 }
 
 function readPermissionsDisabledReason(permissions: {
   appDisabledReason?: string | null;
-  app_disabled_reason?: string | null;
 } | null | undefined): string | null {
-  return (
-    permissions?.appDisabledReason?.trim() ||
-    permissions?.app_disabled_reason?.trim() ||
-    null
-  );
+  return permissions?.appDisabledReason?.trim() || null;
 }
 
 /** Sensitive embed actions (publish, usage) — permissions endpoint when available. */

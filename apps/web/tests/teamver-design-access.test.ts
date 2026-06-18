@@ -28,8 +28,8 @@ describe("teamverDesignAccess", () => {
     snapshotFromWorkspace("WS-2", {
       id: "WS-2",
       name: "Blocked",
-      app_enabled: false,
-      app_disabled_reason: "app_disabled_globally",
+      appEnabled: false,
+      appDisabledReason: "app_disabled_globally",
     });
     const snapshot = readTeamverDesignAccessSnapshot();
     expect(snapshot?.workspaceId).toBe("WS-2");
@@ -39,8 +39,8 @@ describe("teamverDesignAccess", () => {
 
   it("assert rejects when permissions report app disabled", async () => {
     fetchPermissionsMock.mockResolvedValue({
-      app_enabled: false,
-      app_disabled_reason: "app_disabled_workspace",
+      appEnabled: false,
+      appDisabledReason: "app_disabled_workspace",
     });
 
     await expect(assertTeamverDesignAppEnabled("WS-1")).rejects.toThrow(
@@ -51,8 +51,8 @@ describe("teamverDesignAccess", () => {
 
   it("assert passes when permissions report app enabled", async () => {
     fetchPermissionsMock.mockResolvedValue({
-      app_enabled: true,
-      app_disabled_reason: null,
+      appEnabled: true,
+      appDisabledReason: null,
     });
 
     await expect(assertTeamverDesignAppEnabled("WS-1")).resolves.toBeUndefined();

@@ -1,23 +1,12 @@
 import { resolveTeamverMainOrigin } from "./designApiBase";
+import type { DesignAuthSessionUser } from "./designBffClient";
 
 type WorkspaceLike = {
   name?: string | null;
   displayName?: string | null;
-  display_name?: string | null;
   code?: string | null;
   s3ImageUrl?: string | null;
-  s3_image_url?: string | null;
   imagePath?: string | null;
-  image_path?: string | null;
-};
-
-type UserLike = {
-  imageUrl?: string | null;
-  image_url?: string | null;
-  s3ImageUrl?: string | null;
-  s3_image_url?: string | null;
-  profileImageUrl?: string | null;
-  profile_image_url?: string | null;
 };
 
 /** Main FE `workspaceNameInitial` 와 동일 — 첫 글자 1자 (한글·이모지 포함). */
@@ -27,7 +16,6 @@ export function workspaceNameInitial(
   const name =
     workspace?.name?.trim() ||
     workspace?.displayName?.trim() ||
-    workspace?.display_name?.trim() ||
     workspace?.code?.trim() ||
     "";
   if (!name) return "?";
@@ -42,22 +30,19 @@ export function readWorkspaceImageUrl(
   if (!workspace) return null;
   const raw =
     workspace.s3ImageUrl?.trim() ||
-    workspace.s3_image_url?.trim() ||
     workspace.imagePath?.trim() ||
-    workspace.image_path?.trim() ||
     null;
   return resolveTeamverAssetUrl(raw);
 }
 
-export function readUserImageUrl(user: UserLike | null | undefined): string | null {
+export function readUserImageUrl(
+  user: DesignAuthSessionUser | null | undefined,
+): string | null {
   if (!user) return null;
   const raw =
     user.imageUrl?.trim() ||
-    user.image_url?.trim() ||
     user.s3ImageUrl?.trim() ||
-    user.s3_image_url?.trim() ||
     user.profileImageUrl?.trim() ||
-    user.profile_image_url?.trim() ||
     null;
   return resolveTeamverAssetUrl(raw);
 }

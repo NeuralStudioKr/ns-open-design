@@ -14,12 +14,12 @@ describe('reportTeamverDesignUsage', () => {
 
   it('no-ops outside Teamver embed mode when the design BFF client is unavailable', async () => {
     const requestId = await reportTeamverDesignUsage({
-      workspace_id: 'ws-default',
-      model_name: 'claude-sonnet-4-5',
-      input_tokens: 3,
-      output_tokens: 5,
-      project_id: 'od-default',
-      run_id: 'run-default',
+      workspaceId: 'ws-default',
+      modelName: 'claude-sonnet-4-5',
+      inputTokens: 3,
+      outputTokens: 5,
+      projectId: 'od-default',
+      runId: 'run-default',
     });
 
     expect(requestId).toBeNull();
@@ -33,12 +33,12 @@ describe('reportTeamverDesignUsage', () => {
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
     const requestId = await reportTeamverDesignUsage({
-      workspace_id: 'ws-1',
-      model_name: 'claude-sonnet-4-5',
-      input_tokens: 1,
-      output_tokens: 2,
-      project_id: 'od-1',
-      run_id: 'run-1',
+      workspaceId: 'ws-1',
+      modelName: 'claude-sonnet-4-5',
+      inputTokens: 1,
+      outputTokens: 2,
+      projectId: 'od-1',
+      runId: 'run-1',
     });
 
     expect(requestId).toBe('UREQ-123');

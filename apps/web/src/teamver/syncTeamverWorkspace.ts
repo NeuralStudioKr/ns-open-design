@@ -7,8 +7,7 @@ import {
 } from "./workspaceUtils";
 
 function readSessionUserId(session: DesignAuthSession): string | null {
-  const user = session.user;
-  return user?.userId?.trim() || (user as { user_id?: string } | null)?.user_id?.trim() || null;
+  return session.user?.userId?.trim() || null;
 }
 
 /**
