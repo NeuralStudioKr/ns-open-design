@@ -62,6 +62,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-project-access.test.ts \
       tests/teamver-project-storage-meta.test.ts \
       tests/teamver-linked-dirs-gate.test.ts \
+      tests/project-materialization-runtime.periodic.test.ts \
       tests/amr-model-probe-error.test.ts
   )
 
