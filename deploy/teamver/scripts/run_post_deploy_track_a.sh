@@ -110,5 +110,15 @@ if [[ -f "$ROOT/scripts/check_main_be_design_wiring.sh" ]]; then
   bash "$ROOT/scripts/check_main_be_design_wiring.sh" "$ENV_FLAG" || true
 fi
 
+if [[ -f "$ROOT/scripts/check_storage_isolation.sh" ]]; then
+  echo
+  echo "==> Phase 8: storage isolation audit (S3 SSOT + RDS + Drive)"
+  if ! bash "$ROOT/scripts/check_storage_isolation.sh" "$ENV_FLAG"; then
+    echo "❌ storage isolation FAILED — 사용자 파일이 local-disk 에 남거나"
+    echo "    deploy 재기동 시 유실될 수 있습니다. 위 출력 참고."
+    exit 1
+  fi
+fi
+
 echo
 echo "✓ Track A post-deploy complete"

@@ -20,6 +20,8 @@
 #     (`teamver_project_access_5xx`)
 #   - log metric filter + alarm: registry delete remote S3 purge partial failure
 #     (`od_s3_remote_purged` + `$.failed > 0`)
+#   - log metric filter + alarm: design-api DB connection 5xx
+#     (`teamver_design_api_db_5xx`) — loop 138 RDS SSL incident detection
 
 set -euo pipefail
 
@@ -208,6 +210,33 @@ declare -a REMOTE_PURGE_ALARM=(
   --treat-missing-data notBreaching
 )
 
+# loop 138 incident — RDS SSL verify 가 design-api 를 죽였을 때 nginx 가
+# 그대로 502 UPSTREAM_UNAVAILABLE 로 응답했다. design-api exception handler
+# 가 503 + 구조화 JSON 마커를 emit 하므로 CW filter 로 즉시 잡는다.
+declare -a DESIGN_API_DB_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$DESIGN_API_LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-design-api-db-5xx"
+  --filter-pattern '"teamver_design_api_db_5xx"'
+  --metric-transformations
+    "metricName=TeamverDesignApiDb5xx,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a DESIGN_API_DB_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-design-api-db-5xx"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignApiDb5xx"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
 if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SYNC_UP_ALARM+=("${alarm_action_args[@]}")
   USAGE_ALARM+=("${alarm_action_args[@]}")
@@ -215,6 +244,7 @@ if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SCRATCH_ALARM+=("${alarm_action_args[@]}")
   SCRATCH_BYTES_ALARM+=("${alarm_action_args[@]}")
   REMOTE_PURGE_ALARM+=("${alarm_action_args[@]}")
+  DESIGN_API_DB_ALARM+=("${alarm_action_args[@]}")
 fi
 
 emit() {
@@ -249,6 +279,8 @@ run_or_emit "8) Log metric filter: daemon project-access upstream failures" "${P
 run_or_emit "9) Alarm: project-access 5xx burst (≥5 in 5 minutes)" "${PROJECT_ACCESS_ALARM[@]}"
 run_or_emit "10) Log metric filter: registry delete S3 purge partial failure" "${REMOTE_PURGE_FILTER[@]}"
 run_or_emit "11) Alarm: S3 remote purge failed (any failed>0 in 5 minutes)" "${REMOTE_PURGE_ALARM[@]}"
+run_or_emit "12) Log metric filter: design-api DB connection 5xx" "${DESIGN_API_DB_FILTER[@]}"
+run_or_emit "13) Alarm: design-api DB 5xx (any in 5 minutes)" "${DESIGN_API_DB_ALARM[@]}"
 
 if [[ "$APPLY" -eq 0 ]]; then
   echo "# Tip: re-run with --apply to execute (requires aws CLI + IAM)."

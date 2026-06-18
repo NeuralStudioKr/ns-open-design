@@ -22,11 +22,14 @@ for needle in \
   'TeamverDesignProjectAccess5xx' \
   'TeamverDesignScratchOverThreshold' \
   'TeamverDesignS3RemotePurgeFailed' \
+  'TeamverDesignApiDb5xx' \
   'teamver-design-staging-scratch-disk-80pct' \
   'teamver-design-staging-scratch-over-threshold' \
   'teamver-design-staging-s3-remote-purge-failed' \
   'teamver-design-staging-project-access-5xx' \
+  'teamver-design-staging-design-api-db-5xx' \
   'teamver_project_access_5xx' \
+  'teamver_design_api_db_5xx' \
   'od_s3_remote_purged' \
   'od_scratch_disk_usage' \
   'overThreshold' \
@@ -49,6 +52,10 @@ fi
 prod_out="$(bash "$SCRIPT" --production)"
 if ! grep -q 'teamver-design-production-usage-5xx' <<< "$prod_out"; then
   echo "❌ --production usage alarm name missing"
+  exit 1
+fi
+if ! grep -q 'teamver-design-production-design-api-db-5xx' <<< "$prod_out"; then
+  echo "❌ --production design-api DB alarm name missing"
   exit 1
 fi
 

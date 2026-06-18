@@ -54,6 +54,7 @@ bash "$ROOT/scripts/test_backup_sqlite_to_s3.sh"
 bash "$ROOT/scripts/test_s3_lifecycle_policy.sh"
 bash "$ROOT/scripts/test_check_main_be_design_wiring.sh"
 bash "$ROOT/scripts/test_run_staging_phase0_activate.sh"
+bash "$ROOT/scripts/test_check_storage_isolation.sh"
 
 if [[ "$SKIP_WEB" -eq 0 ]]; then
   echo "==> daemon teamver vitest"
@@ -87,7 +88,11 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/providers/daemon-amr-models.test.ts \
       tests/teamver-amr-embed-skip.test.ts \
       tests/teamver-login-url.test.ts \
-      tests/teamver-workspace-switcher.test.tsx
+      tests/teamver-workspace-switcher.test.tsx \
+      tests/teamver-embed-visuals.test.ts \
+      tests/components/TeamverSessionBanner.test.tsx \
+      tests/styles/teamver-embed-topbar.test.ts \
+      tests/components/AvatarMenu.test.tsx
   )
 fi
 

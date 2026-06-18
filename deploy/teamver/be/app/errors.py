@@ -13,6 +13,7 @@ _STATUS_CODE_TO_ERROR_CODE: dict[int, str] = {
     422: "validation_error",
     429: "rate_limited",
     502: "bad_gateway",
+    503: "service_unavailable",
 }
 
 

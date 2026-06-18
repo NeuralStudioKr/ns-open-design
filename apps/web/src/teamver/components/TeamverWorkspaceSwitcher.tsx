@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
-import { readWorkspaceId, readWorkspaceLabel, workspaceInitial, formatWorkspaceMenuLabel, isWorkspaceAppEnabled } from "../workspaceUtils";
+import { Icon } from "../../components/Icon";
+import { TeamverAvatarGlyph } from "./TeamverAvatarGlyph";
+import {
+  readWorkspaceId,
+  readWorkspaceLabel,
+  formatWorkspaceMenuLabel,
+  isWorkspaceAppEnabled,
+} from "../workspaceUtils";
+import {
+  readWorkspaceImageUrl,
+  workspaceNameInitial,
+} from "../teamverEmbedVisuals";
 
 type Props = {
   workspaces: WorkspaceListItem[];
@@ -8,6 +19,38 @@ type Props = {
   onSwitch: (workspaceId: string) => void | Promise<void>;
   disabled?: boolean;
 };
+
+function WorkspaceTriggerContent({
+  workspace,
+  multiple,
+  open,
+}: {
+  workspace: WorkspaceListItem | null;
+  multiple: boolean;
+  open: boolean;
+}) {
+  const label = readWorkspaceLabel(workspace);
+  return (
+    <>
+      <TeamverAvatarGlyph
+        imageUrl={readWorkspaceImageUrl(workspace)}
+        label={label}
+        size="md"
+        className="teamver-workspace-trigger__glyph"
+      />
+      <span className="teamver-workspace-trigger__label" title={label}>
+        {label}
+      </span>
+      {multiple ? (
+        <Icon
+          name="chevron-down"
+          size={14}
+          className={`teamver-workspace-trigger__chevron${open ? " is-open" : ""}`}
+        />
+      ) : null}
+    </>
+  );
+}
 
 export function TeamverWorkspaceSwitcher({
   workspaces,
@@ -22,6 +65,9 @@ export function TeamverWorkspaceSwitcher({
     workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ??
     workspaces[0] ??
     null;
+
+  const multiple = workspaces.length > 1;
+  const activeLabel = readWorkspaceLabel(active);
 
   useEffect(() => {
     if (!open) return;
@@ -45,18 +91,21 @@ export function TeamverWorkspaceSwitcher({
 
   if (workspaces.length === 0) return null;
 
-  const activeLabel = readWorkspaceLabel(active);
-
-  if (workspaces.length === 1) {
+  if (!multiple) {
     return (
-      <span
-        className="teamver-workspace-chip"
-        title={activeLabel}
-        aria-label={activeLabel}
-        data-testid="teamver-workspace-chip"
+      <div
+        className="teamver-workspace-switcher teamver-workspace-switcher--static"
+        data-testid="teamver-workspace-switcher"
       >
-        {workspaceInitial(active)}
-      </span>
+        <span
+          className="teamver-workspace-trigger"
+          title={activeLabel}
+          aria-label={`워크스페이스: ${activeLabel}`}
+          data-testid="teamver-workspace-chip"
+        >
+          <WorkspaceTriggerContent workspace={active} multiple={false} open={false} />
+        </span>
+      </div>
     );
   }
 
@@ -64,24 +113,27 @@ export function TeamverWorkspaceSwitcher({
     <div className="teamver-workspace-switcher" ref={rootRef} data-testid="teamver-workspace-switcher">
       <button
         type="button"
-        className="teamver-workspace-chip"
+        className="teamver-workspace-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Workspace: ${activeLabel}`}
+        aria-label={`워크스페이스: ${activeLabel}`}
         title={activeLabel}
         disabled={disabled}
+        data-testid="teamver-workspace-chip"
         onClick={() => setOpen((value) => !value)}
       >
-        {workspaceInitial(active)}
+        <WorkspaceTriggerContent workspace={active} multiple={multiple} open={open} />
       </button>
       {open ? (
-        <div className="teamver-workspace-menu" role="listbox" aria-label="Select workspace">
+        <div className="teamver-workspace-menu" role="listbox" aria-label="워크스페이스 선택">
+          <p className="teamver-workspace-menu__heading">워크스페이스</p>
           {workspaces.map((workspace) => {
             const id = readWorkspaceId(workspace);
             if (!id) return null;
             const menuLabel = formatWorkspaceMenuLabel(workspace);
             const appEnabled = isWorkspaceAppEnabled(workspace);
             const selected = id === activeWorkspaceId;
+            const itemLabel = readWorkspaceLabel(workspace);
             return (
               <button
                 key={id}
@@ -94,9 +146,12 @@ export function TeamverWorkspaceSwitcher({
                 onClick={() => handleSelect(id, appEnabled)}
                 disabled={!appEnabled}
               >
-                <span className="teamver-workspace-menu__initial" aria-hidden>
-                  {workspaceInitial(workspace)}
-                </span>
+                <TeamverAvatarGlyph
+                  imageUrl={readWorkspaceImageUrl(workspace)}
+                  label={itemLabel}
+                  size="sm"
+                  className="teamver-workspace-menu__glyph"
+                />
                 <span className="teamver-workspace-menu__label">{menuLabel}</span>
               </button>
             );

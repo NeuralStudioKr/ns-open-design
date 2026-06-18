@@ -414,6 +414,53 @@ describe('ChatPane streaming state', () => {
     expect(onSwitchToLocalCli).toHaveBeenCalledTimes(1);
   });
 
+  it('hides Local CLI recovery when showByokRecoveryAction is off (Teamver embed)', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Create a login page',
+        createdAt: 1,
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        createdAt: 2,
+        runStatus: 'failed',
+        events: [
+          {
+            kind: 'status',
+            label: 'error',
+            detail: 'Missing API key — open Settings and paste one in.',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        showByokRecoveryAction={false}
+        onSwitchToLocalCli={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Use Local CLI' })).toBeNull();
+  });
+
   it('shows the sent mode and applied plugin context on user turns', () => {
     const messages: ChatMessage[] = [
       {

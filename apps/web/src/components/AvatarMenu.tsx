@@ -12,6 +12,7 @@ import { apiProtocolLabel } from '../utils/apiProtocol';
 import { fetchProviderModels } from '../providers/provider-models';
 import { isMacPlatform } from '../utils/platform';
 import { amrConsoleUrlForProfile } from '../runtime/amr-guidance';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 
 interface Props {
   config: AppConfig;
@@ -57,6 +58,12 @@ export function AvatarMenu({
   onOpen,
 }: Props) {
   const t = useT();
+  // Teamver embed: execution mode is server-locked (API/BYOK). The avatar
+  // popover's "Use Local CLI / Use API" toggle is meaningless there, so
+  // mirror the existing `hideStudioExecutionControls` gate. Keeping this in
+  // a single render-time branch (no UI restructure) keeps the OD core diff
+  // small for upstream pulls.
+  const { hideStudioExecutionControls } = useTeamverBranding();
   const [open, setOpen] = useState(false);
   // Toggle that reports the closed→open transition (for analytics) without
   // firing on close.
@@ -300,6 +307,8 @@ export function AvatarMenu({
             </a>
           ) : null}
 
+          {hideStudioExecutionControls ? null : (
+          <>
           <button
             type="button"
             className={`avatar-item${config.mode === 'daemon' ? ' active' : ''}`}
@@ -352,6 +361,8 @@ export function AvatarMenu({
               <RemixIcon name="check-line" size={14} className="avatar-item-check" />
             ) : null}
           </button>
+          </>
+          )}
 
           {config.mode === 'daemon' && installedAgents.length > 0 ? (
             <>
@@ -464,7 +475,7 @@ export function AvatarMenu({
             </>
           ) : null}
 
-          {config.mode === 'api' ? (
+          {hideStudioExecutionControls || config.mode !== 'api' ? null : (
             <div className="avatar-model-section">
               <label className="avatar-select-row">
                 <span className="avatar-select-label">
@@ -494,23 +505,27 @@ export function AvatarMenu({
                 />
               </label>
             </div>
-          ) : null}
+          )}
 
-          <div style={{ height: 1, background: 'var(--border-soft)', margin: '4px 6px' }} />
+          {hideStudioExecutionControls ? null : (
+            <>
+              <div style={{ height: 1, background: 'var(--border-soft)', margin: '4px 6px' }} />
 
-          <button
-            type="button"
-            className="avatar-item avatar-item--execution-settings"
-            onClick={() => {
-              setOpen(false);
-              onOpenSettings('execution');
-            }}
-          >
-            <span className="avatar-item-icon" aria-hidden>
-              <RemixIcon name="settings-3-line" size={15} />
-            </span>
-            <span>{t('inlineSwitcher.openFullSettings')}</span>
-          </button>
+              <button
+                type="button"
+                className="avatar-item avatar-item--execution-settings"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenSettings('execution');
+                }}
+              >
+                <span className="avatar-item-icon" aria-hidden>
+                  <RemixIcon name="settings-3-line" size={15} />
+                </span>
+                <span>{t('inlineSwitcher.openFullSettings')}</span>
+              </button>
+            </>
+          )}
 
           {onBack ? (
             <>

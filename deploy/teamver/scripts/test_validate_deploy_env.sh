@@ -164,3 +164,38 @@ fi
 rm -f "$BILL_OFF_ENV"
 
 echo "✓ validate_deploy_env daemon billing bridge warnings ok"
+
+# Storage isolation gate (loop 138c) — staging/production .env 에서
+# OD_PROJECT_STORAGE != s3 이면 반드시 fail.
+LOCAL_ENV="$(mktemp)"
+sed 's/^OD_PROJECT_STORAGE=.*/OD_PROJECT_STORAGE=local/' "$TMP_ENV" > "$LOCAL_ENV"
+local_out="$(bash "$SCRIPT" --staging --rds --env-file "$LOCAL_ENV" 2>&1 || true)"
+if grep -q '반드시 OD_PROJECT_STORAGE=s3 필요' <<< "$local_out"; then
+  echo "✓ validate_deploy_env staging fails when OD_PROJECT_STORAGE=local"
+else
+  echo "❌ staging fixture w/ local storage should fail with isolation guard"
+  echo "$local_out"
+  rm -f "$LOCAL_ENV"
+  exit 1
+fi
+if bash "$SCRIPT" --staging --rds --env-file "$LOCAL_ENV" >/dev/null 2>&1; then
+  echo "❌ staging w/ OD_PROJECT_STORAGE=local must exit non-zero"
+  rm -f "$LOCAL_ENV"
+  exit 1
+fi
+rm -f "$LOCAL_ENV"
+
+# MinIO endpoint must be rejected in staging too.
+MINIO_ENV="$(mktemp)"
+cat "$TMP_ENV" > "$MINIO_ENV"
+echo 'OD_S3_ENDPOINT=http://minio:9000' >> "$MINIO_ENV"
+minio_out="$(bash "$SCRIPT" --staging --rds --env-file "$MINIO_ENV" 2>&1 || true)"
+if grep -q 'MinIO/로컬 dev endpoint 는 staging/production 에서 금지' <<< "$minio_out"; then
+  echo "✓ validate_deploy_env staging fails on MinIO OD_S3_ENDPOINT"
+else
+  echo "❌ MinIO endpoint must fail in staging"
+  echo "$minio_out"
+  rm -f "$MINIO_ENV"
+  exit 1
+fi
+rm -f "$MINIO_ENV"

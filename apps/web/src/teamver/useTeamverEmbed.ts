@@ -13,6 +13,7 @@ import {
   isWorkspaceAppEnabled,
   readAppDisabledReason,
 } from "./workspaceUtils";
+import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
 
 export type TeamverEmbedState = {
@@ -20,6 +21,7 @@ export type TeamverEmbedState = {
   authenticated: boolean;
   userLabel: string | null;
   userId: string | null;
+  userImageUrl: string | null;
   activeWorkspaceId: string | null;
   activeWorkspaceLabel: string | null;
   designAppEnabled: boolean;
@@ -35,6 +37,7 @@ const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
   authenticated: false,
   userLabel: null,
   userId: null,
+  userImageUrl: null,
   activeWorkspaceId: null,
   activeWorkspaceLabel: null,
   designAppEnabled: true,
@@ -110,6 +113,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         authenticated: Boolean(session.authenticated),
         userLabel: readUserLabel(session.user),
         userId,
+        userImageUrl: readUserImageUrl(session.user),
         activeWorkspaceId,
         activeWorkspaceLabel: activeWorkspace ? readWorkspaceLabel(activeWorkspace) : null,
         designAppEnabled,

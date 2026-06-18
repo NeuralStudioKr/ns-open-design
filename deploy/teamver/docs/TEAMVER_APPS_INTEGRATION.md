@@ -77,6 +77,7 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 | `run_staging_phase0_activate.sh` | Phase 0: S3 merge + validate + EC2 checklist (P0/P1-8) |
 | `print_main_be_design_env.sh` | Main BE `TEAMVER_DESIGN_API_BASE_URL` snippet (A6) |
 | `check_main_be_design_wiring.sh` | Main BE env read-only 검증 (A6) |
+| `check_storage_isolation.sh` | staging/production tenant 격리 audit — `.env` + 컨테이너 ENV + `/api/healthz/deps` + `/api/health/storage` (P1-3) |
 | `backup_sqlite_to_s3.sh` | Litestream 장애 시 `app.sqlite` 수동 S3 fallback (P2-3) |
 | `print_cloudwatch_alarm_commands.sh` | sync-up 실패·scratch disk alarm AWS CLI 출력 (P1-10/P0-6) |
 | `run_minio_s3_dev.sh` | local MinIO + optional integration test |

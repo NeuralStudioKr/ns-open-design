@@ -33,7 +33,7 @@ describe("TeamverWorkspaceSwitcher", () => {
     );
 
     const scoped = within(view.getByTestId("teamver-workspace-switcher"));
-    fireEvent.click(scoped.getByRole("button", { name: /Workspace: Alpha/i }));
+    fireEvent.click(scoped.getByRole("button", { name: /워크스페이스: Alpha/i }));
     fireEvent.click(scoped.getByRole("option", { name: /Beta Team/i }));
     expect(onSwitch).toHaveBeenCalledWith("WS-2");
   });
@@ -52,7 +52,7 @@ describe("TeamverWorkspaceSwitcher", () => {
 
     fireEvent.click(
       within(view.getByTestId("teamver-workspace-switcher")).getByRole("button", {
-        name: /Workspace: Alpha/i,
+        name: /워크스페이스: Alpha/i,
       }),
     );
     expect(
@@ -77,7 +77,7 @@ describe("TeamverWorkspaceSwitcher", () => {
 
     fireEvent.click(
       within(view.getByTestId("teamver-workspace-switcher")).getByRole("button", {
-        name: /Workspace: Alpha/i,
+        name: /워크스페이스: Alpha/i,
       }),
     );
     fireEvent.click(

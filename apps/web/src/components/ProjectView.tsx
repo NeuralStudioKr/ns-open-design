@@ -5674,6 +5674,7 @@ export function ProjectView({
               config={config}
               onOpenSettings={onOpenSettings}
               showByokRecoveryAction={
+                !hideStudioExecutionControls &&
                 config.mode === 'api' &&
                 daemonLive &&
                 (
@@ -5682,10 +5683,14 @@ export function ProjectView({
                   !config.model.trim()
                 )
               }
-              onSwitchToLocalCli={() => {
-                setError(null);
-                onModeChange('daemon');
-              }}
+              onSwitchToLocalCli={
+                hideStudioExecutionControls
+                  ? undefined
+                  : () => {
+                      setError(null);
+                      onModeChange('daemon');
+                    }
+              }
               onOpenAmrSettings={onOpenAmrSettings}
               onSwitchToAmrAndRetry={handleSwitchToAmrAndRetry}
               onLaunchAntigravityOauth={handleLaunchAntigravityOauth}

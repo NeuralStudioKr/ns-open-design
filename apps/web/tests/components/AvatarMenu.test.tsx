@@ -11,6 +11,16 @@ vi.mock('../../src/i18n', () => ({
   useT: () => (key: string) => key,
 }));
 
+const brandingOverride: { hideStudioExecutionControls: boolean } = {
+  hideStudioExecutionControls: false,
+};
+
+vi.mock('../../src/teamver/branding/TeamverBrandingProvider', () => ({
+  useTeamverBranding: () => ({
+    hideStudioExecutionControls: brandingOverride.hideStudioExecutionControls,
+  }),
+}));
+
 const codexAgent: AgentInfo = {
   id: 'codex',
   name: 'Codex CLI',
@@ -112,6 +122,7 @@ describe('AvatarMenu', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    brandingOverride.hideStudioExecutionControls = false;
   });
 
   it('opens execution settings when Local CLI is selected while the daemon is offline', () => {
@@ -207,6 +218,24 @@ describe('AvatarMenu', () => {
     expect(
       within(popover).getByRole('option', { name: /custom-codex-model/i }),
     ).toBeTruthy();
+  });
+
+  // Teamver embed: execution mode is server-locked (API/BYOK only). The
+  // avatar popover's "Use Local CLI / Use API" toggle was leaking in despite
+  // the studio + topbar gates, so we mirror `hideStudioExecutionControls`
+  // here to keep the embed UI on the API-only contract.
+  it('hides the Local CLI / API toggle when the branding hides studio execution controls', () => {
+    brandingOverride.hideStudioExecutionControls = true;
+    renderMenu({
+      config: { ...baseConfig, mode: 'api' },
+    });
+
+    openMenu();
+
+    expect(screen.queryByRole('button', { name: /avatar.useLocal/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /avatar.useApi/i })).toBeNull();
+    expect(screen.queryByTestId('avatar-byok-model-search')).toBeNull();
+    expect(screen.queryByRole('button', { name: /inlineSwitcher.openFullSettings/i })).toBeNull();
   });
 
   it('routes the AMR account shortcut through the active AMR profile', () => {

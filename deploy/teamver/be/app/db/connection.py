@@ -23,13 +23,28 @@ def _build_async_url() -> URL:
     )
 
 
+def _unverified_ssl_context() -> ssl.SSLContext:
+    """TLS without cert verification — libpq ``sslmode=require`` / ``prefer``."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def _connect_args() -> dict[str, Any]:
+    # libpq sslmode 매핑: AWS RDS 같이 self-signed CA chain 을 쓰는 환경에서
+    # asyncpg의 ``ssl=True`` 디폴트(검증 ON) 가 verify-full 처럼 동작해 503/502
+    # 가 났다. ``require`` 는 표준상 "암호화는 하되 cert 검증은 안 함" 이므로
+    # verify-off SSL context 를 직접 넘긴다.
     mode = (settings.postgres_sslmode or "").strip().lower()
     if mode in {"disable", "allow"}:
         return {"ssl": False}
     if mode in {"verify-ca", "verify-full"}:
         return {"ssl": ssl.create_default_context()}
-    return {"ssl": True}
+    if mode in {"", "prefer", "require"}:
+        return {"ssl": _unverified_ssl_context()}
+    # Unknown mode — still prefer encrypted but unverified over hard failure.
+    return {"ssl": _unverified_ssl_context()}
 
 
 async_engine = create_async_engine(

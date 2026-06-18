@@ -102,7 +102,10 @@ missing = [key for key in updates if key not in seen]
 if missing:
     if out_lines and out_lines[-1].strip():
         out_lines.append("")
-    out_lines.append("# --- OD project storage (apply_staging_s3_env.sh) ---")
+    # Already-migrated env files (OD_PROJECT_STORAGE present) get quiet key
+    # backfill only — no duplicate section banner.
+    if "OD_PROJECT_STORAGE" not in seen:
+        out_lines.append("# --- OD project storage (apply_staging_s3_env.sh) ---")
     for key in missing:
         out_lines.append(f"{key}={updates[key]}")
 

@@ -3270,8 +3270,10 @@
   /* Collapse the three topbar chips into the settings dropdown.
      The chips' container disappears and the matching menu rows
      inside `.avatar-popover` are unhidden so every action stays
-     one click away from the lone settings cog. */
-  .entry-main__topbar-chips {
+     one click away from the lone settings cog.
+     Teamver embed keeps its session bar visible — workspace switcher
+     and account chrome are not duplicated in the settings menu. */
+  .entry-main__topbar-chips:not(.entry-main__topbar-chips--teamver-embed) {
     display: none;
   }
   .avatar-item--compact-only {

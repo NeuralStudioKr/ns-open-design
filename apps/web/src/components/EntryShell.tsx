@@ -721,7 +721,11 @@ export function EntryShell({
             >
               <Icon name="panel-left" size={20} />
             </button>
-            <div className="entry-main__topbar-chips entry-main__topbar-chips--icon-only">
+            <div
+              className={`entry-main__topbar-chips${
+                teamverEmbed ? ' entry-main__topbar-chips--teamver-embed' : ' entry-main__topbar-chips--icon-only'
+              }`}
+            >
               <EntryTopbarChips />
               {!hideTopbarExecutionSwitcher ? executionSwitcher : null}
               {!hideUseEverywhereChip ? (

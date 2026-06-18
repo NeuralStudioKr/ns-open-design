@@ -104,7 +104,18 @@ if [[ "$USE_RDS" == true ]]; then
   fi
 fi
 
-if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
+# Project storage isolation — Teamver Track A 는 모든 프로젝트 파일이 tenant-scoped
+# S3 prefix 에만 머물러야 한다. local-disk fallback 은 multi-tenant 격리·내구성을
+#둘 다 깨므로 staging/production .env 에서 명시적으로 `OD_PROJECT_STORAGE=s3` 가
+# 아니면 즉시 실패한다. docker-compose 의 `${OD_PROJECT_STORAGE:-local}` default
+# 가 누락된 .env 를 silently local mode 로 떨어뜨리는 사고를 막는다.
+RESOLVED_PROJECT_STORAGE="$(printf '%s' "${OD_PROJECT_STORAGE:-local}" | tr '[:upper:]' '[:lower:]' | xargs)"
+case "$ENV_FILE" in
+  .env.staging|.env.production) REQUIRE_S3_STORAGE=true ;;
+  *) REQUIRE_S3_STORAGE=false ;;
+esac
+
+if [[ "$RESOLVED_PROJECT_STORAGE" == "s3" ]]; then
   require_nonempty OD_S3_BUCKET
   require_nonempty TEAMVER_DESIGN_API_URL
   if [[ -z "${OD_S3_REGION:-}" && -z "${AWS_REGION:-}" ]]; then
@@ -115,7 +126,11 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
   fi
   if [[ -n "${OD_S3_ENDPOINT:-}" ]]; then
     if [[ "${OD_S3_ENDPOINT}" == *"minio"* || "${OD_S3_ENDPOINT}" == *"127.0.0.1"* || "${OD_S3_ENDPOINT}" == *"localhost"* ]]; then
-      warn "OD_S3_ENDPOINT=${OD_S3_ENDPOINT} — MinIO/로컬 dev용; staging/prod EC2는 AWS 기본 endpoint 권장"
+      if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+        fail "OD_S3_ENDPOINT=${OD_S3_ENDPOINT} — MinIO/로컬 dev endpoint 는 staging/production 에서 금지 (AWS S3 endpoint 사용)"
+      else
+        warn "OD_S3_ENDPOINT=${OD_S3_ENDPOINT} — MinIO/로컬 dev용; staging/prod EC2는 AWS 기본 endpoint 권장"
+      fi
     else
       warn "OD_S3_ENDPOINT 설정됨 — custom S3-compatible endpoint (의도 확인)"
     fi
@@ -126,8 +141,10 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
   if [[ -z "${OD_S3_ACCESS_KEY_ID:-}" && -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
     warn "OD_S3_ACCESS_KEY_ID·AWS_ACCESS_KEY_ID 없음 — EC2 instance role(IAM) 사용 가정"
   fi
+elif [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+  fail "OD_PROJECT_STORAGE=${OD_PROJECT_STORAGE:-local} — $ENV_FILE 는 반드시 OD_PROJECT_STORAGE=s3 필요 (Teamver tenant 격리·내구성). bash scripts/apply_staging_s3_env.sh 또는 print_staging_s3_env.sh 참조."
 else
-  warn "OD_PROJECT_STORAGE=${OD_PROJECT_STORAGE:-local} — staging Track A S3 격리는 s3 권장"
+  warn "OD_PROJECT_STORAGE=${OD_PROJECT_STORAGE:-local} — dev mode (laptop) 에서만 허용"
 fi
 
 if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then

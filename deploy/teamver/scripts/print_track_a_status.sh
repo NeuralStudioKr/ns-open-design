@@ -68,14 +68,31 @@ echo
 
 storage="${OD_PROJECT_STORAGE:-local}"
 storage="$(printf '%s' "$storage" | tr '[:upper:]' '[:lower:]')"
+case "$ENV_FILE" in
+  .env.staging|.env.production) require_s3=1 ;;
+  *) require_s3=0 ;;
+esac
 echo "Storage & registry"
-flag "OD_PROJECT_STORAGE" "$storage"
+if [[ "$require_s3" -eq 1 && "$storage" != "s3" ]]; then
+  printf "  ✗ %-28s %s\n" "OD_PROJECT_STORAGE" "$storage — staging/production 은 s3 필요 (loop 140 가드)"
+else
+  flag "OD_PROJECT_STORAGE" "$storage"
+fi
 if [[ "$storage" == "s3" ]]; then
   flag "OD_S3_BUCKET" "${OD_S3_BUCKET:-}"
   flag "OD_S3_REGION" "${OD_S3_REGION:-${AWS_REGION:-}}"
   flag "OD_S3_PREFIX" "${OD_S3_PREFIX:-}"
   if [[ -n "${OD_S3_ENDPOINT:-}" ]]; then
-    flag "OD_S3_ENDPOINT" "${OD_S3_ENDPOINT} (MinIO/dev)"
+    case "${OD_S3_ENDPOINT}" in
+      *minio*|*127.0.0.1*|*localhost*)
+        if [[ "$require_s3" -eq 1 ]]; then
+          printf "  ✗ %-28s %s\n" "OD_S3_ENDPOINT" "${OD_S3_ENDPOINT} — staging/production 에서 MinIO/로컬 endpoint 금지"
+        else
+          flag "OD_S3_ENDPOINT" "${OD_S3_ENDPOINT} (MinIO/dev)"
+        fi
+        ;;
+      *) flag "OD_S3_ENDPOINT" "${OD_S3_ENDPOINT}" ;;
+    esac
   fi
 fi
 flag "TEAMVER_DESIGN_API_URL" "${TEAMVER_DESIGN_API_URL:-}"
@@ -151,6 +168,7 @@ echo
 
 if [[ "$PROBE" -eq 0 ]]; then
   echo "Tip: --probe 로 stg-design* health curl 추가"
+  echo "Tip: bash scripts/check_storage_isolation.sh ${ENV_FILE/.env./--} 로 .env+컨테이너+healthz 전구간 격리 audit"
   exit 0
 fi
 
