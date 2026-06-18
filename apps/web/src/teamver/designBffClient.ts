@@ -6,7 +6,7 @@ import {
 import {
   isTeamverEmbedMode,
   resolveTeamverDesignApiBase,
-  resolveTeamverLoginUrl,
+  redirectToTeamverLogin,
   resolveTeamverMainApiBaseUrl,
 } from "./designApiBase";
 
@@ -44,9 +44,7 @@ export function getDesignBffClient(): TeamverClient | null {
       }),
       withCredentials: true,
       onAuthExpired: () => {
-        if (typeof window !== "undefined") {
-          window.location.assign(resolveTeamverLoginUrl());
-        }
+        redirectToTeamverLogin();
       },
     });
   }

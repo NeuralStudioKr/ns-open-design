@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
 import { fetchDesignAuthSession, getDesignBffClient } from "./designBffClient";
-import { isTeamverEmbedMode, resolveTeamverLoginUrl } from "./designApiBase";
+import { isTeamverEmbedMode, redirectToTeamverLogin } from "./designApiBase";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import {
@@ -118,8 +118,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         error: session.authenticated ? null : "not_authenticated",
       });
     } catch (err) {
-      if (isSessionExpiredError(err) && typeof window !== "undefined") {
-        window.location.assign(resolveTeamverLoginUrl());
+      if (isSessionExpiredError(err)) {
+        redirectToTeamverLogin();
         return;
       }
       setState({ ...INITIAL, loading: false, error: "session_unreachable" });

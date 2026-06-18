@@ -19,12 +19,35 @@ export function isTeamverEmbedMode(): boolean {
 /** Main FE sign-in path — must match `ns-teamver-fe-v2` `AUTH_SIGNIN_PATH`. */
 export const TEAMVER_AUTH_SIGNIN_PATH = "/auth/signin";
 
-export function resolveTeamverLoginUrl(): string {
+/** Query param for post-login redirect — must match `ns-teamver-fe-v2` `AUTH_RETURN_TO_PARAM`. */
+export const TEAMVER_AUTH_RETURN_TO_PARAM = "returnTo";
+
+export function appendTeamverAuthReturnTo(loginUrl: string, returnTo: string): string {
+  const url = new URL(loginUrl);
+  url.searchParams.set(TEAMVER_AUTH_RETURN_TO_PARAM, returnTo);
+  return url.toString();
+}
+
+export function resolveTeamverLoginReturnTo(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.location.href;
+}
+
+export function resolveTeamverLoginUrl(returnTo?: string | null): string {
   const origin =
     typeof window === "undefined"
       ? "https://teamver.com"
       : resolveTeamverMainOrigin();
-  return `${origin.replace(/\/+$/, "")}${TEAMVER_AUTH_SIGNIN_PATH}`;
+  const base = `${origin.replace(/\/+$/, "")}${TEAMVER_AUTH_SIGNIN_PATH}`;
+  const target = returnTo?.trim() || resolveTeamverLoginReturnTo();
+  if (!target) return base;
+  return appendTeamverAuthReturnTo(base, target);
+}
+
+/** 세션 만료 시 Main FE sign-in 으로 이동 — history 에 Design URL 이 남지 않도록 replace 사용 */
+export function redirectToTeamverLogin(returnTo?: string | null): void {
+  if (typeof window === "undefined") return;
+  window.location.replace(resolveTeamverLoginUrl(returnTo));
 }
 
 /** Main FE origin — stg.teamver.com / teamver.com */

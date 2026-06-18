@@ -50,6 +50,7 @@ import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmb
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
 import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
 import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
 import {
@@ -1009,6 +1010,12 @@ function AppInner() {
     config.agentId,
     config.onboardingCompleted,
   ]);
+
+  // Embed: browser back from Design home should stay in Design, not Main FE /thread.
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return installTeamverEmbedHistoryBoundary();
+  }, []);
 
   // Embed: daemon merge or config writers can drift mode/agent — re-apply lock.
   useEffect(() => {
