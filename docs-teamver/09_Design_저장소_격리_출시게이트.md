@@ -182,7 +182,7 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 |---|------|------|------|
 | P4-1 | export/finalize → Drive upload (`teamver-app-sdk`) | `deploy/teamver/be` | ✅ `PublishService` · Main BE presigned 3-step |
 | P4-2 | `design_outputs` 테이블 + `GET /outputs` | `deploy/teamver/be` | ✅ `drive_folder_id` + `drive_shared_drive_id` |
-| P4-3 | Main FE / Drive 연동 UX | `ns-teamver-fe-v2` + embed | 🟡 `?asset=` · Open in Drive menu ✅ · personal/team folder picker ☐ |
+| P4-3 | Main FE / Drive 연동 UX | `ns-teamver-fe-v2` + embed | 🟡 `?asset=` · Open in Drive menu ✅ · personal/team target picker 1차 ✅ · 전체 폴더 브라우저 ☐ |
 | P4-4 | registry create → scratch sync-up (S3) | design-api + daemon | ✅ `POST …/scratch/sync-up` |
 
 ---

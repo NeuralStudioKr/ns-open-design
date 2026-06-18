@@ -38,9 +38,11 @@ describe("publishTeamverDesignToDrive", () => {
     postMock.mockReset();
     getWorkspaceMock.mockClear();
     assertAppEnabledMock.mockClear();
+    delete process.env.VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID;
+    delete process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID;
   });
 
-  it("checks app_enabled before publish", async () => {
+  it("checks appEnabled before publish", async () => {
     assertAppEnabledMock.mockRejectedValueOnce(new Error("app_disabled_globally"));
     await expect(
       publishTeamverDesignToDrive({ projectId: "od-1" }),
@@ -50,15 +52,15 @@ describe("publishTeamverDesignToDrive", () => {
 
   it("posts publish with workspace header", async () => {
     postMock.mockResolvedValue({
-      project_id: "DPRJ-1",
+      projectId: "DPRJ-1",
       outputs: [
         {
           id: "DOUT-1",
           kind: "html",
-          drive_asset_id: "AST-1",
+          driveAssetId: "AST-1",
           filename: "Landing.html",
-          size_bytes: 100,
-          mime_type: "text/html",
+          sizeBytes: 100,
+          mimeType: "text/html",
         },
       ],
     });
@@ -84,17 +86,17 @@ describe("publishTeamverDesignToDrive", () => {
 
   it("posts publish with shared drive target", async () => {
     postMock.mockResolvedValue({
-      project_id: "DPRJ-1",
+      projectId: "DPRJ-1",
       outputs: [
         {
           id: "DOUT-1",
           kind: "html",
-          drive_asset_id: "AST-1",
-          drive_folder_id: "FLD-TEAM",
-          drive_shared_drive_id: "SD-TEAM",
+          driveAssetId: "AST-1",
+          driveFolderId: "FLD-TEAM",
+          driveSharedDriveId: "SD-TEAM",
           filename: "Landing.html",
-          size_bytes: 100,
-          mime_type: "text/html",
+          sizeBytes: 100,
+          mimeType: "text/html",
         },
       ],
     });
@@ -120,23 +122,52 @@ describe("publishTeamverDesignToDrive", () => {
     expect(result.outputs[0]?.driveSharedDriveId).toBe("SD-TEAM");
   });
 
+  it("uses default shared drive target from env", async () => {
+    process.env.VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID = "FLD-ENV";
+    process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID = "SD-ENV";
+    postMock.mockResolvedValue({
+      projectId: "DPRJ-1",
+      outputs: [
+        {
+          id: "DOUT-1",
+          kind: "html",
+          driveAssetId: "AST-ENV",
+          filename: "Landing.html",
+          sizeBytes: 100,
+          mimeType: "text/html",
+        },
+      ],
+    });
+
+    await publishTeamverDesignToDrive({ projectId: "od-1" });
+
+    expect(postMock).toHaveBeenCalledWith(
+      "/projects/od-1/publish",
+      expect.objectContaining({
+        folderId: "FLD-ENV",
+        sharedDriveId: "SD-ENV",
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("returns ready outputs only on 207 partial", async () => {
     postMock.mockResolvedValue({
-      project_id: "DPRJ-1",
+      projectId: "DPRJ-1",
       outputs: [
         {
           kind: "html",
-          publish_status: "failed",
-          error_code: "od_daemon_export_failed",
+          publishStatus: "failed",
+          errorCode: "od_daemon_export_failed",
         },
         {
           id: "DOUT-2",
           kind: "zip",
-          drive_asset_id: "AST-2",
+          driveAssetId: "AST-2",
           filename: "Landing.zip",
-          publish_status: "ready",
-          size_bytes: 200,
-          mime_type: "application/zip",
+          publishStatus: "ready",
+          sizeBytes: 200,
+          mimeType: "application/zip",
         },
       ],
     });
@@ -183,7 +214,7 @@ describe("parsePublishFailureFromError", () => {
       status: 502,
       responseBody: {
         projectId: "DPRJ-9",
-        outputs: [{ kind: "zip", publish_status: "failed", error_code: "drive_upload_failed" }],
+        outputs: [{ kind: "zip", publishStatus: "failed", errorCode: "drive_upload_failed" }],
       },
     });
     const parsed = parsePublishFailureFromError(err);
@@ -206,7 +237,7 @@ describe("formatPublishErrorMessage", () => {
       message: "bad gateway",
       status: 502,
       responseBody: {
-        outputs: [{ publish_status: "failed", error_code: "od_daemon_export_failed" }],
+        outputs: [{ publishStatus: "failed", errorCode: "od_daemon_export_failed" }],
       },
     });
     expect(formatPublishErrorMessage(err)).toBe("od_daemon_export_failed");

@@ -77,10 +77,6 @@ export function normalizePublishOutput(raw: PublishOutputRaw): TeamverPublishDri
   };
 }
 
-function normalizeOutput(raw: PublishOutputRaw): TeamverPublishDriveOutput {
-  return normalizePublishOutput(raw);
-}
-
 export function pickReadyPublishOutputs(outputs: TeamverPublishDriveOutput[]): TeamverPublishDriveOutput[] {
   return outputs.filter((output) => output.publishStatus === "ready" && output.driveAssetId.trim() !== "");
 }
@@ -89,7 +85,7 @@ export function buildPublishResultFromResponse(
   response: PublishResponse,
   fallbackProjectId: string,
 ): TeamverPublishDriveResult {
-  const outputs = (response.outputs ?? []).map(normalizeOutput);
+  const outputs = (response.outputs ?? []).map(normalizePublishOutput);
   const ready = pickReadyPublishOutputs(outputs);
   return {
     projectId: response.projectId ?? response.project_id ?? fallbackProjectId,
@@ -137,6 +133,11 @@ function resolveDefaultPublishFolderId(): string | null {
   return fromEnv?.trim() || null;
 }
 
+function resolveDefaultPublishSharedDriveId(): string | null {
+  const fromEnv = readTeamverViteEnv("VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID");
+  return fromEnv?.trim() || null;
+}
+
 export async function publishTeamverDesignToDrive(
   params: TeamverPublishDriveParams,
 ): Promise<TeamverPublishDriveResult> {
@@ -157,7 +158,7 @@ export async function publishTeamverDesignToDrive(
     formats,
     artifactFile: params.artifactFile,
     folderId: params.folderId ?? resolveDefaultPublishFolderId(),
-    sharedDriveId: params.sharedDriveId ?? null,
+    sharedDriveId: params.sharedDriveId ?? resolveDefaultPublishSharedDriveId(),
   };
 
   try {

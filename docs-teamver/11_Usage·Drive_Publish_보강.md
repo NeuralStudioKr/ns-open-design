@@ -1,6 +1,6 @@
 # Design — Usage·Billing · Drive Publish 보강
 
-**Track A usage 집계(Phase 1)와 Drive Publish(Phase 4) 설계 SSOT.** usage wiring과 Drive Publish v1 코드는 들어갔고, 남은 출시 전 검증은 staging E2E 및 Drive 대상 선택 UX이다.
+**Track A usage 집계(Phase 1)와 Drive Publish(Phase 4) 설계 SSOT.** usage wiring과 Drive Publish v1 코드는 들어갔고, Drive 대상 선택 1차 UX까지 연결됐다. 남은 출시 전 검증은 staging E2E 및 전체 폴더 브라우저 수준의 Drive picker 고도화이다.
 
 **개발 SSOT:** 본 문서 · [04 구현 우선순위](./04_구현_우선순위.md) · **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
@@ -30,7 +30,7 @@
 | D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
 | D3 | export formats v1 | daemon HTML/ZIP ready, PDF 501 | HTML + ZIP only | **G7** | ✅ |
 | D4 | Drive auth | user JWT → SDK presigned 3-step ✅ | design-api가 user token 위임 | **G7** | ✅ |
-| D5 | Drive target UX | default/passed ids only | workspace personal/team Drive picker | **G7** | ☐ |
+| D5 | Drive target UX | personal/team target select 1차 ✅ | full Drive folder browser/search | **G7** | 🟡 |
 
 **범례:** ✅ 완료 · 🟡 부분 · ☐ 미착수
 
@@ -525,7 +525,9 @@ Browser
 - Main FE (`ns-teamver-fe-v2` `staging`): `useDriveAssetDeepLink` — URL `?asset=` 수신 시 asset detail 모달 오픈, folder navigation, query strip
 - `fetchDriveAsset` + `mapDriveAssetDetailToItem` + unit test `driveAssetDeepLink.test.ts`
 - embed 측: `resolveTeamverDriveAssetUrl`, FileViewer Download 메뉴 (`TeamverPublishDriveMenuItem`)
-- 남음: embed 메뉴에서 Main Teamver Drive의 개인/팀 드라이브 폴더 picker를 열고, 선택된 `folderId` + `sharedDriveId`를 publish request로 전달.
+- embed 메뉴에서 Main Teamver Drive API를 읽어 개인 드라이브 루트/폴더와 팀 드라이브 루트를 선택하고, 선택된 `folderId` + `sharedDriveId`를 publish request로 전달.
+- 운영 기본값: `VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID`, `VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID`.
+- 남음: Main Drive와 동일한 전체 폴더 브라우저/검색 UX.
 
 ### 6.9 향후
 
@@ -572,7 +574,7 @@ Browser
 | D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | ✅ `?asset=` 딥링크 (`staging`) · embed publish 메뉴 ✅ |
 | D-7 | `GET /projects/{id}/outputs` + Open in Drive | `deploy/teamver/be` + embed | ✅ |
 | D-8 | Publish 207/502 structured JSON (camelCase) | `deploy/teamver/be` + embed | ✅ |
-| D-9 | workspace Drive target picker (`folderId` + `sharedDriveId`) | embed + Main Drive API/UI | ☐ |
+| D-9 | workspace Drive target picker (`folderId` + `sharedDriveId`) | embed + Main Drive API/UI | 🟡 root/folder select 1차 ✅ · full browser ☐ |
 
 **의존:** Phase D는 [09 Phase 3](./09_Design_저장소_격리_출시게이트.md) `design_projects` 완료 후.
 
@@ -626,5 +628,6 @@ Browser
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-18 | Drive Publish 대상 선택 UX 1차 — embed 메뉴에서 개인 드라이브 루트/폴더 + 팀 드라이브 루트를 선택해 `folderId/sharedDriveId`로 publish. `VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID` 추가. 남음: 전체 폴더 브라우저/검색 + staging E2E |
 | 2026-06-18 | Drive Publish target 확장 — `folderId` + `sharedDriveId`, `design_outputs.drive_shared_drive_id`, Main BE presigned 3-step 업로드 전환. 남음: workspace Drive picker + staging E2E |
 | 2026-06-15 | 초안 — Usage FE-first wiring, 멱등, Main BE M2M, Drive Publish v1 SSOT |
