@@ -52,6 +52,7 @@ def _output_to_response(row: DesignOutput) -> DesignOutputResponse:
         kind=row.kind,
         drive_asset_id=row.drive_asset_id,
         drive_folder_id=row.drive_folder_id,
+        drive_shared_drive_id=row.drive_shared_drive_id,
         filename=row.filename,
         size_bytes=row.size_bytes,
         mime_type=row.mime_type,
@@ -235,6 +236,7 @@ async def publish_project_to_drive(
         formats=body.formats,
         artifact_file=body.artifact_file,
         folder_id=body.folder_id,
+        shared_drive_id=body.shared_drive_id,
     )
     await db.commit()
     payload = PublishProjectResponse(
@@ -244,6 +246,8 @@ async def publish_project_to_drive(
                 id=output.id,
                 kind=output.kind,
                 drive_asset_id=output.drive_asset_id,
+                drive_folder_id=output.drive_folder_id,
+                drive_shared_drive_id=output.drive_shared_drive_id,
                 filename=output.filename,
                 size_bytes=output.size_bytes,
                 mime_type=output.mime_type,

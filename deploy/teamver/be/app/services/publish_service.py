@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from teamver_app_sdk import TeamverAppClient
-from teamver_app_sdk.errors import TeamverAPIError
+from teamver_app_sdk.errors import DriveUploadError, TeamverAPIError
 
 from ..db.crud import design_output_crud
 from ..db.models import DesignOutput, DesignProject
@@ -34,6 +34,8 @@ class PublishFormatResult:
     publish_status: str
     id: str | None = None
     drive_asset_id: str | None = None
+    drive_folder_id: str | None = None
+    drive_shared_drive_id: str | None = None
     filename: str | None = None
     size_bytes: int | None = None
     mime_type: str | None = None
@@ -89,6 +91,8 @@ def _ready_output(row: DesignOutput) -> PublishFormatResult:
         publish_status="ready",
         id=row.id,
         drive_asset_id=row.drive_asset_id,
+        drive_folder_id=row.drive_folder_id,
+        drive_shared_drive_id=row.drive_shared_drive_id,
         filename=row.filename,
         size_bytes=int(row.size_bytes),
         mime_type=row.mime_type,
@@ -96,8 +100,9 @@ def _ready_output(row: DesignOutput) -> PublishFormatResult:
 
 
 def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
-    if exc.code:
-        return str(exc.code)
+    code = getattr(exc, "code", None)
+    if code:
+        return str(code)
     return "drive_upload_failed"
 
 
@@ -122,6 +127,7 @@ async def publish_project(
     formats: list[str],
     artifact_file: str | None,
     folder_id: str | None,
+    shared_drive_id: str | None = None,
     od_daemon: OdDaemonClient | None = None,
 ) -> PublishResult:
     if not access_token:
@@ -140,6 +146,7 @@ async def publish_project(
     resolved_folder_id = (folder_id or "").strip() or (
         settings.teamver_drive_publish_folder_id or ""
     ).strip() or None
+    resolved_shared_drive_id = (shared_drive_id or "").strip() or None
 
     daemon = od_daemon or OdDaemonClient()
     daemon_identity = OdDaemonIdentity(
@@ -184,14 +191,24 @@ async def publish_project(
                 continue
 
             try:
-                asset = await teamver_client.drive.upload_bytes_to_personal_drive(
+                ticket = await teamver_client.drive.create_upload_request(
                     access_token=access_token,
                     filename=filename,
-                    content=content,
+                    file_size=len(content),
                     content_type=mime_type,
                     folder_id=resolved_folder_id,
+                    shared_drive_id=resolved_shared_drive_id,
                 )
-            except TeamverAPIError as exc:
+                await teamver_client.drive._put_presigned_bytes(
+                    ticket.presigned_url,
+                    content=content,
+                    content_type=mime_type,
+                )
+                asset = await teamver_client.drive.confirm_upload(
+                    access_token=access_token,
+                    asset_id=ticket.asset_id,
+                )
+            except (DriveUploadError, TeamverAPIError) as exc:
                 outputs.append(_failed_output(fmt, error_code=_teamver_upload_error_code(exc)))
                 continue
 
@@ -203,6 +220,7 @@ async def publish_project(
                 od_project_id=project.od_project_id,
                 drive_asset_id=asset.asset_id,
                 drive_folder_id=resolved_folder_id,
+                drive_shared_drive_id=resolved_shared_drive_id,
                 kind=fmt,
                 mime_type=mime_type,
                 filename=filename,

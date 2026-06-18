@@ -34,6 +34,7 @@ def _output_row() -> MagicMock:
     row.kind = "html"
     row.drive_asset_id = "AST-1"
     row.drive_folder_id = "FLD-1"
+    row.drive_shared_drive_id = "SD-1"
     row.filename = "Landing.html"
     row.size_bytes = 1024
     row.mime_type = "text/html"
@@ -70,6 +71,8 @@ async def test_list_project_outputs_returns_camel_case(monkeypatch: pytest.Monke
     payload = response.model_dump(mode="json", by_alias=True)
     assert payload["projectId"] == "DPRJ-TEST"
     assert payload["outputs"][0]["driveAssetId"] == "AST-1"
+    assert payload["outputs"][0]["driveFolderId"] == "FLD-1"
+    assert payload["outputs"][0]["driveSharedDriveId"] == "SD-1"
     assert payload["outputs"][0]["publishStatus"] == "ready"
     assert payload["outputs"][0]["publishedAt"] is not None
 

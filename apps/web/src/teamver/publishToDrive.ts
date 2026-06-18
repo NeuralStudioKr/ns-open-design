@@ -8,12 +8,15 @@ export type TeamverPublishDriveParams = {
   formats?: Array<"html" | "zip">;
   artifactFile?: string;
   folderId?: string | null;
+  sharedDriveId?: string | null;
 };
 
 export type TeamverPublishDriveOutput = {
   id: string;
   kind: string;
   driveAssetId: string;
+  driveFolderId?: string | null;
+  driveSharedDriveId?: string | null;
   filename: string;
   sizeBytes: number;
   mimeType: string;
@@ -27,6 +30,10 @@ type PublishOutputRaw = {
   kind: string;
   driveAssetId?: string | null;
   drive_asset_id?: string | null;
+  driveFolderId?: string | null;
+  drive_folder_id?: string | null;
+  driveSharedDriveId?: string | null;
+  drive_shared_drive_id?: string | null;
   filename?: string | null;
   sizeBytes?: number | null;
   size_bytes?: number | null;
@@ -59,6 +66,8 @@ export function normalizePublishOutput(raw: PublishOutputRaw): TeamverPublishDri
     id: raw.id ?? "",
     kind: raw.kind,
     driveAssetId: raw.driveAssetId ?? raw.drive_asset_id ?? "",
+    driveFolderId: raw.driveFolderId ?? raw.drive_folder_id ?? null,
+    driveSharedDriveId: raw.driveSharedDriveId ?? raw.drive_shared_drive_id ?? null,
     filename: raw.filename ?? raw.kind,
     sizeBytes: raw.sizeBytes ?? raw.size_bytes ?? 0,
     mimeType: raw.mimeType ?? raw.mime_type ?? "application/octet-stream",
@@ -148,6 +157,7 @@ export async function publishTeamverDesignToDrive(
     formats,
     artifactFile: params.artifactFile,
     folderId: params.folderId ?? resolveDefaultPublishFolderId(),
+    sharedDriveId: params.sharedDriveId ?? null,
   };
 
   try {

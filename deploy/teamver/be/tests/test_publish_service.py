@@ -29,6 +29,18 @@ def _project() -> DesignProject:
     return row
 
 
+def _wire_drive_upload(teamver_client: MagicMock, *, asset_id: str = "AST-123") -> MagicMock:
+    ticket = MagicMock()
+    ticket.asset_id = asset_id
+    ticket.presigned_url = f"https://s3.example.com/upload/{asset_id}"
+    asset = MagicMock()
+    asset.asset_id = asset_id
+    teamver_client.drive.create_upload_request = AsyncMock(return_value=ticket)
+    teamver_client.drive._put_presigned_bytes = AsyncMock()
+    teamver_client.drive.confirm_upload = AsyncMock(return_value=asset)
+    return asset
+
+
 @pytest.mark.asyncio
 async def test_publish_project_requires_access_token():
     db = AsyncMock()
@@ -75,11 +87,8 @@ async def test_publish_project_html_uploads_and_persists():
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
 
-    asset = MagicMock()
-    asset.asset_id = "AST-123"
-
     teamver_client = MagicMock()
-    teamver_client.drive.upload_bytes_to_personal_drive = AsyncMock(return_value=asset)
+    _wire_drive_upload(teamver_client, asset_id="AST-123")
 
     result = await publish_project(
         db,
@@ -100,7 +109,62 @@ async def test_publish_project_html_uploads_and_persists():
     assert result.outputs[0].drive_asset_id == "AST-123"
     daemon.get_export_manifest.assert_awaited_once_with("od1", identity=ANY)
     daemon.get_export_inline.assert_awaited_once_with("od1", "deck/index.html", identity=ANY)
-    teamver_client.drive.upload_bytes_to_personal_drive.assert_awaited_once()
+    teamver_client.drive.create_upload_request.assert_awaited_once_with(
+        access_token="token",
+        filename="Landing Page.html",
+        file_size=len(b"<html>ok</html>"),
+        content_type="text/html",
+        folder_id=None,
+        shared_drive_id=None,
+    )
+    teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
+        "https://s3.example.com/upload/AST-123",
+        content=b"<html>ok</html>",
+        content_type="text/html",
+    )
+    teamver_client.drive.confirm_upload.assert_awaited_once_with(
+        access_token="token",
+        asset_id="AST-123",
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_uploads_to_shared_drive_target():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = AsyncMock()
+    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-SHARED")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["html"],
+        artifact_file=None,
+        folder_id="FLD-TEAM",
+        shared_drive_id="SD-TEAM",
+        od_daemon=daemon,
+    )
+
+    assert result.outputs[0].drive_asset_id == "AST-SHARED"
+    assert result.outputs[0].drive_folder_id == "FLD-TEAM"
+    assert result.outputs[0].drive_shared_drive_id == "SD-TEAM"
+    teamver_client.drive.create_upload_request.assert_awaited_once_with(
+        access_token="token",
+        filename="Landing Page.html",
+        file_size=len(b"<html>ok</html>"),
+        content_type="text/html",
+        folder_id="FLD-TEAM",
+        shared_drive_id="SD-TEAM",
+    )
 
 
 @pytest.mark.asyncio
@@ -115,11 +179,8 @@ async def test_publish_project_partial_html_ok_zip_daemon_fail():
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.side_effect = BadGatewayError("od_daemon_export_failed")
 
-    asset = MagicMock()
-    asset.asset_id = "AST-123"
-
     teamver_client = MagicMock()
-    teamver_client.drive.upload_bytes_to_personal_drive = AsyncMock(return_value=asset)
+    _wire_drive_upload(teamver_client, asset_id="AST-123")
 
     result = await publish_project(
         db,
@@ -176,16 +237,25 @@ async def test_publish_project_partial_zip_upload_fail():
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.return_value = b"zip-bytes"
 
-    asset = MagicMock()
-    asset.asset_id = "AST-HTML"
-
     upload_exc = TeamverAPIError("drive upload failed")
     upload_exc.code = "drive_upload_failed"
     upload_exc.status_code = 502
 
     teamver_client = MagicMock()
-    teamver_client.drive.upload_bytes_to_personal_drive = AsyncMock(
-        side_effect=[asset, upload_exc],
+    ticket_html = MagicMock()
+    ticket_html.asset_id = "AST-HTML"
+    ticket_html.presigned_url = "https://s3.example.com/upload/AST-HTML"
+    ticket_zip = MagicMock()
+    ticket_zip.asset_id = "AST-ZIP"
+    ticket_zip.presigned_url = "https://s3.example.com/upload/AST-ZIP"
+    asset_html = MagicMock()
+    asset_html.asset_id = "AST-HTML"
+    teamver_client.drive.create_upload_request = AsyncMock(
+        side_effect=[ticket_html, ticket_zip],
+    )
+    teamver_client.drive._put_presigned_bytes = AsyncMock()
+    teamver_client.drive.confirm_upload = AsyncMock(
+        side_effect=[asset_html, upload_exc],
     )
 
     result = await publish_project(

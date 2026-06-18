@@ -33,6 +33,8 @@ describe("listTeamverProjectOutputs", () => {
           id: "OUT-1",
           kind: "html",
           driveAssetId: "AST-1",
+          driveFolderId: "FLD-1",
+          driveSharedDriveId: "SD-1",
           filename: "Landing.html",
           publishStatus: "ready",
           sizeBytes: 100,
@@ -49,6 +51,8 @@ describe("listTeamverProjectOutputs", () => {
       expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
     );
     expect(result?.outputs[0]?.driveAssetId).toBe("AST-1");
+    expect(result?.outputs[0]?.driveFolderId).toBe("FLD-1");
+    expect(result?.outputs[0]?.driveSharedDriveId).toBe("SD-1");
     expect(result?.outputs[0]?.publishedAt).toBe("2026-06-15T12:00:00Z");
   });
 
@@ -59,6 +63,8 @@ describe("listTeamverProjectOutputs", () => {
         {
           kind: "zip",
           drive_asset_id: "AST-2",
+          drive_folder_id: "FLD-2",
+          drive_shared_drive_id: "SD-2",
           publish_status: "ready",
           filename: "Landing.zip",
         },
@@ -67,6 +73,8 @@ describe("listTeamverProjectOutputs", () => {
 
     const result = await listTeamverProjectOutputs("od-2");
     expect(result?.outputs[0]?.driveAssetId).toBe("AST-2");
+    expect(result?.outputs[0]?.driveFolderId).toBe("FLD-2");
+    expect(result?.outputs[0]?.driveSharedDriveId).toBe("SD-2");
   });
 });
 

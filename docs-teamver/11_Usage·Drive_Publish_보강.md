@@ -1,6 +1,6 @@
 # Design — Usage·Billing · Drive Publish 보강
 
-**Track A usage 집계(Phase 1)와 Drive Publish(Phase 4) 설계 SSOT.** design-api BE 파이프라인은 Docs/Slides 동형으로 준비됐으나 **이벤트 생산자·멱등·Main BE M2M·Publish orchestration**이 미완이다.
+**Track A usage 집계(Phase 1)와 Drive Publish(Phase 4) 설계 SSOT.** usage wiring과 Drive Publish v1 코드는 들어갔고, 남은 출시 전 검증은 staging E2E 및 Drive 대상 선택 UX이다.
 
 **개발 SSOT:** 본 문서 · [04 구현 우선순위](./04_구현_우선순위.md) · **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
@@ -26,10 +26,11 @@
 | U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
 | U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit | **출시 후** | 🟡 `services/run_lifecycle.py` orchestrator ✅ · run-path 통합 ☐ |
 | U7 | usage 5xx 알람 | 없음 | CW `teamver_usage_5xx` log metric + alarm | **P1** | ✅ |
-| D1 | Drive Publish | design-api 코드 **0건** | `POST /projects/{id}/publish` | **G7** |
-| D2 | design_outputs DDL | 없음 | Phase 3 `design_projects` FK | **G7** |
-| D3 | export formats v1 | daemon HTML/ZIP ready, PDF 501 | HTML + ZIP only | **G7** |
-| D4 | Drive auth | user JWT → SDK presigned 3-step | design-api가 user token 위임 | **G7** |
+| D1 | Drive Publish | `POST /projects/{id}/publish` ✅ | HTML/ZIP publish + history | **G7** | ✅ |
+| D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
+| D3 | export formats v1 | daemon HTML/ZIP ready, PDF 501 | HTML + ZIP only | **G7** | ✅ |
+| D4 | Drive auth | user JWT → SDK presigned 3-step ✅ | design-api가 user token 위임 | **G7** | ✅ |
+| D5 | Drive target UX | default/passed ids only | workspace personal/team Drive picker | **G7** | ☐ |
 
 **범례:** ✅ 완료 · 🟡 부분 · ☐ 미착수
 
@@ -367,6 +368,7 @@ CREATE TABLE design_outputs (
 
   drive_asset_id TEXT NOT NULL,
   drive_folder_id TEXT,
+  drive_shared_drive_id TEXT,
 
   kind TEXT NOT NULL,           -- 'html' | 'zip' | 'pdf' | 'pptx'
   mime_type TEXT NOT NULL,
@@ -383,6 +385,7 @@ CREATE TABLE design_outputs (
 
 CREATE INDEX idx_design_outputs_project ON design_outputs (project_id, published_at DESC);
 CREATE INDEX idx_design_outputs_drive_asset ON design_outputs (drive_asset_id);
+CREATE INDEX idx_design_outputs_shared_drive ON design_outputs (drive_shared_drive_id, published_at DESC);
 ```
 
 ### 6.4 API 계약 — `POST /api/v1/projects/{id}/publish`
@@ -398,9 +401,12 @@ Content-Type: application/json
 {
   "formats": ["html"],
   "artifact_file": "deck/index.html",
-  "folder_id": null
+  "folder_id": null,
+  "shared_drive_id": null
 }
 ```
+
+`folderId`/`sharedDriveId` camelCase도 허용한다. `sharedDriveId=null`이면 개인 드라이브 또는 Main BE 기본 folder 정책을 사용하고, 값이 있으면 Main BE Drive 권한 검증을 거쳐 해당 팀/공유 드라이브 폴더에 업로드한다.
 
 **Response 201:**
 
@@ -412,6 +418,8 @@ Content-Type: application/json
       "id": "out_xyz",
       "kind": "html",
       "drive_asset_id": "AST-123",
+      "drive_folder_id": "FLD-123",
+      "drive_shared_drive_id": "SD-123",
       "filename": "My Design.html",
       "size_bytes": 123456,
       "mime_type": "text/html"
@@ -434,6 +442,7 @@ async def publish_project(
     formats: list[str],
     artifact_file: str | None,
     folder_id: str | None,
+    shared_drive_id: str | None,
     access_token: str,
 ) -> list[DesignOutput]:
     # 1. registry lookup + access
@@ -456,13 +465,16 @@ async def publish_project(
             continue
 
         # 4. Drive upload (user JWT 위임)
-        asset = await client.drive.upload_bytes_to_personal_drive(
+        ticket = await client.drive.create_upload_request(
             access_token=access_token,
             filename=filename,
-            content=content,
+            file_size=len(content),
             content_type=mime,
             folder_id=folder_id,
+            shared_drive_id=shared_drive_id,
         )
+        await client.drive._put_presigned_bytes(ticket.presigned_url, content=content, content_type=mime)
+        asset = await client.drive.confirm_upload(access_token=access_token, asset_id=ticket.asset_id)
 
         # 5. INSERT design_outputs
         row = await create_design_output(project, asset, fmt, ...)
@@ -481,13 +493,13 @@ Browser
     → ① design_projects access check
     → ② GET daemon /api/projects/{od_id}/export/manifest (OD_API_TOKEN)
     → ③ GET daemon .../export/{path}?inline=1  OR  .../archive
-    → ④ SDK client.drive.upload_bytes_to_personal_drive(access_token=user_jwt)
+    → ④ SDK client.drive.create_upload_request(access_token=user_jwt, folder_id, shared_drive_id)
          → POST Main BE /api/drive/upload-request
          → PUT  S3 presigned_url
          → POST Main BE /api/drive/upload-confirm
     → ⑤ INSERT design_outputs
     → ⑥ (Phase 2) commit_usage if reserved
-  → User sees asset in Teamver Drive (personal)
+  → User sees asset in Teamver Drive (personal or team/shared drive)
 ```
 
 **인증 2계층:**
@@ -513,6 +525,7 @@ Browser
 - Main FE (`ns-teamver-fe-v2` `staging`): `useDriveAssetDeepLink` — URL `?asset=` 수신 시 asset detail 모달 오픈, folder navigation, query strip
 - `fetchDriveAsset` + `mapDriveAssetDetailToItem` + unit test `driveAssetDeepLink.test.ts`
 - embed 측: `resolveTeamverDriveAssetUrl`, FileViewer Download 메뉴 (`TeamverPublishDriveMenuItem`)
+- 남음: embed 메뉴에서 Main Teamver Drive의 개인/팀 드라이브 폴더 picker를 열고, 선택된 `folderId` + `sharedDriveId`를 publish request로 전달.
 
 ### 6.9 향후
 
@@ -555,10 +568,11 @@ Browser
 | D-2 | `OdDaemonClient` | `deploy/teamver/be` | ✅ |
 | D-3 | `PublishService` + router | `deploy/teamver/be` | ✅ |
 | D-4 | `POST /api/v1/projects/{id}/publish` | `deploy/teamver/be` | ✅ |
-| D-5 | Staging E2E — HTML → Drive | — | ☐ |
+| D-5 | Staging E2E — HTML → personal/team Drive | — | ☐ |
 | D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | ✅ `?asset=` 딥링크 (`staging`) · embed publish 메뉴 ✅ |
 | D-7 | `GET /projects/{id}/outputs` + Open in Drive | `deploy/teamver/be` + embed | ✅ |
 | D-8 | Publish 207/502 structured JSON (camelCase) | `deploy/teamver/be` + embed | ✅ |
+| D-9 | workspace Drive target picker (`folderId` + `sharedDriveId`) | embed + Main Drive API/UI | ☐ |
 
 **의존:** Phase D는 [09 Phase 3](./09_Design_저장소_격리_출시게이트.md) `design_projects` 완료 후.
 
@@ -581,7 +595,9 @@ Browser
 
 ```text
 [ ] POST /publish formats=["html"] → drive_asset_id
+[ ] POST /publish with `folderId` + `sharedDriveId` → team/shared Drive asset
 [ ] design_outputs row with mime, filename, size
+[ ] design_outputs row stores drive_folder_id and drive_shared_drive_id
 [ ] User JWT asset owner = publishing user
 [ ] GET Drive download-url works
 [ ] formats=["pdf"] → 501 or skipped with clear error
@@ -610,4 +626,5 @@ Browser
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-18 | Drive Publish target 확장 — `folderId` + `sharedDriveId`, `design_outputs.drive_shared_drive_id`, Main BE presigned 3-step 업로드 전환. 남음: workspace Drive picker + staging E2E |
 | 2026-06-15 | 초안 — Usage FE-first wiring, 멱등, Main BE M2M, Drive Publish v1 SSOT |

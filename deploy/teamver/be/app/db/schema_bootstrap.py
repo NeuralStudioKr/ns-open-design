@@ -103,6 +103,7 @@ def apply_postgres_schema_patches() -> None:
           od_project_id TEXT NOT NULL,
           drive_asset_id TEXT NOT NULL,
           drive_folder_id TEXT,
+          drive_shared_drive_id TEXT,
           kind TEXT NOT NULL,
           mime_type TEXT NOT NULL,
           filename TEXT NOT NULL,
@@ -114,6 +115,14 @@ def apply_postgres_schema_patches() -> None:
           published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        """,
+        """
+        ALTER TABLE design_outputs
+          ADD COLUMN IF NOT EXISTS drive_shared_drive_id TEXT;
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_design_outputs_shared_drive
+          ON design_outputs (drive_shared_drive_id, published_at DESC);
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_design_outputs_project

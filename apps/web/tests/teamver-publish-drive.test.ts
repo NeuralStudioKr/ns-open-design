@@ -74,11 +74,50 @@ describe("publishTeamverDesignToDrive", () => {
         formats: ["html"],
         artifactFile: "deck/index.html",
         folderId: null,
+        sharedDriveId: null,
       },
       expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
     );
     expect(result.outputs[0]?.driveAssetId).toBe("AST-1");
     expect(result.partial).toBe(false);
+  });
+
+  it("posts publish with shared drive target", async () => {
+    postMock.mockResolvedValue({
+      project_id: "DPRJ-1",
+      outputs: [
+        {
+          id: "DOUT-1",
+          kind: "html",
+          drive_asset_id: "AST-1",
+          drive_folder_id: "FLD-TEAM",
+          drive_shared_drive_id: "SD-TEAM",
+          filename: "Landing.html",
+          size_bytes: 100,
+          mime_type: "text/html",
+        },
+      ],
+    });
+
+    const result = await publishTeamverDesignToDrive({
+      projectId: "od-1",
+      artifactFile: "deck/index.html",
+      folderId: "FLD-TEAM",
+      sharedDriveId: "SD-TEAM",
+    });
+
+    expect(postMock).toHaveBeenCalledWith(
+      "/projects/od-1/publish",
+      {
+        formats: ["html"],
+        artifactFile: "deck/index.html",
+        folderId: "FLD-TEAM",
+        sharedDriveId: "SD-TEAM",
+      },
+      expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
+    );
+    expect(result.outputs[0]?.driveFolderId).toBe("FLD-TEAM");
+    expect(result.outputs[0]?.driveSharedDriveId).toBe("SD-TEAM");
   });
 
   it("returns ready outputs only on 207 partial", async () => {

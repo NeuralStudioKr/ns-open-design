@@ -23,6 +23,7 @@ class DesignOutput(Base):
 
     drive_asset_id: Mapped[str] = mapped_column(String, nullable=False)
     drive_folder_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    drive_shared_drive_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     kind: Mapped[str] = mapped_column(String, nullable=False)
     mime_type: Mapped[str] = mapped_column(String, nullable=False)

@@ -17,6 +17,10 @@ class PublishProjectBody(BaseModel):
         default=None,
         validation_alias=AliasChoices("folder_id", "folderId"),
     )
+    shared_drive_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("shared_drive_id", "sharedDriveId"),
+    )
 
 
 class DesignOutputResponse(BaseModel):
@@ -26,6 +30,10 @@ class DesignOutputResponse(BaseModel):
     kind: str
     drive_asset_id: str | None = Field(default=None, serialization_alias="driveAssetId")
     drive_folder_id: str | None = Field(default=None, serialization_alias="driveFolderId")
+    drive_shared_drive_id: str | None = Field(
+        default=None,
+        serialization_alias="driveSharedDriveId",
+    )
     filename: str | None = None
     size_bytes: int | None = Field(default=None, serialization_alias="sizeBytes")
     mime_type: str | None = Field(default=None, serialization_alias="mimeType")
