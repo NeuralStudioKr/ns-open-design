@@ -30,7 +30,7 @@
 | D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
 | D3 | export formats v1 | daemon HTML/ZIP ready, PDF 501 | HTML + ZIP only | **G7** | ✅ |
 | D4 | Drive auth | user JWT → SDK presigned 3-step ✅ | design-api가 user token 위임 | **G7** | ✅ |
-| D5 | Drive target UX | personal/team target select 1차 ✅ | full Drive folder browser/search | **G7** | 🟡 |
+| D5 | Drive target UX | personal/team folder select 1차 ✅ | searchable Drive browser | **G7** | 🟡 |
 
 **범례:** ✅ 완료 · 🟡 부분 · ☐ 미착수
 
@@ -574,7 +574,7 @@ Browser
 | D-6 | Main FE Drive UX | `ns-teamver-fe-v2` | ✅ `?asset=` 딥링크 (`staging`) · embed publish 메뉴 ✅ |
 | D-7 | `GET /projects/{id}/outputs` + Open in Drive | `deploy/teamver/be` + embed | ✅ |
 | D-8 | Publish 207/502 structured JSON (camelCase) | `deploy/teamver/be` + embed | ✅ |
-| D-9 | workspace Drive target picker (`folderId` + `sharedDriveId`) | embed + Main Drive API/UI | 🟡 root/folder select 1차 ✅ · full browser ☐ |
+| D-9 | workspace Drive target picker (`folderId` + `sharedDriveId`) | embed + Main Drive API/UI | 🟡 personal/team folder select 1차 ✅ · searchable browser ☐ |
 
 **의존:** Phase D는 [09 Phase 3](./09_Design_저장소_격리_출시게이트.md) `design_projects` 완료 후.
 
@@ -628,6 +628,7 @@ Browser
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-18 | Drive Publish 팀 드라이브 하위 폴더 선택 — shared drive folder-tree를 flatten해 팀 드라이브 내부 폴더도 `folderId/sharedDriveId` target으로 publish 가능. 남음: 검색형 브라우저 UX + staging E2E |
 | 2026-06-18 | Drive Publish 대상 선택 UX 1차 — embed 메뉴에서 개인 드라이브 루트/폴더 + 팀 드라이브 루트를 선택해 `folderId/sharedDriveId`로 publish. `VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID` 추가. 남음: 전체 폴더 브라우저/검색 + staging E2E |
 | 2026-06-18 | Drive Publish target 확장 — `folderId` + `sharedDriveId`, `design_outputs.drive_shared_drive_id`, Main BE presigned 3-step 업로드 전환. 남음: workspace Drive picker + staging E2E |
 | 2026-06-15 | 초안 — Usage FE-first wiring, 멱등, Main BE M2M, Drive Publish v1 SSOT |

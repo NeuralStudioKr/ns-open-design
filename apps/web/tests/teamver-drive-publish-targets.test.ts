@@ -11,7 +11,7 @@ describe("listTeamverDrivePublishTargets", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists personal folders and shared drive roots", async () => {
+  it("lists personal folders and shared drive folders", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("/api/drive/folder?shallow_tree=true")) {
         return Response.json({
@@ -35,7 +35,23 @@ describe("listTeamverDrivePublishTargets", () => {
         });
       }
       if (url.endsWith("/api/v2/shared-drive/SD-1/folder-tree")) {
-        return Response.json({ rootFolderId: "FLD-SD-ROOT", items: [] });
+        return Response.json({
+          rootFolderId: "FLD-SD-ROOT",
+          items: [
+            {
+              folderId: "FLD-SD-ROOT",
+              name: "Shared Root",
+              folderType: "SHARED_ROOT",
+              children: [
+                {
+                  folderId: "FLD-SD-DESIGN",
+                  name: "Design",
+                  children: [{ folderId: "FLD-SD-EXPORTS", name: "Exports" }],
+                },
+              ],
+            },
+          ],
+        });
       }
       return new Response("missing", { status: 404 });
     });
@@ -65,6 +81,18 @@ describe("listTeamverDrivePublishTargets", () => {
         id: "shared:SD-1",
         label: "Product",
         folderId: "FLD-SD-ROOT",
+        sharedDriveId: "SD-1",
+      }),
+      expect.objectContaining({
+        id: "shared:SD-1:FLD-SD-DESIGN",
+        label: "Product / Design",
+        folderId: "FLD-SD-DESIGN",
+        sharedDriveId: "SD-1",
+      }),
+      expect.objectContaining({
+        id: "shared:SD-1:FLD-SD-EXPORTS",
+        label: "Product /   - Exports",
+        folderId: "FLD-SD-EXPORTS",
         sharedDriveId: "SD-1",
       }),
     ]);

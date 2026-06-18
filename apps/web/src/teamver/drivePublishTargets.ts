@@ -154,32 +154,45 @@ async function fetchPersonalTargets(workspaceId: string): Promise<TeamverDrivePu
 async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDrivePublishTarget[]> {
   const raw = await getJson("/api/v2/shared-drive", workspaceId);
   const drives = extractArray<RawSharedDrive>(raw).map(normalizeSharedDrive).filter(isSharedDrive);
-  const targets = await Promise.all(
+  const targetGroups = await Promise.all(
     drives.map(async (drive) => {
       try {
         const tree = await getJson(
           `/api/v2/shared-drive/${encodeURIComponent(drive.id)}/folder-tree`,
           workspaceId,
         );
-        return {
+        const rootFolderId = normalizeRootFolderId(tree);
+        const targets: TeamverDrivePublishTarget[] = [{
           id: `shared:${drive.id}`,
           label: drive.name,
           description: "Team drive root",
-          folderId: normalizeRootFolderId(tree),
+          folderId: rootFolderId,
           sharedDriveId: drive.id,
-        } satisfies TeamverDrivePublishTarget;
+        }];
+        for (const row of flattenFolders(normalizeFolderItems(tree))) {
+          const folderId = normalizeFolderId(row.folder);
+          if (!folderId || isRootFolder(row.folder, rootFolderId)) continue;
+          targets.push({
+            id: `shared:${drive.id}:${folderId}`,
+            label: `${drive.name} / ${folderTargetLabel(row.folder, Math.max(0, row.depth - 1))}`,
+            description: "Team drive folder",
+            folderId,
+            sharedDriveId: drive.id,
+          });
+        }
+        return targets;
       } catch {
-        return {
+        return [{
           id: `shared:${drive.id}`,
           label: drive.name,
           description: "Team drive root",
           folderId: null,
           sharedDriveId: drive.id,
-        } satisfies TeamverDrivePublishTarget;
+        }];
       }
     }),
   );
-  return targets;
+  return targetGroups.flat();
 }
 
 export async function listTeamverDrivePublishTargets(
