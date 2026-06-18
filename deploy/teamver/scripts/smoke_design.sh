@@ -26,6 +26,7 @@ smoke_design.sh — OD daemon + design-api health & auth gate checks
 
 Env overrides:
   DESIGN_HOST, DESIGN_API_HOST
+  DESIGN_DAEMON_LOCAL_URL (optional — direct daemon probe on VM, e.g. http://127.0.0.1:7456)
   DESIGN_API_LOCAL_URL (optional — loopback M2M when nginx blocks /api/internal/ publicly)
   TEAMVER_COOKIE (optional session cookie)
   TEAMVER_WORKSPACE_ID (optional — projects list + M2M by-model check)
@@ -156,16 +157,23 @@ else
 fi
 
 deps_json="$(curl -sf --max-time 15 "${API_BASE}/api/healthz/deps" 2>/dev/null || echo "")"
+deps_project_storage=""
+if [[ -n "$deps_json" ]]; then
+  deps_project_storage="$(echo "$deps_json" | sed -n 's/.*"project_storage":"\([^"]*\)".*/\1/p' | head -1)"
+fi
+
 if [[ -n "$deps_json" ]] && [[ -n "${OD_PROJECT_STORAGE:-}" ]]; then
-  storage="$(echo "$deps_json" | sed -n 's/.*"project_storage":"\([^"]*\)".*/\1/p' | head -1)"
   expected="$(printf '%s' "$OD_PROJECT_STORAGE" | tr '[:upper:]' '[:lower:]')"
-  if [[ -n "$storage" && "$storage" == "$expected" ]]; then
-    echo "✓ design-api deps config.project_storage=$storage"
+  if [[ -n "$deps_project_storage" && "$deps_project_storage" == "$expected" ]]; then
+    echo "✓ design-api deps config.project_storage=$deps_project_storage"
     pass=$((pass + 1))
-  elif [[ -n "$storage" ]]; then
-    echo "✗ design-api deps project_storage=$storage (expected $expected)"
+  elif [[ -n "$deps_project_storage" ]]; then
+    echo "✗ design-api deps project_storage=$deps_project_storage (expected $expected)"
     fail=$((fail + 1))
   fi
+elif [[ -n "$deps_project_storage" ]]; then
+  echo "✓ design-api deps config.project_storage=$deps_project_storage"
+  pass=$((pass + 1))
 fi
 
 # Registry creds presence — healthz/deps surfaces "configured"/"missing".
@@ -202,6 +210,8 @@ if [[ -n "$deps_json" ]]; then
         require_storage=false
         if [[ "${SMOKE_REQUIRE_OD_STORAGE:-0}" == "1" ]]; then
           require_storage=true
+        elif [[ "$(printf '%s' "${deps_project_storage:-}" | tr '[:upper:]' '[:lower:]')" == "s3" ]]; then
+          require_storage=true
         elif [[ -n "${OD_PROJECT_STORAGE:-}" ]] && [[ "$(printf '%s' "$OD_PROJECT_STORAGE" | tr '[:upper:]' '[:lower:]')" == "s3" ]]; then
           require_storage=true
         fi
@@ -220,9 +230,17 @@ if [[ -n "$deps_json" ]]; then
 fi
 
 # Daemon-direct storage probe — also surfaces local-mode (no S3) cleanly.
-storage_probe_code="$(curl_status "${DESIGN_BASE}/api/health/storage")"
+# Public DESIGN_BASE may be protected by nginx auth_request and return 302;
+# on the VM set DESIGN_DAEMON_LOCAL_URL=http://127.0.0.1:7456 for a true
+# direct daemon probe.
+STORAGE_PROBE_BASE="${DESIGN_DAEMON_LOCAL_URL:-$DESIGN_BASE}"
+storage_probe_headers=()
+if [[ -n "${DESIGN_DAEMON_LOCAL_URL:-}" && -n "${OD_API_TOKEN:-}" ]]; then
+  storage_probe_headers=(-H "Authorization: Bearer ${OD_API_TOKEN}")
+fi
+storage_probe_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${storage_probe_headers[@]}" "${STORAGE_PROBE_BASE}/api/health/storage")"
 if [[ "$storage_probe_code" == "200" || "$storage_probe_code" == "503" || "$storage_probe_code" == "504" ]]; then
-  storage_probe_json="$(curl -s --max-time 8 "${DESIGN_BASE}/api/health/storage" 2>/dev/null || echo "")"
+  storage_probe_json="$(curl -s --max-time 8 "${storage_probe_headers[@]}" "${STORAGE_PROBE_BASE}/api/health/storage" 2>/dev/null || echo "")"
   storage_mode="$(echo "$storage_probe_json" | sed -n 's/.*"mode":"\([^"]*\)".*/\1/p' | head -1)"
   storage_ok="$(echo "$storage_probe_json" | sed -n 's/.*"ok":\(true\|false\).*/\1/p' | head -1)"
   if [[ "$storage_ok" == "true" ]]; then
@@ -237,6 +255,8 @@ if [[ "$storage_probe_code" == "200" || "$storage_probe_code" == "503" || "$stor
   fi
 elif [[ "$storage_probe_code" == "404" ]]; then
   echo "○ OD daemon /api/health/storage → 404 (redeploy daemon for storage probe)"
+elif [[ "$storage_probe_code" == "302" && -z "${DESIGN_DAEMON_LOCAL_URL:-}" ]]; then
+  echo "○ OD daemon /api/health/storage → 302 (nginx login redirect; set DESIGN_DAEMON_LOCAL_URL=http://127.0.0.1:7456 on VM for direct probe)"
 else
   echo "✗ OD daemon /api/health/storage → $storage_probe_code"
   fail=$((fail + 1))

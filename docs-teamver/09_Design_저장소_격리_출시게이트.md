@@ -102,7 +102,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P0-1 | S3 bucket `teamver-design-{staging,prod}-data` | `ns-teamver-devops` | ✅ |
 | P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ✅ |
 | P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ✅ |
-| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · s3 활성화는 wiring 후 |
+| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · staging smoke `checks.od_storage=degraded` |
 | P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 config·profile ✅ · prod 검증 ☐ |
 | P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) + `deploy/teamver/scripts` | 🟡 alarm command ✅ · EC2 apply ☐ |
 | P0-7 | RDS `teamver_design_*` database | Terraform + SQL | ✅ |
@@ -118,7 +118,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | 🟡 PROJECTS_DIR scratch + materialization ✅ |
 | P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ✅ |
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
-| P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · EC2 apply ☐ |
+| P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · EC2 smoke `od_storage=degraded` 원인 확인 필요 |
 | P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + compose `--profile minio` ✅ · ops fixture `test_run_s3_integration_test.sh` ✅ · EC2 ☐ |
 | P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy + **run-end** `od_s3_sync_up_failed` JSON 마커 ✅ · CloudWatch apply ☐ |
 
@@ -494,5 +494,6 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-18 | staging smoke 결과 반영 — RDS registry tables OK, S3 storage probe `checks.od_storage=degraded`; public daemon `/api/health/storage` 302는 nginx auth gate로 분류 |
 | 2026-06-15 | §7~17 — FUSE vs Hybrid, MaterializingStorage, 격리 흐름, IAM, 장애·마이그레이션 |
 | 2026-06-15 | 초안 — volume-only prod blocker, Phase 0~4, 진행 표 |
