@@ -52,6 +52,8 @@ OD_S3_BUCKET=${bucket}
 OD_S3_REGION=${region}
 OD_S3_PREFIX=${prefix}
 OD_PROJECT_LAZY_SYNC_TTL_MS=60000
+# registry delete 시 tenant S3 prefix purge (기본 on — 비활성: OD_S3_PURGE_ON_DELETE=0)
+# OD_S3_PURGE_ON_DELETE=0
 # OD_S3_SYNC_UP_METRICS=1
 
 # Litestream (optional — docker compose --profile litestream up -d)

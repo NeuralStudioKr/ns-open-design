@@ -6602,18 +6602,6 @@ export async function startServer({
     research: researchDeps,
   });
 
-  app.delete('/api/projects/:id', async (req, res) => {
-    try {
-      dbDeleteProject(db, req.params.id);
-      await removeProjectDir(PROJECTS_DIR, req.params.id).catch(() => {});
-      /** @type {import('@open-design/contracts').OkResponse} */
-      const body = { ok: true };
-      res.json(body);
-    } catch (err) {
-      sendApiError(res, 400, 'BAD_REQUEST', String(err));
-    }
-  });
-
   // SSE stream of file-changed events for a project. Drives preview live-reload.
   // Receipt of a `file-changed` event triggers a file-list refresh, which
   // propagates new mtimes through to FileViewer iframes (the URL-load

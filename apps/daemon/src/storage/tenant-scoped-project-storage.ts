@@ -14,7 +14,7 @@ const SCOPED_LOCAL_PROJECT_ID = '_tenant';
 export class TenantScopedProjectStorage implements ProjectStorage {
   constructor(
     private readonly inner: ProjectStorage,
-    private readonly objectPrefix: string,
+    public readonly objectPrefix: string,
   ) {
     if (!objectPrefix.trim()) {
       throw new StorageError('IO', 'TenantScopedProjectStorage requires objectPrefix');
@@ -77,6 +77,14 @@ export class TenantScopedProjectStorage implements ProjectStorage {
       };
     }
     return this.inner.statFile(SCOPED_LOCAL_PROJECT_ID, this.scopedRel(relpath));
+  }
+
+  /** Remove every object under the tenant registry prefix (project delete / registry soft-delete). */
+  async purgeTenantObjects(): Promise<{ deleted: number; failed: number }> {
+    if (this.inner instanceof S3ProjectStorage) {
+      return this.inner.deleteAllUnderObjectPrefix(this.objectPrefix);
+    }
+    return { deleted: 0, failed: 0 };
   }
 
   private scopedRel(relpath: string): string {

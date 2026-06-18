@@ -128,6 +128,21 @@ else
   echo "○ OD daemon scratch/sync-up → $scratch_code"
 fi
 
+evict_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+  -X POST \
+  "http://127.0.0.1:${OD_PORT}/api/projects/_sidecar_probe_/scratch/evict" 2>/dev/null || echo "000")"
+if [[ "$evict_code" == "401" ]]; then
+  echo "✓ OD daemon scratch/evict → 401 (teamver access gate — registry delete purge path)"
+  pass=$((pass + 1))
+elif [[ "$evict_code" == "204" ]]; then
+  echo "○ OD daemon scratch/evict → 204 (TEAMVER_DESIGN_API_URL unset — local mode)"
+elif [[ "$evict_code" == "404" ]]; then
+  echo "✗ OD daemon scratch/evict → 404 (route missing — redeploy daemon)"
+  fail=$((fail + 1))
+else
+  echo "○ OD daemon scratch/evict → $evict_code"
+fi
+
 if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
   import_body="$(mktemp)"
   import_code="$(curl -s -o "$import_body" -w '%{http_code}' --max-time 8 \

@@ -134,6 +134,11 @@ if [[ "$storage" == "s3" ]]; then
   else
     flag "od_scratch_disk_usage JSON" "(disabled — set OD_SCRATCH_DISK_METRICS=1 for CW disk alarm)"
   fi
+  if [[ "${OD_S3_PURGE_ON_DELETE:-}" == "0" ]]; then
+    flag "registry delete S3 purge" "(disabled — OD_S3_PURGE_ON_DELETE=0)"
+  else
+    flag "registry delete S3 purge" "tenant prefix purge on scratch/evict (od_s3_remote_purged)"
+  fi
 else
   flag "scratch / sync-up" "(disabled — OD_PROJECT_STORAGE!=s3)"
 fi

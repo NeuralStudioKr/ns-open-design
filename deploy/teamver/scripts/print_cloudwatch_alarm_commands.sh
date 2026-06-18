@@ -18,6 +18,8 @@
 #     (`od_scratch_disk_usage` + `"overThreshold":true`)
 #   - log metric filter + alarm: daemon project-access upstream failures
 #     (`teamver_project_access_5xx`)
+#   - log metric filter + alarm: registry delete remote S3 purge partial failure
+#     (`od_s3_remote_purged` + `$.failed > 0`)
 
 set -euo pipefail
 
@@ -182,12 +184,37 @@ declare -a SCRATCH_BYTES_ALARM=(
   --treat-missing-data notBreaching
 )
 
+declare -a REMOTE_PURGE_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-s3-remote-purge-failed"
+  --filter-pattern '{ $.metric = "od_s3_remote_purged" && $.failed > 0 }'
+  --metric-transformations
+    "metricName=TeamverDesignS3RemotePurgeFailed,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a REMOTE_PURGE_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-s3-remote-purge-failed"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignS3RemotePurgeFailed"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
 if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SYNC_UP_ALARM+=("${alarm_action_args[@]}")
   USAGE_ALARM+=("${alarm_action_args[@]}")
   PROJECT_ACCESS_ALARM+=("${alarm_action_args[@]}")
   SCRATCH_ALARM+=("${alarm_action_args[@]}")
   SCRATCH_BYTES_ALARM+=("${alarm_action_args[@]}")
+  REMOTE_PURGE_ALARM+=("${alarm_action_args[@]}")
 fi
 
 emit() {
@@ -220,6 +247,8 @@ run_or_emit "6) Log metric filter: daemon scratch over threshold" "${SCRATCH_BYT
 run_or_emit "7) Alarm: scratch over threshold (any overThreshold:true in 5 minutes)" "${SCRATCH_BYTES_ALARM[@]}"
 run_or_emit "8) Log metric filter: daemon project-access upstream failures" "${PROJECT_ACCESS_FILTER[@]}"
 run_or_emit "9) Alarm: project-access 5xx burst (≥5 in 5 minutes)" "${PROJECT_ACCESS_ALARM[@]}"
+run_or_emit "10) Log metric filter: registry delete S3 purge partial failure" "${REMOTE_PURGE_FILTER[@]}"
+run_or_emit "11) Alarm: S3 remote purge failed (any failed>0 in 5 minutes)" "${REMOTE_PURGE_ALARM[@]}"
 
 if [[ "$APPLY" -eq 0 ]]; then
   echo "# Tip: re-run with --apply to execute (requires aws CLI + IAM)."

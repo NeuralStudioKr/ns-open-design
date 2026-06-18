@@ -12,7 +12,7 @@ import * as designApiBase from "../src/teamver/designApiBase";
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => false),
-  resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/login"),
+  resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/signin"),
 }));
 
 import {

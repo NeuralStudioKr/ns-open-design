@@ -9,7 +9,7 @@ import * as designBffClient from "../src/teamver/designBffClient";
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
-  resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/login"),
+  resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/signin"),
 }));
 
 vi.mock("../src/teamver/designBffClient", () => ({

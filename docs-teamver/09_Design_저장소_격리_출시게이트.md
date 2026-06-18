@@ -143,7 +143,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P3-5 | OD web — list/create → design-api | `apps/web` | 🟡 create/import/delete sync ✅ · list filter ✅ · E2E ☐ |
 | P3-6 | daemon middleware — project API access 검증 | `apps/daemon` | ✅ env-gated · E2E ☐ |
 | P3-7 | S3 prefix `{workspace_id}/{user_id}/{project_id}/` | P0 + P3 | ✅ design-api SSOT + daemon tenant scope |
-| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + scratch evict | `deploy/teamver/be` + daemon | ✅ soft-delete + `POST …/scratch/evict` · S3 lifecycle `scripts/s3_lifecycle_policy.sh` (sqlite-backups expire + multipart cleanup + 옵션 scratch evict, `--apply`/`--diff`) |
+| P3-8 | `DELETE /api/v1/projects/{id}` — registry soft-delete + scratch evict + **tenant S3 purge** | `deploy/teamver/be` + daemon | ✅ soft-delete + `POST …/scratch/evict` → `onProjectRemoved` remote purge (`OD_S3_PURGE_ON_DELETE`, `od_s3_remote_purged`) · S3 lifecycle `scripts/s3_lifecycle_policy.sh` (sqlite-backups expire + multipart cleanup + 옵션 scratch evict, `--apply`/`--diff`) |
 | P3-9 | access 검증 방식 확정 (daemon middleware vs nginx subrequest) | 설계 → 구현 | ✅ daemon middleware |
 
 **P3-6 구현 메모:** `TEAMVER_DESIGN_API_URL`이 설정된 배포에서 daemon은 `/api/projects/:id/**` 요청 전에 design-api access endpoint를 호출한다. 목록/생성(`/api/projects`)은 web registry sync/filter 경로가 담당하므로 middleware 대상에서 제외한다. design-api 거부(403/404)는 daemon에서 `PROJECT_NOT_FOUND`로 반환해 cross-workspace project id 노출을 줄인다.

@@ -360,6 +360,40 @@ export class S3ProjectStorage implements ProjectStorage {
     return out;
   }
 
+  /** Delete every object under an absolute object key prefix (registry tenant purge). */
+  async deleteAllUnderObjectPrefix(objectPrefix: string): Promise<{ deleted: number; failed: number }> {
+    const normalizedPrefix = normalizeObjectPrefix(objectPrefix);
+    let deleted = 0;
+    let failed = 0;
+    let continuationToken: string | undefined;
+    for (let pages = 0; pages < 1000; pages++) {
+      const params: Array<[string, string]> = [
+        ['list-type', '2'],
+        ['prefix', normalizedPrefix],
+      ];
+      if (continuationToken) params.push(['continuation-token', continuationToken]);
+      params.sort((a, b) => a[0].localeCompare(b[0]));
+      const query = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+      const res = await this.signedRequest({ method: 'GET', key: '', extraQuery: query });
+      if (!res.ok) {
+        throw new StorageError('IO', `S3 LIST ${normalizedPrefix} \u2192 ${res.status} ${res.statusText}: ${await safeText(res)}`);
+      }
+      const xml = await res.text();
+      const { entries, isTruncated, nextToken } = parseListBucketV2Xml(xml);
+      for (const e of entries) {
+        try {
+          await this.deleteObjectAtKey(e.key);
+          deleted += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (!isTruncated || !nextToken) break;
+      continuationToken = nextToken;
+    }
+    return { deleted, failed };
+  }
+
   async readObjectAtKey(key: string): Promise<Buffer> {
     const objectKey = normalizeObjectKey(key);
     const res = await this.signedRequest({ method: 'GET', key: objectKey });

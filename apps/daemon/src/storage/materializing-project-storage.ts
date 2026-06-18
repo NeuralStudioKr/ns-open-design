@@ -137,6 +137,13 @@ export class MaterializingProjectStorage implements ProjectStorage {
     const root = path.join(this.scratch.projectsRoot, projectId);
     await fsp.rm(root, { recursive: true, force: true });
   }
+
+  async purgeRemoteProject(remote: ProjectStorage): Promise<{ deleted: number; failed: number }> {
+    if (remote instanceof TenantScopedProjectStorage) {
+      return await remote.purgeTenantObjects();
+    }
+    return { deleted: 0, failed: 0 };
+  }
 }
 
 export async function resolveRemoteProjectStorage(opts: {

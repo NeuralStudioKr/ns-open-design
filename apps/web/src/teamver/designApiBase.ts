@@ -16,13 +16,15 @@ export function isTeamverEmbedMode(): boolean {
   );
 }
 
+/** Main FE sign-in path — must match `ns-teamver-fe-v2` `AUTH_SIGNIN_PATH`. */
+export const TEAMVER_AUTH_SIGNIN_PATH = "/auth/signin";
+
 export function resolveTeamverLoginUrl(): string {
-  if (typeof window === "undefined") return "https://teamver.com/auth/login";
-  const host = window.location.hostname.toLowerCase();
-  if (host.startsWith("stg-") || host === "localhost" || host === "127.0.0.1") {
-    return "https://stg.teamver.com/auth/login";
-  }
-  return "https://teamver.com/auth/login";
+  const origin =
+    typeof window === "undefined"
+      ? "https://teamver.com"
+      : resolveTeamverMainOrigin();
+  return `${origin.replace(/\/+$/, "")}${TEAMVER_AUTH_SIGNIN_PATH}`;
 }
 
 /** Main FE origin — stg.teamver.com / teamver.com */

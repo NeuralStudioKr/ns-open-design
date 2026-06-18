@@ -1335,7 +1335,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   app.post('/api/projects/:id/scratch/evict', async (req, res) => {
     const projectId = req.params.id;
     if (ctx.projectStorageHooks) {
-      await ctx.projectStorageHooks.onProjectRemoved(projectId);
+      await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
     }
     res.status(204).end();
   });
@@ -1480,7 +1480,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       dbDeleteProject(db, projectId);
       await removeProjectDir(PROJECTS_DIR, projectId).catch(() => {});
       if (ctx.projectStorageHooks) {
-        void ctx.projectStorageHooks.onProjectRemoved(projectId);
+        await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
       }
       /** @type {import('@open-design/contracts').OkResponse} */
       const body = { ok: true };

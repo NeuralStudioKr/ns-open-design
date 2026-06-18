@@ -104,5 +104,11 @@ if [[ "$SEED_VERIFY" -eq 1 ]]; then
   bash "$ROOT/scripts/seed_main_be_design_app.sh" "$ENV_FLAG" --verify-only
 fi
 
+if [[ -f "$ROOT/scripts/check_main_be_design_wiring.sh" ]]; then
+  echo
+  echo "==> Phase 7: Main BE design-api wiring (A6 — read-only env check)"
+  bash "$ROOT/scripts/check_main_be_design_wiring.sh" "$ENV_FLAG" || true
+fi
+
 echo
 echo "✓ Track A post-deploy complete"

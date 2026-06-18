@@ -16,6 +16,7 @@ ENV_FILE=""
 USE_RDS=false
 WARN_ONLY=false
 ENV_FILE_PATH_OVERRIDE=""
+DEPLOY_ENV_FLAG=""
 
 usage() {
   cat <<'EOF'
@@ -30,8 +31,8 @@ EOF
 
 while (( $# )); do
   case "$1" in
-    --staging) ENV_FILE=".env.staging" ;;
-    --production) ENV_FILE=".env.production" ;;
+    --staging) ENV_FILE=".env.staging"; DEPLOY_ENV_FLAG=--staging ;;
+    --production) ENV_FILE=".env.production"; DEPLOY_ENV_FLAG=--production ;;
     --rds) USE_RDS=true ;;
     --warn-only) WARN_ONLY=true ;;
     --env-file)
@@ -190,6 +191,11 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
   else
     warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성 (CW od_scratch_disk_usage 알람 무효)"
   fi
+  if [[ "${OD_S3_PURGE_ON_DELETE:-}" == "0" ]]; then
+    warn "OD_S3_PURGE_ON_DELETE=0 — registry delete 시 tenant S3 prefix 유지 (scratch evict만)"
+  else
+    warn "OD_S3_PURGE_ON_DELETE 활성 — registry delete/scratch/evict 시 tenant S3 prefix 객체 purge (od_s3_remote_purged 마커)"
+  fi
 fi
 
 if [[ "$errors" -gt 0 ]]; then
@@ -199,6 +205,9 @@ if [[ "$errors" -gt 0 ]]; then
 fi
 
 echo "✓ $ENV_FILE preflight OK ($warnings warning(s))"
+if [[ -n "$DEPLOY_ENV_FLAG" ]]; then
+  warn "Main BE design-api wiring — bash scripts/check_main_be_design_wiring.sh $DEPLOY_ENV_FLAG (A6)"
+fi
 if [[ "$WARN_ONLY" == true && "$warnings" -gt 0 ]]; then
   exit 0
 fi

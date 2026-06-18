@@ -21,10 +21,13 @@ for needle in \
   'TeamverDesignUsage5xx' \
   'TeamverDesignProjectAccess5xx' \
   'TeamverDesignScratchOverThreshold' \
+  'TeamverDesignS3RemotePurgeFailed' \
   'teamver-design-staging-scratch-disk-80pct' \
   'teamver-design-staging-scratch-over-threshold' \
+  'teamver-design-staging-s3-remote-purge-failed' \
   'teamver-design-staging-project-access-5xx' \
   'teamver_project_access_5xx' \
+  'od_s3_remote_purged' \
   'od_scratch_disk_usage' \
   'overThreshold' \
   'aws cloudwatch put-metric-alarm' \
@@ -59,7 +62,9 @@ fi
 # output is `printf %q`-escaped so we grep the script body instead.
 for needle in \
   '$.metric = "od_scratch_disk_usage"' \
-  '$.overThreshold = true'
+  '$.overThreshold = true' \
+  '$.metric = "od_s3_remote_purged"' \
+  '$.failed > 0'
 do
   if ! grep -qF -- "$needle" "$SCRIPT"; then
     echo "❌ script body missing CW JSON filter pattern: $needle"

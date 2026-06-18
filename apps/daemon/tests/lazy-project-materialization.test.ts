@@ -69,6 +69,54 @@ describe('createProjectStorageAccessHooks', () => {
       else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
     }
   });
+
+  it('onProjectRemoved purges remote then evicts scratch (default purge on)', async () => {
+    const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
+    delete process.env.OD_S3_PURGE_ON_DELETE;
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const purge = vi.spyOn(storage, 'purgeRemoteProject').mockResolvedValue({ deleted: 2, failed: 0 });
+    const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
+
+    try {
+      await hooks!.onProjectRemoved(mockReq('DELETE', '/api/projects/p1'), 'p1');
+      expect(purge).toHaveBeenCalledTimes(1);
+      expect(evict).toHaveBeenCalledWith('p1');
+    } finally {
+      if (previousPurge === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
+    }
+  });
+
+  it('onProjectRemoved skips remote purge when OD_S3_PURGE_ON_DELETE=0', async () => {
+    const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
+    process.env.OD_S3_PURGE_ON_DELETE = '0';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const purge = vi.spyOn(storage, 'purgeRemoteProject').mockResolvedValue({ deleted: 0, failed: 0 });
+    const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
+
+    try {
+      await hooks!.onProjectRemoved(mockReq('POST', '/api/projects/p1/scratch/evict'), 'p1');
+      expect(purge).not.toHaveBeenCalled();
+      expect(evict).toHaveBeenCalledWith('p1');
+    } finally {
+      if (previousPurge === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
+    }
+  });
 });
 
 describe('createLazyProjectMaterializationMiddleware', () => {

@@ -51,6 +51,8 @@ bash "$ROOT/scripts/test_run_s3_integration_test.sh"
 bash "$ROOT/scripts/test_restore_app_sqlite_from_s3.sh"
 bash "$ROOT/scripts/test_backup_sqlite_to_s3.sh"
 bash "$ROOT/scripts/test_s3_lifecycle_policy.sh"
+bash "$ROOT/scripts/test_check_main_be_design_wiring.sh"
+bash "$ROOT/scripts/test_run_staging_phase0_activate.sh"
 
 if [[ "$SKIP_WEB" -eq 0 ]]; then
   echo "==> daemon teamver vitest"
@@ -63,6 +65,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-project-storage-meta.test.ts \
       tests/teamver-linked-dirs-gate.test.ts \
       tests/project-materialization-runtime.periodic.test.ts \
+      tests/lazy-project-materialization.test.ts \
       tests/amr-model-probe-error.test.ts
   )
 
@@ -82,6 +85,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-embed-project-sanitize.test.ts \
       tests/providers/daemon-amr-models.test.ts \
       tests/teamver-amr-embed-skip.test.ts \
+      tests/teamver-login-url.test.ts \
       tests/teamver-workspace-switcher.test.tsx
   )
 fi

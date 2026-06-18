@@ -4,12 +4,21 @@ import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest } from '
 import type { ProjectMaterializationRuntime } from './project-materialization-runtime.js';
 import { resolveTeamverTenantRemoteStorage } from './teamver-project-storage-meta.js';
 import { isS3ProjectStorageLayout } from './project-storage-layout.js';
+import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
 
 export type ProjectStorageAccessHooks = {
   ensureMaterialized: (req: Request, projectId: string) => Promise<void>;
   persistAfterMutation: (req: Request, projectId: string) => Promise<void>;
-  onProjectRemoved: (projectId: string) => Promise<void>;
+  onProjectRemoved: (req: Request, projectId: string) => Promise<void>;
 };
+
+function s3RemotePurgeOnDeleteEnabled(): boolean {
+  const raw = (process.env.OD_S3_PURGE_ON_DELETE ?? '').trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+  if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') return true;
+  // Default on in S3 mode — registry delete must not leave tenant SSOT orphaned.
+  return true;
+}
 
 function lazySyncTtlMs(): number {
   const parsed = Number(process.env.OD_PROJECT_LAZY_SYNC_TTL_MS ?? '');
@@ -119,11 +128,42 @@ export function createProjectStorageAccessHooks(
     }
   }
 
-  async function onProjectRemoved(projectId: string): Promise<void> {
+  async function onProjectRemoved(req: Request, projectId: string): Promise<void> {
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
     lastSyncAt.delete(trimmedId);
     inflight.delete(trimmedId);
+
+    if (s3RemotePurgeOnDeleteEnabled()) {
+      try {
+        const remote = await resolveRemote(req, trimmedId);
+        const result = await storage.purgeRemoteProject(remote);
+        if (result.deleted > 0 || result.failed > 0) {
+          const s3Prefix =
+            remote instanceof TenantScopedProjectStorage ? remote.objectPrefix : undefined;
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_remote_purged',
+              projectId: trimmedId,
+              deleted: result.deleted,
+              failed: result.failed,
+              ...(s3Prefix ? { s3Prefix } : {}),
+            }),
+          );
+        }
+        if (result.failed > 0) {
+          console.warn(
+            `[project-materialization] remote purge partial failure for ${trimmedId}: deleted=${result.deleted} failed=${result.failed}`,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[project-materialization] remote purge failed for ${trimmedId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
     try {
       await storage.evictScratchProject(trimmedId);
     } catch (err) {

@@ -6,7 +6,7 @@ const getWorkspaceMock = vi.fn(async () => "ws-1");
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
   resolveTeamverDesignApiBase: vi.fn(() => "https://stg-design-api.teamver.com"),
-  resolveTeamverLoginUrl: vi.fn(() => "https://stg.teamver.com/auth/login"),
+  resolveTeamverLoginUrl: vi.fn(() => "https://stg.teamver.com/auth/signin"),
   resolveTeamverMainOrigin: vi.fn(() => "https://stg.teamver.com"),
 }));
 

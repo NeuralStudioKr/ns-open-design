@@ -14,7 +14,7 @@ vi.mock("@teamver/app-sdk", () => ({
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
   resolveTeamverDesignApiBase: vi.fn(() => "https://stg-design-api.teamver.com"),
-  resolveTeamverLoginUrl: vi.fn(() => "https://stg.teamver.com/auth/login"),
+  resolveTeamverLoginUrl: vi.fn(() => "https://stg.teamver.com/auth/signin"),
   resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
 }));
 

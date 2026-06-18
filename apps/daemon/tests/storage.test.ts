@@ -283,6 +283,65 @@ describe('S3ProjectStorage', () => {
       expect(result.reason).toContain('ENOTFOUND');
     }
   });
+
+  it('deleteAllUnderObjectPrefix lists and deletes every object key', async () => {
+    const deleted: string[] = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'GET') {
+        const xml = `<?xml version="1.0"?><ListBucketResult>
+  <Contents><Key>tenant-a/p1/a.txt</Key><Size>1</Size><LastModified>2026-05-09T12:00:00.000Z</LastModified></Contents>
+  <Contents><Key>tenant-a/p1/b.txt</Key><Size>2</Size><LastModified>2026-05-09T12:00:00.000Z</LastModified></Contents>
+  <IsTruncated>false</IsTruncated>
+</ListBucketResult>`;
+        return new Response(xml, { status: 200 });
+      }
+      if (method === 'DELETE') {
+        deleted.push(url);
+        return new Response(null, { status: 204 });
+      }
+      return new Response('', { status: 404 });
+    }) as unknown as typeof fetch;
+    const storage = new S3ProjectStorage({
+      bucket: 'od-bucket', region: 'us-east-1',
+      credentials, fetchFn, now: fixedNow,
+    });
+    const result = await storage.deleteAllUnderObjectPrefix('tenant-a/p1/');
+    expect(result.deleted).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(deleted).toHaveLength(2);
+    expect(deleted.every((u) => u.includes('tenant-a/p1/'))).toBe(true);
+  });
+
+  it('TenantScopedProjectStorage.purgeTenantObjects delegates prefix purge', async () => {
+    const { TenantScopedProjectStorage } = await import('../src/storage/tenant-scoped-project-storage.js');
+    const deleted: string[] = [];
+    const fetchFn = (async (_url: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'GET') {
+        const xml = `<?xml version="1.0"?><ListBucketResult>
+  <Contents><Key>design/ws1/u1/p1/manifest.json</Key><Size>10</Size><LastModified>2026-05-09T12:00:00.000Z</LastModified></Contents>
+  <IsTruncated>false</IsTruncated>
+</ListBucketResult>`;
+        return new Response(xml, { status: 200 });
+      }
+      if (method === 'DELETE') {
+        deleted.push(_url);
+        return new Response(null, { status: 204 });
+      }
+      return new Response('', { status: 404 });
+    }) as unknown as typeof fetch;
+    const inner = new S3ProjectStorage({
+      bucket: 'od-bucket', region: 'us-east-1',
+      credentials, fetchFn, now: fixedNow,
+    });
+    const scoped = new TenantScopedProjectStorage(inner, 'design/ws1/u1/p1/');
+    const result = await scoped.purgeTenantObjects();
+    expect(result.deleted).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0]).toContain('design/ws1/u1/p1/manifest.json');
+  });
 });
 
 describe('resolveProjectStorage', () => {
