@@ -46,6 +46,13 @@ done
 pass=0
 fail=0
 
+# Docker-published ports (127.0.0.1:7456 → container) see the host gateway as
+# remoteAddress, not loopback — OD_API_TOKEN Bearer is required for /api probes.
+daemon_curl_auth=()
+if [[ -n "${OD_API_TOKEN:-}" ]]; then
+  daemon_curl_auth=(-H "Authorization: Bearer ${OD_API_TOKEN}")
+fi
+
 check() {
   local name="$1"
   shift
@@ -115,6 +122,7 @@ check "OD daemon /api/health" curl -sf --max-time 5 "http://127.0.0.1:${OD_PORT}
 
 scratch_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
   -X POST \
+  "${daemon_curl_auth[@]}" \
   "http://127.0.0.1:${OD_PORT}/api/projects/_sidecar_probe_/scratch/sync-up" 2>/dev/null || echo "000")"
 if [[ "$scratch_code" == "401" ]]; then
   echo "✓ OD daemon scratch/sync-up → 401 (teamver access gate)"
@@ -130,6 +138,7 @@ fi
 
 evict_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
   -X POST \
+  "${daemon_curl_auth[@]}" \
   "http://127.0.0.1:${OD_PORT}/api/projects/_sidecar_probe_/scratch/evict" 2>/dev/null || echo "000")"
 if [[ "$evict_code" == "401" ]]; then
   echo "✓ OD daemon scratch/evict → 401 (teamver access gate — registry delete purge path)"
@@ -144,9 +153,14 @@ else
 fi
 
 if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
+  if [[ -z "${OD_API_TOKEN:-}" ]]; then
+    echo "✗ OD daemon embed gates need OD_API_TOKEN (Docker loopback is not peer-loopback)"
+    fail=$((fail + 2))
+  else
   import_body="$(mktemp)"
   import_code="$(curl -s -o "$import_body" -w '%{http_code}' --max-time 8 \
     -X POST \
+    "${daemon_curl_auth[@]}" \
     -H 'Content-Type: application/json' \
     -d '{"baseDir":"/tmp","name":"probe"}' \
     "http://127.0.0.1:${OD_PORT}/api/import/folder" 2>/dev/null || echo "000")"
@@ -161,6 +175,7 @@ if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
   linked_body="$(mktemp)"
   linked_code="$(curl -s -o "$linked_body" -w '%{http_code}' --max-time 8 \
     -X POST \
+    "${daemon_curl_auth[@]}" \
     -H 'Content-Type: application/json' \
     -d '{"id":"_sidecar_linked_dirs_probe_","name":"probe","metadata":{"kind":"prototype","linkedDirs":["/tmp"]}}' \
     "http://127.0.0.1:${OD_PORT}/api/projects" 2>/dev/null || echo "000")"
@@ -172,6 +187,7 @@ if [[ -n "${TEAMVER_DESIGN_API_URL:-}" ]]; then
     fail=$((fail + 1))
   fi
   rm -f "$import_body" "$linked_body"
+  fi
 else
   echo "○ skip embed local-folder gates (TEAMVER_DESIGN_API_URL unset)"
 fi
