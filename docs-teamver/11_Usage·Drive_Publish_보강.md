@@ -135,35 +135,21 @@ async function onMessageSaved(message: SavedMessage, opts: { telemetryFinalized?
 
 ### 3.2 token attribution (P0)
 
-**daemon 측 (이미 구현):** `run-analytics-observability.ts` L116–275
+**daemon CLI runs (이미 구현):** `run-analytics-observability.ts` L116–275
 
 - `event === 'agent' && data.type === 'usage'` → input/output tokens
 - cache tokens (Anthropic/OpenAI) 분기
 - `agent_reported_model`: status event `label === 'model'`
 
-**FE 측:** `message.events` (SSE persist)에서 추출
+**embed API mode (loop 165):** managed BYOK 는 daemon `/api/proxy/*/stream` 경유. upstream usage 를 proxy SSE `usage` 로 전달 → `api-proxy.ts` `onUsage` → `ProjectView` `kind: 'usage'` events.
 
-```typescript
-function extractLatestUsageFromEvents(events: PersistedAgentEvent[]) {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
-    if (e.kind === "usage") {
-      return { inputTokens: e.inputTokens ?? 0, outputTokens: e.outputTokens ?? 0 };
-    }
-  }
-  return null;
-}
+**FE 측:** `usageAttribution.ts`
 
-function extractModelNameFromEvents(events: PersistedAgentEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
-    if (e.kind === "status" && e.label === "model" && e.detail) return e.detail;
-  }
-  return null;
-}
-```
+- `extractLatestUsageFromEvents` — `kind === 'usage'`
+- `extractModelNameFromEvents` — status `label` in `model` / `requesting` / `initializing`
+- `resolveTeamverUsageModelName` — events → `pinnedExecutionConfig` (design-api `/runtime-config`) → `unknown`
 
-**한계:** provider가 usage 미emit 시 `token_count_source: unknown`. v1은 0 tokens 허용 + `operation: design_run`.
+**한계:** provider가 usage 미emit 시 0 tokens 허용 + `operation: design_run`. staging E2E: `S-8c` runtime-config + `U-6` usage row (loop 166).
 
 ### 3.3 멱등성 (P0)
 

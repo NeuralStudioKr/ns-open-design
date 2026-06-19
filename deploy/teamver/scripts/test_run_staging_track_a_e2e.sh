@@ -25,8 +25,8 @@ unset_env() {
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 7 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 7 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 8 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 8 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
@@ -74,6 +74,13 @@ case "$URL" in
     ;;
   *"/api/v1/projects?workspace_id="*)
     emit_code 200
+    ;;
+  *"/api/v1/runtime-config")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"configured":true,"apiProtocol":"anthropic","baseUrl":"https://api.anthropic.com","model":"claude-sonnet-4-5"}'
+    fi
     ;;
   *"/api/internal/usage/events")
     emit_code 204
@@ -127,6 +134,7 @@ PATH="$MOCK_BIN:$PATH" \
 for needle in \
   'S-8a auth/session 200' \
   'S-8b /api/v1/projects' \
+  'S-8c runtime-config configured=true' \
   'U-6a /api/internal/usage/events' \
   'U-6b 멱등 두 번째 POST' \
   'D-5a publish proj-e2e-1' \

@@ -74,7 +74,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-linked-dirs-gate.test.ts \
       tests/project-materialization-runtime.periodic.test.ts \
       tests/lazy-project-materialization.test.ts \
-      tests/amr-model-probe-error.test.ts
+      tests/amr-model-probe-error.test.ts \
+      tests/proxy-routes.test.ts -t "forwards Anthropic upstream usage"
   )
 
   echo "==> contracts analytics drive-import"
@@ -101,6 +102,9 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-branding-head.test.tsx \
       tests/teamver-embed-branding.test.ts \
       tests/teamver-embed-slide-only.test.ts \
+      tests/teamver-embed-config-lock.test.ts \
+      tests/teamver-usage-report.test.ts \
+      tests/providers/api-proxy.test.ts \
       tests/teamver-project-registry.test.ts \
       tests/teamver-use-embed.test.tsx \
       tests/teamver-workspace-utils.test.ts \

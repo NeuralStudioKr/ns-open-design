@@ -150,13 +150,25 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] Project chat — Design toolbox `+` flyout: image-gen / video-gen / motion / motion-polish 미노출
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
 - [ ] Settings — language / appearance만
+- [ ] **Deck 프로젝트 채팅** — API mode 고정, 프롬프트 전송 후 슬라이드 artifact 생성/수정
+- [ ] **runtime-config** — `GET /api/v1/runtime-config` (cookie) → `configured=true` + model (E2E `S-8c`)
 
----
+**staging automated (EC2)**
+
+```bash
+cd deploy/teamver
+bash scripts/print_staging_track_a_e2e_env.sh --from-env .env.staging
+# TEAMVER_COOKIE + TEAMVER_INTERNAL_API_KEY + MAIN_BE_DATABASE_URL 설정 후:
+bash scripts/run_staging_track_a_e2e.sh --staging
+# S-8a/b/c (session + projects + runtime-config) → U-6 usage → D-5/D-6
+```
 
 ## 6. 변경 이력
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | loop 166 — S-8c runtime-config E2E, deck chat staging checklist |
+| 2026-06-19 | loop 165 — embed API-mode usage billing + execution config pin |
 | 2026-06-19 | loop 162 — `drive_import_policy.py` BE allowlist, import-drive per-asset `failed[]`, FE policy sync |
 | 2026-06-19 | loop 152 — `hideCommunityGallery` / `hidePluginRegistry` / toolbox actions 필터, 14 Drive 설계 cross-link, 전수 인벤토리 |
 | 2026-06-18 | loop 152 (선행) — 초안 + `slideOnlyMvp` / `hideComposerIntegrations` 구현 |

@@ -59,6 +59,7 @@ optional:
   TEAMVER_COOKIE_USER_B   다중 사용자 403 격리 검증
   TEAMVER_OD_PROJECT_ID   D-5 publish / D-6 import 대상 (없으면 skip)
   TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6a import-drive 성공 probe (없으면 skip)
+  SKIP_RUNTIME=1                 S-8c runtime-config probe 비활성
   SKIP_DRIVE_IMPORT_POLICY=1     D-6b policy reject probe 비활성
   SKIP_DRIVE=1 / SKIP_DB=1
   TEAMVER_E2E_RUN_PREFIX  usage run_id prefix (default e2e-)
@@ -163,6 +164,36 @@ if [[ -n "$session_workspace_id" ]]; then
   fi
 else
   skipped "S-8b project list — session workspace 없음"
+fi
+
+# ---- S-8c: runtime-config (embed slide/API-mode prerequisite) ---------------
+if [[ -n "${SKIP_RUNTIME:-}" ]]; then
+  skipped "S-8c runtime-config — SKIP_RUNTIME=1"
+elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "S-8c runtime-config — TEAMVER_COOKIE 필요"
+else
+  runtime_body="$(curl_body "${API_BASE}/api/v1/runtime-config" -H "Cookie: ${TEAMVER_COOKIE}")"
+  runtime_code="$(curl_code "${API_BASE}/api/v1/runtime-config" -H "Cookie: ${TEAMVER_COOKIE}")"
+  if [[ "$runtime_code" == "200" ]]; then
+    if printf '%s' "$runtime_body" | grep -q '"configured"'; then
+      if printf '%s' "$runtime_body" | grep -Eq '"configured"[[:space:]]*:[[:space:]]*true'; then
+        if printf '%s' "$runtime_body" | grep -Eq '"model"[[:space:]]*:[[:space:]]*"[^"]+"'; then
+          runtime_model="$(printf '%s' "$runtime_body" | sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+          passed "S-8c runtime-config configured=true model=${runtime_model:-?}"
+        else
+          failed "S-8c runtime-config configured=true but model missing — embed API chat 불가"
+        fi
+      else
+        failed "S-8c runtime-config configured=false — TEAMVER_OD_API_KEY 미주입 (슬라이드 채팅 불가)"
+      fi
+    else
+      failed "S-8c runtime-config 200 but missing configured field"
+    fi
+  elif [[ "$runtime_code" == "401" || "$runtime_code" == "403" ]]; then
+    failed "S-8c runtime-config ${runtime_code} — TEAMVER_COOKIE invalid"
+  else
+    failed "S-8c runtime-config ${runtime_code}"
+  fi
 fi
 
 # ---- U-6: usage event + 멱등 ------------------------------------------------
