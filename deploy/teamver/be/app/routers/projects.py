@@ -157,9 +157,14 @@ async def create_project(
                 title=body.title,
                 auth=auth,
             )
-            await _sync_daemon_scratch_after_registry(row, auth=auth)
-            if changed:
-                await db.commit()
+            try:
+                await _sync_daemon_scratch_after_registry(row, auth=auth)
+                if changed:
+                    await db.commit()
+            except Exception:
+                if changed:
+                    await db.rollback()
+                raise
             return _to_response(row)
 
     try:
@@ -194,9 +199,14 @@ async def create_project(
                         "project_already_registered",
                         code="conflict",
                     ) from exc
-                await _sync_daemon_scratch_after_registry(row, auth=auth)
-                if changed:
-                    await db.commit()
+                try:
+                    await _sync_daemon_scratch_after_registry(row, auth=auth)
+                    if changed:
+                        await db.commit()
+                except Exception:
+                    if changed:
+                        await db.rollback()
+                    raise
                 return _to_response(row)
         raise ApiError(409, "project_already_registered", code="conflict") from exc
     except Exception:

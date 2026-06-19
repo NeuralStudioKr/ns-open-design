@@ -202,6 +202,50 @@ async def test_create_project_reactivates_soft_deleted_row(
 
 
 @pytest.mark.asyncio
+async def test_create_project_rolls_back_reactivation_when_s3_sync_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted = _project_row()
+    deleted.status = "deleted"
+    reactivated = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    monkeypatch.setattr(projects_router.settings, "od_project_storage", "s3")
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=deleted),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "areactivate_by_od_id",
+        AsyncMock(return_value=reactivated),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(),
+    )
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("daemon down")
+
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
+
+    with pytest.raises(BadGatewayError, match="od_daemon_scratch_sync_up_failed"):
+        await projects_router.create_project(
+            CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+            _auth(),
+            db,
+        )
+
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_create_project_rejects_existing_row_for_other_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -262,6 +306,50 @@ async def test_create_project_reactivates_soft_deleted_row_after_integrity_race(
     db.rollback.assert_awaited_once()
     db.commit.assert_awaited_once()
     sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_project_rolls_back_race_reactivation_when_s3_sync_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted = _project_row()
+    deleted.status = "deleted"
+    reactivated = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    monkeypatch.setattr(projects_router.settings, "od_project_storage", "s3")
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(side_effect=[None, deleted]),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "areactivate_by_od_id",
+        AsyncMock(return_value=reactivated),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(side_effect=IntegrityError("insert", {}, Exception())),
+    )
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("daemon down")
+
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
+
+    with pytest.raises(BadGatewayError, match="od_daemon_scratch_sync_up_failed"):
+        await projects_router.create_project(
+            CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+            _auth(),
+            db,
+        )
+
+    db.commit.assert_not_awaited()
+    assert db.rollback.await_count == 2
 
 
 @pytest.mark.asyncio
