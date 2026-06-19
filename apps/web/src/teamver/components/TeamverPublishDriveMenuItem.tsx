@@ -6,6 +6,7 @@ import {
   listTeamverDrivePublishTargets,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
+import { TeamverDrivePickerModal } from "./TeamverDrivePickerModal";
 import {
   pickReadyPublishOutputs,
   publishTeamverDesignToDrive,
@@ -31,6 +32,7 @@ export function TeamverPublishDriveMenuItem({
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [targets, setTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [selectedTargetId, setSelectedTargetId] = useState<string>("personal-default");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -40,7 +42,7 @@ export function TeamverPublishDriveMenuItem({
       try {
         const workspaceId = await getDesignBffClient()?.workspaceStore?.get();
         const nextTargets = workspaceId
-          ? await listTeamverDrivePublishTargets(workspaceId)
+          ? await listTeamverDrivePublishTargets(workspaceId, { limit: 200 })
           : [];
         if (canceled) return;
         setTargets(nextTargets);
@@ -89,7 +91,7 @@ export function TeamverPublishDriveMenuItem({
 
   return (
     <>
-      <label className="teamver-drive-target-picker" role="presentation">
+      <div className="teamver-drive-target-picker" role="presentation">
         <span className="teamver-drive-target-label">Save to</span>
         <select
           aria-label="Teamver Drive destination"
@@ -110,7 +112,23 @@ export function TeamverPublishDriveMenuItem({
             ))
           )}
         </select>
-      </label>
+        <button
+          type="button"
+          className="teamver-drive-target-browse"
+          disabled={busy || loadingTargets || targets.length === 0}
+          onClick={() => setPickerOpen(true)}
+        >
+          Browse
+        </button>
+      </div>
+      <TeamverDrivePickerModal
+        open={pickerOpen}
+        targets={targets}
+        selectedTargetId={selectedTargetId}
+        loading={loadingTargets}
+        onSelect={setSelectedTargetId}
+        onClose={() => setPickerOpen(false)}
+      />
       <button
         type="button"
         className="share-menu-item"

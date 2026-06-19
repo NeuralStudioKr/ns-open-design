@@ -305,7 +305,12 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   const { locale, t } = useI18n();
   const teamverT = useTeamverT();
   const brandLabel = useBrandLabel();
-  const { enabled: teamverEmbed, hideComposerIntegrations, slideOnlyMvp } = useTeamverBranding();
+  const {
+    enabled: teamverEmbed,
+    hideComposerIntegrations,
+    hidePluginRegistry,
+    slideOnlyMvp,
+  } = useTeamverBranding();
   const analytics = useAnalytics();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionTab, setMentionTab] = useState<HomeMentionTab>('all');
@@ -1425,7 +1430,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 pickPlugin(record);
               }}
-              onAddPlugin={() => {
+              onAddPlugin={hidePluginRegistry ? undefined : () => {
                 trackHomeChatComposerClick(analytics.track, {
                   page_name: 'home',
                   area: 'chat_composer',

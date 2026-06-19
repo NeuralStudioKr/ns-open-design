@@ -197,6 +197,7 @@ async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDriv
 
 export async function listTeamverDrivePublishTargets(
   workspaceId: string,
+  options: { limit?: number } = {},
 ): Promise<TeamverDrivePublishTarget[]> {
   const trimmed = workspaceId.trim();
   if (!trimmed) return [];
@@ -208,7 +209,10 @@ export async function listTeamverDrivePublishTargets(
     ...(personal.status === "fulfilled" ? personal.value : []),
     ...(shared.status === "fulfilled" ? shared.value : []),
   ];
-  if (targets.length > 0) return targets.slice(0, TARGET_LIMIT);
+  if (targets.length > 0) {
+    const limit = Math.max(1, options.limit ?? TARGET_LIMIT);
+    return targets.slice(0, limit);
+  }
   return [
     {
       id: "personal-default",

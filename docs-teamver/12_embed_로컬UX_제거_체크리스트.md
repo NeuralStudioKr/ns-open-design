@@ -68,7 +68,7 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | L-15 | 78–79 | `TeamverWorkspaceSwitcher` — `app_enabled=false` WS 선택 불가 |
 | L-13 | 80–81 | FE `sanitizeProjectForEmbed` + daemon `linkedDirs`/folder import/working-dir API 거부 |
 
-### 2.4 P0 — 슬라이드 MVP 기능 게이트 (Loop 143)
+### 2.4 P0 — 슬라이드 MVP 기능 게이트 (loop 152–153)
 
 | ID | 위치 | 동작 | 게이트 |
 |----|------|------|--------|
@@ -76,8 +76,12 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | S-2 | `NewProjectPanel` | Media·Prototype·Live artifact·Other 탭 | 동일 |
 | S-3 | `EntryShell` | New project 기본 탭 | embed → `deck` |
 | S-4 | `ChatComposer` / `HomeHero` + menu | MCP·Connectors | `hideComposerIntegrations` |
+| S-5 | `HomeView` 하단 community gallery | `HomeTemplatesReveal` + `PluginsHomeSection` | `hideCommunityGallery` |
+| S-6 | `+` 메뉴 "Add plugin" 행 (HomeHero·ChatComposer) | 플러그인 레지스트리 진입 | `hidePluginRegistry` |
+| S-7 | `DesignToolboxPanel` actions (composer + NextStepActions "More") | image-gen · video-gen · motion · motion-polish | `slideOnlyMvp` |
+| S-8 | Drive publish destination | 개인/팀 Drive folder 검색 선택 | `TeamverDrivePickerModal` |
 
-**문서:** [13_embed_슬라이드_MVP_기능게이트](./13_embed_슬라이드_MVP_기능게이트.md)
+**문서:** [13_embed_슬라이드_MVP_기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [14_Design_Drive_연동_설계](./14_Design_Drive_연동_설계.md)
 
 ### 2.5 P3 — 인프라/저장 (09, VM)
 
@@ -123,7 +127,11 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 - [ ] Design system create에 "Link local code" 없음
 - [ ] Home hero create 탭 — Slide deck (+ template shortcut)만
 - [ ] New project — Deck / Template 탭만
-- [ ] + 메뉴 — Attach·Plugins만 (Connectors·MCP 없음)
+- [ ] + 메뉴 — Attach·Plugins(installed only, "Add plugin" 없음)만 (Connectors·MCP 없음)
+- [ ] Home 하단 — community gallery 미렌더
+- [ ] Project chat → Design toolbox `+` flyout — image-gen / video-gen / motion / motion-polish 미노출
+- [ ] Assistant "More" 액션 — 미디어·모션 미노출
+- [ ] Publish to Drive → Browse — 개인/팀 Drive folder 검색·선택 가능
 - [ ] Settings → language/appearance만
 
 ---
@@ -132,7 +140,9 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 
 | 일자 | 내용 |
 |------|------|
-| 2026-06-18 | Loop 143 — slideOnlyMvp / hideComposerIntegrations (13 문서) |
+| 2026-06-19 | loop 153 — HomeHero `hidePluginRegistry` 보강, Drive publish 검색형 folder picker 1차 |
+| 2026-06-19 | loop 152 — hideCommunityGallery / hidePluginRegistry / toolbox actions 필터, 14 Drive 설계 문서 |
+| 2026-06-18 | loop 152 (선행) — slideOnlyMvp / hideComposerIntegrations (13 문서) |
 | 2026-06-17 | Loop 78 — patchProject/working-dir gate, disabled WS switch block |
 | 2026-06-17 | Loop 79–82 — disabled WS guard, project sanitize, daemon linkedDirs gate, E2E checklist |
 | 2026-06-17 | Loop 74–77 P2 — DS local code UI, linkedDirs policy, daemon hint |

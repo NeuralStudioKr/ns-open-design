@@ -114,4 +114,39 @@ describe("listTeamverDrivePublishTargets", () => {
       },
     ]);
   });
+
+  it("honors a larger target limit for picker modal browsing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/drive/folder?shallow_tree=true")) {
+          return Response.json({
+            root_folder_id: "FLD-MY-ROOT",
+            items: [
+              {
+                folder_id: "FLD-MY-ROOT",
+                name: "Root",
+                folder_type: "ROOT",
+                children: Array.from({ length: 32 }, (_, index) => ({
+                  folder_id: `FLD-${index}`,
+                  name: `Folder ${index}`,
+                })),
+              },
+            ],
+          });
+        }
+        if (url.endsWith("/api/v2/shared-drive")) {
+          return Response.json({ data: [] });
+        }
+        return new Response("missing", { status: 404 });
+      }),
+    );
+
+    const defaultTargets = await listTeamverDrivePublishTargets("ws-1");
+    const modalTargets = await listTeamverDrivePublishTargets("ws-1", { limit: 40 });
+
+    expect(defaultTargets).toHaveLength(28);
+    expect(modalTargets).toHaveLength(33);
+    expect(modalTargets.at(-1)?.id).toBe("personal:FLD-31");
+  });
 });

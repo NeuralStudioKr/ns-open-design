@@ -30,26 +30,26 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 
 | ID | 위치 | 동작 | 게이트 | 상태 |
 |----|------|------|--------|------|
-| S-1 | `HomeHero` create chips | Image / Video / Audio / HyperFrames / Prototype / Live artifact | `slideOnlyMvp` | ✅ Loop 143 |
+| S-1 | `HomeHero` create chips | Image / Video / Audio / HyperFrames / Prototype / Live artifact | `slideOnlyMvp` | ✅ loop 152 |
 | S-2 | `HomeHero` shortcuts (⋯) | Create plugin, From Figma | 동일 | ✅ |
 | S-3 | `NewProjectPanel` tabs | Media (image/video/audio), Prototype, Live artifact, Other | `slideOnlyMvp` (`visibleNewProjectTabs`) | ✅ |
 | S-4 | `EntryShell` openNewProject | 기본 탭 `prototype` → embed `deck` | `defaultNewProjectTab` | ✅ |
-| S-5 | `HomeView` 하단 community gallery | `<HomeTemplatesReveal><PluginsHomeSection/>` — Prototype·Slides·Image·Video·HyperFrames·Audio 풀 카탈로그 | **`hideCommunityGallery`** | ✅ Loop 144 |
+| S-5 | `HomeView` 하단 community gallery | `<HomeTemplatesReveal><PluginsHomeSection/>` — Prototype·Slides·Image·Video·HyperFrames·Audio 풀 카탈로그 | **`hideCommunityGallery`** | ✅ loop 152 |
 
 ### 2.2 P0 — Composer / + 메뉴 / 슬래시 (전수)
 
 | ID | 위치 | 동작 | 게이트 | 상태 |
 |----|------|------|--------|------|
-| C-1 | `HomeHero` `+` 메뉴 → Connectors | 모든 워크스페이스 connector 리스트, Add connector | `hideComposerIntegrations` | ✅ Loop 143 |
+| C-1 | `HomeHero` `+` 메뉴 → Connectors | 모든 워크스페이스 connector 리스트, Add connector | `hideComposerIntegrations` | ✅ loop 152 |
 | C-2 | `HomeHero` `+` 메뉴 → MCP | enabled MCP server 리스트, Add MCP | 동일 | ✅ |
-| C-3 | `HomeHero` `+` 메뉴 → Plugins → "Add plugin" | 플러그인 레지스트리(marketplace) 진입 | **`hidePluginRegistry`** | ✅ Loop 144 |
+| C-3 | `HomeHero` `+` 메뉴 → Plugins → "Add plugin" | 플러그인 레지스트리(marketplace) 진입 | **`hidePluginRegistry`** | ✅ loop 152 |
 | C-4 | `ChatComposer` `+` 메뉴 동일 | 프로젝트 composer 동일 row | 동일 | ✅ |
 | C-5 | `HomeHero` @멘션 picker | 탭: All · Files · Plugins · Skills · MCP · Connectors | `hideComposerIntegrations` (MCP·Connectors 탭 제거) | ✅ |
 | C-6 | `ChatComposer` slash 팔레트 | `/mcp`, `/mcp <id>`, `/search` | `hideComposerIntegrations` (MCP 슬래시 제거) | ✅ |
 | C-7 | `ChatComposer` slash 인라인 | `/pet`, `/hatch` 인라인 명령 (palette 노출 X) | embed 시 결과적으로 unreachable — Settings·Codex CLI 차단으로 무력화 | 🟡 문서화 |
-| C-8 | `ChatComposer` `DesignToolboxPanel` actions | `image-gen`, `video-gen`, `motion`, `motion-polish` | **`slideOnlyMvp`** (`visibleDesignToolboxActions`) | ✅ Loop 144 |
-| C-9 | `ChatComposer` `DesignToolboxPanel` resources | MCP servers·MCP templates·connectors | `hideComposerIntegrations` | ✅ Loop 143 |
-| C-10 | `AssistantMessage` `NextStepActions` | "More" 메뉴의 미디어/모션 액션 | `slideOnlyMvp` (toolbox 필터 공유) | ✅ Loop 144 |
+| C-8 | `ChatComposer` `DesignToolboxPanel` actions | `image-gen`, `video-gen`, `motion`, `motion-polish` | **`slideOnlyMvp`** (`visibleDesignToolboxActions`) | ✅ loop 152 |
+| C-9 | `ChatComposer` `DesignToolboxPanel` resources | MCP servers·MCP templates·connectors | `hideComposerIntegrations` | ✅ loop 152 |
+| C-10 | `AssistantMessage` `NextStepActions` | "More" 메뉴의 미디어/모션 액션 | `slideOnlyMvp` (toolbox 필터 공유) | ✅ loop 152 |
 
 ### 2.3 P0 — 좌측 nav / 설정 (이미 처리)
 
@@ -63,7 +63,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | Updater popup | `EntryShell` embed 분기 | ✅ |
 | Workspace tab strip | `hideWorkspaceTabsBar` | ✅ |
 
-### 2.4 P0 — 파일 첨부 정책
+### 2.4 P0 — 파일 첨부 정책 (검토)
 
 | 항목 | 현재(daemon) | embed 권장 | 게이트 | 상태 |
 |------|--------------|------------|--------|------|
@@ -155,5 +155,5 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 
 | 일자 | 내용 |
 |------|------|
-| 2026-06-19 | Loop 144 — `hideCommunityGallery` / `hidePluginRegistry` / toolbox actions 필터, 14 Drive 설계 cross-link, 전수 인벤토리 |
-| 2026-06-18 | Loop 143 — 초안 + `slideOnlyMvp` / `hideComposerIntegrations` 구현 |
+| 2026-06-19 | loop 152 — `hideCommunityGallery` / `hidePluginRegistry` / toolbox actions 필터, 14 Drive 설계 cross-link, 전수 인벤토리 |
+| 2026-06-18 | loop 152 (선행) — 초안 + `slideOnlyMvp` / `hideComposerIntegrations` 구현 |
