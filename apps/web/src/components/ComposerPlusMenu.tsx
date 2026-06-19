@@ -123,6 +123,10 @@ export interface ComposerPlusMenuProps {
   onPickMcp: (server: McpServerConfig) => void;
   /** Opens MCP settings; omit to hide the add row. */
   onAddMcp?: () => void;
+  /** When false the Connectors submenu row is omitted entirely. Default true. */
+  showConnectors?: boolean;
+  /** When false the MCP submenu row is omitted entirely. Default true. */
+  showMcp?: boolean;
 
   /** Triggers file attachment (opens the native picker). */
   onAttachFiles: () => void;
@@ -180,6 +184,8 @@ export function ComposerPlusMenu({
   mcpServers,
   onPickMcp,
   onAddMcp,
+  showConnectors = true,
+  showMcp = true,
   onAttachFiles,
   attachLoading,
   renderToolbox,
@@ -399,6 +405,7 @@ export function ComposerPlusMenu({
             />
             <span>{t('chat.attachAria')}</span>
           </button>
+          {showConnectors ? (
           <PlusSubmenuRow
             label={t('connectors.title')}
             icon="link"
@@ -449,6 +456,7 @@ export function ComposerPlusMenu({
               </>
             ) : null}
           </PlusSubmenuRow>
+          ) : null}
           <PlusSubmenuRow
             label={t('entry.navPlugins')}
             icon="sparkles"
@@ -520,6 +528,7 @@ export function ComposerPlusMenu({
               ) : null}
             </div>
           </PlusSubmenuRow>
+          {showMcp ? (
           <PlusSubmenuRow
             label="MCP"
             icon="link"
@@ -577,6 +586,7 @@ export function ComposerPlusMenu({
               </>
             ) : null}
           </PlusSubmenuRow>
+          ) : null}
           {renderToolbox ? (
             <PlusSubmenuRow
               label={toolboxLabel ?? t('chat.designToolbox.tooltip')}

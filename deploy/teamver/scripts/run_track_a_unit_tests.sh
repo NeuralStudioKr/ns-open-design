@@ -56,6 +56,7 @@ bash "$ROOT/scripts/test_s3_lifecycle_policy.sh"
 bash "$ROOT/scripts/test_check_main_be_design_wiring.sh"
 bash "$ROOT/scripts/test_run_staging_phase0_activate.sh"
 bash "$ROOT/scripts/test_check_storage_isolation.sh"
+bash "$ROOT/scripts/test_run_staging_track_a_e2e.sh"
 bash "$ROOT/scripts/test_verify_od_core.sh"
 
 if [[ "$SKIP_WEB" -eq 0 ]]; then

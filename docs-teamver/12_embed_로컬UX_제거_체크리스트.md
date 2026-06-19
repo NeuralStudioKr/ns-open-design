@@ -68,7 +68,18 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | L-15 | 78–79 | `TeamverWorkspaceSwitcher` — `app_enabled=false` WS 선택 불가 |
 | L-13 | 80–81 | FE `sanitizeProjectForEmbed` + daemon `linkedDirs`/folder import/working-dir API 거부 |
 
-### 2.4 P3 — 인프라/저장 (09, VM)
+### 2.4 P0 — 슬라이드 MVP 기능 게이트 (Loop 143)
+
+| ID | 위치 | 동작 | 게이트 |
+|----|------|------|--------|
+| S-1 | `HomeHero` create chips | Image / Video / Audio / HyperFrames / Prototype 등 | `slideOnlyMvp` |
+| S-2 | `NewProjectPanel` | Media·Prototype·Live artifact·Other 탭 | 동일 |
+| S-3 | `EntryShell` | New project 기본 탭 | embed → `deck` |
+| S-4 | `ChatComposer` / `HomeHero` + menu | MCP·Connectors | `hideComposerIntegrations` |
+
+**문서:** [13_embed_슬라이드_MVP_기능게이트](./13_embed_슬라이드_MVP_기능게이트.md)
+
+### 2.5 P3 — 인프라/저장 (09, VM)
 
 | 항목 | embed 기대 |
 |------|------------|
@@ -81,8 +92,9 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 ## 3. 구현 파일
 
 ```
-apps/web/src/teamver/branding/config.ts          — hideLocalWorkspaceControls
-apps/web/src/components/HomeView.tsx
+apps/web/src/teamver/branding/config.ts          — hideLocalWorkspaceControls, slideOnlyMvp
+apps/web/src/teamver/branding/slideOnlyMvpPolicy.ts
+apps/web/src/components/HomeHero.tsx
 apps/web/src/components/ChatComposer.tsx
 apps/web/src/components/NewProjectPanel.tsx
 apps/web/src/teamver/embedLocalWorkspacePolicy.ts
@@ -109,6 +121,9 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 - [ ] New project에 "Local storage" / "Open folder" 없음
 - [ ] 새 프로젝트 생성 → Design Files는 daemon 관리 경로만
 - [ ] Design system create에 "Link local code" 없음
+- [ ] Home hero create 탭 — Slide deck (+ template shortcut)만
+- [ ] New project — Deck / Template 탭만
+- [ ] + 메뉴 — Attach·Plugins만 (Connectors·MCP 없음)
 - [ ] Settings → language/appearance만
 
 ---
@@ -117,6 +132,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-18 | Loop 143 — slideOnlyMvp / hideComposerIntegrations (13 문서) |
 | 2026-06-17 | Loop 78 — patchProject/working-dir gate, disabled WS switch block |
 | 2026-06-17 | Loop 79–82 — disabled WS guard, project sanitize, daemon linkedDirs gate, E2E checklist |
 | 2026-06-17 | Loop 74–77 P2 — DS local code UI, linkedDirs policy, daemon hint |

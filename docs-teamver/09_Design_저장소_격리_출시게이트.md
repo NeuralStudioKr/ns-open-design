@@ -451,6 +451,27 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 [ ] hosted에서 external baseDir import 거부(또는 문서화된 예외)
 ```
 
+### 14.1 자동화 매핑 (loop 150·151 출시 게이트)
+
+수동 체크 → 자동화 스크립트 매핑. EC2 에서 `run_post_deploy_track_a.sh --staging --rds --smoke --e2e` 한 번이면 아래 게이트가 fail-fast 로 묶인다.
+
+| 체크 | 자동화 스크립트 | Phase |
+|------|----------------|-------|
+| S3 workspace/user/project prefix 객체 생성 | `smoke_design.sh` (`SMOKE_REQUIRE_OD_STORAGE=1` default-on staging/prod) + `check_storage_isolation.sh` | Phase 5 / 8 |
+| EC2 volume 삭제 후 복구 (Litestream) | `validate_deploy_env.sh --production` (LITESTREAM_BUCKET warn) + 별도 `restore_app_sqlite_from_s3.sh` 수동 | Phase 1 (warn) |
+| 사용자 A/B access 403 | `run_staging_track_a_e2e.sh` (`TEAMVER_COOKIE_USER_B` 격리) | Phase 9 |
+| design-api `GET /projects` workspace 필터 | `run_staging_track_a_e2e.sh` (S-8b) | Phase 9 |
+| agent run 후 S3 sync-up | `smoke_design.sh` storage probe + daemon `/api/health/storage` | Phase 5 |
+| sync-up 실패 알람·retry | `print_cloudwatch_alarm_commands.sh` (CW filter `od_s3_sync_up_failed`) | CW alarm |
+| scratch 80% 알람 | `validate_deploy_env.sh` warn (`OD_SCRATCH_DISK_METRICS`) + CW alarm | Phase 1 |
+| FUSE mount 미사용 | `check_storage_isolation.sh` (`mode=s3` + 컨테이너 ENV 검증) | Phase 8 |
+| external baseDir import 거부 | `check_sidecar_deps.sh` (folder import / linkedDirs gates) | Phase 3 |
+| usage row 멱등 (`run_id` dedup) | `run_staging_track_a_e2e.sh` U-6 (`SELECT count` from `ai_model_token_usages`) | Phase 9 |
+| publish → `design_outputs` row 생성 | `run_staging_track_a_e2e.sh` D-5 | Phase 9 |
+| Main BE ↔ design-api M2M 도달 | `check_main_be_design_wiring.sh --live` | Phase 7 |
+
+미커버 (수동 유지): EC2 volume 의도적 손상 복구 시나리오, scratch 80% 인위 트리거. 둘 다 출시 직후 분기 task.
+
 ---
 
 ## 15. 일정 감 · 병렬

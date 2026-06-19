@@ -241,7 +241,7 @@ export function HomeView({
   executionSwitcher,
 }: Props) {
   const { locale, t } = useI18n();
-  const { hideLocalWorkspaceControls } = useTeamverBranding();
+  const { hideLocalWorkspaceControls, hideComposerIntegrations } = useTeamverBranding();
   const analytics = useAnalytics();
   // P0 page_view page_name=home — fire once on mount. ref-keyed to survive
   // re-renders that flip parent state without remounting HomeView.
@@ -405,6 +405,11 @@ export function HomeView({
   }, []);
 
   useEffect(() => {
+    if (hideComposerIntegrations) {
+      setMcpServers([]);
+      setMcpLoading(false);
+      return;
+    }
     let cancelled = false;
     void fetchMcpServers().then((result) => {
       if (cancelled) return;
@@ -414,7 +419,7 @@ export function HomeView({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hideComposerIntegrations]);
 
   useEffect(() => {
     if (active?.mediaSurface !== 'audio' || active.inputs.model !== 'elevenlabs-v3') return;
@@ -1595,8 +1600,8 @@ export function HomeView({
         onRemoveMcpContext={removeMcpContext}
         onRemoveConnectorContext={removeConnectorContext}
         onAddPlugin={onBrowseRegistry}
-        onAddConnector={onOpenIntegrations}
-        onAddMcp={onOpenMcp}
+        onAddConnector={hideComposerIntegrations ? undefined : onOpenIntegrations}
+        onAddMcp={hideComposerIntegrations ? undefined : onOpenMcp}
         onOpenPluginDetails={setDetailsRecord}
         pluginInputFields={(active?.inputFields ?? []).filter(
           (field) => !ARTIFACT_FOOTER_FIELD_NAMES.has(field.name),
@@ -1614,9 +1619,13 @@ export function HomeView({
         pluginsLoading={pluginsLoading}
         skillOptions={selectableSkills}
         skillsLoading={skillsLoading}
-        mcpOptions={enabledMcpServers}
-        mcpLoading={mcpLoading}
-        connectorOptions={connectors.filter((connector) => connector.status === 'connected')}
+        mcpOptions={hideComposerIntegrations ? [] : enabledMcpServers}
+        mcpLoading={hideComposerIntegrations ? false : mcpLoading}
+        connectorOptions={
+          hideComposerIntegrations
+            ? []
+            : connectors.filter((connector) => connector.status === 'connected')
+        }
         pendingPluginId={pendingApplyId}
         pendingChipId={pendingChipId}
         submitDisabled={

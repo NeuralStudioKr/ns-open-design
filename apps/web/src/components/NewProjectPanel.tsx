@@ -19,6 +19,10 @@ import type {
 
 import { useT } from '../i18n';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import {
+  coerceNewProjectTab,
+  visibleNewProjectTabs,
+} from '../teamver/branding/slideOnlyMvpPolicy';
 import type { Dict } from '../i18n/types';
 import { fetchPromptTemplate, openFolderDialog } from '../providers/registry';
 import { isStoredMediaProviderEntryPresent } from '../state/config';
@@ -274,7 +278,7 @@ export function NewProjectPanel({
   initialTab = 'prototype',
 }: Props) {
   const t = useT();
-  const { hideLocalWorkspaceControls } = useTeamverBranding();
+  const { hideLocalWorkspaceControls, slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
@@ -287,7 +291,17 @@ export function NewProjectPanel({
   const [workingDirError, setWorkingDirError] = useState<
     { message: string; details?: string } | null
   >(null);
-  const [tab, setTab] = useState<CreateTab>(initialTab);
+  const [tab, setTab] = useState<CreateTab>(() => coerceNewProjectTab(initialTab, { slideOnlyMvp }));
+  const projectTabs = useMemo(
+    () => visibleNewProjectTabs(Object.keys(TAB_LABEL_KEYS) as CreateTab[], { slideOnlyMvp }),
+    [slideOnlyMvp],
+  );
+  useEffect(() => {
+    setTab((current) => coerceNewProjectTab(current, { slideOnlyMvp }));
+  }, [slideOnlyMvp]);
+  useEffect(() => {
+    setTab(coerceNewProjectTab(initialTab, { slideOnlyMvp }));
+  }, [initialTab, slideOnlyMvp]);
   // P0 analytics — fire surface_view once per (panel mount, tab) pair so the
   // funnel sees both initial open and tab switches without double-counting on
   // unrelated re-renders. Ref keys on a tab string because the panel is a
@@ -796,7 +810,7 @@ export function NewProjectPanel({
           <Icon name="chevron-left" size={16} strokeWidth={2} />
         </button>
         <div className="newproj-tabs" role="tablist" ref={tabsRef}>
-          {(Object.keys(TAB_LABEL_KEYS) as CreateTab[]).map((entry) => (
+          {projectTabs.map((entry) => (
             <button
               key={entry}
               role="tab"

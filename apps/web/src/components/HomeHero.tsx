@@ -33,6 +33,10 @@ import type {
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { useBrandLabel } from '../teamver/branding/useBrandLabel';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import {
+  defaultHomeHeroGuideChipId,
+  homeHeroChipsForGroup,
+} from '../teamver/branding/slideOnlyMvpPolicy';
 import { TeamverLogo } from '../teamver/branding/TeamverLogo';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import type { SkillSummary } from '../types';
@@ -301,7 +305,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   const { locale, t } = useI18n();
   const teamverT = useTeamverT();
   const brandLabel = useBrandLabel();
-  const { enabled: teamverEmbed } = useTeamverBranding();
+  const { enabled: teamverEmbed, hideComposerIntegrations, slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionTab, setMentionTab] = useState<HomeMentionTab>('all');
@@ -385,18 +389,30 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     // its badge counts the previewed slice — not the full staged total — to keep
     // the count aligned with what that tab actually renders. The dedicated files
     // tab below lists every match and reports the true total.
-    { id: 'all', label: t('common.all'), count: Math.min(fileMatches.length, HOME_MENTION_ALL_TAB_PREVIEW) + pluginMatches.length + skillMatches.length + mcpMatches.length + connectorMatches.length },
+    {
+      id: 'all',
+      label: t('common.all'),
+      count:
+        Math.min(fileMatches.length, HOME_MENTION_ALL_TAB_PREVIEW)
+        + pluginMatches.length
+        + skillMatches.length
+        + (hideComposerIntegrations ? 0 : mcpMatches.length + connectorMatches.length),
+    },
     { id: 'files', label: t('chat.mentionTabFiles'), count: fileMatches.length },
     { id: 'plugins', label: t('entry.navPlugins'), count: pluginMatches.length },
     { id: 'skills', label: t('homeHero.skills'), count: skillMatches.length },
-    { id: 'mcp', label: 'MCP', count: mcpMatches.length },
-    { id: 'connectors', label: 'Connectors', count: connectorMatches.length },
+    ...(hideComposerIntegrations
+      ? []
+      : [
+          { id: 'mcp' as const, label: 'MCP', count: mcpMatches.length },
+          { id: 'connectors' as const, label: 'Connectors', count: connectorMatches.length },
+        ]),
   ];
   const showFiles = mentionTab === 'all' || mentionTab === 'files';
   const showPlugins = mentionTab === 'all' || mentionTab === 'plugins';
   const showSkills = mentionTab === 'all' || mentionTab === 'skills';
-  const showMcp = mentionTab === 'all' || mentionTab === 'mcp';
-  const showConnectors = mentionTab === 'all' || mentionTab === 'connectors';
+  const showMcp = !hideComposerIntegrations && (mentionTab === 'all' || mentionTab === 'mcp');
+  const showConnectors = !hideComposerIntegrations && (mentionTab === 'all' || mentionTab === 'connectors');
   const visibleSections: HomeMentionSection[] = [
     showFiles
       ? {
@@ -560,13 +576,14 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   useEffect(() => {
     if (firstRunGuide !== true) return;
     if (readHomeGuideStage() !== 'chip') return;
-    const arm = window.setTimeout(() => setGuidePulseChipId('prototype'), 900);
+    const guideChipId = defaultHomeHeroGuideChipId({ slideOnlyMvp });
+    const arm = window.setTimeout(() => setGuidePulseChipId(guideChipId), 900);
     const disarm = window.setTimeout(() => setGuidePulseChipId(null), 3600);
     return () => {
       window.clearTimeout(arm);
       window.clearTimeout(disarm);
     };
-  }, [firstRunGuide]);
+  }, [firstRunGuide, slideOnlyMvp]);
 
   // Users with existing projects never see the trail — complete ANY
   // unfinished stage silently. A chip pick during the loading window can
@@ -1376,7 +1393,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   element: 'plus_menu_open',
                 })
               }
-              connectors={connectorOptions}
+              connectors={hideComposerIntegrations ? [] : connectorOptions}
               onPickConnector={(connector) => {
                 trackHomeChatComposerClick(analytics.track, {
                   page_name: 'home',
@@ -1387,7 +1404,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 pickConnector(connector);
               }}
-              onAddConnector={() => {
+              onAddConnector={hideComposerIntegrations ? undefined : () => {
                 trackHomeChatComposerClick(analytics.track, {
                   page_name: 'home',
                   area: 'chat_composer',
@@ -1396,6 +1413,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 onAddConnector();
               }}
+              showConnectors={!hideComposerIntegrations}
               plugins={pluginOptions}
               onPickPlugin={(record) => {
                 trackHomeChatComposerClick(analytics.track, {
@@ -1416,7 +1434,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 onAddPlugin();
               }}
-              mcpServers={mcpOptions}
+              mcpServers={hideComposerIntegrations ? [] : mcpOptions}
               onPickMcp={(server) => {
                 trackHomeChatComposerClick(analytics.track, {
                   page_name: 'home',
@@ -1427,7 +1445,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 pickMcp(server);
               }}
-              onAddMcp={() => {
+              onAddMcp={hideComposerIntegrations ? undefined : () => {
                 trackHomeChatComposerClick(analytics.track, {
                   page_name: 'home',
                   area: 'chat_composer',
@@ -1436,6 +1454,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 onAddMcp();
               }}
+              showMcp={!hideComposerIntegrations}
               onAttachFiles={() => {
                 trackHomeChatComposerClick(analytics.track, {
                   page_name: 'home',
@@ -2561,7 +2580,11 @@ function RailGroup({
   children,
 }: RailGroupProps) {
   const t = useT();
-  const chips = useMemo(() => chipsForGroup(group), [group]);
+  const { slideOnlyMvp } = useTeamverBranding();
+  const chips = useMemo(
+    () => homeHeroChipsForGroup(group, { slideOnlyMvp }),
+    [group, slideOnlyMvp],
+  );
   const isTabs = variant === 'tabs';
   return (
     <div
@@ -2718,7 +2741,11 @@ function ShortcutsMenu({
   onPickChip,
 }: ShortcutsMenuProps) {
   const t = useT();
-  const shortcuts = useMemo(() => chipsForGroup('migrate'), []);
+  const { slideOnlyMvp } = useTeamverBranding();
+  const shortcuts = useMemo(
+    () => homeHeroChipsForGroup('migrate', { slideOnlyMvp }),
+    [slideOnlyMvp],
+  );
   const disabled = pluginsLoading || pendingPluginId !== null;
   const hasActiveShortcut = shortcuts.some((chip) => chip.id === activeChipId);
   const hasPendingShortcut = shortcuts.some((chip) => chip.id === pendingChipId);

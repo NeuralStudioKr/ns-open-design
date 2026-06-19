@@ -101,6 +101,14 @@ cp "$SRC_PATH" "$TARGET_AVAILABLE_PATH"
 ln -sfn "$TARGET_AVAILABLE_PATH" "$TARGET_ENABLED_PATH"
 echo "📄 적용됨: $TARGET_ENABLED_PATH"
 
+shopt -s nullglob
+inc_files=("$SCRIPT_DIR"/teamver-design-api*.inc.conf)
+shopt -u nullglob
+if (( ${#inc_files[@]} )); then
+  cp -f "${inc_files[@]}" "$SITES_AVAILABLE_DIR/"
+  echo "📎 include 적용: ${#inc_files[@]} file(s) → $SITES_AVAILABLE_DIR"
+fi
+
 nginx -t
 systemctl reload nginx
 echo "✅ 완료."

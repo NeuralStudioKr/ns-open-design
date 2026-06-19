@@ -1,0 +1,68 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import {
+  TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS,
+  TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS,
+  homeHeroChipsForGroup,
+  visibleNewProjectTabs,
+  defaultNewProjectTab,
+} from '../src/teamver/branding/slideOnlyMvpPolicy';
+import { chipsForGroup } from '../src/components/home-hero/chips';
+
+const webRoot = resolve(import.meta.dirname, '..');
+
+function readSource(relativePath: string): string {
+  return readFileSync(resolve(webRoot, relativePath), 'utf8');
+}
+
+describe('Teamver embed slide-only MVP policy', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('hides media and non-deck home hero chips in slide-only mode', () => {
+    const createIds = homeHeroChipsForGroup('create', { slideOnlyMvp: true }).map((c) => c.id);
+    expect(createIds).toEqual(['deck']);
+    expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('image')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('video')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('audio')).toBe(true);
+  });
+
+  it('keeps full chip rail outside slide-only mode', () => {
+    expect(homeHeroChipsForGroup('create', { slideOnlyMvp: false }).length).toBe(
+      chipsForGroup('create').length,
+    );
+  });
+
+  it('limits new project tabs to deck and template in slide-only mode', () => {
+    const tabs = visibleNewProjectTabs(
+      ['prototype', 'live-artifact', 'deck', 'template', 'media', 'other'],
+      { slideOnlyMvp: true },
+    );
+    expect(tabs).toEqual(['deck', 'template']);
+    expect(TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS.has('media')).toBe(true);
+  });
+
+  it('defaults new project tab to deck in slide-only mode', () => {
+    expect(defaultNewProjectTab({ slideOnlyMvp: true })).toBe('deck');
+    expect(defaultNewProjectTab({ slideOnlyMvp: false })).toBe('prototype');
+  });
+
+  it('wires slide-only gates into entry and composer surfaces', () => {
+    const homeHero = readSource('src/components/HomeHero.tsx');
+    const newProject = readSource('src/components/NewProjectPanel.tsx');
+    const entryShell = readSource('src/components/EntryShell.tsx');
+    const chatComposer = readSource('src/components/ChatComposer.tsx');
+    const plusMenu = readSource('src/components/ComposerPlusMenu.tsx');
+
+    expect(homeHero).toContain('homeHeroChipsForGroup');
+    expect(homeHero).toContain('hideComposerIntegrations');
+    expect(newProject).toContain('visibleNewProjectTabs');
+    expect(entryShell).toContain('defaultNewProjectTab');
+    expect(chatComposer).toContain('showMcp={!hideComposerIntegrations}');
+    expect(plusMenu).toContain('showConnectors');
+    expect(plusMenu).toContain('showMcp');
+  });
+});

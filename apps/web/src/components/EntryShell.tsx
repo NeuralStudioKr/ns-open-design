@@ -85,6 +85,10 @@ import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
 import { UpdaterPopup } from './UpdaterPopup';
 import { EntryTopbarChips } from '../teamver/components/EntryTopbarChips';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import {
+  defaultNewProjectTab,
+  coerceNewProjectTab,
+} from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { HomeView } from './HomeView';
 import {
@@ -451,6 +455,7 @@ export function EntryShell({
     hideTopbarExecutionSwitcher,
     hideUseEverywhereChip,
     hideLocalWorkspaceControls,
+    slideOnlyMvp,
   } = useTeamverBranding();
   // Each entry sub-view (home / projects / design-systems) is its own
   // URL now, so the browser back/forward buttons work and a deep link
@@ -483,7 +488,7 @@ export function EntryShell({
       ? onProviderModelsCacheChange!
       : setLocalProviderModelsCache;
   const [newProjectInitialTab, setNewProjectInitialTab] =
-    useState<CreateTab>('prototype');
+    useState<CreateTab>(() => defaultNewProjectTab({ slideOnlyMvp }));
   const [integrationTab, setIntegrationTab] = useState<IntegrationTab>(integrationInitialTab);
   const [homePromptHandoff, setHomePromptHandoff] = useState<HomePromptHandoff | null>(null);
   const entryMainScrollRef = useRef<HTMLElement | null>(null);
@@ -536,8 +541,8 @@ export function EntryShell({
     changeView('integrations');
   }
 
-  function openNewProject(tab: CreateTab = 'prototype') {
-    setNewProjectInitialTab(tab);
+  function openNewProject(tab: CreateTab = defaultNewProjectTab({ slideOnlyMvp })) {
+    setNewProjectInitialTab(coerceNewProjectTab(tab, { slideOnlyMvp }));
     setNewProjectOpen(true);
   }
 

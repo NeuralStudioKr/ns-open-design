@@ -41,6 +41,10 @@ export type TeamverBrandingConfig = {
   hideLocalWorkspaceControls: boolean;
   /** Figma-style workspace tab strip (Home + project tabs) — embed uses rail/back only. */
   hideWorkspaceTabsBar: boolean;
+  /** Embed launch: deck/slide creation only — hide media and non-deck create paths. */
+  slideOnlyMvp: boolean;
+  /** Hide MCP + connector affordances in Home/Project composers (settings already gated). */
+  hideComposerIntegrations: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -106,6 +110,8 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         lockExecutionConfig: true,
         hideLocalWorkspaceControls: true,
         hideWorkspaceTabsBar: true,
+        slideOnlyMvp: true,
+        hideComposerIntegrations: true,
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -120,6 +126,8 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         lockExecutionConfig: false,
         hideLocalWorkspaceControls: false,
         hideWorkspaceTabsBar: false,
+        slideOnlyMvp: false,
+        hideComposerIntegrations: false,
       };
 
   return {
