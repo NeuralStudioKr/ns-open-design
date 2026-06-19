@@ -102,7 +102,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P0-1 | S3 bucket `teamver-design-{staging,prod}-data` | `ns-teamver-devops` | ✅ |
 | P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ✅ |
 | P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ✅ |
-| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · smoke storage hard-fail 기본 on ✅ · staging smoke `checks.od_storage=degraded` |
+| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · daemon S3 init fail-fast ✅ · smoke storage hard-fail 기본 on ✅ · staging smoke `checks.od_storage=degraded` |
 | P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 config·profile ✅ · prod 검증 ☐ |
 | P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) + `deploy/teamver/scripts` | 🟡 alarm command ✅ · EC2 apply ☐ |
 | P0-7 | RDS `teamver_design_*` database | Terraform + SQL | ✅ |
@@ -118,7 +118,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-5 | `server.ts` / routes — storage 주입 | `apps/daemon` | 🟡 PROJECTS_DIR scratch + materialization ✅ |
 | P1-6 | **`MaterializingProjectStorage`** — run 전 sync-down / 후 sync-up | `apps/daemon` | ✅ |
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
-| P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · staging/production smoke storage hard-fail 기본 on ✅ · EC2 smoke `od_storage=degraded` 원인 확인 필요 |
+| P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print_staging_s3_env.sh`·`apply_staging_s3_env.sh` ✅ · `OD_S3_ALLOW_SCRATCH_FALLBACK=1` staging/prod 금지 ✅ · EC2 smoke `od_storage=degraded` 원인 확인 필요 |
 | P1-9 | MinIO/localstack integration test | `apps/daemon` | 🟡 harness + compose `--profile minio` ✅ · ops fixture `test_run_s3_integration_test.sh` ✅ · EC2 ☐ |
 | P1-10 | sync-up 실패 알람·재시도 (run 종료 후) | `apps/daemon` + ops | 🟡 retry 3x + lazy + **run-end** `od_s3_sync_up_failed` JSON 마커 ✅ · CloudWatch apply ☐ |
 
@@ -174,6 +174,7 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - OD web daemon project create, folder/ZIP import, plugin-share project, host import response 성공 후 design-api registry best-effort 등록 반영.
 - Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). 조회 실패 시 전환기 fallback으로 daemon list 유지.
 - **smoke**: `scripts/smoke_design.sh --staging` (+ `/access`, `/outputs`, healthz tables). staging/production 모드는 `SMOKE_REQUIRE_OD_STORAGE=1` 이 기본 on 이므로 `checks.od_storage=degraded` 는 실패가 정상이다. 긴급 진단 시에만 `SMOKE_REQUIRE_OD_STORAGE=0` 으로 임시 우회한다.
+- **daemon S3 init**: `OD_PROJECT_STORAGE=s3` 인데 bucket/region/IAM/creds 문제로 S3 backend 초기화가 실패하면 `od_s3_storage_init_failed` 마커 후 daemon 기동 실패가 기본값이다. `OD_S3_ALLOW_SCRATCH_FALLBACK=1` 은 로컬/디버그 전용이며 staging/production preflight 와 storage audit 에서 실패한다.
 - 남음: staging E2E (S3 객체·403·publish).
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
@@ -197,6 +198,8 @@ OD_S3_BUCKET=teamver-design-prod-data
 OD_S3_REGION=ap-northeast-2
 OD_S3_PREFIX=design/
 OD_SCRATCH_DIR=/app/.od/scratch   # optional; default under OD_DATA_DIR
+# Do not set in staging/production. Local/debug only:
+# OD_S3_ALLOW_SCRATCH_FALLBACK=1
 # IAM role preferred; fallback:
 # OD_S3_ACCESS_KEY_ID=...
 # OD_S3_SECRET_ACCESS_KEY=...
@@ -515,6 +518,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | S3 init fail-fast — daemon S3 backend 초기화 실패 시 scratch-only fallback 기본 차단, `od_s3_storage_init_failed` 마커, `OD_S3_ALLOW_SCRATCH_FALLBACK=1` staging/prod 배포 가드 실패 처리 |
 | 2026-06-19 | storage smoke/prod env 출시 게이트 hardening — staging/production smoke storage hard-fail 기본 on, post-deploy smoke 동일 적용, production env hard guard(LLM key·정적 AWS key·staging token) 추가. 남음: EC2 staging `checks.od_storage=ok` 실증 |
 | 2026-06-18 | staging smoke 결과 반영 — RDS registry tables OK, S3 storage probe `checks.od_storage=degraded`; public daemon `/api/health/storage` 302는 nginx auth gate로 분류 |
 | 2026-06-15 | §7~17 — FUSE vs Hybrid, MaterializingStorage, 격리 흐름, IAM, 장애·마이그레이션 |

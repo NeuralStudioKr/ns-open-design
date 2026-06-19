@@ -220,6 +220,25 @@ else
 fi
 rm -f "$MINIO_ENV"
 
+FALLBACK_ENV="$(mktemp)"
+cat "$TMP_ENV" > "$FALLBACK_ENV"
+echo 'OD_S3_ALLOW_SCRATCH_FALLBACK=1' >> "$FALLBACK_ENV"
+fallback_out="$(bash "$SCRIPT" --staging --rds --env-file "$FALLBACK_ENV" 2>&1 || true)"
+if grep -q 'OD_S3_ALLOW_SCRATCH_FALLBACK=1' <<< "$fallback_out"; then
+  echo "✓ validate_deploy_env staging rejects scratch-only fallback"
+else
+  echo "❌ staging fixture must reject OD_S3_ALLOW_SCRATCH_FALLBACK=1"
+  echo "$fallback_out"
+  rm -f "$FALLBACK_ENV"
+  exit 1
+fi
+if bash "$SCRIPT" --staging --rds --env-file "$FALLBACK_ENV" >/dev/null 2>&1; then
+  echo "❌ staging w/ OD_S3_ALLOW_SCRATCH_FALLBACK=1 must exit non-zero"
+  rm -f "$FALLBACK_ENV"
+  exit 1
+fi
+rm -f "$FALLBACK_ENV"
+
 # ---------------------------------------------------------------------------
 # loop 142 — production hard guard 회귀 케이스. validate_deploy_env 는
 # ENV_FILE 가 `.env.production` 일 때만 추가 가드를 적용한다 (staging/dev

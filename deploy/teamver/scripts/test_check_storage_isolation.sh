@@ -67,11 +67,33 @@ if ! grep -q '✓ .env.staging OD_PROJECT_STORAGE=s3' <<< "$out_s3"; then
   echo "$out_s3"
   exit 1
 fi
+if ! grep -q '✓ .env.staging OD_S3_ALLOW_SCRATCH_FALLBACK disabled' <<< "$out_s3"; then
+  echo "❌ expected fallback-disabled line on s3 fixture"
+  echo "$out_s3"
+  exit 1
+fi
 if ! grep -q '/api/healthz/deps unreachable' <<< "$out_s3"; then
   echo "❌ expected unreachable line for design-api"
   echo "$out_s3"
   exit 1
 fi
 echo "✓ check_storage_isolation reports unreachable backends without env override"
+
+write_env "$WORK/.env.staging" \
+  "OD_PROJECT_STORAGE=s3" \
+  "OD_S3_BUCKET=teamver-design-staging-data" \
+  "OD_S3_ALLOW_SCRATCH_FALLBACK=1" \
+  "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
+
+out_fallback="$(CHECK_CONTAINER_ENV=0 \
+  DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
+  DAEMON_LOCAL_URL=http://127.0.0.1:1 \
+  bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
+if ! grep -q 'OD_S3_ALLOW_SCRATCH_FALLBACK=1' <<< "$out_fallback"; then
+  echo "❌ expected fallback override to fail storage audit"
+  echo "$out_fallback"
+  exit 1
+fi
+echo "✓ check_storage_isolation fails when scratch fallback is enabled"
 
 echo "✓ all check_storage_isolation fixtures passed"

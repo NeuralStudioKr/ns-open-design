@@ -89,6 +89,12 @@ else
   nope "$ENV_FILE OD_PROJECT_STORAGE=$resolved_storage (s3 required for $ENV_LABEL)"
 fi
 
+if [[ "${OD_S3_ALLOW_SCRATCH_FALLBACK:-0}" == "1" ]]; then
+  nope "$ENV_FILE OD_S3_ALLOW_SCRATCH_FALLBACK=1 (staging/production must fail instead of local scratch fallback)"
+else
+  ok "$ENV_FILE OD_S3_ALLOW_SCRATCH_FALLBACK disabled"
+fi
+
 if [[ -n "${OD_S3_BUCKET:-}" ]]; then
   ok "$ENV_FILE OD_S3_BUCKET=$OD_S3_BUCKET"
 else

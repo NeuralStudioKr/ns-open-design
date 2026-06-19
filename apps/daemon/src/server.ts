@@ -259,6 +259,10 @@ import {
   type ProjectMaterializationRuntime,
 } from './storage/project-materialization-runtime.js';
 import { resolveProjectStorageLayout } from './storage/project-storage-layout.js';
+import {
+  allowsS3ScratchFallback,
+  describeStorageStartupError,
+} from './storage/project-storage-startup.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import {
@@ -5943,9 +5947,26 @@ export async function startServer({
         `[project-materialization] S3 mode enabled — scratch=${PROJECTS_DIR} bucket=${process.env.OD_S3_BUCKET ?? ''}`,
       );
     } catch (err) {
+      const reason = describeStorageStartupError(err);
+      const fallbackAllowed = allowsS3ScratchFallback(process.env);
       console.warn(
-        '[project-materialization] failed to initialize S3 storage; falling back to scratch-only:',
-        err instanceof Error ? err.message : err,
+        JSON.stringify({
+          metric: 'od_s3_storage_init_failed',
+          mode: 's3',
+          bucket: process.env.OD_S3_BUCKET ?? '',
+          scratchDir: PROJECTS_DIR,
+          fallbackAllowed,
+          reason,
+        }),
+      );
+      if (!fallbackAllowed) {
+        projectMaterialization.dispose();
+        throw new Error(
+          `OD_PROJECT_STORAGE=s3 but S3 project storage failed to initialize: ${reason}`,
+        );
+      }
+      console.warn(
+        '[project-materialization] S3 storage init failed; OD_S3_ALLOW_SCRATCH_FALLBACK=1 allows scratch-only fallback for local/debug use',
       );
     }
   }
