@@ -4,7 +4,12 @@ import {
   extractLatestUsageFromEvents,
   extractModelNameFromEvents,
   isTerminalRunStatus,
+  resolveTeamverUsageModelName,
 } from '../src/teamver/usageAttribution';
+import {
+  pinTeamverExecutionConfig,
+  resetPinnedTeamverExecutionConfigForTests,
+} from '../src/teamver/branding/pinnedExecutionConfig';
 import { maybeReportTeamverUsageAfterSave } from '../src/teamver/maybeReportTeamverUsageAfterSave';
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
@@ -43,6 +48,34 @@ describe('usageAttribution', () => {
         { kind: 'status', label: 'model', detail: 'claude-sonnet-4-5' },
       ]),
     ).toBe('claude-sonnet-4-5');
+  });
+
+  it('extracts model name from API-mode requesting and daemon initializing labels', () => {
+    expect(
+      extractModelNameFromEvents([
+        { kind: 'status', label: 'requesting', detail: 'claude-sonnet-4-5' },
+      ]),
+    ).toBe('claude-sonnet-4-5');
+    expect(
+      extractModelNameFromEvents([
+        { kind: 'status', label: 'initializing', detail: 'claude-opus-4-8' },
+      ]),
+    ).toBe('claude-opus-4-8');
+  });
+
+  it('falls back to pinned runtime-config model when events omit model', () => {
+    resetPinnedTeamverExecutionConfigForTests();
+    pinTeamverExecutionConfig({
+      apiKey: 'managed-key',
+      model: 'claude-sonnet-4-5',
+    });
+    expect(resolveTeamverUsageModelName([])).toBe('claude-sonnet-4-5');
+    resetPinnedTeamverExecutionConfigForTests();
+  });
+
+  it('returns unknown when model cannot be resolved', () => {
+    resetPinnedTeamverExecutionConfigForTests();
+    expect(resolveTeamverUsageModelName([])).toBe('unknown');
   });
 });
 
@@ -91,6 +124,38 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       outputTokens: 50,
       projectId: 'p1',
       runId: 'run-abc',
+    });
+  });
+
+  it('reports API-mode usage with requesting label and usage events', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await maybeReportTeamverUsageAfterSave(
+      'p1',
+      {
+        id: 'm1',
+        role: 'assistant',
+        content: '',
+        runStatus: 'succeeded',
+        runId: 'run-api',
+        events: [
+          { kind: 'status', label: 'requesting', detail: 'claude-sonnet-4-5' },
+          { kind: 'usage', inputTokens: 120, outputTokens: 15 },
+        ],
+      },
+      { telemetryFinalized: true },
+    );
+
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith({
+      workspaceId: 'ws1',
+      modelName: 'claude-sonnet-4-5',
+      inputTokens: 120,
+      outputTokens: 15,
+      projectId: 'p1',
+      runId: 'run-api',
     });
   });
 });

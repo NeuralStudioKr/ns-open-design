@@ -47,7 +47,7 @@ import {
   resolveTeamverBranding,
 } from './teamver/branding/config';
 import { useTeamverBranding } from './teamver/branding/TeamverBrandingProvider';
-import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
+import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
@@ -1195,6 +1195,7 @@ function AppInner() {
 
   const handleModeChange = useCallback(
     (mode: AppConfig['mode']) => {
+      if (isTeamverExecutionConfigLocked()) return;
       const next = { ...config, mode };
       saveConfig(next);
       setConfig(next);
@@ -1220,6 +1221,7 @@ function AppInner() {
 
   const handleAgentChange = useCallback(
     (agentId: string) => {
+      if (isTeamverExecutionConfigLocked()) return;
       const next = { ...config, agentId };
       saveConfig(next);
       void syncConfigToDaemon(next);
@@ -1230,6 +1232,7 @@ function AppInner() {
 
   const handleAgentModelChange = useCallback(
     (agentId: string, choice: { model?: string; reasoning?: string }) => {
+      if (isTeamverExecutionConfigLocked()) return;
       const prev = config.agentModels?.[agentId] ?? {};
       const merged = { ...prev, ...choice };
       const nextAgentModels = {
@@ -1250,6 +1253,7 @@ function AppInner() {
   // user had previously configured for the target protocol.
   const handleApiProtocolChange = useCallback(
     (protocol: ApiProtocol) => {
+      if (isTeamverExecutionConfigLocked()) return;
       const next = switchApiProtocolConfig(config, protocol);
       saveConfig(next);
       void syncConfigToDaemon(next);
@@ -1263,6 +1267,7 @@ function AppInner() {
   // mid-session without retyping their key.
   const handleApiModelChange = useCallback(
     (model: string) => {
+      if (isTeamverExecutionConfigLocked()) return;
       const next = updateCurrentApiProtocolConfig(config, { model });
       saveConfig(next);
       void syncConfigToDaemon(next);

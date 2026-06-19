@@ -1013,6 +1013,7 @@
 .teamver-drive-import-attach:disabled {
   opacity: 0.55;
 }
+.template-share-popover {
   min-width: 320px;
   gap: 6px;
   padding: 8px;

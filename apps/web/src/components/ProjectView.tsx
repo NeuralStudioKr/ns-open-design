@@ -166,6 +166,7 @@ import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
+import { TeamverDriveBrowseButton } from '../teamver/components/TeamverDriveBrowseButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -3791,6 +3792,13 @@ export function ProjectView({
             handlers.onDelta(delta);
             handlers.onAgentEvent({ kind: 'text', text: delta });
           },
+          onUsage: (usage) => {
+            pushEvent({
+              kind: 'usage',
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+            });
+          },
           onDone: () => {
             handlers.onDone();
             const assistantText = accumulatedAssistantText.trim();
@@ -5873,15 +5881,17 @@ export function ProjectView({
           headerActions={(
             <>
               {!hideHandoffButton ? (
-              <HandoffButton
-                projectId={project.id}
-                projectName={project.name}
-                projectDir={projectDetail.resolvedDir}
-                agents={agents}
-                artifactId={headerArtifact.artifact_id}
-                artifactKind={headerArtifact.artifact_kind}
-              />
-              ) : null}
+                <HandoffButton
+                  projectId={project.id}
+                  projectName={project.name}
+                  projectDir={projectDetail.resolvedDir}
+                  agents={agents}
+                  artifactId={headerArtifact.artifact_id}
+                  artifactKind={headerArtifact.artifact_kind}
+                />
+              ) : (
+                <TeamverDriveBrowseButton />
+              )}
               <EntrySettingsMenu
                 config={config}
                 onThemeChange={handleThemeChange}

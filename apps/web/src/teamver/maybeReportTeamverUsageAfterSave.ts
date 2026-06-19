@@ -3,8 +3,8 @@ import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import {
   extractLatestUsageFromEvents,
-  extractModelNameFromEvents,
   isTerminalRunStatus,
+  resolveTeamverUsageModelName,
 } from "./usageAttribution";
 import { reportTeamverDesignUsage } from "./reportUsage";
 import { isTeamverDesignAppEnabled } from "./teamverDesignAccess";
@@ -35,7 +35,7 @@ export async function maybeReportTeamverUsageAfterSave(
   if (!isTeamverDesignAppEnabled(workspaceId.trim())) return;
 
   const usage = extractLatestUsageFromEvents(message.events);
-  const modelName = extractModelNameFromEvents(message.events) ?? "unknown";
+  const modelName = resolveTeamverUsageModelName(message.events);
 
   await reportTeamverDesignUsage({
     workspaceId: workspaceId.trim(),

@@ -110,6 +110,58 @@ describe('buildProxyMessages', () => {
     ]);
   });
 
+  it('parses proxy usage SSE events before end', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode([
+                'event: usage',
+                'data: {"input_tokens":42,"output_tokens":7,"model":"claude-sonnet-4-5"}',
+                '',
+                'event: end',
+                'data: {}',
+                '',
+              ].join('\n')),
+            );
+            controller.close();
+          },
+        }),
+      }),
+    );
+
+    const onUsage = vi.fn();
+    const onDone = vi.fn();
+
+    await streamProxyEndpoint(
+      '/api/proxy/anthropic/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://anthropic.example',
+        model: 'claude-sonnet-4-5',
+      } as any,
+      'System prompt',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      {
+        onDelta: vi.fn(),
+        onDone,
+        onError: vi.fn(),
+        onUsage,
+      },
+    );
+
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 42,
+      outputTokens: 7,
+      model: 'claude-sonnet-4-5',
+    });
+    expect(onDone).toHaveBeenCalled();
+  });
+
   it('sends Anthropic image content blocks in the proxy request body', async () => {
     const pngBytes = new Uint8Array([137, 80, 78, 71]);
     const fetchMock = vi

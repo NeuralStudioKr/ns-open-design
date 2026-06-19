@@ -23,10 +23,17 @@ import { usesAnthropicProxy } from '../utils/apiProtocol';
 // Re-export for convenience
 export { isOpenAICompatible } from './openai-compatible';
 
+export type ProxyUsageSnapshot = {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string;
+};
+
 export interface StreamHandlers {
   onDelta: (textDelta: string) => void;
   onDone: (fullText: string) => void;
   onError: (err: Error) => void;
+  onUsage?: (usage: ProxyUsageSnapshot) => void;
 }
 
 export function makeClient(cfg: AppConfig): Anthropic {

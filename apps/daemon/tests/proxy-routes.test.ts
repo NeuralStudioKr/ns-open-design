@@ -71,6 +71,47 @@ describe('API proxy routes', () => {
     );
   });
 
+  it('forwards Anthropic upstream usage as proxy usage SSE before end', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'event: message_start',
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":120,"output_tokens":0}}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}',
+        '',
+        'event: message_delta',
+        'data: {"type":"message_delta","usage":{"output_tokens":15}}',
+        '',
+        'event: message_stop',
+        'data: {"type":"message_stop"}',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/anthropic/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.anthropic.com',
+        apiKey: 'sk-ant',
+        model: 'claude-test',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":120');
+    expect(text).toContain('"output_tokens":15');
+    expect(text).toContain('"model":"claude-test"');
+    expect(text).toContain('event: end');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
+  });
+
   it.each([
     {
       provider: 'anthropic',

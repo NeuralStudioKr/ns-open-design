@@ -1,4 +1,5 @@
 import type { ApiProtocol, AppConfig } from "../types";
+import { pinTeamverExecutionConfig } from "./branding/pinnedExecutionConfig";
 
 export type TeamverRuntimeConfig = {
   configured: boolean;
@@ -39,12 +40,15 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
   const baseUrl = runtime.baseUrl?.trim() || config.baseUrl;
   const model = runtime.model?.trim() || config.model;
 
+  pinTeamverExecutionConfig({ apiKey, apiProtocol, baseUrl, model });
+
   if (
     config.apiKey === apiKey
     && config.apiProtocol === apiProtocol
     && config.baseUrl === baseUrl
     && config.model === model
     && config.mode === "api"
+    && Object.keys(config.apiProtocolConfigs ?? {}).length === 0
   ) {
     return config;
   }
@@ -56,5 +60,6 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
     apiProtocol,
     baseUrl,
     model,
+    apiProtocolConfigs: {},
   };
 }

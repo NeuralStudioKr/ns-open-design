@@ -642,6 +642,21 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     };
   }
 
+  const sendProxyUsageIfPresent = (
+    sse: ReturnType<typeof createSseResponse>,
+    inputTokens: number,
+    outputTokens: number,
+    model?: string,
+  ) => {
+    if (inputTokens > 0 || outputTokens > 0) {
+      sse.send('usage', {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        model,
+      });
+    }
+  };
+
   // ---- Reusable base-chat streamers (text only — no tool loop) -------------
   // Both the native /api/proxy/{anthropic,google}/stream routes AND the
   // AIHubMix model-routed proxy call these. Only the resolved url + headers
@@ -699,6 +714,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
 
       let ended = false;
+      let inputTokens = 0;
+      let outputTokens = 0;
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ event, data }: any) => {
         if (!data) return false;
@@ -708,22 +725,37 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           ended = true;
           return true;
         }
+        if (event === 'message_start' && data.message?.usage) {
+          const usage = data.message.usage;
+          if (typeof usage.input_tokens === 'number') inputTokens = usage.input_tokens;
+          if (typeof usage.output_tokens === 'number') outputTokens = usage.output_tokens;
+        }
+        if (event === 'message_delta' && data.usage) {
+          if (typeof data.usage.output_tokens === 'number') {
+            outputTokens = data.usage.output_tokens;
+          }
+        }
         if (event === 'content_block_delta' && typeof data.delta?.text === 'string') {
           guard.sendDelta(data.delta.text);
           if (guard.contaminated) {
+            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
             sse.send('end', {});
             ended = true;
             return true;
           }
         }
         if (event === 'message_stop') {
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
           sse.send('end', {});
           ended = true;
           return true;
         }
         return false;
       });
-      if (!ended) sse.send('end', {});
+      if (!ended) {
+        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
+        sse.send('end', {});
+      }
       sse.end();
     } catch (err: any) {
       console.error(`[${opts.logTag}] internal error: ${err.message}`);
@@ -1027,9 +1059,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
 
       let ended = false;
+      let inputTokens = 0;
+      let outputTokens = 0;
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ payload, data }: any) => {
         if (payload === '[DONE]') {
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
           return true;
@@ -1041,10 +1076,16 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           ended = true;
           return true;
         }
+        if (data.usage && typeof data.usage === 'object') {
+          const usage = data.usage;
+          if (typeof usage.prompt_tokens === 'number') inputTokens = usage.prompt_tokens;
+          if (typeof usage.completion_tokens === 'number') outputTokens = usage.completion_tokens;
+        }
         const delta = extractOpenAIText(data);
         if (delta) { 
           guard.sendDelta(delta); 
           if (guard.contaminated) { 
+            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
             sse.send('end', {}); 
             ended = true; 
             return true; 
@@ -1052,7 +1093,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         return false;
       });
-      if (!ended) sse.send('end', {});
+      if (!ended) {
+        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+        sse.send('end', {});
+      }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:openai] internal error: ${err.message}`);

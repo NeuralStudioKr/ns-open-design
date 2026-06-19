@@ -115,6 +115,23 @@ export async function streamProxyEndpoint(
           return;
         }
 
+        if (parsed.event === 'usage') {
+          const inputTokens = Number(parsed.data.input_tokens ?? parsed.data.inputTokens ?? 0);
+          const outputTokens = Number(parsed.data.output_tokens ?? parsed.data.outputTokens ?? 0);
+          const model =
+            typeof parsed.data.model === 'string' && parsed.data.model.trim()
+              ? parsed.data.model.trim()
+              : undefined;
+          if (Number.isFinite(inputTokens) && Number.isFinite(outputTokens)) {
+            handlers.onUsage?.({
+              inputTokens: Math.max(0, inputTokens),
+              outputTokens: Math.max(0, outputTokens),
+              model,
+            });
+          }
+          continue;
+        }
+
         if (parsed.event === 'end') {
           handlers.onDone(acc);
           return;
