@@ -94,7 +94,52 @@ def test_ensure_project_access_rejects_deleted_project():
 
 
 @pytest.mark.asyncio
-async def test_check_project_access_returns_s3_prefix_header(monkeypatch):
+async def test_areactivate_by_od_id_restores_deleted_project(monkeypatch: pytest.MonkeyPatch) -> None:
+    db = AsyncMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    deleted = MagicMock()
+    deleted.status = "deleted"
+    deleted.title = "Old"
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=deleted),
+    )
+
+    row = await design_project_crud.areactivate_by_od_id(
+        db,
+        od_project_id="od1",
+        title="  New title  ",
+    )
+
+    assert row is deleted
+    assert row.status == "active"
+    assert row.title == "New title"
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_areactivate_by_od_id_noops_for_active_project(monkeypatch: pytest.MonkeyPatch) -> None:
+    db = AsyncMock()
+    active = MagicMock()
+    active.status = "active"
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=active),
+    )
+
+    row = await design_project_crud.areactivate_by_od_id(db, od_project_id="od1")
+    assert row is active
+    db.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_check_project_access_returns_s3_prefix_header(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.routers import projects as projects_router
 
     row = MagicMock()

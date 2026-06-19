@@ -4,11 +4,13 @@ import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.auth_context import AuthContext
 from app.db.crud import design_project_crud
+from app.errors import ForbiddenError
 from app.routers import projects as projects_router
 from app.schemas.design_project import CreateDesignProjectBody
 
@@ -78,3 +80,167 @@ async def test_create_project_succeeds_when_sync_fails(monkeypatch: pytest.Monke
         db,
     )
     assert response.od_project_id == "od1"
+
+
+@pytest.mark.asyncio
+async def test_create_project_is_idempotent_for_existing_active_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _project_row()
+    db = AsyncMock()
+    create = AsyncMock()
+    sync = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=row),
+    )
+    monkeypatch.setattr(design_project_crud, "acreate_project", create)
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+        _auth(),
+        db,
+    )
+
+    assert response.od_project_id == "od1"
+    create.assert_not_awaited()
+    db.commit.assert_not_awaited()
+    sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_project_reactivates_soft_deleted_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted = _project_row()
+    deleted.status = "deleted"
+    reactivated = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    sync = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=deleted),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "areactivate_by_od_id",
+        AsyncMock(return_value=reactivated),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+        _auth(),
+        db,
+    )
+
+    assert response.status == "active"
+    db.commit.assert_awaited_once()
+    sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_project_rejects_existing_row_for_other_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _project_row()
+    row.owner_user_id = "u2"
+    db = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=row),
+    )
+
+    with pytest.raises(ForbiddenError):
+        await projects_router.create_project(
+            CreateDesignProjectBody(odProjectId="od1"),
+            _auth(),
+            db,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_project_reactivates_soft_deleted_row_after_integrity_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted = _project_row()
+    deleted.status = "deleted"
+    reactivated = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    sync = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(side_effect=[None, deleted]),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "areactivate_by_od_id",
+        AsyncMock(return_value=reactivated),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(side_effect=IntegrityError("insert", {}, Exception())),
+    )
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+        _auth(),
+        db,
+    )
+
+    assert response.status == "active"
+    db.rollback.assert_awaited_once()
+    db.commit.assert_awaited_once()
+    sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_project_returns_existing_row_after_integrity_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    sync = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(side_effect=[None, row]),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(side_effect=IntegrityError("insert", {}, Exception())),
+    )
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1"),
+        _auth(),
+        db,
+    )
+
+    assert response.od_project_id == "od1"
+    db.rollback.assert_awaited_once()
+    sync.assert_awaited_once()

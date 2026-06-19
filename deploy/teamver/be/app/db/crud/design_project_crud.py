@@ -123,3 +123,21 @@ async def asoft_delete_by_od_id(
     await db.flush()
     await db.refresh(row)
     return row
+
+
+async def areactivate_by_od_id(
+    db: AsyncSession,
+    *,
+    od_project_id: str,
+    title: str | None = None,
+) -> DesignProject | None:
+    row = await aget_project_by_od_id(db, od_project_id=od_project_id)
+    if row is None or row.status != "deleted":
+        return row
+    row.status = "active"
+    cleaned_title = (title or "").strip()
+    if cleaned_title:
+        row.title = cleaned_title
+    await db.flush()
+    await db.refresh(row)
+    return row

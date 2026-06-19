@@ -68,35 +68,48 @@ def _output_to_response(row: DesignOutput) -> DesignOutputResponse:
     )
 
 
-def _ensure_project_access(row: DesignProject, auth: AuthContext) -> None:
+def _ensure_project_ownership(row: DesignProject, auth: AuthContext) -> None:
     workspace_id = require_workspace_context(auth)
     if row.workspace_id != workspace_id:
         raise ForbiddenError("workspace_mismatch")
     if row.owner_user_id != auth.user_id:
         raise ForbiddenError("project_owner_mismatch")
+
+
+def _ensure_project_access(row: DesignProject, auth: AuthContext) -> None:
+    _ensure_project_ownership(row, auth)
     if row.status != "active":
         raise NotFoundError("project_not_found")
 
 
-@router.post("", response_model=DesignProjectResponse)
-async def create_project(
-    body: CreateDesignProjectBody,
-    auth: Annotated[AuthContext, Depends(require_auth)],
-    db: AsyncSession = Depends(get_async_session),
-) -> DesignProjectResponse:
-    workspace_id = require_workspace_context(auth)
-    try:
-        row = await design_project_crud.acreate_project(
+async def _resolve_existing_registry_row(
+    db: AsyncSession,
+    *,
+    row: DesignProject,
+    od_project_id: str,
+    title: str | None,
+    auth: AuthContext,
+) -> DesignProject:
+    _ensure_project_ownership(row, auth)
+    if row.status == "deleted":
+        reactivated = await design_project_crud.areactivate_by_od_id(
             db,
-            workspace_id=workspace_id,
-            owner_user_id=auth.user_id,
-            od_project_id=body.od_project_id,
-            title=body.title,
+            od_project_id=od_project_id,
+            title=title,
         )
+        if reactivated is None:
+            raise NotFoundError("project_not_found")
         await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise ApiError(409, "project_already_registered", code="conflict") from exc
+        return reactivated
+    return row
+
+
+async def _sync_daemon_scratch_after_registry(
+    row: DesignProject,
+    *,
+    auth: AuthContext,
+) -> None:
+    workspace_id = require_workspace_context(auth)
     try:
         await OdDaemonClient().sync_scratch_project(
             row.od_project_id,
@@ -112,6 +125,69 @@ async def create_project(
             row.od_project_id,
             exc_info=True,
         )
+
+
+@router.post("", response_model=DesignProjectResponse)
+async def create_project(
+    body: CreateDesignProjectBody,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> DesignProjectResponse:
+    workspace_id = require_workspace_context(auth)
+    od_project_id = (body.od_project_id or "").strip() or None
+
+    if od_project_id:
+        existing = await design_project_crud.aget_project_by_od_id(
+            db,
+            od_project_id=od_project_id,
+        )
+        if existing is not None:
+            row = await _resolve_existing_registry_row(
+                db,
+                row=existing,
+                od_project_id=od_project_id,
+                title=body.title,
+                auth=auth,
+            )
+            await _sync_daemon_scratch_after_registry(row, auth=auth)
+            return _to_response(row)
+
+    try:
+        row = await design_project_crud.acreate_project(
+            db,
+            workspace_id=workspace_id,
+            owner_user_id=auth.user_id,
+            od_project_id=od_project_id,
+            title=body.title,
+        )
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if od_project_id:
+            raced = await design_project_crud.aget_project_by_od_id(
+                db,
+                od_project_id=od_project_id,
+            )
+            if raced is not None:
+                try:
+                    row = await _resolve_existing_registry_row(
+                        db,
+                        row=raced,
+                        od_project_id=od_project_id,
+                        title=body.title,
+                        auth=auth,
+                    )
+                except ForbiddenError:
+                    raise ApiError(
+                        409,
+                        "project_already_registered",
+                        code="conflict",
+                    ) from exc
+                await _sync_daemon_scratch_after_registry(row, auth=auth)
+                return _to_response(row)
+        raise ApiError(409, "project_already_registered", code="conflict") from exc
+
+    await _sync_daemon_scratch_after_registry(row, auth=auth)
     return _to_response(row)
 
 
