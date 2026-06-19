@@ -62,6 +62,10 @@ export MAIN_BE_DATABASE_URL='postgresql://${postgres_user}:<password>@${postgres
 # design-api project ref (OD project id from /api/v1/projects list):
 export TEAMVER_OD_PROJECT_ID='<DPRJ_... or od project id>'
 
+# D-5/D-7 publish — optional explicit artifact (deck/index.html 등):
+# export TEAMVER_PUBLISH_ARTIFACT_FILE='deck/index.html'
+# export TEAMVER_PUBLISH_FORMATS='["html","zip"]'
+
 # D-6a only — slide-friendly Drive asset (txt/png/svg). D-6b policy probe 는 asset 불필요.
 export TEAMVER_DRIVE_IMPORT_ASSET_ID='<AST-... from Teamver Drive>'
 export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
@@ -70,6 +74,11 @@ export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 export TEAMVER_S3_BUCKET='${s3_bucket}'
 
 # S-8c (slide/API chat) — cookie 만 있으면 runtime-config configured=true + model 검증.
+# D-7 — publish 201 시 outputs[].driveAssetId non-empty 검증.
+# D-8 — publish 207 partial 시 ready output 의 driveAssetId 도 non-empty 검증.
+# publish 실패 시 outputs[].errorCode prefix 로 phase 식별 (loop 177):
+#   drive_upload_failed_* → upload-request, drive_presigned_put_failed_* → S3 PUT,
+#   drive.confirm_* / drive_confirm_failed_* → confirm 단계.
 
 # Optional:
 # export TEAMVER_COOKIE_USER_B='teamver_access_token=<user B>'   # isolation 403

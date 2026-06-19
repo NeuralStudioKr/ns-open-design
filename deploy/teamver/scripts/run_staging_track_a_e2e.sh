@@ -278,12 +278,18 @@ elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
   skipped "D-5 publish — TEAMVER_COOKIE 필요"
 else
   publish_tmp="$(mktemp)"
+  publish_body='{}'
+  if [[ -n "${TEAMVER_PUBLISH_ARTIFACT_FILE:-}" ]]; then
+    publish_body="{\"artifactFile\":\"${TEAMVER_PUBLISH_ARTIFACT_FILE}\",\"formats\":[\"html\",\"zip\"]}"
+  elif [[ -n "${TEAMVER_PUBLISH_FORMATS:-}" ]]; then
+    publish_body="{\"formats\":${TEAMVER_PUBLISH_FORMATS}}"
+  fi
   # URL must stay last so curl_code-style mocks (which take the trailing
   # positional as the URL) keep working.
   publish_code="$(curl -s -o "$publish_tmp" -w '%{http_code}' --max-time 30 \
     -X POST -H "Content-Type: application/json" \
     -H "Cookie: ${TEAMVER_COOKIE}" \
-    --data '{}' \
+    --data "$publish_body" \
     "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/publish" 2>/dev/null || echo 000)"
   publish_resp="$(cat "$publish_tmp" 2>/dev/null || true)"
   rm -f "$publish_tmp"
@@ -312,8 +318,18 @@ else
           | grep -Eo '"errorCode"\s*:\s*"[^"]+"' \
           | head -n3 \
           | tr '\n' ' ')"
+        ready_asset="$(printf '%s' "$publish_resp" \
+          | grep -Eo '"driveAssetId"\s*:\s*"[^"]+"' \
+          | grep -Ev '"driveAssetId"\s*:\s*""' \
+          | head -n1 || true)"
         if [[ "$ready_n" -ge 1 && -n "$failed_codes" ]]; then
           passed "D-7 publish 207 partial ok — ${failed_codes}"
+          # loop 181 D-8 — partial success must still land at least one Drive asset.
+          if [[ -n "$ready_asset" ]]; then
+            passed "D-8 publish 207 ready output has driveAssetId"
+          else
+            failed "D-8 publish 207 인데 ready output 의 driveAssetId 가 비어있음"
+          fi
         else
           failed "D-7 publish 207 인데 ready/failed 한쪽이 비어있음 — body=${publish_resp:0:200}"
         fi

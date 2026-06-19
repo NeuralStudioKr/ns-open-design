@@ -60,13 +60,36 @@ EC2 IAM instance profile이 버킷에 접근 가능해야 합니다 (`terraform 
 
 ---
 
+### Production Phase 0 (09)
+
+Terraform prod apply 후 EC2에서:
+
+```bash
+cd deploy/teamver
+cp .env.production.example .env.production   # secrets: OD_API_TOKEN, JWT, POSTGRES_PASSWD, LLM keys
+bash scripts/run_production_phase0_activate.sh --from-terraform
+bash deploy.sh --production --rds
+bash scripts/run_post_deploy_track_a.sh --production --rds --smoke
+```
+
+S3/RDS env만 출력:
+
+```bash
+bash scripts/print_production_s3_env.sh --from-terraform
+```
+
+**접속:** EIP 없음 — `terraform output ssm_command` (prod state, `backend-prod.hcl` init 후).
+
+---
+
 ## 1. Terraform (선행)
 
 ```bash
 cd ns-teamver-devops/terraform/services/teamver-design
-export TF_VAR_teamver_aws_rds1_pass='...'
+export TF_VAR_teamver_aws_rds1_pass='...'   # prod 전용 RDS master
 terraform init -backend-config=backend-prod.hcl -reconfigure
-terraform apply -var-file=prod.terraform.tfvars
+terraform plan -var-file=prod.terraform.tfvars -out=tfplan-prod
+terraform apply tfplan-prod
 ```
 
 RDS: Terraform apply로 **전용 인스턴스** + `teamver_design_production` 생성. `CREATE DATABASE` 수동 불필요.
@@ -77,10 +100,11 @@ RDS: Terraform apply로 **전용 인스턴스** + `teamver_design_production` �
 
 ## 2. Production EC2 앱 배포
 
-**권장:** `t3.large`, EBS data 50GB (`OD_DATA_DIR`)
+**권장:** **`t3.xlarge`** (staging `t3.large` 대비), EBS data 80GB (`OD_DATA_DIR`)
 
 ```bash
-# EC2 (SSM 또는 ssh)
+# EC2 (SSM — terraform output ssm_command)
+aws ssm start-session --region ap-northeast-2 --target <instance-id>
 sudo mkdir -p /opt/teamver-design && sudo chown ubuntu:ubuntu /opt/teamver-design
 cd /opt/teamver-design
 # git pull ns-open-design (vendor/teamver 포함 권장 — [08 vendor·배포](../../../docs-teamver/08_Teamver_SDK_vendor와_배포.md))

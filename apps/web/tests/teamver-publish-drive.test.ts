@@ -26,6 +26,7 @@ vi.mock("../src/teamver/teamverDesignAccess", () => ({
 
 import { NetworkError } from "@teamver/app-sdk";
 import {
+  formatPublishErrorCodeForUser,
   formatPublishErrorMessage,
   formatTeamverDesignErrorMessage,
   parsePublishFailureFromError,
@@ -223,7 +224,31 @@ describe("parsePublishFailureFromError", () => {
   });
 });
 
+describe("formatPublishErrorCodeForUser", () => {
+  it("maps loop-177 phase codes to user hints", () => {
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/session expired/i);
+    expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/storage upload failed/i);
+    expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/finalize the upload/i);
+    expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/Open a slide file/i);
+  });
+
+  it("falls back to raw code for unknown errors", () => {
+    expect(formatPublishErrorCodeForUser("custom_operator_code")).toBe("custom_operator_code");
+  });
+});
+
 describe("formatTeamverDesignErrorMessage", () => {
+  it("maps 502 publish body codes to user hints", () => {
+    const err = new NetworkError({
+      message: "bad gateway",
+      status: 502,
+      responseBody: {
+        outputs: [{ publishStatus: "failed", errorCode: "drive_presigned_put_failed_502" }],
+      },
+    });
+    expect(formatTeamverDesignErrorMessage(err)).toMatch(/storage upload failed/i);
+  });
+
   it("uses custom fallback for generic errors", () => {
     expect(
       formatTeamverDesignErrorMessage(new Error("publish_failed"), "Try publish first."),
@@ -232,7 +257,7 @@ describe("formatTeamverDesignErrorMessage", () => {
 });
 
 describe("formatPublishErrorMessage", () => {
-  it("maps 502 publish body to error code", () => {
+  it("maps 502 publish body to user hint", () => {
     const err = new NetworkError({
       message: "bad gateway",
       status: 502,
@@ -240,7 +265,7 @@ describe("formatPublishErrorMessage", () => {
         outputs: [{ publishStatus: "failed", errorCode: "od_daemon_export_failed" }],
       },
     });
-    expect(formatPublishErrorMessage(err)).toBe("od_daemon_export_failed");
+    expect(formatPublishErrorMessage(err)).toMatch(/export this project/i);
   });
 
   it("falls back for generic errors", () => {

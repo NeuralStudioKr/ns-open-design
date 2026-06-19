@@ -517,6 +517,10 @@ Browser
 
 > **loop 178 회귀 안전망.** `D-7 publish body outputs[].driveAssetId 채워짐` E2E 가 staging 에서 실제 Drive 업로드 누락(201 + 빈 `driveAssetId`)을 자동으로 검출. fixture 회귀 시나리오 *3b — empty driveAssetId* 가 mock-curl 단계에서도 동일 가드를 유지.
 
+> **loop 181 D-8.** 207 partial 응답에서도 ready output 의 `driveAssetId` 가 non-empty 여야 통과. zip/html 중 하나만 실패해도 성공한 format 은 Drive asset ID 를 반환해야 한다.
+
+> **loop 180 FE UX.** embed publish 실패 toast 는 `formatPublishErrorCodeForUser()` 를 통해 phase code 를 짧은 조치 힌트로 변환한다 (예: `drive_upload_failed_403` → "Drive session expired — sign in…").
+
 ### 6.8 Main FE Drive UX (P4-3)
 
 - Design embed publish toast → `https://{main}/drive?asset={drive_asset_id}`

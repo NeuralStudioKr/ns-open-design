@@ -100,16 +100,55 @@ export function resolvePublishErrorCode(result: TeamverPublishDriveResult): stri
   return failed?.errorCode ?? "publish_failed";
 }
 
+/**
+ * loop 180 — Map loop-177 phase-tagged publish error codes to short user-facing
+ * hints shown in FileViewer toasts. Raw codes are kept as fallback for unknown
+ * operator-only cases.
+ */
+export function formatPublishErrorCodeForUser(code: string): string {
+  const trimmed = code.trim();
+  if (!trimmed) return "Publish failed — check your session and try again.";
+
+  const exact: Record<string, string> = {
+    teamver_workspace_required: "Select a Teamver workspace, then try again.",
+    teamver_design_client_unavailable: "Teamver Design is still loading — refresh and retry.",
+    artifact_file_required: "Open a slide file in the editor, then publish again.",
+    od_daemon_export_failed: "Could not export this project — save your work and retry.",
+    publish_failed: "Publish failed — check your session and try again.",
+    publish_all_failed: "Publish failed — check your session and try again.",
+    teamver_workspace_pending: "Teamver workspace is still connecting — wait a moment and retry.",
+    drive_publish_targets_failed: "Could not load Drive folders — use Browse or retry.",
+  };
+  if (exact[trimmed]) return exact[trimmed];
+
+  if (trimmed.startsWith("drive_upload_failed_403")) {
+    return "Drive session expired — sign in to Teamver again, then retry publish.";
+  }
+  if (trimmed.startsWith("drive_upload_failed_")) {
+    return "Teamver Drive rejected the upload — check folder permissions or pick another destination.";
+  }
+  if (trimmed.startsWith("drive_presigned_put_failed_")) {
+    return "Drive storage upload failed — wait a moment and retry.";
+  }
+  if (trimmed.startsWith("drive_confirm_failed_") || trimmed.startsWith("drive.confirm")) {
+    return "Drive could not finalize the upload — retry or choose another folder.";
+  }
+
+  return trimmed;
+}
+
 /** User-facing design-api error detail (502 publish body, Error.message, or fallback). */
 export function formatTeamverDesignErrorMessage(
   err: unknown,
   fallback = "Check your session and try again.",
 ): string {
   const from502 = parsePublishFailureFromError(err);
-  if (from502) return resolvePublishErrorCode(from502);
+  if (from502) return formatPublishErrorCodeForUser(resolvePublishErrorCode(from502));
   if (err instanceof Error) {
     const message = err.message.trim();
-    if (message && message !== "publish_failed") return message;
+    if (message && message !== "publish_failed") {
+      return formatPublishErrorCodeForUser(message);
+    }
   }
   return fallback;
 }

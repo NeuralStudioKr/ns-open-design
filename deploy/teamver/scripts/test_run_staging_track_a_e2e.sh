@@ -308,6 +308,153 @@ if PATH="$MOCK_BIN:$PATH" \
 fi
 echo "✓ mock-curl D-7 empty driveAssetId scenario fails"
 
+# 3c) loop 181 — publish 207 partial with ready driveAssetId → D-7 + D-8 pass.
+cat > "$MOCK_BIN/curl" <<'MOCK'
+#!/usr/bin/env bash
+URL=""
+WRITE_OUT=""
+OUT_FILE=""
+POST_DATA=""
+for ((i=1; i<=$#; i++)); do
+  case "${!i}" in
+    -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
+    -o) j=$((i+1)); OUT_FILE="${!j}" ;;
+    --data) j=$((i+1)); POST_DATA="${!j}" ;;
+  esac
+done
+for a in "$@"; do URL="$a"; done
+emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
+emit_body() {
+  if [[ -n "$OUT_FILE" ]]; then
+    printf '%s' "$1" > "$OUT_FILE"
+  else
+    printf '%s' "$1"
+  fi
+}
+case "$URL" in
+  *"/api/auth/session")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+    fi
+    ;;
+  *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
+  *"/api/v1/runtime-config")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"configured":true,"model":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/v1/projects/"*"/publish")
+    emit_code 207
+    emit_body '{"projectId":"proj-e2e-1","outputs":[{"id":"DOUT-HTML","kind":"html","driveAssetId":"AST-PARTIAL","filename":"Deck.html","publishStatus":"ready"},{"kind":"zip","publishStatus":"failed","errorCode":"od_daemon_export_failed"}]}'
+    ;;
+  *"/api/v1/projects/"*"/import-drive")
+    if [[ "$POST_DATA" == *"clip.mp4"* ]]; then
+      emit_code 502
+      emit_body '{"projectId":"proj-e2e-1","imported":[],"failed":[{"assetId":"e2e-policy-probe","errorCode":"unsupported_drive_import_file_type"}]}'
+    elif [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 201
+      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.svg","name":"e2e-import.svg","sizeBytes":12,"mimeType":"image/svg+xml"}],"failed":[]}'
+    else
+      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.svg","name":"e2e-import.svg","sizeBytes":12,"mimeType":"image/svg+xml"}],"failed":[]}'
+    fi
+    ;;
+  *"/api/v1/projects/"*"/access") emit_code 403 ;;
+  *) emit_code 200 ;;
+esac
+MOCK
+chmod +x "$MOCK_BIN/curl"
+
+partial_out="$(PATH="$MOCK_BIN:$PATH" \
+  TEAMVER_COOKIE='teamver_access_token=fake' \
+  TEAMVER_INTERNAL_API_KEY='fake-m2m' \
+  TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
+  TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
+  TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.svg' \
+  TEAMVER_COOKIE_USER_B='teamver_access_token=other' \
+  SKIP_DB=1 \
+  bash "$SCRIPT" --staging 2>&1)"
+for needle in \
+  'D-7 publish 207 partial ok' \
+  'D-8 publish 207 ready output has driveAssetId'
+do
+  if ! grep -qF -- "$needle" <<< "$partial_out"; then
+    echo "❌ publish 207 partial scenario missing: $needle"
+    echo "$partial_out"
+    exit 1
+  fi
+done
+echo "✓ mock-curl D-8 publish 207 partial scenario passes"
+
+# 3d) publish 207 with empty ready driveAssetId → fail D-8.
+cat > "$MOCK_BIN/curl" <<'MOCK'
+#!/usr/bin/env bash
+URL=""
+WRITE_OUT=""
+OUT_FILE=""
+for ((i=1; i<=$#; i++)); do
+  case "${!i}" in
+    -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
+    -o) j=$((i+1)); OUT_FILE="${!j}" ;;
+  esac
+done
+for a in "$@"; do URL="$a"; done
+emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
+emit_body() {
+  if [[ -n "$OUT_FILE" ]]; then
+    printf '%s' "$1" > "$OUT_FILE"
+  else
+    printf '%s' "$1"
+  fi
+}
+case "$URL" in
+  *"/api/auth/session")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+    fi
+    ;;
+  *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
+  *"/api/v1/runtime-config")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"configured":true,"model":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/v1/projects/"*"/publish")
+    emit_code 207
+    emit_body '{"projectId":"proj-e2e-1","outputs":[{"kind":"html","driveAssetId":"","publishStatus":"ready"},{"kind":"zip","publishStatus":"failed","errorCode":"od_daemon_export_failed"}]}'
+    ;;
+  *"/api/v1/projects/"*"/import-drive")
+    emit_code 201
+    emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.svg","name":"e2e-import.svg","sizeBytes":12,"mimeType":"image/svg+xml"}],"failed":[]}'
+    ;;
+  *"/api/v1/projects/"*"/access") emit_code 403 ;;
+  *) emit_code 200 ;;
+esac
+MOCK
+chmod +x "$MOCK_BIN/curl"
+
+if PATH="$MOCK_BIN:$PATH" \
+    TEAMVER_COOKIE='teamver_access_token=fake' \
+    TEAMVER_INTERNAL_API_KEY='fake-m2m' \
+    TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
+    TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
+    TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.svg' \
+    SKIP_DB=1 SKIP_DRIVE_IMPORT_POLICY=1 \
+    bash "$SCRIPT" --staging >/dev/null 2>&1; then
+  echo "❌ publish 207 with empty ready driveAssetId must fail D-8"
+  exit 1
+fi
+echo "✓ mock-curl D-8 empty ready driveAssetId scenario fails"
+
 # 4) publish 401 → fail.
 cat > "$MOCK_BIN/curl" <<'MOCK'
 #!/usr/bin/env bash

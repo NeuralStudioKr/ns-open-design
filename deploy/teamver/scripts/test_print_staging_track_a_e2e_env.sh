@@ -19,9 +19,12 @@ for needle in \
   'TEAMVER_INTERNAL_API_KEY=' \
   'MAIN_BE_DATABASE_URL=' \
   'TEAMVER_OD_PROJECT_ID=' \
+  'TEAMVER_PUBLISH_ARTIFACT_FILE=' \
   'TEAMVER_DRIVE_IMPORT_ASSET_ID=' \
   'TEAMVER_DRIVE_IMPORT_FILENAME=' \
   'D-6b policy probe' \
+  'D-7 — publish 201' \
+  'D-8 — publish 207' \
   'run_staging_track_a_e2e.sh'
 do
   if ! grep -q -- "$needle" <<< "$out"; then
