@@ -19,6 +19,15 @@ const listTargetsMock = vi.fn(async (_workspaceId: string, _options?: { limit?: 
     sharedDriveId: "SD-1",
   },
 ]);
+const searchTargetsMock = vi.fn(async (_workspaceId: string, _query: string, _options?: { limit?: number }) => [
+  {
+    id: "shared:SD-2:FLD-REMOTE",
+    label: "Marketing / Launch exports",
+    description: "Team drive folder search result",
+    folderId: "FLD-REMOTE",
+    sharedDriveId: "SD-2",
+  },
+]);
 const publishMock = vi.fn(async (_args: unknown) => ({
   projectId: "DPRJ-1",
   partial: false,
@@ -46,6 +55,12 @@ vi.mock("../src/teamver/designBffClient", () => ({
 vi.mock("../src/teamver/drivePublishTargets", () => ({
   listTeamverDrivePublishTargets: (workspaceId: string, options?: { limit?: number }) =>
     listTargetsMock(workspaceId, options),
+  searchTeamverDrivePublishTargets: (
+    workspaceId: string,
+    query: string,
+    options?: { limit?: number },
+  ) => searchTargetsMock(workspaceId, query, options),
+  TEAMVER_DRIVE_PUBLISH_SEARCH_MIN: 2,
 }));
 
 vi.mock("../src/teamver/publishToDrive", () => ({
@@ -61,6 +76,7 @@ describe("TeamverPublishDriveMenuItem", () => {
     cleanup();
     getWorkspaceMock.mockClear();
     listTargetsMock.mockClear();
+    searchTargetsMock.mockClear();
     publishMock.mockClear();
   });
 
@@ -110,5 +126,45 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect.objectContaining({ driveAssetId: "AST-1" }),
       { partial: false },
     );
+  });
+
+  it("publishes to a folder returned by server-side Drive search", async () => {
+    const onCloseMenu = vi.fn();
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={onCloseMenu}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    const modal = screen.getByTestId("teamver-drive-picker-modal");
+    fireEvent.change(within(modal).getByRole("textbox", { name: "Search Drive folders" }), {
+      target: { value: "launch" },
+    });
+
+    await waitFor(() => {
+      expect(searchTargetsMock).toHaveBeenCalledWith("ws-1", "launch", { limit: 80 });
+      expect(within(modal).getByText("Marketing / Launch exports")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("teamver-drive-picker-target-shared:SD-2:FLD-REMOTE"));
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith({
+        projectId: "od-1",
+        artifactFile: "deck/index.html",
+        formats: ["html", "zip"],
+        folderId: "FLD-REMOTE",
+        sharedDriveId: "SD-2",
+      });
+    });
   });
 });

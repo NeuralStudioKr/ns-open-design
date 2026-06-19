@@ -31,7 +31,13 @@ describe("teamver embed execution config lock", () => {
       mode: "daemon",
       agentId: "claude",
       model: "gpt-4o",
-      apiProtocolConfigs: { anthropic: { model: "claude-opus-4" } },
+      apiProtocolConfigs: {
+        anthropic: {
+          apiKey: "sk-shadow",
+          baseUrl: "https://api.anthropic.com",
+          model: "claude-opus-4",
+        },
+      },
     });
 
     expect(locked.mode).toBe("api");
@@ -46,7 +52,13 @@ describe("teamver embed execution config lock", () => {
       {
         ...DEFAULT_CONFIG,
         mode: "daemon",
-        apiProtocolConfigs: { openai: { model: "gpt-4o" } },
+        apiProtocolConfigs: {
+          openai: {
+            apiKey: "sk-shadow",
+            baseUrl: "https://api.openai.com/v1",
+            model: "gpt-4o",
+          },
+        },
       },
       {
         configured: true,

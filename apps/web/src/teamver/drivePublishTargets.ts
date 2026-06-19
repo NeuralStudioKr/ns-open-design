@@ -1,5 +1,11 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
+import {
+  TEAMVER_DRIVE_IMPORT_SEARCH_MIN,
+  listTeamverDriveImportScopes,
+  searchTeamverDriveImportRows,
+  type TeamverDriveImportScope,
+} from "./driveImportList";
 
 type RawFolder = {
   folderId?: string | null;
@@ -31,6 +37,7 @@ export type TeamverDrivePublishTarget = {
 };
 
 const TARGET_LIMIT = 28;
+export const TEAMVER_DRIVE_PUBLISH_SEARCH_MIN = TEAMVER_DRIVE_IMPORT_SEARCH_MIN;
 
 function apiUrl(path: string): string {
   return `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}${path}`;
@@ -222,4 +229,92 @@ export async function listTeamverDrivePublishTargets(
       sharedDriveId: null,
     },
   ];
+}
+
+function scopeRootTarget(scope: TeamverDriveImportScope): TeamverDrivePublishTarget {
+  if (scope.mode === "shared") {
+    return {
+      id: `shared:${scope.sharedDriveId}`,
+      label: scope.label,
+      description: "Team drive root",
+      folderId: scope.folderId,
+      sharedDriveId: scope.sharedDriveId,
+    };
+  }
+  return {
+    id: "personal-root",
+    label: scope.label,
+    description: "Personal drive root",
+    folderId: scope.folderId,
+    sharedDriveId: null,
+  };
+}
+
+function targetDedupeKey(target: TeamverDrivePublishTarget): string {
+  return `${target.sharedDriveId ?? "personal"}:${target.folderId ?? "root"}`;
+}
+
+function dedupePublishTargets(targets: TeamverDrivePublishTarget[]): TeamverDrivePublishTarget[] {
+  const seen = new Set<string>();
+  const out: TeamverDrivePublishTarget[] = [];
+  for (const target of targets) {
+    const key = targetDedupeKey(target);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(target);
+  }
+  return out;
+}
+
+export async function searchTeamverDrivePublishTargets(
+  workspaceId: string,
+  query: string,
+  options: { limit?: number } = {},
+): Promise<TeamverDrivePublishTarget[]> {
+  const trimmedWorkspaceId = workspaceId.trim();
+  const trimmedQuery = query.trim();
+  if (!trimmedWorkspaceId || trimmedQuery.length < TEAMVER_DRIVE_PUBLISH_SEARCH_MIN) return [];
+
+  const limit = Math.max(1, Math.min(options.limit ?? 80, 120));
+  const scopes = await listTeamverDriveImportScopes(trimmedWorkspaceId);
+  const scopeBySharedDriveId = new Map(
+    scopes
+      .filter((scope): scope is Extract<TeamverDriveImportScope, { mode: "shared" }> => scope.mode === "shared")
+      .map((scope) => [scope.sharedDriveId, scope]),
+  );
+  const lowerQuery = trimmedQuery.toLowerCase();
+  const rootMatches = scopes
+    .filter((scope) => scope.label.toLowerCase().includes(lowerQuery))
+    .map(scopeRootTarget);
+
+  const searchGroups = await Promise.allSettled(
+    scopes.map((scope) =>
+      searchTeamverDriveImportRows({
+        workspaceId: trimmedWorkspaceId,
+        query: trimmedQuery,
+        sharedDriveId: scope.mode === "shared" ? scope.sharedDriveId : null,
+        limit,
+      }),
+    ),
+  );
+  const folderTargets: TeamverDrivePublishTarget[] = [];
+  for (const group of searchGroups) {
+    if (group.status !== "fulfilled") continue;
+    for (const row of group.value) {
+      if (row.kind !== "folder") continue;
+      const sharedDriveId = row.sharedDriveId ?? null;
+      const scope = sharedDriveId ? scopeBySharedDriveId.get(sharedDriveId) : null;
+      folderTargets.push({
+        id: sharedDriveId
+          ? `shared:${sharedDriveId}:${row.folderId}`
+          : `personal:${row.folderId}`,
+        label: scope ? `${scope.label} / ${row.name}` : row.name,
+        description: sharedDriveId ? "Team drive folder search result" : "My Drive folder search result",
+        folderId: row.folderId,
+        sharedDriveId,
+      });
+    }
+  }
+
+  return dedupePublishTargets([...rootMatches, ...folderTargets]).slice(0, limit);
 }

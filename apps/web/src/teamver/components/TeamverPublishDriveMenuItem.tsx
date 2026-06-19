@@ -4,6 +4,7 @@ import { isTeamverEmbedMode } from "../designApiBase";
 import { getDesignBffClient } from "../designBffClient";
 import {
   listTeamverDrivePublishTargets,
+  searchTeamverDrivePublishTargets,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
 import { TeamverDrivePickerModal } from "./TeamverDrivePickerModal";
@@ -30,6 +31,7 @@ export function TeamverPublishDriveMenuItem({
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [loadingTargets, setLoadingTargets] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [targets, setTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [selectedTargetId, setSelectedTargetId] = useState<string>("personal-default");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -41,6 +43,7 @@ export function TeamverPublishDriveMenuItem({
     void (async () => {
       try {
         const workspaceId = await getDesignBffClient()?.workspaceStore?.get();
+        if (!canceled) setWorkspaceId(workspaceId?.trim() || null);
         const nextTargets = workspaceId
           ? await listTeamverDrivePublishTargets(workspaceId, { limit: 200 })
           : [];
@@ -61,6 +64,22 @@ export function TeamverPublishDriveMenuItem({
   const selectedTarget = useMemo(
     () => targets.find((target) => target.id === selectedTargetId) ?? null,
     [selectedTargetId, targets],
+  );
+
+  const handleSelectTarget = useCallback((target: TeamverDrivePublishTarget) => {
+    setTargets((current) => {
+      if (current.some((item) => item.id === target.id)) return current;
+      return [...current, target];
+    });
+    setSelectedTargetId(target.id);
+  }, []);
+
+  const handleSearchTargets = useCallback(
+    async (query: string) => {
+      if (!workspaceId) return [];
+      return searchTeamverDrivePublishTargets(workspaceId, query, { limit: 80 });
+    },
+    [workspaceId],
   );
 
   const handlePublish = useCallback(async () => {
@@ -126,7 +145,8 @@ export function TeamverPublishDriveMenuItem({
         targets={targets}
         selectedTargetId={selectedTargetId}
         loading={loadingTargets}
-        onSelect={setSelectedTargetId}
+        onSearch={workspaceId ? handleSearchTargets : undefined}
+        onSelect={handleSelectTarget}
         onClose={() => setPickerOpen(false)}
       />
       <button

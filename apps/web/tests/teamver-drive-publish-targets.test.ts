@@ -4,7 +4,10 @@ vi.mock("../src/teamver/designApiBase", () => ({
   resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
 }));
 
-import { listTeamverDrivePublishTargets } from "../src/teamver/drivePublishTargets";
+import {
+  listTeamverDrivePublishTargets,
+  searchTeamverDrivePublishTargets,
+} from "../src/teamver/drivePublishTargets";
 
 describe("listTeamverDrivePublishTargets", () => {
   beforeEach(() => {
@@ -148,5 +151,61 @@ describe("listTeamverDrivePublishTargets", () => {
     expect(defaultTargets).toHaveLength(28);
     expect(modalTargets).toHaveLength(33);
     expect(modalTargets.at(-1)?.id).toBe("personal:FLD-31");
+  });
+
+  it("searches publish folders through Drive search APIs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/v2/shared-drive")) {
+          return Response.json({
+            data: [{ id: "SD-1", name: "Product", status: "ACTIVE", workspace_id: "ws-1" }],
+          });
+        }
+        if (url.includes("/api/v2/drive/home/search?") && url.includes("shared_drive_id=SD-1")) {
+          return Response.json({
+            hits: [
+              {
+                hit_type: "folder",
+                folder_id: "FLD-SD-EXPORTS",
+                name: "Exports",
+                shared_drive_id: "SD-1",
+              },
+              { hit_type: "asset", asset_id: "AST-1", name: "Deck.html" },
+            ],
+          });
+        }
+        if (
+          url.includes("/api/drive/list?")
+          && url.includes("search=exports")
+          && !url.includes("shared_drive_id=SD-1")
+        ) {
+          return Response.json({
+            items: [
+              { folder_id: "FLD-MY-EXPORTS", name: "My Exports" },
+              { asset_id: "AST-2", name: "Ignored.pdf" },
+            ],
+          });
+        }
+        return Response.json({ items: [] });
+      }),
+    );
+
+    const targets = await searchTeamverDrivePublishTargets("ws-1", "exports");
+
+    expect(targets).toEqual([
+      expect.objectContaining({
+        id: "personal:FLD-MY-EXPORTS",
+        label: "My Exports",
+        folderId: "FLD-MY-EXPORTS",
+        sharedDriveId: null,
+      }),
+      expect.objectContaining({
+        id: "shared:SD-1:FLD-SD-EXPORTS",
+        label: "Product / Exports",
+        folderId: "FLD-SD-EXPORTS",
+        sharedDriveId: "SD-1",
+      }),
+    ]);
   });
 });

@@ -1,13 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
-import type { TeamverDrivePublishTarget } from "../drivePublishTargets";
+import {
+  TEAMVER_DRIVE_PUBLISH_SEARCH_MIN,
+  type TeamverDrivePublishTarget,
+} from "../drivePublishTargets";
 
 type Props = {
   open: boolean;
   targets: TeamverDrivePublishTarget[];
   selectedTargetId: string;
   loading?: boolean;
-  onSelect: (targetId: string) => void;
+  onSearch?: (query: string) => Promise<TeamverDrivePublishTarget[]>;
+  onSelect: (target: TeamverDrivePublishTarget) => void;
   onClose: () => void;
 };
 
@@ -25,14 +29,52 @@ export function TeamverDrivePickerModal({
   targets,
   selectedTargetId,
   loading = false,
+  onSearch,
   onSelect,
   onClose,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [searchTargets, setSearchTargets] = useState<TeamverDrivePublishTarget[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const filteredTargets = useMemo(
     () => targets.filter((target) => matchesTarget(target, query)),
     [query, targets],
   );
+  const trimmedQuery = query.trim();
+  const searching = Boolean(onSearch && trimmedQuery.length >= TEAMVER_DRIVE_PUBLISH_SEARCH_MIN);
+  const displayedTargets = searching && searchTargets ? searchTargets : filteredTargets;
+
+  useEffect(() => {
+    if (!open || !onSearch || trimmedQuery.length < TEAMVER_DRIVE_PUBLISH_SEARCH_MIN) {
+      setSearchTargets(null);
+      setSearchLoading(false);
+      setSearchError(null);
+      return;
+    }
+    let canceled = false;
+    setSearchLoading(true);
+    setSearchError(null);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const results = await onSearch(trimmedQuery);
+          if (!canceled) setSearchTargets(results);
+        } catch {
+          if (!canceled) {
+            setSearchTargets([]);
+            setSearchError("Drive search failed");
+          }
+        } finally {
+          if (!canceled) setSearchLoading(false);
+        }
+      })();
+    }, 250);
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
+  }, [onSearch, open, trimmedQuery]);
 
   if (!open) return null;
 
@@ -78,10 +120,14 @@ export function TeamverDrivePickerModal({
         </label>
 
         <div className="teamver-drive-picker-list" role="listbox" aria-label="Drive folders">
-          {loading ? (
-            <div className="teamver-drive-picker-empty">Loading Drive folders…</div>
-          ) : filteredTargets.length > 0 ? (
-            filteredTargets.map((target) => {
+          {loading || (searchLoading && displayedTargets.length === 0) ? (
+            <div className="teamver-drive-picker-empty">
+              {searching ? "Searching Drive folders…" : "Loading Drive folders…"}
+            </div>
+          ) : searchError && displayedTargets.length === 0 ? (
+            <div className="teamver-drive-picker-empty">{searchError}</div>
+          ) : displayedTargets.length > 0 ? (
+            displayedTargets.map((target) => {
               const selected = target.id === selectedTargetId;
               return (
                 <button
@@ -92,7 +138,7 @@ export function TeamverDrivePickerModal({
                   className={`teamver-drive-picker-row${selected ? " is-selected" : ""}`}
                   data-testid={`teamver-drive-picker-target-${target.id}`}
                   onClick={() => {
-                    onSelect(target.id);
+                    onSelect(target);
                     onClose();
                   }}
                 >
