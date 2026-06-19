@@ -329,3 +329,9 @@
   width: 100%;
   justify-content: flex-end;
 }
+
+/* Teamver embed — hide Figma-style workspace tab strip; navigation via rail/back/URL. */
+.workspace-shell.workspace-shell--no-tabs {
+  grid-template-rows: minmax(0, 1fr);
+  --workspace-tabs-chrome-height: 0px;
+}

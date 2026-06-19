@@ -26,6 +26,7 @@ const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   hideAssistantModelLabels: false,
   lockExecutionConfig: false,
   hideLocalWorkspaceControls: false,
+  hideWorkspaceTabsBar: false,
 });
 
 export function TeamverBrandingProvider({ children }: { children: ReactNode }) {

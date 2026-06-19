@@ -39,6 +39,8 @@ export type TeamverBrandingConfig = {
   lockExecutionConfig: boolean;
   /** Hide local folder pickers, linked-dir UI, and folder import (embed = tenant S3). */
   hideLocalWorkspaceControls: boolean;
+  /** Figma-style workspace tab strip (Home + project tabs) — embed uses rail/back only. */
+  hideWorkspaceTabsBar: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -103,6 +105,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideAssistantModelLabels: true,
         lockExecutionConfig: true,
         hideLocalWorkspaceControls: true,
+        hideWorkspaceTabsBar: true,
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -116,6 +119,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideAssistantModelLabels: false,
         lockExecutionConfig: false,
         hideLocalWorkspaceControls: false,
+        hideWorkspaceTabsBar: false,
       };
 
   return {

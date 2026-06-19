@@ -94,6 +94,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-embed-visuals.test.ts \
       tests/components/TeamverSessionBanner.test.tsx \
       tests/styles/teamver-embed-topbar.test.ts \
+      tests/styles/teamver-embed-workspace-shell.test.ts \
       tests/components/AvatarMenu.test.tsx
   )
 fi

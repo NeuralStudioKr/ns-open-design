@@ -53,6 +53,7 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | Use everywhere chip | `hideUseEverywhereChip` |
 | Onboarding | `lockExecutionConfig` → `onboardingCompleted: true` |
 | Nav: tasks / plugins / integrations | `hideNavViews` |
+| Workspace tab strip (Home + project tabs) | `hideWorkspaceTabsBar` |
 | Updater popup | `EntryShell` embed 분기 |
 
 ### 2.3 P2 — 완료 (Loop 74–77)

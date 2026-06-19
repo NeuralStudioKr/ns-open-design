@@ -46,6 +46,7 @@ import {
   clampTeamverEmbedSettingsSection,
   resolveTeamverBranding,
 } from './teamver/branding/config';
+import { useTeamverBranding } from './teamver/branding/TeamverBrandingProvider';
 import { applyTeamverEmbedConfigLockIfNeeded } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
@@ -351,6 +352,7 @@ export function App() {
 
 function AppInner() {
   const { t } = useI18n();
+  const { hideWorkspaceTabsBar } = useTeamverBranding();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const clientType = useMemo(() => detectClientType(), []);
   useModalWindowDragGuard();
@@ -1551,11 +1553,13 @@ function AppInner() {
         projectId: project.id,
         fileName: null,
       } as const;
-      openWorkspaceTab(projectRoute);
+      if (!hideWorkspaceTabsBar) {
+        openWorkspaceTab(projectRoute);
+      }
       navigate(projectRoute);
       return true;
     },
-    [analytics.track, rememberLocalProject],
+    [analytics.track, hideWorkspaceTabsBar, rememberLocalProject],
   );
 
   const handleCreatePluginShareProject = useCallback(
@@ -2250,14 +2254,18 @@ function AppInner() {
   return (
     <>
       <div
-        className={`workspace-shell workspace-shell--${clientType}`}
+        className={`workspace-shell workspace-shell--${clientType}${
+          hideWorkspaceTabsBar ? ' workspace-shell--no-tabs' : ''
+        }`}
         data-client-type={clientType}
       >
-        <WorkspaceTabsBar
-          route={route}
-          projects={projects}
-          onboardingCompleted={config.onboardingCompleted === true}
-        />
+        {hideWorkspaceTabsBar ? null : (
+          <WorkspaceTabsBar
+            route={route}
+            projects={projects}
+            onboardingCompleted={config.onboardingCompleted === true}
+          />
+        )}
         <div className="workspace-shell__body">
           {appMain}
         </div>
