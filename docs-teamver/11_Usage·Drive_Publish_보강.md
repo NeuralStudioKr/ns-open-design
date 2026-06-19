@@ -614,6 +614,7 @@ Browser
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | Track A E2E S3 tenant object probe — D-5/D-6 전후 프로젝트 파일이 S3 tenant prefix 에 실제 존재하는지 `TEAMVER_S3_BUCKET` + `/access` prefix header + `aws s3 ls` 로 검증 가능 |
 | 2026-06-18 | Drive Publish 팀 드라이브 하위 폴더 선택 — shared drive folder-tree를 flatten해 팀 드라이브 내부 폴더도 `folderId/sharedDriveId` target으로 publish 가능. 남음: 검색형 브라우저 UX + staging E2E |
 | 2026-06-18 | Drive Publish 대상 선택 UX 1차 — embed 메뉴에서 개인 드라이브 루트/폴더 + 팀 드라이브 루트를 선택해 `folderId/sharedDriveId`로 publish. `VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID` 추가. 남음: 전체 폴더 브라우저/검색 + staging E2E |
 | 2026-06-18 | Drive Publish target 확장 — `folderId` + `sharedDriveId`, `design_outputs.drive_shared_drive_id`, Main BE presigned 3-step 업로드 전환. 남음: workspace Drive picker + staging E2E |

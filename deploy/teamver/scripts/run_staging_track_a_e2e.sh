@@ -20,7 +20,10 @@
 #   TEAMVER_OD_PROJECT_ID=<user A 가 만들었던 OD project id>
 #   TEAMVER_DRIVE_IMPORT_ASSET_ID=<Drive asset id for D-6a import probe>
 #   TEAMVER_DRIVE_IMPORT_FILENAME=<slide-friendly filename for D-6a, default e2e-import.txt>
+#   TEAMVER_S3_BUCKET / OD_S3_BUCKET=<project data bucket> # S3 tenant object probe
+#   TEAMVER_S3_PREFIX=<override tenant prefix>              # optional; default from /access header
 #   SKIP_DRIVE_IMPORT_POLICY=1                          # D-6b policy-only probe 비활성
+#   SKIP_S3_OBJECT=1                                     # S3 object probe 비활성
 #   TEAMVER_E2E_RUN_PREFIX='e2e-staging-'                # usage row 식별자
 #   SKIP_DRIVE=1                                         # publish phase 비활성
 #   SKIP_DB=1                                            # RDS psql 직접 검증 비활성
@@ -61,8 +64,11 @@ optional:
   TEAMVER_OD_PROJECT_ID   D-5 publish / D-6 import 대상 (없으면 skip)
   TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6a import-drive 성공 probe (없으면 skip)
   TEAMVER_DRIVE_IMPORT_FILENAME  D-6a import filename (default e2e-import.txt)
+  TEAMVER_S3_BUCKET / OD_S3_BUCKET  S3 tenant object probe bucket
+  TEAMVER_S3_PREFIX                 tenant prefix override (default: /access header)
   SKIP_RUNTIME=1                 S-8c runtime-config probe 비활성
   SKIP_DRIVE_IMPORT_POLICY=1     D-6b policy reject probe 비활성
+  SKIP_S3_OBJECT=1               S3 tenant object probe 비활성
   SKIP_DRIVE=1 / SKIP_DB=1
   TEAMVER_E2E_RUN_PREFIX  usage run_id prefix (default e2e-)
 EOF
@@ -384,6 +390,47 @@ else
       failed "D-6a import-drive ${import_code}"
       ;;
   esac
+fi
+
+# ---- S3 object: tenant prefix contains at least one object ------------------
+if [[ -n "${SKIP_S3_OBJECT:-}" ]]; then
+  skipped "S3 tenant object — SKIP_S3_OBJECT=1"
+elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
+  skipped "S3 tenant object — TEAMVER_OD_PROJECT_ID 미설정"
+elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "S3 tenant object — TEAMVER_COOKIE 필요"
+else
+  s3_bucket="${TEAMVER_S3_BUCKET:-${OD_S3_BUCKET:-}}"
+  if [[ -z "$s3_bucket" ]]; then
+    skipped "S3 tenant object — TEAMVER_S3_BUCKET 또는 OD_S3_BUCKET 미설정"
+  elif ! command -v aws >/dev/null 2>&1; then
+    skipped "S3 tenant object — aws CLI 미설치"
+  else
+    tenant_prefix="${TEAMVER_S3_PREFIX:-}"
+    if [[ -z "$tenant_prefix" ]]; then
+      headers_tmp="$(mktemp)"
+      access_code="$(curl -s -o /dev/null -D "$headers_tmp" -w '%{http_code}' --max-time 20 \
+        -H "Cookie: ${TEAMVER_COOKIE}" \
+        "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/access" 2>/dev/null || echo 000)"
+      if [[ "$access_code" == "204" || "$access_code" == "200" ]]; then
+        tenant_prefix="$(awk 'BEGIN{IGNORECASE=1} /^X-Teamver-S3-Prefix:/ {sub(/\r$/,""); print substr($0, index($0,":")+1)}' "$headers_tmp" | xargs | head -1)"
+      fi
+      rm -f "$headers_tmp"
+      if [[ -z "$tenant_prefix" ]]; then
+        failed "S3 tenant object — /access ${access_code}, X-Teamver-S3-Prefix header 없음"
+      fi
+    fi
+
+    if [[ -n "$tenant_prefix" ]]; then
+      tenant_prefix="${tenant_prefix#/}"
+      if aws s3 ls "s3://${s3_bucket}/${tenant_prefix}" --recursive --summarize 2>/dev/null \
+          | grep -Eq 'Total Objects:[[:space:]]*[1-9][0-9]*'; then
+        passed "S3 tenant object exists — s3://${s3_bucket}/${tenant_prefix}"
+      else
+        failed "S3 tenant object 없음 — s3://${s3_bucket}/${tenant_prefix}"
+      fi
+    fi
+  fi
 fi
 
 # ---- 다중 사용자 403 (Phase 3 격리) -----------------------------------------

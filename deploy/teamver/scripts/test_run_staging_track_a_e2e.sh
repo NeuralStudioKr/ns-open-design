@@ -19,14 +19,15 @@ trap 'rm -rf "$WORK"' EXIT
 # 1) env 가 모두 없으면 5 skipped, exit 0.
 unset_env() {
   unset TEAMVER_COOKIE TEAMVER_COOKIE_USER_B TEAMVER_INTERNAL_API_KEY \
-        TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID MAIN_BE_DATABASE_URL SKIP_DRIVE SKIP_DB \
-        SKIP_DRIVE_IMPORT_POLICY DESIGN_HOST DESIGN_API_HOST 2>/dev/null || true
+        TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID MAIN_BE_DATABASE_URL \
+        TEAMVER_S3_BUCKET OD_S3_BUCKET TEAMVER_S3_PREFIX SKIP_DRIVE SKIP_DB \
+        SKIP_DRIVE_IMPORT_POLICY SKIP_S3_OBJECT DESIGN_HOST DESIGN_API_HOST 2>/dev/null || true
 }
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 8 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 8 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 9 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 9 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
@@ -304,5 +305,70 @@ if PATH="$MOCK_BIN:$PATH" \
   exit 1
 fi
 echo "✓ mock-curl isolation breach scenario fails"
+
+# 6) S3 tenant object probe succeeds when bucket + /access prefix + aws CLI are present.
+cat > "$MOCK_BIN/curl" <<'MOCK'
+#!/usr/bin/env bash
+URL=""
+WRITE_OUT=""
+HEADER_FILE=""
+for ((i=1; i<=$#; i++)); do
+  case "${!i}" in
+    -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
+    -D) j=$((i+1)); HEADER_FILE="${!j}" ;;
+  esac
+done
+for a in "$@"; do URL="$a"; done
+emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
+case "$URL" in
+  *"/api/auth/session")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      echo '{"user_id":"u","workspace_id":"w"}'
+    fi
+    ;;
+  *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
+  *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/v1/projects/"*"/access")
+    if [[ -n "$HEADER_FILE" ]]; then
+      printf 'HTTP/2 204\r\nX-Teamver-S3-Prefix: design/ws_w/user_u/proj_proj-e2e-1/\r\n\r\n' > "$HEADER_FILE"
+    fi
+    emit_code 204
+    ;;
+  *) emit_code 200 ;;
+esac
+MOCK
+chmod +x "$MOCK_BIN/curl"
+
+cat > "$MOCK_BIN/aws" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$*" == *"s3://teamver-design-staging-data/design/ws_w/user_u/proj_proj-e2e-1/"* ]]; then
+  cat <<'EOF'
+2026-06-19 00:00:00         12 index.html
+
+Total Objects: 1
+   Total Size: 12
+EOF
+  exit 0
+fi
+echo "unexpected aws args: $*" >&2
+exit 1
+MOCK
+chmod +x "$MOCK_BIN/aws"
+
+s3_out="$(PATH="$MOCK_BIN:$PATH" \
+  TEAMVER_COOKIE='teamver_access_token=fake' \
+  TEAMVER_INTERNAL_API_KEY='fake-m2m' \
+  TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
+  TEAMVER_S3_BUCKET='teamver-design-staging-data' \
+  SKIP_DB=1 SKIP_DRIVE=1 SKIP_RUNTIME=1 SKIP_DRIVE_IMPORT_POLICY=1 \
+  bash "$SCRIPT" --staging 2>&1)"
+if ! grep -q 'S3 tenant object exists' <<< "$s3_out"; then
+  echo "❌ S3 object probe should pass with mock aws"
+  echo "$s3_out"
+  exit 1
+fi
+echo "✓ mock aws S3 tenant object scenario passes"
 
 echo "✓ run_staging_track_a_e2e fixture ok"

@@ -175,7 +175,7 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). 조회 실패 시 전환기 fallback으로 daemon list 유지.
 - **smoke**: `scripts/smoke_design.sh --staging` (+ `/access`, `/outputs`, healthz tables). staging/production 모드는 `SMOKE_REQUIRE_OD_STORAGE=1` 이 기본 on 이므로 `checks.od_storage=degraded` 는 실패가 정상이다. 긴급 진단 시에만 `SMOKE_REQUIRE_OD_STORAGE=0` 으로 임시 우회한다.
 - **daemon S3 init**: `OD_PROJECT_STORAGE=s3` 인데 bucket/region/IAM/creds 문제로 S3 backend 초기화가 실패하면 `od_s3_storage_init_failed` 마커 후 daemon 기동 실패가 기본값이다. `OD_S3_ALLOW_SCRATCH_FALLBACK=1` 은 로컬/디버그 전용이며 staging/production preflight 와 storage audit 에서 실패한다.
-- 남음: staging E2E (S3 객체·403·publish).
+- 남음: staging E2E 실계정 실행 (S3 객체·403·publish). 자동화는 `TEAMVER_S3_BUCKET` 설정 시 tenant prefix 객체 존재까지 확인.
 
 ### Phase 4 — Publish → Teamver Drive (약 1~2주, G7)
 
@@ -460,7 +460,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 체크 | 자동화 스크립트 | Phase |
 |------|----------------|-------|
-| S3 workspace/user/project prefix 객체 생성 | `smoke_design.sh` (`SMOKE_REQUIRE_OD_STORAGE=1` default-on staging/prod) + `check_storage_isolation.sh` | Phase 5 / 8 |
+| S3 workspace/user/project prefix 객체 생성 | `smoke_design.sh` (`SMOKE_REQUIRE_OD_STORAGE=1` default-on staging/prod) + `check_storage_isolation.sh` + `run_staging_track_a_e2e.sh` (`TEAMVER_S3_BUCKET`) | Phase 5 / 8 / 9 |
 | EC2 volume 삭제 후 복구 (Litestream) | `validate_deploy_env.sh --production` (LITESTREAM_BUCKET warn) + 별도 `restore_app_sqlite_from_s3.sh` 수동 | Phase 1 (warn) |
 | 사용자 A/B access 403 | `run_staging_track_a_e2e.sh` (`TEAMVER_COOKIE_USER_B` 격리) | Phase 9 |
 | design-api `GET /projects` workspace 필터 | `run_staging_track_a_e2e.sh` (S-8b) | Phase 9 |
@@ -518,6 +518,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | Track A E2E S3 tenant object probe — `TEAMVER_S3_BUCKET` 설정 시 `/access` S3 prefix header + `aws s3 ls` 로 tenant prefix 객체 존재 검증, fixture/env helper 갱신 |
 | 2026-06-19 | S3 sync hard-fail review fix — soft-deleted reactivation / insert-race reactivation 경로도 sync 실패 시 명시 rollback 하도록 보강, 2개 회귀 테스트 추가 |
 | 2026-06-19 | registry create S3 sync hard-fail — `OD_PROJECT_STORAGE=s3` 에서 daemon `scratch/sync-up` 실패 시 design-api create rollback + 502, Track A runner에 daemon S3 startup test 포함 |
 | 2026-06-19 | S3 init fail-fast — daemon S3 backend 초기화 실패 시 scratch-only fallback 기본 차단, `od_s3_storage_init_failed` 마커, `OD_S3_ALLOW_SCRATCH_FALLBACK=1` staging/prod 배포 가드 실패 처리 |

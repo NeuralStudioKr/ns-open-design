@@ -33,6 +33,7 @@ postgres_port="${POSTGRES_PORT:-5432}"
 postgres_db="${POSTGRES_DB:-teamver_design_staging}"
 postgres_user="${POSTGRES_USER:-teamver_be_admin}"
 internal_key="${TEAMVER_INTERNAL_API_KEY:-<from .env.staging TEAMVER_INTERNAL_API_KEY>}"
+s3_bucket="${OD_S3_BUCKET:-teamver-design-staging-data}"
 
 if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
@@ -46,6 +47,7 @@ if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
   if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
     internal_key="${TEAMVER_INTERNAL_API_KEY}"
   fi
+  s3_bucket="${OD_S3_BUCKET:-$s3_bucket}"
 fi
 
 cat <<EOF
@@ -64,6 +66,9 @@ export TEAMVER_OD_PROJECT_ID='<DPRJ_... or od project id>'
 export TEAMVER_DRIVE_IMPORT_ASSET_ID='<AST-... from Teamver Drive>'
 export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 
+# S3 tenant object probe (uses /access X-Teamver-S3-Prefix by default):
+export TEAMVER_S3_BUCKET='${s3_bucket}'
+
 # S-8c (slide/API chat) — cookie 만 있으면 runtime-config configured=true + model 검증.
 
 # Optional:
@@ -71,6 +76,7 @@ export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 # export TEAMVER_E2E_RUN_PREFIX='e2e-staging-'
 # export SKIP_DRIVE=1              # D-5/D-6 전체 skip
 # export SKIP_DRIVE_IMPORT_POLICY=1  # D-6b policy probe skip
+# export SKIP_S3_OBJECT=1          # S3 tenant object probe skip
 # export SKIP_DB=1                 # U-6c / D-5b psql skip
 
 # Run (staging EC2 or VPN):
