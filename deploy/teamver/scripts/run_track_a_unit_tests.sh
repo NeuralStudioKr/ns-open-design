@@ -72,6 +72,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-usage-bridge.test.ts \
       tests/teamver-project-access.test.ts \
       tests/teamver-project-storage-meta.test.ts \
+      tests/project-storage-startup.test.ts \
       tests/teamver-linked-dirs-gate.test.ts \
       tests/project-materialization-runtime.periodic.test.ts \
       tests/lazy-project-materialization.test.ts \
