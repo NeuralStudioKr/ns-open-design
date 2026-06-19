@@ -203,7 +203,11 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(within(modal).getByText("Browse exports")).toBeTruthy();
     });
     fireEvent.click(screen.getByTestId("teamver-drive-picker-target-personal:FLD-BROWSE"));
-    fireEvent.click(within(modal).getByRole("button", { name: "Close Drive picker" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("teamver-drive-picker-use-current").getAttribute("type")).toBe("button");
+    });
+    fireEvent.click(screen.getByTestId("teamver-drive-picker-use-current"));
     fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
 
     await waitFor(() => {

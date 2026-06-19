@@ -841,6 +841,39 @@
   padding: 28px 10px;
   text-align: center;
 }
+.teamver-drive-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.teamver-drive-picker-current {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teamver-drive-picker-use {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.teamver-drive-picker-use:hover {
+  filter: brightness(0.98);
+}
 .teamver-drive-import-modal {
   width: min(720px, calc(100vw - 32px));
   max-height: min(78vh, 720px);

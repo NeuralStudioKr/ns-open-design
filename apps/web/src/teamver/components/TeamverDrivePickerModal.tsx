@@ -64,6 +64,17 @@ function targetFromFolder(
   };
 }
 
+function targetFromCurrentFolder(
+  scope: TeamverDriveImportScope,
+  crumb: NavCrumb,
+): TeamverDrivePublishTarget {
+  if (crumb.folderId == null) return targetFromScope(scope);
+  return targetFromFolder(scope, {
+    folderId: crumb.folderId,
+    name: crumb.name,
+  });
+}
+
 function matchesTarget(target: TeamverDrivePublishTarget, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -100,7 +111,11 @@ export function TeamverDrivePickerModal({
   const trimmedQuery = query.trim();
   const searching = Boolean(onSearch && trimmedQuery.length >= TEAMVER_DRIVE_PUBLISH_SEARCH_MIN);
   const activeScope = scopes[scopeIndex] ?? null;
-  const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
+  const currentCrumb = navStack[navStack.length - 1] ?? null;
+  const currentFolderId = currentCrumb?.folderId ?? null;
+  const currentTarget = activeScope && currentCrumb
+    ? targetFromCurrentFolder(activeScope, currentCrumb)
+    : null;
   const displayedTargets = searching && searchTargets
     ? searchTargets
     : browseTargets.length > 0
@@ -315,7 +330,13 @@ export function TeamverDrivePickerModal({
                     onSelect(target);
                     const canEnter = !searching && target.folderId && activeScope;
                     if (canEnter) {
-                      setNavStack((current) => [...current, { folderId: target.folderId, name: target.label.split(" / ").at(-1) ?? target.label }]);
+                      setNavStack((current) => [
+                        ...current,
+                        {
+                          folderId: target.folderId,
+                          name: target.label.split(" / ").at(-1) ?? target.label,
+                        },
+                      ]);
                       return;
                     }
                     onClose();
@@ -336,6 +357,24 @@ export function TeamverDrivePickerModal({
             <div className="teamver-drive-picker-empty">No matching folders</div>
           )}
         </div>
+        {!searching && currentTarget ? (
+          <footer className="teamver-drive-picker-footer">
+            <span className="teamver-drive-picker-current" title={currentTarget.label}>
+              {currentTarget.label}
+            </span>
+            <button
+              type="button"
+              className="teamver-drive-picker-use"
+              data-testid="teamver-drive-picker-use-current"
+              onClick={() => {
+                onSelect(currentTarget);
+                onClose();
+              }}
+            >
+              Use this folder
+            </button>
+          </footer>
+        ) : null}
       </section>
     </div>
   );

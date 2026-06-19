@@ -96,11 +96,14 @@ case "$URL" in
       else
         emit_body '{"projectId":"proj-e2e-1","imported":[],"failed":[{"assetId":"e2e-policy-probe","errorCode":"unsupported_drive_import_file_type"}]}'
       fi
+    elif [[ "$POST_DATA" != *"e2e-import.svg"* ]]; then
+      emit_code 400
+      emit_body '{"error":{"code":"bad_request","message":"missing test filename"}}'
     elif [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 201
-      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.txt","name":"e2e-import.txt","sizeBytes":12,"mimeType":"text/plain"}],"failed":[]}'
+      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.svg","name":"e2e-import.svg","sizeBytes":12,"mimeType":"image/svg+xml"}],"failed":[]}'
     else
-      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.txt","name":"e2e-import.txt","sizeBytes":12,"mimeType":"text/plain"}],"failed":[]}'
+      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.svg","name":"e2e-import.svg","sizeBytes":12,"mimeType":"image/svg+xml"}],"failed":[]}'
     fi
     ;;
   *"/api/v1/projects/"*"/access")
@@ -119,6 +122,7 @@ PATH="$MOCK_BIN:$PATH" \
   TEAMVER_INTERNAL_API_KEY='fake-m2m' \
   TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
   TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
+  TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.svg' \
   TEAMVER_COOKIE_USER_B='teamver_access_token=other' \
   SKIP_DB=1 \
   SKIP_DRIVE= \
@@ -127,6 +131,7 @@ PATH="$MOCK_BIN:$PATH" \
     TEAMVER_INTERNAL_API_KEY='fake-m2m' \
     TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
     TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
+    TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.svg' \
     TEAMVER_COOKIE_USER_B='teamver_access_token=other' \
     SKIP_DB=1 \
     bash "$SCRIPT" --staging 2>&1)"
@@ -150,7 +155,75 @@ do
 done
 echo "✓ mock-curl all-200 scenario passes"
 
-# 3) publish 401 → fail.
+# 3) import-drive 201 with empty imported[] → fail.
+cat > "$MOCK_BIN/curl" <<'MOCK'
+#!/usr/bin/env bash
+URL=""
+WRITE_OUT=""
+OUT_FILE=""
+POST_DATA=""
+for ((i=1; i<=$#; i++)); do
+  case "${!i}" in
+    -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
+    -o) j=$((i+1)); OUT_FILE="${!j}" ;;
+    --data) j=$((i+1)); POST_DATA="${!j}" ;;
+  esac
+done
+for a in "$@"; do URL="$a"; done
+emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
+emit_body() {
+  if [[ -n "$OUT_FILE" ]]; then
+    printf '%s' "$1" > "$OUT_FILE"
+  else
+    printf '%s' "$1"
+  fi
+}
+case "$URL" in
+  *"/api/auth/session")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+    fi
+    ;;
+  *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
+  *"/api/v1/runtime-config")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"configured":true,"model":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/v1/projects/"*"/publish") emit_code 200 ;;
+  *"/api/v1/projects/"*"/import-drive")
+    if [[ "$POST_DATA" == *"clip.mp4"* ]]; then
+      emit_code 502
+      emit_body '{"projectId":"proj-e2e-1","imported":[],"failed":[{"assetId":"e2e-policy-probe","errorCode":"unsupported_drive_import_file_type"}]}'
+    else
+      emit_code 201
+      emit_body '{"projectId":"proj-e2e-1","imported":[],"failed":[{"assetId":"AST-E2E","errorCode":"drive_download_failed"}]}'
+    fi
+    ;;
+  *) emit_code 200 ;;
+esac
+MOCK
+chmod +x "$MOCK_BIN/curl"
+
+if PATH="$MOCK_BIN:$PATH" \
+    TEAMVER_COOKIE='teamver_access_token=fake' \
+    TEAMVER_INTERNAL_API_KEY='fake-m2m' \
+    TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
+    TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
+    TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.svg' \
+    SKIP_DB=1 \
+    bash "$SCRIPT" --staging >/dev/null 2>&1; then
+  echo "❌ import-drive empty imported[] must fail the script"
+  exit 1
+fi
+echo "✓ mock-curl import empty scenario fails"
+
+# 4) publish 401 → fail.
 cat > "$MOCK_BIN/curl" <<'MOCK'
 #!/usr/bin/env bash
 URL=""
@@ -191,7 +264,7 @@ if PATH="$MOCK_BIN:$PATH" \
 fi
 echo "✓ mock-curl publish-401 scenario fails"
 
-# 4) isolation breach (user B gets 200 access) → fail.
+# 5) isolation breach (user B gets 200 access) → fail.
 cat > "$MOCK_BIN/curl" <<'MOCK'
 #!/usr/bin/env bash
 URL=""
