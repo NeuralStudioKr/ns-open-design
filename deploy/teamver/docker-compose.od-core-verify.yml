@@ -1,0 +1,56 @@
+# OD core-only verification stack (Teamver design-api / registry / S3 gate 없음).
+# Staging EC2 에서 기존 sidecar(7456)를 건드리지 않고 :7457 에 격리 검증용 daemon 을 띄운다.
+#
+#   bash scripts/run_od_core_verify.sh start --staging
+#   bash scripts/run_od_core_verify.sh verify
+#   bash scripts/run_od_core_verify.sh stop
+#
+# See docs-teamver/13_OD_단독_검증_서버_가이드.md
+
+name: teamver-od-core-verify
+
+services:
+  od-core-verify:
+    container_name: teamver-od-core-verify
+    image: ${OPEN_DESIGN_IMAGE:-docker.io/vanjayak/open-design:latest}
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=512}
+      OD_BIND_HOST: 0.0.0.0
+      OD_PORT: 7457
+      OD_WEB_PORT: 7457
+      OD_API_TOKEN: ${OD_API_TOKEN:?Set OD_API_TOKEN in env file}
+      OD_DATA_DIR: /app/.od
+      OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
+      # Teamver 연동 OFF — access gate / registry / billing bridge 비활성
+      TEAMVER_DESIGN_API_URL: ""
+      OD_PROJECT_STORAGE: local
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "127.0.0.1:7457:7457"
+    volumes:
+      - od_core_verify_data:/app/.od
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${OD_CORE_VERIFY_MEM_LIMIT:-768m}
+    pids_limit: 256
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:7457/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+volumes:
+  od_core_verify_data:

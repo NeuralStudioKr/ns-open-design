@@ -13,15 +13,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 ENV_FILE=".env"
+SERVICE="open-design-daemon"
 while (( $# )); do
   case "$1" in
     --staging) ENV_FILE=".env.staging" ;;
     --production) ENV_FILE=".env.production" ;;
+    --service) SERVICE="${2:?--service requires name}"; shift ;;
     -h|--help)
       cat <<'EOF'
 seed_od_runtime_config.sh — OD app-config onboarding seed (idempotent)
 
-  bash scripts/seed_od_runtime_config.sh [--staging|--production]
+  bash scripts/seed_od_runtime_config.sh [--staging|--production] [--service NAME]
 
 Requires: open-design-daemon container running (run_docker.sh).
 Secrets (ANTHROPIC_API_KEY 등)는 .env → docker-compose env 주입.
@@ -42,7 +44,6 @@ if [[ -f "$ENV_FILE" ]]; then
   COMPOSE+=(--env-file "$ENV_FILE")
 fi
 
-SERVICE=open-design-daemon
 if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$SERVICE"; then
   echo "❌ $SERVICE 가 실행 중이 아닙니다. 먼저 bash scripts/run_docker.sh 를 실행하세요."
   exit 1

@@ -13,6 +13,7 @@
 | **[09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md)** | **Prod blocker — S3 · Litestream · registry · 진행 표** |
 | **[10 세션·OD패치 보강](./10_세션·OD패치_보강.md)** | **세션·인증 · embed 브랜딩 · upstream 패치** |
 | **[11 Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md)** | **usage wiring · Drive Publish v1 · billing** |
+| **[13 OD 단독 검증 (서버)](./13_OD_단독_검증_서버_가이드.md)** | **Teamver 없이 OD core·deck 검증 · :7457 격리 스택** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
 | **[05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** | 프록시·인증·브랜딩 |
 | [04 구현 우선순위](./04_구현_우선순위.md) | Track A/B/C · Phase 요약 |
