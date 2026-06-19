@@ -79,11 +79,17 @@ describe("TeamverDriveImportModal", () => {
       ]);
       expect(trackMock).toHaveBeenCalledWith(
         "surface_view",
-        expect.objectContaining({ area: "drive_import_modal" }),
+        expect.objectContaining({ area: "drive_import_modal", page_name: "chat_panel" }),
+        undefined,
       );
       expect(trackMock).toHaveBeenCalledWith(
         "ui_click",
-        expect.objectContaining({ element: "drive_import_pick", asset_count: 1 }),
+        expect.objectContaining({
+          area: "drive_import_modal",
+          element: "drive_import_pick",
+          asset_count: 1,
+        }),
+        undefined,
       );
     });
   });

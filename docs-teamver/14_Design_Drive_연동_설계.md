@@ -138,12 +138,17 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 ### 4.2.4 구현됨 — Phase 2-4 (loop 161)
 
 - **embed attach policy** — `embedFileAttachPolicy.ts` white-list + 50MB cap (`ChatComposer` upload/import + modal card block).
-- **Analytics** — `teamverDriveImportAnalytics.ts` (`drive_import_modal` surface_view, `drive_import_pick` ui_click).
+- **Analytics** — `teamverDriveImportAnalytics.ts` (`drive_import_modal` surface_view, `drive_import_pick` ui_click) → loop 164 contracts 정식화.
 
 ### 4.2.5 구현됨 — Phase 2-5 (loop 162)
 
 - **BE policy module** — `drive_import_policy.py` (`validate_drive_import_file_type`). FE `embedFileAttachPolicy.ts` 와 확장자/MIME allow·block 동기화.
 - **Per-asset enforcement** — `drive_import_service.py` 가 미지원 타입을 `failed[]` (`unsupported_drive_import_file_type`) 로 반환, 허용 항목만 download/upload 진행 (207 partial success 유지).
+
+### 4.2.7 구현됨 — Phase 2-7 (loop 164)
+
+- **Analytics contracts** — `DriveImportModalSurfaceViewProps` / `DriveImportModalClickProps` in `@open-design/contracts/analytics`.
+- **Typed emitters** — `trackDriveImportModalSurfaceView` / `trackDriveImportModalClick` in `apps/web/analytics/events.ts`.
 
 ### 4.2.6 구현됨 — Phase 2-6 (loop 163)
 
@@ -203,7 +208,7 @@ Content-Type: application/json
 - `TeamverDriveImportModal` — Phase 1 picker 컴포넌트 재사용, 단일·다중 선택 모드.
 - `importTeamverDriveAssets(projectId, assets)` — 구현됨. modal 결과를 design-api `/import-drive` 로 전달.
 - `chatAttachmentFromDriveImport(import)` — staged attachment 변환.
-- analytics: `drive_import_modal` surface_view, `drive_import_pick` ui_click — ✅ loop 161.
+- analytics: `drive_import_modal` surface_view, `drive_import_pick` ui_click — ✅ loop 161/164 (contracts).
 
 ### 4.5 의존
 

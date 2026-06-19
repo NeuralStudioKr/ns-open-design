@@ -13,6 +13,7 @@ import type {
   PluginReplacementModalSurfaceViewProps,
   PluginDetailModalSurfaceViewProps,
   PluginImportModalSurfaceViewProps,
+  DriveImportModalSurfaceViewProps,
   DesignSystemsTemplatesModalSurfaceViewProps,
   AssistantFeedbackReasonPanelSurfaceViewProps,
   QuestionsFormSurfaceViewProps,
@@ -41,6 +42,7 @@ import type {
   PluginsAvailableTabClickProps,
   PluginsSourcesTabClickProps,
   PluginImportModalClickProps,
+  DriveImportModalClickProps,
   PluginDetailClickProps,
   PluginLoopClickProps,
   CommunityGalleryClickProps,
@@ -198,6 +200,13 @@ export function trackPluginDetailModalSurfaceView(
 export function trackPluginImportModalSurfaceView(
   track: Track,
   props: PluginImportModalSurfaceViewProps,
+): void {
+  send(track, 'surface_view', props);
+}
+
+export function trackDriveImportModalSurfaceView(
+  track: Track,
+  props: DriveImportModalSurfaceViewProps,
 ): void {
   send(track, 'surface_view', props);
 }
@@ -419,6 +428,13 @@ export function trackPluginsSourcesTabClick(
 export function trackPluginImportModalClick(
   track: Track,
   props: PluginImportModalClickProps,
+): void {
+  send(track, 'ui_click', props);
+}
+
+export function trackDriveImportModalClick(
+  track: Track,
+  props: DriveImportModalClickProps,
 ): void {
   send(track, 'ui_click', props);
 }

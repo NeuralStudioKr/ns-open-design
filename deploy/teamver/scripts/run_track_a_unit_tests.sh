@@ -77,6 +77,12 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/amr-model-probe-error.test.ts
   )
 
+  echo "==> contracts analytics drive-import"
+  (
+    cd "$OD_ROOT/packages/contracts"
+    npm test -- tests/analytics-drive-import.test.ts
+  )
+
   echo "==> web teamver vitest"
   (
     cd "$OD_ROOT/apps/web"

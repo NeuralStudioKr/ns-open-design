@@ -1394,6 +1394,14 @@ export interface PluginImportModalClickProps {
   import_source?: TrackingPluginImportSource;
 }
 
+// Teamver embed — confirming a multi-select import from the Drive picker.
+export interface DriveImportModalClickProps {
+  page_name: 'chat_panel';
+  area: 'drive_import_modal';
+  element: 'drive_import_pick';
+  asset_count: number;
+}
+
 export interface PluginDetailClickProps {
   page_name: 'plugins';
   area: 'plugin_detail';
@@ -2281,6 +2289,7 @@ export type UiClickProps =
   | PluginsAvailableTabClickProps
   | PluginsSourcesTabClickProps
   | PluginImportModalClickProps
+  | DriveImportModalClickProps
   | PluginDetailClickProps
   | PluginLoopClickProps
   | CommunityGalleryClickProps
@@ -2379,6 +2388,14 @@ export interface PluginImportModalSurfaceViewProps {
   area: 'import_modal';
 }
 
+// Teamver embed — Drive asset picker opened from the chat composer "+" menu.
+// Fires once per modal open (deduped at emit site) so pick clicks have a
+// denominator.
+export interface DriveImportModalSurfaceViewProps {
+  page_name: 'chat_panel';
+  area: 'drive_import_modal';
+}
+
 export interface DesignSystemsTemplatesModalSurfaceViewProps {
   page_name: 'design_systems';
   area: 'templates_modal';
@@ -2458,6 +2475,7 @@ export type SurfaceViewProps =
   | PluginReplacementModalSurfaceViewProps
   | PluginDetailModalSurfaceViewProps
   | PluginImportModalSurfaceViewProps
+  | DriveImportModalSurfaceViewProps
   | DesignSystemsTemplatesModalSurfaceViewProps
   | AssistantFeedbackReasonPanelSurfaceViewProps
   | QuestionsFormSurfaceViewProps
