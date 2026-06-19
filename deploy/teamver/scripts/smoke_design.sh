@@ -723,6 +723,40 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
       echo "✗ design-api GET /projects/{id} → $project_detail_code (expected 200)"
       fail=$((fail + 1))
     fi
+
+    # POST /projects with an already-registered od_project_id must be idempotent
+    # (200 OK, same row). embed boot calls this for every daemon project on
+    # every refresh; the staging blocker fixed in `fix(design-api): make POST
+    # /projects registry upsert idempotent` was that the duplicate-id path
+    # used to return 409 project_already_registered, which the FE swallowed
+    # but left soft-deleted/owned rows invisible. This probe fences that.
+    idempotent_post_body="$(mktemp)"
+    idempotent_post_code="$(curl -s -o "$idempotent_post_body" -w '%{http_code}' --max-time 15 \
+      -X POST \
+      -H "Cookie: ${TEAMVER_COOKIE}" \
+      -H "Content-Type: application/json" \
+      -H "X-Workspace-Id: ${TEAMVER_WORKSPACE_ID}" \
+      -d "{\"odProjectId\":\"${access_project_id}\"}" \
+      "${API_BASE}/api/v1/projects")"
+    if [[ "$idempotent_post_code" == "200" ]]; then
+      returned_od_id="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('odProjectId') or d.get('od_project_id') or '')" "$idempotent_post_body" 2>/dev/null || echo "")"
+      if [[ "$returned_od_id" == "$access_project_id" ]]; then
+        echo "✓ design-api POST /projects (duplicate id, cookie) → 200 idempotent (odProjectId=${returned_od_id})"
+        pass=$((pass + 1))
+      else
+        echo "✗ design-api POST /projects (duplicate id) → 200 but odProjectId=${returned_od_id} (expected ${access_project_id})"
+        fail=$((fail + 1))
+      fi
+    elif [[ "$idempotent_post_code" == "409" ]]; then
+      echo "✗ design-api POST /projects (duplicate id) → 409 (registry upsert regression — redeploy design-api)"
+      fail=$((fail + 1))
+    elif [[ "$idempotent_post_code" == "401" || "$idempotent_post_code" == "403" || "$idempotent_post_code" == "404" ]]; then
+      echo "○ design-api POST /projects (duplicate id) → $idempotent_post_code"
+    else
+      echo "✗ design-api POST /projects (duplicate id) → $idempotent_post_code (expected 200)"
+      fail=$((fail + 1))
+    fi
+    rm -f "$idempotent_post_body"
   else
     echo "○ skip project /access smoke (set TEAMVER_OD_PROJECT_ID or ensure registered projects)"
   fi
