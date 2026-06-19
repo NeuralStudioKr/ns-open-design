@@ -16,7 +16,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-ENV_FILE=".env"
+# shellcheck source=lib/design_compose.sh
+source "$ROOT/scripts/lib/design_compose.sh"
+
+ENV_FILE=""
 SERVICE="open-design-daemon"
 COMPOSE_FILE=""
 
@@ -44,8 +47,13 @@ while (( $# )); do
   shift
 done
 
-if [[ ! -f "$ENV_FILE" && -f .env ]]; then
-  ENV_FILE=".env"
+if [[ -z "$ENV_FILE" ]]; then
+  if [[ -f .env.staging ]]; then
+    ENV_FILE=".env.staging"
+  else
+    echo "❌ --staging 또는 --production 필요"
+    exit 1
+  fi
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -53,11 +61,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-COMPOSE=(docker compose)
 if [[ -n "$COMPOSE_FILE" ]]; then
-  COMPOSE+=(-f "$COMPOSE_FILE")
+  COMPOSE=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+else
+  design_compose_build_args "$ROOT" "$ENV_FILE"
+  COMPOSE=("${DESIGN_COMPOSE_ARGS[@]}")
 fi
-COMPOSE+=(--env-file "$ENV_FILE")
 
 if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$SERVICE"; then
   echo "❌ $SERVICE 가 실행 중이 아닙니다."

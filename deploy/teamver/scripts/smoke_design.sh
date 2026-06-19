@@ -34,6 +34,7 @@ Env overrides:
   TEAMVER_INTERNAL_API_KEY (optional — internal usage + token-usage M2M)
   OD_PROJECT_STORAGE (optional — deps config.project_storage 일치 검증)
   SMOKE_REQUIRE_OD_STORAGE (optional — checks.od_storage!=ok 이면 fail; OD_PROJECT_STORAGE=s3 일 때도 동일)
+  SMOKE_REQUIRE_MANAGED_API (optional — staging cookie runtime-config configured=false 이면 fail; default 1)
 EOF
 }
 
@@ -539,11 +540,21 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
   if [[ "$authed_runtime" == "200" ]]; then
     echo "✓ design-api /api/v1/runtime-config (cookie) → 200"
     pass=$((pass + 1))
-    configured="$(curl -sf --max-time 15 -H "Cookie: ${TEAMVER_COOKIE}" \
-      "${API_BASE}/api/v1/runtime-config" | grep -c '"configured"' || true)"
-    if [[ "$configured" -ge 1 ]]; then
+    runtime_json="$(curl -sf --max-time 15 -H "Cookie: ${TEAMVER_COOKIE}" \
+      "${API_BASE}/api/v1/runtime-config" 2>/dev/null || echo "")"
+    if echo "$runtime_json" | grep -q '"configured"'; then
       echo "✓ runtime-config JSON shape ok"
       pass=$((pass + 1))
+      managed_ok="$(echo "$runtime_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print('1' if d.get('configured') else '0')" 2>/dev/null || echo "0")"
+      if [[ "$managed_ok" == "1" ]]; then
+        echo "✓ runtime-config configured=true (embed managed API)"
+        pass=$((pass + 1))
+      elif [[ "$ENV_LABEL" == "staging" && "${SMOKE_REQUIRE_MANAGED_API:-1}" == "1" ]]; then
+        echo "✗ runtime-config configured=false — TEAMVER_OD_API_KEY 미주입? (embed chat 불가)"
+        fail=$((fail + 1))
+      else
+        echo "○ runtime-config configured=false"
+      fi
     else
       echo "✗ runtime-config JSON missing configured field"
       fail=$((fail + 1))

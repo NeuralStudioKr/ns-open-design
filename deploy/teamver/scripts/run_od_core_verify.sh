@@ -15,7 +15,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 COMPOSE_FILE="docker-compose.od-core-verify.yml"
-ENV_FILE=".env"
+ENV_FILE=""
 ACTION=""
 VERIFY_URL="http://127.0.0.1:7457"
 SERVICE="od-core-verify"
@@ -55,18 +55,26 @@ if [[ -z "$ACTION" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$ENV_FILE" && -f .env ]]; then
-  ENV_FILE=".env"
+if [[ -z "$ENV_FILE" ]]; then
+  if [[ -f .env.staging ]]; then
+    ENV_FILE=".env.staging"
+  elif [[ "$ACTION" != "verify" ]]; then
+    echo "❌ --staging 또는 --production 필요 (symlink .env 미사용)"
+    usage
+    exit 1
+  fi
 fi
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "❌ $ENV_FILE 없음"
+if [[ -n "$ENV_FILE" && ! -f "$ENV_FILE" ]]; then
+  echo "❌ $ENV_FILE 없음 — cp .env.staging.example .env.staging"
   exit 1
 fi
 
-ln -sf "$ENV_FILE" .env
-
-COMPOSE=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+if [[ -n "$ENV_FILE" ]]; then
+  COMPOSE=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+else
+  COMPOSE=(docker compose -f "$COMPOSE_FILE")
+fi
 
 env_flag() {
   case "$ENV_FILE" in

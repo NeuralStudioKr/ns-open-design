@@ -75,6 +75,29 @@ ok() { echo "✓ $1"; pass=$((pass + 1)); }
 bad() { echo "✗ $1"; fail=$((fail + 1)); }
 note() { echo "○ $1"; warn=$((warn + 1)); }
 
+resolve_docker_container() {
+  local name="$1"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
+    echo "$name"
+    return 0
+  fi
+  case "$name" in
+    od-core-verify)
+      if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "teamver-od-core-verify"; then
+        echo "teamver-od-core-verify"
+        return 0
+      fi
+      ;;
+    open-design-daemon)
+      if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "teamver-open-design-daemon"; then
+        echo "teamver-open-design-daemon"
+        return 0
+      fi
+      ;;
+  esac
+  echo ""
+}
+
 curl_auth_args=()
 if [[ -n "${OD_API_TOKEN:-}" ]]; then
   curl_auth_args=(-H "Authorization: Bearer ${OD_API_TOKEN}")
@@ -145,8 +168,9 @@ fi
 
 # Container env: Teamver gate
 teamver_url=""
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$SERVICE"; then
-  teamver_url="$(docker exec "$SERVICE" printenv TEAMVER_DESIGN_API_URL 2>/dev/null || true)"
+CONTAINER="$(resolve_docker_container "$SERVICE")"
+if [[ -n "$CONTAINER" ]]; then
+  teamver_url="$(docker exec "$CONTAINER" printenv TEAMVER_DESIGN_API_URL 2>/dev/null || true)"
   teamver_url="${teamver_url//$'\r'/}"
   if [[ -n "$teamver_url" ]]; then
     if [[ "$EXPECT_TEAMVER_GATE" == "no" ]]; then
@@ -164,7 +188,7 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$SERVICE"; then
     fi
   fi
 
-  app_cfg="$(docker exec "$SERVICE" node -e "
+  app_cfg="$(docker exec "$CONTAINER" node -e "
 const fs=require('fs');const p=(process.env.OD_DATA_DIR||'/app/.od')+'/app-config.json';
 try{const j=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify({
   mode:j.mode||null,
@@ -189,6 +213,9 @@ try{const j=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify({
 else
   note "container $SERVICE not running — skip env/app-config checks"
 fi
+
+DAEMON_PORT="${DAEMON_URL##*:}"
+DAEMON_PORT="${DAEMON_PORT%%/*}"
 
 if [[ "$PROJECT_SMOKE" == "1" ]]; then
   test_id="od-core-verify-$(date +%s)"
@@ -220,10 +247,11 @@ if [[ "$fail" -gt 0 ]]; then
 fi
 echo "✓ verify_od_core OK"
 echo
-cat <<'EOF'
+cat <<EOF
 다음 (브라우저 — Deck 슬라이드 수동):
-  1) SSH tunnel: ssh -L 7456:127.0.0.1:7456 user@design-ec2
-  2) http://127.0.0.1:7456 열기 (nginx 로그인 / OD_API_TOKEN 주입 경로는 staging nginx README 참고)
+  1) SSH tunnel: ssh -L ${DAEMON_PORT}:127.0.0.1:${DAEMON_PORT} user@design-ec2
+  2) http://127.0.0.1:${DAEMON_PORT} 열기
+     (:7457 = OD-only 격리 · :7456 = staging nginx/Teamver sidecar)
   3) New project → Slide deck 탭
   4) Skill: simple-deck 또는 magazine-web-ppt
   5) 프롬프트: "5-slide pitch deck about AI design tools"

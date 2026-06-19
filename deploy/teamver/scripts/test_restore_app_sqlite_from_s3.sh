@@ -31,8 +31,12 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Build a sandboxed deploy/teamver root so we don't touch the real .env.
 SANDBOX="$WORK/teamver"
-mkdir -p "$SANDBOX/scripts"
+mkdir -p "$SANDBOX/scripts/lib"
 cp "$SCRIPT" "$SANDBOX/scripts/"
+cp "$ROOT/scripts/lib/design_compose.sh" "$SANDBOX/scripts/lib/"
+cp "$ROOT/docker-compose.yml" "$SANDBOX/"
+cp "$ROOT/docker-compose.staging.yml" "$SANDBOX/"
+cp "$ROOT/docker-compose.production.yml" "$SANDBOX/"
 chmod +x "$SANDBOX/scripts/restore_app_sqlite_from_s3.sh"
 cat > "$SANDBOX/.env.staging" <<EOF
 ENV=staging
@@ -50,7 +54,7 @@ EOF
 # Stub aws + litestream + docker so the script doesn't need them resolved
 # elsewhere. The dry-run branch should print but NOT call them.
 mkdir -p "$WORK/bin"
-for tool in aws litestream docker; do
+for tool in aws litestream; do
   cat > "$WORK/bin/$tool" <<EOF
 #!/usr/bin/env bash
 echo "$tool: SHOULD NOT BE CALLED DURING DRY RUN" >&2
@@ -58,6 +62,15 @@ exit 99
 EOF
   chmod +x "$WORK/bin/$tool"
 done
+cat > "$WORK/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "compose" && "$2" == "version" ]]; then
+  exit 0
+fi
+echo "docker: SHOULD NOT BE CALLED DURING DRY RUN" >&2
+exit 99
+EOF
+chmod +x "$WORK/bin/docker"
 
 # Require both --staging and --production to error.
 if (cd "$SANDBOX" && bash scripts/restore_app_sqlite_from_s3.sh --litestream >/dev/null 2>&1); then
@@ -126,22 +139,13 @@ if ! grep -q 's3://teamver-design-staging-data/custom-prefix/staging/20260617T99
   exit 1
 fi
 
-# --apply requires docker; with PATH excluding docker it should fail.
-SAFE_PATH="$WORK/bin_nodocker:/usr/bin:/bin"
-mkdir -p "$WORK/bin_nodocker"
-ln -sf "$WORK/bin/aws" "$WORK/bin_nodocker/aws"
-ln -sf "$WORK/bin/litestream" "$WORK/bin_nodocker/litestream"
-if PATH="$SAFE_PATH" command -v docker >/dev/null 2>&1; then
-  echo "○ skip apply-no-docker check (docker present in /usr/bin or /bin)"
-else
-  out="$(cd "$SANDBOX" && PATH="$SAFE_PATH" bash scripts/restore_app_sqlite_from_s3.sh \
-    --staging --litestream --apply --dry-run 2>&1 || true)"
-  # dry-run prints DRYRUN message about docker compose without exec.
-  if ! grep -q 'would verify open-design-daemon stopped' <<< "$out"; then
-    echo "❌ --apply --dry-run missing daemon-stopped reminder"
-    echo "$out"
-    exit 1
-  fi
+# --apply --dry-run prints daemon-stopped reminder without executing docker compose.
+PATH="$WORK/bin:$PATH" out="$(cd "$SANDBOX" && bash scripts/restore_app_sqlite_from_s3.sh \
+  --staging --litestream --apply --dry-run 2>&1)" || true
+if ! grep -q 'would verify open-design-daemon stopped' <<< "$out"; then
+  echo "❌ --apply --dry-run missing daemon-stopped reminder"
+  echo "$out"
+  exit 1
 fi
 
 # Help text mentions the key flags.

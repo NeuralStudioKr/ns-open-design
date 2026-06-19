@@ -36,6 +36,13 @@ import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { getDesignBffClient } from '../teamver/designBffClient';
+import {
+  driveImportedToChatAttachments,
+  importTeamverDriveAssets,
+  type TeamverDriveImportAsset,
+} from '../teamver/importDriveAssets';
+import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions } from '../teamver/branding/slideOnlyMvpPolicy';
 import { patchProject } from "../state/projects";
@@ -440,6 +447,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [slashIndex, setSlashIndex] = useState(0);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
+    const [driveImportOpen, setDriveImportOpen] = useState(false);
+    const [driveImportBusy, setDriveImportBusy] = useState(false);
+    const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
     // the prompt that nudges the model to use that server's tools.
@@ -497,6 +508,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         cancelled = true;
       };
     }, []);
+    useEffect(() => {
+      if (!teamverDriveImportEnabled) return;
+      const client = getDesignBffClient();
+      if (!client?.workspaceStore) return;
+      let cancelled = false;
+      void Promise.resolve(client.workspaceStore.get()).then((id) => {
+        if (cancelled) return;
+        const trimmed = typeof id === 'string' ? id.trim() : '';
+        setTeamverWorkspaceId(trimmed || null);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [teamverDriveImportEnabled]);
     const rememberRecentDir = useCallback(async (dir: string) => {
       setRecentDirs((prev) => [dir, ...prev.filter((d) => d !== dir)].slice(0, 5));
       const persisted = await pushRecentLinkedDir(dir);
@@ -1364,6 +1389,39 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         });
       } finally {
         setUploading(false);
+      }
+    }
+
+    async function importDriveAttachments(assets: TeamverDriveImportAsset[]) {
+      if (assets.length === 0) return;
+      const id = await ensureProject();
+      if (!id) return;
+      setDriveImportBusy(true);
+      setUploadError(null);
+      const orderStart = Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged));
+      try {
+        const result = await importTeamverDriveAssets(id, assets);
+        if (result.imported.length > 0) {
+          const attachments = driveImportedToChatAttachments(result.imported);
+          appendOrderedStagedAttachments(assignChatAttachmentOrders(attachments, orderStart));
+        }
+        if (result.partial) {
+          const failedCount = result.failed.length;
+          const importedCount = result.imported.length;
+          setUploadError(
+            importedCount > 0
+              ? `Imported ${importedCount} Drive file(s), but ${failedCount} failed.`
+              : `Drive import failed for ${failedCount} file(s).`,
+          );
+        }
+        if (result.imported.length > 0) {
+          setDriveImportOpen(false);
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        setUploadError(`Drive import failed (${detail}).`);
+      } finally {
+        setDriveImportBusy(false);
       }
     }
 
@@ -2321,7 +2379,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 });
                 fileInputRef.current?.click();
               }}
-              attachLoading={uploading}
+              onAttachFromDrive={
+                teamverDriveImportEnabled && teamverWorkspaceId
+                  ? () => {
+                      trackChatPanelClick(analytics.track, {
+                        page_name: 'chat_panel',
+                        area: 'chat_panel',
+                        element: 'attachment',
+                      });
+                      setDriveImportOpen(true);
+                    }
+                  : undefined
+              }
+              attachLoading={uploading || driveImportBusy}
               toolboxLabel={t('chat.designToolbox.title')}
               renderToolbox={(close) => (
                 <DesignToolboxPanel
@@ -2504,6 +2574,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               setDetailsRecord(null);
             }}
             hideUseAction
+          />
+        ) : null}
+        {teamverDriveImportEnabled && teamverWorkspaceId ? (
+          <TeamverDriveImportModal
+            open={driveImportOpen}
+            workspaceId={teamverWorkspaceId}
+            confirming={driveImportBusy}
+            onClose={() => {
+              if (!driveImportBusy) setDriveImportOpen(false);
+            }}
+            onConfirm={importDriveAttachments}
           />
         ) : null}
       </div>

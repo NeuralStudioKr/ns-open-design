@@ -131,6 +131,8 @@ export interface ComposerPlusMenuProps {
   /** Triggers file attachment (opens the native picker). */
   onAttachFiles: () => void;
   attachLoading?: boolean;
+  /** Teamver embed only — open Drive asset picker for project import. */
+  onAttachFromDrive?: () => void;
 
   /**
    * Optional "Design toolbox" row, rendered LAST. Only the project composer
@@ -188,6 +190,7 @@ export function ComposerPlusMenu({
   showMcp = true,
   onAttachFiles,
   attachLoading,
+  onAttachFromDrive,
   renderToolbox,
   toolboxLabel,
   triggerTestId,
@@ -405,6 +408,22 @@ export function ComposerPlusMenu({
             />
             <span>{t('chat.attachAria')}</span>
           </button>
+          {onAttachFromDrive ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="plus-menu__item"
+              data-testid="composer-plus-drive-import"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                close();
+                onAttachFromDrive();
+              }}
+            >
+              <Icon name="folder-filled" size={15} className="plus-menu__item-icon" />
+              <span>Attach from Drive</span>
+            </button>
+          ) : null}
           {showConnectors ? (
           <PlusSubmenuRow
             label={t('connectors.title')}

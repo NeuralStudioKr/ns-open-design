@@ -30,10 +30,14 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-ENV_FILE=".env"
-if [[ -f .env.staging ]]; then
-  ENV_FILE=".env.staging"
+ENV_FILE=".env.staging"
+if [[ ! -f .env.staging && -f .env ]]; then
+  ENV_FILE=".env"
 fi
+
+# shellcheck source=lib/design_compose.sh
+source "$ROOT/scripts/lib/design_compose.sh"
+design_compose_build_args "$ROOT" "$ENV_FILE"
 
 export OD_S3_BUCKET="${OD_S3_BUCKET:-teamver-design-local}"
 export OD_S3_REGION="${OD_S3_REGION:-us-east-1}"
@@ -43,8 +47,8 @@ export OD_S3_ENDPOINT="${OD_S3_ENDPOINT:-http://127.0.0.1:19000}"
 export OD_PROJECT_STORAGE=s3
 
 echo "==> starting MinIO profile (bucket=${OD_S3_BUCKET})"
-docker compose --env-file "$ENV_FILE" --profile minio up -d minio minio-init
-docker compose --env-file "$ENV_FILE" --profile minio ps minio
+"${DESIGN_COMPOSE_ARGS[@]}" --profile minio up -d minio minio-init
+"${DESIGN_COMPOSE_ARGS[@]}" --profile minio ps minio
 
 cat <<EOF
 

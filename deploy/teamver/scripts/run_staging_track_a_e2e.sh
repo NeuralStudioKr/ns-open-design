@@ -18,6 +18,7 @@
 # Optional env:
 #   TEAMVER_COOKIE_USER_B='teamver_access_token=...'    # 다중 사용자 403 격리
 #   TEAMVER_OD_PROJECT_ID=<user A 가 만들었던 OD project id>
+#   TEAMVER_DRIVE_IMPORT_ASSET_ID=<Drive asset id for D-6 import probe>
 #   TEAMVER_E2E_RUN_PREFIX='e2e-staging-'                # usage row 식별자
 #   SKIP_DRIVE=1                                         # publish phase 비활성
 #   SKIP_DB=1                                            # RDS psql 직접 검증 비활성
@@ -55,7 +56,8 @@ env:
 
 optional:
   TEAMVER_COOKIE_USER_B   다중 사용자 403 격리 검증
-  TEAMVER_OD_PROJECT_ID   D-5 publish 대상 (없으면 publish skip)
+  TEAMVER_OD_PROJECT_ID   D-5 publish / D-6 import 대상 (없으면 skip)
+  TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6 import-drive 대상 asset (없으면 skip)
   SKIP_DRIVE=1 / SKIP_DB=1
   TEAMVER_E2E_RUN_PREFIX  usage run_id prefix (default e2e-)
 EOF
@@ -262,6 +264,51 @@ else
       ;;
     *)
       failed "D-5a publish ${publish_code}"
+      ;;
+  esac
+fi
+
+# ---- D-6: import-drive (composer import API) --------------------------------
+if [[ -n "${SKIP_DRIVE:-}" ]]; then
+  skipped "D-6 import-drive — SKIP_DRIVE=1"
+elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
+  skipped "D-6 import-drive — TEAMVER_OD_PROJECT_ID 미설정"
+elif [[ -z "${TEAMVER_DRIVE_IMPORT_ASSET_ID:-}" ]]; then
+  skipped "D-6 import-drive — TEAMVER_DRIVE_IMPORT_ASSET_ID 미설정"
+elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "D-6 import-drive — TEAMVER_COOKIE 필요"
+elif [[ -z "${session_workspace_id:-}" ]]; then
+  skipped "D-6 import-drive — session workspace 없음"
+else
+  import_body="{\"assets\":[{\"assetId\":\"${TEAMVER_DRIVE_IMPORT_ASSET_ID}\",\"filename\":\"e2e-import.txt\"}]}"
+  import_tmp="$(mktemp)"
+  import_code="$(curl -s -o "$import_tmp" -w '%{http_code}' --max-time 20 \
+    -X POST -H "Content-Type: application/json" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}" \
+    --data "$import_body" \
+    "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/import-drive" 2>/dev/null || echo 000)"
+  import_resp="$(cat "$import_tmp" 2>/dev/null || true)"
+  rm -f "$import_tmp"
+  case "$import_code" in
+    200|201|207)
+      if printf '%s' "$import_resp" | grep -q '"imported"'; then
+        passed "D-6 import-drive ${TEAMVER_OD_PROJECT_ID} ← ${import_code} (asset=${TEAMVER_DRIVE_IMPORT_ASSET_ID})"
+      else
+        failed "D-6 import-drive ${import_code} but response missing imported[]"
+      fi
+      ;;
+    401|403)
+      failed "D-6 import-drive ${import_code} — TEAMVER_COOKIE/workspace 권한 부족"
+      ;;
+    404)
+      failed "D-6 import-drive 404 — project 또는 asset 없음"
+      ;;
+    502)
+      failed "D-6 import-drive 502 — Drive download 또는 daemon upload 전부 실패"
+      ;;
+    *)
+      failed "D-6 import-drive ${import_code}"
       ;;
   esac
 fi

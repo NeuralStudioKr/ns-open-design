@@ -4,7 +4,7 @@
 
 **관련:** [05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md) · [07 EC2·배포·인프라](./07_VM_배포_인프라.md) · [06 Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)
 
-**코드:** `vendor/teamver/` · `scripts/sync-teamver-vendor.sh` · `deploy/teamver/scripts/run_docker.sh`
+**코드:** `vendor/teamver/` · `scripts/sync-teamver-vendor.sh` · `deploy/teamver/deploy.sh`
 
 ---
 
@@ -75,17 +75,17 @@ Design compose 는 기본적으로 **EC2에서 이미지를 build** 한다 (`dep
 [권장 — Production]
   개발/CI: sync-teamver-vendor.sh → vendor 커밋 → push
   EC2:     git pull
-           bash deploy/teamver/scripts/run_docker.sh --production --vendor-check-only
-           bash deploy/teamver/scripts/run_docker.sh --production [--rds]
+           bash deploy/teamver/deploy.sh --production --vendor-check-only
+           bash deploy/teamver/deploy.sh --production [--rds]
            (docker compose build + up)
 
 [Staging — platform clone 가능할 때]
   git pull (ns-open-design + ns-teamver-platform)
   bash scripts/sync-teamver-vendor.sh   # vendor 미커밋 시
-  bash deploy/teamver/scripts/run_docker.sh --staging
+  bash deploy/teamver/deploy.sh --staging
 ```
 
-`run_docker.sh` 는 vendor manifest/tarball/wheel 중 하나라도 없을 때 sync 를 **시도**하고, sync 후에도 누락이면 compose build 전에 실패한다. **Production 에서 platform 빌드에 의존하지 말 것** — vendor 를 repo 에 포함하는 쪽이 안전하다.
+`deploy.sh` 는 vendor manifest/tarball/wheel 중 하나라도 없을 때 sync 를 **시도**하고, sync 후에도 누락이면 compose build 전에 실패한다. **Production 에서 platform 빌드에 의존하지 말 것** — vendor 를 repo 에 포함하는 쪽이 안전하다. (`scripts/run_docker.sh` 는 `deploy.sh` 로 위임)
 
 ### 3.1 배포 옵션 비교
 
@@ -115,12 +115,12 @@ platform 스크립트 (직접 호출하지 않아도 sync 가 위임):
 | `ns-teamver-platform/scripts/build-python-sdk.sh` | `teamver-app-sdk` wheel |
 | `ns-teamver-platform/scripts/build-all.sh` | TS workspace 전체 + 안내 |
 
-SDK 버전을 올릴 때: **sync → vendor·manifest 커밋 → EC2 git pull → run_docker.sh**.
+SDK 버전을 올릴 때: **sync → vendor·manifest 커밋 → EC2 git pull → deploy.sh**.
 
 EC2에서 build 전에 vendor만 확인:
 
 ```bash
-bash deploy/teamver/scripts/run_docker.sh --production --vendor-check-only
+bash deploy/teamver/deploy.sh --production --vendor-check-only
 ```
 
 ---
@@ -157,7 +157,7 @@ Track A custom OD 이미지(Teamver embed UI) 빌드 시:
 |------|------|
 | `deploy/Dockerfile` 에 `COPY vendor/teamver` (pnpm install 전) | ✅ |
 | `teamver-design-api` Dockerfile — vendored wheel | ✓ |
-| `run_docker.sh` manifest/tgz/wheel preflight | ✅ |
+| `deploy.sh` manifest/tgz/wheel preflight | ✅ |
 | upstream `vanjayak/open-design` only | Teamver session/embed **미포함** |
 
 design-api 만 custom build 해도 wheel 은 `vendor/teamver/python/` 에 있어야 한다.
@@ -170,7 +170,7 @@ design-api 만 custom build 해도 wheel 은 `vendor/teamver/python/` 에 있어
 |------|--------|------|
 | **개발 PC / CI** | `sync-teamver-vendor.sh` | ✅ 해야 함 (SDK 변경 누락 방지) |
 | **EC2 런타임** | sync·pnpm | ❌ 하지 않음 |
-| **EC2 배포** | `git pull` + `run_docker.sh` | ✅ Docs 동형 |
+| **EC2 배포** | `git pull` + `deploy.sh` | ✅ Docs 동형 |
 | **private registry** | ECR/GHCR image push | 중기 — 지금 필수 아님 |
 | **npm registry** | `publish-npm.sh` | 중기 |
 
@@ -191,11 +191,11 @@ design-api 만 custom build 해도 wheel 은 `vendor/teamver/python/` 에 있어
 
 ```text
 [x] SDK vendor commit + Docker build context 정합
-[ ] EC2: run_docker.sh --production --vendor-check-only
+[ ] EC2: deploy.sh --production --vendor-check-only
 [ ] SDK 변경 시 sync + vendor 커밋
 [ ] deploy/teamver/.env.* 서버 값 갱신
 [ ] EC2: git pull
-[ ] bash deploy/teamver/scripts/run_docker.sh --production [--rds]
+[ ] bash deploy/teamver/deploy.sh --production [--rds]
 [ ] curl https://design.teamver.com/_nginx/health
 [ ] curl https://design-api.teamver.com/api/healthz (nginx 경유)
 ```
@@ -219,7 +219,8 @@ A. CI에서 image build·push → EC2는 `docker compose pull` 만. vendor 는 *
 
 | 일자 | 내용 |
 |------|------|
-| 2026-06-18 | `run_docker.sh` vendor preflight 강화 — manifest/tgz/wheel 전체 확인, `--vendor-check-only` 운영 옵션 추가 |
+| 2026-06-19 | `deploy.sh` — BE/Slide 패턴, `.env` symlink 제거 |
+| 2026-06-18 | `deploy.sh` vendor preflight 강화 — manifest/tgz/wheel 전체 확인, `--vendor-check-only` 운영 옵션 추가 |
 | 2026-06-18 | vendor commit/Docker COPY 완료 상태 반영 — `vendor/teamver` 산출물 추적, `deploy/Dockerfile` pnpm install 전 COPY, design-api wheel install 정합 |
 | 2026-06-15 | `.gitignore` vs git commit 정합 — [10 §4.6](./10_세션·OD패치_보강.md) cross-link |
 | 2026-06-15 | 초안 — vendor·ECR 없는 EC2 배포·자동화 정책 |

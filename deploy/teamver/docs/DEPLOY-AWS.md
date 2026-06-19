@@ -16,7 +16,7 @@ Terraform apply 후 EC2에서 Phase 0 activation 스크립트를 실행합니다
 cd deploy/teamver
 cp .env.staging.example .env.staging   # secrets: OD_API_TOKEN, JWT, POSTGRES_PASSWD, …
 bash scripts/run_staging_phase0_activate.sh --from-terraform
-bash scripts/run_docker.sh --staging --rds
+bash deploy.sh --staging --rds
 bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke
 ```
 
@@ -29,7 +29,7 @@ bash scripts/print_staging_s3_env.sh --from-terraform
 **로컬 S3 (MinIO, P1-9 — 선택):** S3 materialize 경로만 로컬에서 검증할 때 사용. **일반 로컬 개발은 `OD_PROJECT_STORAGE=local`이면 MinIO 불필요.**
 
 ```bash
-bash scripts/run_docker.sh --staging --local-db --with-minio
+bash deploy.sh --staging --local-db --with-minio
 # 또는
 bash scripts/run_minio_s3_dev.sh --integration-test
 ```
@@ -90,8 +90,8 @@ cp .env.production.example .env.production
 # POSTGRES_PASSWD = TF_VAR_teamver_aws_rds1_pass (또는 전용 DB user)
 # POSTGRES_SSLMODE=require
 
-chmod +x scripts/run_docker.sh
-bash scripts/run_docker.sh --production --rds
+chmod +x deploy.sh scripts/run_docker.sh
+bash deploy.sh --production --rds
 bash scripts/seed_od_runtime_config.sh --production
 bash scripts/smoke_design.sh --production   # 배포 후 health·auth gate·od_storage probe
 ```
@@ -170,7 +170,7 @@ bash scripts/restore_app_sqlite_from_s3.sh --production --litestream
 bash scripts/restore_app_sqlite_from_s3.sh --production --litestream --apply
 
 # 4. compose up
-bash scripts/run_docker.sh --production --rds
+bash deploy.sh --production --rds
 ```
 
 **fallback (Litestream 없을 때 — `backup_sqlite_to_s3.sh` snapshot 사용):**

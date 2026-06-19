@@ -127,7 +127,20 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 - FE `teamver/importDriveAssets.ts` — workspace header, appEnabled gate, typed `imported[]/failed[]` 결과 helper.
 - 안전장치 — batch 12개 제한, relative path 검증, path traversal/absolute path/실행 파일 확장자 차단, 전체 성공 201 · 부분 성공 207 · 전체 실패 502.
 
-**남음:** `ComposerPlusMenu` Drive import row, `TeamverDriveImportModal`(Main FE `DriveImportModal` 패턴), 선택 결과를 staged attachment로 연결.
+**남음:** asset grid/thumbnail preview · staging import E2E.
+
+### 4.2.2 구현됨 — Phase 2-2 (loop 158)
+
+- Drive root **Recent** 섹션 — `listTeamverDriveImportRecent()` → `/api/v2/drive/home/recent`.
+- **Server search** — `searchTeamverDriveImportRows()` v2 + list 병합, 2글자 이상·300ms debounce.
+- **Breadcrumb stack** — 폴더 이름 유지, 다단계 탐색·상위 복귀.
+
+### 4.2.1 구현됨 — Phase 2-1 (loop 157)
+
+- `TeamverDriveImportModal` — personal/team Drive folder browse + multi-select (max 12).
+- `ComposerPlusMenu` — `Attach from Drive` row (`onAttachFromDrive`).
+- `ChatComposer` — embed mode에서 modal → `importTeamverDriveAssets` → staged attachment chips.
+- `driveImportList.ts` — Main BE `/api/drive/list` + shared-drive scope helper.
 
 ### 4.3 API 계약 (신규)
 

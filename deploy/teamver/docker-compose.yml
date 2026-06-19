@@ -114,8 +114,8 @@ services:
       dockerfile: ns-open-design/deploy/teamver/be/Dockerfile
     container_name: teamver-design-api
     restart: unless-stopped
-    env_file:
-      - .env
+    # env_file: staging/production override compose 에서 .env.staging|.env.production 직접 지정.
+    # CLI: docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging
     environment:
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}

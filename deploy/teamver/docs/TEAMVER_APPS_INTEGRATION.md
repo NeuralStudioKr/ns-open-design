@@ -97,7 +97,8 @@ pnpm install
 cd deploy/teamver
 cp .env.staging.example .env.staging
 # OD_API_TOKEN, TEAMVER_JWT_SECRET, TEAMVER_INTERNAL_API_KEY 등
-docker compose up -d
+bash deploy.sh --staging
+# 또는: bash scripts/run_docker.sh --staging  (deploy.sh 위임)
 ```
 
 | 서비스 | 포트 |

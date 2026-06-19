@@ -28,6 +28,7 @@ OD_PROJECT_STORAGE=s3
 OD_S3_BUCKET=teamver-design-staging-data
 OD_S3_REGION=ap-northeast-2
 TRUST_TEAMVER_PROXY_HEADERS=true
+TEAMVER_OD_API_KEY=test-managed-api-key
 EOF
 
 # validate_deploy_env only reads fixed paths — invoke inline with sourced temp env
@@ -69,6 +70,25 @@ if ! grep -q 'preflight OK' <<< "$clean_out"; then
   echo "$clean_out"
   exit 1
 fi
+
+# Staging embed — TEAMVER_OD_API_KEY 필수.
+NOKEY_ENV="$(mktemp)"
+grep -v '^TEAMVER_OD_API_KEY=' "$TMP_ENV" > "$NOKEY_ENV" || true
+if bash "$SCRIPT" --staging --rds --env-file "$NOKEY_ENV" >/dev/null 2>&1; then
+  echo "❌ staging without TEAMVER_OD_API_KEY must fail preflight"
+  rm -f "$NOKEY_ENV"
+  exit 1
+fi
+nokey_out="$(bash "$SCRIPT" --staging --rds --env-file "$NOKEY_ENV" 2>&1 || true)"
+if ! grep -q 'TEAMVER_OD_API_KEY 필요' <<< "$nokey_out"; then
+  echo "❌ expected TEAMVER_OD_API_KEY staging gate message"
+  echo "$nokey_out"
+  rm -f "$NOKEY_ENV"
+  exit 1
+fi
+rm -f "$NOKEY_ENV"
+echo "✓ staging TEAMVER_OD_API_KEY gate ok"
+
 if ! grep -q 'TEAMVER_REGISTRY_\* 미설정' <<< "$clean_out"; then
   echo "❌ expected REGISTRY 미설정 warning in baseline"
   echo "$clean_out"
@@ -210,7 +230,7 @@ PROD_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_ENV" "$PROD_DIR"' EXIT
 
 # 1) production baseline (LLM 키 없음) → fail.
-cat "$TMP_ENV" > "$PROD_DIR/.env.production"
+grep -v -E '^(TEAMVER_OD_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=' "$TMP_ENV" > "$PROD_DIR/.env.production"
 nokey_out="$(bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" 2>&1 || true)"
 if ! grep -q 'TEAMVER_OD_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY' <<< "$nokey_out"; then
   echo "❌ production w/o LLM keys must fail with managed/daemon LLM key guard"

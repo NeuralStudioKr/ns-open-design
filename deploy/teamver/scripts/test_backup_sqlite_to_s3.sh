@@ -30,8 +30,12 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Sandboxed deploy/teamver root so we don't touch the real .env.
 SANDBOX="$WORK/teamver"
-mkdir -p "$SANDBOX/scripts"
+mkdir -p "$SANDBOX/scripts/lib"
 cp "$SCRIPT" "$SANDBOX/scripts/"
+cp "$ROOT/scripts/lib/design_compose.sh" "$SANDBOX/scripts/lib/"
+cp "$ROOT/docker-compose.yml" "$SANDBOX/"
+cp "$ROOT/docker-compose.staging.yml" "$SANDBOX/"
+cp "$ROOT/docker-compose.production.yml" "$SANDBOX/"
 chmod +x "$SANDBOX/scripts/backup_sqlite_to_s3.sh"
 
 cat > "$SANDBOX/.env.staging" <<EOF
@@ -93,12 +97,12 @@ if ! grep -q 'mode=fallback env=staging' <<< "$out"; then
   echo "$out"
   exit 1
 fi
-if ! grep -q 'DRYRUN: docker compose --env-file .env.staging stop open-design-daemon' <<< "$out"; then
+if ! grep -q 'DRYRUN:.*--env-file .env.staging.*stop open-design-daemon' <<< "$out"; then
   echo "❌ dry-run did not echo docker compose stop"
   echo "$out"
   exit 1
 fi
-if ! grep -q 'DRYRUN: docker compose --env-file .env.staging cp open-design-daemon' <<< "$out"; then
+if ! grep -q 'DRYRUN:.*--env-file .env.staging.*cp open-design-daemon' <<< "$out"; then
   echo "❌ dry-run did not echo docker compose cp"
   echo "$out"
   exit 1
@@ -117,13 +121,13 @@ fi
 # --allow-live-copy alone (no --stop-daemon) should still pass dry-run.
 PATH="$WORK/bin:$PATH" out="$(cd "$SANDBOX" && bash scripts/backup_sqlite_to_s3.sh \
   --staging --allow-live-copy --dry-run 2>&1)"
-if ! grep -q 'DRYRUN: docker compose --env-file .env.staging cp open-design-daemon' <<< "$out"; then
+if ! grep -q 'DRYRUN:.*--env-file .env.staging.*cp open-design-daemon' <<< "$out"; then
   echo "❌ live-copy dry-run did not echo docker compose cp"
   echo "$out"
   exit 1
 fi
 # Without --stop-daemon, the stop step should NOT show up.
-if grep -q 'DRYRUN: docker compose --env-file .env.staging stop open-design-daemon' <<< "$out"; then
+if grep -q 'DRYRUN:.*stop open-design-daemon' <<< "$out"; then
   echo "❌ --allow-live-copy alone must not stop the daemon"
   echo "$out"
   exit 1

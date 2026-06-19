@@ -1,3 +1,4 @@
+import type { ChatAttachment } from "@open-design/contracts";
 import { getDesignBffClient } from "./designBffClient";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
@@ -87,4 +88,19 @@ export async function importTeamverDriveAssets(
 
 export function driveImportToAttachmentPath(imported: TeamverDriveImportedAsset): string {
   return imported.path;
+}
+
+function attachmentKindFromMime(mimeType: string): ChatAttachment["kind"] {
+  return mimeType.toLowerCase().startsWith("image/") ? "image" : "file";
+}
+
+export function driveImportedToChatAttachments(
+  imported: TeamverDriveImportedAsset[],
+): ChatAttachment[] {
+  return imported.map((item) => ({
+    path: item.path,
+    name: item.name,
+    kind: attachmentKindFromMime(item.mimeType || ""),
+    size: item.sizeBytes,
+  }));
 }

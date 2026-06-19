@@ -73,6 +73,18 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# shellcheck source=lib/design_compose.sh
+source "$ROOT/scripts/lib/design_compose.sh"
+design_compose_build_args "$ROOT" "$ENV_FILE"
+
+compose_run() {
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "DRYRUN: $(design_compose_cmd_str) $*"
+  else
+    "${DESIGN_COMPOSE_ARGS[@]}" "$@"
+  fi
+}
+
 if [[ "$STOP_DAEMON" != true && "$ALLOW_LIVE_COPY" != true ]]; then
   echo "❌ consistency 보호: --stop-daemon 권장, live copy는 --allow-live-copy 명시 필요"
   exit 1
@@ -112,8 +124,8 @@ restore_needed=false
 
 cleanup() {
   rm -rf "$tmp_dir"
-  if [[ "$restore_needed" == true ]]; then
-    docker compose --env-file "$ENV_FILE" start open-design-daemon >/dev/null
+  if [[ "$restore_needed" == true && "$DRY_RUN" != true ]]; then
+    "${DESIGN_COMPOSE_ARGS[@]}" start open-design-daemon >/dev/null
   fi
 }
 trap cleanup EXIT
@@ -126,22 +138,22 @@ echo "==> mode=fallback env=$ENV_NAME bucket=$BUCKET region=$REGION dest=$dest"
 if [[ "$STOP_DAEMON" == true ]]; then
   echo "==> stopping open-design-daemon for offline sqlite copy"
   if [[ "$DRY_RUN" != true ]]; then
-    docker compose --env-file "$ENV_FILE" stop open-design-daemon >/dev/null
+    "${DESIGN_COMPOSE_ARGS[@]}" stop open-design-daemon >/dev/null
     restore_needed=true
   else
-    echo "DRYRUN: docker compose --env-file $ENV_FILE stop open-design-daemon"
+    compose_run stop open-design-daemon
   fi
 fi
 
 echo "==> copying app.sqlite bundle from open-design-daemon"
 if [[ "$DRY_RUN" == true ]]; then
-  echo "DRYRUN: docker compose --env-file $ENV_FILE cp open-design-daemon:/app/.od/app.sqlite{,-wal,-shm} $tmp_dir/"
+  compose_run cp open-design-daemon:/app/.od/app.sqlite{,-wal,-shm} "$tmp_dir/"
 else
-  docker compose --env-file "$ENV_FILE" cp \
+  "${DESIGN_COMPOSE_ARGS[@]}" cp \
     open-design-daemon:/app/.od/app.sqlite "$tmp_dir/app.sqlite" >/dev/null
-  docker compose --env-file "$ENV_FILE" cp \
+  "${DESIGN_COMPOSE_ARGS[@]}" cp \
     open-design-daemon:/app/.od/app.sqlite-wal "$tmp_dir/app.sqlite-wal" >/dev/null 2>&1 || true
-  docker compose --env-file "$ENV_FILE" cp \
+  "${DESIGN_COMPOSE_ARGS[@]}" cp \
     open-design-daemon:/app/.od/app.sqlite-shm "$tmp_dir/app.sqlite-shm" >/dev/null 2>&1 || true
 fi
 

@@ -1,0 +1,8 @@
+# Staging override — teamver-design-api env_file (symlink .env 불필요).
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging ...
+
+services:
+  teamver-design-api:
+    env_file:
+      - .env.staging

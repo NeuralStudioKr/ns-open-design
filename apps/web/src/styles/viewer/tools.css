@@ -841,7 +841,106 @@
   padding: 28px 10px;
   text-align: center;
 }
-.template-share-popover {
+.teamver-drive-import-modal {
+  max-height: min(78vh, 720px);
+}
+.teamver-drive-import-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 8px;
+}
+.teamver-drive-import-tab {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.teamver-drive-import-tab.is-active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.teamver-drive-import-crumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 0 16px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.teamver-drive-import-crumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.teamver-drive-import-crumb-sep {
+  color: var(--text-muted);
+}
+.teamver-drive-import-crumb-current {
+  color: var(--text);
+  font-weight: 500;
+}
+.teamver-drive-import-crumb-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font-size: 12px;
+}
+.teamver-drive-import-list {
+  min-height: 220px;
+}
+.teamver-drive-import-section {
+  display: flex;
+  flex-direction: column;
+}
+.teamver-drive-import-section-label {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.teamver-drive-import-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+.teamver-drive-import-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.teamver-drive-import-actions {
+  display: flex;
+  gap: 8px;
+}
+.teamver-drive-import-cancel,
+.teamver-drive-import-attach {
+  border-radius: var(--radius);
+  font-size: 13px;
+  padding: 7px 12px;
+}
+.teamver-drive-import-cancel {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.teamver-drive-import-attach {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+.teamver-drive-import-attach:disabled {
+  opacity: 0.55;
+}
   min-width: 320px;
   gap: 6px;
   padding: 8px;

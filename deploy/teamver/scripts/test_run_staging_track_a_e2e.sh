@@ -19,14 +19,14 @@ trap 'rm -rf "$WORK"' EXIT
 # 1) env 가 모두 없으면 5 skipped, exit 0.
 unset_env() {
   unset TEAMVER_COOKIE TEAMVER_COOKIE_USER_B TEAMVER_INTERNAL_API_KEY \
-        TEAMVER_OD_PROJECT_ID MAIN_BE_DATABASE_URL SKIP_DRIVE SKIP_DB \
+        TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID MAIN_BE_DATABASE_URL SKIP_DRIVE SKIP_DB \
         DESIGN_HOST DESIGN_API_HOST 2>/dev/null || true
 }
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 5 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 5 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 6 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 6 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
@@ -43,21 +43,31 @@ cat > "$MOCK_BIN/curl" <<'MOCK'
 #!/usr/bin/env bash
 URL=""
 WRITE_OUT=""
+OUT_FILE=""
 for ((i=1; i<=$#; i++)); do
   case "${!i}" in
     -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
+    -o) j=$((i+1)); OUT_FILE="${!j}" ;;
   esac
 done
 for a in "$@"; do URL="$a"; done
 
 emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
+emit_body() {
+  local body="$1"
+  if [[ -n "$OUT_FILE" ]]; then
+    printf '%s' "$body" > "$OUT_FILE"
+  else
+    printf '%s' "$body"
+  fi
+}
 
 case "$URL" in
   *"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      echo '{"user_id":"u-test","workspace_id":"ws-test","workspaceId":"ws-test"}'
+      emit_body '{"user_id":"u-test","workspace_id":"ws-test","workspaceId":"ws-test"}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*)
@@ -68,6 +78,14 @@ case "$URL" in
     ;;
   *"/api/v1/projects/"*"/publish")
     emit_code 200
+    ;;
+  *"/api/v1/projects/"*"/import-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 201
+      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.txt","name":"e2e-import.txt","sizeBytes":12,"mimeType":"text/plain"}],"failed":[]}'
+    else
+      emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.txt","name":"e2e-import.txt","sizeBytes":12,"mimeType":"text/plain"}],"failed":[]}'
+    fi
     ;;
   *"/api/v1/projects/"*"/access")
     emit_code 403
@@ -84,6 +102,7 @@ PATH="$MOCK_BIN:$PATH" \
   TEAMVER_COOKIE='teamver_access_token=fake' \
   TEAMVER_INTERNAL_API_KEY='fake-m2m' \
   TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
+  TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
   TEAMVER_COOKIE_USER_B='teamver_access_token=other' \
   SKIP_DB=1 \
   SKIP_DRIVE= \
@@ -91,6 +110,7 @@ PATH="$MOCK_BIN:$PATH" \
     TEAMVER_COOKIE='teamver_access_token=fake' \
     TEAMVER_INTERNAL_API_KEY='fake-m2m' \
     TEAMVER_OD_PROJECT_ID='proj-e2e-1' \
+    TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
     TEAMVER_COOKIE_USER_B='teamver_access_token=other' \
     SKIP_DB=1 \
     bash "$SCRIPT" --staging 2>&1)"
@@ -101,6 +121,7 @@ for needle in \
   'U-6a /api/internal/usage/events' \
   'U-6b 멱등 두 번째 POST' \
   'D-5a publish proj-e2e-1' \
+  'D-6 import-drive proj-e2e-1' \
   'isolation user B → user A project /access 403'
 do
   if ! grep -q -- "$needle" <<< "$ok_out"; then

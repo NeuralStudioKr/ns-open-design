@@ -100,6 +100,10 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# shellcheck source=lib/design_compose.sh
+source "$ROOT/scripts/lib/design_compose.sh"
+design_compose_build_args "$ROOT" "$ENV_FILE"
+
 if [[ "$MODE" == "snapshot" && -z "$SNAPSHOT_REF" ]]; then
   echo "❌ --from-snapshot requires a reference (timestamp, s3:// URI, or LATEST.json)"
   exit 1
@@ -205,29 +209,29 @@ fi
 
 if [[ "$APPLY" == true ]]; then
   if [[ "$DRY_RUN" == true ]]; then
-    echo "DRYRUN: would verify open-design-daemon stopped, then docker compose cp"
+    echo "DRYRUN: would verify open-design-daemon stopped, then $(design_compose_cmd_str) cp …"
   else
     if ! command -v docker >/dev/null 2>&1; then
       echo "❌ --apply requires docker CLI"
       exit 1
     fi
-    status="$(docker compose --env-file "$ENV_FILE" ps -q open-design-daemon 2>/dev/null || true)"
+    status="$("${DESIGN_COMPOSE_ARGS[@]}" ps -q open-design-daemon 2>/dev/null || true)"
     if [[ -n "$status" ]]; then
       running="$(docker inspect -f '{{.State.Running}}' "$status" 2>/dev/null || echo unknown)"
       if [[ "$running" == "true" ]]; then
-        echo "❌ open-design-daemon is running — stop it first (docker compose stop open-design-daemon)"
+        echo "❌ open-design-daemon is running — stop it first ($(design_compose_cmd_str) stop open-design-daemon)"
         exit 1
       fi
     fi
     echo "==> copying restored app.sqlite into open-design-daemon container"
-    docker compose --env-file "$ENV_FILE" cp \
+    "${DESIGN_COMPOSE_ARGS[@]}" cp \
       "$TARGET_DIR/app.sqlite" open-design-daemon:/app/.od/app.sqlite
     for side in app.sqlite-wal app.sqlite-shm; do
       if [[ -f "$TARGET_DIR/$side" ]]; then
-        docker compose --env-file "$ENV_FILE" cp \
+        "${DESIGN_COMPOSE_ARGS[@]}" cp \
           "$TARGET_DIR/$side" "open-design-daemon:/app/.od/$side"
       fi
     done
-    echo "✓ restored bundle applied — start daemon: docker compose --env-file $ENV_FILE up -d open-design-daemon"
+    echo "✓ restored bundle applied — start daemon: $(design_compose_cmd_str) up -d open-design-daemon"
   fi
 fi

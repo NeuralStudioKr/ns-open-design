@@ -63,6 +63,17 @@ if [[ ! -f "$ENV_FILE_PATH" ]]; then
   exit 1
 fi
 
+# Parent-shell exports must not shadow the selected env file (CI, operator exports, tests).
+unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
+  OD_API_TOKEN TEAMVER_JWT_SECRET TEAMVER_INTERNAL_API_KEY \
+  TEAMVER_API_BASE_URL TEAMVER_DESIGN_API_URL \
+  OD_PROJECT_STORAGE OD_S3_BUCKET OD_S3_REGION AWS_REGION \
+  OD_S3_ENDPOINT OD_S3_ACCESS_KEY_ID AWS_ACCESS_KEY_ID \
+  POSTGRES_HOST POSTGRES_PASSWD POSTGRES_DB POSTGRES_USER \
+  TEAMVER_REGISTRY_APP_ID TEAMVER_REGISTRY_KEY_ID TEAMVER_REGISTRY_ACCESS_KEY \
+  LITESTREAM_BUCKET TEAMVER_DRIVE_PUBLISH_FOLDER_ID \
+  TRUST_TEAMVER_PROXY_HEADERS TEAMVER_BILLING_DISABLED
+
 # shellcheck disable=SC1090
 set -a
 source "$ENV_FILE_PATH"
@@ -159,6 +170,13 @@ fi
 
 if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
   warn "TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY 모두 없음 — embed managed API/chat 비활성 (BYOK만)"
+fi
+
+# Staging embed — managed runtime-config (Settings BYOK 숨김) 에 TEAMVER_OD_API_KEY 필수.
+if [[ "$ENV_FILE" == ".env.staging" ]]; then
+  if [[ -z "${TEAMVER_OD_API_KEY:-}" ]]; then
+    fail "staging embed: TEAMVER_OD_API_KEY 필요 — /api/v1/runtime-config configured=true (사용자 Settings BYOK 비활성)"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

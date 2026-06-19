@@ -45,6 +45,7 @@ echo "==> validate_deploy_env fixture"
 bash "$ROOT/scripts/test_validate_deploy_env.sh"
 bash "$ROOT/scripts/test_seed_main_be_design_app.sh"
 bash "$ROOT/scripts/test_run_docker_wait_ready.sh"
+bash "$ROOT/scripts/test_design_compose_env.sh"
 bash "$ROOT/scripts/test_run_post_deploy_track_a.sh"
 bash "$ROOT/scripts/test_print_cloudwatch_alarm_commands.sh"
 bash "$ROOT/scripts/test_apply_staging_s3_env.sh"
@@ -80,6 +81,9 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
     cd "$OD_ROOT/apps/web"
     npm test -- tests/teamver-publish-drive.test.ts \
       tests/teamver-import-drive-assets.test.ts \
+      tests/teamver-drive-import-attachments.test.ts \
+      tests/teamver-drive-import-list.test.ts \
+      tests/teamver-drive-import-modal.test.tsx \
       tests/teamver-drive-publish-targets.test.ts \
       tests/teamver-publish-drive-menu-item.test.tsx \
       tests/teamver-list-project-outputs.test.ts \

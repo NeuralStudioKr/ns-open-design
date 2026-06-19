@@ -1,0 +1,8 @@
+# Production override — teamver-design-api env_file (symlink .env 불필요).
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.production.yml --env-file .env.production ...
+
+services:
+  teamver-design-api:
+    env_file:
+      - .env.production
