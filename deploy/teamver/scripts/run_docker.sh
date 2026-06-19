@@ -165,6 +165,30 @@ fi
 docker compose "${COMPOSE_ARGS[@]}" up -d --build "${SERVICES[@]}"
 docker compose "${COMPOSE_ARGS[@]}" ps
 
+wait_for_sidecar_ready() {
+  local be_port od_port
+  be_port="$(sed -n 's/^BE_PORT=\([^#[:space:]]*\).*/\1/p' "$ENV_FILE" | tail -1)"
+  od_port="$(sed -n 's/^OD_PORT=\([^#[:space:]]*\).*/\1/p' "$ENV_FILE" | tail -1)"
+  be_port="${be_port:-16000}"
+  od_port="${od_port:-7456}"
+  local max_attempts=60
+  echo "==> Waiting for sidecar loopback health (design-api :${be_port}, daemon :${od_port}, max ${max_attempts}x2s) …"
+  for _ in $(seq 1 "$max_attempts"); do
+    local be_ok=0 od_ok=0
+    curl -sf --max-time 3 "http://127.0.0.1:${be_port}/api/healthz" >/dev/null 2>&1 && be_ok=1
+    curl -sf --max-time 3 "http://127.0.0.1:${od_port}/api/health" >/dev/null 2>&1 && od_ok=1
+    if [[ "$be_ok" -eq 1 && "$od_ok" -eq 1 ]]; then
+      echo "✓ sidecar loopback health OK"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "⚠ sidecar not ready after $((max_attempts * 2))s — check: docker compose logs teamver-design-api open-design-daemon --tail 80"
+  return 1
+}
+
+wait_for_sidecar_ready || true
+
 if [[ -x "$ROOT/scripts/seed_od_runtime_config.sh" ]]; then
   bash "$ROOT/scripts/seed_od_runtime_config.sh" \
     "$([[ "$ENV_FILE" == ".env.staging" ]] && echo --staging || echo --production)" \
