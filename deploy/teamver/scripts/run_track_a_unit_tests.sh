@@ -79,6 +79,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
   (
     cd "$OD_ROOT/apps/web"
     npm test -- tests/teamver-publish-drive.test.ts \
+      tests/teamver-import-drive-assets.test.ts \
       tests/teamver-drive-publish-targets.test.ts \
       tests/teamver-publish-drive-menu-item.test.tsx \
       tests/teamver-list-project-outputs.test.ts \

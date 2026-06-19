@@ -18,12 +18,19 @@ from ..schemas.design_project import (
     DesignProjectListResponse,
     DesignProjectResponse,
 )
+from ..schemas.drive_import import (
+    DriveImportAssetResponse,
+    DriveImportFailureResponse,
+    ImportDriveProjectBody,
+    ImportDriveProjectResponse,
+)
 from ..schemas.publish import (
     DesignOutputListResponse,
     DesignOutputResponse,
     PublishProjectBody,
     PublishProjectResponse,
 )
+from ..services.drive_import_service import import_drive_assets
 from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 from ..services.publish_service import publish_project
 from ..teamver_sdk import extract_request_access_token, get_teamver_client
@@ -255,6 +262,63 @@ async def publish_project_to_drive(
                 error_code=output.error_code,
             )
             for output in result.outputs
+        ],
+    )
+    if result.http_status in (207, 502):
+        return JSONResponse(
+            status_code=result.http_status,
+            content=payload.model_dump(mode="json", by_alias=True),
+        )
+    return payload
+
+
+@router.post(
+    "/{project_ref}/import-drive",
+    response_model=ImportDriveProjectResponse,
+    status_code=201,
+    responses={
+        201: {"description": "All requested Drive assets imported"},
+        207: {"description": "Partial success — see failed assets"},
+        502: {"description": "All Drive imports failed"},
+    },
+)
+async def import_project_drive_assets(
+    project_ref: str,
+    body: ImportDriveProjectBody,
+    request: Request,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> ImportDriveProjectResponse | JSONResponse:
+    row = await design_project_crud.aget_project_by_ref(db, project_ref=project_ref)
+    if row is None:
+        raise NotFoundError("project_not_found")
+    _ensure_project_access(row, auth)
+
+    access_token = auth.raw_token or extract_request_access_token(request)
+    result = await import_drive_assets(
+        teamver_client=get_teamver_client(),
+        access_token=access_token,
+        project=row,
+        assets=body.assets,
+    )
+    payload = ImportDriveProjectResponse(
+        project_id=result.project_id,
+        imported=[
+            DriveImportAssetResponse(
+                asset_id=item.asset_id,
+                path=item.path,
+                name=item.name,
+                size_bytes=item.size_bytes,
+                mime_type=item.mime_type,
+            )
+            for item in result.imported
+        ],
+        failed=[
+            DriveImportFailureResponse(
+                asset_id=item.asset_id,
+                error_code=item.error_code,
+            )
+            for item in result.failed
         ],
     )
     if result.http_status in (207, 502):

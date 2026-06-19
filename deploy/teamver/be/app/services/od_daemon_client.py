@@ -99,6 +99,46 @@ class OdDaemonClient:
             identity=identity,
         )
 
+    async def upload_project_file(
+        self,
+        od_project_id: str,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str,
+        directory: str | None,
+        identity: OdDaemonIdentity,
+    ) -> dict[str, Any]:
+        data: dict[str, str] = {}
+        target_dir = (directory or "").strip().strip("/")
+        if target_dir:
+            data["dir"] = target_dir
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/projects/{od_project_id}/upload",
+                headers=self._headers(identity=identity),
+                data=data,
+                files={"files": (filename, content, content_type)},
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                "[od-daemon] upload failed project=%s status=%s body=%s",
+                od_project_id,
+                response.status_code,
+                (response.text or "")[:300],
+            )
+            raise BadGatewayError("od_daemon_import_failed")
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise BadGatewayError("od_daemon_invalid_json") from exc
+        if not isinstance(body, dict):
+            raise BadGatewayError("od_daemon_invalid_json")
+        files = body.get("files")
+        if not isinstance(files, list) or not files or not isinstance(files[0], dict):
+            raise BadGatewayError("od_daemon_invalid_upload_response")
+        return files[0]
+
     async def _request_json(
         self,
         method: str,

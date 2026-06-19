@@ -12,7 +12,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 
 > **Phase 0 (현재): publish 단방향 ✅ — `POST /api/v1/projects/{id}/publish` → daemon export → SDK Drive 3-step → `design_outputs`.**
 > **Phase 1 (진행): Drive picker UI 고도화** — 검색형 folder picker 1차 ✅, full Drive browser는 후속.
-> **Phase 2: Drive import** — 사용자/팀 Drive에서 파일을 Design 프로젝트로 ingest (composer 첨부, 브랜드 에셋 라이브러리).
+> **Phase 2 (진행): Drive import** — design-api ingest + FE client foundation ✅, composer 첨부 modal/full browser 후속.
 > **Phase 3: Workspace 자산 라이브러리** — 공유 Drive를 design system / 템플릿 / 로고의 SSOT로 노출.
 
 ---
@@ -55,7 +55,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 ### 2.3 현재 한계
 
 1. **Drive picker UX**: 검색형 folder picker 1차는 완료. 최근 파일 / server-side search / asset grid / breadcrumb 는 아직 없음.
-2. **Drive import 부재**: 사용자가 Drive 자산(브랜드 로고, 데이터 CSV, 기존 PPTX)을 composer에 첨부하려면 **로컬 다운로드 → 재업로드** 필요.
+2. **Drive import UI 부재**: design-api ingest 경로는 준비됨. 사용자가 Drive 자산(브랜드 로고, 데이터 CSV, 기존 PPTX)을 composer에서 고르려면 **composer modal/full browser** 연결이 남음.
 3. **Drive deep-link 부재**: publish 결과 카드에서 Drive 자산 페이지 직접 이동 미지원.
 4. **워크스페이스 자산 라이브러리 부재**: `design_systems`는 OD 자체 모델, Drive 공유 자산과 분리.
 
@@ -119,40 +119,52 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 [FE] composer staged attachment 추가 (path = daemon-relative)
 ```
 
+### 4.2.1 구현됨 — Phase 2-1
+
+- BE `POST /api/v1/projects/{projectRef}/import-drive` — registry project access + Teamver user token 위임.
+- `drive_import_service.py` — SDK `drive.download_bytes(access_token, asset_id, max_bytes=50MB)` → daemon multipart upload.
+- `OdDaemonClient.upload_project_file()` — `/api/projects/:id/upload` 에 `dir` + `files` POST. daemon의 기존 scratch/S3 materialization 경로 사용.
+- FE `teamver/importDriveAssets.ts` — workspace header, appEnabled gate, typed `imported[]/failed[]` 결과 helper.
+- 안전장치 — batch 12개 제한, relative path 검증, path traversal/absolute path/실행 파일 확장자 차단, 전체 성공 201 · 부분 성공 207 · 전체 실패 502.
+
+**남음:** `ComposerPlusMenu` Drive import row, `TeamverDriveImportModal`(Main FE `DriveImportModal` 패턴), 선택 결과를 staged attachment로 연결.
+
 ### 4.3 API 계약 (신규)
 
 ```http
-POST /api/v1/projects/{projectId}/import-drive
+POST /api/v1/projects/{projectRef}/import-drive
 Authorization: Bearer <user JWT>
 X-Workspace-Id: <workspace_id>
 Content-Type: application/json
 
 {
   "assets": [
-    {"asset_id": "asset_xxx"},
-    {"asset_id": "asset_yyy", "dest_path": "refs/logo.svg"}
+    {"assetId": "asset_xxx", "filename": "logo.svg"},
+    {"assetId": "asset_yyy", "destPath": "refs/logo.svg", "mimeType": "image/svg+xml"}
   ]
 }
 
 → 201 {
+  "projectId": "DPRJ_xxx",
   "imported": [
-    {"asset_id": "asset_xxx", "path": "refs/logo.svg", "size_bytes": 12345, "mime_type": "image/svg+xml"}
+    {"assetId": "asset_xxx", "path": "refs/logo.svg", "name": "logo.svg", "sizeBytes": 12345, "mimeType": "image/svg+xml"}
   ],
-  "failed": [...]
+  "failed": [{"assetId": "asset_yyy", "errorCode": "drive_download_failed"}]
 }
 ```
 
 **검증:**
 
 - 자산이 사용자 워크스페이스 권한 내인지 — Main BE Drive permissions 위임 (SDK error 그대로 surfacing).
-- daemon scratch volume 가용 공간 (S3 sync 비동기).
-- MIME / 확장자 화이트리스트 (슬라이드 워크플로 친화 — [13 §2.4](./13_embed_슬라이드_MVP_기능게이트.md#24-p0--파일-첨부-정책)).
+- daemon scratch volume 가용 공간 (daemon upload 경로 + S3 materialization 사용).
+- 위험 확장자 차단. MIME / 확장자 allowlist 확대는 composer modal 연결 시 [13 §2.4](./13_embed_슬라이드_MVP_기능게이트.md#24-p0--파일-첨부-정책)와 맞춰 보강.
 - 한 요청 자산 수 ≤ 12 (composer batch와 동일).
 
 ### 4.4 FE 변경
 
 - `ComposerPlusMenu` — Drive 서브메뉴 추가 (embed-only, MCP/Connectors 자리). `showDrive` props.
 - `TeamverDriveImportModal` — Phase 1 picker 컴포넌트 재사용, 단일·다중 선택 모드.
+- `importTeamverDriveAssets(projectId, assets)` — 구현됨. modal 결과를 design-api `/import-drive` 로 전달.
 - `chatAttachmentFromDriveImport(import)` — staged attachment 변환.
 - analytics: `drive_import_modal` surface_view, `drive_import_pick` ui_click.
 
@@ -199,7 +211,8 @@ Content-Type: application/json
 | 2026-Q2 (현재) | Phase 0 (publish, top-folder picker) | ✅ |
 | 2026-Q3 | Phase 1-1 (검색형 folder picker) | ✅ |
 | 2026-Q3 | Phase 1-2 (full Drive browser) | ☐ |
-| 2026-Q3~Q4 | Phase 2 (Drive import composer) | ☐ |
+| 2026-Q3~Q4 | Phase 2-1 (Drive import API/client foundation) | ✅ |
+| 2026-Q3~Q4 | Phase 2-2 (Drive import composer modal) | ☐ |
 | 2026-Q4+ | Phase 3 (워크스페이스 자산 라이브러리) | ☐ |
 
 ---
@@ -208,5 +221,6 @@ Content-Type: application/json
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | loop 155 — Phase 2-1 Drive import design-api + FE client foundation 구현: SDK download → daemon upload, 201/207/502 계약, path/file guard |
 | 2026-06-19 | loop 153 — Phase 1-1 검색형 folder picker 구현: `TeamverDrivePickerModal`, modal target limit 200, publish payload 검증 |
 | 2026-06-19 | loop 152 — 초안: Phase 0 현황 + Phase 1~3 로드맵 |
