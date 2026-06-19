@@ -30,6 +30,7 @@ import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useT, useI18n } from '../i18n';
 import { TeamverOpenDrivePublishMenuItem } from '../teamver/components/TeamverOpenDrivePublishMenuItem';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
 import type { Dict, Locale } from '../i18n/types';
@@ -4458,6 +4459,13 @@ function HtmlViewer({
 }) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
+  // loop 171 — Embed (Teamver) hides every external share/publish surface
+  // (Vercel/Cloudflare deploy, share-link copy/open, Project social share).
+  // Local exports (PDF / PPTX / Image / HTML / ZIP / Markdown / Save as
+  // template) and the Teamver Drive Publish menu item stay visible because
+  // they either land on the user's machine or stay inside the Teamver
+  // workspace tenant.
+  const { hideExternalShareSurfaces } = useTeamverBranding();
   // Shared helper for the share menu: emit studio_click share_option on
   // entry and artifact_export_result on resolution. Sync exports report
   // success immediately after the call returns; async exports get .then
@@ -7194,6 +7202,7 @@ function HtmlViewer({
   const showPptxExport = canShare && isDeckArtifact;
   const showMarkdownExport = source !== null && isMarkdownArtifact;
   const showImageExport = canShare;
+  const showExternalShareMenu = canShare && !hideExternalShareSurfaces;
 
   useEffect(() => {
     const nudgeKey = `${projectId}\n${file.name}`;
@@ -8228,9 +8237,9 @@ function HtmlViewer({
               ) : null}
             </div>
           ) : null}
-          {canShare || canDownload ? (
+          {showExternalShareMenu || canDownload ? (
             <div className="chrome-file-action-menus" ref={shareRef}>
-              {canShare ? (
+              {showExternalShareMenu ? (
                 <div className="share-menu chrome-share-menu">
                   <button
                     type="button"

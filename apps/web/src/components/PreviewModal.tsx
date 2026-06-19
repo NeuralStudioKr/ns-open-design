@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import {
   exportAsHtml,
   exportAsImage,
@@ -264,6 +265,11 @@ export function PreviewModal({
   onSharePopoverItemClick,
 }: Props) {
   const t = useT();
+  // loop 171 — Teamver embed hides external share surfaces (social
+  // platforms + copy share-link / share-text). Local file exports
+  // (PDF / ZIP / HTML / image) stay visible because they download to
+  // the user's machine.
+  const { hideExternalShareSurfaces } = useTeamverBranding();
   const initial = initialViewId && views.some((v) => v.id === initialViewId)
     ? initialViewId
     : views[0]?.id ?? '';
@@ -712,11 +718,11 @@ export function PreviewModal({
                           {t('preview.shareTemplateBadge')}
                         </span>
                         <strong>{previewShareTitle}</strong>
-                        {previewShareUrlDisplay ? (
+                        {previewShareUrlDisplay && !hideExternalShareSurfaces ? (
                           <span>{previewShareUrlDisplay}</span>
                         ) : null}
                       </div>
-                      {previewShareUrl ? (
+                      {previewShareUrl && !hideExternalShareSurfaces ? (
                         <>
                           <section className="template-share-section">
                             <div className="template-share-section__label">

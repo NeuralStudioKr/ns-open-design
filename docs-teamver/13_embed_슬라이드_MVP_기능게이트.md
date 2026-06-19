@@ -88,6 +88,25 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 
 [09_Design_저장소_격리](./09_Design_저장소_격리_출시게이트.md) · [12 §2.5](./12_embed_로컬UX_제거_체크리스트.md)
 
+### 2.7 P0 — Share / Publish 정책 (loop 170)
+
+**원칙:** 워크스페이스 콘텐츠는 **Teamver tenant 경계 안에서만 공유**한다. Drive Publish + 로컬 export 외의 모든 외부 share 진입점을 embed에서 hide. 추가 share 기능 개발은 **MVP 범위에서 제외**한다 — 확장이 필요해지면 Drive 권한 모델(Main BE) 위에서 통합한다.
+
+| ID | OD 표면 | 동작 | 위험 | embed 결정 | 게이트 |
+|----|---------|------|------|-----------|--------|
+| Sh-1 | `FileViewer` chrome share-menu — Copy share-link / Open share page | Vercel/Cloudflare deployment public URL | tenant 위반 (public 인터넷) | **hide** | `hideExternalShareSurfaces` (loop 170) |
+| Sh-2 | `FileViewer` chrome share-menu — "Publish online" (Vercel / Cloudflare) | BYOK token 으로 외부 호스팅 배포 | BYOK 노출 + 외부 호스팅 | **hide** | 동일 |
+| Sh-3 | `FileViewer` chrome share-menu — Project social share (`SocialShareGrid`) | X / Reddit / FB / LinkedIn / Instagram / Xiaohongshu intent | SNS 외부 송출 | **hide** | 동일 |
+| Sh-4 | `PreviewModal` share popover — social platforms + copy share-link / share-text | 동일 social + URL 복사 | tenant 위반 | **hide** (export PDF/ZIP/HTML/image 는 유지) | 동일 |
+| Sh-5 | `NextStepActions` "Share to Open Design" → `SHARE_TO_COMMUNITY_PROMPT` (community contribute) | OD 공개 카탈로그에 plugin scaffold + PR | tenant 위반 + agent 자동 packaging | **hide** | `ProjectView` `onShareToOpenDesign` callback gating |
+| Sh-6 | `Handoff` (open-design.ai) | 외부 도메인 핸드오프 | tenant 위반 | **hide** | `hideHandoffButton` (기존) |
+| Sh-7 | `PluginShareMenu` (plugin GitHub publish + 카탈로그 PR) | plugin 공개 마켓플레이스 | tenant 위반 | **hide** | `hidePluginRegistry` (기존) |
+| Sh-8 | `FileViewer` chrome **download** menu — PDF / PPTX / Image / HTML / Markdown / ZIP / Save as template | 사용자 OS 다운로드 | 낮음 (로컬) | **유지** | — |
+| Sh-9 | `TeamverPublishDriveMenuItem` / Drive Publish | Teamver workspace tenant (S3 + Drive 권한) | 낮음 — Teamver-native | **유지** (정식 channel) | — |
+| Sh-10 | `ReactComponentViewer` Share menu — Export JSX / HTML / ZIP | 사용자 OS 다운로드 | 낮음 | **유지** | — |
+
+**향후 확장 경로:** workspace 멤버 간 또는 외부 공유가 필요해지면 → Drive `link share with permission` (Main BE 차원) 으로 통합. OD 자체 share 표면은 영구 hide.
+
 ---
 
 ## 3. 브랜딩 플래그
@@ -98,6 +117,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | `hideComposerIntegrations` | `true` | MCP·Connectors composer/UI/fetch/슬래시 |
 | `hideCommunityGallery` | `true` | Home 하단 `PluginsHomeSection` + `HomeTemplatesReveal` 비노출 |
 | `hidePluginRegistry` | `true` | `+` 메뉴 "Add plugin" 행 + plugin marketplace 진입 |
+| `hideExternalShareSurfaces` | `true` | (loop 170) FileViewer chrome share-menu / PreviewModal social·copy_link / Share-to-OD community contribute. Drive Publish + 로컬 export 는 유지 |
 
 헬퍼 (`slideOnlyMvpPolicy.ts`):
 
@@ -149,6 +169,9 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] Home 하단 — community gallery 미렌더 (`HomeTemplatesReveal` 부재)
 - [ ] Project chat — Design toolbox `+` flyout: image-gen / video-gen / motion / motion-polish 미노출
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
+- [ ] **Share/Publish (loop 170)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + Drive Publish + Open in Drive **유지**
+- [ ] **PreviewModal Share popover** — 모달의 share popover가 PDF/ZIP/HTML/image **export 만** 보여주고, X/Reddit/FB/LinkedIn/Instagram/Xiaohongshu + Copy link/Copy share text **부재**
+- [ ] **AssistantMessage** — "Share to Open Design" 제출 버튼 미노출
 - [ ] Settings — language / appearance만
 - [ ] **Deck 프로젝트 채팅** — API mode 고정, 프롬프트 전송 후 슬라이드 artifact 생성/수정
 - [ ] **runtime-config** — `GET /api/v1/runtime-config` (cookie) → `configured=true` + model (E2E `S-8c`)
@@ -167,6 +190,8 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | loop 170 — `hideExternalShareSurfaces` 게이트(§2.7), share/publish 정책 — 외부 share 전부 hide, Drive Publish + 로컬 export 만 유지 |
+| 2026-06-19 | loop 167–169 — Drive publish search/browse/folder choose UX |
 | 2026-06-19 | loop 166 — S-8c runtime-config E2E, deck chat staging checklist |
 | 2026-06-19 | loop 165 — embed API-mode usage billing + execution config pin |
 | 2026-06-19 | loop 162 — `drive_import_policy.py` BE allowlist, import-drive per-asset `failed[]`, FE policy sync |

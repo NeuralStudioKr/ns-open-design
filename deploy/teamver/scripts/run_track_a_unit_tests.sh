@@ -101,6 +101,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-open-drive-publish-menu-item.test.tsx \
       tests/teamver-branding-head.test.tsx \
       tests/teamver-embed-branding.test.ts \
+      tests/teamver-embed-share-policy.test.ts \
       tests/teamver-embed-slide-only.test.ts \
       tests/teamver-embed-config-lock.test.ts \
       tests/teamver-usage-report.test.ts \

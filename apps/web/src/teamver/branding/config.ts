@@ -49,6 +49,20 @@ export type TeamverBrandingConfig = {
   hideCommunityGallery: boolean;
   /** Hide entry points to the plugin registry / marketplace (`+` menu add row, etc.). */
   hidePluginRegistry: boolean;
+  /**
+   * loop 171 — Hide *external* share/publish surfaces inside Teamver embed.
+   * Drive Publish (Teamver workspace tenant) and local exports (PDF/PPTX/Image
+   * /JSX/HTML/ZIP download) stay visible. What this gate hides:
+   *   - FileViewer "chrome share" menu (Copy share-link, Open share page,
+   *     Vercel/Cloudflare publish, Project social share / `SocialShareGrid`)
+   *   - PreviewModal share popover social platforms + copy_link items
+   *   - "Share to Open Design" community contribute action
+   *     (`ProjectView.handleShareToOpenDesign` callback wiring)
+   * Rationale: workspace content stays inside the Teamver tenant boundary;
+   * Drive Publish + Drive Import + Drive permissions remain the canonical
+   * cross-user share channel.
+   */
+  hideExternalShareSurfaces: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -118,6 +132,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideComposerIntegrations: true,
         hideCommunityGallery: true,
         hidePluginRegistry: true,
+        hideExternalShareSurfaces: true,
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -136,6 +151,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideComposerIntegrations: false,
         hideCommunityGallery: false,
         hidePluginRegistry: false,
+        hideExternalShareSurfaces: false,
       };
 
   return {

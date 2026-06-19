@@ -20,6 +20,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.lockExecutionConfig).toBe(false);
     expect(branding.hideLocalWorkspaceControls).toBe(false);
     expect(branding.hideWorkspaceTabsBar).toBe(false);
+    expect(branding.hideExternalShareSurfaces).toBe(false);
     expect(branding.hideNavViews.size).toBe(0);
   });
 
@@ -48,6 +49,31 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideComposerIntegrations).toBe(true);
     expect(branding.hideCommunityGallery).toBe(true);
     expect(branding.hidePluginRegistry).toBe(true);
+    expect(branding.hideExternalShareSurfaces).toBe(true);
     expect(branding.allowedSettingsSections).toEqual(new Set(['language', 'appearance']));
+  });
+
+  it('keeps the tenant-boundary share gates aligned in embed', () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const branding = resolveTeamverBranding();
+
+    // External share + community gallery + plugin registry must move
+    // together: any of these slipping back to `false` re-exposes a tenant
+    // exit path the embed contract forbids.
+    expect(branding.hideExternalShareSurfaces).toBe(true);
+    expect(branding.hideExternalLinks).toBe(true);
+    expect(branding.hideCommunityGallery).toBe(true);
+    expect(branding.hidePluginRegistry).toBe(true);
+    expect(branding.hideHandoffButton).toBe(true);
+  });
+
+  it('keeps embed share gates off outside embed mode', () => {
+    const branding = resolveTeamverBranding();
+
+    expect(branding.hideExternalShareSurfaces).toBe(false);
+    expect(branding.hideExternalLinks).toBe(false);
+    expect(branding.hideCommunityGallery).toBe(false);
+    expect(branding.hidePluginRegistry).toBe(false);
+    expect(branding.hideHandoffButton).toBe(false);
   });
 });

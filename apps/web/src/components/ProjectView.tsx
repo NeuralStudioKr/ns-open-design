@@ -832,8 +832,12 @@ export function ProjectView({
 }: Props) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
-  const { hideStudioExecutionControls, hideHandoffButton, hideLocalWorkspaceControls } =
-    useTeamverBranding();
+  const {
+    hideStudioExecutionControls,
+    hideHandoffButton,
+    hideLocalWorkspaceControls,
+    hideExternalShareSurfaces,
+  } = useTeamverBranding();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const handleThemeChange = onThemeChange ?? (() => {});
   // P0 page_view page_name=chat_panel — fire once per project mount.
@@ -5680,8 +5684,8 @@ export function ProjectView({
               onRequestPluginFolderAgentAction={handlePluginFolderAgentAction}
               activePluginActionPaths={activePluginActionPaths}
               hiddenPluginActionPaths={hiddenAssistantPluginActionPaths}
-              onShareToOpenDesign={handleShareToOpenDesign}
-              shareToOpenDesignBusyMessageId={shareToOpenDesignBusyMessageId}
+              onShareToOpenDesign={hideExternalShareSurfaces ? undefined : handleShareToOpenDesign}
+              shareToOpenDesignBusyMessageId={hideExternalShareSurfaces ? null : shareToOpenDesignBusyMessageId}
               forceStreamingMessageIds={forceStreamingPluginMessageIds}
               initialDraft={chatInitialDraft}
               onOpenQuestions={openQuestionsTab}
