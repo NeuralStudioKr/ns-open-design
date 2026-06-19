@@ -182,6 +182,94 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
+  // loop 176 — deadlock-fix regressions
+  it("keeps Browse + select usable when listTeamverDrivePublishTargets returns []", async () => {
+    listTargetsMock.mockResolvedValueOnce([]);
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+    });
+
+    const select = screen.getByTestId("teamver-drive-target-select");
+    expect(select.hasAttribute("disabled")).toBe(false);
+    const options = within(select as HTMLElement).getAllByRole("option");
+    expect(options.map((opt) => (opt as HTMLOptionElement).value)).toContain("personal-default");
+    expect(options.length).toBeGreaterThanOrEqual(1);
+    const browseButton = screen.getByTestId("teamver-drive-target-browse");
+    expect(browseButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: null,
+          sharedDriveId: null,
+        }),
+      );
+    });
+  });
+
+  it("surfaces a status hint and refetches when listTeamverDrivePublishTargets throws", async () => {
+    listTargetsMock.mockRejectedValueOnce(new Error("network"));
+    listTargetsMock.mockResolvedValueOnce([
+      {
+        id: "personal-root",
+        label: "My Drive",
+        description: "Personal drive root",
+        folderId: "FLD-MY-ROOT",
+        sharedDriveId: null,
+      },
+    ]);
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("teamver-drive-target-error")).toBeTruthy();
+    });
+    const browseButton = screen.getByTestId("teamver-drive-target-browse");
+    expect(browseButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(browseButton);
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("treats a null workspace bridge as a soft pending state, not a deadlock", async () => {
+    getWorkspaceMock.mockResolvedValueOnce("");
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("teamver-drive-target-error").textContent).toMatch(/연결 중/);
+    });
+    expect(listTargetsMock).not.toHaveBeenCalled();
+    const select = screen.getByTestId("teamver-drive-target-select");
+    expect(select.hasAttribute("disabled")).toBe(false);
+    const browseButton = screen.getByTestId("teamver-drive-target-browse");
+    expect(browseButton.hasAttribute("disabled")).toBe(false);
+  });
+
   it("browses Drive folders and keeps the browsed folder as publish target", async () => {
     render(
       <TeamverPublishDriveMenuItem

@@ -459,7 +459,9 @@ async def publish_project(
             folder_id=folder_id,
             shared_drive_id=shared_drive_id,
         )
-        await client.drive._put_presigned_bytes(ticket.presigned_url, content=content, content_type=mime)
+        # loop 177 — wrapped in `_drive_presigned_put` so the SDK private call
+        # is a single, swappable call site once Main BE exposes a public method.
+        await _drive_presigned_put(client, presigned_url=ticket.presigned_url, content=content, content_type=mime)
         asset = await client.drive.confirm_upload(access_token=access_token, asset_id=ticket.asset_id)
 
         # 5. INSERT design_outputs
@@ -497,13 +499,23 @@ Browser
 
 ### 6.7 에러·refund
 
-| 이벤트 | HTTP | Phase 2 |
-|--------|------|---------|
-| daemon manifest/export 실패 | 502 | — |
-| Drive upload 실패 | 502 | `refund_usage` if reserved |
-| partial (html OK, zip fail) | **207** + per-output status | refund partial |
-| access denied | 403 | — |
-| project not found | 404 | — |
+| 이벤트 | HTTP | error_code (loop 177) | Phase 2 |
+|--------|------|----------------------|---------|
+| daemon manifest/export 실패 | 502 (전부 실패) / 207 (부분) | `od_daemon_export_failed` | — |
+| Drive upload-request 실패 | 207/502 | `drive_upload_failed_<status>` *or* SDK code | `refund_usage` if reserved |
+| Drive presigned PUT 실패 | 207/502 | `drive_presigned_put_failed_<status>` | `refund_usage` if reserved |
+| Drive confirm 실패 | 207/502 | `drive_confirm_failed_<base>` *or* SDK code (`drive.confirm_*`) | `refund_usage` if reserved |
+| partial (html OK, zip fail) | **207** + per-output status | per-output `errorCode` | refund partial |
+| access denied | 403 | — | — |
+| project not found | 404 | — | — |
+
+> **loop 177 운영 가이드.** staging 에서 publish 가 실패하면 `outputs[].errorCode` prefix 로 phase 를 즉시 식별:
+> - `drive_upload_failed_*` → Main BE Drive `upload-request` 거절 (토큰 만료 403, 쿼터 429, 5xx 등).
+> - `drive_presigned_put_failed_*` → S3 presigned URL PUT 실패 (만료 403, 사이즈 초과 4xx, S3 5xx).
+> - `drive_confirm_failed_*` / `drive.confirm_*` → Main BE confirm 단계 (DB unique 충돌, 권한 변경 등).
+> 동일 코드는 design-api `WARNING publish drive upload failed phase=... code=... project=... format=... status=...` 로그 라인에서 한 번에 검색 가능.
+
+> **loop 178 회귀 안전망.** `D-7 publish body outputs[].driveAssetId 채워짐` E2E 가 staging 에서 실제 Drive 업로드 누락(201 + 빈 `driveAssetId`)을 자동으로 검출. fixture 회귀 시나리오 *3b — empty driveAssetId* 가 mock-curl 단계에서도 동일 가드를 유지.
 
 ### 6.8 Main FE Drive UX (P4-3)
 

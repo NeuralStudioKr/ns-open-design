@@ -266,6 +266,10 @@ else
 fi
 
 # ---- D-5: publish → design_outputs row -------------------------------------
+# loop 178 — capture publish response body too so D-7 can verify
+# `outputs[].driveAssetId` is populated on 201 and that 207/502 surface a
+# meaningful per-output `errorCode`. Without the body check, the previous probe
+# happily passed a "/publish 200" mock that uploaded nothing to Drive.
 if [[ -n "${SKIP_DRIVE:-}" ]]; then
   skipped "D-5 publish — SKIP_DRIVE=1"
 elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
@@ -273,13 +277,53 @@ elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
 elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
   skipped "D-5 publish — TEAMVER_COOKIE 필요"
 else
-  publish_code="$(curl_code "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/publish" \
+  publish_tmp="$(mktemp)"
+  # URL must stay last so curl_code-style mocks (which take the trailing
+  # positional as the URL) keep working.
+  publish_code="$(curl -s -o "$publish_tmp" -w '%{http_code}' --max-time 30 \
     -X POST -H "Content-Type: application/json" \
     -H "Cookie: ${TEAMVER_COOKIE}" \
-    --data '{}')"
+    --data '{}' \
+    "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/publish" 2>/dev/null || echo 000)"
+  publish_resp="$(cat "$publish_tmp" 2>/dev/null || true)"
+  rm -f "$publish_tmp"
+
   case "$publish_code" in
-    200|201|202)
+    200|201|202|207)
       passed "D-5a publish ${TEAMVER_OD_PROJECT_ID} ← ${publish_code}"
+
+      # D-7 — verify body shape regardless of MAIN_BE_DATABASE_URL availability.
+      # 201 → at least one `driveAssetId` non-empty.
+      # 207 → at least one ready output AND at least one failed `errorCode`.
+      # 502 → all-failed already raises BadGateway in BE, won't hit this branch.
+      if [[ "$publish_code" == "201" ]]; then
+        if printf '%s' "$publish_resp" \
+          | grep -Eo '"driveAssetId"\s*:\s*"[^"]+"' \
+          | grep -Eq '"driveAssetId"\s*:\s*"[^"]+"'; then
+          passed "D-7 publish body outputs[].driveAssetId 채워짐"
+        else
+          failed "D-7 publish 201 인데 outputs[].driveAssetId 가 비어있음 (Drive 업로드 누락 의심)"
+        fi
+      elif [[ "$publish_code" == "207" ]]; then
+        ready_n="$(printf '%s' "$publish_resp" \
+          | grep -Eo '"publishStatus"\s*:\s*"ready"' \
+          | wc -l | awk '{print $1}')"
+        failed_codes="$(printf '%s' "$publish_resp" \
+          | grep -Eo '"errorCode"\s*:\s*"[^"]+"' \
+          | head -n3 \
+          | tr '\n' ' ')"
+        if [[ "$ready_n" -ge 1 && -n "$failed_codes" ]]; then
+          passed "D-7 publish 207 partial ok — ${failed_codes}"
+        else
+          failed "D-7 publish 207 인데 ready/failed 한쪽이 비어있음 — body=${publish_resp:0:200}"
+        fi
+      else
+        # 200 / 202 — server returned non-standard status. Can't strictly
+        # validate body shape. Surface a soft skip so the suite keeps going
+        # but operators see the anomaly.
+        skipped "D-7 publish ${publish_code} — non-standard status, body 검증 생략"
+      fi
+
       if [[ -n "${MAIN_BE_DATABASE_URL:-}" ]] && command -v psql >/dev/null 2>&1; then
         # design_outputs.od_project_id 컬럼이 OD project id 를 보관.
         sleep 1
@@ -302,6 +346,13 @@ else
       ;;
     404)
       failed "D-5a publish 404 — TEAMVER_OD_PROJECT_ID=${TEAMVER_OD_PROJECT_ID} 존재 안 함"
+      ;;
+    502)
+      # publish_all_failed — extract the first errorCode for operator hint.
+      first_code="$(printf '%s' "$publish_resp" \
+        | grep -Eo '"errorCode"\s*:\s*"[^"]+"' \
+        | head -n1 || true)"
+      failed "D-5a publish 502 — ${first_code:-publish_all_failed}"
       ;;
     *)
       failed "D-5a publish ${publish_code}"

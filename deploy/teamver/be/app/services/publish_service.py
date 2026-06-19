@@ -6,7 +6,11 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from teamver_app_sdk import TeamverAppClient
-from teamver_app_sdk.errors import DriveUploadError, TeamverAPIError
+from teamver_app_sdk.errors import (
+    DriveConfirmError,
+    DriveUploadError,
+    TeamverAPIError,
+)
 
 from ..db.crud import design_output_crud
 from ..db.models import DesignOutput, DesignProject
@@ -26,6 +30,19 @@ _CLIENT_ERROR_CODES = frozenset(
         "bad_request",
     }
 )
+
+
+class _PublishUploadFailure(Exception):
+    """Internal phase-tagged Drive failure used to consolidate the per-format
+    upload logging (loop 177). Carries the canonical FE-facing error_code, the
+    pipeline phase (`upload_request`/`presigned_put`/`confirm`) and the
+    originating SDK exception so the warning log can carry status_code."""
+
+    def __init__(self, error_code: str, phase: str, cause: BaseException) -> None:
+        super().__init__(error_code)
+        self.error_code = error_code
+        self.phase = phase
+        self.cause = cause
 
 
 @dataclass(frozen=True)
@@ -100,10 +117,49 @@ def _ready_output(row: DesignOutput) -> PublishFormatResult:
 
 
 def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
+    """
+    loop 177 — Map a `TeamverAPIError` raised during the Drive upload pipeline
+    into a stable, debuggable error_code surface. Order of preference:
+
+      1. SDK-supplied `code` field (e.g., `drive.upload_too_large`).
+      2. HTTP status — distinguishes presigned-PUT 4xx (likely token / mime
+         mismatch) from 5xx / transport-class names (timeouts).
+
+    Without this, every Drive failure collapsed onto `drive_upload_failed` and
+    staging operators couldn't tell a stale presigned URL apart from a real S3
+    outage. The status-suffixed shape (`drive_upload_failed_403`) is FE-safe
+    because the FE shows the raw code in the toast and treats anything starting
+    with `drive_upload_failed` as a Drive-side fault.
+    """
     code = getattr(exc, "code", None)
     if code:
         return str(code)
+    status = getattr(exc, "status_code", None)
+    if status:
+        return f"drive_upload_failed_{int(status)}"
     return "drive_upload_failed"
+
+
+async def _drive_presigned_put(
+    teamver_client: TeamverAppClient,
+    *,
+    presigned_url: str,
+    content: bytes,
+    content_type: str,
+) -> None:
+    """
+    loop 177 — Single-arity wrapper around the SDK's presigned PUT so the rest
+    of the pipeline doesn't reach into `_put_presigned_bytes` directly. Keeps
+    the SDK upgrade boundary explicit: if the SDK ever surfaces a public method
+    we change one line here instead of three call sites + their tests.
+    """
+    method = getattr(teamver_client.drive, "_put_presigned_bytes", None)
+    if method is None:
+        raise DriveUploadError(
+            "teamver SDK missing presigned PUT helper",
+            code="drive_upload_sdk_missing",
+        )
+    await method(presigned_url, content=content, content_type=content_type)
 
 
 def _raise_if_all_failed(result: PublishResult) -> None:
@@ -190,26 +246,69 @@ async def publish_project(
             else:
                 continue
 
+            # loop 177 — Phase-tagged Drive upload so each failure surfaces a
+            # distinct error_code and a structured warning log for staging
+            # debugging. Phase order: upload_request → presigned_put → confirm.
+            phase = "upload_request"
             try:
-                ticket = await teamver_client.drive.create_upload_request(
-                    access_token=access_token,
-                    filename=filename,
-                    file_size=len(content),
-                    content_type=mime_type,
-                    folder_id=resolved_folder_id,
-                    shared_drive_id=resolved_shared_drive_id,
+                try:
+                    ticket = await teamver_client.drive.create_upload_request(
+                        access_token=access_token,
+                        filename=filename,
+                        file_size=len(content),
+                        content_type=mime_type,
+                        folder_id=resolved_folder_id,
+                        shared_drive_id=resolved_shared_drive_id,
+                    )
+                except (DriveUploadError, TeamverAPIError) as exc:
+                    error_code = _teamver_upload_error_code(exc)
+                    if not error_code.startswith("drive_"):
+                        error_code = f"drive_upload_request_failed_{error_code}"
+                    raise _PublishUploadFailure(error_code, phase, exc) from exc
+
+                phase = "presigned_put"
+                try:
+                    await _drive_presigned_put(
+                        teamver_client,
+                        presigned_url=ticket.presigned_url,
+                        content=content,
+                        content_type=mime_type,
+                    )
+                except DriveUploadError as exc:
+                    status = getattr(exc, "status_code", None)
+                    error_code = (
+                        f"drive_presigned_put_failed_{int(status)}"
+                        if status
+                        else _teamver_upload_error_code(exc)
+                    )
+                    raise _PublishUploadFailure(error_code, phase, exc) from exc
+
+                phase = "confirm"
+                try:
+                    asset = await teamver_client.drive.confirm_upload(
+                        access_token=access_token,
+                        asset_id=ticket.asset_id,
+                    )
+                except (DriveConfirmError, DriveUploadError, TeamverAPIError) as exc:
+                    base = _teamver_upload_error_code(exc)
+                    error_code = (
+                        base
+                        if base.startswith(("drive_", "drive."))
+                        else f"drive_confirm_failed_{base}"
+                    )
+                    raise _PublishUploadFailure(error_code, phase, exc) from exc
+            except _PublishUploadFailure as failure:
+                logger.warning(
+                    "publish drive upload failed phase=%s code=%s "
+                    "project=%s od_project=%s format=%s status=%s",
+                    failure.phase,
+                    failure.error_code,
+                    project.id,
+                    project.od_project_id,
+                    fmt,
+                    getattr(failure.cause, "status_code", None),
                 )
-                await teamver_client.drive._put_presigned_bytes(
-                    ticket.presigned_url,
-                    content=content,
-                    content_type=mime_type,
-                )
-                asset = await teamver_client.drive.confirm_upload(
-                    access_token=access_token,
-                    asset_id=ticket.asset_id,
-                )
-            except (DriveUploadError, TeamverAPIError) as exc:
-                outputs.append(_failed_output(fmt, error_code=_teamver_upload_error_code(exc)))
+                outputs.append(_failed_output(fmt, error_code=failure.error_code))
                 continue
 
             row = await design_output_crud.acreate_output(

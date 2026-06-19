@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
-from teamver_app_sdk.errors import TeamverAPIError
+from teamver_app_sdk.errors import (
+    DriveConfirmError,
+    DriveUploadError,
+    TeamverAPIError,
+)
 
 os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
@@ -273,3 +277,154 @@ async def test_publish_project_partial_zip_upload_fail():
     assert result.outputs[0].publish_status == "ready"
     assert result.outputs[1].publish_status == "failed"
     assert result.outputs[1].error_code == "drive_upload_failed"
+
+
+def _wire_two_format_drive(
+    teamver_client: MagicMock,
+    *,
+    html_ticket_asset: str = "AST-HTML",
+    zip_ticket_asset: str = "AST-ZIP",
+):
+    """Helper for loop 177 partial-failure tests — html succeeds, zip fails at
+    a configurable phase. Returns (mocks, html_asset) so each test can wire its
+    own zip-phase exception."""
+    ticket_html = MagicMock()
+    ticket_html.asset_id = html_ticket_asset
+    ticket_html.presigned_url = f"https://s3.example.com/upload/{html_ticket_asset}"
+    ticket_zip = MagicMock()
+    ticket_zip.asset_id = zip_ticket_asset
+    ticket_zip.presigned_url = f"https://s3.example.com/upload/{zip_ticket_asset}"
+    asset_html = MagicMock()
+    asset_html.asset_id = html_ticket_asset
+    create_mock = AsyncMock(side_effect=[ticket_html, ticket_zip])
+    put_mock = AsyncMock()
+    confirm_mock = AsyncMock(return_value=asset_html)
+    teamver_client.drive.create_upload_request = create_mock
+    teamver_client.drive._put_presigned_bytes = put_mock
+    teamver_client.drive.confirm_upload = confirm_mock
+    return create_mock, put_mock, confirm_mock
+
+
+@pytest.mark.asyncio
+async def test_publish_project_upload_request_phase_status_propagates():
+    """loop 177 — Drive `upload_request` 4xx surfaces as
+    `drive_upload_failed_<status>` instead of the generic `drive_upload_failed`,
+    so staging operators can tell stale tokens (403) from rate limits (429)."""
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = AsyncMock()
+    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_archive.return_value = b"zip-bytes"
+
+    teamver_client = MagicMock()
+    ticket_html = MagicMock()
+    ticket_html.asset_id = "AST-HTML"
+    ticket_html.presigned_url = "https://s3.example.com/upload/AST-HTML"
+    asset_html = MagicMock()
+    asset_html.asset_id = "AST-HTML"
+    upload_request_exc = TeamverAPIError("drive upload request rejected")
+    upload_request_exc.code = None
+    upload_request_exc.status_code = 403
+    create_mock = AsyncMock(side_effect=[ticket_html, upload_request_exc])
+    put_mock = AsyncMock()
+    confirm_mock = AsyncMock(return_value=asset_html)
+    teamver_client.drive.create_upload_request = create_mock
+    teamver_client.drive._put_presigned_bytes = put_mock
+    teamver_client.drive.confirm_upload = confirm_mock
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["html", "zip"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 207
+    assert result.outputs[0].publish_status == "ready"
+    zip_output = next(out for out in result.outputs if out.kind == "zip")
+    assert zip_output.publish_status == "failed"
+    assert zip_output.error_code == "drive_upload_failed_403"
+    # The presigned PUT must NEVER fire when the upload-request phase fails.
+    assert put_mock.await_count == 1, "PUT should only run for the html (succeeding) format"
+    assert confirm_mock.await_count == 1, "Confirm should only run for the html (succeeding) format"
+
+
+@pytest.mark.asyncio
+async def test_publish_project_presigned_put_status_propagates():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = AsyncMock()
+    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_archive.return_value = b"zip-bytes"
+
+    teamver_client = MagicMock()
+    create_mock, put_mock, confirm_mock = _wire_two_format_drive(teamver_client)
+    presigned_exc = DriveUploadError("S3 PUT failed with status 502")
+    presigned_exc.status_code = 502
+    # html PUT ok; zip PUT 502.
+    put_mock.side_effect = [None, presigned_exc]
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["html", "zip"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 207
+    zip_output = next(out for out in result.outputs if out.kind == "zip")
+    assert zip_output.error_code == "drive_presigned_put_failed_502"
+    # Confirm must NEVER fire on a failed PUT — that would hand the user a
+    # falsely-finalised asset row.
+    assert confirm_mock.await_count == 1, "Confirm runs only for html"
+
+
+@pytest.mark.asyncio
+async def test_publish_project_confirm_failure_uses_confirm_code():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = AsyncMock()
+    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_archive.return_value = b"zip-bytes"
+
+    teamver_client = MagicMock()
+    _create, _put, confirm_mock = _wire_two_format_drive(teamver_client)
+    confirm_exc = DriveConfirmError("drive confirm failed")
+    confirm_exc.status_code = 504
+    confirm_exc.code = "drive.confirm_timeout"
+    # html confirm ok; zip confirm raises.
+    confirm_mock.side_effect = [confirm_mock.return_value, confirm_exc]
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["html", "zip"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    zip_output = next(out for out in result.outputs if out.kind == "zip")
+    assert zip_output.error_code == "drive.confirm_timeout"
