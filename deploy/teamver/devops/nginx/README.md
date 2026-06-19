@@ -76,6 +76,14 @@ for h in stg-design.teamver.com stg-design-api.teamver.com; do
   printf '%-32s %s\n' "$h" "$(curl -sS -o /dev/null -w '%{http_code}' "https://$h/_nginx/health")"
 done
 curl -sSI https://stg-design.teamver.com/   # 미인증 → 302 stg.teamver.com/login
+
+# design-api CORS preflight (embed → design-api cross-origin POST)
+curl -si -X OPTIONS \
+  -H "Origin: https://stg-design.teamver.com" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type,x-workspace-id" \
+  https://stg-design-api.teamver.com/api/v1/usage/events | head -12
+# 기대: HTTP/2 204 + access-control-allow-origin (418 이면 nginx conf 재적용)
 ```
 
 ---

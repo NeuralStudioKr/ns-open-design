@@ -147,6 +147,27 @@ else
   fail=$((fail + 1))
 fi
 
+cors_origin="${DESIGN_BASE}"
+cors_preflight_headers="$(mktemp)"
+cors_preflight_code="$(curl -s -o /dev/null -D "$cors_preflight_headers" -w '%{http_code}' --max-time 15 \
+  -X OPTIONS \
+  -H "Origin: ${cors_origin}" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type,x-workspace-id" \
+  "${API_BASE}/api/v1/usage/events" 2>/dev/null || echo "000")"
+if [[ "$cors_preflight_code" == "204" ]] \
+  && grep -qi "access-control-allow-origin: ${cors_origin}" "$cors_preflight_headers" 2>/dev/null; then
+  echo "✓ design-api OPTIONS /api/v1/usage/events → 204 CORS"
+  pass=$((pass + 1))
+elif [[ "$cors_preflight_code" == "418" ]]; then
+  echo "✗ design-api OPTIONS /api/v1/usage/events → 418 (nginx preflight broken — re-apply https conf + protected-routes.inc)"
+  fail=$((fail + 1))
+else
+  echo "✗ design-api OPTIONS /api/v1/usage/events → $cors_preflight_code (expected 204 + Access-Control-Allow-Origin)"
+  fail=$((fail + 1))
+fi
+rm -f "$cors_preflight_headers"
+
 scratch_sync_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
   -X POST \
   "${DESIGN_BASE}/api/projects/_smoke_probe_/scratch/sync-up" 2>/dev/null || echo "000")"

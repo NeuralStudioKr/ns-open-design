@@ -275,6 +275,12 @@ echo "==== Deploy 완료 ($TARGET_ENV) ===="
 echo ""
 echo "다음:"
 echo "  - bash scripts/smoke_design.sh ${ENV_FLAG:+$ENV_FLAG}"
+if [[ "$TARGET_ENV" == "staging" ]]; then
+  echo "  - sudo bash devops/nginx/apply_teamver_design_staging_nginx_conf.sh \\"
+  echo "      ./stg-design.teamver.com.https.conf --disable stg-design.teamver.com.http.conf"
+elif [[ "$TARGET_ENV" == "production" ]]; then
+  echo "  - sudo bash devops/nginx/apply_teamver_design_nginx_conf.sh ./design.teamver.com.http.conf"
+fi
 echo "  - ${DESIGN_COMPOSE_ARGS[*]} logs teamver-design-api --tail 80"
 if [[ -n "$NO_CACHE" ]]; then
   echo "  - 이미지가 반영 안 된 것 같으면: $0 --$TARGET_ENV --no-cache"
