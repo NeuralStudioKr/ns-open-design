@@ -241,7 +241,12 @@ export function HomeView({
   executionSwitcher,
 }: Props) {
   const { locale, t } = useI18n();
-  const { hideLocalWorkspaceControls, hideComposerIntegrations } = useTeamverBranding();
+  const {
+    hideLocalWorkspaceControls,
+    hideComposerIntegrations,
+    hideCommunityGallery,
+    hidePluginRegistry,
+  } = useTeamverBranding();
   const analytics = useAnalytics();
   // P0 page_view page_name=home — fire once on mount. ref-keyed to survive
   // re-renders that flip parent state without remounting HomeView.
@@ -1599,7 +1604,7 @@ export function HomeView({
         onRemovePluginContext={removePluginContext}
         onRemoveMcpContext={removeMcpContext}
         onRemoveConnectorContext={removeConnectorContext}
-        onAddPlugin={onBrowseRegistry}
+        onAddPlugin={hidePluginRegistry ? undefined : onBrowseRegistry}
         onAddConnector={hideComposerIntegrations ? undefined : onOpenIntegrations}
         onAddMcp={hideComposerIntegrations ? undefined : onOpenMcp}
         onOpenPluginDetails={setDetailsRecord}
@@ -1694,6 +1699,7 @@ export function HomeView({
         }}
       />
 
+      {hideCommunityGallery ? null : (
       <HomeTemplatesReveal
         enabled={!projectsLoading && projects.length === 0}
       >
@@ -1710,6 +1716,7 @@ export function HomeView({
           cardLayout="gallery"
         />
       </HomeTemplatesReveal>
+      )}
 
       <AnimatePresence>
         {detailsRecord ? (

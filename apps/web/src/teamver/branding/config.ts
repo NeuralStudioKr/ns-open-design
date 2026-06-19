@@ -45,6 +45,10 @@ export type TeamverBrandingConfig = {
   slideOnlyMvp: boolean;
   /** Hide MCP + connector affordances in Home/Project composers (settings already gated). */
   hideComposerIntegrations: boolean;
+  /** Hide the Home community / plugin gallery (`HomeTemplatesReveal` + `PluginsHomeSection`). */
+  hideCommunityGallery: boolean;
+  /** Hide entry points to the plugin registry / marketplace (`+` menu add row, etc.). */
+  hidePluginRegistry: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -112,6 +116,8 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideWorkspaceTabsBar: true,
         slideOnlyMvp: true,
         hideComposerIntegrations: true,
+        hideCommunityGallery: true,
+        hidePluginRegistry: true,
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -128,6 +134,8 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideWorkspaceTabsBar: false,
         slideOnlyMvp: false,
         hideComposerIntegrations: false,
+        hideCommunityGallery: false,
+        hidePluginRegistry: false,
       };
 
   return {

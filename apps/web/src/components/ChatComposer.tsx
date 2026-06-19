@@ -37,6 +37,7 @@ import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedD
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
+import { visibleDesignToolboxActions } from '../teamver/branding/slideOnlyMvpPolicy';
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -373,7 +374,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     ref
   ) {
     const t = useT();
-    const { hideLocalWorkspaceControls, hideComposerIntegrations } = useTeamverBranding();
+    const branding = useTeamverBranding();
+    const {
+      hideLocalWorkspaceControls,
+      hideComposerIntegrations,
+      hidePluginRegistry,
+      slideOnlyMvp,
+    } = branding;
     const analytics = useAnalytics();
     const activeFileContext =
       projectMetadata?.importedFrom === 'folder' && activeProjectFileName
@@ -2288,7 +2295,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 });
                 void insertPluginMention(record);
               }}
-              onAddPlugin={() => {
+              onAddPlugin={hidePluginRegistry ? undefined : () => {
                 trackComposerBar({ element: 'plus_add', resource_kind: 'plugin' });
                 onBrowsePlugins?.();
               }}
@@ -2318,7 +2325,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               toolboxLabel={t('chat.designToolbox.title')}
               renderToolbox={(close) => (
                 <DesignToolboxPanel
-                  actions={DESIGN_TOOLBOX_ACTIONS}
+                  actions={visibleDesignToolboxActions(DESIGN_TOOLBOX_ACTIONS, { slideOnlyMvp })}
                   skills={skills}
                   plugins={pluginsForComposer}
                   mcpServers={hideComposerIntegrations ? [] : enabledMcpServers}
@@ -2374,12 +2381,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   role="menu"
                 >
                   <DesignToolboxPanel
-                    actions={DESIGN_TOOLBOX_ACTIONS}
+                    actions={visibleDesignToolboxActions(DESIGN_TOOLBOX_ACTIONS, { slideOnlyMvp })}
                     skills={skills}
                     plugins={pluginsForComposer}
-                    mcpServers={enabledMcpServers}
-                    mcpTemplates={mcpTemplates}
-                    connectors={connectors}
+                    mcpServers={hideComposerIntegrations ? [] : enabledMcpServers}
+                    mcpTemplates={hideComposerIntegrations ? [] : mcpTemplates}
+                    connectors={hideComposerIntegrations ? [] : connectors}
                     projectFiles={projectFiles}
                     activeSkillIds={stagedSkills.map((skill) => skill.id)}
                     activePluginId={activeAppliedPlugin?.pluginId ?? pinnedPluginId ?? null}

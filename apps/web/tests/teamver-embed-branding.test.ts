@@ -46,6 +46,8 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideNavViews.has('integrations')).toBe(true);
     expect(branding.slideOnlyMvp).toBe(true);
     expect(branding.hideComposerIntegrations).toBe(true);
+    expect(branding.hideCommunityGallery).toBe(true);
+    expect(branding.hidePluginRegistry).toBe(true);
     expect(branding.allowedSettingsSections).toEqual(new Set(['language', 'appearance']));
   });
 });

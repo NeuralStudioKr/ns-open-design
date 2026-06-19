@@ -29,6 +29,8 @@ const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   hideWorkspaceTabsBar: false,
   slideOnlyMvp: false,
   hideComposerIntegrations: false,
+  hideCommunityGallery: false,
+  hidePluginRegistry: false,
 });
 
 export function TeamverBrandingProvider({ children }: { children: ReactNode }) {

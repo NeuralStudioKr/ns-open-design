@@ -4,6 +4,10 @@ import {
   type ChipGroup,
   type HomeHeroChip,
 } from "../../components/home-hero/chips";
+import type {
+  DesignToolboxAction,
+  DesignToolboxActionId,
+} from "../../runtime/design-toolbox";
 import type { TeamverBrandingConfig } from "./config";
 
 /** Home hero chip ids hidden in embed slide-only MVP. */
@@ -69,4 +73,36 @@ export function defaultHomeHeroGuideChipId(
   return branding.slideOnlyMvp
     ? TEAMVER_EMBED_DEFAULT_HOME_HERO_CHIP_ID
     : "prototype";
+}
+
+/**
+ * Design toolbox action ids hidden when slide-only MVP is on.
+ *
+ * `image-gen` / `video-gen` create new media projects — out of scope for the
+ * deck-first launch. `motion` / `motion-polish` target animation/HyperFrames
+ * workflows. The remaining actions (`auto-match`, `visual-polish`,
+ * `anti-ai-polish`) all read as deck-applicable polish flows.
+ */
+export const TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS = new Set<
+  DesignToolboxActionId
+>(["image-gen", "video-gen", "motion", "motion-polish"]);
+
+export function visibleDesignToolboxActions(
+  actions: readonly DesignToolboxAction[],
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): DesignToolboxAction[] {
+  if (!branding.slideOnlyMvp) return [...actions];
+  return actions.filter(
+    (action) => !TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has(action.id),
+  );
+}
+
+export function visibleDesignToolboxActionIds(
+  ids: readonly DesignToolboxActionId[],
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): DesignToolboxActionId[] {
+  if (!branding.slideOnlyMvp) return [...ids];
+  return ids.filter(
+    (id) => !TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has(id),
+  );
 }

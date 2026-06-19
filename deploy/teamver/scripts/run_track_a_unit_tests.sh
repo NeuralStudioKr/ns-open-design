@@ -82,6 +82,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-list-project-outputs.test.ts \
       tests/teamver-open-drive-publish-menu-item.test.tsx \
       tests/teamver-branding-head.test.tsx \
+      tests/teamver-embed-branding.test.ts \
+      tests/teamver-embed-slide-only.test.ts \
       tests/teamver-project-registry.test.ts \
       tests/teamver-use-embed.test.tsx \
       tests/teamver-workspace-utils.test.ts \

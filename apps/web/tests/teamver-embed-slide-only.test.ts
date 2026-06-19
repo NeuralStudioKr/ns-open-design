@@ -5,11 +5,14 @@ import { resolve } from 'node:path';
 import {
   TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS,
   TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS,
+  TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS,
   homeHeroChipsForGroup,
   visibleNewProjectTabs,
   defaultNewProjectTab,
+  visibleDesignToolboxActions,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
 import { chipsForGroup } from '../src/components/home-hero/chips';
+import { DESIGN_TOOLBOX_ACTIONS } from '../src/runtime/design-toolbox';
 
 const webRoot = resolve(import.meta.dirname, '..');
 
@@ -50,18 +53,33 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(defaultNewProjectTab({ slideOnlyMvp: false })).toBe('prototype');
   });
 
+  it('hides media and motion toolbox actions in slide-only mode', () => {
+    const actionIds = visibleDesignToolboxActions(DESIGN_TOOLBOX_ACTIONS, {
+      slideOnlyMvp: true,
+    }).map((action) => action.id);
+
+    expect(actionIds).toEqual(['auto-match', 'anti-ai-polish', 'visual-polish']);
+    expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('image-gen')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('video-gen')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('motion')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('motion-polish')).toBe(true);
+  });
+
   it('wires slide-only gates into entry and composer surfaces', () => {
     const homeHero = readSource('src/components/HomeHero.tsx');
     const newProject = readSource('src/components/NewProjectPanel.tsx');
     const entryShell = readSource('src/components/EntryShell.tsx');
     const chatComposer = readSource('src/components/ChatComposer.tsx');
     const plusMenu = readSource('src/components/ComposerPlusMenu.tsx');
+    const nextStepActions = readSource('src/components/NextStepActions.tsx');
 
     expect(homeHero).toContain('homeHeroChipsForGroup');
     expect(homeHero).toContain('hideComposerIntegrations');
     expect(newProject).toContain('visibleNewProjectTabs');
     expect(entryShell).toContain('defaultNewProjectTab');
     expect(chatComposer).toContain('showMcp={!hideComposerIntegrations}');
+    expect(chatComposer).toContain('visibleDesignToolboxActions');
+    expect(nextStepActions).toContain('visibleDesignToolboxActions');
     expect(plusMenu).toContain('showConnectors');
     expect(plusMenu).toContain('showMcp');
   });

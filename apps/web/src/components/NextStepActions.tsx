@@ -20,16 +20,14 @@ import {
   type DesignToolboxActionId,
 } from '../runtime/design-toolbox';
 import type { SkillSummary } from '../types';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import {
+  visibleDesignToolboxActionIds,
+  visibleDesignToolboxActions,
+} from '../teamver/branding/slideOnlyMvpPolicy';
 import styles from './NextStepActions.module.css';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
-
-// Surfaced under More → Design toolbox. The two featured ids already have their
-// own rows at the top of the card, so we drop them here to avoid duplicating
-// the same action one level down.
-const NON_FEATURED_TOOLBOX_ACTIONS = DESIGN_TOOLBOX_ACTIONS.filter(
-  (action) => !FEATURED_DESIGN_TOOLBOX_ACTION_IDS.includes(action.id),
-);
 
 interface Props {
   // The previewable artifact this affordance is anchored to. Passed back to
@@ -105,6 +103,7 @@ export function NextStepActions({
   shareToOpenDesignBusy = false,
 }: Props) {
   const { t, locale } = useI18n();
+  const { slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const exposedRef = useRef(false);
   useEffect(() => {
@@ -236,9 +235,28 @@ export function NextStepActions({
     [closeAll, onPickSkill, track],
   );
 
+  const toolboxActions = useMemo(
+    () => visibleDesignToolboxActions(DESIGN_TOOLBOX_ACTIONS, { slideOnlyMvp }),
+    [slideOnlyMvp],
+  );
+  const featuredToolboxActionIds = useMemo(
+    () =>
+      visibleDesignToolboxActionIds(FEATURED_DESIGN_TOOLBOX_ACTION_IDS, {
+        slideOnlyMvp,
+      }),
+    [slideOnlyMvp],
+  );
+  const nonFeaturedToolboxActions = useMemo(
+    () =>
+      toolboxActions.filter(
+        (action) => !featuredToolboxActionIds.includes(action.id),
+      ),
+    [featuredToolboxActionIds, toolboxActions],
+  );
+
   const visibleToolboxActions = useMemo(
     () =>
-      NON_FEATURED_TOOLBOX_ACTIONS.filter((action) => {
+      nonFeaturedToolboxActions.filter((action) => {
         const skill = findDesignToolboxSkill(action, skills);
         return designToolboxActionMatchesQuery(
           action,
@@ -248,7 +266,7 @@ export function NextStepActions({
           skill ? [localizeSkillName(locale, skill), localizeSkillDescription(locale, skill)] : [],
         );
       }),
-    [toolboxQuery, skills, locale, t],
+    [nonFeaturedToolboxActions, toolboxQuery, skills, locale, t],
   );
 
   const visibleToolboxResources = useMemo(() => {
@@ -259,9 +277,9 @@ export function NextStepActions({
             localizeSkillDescription(locale, skill),
           ]),
         )
-      : defaultToolboxSkillResources(NON_FEATURED_TOOLBOX_ACTIONS, skills);
+      : defaultToolboxSkillResources(nonFeaturedToolboxActions, skills);
     return source.slice(0, toolboxQuery ? 14 : 8);
-  }, [skills, toolboxQuery, locale]);
+  }, [nonFeaturedToolboxActions, skills, toolboxQuery, locale]);
 
   // Share group is available whenever any of its three actions can fire.
   const canShare = !!(fileName && onShare);
@@ -280,7 +298,7 @@ export function NextStepActions({
       {showToolbox || hasMore ? (
         <div className={styles.toolboxList} data-testid="next-step-toolbox">
           {showToolbox
-            ? FEATURED_DESIGN_TOOLBOX_ACTION_IDS.map((id) => {
+            ? featuredToolboxActionIds.map((id) => {
                 const action = getDesignToolboxAction(id);
                 if (!action) return null;
                 return (
