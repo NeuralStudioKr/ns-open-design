@@ -18,7 +18,13 @@ export type TeamverRegisteredProject = {
 };
 
 const FE_ACCESS_CACHE_MS = 30_000;
+const REGISTRY_LIST_CACHE_MS = 15_000;
+const SYNC_ALL_MIN_INTERVAL_MS = 60_000;
+
 const feAccessCache = new Map<string, { allowed: boolean; at: number }>();
+let registeredIdsCache: { workspaceId: string; ids: Set<string>; at: number } | null = null;
+let syncAllInflight: Promise<void> | null = null;
+let syncAllAt = 0;
 
 function readRegistryOdProjectId(project: TeamverRegisteredProject): string | undefined {
   const id = project.odProjectId?.trim();
@@ -37,6 +43,10 @@ function invalidateFeAccessCache(projectId: string, workspaceId?: string): void 
   }
 }
 
+function invalidateRegisteredIdsCache(): void {
+  registeredIdsCache = null;
+}
+
 async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
   try {
     const resp = await fetch("/api/projects");
@@ -46,6 +56,35 @@ async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
   } catch {
     return [];
   }
+}
+
+async function getRegisteredProjectIds(workspaceId: string): Promise<Set<string> | null> {
+  const trimmedWorkspaceId = workspaceId.trim();
+  if (
+    registeredIdsCache
+    && registeredIdsCache.workspaceId === trimmedWorkspaceId
+    && Date.now() - registeredIdsCache.at < REGISTRY_LIST_CACHE_MS
+  ) {
+    return registeredIdsCache.ids;
+  }
+
+  const ids = await listTeamverRegisteredProjectIds();
+  if (ids) {
+    registeredIdsCache = {
+      workspaceId: trimmedWorkspaceId,
+      ids,
+      at: Date.now(),
+    };
+  }
+  return ids;
+}
+
+/** @internal vitest only — module-level caches are not request-scoped. */
+export function resetTeamverProjectRegistryStateForTests(): void {
+  feAccessCache.clear();
+  registeredIdsCache = null;
+  syncAllInflight = null;
+  syncAllAt = 0;
 }
 
 export function buildTeamverProjectRegistryPayload(
@@ -66,26 +105,31 @@ export async function registerTeamverProjectIfNeeded(
   const client = getDesignBffClient();
   if (!client) return;
 
-  try {
-    const workspaceId = await client.workspaceStore?.get();
-    if (!workspaceId?.trim()) return;
+  const workspaceId = (await client.workspaceStore?.get())?.trim();
+  if (!workspaceId) return;
 
+  try {
     await client.http.post(
       "/projects",
       buildTeamverProjectRegistryPayload(project),
       {
-        workspaceId: workspaceId.trim(),
+        workspaceId,
         skipAuthHeader: true,
       },
     );
-    invalidateFeAccessCache(project.id, workspaceId.trim());
+    invalidateRegisteredIdsCache();
+    invalidateFeAccessCache(project.id, workspaceId);
   } catch (err) {
-    if (err instanceof NetworkError && err.status === 409) return;
+    if (err instanceof NetworkError && err.status === 409) {
+      invalidateRegisteredIdsCache();
+      invalidateFeAccessCache(project.id, workspaceId);
+      return;
+    }
     console.warn("[teamver] project registry sync failed", err);
   }
 }
 
-/** Best-effort registry upsert for legacy daemon projects before /access checks. */
+/** Best-effort registry upsert for legacy daemon projects before access checks. */
 export async function ensureTeamverProjectRegisteredById(projectId: string): Promise<void> {
   if (!isTeamverEmbedMode()) return;
 
@@ -96,6 +140,35 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
   if (!project) return;
 
   await registerTeamverProjectIfNeeded(project);
+}
+
+/** Embed boot: upsert all daemon projects into design-api registry (legacy migration). */
+export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+
+  const client = getDesignBffClient();
+  if (!client) return;
+
+  const workspaceId = (await client.workspaceStore?.get())?.trim();
+  if (!workspaceId) return;
+
+  const now = Date.now();
+  if (syncAllInflight) {
+    await syncAllInflight;
+    return;
+  }
+  if (now - syncAllAt < SYNC_ALL_MIN_INTERVAL_MS) return;
+
+  syncAllInflight = (async () => {
+    const projects = await fetchDaemonProjectsForRegistry();
+    await Promise.all(projects.map((project) => registerTeamverProjectIfNeeded(project)));
+    invalidateRegisteredIdsCache();
+    syncAllAt = Date.now();
+  })().finally(() => {
+    syncAllInflight = null;
+  });
+
+  await syncAllInflight;
 }
 
 export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
@@ -166,7 +239,16 @@ export async function fetchTeamverProject(
   }
 }
 
-/** Embed: design-api registry access gate (204 ok · 403/404 deny). */
+async function isProjectRegisteredInWorkspace(
+  projectId: string,
+  workspaceId: string,
+): Promise<boolean | null> {
+  const registeredIds = await getRegisteredProjectIds(workspaceId);
+  if (registeredIds === null) return null;
+  return registeredIds.has(projectId);
+}
+
+/** Embed: registry membership gate — daemon middleware owns `/access` + S3 prefix. */
 export async function assertTeamverProjectAccessIfNeeded(
   projectId: string,
 ): Promise<boolean> {
@@ -178,44 +260,34 @@ export async function assertTeamverProjectAccessIfNeeded(
   const client = getDesignBffClient();
   if (!client) return true;
 
-  try {
-    const workspaceId = await client.workspaceStore?.get();
-    if (!workspaceId?.trim()) return true;
+  const workspaceId = (await client.workspaceStore?.get())?.trim();
+  if (!workspaceId) return true;
 
-    const cacheKey = `${workspaceId.trim()}:${trimmedId}`;
-    const cached = feAccessCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < FE_ACCESS_CACHE_MS) {
-      return cached.allowed;
-    }
+  const cacheKey = `${workspaceId}:${trimmedId}`;
+  const cached = feAccessCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < FE_ACCESS_CACHE_MS) {
+    return cached.allowed;
+  }
 
-    await ensureTeamverProjectRegisteredById(trimmedId);
-
-    await client.http.get<void>(
-      `/projects/${encodeURIComponent(trimmedId)}/access`,
-      {
-        workspaceId: workspaceId.trim(),
-        skipAuthHeader: true,
-      },
-    );
+  let allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
+  if (allowed === true) {
     feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
     return true;
-  } catch (err) {
-    if (
-      err instanceof NetworkError
-      && (err.status === 403 || err.status === 404)
-    ) {
-      const workspaceId = await client.workspaceStore?.get();
-      if (workspaceId?.trim()) {
-        feAccessCache.set(`${workspaceId.trim()}:${trimmedId}`, {
-          allowed: false,
-          at: Date.now(),
-        });
-      }
-      return false;
-    }
-    console.warn("[teamver] project access check failed", err);
+  }
+
+  await ensureTeamverProjectRegisteredById(trimmedId);
+  allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
+  if (allowed === true) {
+    feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
     return true;
   }
+
+  if (allowed === false) {
+    feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
+    return false;
+  }
+
+  return true;
 }
 
 /** Embed: daemon project delete 후 design-api registry soft-delete (best-effort). */
@@ -241,6 +313,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
         skipAuthHeader: true,
       },
     );
+    invalidateRegisteredIdsCache();
     invalidateFeAccessCache(trimmedId, workspaceId.trim());
   } catch (err) {
     console.warn("[teamver] project registry delete failed", err);

@@ -95,6 +95,20 @@ export type TeamverProjectAccessResult =
   | { ok: true; s3Prefix: string | null }
   | { ok: false; kind: 'unauthorized' | 'denied' | 'upstream' };
 
+export type TeamverProjectRegistryHint = {
+  title?: string;
+};
+
+export type TeamverProjectRegistryResolver = (
+  projectId: string,
+) => TeamverProjectRegistryHint | null | Promise<TeamverProjectRegistryHint | null>;
+
+function teamverDesignApiProjectsUrl(): string | null {
+  const baseUrl = teamverDesignApiBaseUrl();
+  if (!baseUrl) return null;
+  return `${baseUrl}/api/v1/projects`;
+}
+
 function readCachedAccess(
   identity: TeamverRequestIdentity,
   projectId: string,
@@ -146,15 +160,50 @@ function classifyFetchFailure(err: unknown): {
   return { reason: 'network', message };
 }
 
-export async function verifyTeamverProjectAccess(
+async function registerLegacyProjectInDesignApi(
   projectId: string,
   identity: TeamverRequestIdentity,
-): Promise<TeamverProjectAccessResult> {
-  const cached = readCachedAccess(identity, projectId);
-  if (cached) return cached;
+  registryHint?: TeamverProjectRegistryHint,
+): Promise<boolean> {
+  const url = teamverDesignApiProjectsUrl();
+  if (!url) return false;
 
+  const body: { odProjectId: string; title?: string } = { odProjectId: projectId };
+  const title = registryHint?.title?.trim();
+  if (title) body.title = title;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...teamverIdentityHeadersFromIdentity(identity),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(accessTimeoutMs()),
+    });
+    if (response.status === 200 || response.status === 201 || response.status === 409) {
+      clearTeamverProjectAccessCache(projectId);
+      return true;
+    }
+  } catch {
+    // best-effort legacy migration — access check decides the final outcome.
+  }
+  return false;
+}
+
+async function fetchProjectAccessFromDesignApi(
+  projectId: string,
+  identity: TeamverRequestIdentity,
+): Promise<
+  | { kind: 'granted'; s3Prefix: string | null }
+  | { kind: 'unauthorized' }
+  | { kind: 'denied'; status: 403 | 404 }
+  | { kind: 'upstream'; httpStatus: number; elapsedMs: number }
+  | { kind: 'failed'; reason: 'timeout' | 'network'; message: string; elapsedMs: number }
+> {
   const url = teamverProjectAccessCheckUrl(projectId);
-  if (!url) return { ok: true, s3Prefix: null };
+  if (!url) return { kind: 'granted', s3Prefix: null };
 
   const headers = teamverIdentityHeadersFromIdentity(identity);
   const startedAt = Date.now();
@@ -166,40 +215,91 @@ export async function verifyTeamverProjectAccess(
       signal: AbortSignal.timeout(accessTimeoutMs()),
     });
     if (response.status === 204) {
-      const s3Prefix = response.headers.get('x-teamver-s3-prefix')?.trim() || null;
-      rememberAccess(identity, projectId, true, s3Prefix);
-      return { ok: true, s3Prefix };
+      return {
+        kind: 'granted',
+        s3Prefix: response.headers.get('x-teamver-s3-prefix')?.trim() || null,
+      };
     }
     if (response.status === 401) {
-      return { ok: false, kind: 'unauthorized' };
+      return { kind: 'unauthorized' };
     }
-    if (response.status === 403 || response.status === 404) {
-      rememberAccess(identity, projectId, false, null);
-      return { ok: false, kind: 'denied' };
+    if (response.status === 403) {
+      return { kind: 'denied', status: 403 };
     }
+    if (response.status === 404) {
+      return { kind: 'denied', status: 404 };
+    }
+    return {
+      kind: 'upstream',
+      httpStatus: response.status,
+      elapsedMs: Date.now() - startedAt,
+    };
+  } catch (err) {
+    const classified = classifyFetchFailure(err);
+    return {
+      kind: 'failed',
+      reason: classified.reason,
+      message: classified.message,
+      elapsedMs: Date.now() - startedAt,
+    };
+  }
+}
+
+export async function verifyTeamverProjectAccess(
+  projectId: string,
+  identity: TeamverRequestIdentity,
+  registryHint?: TeamverProjectRegistryHint,
+): Promise<TeamverProjectAccessResult> {
+  const cached = readCachedAccess(identity, projectId);
+  if (cached) return cached;
+
+  if (!teamverProjectAccessCheckUrl(projectId)) return { ok: true, s3Prefix: null };
+
+  let outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
+  if (outcome.kind === 'denied' && outcome.status === 404) {
+    const registered = await registerLegacyProjectInDesignApi(projectId, identity, registryHint);
+    if (registered) {
+      outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
+    }
+  }
+
+  if (outcome.kind === 'granted') {
+    rememberAccess(identity, projectId, true, outcome.s3Prefix);
+    return { ok: true, s3Prefix: outcome.s3Prefix };
+  }
+  if (outcome.kind === 'unauthorized') {
+    return { ok: false, kind: 'unauthorized' };
+  }
+  if (outcome.kind === 'denied') {
+    rememberAccess(identity, projectId, false, null);
+    return { ok: false, kind: 'denied' };
+  }
+  if (outcome.kind === 'upstream') {
     emitProjectAccessFailureMarker({
       reason: 'http_5xx',
       projectId,
       workspaceId: identity.workspaceId,
-      httpStatus: response.status,
-      elapsedMs: Date.now() - startedAt,
-    });
-    return { ok: false, kind: 'upstream' };
-  } catch (err) {
-    const classified = classifyFetchFailure(err);
-    emitProjectAccessFailureMarker({
-      reason: classified.reason,
-      projectId,
-      workspaceId: identity.workspaceId,
-      timeoutMs: accessTimeoutMs(),
-      elapsedMs: Date.now() - startedAt,
-      error: classified.message,
+      httpStatus: outcome.httpStatus,
+      elapsedMs: outcome.elapsedMs,
     });
     return { ok: false, kind: 'upstream' };
   }
+
+  emitProjectAccessFailureMarker({
+    reason: outcome.reason,
+    projectId,
+    workspaceId: identity.workspaceId,
+    timeoutMs: accessTimeoutMs(),
+    elapsedMs: outcome.elapsedMs,
+    error: outcome.message,
+  });
+  return { ok: false, kind: 'upstream' };
 }
 
-export function createTeamverProjectAccessMiddleware(sendApiError: (...args: any[]) => any): RequestHandler {
+export function createTeamverProjectAccessMiddleware(
+  sendApiError: (...args: any[]) => any,
+  resolveRegistryProject?: TeamverProjectRegistryResolver,
+): RequestHandler {
   return async (req, res, next) => {
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
@@ -210,7 +310,14 @@ export function createTeamverProjectAccessMiddleware(sendApiError: (...args: any
       return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver identity headers required');
     }
 
-    const result = await verifyTeamverProjectAccess(projectId, identity);
+    const registryHint = resolveRegistryProject
+      ? await resolveRegistryProject(projectId)
+      : null;
+    const result = await verifyTeamverProjectAccess(
+      projectId,
+      identity,
+      registryHint ?? undefined,
+    );
     if (result.ok) return next();
     if (result.kind === 'unauthorized') {
       return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver project access unauthorized');

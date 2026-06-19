@@ -57,6 +57,7 @@ import {
   assertTeamverProjectAccessIfNeeded,
   ensureTeamverProjectRegisteredById,
   registerTeamverProjectIfNeeded,
+  syncAllDaemonProjectsToRegistry,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
@@ -887,7 +888,12 @@ function AppInner() {
         fetchMediaProvidersFromDaemon(),
         isTeamverEmbedMode()
           ? fetchDesignAuthSession().then(async (session) => {
-              if (session) await syncTeamverWorkspaceFromSession(session);
+              if (session) {
+                await syncTeamverWorkspaceFromSession(session);
+                if (session.authenticated) {
+                  await syncAllDaemonProjectsToRegistry();
+                }
+              }
               return fetchTeamverRuntimeConfig();
             })
           : Promise.resolve(null),

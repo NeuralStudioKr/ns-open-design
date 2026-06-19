@@ -68,15 +68,29 @@ def _emit_db_marker(request: Request, exc: BaseException) -> None:
     logger.warning(json.dumps(payload, ensure_ascii=False))
 
 
-def _domain_error_handler(_request: Request, exc: DesignDomainError) -> JSONResponse:
-    logger.warning(
-        "[%s] %s code=%s status=%s details=%s",
-        type(exc).__name__,
-        exc.message,
-        exc.code,
-        exc.status_code,
-        exc.details,
-    )
+def _domain_error_handler(request: Request, exc: DesignDomainError) -> JSONResponse:
+    if (
+        exc.status_code == 404
+        and exc.message == "project_not_found"
+        and request.url.path.endswith("/access")
+    ):
+        logger.debug(
+            "[%s] %s code=%s status=%s path=%s",
+            type(exc).__name__,
+            exc.message,
+            exc.code,
+            exc.status_code,
+            request.url.path,
+        )
+    else:
+        logger.warning(
+            "[%s] %s code=%s status=%s details=%s",
+            type(exc).__name__,
+            exc.message,
+            exc.code,
+            exc.status_code,
+            exc.details,
+        )
     return JSONResponse(status_code=exc.status_code, content=exc.to_response_content())
 
 

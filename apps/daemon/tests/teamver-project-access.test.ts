@@ -158,6 +158,57 @@ describe('Teamver project access gate', () => {
     });
   });
 
+  it('auto-registers legacy projects when design-api returns 404 on access', async () => {
+    const projectId = `teamver-access-register-${Date.now()}`;
+    await createProject(projectId);
+
+    const requests: AccessRequest[] = [];
+    let accessChecks = 0;
+    const accessServer = createServer((req, res) => {
+      requests.push({
+        url: req.url,
+        userId: req.headers['x-teamver-user-id'] as string | undefined,
+        workspaceId: req.headers['x-teamver-workspace-id'] as string | undefined,
+      });
+      if (req.method === 'POST' && req.url === '/api/v1/projects') {
+        res.writeHead(201);
+        res.end();
+        return;
+      }
+      if (req.method === 'GET' && req.url === `/api/v1/projects/${encodeURIComponent(projectId)}/access`) {
+        accessChecks += 1;
+        if (accessChecks === 1) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(204, { 'X-Teamver-S3-Prefix': 'design/ws_ws1/user_u1/proj_x/' });
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => accessServer.listen(0, '127.0.0.1', resolve));
+    const address = accessServer.address();
+    if (!address || typeof address === 'string') throw new Error('missing access server address');
+
+    try {
+      process.env.TEAMVER_DESIGN_API_URL = `http://127.0.0.1:${address.port}`;
+      const response = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        headers: {
+          'X-Teamver-User-Id': 'user-register',
+          'X-Teamver-Workspace-Id': 'workspace-register',
+        },
+      });
+      expect(response.status).toBe(200);
+      expect(accessChecks).toBe(2);
+      expect(requests.some((entry) => entry.url === '/api/v1/projects')).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => accessServer.close(() => resolve()));
+    }
+  });
+
   it('hides projects when design-api denies access', async () => {
     const projectId = `teamver-access-deny-${Date.now()}`;
     await createProject(projectId);

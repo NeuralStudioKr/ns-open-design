@@ -8,6 +8,7 @@ import {
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
   registerTeamverProjectIfNeeded,
+  resetTeamverProjectRegistryStateForTests,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from '../src/teamver/projectRegistry';
 import * as designApiBase from '../src/teamver/designApiBase';
@@ -108,17 +109,23 @@ describe('Teamver project registry register', () => {
 
 describe('Teamver project registry access', () => {
   afterEach(() => {
+    resetTeamverProjectRegistryStateForTests();
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
     vi.unstubAllGlobals();
   });
 
-  it('registers legacy daemon projects before access check', async () => {
+  it('registers legacy daemon projects then checks registry membership', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    const post = vi.fn(async () => ({}));
+    let registered = false;
+    const post = vi.fn(async () => {
+      registered = true;
+    });
     const get = vi.fn(async (path: string) => {
-      if (path.startsWith('/projects/') && path.endsWith('/access')) return undefined;
-      return { projects: [] };
+      if (path !== '/projects') return undefined;
+      return registered
+        ? { projects: [{ odProjectId: 'legacy-1' }] }
+        : { projects: [] };
     });
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
@@ -139,15 +146,16 @@ describe('Teamver project registry access', () => {
       { odProjectId: 'legacy-1', title: 'Legacy' },
       expect.objectContaining({ workspaceId: 'ws1' }),
     );
-    expect(get).toHaveBeenCalledWith(
+    expect(get).toHaveBeenCalledWith('/projects', expect.objectContaining({ workspaceId: 'ws1' }));
+    expect(get).not.toHaveBeenCalledWith(
       '/projects/legacy-1/access',
-      expect.objectContaining({ workspaceId: 'ws1' }),
+      expect.anything(),
     );
   });
 
-  it('caches repeated access checks for the same project', async () => {
+  it('caches repeated registry membership checks for the same project', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    const get = vi.fn(async () => undefined);
+    const get = vi.fn(async () => ({ projects: [{ odProjectId: 'cached-1' }] }));
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
       http: { get, post: vi.fn() },
@@ -222,14 +230,13 @@ describe('Teamver project registry access', () => {
     await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(true);
   });
 
-  it('returns false on 403 from design-api', async () => {
+  it('returns false when project is not in registry', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
       http: {
-        get: vi.fn(async () => {
-          throw new NetworkError({ message: 'forbidden', status: 403 });
-        }),
+        get: vi.fn(async () => ({ projects: [] })),
+        post: vi.fn(),
       },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
@@ -237,7 +244,7 @@ describe('Teamver project registry access', () => {
     await expect(assertTeamverProjectAccessIfNeeded('p1-deny')).resolves.toBe(false);
   });
 
-  it('returns true on transient errors (fail-open)', async () => {
+  it('returns true when registry list is unavailable (fail-open)', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },

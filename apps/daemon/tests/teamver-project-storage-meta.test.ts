@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { clearTeamverProjectAccessCache } from '../src/teamver-project-access.js';
 import {
   fetchTeamverProjectS3Prefix,
   resolveTeamverTenantRemoteStorage,
@@ -28,6 +29,7 @@ function noopHeaders(headerEntries: Record<string, string> = {}) {
 
 describe('teamver-project-storage-meta', () => {
   afterEach(() => {
+    clearTeamverProjectAccessCache();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });

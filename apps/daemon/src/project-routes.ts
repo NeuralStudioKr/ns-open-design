@@ -1330,7 +1330,15 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     }
   });
 
-  app.use('/api/projects/:id', createTeamverProjectAccessMiddleware(sendApiError));
+  app.use(
+    '/api/projects/:id',
+    createTeamverProjectAccessMiddleware(sendApiError, (projectId) => {
+      const project = getProject(db, projectId);
+      if (!project) return null;
+      const title = typeof project.name === 'string' ? project.name.trim() : '';
+      return title ? { title } : {};
+    }),
+  );
 
   app.post('/api/projects/:id/scratch/evict', async (req, res) => {
     const projectId = req.params.id;

@@ -15,6 +15,7 @@ import {
 } from "./workspaceUtils";
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
+import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
 
 export type TeamverEmbedState = {
   loading: boolean;
@@ -96,6 +97,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         : null;
       if (activeWorkspaceId && activeWorkspace) {
         snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
+      }
+      if (session.authenticated && activeWorkspaceId) {
+        await syncAllDaemonProjectsToRegistry();
       }
 
       setState({
