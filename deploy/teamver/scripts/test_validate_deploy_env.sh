@@ -199,3 +199,84 @@ else
   exit 1
 fi
 rm -f "$MINIO_ENV"
+
+# ---------------------------------------------------------------------------
+# loop 142 — production hard guard 회귀 케이스. validate_deploy_env 는
+# ENV_FILE 가 `.env.production` 일 때만 추가 가드를 적용한다 (staging/dev
+# 마찰을 줄이기 위해). --env-file 의 basename 으로 ENV_FILE 가 결정되므로
+# 임시 디렉토리에 .env.production 파일을 만들어 fixture를 돌린다.
+# ---------------------------------------------------------------------------
+PROD_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_ENV" "$PROD_DIR"' EXIT
+
+# 1) production baseline (LLM 키 없음) → fail.
+cat "$TMP_ENV" > "$PROD_DIR/.env.production"
+nokey_out="$(bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" 2>&1 || true)"
+if ! grep -q 'TEAMVER_OD_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY' <<< "$nokey_out"; then
+  echo "❌ production w/o LLM keys must fail with managed/daemon LLM key guard"
+  echo "$nokey_out"
+  exit 1
+fi
+if bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" >/dev/null 2>&1; then
+  echo "❌ production w/o LLM keys must exit non-zero"
+  exit 1
+fi
+echo "✓ validate_deploy_env production fails when no managed/daemon LLM key"
+
+# 2) production w/ static AWS keys → fail. ALLOW_STATIC_AWS_KEYS=1 시 warn 통과.
+cat "$TMP_ENV" > "$PROD_DIR/.env.production"
+{
+  echo 'TEAMVER_OD_API_KEY=sk-test-managed'
+  echo 'AWS_ACCESS_KEY_ID=AKIA-static-test'
+  echo 'AWS_SECRET_ACCESS_KEY=secret-static-test'
+} >> "$PROD_DIR/.env.production"
+static_out="$(bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" 2>&1 || true)"
+if ! grep -q 'EC2 IAM instance profile 만 허용' <<< "$static_out"; then
+  echo "❌ production w/ static AWS keys must fail with instance-profile-only guard"
+  echo "$static_out"
+  exit 1
+fi
+if bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" >/dev/null 2>&1; then
+  echo "❌ production w/ static AWS keys must exit non-zero"
+  exit 1
+fi
+
+allow_out="$(ALLOW_STATIC_AWS_KEYS=1 bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" 2>&1 || true)"
+if ! grep -q 'ALLOW_STATIC_AWS_KEYS=1' <<< "$allow_out"; then
+  echo "❌ ALLOW_STATIC_AWS_KEYS=1 escape hatch missing"
+  echo "$allow_out"
+  exit 1
+fi
+if ! ALLOW_STATIC_AWS_KEYS=1 bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" >/dev/null 2>&1; then
+  echo "❌ ALLOW_STATIC_AWS_KEYS=1 must pass production validate"
+  exit 1
+fi
+echo "✓ validate_deploy_env production blocks static AWS keys (ALLOW_STATIC_AWS_KEYS=1 escape works)"
+
+# 3) production OD_API_TOKEN looks like staging token → fail (leak guard).
+cat "$TMP_ENV" > "$PROD_DIR/.env.production"
+{
+  echo 'TEAMVER_OD_API_KEY=sk-test-managed'
+  echo 'OD_API_TOKEN=staging-leaked-token-xyz'
+} >> "$PROD_DIR/.env.production"
+leak_out="$(bash "$SCRIPT" --rds --env-file "$PROD_DIR/.env.production" 2>&1 || true)"
+if ! grep -q "OD_API_TOKEN 값에 'staging' 포함" <<< "$leak_out"; then
+  echo "❌ production w/ staging-looking OD_API_TOKEN must fail"
+  echo "$leak_out"
+  exit 1
+fi
+echo "✓ validate_deploy_env production rejects staging-looking OD_API_TOKEN"
+
+# 4) staging stays warn-only on missing LLM key (production guard MUST NOT bleed
+#    into staging .env path).
+NOKEY_STAGING="$(mktemp)"
+sed '/^TEAMVER_OD_API_KEY=/d; /^ANTHROPIC_API_KEY=/d; /^OPENAI_API_KEY=/d' "$TMP_ENV" > "$NOKEY_STAGING"
+staging_out="$(bash "$SCRIPT" --staging --rds --env-file "$NOKEY_STAGING" 2>&1 || true)"
+if grep -q '공개 사용자 chat 게이트' <<< "$staging_out"; then
+  echo "❌ staging must NOT trigger production LLM hard guard"
+  echo "$staging_out"
+  rm -f "$NOKEY_STAGING"
+  exit 1
+fi
+rm -f "$NOKEY_STAGING"
+echo "✓ validate_deploy_env staging unaffected by production hard guards"

@@ -161,6 +161,54 @@ if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
   warn "TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY 모두 없음 — embed managed API/chat 비활성 (BYOK만)"
 fi
 
+# ---------------------------------------------------------------------------
+# loop 142 — .env.production hard guards (실서비스 오픈 게이트)
+# Production 만 강제: managed API/daemon LLM 키 하나는 필수, 정적 AWS 키 금지
+# (instance profile only), Litestream/Drive folder 권장 (warn).
+# Staging/dev 는 warn 만 유지해 개발 마찰을 줄인다.
+# ---------------------------------------------------------------------------
+if [[ "$ENV_FILE" == ".env.production" ]]; then
+  # G7 — managed API (TEAMVER_OD_API_KEY) 또는 daemon LLM key (ANTHROPIC/OPENAI)
+  # 둘 다 누락이면 embed 가 BYOK 만 가능 → public 사용자가 키 없이 chat 불가.
+  has_managed_key=false
+  has_daemon_llm=false
+  [[ -n "${TEAMVER_OD_API_KEY:-}" ]] && has_managed_key=true
+  if [[ -n "${ANTHROPIC_API_KEY:-}" || -n "${OPENAI_API_KEY:-}" ]]; then
+    has_daemon_llm=true
+  fi
+  if [[ "$has_managed_key" != true && "$has_daemon_llm" != true ]]; then
+    fail "production: TEAMVER_OD_API_KEY (managed) 또는 ANTHROPIC_API_KEY/OPENAI_API_KEY (daemon) 중 최소 하나 필요 — 공개 사용자 chat 게이트"
+  fi
+
+  # G6 — Production 은 instance profile 만. 정적 AWS access key 가 깔리면
+  # 회전·감사·로컬 유출 위험. override: ALLOW_STATIC_AWS_KEYS=1 (긴급용).
+  if [[ -n "${OD_S3_ACCESS_KEY_ID:-}" || -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
+    if [[ "${ALLOW_STATIC_AWS_KEYS:-0}" == "1" ]]; then
+      warn "production: 정적 AWS key 사용 (ALLOW_STATIC_AWS_KEYS=1) — IAM instance profile 회수 후 즉시 키도 회수 권장"
+    else
+      fail "production: OD_S3_ACCESS_KEY_ID/AWS_ACCESS_KEY_ID 설정됨 — EC2 IAM instance profile 만 허용 (긴급 우회: ALLOW_STATIC_AWS_KEYS=1)"
+    fi
+  fi
+
+  # G2 — Litestream replica 없이 prod 진입 시 app.sqlite 손실 시 메타 복구
+  # 불가. 강제는 하지 않지만 명시적 경고.
+  if [[ -z "${LITESTREAM_BUCKET:-}" ]]; then
+    warn "production: LITESTREAM_BUCKET 미설정 — app.sqlite Litestream replica 비활성 (P2-1; restore_app_sqlite_from_s3.sh 미가용)"
+  fi
+
+  # G7 — Drive publish folder 없이 prod 진입 시 publish 가 Drive root 에 떨어짐
+  # (multi-workspace 격리 위반). example 가이드에 따라 staging/prod 는 폴더 권장.
+  if [[ -z "${TEAMVER_DRIVE_PUBLISH_FOLDER_ID:-}" ]]; then
+    warn "production: TEAMVER_DRIVE_PUBLISH_FOLDER_ID 미설정 — publish 가 Drive root 에 업로드됨 (Phase 4 G7 권장)"
+  fi
+
+  # E2E sanity — production 은 BYOK chat 만으로도 동작하지만 OD_API_TOKEN
+  # 기본값이 staging 과 같으면 token leakage 위험.
+  if [[ -n "${OD_API_TOKEN:-}" && "${OD_API_TOKEN}" == *"staging"* ]]; then
+    fail "production: OD_API_TOKEN 값에 'staging' 포함 — staging 토큰 재사용 의심, prod 전용 토큰 발급 필요"
+  fi
+fi
+
 # Registry billing (Phase 2) — Admin 발급. All-or-nothing.
 registry_set_count=0
 [[ -n "${TEAMVER_REGISTRY_APP_ID:-}" ]] && registry_set_count=$((registry_set_count + 1))

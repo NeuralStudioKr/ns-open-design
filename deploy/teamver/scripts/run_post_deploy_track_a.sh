@@ -90,7 +90,12 @@ fi
 
 if [[ "$RUN_SMOKE" -eq 1 ]]; then
   echo
-  echo "==> Phase 5: smoke_design (curl)"
+  echo "==> Phase 5: smoke_design (curl, storage hard-fail default-on)"
+  # loop 142 — Track A post-deploy 는 S3 reachability 가 못 잡히면 출시 게이트
+  # G1 미충족이므로 즉시 stop. smoke_design 도 staging/prod 에서 default-on
+  # 이지만 여기서 한 번 더 export 해 안전망을 둔다 (override: SMOKE_REQUIRE_OD_STORAGE=0).
+  : "${SMOKE_REQUIRE_OD_STORAGE:=1}"
+  export SMOKE_REQUIRE_OD_STORAGE
   bash "$ROOT/scripts/smoke_design.sh" "${SMOKE_ARGS[@]}"
 fi
 
@@ -106,8 +111,18 @@ fi
 
 if [[ -f "$ROOT/scripts/check_main_be_design_wiring.sh" ]]; then
   echo
-  echo "==> Phase 7: Main BE design-api wiring (A6 — read-only env check)"
-  bash "$ROOT/scripts/check_main_be_design_wiring.sh" "$ENV_FLAG" || true
+  echo "==> Phase 7: Main BE design-api wiring (A6 — env grep + live M2M probe)"
+  # loop 142 — staging/prod 에서는 Main BE 의 TEAMVER_INTERNAL_API_KEY 로
+  # design-api `/api/healthz` 와 `/api/internal/usage/events` 도달성을 직접
+  # 검증. 네트워크 차단 / nginx auth gate / wrong base URL 을 잡는다.
+  # Main BE EC2 에서 도달 불가하면 wiring 스크립트는 warn으로 떨어지지만,
+  # design-api EC2 에서 호출되는 시나리오는 ${probe_base}/api/healthz 가 200
+  # 이어야 통과한다. (--no-live 강제 비활성: NO_LIVE_WIRING=1)
+  WIRING_ARGS=("$ENV_FLAG")
+  if [[ "${NO_LIVE_WIRING:-0}" != "1" ]]; then
+    WIRING_ARGS+=(--live)
+  fi
+  bash "$ROOT/scripts/check_main_be_design_wiring.sh" "${WIRING_ARGS[@]}" || true
 fi
 
 if [[ -f "$ROOT/scripts/check_storage_isolation.sh" ]]; then

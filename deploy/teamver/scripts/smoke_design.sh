@@ -37,17 +37,28 @@ Env overrides:
 EOF
 }
 
+AUTO_REQUIRE_STORAGE=0
+ENV_LABEL=""
+
 while (( $# )); do
   case "$1" in
     --staging)
       DESIGN_HOST="${DESIGN_HOST:-stg-design.teamver.com}"
       DESIGN_API_HOST="${DESIGN_API_HOST:-stg-design-api.teamver.com}"
+      AUTO_REQUIRE_STORAGE=1
+      ENV_LABEL=staging
       ;;
     --production)
       DESIGN_HOST="${DESIGN_HOST:-design.teamver.com}"
       DESIGN_API_HOST="${DESIGN_API_HOST:-design-api.teamver.com}"
+      AUTO_REQUIRE_STORAGE=1
+      ENV_LABEL=production
       ;;
-    --http) USE_HTTPS=false ;;
+    --http)
+      USE_HTTPS=false
+      # local dev override — keep SMOKE_REQUIRE_OD_STORAGE opt-in
+      AUTO_REQUIRE_STORAGE=0
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -58,6 +69,15 @@ if [[ -z "$DESIGN_HOST" || -z "$DESIGN_API_HOST" ]]; then
   echo "❌ --staging 또는 --production 필요 (또는 DESIGN_HOST / DESIGN_API_HOST 설정)"
   usage
   exit 1
+fi
+
+# loop 142 — staging/production smoke 는 OD storage reachability 를 기본 hard-fail
+# 로 한다 (09 Phase 0/G1 출시 게이트). curl smoke 가 "auth gate 만 통과" 해도
+# S3 가 unreachable 이면 사용자 파일 SSOT 가 깨진다. override: SMOKE_REQUIRE_OD_STORAGE=0.
+if [[ "$AUTO_REQUIRE_STORAGE" -eq 1 && -z "${SMOKE_REQUIRE_OD_STORAGE:-}" ]]; then
+  SMOKE_REQUIRE_OD_STORAGE=1
+  export SMOKE_REQUIRE_OD_STORAGE
+  echo "    SMOKE_REQUIRE_OD_STORAGE=1 (default-on for ${ENV_LABEL}; override: SMOKE_REQUIRE_OD_STORAGE=0)"
 fi
 
 scheme=https
