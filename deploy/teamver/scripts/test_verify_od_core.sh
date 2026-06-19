@@ -35,6 +35,11 @@ grep -q 'TEAMVER_DESIGN_API_URL: ""' "$ROOT/docker-compose.od-core-verify.yml"
 grep -q '7457' "$ROOT/docker-compose.od-core-verify.yml"
 echo "✓ docker-compose.od-core-verify.yml"
 
+grep -q -- '--compose-file "$COMPOSE_FILE"' "$ROOT/scripts/run_od_core_verify.sh"
+grep -q -- '--compose-file FILE' "$ROOT/scripts/seed_od_runtime_config.sh"
+grep -q -- '--compose-file docker-compose.od-core-verify.yml' "$ROOT/scripts/seed_od_byok_app_config.sh"
+echo "✓ seed scripts support od-core compose file"
+
 doc="$ROOT/../../docs-teamver/13_OD_단독_검증_서버_가이드.md"
 if [[ ! -f "$doc" ]]; then
   echo "❌ docs-teamver/13_OD_단독_검증_서버_가이드.md missing"

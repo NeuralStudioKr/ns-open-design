@@ -103,8 +103,14 @@ case "$ACTION" in
     ;;
   seed)
     flag="$(env_flag)"
-    bash "$ROOT/scripts/seed_od_runtime_config.sh" ${flag:+$flag} --service "$SERVICE"
-    bash "$ROOT/scripts/seed_od_byok_app_config.sh" ${flag:+$flag} --service "$SERVICE"
+    bash "$ROOT/scripts/seed_od_runtime_config.sh" \
+      ${flag:+$flag} \
+      --service "$SERVICE" \
+      --compose-file "$COMPOSE_FILE"
+    bash "$ROOT/scripts/seed_od_byok_app_config.sh" \
+      ${flag:+$flag} \
+      --service "$SERVICE" \
+      --compose-file "$COMPOSE_FILE"
     ;;
   verify)
     bash "$ROOT/scripts/verify_od_core.sh" \

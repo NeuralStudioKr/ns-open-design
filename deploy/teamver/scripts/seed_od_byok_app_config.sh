@@ -18,13 +18,14 @@ cd "$ROOT"
 
 ENV_FILE=".env"
 SERVICE="open-design-daemon"
+COMPOSE_FILE=""
 
 usage() {
   cat <<'EOF'
 seed_od_byok_app_config.sh — app-config.json BYOK seed (idempotent merge)
 
   bash scripts/seed_od_byok_app_config.sh [--staging|--production]
-  bash scripts/seed_od_byok_app_config.sh --staging --service od-core-verify
+  bash scripts/seed_od_byok_app_config.sh --staging --service od-core-verify --compose-file docker-compose.od-core-verify.yml
 
 Reads ANTHROPIC_API_KEY / OPENAI_API_KEY from env-file. Keys are never printed.
 Also sets onboardingCompleted=true for embed UI lock companion.
@@ -36,6 +37,7 @@ while (( $# )); do
     --staging) ENV_FILE=".env.staging" ;;
     --production) ENV_FILE=".env.production" ;;
     --service) SERVICE="${2:?--service requires name}"; shift ;;
+    --compose-file) COMPOSE_FILE="${2:?--compose-file requires path}"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -52,6 +54,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 COMPOSE=(docker compose)
+if [[ -n "$COMPOSE_FILE" ]]; then
+  COMPOSE+=(-f "$COMPOSE_FILE")
+fi
 COMPOSE+=(--env-file "$ENV_FILE")
 
 if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$SERVICE"; then
