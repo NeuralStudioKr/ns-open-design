@@ -20,13 +20,13 @@ trap 'rm -rf "$WORK"' EXIT
 unset_env() {
   unset TEAMVER_COOKIE TEAMVER_COOKIE_USER_B TEAMVER_INTERNAL_API_KEY \
         TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID MAIN_BE_DATABASE_URL SKIP_DRIVE SKIP_DB \
-        DESIGN_HOST DESIGN_API_HOST 2>/dev/null || true
+        SKIP_DRIVE_IMPORT_POLICY DESIGN_HOST DESIGN_API_HOST 2>/dev/null || true
 }
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 6 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 6 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 7 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 7 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
@@ -44,10 +44,12 @@ cat > "$MOCK_BIN/curl" <<'MOCK'
 URL=""
 WRITE_OUT=""
 OUT_FILE=""
+POST_DATA=""
 for ((i=1; i<=$#; i++)); do
   case "${!i}" in
     -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
     -o) j=$((i+1)); OUT_FILE="${!j}" ;;
+    --data) j=$((i+1)); POST_DATA="${!j}" ;;
   esac
 done
 for a in "$@"; do URL="$a"; done
@@ -80,7 +82,14 @@ case "$URL" in
     emit_code 200
     ;;
   *"/api/v1/projects/"*"/import-drive")
-    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+    if [[ "$POST_DATA" == *"clip.mp4"* ]]; then
+      if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+        emit_code 502
+        emit_body '{"projectId":"proj-e2e-1","imported":[],"failed":[{"assetId":"e2e-policy-probe","errorCode":"unsupported_drive_import_file_type"}]}'
+      else
+        emit_body '{"projectId":"proj-e2e-1","imported":[],"failed":[{"assetId":"e2e-policy-probe","errorCode":"unsupported_drive_import_file_type"}]}'
+      fi
+    elif [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 201
       emit_body '{"projectId":"proj-e2e-1","imported":[{"assetId":"AST-E2E","path":"refs/e2e-import.txt","name":"e2e-import.txt","sizeBytes":12,"mimeType":"text/plain"}],"failed":[]}'
     else
@@ -121,7 +130,8 @@ for needle in \
   'U-6a /api/internal/usage/events' \
   'U-6b 멱등 두 번째 POST' \
   'D-5a publish proj-e2e-1' \
-  'D-6 import-drive proj-e2e-1' \
+  'D-6b import-drive policy reject' \
+  'D-6a import-drive proj-e2e-1' \
   'isolation user B → user A project /access 403'
 do
   if ! grep -q -- "$needle" <<< "$ok_out"; then

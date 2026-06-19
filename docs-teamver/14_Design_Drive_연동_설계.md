@@ -127,7 +127,7 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 - FE `teamver/importDriveAssets.ts` — workspace header, appEnabled gate, typed `imported[]/failed[]` 결과 helper.
 - 안전장치 — batch 12개 제한, relative path 검증, path traversal/absolute path/실행 파일 확장자 차단, 전체 성공 201 · 부분 성공 207 · 전체 실패 502.
 
-**남음:** staging import E2E 실증.
+**남음:** D-6a 실 Drive asset staging 실증 (`TEAMVER_DRIVE_IMPORT_ASSET_ID`). D-6b policy probe 는 loop 163 에서 자동화.
 
 ### 4.2.3 구현됨 — Phase 2-3 (loop 160)
 
@@ -144,6 +144,14 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 
 - **BE policy module** — `drive_import_policy.py` (`validate_drive_import_file_type`). FE `embedFileAttachPolicy.ts` 와 확장자/MIME allow·block 동기화.
 - **Per-asset enforcement** — `drive_import_service.py` 가 미지원 타입을 `failed[]` (`unsupported_drive_import_file_type`) 로 반환, 허용 항목만 download/upload 진행 (207 partial success 유지).
+
+### 4.2.6 구현됨 — Phase 2-6 (loop 163)
+
+- **D-6b policy E2E** — `run_staging_track_a_e2e.sh` 가 `clip.mp4` 요청으로 502 + `unsupported_drive_import_file_type` 검증 (Drive download 없음).
+- **D-6a happy path** — `TEAMVER_DRIVE_IMPORT_ASSET_ID` 설정 시 실제 import 201/207 검증.
+- **Env helper** — `print_staging_track_a_e2e_env.sh` 로 EC2 cookie/RDS/project/asset env 템플릿 출력.
+
+**남음:** D-6a 실 Drive asset id 로 staging end-to-end 실증.
 
 ### 4.2.2 구현됨 — Phase 2-2 (loop 158)
 

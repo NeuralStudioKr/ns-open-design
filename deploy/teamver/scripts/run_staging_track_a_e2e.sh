@@ -18,7 +18,8 @@
 # Optional env:
 #   TEAMVER_COOKIE_USER_B='teamver_access_token=...'    # 다중 사용자 403 격리
 #   TEAMVER_OD_PROJECT_ID=<user A 가 만들었던 OD project id>
-#   TEAMVER_DRIVE_IMPORT_ASSET_ID=<Drive asset id for D-6 import probe>
+#   TEAMVER_DRIVE_IMPORT_ASSET_ID=<Drive asset id for D-6a import probe>
+#   SKIP_DRIVE_IMPORT_POLICY=1                          # D-6b policy-only probe 비활성
 #   TEAMVER_E2E_RUN_PREFIX='e2e-staging-'                # usage row 식별자
 #   SKIP_DRIVE=1                                         # publish phase 비활성
 #   SKIP_DB=1                                            # RDS psql 직접 검증 비활성
@@ -57,7 +58,8 @@ env:
 optional:
   TEAMVER_COOKIE_USER_B   다중 사용자 403 격리 검증
   TEAMVER_OD_PROJECT_ID   D-5 publish / D-6 import 대상 (없으면 skip)
-  TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6 import-drive 대상 asset (없으면 skip)
+  TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6a import-drive 성공 probe (없으면 skip)
+  SKIP_DRIVE_IMPORT_POLICY=1     D-6b policy reject probe 비활성
   SKIP_DRIVE=1 / SKIP_DB=1
   TEAMVER_E2E_RUN_PREFIX  usage run_id prefix (default e2e-)
 EOF
@@ -268,17 +270,54 @@ else
   esac
 fi
 
-# ---- D-6: import-drive (composer import API) --------------------------------
+# ---- D-6b: import-drive policy reject (no Drive download) -------------------
+# loop 162 — mp4 filename 은 policy 단계에서 거절. 실제 asset id 불필요.
 if [[ -n "${SKIP_DRIVE:-}" ]]; then
-  skipped "D-6 import-drive — SKIP_DRIVE=1"
+  skipped "D-6b import-drive policy — SKIP_DRIVE=1"
+elif [[ -n "${SKIP_DRIVE_IMPORT_POLICY:-}" ]]; then
+  skipped "D-6b import-drive policy — SKIP_DRIVE_IMPORT_POLICY=1"
 elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
-  skipped "D-6 import-drive — TEAMVER_OD_PROJECT_ID 미설정"
-elif [[ -z "${TEAMVER_DRIVE_IMPORT_ASSET_ID:-}" ]]; then
-  skipped "D-6 import-drive — TEAMVER_DRIVE_IMPORT_ASSET_ID 미설정"
+  skipped "D-6b import-drive policy — TEAMVER_OD_PROJECT_ID 미설정"
 elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
-  skipped "D-6 import-drive — TEAMVER_COOKIE 필요"
+  skipped "D-6b import-drive policy — TEAMVER_COOKIE 필요"
 elif [[ -z "${session_workspace_id:-}" ]]; then
-  skipped "D-6 import-drive — session workspace 없음"
+  skipped "D-6b import-drive policy — session workspace 없음"
+else
+  policy_body='{"assets":[{"assetId":"e2e-policy-probe","filename":"clip.mp4"}]}'
+  policy_tmp="$(mktemp)"
+  policy_code="$(curl -s -o "$policy_tmp" -w '%{http_code}' --max-time 20 \
+    -X POST -H "Content-Type: application/json" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}" \
+    --data "$policy_body" \
+    "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/import-drive" 2>/dev/null || echo 000)"
+  policy_resp="$(cat "$policy_tmp" 2>/dev/null || true)"
+  rm -f "$policy_tmp"
+  if [[ "$policy_code" == "502" ]] \
+    && printf '%s' "$policy_resp" | grep -q 'unsupported_drive_import_file_type'; then
+    passed "D-6b import-drive policy reject ← 502 (unsupported_drive_import_file_type)"
+  elif [[ "$policy_code" == "502" ]]; then
+    failed "D-6b import-drive policy 502 but missing unsupported_drive_import_file_type in body"
+  elif [[ "$policy_code" == "401" || "$policy_code" == "403" ]]; then
+    failed "D-6b import-drive policy ${policy_code} — TEAMVER_COOKIE/workspace 권한 부족"
+  elif [[ "$policy_code" == "404" ]]; then
+    failed "D-6b import-drive policy 404 — TEAMVER_OD_PROJECT_ID=${TEAMVER_OD_PROJECT_ID} 없음"
+  else
+    failed "D-6b import-drive policy expected 502, got ${policy_code}"
+  fi
+fi
+
+# ---- D-6a: import-drive happy path (real Drive asset) -----------------------
+if [[ -n "${SKIP_DRIVE:-}" ]]; then
+  skipped "D-6a import-drive — SKIP_DRIVE=1"
+elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
+  skipped "D-6a import-drive — TEAMVER_OD_PROJECT_ID 미설정"
+elif [[ -z "${TEAMVER_DRIVE_IMPORT_ASSET_ID:-}" ]]; then
+  skipped "D-6a import-drive — TEAMVER_DRIVE_IMPORT_ASSET_ID 미설정 (D-6b policy probe는 별도)"
+elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "D-6a import-drive — TEAMVER_COOKIE 필요"
+elif [[ -z "${session_workspace_id:-}" ]]; then
+  skipped "D-6a import-drive — session workspace 없음"
 else
   import_body="{\"assets\":[{\"assetId\":\"${TEAMVER_DRIVE_IMPORT_ASSET_ID}\",\"filename\":\"e2e-import.txt\"}]}"
   import_tmp="$(mktemp)"
@@ -293,22 +332,22 @@ else
   case "$import_code" in
     200|201|207)
       if printf '%s' "$import_resp" | grep -q '"imported"'; then
-        passed "D-6 import-drive ${TEAMVER_OD_PROJECT_ID} ← ${import_code} (asset=${TEAMVER_DRIVE_IMPORT_ASSET_ID})"
+        passed "D-6a import-drive ${TEAMVER_OD_PROJECT_ID} ← ${import_code} (asset=${TEAMVER_DRIVE_IMPORT_ASSET_ID})"
       else
-        failed "D-6 import-drive ${import_code} but response missing imported[]"
+        failed "D-6a import-drive ${import_code} but response missing imported[]"
       fi
       ;;
     401|403)
-      failed "D-6 import-drive ${import_code} — TEAMVER_COOKIE/workspace 권한 부족"
+      failed "D-6a import-drive ${import_code} — TEAMVER_COOKIE/workspace 권한 부족"
       ;;
     404)
-      failed "D-6 import-drive 404 — project 또는 asset 없음"
+      failed "D-6a import-drive 404 — project 또는 asset 없음"
       ;;
     502)
-      failed "D-6 import-drive 502 — Drive download 또는 daemon upload 전부 실패"
+      failed "D-6a import-drive 502 — Drive download 또는 daemon upload 전부 실패"
       ;;
     *)
-      failed "D-6 import-drive ${import_code}"
+      failed "D-6a import-drive ${import_code}"
       ;;
   esac
 fi
