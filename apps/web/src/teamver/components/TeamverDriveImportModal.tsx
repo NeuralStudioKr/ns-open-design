@@ -1,6 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAnalytics } from "../../analytics/provider";
 import { Icon } from "../../components/Icon";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
+import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
+import {
+  embedAttachBlockReason,
+  shouldApplyEmbedFileAttachPolicy,
+} from "../branding/embedFileAttachPolicy";
+import {
+  driveImportAssetIconName,
+  formatDriveFileSize,
+  isDriveImageAsset,
+} from "../driveFileVisual";
+import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import {
   listTeamverDriveImportRecent,
   listTeamverDriveImportRows,
@@ -11,6 +23,10 @@ import {
   type TeamverDriveImportListRow,
   type TeamverDriveImportScope,
 } from "../driveImportList";
+import {
+  trackTeamverDriveImportModalSurfaceView,
+  trackTeamverDriveImportPickClick,
+} from "../teamverDriveImportAnalytics";
 
 const MAX_PICK = 12;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -51,6 +67,10 @@ export function TeamverDriveImportModal({
   onConfirm,
   confirming = false,
 }: Props) {
+  const branding = useTeamverBranding();
+  const analytics = useAnalytics();
+  const attachPolicyActive = shouldApplyEmbedFileAttachPolicy(branding);
+  const surfaceTrackedRef = useRef(false);
   const [scopes, setScopes] = useState<TeamverDriveImportScope[]>([]);
   const [scopeIndex, setScopeIndex] = useState(0);
   const [navStack, setNavStack] = useState<NavCrumb[]>([]);
@@ -61,11 +81,25 @@ export function TeamverDriveImportModal({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState<Map<string, TeamverDriveImportAsset>>(new Map());
+  const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
 
   const activeScope = scopes[scopeIndex] ?? null;
   const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
   const searchMode = debouncedQuery.trim().length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN;
   const showRecent = !searchMode && currentFolderId == null;
+
+  useEffect(() => {
+    if (!open) {
+      surfaceTrackedRef.current = false;
+      return;
+    }
+    if (surfaceTrackedRef.current) return;
+    surfaceTrackedRef.current = true;
+    trackTeamverDriveImportModalSurfaceView(analytics.track, {
+      page_name: "chat_panel",
+      area: "drive_import_modal",
+    });
+  }, [analytics.track, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -167,12 +201,63 @@ export function TeamverDriveImportModal({
     return rows.filter((row) => matchesLocalQuery(row, query));
   }, [query, rows, searchMode]);
 
+  const browseAssetRows = useMemo(
+    () => filteredRows.filter((row): row is TeamverDriveImportAssetRow => row.kind === "asset"),
+    [filteredRows],
+  );
+
+  const folderRows = useMemo(
+    () => filteredRows.filter((row): row is Extract<TeamverDriveImportListRow, { kind: "folder" }> => row.kind === "folder"),
+    [filteredRows],
+  );
+
+  const thumbnailTargets = useMemo(() => {
+    const seen = new Set<string>();
+    const items: TeamverDriveImportAssetRow[] = [];
+    for (const row of [...recentRows, ...browseAssetRows]) {
+      if (seen.has(row.assetId)) continue;
+      seen.add(row.assetId);
+      if (!isDriveImageAsset(row.name, row.mimeType)) continue;
+      items.push(row);
+    }
+    return items;
+  }, [browseAssetRows, recentRows]);
+
+  useEffect(() => {
+    if (!open || !workspaceId.trim() || thumbnailTargets.length === 0) {
+      setThumbUrls(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await fetchTeamverDriveImportThumbnails({
+          workspaceId,
+          items: thumbnailTargets,
+        });
+        if (!cancelled) setThumbUrls(next);
+      } catch {
+        if (!cancelled) setThumbUrls(new Map());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, thumbnailTargets, workspaceId]);
+
   if (!open) return null;
 
   const selectedCount = selected.size;
   const canAttach = selectedCount > 0 && !confirming;
 
   function toggleAsset(row: TeamverDriveImportAssetRow) {
+    const blockReason = embedAttachBlockReason(row.name, {
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      slideOnlyMvp: attachPolicyActive,
+    });
+    if (blockReason) return;
+
     setSelected((current) => {
       const next = new Map(current);
       if (next.has(row.assetId)) {
@@ -195,27 +280,54 @@ export function TeamverDriveImportModal({
     setDebouncedQuery("");
   }
 
-  function renderAssetRow(row: TeamverDriveImportAssetRow, keyPrefix: string) {
+  function renderAssetCard(row: TeamverDriveImportAssetRow, keyPrefix: string) {
     const picked = selected.has(row.assetId);
+    const blockReason = embedAttachBlockReason(row.name, {
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      slideOnlyMvp: attachPolicyActive,
+    });
+    const blocked = blockReason != null;
+    const thumbUrl = thumbUrls.get(row.assetId);
+    const iconName = driveImportAssetIconName(row.name, row.mimeType);
+    const sizeLabel = formatDriveFileSize(row.sizeBytes);
+    const meta = blocked ? "Not supported in embed" : sizeLabel ?? row.mimeType ?? "file";
+
     return (
       <button
         key={`${keyPrefix}:${row.assetId}`}
         type="button"
         role="option"
         aria-selected={picked}
-        className={`teamver-drive-picker-row${picked ? " is-selected" : ""}`}
+        title={blockReason ?? row.name}
+        className={`teamver-drive-import-card${picked ? " is-selected" : ""}${blocked ? " is-blocked" : ""}`}
         data-testid={`teamver-drive-import-asset-${row.assetId}`}
-        disabled={confirming || (!picked && selectedCount >= MAX_PICK)}
+        disabled={confirming || blocked || (!picked && selectedCount >= MAX_PICK)}
         onClick={() => toggleAsset(row)}
       >
-        <span className="teamver-drive-picker-row-icon">
-          <Icon name={picked ? "check" : "file"} size={15} />
+        <span className="teamver-drive-import-card-visual" aria-hidden>
+          {thumbUrl ? (
+            <img src={thumbUrl} alt="" className="teamver-drive-import-card-thumb" loading="lazy" />
+          ) : (
+            <Icon name={picked ? "check" : iconName} size={22} />
+          )}
         </span>
-        <span className="teamver-drive-picker-row-copy">
-          <span>{row.name}</span>
-          <small>{row.mimeType ?? "file"}</small>
+        <span className="teamver-drive-import-card-copy">
+          <span className="teamver-drive-import-card-name" title={row.name}>
+            {row.name}
+          </span>
+          <small>{meta}</small>
         </span>
       </button>
+    );
+  }
+
+  function renderAssetGrid(rowsToRender: TeamverDriveImportAssetRow[], keyPrefix: string) {
+    if (rowsToRender.length === 0) return null;
+    return (
+      <div className="teamver-drive-import-grid" role="group">
+        {rowsToRender.map((row) => renderAssetCard(row, keyPrefix))}
+      </div>
     );
   }
 
@@ -325,39 +437,35 @@ export function TeamverDriveImportModal({
               {showRecent && recentRows.length > 0 ? (
                 <div className="teamver-drive-import-section" data-testid="teamver-drive-import-recent">
                   <div className="teamver-drive-import-section-label">Recent</div>
-                  {recentRows.map((row) => renderAssetRow(row, "recent"))}
+                  {renderAssetGrid(recentRows, "recent")}
                 </div>
               ) : null}
 
-              {filteredRows.length > 0 ? (
+              {folderRows.length > 0 || browseAssetRows.length > 0 ? (
                 <>
-                  {showRecent && recentRows.length > 0 ? (
+                  {showRecent && recentRows.length > 0 && (folderRows.length > 0 || browseAssetRows.length > 0) ? (
                     <div className="teamver-drive-import-section-label">Browse</div>
                   ) : null}
-                  {filteredRows.map((row) => {
-                    if (row.kind === "folder") {
-                      return (
-                        <button
-                          key={`folder:${scopeKey(activeScope!, currentFolderId)}:${row.folderId}`}
-                          type="button"
-                          className="teamver-drive-picker-row"
-                          data-testid={`teamver-drive-import-folder-${row.folderId}`}
-                          disabled={confirming}
-                          onClick={() => enterFolder(row)}
-                        >
-                          <span className="teamver-drive-picker-row-icon">
-                            <Icon name="folder" size={15} />
-                          </span>
-                          <span className="teamver-drive-picker-row-copy">
-                            <span>{row.name}</span>
-                            <small>Folder</small>
-                          </span>
-                          <Icon name="chevron-right" size={14} />
-                        </button>
-                      );
-                    }
-                    return renderAssetRow(row, "browse");
-                  })}
+                  {folderRows.map((row) => (
+                    <button
+                      key={`folder:${scopeKey(activeScope!, currentFolderId)}:${row.folderId}`}
+                      type="button"
+                      className="teamver-drive-picker-row"
+                      data-testid={`teamver-drive-import-folder-${row.folderId}`}
+                      disabled={confirming}
+                      onClick={() => enterFolder(row)}
+                    >
+                      <span className="teamver-drive-picker-row-icon">
+                        <Icon name="folder" size={15} />
+                      </span>
+                      <span className="teamver-drive-picker-row-copy">
+                        <span>{row.name}</span>
+                        <small>Folder</small>
+                      </span>
+                      <Icon name="chevron-right" size={14} />
+                    </button>
+                  ))}
+                  {renderAssetGrid(browseAssetRows, "browse")}
                 </>
               ) : showRecent && recentRows.length > 0 ? null : (
                 <div className="teamver-drive-picker-empty">
@@ -381,7 +489,16 @@ export function TeamverDriveImportModal({
               className="teamver-drive-import-attach"
               disabled={!canAttach}
               data-testid="teamver-drive-import-attach"
-              onClick={() => void onConfirm(Array.from(selected.values()))}
+              onClick={() => {
+                const assets = Array.from(selected.values());
+                trackTeamverDriveImportPickClick(analytics.track, {
+                  page_name: "chat_panel",
+                  area: "drive_import_modal",
+                  element: "drive_import_pick",
+                  asset_count: assets.length,
+                });
+                void onConfirm(assets);
+              }}
             >
               {confirming ? "Importing…" : "Attach"}
             </button>

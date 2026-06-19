@@ -36,6 +36,7 @@ import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { getDesignBffClient } from '../teamver/designBffClient';
 import {
   driveImportedToChatAttachments,
@@ -1340,18 +1341,47 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     async function uploadFiles(files: File[]) {
       if (files.length === 0) return;
+      const blocked: File[] = [];
+      const allowedFiles: File[] = [];
+      if (slideOnlyMvp) {
+        for (const file of files) {
+          const reason = embedAttachBlockReason(file.name, {
+            mimeType: file.type,
+            sizeBytes: file.size,
+            slideOnlyMvp: true,
+          });
+          if (reason) blocked.push(file);
+          else allowedFiles.push(file);
+        }
+      } else {
+        allowedFiles.push(...files);
+      }
+      if (slideOnlyMvp && blocked.length > 0) {
+        const preview = blocked
+          .slice(0, 2)
+          .map((file) => file.name)
+          .join(', ');
+        const suffix = blocked.length > 2 ? ` +${blocked.length - 2} more` : '';
+        setUploadError(
+          `Skipped ${blocked.length} file(s) outside slide MVP attach policy (${preview}${suffix}).`,
+        );
+      }
+      if (allowedFiles.length === 0) return;
+
       const id = await ensureProject();
       if (!id) return;
       setUploading(true);
-      setUploadError(null);
+      if (!(slideOnlyMvp && blocked.length > 0)) {
+        setUploadError(null);
+      }
       // Cohort math is identical to the Design Files Upload button; see
       // `analytics/upload-tracking.ts`. v2 doc fires one
       // file_upload_result per surface so this path reports
       // `page_name='chat_panel'` / `area='chat_composer'`.
-      const cohort = deriveUploadCohort(files);
-      const orderStart = reserveAttachmentOrders(files.length);
+      const cohort = deriveUploadCohort(allowedFiles);
+      const orderStart = reserveAttachmentOrders(allowedFiles.length);
       try {
-        const result = await uploadProjectFiles(id, files);
+        const result = await uploadProjectFiles(id, allowedFiles);
         if (result.uploaded.length > 0) {
           const orderedUploaded = assignChatAttachmentOrders(result.uploaded, orderStart);
           appendOrderedStagedAttachments(orderedUploaded);
@@ -1394,13 +1424,36 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     async function importDriveAttachments(assets: TeamverDriveImportAsset[]) {
       if (assets.length === 0) return;
+      const blocked: TeamverDriveImportAsset[] = [];
+      const allowedAssets: TeamverDriveImportAsset[] = [];
+      if (slideOnlyMvp) {
+        for (const asset of assets) {
+          const reason = embedAttachBlockReason(asset.filename ?? asset.assetId, {
+            mimeType: asset.mimeType,
+            slideOnlyMvp: true,
+          });
+          if (reason) blocked.push(asset);
+          else allowedAssets.push(asset);
+        }
+      } else {
+        allowedAssets.push(...assets);
+      }
+      if (slideOnlyMvp && blocked.length > 0) {
+        setUploadError(
+          `Skipped ${blocked.length} Drive file(s) outside slide MVP attach policy.`,
+        );
+      }
+      if (allowedAssets.length === 0) return;
+
       const id = await ensureProject();
       if (!id) return;
       setDriveImportBusy(true);
-      setUploadError(null);
+      if (!(slideOnlyMvp && blocked.length > 0)) {
+        setUploadError(null);
+      }
       const orderStart = Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged));
       try {
-        const result = await importTeamverDriveAssets(id, assets);
+        const result = await importTeamverDriveAssets(id, allowedAssets);
         if (result.imported.length > 0) {
           const attachments = driveImportedToChatAttachments(result.imported);
           appendOrderedStagedAttachments(assignChatAttachmentOrders(attachments, orderStart));

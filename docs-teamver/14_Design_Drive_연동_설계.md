@@ -127,7 +127,23 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 - FE `teamver/importDriveAssets.ts` — workspace header, appEnabled gate, typed `imported[]/failed[]` 결과 helper.
 - 안전장치 — batch 12개 제한, relative path 검증, path traversal/absolute path/실행 파일 확장자 차단, 전체 성공 201 · 부분 성공 207 · 전체 실패 502.
 
-**남음:** asset grid/thumbnail preview · staging import E2E.
+**남음:** staging import E2E 실증.
+
+### 4.2.3 구현됨 — Phase 2-3 (loop 160)
+
+- **Asset grid** — 폴더 list + 파일 card grid (`teamver-drive-import-grid`).
+- **File-type icon** — `driveFileVisual.ts` (image/slide/data/generic).
+- **Image thumbnail** — `driveImportThumbnails.ts` → Main BE `POST /api/v2/asset/object-url/batch`.
+
+### 4.2.4 구현됨 — Phase 2-4 (loop 161)
+
+- **embed attach policy** — `embedFileAttachPolicy.ts` white-list + 50MB cap (`ChatComposer` upload/import + modal card block).
+- **Analytics** — `teamverDriveImportAnalytics.ts` (`drive_import_modal` surface_view, `drive_import_pick` ui_click).
+
+### 4.2.5 구현됨 — Phase 2-5 (loop 162)
+
+- **BE policy module** — `drive_import_policy.py` (`validate_drive_import_file_type`). FE `embedFileAttachPolicy.ts` 와 확장자/MIME allow·block 동기화.
+- **Per-asset enforcement** — `drive_import_service.py` 가 미지원 타입을 `failed[]` (`unsupported_drive_import_file_type`) 로 반환, 허용 항목만 download/upload 진행 (207 partial success 유지).
 
 ### 4.2.2 구현됨 — Phase 2-2 (loop 158)
 
@@ -170,7 +186,7 @@ Content-Type: application/json
 
 - 자산이 사용자 워크스페이스 권한 내인지 — Main BE Drive permissions 위임 (SDK error 그대로 surfacing).
 - daemon scratch volume 가용 공간 (daemon upload 경로 + S3 materialization 사용).
-- 위험 확장자 차단. MIME / 확장자 allowlist 확대는 composer modal 연결 시 [13 §2.4](./13_embed_슬라이드_MVP_기능게이트.md#24-p0--파일-첨부-정책)와 맞춰 보강.
+- 위험 확장자 차단. embed slide-only 에서 MIME/확장자 allowlist — [13 §2.4](./13_embed_슬라이드_MVP_기능게이트.md#24-p0--파일-첨부-정책) (`embedFileAttachPolicy` FE + `drive_import_policy.py` BE, loop 161/162).
 - 한 요청 자산 수 ≤ 12 (composer batch와 동일).
 
 ### 4.4 FE 변경
@@ -179,7 +195,7 @@ Content-Type: application/json
 - `TeamverDriveImportModal` — Phase 1 picker 컴포넌트 재사용, 단일·다중 선택 모드.
 - `importTeamverDriveAssets(projectId, assets)` — 구현됨. modal 결과를 design-api `/import-drive` 로 전달.
 - `chatAttachmentFromDriveImport(import)` — staged attachment 변환.
-- analytics: `drive_import_modal` surface_view, `drive_import_pick` ui_click.
+- analytics: `drive_import_modal` surface_view, `drive_import_pick` ui_click — ✅ loop 161.
 
 ### 4.5 의존
 

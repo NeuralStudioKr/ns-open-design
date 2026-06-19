@@ -7,6 +7,7 @@ const listScopesMock = vi.fn();
 const listRowsMock = vi.fn();
 const listRecentMock = vi.fn();
 const searchRowsMock = vi.fn();
+const fetchThumbnailsMock = vi.fn();
 
 vi.mock("../src/teamver/driveImportList", () => ({
   listTeamverDriveImportScopes: (...args: unknown[]) => listScopesMock(...args),
@@ -14,6 +15,19 @@ vi.mock("../src/teamver/driveImportList", () => ({
   listTeamverDriveImportRecent: (...args: unknown[]) => listRecentMock(...args),
   searchTeamverDriveImportRows: (...args: unknown[]) => searchRowsMock(...args),
   TEAMVER_DRIVE_IMPORT_SEARCH_MIN: 2,
+}));
+
+vi.mock("../src/teamver/driveImportThumbnails", () => ({
+  fetchTeamverDriveImportThumbnails: (...args: unknown[]) => fetchThumbnailsMock(...args),
+}));
+
+vi.mock("../src/teamver/branding/TeamverBrandingProvider", () => ({
+  useTeamverBranding: () => ({ slideOnlyMvp: false }),
+}));
+
+const trackMock = vi.fn();
+vi.mock("../src/analytics/provider", () => ({
+  useAnalytics: () => ({ track: trackMock }),
 }));
 
 describe("TeamverDriveImportModal", () => {
@@ -26,6 +40,8 @@ describe("TeamverDriveImportModal", () => {
     listRowsMock.mockReset();
     listRecentMock.mockReset();
     searchRowsMock.mockReset();
+    fetchThumbnailsMock.mockReset();
+    trackMock.mockReset();
     listScopesMock.mockResolvedValue([{ mode: "personal", folderId: null, label: "My Drive" }]);
     listRowsMock.mockResolvedValue([
       { kind: "asset", assetId: "AST-1", name: "logo.svg", mimeType: "image/svg+xml" },
@@ -37,6 +53,7 @@ describe("TeamverDriveImportModal", () => {
     searchRowsMock.mockResolvedValue([
       { kind: "asset", assetId: "AST-SEARCH", name: "deck.pptx", mimeType: "application/vnd.ms-powerpoint" },
     ]);
+    fetchThumbnailsMock.mockResolvedValue(new Map());
   });
 
   it("renders assets and confirms selection", async () => {
@@ -52,6 +69,7 @@ describe("TeamverDriveImportModal", () => {
 
     expect(await screen.findByTestId("teamver-drive-import-modal")).toBeTruthy();
     expect(await screen.findByTestId("teamver-drive-import-asset-AST-1")).toBeTruthy();
+    expect(document.querySelector(".teamver-drive-import-grid")).toBeTruthy();
     fireEvent.click(screen.getByTestId("teamver-drive-import-asset-AST-1"));
     fireEvent.click(screen.getByTestId("teamver-drive-import-attach"));
 
@@ -59,6 +77,14 @@ describe("TeamverDriveImportModal", () => {
       expect(onConfirm).toHaveBeenCalledWith([
         expect.objectContaining({ assetId: "AST-1", filename: "logo.svg" }),
       ]);
+      expect(trackMock).toHaveBeenCalledWith(
+        "surface_view",
+        expect.objectContaining({ area: "drive_import_modal" }),
+      );
+      expect(trackMock).toHaveBeenCalledWith(
+        "ui_click",
+        expect.objectContaining({ element: "drive_import_pick", asset_count: 1 }),
+      );
     });
   });
 
@@ -127,5 +153,30 @@ describe("TeamverDriveImportModal", () => {
       },
       { timeout: 800 },
     );
+  });
+
+  it("loads image thumbnails for grid cards", async () => {
+    listRowsMock.mockResolvedValue([
+      { kind: "asset", assetId: "AST-IMG", name: "logo.png", mimeType: "image/png" },
+    ]);
+    fetchThumbnailsMock.mockResolvedValue(new Map([["AST-IMG", "https://cdn.example/logo.png"]]));
+
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    await screen.findByTestId("teamver-drive-import-asset-AST-IMG");
+    await waitFor(() => {
+      expect(fetchThumbnailsMock).toHaveBeenCalled();
+      const img = document.querySelector(
+        '[data-testid="teamver-drive-import-asset-AST-IMG"] img',
+      ) as HTMLImageElement | null;
+      expect(img?.src).toContain("https://cdn.example/logo.png");
+    });
   });
 });

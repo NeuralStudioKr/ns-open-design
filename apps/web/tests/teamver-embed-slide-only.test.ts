@@ -85,5 +85,6 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(plusMenu).toContain('onAttachFromDrive');
     expect(chatComposer).toContain('TeamverDriveImportModal');
     expect(chatComposer).toContain('importTeamverDriveAssets');
+    expect(chatComposer).toContain('embedAttachBlockReason');
   });
 });

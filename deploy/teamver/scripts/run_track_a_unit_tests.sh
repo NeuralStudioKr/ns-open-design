@@ -83,6 +83,9 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-import-drive-assets.test.ts \
       tests/teamver-drive-import-attachments.test.ts \
       tests/teamver-drive-import-list.test.ts \
+      tests/teamver-drive-import-thumbnails.test.ts \
+      tests/teamver-drive-file-visual.test.ts \
+      tests/teamver-embed-file-attach-policy.test.ts \
       tests/teamver-drive-import-modal.test.tsx \
       tests/teamver-drive-publish-targets.test.ts \
       tests/teamver-publish-drive-menu-item.test.tsx \

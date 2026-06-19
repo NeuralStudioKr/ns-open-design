@@ -123,3 +123,32 @@ async def test_import_drive_assets_rejects_path_traversal() -> None:
             assets=[DriveImportAssetBody(asset_id="AST-1", dest_path="../secret.svg")],
             od_daemon=AsyncMock(),
         )
+
+
+@pytest.mark.asyncio
+async def test_import_drive_assets_rejects_unsupported_file_type_per_asset() -> None:
+    teamver_client = MagicMock()
+    teamver_client.drive.download_bytes = AsyncMock(return_value=b"ok")
+    daemon = AsyncMock()
+    daemon.upload_project_file.return_value = {
+        "name": "logo.png",
+        "path": "refs/drive/logo.png",
+        "size": 2,
+    }
+
+    result = await import_drive_assets(
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        assets=[
+            DriveImportAssetBody(asset_id="AST-1", filename="logo.png"),
+            DriveImportAssetBody(asset_id="AST-2", filename="clip.mp4"),
+        ],
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 207
+    assert result.imported[0].asset_id == "AST-1"
+    assert result.failed[0].asset_id == "AST-2"
+    assert result.failed[0].error_code == "unsupported_drive_import_file_type"
+    teamver_client.drive.download_bytes.assert_awaited_once()

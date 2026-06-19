@@ -67,9 +67,9 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 
 | 항목 | 현재(daemon) | embed 권장 | 게이트 | 상태 |
 |------|--------------|------------|--------|------|
-| 단일 파일 사이즈 | 200 MB (`projectUpload` multer) | 50 MB (FE pre-check 경고) | `embedFileAttachPolicy` | 🟡 문서화 |
+| 단일 파일 사이즈 | 200 MB (`projectUpload` multer) | 50 MB (FE pre-check 경고) | `embedFileAttachPolicy` | ✅ loop 161 |
 | 1 요청 파일 수 | 12 (`array('files', 12)`) | 12 유지 | — | — |
-| MIME / 확장자 | 제한 없음 | 슬라이드 친화 확장자 화이트리스트 (이미지/PDF/PPTX/MD/CSV/JSON/HTML/SVG) | FE 경고 | 🟡 |
+| MIME / 확장자 | 제한 없음 (daemon upload) | 슬라이드 친화 화이트리스트 | `embedFileAttachPolicy` (FE) · `drive_import_policy.py` (import-drive BE) | ✅ loop 161/162 |
 | 클립보드 이미지 | 자동 업로드 | 유지 | — | — |
 | 폴더 import | 차단됨 (`hideLocalWorkspaceControls`) | 유지 | — | ✅ |
 
@@ -116,6 +116,8 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 apps/web/src/teamver/branding/config.ts                  — flags
 apps/web/src/teamver/branding/TeamverBrandingProvider.tsx — defaults
 apps/web/src/teamver/branding/slideOnlyMvpPolicy.ts       — 정책 헬퍼
+apps/web/src/teamver/branding/embedFileAttachPolicy.ts    — 첨부 화이트리스트 (loop 161, BE sync loop 162)
+deploy/teamver/be/app/services/drive_import_policy.py     — import-drive BE allowlist (loop 162)
 apps/web/src/components/HomeHero.tsx                     — chip rail · @멘션 · `+` 메뉴
 apps/web/src/components/HomeView.tsx                     — community gallery wrap
 apps/web/src/components/NewProjectPanel.tsx              — 탭 필터
@@ -155,5 +157,6 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-19 | loop 162 — `drive_import_policy.py` BE allowlist, import-drive per-asset `failed[]`, FE policy sync |
 | 2026-06-19 | loop 152 — `hideCommunityGallery` / `hidePluginRegistry` / toolbox actions 필터, 14 Drive 설계 cross-link, 전수 인벤토리 |
 | 2026-06-18 | loop 152 (선행) — 초안 + `slideOnlyMvp` / `hideComposerIntegrations` 구현 |

@@ -14,24 +14,11 @@ from ..schemas.drive_import import (
     DriveImportAssetResponse,
     DriveImportFailureResponse,
 )
+from .drive_import_policy import validate_drive_import_file_type
 from .od_daemon_client import OdDaemonClient, OdDaemonIdentity
 
 DEFAULT_IMPORT_DIR = "refs/drive"
 MAX_IMPORT_BYTES = 50 * 1024 * 1024
-
-_BLOCKED_SUFFIXES = {
-    ".app",
-    ".bat",
-    ".cmd",
-    ".com",
-    ".dmg",
-    ".exe",
-    ".msi",
-    ".pkg",
-    ".ps1",
-    ".scr",
-    ".sh",
-}
 
 
 @dataclass(frozen=True)
@@ -90,10 +77,6 @@ def _resolve_import_target(asset: DriveImportAssetBody) -> _ImportTarget:
         if dest_path:
             directory = _validate_relative_path(dest_path, field="dest_path")
 
-    suffix = PurePosixPath(filename).suffix.lower()
-    if suffix in _BLOCKED_SUFFIXES:
-        raise BadRequestError("unsupported_drive_import_file_type")
-
     mime_type = (asset.mime_type or "application/octet-stream").strip() or "application/octet-stream"
     target_path = posixpath.join(directory, filename) if directory else filename
     return _ImportTarget(
@@ -140,6 +123,15 @@ async def import_drive_assets(
     for asset in assets:
         try:
             target = _resolve_import_target(asset)
+            type_error = validate_drive_import_file_type(target.filename, target.mime_type)
+            if type_error:
+                failed.append(
+                    DriveImportFailureResponse(
+                        asset_id=asset.asset_id,
+                        error_code=type_error,
+                    ),
+                )
+                continue
             content = await teamver_client.drive.download_bytes(
                 access_token=access_token,
                 asset_id=asset.asset_id,
