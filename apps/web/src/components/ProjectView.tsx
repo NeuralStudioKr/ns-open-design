@@ -166,8 +166,8 @@ import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
-import { TeamverDriveBrowseButton } from '../teamver/components/TeamverDriveBrowseButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -457,7 +457,9 @@ function historyWithWorkspaceContext(
     ...items.map((item, index) => {
       const details = [
         item.path ? `path: ${item.path}` : null,
-        item.absolutePath ? `absolute: ${item.absolutePath}` : null,
+        item.absolutePath && !isTeamverEmbedMode()
+          ? `absolute: ${item.absolutePath}`
+          : null,
         item.url ? `url: ${item.url}` : null,
         item.title ? `title: ${item.title}` : null,
         item.tabId ? `tab: ${item.tabId}` : null,
@@ -830,7 +832,8 @@ export function ProjectView({
 }: Props) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
-  const { hideStudioExecutionControls, hideHandoffButton } = useTeamverBranding();
+  const { hideStudioExecutionControls, hideHandoffButton, hideLocalWorkspaceControls } =
+    useTeamverBranding();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const handleThemeChange = onThemeChange ?? (() => {});
   // P0 page_view page_name=chat_panel — fire once per project mount.
@@ -977,6 +980,22 @@ export function ProjectView({
   // The toast surface is shared between Finalize errors and the
   // success/fallback toasts emitted from handleContinueInCli.
   const projectDetail = useProjectDetail(project.id);
+  const designFilesRootLabel = useMemo(() => {
+    if (hideLocalWorkspaceControls) {
+      return project.name.trim() || t('designFiles.crumbs');
+    }
+    const baseDir =
+      projectDetail.project?.metadata?.baseDir ?? project.metadata?.baseDir;
+    return typeof baseDir === 'string'
+      ? baseDir.split(/[/\\]/).filter(Boolean).pop()
+      : undefined;
+  }, [
+    hideLocalWorkspaceControls,
+    project.name,
+    project.metadata?.baseDir,
+    projectDetail.project?.metadata?.baseDir,
+    t,
+  ]);
   const designMdState = useDesignMdState(project.id, designMdRefreshKey);
   const finalize = useFinalizeProject(project.id);
   const terminalLauncher = useTerminalLaunch();
@@ -5808,15 +5827,9 @@ export function ProjectView({
         <FileWorkspace
           projectId={project.id}
           projectKind={projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel) ?? 'prototype'}
-          rootDirName={(() => {
-            const baseDir =
-              projectDetail.project?.metadata?.baseDir ?? project.metadata?.baseDir;
-            return typeof baseDir === 'string'
-              ? baseDir.split(/[/\\]/).filter(Boolean).pop()
-              : undefined;
-          })()}
+          rootDirName={designFilesRootLabel}
           reloading={false}
-          resolvedDir={projectDetail.resolvedDir}
+          resolvedDir={hideLocalWorkspaceControls ? null : projectDetail.resolvedDir}
           files={projectFiles}
           liveArtifacts={liveArtifacts}
           filesRefreshKey={filesRefresh}
@@ -5889,9 +5902,7 @@ export function ProjectView({
                   artifactId={headerArtifact.artifact_id}
                   artifactKind={headerArtifact.artifact_kind}
                 />
-              ) : (
-                <TeamverDriveBrowseButton />
-              )}
+              ) : null}
               <EntrySettingsMenu
                 config={config}
                 onThemeChange={handleThemeChange}
