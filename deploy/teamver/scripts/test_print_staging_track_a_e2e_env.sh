@@ -20,6 +20,7 @@ for needle in \
   'MAIN_BE_DATABASE_URL=' \
   'TEAMVER_OD_PROJECT_ID=' \
   'TEAMVER_DRIVE_IMPORT_ASSET_ID=' \
+  'TEAMVER_DRIVE_IMPORT_FILENAME=' \
   'D-6b policy probe' \
   'run_staging_track_a_e2e.sh'
 do

@@ -28,6 +28,13 @@ const searchTargetsMock = vi.fn(async (_workspaceId: string, _query: string, _op
     sharedDriveId: "SD-2",
   },
 ]);
+const listImportScopesMock = vi.fn(async (_workspaceId: string) => [
+  { mode: "personal" as const, folderId: null, label: "My Drive" },
+  { mode: "shared" as const, sharedDriveId: "SD-1", folderId: null, label: "Product" },
+]);
+const listImportRowsMock = vi.fn(async (_args: unknown) => [
+  { kind: "folder" as const, folderId: "FLD-BROWSE", name: "Browse exports", sharedDriveId: null },
+]);
 const publishMock = vi.fn(async (_args: unknown) => ({
   projectId: "DPRJ-1",
   partial: false,
@@ -63,6 +70,11 @@ vi.mock("../src/teamver/drivePublishTargets", () => ({
   TEAMVER_DRIVE_PUBLISH_SEARCH_MIN: 2,
 }));
 
+vi.mock("../src/teamver/driveImportList", () => ({
+  listTeamverDriveImportScopes: (workspaceId: string) => listImportScopesMock(workspaceId),
+  listTeamverDriveImportRows: (args: unknown) => listImportRowsMock(args),
+}));
+
 vi.mock("../src/teamver/publishToDrive", () => ({
   publishTeamverDesignToDrive: (args: unknown) => publishMock(args),
   pickReadyPublishOutputs: (outputs: Array<{ publishStatus?: string }>) =>
@@ -77,6 +89,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     getWorkspaceMock.mockClear();
     listTargetsMock.mockClear();
     searchTargetsMock.mockClear();
+    listImportScopesMock.mockClear();
+    listImportRowsMock.mockClear();
     publishMock.mockClear();
   });
 
@@ -165,6 +179,40 @@ describe("TeamverPublishDriveMenuItem", () => {
         folderId: "FLD-REMOTE",
         sharedDriveId: "SD-2",
       });
+    });
+  });
+
+  it("browses Drive folders and keeps the browsed folder as publish target", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    const modal = screen.getByTestId("teamver-drive-picker-modal");
+
+    await waitFor(() => {
+      expect(listImportScopesMock).toHaveBeenCalledWith("ws-1");
+      expect(within(modal).getByText("Browse exports")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("teamver-drive-picker-target-personal:FLD-BROWSE"));
+    fireEvent.click(within(modal).getByRole("button", { name: "Close Drive picker" }));
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: "FLD-BROWSE",
+          sharedDriveId: null,
+        }),
+      );
     });
   });
 });

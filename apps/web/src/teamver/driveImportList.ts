@@ -1,5 +1,4 @@
-import { snakeToCamelDeep } from "@teamver/app-sdk";
-import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
+import { extractTeamverDriveItems, getTeamverDriveJson } from "./driveApi";
 
 export type TeamverDriveImportPick = {
   assetId: string;
@@ -32,33 +31,8 @@ export type TeamverDriveImportScope =
   | { mode: "personal"; folderId: string | null; label: string }
   | { mode: "shared"; sharedDriveId: string; folderId: string | null; label: string };
 
-function apiUrl(path: string): string {
-  return `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}${path}`;
-}
-
-async function getJson(path: string, workspaceId: string): Promise<unknown> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const trimmed = workspaceId.trim();
-  if (trimmed) headers["X-Workspace-Id"] = trimmed;
-  const response = await fetch(apiUrl(path), { credentials: "include", headers });
-  if (!response.ok) {
-    throw new Error(`teamver_drive_list_fetch_failed:${response.status}`);
-  }
-  const raw = await response.json();
-  return snakeToCamelDeep(raw);
-}
-
 function extractListItems(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw;
-  if (!raw || typeof raw !== "object") return [];
-  const obj = raw as Record<string, unknown>;
-  const data = obj.data;
-  if (Array.isArray(data)) return data;
-  for (const key of ["items", "results", "list"]) {
-    const value = obj[key];
-    if (Array.isArray(value)) return value;
-  }
-  return [];
+  return extractTeamverDriveItems(raw);
 }
 
 function normalizeFolderRow(raw: Record<string, unknown>, sharedDriveId?: string | null): TeamverDriveImportFolderRow | null {
@@ -122,7 +96,7 @@ export async function listTeamverDriveImportRows(params: {
   if (search) query.set("search", search);
   query.set("limit", String(Math.max(1, Math.min(params.limit ?? 80, 120))));
 
-  const raw = await getJson(`/api/drive/list?${query.toString()}`, workspaceId);
+  const raw = await getTeamverDriveJson(`/api/drive/list?${query.toString()}`, workspaceId);
   const sharedDriveId = params.sharedDriveId ?? null;
   const rows: TeamverDriveImportListRow[] = [];
   for (const item of extractListItems(raw)) {
@@ -141,7 +115,7 @@ export async function listTeamverDriveImportScopes(workspaceId: string): Promise
   ];
 
   try {
-    const raw = await getJson("/api/v2/shared-drive", trimmed);
+    const raw = await getTeamverDriveJson("/api/v2/shared-drive", trimmed);
     const drives = extractListItems(raw);
     for (const drive of drives) {
       if (!drive || typeof drive !== "object") continue;
@@ -231,7 +205,7 @@ export async function listTeamverDriveImportRecent(params: {
   query.set("limit", String(Math.max(1, Math.min(params.limit ?? 24, 48))));
   query.set("include", "assets");
 
-  const raw = await getJson(`/api/v2/drive/home/recent?${query.toString()}`, workspaceId);
+  const raw = await getTeamverDriveJson(`/api/v2/drive/home/recent?${query.toString()}`, workspaceId);
   const assets = Array.isArray((raw as { assets?: unknown[] })?.assets)
     ? (raw as { assets: unknown[] }).assets
     : extractListItems(raw);
@@ -266,8 +240,8 @@ export async function searchTeamverDriveImportRows(params: {
   if (sharedDriveId) v2Query.set("shared_drive_id", sharedDriveId);
 
   const [v2Settled, listSettled] = await Promise.allSettled([
-    getJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId),
-    getJson(`/api/drive/list?${listQuery.toString()}`, workspaceId),
+    getTeamverDriveJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId),
+    getTeamverDriveJson(`/api/drive/list?${listQuery.toString()}`, workspaceId),
   ]);
 
   const merged: TeamverDriveImportListRow[] = [];

@@ -1,5 +1,4 @@
-import { snakeToCamelDeep } from "@teamver/app-sdk";
-import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
+import { extractTeamverDriveItems, getTeamverDriveJson } from "./driveApi";
 import {
   TEAMVER_DRIVE_IMPORT_SEARCH_MIN,
   listTeamverDriveImportScopes,
@@ -39,38 +38,12 @@ export type TeamverDrivePublishTarget = {
 const TARGET_LIMIT = 28;
 export const TEAMVER_DRIVE_PUBLISH_SEARCH_MIN = TEAMVER_DRIVE_IMPORT_SEARCH_MIN;
 
-function apiUrl(path: string): string {
-  return `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}${path}`;
-}
-
 async function getJson(path: string, workspaceId?: string | null): Promise<unknown> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const trimmedWorkspaceId = workspaceId?.trim();
-  if (trimmedWorkspaceId) headers["X-Workspace-Id"] = trimmedWorkspaceId;
-  const response = await fetch(apiUrl(path), {
-    credentials: "include",
-    headers,
-  });
-  if (!response.ok) {
-    throw new Error(`teamver_drive_target_fetch_failed:${response.status}`);
-  }
-  const raw = await response.json();
-  return snakeToCamelDeep(raw);
+  return getTeamverDriveJson(path, workspaceId);
 }
 
 function extractArray<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  if (!raw || typeof raw !== "object") return [];
-  const obj = raw as Record<string, unknown>;
-  for (const key of ["data", "items", "results", "list", "drives", "sharedDrives"]) {
-    const value = obj[key];
-    if (Array.isArray(value)) return value as T[];
-    if (value && typeof value === "object") {
-      const nested = extractArray<T>(value);
-      if (nested.length > 0) return nested;
-    }
-  }
-  return [];
+  return extractTeamverDriveItems<T>(raw);
 }
 
 function normalizeFolderId(folder: RawFolder): string | null {

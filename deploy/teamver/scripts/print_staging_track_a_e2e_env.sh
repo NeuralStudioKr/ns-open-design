@@ -62,6 +62,7 @@ export TEAMVER_OD_PROJECT_ID='<DPRJ_... or od project id>'
 
 # D-6a only — slide-friendly Drive asset (txt/png/svg). D-6b policy probe 는 asset 불필요.
 export TEAMVER_DRIVE_IMPORT_ASSET_ID='<AST-... from Teamver Drive>'
+export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 
 # S-8c (slide/API chat) — cookie 만 있으면 runtime-config configured=true + model 검증.
 

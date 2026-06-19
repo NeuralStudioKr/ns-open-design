@@ -19,6 +19,7 @@
 #   TEAMVER_COOKIE_USER_B='teamver_access_token=...'    # 다중 사용자 403 격리
 #   TEAMVER_OD_PROJECT_ID=<user A 가 만들었던 OD project id>
 #   TEAMVER_DRIVE_IMPORT_ASSET_ID=<Drive asset id for D-6a import probe>
+#   TEAMVER_DRIVE_IMPORT_FILENAME=<slide-friendly filename for D-6a, default e2e-import.txt>
 #   SKIP_DRIVE_IMPORT_POLICY=1                          # D-6b policy-only probe 비활성
 #   TEAMVER_E2E_RUN_PREFIX='e2e-staging-'                # usage row 식별자
 #   SKIP_DRIVE=1                                         # publish phase 비활성
@@ -59,6 +60,7 @@ optional:
   TEAMVER_COOKIE_USER_B   다중 사용자 403 격리 검증
   TEAMVER_OD_PROJECT_ID   D-5 publish / D-6 import 대상 (없으면 skip)
   TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6a import-drive 성공 probe (없으면 skip)
+  TEAMVER_DRIVE_IMPORT_FILENAME  D-6a import filename (default e2e-import.txt)
   SKIP_RUNTIME=1                 S-8c runtime-config probe 비활성
   SKIP_DRIVE_IMPORT_POLICY=1     D-6b policy reject probe 비활성
   SKIP_DRIVE=1 / SKIP_DB=1
@@ -350,7 +352,8 @@ elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
 elif [[ -z "${session_workspace_id:-}" ]]; then
   skipped "D-6a import-drive — session workspace 없음"
 else
-  import_body="{\"assets\":[{\"assetId\":\"${TEAMVER_DRIVE_IMPORT_ASSET_ID}\",\"filename\":\"e2e-import.txt\"}]}"
+  import_filename="${TEAMVER_DRIVE_IMPORT_FILENAME:-e2e-import.txt}"
+  import_body="{\"assets\":[{\"assetId\":\"${TEAMVER_DRIVE_IMPORT_ASSET_ID}\",\"filename\":\"${import_filename}\"}]}"
   import_tmp="$(mktemp)"
   import_code="$(curl -s -o "$import_tmp" -w '%{http_code}' --max-time 20 \
     -X POST -H "Content-Type: application/json" \
@@ -362,10 +365,10 @@ else
   rm -f "$import_tmp"
   case "$import_code" in
     200|201|207)
-      if printf '%s' "$import_resp" | grep -q '"imported"'; then
-        passed "D-6a import-drive ${TEAMVER_OD_PROJECT_ID} ← ${import_code} (asset=${TEAMVER_DRIVE_IMPORT_ASSET_ID})"
+      if printf '%s' "$import_resp" | grep -Eq '"imported"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{'; then
+        passed "D-6a import-drive ${TEAMVER_OD_PROJECT_ID} ← ${import_code} (asset=${TEAMVER_DRIVE_IMPORT_ASSET_ID}, filename=${import_filename})"
       else
-        failed "D-6a import-drive ${import_code} but response missing imported[]"
+        failed "D-6a import-drive ${import_code} but response has empty/missing imported[]"
       fi
       ;;
     401|403)

@@ -142,6 +142,7 @@ export function TeamverPublishDriveMenuItem({
       </div>
       <TeamverDrivePickerModal
         open={pickerOpen}
+        workspaceId={workspaceId}
         targets={targets}
         selectedTargetId={selectedTargetId}
         loading={loadingTargets}
