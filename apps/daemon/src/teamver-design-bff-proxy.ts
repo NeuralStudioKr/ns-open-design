@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from 'express';
+import type { Express, Request, Response as ExpressResponse } from 'express';
 
 import {
   readTeamverIdentityFromRequest,
@@ -47,8 +47,8 @@ function buildUpstreamHeaders(req: Request): Record<string, string> {
   return headers;
 }
 
-function copyUpstreamResponseHeaders(res: Response, upstream: Response): void {
-  upstream.headers.forEach((value, key) => {
+function copyUpstreamResponseHeaders(res: ExpressResponse, upstream: globalThis.Response): void {
+  upstream.headers.forEach((value: string, key: string) => {
     const lower = key.toLowerCase();
     if (lower === 'transfer-encoding' || lower === 'connection' || lower === 'keep-alive') {
       return;
@@ -57,7 +57,11 @@ function copyUpstreamResponseHeaders(res: Response, upstream: Response): void {
   });
 }
 
-async function proxyTeamverBffRequest(req: Request, res: Response, baseUrl: string): Promise<void> {
+async function proxyTeamverBffRequest(
+  req: Request,
+  res: ExpressResponse,
+  baseUrl: string,
+): Promise<void> {
   const subPath = req.path.replace(/^\//, '');
   const search = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
   const upstreamUrl = buildUpstreamUrl(baseUrl, subPath, search);
