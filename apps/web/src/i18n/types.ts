@@ -445,6 +445,12 @@ export interface Dict {
   'teamver.driveImport.error.od_daemon_import_failed': string;
   'teamver.driveImport.error.invalid_filename': string;
   'teamver.driveImport.error.drive_import_failed': string;
+  'teamver.canvasSlideLaunch.title': string;
+  'teamver.canvasSlideLaunch.description': string;
+  'teamver.canvasSlideLaunch.sourceLabel': string;
+  'teamver.canvasSlideLaunch.confirm': string;
+  'teamver.canvasSlideLaunch.cancel': string;
+  'teamver.canvasSlideLaunch.working': string;
   'settings.skillsHint': string;
   'settings.skillsNew': string;
   'settings.skillsEmpty': string;

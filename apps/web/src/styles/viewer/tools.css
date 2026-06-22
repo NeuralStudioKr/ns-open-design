@@ -1345,6 +1345,49 @@
 .teamver-drive-import-attach:disabled {
   opacity: 0.55;
 }
+.teamver-canvas-slide-launch-modal {
+  width: min(420px, calc(100vw - 32px));
+}
+.teamver-canvas-slide-launch-source {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 16px 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+.teamver-canvas-slide-launch-source-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  color: var(--accent);
+}
+.teamver-canvas-slide-launch-source-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.teamver-canvas-slide-launch-source-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.teamver-canvas-slide-launch-source-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .teamver-drive-import-partial {
   margin: 0 1rem 0.75rem;
   padding: 0.65rem 0.75rem;

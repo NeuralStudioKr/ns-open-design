@@ -64,7 +64,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 
 | 순위 | 작업 | 판단 |
 |---|---|---|
-| 1 | **Canvas import 확인 + slide run 시작을 하나의 확정 action으로 통합** | 핵심 UX 단축이지만 현재도 기능은 완결됨 |
+| 1 | **Canvas import 확인 + slide run 시작을 하나의 확정 action으로 통합** | 핵심 UX 단축 — ✅ loop 191 one-confirm modal | **완료** |
 | 2 | **기본 source 구조화** | MD/HTML의 heading·paragraph·image 순서를 정규화. 필요하면 design-api에서 처리 |
 | 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 |
 | 4 | **Design System 기본 적용** | Canvas 원본 테마 복제보다 workspace Design System/기본 slide theme를 적용하는 편이 품질 대비 효과가 큼 |
@@ -86,7 +86,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 | 선택 | 기능 완결도 효과 | 작업량 | OD fork 위험 | 결정 |
 |---|---:|---:|---:|---|
 | Canvas 테마/레이아웃 보존을 지금 개발 | 중 | 크게 | 높음 | **보류** |
-| Canvas one-confirm run | 중 | 작음 | 낮음 | **P1 첫 번째** |
+| Canvas one-confirm run | 중 | 작음 | 낮음 | **✅ loop 191** |
 | S3/auth/workspace 격리 | 매우 큼 | 중 | 낮음 | **P0 즉시** |
 | slide lifecycle·Drive import/publish 종단 | 매우 큼 | 작음~중 | 낮음 | **P0 즉시** |
 | Design System 기본 테마 적용 | 큼 | 중 | 중 | **P1** |

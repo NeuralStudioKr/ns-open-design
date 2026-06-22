@@ -46,11 +46,13 @@ import {
   type TeamverDriveImportAsset,
 } from '../teamver/importDriveAssets';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
+import { TeamverCanvasSlideLaunchModal } from '../teamver/components/TeamverCanvasSlideLaunchModal';
 import {
   consumeTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchIntent,
 } from '../teamver/driveLaunchHandoff';
+import { CANVAS_CREATE_SLIDES_PROMPT } from '../teamver/canvasSlideLaunch';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
@@ -461,6 +463,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [driveImportBusy, setDriveImportBusy] = useState(false);
     const [driveImportPartial, setDriveImportPartial] = useState<TeamverDriveImportPartialResult | null>(null);
     const [driveLaunchAssets, setDriveLaunchAssets] = useState<TeamverDriveImportAsset[]>([]);
+    const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverDriveImportAsset | null>(null);
+    const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
@@ -538,17 +542,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       const handoff = readTeamverDriveLaunchHandoff();
       if (!handoff) return;
       const intent = readTeamverDriveLaunchIntent();
+      consumeTeamverDriveLaunchHandoff();
+      if (intent === 'create-slides') {
+        setCanvasSlideLaunch(handoff);
+        return;
+      }
       setDriveLaunchAssets([handoff]);
       setDriveImportOpen(true);
-      if (intent === 'create-slides') {
-        const prompt = 'Create a polished presentation from the attached canvas. Preserve its structure, key content, and visual assets.';
-        setDraft((current) => {
-          if (current.trim()) return current;
-          editorRef.current?.setText(prompt);
-          return prompt;
-        });
-      }
-      consumeTeamverDriveLaunchHandoff();
     }, [teamverDriveImportEnabled, teamverWorkspaceId]);
     const rememberRecentDir = useCallback(async (dir: string) => {
       setRecentDirs((prev) => [dir, ...prev.filter((d) => d !== dir)].slice(0, 5));
@@ -1521,6 +1521,51 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setUploadError(`Drive import failed (${detail}).`);
       } finally {
         setDriveImportBusy(false);
+      }
+    }
+
+    async function confirmCanvasSlideLaunch() {
+      if (!canvasSlideLaunch || canvasSlideLaunchBusy || streaming) return;
+      const asset = canvasSlideLaunch;
+      const blocked = embedAttachBlockReason(asset.filename ?? asset.assetId, {
+        mimeType: asset.mimeType,
+        slideOnlyMvp,
+      });
+      if (blocked) {
+        setUploadError(blocked);
+        setCanvasSlideLaunch(null);
+        return;
+      }
+
+      const id = await ensureProject();
+      if (!id) return;
+
+      setCanvasSlideLaunchBusy(true);
+      setUploadError(null);
+      try {
+        const result = await importTeamverDriveAssets(id, [asset]);
+        if (result.partial || result.imported.length === 0) {
+          const errorCode = result.failed[0]?.errorCode ?? 'drive_import_failed';
+          setUploadError(`Drive import failed (${errorCode}).`);
+          setDriveLaunchAssets([asset]);
+          setDriveImportOpen(true);
+          setCanvasSlideLaunch(null);
+          return;
+        }
+        const attachments = assignChatAttachmentOrders(
+          driveImportedToChatAttachments(result.imported),
+          Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
+        );
+        setCanvasSlideLaunch(null);
+        sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], currentRunContextMeta());
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        setUploadError(`Drive import failed (${detail}).`);
+        setDriveLaunchAssets([asset]);
+        setDriveImportOpen(true);
+        setCanvasSlideLaunch(null);
+      } finally {
+        setCanvasSlideLaunchBusy(false);
       }
     }
 
@@ -2673,6 +2718,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               setDetailsRecord(null);
             }}
             hideUseAction
+          />
+        ) : null}
+        {teamverDriveImportEnabled && teamverWorkspaceId && canvasSlideLaunch ? (
+          <TeamverCanvasSlideLaunchModal
+            open
+            asset={canvasSlideLaunch}
+            confirming={canvasSlideLaunchBusy}
+            onClose={() => {
+              if (!canvasSlideLaunchBusy) setCanvasSlideLaunch(null);
+            }}
+            onConfirm={confirmCanvasSlideLaunch}
           />
         ) : null}
         {teamverDriveImportEnabled && teamverWorkspaceId ? (
