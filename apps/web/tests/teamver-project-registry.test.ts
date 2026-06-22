@@ -9,6 +9,7 @@ import {
   listTeamverRegisteredProjectIds,
   registerTeamverProjectIfNeeded,
   resetTeamverProjectRegistryStateForTests,
+  syncAllDaemonProjectsToRegistry,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from '../src/teamver/projectRegistry';
 import * as designApiBase from '../src/teamver/designApiBase';
@@ -257,6 +258,46 @@ describe('Teamver project registry access', () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
 
     await expect(assertTeamverProjectAccessIfNeeded('p1-transient')).resolves.toBe(true);
+  });
+});
+
+describe('Teamver project registry boot sync', () => {
+  afterEach(() => {
+    resetTeamverProjectRegistryStateForTests();
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('syncAllDaemonProjectsToRegistry does not wait on embed boot gate', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi.fn(async () => undefined);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { post },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          projects: [{ id: 'od-boot-1', name: 'Boot project' }],
+        }),
+      ),
+    );
+
+    const boot = await import('../src/teamver/teamverEmbedBoot');
+    boot.resetTeamverEmbedBootForTests();
+    expect(boot.isTeamverEmbedBootComplete()).toBe(false);
+
+    await syncAllDaemonProjectsToRegistry();
+
+    expect(post).toHaveBeenCalledWith(
+      '/projects',
+      { odProjectId: 'od-boot-1', title: 'Boot project' },
+      expect.objectContaining({ workspaceId: 'ws1' }),
+    );
+    expect(boot.isTeamverEmbedBootComplete()).toBe(false);
   });
 });
 

@@ -23,7 +23,7 @@ describe('designTemplateVisibility', () => {
   it('classifies renderable design templates by mode', () => {
     expect(isRenderableDesignTemplate({ mode: 'deck' })).toBe(true);
     expect(isRenderableDesignTemplate({ mode: 'prototype' })).toBe(true);
-    expect(isRenderableDesignTemplate({ mode: 'utility' })).toBe(false);
+    expect(isRenderableDesignTemplate({ mode: 'design-system' })).toBe(false);
     expect(isSlideRelatedDesignTemplate(deckTemplate)).toBe(true);
     expect(isSlideRelatedDesignTemplate(prototypeTemplate)).toBe(false);
   });

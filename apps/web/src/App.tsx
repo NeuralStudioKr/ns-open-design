@@ -55,6 +55,10 @@ import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/des
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
 import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
+import {
+  completeTeamverEmbedBoot,
+  waitForTeamverEmbedBoot,
+} from './teamver/teamverEmbedBoot';
 import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
 import {
   assertTeamverProjectAccessIfNeeded,
@@ -418,6 +422,7 @@ function AppInner() {
     runId: string;
     projectId: string;
     projectName: string;
+    conversationId: string | null;
     status: 'succeeded' | 'failed';
   } | null>(null);
   const activeRunIdsRef = useRef<Set<string>>(new Set());
@@ -877,11 +882,16 @@ function AppInner() {
       });
 
       const request = beginProjectListRequest();
-      void listProjects().then((list) => {
+      void (async () => {
+        if (isTeamverEmbedMode()) {
+          await waitForTeamverEmbedBoot();
+        }
+        if (cancelled) return;
+        const list = await listProjects();
         if (cancelled) return;
         reconcileFetchedProjects(list, request);
         setProjectsLoading(false);
-      });
+      })();
 
       void listTemplates().then((list) => {
         if (cancelled) return;
@@ -909,13 +919,17 @@ function AppInner() {
         fetchMediaProvidersFromDaemon(),
         isTeamverEmbedMode()
           ? fetchDesignAuthSession().then(async (session) => {
-              if (session) {
-                await syncTeamverWorkspaceFromSession(session);
-                if (session.authenticated) {
-                  await syncAllDaemonProjectsToRegistry();
+              try {
+                if (session) {
+                  await syncTeamverWorkspaceFromSession(session);
+                  if (session.authenticated) {
+                    await syncAllDaemonProjectsToRegistry();
+                  }
                 }
+                return await fetchTeamverRuntimeConfig();
+              } finally {
+                completeTeamverEmbedBoot();
               }
-              return fetchTeamverRuntimeConfig();
             })
           : Promise.resolve(null),
       ]).then(([
@@ -1784,6 +1798,7 @@ function AppInner() {
           runId: completedRun.id,
           projectId: completedRun.projectId,
           projectName,
+          conversationId: completedRun.conversationId ?? null,
           status,
         });
 
@@ -1802,7 +1817,12 @@ function AppInner() {
               body: projectName,
               onClick: () => {
                 window.focus();
-                void navigateToProject(completedRun.projectId!);
+                void navigateToProject(
+                  completedRun.projectId!,
+                  completedRun.conversationId
+                    ? { conversationId: completedRun.conversationId }
+                    : {},
+                );
               },
             });
           }
@@ -2455,7 +2475,12 @@ function AppInner() {
             ? `${backgroundRunNotice.projectName} 슬라이드 작업이 완료되었습니다.`
             : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
           actionLabel="프로젝트 열기"
-          onAction={() => void navigateToProject(backgroundRunNotice.projectId)}
+          onAction={() => void navigateToProject(
+            backgroundRunNotice.projectId,
+            backgroundRunNotice.conversationId
+              ? { conversationId: backgroundRunNotice.conversationId }
+              : {},
+          )}
           tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}
           role={backgroundRunNotice.status === 'failed' ? 'alert' : 'status'}
           ttlMs={8000}

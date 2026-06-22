@@ -12,8 +12,7 @@ from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
 from ..db.models import DesignOutput, DesignProject
-from ..config import settings
-from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError
+from ..errors import ApiError, ForbiddenError, NotFoundError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
     DesignProjectListResponse,
@@ -104,15 +103,12 @@ async def _resolve_existing_registry_row(
     return row, False
 
 
-def _requires_project_s3_sync() -> bool:
-    return (settings.od_project_storage or "local").strip().lower() == "s3"
-
-
 async def _sync_daemon_scratch_after_registry(
     row: DesignProject,
     *,
     auth: AuthContext,
 ) -> None:
+    """Best-effort scratch → S3 sync after registry row is durable (post-commit)."""
     workspace_id = require_workspace_context(auth)
     try:
         await OdDaemonClient().sync_scratch_project(
@@ -123,16 +119,21 @@ async def _sync_daemon_scratch_after_registry(
                 s3_prefix=row.s3_prefix,
             ),
         )
-    except Exception as exc:
+    except Exception:
         logger.warning(
             "registry create: daemon scratch sync-up failed od_project_id=%s",
             row.od_project_id,
             exc_info=True,
         )
-        if _requires_project_s3_sync():
-            if isinstance(exc, BadGatewayError):
-                raise
-            raise BadGatewayError("od_daemon_scratch_sync_up_failed") from exc
+
+
+async def _commit_registry_row_if_needed(
+    db: AsyncSession,
+    *,
+    changed: bool,
+) -> None:
+    if changed:
+        await db.commit()
 
 
 @router.post("", response_model=DesignProjectResponse)
@@ -157,14 +158,8 @@ async def create_project(
                 title=body.title,
                 auth=auth,
             )
-            try:
-                await _sync_daemon_scratch_after_registry(row, auth=auth)
-                if changed:
-                    await db.commit()
-            except Exception:
-                if changed:
-                    await db.rollback()
-                raise
+            await _commit_registry_row_if_needed(db, changed=changed)
+            await _sync_daemon_scratch_after_registry(row, auth=auth)
             return _to_response(row)
 
     try:
@@ -175,8 +170,8 @@ async def create_project(
             od_project_id=od_project_id,
             title=body.title,
         )
-        await _sync_daemon_scratch_after_registry(row, auth=auth)
         await db.commit()
+        await _sync_daemon_scratch_after_registry(row, auth=auth)
     except IntegrityError as exc:
         await db.rollback()
         if od_project_id:
@@ -199,14 +194,8 @@ async def create_project(
                         "project_already_registered",
                         code="conflict",
                     ) from exc
-                try:
-                    await _sync_daemon_scratch_after_registry(row, auth=auth)
-                    if changed:
-                        await db.commit()
-                except Exception:
-                    if changed:
-                        await db.rollback()
-                    raise
+                await _commit_registry_row_if_needed(db, changed=changed)
+                await _sync_daemon_scratch_after_registry(row, auth=auth)
                 return _to_response(row)
         raise ApiError(409, "project_already_registered", code="conflict") from exc
     except Exception:

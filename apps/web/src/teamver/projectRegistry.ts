@@ -3,6 +3,12 @@ import type { Project } from "../types";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
+import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
+
+async function waitForEmbedBootIfNeeded(): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+  await waitForTeamverEmbedBoot();
+}
 
 export type TeamverProjectRegistryPayload = {
   odProjectId: string;
@@ -99,8 +105,12 @@ export function buildTeamverProjectRegistryPayload(
 
 export async function registerTeamverProjectIfNeeded(
   project: Pick<Project, "id" | "name">,
+  options?: { skipBootWait?: boolean },
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
+  if (!options?.skipBootWait) {
+    await waitForEmbedBootIfNeeded();
+  }
 
   const client = getDesignBffClient();
   if (!client) return;
@@ -145,6 +155,7 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
 /** Embed boot: upsert all daemon projects into design-api registry (legacy migration). */
 export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   if (!isTeamverEmbedMode()) return;
+  // Called during embed boot before completeTeamverEmbedBoot — must not wait on boot gate.
 
   const client = getDesignBffClient();
   if (!client) return;
@@ -161,7 +172,11 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
 
   syncAllInflight = (async () => {
     const projects = await fetchDaemonProjectsForRegistry();
-    await Promise.all(projects.map((project) => registerTeamverProjectIfNeeded(project)));
+    await Promise.all(
+      projects.map((project) =>
+        registerTeamverProjectIfNeeded(project, { skipBootWait: true }),
+      ),
+    );
     invalidateRegisteredIdsCache();
     syncAllAt = Date.now();
   })().finally(() => {
@@ -173,6 +188,7 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
 
 export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
   if (!isTeamverEmbedMode()) return null;
+  await waitForEmbedBootIfNeeded();
 
   const client = getDesignBffClient();
   if (!client) return null;
@@ -212,6 +228,7 @@ export async function fetchTeamverProject(
   projectRef: string,
 ): Promise<TeamverRegisteredProject | null> {
   if (!isTeamverEmbedMode()) return null;
+  await waitForEmbedBootIfNeeded();
 
   const trimmedRef = projectRef.trim();
   if (!trimmedRef) return null;
@@ -253,6 +270,7 @@ export async function assertTeamverProjectAccessIfNeeded(
   projectId: string,
 ): Promise<boolean> {
   if (!isTeamverEmbedMode()) return true;
+  await waitForEmbedBootIfNeeded();
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return false;
