@@ -62,6 +62,8 @@ export async function fetchDesignAuthSession(): Promise<DesignAuthSession | null
   if (!client) return null;
   return client.http.get<DesignAuthSession>("/auth/session", {
     skipAuthHeader: true,
+    // Session probe — avoid SDK refresh + onAuthExpired before embed handles 401.
+    skipAuthRecovery: true,
   });
 }
 

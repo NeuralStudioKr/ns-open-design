@@ -102,7 +102,7 @@ ln -sfn "$TARGET_AVAILABLE_PATH" "$TARGET_ENABLED_PATH"
 echo "📄 적용됨: $TARGET_ENABLED_PATH"
 
 shopt -s nullglob
-inc_files=("$SCRIPT_DIR"/teamver-design-api*.inc.conf)
+inc_files=("$SCRIPT_DIR"/teamver-design*.inc.conf)
 shopt -u nullglob
 if (( ${#inc_files[@]} )); then
   cp -f "${inc_files[@]}" "$SITES_AVAILABLE_DIR/"

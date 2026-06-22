@@ -36,4 +36,17 @@ describe("getDesignBffClient refresh wiring", () => {
       }),
     );
   });
+
+  it("uses same-origin /teamver-bff when design API base is empty", async () => {
+    const designApiBase = await import("../src/teamver/designApiBase");
+    vi.mocked(designApiBase.resolveTeamverDesignApiBase).mockReturnValue("");
+    vi.resetModules();
+    const { getDesignBffClient } = await import("../src/teamver/designBffClient");
+    getDesignBffClient();
+    expect(ctorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiBaseUrl: "/teamver-bff",
+      }),
+    );
+  });
 });

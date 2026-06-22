@@ -83,9 +83,10 @@ import {
   type VelaLoginStatus,
 } from './providers/daemon';
 import { AMR_LOGIN_STATUS_EVENT } from './components/amrLoginPolling';
-import { navigate, useRoute } from './router';
+import { buildPath, navigate, useRoute } from './router';
 import {
   fetchDaemonConfig,
+  DEFAULT_NOTIFICATIONS,
   DEFAULT_PET,
   fetchMediaProvidersFromDaemon,
   hasAnyConfiguredProvider,
@@ -99,6 +100,7 @@ import {
   syncConfigToDaemon,
   syncMediaProvidersToDaemon,
 } from './state/config';
+import { playSound, showCompletionNotification } from './utils/notifications';
 import { applyAppearanceToDocument } from './state/appearance';
 import { isMacPlatform } from './utils/platform';
 import {
@@ -412,8 +414,17 @@ function AppInner() {
     recent: [],
   });
   const [backgroundRunSummaries, setBackgroundRunSummaries] = useState<PetTaskSummary[]>([]);
+  const [backgroundRunNotice, setBackgroundRunNotice] = useState<{
+    runId: string;
+    projectId: string;
+    projectName: string;
+    status: 'succeeded' | 'failed';
+  } | null>(null);
+  const activeRunIdsRef = useRef<Set<string>>(new Set());
+  const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
   const projectsRef = useRef<Project[]>(projects);
   const wasActiveRunRef = useRef(false);
+  const activeRunSignatureRef = useRef("");
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
@@ -1731,6 +1742,7 @@ function AppInner() {
       setPetTaskCenter({ running: [], queued: [], recent: [] });
       setBackgroundRunSummaries([]);
       wasActiveRunRef.current = false;
+      activeRunIdsRef.current.clear();
       return;
     }
 
@@ -1741,6 +1753,62 @@ function AppInner() {
       if (cancelled) return;
 
       const currentProjects = projectsRef.current;
+      const projectsById = new Map(currentProjects.map((project) => [project.id, project]));
+      const previousActiveRunIds = activeRunIdsRef.current;
+      const nextActiveRunIds = new Set(
+        runs
+          .filter((run) => run.status === 'queued' || run.status === 'running')
+          .map((run) => run.id),
+      );
+      activeRunIdsRef.current = nextActiveRunIds;
+
+      const completed = runs
+        .filter(
+          (run) =>
+            (run.status === 'succeeded' || run.status === 'failed')
+            && previousActiveRunIds.has(run.id)
+            && !notifiedBackgroundRunIdsRef.current.has(run.id)
+            && run.projectId,
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      for (const run of completed) notifiedBackgroundRunIdsRef.current.add(run.id);
+
+      const completedRun = completed[0];
+      if (
+        completedRun?.projectId
+        && !(route.kind === 'project' && route.projectId === completedRun.projectId)
+      ) {
+        const projectName = projectsById.get(completedRun.projectId)?.name ?? 'AI Design';
+        const status = completedRun.status as 'succeeded' | 'failed';
+        setBackgroundRunNotice({
+          runId: completedRun.id,
+          projectId: completedRun.projectId,
+          projectName,
+          status,
+        });
+
+        const notifications = configRef.current.notifications ?? DEFAULT_NOTIFICATIONS;
+        if (notifications.soundEnabled) {
+          playSound(status === 'succeeded'
+            ? notifications.successSoundId
+            : notifications.failureSoundId);
+        }
+        if (notifications.desktopEnabled) {
+          const shouldInterrupt = status === 'failed' || document.hidden || !document.hasFocus();
+          if (shouldInterrupt) {
+            void showCompletionNotification({
+              status,
+              title: status === 'succeeded' ? '슬라이드 작업 완료' : '슬라이드 작업 실패',
+              body: projectName,
+              onClick: () => {
+                window.focus();
+                void navigateToProject(completedRun.projectId!);
+              },
+            });
+          }
+        }
+      }
+
       const center = buildPetTaskCenter(currentProjects, runs);
       if (config.pet?.enabled) {
         setPetTaskCenter(center);
@@ -1754,10 +1822,20 @@ function AppInner() {
       );
 
       const active = activeSummaries.length > 0;
-      if (active || wasActiveRunRef.current) {
-        wasActiveRunRef.current = active;
-        const list = await listProjects();
-        if (!cancelled) setProjects(list);
+      const signature = activeSummaries
+        .map((item) => `${item.projectId}:${item.status}:${item.count}`)
+        .sort()
+        .join("|");
+      const hadActive = wasActiveRunRef.current;
+      wasActiveRunRef.current = active;
+
+      if (active || hadActive) {
+        const signatureChanged = signature !== activeRunSignatureRef.current;
+        if (signatureChanged || (!active && hadActive)) {
+          activeRunSignatureRef.current = signature;
+          const list = await listProjects();
+          if (!cancelled) setProjects(list);
+        }
       }
     };
     const handleRunsChanged = () => {
@@ -1772,7 +1850,7 @@ function AppInner() {
       window.removeEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
       window.clearInterval(id);
     };
-  }, [config.pet?.enabled, daemonLive]);
+  }, [config.pet?.enabled, daemonLive, navigateToProject, route]);
 
   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
     void navigateToProject(projectId, { fileName: liveArtifactTabId(artifactId) });
@@ -2368,6 +2446,24 @@ function AppInner() {
           message={workingDirError}
           role="alert"
           onDismiss={() => setWorkingDirError(null)}
+        />
+      ) : null}
+      {backgroundRunNotice && !workingDirError ? (
+        <Toast
+          key={backgroundRunNotice.runId}
+          message={backgroundRunNotice.status === 'succeeded'
+            ? `${backgroundRunNotice.projectName} 슬라이드 작업이 완료되었습니다.`
+            : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
+          details="프로젝트 열기"
+          detailsHref={buildPath({
+            kind: 'project',
+            projectId: backgroundRunNotice.projectId,
+            fileName: null,
+          })}
+          tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}
+          role={backgroundRunNotice.status === 'failed' ? 'alert' : 'status'}
+          ttlMs={8000}
+          onDismiss={() => setBackgroundRunNotice(null)}
         />
       ) : null}
       {/* First-run privacy consent banner. It waits for daemon config

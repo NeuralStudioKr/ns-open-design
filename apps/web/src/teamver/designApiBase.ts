@@ -45,8 +45,21 @@ export function resolveTeamverLoginUrl(returnTo?: string | null): string {
 }
 
 /** 세션 만료 시 Main FE sign-in 으로 이동 — history 에 Design URL 이 남지 않도록 replace 사용 */
+const LOGIN_REDIRECT_COOLDOWN_MS = 5_000;
+const LOGIN_REDIRECT_STORAGE_KEY = "teamver:login-redirect-at";
+
 export function redirectToTeamverLogin(returnTo?: string | null): void {
   if (typeof window === "undefined") return;
+
+  const now = Date.now();
+  try {
+    const last = Number(sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY) ?? "0");
+    if (last > 0 && now - last < LOGIN_REDIRECT_COOLDOWN_MS) return;
+    sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, String(now));
+  } catch {
+    // sessionStorage blocked — still attempt one redirect
+  }
+
   window.location.replace(resolveTeamverLoginUrl(returnTo));
 }
 
@@ -96,10 +109,15 @@ export function resolveTeamverDesignApiBase(): string | null {
     }
     return "http://127.0.0.1:16000";
   }
-  if (host === "stg-design.teamver.com") {
+  // Same-origin BFF on the OD host — cookies ride with the page load and nginx
+  // auth_request sees the same Cookie header as HTML (avoids cross-subdomain loops).
+  if (host === "stg-design.teamver.com" || host === "design.teamver.com") {
+    return "";
+  }
+  if (host === "stg-design-api.teamver.com") {
     return "https://stg-design-api.teamver.com";
   }
-  if (host === "design.teamver.com") {
+  if (host === "design-api.teamver.com") {
     return "https://design-api.teamver.com";
   }
   return null;
