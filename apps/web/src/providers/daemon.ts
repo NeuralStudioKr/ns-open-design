@@ -29,6 +29,7 @@ import type {
   SseErrorPayload,
 } from '@open-design/contracts';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { stripInternalOpenDesignMarkup } from '../runtime/internalAgentMarkup';
 import type { StreamHandlers } from './anthropic';
 
 /**
@@ -195,7 +196,7 @@ export function sanitizePriorAssistantTurnForTranscript(
   // trips the 12K cap. Uses markdown-aware detection so a literal
   // `<artifact>` recited in a code fence survives.
   sanitized = summarizeArtifactsForTranscript(sanitized, persistedArtifactFiles);
-  return sanitized;
+  return stripInternalOpenDesignMarkup(sanitized);
 }
 
 // producedFiles → the persistence evidence summarizeArtifactsForTranscript

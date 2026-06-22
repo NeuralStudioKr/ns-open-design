@@ -341,6 +341,23 @@ describe('streamViaDaemon', () => {
     expect(sanitized).toContain('question-form was emitted here on a prior turn');
   });
 
+  it('strips odTodoWrite internal markup from prior assistant turns', () => {
+    const sanitized = sanitizePriorAssistantTurnForTranscript(
+      [
+        'Plan:',
+        '<odTodoWrite>',
+        '[{"id":"1","text":"Pick layout","status":"in_progress"}]',
+        '</odTodoWrite>',
+        'Done.',
+      ].join('\n'),
+    );
+
+    expect(sanitized).not.toContain('<odTodoWrite');
+    expect(sanitized).not.toContain('Pick layout');
+    expect(sanitized).toContain('Plan:');
+    expect(sanitized).toContain('Done.');
+  });
+
   it('also strips ```json fenced form-schema echoes that some models add alongside the form tag', () => {
     const sanitized = sanitizePriorAssistantTurnForTranscript(
       [

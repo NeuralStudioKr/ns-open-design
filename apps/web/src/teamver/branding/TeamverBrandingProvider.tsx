@@ -24,6 +24,7 @@ const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   hideUsefulTips: false,
   hideHandoffButton: false,
   hideAssistantModelLabels: false,
+  hideAssistantThinkingDetails: false,
   lockExecutionConfig: false,
   hideLocalWorkspaceControls: false,
   hideWorkspaceTabsBar: false,

@@ -118,6 +118,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | `hideCommunityGallery` | `true` | Home 하단 `PluginsHomeSection` + `HomeTemplatesReveal` 비노출 |
 | `hidePluginRegistry` | `true` | `+` 메뉴 "Add plugin" 행 + plugin marketplace 진입 |
 | `hideExternalShareSurfaces` | `true` | (loop 171) FileViewer chrome share-menu / PreviewModal social·copy_link / Share-to-OD community contribute. Drive Publish + 로컬 export 는 유지 |
+| `hideAssistantThinkingDetails` | `true` | (loop 182) assistant thinking 블록 비노출 + `<od…>` 내부 마크업 prose 필터 |
 
 헬퍼 (`slideOnlyMvpPolicy.ts`):
 

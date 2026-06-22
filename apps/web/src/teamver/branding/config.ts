@@ -35,6 +35,11 @@ export type TeamverBrandingConfig = {
   hideHandoffButton: boolean;
   /** Chat assistant role header — hide provider/model labels. */
   hideAssistantModelLabels: boolean;
+  /**
+   * loop 182 — Hide assistant thinking blocks in embed. Reasoning stays on the
+   * model side; users should not see chain-of-thought or `<odThinking>` prose.
+   */
+  hideAssistantThinkingDetails: boolean;
   /** Force API (BYOK) mode and skip onboarding — prevents CLI/BYOK drift. */
   lockExecutionConfig: boolean;
   /** Hide local folder pickers, linked-dir UI, and folder import (embed = tenant S3). */
@@ -125,6 +130,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideUsefulTips: true,
         hideHandoffButton: true,
         hideAssistantModelLabels: true,
+        hideAssistantThinkingDetails: true,
         lockExecutionConfig: true,
         hideLocalWorkspaceControls: true,
         hideWorkspaceTabsBar: true,
@@ -144,6 +150,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideUsefulTips: false,
         hideHandoffButton: false,
         hideAssistantModelLabels: false,
+        hideAssistantThinkingDetails: false,
         lockExecutionConfig: false,
         hideLocalWorkspaceControls: false,
         hideWorkspaceTabsBar: false,

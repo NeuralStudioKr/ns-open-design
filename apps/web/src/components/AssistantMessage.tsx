@@ -9,6 +9,7 @@ import { asInProjectFilePath } from "../runtime/in-project-link";
 import { projectFileUrl } from "../providers/registry";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
+import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 import {
   trackAssistantFeedbackButtonClick,
   trackAssistantFeedbackClick,
@@ -417,7 +418,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
-  const { hideAssistantModelLabels, title: brandTitle } = useTeamverBranding();
+  const { hideAssistantModelLabels, hideAssistantThinkingDetails, title: brandTitle } = useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
   // we strip TodoWrite tool-groups out of the per-message flow to avoid the
@@ -440,14 +441,23 @@ function AssistantMessageImpl({
   // Compose the block list, then run the strip/suppress pipeline once.
   const blocks = useMemo(() => {
     const rawBlocks = [...buildBlocks(events), ...liveCodeBlocks];
-    return placeConversationTodoCard(
+    const sanitized = stripInternalMarkupFromTextBlocks(
       stripEmptyThinkingBlocks(suppressDuplicateQuestionForms(rawBlocks)),
-      {
-        show: showConversationTodoCard,
-        input: conversationTodoInput,
-      },
     );
-  }, [events, liveCodeBlocks, showConversationTodoCard, conversationTodoInput]);
+    const visible = hideAssistantThinkingDetails
+      ? sanitized.filter((block) => block.kind !== "thinking")
+      : sanitized;
+    return placeConversationTodoCard(visible, {
+      show: showConversationTodoCard,
+      input: conversationTodoInput,
+    });
+  }, [
+    events,
+    hideAssistantThinkingDetails,
+    liveCodeBlocks,
+    showConversationTodoCard,
+    conversationTodoInput,
+  ]);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
   const produced = message.producedFiles ?? [];
   const displayedProduced = useMemo(
@@ -1908,8 +1918,9 @@ function ProseBlock({
   const t = useT();
   const cleaned = useMemo(() => {
     const stripped = stripArtifact(text);
-    return hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
-  }, [hideRecoveredHtmlFallback, text]);
+    const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
+    return sanitizeAssistantProseForDisplay(base, { streaming });
+  }, [hideRecoveredHtmlFallback, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,
   // drop the partial `<question-form>{…` markup from the prose so the chat
   // doesn't flash raw JSON; we surface a banner for it instead. The actual
@@ -2643,6 +2654,16 @@ function placeConversationTodoCard(
         },
       }],
     }];
+  });
+}
+
+function stripInternalMarkupFromTextBlocks(blocks: Block[]): Block[] {
+  return blocks.map((block) => {
+    if (block.kind !== "text") return block;
+    return {
+      ...block,
+      text: sanitizeAssistantProseForDisplay(block.text),
+    };
   });
 }
 
