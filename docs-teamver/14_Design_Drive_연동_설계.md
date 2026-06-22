@@ -293,8 +293,11 @@ Content-Type: application/json
 | 2026-Q3 | Phase 1-2b (publish folder browser) | ✅ |
 | 2026-Q3 | Phase 1-2c (full Drive browser) | ☐ |
 | 2026-Q3~Q4 | Phase 2-1 (Drive import API/client foundation) | ✅ |
-| 2026-Q3~Q4 | Phase 2-2 (Drive import composer modal) | ☐ |
+| 2026-Q3~Q4 | Phase 2-2 (Drive import composer modal) | ✅ |
+| 2026-Q3~Q4 | Phase 2-3 (Canvas → Drive → AI Design slide handoff, Web/Mobile) | ✅ |
 | 2026-Q4+ | Phase 3 (워크스페이스 자산 라이브러리) | ☐ |
+
+**다음 핵심 작업:** handoff 의도를 Design에 전달해 Canvas 자산 import 확정 후 `이 캔버스로 슬라이드를 만들어줘`를 자동 실행하는 one-click 완성. 그 다음은 DOCX/HTML/PDF 본문·이미지 추출 품질을 통합해 slide generation이 단순 파일 첨부가 아닌 구조화된 source 구성을 사용하게 한다.
 
 ---
 
@@ -302,6 +305,7 @@ Content-Type: application/json
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | Canvas self-contained HTML → Drive asset → AI Design handoff (Main Web/Mobile), DOC/DOCX/ODT Drive import 정책 확장 |
 | 2026-06-19 | loop 169 — publish picker `Use this folder` 액션, D-6a fixture filename body + empty imported[] negative guard |
 | 2026-06-19 | loop 168 — Phase 1-2b Drive publish folder browser 구현: 공용 `driveApi.ts`, scope tab/breadcrumb/drill-down, D-6a filename env |
 | 2026-06-19 | loop 167 — Phase 1-2a Drive publish server-side folder search 구현: Main Drive search/list API 재사용, picker debounce search, selected target payload 검증 |
