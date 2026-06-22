@@ -63,6 +63,7 @@ import {
   completeTeamverEmbedBoot,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
+import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
 import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
 import {
   assertTeamverProjectAccessIfNeeded,
