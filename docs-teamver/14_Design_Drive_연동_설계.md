@@ -249,6 +249,7 @@ Content-Type: application/json
 - Main Web Canvas Drive 메뉴와 Mobile export 메뉴에 `AI Design으로 슬라이드 만들기`를 제공한다.
 - 현재 Canvas draft를 export 직전 flush하고, 텍스트 구조·서식·인라인 이미지를 함께 보존하는 self-contained HTML로 변환한다.
 - 생성된 HTML은 Main Drive presigned upload 3-step으로 저장되며, 반환된 `assetId/name/mimeType`을 기존 `teamverDriveAsset*` handoff 계약으로 AI Design에 전달한다.
+- Canvas 출발은 `teamverDriveIntent=create-slides`를 함께 전달한다. Design은 import picker에 source를 사전 선택하고, 빈 composer에 슬라이드 생성 지시문을 준비해 파일 확인 후 바로 실행할 수 있게 한다.
 - AI Design은 별도 Canvas 전용 권한을 받지 않고 기존 Drive import API에서 workspace 권한·50MB·파일 정책을 동일하게 검증한다.
 - 중간 로컬 파일 저장은 필요 없다. Web은 Blob, Mobile은 memory data URI를 Drive upload에 바로 사용한다.
 
@@ -297,7 +298,7 @@ Content-Type: application/json
 | 2026-Q3~Q4 | Phase 2-3 (Canvas → Drive → AI Design slide handoff, Web/Mobile) | ✅ |
 | 2026-Q4+ | Phase 3 (워크스페이스 자산 라이브러리) | ☐ |
 
-**다음 핵심 작업:** handoff 의도를 Design에 전달해 Canvas 자산 import 확정 후 `이 캔버스로 슬라이드를 만들어줘`를 자동 실행하는 one-click 완성. 그 다음은 DOCX/HTML/PDF 본문·이미지 추출 품질을 통합해 slide generation이 단순 파일 첨부가 아닌 구조화된 source 구성을 사용하게 한다.
+**다음 핵심 작업:** DOCX/HTML/PDF 본문·이미지 추출 품질을 통합해 slide generation이 단순 파일 첨부가 아닌 구조화된 source 구성을 사용하게 한다. 이후 import 확인과 run 시작을 하나의 확정 action으로 묶는 one-click 실행을 추가한다.
 
 ---
 

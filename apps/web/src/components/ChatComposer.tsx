@@ -49,6 +49,7 @@ import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImpor
 import {
   consumeTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchHandoff,
+  readTeamverDriveLaunchIntent,
 } from '../teamver/driveLaunchHandoff';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions } from '../teamver/branding/slideOnlyMvpPolicy';
@@ -535,8 +536,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (!teamverDriveImportEnabled || !teamverWorkspaceId) return;
       const handoff = readTeamverDriveLaunchHandoff();
       if (!handoff) return;
+      const intent = readTeamverDriveLaunchIntent();
       setDriveLaunchAssets([handoff]);
       setDriveImportOpen(true);
+      if (intent === 'create-slides') {
+        const prompt = 'Create a polished presentation from the attached canvas. Preserve its structure, key content, and visual assets.';
+        setDraft((current) => {
+          if (current.trim()) return current;
+          editorRef.current?.setText(prompt);
+          return prompt;
+        });
+      }
       consumeTeamverDriveLaunchHandoff();
     }, [teamverDriveImportEnabled, teamverWorkspaceId]);
     const rememberRecentDir = useCallback(async (dir: string) => {
