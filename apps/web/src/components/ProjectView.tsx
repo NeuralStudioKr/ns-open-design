@@ -356,6 +356,9 @@ const MIN_WORKSPACE_PANEL_WIDTH = 400;
 const SPLIT_RESIZE_HANDLE_WIDTH = 8;
 const CHAT_PANEL_KEYBOARD_STEP = 16;
 const DESIGN_SYSTEM_AUDIT_AUTO_REPAIR_ATTEMPTS = 2;
+// Survives ProjectView route unmounts so returning to a conversation does not
+// attach a second SSE consumer while the original background consumer lives.
+const locallyConsumedDaemonRunIds = new Set<string>();
 // Trailing-debounce window for the canonical (daemon + SQLite) tab-state write.
 // Embedded-browser navigation bursts settle well within this; the local cache
 // is written immediately so nothing is lost if the daemon write is coalesced.
@@ -1497,13 +1500,14 @@ export function ProjectView({
 
   useEffect(() => {
     return () => {
-      sendTextBufferRef.current?.cancel();
+      // Initial daemon runs outlive this route. Keep their consumer alive so
+      // text and produced files are persisted while the user works elsewhere;
+      // explicit Stop still owns cancelRef and the daemon cancel endpoint.
       sendTextBufferRef.current = null;
       // Unmounts / conversation switches should only detach local stream
       // consumers. Aborting the daemon cancel controllers here turns routine
       // cleanup into an explicit POST /api/runs/:id/cancel, which can mark a
       // live run canceled even when the user never clicked Stop.
-      abortRef.current?.abort();
       abortRef.current = null;
       cancelRef.current = null;
       for (const textBuffer of reattachTextBuffersRef.current) textBuffer.cancel();
@@ -2620,6 +2624,7 @@ export function ProjectView({
           );
           continue;
         }
+        if (locallyConsumedDaemonRunIds.has(runId)) continue;
         if (reattachControllersRef.current.has(runId)) continue;
         if (completedReattachRunsRef.current.has(runId)) continue;
 
@@ -3284,14 +3289,16 @@ export function ProjectView({
       let parsedArtifact: Artifact | null = null;
       let liveHtml = '';
       let streamedText = '';
+      const runIsVisible = () =>
+        messagesConversationIdRef.current === runConversationId;
 
       const updateAssistant = (updater: (prev: ChatMessage) => ChatMessage) => {
+        latestAssistantMsg = updater(latestAssistantMsg);
+        if (!runIsVisible()) return;
         setMessages((curr) =>
           curr.map((m) => {
             if (m.id !== assistantId) return m;
-            const updated = updater(m);
-            latestAssistantMsg = updated;
-            return updated;
+            return latestAssistantMsg;
           }),
         );
       };
@@ -3300,7 +3307,7 @@ export function ProjectView({
         if (persistTimer) return;
         persistTimer = setTimeout(() => {
           persistTimer = null;
-          persistMessageById(assistantId);
+          void saveMessage(project.id, runConversationId, latestAssistantMsg);
         }, 500);
       };
       const persistAssistantNowKeepalive = () => {
@@ -3308,12 +3315,16 @@ export function ProjectView({
           clearTimeout(persistTimer);
           persistTimer = null;
         }
-        persistMessageById(assistantId, { keepalive: true });
+        void saveMessage(project.id, runConversationId, latestAssistantMsg, { keepalive: true });
       };
       const pushEvent = (ev: AgentEvent) => {
         textBuffer.flush();
         updateAssistant((prev) => ({ ...prev, events: [...(prev.events ?? []), ev] }));
         if (ev.kind === 'live_artifact') {
+          if (!runIsVisible()) {
+            persistAssistantSoon();
+            return;
+          }
           setLiveArtifactEvents((prev) => appendLiveArtifactEventItem(prev, ev));
           void refreshLiveArtifacts().then(() => {
             if (ev.action !== 'deleted') requestOpenFile(liveArtifactTabId(ev.artifactId));
@@ -3322,6 +3333,10 @@ export function ProjectView({
           return;
         }
         if (ev.kind === 'live_artifact_refresh') {
+          if (!runIsVisible()) {
+            persistAssistantSoon();
+            return;
+          }
           setLiveArtifactEvents((prev) => appendLiveArtifactEventItem(prev, ev));
           void refreshLiveArtifacts();
           onProjectsRefresh();
@@ -3377,7 +3392,7 @@ export function ProjectView({
                   moduleFileNames,
                 });
                 if (decision.shouldOpen && decision.fileName) {
-                  requestOpenFile(decision.fileName);
+                  if (runIsVisible()) requestOpenFile(decision.fileName);
                 }
               });
             }
@@ -3395,7 +3410,7 @@ export function ProjectView({
               title: ev.title,
               html: '',
             };
-            setArtifact(parsedArtifact);
+            if (runIsVisible()) setArtifact(parsedArtifact);
           } else if (ev.type === 'artifact:chunk') {
             liveHtml += ev.delta;
             parsedArtifact = parsedArtifact
@@ -3405,15 +3420,17 @@ export function ProjectView({
                   title: '',
                   html: liveHtml,
                 };
-            setArtifact((prev) =>
-              prev
-                ? { ...prev, html: liveHtml }
-                : {
-                    identifier: ev.identifier,
-                    title: '',
-                    html: liveHtml,
-                  },
-            );
+            if (runIsVisible()) {
+              setArtifact((prev) =>
+                prev
+                  ? { ...prev, html: liveHtml }
+                  : {
+                      identifier: ev.identifier,
+                      title: '',
+                      html: liveHtml,
+                    },
+              );
+            }
           } else if (ev.type === 'artifact:end') {
             parsedArtifact = parsedArtifact
               ? { ...parsedArtifact, html: ev.fullContent }
@@ -3422,7 +3439,9 @@ export function ProjectView({
                   title: '',
                   html: ev.fullContent,
                 };
-            setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
+            if (runIsVisible()) {
+              setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
+            }
           }
         }
       };
@@ -3434,9 +3453,21 @@ export function ProjectView({
         onContentDelta: applyContentDelta,
       });
       sendTextBufferRef.current = textBuffer;
+      const releaseOwnTextBuffer = () => {
+        textBuffer.cancel();
+        if (sendTextBufferRef.current === textBuffer) {
+          sendTextBufferRef.current = null;
+        }
+      };
 
       const controller = new AbortController();
       const cancelController = new AbortController();
+      let ownedDaemonRunId: string | null = null;
+      const releaseOwnedDaemonRun = () => {
+        if (!ownedDaemonRunId) return;
+        locallyConsumedDaemonRunIds.delete(ownedDaemonRunId);
+        ownedDaemonRunId = null;
+      };
       abortRef.current = controller;
       cancelRef.current = cancelController;
       const handlers = {
@@ -3449,6 +3480,7 @@ export function ProjectView({
           else pushEvent(ev);
         },
         onToolInputDelta: (id: string, name: string, delta: string) => {
+          if (!runIsVisible()) return;
           setLiveToolInput((prev) => ({
             ...prev,
             [id]: {
@@ -3477,13 +3509,12 @@ export function ProjectView({
           const runMayFinalize =
             !supersededRunsRef.current.has(controller);
           if (!runMayFinalize) {
-            textBuffer.cancel();
-            cancelSendTextBuffer();
+            releaseOwnTextBuffer();
+            releaseOwnedDaemonRun();
             return;
           }
           textBuffer.flush();
-          textBuffer.cancel();
-          cancelSendTextBuffer();
+          releaseOwnTextBuffer();
           for (const ev of parser.flush()) {
             if (ev.type === 'artifact:end') {
               parsedArtifact = parsedArtifact
@@ -3493,7 +3524,9 @@ export function ProjectView({
                     title: '',
                     html: ev.fullContent,
                   };
-              setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
+              if (runIsVisible()) {
+                setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
+              }
             }
           }
           const emptyApiResponse =
@@ -3504,8 +3537,7 @@ export function ProjectView({
           if (emptyApiResponse) {
             const endedAt = Date.now();
             const diagnostic = t('assistant.emptyResponseMessage');
-            updateMessageById(
-              assistantId,
+            updateAssistant(
               (prev) => ({
                 ...prev,
                 endedAt,
@@ -3516,9 +3548,10 @@ export function ProjectView({
                   { kind: 'text', text: diagnostic },
                 ],
               }),
-              true,
-              { telemetryFinalized: true },
             );
+            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+              telemetryFinalized: true,
+            });
             if (runCommentAttachments.length > 0) {
               void patchAttachedStatuses(runCommentAttachments, 'failed');
             }
@@ -3530,6 +3563,7 @@ export function ProjectView({
             if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
             void refreshProjectFiles();
             onProjectsRefresh();
+            releaseOwnedDaemonRun();
             return;
           }
           const endedAt = Date.now();
@@ -3571,7 +3605,7 @@ export function ProjectView({
               });
               if (sameTurnHtmlWrite) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
-                requestOpenFile(sameTurnHtmlWrite.name);
+                if (runIsVisible()) requestOpenFile(sameTurnHtmlWrite.name);
               } else {
                 await persistArtifact(artifactToPersist, nextFiles, finalText);
                 nextFiles = await refreshProjectFiles();
@@ -3579,20 +3613,15 @@ export function ProjectView({
             }
             const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
             const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
-            if (producedHtmlToOpen) requestOpenFile(producedHtmlToOpen);
-            setMessages((curr) => {
-              const updated = curr.map((m) =>
-                m.id === assistantId
-                  ? { ...m, producedFiles: produced }
-                  : m,
-              );
-              const finalized = updated.find((m) => m.id === assistantId);
-              if (finalized) persistMessage(finalized, { telemetryFinalized: true });
-              return updated;
+            if (producedHtmlToOpen && runIsVisible()) requestOpenFile(producedHtmlToOpen);
+            updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
+            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+              telemetryFinalized: true,
             });
             await auditDesignSystemWorkspaceAfterRun(assistantId);
           })();
           onProjectsRefresh();
+          releaseOwnedDaemonRun();
         },
         onError: (err: Error) => {
           const endedAt = Date.now();
@@ -3606,13 +3635,11 @@ export function ProjectView({
           const runMayFinalize =
             !supersededRunsRef.current.has(controller);
           textBuffer.flush();
-          textBuffer.cancel();
-          cancelSendTextBuffer();
+          releaseOwnTextBuffer();
           if (runMayFinalize) {
-            setError(err.message);
-            appendAssistantErrorEvent(assistantId, err.message, errorCode);
+            if (runIsVisible()) setError(err.message);
             updateAssistant((prev) => ({
-              ...prev,
+              ...appendErrorStatusEvent(prev, err.message, errorCode),
               endedAt,
               runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
                 ? 'failed'
@@ -3629,12 +3656,11 @@ export function ProjectView({
             cancelController,
           );
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
-          setMessages((curr) => {
-            const finalized = curr.find((m) => m.id === assistantId);
-            if (finalized) persistMessage(finalized, { telemetryFinalized: true });
-            return curr;
+          void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+            telemetryFinalized: true,
           });
           void refreshProjectFiles();
+          releaseOwnedDaemonRun();
         },
       };
 
@@ -3706,6 +3732,8 @@ export function ProjectView({
           locale,
           ...(runAnalyticsHints ? { analyticsHints: runAnalyticsHints } : {}),
           onRunCreated: (runId) => {
+            ownedDaemonRunId = runId;
+            locallyConsumedDaemonRunIds.add(runId);
             const pinnedAssistant = {
               ...latestAssistantMsg,
               runId,
@@ -3721,14 +3749,17 @@ export function ProjectView({
             const endedAt = isTerminalRunStatus(runStatus) ? Date.now() : undefined;
             const runMayFinalize =
               !supersededRunsRef.current.has(controller);
-            updateMessageById(
-              assistantId,
+            updateAssistant(
               (prev) => ({
                 ...prev,
                 runStatus,
                 endedAt: endedAt === undefined ? prev.endedAt : prev.endedAt ?? endedAt,
               }),
-              true,
+            );
+            void saveMessage(
+              project.id,
+              runConversationId,
+              latestAssistantMsg,
               runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
             );
             if (!runMayFinalize) return;
@@ -3739,10 +3770,10 @@ export function ProjectView({
             }
           },
           onRunEventId: (lastRunEventId) => {
-            updateMessageById(assistantId, (prev) => ({ ...prev, lastRunEventId }));
+            updateAssistant((prev) => ({ ...prev, lastRunEventId }));
             persistAssistantSoon();
           },
-        });
+        }).finally(releaseOwnedDaemonRun);
         return true;
       } else {
         // Mirror the daemon chat-route memory hook for BYOK chats. The
