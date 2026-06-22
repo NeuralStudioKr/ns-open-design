@@ -56,6 +56,13 @@ interface Props {
   // 'gallery' renders each card as a minimal live example.html preview
   // tile (Community); 'rich' keeps the hover-overlay metadata card.
   cardLayout?: 'rich' | 'gallery';
+  /**
+   * Hide artifact-kind pills (Prototype·Video…) while keeping subcategory
+   * rails. Used for embed slide-only Community — set via `communityGalleryFacetUi`.
+   */
+  hidePrimaryCategoryFacets?: boolean;
+  /** Pins `selection.category` when {@link hidePrimaryCategoryFacets} is on. */
+  lockedFacetCategory?: string | null;
 }
 
 export function PluginsHomeSection({
@@ -75,6 +82,8 @@ export function PluginsHomeSection({
   subtitle,
   emptyMessage,
   cardLayout = 'rich',
+  hidePrimaryCategoryFacets = false,
+  lockedFacetCategory = null,
 }: Props) {
   const { locale, t } = useI18n();
   const { savedPluginIds, savePluginId } = useSavedPluginIds();
@@ -100,6 +109,7 @@ export function PluginsHomeSection({
     savedPluginIds,
     preferDefaultFacet,
     defaultFacetSelection,
+    lockedFacetCategory: hidePrimaryCategoryFacets ? lockedFacetCategory : null,
     locale,
   });
   const renderedPlugins = useMemo(
@@ -180,6 +190,7 @@ export function PluginsHomeSection({
             className="plugins-home__facets"
             role="group"
             aria-label="Plugin filters"
+            {...(hidePrimaryCategoryFacets ? { 'data-hide-primary-facets': 'true' } : {})}
           >
             <CategoryRow
               options={catalog.category}
@@ -197,6 +208,7 @@ export function PluginsHomeSection({
               }
               query={query}
               onQueryChange={setQuery}
+              hideCategoryPills={hidePrimaryCategoryFacets}
             />
             {selection.category ? (
               <SubcategoryRow
@@ -279,6 +291,7 @@ interface CategoryRowProps {
   onToggleSaved: () => void;
   query: string;
   onQueryChange: (next: string) => void;
+  hideCategoryPills?: boolean;
 }
 
 // Single combined filter bar: an optional Saved override chip + category
@@ -296,14 +309,23 @@ function CategoryRow({
   onToggleSaved,
   query,
   onQueryChange,
+  hideCategoryPills = false,
 }: CategoryRowProps) {
   const t = useT();
-  if (options.length === 0) return null;
+  if (!hideCategoryPills && options.length === 0) return null;
   return (
     <div
-      className="plugins-home__facet-row plugins-home__facet-row--inline"
+      className={[
+        'plugins-home__facet-row',
+        'plugins-home__facet-row--inline',
+        hideCategoryPills ? 'plugins-home__facet-row--search-only' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-testid="plugins-home-row-category"
+      data-hide-category-pills={hideCategoryPills ? 'true' : 'false'}
     >
+      {!hideCategoryPills ? (
       <div
         className="plugins-home__facet-pills"
         role="tablist"
@@ -347,6 +369,7 @@ function CategoryRow({
           />
         ))}
       </div>
+      ) : null}
       <div className="plugins-home__facet-tools">
         <SearchInput value={query} onChange={onQueryChange} />
       </div>

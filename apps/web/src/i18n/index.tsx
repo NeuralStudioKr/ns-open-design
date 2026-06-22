@@ -30,6 +30,11 @@ import { th } from './locales/th';
 import { it } from './locales/it';
 import { getOpenDesignHost } from '@open-design/host';
 import { LOCALES, type Dict, type Locale } from './types';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import {
+  resolveTeamverEmbedTranslation,
+  teamverEmbedOverrides,
+} from '../teamver/locales/embedOverrides';
 
 export { LOCALES, LOCALE_LABEL } from './types';
 export type { Locale } from './types';
@@ -156,6 +161,23 @@ const RTL_LOCALES: Locale[] = ['ar', 'fa'];
 
 export function I18nProvider({ initial, children }: ProviderProps) {
   const [locale, setLocaleState] = useState<Locale>(() => initial ?? detectInitialLocale());
+  const branding = useTeamverBranding();
+  const embedKeyOverrides = useMemo(
+    () =>
+      branding.enabled
+        ? teamverEmbedOverrides(branding.title, branding.subtitle, {
+            title: branding.heroTitle,
+            subtitle: branding.heroSubtitle,
+          })
+        : {},
+    [
+      branding.enabled,
+      branding.title,
+      branding.subtitle,
+      branding.heroTitle,
+      branding.heroSubtitle,
+    ],
+  );
 
   // Keep <html lang="…" dir="…"> in sync so screen readers and CSS hooks
   // pick the right language token and direction without each component
@@ -184,13 +206,14 @@ export function I18nProvider({ initial, children }: ProviderProps) {
     (key: DictKey, vars?: Record<string, string | number>): string => {
       const dict = DICTS[locale] ?? en;
       const raw = dict[key] ?? en[key] ?? key;
-      if (!vars) return raw;
-      return raw.replace(/\{(\w+)\}/g, (_, name: string) => {
+      let resolved = resolveTeamverEmbedTranslation(raw, branding, embedKeyOverrides, key);
+      if (!vars) return resolved;
+      return resolved.replace(/\{(\w+)\}/g, (_, name: string) => {
         const v = vars[name];
         return v == null ? `{${name}}` : String(v);
       });
     },
-    [locale],
+    [locale, branding, embedKeyOverrides],
   );
 
   const value = useMemo<I18nContextValue>(

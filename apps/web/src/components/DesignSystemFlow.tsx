@@ -71,6 +71,7 @@ import { Icon, type IconName } from './Icon';
 import { Spinner } from './Loading';
 import { useAnalytics } from '../analytics/provider';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { useApplyBrandToText } from '../teamver/branding/useApplyBrandToText';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import {
   trackDesignSystemCreateResult,
@@ -325,6 +326,7 @@ export function DesignSystemCreationFlow({
   const githubConnectorLoadedRef = useRef(false);
   const embedded = chrome === 'embedded';
   const { hideLocalWorkspaceControls } = useTeamverBranding();
+  const brandText = useApplyBrandToText();
 
   // DS create page_view (v2 doc). Only fires for the standalone
   // /design-systems/create route — the embedded variant lives inside
@@ -755,7 +757,7 @@ export function DesignSystemCreationFlow({
             onClick={() => {
               emitCreateFormClick('continue_to_generation');
               if (!state.company.trim()) {
-                setError('Tell Open Design about the company or design system first.');
+                setError(brandText('Tell Open Design about the company or design system first.'));
                 return;
               }
               setStep('confirm');
@@ -930,7 +932,7 @@ export function DesignSystemCreationFlow({
               onClick={() => {
                 emitCreateFormClick('continue_to_generation');
                 if (!state.company.trim()) {
-                  setError('Tell Open Design about the company or design system first.');
+                  setError(brandText('Tell Open Design about the company or design system first.'));
                   return;
                 }
                 setStep('confirm');
@@ -960,6 +962,7 @@ export function DesignSystemDetailView({
   onInitialRevisionJobConsumed,
 }: DetailProps) {
   const { locale } = useI18n();
+  const brandText = useApplyBrandToText();
   const [system, setSystem] = useState<DesignSystemDetail | null>(null);
   const [body, setBody] = useState('');
   const [tab, setTab] = useState<ReviewTab>('system');
@@ -1477,7 +1480,7 @@ export function DesignSystemDetailView({
         conversationId = fresh.id;
       }
       if (config.mode !== 'daemon' || !config.agentId) {
-        setChatError('Pick a local agent first, then ask Open Design to update this design system.');
+        setChatError(brandText('Pick a local agent first, then ask Open Design to update this design system.'));
         return;
       }
 
@@ -1928,11 +1931,11 @@ export function DesignSystemDetailView({
               <p>
                 {generationActive
                   ? activeJob?.kind === 'token-contract-rebuild'
-                    ? 'Open Design is preparing a token contract rebuild for review. The active contract stays unchanged until you accept it.'
+                    ? brandText('Open Design is preparing a token contract rebuild for review. The active contract stays unchanged until you accept it.')
                     : activeJob?.kind === 'revision'
-                      ? 'Open Design is applying your feedback. You can keep reviewing while the updated draft is prepared.'
-                      : 'Open Design is still working, but you can start giving feedback on the work so far.'
-                  : 'Open Design is ready for review. Give feedback on the work so far, then publish when it is useful for future projects.'}
+                      ? brandText('Open Design is applying your feedback. You can keep reviewing while the updated draft is prepared.')
+                      : brandText('Open Design is still working, but you can start giving feedback on the work so far.')
+                  : brandText('Open Design is ready for review. Give feedback on the work so far, then publish when it is useful for future projects.')}
               </p>
               <label>
                 <input
@@ -1979,7 +1982,7 @@ export function DesignSystemDetailView({
               <Icon name="help-circle" />
               <span>
                 <strong>Missing brand fonts</strong>
-                Open Design is rendering typography with substitute web fonts.
+                {brandText('Open Design is rendering typography with substitute web fonts.')}
               </span>
               <Button variant="ghost" className="compact">
                 <Icon name="upload" />
@@ -2405,6 +2408,7 @@ function WorkspaceActivityCard({
   message: ChatMessage | null;
   active: boolean;
 }) {
+  const brandText = useApplyBrandToText();
   const events = message?.events ?? [];
   const todos = latestTodosFromEvents(events);
   const fileOps = deriveFileOps(events);
@@ -2427,7 +2431,7 @@ function WorkspaceActivityCard({
         <span>
           <strong>
             {status === 'running'
-              ? 'Open Design is updating this system'
+              ? brandText('Open Design is updating this system')
               : status === 'failed'
                 ? 'Workspace update needs attention'
                 : 'Workspace update ready'}
@@ -2637,6 +2641,7 @@ function SourceContextCard({ provenance }: { provenance?: DesignSystemProvenance
 }
 
 function GenerationStatusCard({ job }: { job: DesignSystemGenerationJob }) {
+  const brandText = useApplyBrandToText();
   const active = job.status === 'queued' || job.status === 'running';
   const noun = job.kind === 'token-contract-rebuild'
     ? 'Token rebuild'
@@ -2651,10 +2656,10 @@ function GenerationStatusCard({ job }: { job: DesignSystemGenerationJob }) {
           <strong>
             {active
               ? job.kind === 'token-contract-rebuild'
-                ? 'Open Design is rebuilding tokens'
+                ? brandText('Open Design is rebuilding tokens')
                 : job.kind === 'revision'
-                  ? 'Open Design is revising'
-                  : 'Open Design is still working'
+                  ? brandText('Open Design is revising')
+                  : brandText('Open Design is still working')
               : job.status === 'failed'
                 ? `${noun} needs attention`
                 : `${noun} completed`}
@@ -3078,6 +3083,7 @@ function GitHubRepositoryAccessPanel({
   onOpenAuthorization: () => void;
   onDisconnect: () => void;
 }) {
+  const brandText = useApplyBrandToText();
   const [methodsExpanded, setMethodsExpanded] = useState(false);
   const connected = isGithubConnectorConnected(connector);
   const account = getDisplayableGithubAccountLabel(connector);
@@ -3149,10 +3155,10 @@ function GitHubRepositoryAccessPanel({
     {
       id: 'native-oauth',
       icon: 'link',
-      title: 'Open Design account',
+      title: brandText('Open Design account'),
       badge: 'Coming soon',
       tone: 'muted',
-      description: 'Native GitHub sign-in managed by Open Design; this build does not use an OD-managed GitHub token yet.',
+      description: brandText('Native GitHub sign-in managed by Open Design; this build does not use an OD-managed GitHub token yet.'),
     },
     {
       id: 'composio',
@@ -3176,7 +3182,7 @@ function GitHubRepositoryAccessPanel({
       <div className="ds-github-access-header">
         <span>
           <strong>Repository access: Auto</strong>
-          <p>Paste a GitHub URL. Open Design will use the first working access method.</p>
+          <p>{brandText('Paste a GitHub URL. Open Design will use the first working access method.')}</p>
         </span>
         <button
           type="button"

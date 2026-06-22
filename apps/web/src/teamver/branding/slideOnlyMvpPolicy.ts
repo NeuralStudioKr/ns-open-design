@@ -170,6 +170,33 @@ export const SLIDE_ONLY_COMMUNITY_FACET_SELECTION: FacetSelection = {
 };
 
 /**
+ * Embed slide-only Community: hide artifact-kind pills (Prototype·Video…)
+ * while keeping deck scene subfacets. Full `CategoryRow` returns when
+ * `slideOnlyMvp` is off — no facet code is removed.
+ */
+export function shouldHideCommunityPrimaryFacets(
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp" | "hideCommunityGallery">,
+): boolean {
+  return branding.slideOnlyMvp && branding.hideCommunityGallery;
+}
+
+/** Facet UI props for Home `PluginsHomeSection` (gallery / Community). */
+export function communityGalleryFacetUi(
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp" | "hideCommunityGallery">,
+): {
+  hidePrimaryCategoryFacets: boolean;
+  lockedFacetCategory: string | null;
+} {
+  const hidePrimaryCategoryFacets = shouldHideCommunityPrimaryFacets(branding);
+  return {
+    hidePrimaryCategoryFacets,
+    lockedFacetCategory: hidePrimaryCategoryFacets
+      ? SLIDE_ONLY_COMMUNITY_FACET_SELECTION.category
+      : null,
+  };
+}
+
+/**
  * Home "Community" (`PluginsHomeSection`) visibility.
  *
  * Standalone OD shows the full catalog. Embed sets `hideCommunityGallery` to

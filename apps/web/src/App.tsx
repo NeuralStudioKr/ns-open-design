@@ -53,7 +53,11 @@ import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } f
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
-import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
+import {
+  clearTeamverEmbedSessionState,
+  setTeamverEmbedSessionAuthenticated,
+  subscribeTeamverEmbedSessionChanged,
+} from './teamver/teamverEmbedSession';
 import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
 import {
   completeTeamverEmbedBoot,
@@ -920,11 +924,12 @@ function AppInner() {
         isTeamverEmbedMode()
           ? fetchDesignAuthSession().then(async (session) => {
               try {
-                if (session) {
+                if (session?.authenticated) {
+                  setTeamverEmbedSessionAuthenticated(true);
                   await syncTeamverWorkspaceFromSession(session);
-                  if (session.authenticated) {
-                    await syncAllDaemonProjectsToRegistry();
-                  }
+                  await syncAllDaemonProjectsToRegistry();
+                } else {
+                  await clearTeamverEmbedSessionState();
                 }
                 return await fetchTeamverRuntimeConfig();
               } finally {
@@ -1124,6 +1129,17 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
+      void refreshProjects();
+    });
+  }, [refreshProjects]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (!authenticated) {
+        setProjects([]);
+        return;
+      }
       void refreshProjects();
     });
   }, [refreshProjects]);

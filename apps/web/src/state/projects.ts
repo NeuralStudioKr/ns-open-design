@@ -39,12 +39,17 @@ import {
   filterProjectsByTeamverRegistryIfNeeded,
   registerTeamverProjectIfNeeded,
 } from '../teamver/projectRegistry';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
 
 export async function listProjects(): Promise<Project[]> {
   try {
+    if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) {
+      return [];
+    }
     const resp = await fetch('/api/projects');
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects: Project[] };

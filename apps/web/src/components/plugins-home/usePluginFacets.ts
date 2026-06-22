@@ -30,6 +30,8 @@ interface UsePluginFacetsArgs {
   savedPluginIds?: ReadonlySet<string>;
   preferDefaultFacet?: boolean;
   defaultFacetSelection?: FacetSelection;
+  /** Pins artifact kind when primary category pills are hidden (embed slide-only). */
+  lockedFacetCategory?: string | null;
   locale?: string;
 }
 
@@ -76,6 +78,7 @@ export function usePluginFacets({
   savedPluginIds,
   preferDefaultFacet = true,
   defaultFacetSelection,
+  lockedFacetCategory = null,
   locale,
 }: UsePluginFacetsArgs): UsePluginFacetsResult {
   const [mode, setMode] = useState<FilterMode>('all');
@@ -127,6 +130,15 @@ export function usePluginFacets({
     setBootstrapped(true);
   }, [bootstrapped, preferDefaultFacet, defaultFacetSelection, visiblePlugins.length, catalog]);
 
+  useEffect(() => {
+    if (!lockedFacetCategory) return;
+    setSelection((prev) =>
+      prev.category === lockedFacetCategory
+        ? prev
+        : { category: lockedFacetCategory, subcategory: null },
+    );
+  }, [lockedFacetCategory, visiblePlugins.length]);
+
   // The visual-appeal sort is applied at `visiblePlugins` derivation
   // (above), so any downstream `applyFacetSelection` slice preserves
   // the ranking. We do not re-sort here because filter + featured
@@ -141,6 +153,10 @@ export function usePluginFacets({
 
   function pickCategory(slug: string | null): void {
     if (mode === 'saved') setMode('all');
+    if (lockedFacetCategory) {
+      if (slug !== lockedFacetCategory) return;
+      return;
+    }
     setSelection((prev) => ({
       category: prev.category === slug ? null : slug,
       subcategory: null,
@@ -156,7 +172,11 @@ export function usePluginFacets({
   }
 
   function clearFacets(): void {
-    setSelection(EMPTY_SELECTION);
+    setSelection(
+      lockedFacetCategory
+        ? { category: lockedFacetCategory, subcategory: null }
+        : EMPTY_SELECTION,
+    );
     setQuery('');
     // Saved overrides the facet slice, so the empty-state "Clear
     // filters" CTA also has to leave Saved mode — otherwise clicking
@@ -167,7 +187,9 @@ export function usePluginFacets({
   }
 
   const hasActiveFacet =
-    selection.category !== null || selection.subcategory !== null || query.trim().length > 0;
+    selection.subcategory !== null ||
+    query.trim().length > 0 ||
+    (!lockedFacetCategory && selection.category !== null);
 
   return {
     visiblePlugins,

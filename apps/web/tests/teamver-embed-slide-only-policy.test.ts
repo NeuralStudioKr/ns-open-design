@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  communityGalleryFacetUi,
   isSlideRelatedPlugin,
   pluginsForSlideOnlyMvp,
+  shouldHideCommunityPrimaryFacets,
   shouldShowHomeCommunityGallery,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
@@ -36,6 +38,26 @@ describe('embed slide-only plugin policy', () => {
     expect(
       shouldShowHomeCommunityGallery({ slideOnlyMvp: false, hideCommunityGallery: false }),
     ).toBe(true);
+  });
+
+  it('hides primary Community facets in embed slide-only mode only', () => {
+    expect(
+      shouldHideCommunityPrimaryFacets({ slideOnlyMvp: true, hideCommunityGallery: true }),
+    ).toBe(true);
+    expect(
+      shouldHideCommunityPrimaryFacets({ slideOnlyMvp: true, hideCommunityGallery: false }),
+    ).toBe(false);
+    expect(
+      shouldHideCommunityPrimaryFacets({ slideOnlyMvp: false, hideCommunityGallery: true }),
+    ).toBe(false);
+    expect(communityGalleryFacetUi({ slideOnlyMvp: true, hideCommunityGallery: true })).toEqual({
+      hidePrimaryCategoryFacets: true,
+      lockedFacetCategory: 'deck',
+    });
+    expect(communityGalleryFacetUi({ slideOnlyMvp: false, hideCommunityGallery: false })).toEqual({
+      hidePrimaryCategoryFacets: false,
+      lockedFacetCategory: null,
+    });
   });
 });
 

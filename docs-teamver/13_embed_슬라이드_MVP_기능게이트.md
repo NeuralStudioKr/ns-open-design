@@ -34,7 +34,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | S-2 | `HomeHero` shortcuts (⋯) | Create plugin, From Figma | 동일 | ✅ |
 | S-3 | `NewProjectPanel` tabs | Media (image/video/audio), Prototype, Live artifact, Other | `slideOnlyMvp` (`visibleNewProjectTabs`) | ✅ |
 | S-4 | `EntryShell` openNewProject | 기본 탭 `prototype` → embed `deck` | `defaultNewProjectTab` | ✅ |
-| S-5 | `HomeView` 하단 community gallery | embed: **「커뮤니티」** 유지 + `manifest.od.mode === 'deck'` 필터 (`pluginsForSlideOnlyMvp`); standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` (`shouldShowHomeCommunityGallery`) | ✅ loop 152+ |
+| S-5 | `HomeView` 하단 community gallery | embed: **「커뮤니티」** + deck 플러그인만 + **1차 필터(Prototype·Video…) 숨김** + deck **서브카테고리** 유지 (`shouldHideCommunityPrimaryFacets` / `lockedFacetCategory`); standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` + `communityGalleryFacetUi` | ✅ loop 152+ |
 
 ### 2.2 P0 — Composer / + 메뉴 / 슬래시 (전수)
 
@@ -168,7 +168,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] `+` 메뉴 — Attach·Plugins(installed only, "Add plugin" 없음)만 (Connectors·MCP 없음)
 - [ ] @멘션 picker — All / Files / Plugins / Skills 탭만
 - [ ] Slash 팔레트 — `/search`만 (mcp 없음)
-- [ ] Home 하단 — community gallery 미렌더 (`HomeTemplatesReveal` 부재)
+- [ ] Home 하단 — **커뮤니티** deck 갤러리: 1차 artifact 필터 **없음**, deck 서브카테고리 + 검색 + 카드 그리드 (`hidePrimaryCategoryFacets`)
 - [ ] Project chat — Design toolbox `+` flyout: image-gen / video-gen / motion / motion-polish 미노출
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
 - [ ] **Share/Publish (loop 171 + 173 + 174 + 175)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + **Teamver 드라이브로 HTML 발행** + **Drive 발행 이력 panel** (loop 174 — `v{N}` 라벨 · 상대 시각 · Drive 딥 링크, 최근 5개) **유지**. ZIP 칩 제거 (loop 174 — HTML-only 발행). `Open in Teamver Drive` 항목은 loop 173 에서 제거. **PDF / PPTX Drive 발행은 별도 트랙으로 보류 (loop 175 docket)** — OD daemon PDF exporter 가 desktop runtime 전용이고, headless 서버에 chromium 도입 / 메인 BE internal endpoint 호출 / Lambda 분리 등 인프라 결정이 동반되므로 이번 출시 게이트와 분리. 로컬 `PDF로 내보내기` (Electron `webContents.printToPDF`) 는 데스크탑에서 그대로 동작. 옵션 비교·재검토 트리거는 [00 §loop 175](./00_구현_내역_누적.md) archive 참조

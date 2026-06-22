@@ -57,6 +57,12 @@ function invalidateRegisteredIdsCache(): void {
   registeredIdsCache = null;
 }
 
+/** Clear FE registry caches after auth/workspace changes. */
+export function invalidateTeamverProjectRegistryCaches(): void {
+  feAccessCache.clear();
+  invalidateRegisteredIdsCache();
+}
+
 async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
   try {
     const resp = await fetch("/api/projects");
@@ -91,8 +97,7 @@ async function getRegisteredProjectIds(workspaceId: string): Promise<Set<string>
 
 /** @internal vitest only — module-level caches are not request-scoped. */
 export function resetTeamverProjectRegistryStateForTests(): void {
-  feAccessCache.clear();
-  registeredIdsCache = null;
+  invalidateTeamverProjectRegistryCaches();
   syncAllInflight = null;
   syncAllAt = 0;
 }

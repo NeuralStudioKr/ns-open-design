@@ -134,6 +134,30 @@ const sample: InstalledPluginRecord[] = [
 ];
 
 describe('PluginsHomeSection (community gallery)', () => {
+  const deckOnlySample: InstalledPluginRecord[] = [
+    makePlugin({ id: 'deck-pitch', mode: 'deck', tags: ['pitch-deck', 'pitch-business'] }),
+    makePlugin({ id: 'deck-training', mode: 'deck', tags: ['course-training'] }),
+  ];
+
+  it('hides primary category pills in slide-only community mode but keeps deck subfacets', async () => {
+    renderSection(deckOnlySample, {
+      cardLayout: 'gallery',
+      hidePrimaryCategoryFacets: true,
+      lockedFacetCategory: 'deck',
+      preferDefaultFacet: true,
+      defaultFacetSelection: { category: 'deck', subcategory: null },
+    });
+
+    expect(screen.getByTestId('plugins-home-row-category').getAttribute('data-hide-category-pills')).toBe(
+      'true',
+    );
+    expect(screen.queryByTestId('plugins-home-pill-category-all')).toBeNull();
+    expect(screen.queryByTestId('plugins-home-pill-category-prototype')).toBeNull();
+    expect(await screen.findByTestId('plugins-home-row-subcategory-deck')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-deck-pitch-business')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-deck-course-training')).toBeTruthy();
+  });
+
   it('keeps gallery tiles free of inline Use actions — Use lives in the detail modal', () => {
     renderSection(sample, { cardLayout: 'gallery' });
 

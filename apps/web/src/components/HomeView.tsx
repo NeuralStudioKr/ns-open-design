@@ -92,6 +92,7 @@ import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { AnimatePresence } from 'motion/react';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import {
+  communityGalleryFacetUi,
   pluginsForSlideOnlyMvp,
   shouldShowHomeCommunityGallery,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
@@ -648,6 +649,11 @@ export function HomeView({
     slideOnlyMvp,
     hideCommunityGallery,
   });
+
+  const communityFacetUi = useMemo(
+    () => communityGalleryFacetUi({ slideOnlyMvp, hideCommunityGallery }),
+    [slideOnlyMvp, hideCommunityGallery],
+  );
 
   const enabledMcpServers = useMemo(
     () => mcpServers.filter((server) => server.enabled),
@@ -1743,6 +1749,8 @@ export function HomeView({
           defaultFacetSelection={
             slideOnlyMvp ? SLIDE_ONLY_COMMUNITY_FACET_SELECTION : undefined
           }
+          hidePrimaryCategoryFacets={communityFacetUi.hidePrimaryCategoryFacets}
+          lockedFacetCategory={communityFacetUi.lockedFacetCategory}
           cardLayout="gallery"
         />
       </HomeTemplatesReveal>

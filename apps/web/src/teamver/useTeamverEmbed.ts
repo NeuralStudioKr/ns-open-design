@@ -6,6 +6,10 @@ import { isTeamverEmbedMode, redirectToTeamverLogin } from "./designApiBase";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import {
+  clearTeamverEmbedSessionState,
+  setTeamverEmbedSessionAuthenticated,
+} from "./teamverEmbedSession";
+import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
   readWorkspaceId,
@@ -82,9 +86,22 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     try {
       const session = await fetchDesignAuthSession();
       if (!session) {
+        await clearTeamverEmbedSessionState();
         setState({ ...INITIAL, loading: false, error: "session_unreachable" });
         return;
       }
+
+      if (!session.authenticated) {
+        await clearTeamverEmbedSessionState();
+        setState({
+          ...INITIAL,
+          loading: false,
+          error: "not_authenticated",
+        });
+        return;
+      }
+
+      setTeamverEmbedSessionAuthenticated(true);
 
       const workspaces = normalizeWorkspaceList(session.workspaces);
       const userId = readUserId(session.user);
@@ -117,6 +134,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       });
     } catch (err) {
       if (isSessionExpiredError(err)) {
+        await clearTeamverEmbedSessionState();
         redirectToTeamverLogin();
         return;
       }
@@ -147,6 +165,22 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      void refresh();
+    };
+    window.addEventListener("pageshow", onReturn);
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("pageshow", onReturn);
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, [enabled, refresh]);
 
   return {
     ...state,
