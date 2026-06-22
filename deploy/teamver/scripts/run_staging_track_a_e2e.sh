@@ -32,6 +32,7 @@
 # Usage:
 #   bash scripts/run_staging_track_a_e2e.sh --staging
 #   bash scripts/run_staging_track_a_e2e.sh --production
+#   bash scripts/run_staging_track_a_e2e.sh --production --require-core
 #
 # Exit codes:
 #   0 — 모든 phase 통과 (skip 항목 포함)
@@ -44,6 +45,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_MODE=""
 USE_HTTPS=true
+REQUIRE_CORE=0
 DESIGN_HOST="${DESIGN_HOST:-}"
 DESIGN_API_HOST="${DESIGN_API_HOST:-}"
 
@@ -66,6 +68,7 @@ optional:
   TEAMVER_DRIVE_IMPORT_FILENAME  D-6a import filename (default e2e-import.txt)
   TEAMVER_S3_BUCKET / OD_S3_BUCKET  S3 tenant object probe bucket
   TEAMVER_S3_PREFIX                 tenant prefix override (default: /access header)
+  --require-core                    핵심 env/tool 누락 또는 skip 설정을 hard fail
   SKIP_RUNTIME=1                 S-8c runtime-config probe 비활성
   SKIP_DRIVE_IMPORT_POLICY=1     D-6b policy reject probe 비활성
   SKIP_S3_OBJECT=1               S3 tenant object probe 비활성
@@ -87,6 +90,7 @@ while (( $# )); do
       DESIGN_API_HOST="${DESIGN_API_HOST:-design-api.teamver.com}"
       ;;
     --http) USE_HTTPS=false ;;
+    --require-core) REQUIRE_CORE=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -111,6 +115,25 @@ skip=0
 passed() { echo "✓ $1"; pass=$((pass + 1)); }
 failed() { echo "✗ $1"; fail=$((fail + 1)); }
 skipped() { echo "○ $1"; skip=$((skip + 1)); }
+
+if [[ "$REQUIRE_CORE" -eq 1 ]]; then
+  core_missing=()
+  for name in TEAMVER_COOKIE TEAMVER_INTERNAL_API_KEY TEAMVER_OD_PROJECT_ID MAIN_BE_DATABASE_URL; do
+    [[ -n "${!name:-}" ]] || core_missing+=("$name")
+  done
+  [[ -n "${TEAMVER_S3_BUCKET:-${OD_S3_BUCKET:-}}" ]] || core_missing+=("TEAMVER_S3_BUCKET")
+  command -v psql >/dev/null 2>&1 || core_missing+=("psql")
+  command -v aws >/dev/null 2>&1 || core_missing+=("aws")
+  for name in SKIP_DB SKIP_DRIVE SKIP_S3_OBJECT; do
+    [[ -z "${!name:-}" ]] || core_missing+=("${name}=must_be_unset")
+  done
+  if (( ${#core_missing[@]} > 0 )); then
+    echo "❌ Track A core preflight failed: ${core_missing[*]}"
+    echo "   production launch evidence requires auth, usage DB, Drive publish, and S3 object checks"
+    exit 1
+  fi
+  echo "✓ Track A core preflight"
+fi
 
 curl_code() {
   local url="$1"

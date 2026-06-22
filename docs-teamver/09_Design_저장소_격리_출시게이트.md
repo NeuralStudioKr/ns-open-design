@@ -456,7 +456,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 ### 14.1 자동화 매핑 (loop 150·151 출시 게이트)
 
-수동 체크 → 자동화 스크립트 매핑. EC2 에서 `run_post_deploy_track_a.sh --staging --rds --smoke --e2e` 한 번이면 아래 게이트가 fail-fast 로 묶인다.
+수동 체크 → 자동화 스크립트 매핑. staging 점검은 `run_post_deploy_track_a.sh --staging --rds --smoke --e2e`, production 출시 증적은 `run_post_deploy_track_a.sh --production --rds --smoke --e2e-strict`로 실행한다. strict 모드는 핵심 env/tool 누락과 DB·Drive·S3 skip을 hard fail 한다.
 
 | 체크 | 자동화 스크립트 | Phase |
 |------|----------------|-------|
@@ -518,6 +518,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | production strict E2E gate — `print_production_track_a_e2e_env.sh` + `--e2e-strict`; auth/usage DB/Drive publish/S3 object 검증의 skip-only 성공 차단 |
 | 2026-06-19 | Production Phase 0 helper — `print/apply/run_production_phase0_activate.sh` 로 prod 전용 RDS+S3 env 병합·dry-run·preflight 제공, fixture 3종 Track A runner 연결 |
 | 2026-06-19 | Track A E2E S3 tenant object probe — `TEAMVER_S3_BUCKET` 설정 시 `/access` S3 prefix header + `aws s3 ls` 로 tenant prefix 객체 존재 검증, fixture/env helper 갱신 |
 | 2026-06-19 | S3 sync hard-fail review fix — soft-deleted reactivation / insert-race reactivation 경로도 sync 실패 시 명시 rollback 하도록 보강, 2개 회귀 테스트 추가 |

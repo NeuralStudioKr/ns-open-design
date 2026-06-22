@@ -69,7 +69,8 @@ cd deploy/teamver
 cp .env.production.example .env.production   # secrets: OD_API_TOKEN, JWT, POSTGRES_PASSWD, LLM keys
 bash scripts/run_production_phase0_activate.sh --from-terraform
 bash deploy.sh --production --rds
-bash scripts/run_post_deploy_track_a.sh --production --rds --smoke
+bash scripts/print_production_track_a_e2e_env.sh --from-env .env.production
+bash scripts/run_post_deploy_track_a.sh --production --rds --smoke --e2e-strict
 ```
 
 S3/RDS env만 출력:

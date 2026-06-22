@@ -72,4 +72,5 @@ bash "$ROOT/scripts/validate_deploy_env.sh" --production --rds
 echo
 echo "✓ Phase 0 production env ready"
 echo "   next: bash deploy.sh --production --rds"
-echo "         bash scripts/run_post_deploy_track_a.sh --production --rds --smoke"
+echo "         bash scripts/print_production_track_a_e2e_env.sh --from-env .env.production"
+echo "         bash scripts/run_post_deploy_track_a.sh --production --rds --smoke --e2e-strict"

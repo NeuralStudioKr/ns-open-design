@@ -37,6 +37,20 @@ if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
 fi
 echo "✓ graceful skip when no env vars"
 
+# 1b) release gate mode must reject a skip-only run before any request.
+if strict_out="$(bash "$SCRIPT" --production --require-core 2>&1)"; then
+  echo "❌ --require-core must fail when launch evidence env is missing"
+  exit 1
+fi
+for needle in TEAMVER_COOKIE TEAMVER_INTERNAL_API_KEY TEAMVER_OD_PROJECT_ID MAIN_BE_DATABASE_URL TEAMVER_S3_BUCKET; do
+  if ! grep -q "$needle" <<< "$strict_out"; then
+    echo "❌ strict preflight missing diagnostic: $needle"
+    echo "$strict_out"
+    exit 1
+  fi
+done
+echo "✓ strict core preflight rejects incomplete launch evidence"
+
 # 2) mock curl 으로 모든 200 → 통과. PATH 에 가짜 curl 을 prepend.
 MOCK_BIN="$WORK/bin"
 mkdir -p "$MOCK_BIN"

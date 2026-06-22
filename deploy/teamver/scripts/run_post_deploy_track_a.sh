@@ -5,6 +5,7 @@
 #   bash scripts/run_post_deploy_track_a.sh --staging --rds
 #   bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke
 #   bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke --status-probe
+#   bash scripts/run_post_deploy_track_a.sh --production --rds --smoke --e2e-strict
 #   MAIN_BE_DATABASE_URL='postgresql://…' \
 #     bash scripts/run_post_deploy_track_a.sh --staging --rds --seed-verify
 #
@@ -23,6 +24,7 @@ DEPS_ONLY=0
 WITH_MINIO=0
 SEED_VERIFY=0
 RUN_E2E=0
+E2E_STRICT=0
 
 usage() {
   sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
@@ -39,6 +41,7 @@ while (( $# )); do
     --deps-only) DEPS_ONLY=1 ;;
     --seed-verify) SEED_VERIFY=1 ;;
     --e2e) RUN_E2E=1 ;;
+    --e2e-strict) RUN_E2E=1; E2E_STRICT=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown: $1"; usage; exit 1 ;;
   esac
@@ -142,7 +145,9 @@ if [[ "$RUN_E2E" -eq 1 ]]; then
   echo "==> Phase 9: Track A E2E (S-8 auth / U-6 usage row / D-5 publish / 격리)"
   # loop 142 — curl + RDS 기반 출시 게이트 회귀. 필수 env 가 없으면
   # graceful skip + warn 만, 모두 있으면 fail-fast.
-  if ! bash "$ROOT/scripts/run_staging_track_a_e2e.sh" "$ENV_FLAG"; then
+  E2E_ARGS=("$ENV_FLAG")
+  [[ "$E2E_STRICT" -eq 1 ]] && E2E_ARGS+=(--require-core)
+  if ! bash "$ROOT/scripts/run_staging_track_a_e2e.sh" "${E2E_ARGS[@]}"; then
     echo "❌ Track A E2E FAILED — 출시 게이트 P0 (10 §6 / 11 §8 / 09 §14) 위반"
     exit 1
   fi
