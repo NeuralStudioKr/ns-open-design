@@ -1858,6 +1858,21 @@
   background: var(--bg-panel);
   border-color: var(--border-strong);
 }
+.staged-source-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+}
+.staged-source-link:hover,
+.staged-source-link:focus-visible {
+  background: var(--bg-subtle);
+  color: var(--accent);
+}
 .staged-order {
   display: inline-flex;
   align-items: center;

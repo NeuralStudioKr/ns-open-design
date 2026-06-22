@@ -102,5 +102,9 @@ export function driveImportedToChatAttachments(
     name: item.name,
     kind: attachmentKindFromMime(item.mimeType || ""),
     size: item.sizeBytes,
+    source: {
+      type: "teamver-drive",
+      assetId: item.assetId,
+    },
   }));
 }

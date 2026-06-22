@@ -96,6 +96,8 @@ Main FE `getDesignDriveAssetLaunchUrl()`은 `teamverDriveAssetId`, `teamverDrive
 
 진입 표면은 Main Drive 파일 상세 모달과 우클릭 메뉴 두 곳이다. 실제 bytes 이동은 새 API가 아니라 기존 design-api `POST /api/v1/projects/{projectRef}/import-drive`를 사용한다.
 
+Main Mobile도 파일 상세 모달에서 동일 query 계약을 사용한다. import 성공 후 `ChatAttachment.source={type:"teamver-drive",assetId}`를 보존하며 composer 첨부 chip의 외부 링크로 원본 Main Drive asset 상세를 다시 열 수 있다.
+
 ### 3.4 구현 단계
 
 1. **Picker 모달 1차**: flatten target 검색 + folder 선택 — ✅.

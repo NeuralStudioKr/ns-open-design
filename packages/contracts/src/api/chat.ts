@@ -333,6 +333,11 @@ export interface ChatAttachment {
    * consumers should fall back to array position.
    */
   order?: number;
+  /** Original governed asset when this project file was imported from Teamver Drive. */
+  source?: {
+    type: 'teamver-drive';
+    assetId: string;
+  };
 }
 
 export interface ChatCommentAttachment {

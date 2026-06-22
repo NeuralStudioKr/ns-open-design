@@ -38,6 +38,7 @@ import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { getDesignBffClient } from '../teamver/designBffClient';
+import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import {
   driveImportedToChatAttachments,
   importTeamverDriveAssets,
@@ -3143,6 +3144,19 @@ function StagedRunContexts({
                 </span>
               </>
             )}
+            {a.source?.type === 'teamver-drive' ? (
+              <a
+                className="staged-source-link od-tooltip"
+                href={resolveTeamverDriveAssetUrl(a.source.assetId)}
+                target="_blank"
+                rel="noreferrer"
+                title="Teamver 드라이브에서 원본 열기"
+                data-tooltip="Teamver 드라이브에서 원본 열기"
+                aria-label={`${a.name} 원본을 Teamver 드라이브에서 열기`}
+              >
+                <Icon name="external-link" size={11} />
+              </a>
+            ) : null}
             <button
               type="button"
               className="staged-remove od-tooltip"
