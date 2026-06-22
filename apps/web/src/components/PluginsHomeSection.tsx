@@ -21,7 +21,7 @@ import { useI18n, useT } from '../i18n';
 import type { PluginShareAction } from '../state/projects';
 import { Icon } from './Icon';
 import { PluginCard } from './plugins-home/PluginCard';
-import { isFeaturedPlugin, type FacetOption } from './plugins-home/facets';
+import { isFeaturedPlugin, type FacetOption, type FacetSelection } from './plugins-home/facets';
 import { localizePluginTitle } from './plugins-home/localization';
 import { usePluginFacets } from './plugins-home/usePluginFacets';
 import { pluginSubfacetLabel } from './plugins-home/subfacetLabel';
@@ -49,6 +49,7 @@ interface Props {
   ) => void;
   onBrowseRegistry?: () => void;
   preferDefaultFacet?: boolean;
+  defaultFacetSelection?: FacetSelection;
   title?: string;
   subtitle?: string;
   emptyMessage?: string;
@@ -69,6 +70,7 @@ export function PluginsHomeSection({
   onPluginShareAction,
   onBrowseRegistry,
   preferDefaultFacet = true,
+  defaultFacetSelection,
   title,
   subtitle,
   emptyMessage,
@@ -97,6 +99,7 @@ export function PluginsHomeSection({
     plugins,
     savedPluginIds,
     preferDefaultFacet,
+    defaultFacetSelection,
     locale,
   });
   const renderedPlugins = useMemo(

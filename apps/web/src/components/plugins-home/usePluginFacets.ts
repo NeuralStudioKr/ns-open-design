@@ -29,6 +29,7 @@ interface UsePluginFacetsArgs {
   plugins: InstalledPluginRecord[];
   savedPluginIds?: ReadonlySet<string>;
   preferDefaultFacet?: boolean;
+  defaultFacetSelection?: FacetSelection;
   locale?: string;
 }
 
@@ -54,10 +55,27 @@ const EMPTY_SELECTION: FacetSelection = {
   subcategory: null,
 };
 
+function resolveInitialFacetSelection(
+  catalog: FacetCatalog,
+  preferDefaultFacet: boolean,
+  defaultFacetSelection?: FacetSelection,
+): FacetSelection {
+  if (!preferDefaultFacet) return EMPTY_SELECTION;
+  const want = defaultFacetSelection?.category;
+  if (
+    want &&
+    catalog.category.some((option) => option.slug === want && option.count > 0)
+  ) {
+    return defaultFacetSelection ?? EMPTY_SELECTION;
+  }
+  return resolveDefaultSelection(catalog);
+}
+
 export function usePluginFacets({
   plugins,
   savedPluginIds,
   preferDefaultFacet = true,
+  defaultFacetSelection,
   locale,
 }: UsePluginFacetsArgs): UsePluginFacetsResult {
   const [mode, setMode] = useState<FilterMode>('all');
@@ -98,12 +116,16 @@ export function usePluginFacets({
       setBootstrapped(true);
       return;
     }
-    const next = resolveDefaultSelection(catalog);
+    const next = resolveInitialFacetSelection(
+      catalog,
+      preferDefaultFacet,
+      defaultFacetSelection,
+    );
     if (next.category !== null) {
       setSelection(next);
     }
     setBootstrapped(true);
-  }, [bootstrapped, preferDefaultFacet, visiblePlugins.length, catalog]);
+  }, [bootstrapped, preferDefaultFacet, defaultFacetSelection, visiblePlugins.length, catalog]);
 
   // The visual-appeal sort is applied at `visiblePlugins` derivation
   // (above), so any downstream `applyFacetSelection` slice preserves

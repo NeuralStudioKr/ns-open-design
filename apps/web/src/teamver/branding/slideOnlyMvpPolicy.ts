@@ -1,5 +1,6 @@
 import type { InstalledPluginRecord, SkillSummary } from "@open-design/contracts";
 import type { CreateTab } from "../../components/NewProjectPanel";
+import type { FacetSelection } from "../../components/plugins-home/facets";
 import {
   chipsForGroup,
   type ChipGroup,
@@ -162,9 +163,29 @@ export function skillsForSlideOnlyMvp(
   });
 }
 
-/** Deck template gallery on Home when full community gallery is hidden. */
+/** Default Community facet when slide-only MVP filters the catalog to decks. */
+export const SLIDE_ONLY_COMMUNITY_FACET_SELECTION: FacetSelection = {
+  category: "deck",
+  subcategory: null,
+};
+
+/**
+ * Home "Community" (`PluginsHomeSection`) visibility.
+ *
+ * Standalone OD shows the full catalog. Embed sets `hideCommunityGallery` to
+ * drop the unfiltered grid but keeps a slide-only Community strip when
+ * `slideOnlyMvp` is on.
+ */
+export function shouldShowHomeCommunityGallery(
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp" | "hideCommunityGallery">,
+): boolean {
+  if (!branding.hideCommunityGallery) return true;
+  return branding.slideOnlyMvp;
+}
+
+/** @deprecated Use {@link shouldShowHomeCommunityGallery}. */
 export function shouldShowEmbedSlideTemplateGallery(
   branding: Pick<TeamverBrandingConfig, "slideOnlyMvp" | "hideCommunityGallery">,
 ): boolean {
-  return branding.slideOnlyMvp && branding.hideCommunityGallery;
+  return shouldShowHomeCommunityGallery(branding);
 }

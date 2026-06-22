@@ -93,7 +93,8 @@ import { AnimatePresence } from 'motion/react';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import {
   pluginsForSlideOnlyMvp,
-  shouldShowEmbedSlideTemplateGallery,
+  shouldShowHomeCommunityGallery,
+  SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
   skillsForSlideOnlyMvp,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -638,12 +639,12 @@ export function HomeView({
     [skills, slideOnlyMvp],
   );
 
-  const slideTemplatePlugins = useMemo(
+  const communityPlugins = useMemo(
     () => pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp }),
     [plugins, slideOnlyMvp],
   );
 
-  const showEmbedSlideTemplateGallery = shouldShowEmbedSlideTemplateGallery({
+  const showCommunityGallery = shouldShowHomeCommunityGallery({
     slideOnlyMvp,
     hideCommunityGallery,
   });
@@ -1646,7 +1647,7 @@ export function HomeView({
         stagedFiles={stagedFiles}
         onAddFiles={stageFiles}
         onRemoveFile={removeStagedFile}
-        pluginOptions={slideTemplatePlugins}
+        pluginOptions={communityPlugins}
         pluginsLoading={pluginsLoading}
         skillOptions={selectableSkills}
         skillsLoading={skillsLoading}
@@ -1725,39 +1726,23 @@ export function HomeView({
         }}
       />
 
-      {hideCommunityGallery ? null : (
+      {showCommunityGallery ? (
       <HomeTemplatesReveal
-        enabled={!projectsLoading && projects.length === 0}
+        enabled={!projectsLoading && projects.length === 0 && !slideOnlyMvp}
       >
         <PluginsHomeSection
-          plugins={plugins}
+          plugins={communityPlugins}
           loading={pluginsLoading}
           activePluginId={active?.record.id ?? null}
           pendingApplyId={pendingApplyId}
           onUse={(record, action) => void routePluginUse(record, action)}
           onOpenDetails={handleCommunityOpenDetails}
           onOpenExternal={handleCommunityOpenExternal}
-          onBrowseRegistry={onBrowseRegistry}
-          preferDefaultFacet={false}
-          cardLayout="gallery"
-        />
-      </HomeTemplatesReveal>
-      )}
-
-      {showEmbedSlideTemplateGallery ? (
-      <HomeTemplatesReveal
-        enabled={!projectsLoading && projects.length === 0}
-      >
-        <PluginsHomeSection
-          plugins={slideTemplatePlugins}
-          loading={pluginsLoading}
-          activePluginId={active?.record.id ?? null}
-          pendingApplyId={pendingApplyId}
-          onUse={(record, action) => void routePluginUse(record, action)}
-          onOpenDetails={handleCommunityOpenDetails}
-          onOpenExternal={handleCommunityOpenExternal}
-          onBrowseRegistry={onBrowseRegistry}
-          preferDefaultFacet
+          onBrowseRegistry={hidePluginRegistry ? undefined : onBrowseRegistry}
+          preferDefaultFacet={slideOnlyMvp}
+          defaultFacetSelection={
+            slideOnlyMvp ? SLIDE_ONLY_COMMUNITY_FACET_SELECTION : undefined
+          }
           cardLayout="gallery"
         />
       </HomeTemplatesReveal>

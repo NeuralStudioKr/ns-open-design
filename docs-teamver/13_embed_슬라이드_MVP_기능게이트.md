@@ -34,7 +34,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | S-2 | `HomeHero` shortcuts (⋯) | Create plugin, From Figma | 동일 | ✅ |
 | S-3 | `NewProjectPanel` tabs | Media (image/video/audio), Prototype, Live artifact, Other | `slideOnlyMvp` (`visibleNewProjectTabs`) | ✅ |
 | S-4 | `EntryShell` openNewProject | 기본 탭 `prototype` → embed `deck` | `defaultNewProjectTab` | ✅ |
-| S-5 | `HomeView` 하단 community gallery | `<HomeTemplatesReveal><PluginsHomeSection/>` — Prototype·Slides·Image·Video·HyperFrames·Audio 풀 카탈로그 | **`hideCommunityGallery`** | ✅ loop 152 |
+| S-5 | `HomeView` 하단 community gallery | embed: **「커뮤니티」** 유지 + `manifest.od.mode === 'deck'` 필터 (`pluginsForSlideOnlyMvp`); standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` (`shouldShowHomeCommunityGallery`) | ✅ loop 152+ |
 
 ### 2.2 P0 — Composer / + 메뉴 / 슬래시 (전수)
 
@@ -116,7 +116,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 |--------|------------|------|
 | `slideOnlyMvp` | `true` | Hero chips·New project 탭·기본 deck 탭·toolbox 미디어 액션 필터 |
 | `hideComposerIntegrations` | `true` | MCP·Connectors composer/UI/fetch/슬래시 |
-| `hideCommunityGallery` | `true` | Home 하단 `PluginsHomeSection` + `HomeTemplatesReveal` 비노출 |
+| `hideCommunityGallery` | `true` | standalone 풀 카탈로그 숨김; `slideOnlyMvp`와 함께 slide-only **커뮤니티** 갤러리로 대체 (`shouldShowHomeCommunityGallery`) |
 | `hidePluginRegistry` | `true` | `+` 메뉴 "Add plugin" 행 + plugin marketplace 진입 |
 | `hideExternalShareSurfaces` | `true` | (loop 171) FileViewer chrome share-menu / PreviewModal social·copy_link / Share-to-OD community contribute. Drive Publish + 로컬 export 는 유지 |
 | `hideAssistantThinkingDetails` | `false` | (loop 183) thinking은 `ThinkingBlock` 접힘 UI; prose leak은 `internalAgentMarkup` + daemon `thinking_delta` 분리 |

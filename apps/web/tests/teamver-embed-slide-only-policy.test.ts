@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   isSlideRelatedPlugin,
   pluginsForSlideOnlyMvp,
-  shouldShowEmbedSlideTemplateGallery,
+  shouldShowHomeCommunityGallery,
+  SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
 import { embedSlideOnlyOutboundBlockReason } from '../src/teamver/branding/embedSlideOnlyOutboundGuard';
 
@@ -18,13 +19,23 @@ describe('embed slide-only plugin policy', () => {
     ).toEqual(['deck-1']);
   });
 
-  it('shows deck-only home gallery when community gallery is hidden', () => {
+  it('defaults slide-only Community browsing to the deck facet', () => {
+    expect(SLIDE_ONLY_COMMUNITY_FACET_SELECTION).toEqual({
+      category: 'deck',
+      subcategory: null,
+    });
+  });
+
+  it('keeps slide-only Community visible when the full gallery is hidden', () => {
     expect(
-      shouldShowEmbedSlideTemplateGallery({ slideOnlyMvp: true, hideCommunityGallery: true }),
+      shouldShowHomeCommunityGallery({ slideOnlyMvp: true, hideCommunityGallery: true }),
     ).toBe(true);
     expect(
-      shouldShowEmbedSlideTemplateGallery({ slideOnlyMvp: false, hideCommunityGallery: true }),
+      shouldShowHomeCommunityGallery({ slideOnlyMvp: false, hideCommunityGallery: true }),
     ).toBe(false);
+    expect(
+      shouldShowHomeCommunityGallery({ slideOnlyMvp: false, hideCommunityGallery: false }),
+    ).toBe(true);
   });
 });
 
