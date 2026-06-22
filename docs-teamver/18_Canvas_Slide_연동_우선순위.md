@@ -112,3 +112,21 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 3. 생성 중 페이지 이동·재진입·수정·Drive publish까지 같은 프로젝트로 유지되는지 확인한다.
 4. 실패가 발견된 경계만 Teamver wrapper에서 수정한다.
 5. P0 완료 후 Canvas one-confirm run과 Design System 기본 적용을 순서대로 개발한다.
+
+---
+
+## 7. P0 구현 진행
+
+### 2026-06-22 — loop 1: Drive/Canvas source S3 내구성
+
+- design-api Drive import는 daemon upload만 성공한 시점에 응답하지 않고 `scratch/sync-up`을 기다린다.
+- import 후 즉시 slide run이 시작되어도 run 선행 sync-down이 새 source를 이전 S3 snapshot으로 덮어쓰지 않는다.
+- sync-up 실패 시 해당 asset은 import 성공이 아닌 `od_daemon_scratch_sync_up_failed`로 반환한다.
+
+### 2026-06-22 — loop 2: hosted storage/auth fail-fast
+
+- staging/production compose는 `TEAMVER_DEPLOY_ENV`를 명시하고 `AUTH_DISABLED=false`, `ALLOW_NO_JWT_LOCAL_MODE=false`를 강제한다.
+- `OD_PROJECT_STORAGE`가 누락되면 compose config 단계에서 실패한다.
+- design-api `Settings`는 hosted 환경에서 storage가 `s3`가 아니거나 로컬 인증 fallback이 켜져 있으면 기동을 거부한다.
+
+**남음 P0:** 코드 강제는 완료. staging의 실제 IAM/bucket env를 적용해 `checks.od_storage=ok`로 전환하고, 개인/팀 Drive source로 slide lifecycle 종단을 인수한다.

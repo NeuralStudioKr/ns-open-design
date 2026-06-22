@@ -171,6 +171,26 @@ async def import_drive_assets(
                 ),
             )
 
+    if imported:
+        try:
+            # A chat run begins with S3 sync-down. Persist imported sources
+            # before returning so a fast follow-up run cannot overwrite the
+            # new scratch files with the previous remote snapshot.
+            await daemon.sync_scratch_project(
+                project.od_project_id,
+                identity=identity,
+            )
+        except DesignDomainError as exc:
+            error_code = _error_code(exc, "od_daemon_scratch_sync_up_failed")
+            failed.extend(
+                DriveImportFailureResponse(
+                    asset_id=item.asset_id,
+                    error_code=error_code,
+                )
+                for item in imported
+            )
+            imported.clear()
+
     if imported and failed:
         http_status = 207
     elif imported:

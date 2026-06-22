@@ -6,3 +6,8 @@ services:
   teamver-design-api:
     env_file:
       - .env.staging
+    environment:
+      TEAMVER_DEPLOY_ENV: staging
+      AUTH_DISABLED: "false"
+      ALLOW_NO_JWT_LOCAL_MODE: "false"
+      OD_PROJECT_STORAGE: ${OD_PROJECT_STORAGE:?Set OD_PROJECT_STORAGE=s3 in .env.staging}

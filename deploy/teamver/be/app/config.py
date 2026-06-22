@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from urllib.parse import quote_plus
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .env_loader import load_dotenv_files
 
@@ -20,6 +20,7 @@ def _env_bool(name: str, *, default: bool) -> bool:
 class Settings(BaseModel):
     app_name: str = "Teamver Design API"
     api_prefix: str = "/api"
+    deploy_env: str = os.getenv("TEAMVER_DEPLOY_ENV", "local")
 
     teamver_api_base_url: str = os.getenv("TEAMVER_API_BASE_URL", "http://localhost:8001")
     teamver_jwt_secret: str = os.getenv("TEAMVER_JWT_SECRET", "")
@@ -85,6 +86,17 @@ class Settings(BaseModel):
     postgres_reset_schema: bool = Field(
         default_factory=lambda: _env_bool("POSTGRES_RESET_SCHEMA", default=False)
     )
+
+    @model_validator(mode="after")
+    def validate_hosted_guards(self) -> "Settings":
+        deploy_env = self.deploy_env.strip().lower()
+        if deploy_env not in {"staging", "production"}:
+            return self
+        if self.od_project_storage.strip().lower() != "s3":
+            raise ValueError(f"OD_PROJECT_STORAGE=s3 is required in {deploy_env}")
+        if self.auth_disabled or self.allow_no_jwt_local_mode:
+            raise ValueError(f"local auth fallback is forbidden in {deploy_env}")
+        return self
 
     @property
     def postgres_password(self) -> str | None:
