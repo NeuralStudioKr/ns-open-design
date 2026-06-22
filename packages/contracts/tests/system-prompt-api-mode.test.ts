@@ -155,6 +155,33 @@ describe('composeSystemPrompt — API mode (#313)', () => {
     });
   });
 
+  describe('BYOK mode (streamFormat: plain + byokToolNames)', () => {
+    const byokTools = ['web_fetch', 'generate_image', 'generate_speech', 'generate_video'] as const;
+
+    it('injects BYOK tools override instead of the no-tools preamble', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain', byokToolNames: byokTools });
+      expect(prompt).toMatch(/API mode — BYOK tools available/i);
+      expect(prompt).not.toMatch(/API mode — no tools available/i);
+    });
+
+    it('lists wired BYOK tool names including web_fetch', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain', byokToolNames: byokTools });
+      expect(prompt).toContain('`web_fetch`');
+      expect(prompt).toContain('`generate_image`');
+      expect(prompt).toMatch(/call `web_fetch` with the absolute URL/i);
+      expect(prompt).toMatch(/I can't read URLs/i);
+    });
+
+    it('pins the BYOK override above the discovery layer', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain', byokToolNames: byokTools });
+      const overrideIdx = prompt.search(/API mode — BYOK tools available/i);
+      const discoveryIdx = prompt.indexOf('# OD core directives');
+      expect(overrideIdx).toBeGreaterThanOrEqual(0);
+      expect(discoveryIdx).toBeGreaterThanOrEqual(0);
+      expect(overrideIdx).toBeLessThan(discoveryIdx);
+    });
+  });
+
   // Regression coverage for #3257 — example-prompt discovery skip must be
   // honored in API/BYOK mode (which composes prompts through this contracts
   // composer), not only in daemon-backed runs. Without the examplePrompt

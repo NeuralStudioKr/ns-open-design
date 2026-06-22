@@ -16,6 +16,7 @@ import path from 'node:path';
 import { writeFile, readFile, readdir, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { assertExternalAssetUrl, assertAndFetchExternalAsset } from './connectionTest.js';
+import { fetchUrlContent, type WebFetchToolResult } from './byok-url-tools.js';
 import { resolveProviderConfig } from './media-config.js';
 import { IMAGE_MODELS } from './media-models.js';
 import { ensureProject } from './projects.js';
@@ -182,7 +183,24 @@ const ASPECT_TO_SIZE: Record<string, string> = {
  * in markdown — the chat UI already renders markdown images inline,
  * so no client-side wiring is required for the bytes to show up.
  */
+const BYOK_WEB_FETCH_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'web_fetch',
+    description:
+      'Fetch a public http(s) URL and return its content as plain text (HTML stripped, ≤100KB). Use this whenever the user gives you a URL and you need to read its content — for example to summarise a webpage, extract a product description, or pull the brief from a team page. The response is the page text plus the document title. NOT for authenticated, internal, or interactive content.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Absolute http(s) URL to fetch.' },
+      },
+      required: ['url'],
+    },
+  },
+};
+
 export const BYOK_SENSEAUDIO_TOOLS = [
+  BYOK_WEB_FETCH_TOOL,
   {
     type: 'function' as const,
     function: {
@@ -291,6 +309,7 @@ export const BYOK_SENSEAUDIO_TOOLS = [
  * image + voiceover + video parity with the Media panel.
  */
 export const BYOK_AIHUBMIX_TOOLS = [
+  BYOK_WEB_FETCH_TOOL,
   {
     type: 'function' as const,
     function: {
@@ -458,6 +477,19 @@ export interface ImageToolResult {
   /** Short human-readable failure reason. Stuffed into the `tool` role
    *  reply so the LLM can apologize / retry. */
   error?: string;
+}
+
+export async function executeWebFetch(
+  args: { url?: unknown },
+  _ctx: BYOKToolContext,
+): Promise<WebFetchToolResult> {
+  const url = typeof args.url === 'string' ? args.url : '';
+  if (!url.trim()) return { ok: false, error: 'url is required' };
+  try {
+    return await fetchUrlContent(url, ctx.requestInit);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 function withToolRequestInit(

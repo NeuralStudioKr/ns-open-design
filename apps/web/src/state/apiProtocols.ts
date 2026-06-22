@@ -234,3 +234,13 @@ export function resolveFixedOriginBaseUrl(
 ): string {
   return isFixedOriginGateway(protocol) ? DEFAULT_BASE_URL_BY_PROTOCOL[protocol] : baseUrl;
 }
+
+/** Server-side tools wired through the BYOK proxy tool loop (daemon). Passed to
+ *  composeSystemPrompt as byokToolNames so API mode gets BYOK_TOOLS_OVERRIDE
+ *  instead of the CLI-oriented API_MODE_OVERRIDE ("WebFetch unavailable"). */
+export const BYOK_CHAT_TOOL_NAMES: readonly string[] = [
+  'web_fetch',
+  'generate_image',
+  'generate_speech',
+  'generate_video',
+];

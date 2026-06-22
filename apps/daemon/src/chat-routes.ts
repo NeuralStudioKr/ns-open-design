@@ -16,6 +16,7 @@ import {
   executeAIHubMixGenerateImage,
   executeAIHubMixGenerateSpeech,
   executeAIHubMixGenerateVideo,
+  executeWebFetch,
   isSenseAudioImageModel,
   isAIHubMixImageModel,
   isAIHubMixVideoModel,
@@ -894,8 +895,21 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     ok: boolean;
     url?: string;
     error?: string;
-    kind?: 'image' | 'video' | 'speech';
+    kind?: 'image' | 'video' | 'speech' | 'web_fetch';
+    text?: string;
+    title?: string;
+    truncated?: boolean;
   }): string => {
+    if (result.kind === 'web_fetch') {
+      if (!result.ok) {
+        return `web_fetch failed: ${result.error}. Tell the user the URL could not be read (do NOT invent its content) and ask whether they can paste the relevant text inline.`;
+      }
+      const head = result.title ? `Title: ${result.title}\n` : '';
+      const truncationNote = result.truncated
+        ? '\n\n[Body was truncated at 100 KB; if you need more, ask the user to paste the specific sections you still need.]'
+        : '';
+      return `URL fetched successfully. ${head}\n\n${result.text ?? ''}${truncationNote}`;
+    }
     if (result.ok) {
       if (result.kind === 'video')
         return `Video generated successfully. URL: ${result.url}. Reply to the user with a clickable markdown link, e.g. [▶ Play video](${result.url}). Do NOT use markdown image syntax — the chat renderer does not embed <video> tags.`;
@@ -1465,6 +1479,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     runSpeech: ByokToolRunner;
     /** Omitted when the provider has no video endpoint (AIHubMix). */
     runVideo?: ByokToolRunner;
+    /** Fetches a public URL as plain text for the `web_fetch` tool. Omitted
+     *  when the provider does not expose URL reading. */
+    runWebFetch?: (
+      args: any,
+      toolCtx: BYOKToolContext,
+    ) => Promise<{ ok: boolean; text?: string; title?: string; truncated?: boolean; error?: string }>;
     /**
      * AIHubMix only: route by model name to the native protocol wire
      * (claude → Anthropic /v1/messages, gemini or imagen → Gemini
@@ -1737,20 +1757,39 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const executeOneTool = async (call: {
       id: string;
       function: { name: string; arguments: string };
-    }): Promise<{ ok: boolean; url?: string; error?: string; kind?: 'image' | 'video' | 'speech' }> => {
+    }): Promise<{ ok: boolean; url?: string; error?: string; kind?: 'image' | 'video' | 'speech' | 'web_fetch'; text?: string; title?: string; truncated?: boolean }> => {
       const fnName = call?.function?.name ?? '';
-      if (fnName !== 'generate_image' && fnName !== 'generate_video' && fnName !== 'generate_speech') {
+      if (
+        fnName !== 'generate_image' &&
+        fnName !== 'generate_video' &&
+        fnName !== 'generate_speech' &&
+        fnName !== 'web_fetch'
+      ) {
         return {
           ok: false,
           error: `unknown tool: ${fnName || 'unnamed'}`,
         };
       }
-      const toolKind = fnName === 'generate_image' ? 'image' : fnName === 'generate_video' ? 'video' : 'speech';
+      const toolKind =
+        fnName === 'generate_image'
+          ? 'image'
+          : fnName === 'generate_video'
+            ? 'video'
+            : fnName === 'web_fetch'
+              ? 'web_fetch'
+              : 'speech';
       let args: any = {};
       try {
         args = JSON.parse(call.function.arguments || '{}');
       } catch {
         return { ok: false, error: 'tool arguments were not valid JSON', kind: toolKind };
+      }
+      if (fnName === 'web_fetch') {
+        if (!opts.runWebFetch) {
+          return { ok: false, error: 'web_fetch is not supported for this provider', kind: 'web_fetch' };
+        }
+        const result = await opts.runWebFetch(args, toolCtx);
+        return { ...result, kind: 'web_fetch' };
       }
       if (fnName === 'generate_image') {
         const result = await opts.runImage(args, toolCtx);
@@ -2241,6 +2280,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     runImage: executeGenerateImage,
     runSpeech: executeGenerateSpeech,
     runVideo: executeGenerateVideo,
+    runWebFetch: executeWebFetch,
   });
 
   // AIHubMix: routes by model name to the native protocol wire —
@@ -2262,6 +2302,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     runImage: executeAIHubMixGenerateImage,
     runSpeech: executeAIHubMixGenerateSpeech,
     runVideo: executeAIHubMixGenerateVideo,
+    runWebFetch: executeWebFetch,
     routeByModel: true,
   });
 

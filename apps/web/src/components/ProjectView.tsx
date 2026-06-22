@@ -202,6 +202,7 @@ import { buildContinueInCliToast } from '../lib/build-continue-in-cli-toast';
 import { buildClipboardPrompt } from '../lib/build-clipboard-prompt';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { effectiveMaxTokens } from '../state/maxTokens';
+import { BYOK_CHAT_TOOL_NAMES } from '../state/apiProtocols';
 import { effectiveAgentModelChoice } from './agentModelSelection';
 import { mediaExecutionPolicyForProjectMetadata } from '../media/execution-policy';
 import { mediaModelProviderId } from '../media/models';
@@ -2192,6 +2193,7 @@ export function ProjectView({
       audioVoiceOptions,
       audioVoiceOptionsError: audioVoiceOptionsLookupError,
       streamFormat: config.mode === 'api' ? 'plain' : undefined,
+      byokToolNames: config.mode === 'api' ? BYOK_CHAT_TOOL_NAMES : undefined,
       sessionMode: sessionModeOverride,
       locale,
       userInstructions: config.customInstructions,

@@ -33,9 +33,9 @@ describe('BYOK_SENSEAUDIO_TOOLS', () => {
     ]);
   });
 
-  it('exposes image, speech, and video tools', () => {
+  it('exposes web_fetch, image, speech, and video tools', () => {
     const names = BYOK_SENSEAUDIO_TOOLS.map((t) => t.function.name).sort();
-    expect(names).toEqual(['generate_image', 'generate_speech', 'generate_video']);
+    expect(names).toEqual(['generate_image', 'generate_speech', 'generate_video', 'web_fetch']);
   });
 });
 
@@ -906,9 +906,9 @@ describe('executeGenerateVideo', () => {
 });
 
 describe('BYOK_AIHUBMIX_TOOLS', () => {
-  it('exposes image, speech, and video tools', () => {
+  it('exposes web_fetch, image, speech, and video tools', () => {
     const names = BYOK_AIHUBMIX_TOOLS.map((t) => t.function.name).sort();
-    expect(names).toEqual(['generate_image', 'generate_speech', 'generate_video']);
+    expect(names).toEqual(['generate_image', 'generate_speech', 'generate_video', 'web_fetch']);
   });
 
   it('exports an OpenAI-shaped generate_video tool definition', () => {

@@ -89,14 +89,14 @@
 
 | 항목 | 상태 | 근거 |
 |------|------|------|
-| BYOK `web_fetch` 도구 | ❌ 미구현 | `byok-tools.ts` — image/speech/video만 |
-| `executeOneTool` | ❌ 3-tool 화이트리스트 | `chat-routes.ts` |
-| BYOK 시스템 프롬프트 | ❌ 역효과 | `API_MODE_OVERRIDE` — “WebFetch unavailable” |
-| `runtime-config` web 플래그 | ❌ 없음 | `od_runtime_config.py` — apiKey/protocol/model만 |
-| FE `WebFetchCard` UI | △ 있음 | tool event만 오면 렌더 — **호출 경로 없음** |
-| minimax-byok 레퍼런스 | ✅ 포크에 설계·구현 | doc 07·08 · `byok-url-tools.ts` 등 |
+| BYOK `web_fetch` 도구 | ✅ 구현 (loop 184) | `byok-url-tools.ts` · `byok-tools.ts` · senseaudio/aihubmix proxy |
+| `executeOneTool` | ✅ 4-tool 화이트리스트 | `chat-routes.ts` — `web_fetch` 디스패치 |
+| BYOK 시스템 프롬프트 | ✅ `BYOK_TOOLS_OVERRIDE` | `byokToolNames` + `ProjectView` · contracts/daemon `system.ts` |
+| `runtime-config` web 플래그 | ❌ 없음 (선택) | `od_runtime_config.py` — apiKey/protocol/model만 |
+| FE `WebFetchCard` UI | ✅ 호출 경로 연결 | tool event + 기존 `ToolCard` |
+| minimax-byok 레퍼런스 | ✅ 포크 설계·이식 완료 | doc 07·08 |
 
-embed managed BYOK 기본 env 예 (`TEAMVER_OD_API_PROTOCOL=anthropic`)는 **text-only base stream** 위주라, tool loop + `web_fetch` 없이는 URL 읽기 불가.
+**staging 주의:** `TEAMVER_OD_API_PROTOCOL=anthropic` 단독 base stream은 **tool loop 없음** → URL 읽기 불가. tool loop 프로토콜·모델로 전환 필요 (아래 Q6 · `.env.staging.example`).
 
 ---
 
@@ -286,3 +286,4 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 | 일자 | 내용 |
 |------|------|
 | 2026-06-22 | 초안 — embed URL 참조 FAQ, Main BE web search 대비, minimax-byok `web_fetch` 정리 |
+| 2026-06-19 | loop 184 — §5 코드 상태 ✅ 갱신, staging anthropic vs tool loop 주의 |

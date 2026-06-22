@@ -381,6 +381,10 @@ export interface ComposeInput {
   agentId?: string | null | undefined;
   includeCodexImagegenOverride?: boolean | undefined;
   streamFormat?: string | undefined;
+  /** BYOK proxy tool names wired through the daemon (e.g. web_fetch). When
+   *  set with streamFormat 'plain', swaps API_MODE_OVERRIDE for
+   *  BYOK_TOOLS_OVERRIDE so the model knows which server-side tools exist. */
+  byokToolNames?: readonly string[] | undefined;
   skillBody?: string | undefined;
   skillName?: string | undefined;
   skillMode?:
@@ -534,6 +538,7 @@ export function composeSystemPrompt({
   pluginBlock,
   activeStageBlocks,
   streamFormat,
+  byokToolNames,
   locale,
   sessionMode,
   userInstructions,
@@ -563,7 +568,11 @@ export function composeSystemPrompt({
   // contracts copy so both code paths produce the same observable
   // behaviour.
   if (streamFormat === 'plain') {
-    parts.push(API_MODE_OVERRIDE);
+    if (byokToolNames && byokToolNames.length > 0) {
+      parts.push(BYOK_TOOLS_OVERRIDE(byokToolNames));
+    } else {
+      parts.push(API_MODE_OVERRIDE);
+    }
     parts.push('\n\n---\n\n');
   }
 
@@ -896,6 +905,26 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
 
 If the rules below tell you to plan with TodoWrite, write the plan as prose instead. If they tell you to read skill side files before writing, describe in one sentence which patterns/conventions you're going to apply and proceed. If they tell you to run brand-spec extraction via Bash + Read + WebFetch, ask the user the missing brand questions in the discovery form instead.`;
+
+const BYOK_TOOLS_OVERRIDE = (toolNames: readonly string[]): string => {
+  const formatted = toolNames.map((n) => `\`${n}\``).join(', ');
+  return `# API mode — BYOK tools available (read first — overrides every rule below)
+
+You are running through the Open Design BYOK proxy. The following tools ARE wired through to you: ${formatted}. Call them like any other tool — the daemon routes the call, runs the executor, and feeds the result back as a \`tool\` role message.
+
+\`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are NOT available in this run — those are CLI-agent tools. If a later instruction tells you to call them, do not attempt it; use the BYOK tools listed above instead. Specifically: to read a URL the user gave you, call \`web_fetch\` with the absolute URL — do not claim you fetched it, do not narrate the fetch in prose, and do not produce pseudo-tool markup.
+
+**Forbidden output:**
+- Pseudo-tool markup such as \`<todo-list>...</todo-list>\`, \`<tool-call>\`, or invented XML wrappers around a plan.
+- Fake-protocol prose such as \`[读取 template.html ...]\`, \`[读取 layouts.md ...]\`, \`[正在调用 TodoWrite ...]\`, or any \`[doing X]\` placeholder narrating a tool you cannot run.
+- Statements like "I can't read URLs" or "I cannot access the web" — the \`web_fetch\` tool above CAN, when the user gives you a public http(s) URL.
+
+**Allowed output:**
+- Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
+- Real tool calls to the functions listed above (e.g. \`web_fetch\`, \`generate_image\`).
+- A final \`<artifact type="text/html">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
+- \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.`;
+};
 
 const CHAT_MODE_OVERRIDE = `# Chat mode — standard conversation (read first — overrides every rule below)
 
