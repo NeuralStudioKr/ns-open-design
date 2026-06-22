@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request, Response
-from teamver_app_sdk.errors import TeamverAPIError
+from teamver_app_sdk.errors import AuthenticationError, TeamverAPIError
 
 from ..config import settings
 from ..errors import BadGatewayError
@@ -52,6 +52,9 @@ async def get_auth_session(request: Request) -> Any:
     try:
         bootstrap = await fetch_bootstrap(token)
     except TeamverAPIError as exc:
+        # Expired/invalid cookie — return soft empty session so FE can refresh (Plan B).
+        if isinstance(exc, AuthenticationError):
+            return _empty_session()
         raise_for_teamver_error(exc)
 
     payload = bootstrap.model_dump()

@@ -83,6 +83,11 @@ async function probeDesignAuthSession(client: TeamverClient): Promise<DesignAuth
   return client.http.get<DesignAuthSession>("/auth/session", SESSION_PROBE_OPTIONS);
 }
 
+function shouldUseDesignApiSessionFallback(err: unknown): boolean {
+  if (!(err instanceof NetworkError)) return false;
+  return err.status === 0 || err.status === 404 || err.status === 502;
+}
+
 async function fetchDesignAuthSessionCrossOriginFallback(): Promise<DesignAuthSession | null> {
   const origin = resolveTeamverDesignApiCrossOriginFallback();
   if (!origin) return null;
@@ -92,13 +97,7 @@ async function fetchDesignAuthSessionCrossOriginFallback(): Promise<DesignAuthSe
       credentials: "include",
       headers: { Accept: "application/json" },
     });
-    if (!response.ok) {
-      throw new NetworkError({
-        status: response.status,
-        message: `Session fallback failed (${response.status})`,
-        code: "HTTP",
-      });
-    }
+    if (!response.ok) return null;
     const body = (await response.json()) as Record<string, unknown>;
     return snakeToCamelDeep(body) as DesignAuthSession;
   } catch {
@@ -114,8 +113,10 @@ export async function fetchDesignAuthSession(): Promise<DesignAuthSession | null
     try {
       return await probeDesignAuthSession(client);
     } catch (err) {
-      const fallback = await fetchDesignAuthSessionCrossOriginFallback();
-      if (fallback) return fallback;
+      if (shouldUseDesignApiSessionFallback(err)) {
+        const fallback = await fetchDesignAuthSessionCrossOriginFallback();
+        if (fallback) return fallback;
+      }
       throw err;
     }
   };
