@@ -3,7 +3,7 @@
 **Prod 공개 출시 전 필수.** volume-only Track A는 **용량·백업·테넌트 격리** 측면에서 출시 blocker이다.  
 **개발 SSOT:** 본 문서 · [04 구현 우선순위](./04_구현_우선순위.md) · **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
-**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** · **[17 Production 출시 순서](./17_Production_출시_작업_순서.md)**
+**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** (로컬+S3·Litestream·용량) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** · **[17 Production 출시 순서](./17_Production_출시_작업_순서.md)**
 
 ---
 
@@ -60,6 +60,8 @@ SaaS 공개 출시에는 **저장소 내구성 + 격리** 둘 다 필수다.
 ---
 
 ## 3. 목표 아키텍처 (Hybrid SSOT)
+
+**상세 (로컬 scratch·용량·Litestream·FAQ):** [20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)
 
 Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영속=원격, 실행=로컬 scratch**.
 
@@ -172,7 +174,9 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - 접근 검증은 v1에서 workspace + owner user + active status 기준.
 - nginx `/api/v1/projects` 보호 라우트는 staging/prod design-api에 반영.
 - OD web daemon project create, folder/ZIP import, plugin-share project, host import response 성공 후 design-api registry best-effort 등록 반영.
-- Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). 조회 실패 시 전환기 fallback으로 daemon list 유지.
+- Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). registry 조회 실패 시 daemon list를 노출하지 않고 **fail-closed**한다.
+- daemon legacy project 전체를 현재 workspace registry에 upsert하는 이관 경로는 기본 비활성이다. 명시적 `VITE_TEAMVER_LEGACY_REGISTRY_SYNC=1`에서만 한시적으로 허용한다.
+- managed S3에서 request identity 또는 registry `s3_prefix`를 해석하지 못하면 flat/global remote prefix로 fallback하지 않고 요청을 실패시킨다. request override가 registry SSOT와 달라도 거부한다. standalone OD(미관리 모드)만 flat remote를 유지한다.
 - **smoke**: `scripts/smoke_design.sh --staging` (+ `/access`, `/outputs`, healthz tables). staging/production 모드는 `SMOKE_REQUIRE_OD_STORAGE=1` 이 기본 on 이므로 `checks.od_storage=degraded` 는 실패가 정상이다. 긴급 진단 시에만 `SMOKE_REQUIRE_OD_STORAGE=0` 으로 임시 우회한다.
 - **daemon S3 init**: `OD_PROJECT_STORAGE=s3` 인데 bucket/region/IAM/creds 문제로 S3 backend 초기화가 실패하면 `od_s3_storage_init_failed` 마커 후 daemon 기동 실패가 기본값이다. `OD_S3_ALLOW_SCRATCH_FALLBACK=1` 은 로컬/디버그 전용이며 staging/production preflight 와 storage audit 에서 실패한다.
 - 남음: staging E2E 실계정 실행 (S3 객체·403·publish). 자동화는 `TEAMVER_S3_BUCKET` 설정 시 tenant prefix 객체 존재까지 확인.
@@ -526,12 +530,14 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | [20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) — 로컬 scratch+S3, Litestream, 용량 SSOT |
 | 2026-06-22 | §8.2 EC2 **root + od-data** 2볼륨 정리 — [07 §3.5](./07_VM_배포_인프라.md); 용량 표 Staging 30 / Prod 100 GiB (od-data) |
 | 2026-06-22 | production strict E2E gate — `print_production_track_a_e2e_env.sh` + `--e2e-strict`; auth/usage DB/Drive publish/S3 object 검증의 skip-only 성공 차단 |
 | 2026-06-19 | Production Phase 0 helper — `print/apply/run_production_phase0_activate.sh` 로 prod 전용 RDS+S3 env 병합·dry-run·preflight 제공, fixture 3종 Track A runner 연결 |
 | 2026-06-19 | Track A E2E S3 tenant object probe — `TEAMVER_S3_BUCKET` 설정 시 `/access` S3 prefix header + `aws s3 ls` 로 tenant prefix 객체 존재 검증, fixture/env helper 갱신 |
 | 2026-06-19 | S3 sync hard-fail review fix — soft-deleted reactivation / insert-race reactivation 경로도 sync 실패 시 명시 rollback 하도록 보강, 2개 회귀 테스트 추가 |
 | 2026-06-19 | registry create S3 sync hard-fail — `OD_PROJECT_STORAGE=s3` 에서 daemon `scratch/sync-up` 실패 시 design-api create rollback + 502, Track A runner에 daemon S3 startup test 포함 |
+| 2026-06-22 | hosted tenant fail-closed — registry list/access 장애 시 daemon project 노출 차단, legacy 전체 upsert 기본 off, managed S3 identity/prefix 누락 시 flat remote fallback 금지 |
 | 2026-06-19 | S3 init fail-fast — daemon S3 backend 초기화 실패 시 scratch-only fallback 기본 차단, `od_s3_storage_init_failed` 마커, `OD_S3_ALLOW_SCRATCH_FALLBACK=1` staging/prod 배포 가드 실패 처리 |
 | 2026-06-19 | storage smoke/prod env 출시 게이트 hardening — staging/production smoke storage hard-fail 기본 on, post-deploy smoke 동일 적용, production env hard guard(LLM key·정적 AWS key·staging token) 추가. 남음: EC2 staging `checks.od_storage=ok` 실증 |
 | 2026-06-18 | staging smoke 결과 반영 — RDS registry tables OK, S3 storage probe `checks.od_storage=degraded`; public daemon `/api/health/storage` 302는 nginx auth gate로 분류 |

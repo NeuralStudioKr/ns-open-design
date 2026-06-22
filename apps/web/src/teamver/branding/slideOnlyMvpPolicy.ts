@@ -1,3 +1,4 @@
+import type { InstalledPluginRecord, SkillSummary } from "@open-design/contracts";
 import type { CreateTab } from "../../components/NewProjectPanel";
 import {
   chipsForGroup,
@@ -9,6 +10,7 @@ import type {
   DesignToolboxActionId,
 } from "../../runtime/design-toolbox";
 import type { TeamverBrandingConfig } from "./config";
+import { isSlideRelatedDesignTemplate, isRenderableDesignTemplate } from "./designTemplateVisibility";
 
 /** Home hero chip ids hidden in embed slide-only MVP. */
 export const TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS = new Set([
@@ -105,4 +107,64 @@ export function visibleDesignToolboxActionIds(
   return ids.filter(
     (id) => !TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has(id),
   );
+}
+
+function readPluginMode(
+  record: Pick<InstalledPluginRecord, "manifest">,
+): string | undefined {
+  const mode = record.manifest?.od?.mode;
+  return typeof mode === "string" ? mode.trim() : undefined;
+}
+
+/** Official/community plugins with `manifest.od.mode === 'deck'`. */
+export function isSlideRelatedPlugin(
+  record: Pick<InstalledPluginRecord, "id" | "manifest">,
+): boolean {
+  return readPluginMode(record) === "deck";
+}
+
+export function pluginsForSlideOnlyMvp(
+  plugins: readonly InstalledPluginRecord[],
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): InstalledPluginRecord[] {
+  if (!branding.slideOnlyMvp) return [...plugins];
+  return plugins.filter(isSlideRelatedPlugin);
+}
+
+const SLIDE_ONLY_HIDDEN_SKILL_CATEGORIES = new Set([
+  "image-generation",
+  "video-generation",
+  "animation-motion",
+]);
+
+export function isSlideRelatedSkill(
+  skill: Pick<SkillSummary, "mode" | "category">,
+): boolean {
+  const category = skill.category?.trim() ?? "";
+  if (SLIDE_ONLY_HIDDEN_SKILL_CATEGORIES.has(category)) return false;
+  if (skill.mode === "image" || skill.mode === "video" || skill.mode === "audio") {
+    return false;
+  }
+  if (skill.mode === "prototype" || skill.mode === "template") return false;
+  return true;
+}
+
+export function skillsForSlideOnlyMvp(
+  skills: readonly SkillSummary[],
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): SkillSummary[] {
+  if (!branding.slideOnlyMvp) return [...skills];
+  return skills.filter((skill) => {
+    if (isRenderableDesignTemplate(skill)) {
+      return isSlideRelatedDesignTemplate(skill);
+    }
+    return isSlideRelatedSkill(skill);
+  });
+}
+
+/** Deck template gallery on Home when full community gallery is hidden. */
+export function shouldShowEmbedSlideTemplateGallery(
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp" | "hideCommunityGallery">,
+): boolean {
+  return branding.slideOnlyMvp && branding.hideCommunityGallery;
 }

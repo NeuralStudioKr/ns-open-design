@@ -2,7 +2,7 @@
 
 **목적:** Design EC2에서 **Docker daemon / Litestream** 이 S3에 접근할 때 쓰는 **EC2 instance profile** 설정을 한 문서로 고정한다.  
 **Production 정식 경로:** instance profile **만** (static `OD_S3_ACCESS_KEY_ID` 금지).  
-**관련:** [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md) · [16 S3 저장 시점](./16_S3_데이터_저장_시점_SSOT.md) · [17 Production 출시 순서](./17_Production_출시_작업_순서.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md)
+**관련:** [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md) · [16 S3 저장 시점](./16_S3_데이터_저장_시점_SSOT.md) · **[19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** · [17 Production 출시 순서](./17_Production_출시_작업_순서.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md)
 
 **Terraform SSOT:** `ns-teamver-devops/terraform/services/teamver-design/` — `iam.tf`, `s3.tf`, `ec2.tf`
 

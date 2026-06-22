@@ -114,9 +114,11 @@ describe('Teamver project registry access', () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('registers legacy daemon projects then checks registry membership', async () => {
+    vi.stubEnv('VITE_TEAMVER_LEGACY_REGISTRY_SYNC', '1');
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     let registered = false;
     const post = vi.fn(async () => {
@@ -172,6 +174,7 @@ describe('Teamver project registry access', () => {
   });
 
   it('ensureTeamverProjectRegisteredById upserts from daemon list', async () => {
+    vi.stubEnv('VITE_TEAMVER_LEGACY_REGISTRY_SYNC', '1');
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     const post = vi.fn(async () => ({}));
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
@@ -245,7 +248,7 @@ describe('Teamver project registry access', () => {
     await expect(assertTeamverProjectAccessIfNeeded('p1-deny')).resolves.toBe(false);
   });
 
-  it('returns true when registry list is unavailable (fail-open)', async () => {
+  it('returns false when registry list is unavailable (fail-closed)', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
@@ -257,7 +260,7 @@ describe('Teamver project registry access', () => {
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
 
-    await expect(assertTeamverProjectAccessIfNeeded('p1-transient')).resolves.toBe(true);
+    await expect(assertTeamverProjectAccessIfNeeded('p1-transient')).resolves.toBe(false);
   });
 });
 
@@ -267,10 +270,12 @@ describe('Teamver project registry boot sync', () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.resetModules();
   });
 
   it('syncAllDaemonProjectsToRegistry does not wait on embed boot gate', async () => {
+    vi.stubEnv('VITE_TEAMVER_LEGACY_REGISTRY_SYNC', '1');
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     const post = vi.fn(async () => undefined);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({

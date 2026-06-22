@@ -54,6 +54,6 @@ describe('designTemplateVisibility', () => {
     );
     expect(
       canToggleDesignTemplateInSettings(prototypeTemplate, { slideOnlyMvp: true }),
-    ).toBe(true);
+    ).toBe(false);
   });
 });

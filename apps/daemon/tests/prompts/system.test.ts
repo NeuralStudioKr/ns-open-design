@@ -425,6 +425,16 @@ describe('composeSystemPrompt', () => {
       expect(prompt).not.toContain('- `github` (github)');
     });
 
+    it('injects slide-only scope for deck runs when media execution is disabled', () => {
+      const prompt = composeSystemPrompt({
+        metadata: { kind: 'deck' },
+        mediaExecution: { mode: 'disabled' },
+      });
+
+      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).not.toContain('## Media generation (if asked)');
+    });
+
     it('keeps external MCP tools visible when OD-owned media execution is disabled', () => {
       const prompt = composeSystemPrompt({
         connectedExternalMcp: [{ id: 'external-media', label: 'External media' }],

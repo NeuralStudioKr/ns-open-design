@@ -20,4 +20,13 @@ describe('media execution policy for project metadata', () => {
       allowedModels: ['gpt-image-2'],
     });
   });
+
+  it('disables all media execution in embed slide MVP', () => {
+    expect(
+      mediaExecutionPolicyForProjectMetadata({ kind: 'image' }, { slideOnlyMvp: true }),
+    ).toEqual({ mode: 'disabled' });
+    expect(
+      mediaExecutionPolicyForProjectMetadata({ kind: 'deck' }, { slideOnlyMvp: true }),
+    ).toEqual({ mode: 'disabled' });
+  });
 });

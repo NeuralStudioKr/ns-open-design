@@ -17,6 +17,8 @@
 | **[13 embed 슬라이드 MVP](./13_embed_슬라이드_MVP_기능게이트.md)** | **embed 1차 출시 — deck-only UI·MCP/미디어 비노출** |
 | **[15 웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)** | **URL 기반 슬라이드 · web search vs web_fetch · daemon 패치 FAQ** |
 | **[16 S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** | **언제 S3에 올라가는지 · scratch/sync-up · RDS·Drive·Litestream 구분** |
+| **[19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** | **버킷·폴더(prefix)별 저장 내용 · 자동 생성 · lifecycle** |
+| **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** | **로컬 scratch+S3 · Litestream · 용량·evict · FAQ** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -35,6 +37,8 @@
 | 11 | **[Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md)** |
 | 15 | **[웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)** |
 | 16 | **[S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** |
+| 19 | **[S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** |
+| 20 | **[Hybrid 저장소 (로컬+S3)](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
@@ -88,6 +92,8 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | [20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) — scratch+S3, Litestream, 용량 |
+| 2026-06-22 | [19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md) — prefix별 저장·자동 생성·lifecycle |
 | 2026-06-22 | [15 웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md) — URL 슬라이드 · Main BE web search 대비 |
 | 2026-06-15 | [10 세션·OD패치](./10_세션·OD패치_보강.md) · [11 Usage·Drive](./11_Usage·Drive_Publish_보강.md) — 연동 보강 SSOT |
 | 2026-06-15 | [09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md) — Prod blocker |

@@ -52,7 +52,8 @@ import {
   readTeamverDriveLaunchIntent,
 } from '../teamver/driveLaunchHandoff';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
-import { visibleDesignToolboxActions } from '../teamver/branding/slideOnlyMvpPolicy';
+import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
+import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -716,11 +717,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // context from the tools menu and @ picker.
     const pluginsForComposer = useMemo<InstalledPluginRecord[]>(() => {
       const allowedKinds = new Set(['skill', 'scenario', 'bundle']);
-      return installedPlugins.filter((p) => {
+      const installed = installedPlugins.filter((p) => {
         const k = p.manifest?.od?.kind;
         return !k || allowedKinds.has(k);
       });
-    }, [installedPlugins]);
+      return pluginsForSlideOnlyMvp(installed, { slideOnlyMvp });
+    }, [installedPlugins, slideOnlyMvp]);
+
+    const skillsForComposer = useMemo(
+      () => skillsForSlideOnlyMvp(skills, { slideOnlyMvp }),
+      [skills, slideOnlyMvp],
+    );
 
     const enabledMcpServers = useMemo(
       () => mcpServers.filter((s) => s.enabled),
@@ -742,14 +749,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     const designToolboxResourceIndex = useMemo<DesignToolboxResourceIndex>(
       () => ({
-        skills,
+        skills: skillsForComposer,
         plugins: pluginsForComposer,
         mcpServers: enabledMcpServers,
         mcpTemplates,
         connectors,
         projectFiles,
       }),
-      [connectors, enabledMcpServers, mcpTemplates, pluginsForComposer, projectFiles, skills],
+      [connectors, enabledMcpServers, mcpTemplates, pluginsForComposer, projectFiles, skillsForComposer],
     );
     const composerMentionEntities = useMemo(
       () =>
@@ -758,11 +765,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           files: projectFiles,
           mcpServers: enabledMcpServers,
           plugins: pluginsForComposer,
-          skills,
+          skills: skillsForComposer,
           staged,
           workspaceContexts,
         }),
-      [connectors, enabledMcpServers, pluginsForComposer, projectFiles, skills, staged, workspaceContexts],
+      [connectors, enabledMcpServers, pluginsForComposer, projectFiles, skillsForComposer, staged, workspaceContexts],
     );
     // Resolve which tabs to surface in the consolidated tools popover.
     // Plugins is always visible while a project is active so users can
@@ -1083,6 +1090,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     ): boolean {
       setStreamingAnnotationSendPending(false);
       if (!prompt && attachments.length === 0 && nextCommentAttachments.length === 0) return false;
+      const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(prompt, { slideOnlyMvp });
+      if (slideOnlyBlock) {
+        setUploadError(slideOnlyBlock);
+        return false;
+      }
       const nextAttachments =
         activeFileContext && !attachments.some((attachment) => attachment.path === activeFileContext)
           ? [
@@ -2211,11 +2223,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const filteredSkills = useMemo(() => {
       if (!mention) return [];
       const stagedSkillIds = new Set(stagedSkills.map((s) => s.id));
-      return skills
+      return skillsForComposer
         .filter((s) => !stagedSkillIds.has(s.id))
         .filter((s) => skillMatchesQuery(s, mentionQuery))
         .sort((a, b) => skillMentionRank(a, mentionQuery) - skillMentionRank(b, mentionQuery));
-    }, [mention, mentionQuery, skills, stagedSkills]);
+    }, [mention, mentionQuery, skillsForComposer, stagedSkills]);
     const hasComposerPayload =
       draft.trim().length > 0 || staged.length > 0 || currentCommentAttachments().length > 0;
     const showStopButton = streaming && !hasComposerPayload;
@@ -2483,7 +2495,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               renderToolbox={(close) => (
                 <DesignToolboxPanel
                   actions={visibleDesignToolboxActions(DESIGN_TOOLBOX_ACTIONS, { slideOnlyMvp })}
-                  skills={skills}
+                  skills={skillsForComposer}
                   plugins={pluginsForComposer}
                   mcpServers={hideComposerIntegrations ? [] : enabledMcpServers}
                   mcpTemplates={hideComposerIntegrations ? [] : mcpTemplates}
@@ -2539,7 +2551,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 >
                   <DesignToolboxPanel
                     actions={visibleDesignToolboxActions(DESIGN_TOOLBOX_ACTIONS, { slideOnlyMvp })}
-                    skills={skills}
+                    skills={skillsForComposer}
                     plugins={pluginsForComposer}
                     mcpServers={hideComposerIntegrations ? [] : enabledMcpServers}
                     mcpTemplates={hideComposerIntegrations ? [] : mcpTemplates}

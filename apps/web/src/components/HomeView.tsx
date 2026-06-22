@@ -90,6 +90,12 @@ import { examplePresetSeedPrompt } from './plugins-home/presetSeedPrompt';
 import { localizePluginDescription } from './plugins-home/localization';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { AnimatePresence } from 'motion/react';
+import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
+import {
+  pluginsForSlideOnlyMvp,
+  shouldShowEmbedSlideTemplateGallery,
+  skillsForSlideOnlyMvp,
+} from '../teamver/branding/slideOnlyMvpPolicy';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 
 export interface ActivePlugin {
@@ -246,6 +252,7 @@ export function HomeView({
     hideComposerIntegrations,
     hideCommunityGallery,
     hidePluginRegistry,
+    slideOnlyMvp,
   } = useTeamverBranding();
   const analytics = useAnalytics();
   // P0 page_view page_name=home — fire once on mount. ref-keyed to survive
@@ -623,9 +630,23 @@ export function HomeView({
   );
 
   const selectableSkills = useMemo(
-    () => skills.filter((skill) => !skill.aggregatesExamples),
-    [skills],
+    () =>
+      skillsForSlideOnlyMvp(
+        skills.filter((skill) => !skill.aggregatesExamples),
+        { slideOnlyMvp },
+      ),
+    [skills, slideOnlyMvp],
   );
+
+  const slideTemplatePlugins = useMemo(
+    () => pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp }),
+    [plugins, slideOnlyMvp],
+  );
+
+  const showEmbedSlideTemplateGallery = shouldShowEmbedSlideTemplateGallery({
+    slideOnlyMvp,
+    hideCommunityGallery,
+  });
 
   const enabledMcpServers = useMemo(
     () => mcpServers.filter((server) => server.enabled),
@@ -1434,6 +1455,11 @@ export function HomeView({
   async function submit() {
     const trimmed = prompt.trim();
     if (!trimmed && stagedFiles.length === 0) return;
+    const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(trimmed, { slideOnlyMvp });
+    if (slideOnlyBlock) {
+      setError(slideOnlyBlock);
+      return;
+    }
     // P0 ui_click area=chat_composer element=send_button. Fires before the
     // async plugin-apply roundtrip so the click count reflects user intent
     // even when the run is rejected (missing inputs, apply failure). The
@@ -1620,7 +1646,7 @@ export function HomeView({
         stagedFiles={stagedFiles}
         onAddFiles={stageFiles}
         onRemoveFile={removeStagedFile}
-        pluginOptions={plugins}
+        pluginOptions={slideTemplatePlugins}
         pluginsLoading={pluginsLoading}
         skillOptions={selectableSkills}
         skillsLoading={skillsLoading}
@@ -1717,6 +1743,25 @@ export function HomeView({
         />
       </HomeTemplatesReveal>
       )}
+
+      {showEmbedSlideTemplateGallery ? (
+      <HomeTemplatesReveal
+        enabled={!projectsLoading && projects.length === 0}
+      >
+        <PluginsHomeSection
+          plugins={slideTemplatePlugins}
+          loading={pluginsLoading}
+          activePluginId={active?.record.id ?? null}
+          pendingApplyId={pendingApplyId}
+          onUse={(record, action) => void routePluginUse(record, action)}
+          onOpenDetails={handleCommunityOpenDetails}
+          onOpenExternal={handleCommunityOpenExternal}
+          onBrowseRegistry={onBrowseRegistry}
+          preferDefaultFacet
+          cardLayout="gallery"
+        />
+      </HomeTemplatesReveal>
+      ) : null}
 
       <AnimatePresence>
         {detailsRecord ? (

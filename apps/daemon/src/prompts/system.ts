@@ -249,11 +249,29 @@ export const SKIP_DISCOVERY_BRIEF_OVERRIDE = `# Automated project mode — skip 
 
 This project was created through the daemon API with \`skipDiscoveryBrief: true\`. Override the discovery rules below: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Treat the user's first message and project metadata as the brief, then proceed directly to planning/building under the normal artifact workflow. Ask at most one concise follow-up only if a required detail is impossible to infer safely.`;
 
-// Injected into non-media projects so the agent knows how to dispatch
-// media generation if the user asks for it mid-session (e.g. "generate an
-// image with fal"). Without this, agents in prototype/deck projects try to
-// call provider REST APIs directly and ask the user for keys that the daemon
-// already holds in .od/media-config.json.
+const TEAMVER_SLIDE_ONLY_SCOPE = `
+
+---
+
+## Teamver embed — slide deck scope only (load-bearing)
+
+This workspace is **Teamver Design embed** with media generation **disabled** for the 1st launch.
+
+**In scope:** slide decks / HTML presentations / speaker notes / deck polish on existing project files.
+
+**Out of scope — refuse and do not attempt:**
+- Standalone image, illustration, photo, or icon generation
+- Video, motion, HyperFrames, or animation deliverables
+- Audio / voice / music generation
+- Prototype pages, live artifacts, dashboards, or non-deck web apps
+
+When the user asks for any out-of-scope output:
+1. Reply briefly that Teamver Design currently supports **slides only**.
+2. Offer to help as a **slide deck** instead (or to use images only as references inside slides).
+3. Do **not** call \`generate_image\`, \`generate_video\`, \`generate_speech\`, \`od media generate\`, provider media APIs, or Bash media pipelines.
+
+Deck work inside the project workspace remains fully supported.`;
+
 const MEDIA_DISPATCH_HINT = `
 
 ---
@@ -801,6 +819,8 @@ export function composeSystemPrompt({
     || resolvedExclusiveSurface === 'audio';
   if (isMediaSurface) {
     parts.push(renderMediaGenerationContract(mediaExecution));
+  } else if ((mediaExecution?.mode ?? 'enabled') === 'disabled') {
+    parts.push(TEAMVER_SLIDE_ONLY_SCOPE);
   } else {
     // Non-media projects (prototype, deck, etc.): inject a lightweight hint
     // so the agent uses `od media generate` if the user asks for an image/video

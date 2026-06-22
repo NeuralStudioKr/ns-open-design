@@ -1,13 +1,20 @@
 import type { MediaExecutionPolicy } from '@open-design/contracts';
 import type { ProjectMetadata } from '../types';
+import type { TeamverBrandingConfig } from '../teamver/branding/config';
 
 function cleanModel(model: unknown): string {
   return typeof model === 'string' ? model.trim() : '';
 }
 
+const SLIDE_ONLY_MEDIA_POLICY: MediaExecutionPolicy = { mode: 'disabled' };
+
 export function mediaExecutionPolicyForProjectMetadata(
   metadata: ProjectMetadata | null | undefined,
+  branding?: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>,
 ): MediaExecutionPolicy | undefined {
+  if (branding?.slideOnlyMvp) {
+    return SLIDE_ONLY_MEDIA_POLICY;
+  }
   if (!metadata) return undefined;
   if (metadata.kind === 'image') {
     const model = cleanModel(metadata.imageModel);

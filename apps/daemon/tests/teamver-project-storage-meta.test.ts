@@ -155,23 +155,18 @@ describe('teamver-project-storage-meta', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('returns fallback when identity is null', async () => {
+    it('rejects managed storage when identity is null', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       const fetchMock: FetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
       const tenant = vi.fn((prefix: string) => fakeStorage(`tenant:${prefix}`));
       const fallback = vi.fn(() => fakeStorage('fallback'));
 
-      const result = await resolveTeamverTenantRemoteStorage(
-        'proj-1',
-        null,
-        tenant,
-        fallback,
-      );
-
-      expect(result.s3Prefix).toBeNull();
+      await expect(
+        resolveTeamverTenantRemoteStorage('proj-1', null, tenant, fallback),
+      ).rejects.toThrow('teamver_project_identity_required');
       expect(tenant).not.toHaveBeenCalled();
-      expect(fallback).toHaveBeenCalledTimes(1);
+      expect(fallback).not.toHaveBeenCalled();
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -194,7 +189,7 @@ describe('teamver-project-storage-meta', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('returns fallback when access check yields no prefix', async () => {
+    it('rejects managed storage when access check yields no prefix', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       const fetchMock: FetchMock = vi.fn().mockResolvedValue({
         status: 403,
@@ -204,16 +199,11 @@ describe('teamver-project-storage-meta', () => {
       const tenant = vi.fn((prefix: string) => fakeStorage(`tenant:${prefix}`));
       const fallback = vi.fn(() => fakeStorage('fallback'));
 
-      const result = await resolveTeamverTenantRemoteStorage(
-        'proj-1',
-        identity,
-        tenant,
-        fallback,
-      );
-
-      expect(result.s3Prefix).toBeNull();
+      await expect(
+        resolveTeamverTenantRemoteStorage('proj-1', identity, tenant, fallback),
+      ).rejects.toThrow('teamver_project_s3_prefix_required');
       expect(tenant).not.toHaveBeenCalled();
-      expect(fallback).toHaveBeenCalledTimes(1);
+      expect(fallback).not.toHaveBeenCalled();
     });
 
     it('returns tenant-scoped storage when access check returns prefix', async () => {
@@ -262,6 +252,30 @@ describe('teamver-project-storage-meta', () => {
 
       expect(result.s3Prefix).toBe('design/from-server');
       expect(tenant).toHaveBeenCalledWith('design/from-server');
+      expect(fallback).not.toHaveBeenCalled();
+    });
+
+    it('rejects a managed prefix override that differs from registry SSOT', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        status: 204,
+        headers: noopHeaders({
+          'X-Teamver-S3-Prefix': 'design/ws_a/user_b/proj_proj-1',
+        }),
+      }));
+      const tenant = vi.fn((prefix: string) => fakeStorage(`tenant:${prefix}`));
+      const fallback = vi.fn(() => fakeStorage('fallback'));
+
+      await expect(
+        resolveTeamverTenantRemoteStorage(
+          'proj-1',
+          identity,
+          tenant,
+          fallback,
+          'design/ws_other/user_other/proj_proj-1',
+        ),
+      ).rejects.toThrow('teamver_project_s3_prefix_mismatch');
+      expect(tenant).not.toHaveBeenCalled();
       expect(fallback).not.toHaveBeenCalled();
     });
   });

@@ -841,6 +841,7 @@ export function ProjectView({
     hideHandoffButton,
     hideLocalWorkspaceControls,
     hideExternalShareSurfaces,
+    slideOnlyMvp,
   } = useTeamverBranding();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const handleThemeChange = onThemeChange ?? (() => {});
@@ -3728,7 +3729,9 @@ export function ProjectView({
           appliedPluginSnapshotId:
             meta?.appliedPluginSnapshotId ?? meta?.appliedPluginSnapshot?.snapshotId ?? null,
           research: meta?.research,
-          mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata),
+          mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata, {
+            slideOnlyMvp,
+          }),
           model: choice?.model ?? null,
           reasoning: choice?.reasoning ?? null,
           locale,

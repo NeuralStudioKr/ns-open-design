@@ -30,10 +30,19 @@ export function isDesignTemplateEnabled(
   disabledSkills: string[] | undefined,
   branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>,
 ): boolean {
-  if (branding.slideOnlyMvp && isSlideRelatedDesignTemplate(template)) {
-    return true;
+  if (branding.slideOnlyMvp) {
+    return isSlideRelatedDesignTemplate(template);
   }
   return !(disabledSkills ?? []).includes(template.id);
+}
+
+/** Settings / library rows visible in embed slide-only MVP. */
+export function isDesignTemplateVisibleInSettings(
+  template: Pick<SkillSummary, 'mode'>,
+  branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>,
+): boolean {
+  if (!branding.slideOnlyMvp) return true;
+  return isSlideRelatedDesignTemplate(template);
 }
 
 /** Settings toggle — deck templates stay on (non-toggleable) in embed slide MVP. */
@@ -41,6 +50,9 @@ export function canToggleDesignTemplateInSettings(
   template: Pick<SkillSummary, 'mode'>,
   branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>,
 ): boolean {
+  if (branding.slideOnlyMvp && !isSlideRelatedDesignTemplate(template)) {
+    return false;
+  }
   if (branding.slideOnlyMvp && isSlideRelatedDesignTemplate(template)) {
     return false;
   }

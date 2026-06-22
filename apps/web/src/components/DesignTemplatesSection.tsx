@@ -13,6 +13,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import {
   canToggleDesignTemplateInSettings,
   isDesignTemplateEnabled,
+  isDesignTemplateVisibleInSettings,
 } from '../teamver/branding/designTemplateVisibility';
 import type { AppConfig } from '../types';
 import { Icon } from './Icon';
@@ -56,12 +57,13 @@ export function DesignTemplatesSection({ cfg, setCfg }: Props) {
   const filteredTemplates = useMemo(() => {
     const q = search.toLowerCase().trim();
     return templates.filter((item) => {
+      if (!isDesignTemplateVisibleInSettings(item, branding)) return false;
       if (modeFilter !== 'all' && item.mode !== modeFilter) return false;
       if (!q) return true;
       const hay = `${item.name}\n${localizeSkillName(locale, item)}\n${item.description}\n${localizeSkillDescription(locale, item)}\n${(item.triggers ?? []).join(' ')}`;
       return hay.toLowerCase().includes(q);
     });
-  }, [templates, modeFilter, search, locale]);
+  }, [templates, modeFilter, search, locale, branding]);
 
   const toggleEnabled = useCallback(
     (template: SkillSummary, enabled: boolean) => {

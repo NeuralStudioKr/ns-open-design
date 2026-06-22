@@ -27,6 +27,10 @@ const FE_ACCESS_CACHE_MS = 30_000;
 const REGISTRY_LIST_CACHE_MS = 15_000;
 const SYNC_ALL_MIN_INTERVAL_MS = 60_000;
 
+function legacyRegistryMigrationEnabled(): boolean {
+  return import.meta.env.VITE_TEAMVER_LEGACY_REGISTRY_SYNC === "1";
+}
+
 const feAccessCache = new Map<string, { allowed: boolean; at: number }>();
 let registeredIdsCache: { workspaceId: string; ids: Set<string>; at: number } | null = null;
 let syncAllInflight: Promise<void> | null = null;
@@ -142,6 +146,7 @@ export async function registerTeamverProjectIfNeeded(
 /** Best-effort registry upsert for legacy daemon projects before access checks. */
 export async function ensureTeamverProjectRegisteredById(projectId: string): Promise<void> {
   if (!isTeamverEmbedMode()) return;
+  if (!legacyRegistryMigrationEnabled()) return;
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return;
@@ -155,6 +160,7 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
 /** Embed boot: upsert all daemon projects into design-api registry (legacy migration). */
 export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   if (!isTeamverEmbedMode()) return;
+  if (!legacyRegistryMigrationEnabled()) return;
   // Called during embed boot before completeTeamverEmbedBoot — must not wait on boot gate.
 
   const client = getDesignBffClient();
@@ -218,8 +224,9 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
 export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Project, "id">>(
   projects: T[],
 ): Promise<T[]> {
+  if (!isTeamverEmbedMode()) return projects;
   const registeredIds = await listTeamverRegisteredProjectIds();
-  if (registeredIds === null) return projects;
+  if (registeredIds === null) return [];
   return projects.filter((project) => registeredIds.has(project.id));
 }
 
@@ -276,10 +283,10 @@ export async function assertTeamverProjectAccessIfNeeded(
   if (!trimmedId) return false;
 
   const client = getDesignBffClient();
-  if (!client) return true;
+  if (!client) return false;
 
   const workspaceId = (await client.workspaceStore?.get())?.trim();
-  if (!workspaceId) return true;
+  if (!workspaceId) return false;
 
   const cacheKey = `${workspaceId}:${trimmedId}`;
   const cached = feAccessCache.get(cacheKey);
@@ -293,19 +300,21 @@ export async function assertTeamverProjectAccessIfNeeded(
     return true;
   }
 
-  await ensureTeamverProjectRegisteredById(trimmedId);
-  allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
-  if (allowed === true) {
-    feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
-    return true;
+  if (legacyRegistryMigrationEnabled()) {
+    await ensureTeamverProjectRegisteredById(trimmedId);
+    allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
+    if (allowed === true) {
+      feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
+      return true;
+    }
+    if (allowed === false) {
+      feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
+      return false;
+    }
   }
 
-  if (allowed === false) {
-    feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
-    return false;
-  }
-
-  return true;
+  feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
+  return false;
 }
 
 /** Embed: daemon project delete 후 design-api registry soft-delete (best-effort). */
