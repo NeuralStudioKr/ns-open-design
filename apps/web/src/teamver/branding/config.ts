@@ -8,7 +8,11 @@ import {
 } from "./siteMetadata";
 
 /** SettingsDialog / EntrySettingsMenu sections exposed in Teamver embed. */
-export const TEAMVER_EMBED_SETTINGS_SECTIONS = ["language", "appearance"] as const;
+export const TEAMVER_EMBED_SETTINGS_SECTIONS = [
+  "language",
+  "appearance",
+  "designTemplates",
+] as const;
 
 export type TeamverEmbedSettingsSection = (typeof TEAMVER_EMBED_SETTINGS_SECTIONS)[number];
 
@@ -130,7 +134,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideUsefulTips: true,
         hideHandoffButton: true,
         hideAssistantModelLabels: true,
-        hideAssistantThinkingDetails: true,
+        hideAssistantThinkingDetails: false,
         lockExecutionConfig: true,
         hideLocalWorkspaceControls: true,
         hideWorkspaceTabsBar: true,

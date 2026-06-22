@@ -12,6 +12,7 @@ const {
   fetchCodexPetsMock,
   syncCommunityPetsMock,
   fetchSkillsMock,
+  fetchDesignTemplatesMock,
   fetchDesignSystemsMock,
   fetchSkillMock,
   fetchDesignSystemMock,
@@ -29,6 +30,7 @@ const {
   fetchCodexPetsMock: vi.fn(),
   syncCommunityPetsMock: vi.fn(),
   fetchSkillsMock: vi.fn(),
+  fetchDesignTemplatesMock: vi.fn(),
   fetchDesignSystemsMock: vi.fn(),
   fetchSkillMock: vi.fn(),
   fetchDesignSystemMock: vi.fn(),
@@ -62,6 +64,7 @@ vi.mock('../../src/providers/registry', async () => {
     fetchCodexPets: fetchCodexPetsMock,
     syncCommunityPets: syncCommunityPetsMock,
     fetchSkills: fetchSkillsMock,
+    fetchDesignTemplates: fetchDesignTemplatesMock,
     fetchDesignSystems: fetchDesignSystemsMock,
     fetchSkill: fetchSkillMock,
     fetchDesignSystem: fetchDesignSystemMock,
@@ -88,6 +91,14 @@ vi.mock('../../src/analytics/provider', () => ({
     newRequestId: () => 'test-request',
   }),
 }));
+
+vi.mock('../../src/teamver/designApiBase', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/teamver/designApiBase')>();
+  return {
+    ...actual,
+    isTeamverEmbedMode: vi.fn(() => false),
+  };
+});
 
 import { SettingsDialog } from '../../src/components/SettingsDialog';
 import type { AgentRefreshOptions, SettingsSection } from '../../src/components/SettingsDialog';
@@ -186,14 +197,14 @@ const sampleSkills = [
     id: 'blog-post',
     name: 'blog-post',
     description: 'A long-form article / blog post.',
-    mode: 'prototype',
+    mode: 'utility',
     previewType: 'HTML',
   },
   {
-    id: 'dashboard',
-    name: 'dashboard',
-    description: 'Admin / analytics dashboard.',
-    mode: 'prototype',
+    id: 'design-brief',
+    name: 'design-brief',
+    description: 'Capture a structured design brief.',
+    mode: 'utility',
     previewType: 'HTML',
   },
   {
@@ -320,6 +331,7 @@ beforeEach(() => {
   fetchCodexPetsMock.mockReset();
   syncCommunityPetsMock.mockReset();
   fetchSkillsMock.mockReset();
+  fetchDesignTemplatesMock.mockReset();
   fetchDesignSystemsMock.mockReset();
   fetchSkillMock.mockReset();
   fetchDesignSystemMock.mockReset();
@@ -344,6 +356,7 @@ beforeEach(() => {
     errors: [],
   });
   fetchSkillsMock.mockResolvedValue(sampleSkills);
+  fetchDesignTemplatesMock.mockResolvedValue([]);
   fetchDesignSystemsMock.mockResolvedValue(sampleDesignSystems);
   fetchSkillMock.mockImplementation(async (id: string) => ({
     id,
@@ -3943,20 +3956,20 @@ describe('SettingsDialog skills section', () => {
 
     await waitFor(() => {
       expect(screen.getByText('blog-post')).toBeTruthy();
-      expect(screen.getByText('sales-deck')).toBeTruthy();
     });
+    expect(screen.queryByText('sales-deck')).toBeNull();
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Type' }), {
-      target: { value: 'deck' },
+      target: { value: 'utility' },
     });
-    expect(screen.queryByText('blog-post')).toBeNull();
-    expect(screen.getByText('sales-deck')).toBeTruthy();
+    expect(screen.getByText('blog-post')).toBeTruthy();
+    expect(screen.queryByText('sales-deck')).toBeNull();
 
     fireEvent.change(screen.getByPlaceholderText('Search...'), {
-      target: { value: 'sales' },
+      target: { value: 'blog' },
     });
-    expect(screen.getByText('sales-deck')).toBeTruthy();
-    expect(screen.queryByText('dashboard')).toBeNull();
+    expect(screen.getByText('blog-post')).toBeTruthy();
+    expect(screen.queryByText('design-brief')).toBeNull();
   });
 
   it('opens a skill detail panel and persists disabled skills from toggle switches', async () => {

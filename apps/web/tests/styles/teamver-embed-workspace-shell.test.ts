@@ -16,4 +16,13 @@ describe('Teamver embed workspace shell', () => {
       /\.workspace-shell\.workspace-shell--no-tabs[\s\S]*--workspace-tabs-chrome-height:\s*0px/,
     );
   });
+
+  it('reserves escape-bar chrome height on embed project routes', () => {
+    expect(teamverCss).toContain('.workspace-shell.workspace-shell--no-tabs.workspace-shell--embed-escape');
+    expect(teamverCss).toMatch(
+      /\.workspace-shell\.workspace-shell--no-tabs\.workspace-shell--embed-escape[\s\S]*--workspace-tabs-chrome-height:\s*36px/,
+    );
+    expect(teamverCss).toContain('.teamver-workspace-escape__design-home');
+    expect(teamverCss).toContain('.teamver-workspace-escape__teamver-app');
+  });
 });

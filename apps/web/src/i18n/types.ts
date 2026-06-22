@@ -418,6 +418,16 @@ export interface Dict {
   'settings.installLatest': string;
   'settings.alreadyLatest': string;
   'settings.skills': string;
+  'settings.designTemplates': string;
+  'settings.designTemplatesHint': string;
+  'settings.designTemplatesLockedDeck': string;
+  'teamver.embed.designHome': string;
+  'teamver.embed.designHomeTitle': string;
+  'teamver.embed.teamverApp': string;
+  'teamver.embed.teamverAppTitle': string;
+  'teamver.embed.sessionLoading': string;
+  'teamver.embed.signIn': string;
+  'teamver.embed.designDisabled': string;
   'settings.skillsHint': string;
   'settings.skillsNew': string;
   'settings.skillsEmpty': string;

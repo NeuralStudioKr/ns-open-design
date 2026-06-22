@@ -40,7 +40,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideUsefulTips).toBe(true);
     expect(branding.hideHandoffButton).toBe(true);
     expect(branding.hideAssistantModelLabels).toBe(true);
-    expect(branding.hideAssistantThinkingDetails).toBe(true);
+    expect(branding.hideAssistantThinkingDetails).toBe(false);
     expect(branding.lockExecutionConfig).toBe(true);
     expect(branding.hideLocalWorkspaceControls).toBe(true);
     expect(branding.hideWorkspaceTabsBar).toBe(true);
@@ -52,7 +52,9 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideCommunityGallery).toBe(true);
     expect(branding.hidePluginRegistry).toBe(true);
     expect(branding.hideExternalShareSurfaces).toBe(true);
-    expect(branding.allowedSettingsSections).toEqual(new Set(['language', 'appearance']));
+    expect(branding.allowedSettingsSections).toEqual(
+      new Set(['language', 'appearance', 'designTemplates']),
+    );
   });
 
   it('keeps the tenant-boundary share gates aligned in embed', () => {

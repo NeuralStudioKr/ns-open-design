@@ -335,3 +335,92 @@
   grid-template-rows: minmax(0, 1fr);
   --workspace-tabs-chrome-height: 0px;
 }
+
+/* Project workspace: Design home (in-app) + Teamver app (leave embed). */
+.workspace-shell.workspace-shell--no-tabs.workspace-shell--embed-escape {
+  grid-template-rows: auto minmax(0, 1fr);
+  --workspace-tabs-chrome-height: 36px;
+}
+
+.teamver-workspace-escape {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 36px;
+  padding: 0 0.65rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+  min-width: 0;
+}
+
+.teamver-workspace-escape__design-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.55rem 0.2rem 0.3rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.teamver-workspace-escape__design-home:hover,
+.teamver-workspace-escape__design-home:focus-visible {
+  background: var(--bg-subtle);
+  outline: none;
+}
+
+.teamver-workspace-escape__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.teamver-workspace-escape__teamver-app {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.teamver-workspace-escape__teamver-app:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
+  text-decoration: none;
+}
+
+.teamver-embed-bar__teamver-app .teamver-embed-bar__main-link-icon {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .teamver-workspace-escape {
+    padding-inline: 0.45rem;
+    gap: 0.45rem;
+  }
+
+  .teamver-workspace-escape__teamver-app span,
+  .teamver-embed-bar__main-link-label {
+    max-width: 6.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

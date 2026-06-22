@@ -1,4 +1,5 @@
 import { Icon } from "./Icon";
+import { useT } from "../i18n";
 import { resolveTeamverLoginUrl, resolveTeamverMainOrigin } from "../teamver/designApiBase";
 import { TeamverAvatarGlyph } from "../teamver/components/TeamverAvatarGlyph";
 import { TeamverWorkspaceSwitcher } from "../teamver/components/TeamverWorkspaceSwitcher";
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function TeamverSessionBanner({ teamverEmbed }: Props) {
+  const t = useT();
   const embed = useTeamverEmbed(teamverEmbed);
 
   if (!teamverEmbed) return null;
@@ -16,7 +18,7 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
   if (embed.loading) {
     return (
       <div className="teamver-embed-bar" data-state="loading" data-testid="teamver-embed-bar">
-        <span className="teamver-embed-bar__status">Teamver 세션 확인 중…</span>
+        <span className="teamver-embed-bar__status">{t("teamver.embed.sessionLoading")}</span>
       </div>
     );
   }
@@ -37,19 +39,19 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
               title={embed.designDisabledReason ?? undefined}
               data-testid="teamver-embed-app-disabled"
             >
-              Design 사용 불가
+              {t("teamver.embed.designDisabled")}
             </span>
           ) : null}
         </div>
         <div className="teamver-embed-bar__group teamver-embed-bar__group--account">
           <a
-            className="teamver-embed-bar__main-link"
+            className="teamver-embed-bar__main-link teamver-embed-bar__teamver-app"
             href={resolveTeamverMainOrigin()}
-            title="Teamver 메인 앱으로 이동"
+            title={t("teamver.embed.teamverAppTitle")}
             data-testid="teamver-embed-main-link"
           >
-            <Icon name="home" size={15} className="teamver-embed-bar__main-link-icon" />
-            <span className="teamver-embed-bar__main-link-label">Teamver 메인</span>
+            <Icon name="external-link" size={14} className="teamver-embed-bar__main-link-icon" />
+            <span className="teamver-embed-bar__main-link-label">{t("teamver.embed.teamverApp")}</span>
           </a>
           {embed.userLabel ? (
             <div
@@ -74,7 +76,7 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
   return (
     <div className="teamver-embed-bar" data-state="warn" data-testid="teamver-embed-bar">
       <a className="teamver-embed-bar__signin" href={resolveTeamverLoginUrl()}>
-        Teamver 로그인
+        {t("teamver.embed.signIn")}
       </a>
     </div>
   );

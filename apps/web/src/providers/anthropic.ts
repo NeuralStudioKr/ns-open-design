@@ -34,6 +34,7 @@ export interface StreamHandlers {
   onDone: (fullText: string) => void;
   onError: (err: Error) => void;
   onUsage?: (usage: ProxyUsageSnapshot) => void;
+  onThinkingDelta?: (thinkingDelta: string) => void;
 }
 
 export function makeClient(cfg: AppConfig): Anthropic {

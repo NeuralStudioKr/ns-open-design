@@ -3846,6 +3846,9 @@ export function ProjectView({
             handlers.onDelta(delta);
             handlers.onAgentEvent({ kind: 'text', text: delta });
           },
+          onThinkingDelta: (delta) => {
+            handlers.onAgentEvent({ kind: 'thinking', text: delta });
+          },
           onUsage: (usage) => {
             pushEvent({
               kind: 'usage',

@@ -35,6 +35,7 @@ import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectionTest.js';
 import { googleStreamGenerateContentUrl } from './google-models.js';
 import { createRoleMarkerGuard } from './role-marker-guard.js';
+import { createThinkTagSplitter } from './think-tag-splitter.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -619,12 +620,18 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   };
 
   // Per-request role-marker guard for BYOK proxy streams (#3247).
+  // MiniMax M3 embeds redacted_thinking markers in delta.content — split those into
+  // thinking_delta so the chat surface stays clean (see docs 09-thinking-suppression).
   function createDeltaGuard(sse: any) {
     const guard = createRoleMarkerGuard('proxy');
+    const thinkSplitter = createThinkTagSplitter((chunk) => {
+      sse.send('thinking_delta', { delta: chunk });
+    });
     return {
       sendDelta(text: string) {
         if (guard.contaminated || !text) return;
-        const safe = guard.feedText(text);
+        const { visible } = thinkSplitter.feed(text);
+        const safe = guard.feedText(visible);
         if (safe.length > 0) {
           sse.send('delta', { delta: safe });
         }
@@ -636,8 +643,18 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           });
         }
       },
-      get contaminated() { 
-        return guard.contaminated; 
+      flushThinkTag() {
+        const tail = thinkSplitter.flush();
+        if (tail.thinking.length > 0) {
+          sse.send('thinking_delta', { delta: tail.thinking });
+        }
+        if (tail.visible.length > 0) {
+          const safe = guard.feedText(tail.visible);
+          if (safe.length > 0) sse.send('delta', { delta: safe });
+        }
+      },
+      get contaminated() {
+        return guard.contaminated;
       },
     };
   }
@@ -745,6 +762,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           }
         }
         if (event === 'message_stop') {
+          guard.flushThinkTag();
           sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
           sse.send('end', {});
           ended = true;
@@ -753,6 +771,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
+        guard.flushThinkTag();
         sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
         sse.send('end', {});
       }
@@ -845,7 +864,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         return false;
       });
-      if (!ended) sse.send('end', {});
+      if (!ended) {
+        guard.flushThinkTag();
+        sse.send('end', {});
+      }
       sse.end();
     } catch (err: any) {
       console.error(`[${opts.logTag}] internal error: ${err.message}`);
@@ -1064,6 +1086,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ payload, data }: any) => {
         if (payload === '[DONE]') {
+          guard.flushThinkTag();
           sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
@@ -1094,6 +1117,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
+        guard.flushThinkTag();
         sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
         sse.send('end', {});
       }
@@ -1229,6 +1253,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ payload: ssePayload, data }: any) => {
         if (ssePayload === '[DONE]') {
+          guard.flushThinkTag();
           sse.send('end', {});
           ended = true;
           return true;
@@ -1250,7 +1275,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         return false;
       });
-      if (!ended) sse.send('end', {});
+      if (!ended) {
+        guard.flushThinkTag();
+        sse.send('end', {});
+      }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:azure] internal error: ${err.message}`);
@@ -1362,6 +1390,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       await streamUpstreamNdjson(response, ({ data }: any) => {
         if (!data) return false;
         if (data.done) {
+          guard.flushThinkTag();
           sse.send('end', {});
           ended = true;
           return true;
@@ -1377,7 +1406,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         return false;
       });
-      if (!ended) sse.send('end', {});
+      if (!ended) {
+        guard.flushThinkTag();
+        sse.send('end', {});
+      }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:ollama] internal error: ${err.message}`);
@@ -1667,6 +1699,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
 
+      guard.flushThinkTag();
+
       if (providerError) {
         sendProxyError(sse, `Provider error: ${providerError}`, {
           details: providerError,
@@ -1812,10 +1846,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         } else if (event === 'message_delta') {
           if (typeof data.delta?.stop_reason === 'string') stopReason = data.delta.stop_reason;
         } else if (event === 'message_stop') {
+          guard.flushThinkTag();
           return true;
         }
         return false;
       });
+      guard.flushThinkTag();
       if (providerError) {
         sendProxyError(sse, `Provider error: ${providerError}`, { details: providerError });
         return { kind: 'error' };
@@ -1985,6 +2021,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         return false;
       });
+      guard.flushThinkTag();
       if (providerError) {
         sendProxyError(sse, `Gemini error: ${providerError}`, { details: providerError });
         return { kind: 'error' };

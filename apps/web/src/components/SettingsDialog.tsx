@@ -118,6 +118,7 @@ import { PetSettings } from './pet/PetSettings';
 import { McpClientSection } from './McpClientSection';
 import { SkillsSection } from './SkillsSection';
 import { DesignSystemsSection } from './DesignSystemsSection';
+import { DesignTemplatesSection } from './DesignTemplatesSection';
 import { PrivacySection } from './PrivacySection';
 import { ProjectLocationsSection } from './ProjectLocationsSection';
 import { RoutinesSection } from './RoutinesSection';
@@ -177,6 +178,7 @@ export type SettingsSection =
   | 'notifications'
   | 'pet'
   | 'skills'
+  | 'designTemplates'
   | 'designSystems'
   | 'projectLocations'
   | 'memory'
@@ -2790,6 +2792,10 @@ export function SettingsDialog({
     privacy: { title: t('settings.privacy'), subtitle: t('settings.privacyHint') },
     pet: { title: t('pet.title'), subtitle: t('pet.subtitle') },
     skills: { title: t('settings.skills'), subtitle: t('settings.skillsHint') },
+    designTemplates: {
+      title: t('settings.designTemplates'),
+      subtitle: t('settings.designTemplatesHint'),
+    },
     designSystems: {
       title: t('settings.designSystems'),
       subtitle: t('settings.designSystemsHint'),
@@ -3276,6 +3282,19 @@ export function SettingsDialog({
               <span>
                 <strong>{t('pet.navTitle')}</strong>
                 <small>{t('pet.navHint')}</small>
+              </span>
+            </button>
+            ) : null}
+            {showSettingsNav('designTemplates') ? (
+            <button
+              type="button"
+              className={`settings-nav-item${activeSection === 'designTemplates' ? ' active' : ''}`}
+              onClick={() => setActiveSection('designTemplates')}
+            >
+              <Icon name="layers-filled" size={18} />
+              <span>
+                <strong>{t('settings.designTemplates')}</strong>
+                <small>{t('settings.designTemplatesHint')}</small>
               </span>
             </button>
             ) : null}
@@ -4602,6 +4621,10 @@ export function SettingsDialog({
               onSkillsRefresh={onSkillsRefresh}
               onSkillsChanged={onSkillsChanged}
             />
+          ) : null}
+
+          {activeSection === 'designTemplates' ? (
+            <DesignTemplatesSection cfg={cfg} setCfg={setCfg} />
           ) : null}
 
           {activeSection === 'designSystems' ? (

@@ -162,6 +162,57 @@ describe('buildProxyMessages', () => {
     expect(onDone).toHaveBeenCalled();
   });
 
+  it('dispatches thinking_delta SSE events to onThinkingDelta', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode([
+                'event: thinking_delta',
+                'data: {"delta":"plan step"}',
+                '',
+                'event: delta',
+                'data: {"delta":"Answer"}',
+                '',
+                'event: end',
+                'data: {}',
+                '',
+              ].join('\n')),
+            );
+            controller.close();
+          },
+        }),
+      }),
+    );
+
+    const onThinkingDelta = vi.fn();
+    const onDelta = vi.fn();
+
+    await streamProxyEndpoint(
+      '/api/proxy/openai/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://minimax.example',
+        model: 'MiniMax-M3',
+      } as any,
+      'System prompt',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      {
+        onDelta,
+        onDone: vi.fn(),
+        onError: vi.fn(),
+        onThinkingDelta,
+      },
+    );
+
+    expect(onThinkingDelta).toHaveBeenCalledWith('plan step');
+    expect(onDelta).toHaveBeenCalledWith('Answer');
+  });
+
   it('sends Anthropic image content blocks in the proxy request body', async () => {
     const pngBytes = new Uint8Array([137, 80, 78, 71]);
     const fetchMock = vi

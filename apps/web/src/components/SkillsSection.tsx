@@ -18,6 +18,7 @@ import {
   updateSkill,
   type SkillFileEntry,
 } from '../providers/registry';
+import { isRenderableDesignTemplate } from '../teamver/branding/designTemplateVisibility';
 
 // Functional skills only — design templates render in EntryView's
 // Templates tab and are managed under their own daemon registry. See
@@ -165,6 +166,9 @@ export function SkillsSection({ cfg, setCfg, onSkillsRefresh, onSkillsChanged }:
   const filteredSkills = useMemo(() => {
     const q = search.toLowerCase().trim();
     return skills.filter((s) => {
+      // Rendering templates live under Settings → Templates (design-templates
+      // registry). Legacy copies still under skills/ are excluded here.
+      if (isRenderableDesignTemplate(s)) return false;
       if (modeFilter !== 'all' && s.mode !== modeFilter) return false;
       if (sourceFilter !== 'all' && s.source !== sourceFilter) return false;
       if (categoryFilter !== 'all' && s.category !== categoryFilter)

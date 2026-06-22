@@ -110,6 +110,12 @@ export async function streamProxyEndpoint(
           continue;
         }
 
+        if (parsed.event === 'thinking_delta') {
+          const thinking = String(parsed.data.delta ?? '');
+          if (thinking) handlers.onThinkingDelta?.(thinking);
+          continue;
+        }
+
         if (parsed.event === 'error') {
           handlers.onError(new Error(proxyErrorMessage(parsed.data)));
           return;

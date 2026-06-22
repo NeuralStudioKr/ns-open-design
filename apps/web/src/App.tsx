@@ -25,6 +25,7 @@ import { PetOverlay, type PetTaskCenter } from './components/pet/PetOverlay';
 import { buildPetTaskCenter } from './components/pet/taskCenter';
 import { migrateCustomPetAtlas } from './components/pet/pets';
 import { ProjectView } from './components/ProjectView';
+import { TeamverWorkspaceEscapeBar } from './components/TeamverWorkspaceEscapeBar';
 import { TooltipLayer } from './components/TooltipLayer';
 import { openWorkspaceTab, WorkspaceTabsBar } from './components/WorkspaceTabsBar';
 import {
@@ -47,6 +48,7 @@ import {
   resolveTeamverBranding,
 } from './teamver/branding/config';
 import { useTeamverBranding } from './teamver/branding/TeamverBrandingProvider';
+import { isDesignTemplateEnabled } from './teamver/branding/designTemplateVisibility';
 import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
@@ -352,7 +354,7 @@ export function App() {
 
 function AppInner() {
   const { t } = useI18n();
-  const { hideWorkspaceTabsBar } = useTeamverBranding();
+  const { hideWorkspaceTabsBar, slideOnlyMvp } = useTeamverBranding();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const clientType = useMemo(() => detectClientType(), []);
   useModalWindowDragGuard();
@@ -2078,10 +2080,10 @@ function AppInner() {
   );
   const enabledSkills = useMemo(
     () =>
-      allSkillSummaries.filter(
-        (s) => !(config.disabledSkills ?? []).includes(s.id),
+      allSkillSummaries.filter((s) =>
+        isDesignTemplateEnabled(s, config.disabledSkills, { slideOnlyMvp }),
       ),
-    [allSkillSummaries, config.disabledSkills],
+    [allSkillSummaries, config.disabledSkills, slideOnlyMvp],
   );
   // Functional-skills-only enabled subset — what ProjectView's chat
   // composer @-picker should see. Without this, a skill the user has
@@ -2100,10 +2102,10 @@ function AppInner() {
   // narrow ("here are the templates the user has not disabled").
   const enabledDesignTemplates = useMemo(
     () =>
-      designTemplates.filter(
-        (s) => !(config.disabledSkills ?? []).includes(s.id),
+      designTemplates.filter((s) =>
+        isDesignTemplateEnabled(s, config.disabledSkills, { slideOnlyMvp }),
       ),
-    [designTemplates, config.disabledSkills],
+    [designTemplates, config.disabledSkills, slideOnlyMvp],
   );
   const enabledDS = useMemo(
     () =>
@@ -2256,12 +2258,14 @@ function AppInner() {
       />
     );
   }
+  const showTeamverWorkspaceEscape =
+    hideWorkspaceTabsBar && isTeamverEmbedMode() && route.kind === 'project';
   return (
     <>
       <div
         className={`workspace-shell workspace-shell--${clientType}${
           hideWorkspaceTabsBar ? ' workspace-shell--no-tabs' : ''
-        }`}
+        }${showTeamverWorkspaceEscape ? ' workspace-shell--embed-escape' : ''}`}
         data-client-type={clientType}
       >
         {hideWorkspaceTabsBar ? null : (
@@ -2271,6 +2275,11 @@ function AppInner() {
             onboardingCompleted={config.onboardingCompleted === true}
           />
         )}
+        {showTeamverWorkspaceEscape ? (
+          <TeamverWorkspaceEscapeBar
+            onDesignHome={() => navigate({ kind: 'home', view: 'home' })}
+          />
+        ) : null}
         <div className="workspace-shell__body">
           {appMain}
         </div>
