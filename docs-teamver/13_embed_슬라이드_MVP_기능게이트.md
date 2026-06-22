@@ -88,7 +88,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 
 [09_Design_저장소_격리](./09_Design_저장소_격리_출시게이트.md) · [12 §2.5](./12_embed_로컬UX_제거_체크리스트.md)
 
-### 2.7 P0 — Share / Publish 정책 (loop 171)
+### 2.7 P0 — Share / Publish 정책 (loop 171 + 173 + 174 + 175)
 
 **원칙:** 워크스페이스 콘텐츠는 **Teamver tenant 경계 안에서만 공유**한다. Drive Publish + 로컬 export 외의 모든 외부 share 진입점을 embed에서 hide. 추가 share 기능 개발은 **MVP 범위에서 제외**한다 — 확장이 필요해지면 Drive 권한 모델(Main BE) 위에서 통합한다.
 
@@ -170,7 +170,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] Home 하단 — community gallery 미렌더 (`HomeTemplatesReveal` 부재)
 - [ ] Project chat — Design toolbox `+` flyout: image-gen / video-gen / motion / motion-polish 미노출
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
-- [ ] **Share/Publish (loop 171 + 173 + 174)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + **Teamver 드라이브로 HTML 발행** + **Drive 발행 이력 panel** (loop 174 — `v{N}` 라벨 · 상대 시각 · Drive 딥 링크, 최근 5개) **유지**. ZIP 칩 제거 (loop 174 — HTML-only 발행). `Open in Teamver Drive` 항목은 loop 173 에서 제거. PDF 발행은 별도 BE 트랙 (daemon PDF exporter 가 desktop-only)
+- [ ] **Share/Publish (loop 171 + 173 + 174 + 175)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + **Teamver 드라이브로 HTML 발행** + **Drive 발행 이력 panel** (loop 174 — `v{N}` 라벨 · 상대 시각 · Drive 딥 링크, 최근 5개) **유지**. ZIP 칩 제거 (loop 174 — HTML-only 발행). `Open in Teamver Drive` 항목은 loop 173 에서 제거. **PDF / PPTX Drive 발행은 별도 트랙으로 보류 (loop 175 docket)** — OD daemon PDF exporter 가 desktop runtime 전용이고, headless 서버에 chromium 도입 / 메인 BE internal endpoint 호출 / Lambda 분리 등 인프라 결정이 동반되므로 이번 출시 게이트와 분리. 로컬 `PDF로 내보내기` (Electron `webContents.printToPDF`) 는 데스크탑에서 그대로 동작. 옵션 비교·재검토 트리거는 [00 §loop 175](./00_구현_내역_누적.md) archive 참조
 - [ ] **PreviewModal Share popover** — 모달의 share popover가 PDF/ZIP/HTML/image **export 만** 보여주고, X/Reddit/FB/LinkedIn/Instagram/Xiaohongshu + Copy link/Copy share text **부재**
 - [ ] **AssistantMessage** — "Share to Open Design" 제출 버튼 미노출
 - [ ] Settings — language / appearance만
@@ -191,6 +191,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | loop 175 (docket) — PDF / PPTX Drive 발행 **별도 트랙 보류 결정**. 사용자 리포트 ("프레젠테이션인데 PDF/PPTX 불가능은 말이 안 된다") 후 옵션 7종 (OD 내 Playwright / 메인 BE internal endpoint / ECS·Fargate worker / Lambda + chromium-layer / 외부 SaaS / 클라이언트 측 / WeasyPrint·wkhtmltopdf) + 응답 모델 (sync vs async) 비교를 [00 §loop 175](./00_구현_내역_누적.md) 에 archive. 현재 HTML-only 발행 + 로컬 PDF 다운로드 안내가 그대로 유효. 재검토 트리거: AI 어시스턴트가 Drive PDF 인덱싱 use-case 우선순위 / 사내 PDF 인프라 가용성 결정 / 사용자 리포트 누적 / PPTX 트랙 정식 착수 |
 | 2026-06-22 | loop 174 — Drive 발행 이력 panel (`TeamverDrivePublishHistory`, `v{N}` 라벨 · 상대 시각 · Drive 딥 링크) 메뉴 상단 mount. ZIP 칩 제거 → HTML 단일 발행 (`formats: ["html"]` 정적). 마지막 발행 위치 `localStorage` 기억 (workspace+project 격리). PDF 발행은 daemon PDF exporter 가 desktop-only 라 별도 BE 트랙 (Playwright/Chromium) — MenuItem 에 안내 한 줄 |
 | 2026-06-22 | loop 173 — Teamver 드라이브 발행 UI 한글화 + HTML/ZIP 포맷 선택 + custom listbox (`TeamverDriveTargetSelect`). `Open in Teamver Drive` 메뉴 항목 영구 제거 (toast 의 Drive 링크로 대체). PDF 는 BE headless renderer 도입 시 동일 UI 패턴으로 확장 — 별도 트랙 |
 | 2026-06-19 | loop 171 — `hideExternalShareSurfaces` 게이트(§2.7), share/publish 정책 — 외부 share 전부 hide, Drive Publish + 로컬 export 만 유지 |
