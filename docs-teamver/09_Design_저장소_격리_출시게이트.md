@@ -3,7 +3,7 @@
 **Prod 공개 출시 전 필수.** volume-only Track A는 **용량·백업·테넌트 격리** 측면에서 출시 blocker이다.  
 **개발 SSOT:** 본 문서 · [04 구현 우선순위](./04_구현_우선순위.md) · **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
-**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** (sync-up/down·tenant prefix·FAQ)
+**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** · **[17 Production 출시 순서](./17_Production_출시_작업_순서.md)**
 
 ---
 
@@ -21,7 +21,7 @@
 | 리스크 | volume-only 현재 | Prod 허용? |
 |--------|------------------|------------|
 | 데이터 유실 | EBS snapshot runbook 없음 | ❌ |
-| 용량 | Staging 30GB / Prod 50GB, quota 없음 | ❌ |
+| 용량 | Staging od-data 30GB / Prod od-data 100GB (root 별도), quota 없음 | ❌ |
 | 복구 (RPO/RTO) | RDS는 usage만; OD 본문·메타는 volume | ❌ |
 | HA / scale-out | EC2 1대, SQLite 단일 writer | △ (출시 후) |
 | **테넌트 격리** | 사용자 A/B가 **같은 daemon·project namespace** | ❌ |
@@ -284,13 +284,20 @@ ProjectStorage (interface)
 
 **dirty 추적:** `RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS`, `projects.ts` run reconcile 재사용.
 
-### 8.2 scratch 디스크
+### 8.2 scratch 디스크 · EC2 EBS 2볼륨
+
+Design EC2 는 Terraform 으로 **root + od-data** EBS 2개 ([07 §3.5](./07_VM_배포_인프라.md#35-ec2-ebs-볼륨-root--od-data)). Staging·Production 동일 구조, 용량만 다름.
+
+| 볼륨 | 마운트 | SSOT? |
+|------|--------|-------|
+| Root | `/` | OS·Docker·배포 (프로젝트 SSOT 아님) |
+| OD data | `/opt/teamver-design/od-data` = `OD_DATA_DIR` | scratch·SQLite·캐시 (프로젝트 파일 SSOT = **S3**) |
 
 | 항목 | 권장 |
 |------|------|
-| 경로 | `$OD_SCRATCH_DIR/projects/` (기본 `$OD_DATA_DIR/scratch/projects/`) |
-| EC2 EBS | **10~20GB** (project SSOT 아님) |
-| 알람 | scratch 80% — [07](./07_VM_배포_인프라.md) |
+| scratch 경로 | `$OD_SCRATCH_DIR/projects/` (기본 `$OD_DATA_DIR/scratch/projects/`) |
+| od-data 용량 (tfvars) | Staging **30 GiB**, Production **100 GiB** — project SSOT 아님, export·동시 run 여유 |
+| 알람 | od-data·scratch 80% — [07](./07_VM_배포_인프라.md) |
 | eviction | run 완료 후 project scratch 삭제 가능 (SSOT=S3) |
 
 ### 8.3 동시성 (v1)
@@ -407,6 +414,7 @@ Staging/Prod 검증      → EC2 + AWS S3   (VPN·smoke·browser E2E)
 | Public access | Block all | Block all |
 
 EC2 IAM: `ListBucket` on `design/*` prefix + `Get/Put/DeleteObject` on `.../design/*`.  
+**Instance profile · IMDS hop 2 · Docker 검증:** [18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md).  
 design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03_키_저장소_Drive_DB.md) Publish.
 
 ---
@@ -518,6 +526,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | §8.2 EC2 **root + od-data** 2볼륨 정리 — [07 §3.5](./07_VM_배포_인프라.md); 용량 표 Staging 30 / Prod 100 GiB (od-data) |
 | 2026-06-22 | production strict E2E gate — `print_production_track_a_e2e_env.sh` + `--e2e-strict`; auth/usage DB/Drive publish/S3 object 검증의 skip-only 성공 차단 |
 | 2026-06-19 | Production Phase 0 helper — `print/apply/run_production_phase0_activate.sh` 로 prod 전용 RDS+S3 env 병합·dry-run·preflight 제공, fixture 3종 Track A runner 연결 |
 | 2026-06-19 | Track A E2E S3 tenant object probe — `TEAMVER_S3_BUCKET` 설정 시 `/access` S3 prefix header + `aws s3 ls` 로 tenant prefix 객체 존재 검증, fixture/env helper 갱신 |
