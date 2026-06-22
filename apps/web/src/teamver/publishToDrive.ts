@@ -80,6 +80,18 @@ export function pickReadyPublishOutputs(outputs: TeamverPublishDriveOutput[]): T
   return outputs.filter((output) => output.publishStatus === "ready" && output.driveAssetId.trim() !== "");
 }
 
+/** Ready rows sorted newest-first (matches design-api `published_at DESC`). */
+export function sortReadyPublishOutputsDesc(
+  outputs: TeamverPublishDriveOutput[],
+): TeamverPublishDriveOutput[] {
+  return pickReadyPublishOutputs(outputs).sort((a, b) => {
+    const aMs = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+    const bMs = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+    if (bMs !== aMs) return bMs - aMs;
+    return b.id.localeCompare(a.id);
+  });
+}
+
 export function buildPublishResultFromResponse(
   response: PublishResponse,
   fallbackProjectId: string,

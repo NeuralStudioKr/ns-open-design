@@ -17,6 +17,25 @@ export type TeamverDriveImportedAsset = {
   mimeType: string;
 };
 
+export type TeamverDriveImportPartialFailure = {
+  asset: TeamverDriveImportAsset;
+  errorCode: string;
+};
+
+export type TeamverDriveImportPartialResult = {
+  importedCount: number;
+  failures: TeamverDriveImportPartialFailure[];
+};
+
+export function formatDriveImportErrorCode(
+  code: string,
+  t: (key: string) => string,
+): string {
+  const key = `teamver.driveImport.error.${code}`;
+  const translated = t(key);
+  return translated === key ? code : translated;
+}
+
 export type TeamverDriveImportFailure = {
   assetId: string;
   errorCode: string;

@@ -185,4 +185,35 @@ describe("TeamverDriveImportModal", () => {
       expect(img?.src).toContain("https://cdn.example/logo.png");
     });
   });
+
+  it("shows partial failures with retry and done actions", async () => {
+    const onRetryFailed = vi.fn();
+    const onDismissPartial = vi.fn();
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+        partialResult={{
+          importedCount: 1,
+          failures: [
+            {
+              asset: { assetId: "AST-2", filename: "clip.mp4" },
+              errorCode: "unsupported_drive_import_file_type",
+            },
+          ],
+        }}
+        onRetryFailed={onRetryFailed}
+        onDismissPartial={onDismissPartial}
+      />,
+    );
+
+    expect(await screen.findByTestId("teamver-drive-import-partial")).toBeTruthy();
+    expect(screen.getByText("clip.mp4")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("teamver-drive-import-retry"));
+    expect(onRetryFailed).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("teamver-drive-import-done"));
+    expect(onDismissPartial).toHaveBeenCalledTimes(1);
+  });
 });

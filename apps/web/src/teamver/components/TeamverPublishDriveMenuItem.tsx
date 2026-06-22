@@ -16,6 +16,8 @@ import {
   type TeamverPublishDriveFormat,
   type TeamverPublishDriveOutput,
 } from "../publishToDrive";
+import { clearLatestPublishSummaryCache } from "../latestPublishSummary";
+import { notifyTeamverPublishOutputsChanged } from "../teamverPublishEvents";
 
 type Props = {
   projectId: string;
@@ -222,6 +224,8 @@ export function TeamverPublishDriveMenuItem({
       // silently locking in a broken folder.
       writeLastTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
       setHistoryRefreshKey((current) => current + 1);
+      clearLatestPublishSummaryCache(projectId);
+      notifyTeamverPublishOutputsChanged(projectId);
       const output = pickReadyPublishOutputs(result.outputs)[0] ?? result.outputs[0];
       if (output?.publishStatus === "ready") onSuccess?.(output, { partial: result.partial });
       else if (result.partial && pickReadyPublishOutputs(result.outputs).length > 0) {

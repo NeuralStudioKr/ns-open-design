@@ -14,6 +14,8 @@ import type { DesignSystemSummary, Project, ProjectDisplayStatus, ProjectFile } 
 import { Icon } from './Icon';
 import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
 
 interface Props {
   projects: Project[];
@@ -212,6 +214,12 @@ export function RecentProjectsStrip({
                   </span>
                   <span className="recent-projects__card-sep" aria-hidden>·</span>
                   {relativeTime(project.updatedAt, t)}
+                  {isTeamverEmbedMode() && !designSystemProject ? (
+                    <>
+                      <span className="recent-projects__card-sep" aria-hidden>·</span>
+                      <TeamverLatestPublishChip projectId={project.id} />
+                    </>
+                  ) : null}
                 </div>
               </div>
             </button>

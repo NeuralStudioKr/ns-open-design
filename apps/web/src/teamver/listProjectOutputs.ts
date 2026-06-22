@@ -2,7 +2,7 @@ import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import {
   normalizePublishOutput,
-  pickReadyPublishOutputs,
+  sortReadyPublishOutputsDesc,
   type TeamverPublishDriveOutput,
 } from "./publishToDrive";
 
@@ -50,7 +50,7 @@ export function findLatestReadyPublishOutput(
   outputs: TeamverPublishDriveOutput[],
   kind?: string,
 ): TeamverPublishDriveOutput | undefined {
-  const ready = pickReadyPublishOutputs(outputs);
+  const ready = sortReadyPublishOutputsDesc(outputs);
   if (!kind?.trim()) return ready[0];
   const normalizedKind = kind.trim().toLowerCase();
   return ready.find((output) => output.kind.toLowerCase() === normalizedKind) ?? ready[0];

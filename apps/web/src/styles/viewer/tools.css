@@ -1345,6 +1345,69 @@
 .teamver-drive-import-attach:disabled {
   opacity: 0.55;
 }
+.teamver-drive-import-partial {
+  margin: 0 1rem 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--border));
+  background: color-mix(in srgb, var(--amber) 6%, var(--bg-subtle));
+}
+.teamver-drive-import-partial-summary {
+  margin: 0 0 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.teamver-drive-import-partial-lead {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.teamver-drive-import-partial-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 8rem;
+  overflow: auto;
+}
+.teamver-drive-import-partial-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+}
+.teamver-drive-import-partial-name {
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teamver-drive-import-partial-reason {
+  color: var(--amber);
+}
+.teamver-drive-import-retry,
+.teamver-drive-import-done {
+  min-height: 2rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.teamver-drive-import-retry {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-strong);
+}
+.teamver-drive-import-done {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
 .template-share-popover {
   min-width: 320px;
   gap: 6px;

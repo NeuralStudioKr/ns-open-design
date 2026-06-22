@@ -105,3 +105,18 @@ describe("importTeamverDriveAssets", () => {
     expect(postMock).not.toHaveBeenCalled();
   });
 });
+
+describe("formatDriveImportErrorCode", () => {
+  it("maps known error codes and falls back to the raw code", async () => {
+    const { formatDriveImportErrorCode } = await import("../src/teamver/importDriveAssets");
+    const t = (key: string) =>
+      key === "teamver.driveImport.error.unsupported_drive_import_file_type"
+        ? "Unsupported type"
+        : key;
+
+    expect(formatDriveImportErrorCode("unsupported_drive_import_file_type", t)).toBe(
+      "Unsupported type",
+    );
+    expect(formatDriveImportErrorCode("unknown_code", t)).toBe("unknown_code");
+  });
+});

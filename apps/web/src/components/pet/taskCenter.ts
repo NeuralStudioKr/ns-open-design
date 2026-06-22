@@ -47,6 +47,32 @@ export function buildPetTaskCenter(
   };
 }
 
+/** Active (queued + running) runs for embed background-run surfaces. */
+export function buildActiveRunSummaries(
+  projects: Project[],
+  runs: ChatRunStatusResponse[],
+): PetTaskSummary[] {
+  const center = buildPetTaskCenter(projects, runs);
+  return [...center.running, ...center.queued];
+}
+
+export function activeRunSummariesEqual(
+  left: PetTaskSummary[],
+  right: PetTaskSummary[],
+): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const other = right[index];
+    return (
+      other != null
+      && item.projectId === other.projectId
+      && item.projectName === other.projectName
+      && item.status === other.status
+      && item.count === other.count
+    );
+  });
+}
+
 function addActiveSummary(
   summaries: Map<string, PetTaskSummary>,
   projectId: string,

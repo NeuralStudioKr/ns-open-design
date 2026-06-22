@@ -24,6 +24,8 @@ import { Icon } from "./Icon";
 import { isDesignSystemProject, isPublishedDesignSystemProject } from "./design-system-project";
 import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
+import { isTeamverEmbedMode } from "../teamver/designApiBase";
+import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
 
 type SubTab = "recent" | "yours";
 type ViewMode = "grid" | "kanban";
@@ -86,6 +88,7 @@ export function DesignsTab({
 	const renameTitleId = useId();
 	const confirmTitleId = useId();
 	const t = useT();
+	const teamverEmbed = isTeamverEmbedMode();
 	const analytics = useAnalytics();
 	// P0 page_view page_name=projects — fire once when the tab mounts so
 	// `/projects` landings register even before the user clicks anything.
@@ -832,6 +835,12 @@ export function DesignsTab({
 											>
 												{publishedDesignSystem ? t("designs.status.published") : statusLabel(status, t)}
 											</span>
+											{teamverEmbed && !designSystemProject ? (
+												<>
+													{" · "}
+													<TeamverLatestPublishChip projectId={p.id} />
+												</>
+											) : null}
 										</span>
 										{sub === "recent" || sub === "yours" ? (
 											<span className="design-card-meta-time">

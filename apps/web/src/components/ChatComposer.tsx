@@ -42,6 +42,7 @@ import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import {
   driveImportedToChatAttachments,
   importTeamverDriveAssets,
+  type TeamverDriveImportPartialResult,
   type TeamverDriveImportAsset,
 } from '../teamver/importDriveAssets';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
@@ -456,6 +457,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
     const [driveImportOpen, setDriveImportOpen] = useState(false);
     const [driveImportBusy, setDriveImportBusy] = useState(false);
+    const [driveImportPartial, setDriveImportPartial] = useState<TeamverDriveImportPartialResult | null>(null);
     const [driveLaunchAssets, setDriveLaunchAssets] = useState<TeamverDriveImportAsset[]>([]);
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
@@ -1473,14 +1475,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           appendOrderedStagedAttachments(assignChatAttachmentOrders(attachments, orderStart));
         }
         if (result.partial) {
-          const failedCount = result.failed.length;
-          const importedCount = result.imported.length;
-          setUploadError(
-            importedCount > 0
-              ? `Imported ${importedCount} Drive file(s), but ${failedCount} failed.`
-              : `Drive import failed for ${failedCount} file(s).`,
-          );
+          const failedById = new Map(result.failed.map((item) => [item.assetId, item.errorCode]));
+          const failures = allowedAssets
+            .filter((asset) => failedById.has(asset.assetId))
+            .map((asset) => ({
+              asset,
+              errorCode: failedById.get(asset.assetId) ?? "drive_import_failed",
+            }));
+          setDriveImportPartial({
+            importedCount: result.imported.length,
+            failures,
+          });
+          setUploadError(null);
+          return;
         }
+        setDriveImportPartial(null);
         if (result.imported.length > 0) {
           setDriveImportOpen(false);
           setDriveLaunchAssets([]);
@@ -2650,8 +2659,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             workspaceId={teamverWorkspaceId}
             confirming={driveImportBusy}
             initialAssets={driveLaunchAssets}
+            partialResult={driveImportPartial}
+            onRetryFailed={() => {
+              if (!driveImportPartial) return;
+              void importDriveAttachments(driveImportPartial.failures.map((item) => item.asset));
+            }}
+            onDismissPartial={() => {
+              setDriveImportPartial(null);
+              setDriveImportOpen(false);
+              setDriveLaunchAssets([]);
+            }}
             onClose={() => {
               if (!driveImportBusy) {
+                setDriveImportPartial(null);
                 setDriveImportOpen(false);
                 setDriveLaunchAssets([]);
               }

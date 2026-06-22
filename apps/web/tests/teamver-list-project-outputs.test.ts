@@ -78,8 +78,8 @@ describe("listTeamverProjectOutputs", () => {
   });
 });
 
-describe("findLatestReadyPublishOutput", () => {
-  it("prefers matching kind", () => {
+describe('findLatestReadyPublishOutput', () => {
+  it('prefers matching kind', () => {
     const picked = findLatestReadyPublishOutput(
       [
         {
@@ -104,5 +104,31 @@ describe("findLatestReadyPublishOutput", () => {
       "zip",
     );
     expect(picked?.driveAssetId).toBe("AST-Z");
+  });
+
+  it('picks newest ready row when publishedAt order is unsorted', () => {
+    const picked = findLatestReadyPublishOutput([
+      {
+        id: '1',
+        kind: 'html',
+        driveAssetId: 'AST-OLD',
+        filename: 'old.html',
+        sizeBytes: 1,
+        mimeType: 'text/html',
+        publishStatus: 'ready',
+        publishedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: '2',
+        kind: 'html',
+        driveAssetId: 'AST-NEW',
+        filename: 'new.html',
+        sizeBytes: 2,
+        mimeType: 'text/html',
+        publishStatus: 'ready',
+        publishedAt: '2026-06-01T00:00:00Z',
+      },
+    ]);
+    expect(picked?.driveAssetId).toBe('AST-NEW');
   });
 });

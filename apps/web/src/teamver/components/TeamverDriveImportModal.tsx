@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnalytics } from "../../analytics/provider";
 import { Icon } from "../../components/Icon";
-import type { TeamverDriveImportAsset } from "../importDriveAssets";
+import type { TeamverDriveImportAsset, TeamverDriveImportPartialResult } from "../importDriveAssets";
+import { formatDriveImportErrorCode } from "../importDriveAssets";
+import { useT } from "../../i18n";
 import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
 import {
   embedAttachBlockReason,
@@ -44,6 +46,9 @@ type Props = {
   onConfirm: (assets: TeamverDriveImportAsset[]) => void | Promise<void>;
   confirming?: boolean;
   initialAssets?: TeamverDriveImportAsset[];
+  partialResult?: TeamverDriveImportPartialResult | null;
+  onRetryFailed?: () => void;
+  onDismissPartial?: () => void;
 };
 
 function scopeKey(scope: TeamverDriveImportScope, folderId: string | null): string {
@@ -69,7 +74,11 @@ export function TeamverDriveImportModal({
   onConfirm,
   confirming = false,
   initialAssets = EMPTY_INITIAL_ASSETS,
+  partialResult = null,
+  onRetryFailed,
+  onDismissPartial,
 }: Props) {
+  const t = useT();
   const branding = useTeamverBranding();
   const analytics = useAnalytics();
   const attachPolicyActive = shouldApplyEmbedFileAttachPolicy(branding);
@@ -192,6 +201,15 @@ export function TeamverDriveImportModal({
       cancelled = true;
     };
   }, [attachPolicyActive, initialAssets, open, workspaceId]);
+
+  useEffect(() => {
+    if (!open || !partialResult || partialResult.failures.length === 0) return;
+    const retry = new Map<string, TeamverDriveImportAsset>();
+    for (const failure of partialResult.failures) {
+      retry.set(failure.asset.assetId, failure.asset);
+    }
+    setSelected(retry);
+  }, [open, partialResult]);
 
   useEffect(() => {
     if (!activeScope) return;
@@ -487,6 +505,31 @@ export function TeamverDriveImportModal({
           )}
         </div>
 
+        {partialResult && partialResult.failures.length > 0 ? (
+          <div className="teamver-drive-import-partial" data-testid="teamver-drive-import-partial">
+            {partialResult.importedCount > 0 ? (
+              <p className="teamver-drive-import-partial-summary">
+                {t("teamver.driveImport.partialSuccess", { n: partialResult.importedCount })}
+              </p>
+            ) : null}
+            <p className="teamver-drive-import-partial-lead">
+              {t("teamver.driveImport.partialFailedLead", { n: partialResult.failures.length })}
+            </p>
+            <ul className="teamver-drive-import-partial-list">
+              {partialResult.failures.map((failure) => (
+                <li key={failure.asset.assetId} className="teamver-drive-import-partial-item">
+                  <span className="teamver-drive-import-partial-name">
+                    {failure.asset.filename ?? failure.asset.assetId}
+                  </span>
+                  <span className="teamver-drive-import-partial-reason">
+                    {formatDriveImportErrorCode(failure.errorCode, t)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <footer className="teamver-drive-import-footer">
           <span className="teamver-drive-import-count">
             {selectedCount} selected (max {MAX_PICK})
@@ -495,6 +538,29 @@ export function TeamverDriveImportModal({
             <button type="button" className="teamver-drive-import-cancel" disabled={confirming} onClick={onClose}>
               Cancel
             </button>
+            {partialResult && partialResult.importedCount > 0 ? (
+              <button
+                type="button"
+                className="teamver-drive-import-done"
+                disabled={confirming}
+                data-testid="teamver-drive-import-done"
+                onClick={() => onDismissPartial?.()}
+              >
+                {t("teamver.driveImport.done")}
+              </button>
+            ) : null}
+            {partialResult && partialResult.failures.length > 0 ? (
+              <button
+                type="button"
+                className="teamver-drive-import-retry"
+                disabled={confirming}
+                data-testid="teamver-drive-import-retry"
+                onClick={() => onRetryFailed?.()}
+              >
+                {t("teamver.driveImport.retryFailed", { n: partialResult.failures.length })}
+              </button>
+            ) : null}
+            {!partialResult ? (
             <button
               type="button"
               className="teamver-drive-import-attach"
@@ -513,6 +579,7 @@ export function TeamverDriveImportModal({
             >
               {confirming ? "Importing…" : "Attach"}
             </button>
+            ) : null}
           </div>
         </footer>
       </section>

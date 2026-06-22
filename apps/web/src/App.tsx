@@ -21,8 +21,8 @@ import { PluginDetailView } from './components/PluginDetailView';
 import type { CreateInput, ImportClaudeDesignOutcome } from './components/NewProjectPanel';
 import { MemoryToast } from './components/MemoryToast';
 import { Toast } from './components/Toast';
-import { PetOverlay, type PetTaskCenter } from './components/pet/PetOverlay';
-import { buildPetTaskCenter } from './components/pet/taskCenter';
+import { PetOverlay, type PetTaskCenter, type PetTaskSummary } from './components/pet/PetOverlay';
+import { buildActiveRunSummaries, activeRunSummariesEqual, buildPetTaskCenter } from './components/pet/taskCenter';
 import { migrateCustomPetAtlas } from './components/pet/pets';
 import { ProjectView } from './components/ProjectView';
 import { TeamverWorkspaceEscapeBar } from './components/TeamverWorkspaceEscapeBar';
@@ -411,6 +411,12 @@ function AppInner() {
     queued: [],
     recent: [],
   });
+  const [backgroundRunSummaries, setBackgroundRunSummaries] = useState<PetTaskSummary[]>([]);
+  const projectsRef = useRef<Project[]>(projects);
+  const wasActiveRunRef = useRef(false);
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
   const pendingLocalProjectIdsRef = useRef<Set<string>>(new Set());
   const locallyDeletedProjectIdsRef = useRef<Map<string, number>>(new Map());
   const projectListMutationVersionRef = useRef(0);
@@ -1721,16 +1727,38 @@ function AppInner() {
   );
 
   useEffect(() => {
-    if (!config.pet?.enabled || !daemonLive) {
+    if (!daemonLive) {
       setPetTaskCenter({ running: [], queued: [], recent: [] });
+      setBackgroundRunSummaries([]);
+      wasActiveRunRef.current = false;
       return;
     }
 
     let cancelled = false;
+
     const refresh = async () => {
       const runs = await listProjectRuns();
       if (cancelled) return;
-      setPetTaskCenter(buildPetTaskCenter(projects, runs));
+
+      const currentProjects = projectsRef.current;
+      const center = buildPetTaskCenter(currentProjects, runs);
+      if (config.pet?.enabled) {
+        setPetTaskCenter(center);
+      } else {
+        setPetTaskCenter({ running: [], queued: [], recent: [] });
+      }
+
+      const activeSummaries = buildActiveRunSummaries(currentProjects, runs);
+      setBackgroundRunSummaries((prev) =>
+        activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
+      );
+
+      const active = activeSummaries.length > 0;
+      if (active || wasActiveRunRef.current) {
+        wasActiveRunRef.current = active;
+        const list = await listProjects();
+        if (!cancelled) setProjects(list);
+      }
     };
     const handleRunsChanged = () => {
       void refresh();
@@ -1744,7 +1772,7 @@ function AppInner() {
       window.removeEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
       window.clearInterval(id);
     };
-  }, [config.pet?.enabled, daemonLive, projects]);
+  }, [config.pet?.enabled, daemonLive]);
 
   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
     void navigateToProject(projectId, { fileName: liveArtifactTabId(artifactId) });
@@ -1821,13 +1849,8 @@ function AppInner() {
   // Settings → Design Systems call back through these handlers after
   // every successful mutation; we drop any pool entry whose project
   // depends on the affected id — active or parked — so the next mount
-  // recomposes the system prompt with the new body. A ref tracks
-  // projects so the callback is stable across renders.
-  const projectsRef = useRef<Project[]>(projects);
-  useEffect(() => {
-    projectsRef.current = projects;
-  }, [projects]);
-
+  // recomposes the system prompt with the new body. `projectsRef` (declared
+  // near project state) keeps these callbacks stable across renders.
   const handleSkillsChanged = useCallback(
     (affectedSkillId?: string) => {
       void fetchSkills().then((list) => setSkills(list));
@@ -2255,6 +2278,7 @@ function AppInner() {
         onPersistComposioKey={handleConfigPersistComposioKey}
         onOpenSettings={openSettings}
         onCompleteOnboarding={handleCompleteOnboarding}
+        backgroundRunSummaries={backgroundRunSummaries}
       />
     );
   }

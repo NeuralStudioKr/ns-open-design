@@ -56,12 +56,13 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | 항목 | 메커니즘 | 상태 |
 |------|----------|------|
 | Nav: Tasks / Plugins / Integrations | `hideNavViews` | ✅ |
-| Settings: API key / CLI / MCP / Composio / Pet | `allowedSettingsSections` (language, appearance만) | ✅ |
+| Settings: API key / CLI / MCP / Composio / Pet | `allowedSettingsSections` (language, appearance, designTemplates) | ✅ |
 | Topbar 실행 스위처 / Agent picker | `hideTopbarExecutionSwitcher`, `hideStudioExecutionControls` | ✅ |
 | Handoff (open-design.ai) | `hideHandoffButton` | ✅ |
 | Use everywhere chip | `hideUseEverywhereChip` | ✅ |
 | Updater popup | `EntryShell` embed 분기 | ✅ |
 | Workspace tab strip | `hideWorkspaceTabsBar` | ✅ |
+| Project workspace escape bar | `TeamverWorkspaceEscapeBar` — Design 홈(내부) + Teamver 앱(외부) | ✅ loop 183 |
 
 ### 2.4 P0 — 파일 첨부 정책 (검토)
 
@@ -173,7 +174,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] **Share/Publish (loop 171 + 173 + 174 + 175)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + **Teamver 드라이브로 HTML 발행** + **Drive 발행 이력 panel** (loop 174 — `v{N}` 라벨 · 상대 시각 · Drive 딥 링크, 최근 5개) **유지**. ZIP 칩 제거 (loop 174 — HTML-only 발행). `Open in Teamver Drive` 항목은 loop 173 에서 제거. **PDF / PPTX Drive 발행은 별도 트랙으로 보류 (loop 175 docket)** — OD daemon PDF exporter 가 desktop runtime 전용이고, headless 서버에 chromium 도입 / 메인 BE internal endpoint 호출 / Lambda 분리 등 인프라 결정이 동반되므로 이번 출시 게이트와 분리. 로컬 `PDF로 내보내기` (Electron `webContents.printToPDF`) 는 데스크탑에서 그대로 동작. 옵션 비교·재검토 트리거는 [00 §loop 175](./00_구현_내역_누적.md) archive 참조
 - [ ] **PreviewModal Share popover** — 모달의 share popover가 PDF/ZIP/HTML/image **export 만** 보여주고, X/Reddit/FB/LinkedIn/Instagram/Xiaohongshu + Copy link/Copy share text **부재**
 - [ ] **AssistantMessage** — "Share to Open Design" 제출 버튼 미노출
-- [ ] Settings — language / appearance만
+- [ ] Settings — language / appearance / design templates
 - [ ] **Deck 프로젝트 채팅** — API mode 고정, 프롬프트 전송 후 슬라이드 artifact 생성/수정
 - [ ] **runtime-config** — `GET /api/v1/runtime-config` (cookie) → `configured=true` + model (E2E `S-8c`)
 

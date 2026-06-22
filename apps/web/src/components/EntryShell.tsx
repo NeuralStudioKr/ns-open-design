@@ -91,6 +91,8 @@ import {
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { HomeView } from './HomeView';
+import type { PetTaskSummary } from './pet/PetOverlay';
+import { TeamverBackgroundRunsBanner } from '../teamver/components/TeamverBackgroundRunsBanner';
 import {
   createPluginAuthoringHandoff,
   createPluginUseHandoff,
@@ -356,6 +358,7 @@ interface Props {
   onPersistComposioKey: (composio: AppConfig['composio']) => Promise<void> | void;
   onOpenSettings: (section?: EntrySettingsSection) => void;
   onCompleteOnboarding: () => void;
+  backgroundRunSummaries?: PetTaskSummary[];
 }
 
 // Map an EntryNavRail view id to the analytics `element` enum on
@@ -448,6 +451,7 @@ export function EntryShell({
   onPersistComposioKey,
   onOpenSettings,
   onCompleteOnboarding,
+  backgroundRunSummaries = [],
 }: Props) {
   const t = useT();
   const teamverEmbed = isTeamverEmbedMode();
@@ -762,6 +766,12 @@ export function EntryShell({
             {!teamverEmbed ? <UpdaterPopup /> : null}
             {avatarMenu}
           </div>
+          {teamverEmbed && backgroundRunSummaries.length > 0 ? (
+            <TeamverBackgroundRunsBanner
+              summaries={backgroundRunSummaries}
+              onOpenProject={onOpenProject}
+            />
+          ) : null}
           <div
             className={`entry-main__inner${
               view === 'home' ? '' : ' entry-main__inner--wide'
