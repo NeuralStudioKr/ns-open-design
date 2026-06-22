@@ -103,8 +103,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-drive-import-modal.test.tsx \
       tests/teamver-drive-publish-targets.test.ts \
       tests/teamver-publish-drive-menu-item.test.tsx \
+      tests/teamver-embed-drive-publish-ui.test.ts \
       tests/teamver-list-project-outputs.test.ts \
-      tests/teamver-open-drive-publish-menu-item.test.tsx \
       tests/teamver-branding-head.test.tsx \
       tests/teamver-embed-branding.test.ts \
       tests/teamver-embed-share-policy.test.ts \

@@ -83,6 +83,8 @@ vi.mock("../src/teamver/publishToDrive", () => ({
 
 import { TeamverPublishDriveMenuItem } from "../src/teamver/components/TeamverPublishDriveMenuItem";
 
+const browseButtonOptions = { name: "찾아보기" } as const;
+
 describe("TeamverPublishDriveMenuItem", () => {
   beforeEach(() => {
     cleanup();
@@ -111,7 +113,7 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    fireEvent.click(screen.getByRole("button", browseButtonOptions));
     const modal = screen.getByTestId("teamver-drive-picker-modal");
     fireEvent.change(within(modal).getByRole("textbox", { name: "Search Drive folders" }), {
       target: { value: "exports" },
@@ -124,13 +126,14 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(screen.queryByTestId("teamver-drive-picker-modal")).toBeNull();
     });
 
+    // loop 173 — default formats is now `["html"]` (PDF unsupported; ZIP opt-in).
     fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
 
     await waitFor(() => {
       expect(publishMock).toHaveBeenCalledWith({
         projectId: "od-1",
         artifactFile: "deck/index.html",
-        formats: ["html", "zip"],
+        formats: ["html"],
         folderId: "FLD-EXPORTS",
         sharedDriveId: "SD-1",
       });
@@ -157,7 +160,7 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    fireEvent.click(screen.getByRole("button", browseButtonOptions));
     const modal = screen.getByTestId("teamver-drive-picker-modal");
     fireEvent.change(within(modal).getByRole("textbox", { name: "Search Drive folders" }), {
       target: { value: "launch" },
@@ -175,10 +178,125 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(publishMock).toHaveBeenCalledWith({
         projectId: "od-1",
         artifactFile: "deck/index.html",
-        formats: ["html", "zip"],
+        formats: ["html"],
         folderId: "FLD-REMOTE",
         sharedDriveId: "SD-2",
       });
+    });
+  });
+
+  // loop 173 — format selection
+  it("publishes ZIP alongside HTML when the operator toggles the ZIP chip", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-drive-format-input-zip"));
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({ formats: ["html", "zip"] }),
+      );
+    });
+  });
+
+  it("publishes only ZIP when the operator unchecks HTML after enabling ZIP", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-drive-format-input-zip"));
+    fireEvent.click(screen.getByTestId("teamver-drive-format-input-html"));
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({ formats: ["zip"] }),
+      );
+    });
+  });
+
+  it("prevents unchecking the last remaining format (BE requires ≥1)", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    const htmlInput = screen.getByTestId("teamver-drive-format-input-html") as HTMLInputElement;
+    expect(htmlInput.checked).toBe(true);
+    expect(htmlInput.disabled).toBe(true);
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({ formats: ["html"] }),
+      );
+    });
+  });
+
+  // loop 173 — custom listbox replaces the native <select>
+  it("uses a custom listbox (button + popover) to pick the destination", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    const trigger = screen.getByTestId("teamver-drive-target-select");
+    expect(trigger.tagName).toBe("BUTTON");
+    expect(trigger.getAttribute("aria-haspopup")).toBe("listbox");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+    const popover = await screen.findByTestId("teamver-drive-target-popover");
+    expect(popover.getAttribute("role")).toBe("listbox");
+
+    fireEvent.click(within(popover).getByTestId("teamver-drive-target-option-shared:SD-1:FLD-EXPORTS"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("teamver-drive-target-popover")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: "FLD-EXPORTS",
+          sharedDriveId: "SD-1",
+        }),
+      );
     });
   });
 
@@ -198,11 +316,21 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
     });
 
-    const select = screen.getByTestId("teamver-drive-target-select");
-    expect(select.hasAttribute("disabled")).toBe(false);
-    const options = within(select as HTMLElement).getAllByRole("option");
-    expect(options.map((opt) => (opt as HTMLOptionElement).value)).toContain("personal-default");
+    const trigger = screen.getByTestId("teamver-drive-target-select");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(trigger);
+    const popover = await screen.findByTestId("teamver-drive-target-popover");
+    const options = within(popover).getAllByRole("option");
     expect(options.length).toBeGreaterThanOrEqual(1);
+    expect(
+      options.some((opt) => opt.getAttribute("data-testid") === "teamver-drive-target-option-personal-default"),
+    ).toBe(true);
+
+    // Close popover by re-clicking the trigger to keep the next assertions
+    // focused on the publish button rather than popover lifecycle.
+    fireEvent.click(trigger);
+
     const browseButton = screen.getByTestId("teamver-drive-target-browse");
     expect(browseButton.hasAttribute("disabled")).toBe(false);
 
@@ -264,8 +392,8 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(screen.getByTestId("teamver-drive-target-error").textContent).toMatch(/연결 중/);
     });
     expect(listTargetsMock).not.toHaveBeenCalled();
-    const select = screen.getByTestId("teamver-drive-target-select");
-    expect(select.hasAttribute("disabled")).toBe(false);
+    const trigger = screen.getByTestId("teamver-drive-target-select");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
     const browseButton = screen.getByTestId("teamver-drive-target-browse");
     expect(browseButton.hasAttribute("disabled")).toBe(false);
   });
@@ -283,7 +411,7 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    fireEvent.click(screen.getByRole("button", browseButtonOptions));
     const modal = screen.getByTestId("teamver-drive-picker-modal");
 
     await waitFor(() => {

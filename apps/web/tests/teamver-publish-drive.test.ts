@@ -225,11 +225,11 @@ describe("parsePublishFailureFromError", () => {
 });
 
 describe("formatPublishErrorCodeForUser", () => {
-  it("maps loop-177 phase codes to user hints", () => {
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/session expired/i);
-    expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/storage upload failed/i);
-    expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/finalize the upload/i);
-    expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/Open a slide file/i);
+  it("maps loop-177 phase codes to Korean user hints (loop 173)", () => {
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/세션이 만료/);
+    expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/저장소 업로드/);
+    expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/완료하지 못/);
+    expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/슬라이드 파일/);
   });
 
   it("falls back to raw code for unknown errors", () => {
@@ -238,7 +238,7 @@ describe("formatPublishErrorCodeForUser", () => {
 });
 
 describe("formatTeamverDesignErrorMessage", () => {
-  it("maps 502 publish body codes to user hints", () => {
+  it("maps 502 publish body codes to Korean user hints (loop 173)", () => {
     const err = new NetworkError({
       message: "bad gateway",
       status: 502,
@@ -246,7 +246,7 @@ describe("formatTeamverDesignErrorMessage", () => {
         outputs: [{ publishStatus: "failed", errorCode: "drive_presigned_put_failed_502" }],
       },
     });
-    expect(formatTeamverDesignErrorMessage(err)).toMatch(/storage upload failed/i);
+    expect(formatTeamverDesignErrorMessage(err)).toMatch(/저장소 업로드/);
   });
 
   it("uses custom fallback for generic errors", () => {
@@ -265,12 +265,12 @@ describe("formatPublishErrorMessage", () => {
         outputs: [{ publishStatus: "failed", errorCode: "od_daemon_export_failed" }],
       },
     });
-    expect(formatPublishErrorMessage(err)).toMatch(/export this project/i);
+    expect(formatPublishErrorMessage(err)).toMatch(/프로젝트를 내보낼 수 없습니다/);
   });
 
-  it("falls back for generic errors", () => {
+  it("falls back for generic errors (loop 173 — Korean default)", () => {
     expect(formatPublishErrorMessage(new Error("publish_failed"))).toBe(
-      "Check your session and try again.",
+      "세션을 확인하고 다시 시도하세요.",
     );
   });
 });

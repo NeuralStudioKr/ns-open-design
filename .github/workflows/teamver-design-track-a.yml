@@ -72,5 +72,5 @@ jobs:
           cd apps/web
           npm test -- tests/teamver-publish-drive.test.ts \
             tests/teamver-list-project-outputs.test.ts \
-            tests/teamver-open-drive-publish-menu-item.test.tsx \
+            tests/teamver-publish-drive-menu-item.test.tsx \
             tests/teamver-project-registry.test.ts

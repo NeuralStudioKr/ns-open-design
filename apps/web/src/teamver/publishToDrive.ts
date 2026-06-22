@@ -3,9 +3,17 @@ import { getDesignBffClient } from "./designBffClient";
 import { readTeamverViteEnv } from "./teamverViteEnv";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
+/**
+ * loop 173 — Wire format selection through publishToDrive. Keeping the union
+ * narrow (vs. `string`) lets the UI surface a single source of truth for
+ * supported formats. PDF is deliberately absent: see
+ * `TeamverPublishDriveMenuItem` for the backend constraint.
+ */
+export type TeamverPublishDriveFormat = "html" | "zip";
+
 export type TeamverPublishDriveParams = {
   projectId: string;
-  formats?: Array<"html" | "zip">;
+  formats?: Array<TeamverPublishDriveFormat>;
   artifactFile?: string;
   folderId?: string | null;
   sharedDriveId?: string | null;
@@ -104,34 +112,37 @@ export function resolvePublishErrorCode(result: TeamverPublishDriveResult): stri
  * loop 180 — Map loop-177 phase-tagged publish error codes to short user-facing
  * hints shown in FileViewer toasts. Raw codes are kept as fallback for unknown
  * operator-only cases.
+ *
+ * loop 173 — Copy is Korean to match the embed surface (Teamver tenants are
+ * Korean-default). Raw codes still drop through for operator-only debugging.
  */
 export function formatPublishErrorCodeForUser(code: string): string {
   const trimmed = code.trim();
-  if (!trimmed) return "Publish failed — check your session and try again.";
+  if (!trimmed) return "발행에 실패했습니다 — 세션을 확인하고 다시 시도하세요.";
 
   const exact: Record<string, string> = {
-    teamver_workspace_required: "Select a Teamver workspace, then try again.",
-    teamver_design_client_unavailable: "Teamver Design is still loading — refresh and retry.",
-    artifact_file_required: "Open a slide file in the editor, then publish again.",
-    od_daemon_export_failed: "Could not export this project — save your work and retry.",
-    publish_failed: "Publish failed — check your session and try again.",
-    publish_all_failed: "Publish failed — check your session and try again.",
-    teamver_workspace_pending: "Teamver workspace is still connecting — wait a moment and retry.",
-    drive_publish_targets_failed: "Could not load Drive folders — use Browse or retry.",
+    teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
+    teamver_design_client_unavailable: "Teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
+    artifact_file_required: "편집기에서 슬라이드 파일을 연 뒤 다시 발행하세요.",
+    od_daemon_export_failed: "프로젝트를 내보낼 수 없습니다 — 작업을 저장한 뒤 다시 시도하세요.",
+    publish_failed: "발행에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",
+    publish_all_failed: "발행에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",
+    teamver_workspace_pending: "Teamver 작업공간 연결 중입니다 — 잠시 후 다시 시도하세요.",
+    drive_publish_targets_failed: "Drive 폴더 목록을 불러오지 못했습니다 — 찾아보기 또는 다시 시도하세요.",
   };
   if (exact[trimmed]) return exact[trimmed];
 
   if (trimmed.startsWith("drive_upload_failed_403")) {
-    return "Drive session expired — sign in to Teamver again, then retry publish.";
+    return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_")) {
-    return "Teamver Drive rejected the upload — check folder permissions or pick another destination.";
+    return "Teamver 드라이브가 업로드를 거부했습니다 — 폴더 권한을 확인하거나 다른 위치를 선택하세요.";
   }
   if (trimmed.startsWith("drive_presigned_put_failed_")) {
-    return "Drive storage upload failed — wait a moment and retry.";
+    return "Drive 저장소 업로드에 실패했습니다 — 잠시 후 다시 시도하세요.";
   }
   if (trimmed.startsWith("drive_confirm_failed_") || trimmed.startsWith("drive.confirm")) {
-    return "Drive could not finalize the upload — retry or choose another folder.";
+    return "Drive가 업로드를 완료하지 못했습니다 — 재시도하거나 다른 폴더를 선택하세요.";
   }
 
   return trimmed;
@@ -140,7 +151,7 @@ export function formatPublishErrorCodeForUser(code: string): string {
 /** User-facing design-api error detail (502 publish body, Error.message, or fallback). */
 export function formatTeamverDesignErrorMessage(
   err: unknown,
-  fallback = "Check your session and try again.",
+  fallback = "세션을 확인하고 다시 시도하세요.",
 ): string {
   const from502 = parsePublishFailureFromError(err);
   if (from502) return formatPublishErrorCodeForUser(resolvePublishErrorCode(from502));

@@ -28,7 +28,6 @@ import {
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useT, useI18n } from '../i18n';
-import { TeamverOpenDrivePublishMenuItem } from '../teamver/components/TeamverOpenDrivePublishMenuItem';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
@@ -8470,32 +8469,17 @@ function HtmlViewer({
                         : `${resolveTeamverMainOrigin()}/drive`;
                       setDeploySavedToast({
                         message: meta?.partial
-                          ? 'Partially published to Teamver Drive'
-                          : 'Published to Teamver Drive',
+                          ? 'Teamver 드라이브로 일부만 발행되었습니다'
+                          : 'Teamver 드라이브로 발행했습니다',
                         details: output.driveAssetId
-                          ? 'View in Teamver Drive'
-                          : `${output.filename} — open Drive`,
+                          ? 'Teamver 드라이브에서 보기'
+                          : `${output.filename} — 드라이브 열기`,
                         detailsHref: driveUrl,
                       });
                     }}
                     onError={(err) => setDeploySavedToast({
-                      message: 'Teamver Drive publish failed',
+                      message: 'Teamver 드라이브 발행에 실패했습니다',
                       details: formatTeamverDesignErrorMessage(err),
-                    })}
-                  />
-                  <TeamverOpenDrivePublishMenuItem
-                    projectId={projectId}
-                    onCloseMenu={() => setDownloadMenuOpen(false)}
-                    onNotFound={() => setDeploySavedToast({
-                      message: 'No Teamver Drive publish yet',
-                      details: 'Use Publish to Teamver Drive first.',
-                    })}
-                    onError={(err) => setDeploySavedToast({
-                      message: 'Could not open Teamver Drive',
-                      details: formatTeamverDesignErrorMessage(
-                        err,
-                        'Publish to Teamver Drive first, then try again.',
-                      ),
                     })}
                   />
                   <button
