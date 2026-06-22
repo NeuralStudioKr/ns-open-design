@@ -61,10 +61,23 @@ def get_internal_api_key_dependency():
 
 def extract_request_access_token(request: Request) -> str | None:
     client = get_teamver_client()
-    return extract_access_token_from_headers(
+    cookie_name = client.config.auth_cookie_name
+    token = extract_access_token_from_headers(
         authorization=request.headers.get("authorization") or request.headers.get("Authorization"),
-        cookie_token=request.cookies.get(client.config.auth_cookie_name),
+        cookie_token=request.cookies.get(cookie_name),
     )
+    if token:
+        return token
+    raw_cookie = request.headers.get("cookie") or request.headers.get("Cookie")
+    if not raw_cookie:
+        return None
+    for part in raw_cookie.split(";"):
+        key, _, value = part.partition("=")
+        if key.strip() == cookie_name:
+            parsed = value.strip()
+            if parsed:
+                return parsed
+    return None
 
 
 def auth_source_for_request(request: Request) -> str | None:

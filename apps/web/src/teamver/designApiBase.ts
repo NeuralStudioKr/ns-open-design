@@ -96,6 +96,23 @@ export function resolveTeamverDriveAssetUrl(assetId: string): string {
   return `${origin}/drive?asset=${encodeURIComponent(id)}`;
 }
 
+/** Cross-origin design-api when same-origin `/teamver-bff` is unavailable (nginx inc 미적용 등). */
+export function resolveTeamverDesignApiCrossOriginFallback(): string | null {
+  if (typeof window === "undefined") return null;
+  const host = window.location.hostname.toLowerCase();
+  if (host === "stg-design.teamver.com") return "https://stg-design-api.teamver.com";
+  if (host === "design.teamver.com") return "https://design-api.teamver.com";
+  return null;
+}
+
+/** Cookie SSO refresh — same-origin BFF 우선 (Set-Cookie relay). */
+export function resolveDesignBffRefreshUrl(): string {
+  const base = resolveTeamverDesignApiBase();
+  if (base === "") return "/teamver-bff/auth/refresh";
+  if (base) return `${base.replace(/\/+$/, "")}/api/v1/auth/refresh`;
+  return `${resolveTeamverMainApiBaseUrl()}/api/auth/refresh`;
+}
+
 export function resolveTeamverDesignApiBase(): string | null {
   const fromEnv = readTeamverViteEnv("VITE_TEAMVER_DESIGN_API_URL");
   if (fromEnv) return fromEnv.replace(/\/+$/, "");

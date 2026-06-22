@@ -38,6 +38,19 @@ describe("resolveTeamverDesignApiBase", () => {
   });
 });
 
+describe("resolveDesignBffRefreshUrl", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.VITE_TEAMVER_DESIGN_API_URL;
+  });
+
+  it("uses same-origin refresh on stg-design host", async () => {
+    setLocation("stg-design.teamver.com");
+    const { resolveDesignBffRefreshUrl } = await import("../src/teamver/designApiBase");
+    expect(resolveDesignBffRefreshUrl()).toBe("/teamver-bff/auth/refresh");
+  });
+});
+
 describe("redirectToTeamverLogin cooldown", () => {
   beforeEach(() => {
     vi.resetModules();

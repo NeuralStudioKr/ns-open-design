@@ -1,0 +1,384 @@
+# Design — S3 데이터 저장 시점 SSOT
+
+**목적:** staging/production에서 “언제 S3에 뭐가 올라가는지”를 **한 문서로 고정**한다.  
+**전제:** `OD_PROJECT_STORAGE=s3` (staging/prod 필수 — [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md)).  
+**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md)
+
+---
+
+## 0. 한 줄 결론 (헷갈릴 때 이것만)
+
+> **프로젝트 파일은 EC2 scratch(로컬)에 먼저 쓰이고, 특정 이벤트(sync-up)가 발생한 뒤에만 S3 tenant prefix로 PUT 된다.**  
+> **채팅(run) 중에는 S3에 안 올라갈 수 있다 — run 종료 시점에 올라간다.**  
+> **프로젝트 목록·제목 등 메타는 RDS이며 S3 버킷에 없다.**
+
+---
+
+## 1. 저장소 SSOT 맵 (무엇이 어디에 있는가)
+
+| 데이터 | SSOT (staging/prod) | S3 버킷 `teamver-design-*-data`? | 언제/어떻게 반영 |
+|--------|---------------------|----------------------------------|------------------|
+| **프로젝트 파일** (HTML, assets, export 산출물 등) | **S3** (`design/…/proj_…/`) | ✅ | scratch → **sync-up** (아래 §4) |
+| **프로젝트 registry** (workspace/user, `s3_prefix`, title, status) | **RDS** `design_projects` | ❌ | design-api가 Postgres에 즉시 commit (S3 sync 성공 후 — §4.3) |
+| **Publish/Output 메타** (`design_outputs`, usage) | **RDS** | ❌ | design-api |
+| **Drive에 올린 HTML/ZIP** | **Main BE Drive** (별도 S3) | ❌ (Design project-data 버킷 아님) | Publish API |
+| **daemon `app.sqlite`** (채팅·로컬 OD 메타) | EC2 EBS volume | △ Litestream 켜면 `litestream/*` | Litestream **연속 복제** (§5) |
+| **수동 SQLite 백업** | S3 `sqlite-backups/` (선택) | △ | `backup_sqlite_to_s3.sh` **수동 실행** |
+
+**로컬 개발 (`OD_PROJECT_STORAGE=local`):** 위 S3 sync-up 전부 **비활성**. 파일은 `<OD_DATA_DIR>/projects/<id>/` 에만 존재.
+
+---
+
+## 2. 아키텍처: scratch + materialization
+
+Agent/도구는 **로컬 working directory(scratch)** 가 필요하므로, pure “매 쓰기마다 S3 직접 PUT”이 아니다.
+
+```text
+┌──────── Browser / design-api ─────────────────────────────┐
+│  registry CRUD        → design-api → RDS                  │
+│  chat / run / tools   → open-design daemon                │
+│  file upload / export → daemon API                        │
+└───────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+              open-design daemon (OD_PROJECT_STORAGE=s3)
+              ┌─────────────────────────────────────┐
+              │  scratch: /app/.od/scratch/<proj>/ │  ← 실행 중 쓰기는 여기
+              │  MaterializingProjectStorage        │
+              │    sync-down  S3 → scratch (읽기)   │
+              │    sync-up    scratch → S3 (저장)   │
+              └─────────────────────────────────────┘
+                              │
+                              ▼
+              s3://<bucket>/design/ws_<ws>/user_<u>/proj_<od>/
+```
+
+**코드 SSOT:**
+
+| 역할 | 경로 |
+|------|------|
+| scratch ↔ S3 구현 | `apps/daemon/src/storage/materializing-project-storage.ts` |
+| run 전/후 hook | `apps/daemon/src/storage/project-materialization-runtime.ts` |
+| 파일 API lazy hook | `apps/daemon/src/storage/lazy-project-materialization.ts` |
+| tenant S3 prefix | `deploy/teamver/be/app/db/crud/design_project_crud.py` (`build_project_s3_prefix`) |
+| registry create → sync-up | `deploy/teamver/be/app/routers/projects.py` |
+
+---
+
+## 3. S3 객체 키 구조
+
+### 3.1 버킷·환경 prefix
+
+`.env.staging` / `.env.production` 예:
+
+```bash
+OD_S3_BUCKET=teamver-design-staging-data   # 또는 prod-data
+OD_S3_REGION=ap-northeast-2
+OD_S3_PREFIX=design/                       # 버킷 내 공통 루트
+```
+
+### 3.2 프로젝트(tenant) prefix — registry SSOT
+
+design-api가 프로젝트 생성 시 **RDS `design_projects.s3_prefix`** 에 고정:
+
+```text
+design/ws_<workspaceId>/user_<ownerUserId>/proj_<odProjectId>/
+```
+
+예: `design/ws_ws1/user_u1/proj_od-abc123/index.html`
+
+- `odProjectId`: Open Design daemon이 쓰는 프로젝트 ID (`od_project_id`)
+- daemon은 design-api **access 검증** 응답의 `X-Teamver-S3-Prefix` 또는 내부 identity로 tenant remote storage를 resolve
+
+### 3.3 Litestream / 백업 (프로젝트 파일과 별 경로)
+
+| 경로 | 용도 |
+|------|------|
+| `litestream/app.sqlite` | Litestream replica (`deploy/teamver/litestream.yml`) |
+| `sqlite-backups/<env>/<timestamp>/` | Litestream 불가 시 수동 fallback (`scripts/backup_sqlite_to_s3.sh`) |
+
+---
+
+## 4. sync-down vs sync-up
+
+| 동작 | 방향 | 목적 |
+|------|------|------|
+| **sync-down** | S3 → scratch | run/API 읽기 전 최신 원격 파일을 로컬에 materialize |
+| **sync-up** | scratch → S3 | 변경분을 tenant prefix에 PUT (**실제 “저장”**) |
+| **evict** | scratch 삭제 | 로컬 캐시 제거 (S3 SSOT 유지) |
+| **purge** | S3 tenant 객체 삭제 | registry delete 시 원격 SSOT 제거 |
+
+sync-up은 파일마다 **최대 3회 재시도** (`withSyncUpRetry`). 실패 시 로그 JSON 마커 `od_s3_sync_up_failed` (CloudWatch 알람 대상).
+
+---
+
+## 5. sync-up이 발생하는 **정확한 시점** (체크리스트)
+
+아래 표가 “S3에 언제 생기나?”에 대한 **완전 목록**이다.
+
+### 5.1 AI 채팅 run **종료 후** (가장 흔한 경로)
+
+**트리거:** `startChatRun` → agent/tool이 scratch에 파일 수정 → run **finish**  
+**코드:** `project-materialization-runtime.ts` — `beforeChatRun` / `afterChatRun` (`wrapFinish`)
+
+| 단계 | 시점 | 동작 |
+|------|------|------|
+| ① run 시작 | `beforeChatRun` | **sync-down** (S3 → scratch). `projectMaterializationStartedAt` 기록 |
+| ② run 중 | agent/tools | scratch에만 read/write. **S3 PUT 없음** |
+| ③ run 종료 | `afterChatRun` | **sync-up**: run 시작 **이후** mtime이 갱신된 scratch 파일만 S3 PUT |
+| ④ (선택) | run 종료 직후 | `OD_SCRATCH_EVICT_AFTER_RUN=1` → scratch에서 프로젝트 evict |
+
+**업로드 대상 필터 (`syncUp(projectId, remote, runStartTimeMs)`):**
+
+- `runStartTimeMs > 0` (run 종료 경로): `file.mtimeMs + 1000ms >= runStartTimeMs` 인 파일만 upload  
+  (`RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS = 1000` — clock skew 완화)
+- run 시작 **이전** scratch에만 있던 stale 파일은 **skipped**
+
+**동시 run:** 같은 `projectId`에 run이 이미 active면 v1은 **sync-down을 skip**하고 경고 로그만 남긴다.
+
+```text
+[사용자] 채팅 시작
+    → sync-down (S3 → scratch)
+    → … agent가 index.html 등 수정 (scratch만)
+    → run 완료
+    → sync-up (변경 파일만 S3)
+    → (evict) scratch 비움
+```
+
+> **FAQ:** “채팅 중 S3 콘솔을 보면 왜 비어 있나?” → **run이 아직 안 끝났거나**, sync-up 실패, creds 없음.
+
+---
+
+### 5.2 파일·업로드 API **변경 직후** (lazy sync-up)
+
+**트리거:** daemon HTTP — mutating method가 **2xx로 끝난 직후** (`res.on('finish')`)  
+**코드:** `lazy-project-materialization.ts` — `createLazyProjectMaterializationMiddleware` + `persistAfterMutation`
+
+**대상 경로 (regex):**
+
+- `/api/projects/:id/files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit`
+- `/api/projects/:id/plugins/(install-folder|publish-github|contribute-open-design|share-tasks)`
+- `/api/projects/:id/export`, `/archive`
+
+| HTTP | sync-down? | sync-up? |
+|------|------------|----------|
+| GET / HEAD | ✅ (`ensureMaterialized`, TTL 캐시 — §6) | ❌ |
+| POST / PUT / PATCH / DELETE | ❌ (handler가 scratch 씀) | ✅ **응답 2xx 후** `persistAfterMutation` |
+
+**runStartTimeMs = 0** → scratch **전체 파일** upload 대상 (run 필터 없음).
+
+**예:** Drive import → daemon upload API → POST 200 → 즉시 sync-up.
+
+---
+
+### 5.3 daemon `POST /api/projects` (OD 네이티브 프로젝트 생성)
+
+**트리거:** daemon에서 새 프로젝트 생성 + template 파일 seed **성공 응답 후**  
+**코드:** `project-routes.ts` — `scheduleProjectStoragePersistAfterResponse`
+
+Teamver embed/registry 경로와 별도로, daemon 단독 create 시에도 동일하게 **2xx 후 sync-up**.
+
+---
+
+### 5.4 design-api `POST /api/v1/projects` (registry create — Track A 표준)
+
+**트리거:** registry row flush 후 **daemon `POST …/scratch/sync-up` 성공** → 그다음 RDS commit  
+**코드:** `deploy/teamver/be/app/routers/projects.py` — `_sync_daemon_scratch_after_registry`
+
+`OD_PROJECT_STORAGE=s3` 일 때:
+
+- sync-up **실패** → DB **rollback** + 클라이언트 **502** `od_daemon_scratch_sync_up_failed`
+- sync-up **성공** → active registry + (보통 빈) scratch 상태가 S3와 정합
+
+**재활성(soft-deleted row reactivation)** 도 sync 성공 후 commit.
+
+```text
+[embed] 새 프로젝트
+    → design-api RDS row (pending)
+    → daemon scratch/sync-up (tenant prefix에 PUT — 신규면 보통 0~소량 파일)
+    → 성공 시 RDS commit
+```
+
+---
+
+### 5.5 명시적 daemon ops API
+
+| API | 동작 |
+|-----|------|
+| `POST /api/projects/:id/scratch/sync-up` | `persistAfterMutation` (= §5.2와 동일, 전체 scratch upload) |
+| `POST /api/projects/:id/scratch/evict` | `onProjectRemoved` — purge + evict (§5.6) |
+
+design-api registry create가 내부적으로 `scratch/sync-up` 을 호출한다.
+
+---
+
+### 5.6 프로젝트 **삭제** — 저장이 아님
+
+**트리거:** registry delete / evict API  
+**코드:** `onProjectRemoved`
+
+| `OD_S3_PURGE_ON_DELETE` | S3 tenant prefix | scratch |
+|-------------------------|------------------|---------|
+| default **on** (1/true) | **purge** (객체 DELETE) | evict |
+| `0` / false | 유지 | evict |
+
+로그 마커: `od_s3_remote_purged`.
+
+---
+
+## 6. sync-down (읽기) 시점 — “저장”은 아니지만 짝
+
+| 경로 | sync-down 시점 |
+|------|----------------|
+| **run 시작** | `beforeChatRun` (§5.1) |
+| **파일 API GET** | lazy middleware `ensureMaterialized` |
+
+**TTL:** `OD_PROJECT_LAZY_SYNC_TTL_MS` (staging example **60000** = 60초).  
+같은 프로젝트 GET이 TTL 안이면 **sync-down skip** (scratch 캐시 사용).
+
+---
+
+## 7. Litestream / SQLite — 프로젝트 파일과 **별 타이밍**
+
+| 항목 | 설명 |
+|------|------|
+| **대상** | daemon volume `app.sqlite` (OD 내부 채팅·설정 등) |
+| **경로** | `s3://<bucket>/litestream/app.sqlite` |
+| **시점** | Litestream profile 가동 시 **약 1초 간격 연속 복제** (`litestream.yml` `sync-interval: 1s`) |
+| **프로젝트 sync-up과 관계** | **무관** — HTML/assets upload와 별도 |
+
+Litestream 미가동 시: `app.sqlite`는 EBS에만 있음. S3에는 `backup_sqlite_to_s3.sh` **수동 실행** 시에만 `sqlite-backups/` 하위에 snapshot.
+
+---
+
+## 8. 환경 변수 (저장 동작에 직접 영향)
+
+| 변수 | 기본·staging | 영향 |
+|------|--------------|------|
+| `OD_PROJECT_STORAGE` | staging/prod: **`s3` 필수** | `local`이면 S3 전부 비활성 |
+| `OD_S3_BUCKET` / `OD_S3_REGION` / `OD_S3_PREFIX` | terraform output | remote bucket·키 루트 |
+| `OD_S3_ACCESS_KEY_ID` / `OD_S3_SECRET_ACCESS_KEY` | staging: static key 또는 instance role | **없으면 daemon S3 init 실패 → sync-up 불가** |
+| `OD_PROJECT_LAZY_SYNC_TTL_MS` | 60000 | GET sync-down 캐시 TTL |
+| `OD_SCRATCH_EVICT_AFTER_RUN` | staging example **1** | run 종료 후 scratch evict |
+| `OD_S3_SYNC_UP_METRICS` | **1** 권장 | lazy sync-up 실패 시 `od_s3_sync_up_failed` (run-end는 항상 emit) |
+| `OD_S3_PURGE_ON_DELETE` | default on | delete 시 S3 purge |
+| `LITESTREAM_BUCKET` | project data bucket | Litestream 대상 |
+
+---
+
+## 9. 시나리오별 타임라인
+
+### A. embed에서 슬라이드 채팅 (일반 UX)
+
+```text
+1. (최초) design-api create → scratch/sync-up → RDS commit
+2. 사용자 메시지 → startChatRun
+3. beforeChatRun: sync-down
+4. agent가 HTML/assets 수정 (scratch)
+5. run finish → afterChatRun: sync-up → S3에 객체 생성/갱신
+6. OD_SCRATCH_EVICT_AFTER_RUN=1 이면 scratch 비움
+```
+
+**S3에 파일이 보이는 시점:** **5번 run 종료 후** (4번 중에는 scratch만).
+
+### B. Drive에서 asset import
+
+```text
+design-api → daemon upload POST → 2xx → persistAfterMutation → sync-up
+```
+
+**S3 반영:** upload API **응답 직후** (run 불필요).
+
+### C. Publish to Drive
+
+```text
+daemon export GET (sync-down으로 S3→scratch) → ZIP/HTML 생성
+→ Main BE Drive presigned PUT (Design project-data 버킷 아님)
+→ design_outputs RDS row
+```
+
+**Design S3:** export **읽기** 시 sync-down; Publish 산출물 **본문**은 Main BE Drive S3.
+
+### D. 프로젝트 삭제
+
+```text
+design-api delete → daemon scratch/evict → S3 tenant purge (default)
+```
+
+**S3:** 객체 **삭제** (저장 아님).
+
+---
+
+## 10. “S3에 없다” / “안 올라간다” 진단
+
+| 증상 | 흔한 원인 |
+|------|-----------|
+| daemon crash loop `requires credentials.accessKeyId` | S3 creds 미설정 — sync-up 전에 프로세스 종료 |
+| run 중 버킷 비어 있음 | **정상** — run 종료 전 |
+| run 후에도 tenant prefix 없음 | sync-up 실패 — daemon 로그 `[project-materialization] sync-up failed` / `od_s3_sync_up_failed` |
+| RDS에 프로젝트 있는데 S3 없음 | create 시 sync-up 실패했어야 502 — **예외:** `OD_PROJECT_STORAGE!=s3` 로컬 fallback (staging/prod는 validate가 차단) |
+| 잘못된 prefix 조회 | tenant path `design/ws_*/user_*/proj_*/` 확인. 버킷 루트만 보면 “비어 있음”처럼 보일 수 있음 |
+
+**확인 명령 (EC2, creds 설정 후):**
+
+```bash
+# daemon storage health
+curl -sS -H "Authorization: Bearer $OD_API_TOKEN" http://127.0.0.1:7456/api/health/storage | jq .
+
+# tenant prefix (design-api / RDS design_projects.s3_prefix 값)
+aws s3 ls "s3://teamver-design-staging-data/design/ws_<ws>/user_<u>/proj_<od>/" --region ap-northeast-2
+
+# sync-up 실패 로그
+docker logs teamver-open-design-daemon 2>&1 | grep -E 'sync-up|od_s3_sync_up_failed'
+```
+
+**배포 게이트:** `bash scripts/check_storage_isolation.sh --staging` — 컨테이너 ENV·health endpoint까지 SSOT 검증.
+
+---
+
+## 11. 자주 헷갈리는 Q&A
+
+### Q1. “저장” 버튼을 눌러야 S3에 가나?
+
+아니다. **run 종료** 또는 **파일 mutating API 성공** 시 자동 sync-up. 별도 “Save to S3” UX 없음.
+
+### Q2. 채팅 한 턴 도중 EC2가 죽으면?
+
+run 종료 sync-up 전이면 **scratch 변경분은 유실**될 수 있다. S3 SSOT는 **마지막 성공 sync-up** 시점. (`OD_SCRATCH_EVICT_AFTER_RUN=1` 이면 scratch도 비워져 있을 수 있음.)
+
+### Q3. RDS `design_projects` 와 S3 파일 관계?
+
+RDS: **누구의 어떤 프로젝트인지** + `s3_prefix` 포인터.  
+S3: **실제 파일 본문**. registry만 있고 파일 없음 = create sync-up 실패했거나 아직 run/upload 없음.
+
+### Q4. Main BE Drive S3와 Design bucket?
+
+**완전 별개.** Publish는 Main BE presigned URL로 **다른 bucket**에 PUT.
+
+### Q5. production도 static AWS key?
+
+Design deploy 정책: production은 **EC2 instance profile** 권장. static key는 validate **fail** (`ALLOW_STATIC_AWS_KEYS=1` 긴급 우회만).
+
+### Q6. local / MinIO 개발은?
+
+`OD_PROJECT_STORAGE=local` 또는 MinIO endpoint — §1 표와 다르게 **S3 SSOT 아님**. [09 §10.1](./09_Design_저장소_격리_출시게이트.md) 참고.
+
+---
+
+## 12. 관련 ops·테스트
+
+| 항목 | 경로 |
+|------|------|
+| staging S3 env merge | `deploy/teamver/scripts/apply_staging_s3_env.sh` |
+| storage isolation check | `deploy/teamver/scripts/check_storage_isolation.sh` |
+| validate (s3 필수) | `deploy/teamver/scripts/validate_deploy_env.sh` |
+| daemon storage tests | `apps/daemon/tests/storage.test.ts`, `lazy-project-materialization.test.ts` |
+| registry create sync tests | `deploy/teamver/be/tests/test_projects_create_router.py` |
+
+---
+
+## 13. 변경 이력
+
+| 날짜 | 내용 |
+|------|------|
+| 2026-06-19 | 초版 — sync-up/down 트리거·SSOT 맵·tenant prefix·Litestream 분리·FAQ |

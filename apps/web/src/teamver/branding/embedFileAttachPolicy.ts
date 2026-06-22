@@ -15,6 +15,9 @@ const SLIDE_FRIENDLY_EXTENSIONS = new Set([
   "ico",
   "avif",
   "pdf",
+  "doc",
+  "docx",
+  "odt",
   "ppt",
   "pptx",
   "odp",
@@ -70,6 +73,7 @@ function mimeMatchesSlideFriendly(mimeType: string): boolean {
   if (!mime) return false;
   if (mime.startsWith("image/")) return true;
   if (mime === "application/pdf") return true;
+  if (mime.includes("wordprocessingml") || mime.includes("msword") || mime.includes("opendocument.text")) return true;
   if (mime.includes("presentation") || mime.includes("powerpoint")) return true;
   if (mime.startsWith("text/")) return true;
   if (mime === "application/json" || mime === "text/csv") return true;
@@ -123,5 +127,5 @@ export function embedAttachBlockReason(
   const mimeType = options.mimeType?.trim() ?? "";
   if (mimeType && mimeMatchesSlideFriendly(mimeType)) return null;
 
-  return "Only slide-friendly files (images, PDF, PPTX, MD, CSV, JSON, HTML) can be attached in embed mode.";
+  return "Only slide-friendly files (images, PDF, DOCX, PPTX, MD, CSV, JSON, HTML) can be attached in embed mode.";
 }

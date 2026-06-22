@@ -17,6 +17,7 @@ describe("embedFileAttachPolicy", () => {
       isEmbedAllowedAttachFile("logo.png", { slideOnlyMvp: true, mimeType: "image/png" }),
     ).toBe(true);
     expect(isEmbedAllowedAttachFile("deck.pptx", { slideOnlyMvp: true })).toBe(true);
+    expect(isEmbedAllowedAttachFile("brief.docx", { slideOnlyMvp: true })).toBe(true);
     expect(isEmbedAllowedAttachFile("notes.md", { slideOnlyMvp: true })).toBe(true);
   });
 

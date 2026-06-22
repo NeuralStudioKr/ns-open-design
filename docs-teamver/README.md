@@ -16,6 +16,7 @@
 | **[13 OD 단독 검증 (서버)](./13_OD_단독_검증_서버_가이드.md)** | **Teamver 없이 OD core·deck 검증 · :7457 격리 스택** |
 | **[13 embed 슬라이드 MVP](./13_embed_슬라이드_MVP_기능게이트.md)** | **embed 1차 출시 — deck-only UI·MCP/미디어 비노출** |
 | **[15 웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)** | **URL 기반 슬라이드 · web search vs web_fetch · daemon 패치 FAQ** |
+| **[16 S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** | **언제 S3에 올라가는지 · scratch/sync-up · RDS·Drive·Litestream 구분** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
 | **[05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** | 프록시·인증·브랜딩 |
 | [04 구현 우선순위](./04_구현_우선순위.md) | Track A/B/C · Phase 요약 |
@@ -31,6 +32,7 @@
 | 10 | **[세션·OD패치 보강](./10_세션·OD패치_보강.md)** |
 | 11 | **[Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md)** |
 | 15 | **[웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)** |
+| 16 | **[S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
 | 06 | **[Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)** |
 | 07 | **[EC2·배포·인프라](./07_VM_배포_인프라.md)** |

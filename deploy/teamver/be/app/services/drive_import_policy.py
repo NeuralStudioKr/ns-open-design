@@ -14,6 +14,9 @@ _ALLOWED_EXTENSIONS = {
     ".ico",
     ".avif",
     ".pdf",
+    ".doc",
+    ".docx",
+    ".odt",
     ".ppt",
     ".pptx",
     ".odp",
@@ -66,6 +69,8 @@ def _mime_is_slide_friendly(mime_type: str) -> bool:
     if mime.startswith("image/"):
         return True
     if mime == "application/pdf":
+        return True
+    if "wordprocessingml" in mime or "msword" in mime or "opendocument.text" in mime:
         return True
     if "presentation" in mime or "powerpoint" in mime:
         return True

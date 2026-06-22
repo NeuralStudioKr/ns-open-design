@@ -14,6 +14,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 > **Phase 1 (진행): Drive picker UI 고도화** — 검색형 folder picker 1차 ✅, full Drive browser는 후속.
 > **Phase 2 (진행): Drive import** — design-api ingest + composer 첨부 modal/full browser + Main Drive handoff ✅, 다중 handoff 후속.
 > **Main Drive handoff (완료):** Main Drive 파일 상세/우클릭 → AI Design import picker 사전 선택 ✅.
+> **Canvas → slide handoff (완료):** Main Web/Mobile Canvas를 이미지가 포함된 self-contained HTML Drive asset으로 저장한 뒤 AI Design import picker로 직접 전달 ✅.
 > **Phase 3: Workspace 자산 라이브러리** — 공유 Drive를 design system / 템플릿 / 로고의 SSOT로 노출.
 
 ---
@@ -165,6 +166,7 @@ embed 사용자가 **브랜드 로고·데이터 CSV·참고 PPTX**를 Drive에 
 ### 4.2.4 구현됨 — Phase 2-4 (loop 161)
 
 - **embed attach policy** — `embedFileAttachPolicy.ts` white-list + 50MB cap (`ChatComposer` upload/import + modal card block).
+- **문서 입력** — Canvas Drive export와 일반 문서 업무를 위해 DOC/DOCX/ODT 확장자와 Word/OpenDocument MIME을 FE/BE 동시 허용한다.
 - **Analytics** — `teamverDriveImportAnalytics.ts` (`drive_import_modal` surface_view, `drive_import_pick` ui_click) → loop 164 contracts 정식화.
 
 ### 4.2.5 구현됨 — Phase 2-5 (loop 162)
@@ -241,6 +243,14 @@ Content-Type: application/json
 
 - Main BE Drive download / asset detail SDK 메서드 (이미 보유 — `runApp source_asset_id` 패턴).
 - daemon 측 import 라우트 (현재 폴더 import는 차단됨 — `embedLocalWorkspacePolicy`. 신규 `import-drive` 라우트는 별도 권한 화이트리스트).
+
+### 4.6 Canvas 결과물 기반 slide 생성
+
+- Main Web Canvas Drive 메뉴와 Mobile export 메뉴에 `AI Design으로 슬라이드 만들기`를 제공한다.
+- 현재 Canvas draft를 export 직전 flush하고, 텍스트 구조·서식·인라인 이미지를 함께 보존하는 self-contained HTML로 변환한다.
+- 생성된 HTML은 Main Drive presigned upload 3-step으로 저장되며, 반환된 `assetId/name/mimeType`을 기존 `teamverDriveAsset*` handoff 계약으로 AI Design에 전달한다.
+- AI Design은 별도 Canvas 전용 권한을 받지 않고 기존 Drive import API에서 workspace 권한·50MB·파일 정책을 동일하게 검증한다.
+- 중간 로컬 파일 저장은 필요 없다. Web은 Blob, Mobile은 memory data URI를 Drive upload에 바로 사용한다.
 
 ---
 

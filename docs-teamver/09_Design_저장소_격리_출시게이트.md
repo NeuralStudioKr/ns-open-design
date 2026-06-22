@@ -3,7 +3,7 @@
 **Prod 공개 출시 전 필수.** volume-only Track A는 **용량·백업·테넌트 격리** 측면에서 출시 blocker이다.  
 **개발 SSOT:** 본 문서 · [04 구현 우선순위](./04_구현_우선순위.md) · **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
-**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md)
+**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** (sync-up/down·tenant prefix·FAQ)
 
 ---
 

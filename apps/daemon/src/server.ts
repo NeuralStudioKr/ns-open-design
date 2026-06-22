@@ -265,6 +265,7 @@ import {
 } from './storage/project-storage-startup.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
+import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
 import {
   createLazyProjectMaterializationMiddleware,
   createProjectStorageAccessHooks,
@@ -16003,6 +16004,7 @@ export async function startServer({
     telemetry: { reportFinalizedMessage, reportFeedback },
   });
 
+  registerTeamverDesignBffProxy(app);
   registerStaticSpaFallback(app, STATIC_DIR);
 
   // Wait for `listen` to bind so callers always see the resolved URL —
