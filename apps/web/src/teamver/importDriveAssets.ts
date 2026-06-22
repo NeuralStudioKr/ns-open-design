@@ -1,4 +1,5 @@
 import type { ChatAttachment } from "@open-design/contracts";
+import type { Dict } from "../i18n/types";
 import { getDesignBffClient } from "./designBffClient";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
@@ -29,9 +30,9 @@ export type TeamverDriveImportPartialResult = {
 
 export function formatDriveImportErrorCode(
   code: string,
-  t: (key: string) => string,
+  t: (key: keyof Dict, vars?: Record<string, string | number>) => string,
 ): string {
-  const key = `teamver.driveImport.error.${code}`;
+  const key = `teamver.driveImport.error.${code}` as keyof Dict;
   const translated = t(key);
   return translated === key ? code : translated;
 }

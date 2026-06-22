@@ -44,7 +44,9 @@ ARG VITE_TEAMVER_SITE_URL=https://design.teamver.com
 ARG VITE_TEAMVER_OG_IMAGE_URL=https://teamver.com/images/teamver_og_img_v0.png
 ENV VITE_TEAMVER_SITE_URL=${VITE_TEAMVER_SITE_URL}
 ENV VITE_TEAMVER_OG_IMAGE_URL=${VITE_TEAMVER_OG_IMAGE_URL}
-RUN pnpm --filter @open-design/daemon build && \
+RUN pnpm --filter @open-design/contracts build && \
+    pnpm --filter @open-design/registry-protocol build && \
+    pnpm --filter @open-design/daemon build && \
     pnpm --filter @open-design/web build && \
     pnpm --filter @open-design/daemon deploy --legacy --prod /app/deploy/daemon && \
     pnpm store prune && \

@@ -486,7 +486,7 @@ export async function executeWebFetch(
   const url = typeof args.url === 'string' ? args.url : '';
   if (!url.trim()) return { ok: false, error: 'url is required' };
   try {
-    return await fetchUrlContent(url, ctx.requestInit);
+    return await fetchUrlContent(url, _ctx.requestInit);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

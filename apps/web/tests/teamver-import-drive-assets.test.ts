@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Dict } from "../src/i18n/types";
 
 const postMock = vi.fn();
 const getWorkspaceMock = vi.fn(async () => "ws-1");
@@ -109,10 +110,10 @@ describe("importTeamverDriveAssets", () => {
 describe("formatDriveImportErrorCode", () => {
   it("maps known error codes and falls back to the raw code", async () => {
     const { formatDriveImportErrorCode } = await import("../src/teamver/importDriveAssets");
-    const t = (key: string) =>
+    const t = (key: keyof Dict) =>
       key === "teamver.driveImport.error.unsupported_drive_import_file_type"
         ? "Unsupported type"
-        : key;
+        : String(key);
 
     expect(formatDriveImportErrorCode("unsupported_drive_import_file_type", t)).toBe(
       "Unsupported type",
