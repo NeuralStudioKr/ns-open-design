@@ -30,6 +30,7 @@ import {
 
 const MAX_PICK = 12;
 const SEARCH_DEBOUNCE_MS = 300;
+const EMPTY_INITIAL_ASSETS: TeamverDriveImportAsset[] = [];
 
 type NavCrumb = {
   folderId: string | null;
@@ -42,6 +43,7 @@ type Props = {
   onClose: () => void;
   onConfirm: (assets: TeamverDriveImportAsset[]) => void | Promise<void>;
   confirming?: boolean;
+  initialAssets?: TeamverDriveImportAsset[];
 };
 
 function scopeKey(scope: TeamverDriveImportScope, folderId: string | null): string {
@@ -66,6 +68,7 @@ export function TeamverDriveImportModal({
   onClose,
   onConfirm,
   confirming = false,
+  initialAssets = EMPTY_INITIAL_ASSETS,
 }: Props) {
   const branding = useTeamverBranding();
   const analytics = useAnalytics();
@@ -159,7 +162,15 @@ export function TeamverDriveImportModal({
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Map());
+    const initial = new Map<string, TeamverDriveImportAsset>();
+    for (const asset of initialAssets.slice(0, MAX_PICK)) {
+      const blocked = embedAttachBlockReason(asset.filename ?? asset.assetId, {
+        mimeType: asset.mimeType,
+        slideOnlyMvp: attachPolicyActive,
+      });
+      if (!blocked) initial.set(asset.assetId, asset);
+    }
+    setSelected(initial);
     setQuery("");
     setDebouncedQuery("");
     setScopeIndex(0);
@@ -180,7 +191,7 @@ export function TeamverDriveImportModal({
     return () => {
       cancelled = true;
     };
-  }, [open, workspaceId]);
+  }, [attachPolicyActive, initialAssets, open, workspaceId]);
 
   useEffect(() => {
     if (!activeScope) return;

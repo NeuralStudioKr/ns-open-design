@@ -44,6 +44,10 @@ import {
   type TeamverDriveImportAsset,
 } from '../teamver/importDriveAssets';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
+import {
+  consumeTeamverDriveLaunchHandoff,
+  readTeamverDriveLaunchHandoff,
+} from '../teamver/driveLaunchHandoff';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions } from '../teamver/branding/slideOnlyMvpPolicy';
 import { patchProject } from "../state/projects";
@@ -451,6 +455,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
     const [driveImportOpen, setDriveImportOpen] = useState(false);
     const [driveImportBusy, setDriveImportBusy] = useState(false);
+    const [driveLaunchAssets, setDriveLaunchAssets] = useState<TeamverDriveImportAsset[]>([]);
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
@@ -523,6 +528,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         cancelled = true;
       };
     }, [teamverDriveImportEnabled]);
+    useEffect(() => {
+      if (!teamverDriveImportEnabled || !teamverWorkspaceId) return;
+      const handoff = readTeamverDriveLaunchHandoff();
+      if (!handoff) return;
+      setDriveLaunchAssets([handoff]);
+      setDriveImportOpen(true);
+      consumeTeamverDriveLaunchHandoff();
+    }, [teamverDriveImportEnabled, teamverWorkspaceId]);
     const rememberRecentDir = useCallback(async (dir: string) => {
       setRecentDirs((prev) => [dir, ...prev.filter((d) => d !== dir)].slice(0, 5));
       const persisted = await pushRecentLinkedDir(dir);
@@ -1469,6 +1482,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
         if (result.imported.length > 0) {
           setDriveImportOpen(false);
+          setDriveLaunchAssets([]);
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -2634,8 +2648,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             open={driveImportOpen}
             workspaceId={teamverWorkspaceId}
             confirming={driveImportBusy}
+            initialAssets={driveLaunchAssets}
             onClose={() => {
-              if (!driveImportBusy) setDriveImportOpen(false);
+              if (!driveImportBusy) {
+                setDriveImportOpen(false);
+                setDriveLaunchAssets([]);
+              }
             }}
             onConfirm={importDriveAttachments}
           />
