@@ -9,26 +9,31 @@ function readSource(relativePath: string): string {
 }
 
 /**
- * loop 173 — Static pin for the Teamver Drive Publish menu UI revamp:
+ * loop 173 + 174 — Static pin for the Teamver Drive Publish menu UI:
  *
- *   1. The `Open in Teamver Drive` menu item is fully retired (component +
- *      tests gone, no remaining import from FileViewer). The Drive asset link
- *      is still reachable from the success toast (`Teamver 드라이브에서 보기`).
- *   2. All Korean copy in the share-menu Drive row is locked: button label,
- *      destination label, picker action, format chips and progress state.
- *   3. Format selection (`["html", "zip"]`) is operator-controlled — the
- *      previous hardcoded `["html", "zip"]` argument is gone, the default
- *      sent to BE is `["html"]`, and ZIP must remain togglable for the
- *      "publish archive" use case.
+ *   1. `Open in Teamver Drive` menu item stays retired (loop 173 — component
+ *      + tests gone, no remaining import from FileViewer). Drive deep link
+ *      is reachable via the publish success toast and the new history list.
+ *   2. Korean copy in the share-menu Drive row is locked: button label,
+ *      destination label, picker action, progress state.
+ *   3. Drive publish is HTML-only (loop 174). The publish helper sends a
+ *      static `["html"]` array — ZIP/PDF are intentionally absent from the
+ *      surface.
  *   4. The native `<select>` is replaced by a headless `TeamverDriveTargetSelect`
  *      listbox so the dropdown matches the embed theme (no OS chrome).
+ *   5. `TeamverDrivePublishHistory` is mounted at the top of the publish
+ *      menu and refetches after every publish — operators can see which
+ *      version is currently in Drive without leaving the embed.
+ *   6. The publish helper remembers the last destination keyed by
+ *      `workspace.project` in localStorage so the next publish defaults to
+ *      it.
  *
  * We scan source rather than mount because mounting the FileViewer pulls in
  * the full editor stack — the textual pin runs in ~ms on every CI build and
  * is faithful to the regression we want to fence.
  */
-describe('Teamver embed Drive publish UI (loop 173)', () => {
-  it('removes the standalone "Open in Teamver Drive" menu item', () => {
+describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
+  it('removes the standalone "Open in Teamver Drive" menu item (loop 173)', () => {
     expect(
       existsSync(resolve(webRoot, 'src/teamver/components/TeamverOpenDrivePublishMenuItem.tsx')),
     ).toBe(false);
@@ -43,12 +48,12 @@ describe('Teamver embed Drive publish UI (loop 173)', () => {
     expect(fileViewer).toContain('Teamver 드라이브에서 보기');
   });
 
-  it('locks the Korean copy on the Drive publish row', () => {
+  it('locks the Korean copy on the Drive publish row (loop 173)', () => {
     const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
     expect(menuItem).toContain('저장 위치');
     expect(menuItem).toContain('찾아보기');
-    expect(menuItem).toContain('Teamver 드라이브로 발행');
-    expect(menuItem).toContain('선택한 팀 드라이브로 발행');
+    expect(menuItem).toContain('Teamver 드라이브로 HTML 발행');
+    expect(menuItem).toContain('선택한 팀 드라이브로 HTML 발행');
     expect(menuItem).toContain('발행 중…');
     // Soft-pending hint copy stays intact so a partial workspace bridge still
     // tells the user what's happening instead of disabling the publish row.
@@ -56,23 +61,22 @@ describe('Teamver embed Drive publish UI (loop 173)', () => {
     expect(menuItem).toContain('Drive 폴더 목록을 불러오지 못했습니다. 찾아보기로 다시 시도하세요.');
   });
 
-  it('keeps HTML/ZIP format selection operator-controlled with HTML default', () => {
+  it('pins HTML-only Drive publish (loop 174)', () => {
     const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(menuItem).toContain('DEFAULT_PUBLISH_FORMATS');
-    expect(menuItem).toContain('"html"');
-    expect(menuItem).toContain('"zip"');
-    // Format chips are rendered as toggle inputs with the locked `min_length=1`
-    // contract enforced via `lockedOn`.
-    expect(menuItem).toContain('teamver-drive-format-chip');
-    expect(menuItem).toContain('lockedOn');
-    // Crucial regression fence: we must not silently re-introduce the old
-    // hardcoded `formats: ["html", "zip"]` literal — selectedFormats is
-    // routed through state instead.
-    expect(menuItem).toContain('formats: selectedFormats');
+    expect(menuItem).toContain('PUBLISH_FORMATS');
+    expect(menuItem).toMatch(/PUBLISH_FORMATS[^=]*=\s*\["html"\]/);
+    // Regression fence: the previous loop-173 contract sent `["html", "zip"]`
+    // when both chips were ticked. Both surface artefacts (selectedFormats
+    // state + the multi-format literal) must stay gone.
+    expect(menuItem).not.toContain('selectedFormats');
     expect(menuItem).not.toMatch(/formats:\s*\["html",\s*"zip"\]/);
+    expect(menuItem).not.toMatch(/toggleFormat/);
+    // The single-line hint takes the chip block's place — without it
+    // operators don't know PDF/ZIP exist as a local download path.
+    expect(menuItem).toContain('PDF/ZIP 추출은 다운로드 메뉴에서 로컬 저장하세요');
   });
 
-  it('replaces the native <select> with the headless TeamverDriveTargetSelect', () => {
+  it('replaces the native <select> with the headless TeamverDriveTargetSelect (loop 173)', () => {
     const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
     expect(menuItem).toContain('TeamverDriveTargetSelect');
     expect(menuItem).not.toMatch(/<select\b/);
@@ -86,7 +90,36 @@ describe('Teamver embed Drive publish UI (loop 173)', () => {
     expect(select).toContain('role="option"');
   });
 
-  it('keeps the format type union narrow in publishToDrive', () => {
+  it('mounts TeamverDrivePublishHistory and refreshes after every publish (loop 174)', () => {
+    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
+    expect(menuItem).toContain('TeamverDrivePublishHistory');
+    expect(menuItem).toContain('historyRefreshKey');
+    expect(menuItem).toContain('setHistoryRefreshKey');
+
+    const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
+    expect(history).toContain('listTeamverProjectOutputs');
+    expect(history).toContain('data-testid="teamver-drive-history"');
+    // Korean copy keys we care about
+    expect(history).toContain('Drive 발행 이력');
+    expect(history).toContain('아직 Teamver 드라이브에 발행한 적이 없습니다');
+    // Version label format is `v{N}` driven off the DESC-sorted ready list.
+    expect(history).toContain('ready.length - index');
+    expect(history).toContain('VISIBLE_ROW_LIMIT');
+  });
+
+  it('persists the last publish destination per workspace+project (loop 174)', () => {
+    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
+    expect(menuItem).toContain('lastTargetStorageKey');
+    expect(menuItem).toContain('teamver.drive.lastPublishTarget.');
+    expect(menuItem).toContain('readLastTargetId');
+    expect(menuItem).toContain('writeLastTargetId');
+    // The remembered target must NOT bypass the "exists in current targets"
+    // guard — silently selecting a folder that no longer exists would route
+    // the publish to the BE default without telling the operator.
+    expect(menuItem).toContain('merged.some((target) => target.id === remembered)');
+  });
+
+  it('keeps the format type union narrow in publishToDrive (loop 173)', () => {
     const publish = readSource('src/teamver/publishToDrive.ts');
     expect(publish).toContain('TeamverPublishDriveFormat');
     expect(publish).toContain('"html" | "zip"');

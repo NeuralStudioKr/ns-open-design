@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const getWorkspaceMock = vi.fn(async () => "ws-1");
@@ -45,12 +45,20 @@ const publishMock = vi.fn(async (_args: unknown) => ({
       driveAssetId: "AST-1",
       filename: "Deck.html",
       publishStatus: "ready",
+      publishedAt: "2026-06-22T10:00:00Z",
+      sizeBytes: 12345,
+      mimeType: "text/html",
     },
   ],
+}));
+const listOutputsMock = vi.fn(async (_projectId: string) => ({
+  projectId: "DPRJ-1",
+  outputs: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
+  resolveTeamverDriveAssetUrl: vi.fn((id: string) => `https://stg.teamver.com/drive?asset=${id}`),
 }));
 
 vi.mock("../src/teamver/designBffClient", () => ({
@@ -81,9 +89,14 @@ vi.mock("../src/teamver/publishToDrive", () => ({
     outputs.filter((output) => output.publishStatus === "ready"),
 }));
 
+vi.mock("../src/teamver/listProjectOutputs", () => ({
+  listTeamverProjectOutputs: (projectId: string) => listOutputsMock(projectId),
+}));
+
 import { TeamverPublishDriveMenuItem } from "../src/teamver/components/TeamverPublishDriveMenuItem";
 
 const browseButtonOptions = { name: "찾아보기" } as const;
+const LOCAL_STORAGE_LAST_TARGET_KEY = "teamver.drive.lastPublishTarget.ws-1.od-1";
 
 describe("TeamverPublishDriveMenuItem", () => {
   beforeEach(() => {
@@ -94,9 +107,24 @@ describe("TeamverPublishDriveMenuItem", () => {
     listImportScopesMock.mockClear();
     listImportRowsMock.mockClear();
     publishMock.mockClear();
+    listOutputsMock.mockClear();
+    listOutputsMock.mockResolvedValue({ projectId: "DPRJ-1", outputs: [] });
+    try {
+      window.localStorage.clear();
+    } catch {
+      /* jsdom localStorage is always present */
+    }
   });
 
-  it("browses searchable Drive targets and publishes to the selected team folder", async () => {
+  afterEach(() => {
+    try {
+      window.localStorage.clear();
+    } catch {
+      /* noop */
+    }
+  });
+
+  it("browses searchable Drive targets and publishes HTML to the selected team folder", async () => {
     const onCloseMenu = vi.fn();
     const onSuccess = vi.fn();
 
@@ -126,7 +154,8 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(screen.queryByTestId("teamver-drive-picker-modal")).toBeNull();
     });
 
-    // loop 173 — default formats is now `["html"]` (PDF unsupported; ZIP opt-in).
+    // loop 174 — Drive publish is now HTML-only (ZIP dropped from the UI;
+    // PDF deferred to a BE-rendered track).
     fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
 
     await waitFor(() => {
@@ -143,16 +172,21 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect.objectContaining({ driveAssetId: "AST-1" }),
       { partial: false },
     );
+    // loop 174 — successful publish persists the chosen target so subsequent
+    // publishes default to the same folder.
+    await waitFor(() => {
+      expect(window.localStorage.getItem(LOCAL_STORAGE_LAST_TARGET_KEY)).toBe(
+        "shared:SD-1:FLD-EXPORTS",
+      );
+    });
   });
 
   it("publishes to a folder returned by server-side Drive search", async () => {
-    const onCloseMenu = vi.fn();
-
     render(
       <TeamverPublishDriveMenuItem
         projectId="od-1"
         artifactFile="deck/index.html"
-        onCloseMenu={onCloseMenu}
+        onCloseMenu={vi.fn()}
       />,
     );
 
@@ -185,80 +219,7 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
-  // loop 173 — format selection
-  it("publishes ZIP alongside HTML when the operator toggles the ZIP chip", async () => {
-    render(
-      <TeamverPublishDriveMenuItem
-        projectId="od-1"
-        artifactFile="deck/index.html"
-        onCloseMenu={vi.fn()}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalled();
-    });
-
-    fireEvent.click(screen.getByTestId("teamver-drive-format-input-zip"));
-    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
-
-    await waitFor(() => {
-      expect(publishMock).toHaveBeenCalledWith(
-        expect.objectContaining({ formats: ["html", "zip"] }),
-      );
-    });
-  });
-
-  it("publishes only ZIP when the operator unchecks HTML after enabling ZIP", async () => {
-    render(
-      <TeamverPublishDriveMenuItem
-        projectId="od-1"
-        artifactFile="deck/index.html"
-        onCloseMenu={vi.fn()}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalled();
-    });
-
-    fireEvent.click(screen.getByTestId("teamver-drive-format-input-zip"));
-    fireEvent.click(screen.getByTestId("teamver-drive-format-input-html"));
-    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
-
-    await waitFor(() => {
-      expect(publishMock).toHaveBeenCalledWith(
-        expect.objectContaining({ formats: ["zip"] }),
-      );
-    });
-  });
-
-  it("prevents unchecking the last remaining format (BE requires ≥1)", async () => {
-    render(
-      <TeamverPublishDriveMenuItem
-        projectId="od-1"
-        artifactFile="deck/index.html"
-        onCloseMenu={vi.fn()}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalled();
-    });
-
-    const htmlInput = screen.getByTestId("teamver-drive-format-input-html") as HTMLInputElement;
-    expect(htmlInput.checked).toBe(true);
-    expect(htmlInput.disabled).toBe(true);
-
-    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
-    await waitFor(() => {
-      expect(publishMock).toHaveBeenCalledWith(
-        expect.objectContaining({ formats: ["html"] }),
-      );
-    });
-  });
-
-  // loop 173 — custom listbox replaces the native <select>
+  // loop 174 — Custom listbox replaces the native <select>
   it("uses a custom listbox (button + popover) to pick the destination", async () => {
     render(
       <TeamverPublishDriveMenuItem
@@ -295,6 +256,157 @@ describe("TeamverPublishDriveMenuItem", () => {
         expect.objectContaining({
           folderId: "FLD-EXPORTS",
           sharedDriveId: "SD-1",
+        }),
+      );
+    });
+  });
+
+  // loop 174 — Drive publish history surface
+  it("shows the publish history with version labels and Drive deep links", async () => {
+    listOutputsMock.mockResolvedValueOnce({
+      projectId: "DPRJ-1",
+      outputs: [
+        {
+          id: "OUT-3",
+          kind: "html",
+          driveAssetId: "AST-3",
+          driveFolderId: null,
+          driveSharedDriveId: null,
+          filename: "Deck.html",
+          sizeBytes: 23000,
+          mimeType: "text/html",
+          publishStatus: "ready",
+          publishedAt: "2026-06-22T01:00:00Z",
+        },
+        {
+          id: "OUT-2",
+          kind: "html",
+          driveAssetId: "AST-2",
+          driveFolderId: null,
+          driveSharedDriveId: null,
+          filename: "Deck.html",
+          sizeBytes: 22000,
+          mimeType: "text/html",
+          publishStatus: "ready",
+          publishedAt: "2026-06-21T01:00:00Z",
+        },
+      ],
+    });
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listOutputsMock).toHaveBeenCalledWith("od-1");
+    });
+
+    // The newest publish must carry the highest version number.
+    const row0 = await screen.findByTestId("teamver-drive-history-row-0");
+    expect(within(row0).getByTestId("teamver-drive-history-version-0").textContent).toBe("v2");
+    const row1 = screen.getByTestId("teamver-drive-history-row-1");
+    expect(within(row1).getByTestId("teamver-drive-history-version-1").textContent).toBe("v1");
+    expect(
+      (screen.getByTestId("teamver-drive-history-open-0") as HTMLAnchorElement).href,
+    ).toContain("AST-3");
+  });
+
+  it("shows the empty-state hint when the project has no Drive publishes yet", async () => {
+    listOutputsMock.mockResolvedValueOnce({ projectId: "DPRJ-1", outputs: [] });
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listOutputsMock).toHaveBeenCalled();
+    });
+
+    expect(
+      screen.getByTestId("teamver-drive-history-empty").textContent,
+    ).toContain("아직 Teamver 드라이브에 발행한 적이 없습니다");
+  });
+
+  it("refetches the history right after a successful publish", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listOutputsMock).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalled();
+      expect(listOutputsMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // loop 174 — last-publish-target persistence
+  it("restores the operator's last publish target on next mount", async () => {
+    window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "shared:SD-1:FLD-EXPORTS");
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: "FLD-EXPORTS",
+          sharedDriveId: "SD-1",
+        }),
+      );
+    });
+  });
+
+  it("falls back to the default destination when the remembered target no longer exists", async () => {
+    window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "gone:ABC");
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    // The mocked listTargets payload doesn't include a (null folder, null
+    // shared drive) row, so `ensureDefaultTarget` prepends the
+    // `personal-default` fallback and `selectedTarget` resolves to that row
+    // when the remembered id can't be matched against the current list.
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: null,
+          sharedDriveId: null,
         }),
       );
     });

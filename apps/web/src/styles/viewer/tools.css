@@ -793,6 +793,158 @@
   white-space: nowrap;
 }
 
+/* loop 174 — Drive publish history panel shown at the top of the publish
+   share-menu item. Compact list (max 5 rows) so the menu stays single-screen
+   on a 14" laptop. */
+.teamver-drive-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.teamver-drive-history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.teamver-drive-history__title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.teamver-drive-history__refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.teamver-drive-history__refresh:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.teamver-drive-history__refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.teamver-drive-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.teamver-drive-history__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+.teamver-drive-history__row:hover {
+  background: var(--bg-subtle);
+}
+.teamver-drive-history__version {
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.teamver-drive-history__meta {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.teamver-drive-history__time {
+  color: var(--text);
+}
+.teamver-drive-history__kind {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.teamver-drive-history__size {
+  font-variant-numeric: tabular-nums;
+}
+.teamver-drive-history__filename {
+  grid-column: 2 / span 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.teamver-drive-history__link {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  font-size: 10.5px;
+  color: var(--accent, var(--text));
+  text-decoration: none;
+  white-space: nowrap;
+}
+.teamver-drive-history__link:hover {
+  text-decoration: underline;
+}
+.teamver-drive-history__empty {
+  margin: 0;
+  padding: 2px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.teamver-drive-history__empty--error {
+  color: var(--danger, #d04040);
+}
+.teamver-drive-history__more {
+  margin: 0;
+  padding: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+/* loop 174 — single-line hint that replaces the loop 173 HTML/ZIP chip
+   block. The chip CSS below stays for the future PDF/ZIP re-enablement
+   path. */
+.teamver-drive-format-note {
+  margin: 0;
+  padding: 0 10px 6px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
 /* loop 173 — format selector row that sits above the publish action */
 .teamver-drive-format-row {
   display: flex;

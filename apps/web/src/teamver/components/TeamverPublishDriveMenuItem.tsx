@@ -8,6 +8,7 @@ import {
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
 import { TeamverDrivePickerModal } from "./TeamverDrivePickerModal";
+import { TeamverDrivePublishHistory } from "./TeamverDrivePublishHistory";
 import { TeamverDriveTargetSelect } from "./TeamverDriveTargetSelect";
 import {
   pickReadyPublishOutputs,
@@ -39,27 +40,27 @@ const DEFAULT_PUBLISH_TARGET: TeamverDrivePublishTarget = {
 };
 
 /**
- * loop 173 — Format selection contract. Default is HTML only because that's
- * the single deliverable embedders ask for in 95% of publish flows; ZIP is
- * opt-in for users who want the full archive (assets + sources) alongside.
- * PDF is intentionally absent: the daemon's PDF exporter is desktop-only
- * (`apps/daemon/src/import-export-routes.ts:534`), so headless staging/prod
- * cannot fulfil a PDF publish today. Until BE grows a server-side renderer
- * (Puppeteer/headless Chrome) we keep PDF on the local `PDF로 내보내기`
- * surface in `FileViewer`.
+ * loop 174 — Publish format policy:
+ *
+ *   - **HTML** is the only output we send to Drive. Main Teamver consumers
+ *     (AI Q&A, personal assistant context) expect a single file they can
+ *     ingest directly; a ZIP archive forces an unzip pass on every consumer
+ *     and was reported as friction by the embed operators (loop 174).
+ *   - **ZIP** is intentionally dropped from the Drive publish surface even
+ *     though the BE still supports `formats=["zip"]` for backwards-compat
+ *     with external scripted callers. If we ever need ZIP back, the format
+ *     chip block can return — the publish helper is already format-aware.
+ *   - **PDF** is not available because the daemon's PDF exporter is
+ *     desktop-only (`apps/daemon/src/import-export-routes.ts:534`), so the
+ *     headless staging/prod servers can't generate one server-side. Adding
+ *     a BE-side renderer (Playwright/Puppeteer) is a separate track. Until
+ *     then we surface a one-line hint pointing operators at the local
+ *     "PDF로 내보내기" download.
+ *
+ * Keeping the union narrow here also forces the typechecker to flag any
+ * future format additions in `publishToDrive.ts`.
  */
-type PublishFormatOption = {
-  id: TeamverPublishDriveFormat;
-  label: string;
-  description: string;
-};
-
-const PUBLISH_FORMAT_OPTIONS: readonly PublishFormatOption[] = [
-  { id: "html", label: "HTML", description: "단일 파일" },
-  { id: "zip", label: "ZIP", description: "에셋·소스 포함 아카이브" },
-];
-
-const DEFAULT_PUBLISH_FORMATS: readonly TeamverPublishDriveFormat[] = ["html"];
+const PUBLISH_FORMATS: readonly TeamverPublishDriveFormat[] = ["html"];
 
 function ensureDefaultTarget(
   targets: readonly TeamverDrivePublishTarget[],
@@ -69,6 +70,48 @@ function ensureDefaultTarget(
     return [...targets];
   }
   return [DEFAULT_PUBLISH_TARGET, ...targets];
+}
+
+/**
+ * loop 174 — Remember the operator's last publish destination so the next
+ * publish doesn't reset to "내 드라이브" every time. Keyed by workspace AND
+ * project: a different workspace switch must NOT leak destinations across
+ * tenants, and a different project inside the same workspace may legitimately
+ * have a different "right answer" folder.
+ */
+function lastTargetStorageKey(workspaceId: string | null, projectId: string): string | null {
+  const ws = workspaceId?.trim();
+  const proj = projectId.trim();
+  if (!ws || !proj) return null;
+  return `teamver.drive.lastPublishTarget.${ws}.${proj}`;
+}
+
+function readLastTargetId(workspaceId: string | null, projectId: string): string | null {
+  if (typeof window === "undefined") return null;
+  const key = lastTargetStorageKey(workspaceId, projectId);
+  if (!key) return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastTargetId(
+  workspaceId: string | null,
+  projectId: string,
+  targetId: string | null,
+): void {
+  if (typeof window === "undefined") return;
+  const key = lastTargetStorageKey(workspaceId, projectId);
+  if (!key) return;
+  try {
+    if (!targetId) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, targetId);
+  } catch {
+    // Storage might be disabled (private mode, quota); preference loss is
+    // harmless — the dropdown just defaults back to `내 드라이브`.
+  }
 }
 
 export function TeamverPublishDriveMenuItem({
@@ -87,9 +130,11 @@ export function TeamverPublishDriveMenuItem({
   ]);
   const [selectedTargetId, setSelectedTargetId] = useState<string>(DEFAULT_PUBLISH_TARGET.id);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [selectedFormats, setSelectedFormats] = useState<TeamverPublishDriveFormat[]>(() => [
-    ...DEFAULT_PUBLISH_FORMATS,
-  ]);
+  // loop 174 — bumped after every successful publish so the embedded
+  // `TeamverDrivePublishHistory` refetches and shows the new row in place
+  // (otherwise the operator wouldn't see their just-uploaded artifact
+  // appear in the history until they reopen the menu).
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const fetchSeqRef = useRef(0);
   const refreshTargets = useCallback(async () => {
@@ -111,7 +156,16 @@ export function TeamverPublishDriveMenuItem({
       }
       const next = await listTeamverDrivePublishTargets(ws, { limit: 200 });
       if (seq !== fetchSeqRef.current) return;
-      setTargets(ensureDefaultTarget(next));
+      const merged = ensureDefaultTarget(next);
+      setTargets(merged);
+      // loop 174 — restore the last-used destination once we know which
+      // targets are available. The lookup is workspace+project-scoped so a
+      // remembered folder that no longer exists silently falls back to the
+      // default instead of confusing the operator with a stale label.
+      const remembered = readLastTargetId(ws, projectId);
+      if (remembered && merged.some((target) => target.id === remembered)) {
+        setSelectedTargetId(remembered);
+      }
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
       setTargets(ensureDefaultTarget([]));
@@ -119,7 +173,7 @@ export function TeamverPublishDriveMenuItem({
     } finally {
       if (seq === fetchSeqRef.current) setLoadingTargets(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void refreshTargets();
@@ -129,6 +183,10 @@ export function TeamverPublishDriveMenuItem({
     () => targets.find((target) => target.id === selectedTargetId) ?? targets[0] ?? DEFAULT_PUBLISH_TARGET,
     [selectedTargetId, targets],
   );
+
+  const handleChangeTarget = useCallback((nextId: string) => {
+    setSelectedTargetId(nextId);
+  }, []);
 
   const handleSelectTarget = useCallback((target: TeamverDrivePublishTarget) => {
     setTargets((current) => {
@@ -146,37 +204,24 @@ export function TeamverPublishDriveMenuItem({
     [workspaceId],
   );
 
-  const toggleFormat = useCallback((format: TeamverPublishDriveFormat) => {
-    setSelectedFormats((current) => {
-      const has = current.includes(format);
-      if (has) {
-        // Prevent unchecking the last remaining format — BE requires
-        // `min_length=1` on the formats list and would 400 with
-        // `formats_required` otherwise.
-        if (current.length === 1) return current;
-        return current.filter((entry) => entry !== format);
-      }
-      // Preserve declaration order (HTML before ZIP) so the BE-side
-      // result row order is stable in toasts and tests.
-      return PUBLISH_FORMAT_OPTIONS
-        .map((option) => option.id)
-        .filter((id) => id === format || current.includes(id));
-    });
-  }, []);
-
   const handlePublish = useCallback(async () => {
     if (busy) return;
-    if (selectedFormats.length === 0) return;
     onCloseMenu();
     setBusy(true);
     try {
       const result = await publishTeamverDesignToDrive({
         projectId,
         artifactFile,
-        formats: selectedFormats,
+        formats: [...PUBLISH_FORMATS],
         folderId: selectedTarget?.folderId ?? null,
         sharedDriveId: selectedTarget?.sharedDriveId ?? null,
       });
+      // Remember the destination on success so the next publish defaults to
+      // it. We only persist after a green publish — if the request fails we
+      // want the operator to revisit their target choice on retry instead of
+      // silently locking in a broken folder.
+      writeLastTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
+      setHistoryRefreshKey((current) => current + 1);
       const output = pickReadyPublishOutputs(result.outputs)[0] ?? result.outputs[0];
       if (output?.publishStatus === "ready") onSuccess?.(output, { partial: result.partial });
       else if (result.partial && pickReadyPublishOutputs(result.outputs).length > 0) {
@@ -187,7 +232,7 @@ export function TeamverPublishDriveMenuItem({
     } finally {
       setBusy(false);
     }
-  }, [artifactFile, busy, onCloseMenu, onError, onSuccess, projectId, selectedFormats, selectedTarget]);
+  }, [artifactFile, busy, onCloseMenu, onError, onSuccess, projectId, selectedTarget, workspaceId]);
 
   const handleOpenPicker = useCallback(() => {
     setPickerOpen(true);
@@ -199,7 +244,7 @@ export function TeamverPublishDriveMenuItem({
 
   if (!isTeamverEmbedMode()) return null;
 
-  const disabledForPublish = busy || selectedFormats.length === 0;
+  const disabledForPublish = busy;
   const disabledForBrowse = busy;
   const targetSelectDisabled = busy;
   const errorHint =
@@ -212,11 +257,15 @@ export function TeamverPublishDriveMenuItem({
   const publishLabel = busy
     ? "발행 중…"
     : selectedTarget?.sharedDriveId
-      ? "선택한 팀 드라이브로 발행"
-      : "Teamver 드라이브로 발행";
+      ? "선택한 팀 드라이브로 HTML 발행"
+      : "Teamver 드라이브로 HTML 발행";
 
   return (
     <>
+      <TeamverDrivePublishHistory
+        projectId={projectId}
+        refreshKey={historyRefreshKey}
+      />
       <div className="teamver-drive-target-picker" role="presentation">
         <span className="teamver-drive-target-label">저장 위치</span>
         <TeamverDriveTargetSelect
@@ -225,7 +274,7 @@ export function TeamverPublishDriveMenuItem({
           disabled={targetSelectDisabled}
           loading={loadingTargets}
           ariaLabel="Teamver 드라이브 저장 위치"
-          onChange={setSelectedTargetId}
+          onChange={handleChangeTarget}
         />
         <button
           type="button"
@@ -237,40 +286,12 @@ export function TeamverPublishDriveMenuItem({
           찾아보기
         </button>
       </div>
-      <div
-        className="teamver-drive-format-row"
-        role="group"
-        aria-label="발행 포맷"
-        data-testid="teamver-drive-format-row"
+      <p
+        className="teamver-drive-format-note"
+        data-testid="teamver-drive-format-note"
       >
-        <span className="teamver-drive-format-row__label">포맷</span>
-        <div className="teamver-drive-format-row__options">
-          {PUBLISH_FORMAT_OPTIONS.map((option) => {
-            const checked = selectedFormats.includes(option.id);
-            // Last-remaining format can't be unchecked (BE requires ≥1 format).
-            const lockedOn = checked && selectedFormats.length === 1;
-            return (
-              <label
-                key={option.id}
-                className="teamver-drive-format-chip"
-                data-checked={checked}
-                data-disabled={lockedOn || busy}
-                data-testid={`teamver-drive-format-chip-${option.id}`}
-                title={option.description}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={lockedOn || busy}
-                  data-testid={`teamver-drive-format-input-${option.id}`}
-                  onChange={() => toggleFormat(option.id)}
-                />
-                <span>{option.label}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
+        HTML 한 파일로 발행됩니다. PDF/ZIP 추출은 다운로드 메뉴에서 로컬 저장하세요.
+      </p>
       {errorHint ? (
         <p
           className="teamver-drive-target-hint"

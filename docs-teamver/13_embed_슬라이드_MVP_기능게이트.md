@@ -170,7 +170,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] Home 하단 — community gallery 미렌더 (`HomeTemplatesReveal` 부재)
 - [ ] Project chat — Design toolbox `+` flyout: image-gen / video-gen / motion / motion-polish 미노출
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
-- [ ] **Share/Publish (loop 171 + 173)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + **Teamver 드라이브로 발행** (HTML / ZIP 포맷 선택 + custom listbox) **유지**. `Open in Teamver Drive` 항목은 loop 173 에서 제거 — publish 성공 toast 의 `Teamver 드라이브에서 보기` 링크로 대체
+- [ ] **Share/Publish (loop 171 + 173 + 174)** — Slide artifact 헤더에서 chrome share-menu 미노출 (Copy share-link / Vercel / Cloudflare / Project social share **부재**), Download 메뉴는 PDF·PPTX·Image·HTML·Markdown·ZIP·Save as template + **Teamver 드라이브로 HTML 발행** + **Drive 발행 이력 panel** (loop 174 — `v{N}` 라벨 · 상대 시각 · Drive 딥 링크, 최근 5개) **유지**. ZIP 칩 제거 (loop 174 — HTML-only 발행). `Open in Teamver Drive` 항목은 loop 173 에서 제거. PDF 발행은 별도 BE 트랙 (daemon PDF exporter 가 desktop-only)
 - [ ] **PreviewModal Share popover** — 모달의 share popover가 PDF/ZIP/HTML/image **export 만** 보여주고, X/Reddit/FB/LinkedIn/Instagram/Xiaohongshu + Copy link/Copy share text **부재**
 - [ ] **AssistantMessage** — "Share to Open Design" 제출 버튼 미노출
 - [ ] Settings — language / appearance만
@@ -191,6 +191,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-22 | loop 174 — Drive 발행 이력 panel (`TeamverDrivePublishHistory`, `v{N}` 라벨 · 상대 시각 · Drive 딥 링크) 메뉴 상단 mount. ZIP 칩 제거 → HTML 단일 발행 (`formats: ["html"]` 정적). 마지막 발행 위치 `localStorage` 기억 (workspace+project 격리). PDF 발행은 daemon PDF exporter 가 desktop-only 라 별도 BE 트랙 (Playwright/Chromium) — MenuItem 에 안내 한 줄 |
 | 2026-06-22 | loop 173 — Teamver 드라이브 발행 UI 한글화 + HTML/ZIP 포맷 선택 + custom listbox (`TeamverDriveTargetSelect`). `Open in Teamver Drive` 메뉴 항목 영구 제거 (toast 의 Drive 링크로 대체). PDF 는 BE headless renderer 도입 시 동일 UI 패턴으로 확장 — 별도 트랙 |
 | 2026-06-19 | loop 171 — `hideExternalShareSurfaces` 게이트(§2.7), share/publish 정책 — 외부 share 전부 hide, Drive Publish + 로컬 export 만 유지 |
 | 2026-06-19 | loop 170 — daemon S3 storage init fail-fast (별도 트랙) |
