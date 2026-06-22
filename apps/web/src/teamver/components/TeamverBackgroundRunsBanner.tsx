@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import type { PetTaskSummary } from "../../components/pet/PetOverlay";
 import { useT } from "../../i18n";
@@ -19,6 +20,10 @@ function statusLabelKey(status: PetTaskSummary["status"]): "teamver.backgroundRu
  */
 export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props) {
   const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (summaries.length <= 1) setExpanded(false);
+  }, [summaries.length]);
   if (summaries.length === 0) return null;
 
   const primary = summaries[0]!;
@@ -31,30 +36,64 @@ export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props)
       aria-live="polite"
       data-testid="teamver-background-runs-banner"
     >
-      <span className="teamver-background-runs__pulse" aria-hidden />
-      <div className="teamver-background-runs__copy">
-        <span className="teamver-background-runs__title">
-          {extraCount > 0
-            ? t("teamver.backgroundRuns.titleMany", { n: summaries.length })
-            : t("teamver.backgroundRuns.titleOne")}
-        </span>
-        <span className="teamver-background-runs__detail">
-          {t(statusLabelKey(primary.status))}
-          {" · "}
-          <span className="teamver-background-runs__project">{primary.projectName}</span>
-          {primary.count > 1 ? ` (${primary.count})` : ""}
-          {extraCount > 0 ? ` ${t("teamver.backgroundRuns.andMore", { n: extraCount })}` : ""}
-        </span>
+      <div className="teamver-background-runs__summary">
+        <span className="teamver-background-runs__pulse" aria-hidden />
+        <div className="teamver-background-runs__copy">
+          <span className="teamver-background-runs__title">
+            {extraCount > 0
+              ? t("teamver.backgroundRuns.titleMany", { n: summaries.length })
+              : t("teamver.backgroundRuns.titleOne")}
+          </span>
+          <span className="teamver-background-runs__detail">
+            {t(statusLabelKey(primary.status))}
+            {" · "}
+            <span className="teamver-background-runs__project">{primary.projectName}</span>
+            {primary.count > 1 ? ` (${primary.count})` : ""}
+            {extraCount > 0 ? ` ${t("teamver.backgroundRuns.andMore", { n: extraCount })}` : ""}
+          </span>
+        </div>
+        {summaries.length > 1 ? (
+          <button
+            type="button"
+            className="teamver-background-runs__expand"
+            aria-expanded={expanded}
+            aria-label={t("teamver.backgroundRuns.titleMany", { n: summaries.length })}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <Icon
+              name="chevron-down"
+              size={14}
+              className={expanded ? "teamver-background-runs__expand-icon--open" : undefined}
+              aria-hidden
+            />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="teamver-background-runs__open"
+          onClick={() => onOpenProject(primary.projectId)}
+          data-testid="teamver-background-runs-open"
+        >
+          <span>{t("teamver.backgroundRuns.open")}</span>
+          <Icon name="chevron-right" size={13} aria-hidden />
+        </button>
       </div>
-      <button
-        type="button"
-        className="teamver-background-runs__open"
-        onClick={() => onOpenProject(primary.projectId)}
-        data-testid="teamver-background-runs-open"
-      >
-        <span>{t("teamver.backgroundRuns.open")}</span>
-        <Icon name="chevron-right" size={13} aria-hidden />
-      </button>
+      {expanded ? (
+        <ul className="teamver-background-runs__list">
+          {summaries.map((summary) => (
+            <li key={summary.projectId}>
+              <button type="button" onClick={() => onOpenProject(summary.projectId)}>
+                <span>{summary.projectName}</span>
+                <small>
+                  {t(statusLabelKey(summary.status))}
+                  {summary.count > 1 ? ` · ${summary.count}` : ""}
+                </small>
+                <Icon name="chevron-right" size={13} aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

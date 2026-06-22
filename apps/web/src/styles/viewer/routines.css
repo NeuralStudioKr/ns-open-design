@@ -202,6 +202,21 @@
   opacity: 0.85;
   font-weight: 400;
 }
+.od-toast-action {
+  margin-top: 7px;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.od-toast-action:hover,
+.od-toast-action:focus-visible {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
 .od-toast-code {
   margin: 8px 0 0;
   padding: 8px 10px;

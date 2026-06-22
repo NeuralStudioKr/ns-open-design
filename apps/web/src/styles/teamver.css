@@ -427,13 +427,19 @@
 
 .teamver-background-runs {
   display: flex;
-  align-items: center;
-  gap: 0.65rem;
+  flex-direction: column;
   margin: 0 1rem 0.5rem;
   padding: 0.55rem 0.75rem;
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
+}
+
+.teamver-background-runs__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
 }
 
 .teamver-background-runs__pulse {
@@ -502,6 +508,77 @@
 .teamver-background-runs__open:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+.teamver-background-runs__expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.teamver-background-runs__expand:hover,
+.teamver-background-runs__expand:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  color: var(--text-strong);
+}
+
+.teamver-background-runs__expand svg {
+  transition: transform 140ms ease;
+}
+
+.teamver-background-runs__expand-icon--open {
+  transform: rotate(180deg);
+}
+
+.teamver-background-runs__list {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0 0 1.05rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  list-style: none;
+}
+
+.teamver-background-runs__list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.teamver-background-runs__list button:hover,
+.teamver-background-runs__list button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+.teamver-background-runs__list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.teamver-background-runs__list small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
 }
 
 .teamver-latest-publish-chip {

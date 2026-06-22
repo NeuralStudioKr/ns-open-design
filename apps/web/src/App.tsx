@@ -83,7 +83,7 @@ import {
   type VelaLoginStatus,
 } from './providers/daemon';
 import { AMR_LOGIN_STATUS_EVENT } from './components/amrLoginPolling';
-import { buildPath, navigate, useRoute } from './router';
+import { navigate, useRoute } from './router';
 import {
   fetchDaemonConfig,
   DEFAULT_NOTIFICATIONS,
@@ -2454,12 +2454,8 @@ function AppInner() {
           message={backgroundRunNotice.status === 'succeeded'
             ? `${backgroundRunNotice.projectName} 슬라이드 작업이 완료되었습니다.`
             : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
-          details="프로젝트 열기"
-          detailsHref={buildPath({
-            kind: 'project',
-            projectId: backgroundRunNotice.projectId,
-            fileName: null,
-          })}
+          actionLabel="프로젝트 열기"
+          onAction={() => void navigateToProject(backgroundRunNotice.projectId)}
           tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}
           role={backgroundRunNotice.status === 'failed' ? 'alert' : 'status'}
           ttlMs={8000}
