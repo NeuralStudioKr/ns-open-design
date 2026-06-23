@@ -99,6 +99,7 @@ import {
   skillsForSlideOnlyMvp,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 
 export interface ActivePlugin {
   record: InstalledPluginRecord;
@@ -1490,11 +1491,21 @@ export function HomeView({
       return;
     }
     const defaultInputs = { prompt: trimmed };
-    const submittedDesignSystemId = homeDesignSystemSelectionForInputs(
-      submittedActive?.inputs ?? null,
-      designSystemPickerSystems,
-      t('designSystemPicker.noneTitle'),
-    );
+    const submittedDesignSystemId = slideOnlyMvp
+      ? resolveEmbedSlideDesignSystemId({
+          explicitId: homeDesignSystemSelectionForInputs(
+            submittedActive?.inputs ?? null,
+            designSystemPickerSystems,
+            t('designSystemPicker.noneTitle'),
+          ),
+          workspaceDefaultId: defaultDesignSystemId,
+          designSystems: designSystemPickerSystems,
+        })
+      : homeDesignSystemSelectionForInputs(
+          submittedActive?.inputs ?? null,
+          designSystemPickerSystems,
+          t('designSystemPicker.noneTitle'),
+        );
     // Composer inputs are forwarded as-is; the deferred footer/media fields are
     // stripped from this set just below to form the run-facing inputs.
     const submittedApplyInputs = submittedActive ? submittedActive.inputs : defaultInputs;

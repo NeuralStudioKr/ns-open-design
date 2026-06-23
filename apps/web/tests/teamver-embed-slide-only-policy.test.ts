@@ -12,8 +12,14 @@ import { embedSlideOnlyOutboundBlockReason } from '../src/teamver/branding/embed
 
 describe('embed slide-only plugin policy', () => {
   it('keeps deck plugins only in slide-only MVP', () => {
-    const deck = { id: 'deck-1', manifest: { od: { mode: 'deck' } } };
-    const video = { id: 'video-1', manifest: { od: { mode: 'video' } } };
+    const deck = {
+      id: 'deck-1',
+      manifest: { name: 'deck-1', version: '1.0.0', od: { mode: 'deck' } },
+    };
+    const video = {
+      id: 'video-1',
+      manifest: { name: 'video-1', version: '1.0.0', od: { mode: 'video' } },
+    };
     expect(isSlideRelatedPlugin(deck)).toBe(true);
     expect(isSlideRelatedPlugin(video)).toBe(false);
     expect(

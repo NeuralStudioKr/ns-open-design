@@ -67,7 +67,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 | 1 | **Canvas import 확인 + slide run 시작을 하나의 확정 action으로 통합** | 핵심 UX 단축 — ✅ loop 191 one-confirm modal | **완료** |
 | 2 | **기본 source 구조화** | MD/HTML의 heading·paragraph·image 순서를 정규화. 필요하면 design-api에서 처리 |
 | 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 |
-| 4 | **Design System 기본 적용** | Canvas 원본 테마 복제보다 workspace Design System/기본 slide theme를 적용하는 편이 품질 대비 효과가 큼 |
+| 4 | **Design System 기본 적용** | Canvas 원본 테마 복제보다 workspace Design System/기본 slide theme를 적용하는 편이 품질 대비 효과가 큼 | **✅ loop 192** |
 
 ### P2 — 출시 후
 
@@ -89,7 +89,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 | Canvas one-confirm run | 중 | 작음 | 낮음 | **✅ loop 191** |
 | S3/auth/workspace 격리 | 매우 큼 | 중 | 낮음 | **P0 즉시** |
 | slide lifecycle·Drive import/publish 종단 | 매우 큼 | 작음~중 | 낮음 | **P0 즉시** |
-| Design System 기본 테마 적용 | 큼 | 중 | 중 | **P1** |
+| Design System 기본 테마 적용 | 큼 | 중 | 중 | **✅ loop 192** |
 
 **결론:** Canvas 연동을 더 깊게 개발하기보다 P0 출시 경계를 먼저 닫는다. Canvas는 현재 범위를 유지하고, P0 후에 one-confirm run만 작은 Teamver 전용 패치로 추가한다.
 

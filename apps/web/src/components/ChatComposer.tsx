@@ -277,6 +277,8 @@ interface Props {
   // here when a mid-chat design-system switch lands (or fails) so the user
   // has explicit confirmation without re-opening the picker.
   onShowToast?: (message: string) => void;
+  /** Embed slide MVP fallback when the project has no design system yet. */
+  embedSlideDesignSystemFallbackId?: string | null;
 }
 
 // Imperative handle so ancestors (e.g. example chips in ChatPane) can
@@ -329,6 +331,8 @@ export interface ChatSendMeta {
   // for this run only is composed with the extra skill bodies, without
   // touching the project's persistent `skillId`.
   skillIds?: string[];
+  /** Per-turn design system override (embed slide defaults, canvas one-confirm). */
+  designSystemId?: string | null;
 }
 
 /**
@@ -388,6 +392,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       currentDesignSystemId = null,
       onActiveDesignSystemChange,
       onShowToast,
+      embedSlideDesignSystemFallbackId = null,
     },
     ref
   ) {
@@ -1556,8 +1561,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           driveImportedToChatAttachments(result.imported),
           Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
         );
+        const designSystemIdForRun =
+          currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+        if (designSystemIdForRun && !currentDesignSystemId) {
+          void patchProject(id, { designSystemId: designSystemIdForRun }).then((patched) => {
+            if (patched) onActiveDesignSystemChange?.(patched);
+          });
+        }
         setCanvasSlideLaunch(null);
-        sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], currentRunContextMeta());
+        sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
+          ...currentRunContextMeta(),
+          designSystemId: designSystemIdForRun,
+        });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         setUploadError(`Drive import failed (${detail}).`);

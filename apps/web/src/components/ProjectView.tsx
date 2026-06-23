@@ -168,6 +168,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -843,6 +844,17 @@ export function ProjectView({
     hideExternalShareSurfaces,
     slideOnlyMvp,
   } = useTeamverBranding();
+  const embedSlideDesignSystemFallbackId = useMemo(
+    () =>
+      isTeamverEmbedMode()
+        ? resolveEmbedSlideDesignSystemId({
+            explicitId: null,
+            workspaceDefaultId: config.designSystemId,
+            designSystems,
+          })
+        : null,
+    [config.designSystemId, designSystems],
+  );
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const handleThemeChange = onThemeChange ?? (() => {});
   // P0 page_view page_name=chat_panel — fire once per project mount.
@@ -2091,6 +2103,7 @@ export function ProjectView({
 
   const composedSystemPrompt = useCallback(async (
     sessionModeOverride: ChatSessionMode = activeSessionMode,
+    designSystemIdOverride?: string | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -2120,17 +2133,20 @@ export function ProjectView({
         }
       }
     }
-    if (project.designSystemId) {
-      const summary = designSystems.find((d) => d.id === project.designSystemId);
+    if (designSystemIdOverride ?? project.designSystemId) {
+      const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;
+      const summary = designSystems.find((d) => d.id === effectiveDesignSystemId);
       designSystemTitle = summary?.title;
-      const cached = designCache.current.get(project.designSystemId);
+      const cached = effectiveDesignSystemId
+        ? designCache.current.get(effectiveDesignSystemId)
+        : undefined;
       if (cached !== undefined) {
         designSystemBody = cached;
-      } else {
-        const detail = await fetchDesignSystem(project.designSystemId);
+      } else if (effectiveDesignSystemId) {
+        const detail = await fetchDesignSystem(effectiveDesignSystemId);
         if (detail) {
           designSystemBody = detail.body;
-          designCache.current.set(project.designSystemId, detail.body);
+          designCache.current.set(effectiveDesignSystemId, detail.body);
         }
       }
     }
@@ -3722,7 +3738,7 @@ export function ProjectView({
           skillId: project.skillId ?? null,
           skillIds: Array.isArray(meta?.skillIds) ? meta.skillIds : [],
           context: runContext,
-          designSystemId: project.designSystemId ?? null,
+          designSystemId: meta?.designSystemId ?? project.designSystemId ?? null,
           attachments: runAttachments.map((a) => a.path),
           commentAttachments: runCommentAttachments,
           sessionMode: runSessionMode,
@@ -3832,7 +3848,8 @@ export function ProjectView({
             // on the next event.
           }
         }
-        const systemPrompt = await composedSystemPrompt(runSessionMode);
+        const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
+        const systemPrompt = await composedSystemPrompt(runSessionMode, effectiveDesignSystemId);
         const apiHistory = await historyWithApiAttachmentContext(
           historyWithCommentAttachmentContext(
             historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
@@ -5803,6 +5820,7 @@ export function ProjectView({
               onShowToast={(message) => {
                 setProjectActionsToast({ message, details: null });
               }}
+              embedSlideDesignSystemFallbackId={embedSlideDesignSystemFallbackId}
               onBack={onBack}
               backLabel={t('project.backToProjects')}
               composerFooterAccessory={

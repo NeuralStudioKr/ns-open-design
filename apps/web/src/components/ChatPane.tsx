@@ -587,6 +587,7 @@ interface Props {
   currentDesignSystemId?: string | null;
   onActiveDesignSystemChange?: (project: Project) => void;
   onShowToast?: (message: string) => void;
+  embedSlideDesignSystemFallbackId?: string | null;
   // Project header slot. The former standalone chrome header row was removed;
   // its back button, project title (editable) and design-system picker moved
   // into the top of the chat pane. ProjectView owns the project record so it
@@ -736,6 +737,7 @@ export function ChatPane({
   currentDesignSystemId,
   onActiveDesignSystemChange,
   onShowToast,
+  embedSlideDesignSystemFallbackId,
   onBack,
   backLabel,
   projectHeader,
@@ -1665,6 +1667,7 @@ export function ChatPane({
       currentDesignSystemId={currentDesignSystemId}
       onActiveDesignSystemChange={onActiveDesignSystemChange}
       onShowToast={onShowToast}
+      embedSlideDesignSystemFallbackId={embedSlideDesignSystemFallbackId}
     />
   );
   const shouldPortalComposer =

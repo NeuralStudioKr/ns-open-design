@@ -53,6 +53,7 @@ import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } f
 import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
 import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
@@ -1426,12 +1427,19 @@ function AppInner() {
       const fidelity = fidelityToTracking(input.metadata?.fidelity ?? null);
       const creationSource: 'blank' | 'template' | 'zip' | 'folder' =
         kind === 'template' ? 'template' : 'blank';
+      const resolvedDesignSystemId = isTeamverEmbedMode()
+        ? resolveEmbedSlideDesignSystemId({
+            explicitId: input.designSystemId,
+            workspaceDefaultId: config.designSystemId,
+            designSystems,
+          })
+        : input.designSystemId;
       let result;
       try {
         result = await createProject({
           name: input.name,
           skillId: input.skillId,
-          designSystemId: input.designSystemId,
+          designSystemId: resolvedDesignSystemId,
           pendingPrompt: derivedPendingPrompt,
           metadata: input.metadata,
           ...(input.conversationMode ? { conversationMode: input.conversationMode } : {}),
@@ -1614,7 +1622,7 @@ function AppInner() {
       navigate(projectRoute);
       return true;
     },
-    [analytics.track, hideWorkspaceTabsBar, rememberLocalProject],
+    [analytics.track, config.designSystemId, designSystems, hideWorkspaceTabsBar, rememberLocalProject],
   );
 
   const handleCreatePluginShareProject = useCallback(
