@@ -29,6 +29,9 @@ OD_S3_BUCKET=teamver-design-staging-data
 OD_S3_REGION=ap-northeast-2
 TRUST_TEAMVER_PROXY_HEADERS=true
 TEAMVER_OD_API_KEY=test-managed-api-key
+TEAMVER_REGISTRY_APP_ID=ai-design
+TEAMVER_REGISTRY_KEY_ID=key-1
+TEAMVER_REGISTRY_ACCESS_KEY=secret-1
 EOF
 
 # validate_deploy_env only reads fixed paths — invoke inline with sourced temp env
@@ -89,15 +92,15 @@ fi
 rm -f "$NOKEY_ENV"
 echo "✓ staging TEAMVER_OD_API_KEY gate ok"
 
-if ! grep -q 'TEAMVER_REGISTRY_\* 미설정' <<< "$clean_out"; then
-  echo "❌ expected REGISTRY 미설정 warning in baseline"
+if ! grep -q 'TEAMVER_REGISTRY_\* 설정됨' <<< "$clean_out"; then
+  echo "❌ expected REGISTRY 설정됨 warning in baseline"
   echo "$clean_out"
   exit 1
 fi
 
 # Partial registry creds → must fail.
 PARTIAL_ENV="$(mktemp)"
-cat "$TMP_ENV" > "$PARTIAL_ENV"
+grep -v '^TEAMVER_REGISTRY_' "$TMP_ENV" > "$PARTIAL_ENV"
 echo 'TEAMVER_REGISTRY_APP_ID=ai-design' >> "$PARTIAL_ENV"
 if bash "$SCRIPT" --staging --rds --env-file "$PARTIAL_ENV" >/dev/null 2>&1; then
   echo "❌ partial TEAMVER_REGISTRY_* must fail preflight"
@@ -108,7 +111,7 @@ rm -f "$PARTIAL_ENV"
 
 # Full registry creds → warns but passes.
 FULL_ENV="$(mktemp)"
-cat "$TMP_ENV" > "$FULL_ENV"
+grep -v '^TEAMVER_REGISTRY_' "$TMP_ENV" > "$FULL_ENV"
 {
   echo 'TEAMVER_REGISTRY_APP_ID=ai-design'
   echo 'TEAMVER_REGISTRY_KEY_ID=key-1'
@@ -122,6 +125,17 @@ if ! grep -q 'TEAMVER_REGISTRY_\* 설정됨' <<< "$full_out"; then
   exit 1
 fi
 rm -f "$FULL_ENV"
+
+# Staging may disable billing only through an explicit kill switch.
+BILLING_KILL_ENV="$(mktemp)"
+grep -v '^TEAMVER_REGISTRY_' "$TMP_ENV" > "$BILLING_KILL_ENV"
+echo 'TEAMVER_BILLING_DISABLED=1' >> "$BILLING_KILL_ENV"
+if ! bash "$SCRIPT" --staging --rds --env-file "$BILLING_KILL_ENV" >/dev/null 2>&1; then
+  echo "❌ staging explicit billing kill switch should allow missing registry creds"
+  rm -f "$BILLING_KILL_ENV"
+  exit 1
+fi
+rm -f "$BILLING_KILL_ENV"
 
 echo "✓ validate_deploy_env --env-file + REGISTRY warnings ok"
 echo "  (full script requires .env.staging on disk — run on EC2 after cp .env.staging.example)"

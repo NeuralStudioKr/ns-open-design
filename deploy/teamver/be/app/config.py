@@ -53,6 +53,9 @@ class Settings(BaseModel):
     teamver_registry_app_id: str = os.getenv("TEAMVER_REGISTRY_APP_ID", "")
     teamver_registry_key_id: str = os.getenv("TEAMVER_REGISTRY_KEY_ID", "")
     teamver_registry_access_key: str = os.getenv("TEAMVER_REGISTRY_ACCESS_KEY", "")
+    teamver_billing_disabled: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_BILLING_DISABLED", default=False)
+    )
 
     # Embed managed API mode — server env only (never VITE_* / git)
     teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "anthropic")
@@ -96,6 +99,24 @@ class Settings(BaseModel):
             raise ValueError(f"OD_PROJECT_STORAGE=s3 is required in {deploy_env}")
         if self.auth_disabled or self.allow_no_jwt_local_mode:
             raise ValueError(f"local auth fallback is forbidden in {deploy_env}")
+        if not self.teamver_internal_api_key.strip():
+            raise ValueError(f"TEAMVER_INTERNAL_API_KEY is required in {deploy_env}")
+        if not self.teamver_od_api_key.strip():
+            raise ValueError(f"TEAMVER_OD_API_KEY is required in {deploy_env}")
+        registry_configured = all(
+            value.strip()
+            for value in (
+                self.teamver_registry_app_id,
+                self.teamver_registry_key_id,
+                self.teamver_registry_access_key,
+            )
+        )
+        if deploy_env == "production" and not registry_configured:
+            raise ValueError("TEAMVER_REGISTRY_* credentials are required in production")
+        if deploy_env == "staging" and not registry_configured and not self.teamver_billing_disabled:
+            raise ValueError(
+                "TEAMVER_REGISTRY_* credentials or TEAMVER_BILLING_DISABLED=1 are required in staging"
+            )
         return self
 
     @property

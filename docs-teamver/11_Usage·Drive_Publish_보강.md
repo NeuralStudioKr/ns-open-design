@@ -11,7 +11,7 @@
 ## 한 줄 결론
 
 > **Usage Phase 1은 FE-first(saveMessage 종료 hook)로 wiring하고, Drive Publish v1은 HTML+ZIP만 지원한다.**  
-> Registry reserve/commit(Phase 2)은 출시 후; Main BE design M2M 등록은 Phase 1 완료 조건.
+> Registry reserve/commit(Phase 2)은 hosted 출시 P0이다. production은 registry credentials가 없으면 기동/배포를 차단하고, staging은 `TEAMVER_BILLING_DISABLED=1`을 명시한 경우만 임시 비활성을 허용한다.
 
 ---
 
@@ -24,7 +24,7 @@
 | U3 | token attribution | daemon만 | message.events `usage` | **P0** | ✅ |
 | U4 | 에러 가시성 | 항상 204 | 202 + request id | **P1** | ✅ |
 | U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
-| U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit | **출시 후** | 🟡 `services/run_lifecycle.py` orchestrator ✅ · run-path 통합 ☐ |
+| U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit/refund | **P0** | ✅ daemon run-path 통합 + hosted credential fail-fast |
 | U7 | usage 5xx 알람 | 없음 | CW `teamver_usage_5xx` log metric + alarm | **P1** | ✅ |
 | D1 | Drive Publish | `POST /projects/{id}/publish` ✅ | HTML/ZIP publish + history | **G7** | ✅ |
 | D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
@@ -49,7 +49,7 @@
 | FE helper | `maybeReportTeamverUsageAfterSave.ts` + `reportUsage.ts` | ✅ |
 | FE in-memory 멱등 | `reportedRunIds` Set | ✅ |
 | Phase 2 wrapper | `services/teamver_billing.py` L24–49 | 🟡 import 0 |
-| Run lifecycle | `services/run_lifecycle.py` reserve/commit/refund | ✅ orchestrator + tests · daemon bridge wiring ✅ |
+| Run lifecycle | `services/run_lifecycle.py` reserve/commit/refund | ✅ orchestrator + daemon bridge wiring + production registry credential 필수 |
 | Internal billing M2M | `routers/internal_billing.py` `/api/internal/billing/{reserve,commit,refund}` | ✅ M2M endpoints + 6 unit tests + smoke probe (reserve/commit/refund 모두) |
 | Daemon billing bridge | `apps/daemon/src/teamver-billing-bridge.ts` reserve→commit/refund | ✅ best-effort + 구조화 `teamver_usage_5xx` JSON 마커 + `TEAMVER_BILLING_RESERVE_AMOUNT` / `TEAMVER_BILLING_TIMEOUT_MS` / `TEAMVER_BILLING_DISABLED` env knobs + 18 unit tests |
 | CW usage 5xx marker | `token_usage_log.py` + `print_cloudwatch_alarm_commands.sh` | ✅ |
@@ -620,7 +620,7 @@ Browser
 | **본 문서 §4** | Registry billing (Track A 출시 후) |
 | **본 문서 §6** | Drive Publish v1 (= 09 G7) |
 
-**출시 전 필수:** §3 Phase U + §5 Main BE M2M  
+**출시 전 필수:** §3 Phase U + §4 Phase B + §5 Main BE M2M
 **출시 직후 권장 (G7):** §6 Phase D  
 **출시 이후:** §4 Phase B
 
@@ -630,6 +630,7 @@ Browser
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-23 | hosted runtime/billing fail-fast — staging/production `TEAMVER_INTERNAL_API_KEY` + `TEAMVER_OD_API_KEY` 필수, production `TEAMVER_REGISTRY_*` 필수, staging은 registry 미설정 시 `TEAMVER_BILLING_DISABLED=1` 명시 |
 | 2026-06-19 | Track A E2E S3 tenant object probe — D-5/D-6 전후 프로젝트 파일이 S3 tenant prefix 에 실제 존재하는지 `TEAMVER_S3_BUCKET` + `/access` prefix header + `aws s3 ls` 로 검증 가능 |
 | 2026-06-18 | Drive Publish 팀 드라이브 하위 폴더 선택 — shared drive folder-tree를 flatten해 팀 드라이브 내부 폴더도 `folderId/sharedDriveId` target으로 publish 가능. 남음: 검색형 브라우저 UX + staging E2E |
 | 2026-06-18 | Drive Publish 대상 선택 UX 1차 — embed 메뉴에서 개인 드라이브 루트/폴더 + 팀 드라이브 루트를 선택해 `folderId/sharedDriveId`로 publish. `VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID` 추가. 남음: 전체 폴더 브라우저/검색 + staging E2E |

@@ -241,7 +241,13 @@ if [[ "$registry_set_count" -gt 0 && "$registry_set_count" -lt 3 ]]; then
 elif [[ "$registry_set_count" -eq 3 ]]; then
   warn "TEAMVER_REGISTRY_* 설정됨 — design run reserve/commit/refund 활성 (CW alarm: teamver_usage_5xx)"
 else
-  warn "TEAMVER_REGISTRY_* 미설정 — Registry billing Phase 2 skip (run_lifecycle best-effort no-op)"
+  if [[ "$DEPLOY_ENV_FLAG" == "--production" ]]; then
+    fail "production: TEAMVER_REGISTRY_APP_ID/KEY_ID/ACCESS_KEY 필수 — 무과금 design run 금지"
+  elif [[ "$DEPLOY_ENV_FLAG" == "--staging" && "${TEAMVER_BILLING_DISABLED:-}" != "1" ]]; then
+    fail "staging: TEAMVER_REGISTRY_* 미설정 시 TEAMVER_BILLING_DISABLED=1 명시 필요"
+  else
+    warn "TEAMVER_REGISTRY_* 미설정 — Registry billing Phase 2 skip (명시적 local/staging kill switch)"
+  fi
 fi
 
 # Drive publish (Phase 4 / G7) — Teamver Drive 업로드 폴더.
