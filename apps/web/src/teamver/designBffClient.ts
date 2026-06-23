@@ -83,10 +83,12 @@ async function postAuthRefresh(url: string): Promise<{ ok: boolean; status: numb
 }
 
 let authRefreshDeclinedForSession = false;
+let unauthenticatedRefreshAttempted = false;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRefreshDeclinedForSession = false;
+  unauthenticatedRefreshAttempted = false;
 }
 
 function resetDesignAuthRefreshDeclined(): void {
@@ -95,12 +97,19 @@ function resetDesignAuthRefreshDeclined(): void {
 
 function shouldAttemptCookieRefresh(): boolean {
   if (authRefreshDeclinedForSession) return false;
-  return hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated();
+  if (hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()) return true;
+  return !unauthenticatedRefreshAttempted;
 }
 
 /** Cookie-only SSO: refresh may relay Set-Cookie without JSON access_token (tokenStore is null). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (!shouldAttemptCookieRefresh()) return false;
+
+  const isBareAttempt =
+    !hasProbableTeamverAuthCookie() && !isTeamverEmbedSessionAuthenticated();
+  if (isBareAttempt) {
+    unauthenticatedRefreshAttempted = true;
+  }
 
   const bffResult = await postAuthRefresh(resolveDesignBffRefreshUrl());
   if (bffResult.ok) {
@@ -188,6 +197,7 @@ export function resetDesignAuthSessionCacheForTests(): void {
 export function invalidateDesignAuthSessionCache(): void {
   cachedSession = null;
   resetDesignAuthRefreshDeclined();
+  unauthenticatedRefreshAttempted = false;
 }
 
 async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {

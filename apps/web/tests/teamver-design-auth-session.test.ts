@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+}));
+
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
   resolveTeamverDesignApiBase: vi.fn(() => ""),
@@ -35,7 +39,7 @@ describe("fetchDesignAuthSession", () => {
     vi.resetModules();
   });
 
-  it("does not call refresh when unauthenticated and no Teamver cookies are present", async () => {
+  it("attempts one BFF refresh without visible cookies, then stops on 400", async () => {
     getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
@@ -44,8 +48,31 @@ describe("fetchDesignAuthSession", () => {
     const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
     const session = await fetchDesignAuthSession();
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/teamver-bff/auth/refresh",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
     expect(session?.authenticated).toBe(false);
+  });
+
+  it("retries session after HttpOnly-only refresh succeeds (no visible cookie)", async () => {
+    getMock
+      .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1" },
+        workspaces: [{ id: "WS-1", name: "Alpha" }],
+      });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    const session = await fetchDesignAuthSession();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(session?.authenticated).toBe(true);
   });
 
   it("retries session after cookie refresh when first probe is unauthenticated", async () => {

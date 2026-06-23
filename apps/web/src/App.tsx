@@ -89,6 +89,10 @@ import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWo
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
+import {
+  patchEmbedBackgroundRunNoticeForProject,
+  patchEmbedBackgroundRunSummaryForProject,
+} from './teamver/embedBackgroundRunSurfaces';
 import { projectOpenOptionsFromPreviewCover } from './teamver/projectPreviewFile';
 import {
   formatTeamverDesignDisabledMessage,
@@ -1330,6 +1334,8 @@ function AppInner() {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
+        pendingLocalProjectIdsRef.current.clear();
+        locallyDeletedProjectIdsRef.current.clear();
         clearTeamverEmbedListCaches();
         setProjects([]);
         setProjectsLoading(false);
@@ -2137,7 +2143,7 @@ function AppInner() {
             });
           }
         }
-        if (!inSameProject) {
+        if (!inSameProject && !locallyDeletedProjectIdsRef.current.has(completedRun.projectId)) {
           const resolvedProjectName = completedProject?.name ?? 'AI Design';
           const status = completedRun.status as 'succeeded' | 'failed';
           const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
@@ -2261,31 +2267,31 @@ function AppInner() {
   const handleRenameProject = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const previousName = projectsRef.current.find((p) => p.id === id)?.name;
+    const previous = projectsRef.current.find((p) => p.id === id);
+    if (!previous) return;
+    const optimistic: Project = { ...previous, name: trimmed };
     setProjects((curr) =>
-      curr.map((p) => (p.id === id ? { ...p, name: trimmed } : p)),
+      curr.map((p) => (p.id === id ? optimistic : p)),
     );
-    setBackgroundRunNotice((notice) =>
-      notice?.projectId === id ? { ...notice, projectName: trimmed } : notice,
-    );
-    setBackgroundRunSummaries((prev) =>
-      prev.map((summary) =>
-        summary.projectId === id ? { ...summary, projectName: trimmed } : summary,
-      ),
-    );
+    if (isTeamverEmbedMode()) {
+      setBackgroundRunNotice((notice) =>
+        patchEmbedBackgroundRunNoticeForProject(notice, optimistic),
+      );
+      setBackgroundRunSummaries((prev) =>
+        prev.map((summary) => patchEmbedBackgroundRunSummaryForProject(summary, optimistic)),
+      );
+    }
     const updated = await patchProject(id, { name: trimmed });
     if (!updated) {
-      if (previousName) {
-        setProjects((curr) =>
-          curr.map((p) => (p.id === id ? { ...p, name: previousName } : p)),
-        );
+      setProjects((curr) =>
+        curr.map((p) => (p.id === id ? previous : p)),
+      );
+      if (isTeamverEmbedMode()) {
         setBackgroundRunNotice((notice) =>
-          notice?.projectId === id ? { ...notice, projectName: previousName } : notice,
+          patchEmbedBackgroundRunNoticeForProject(notice, previous),
         );
         setBackgroundRunSummaries((prev) =>
-          prev.map((summary) =>
-            summary.projectId === id ? { ...summary, projectName: previousName } : summary,
-          ),
+          prev.map((summary) => patchEmbedBackgroundRunSummaryForProject(summary, previous)),
         );
       }
       return;
@@ -2345,6 +2351,14 @@ function AppInner() {
       }
       return curr.map((p) => (p.id === updated.id ? updated : p));
     });
+    if (isTeamverEmbedMode()) {
+      setBackgroundRunNotice((notice) =>
+        patchEmbedBackgroundRunNoticeForProject(notice, updated),
+      );
+      setBackgroundRunSummaries((prev) =>
+        prev.map((summary) => patchEmbedBackgroundRunSummaryForProject(summary, updated)),
+      );
+    }
   }, [iframeKeepAlivePool]);
 
   // ProjectView's prompt-context signature derives from SkillSummary /
