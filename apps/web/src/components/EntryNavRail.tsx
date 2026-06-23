@@ -29,6 +29,8 @@ interface Props {
   view: EntryView;
   onViewChange: (view: EntryView) => void;
   onNewProject: () => void;
+  /** Embed — Design 앱 비활성 workspace에서 + 버튼 비활성. */
+  newProjectDisabled?: boolean;
   /** When false the rail is collapsed (hidden off-canvas) on the entry view. */
   open: boolean;
   /** Collapse the rail — called after a destination is chosen or the user dismisses it. */
@@ -41,10 +43,11 @@ interface NavButtonProps {
   tooltip: string;
   onClick: () => void;
   testId?: string;
+  disabled?: boolean;
   children: ReactNode;
 }
 
-function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: NavButtonProps) {
+function NavButton({ active, ariaLabel, tooltip, onClick, testId, disabled = false, children }: NavButtonProps) {
   return (
     <button
       type="button"
@@ -52,6 +55,7 @@ function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: Na
       onClick={onClick}
       aria-label={ariaLabel}
       aria-current={active ? 'page' : undefined}
+      disabled={disabled}
       data-tooltip={tooltip}
       {...(testId ? { 'data-testid': testId } : {})}
     >
@@ -60,7 +64,7 @@ function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: Na
   );
 }
 
-export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }: Props) {
+export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisabled = false, open, onClose }: Props) {
   const t = useT();
   const brandLabel = useBrandLabel();
   const { enabled: teamverEmbed, hideNavViews } = useTeamverBranding();
@@ -133,6 +137,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
           ariaLabel={t('entry.navNewProject')}
           tooltip={t('entry.navNewProject')}
           onClick={onNewProject}
+          disabled={newProjectDisabled}
           testId="entry-nav-new-project"
         >
           <Icon name="plus" size={18} />

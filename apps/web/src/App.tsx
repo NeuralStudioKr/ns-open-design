@@ -70,6 +70,8 @@ import {
   assertTeamverProjectAccessIfNeeded,
   ensureTeamverProjectRegisteredById,
   formatTeamverProjectRegistryErrorMessage,
+  formatTeamverProjectAccessDeniedMessage,
+  formatTeamverProjectNotFoundMessage,
   registerTeamverProjectIfNeeded,
   syncAllDaemonProjectsToRegistry,
   TeamverProjectRegistryError,
@@ -77,7 +79,16 @@ import {
 } from './teamver/projectRegistry';
 import { clearTeamverEmbedListCaches } from './teamver/teamverEmbedListCaches';
 import { resetEmbedRunTrackingRefs } from './teamver/teamverEmbedRunTracking';
+import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
+import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
+import {
+  formatTeamverDesignDisabledMessage,
+  isTeamverDesignAppEnabled,
+  readTeamverDesignAccessSnapshot,
+  subscribeTeamverDesignAccessChanged,
+} from './teamver/teamverDesignAccess';
+import { readActiveTeamverWorkspaceId } from './teamver/useTeamverEmbed';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -125,7 +136,6 @@ import {
   getProject,
   importClaudeDesignZip,
   importFolderProject,
-  listProjects,
   listTemplates,
   deleteTemplate,
   patchProject,
@@ -398,6 +408,7 @@ function AppInner() {
   // this the failure was swallowed and the user believed their folder was in
   // effect while the project actually stayed in the managed root.
   const [workingDirError, setWorkingDirError] = useState<string | null>(null);
+  const [embedDesignAppEnabled, setEmbedDesignAppEnabled] = useState(true);
   const [settingsWelcome, setSettingsWelcome] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection>('execution');
   const [settingsHighlight, setSettingsHighlight] = useState<SettingsHighlight>(null);
@@ -900,9 +911,13 @@ function AppInner() {
           await waitForTeamverEmbedBoot();
         }
         if (cancelled) return;
-        const list = await listProjects();
+        const result = await loadProjectListSafe();
         if (cancelled) return;
-        reconcileFetchedProjects(list, request);
+        if (!result.ok) {
+          setWorkingDirError(result.errorMessage);
+        } else {
+          reconcileFetchedProjects(result.projects, request);
+        }
         setProjectsLoading(false);
       })();
 
@@ -1135,9 +1150,30 @@ function AppInner() {
 
   const refreshProjects = useCallback(async () => {
     const request = beginProjectListRequest();
-    const list = await listProjects();
-    reconcileFetchedProjects(list, request);
+    const result = await loadProjectListSafe();
+    if (!result.ok) {
+      setWorkingDirError(result.errorMessage);
+      return;
+    }
+    reconcileFetchedProjects(result.projects, request);
   }, [beginProjectListRequest, reconcileFetchedProjects]);
+
+  const notifyEmbedSubmitBlocked = useCallback(() => {
+    setWorkingDirError(
+      formatTeamverDesignDisabledMessage(
+        readTeamverDesignAccessSnapshot()?.appDisabledReason,
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const syncDesignAccess = () => {
+      setEmbedDesignAppEnabled(readTeamverDesignAccessSnapshot()?.appEnabled ?? true);
+    };
+    syncDesignAccess();
+    return subscribeTeamverDesignAccessChanged(syncDesignAccess);
+  }, []);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -1151,11 +1187,22 @@ function AppInner() {
         activeRunSignature: activeRunSignatureRef,
       });
       void (async () => {
+        try {
+          await syncAllDaemonProjectsToRegistry();
+        } catch (err) {
+          console.warn("[teamver] registry sync on workspace switch failed", err);
+        }
         const request = beginProjectListRequest();
-        const list = await listProjects();
-        reconcileFetchedProjects(list, request);
+        setProjects([]);
+        const result = await loadProjectListSafe();
+        if (!result.ok) {
+          setWorkingDirError(result.errorMessage);
+          return;
+        }
+        reconcileFetchedProjects(result.projects, request);
         const current = routeRef.current;
-        if (shouldNavigateHomeAfterWorkspaceProjectList(current, list)) {
+        if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
+          setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
           navigate({ kind: 'home', view: 'home' }, { replace: true });
         }
       })();
@@ -1462,6 +1509,17 @@ function AppInner() {
       const fidelity = fidelityToTracking(input.metadata?.fidelity ?? null);
       const creationSource: 'blank' | 'template' | 'zip' | 'folder' =
         kind === 'template' ? 'template' : 'blank';
+      if (isTeamverEmbedMode()) {
+        const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
+        if (workspaceId && !isTeamverDesignAppEnabled(workspaceId)) {
+          setWorkingDirError(
+            formatTeamverDesignDisabledMessage(
+              readTeamverDesignAccessSnapshot()?.appDisabledReason,
+            ),
+          );
+          return false;
+        }
+      }
       const resolvedDesignSystemId = isTeamverEmbedMode()
         ? resolveEmbedSlideDesignSystemId({
             explicitId: input.designSystemId,
@@ -1745,7 +1803,16 @@ function AppInner() {
     rememberLocalProject(result.projectId);
     const project = await getProject(result.projectId);
     if (project != null) {
-      await registerTeamverProjectIfNeeded(project);
+      try {
+        await registerTeamverProjectIfNeeded(project);
+      } catch (err) {
+        if (err instanceof TeamverProjectRegistryError) {
+          setWorkingDirError(formatTeamverProjectRegistryErrorMessage(err.code));
+          navigate({ kind: 'home', view: 'home' }, { replace: true });
+          return;
+        }
+        throw err;
+      }
       setProjects((curr) => [project, ...curr.filter((p) => p.id !== project.id)]);
     } else {
       // Daemon hasn't materialized the full record yet (race between the
@@ -1766,8 +1833,12 @@ function AppInner() {
       };
       setProjects((curr) => [stub, ...curr.filter((p) => p.id !== stub.id)]);
       const request = beginProjectListRequest();
-      const list = await listProjects();
-      reconcileFetchedProjects(list, request);
+      const listResult = await loadProjectListSafe();
+      if (listResult.ok) {
+        reconcileFetchedProjects(listResult.projects, request);
+      } else if (isTeamverEmbedMode()) {
+        setWorkingDirError(listResult.errorMessage);
+      }
     }
     navigate({
       kind: 'project',
@@ -1782,7 +1853,12 @@ function AppInner() {
       extras: { fileName?: string | null; conversationId?: string | null } = {},
     ) => {
       const allowed = await assertTeamverProjectAccessIfNeeded(projectId);
-      if (!allowed) return;
+      if (!allowed) {
+        if (isTeamverEmbedMode()) {
+          setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
+        }
+        return;
+      }
       navigate({
         kind: 'project',
         projectId,
@@ -1801,6 +1877,9 @@ function AppInner() {
     let cancelled = false;
     void assertTeamverProjectAccessIfNeeded(activeProjectRouteId).then((allowed) => {
       if (cancelled || allowed) return;
+      if (isTeamverEmbedMode()) {
+        setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
+      }
       navigate({ kind: 'home', view: 'home' }, { replace: true });
     });
     return () => {
@@ -1862,11 +1941,14 @@ function AppInner() {
 
       const completedRun = completed[0];
       if (
-        completedRun?.projectId
+        isTeamverEmbedMode()
+        && completedRun?.projectId
         && !(route.kind === 'project' && route.projectId === completedRun.projectId)
       ) {
         const projectName = projectsById.get(completedRun.projectId)?.name ?? 'AI Design';
+        const completedProject = projectsById.get(completedRun.projectId);
         const status = completedRun.status as 'succeeded' | 'failed';
+        const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
         setBackgroundRunNotice({
           runId: completedRun.id,
           projectId: completedRun.projectId,
@@ -1890,12 +1972,7 @@ function AppInner() {
               body: projectName,
               onClick: () => {
                 window.focus();
-                void navigateToProject(
-                  completedRun.projectId!,
-                  completedRun.conversationId
-                    ? { conversationId: completedRun.conversationId }
-                    : {},
-                );
+                void navigateToProject(completedRun.projectId!, reopenExtras);
               },
             });
           }
@@ -1910,13 +1987,15 @@ function AppInner() {
       }
 
       const activeSummaries = buildActiveRunSummaries(currentProjects, runs);
-      setBackgroundRunSummaries((prev) =>
-        activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
-      );
+      if (isTeamverEmbedMode()) {
+        setBackgroundRunSummaries((prev) =>
+          activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
+        );
+      }
 
       const active = activeSummaries.length > 0;
       const signature = activeSummaries
-        .map((item) => `${item.projectId}:${item.status}:${item.count}`)
+        .map((item) => `${item.projectId}:${item.status}:${item.count}:${item.conversationId ?? ""}`)
         .sort()
         .join("|");
       const hadActive = wasActiveRunRef.current;
@@ -1926,8 +2005,11 @@ function AppInner() {
         const signatureChanged = signature !== activeRunSignatureRef.current;
         if (signatureChanged || (!active && hadActive)) {
           activeRunSignatureRef.current = signature;
-          const list = await listProjects();
-          if (!cancelled) setProjects(list);
+          const request = beginProjectListRequest();
+          const result = await loadProjectListSafe();
+          if (!cancelled && result.ok) {
+            reconcileFetchedProjects(result.projects, request);
+          }
         }
       }
     };
@@ -1943,7 +2025,14 @@ function AppInner() {
       window.removeEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
       window.clearInterval(id);
     };
-  }, [config.pet?.enabled, daemonLive, navigateToProject, route]);
+  }, [
+    beginProjectListRequest,
+    config.pet?.enabled,
+    daemonLive,
+    navigateToProject,
+    reconcileFetchedProjects,
+    route,
+  ]);
 
   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
     void navigateToProject(projectId, { fileName: liveArtifactTabId(artifactId) });
@@ -2093,6 +2182,15 @@ function AppInner() {
       const project = await getProject(route.projectId);
       if (cancelled) return;
       if (project) {
+        const allowed = await assertTeamverProjectAccessIfNeeded(route.projectId);
+        if (cancelled) return;
+        if (!allowed) {
+          if (isTeamverEmbedMode()) {
+            setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
+          }
+          navigate({ kind: 'home', view: 'home' }, { replace: true });
+          return;
+        }
         setProjects((curr) => {
           const existingIndex = curr.findIndex((candidate) => candidate.id === project.id);
           if (existingIndex < 0) {
@@ -2103,17 +2201,26 @@ function AppInner() {
         return;
       }
       const request = beginProjectListRequest();
-      const list = await listProjects();
+      const result = await loadProjectListSafe();
       if (cancelled) return;
-      const applied = reconcileFetchedProjects(list, request);
+      if (!result.ok) {
+        if (isTeamverEmbedMode()) {
+          setWorkingDirError(result.errorMessage);
+        }
+        return;
+      }
+      const applied = reconcileFetchedProjects(result.projects, request);
       if (!applied) return;
       const fetchedProject = locallyDeletedProjectIdsRef.current.has(route.projectId)
         ? undefined
-        : list.find((p) => p.id === route.projectId);
+        : result.projects.find((p) => p.id === route.projectId);
       const staleRequest = request.mutationVersion < projectListMutationVersionRef.current;
       const knownLocalProject =
         staleRequest && pendingLocalProjectIdsRef.current.has(route.projectId);
       if (!fetchedProject && !knownLocalProject) {
+        if (isTeamverEmbedMode()) {
+          setWorkingDirError(formatTeamverProjectNotFoundMessage());
+        }
         navigate({ kind: 'home', view: 'home' }, { replace: true });
       }
     })();
@@ -2450,6 +2557,8 @@ function AppInner() {
         onOpenSettings={openSettings}
         onCompleteOnboarding={handleCompleteOnboarding}
         backgroundRunSummaries={backgroundRunSummaries}
+        embedSubmitDisabled={isTeamverEmbedMode() && !embedDesignAppEnabled}
+        onEmbedSubmitBlocked={notifyEmbedSubmitBlocked}
       />
     );
   }
@@ -2548,12 +2657,19 @@ function AppInner() {
             ? `${backgroundRunNotice.projectName} 슬라이드 작업이 완료되었습니다.`
             : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
           actionLabel="프로젝트 열기"
-          onAction={() => void navigateToProject(
-            backgroundRunNotice.projectId,
-            backgroundRunNotice.conversationId
-              ? { conversationId: backgroundRunNotice.conversationId }
-              : {},
-          )}
+          onAction={() => {
+            const project = projects.find((item) => item.id === backgroundRunNotice.projectId);
+            void navigateToProject(
+              backgroundRunNotice.projectId,
+              navigateExtrasForBackgroundRun(
+                {
+                  status: backgroundRunNotice.status,
+                  conversationId: backgroundRunNotice.conversationId,
+                },
+                project,
+              ),
+            );
+          }}
           tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}
           role={backgroundRunNotice.status === 'failed' ? 'alert' : 'status'}
           ttlMs={8000}

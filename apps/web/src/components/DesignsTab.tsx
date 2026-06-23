@@ -80,6 +80,8 @@ interface Props {
 	onDelete: (id: string) => Promise<boolean | void> | boolean | void;
 	onRename?: (id: string, name: string) => void;
 	onNewProject?: () => void;
+	/** Embed — Design 앱 비활성 workspace에서 empty-state CTA 비활성. */
+	createDisabled?: boolean;
 }
 
 export function DesignsTab({
@@ -91,6 +93,7 @@ export function DesignsTab({
 	onDelete,
 	onRename,
 	onNewProject,
+	createDisabled = false,
 }: Props) {
 	const renameTitleId = useId();
 	const confirmTitleId = useId();
@@ -515,7 +518,9 @@ export function DesignsTab({
 								<button
 									type="button"
 									className="primary designs-empty-cta"
+									disabled={createDisabled}
 									onClick={() => {
+										if (createDisabled) return;
 										trackProjectsListControlsClick(analytics.track, {
 											page_name: "projects",
 											area: "list_controls",
@@ -820,7 +825,13 @@ export function DesignsTab({
 											const ds = dsName(p.designSystemId);
 											const designSystemProject = isDesignSystemProject(p);
 											const openKanbanCard = () => {
-												onOpen(p.id, projectOpenOptionsFromPreviewCover(p, null));
+												onOpen(
+													p.id,
+													projectOpenOptionsFromPreviewCover(
+														p,
+														coverOverrides[p.id] ?? null,
+													),
+												);
 											};
 											return (
 												<div

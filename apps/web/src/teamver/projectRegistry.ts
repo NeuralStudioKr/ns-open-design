@@ -41,6 +41,8 @@ const REGISTRY_ERROR_MESSAGES: Record<string, string> = {
     "워크스페이스를 선택한 뒤 프로젝트를 만들어 주세요.",
   teamver_project_registry_sync_failed:
     "프로젝트를 워크스페이스 저장소에 등록하지 못했습니다. 잠시 후 다시 시도하세요.",
+  teamver_project_registry_list_failed:
+    "프로젝트 목록을 불러오지 못했습니다. 잠시 후 다시 시도하거나 페이지를 새로고침하세요.",
 };
 
 /** Embed create — registry hard-fail 사용자 메시지. */
@@ -50,6 +52,16 @@ export function formatTeamverProjectRegistryErrorMessage(
 ): string {
   const key = code.trim();
   return REGISTRY_ERROR_MESSAGES[key] ?? fallback;
+}
+
+/** Embed — registry membership gate 거부 시 사용자 메시지. */
+export function formatTeamverProjectAccessDeniedMessage(): string {
+  return "이 워크스페이스에서 해당 프로젝트에 접근할 수 없습니다.";
+}
+
+/** Embed — deep-link hydration 실패(삭제·미등록) 시 사용자 메시지. */
+export function formatTeamverProjectNotFoundMessage(): string {
+  return "프로젝트를 찾을 수 없거나 삭제되었습니다.";
 }
 
 const FE_ACCESS_CACHE_MS = 30_000;
@@ -261,7 +273,9 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
 ): Promise<T[]> {
   if (!isTeamverEmbedMode()) return projects;
   const registeredIds = await listTeamverRegisteredProjectIds();
-  if (registeredIds === null) return [];
+  if (registeredIds === null) {
+    throw new TeamverProjectRegistryError("teamver_project_registry_list_failed");
+  }
   return projects.filter((project) => registeredIds.has(project.id));
 }
 

@@ -122,6 +122,9 @@ interface Props {
   onOpenSettings: (section?: 'execution' | 'media' | 'composio' | 'orbit' | 'integrations' | 'mcpClient' | 'language' | 'appearance' | 'notifications' | 'pet' | 'projectLocations' | 'library' | 'about' | 'memory' | 'designSystems') => void;
   onCompleteOnboarding: () => void;
   backgroundRunSummaries?: PetTaskSummary[];
+  /** Embed — workspace Design 앱 비활성 시 Home composer submit 차단. */
+  embedSubmitDisabled?: boolean;
+  onEmbedSubmitBlocked?: () => void;
 }
 
 export function isTrustedConnectorCallbackOrigin(origin: string, currentOrigin?: string): boolean {
@@ -263,6 +266,8 @@ export function EntryView({
   onOpenSettings,
   onCompleteOnboarding,
   backgroundRunSummaries = [],
+  embedSubmitDisabled = false,
+  onEmbedSubmitBlocked,
 }: Props) {
   const [connectors, setConnectors] = useState<ConnectorDetail[]>([]);
   const [connectorsLoading, setConnectorsLoading] = useState(false);
@@ -377,6 +382,8 @@ export function EntryView({
       onOpenSettings={onOpenSettings}
       onCompleteOnboarding={onCompleteOnboarding}
       backgroundRunSummaries={backgroundRunSummaries}
+      embedSubmitDisabled={embedSubmitDisabled}
+      onEmbedSubmitBlocked={onEmbedSubmitBlocked}
     />
   );
 }

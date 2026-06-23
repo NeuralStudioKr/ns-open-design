@@ -38,6 +38,7 @@ import { maybeReportTeamverUsageAfterSave } from '../teamver/maybeReportTeamverU
 import {
   filterProjectsByTeamverRegistryIfNeeded,
   registerTeamverProjectIfNeeded,
+  TeamverProjectRegistryError,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
@@ -71,7 +72,10 @@ export async function listProjects(): Promise<Project[]> {
     return await filterProjectsByTeamverRegistryIfNeeded(
       projects.map((project) => sanitizeProjectForEmbed(project)),
     );
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverProjectRegistryError) {
+      throw err;
+    }
     return [];
   }
 }

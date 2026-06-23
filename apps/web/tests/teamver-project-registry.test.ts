@@ -8,6 +8,8 @@ import {
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
   formatTeamverProjectRegistryErrorMessage,
+  formatTeamverProjectAccessDeniedMessage,
+  formatTeamverProjectNotFoundMessage,
   registerTeamverProjectIfNeeded,
   resetTeamverProjectRegistryStateForTests,
   syncAllDaemonProjectsToRegistry,
@@ -84,6 +86,15 @@ describe('Teamver project registry list', () => {
         { id: 'p3' },
       ]),
     ).resolves.toEqual([{ id: 'p1' }, { id: 'p3' }]);
+  });
+
+  it('throws when registry list is unavailable', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+
+    await expect(
+      filterProjectsByTeamverRegistryIfNeeded([{ id: 'p1' }]),
+    ).rejects.toMatchObject({ code: 'teamver_project_registry_list_failed' });
   });
 });
 
@@ -383,5 +394,17 @@ describe('formatTeamverProjectRegistryErrorMessage', () => {
     const err = new TeamverProjectRegistryError('teamver_workspace_required');
     expect(err.code).toBe('teamver_workspace_required');
     expect(formatTeamverProjectRegistryErrorMessage(err.code)).toContain('워크스페이스');
+  });
+});
+
+describe('formatTeamverProjectAccessDeniedMessage', () => {
+  it('returns a Korean access-denied message', () => {
+    expect(formatTeamverProjectAccessDeniedMessage()).toContain('접근');
+  });
+});
+
+describe('formatTeamverProjectNotFoundMessage', () => {
+  it('returns a Korean not-found message', () => {
+    expect(formatTeamverProjectNotFoundMessage()).toContain('찾을 수 없');
   });
 });

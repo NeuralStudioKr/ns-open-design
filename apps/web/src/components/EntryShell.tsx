@@ -359,6 +359,8 @@ interface Props {
   onOpenSettings: (section?: EntrySettingsSection) => void;
   onCompleteOnboarding: () => void;
   backgroundRunSummaries?: PetTaskSummary[];
+  embedSubmitDisabled?: boolean;
+  onEmbedSubmitBlocked?: () => void;
 }
 
 // Map an EntryNavRail view id to the analytics `element` enum on
@@ -452,6 +454,8 @@ export function EntryShell({
   onOpenSettings,
   onCompleteOnboarding,
   backgroundRunSummaries = [],
+  embedSubmitDisabled = false,
+  onEmbedSubmitBlocked,
 }: Props) {
   const t = useT();
   const teamverEmbed = isTeamverEmbedMode();
@@ -546,6 +550,10 @@ export function EntryShell({
   }
 
   function openNewProject(tab: CreateTab = defaultNewProjectTab({ slideOnlyMvp })) {
+    if (teamverEmbed && embedSubmitDisabled) {
+      onEmbedSubmitBlocked?.();
+      return;
+    }
     setNewProjectInitialTab(coerceNewProjectTab(tab, { slideOnlyMvp }));
     setNewProjectOpen(true);
   }
@@ -715,6 +723,7 @@ export function EntryShell({
           view={view}
           onViewChange={changeView}
           onNewProject={() => openNewProject()}
+          newProjectDisabled={teamverEmbed && embedSubmitDisabled}
           open={railOpen}
           onClose={() => setRailOpen(false)}
         />
@@ -798,6 +807,7 @@ export function EntryShell({
                 skillsLoading={skillsLoading}
                 connectors={connectors}
                 promptTemplates={promptTemplates}
+                embedSubmitDisabled={embedSubmitDisabled}
               />
             </div>
             <div data-testid="entry-view-projects" data-active={view === 'projects' ? 'true' : 'false'} {...inactiveViewProps(view === 'projects')}>
@@ -817,6 +827,7 @@ export function EntryShell({
                     onDelete={onDeleteProject}
                     onRename={onRenameProject}
                     onNewProject={() => openNewProject()}
+                    createDisabled={teamverEmbed && embedSubmitDisabled}
                   />
                 </div>
               )}

@@ -2,6 +2,8 @@ import { fetchTeamverWorkspacePermissions } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { isWorkspaceAppEnabled, readAppDisabledReason } from "./workspaceUtils";
 
+export const TEAMVER_DESIGN_ACCESS_CHANGED_EVENT = "teamver-design-access-changed";
+
 export type TeamverDesignAccessSnapshot = {
   workspaceId: string;
   appEnabled: boolean;
@@ -9,6 +11,27 @@ export type TeamverDesignAccessSnapshot = {
 };
 
 let snapshot: TeamverDesignAccessSnapshot | null = null;
+
+function dispatchTeamverDesignAccessChanged(): void {
+  if (typeof window === "undefined" || !snapshot) return;
+  window.dispatchEvent(
+    new CustomEvent<TeamverDesignAccessSnapshot>(TEAMVER_DESIGN_ACCESS_CHANGED_EVENT, {
+      detail: snapshot,
+    }),
+  );
+}
+
+export function subscribeTeamverDesignAccessChanged(
+  listener: (detail: TeamverDesignAccessSnapshot) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handler = (event: Event) => {
+    const custom = event as CustomEvent<TeamverDesignAccessSnapshot>;
+    if (custom.detail?.workspaceId) listener(custom.detail);
+  };
+  window.addEventListener(TEAMVER_DESIGN_ACCESS_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(TEAMVER_DESIGN_ACCESS_CHANGED_EVENT, handler);
+}
 
 export function updateTeamverDesignAccessSnapshot(
   workspaceId: string,
@@ -22,10 +45,25 @@ export function updateTeamverDesignAccessSnapshot(
     appEnabled,
     appDisabledReason: appDisabledReason?.trim() || null,
   };
+  dispatchTeamverDesignAccessChanged();
 }
 
 export function readTeamverDesignAccessSnapshot(): TeamverDesignAccessSnapshot | null {
   return snapshot;
+}
+
+const DESIGN_DISABLED_MESSAGES: Record<string, string> = {
+  app_disabled_globally:
+    "Teamver Design 앱이 현재 비활성화되어 있습니다. 워크스페이스 관리자에게 문의하세요.",
+  design_app_disabled:
+    "이 워크스페이스에서는 Teamver Design을 사용할 수 없습니다.",
+};
+
+/** Embed — workspace Design 앱 비활성 시 사용자 메시지. */
+export function formatTeamverDesignDisabledMessage(reason?: string | null): string {
+  const key = reason?.trim();
+  if (key && DESIGN_DISABLED_MESSAGES[key]) return DESIGN_DISABLED_MESSAGES[key];
+  return "이 워크스페이스에서는 Teamver Design을 사용할 수 없습니다. 워크스페이스 관리자에게 문의하세요.";
 }
 
 /** Fast path from last session/workspace snapshot (fail-open when unknown). */

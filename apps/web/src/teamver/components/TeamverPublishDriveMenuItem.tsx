@@ -18,6 +18,11 @@ import {
 } from "../publishToDrive";
 import { clearLatestPublishSummaryCache } from "../latestPublishSummary";
 import { notifyTeamverPublishOutputsChanged } from "../teamverPublishEvents";
+import {
+  isTeamverDesignAppEnabled,
+  readTeamverDesignAccessSnapshot,
+  subscribeTeamverDesignAccessChanged,
+} from "../teamverDesignAccess";
 
 type Props = {
   projectId: string;
@@ -137,6 +142,18 @@ export function TeamverPublishDriveMenuItem({
   // (otherwise the operator wouldn't see their just-uploaded artifact
   // appear in the history until they reopen the menu).
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [designAppEnabled, setDesignAppEnabled] = useState(
+    () => readTeamverDesignAccessSnapshot()?.appEnabled ?? true,
+  );
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const sync = () => {
+      setDesignAppEnabled(readTeamverDesignAccessSnapshot()?.appEnabled ?? true);
+    };
+    sync();
+    return subscribeTeamverDesignAccessChanged(sync);
+  }, []);
 
   const fetchSeqRef = useRef(0);
   const refreshTargets = useCallback(async () => {
@@ -247,6 +264,8 @@ export function TeamverPublishDriveMenuItem({
   }, [refreshTargets, targetsError]);
 
   if (!isTeamverEmbedMode()) return null;
+  if (workspaceId && !isTeamverDesignAppEnabled(workspaceId)) return null;
+  if (!designAppEnabled) return null;
 
   const disabledForPublish = busy;
   const disabledForBrowse = busy;

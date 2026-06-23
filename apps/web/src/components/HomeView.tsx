@@ -222,6 +222,7 @@ interface Props {
   connectors?: ConnectorDetail[];
   promptTemplates?: PromptTemplateSummary[];
   executionSwitcher?: ReactNode;
+  embedSubmitDisabled?: boolean;
 }
 
 const EMPTY_DESIGN_SYSTEMS: DesignSystemSummary[] = [];
@@ -248,6 +249,7 @@ export function HomeView({
   connectors = EMPTY_CONNECTORS,
   promptTemplates = EMPTY_PROMPT_TEMPLATES,
   executionSwitcher,
+  embedSubmitDisabled = false,
 }: Props) {
   const { locale, t } = useI18n();
   const {
@@ -1678,6 +1680,7 @@ export function HomeView({
         pendingPluginId={pendingApplyId}
         pendingChipId={pendingChipId}
         submitDisabled={
+          embedSubmitDisabled ||
           Boolean(pendingApplyId) ||
           Boolean(pendingAuthoringChipId) ||
           Boolean(active && !active.inputsValid)

@@ -34,6 +34,7 @@ async def test_alog_token_usage_emits_usage_5xx_marker_on_failure(
             model_name="claude-sonnet-4-5",
             input_tokens=10,
             output_tokens=20,
+            total_tokens=30,
             scope=UsageScope(user_id="u1", workspace_id="ws1", run_id="run-1"),
         )
 
