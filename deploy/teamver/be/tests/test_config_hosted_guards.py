@@ -45,17 +45,19 @@ def test_staging_requires_registry_credentials_or_explicit_kill_switch() -> None
         "teamver_registry_access_key": "",
     }
     with pytest.raises(ValidationError, match="TEAMVER_REGISTRY"):
-        hosted_settings(**missing)
+        hosted_settings(**missing, teamver_billing_disabled=False)
 
     assert hosted_settings(**missing, teamver_billing_disabled=True).teamver_billing_disabled
 
 
-def test_production_rejects_missing_registry_credentials_even_with_kill_switch() -> None:
+def test_production_accepts_kill_switch_without_registry() -> None:
+    missing = {
+        "deploy_env": "production",
+        "teamver_registry_app_id": "",
+        "teamver_registry_key_id": "",
+        "teamver_registry_access_key": "",
+    }
     with pytest.raises(ValidationError, match="TEAMVER_REGISTRY"):
-        hosted_settings(
-            deploy_env="production",
-            teamver_registry_app_id="",
-            teamver_registry_key_id="",
-            teamver_registry_access_key="",
-            teamver_billing_disabled=True,
-        )
+        hosted_settings(**missing, teamver_billing_disabled=False)
+
+    assert hosted_settings(**missing, teamver_billing_disabled=True).teamver_billing_disabled

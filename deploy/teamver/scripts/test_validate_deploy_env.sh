@@ -144,6 +144,31 @@ if ! bash "$SCRIPT" --staging --rds --env-file "$BILLING_KILL_ENV" >/dev/null 2>
 fi
 rm -f "$BILLING_KILL_ENV"
 
+# Production — same interim kill switch while Registry Phase 2 is not wired.
+PROD_BILLING_DIR="$(mktemp -d)"
+grep -v '^TEAMVER_REGISTRY_' "$TMP_ENV" > "$PROD_BILLING_DIR/.env.production"
+echo 'TEAMVER_BILLING_DISABLED=1' >> "$PROD_BILLING_DIR/.env.production"
+if ! bash "$SCRIPT" --production --rds --env-file "$PROD_BILLING_DIR/.env.production" >/dev/null 2>&1; then
+  echo "❌ production explicit billing kill switch should allow missing registry creds"
+  rm -rf "$PROD_BILLING_DIR"
+  exit 1
+fi
+prod_no_reg_out="$(bash "$SCRIPT" --production --rds --env-file "$PROD_BILLING_DIR/.env.production" 2>&1)"
+if ! grep -q 'TEAMVER_BILLING_DISABLED=1' <<< "$prod_no_reg_out"; then
+  echo "❌ production billing kill switch should emit BILLING_DISABLED warning"
+  echo "$prod_no_reg_out"
+  rm -rf "$PROD_BILLING_DIR"
+  exit 1
+fi
+PROD_NO_KILL_DIR="$(mktemp -d)"
+grep -v -E '^(TEAMVER_REGISTRY_|TEAMVER_BILLING_DISABLED)' "$TMP_ENV" > "$PROD_NO_KILL_DIR/.env.production"
+if bash "$SCRIPT" --production --rds --env-file "$PROD_NO_KILL_DIR/.env.production" >/dev/null 2>&1; then
+  echo "❌ production w/o registry and w/o BILLING_DISABLED must fail"
+  rm -rf "$PROD_BILLING_DIR" "$PROD_NO_KILL_DIR"
+  exit 1
+fi
+rm -rf "$PROD_BILLING_DIR" "$PROD_NO_KILL_DIR"
+
 echo "✓ validate_deploy_env --env-file + REGISTRY warnings ok"
 echo "  (full script requires .env.staging on disk — run on EC2 after cp .env.staging.example)"
 

@@ -249,12 +249,10 @@ if [[ "$registry_set_count" -gt 0 && "$registry_set_count" -lt 3 ]]; then
 elif [[ "$registry_set_count" -eq 3 ]]; then
   warn "TEAMVER_REGISTRY_* 설정됨 — design run reserve/commit/refund 활성 (CW alarm: teamver_usage_5xx)"
 else
-  if [[ "$DEPLOY_ENV_FLAG" == "--production" ]]; then
-    fail "production: TEAMVER_REGISTRY_APP_ID/KEY_ID/ACCESS_KEY 필수 — 무과금 design run 금지"
-  elif [[ "$DEPLOY_ENV_FLAG" == "--staging" && "${TEAMVER_BILLING_DISABLED:-}" != "1" ]]; then
-    fail "staging: TEAMVER_REGISTRY_* 미설정 시 TEAMVER_BILLING_DISABLED=1 명시 필요"
+  if [[ "${TEAMVER_BILLING_DISABLED:-}" != "1" ]]; then
+    fail "${DEPLOY_ENV_FLAG#--}: TEAMVER_REGISTRY_* 미설정 시 TEAMVER_BILLING_DISABLED=1 명시 필요 (Registry Phase 2 미구현·usage ledger만 기록)"
   else
-    warn "TEAMVER_REGISTRY_* 미설정 — Registry billing Phase 2 skip (명시적 local/staging kill switch)"
+    warn "TEAMVER_REGISTRY_* 미설정 — Registry billing skip (usage ledger만; TEAMVER_BILLING_DISABLED=1)"
   fi
 fi
 

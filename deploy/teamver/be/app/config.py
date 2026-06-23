@@ -111,11 +111,10 @@ class Settings(BaseModel):
                 self.teamver_registry_access_key,
             )
         )
-        if deploy_env == "production" and not registry_configured:
-            raise ValueError("TEAMVER_REGISTRY_* credentials are required in production")
-        if deploy_env == "staging" and not registry_configured and not self.teamver_billing_disabled:
+        if not registry_configured and not self.teamver_billing_disabled:
             raise ValueError(
-                "TEAMVER_REGISTRY_* credentials or TEAMVER_BILLING_DISABLED=1 are required in staging"
+                f"TEAMVER_REGISTRY_* credentials or TEAMVER_BILLING_DISABLED=1 "
+                f"are required in {deploy_env}"
             )
         return self
 
