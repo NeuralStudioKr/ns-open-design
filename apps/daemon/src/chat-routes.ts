@@ -36,7 +36,7 @@ import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectionTest.js';
 import { googleStreamGenerateContentUrl } from './google-models.js';
 import { createRoleMarkerGuard } from './role-marker-guard.js';
-import { createThinkTagSplitter } from './think-tag-splitter.js';
+import { createThinkTagSplitter, stripLeakedPseudoToolXml } from './think-tag-splitter.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -632,7 +632,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sendDelta(text: string) {
         if (guard.contaminated || !text) return;
         const { visible } = thinkSplitter.feed(text);
-        const safe = guard.feedText(visible);
+        const cleaned = stripLeakedPseudoToolXml(visible);
+        const safe = guard.feedText(cleaned);
         if (safe.length > 0) {
           sse.send('delta', { delta: safe });
         }
@@ -650,7 +651,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           sse.send('thinking_delta', { delta: tail.thinking });
         }
         if (tail.visible.length > 0) {
-          const safe = guard.feedText(tail.visible);
+          const safe = guard.feedText(stripLeakedPseudoToolXml(tail.visible));
           if (safe.length > 0) sse.send('delta', { delta: safe });
         }
       },

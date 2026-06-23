@@ -22,7 +22,14 @@ describe('TeamverBackgroundRunsBanner', () => {
     render(
       <TeamverBackgroundRunsBanner
         summaries={[
-          { projectId: 'p1', projectName: 'Deck A', status: 'running', count: 1, conversationId: 'conv-a' },
+          {
+            projectId: 'p1',
+            projectName: 'Deck A',
+            status: 'running',
+            count: 1,
+            conversationId: 'conv-a',
+            previewFileName: 'deck.html',
+          },
           { projectId: 'p2', projectName: 'Deck B', status: 'queued', count: 1 },
         ]}
         onOpenProject={onOpenProject}
@@ -31,6 +38,9 @@ describe('TeamverBackgroundRunsBanner', () => {
 
     expect(screen.getByTestId('teamver-background-runs-banner')).toBeTruthy();
     fireEvent.click(screen.getByTestId('teamver-background-runs-open'));
-    expect(onOpenProject).toHaveBeenCalledWith('p1', { conversationId: 'conv-a' });
+    expect(onOpenProject).toHaveBeenCalledWith('p1', {
+      conversationId: 'conv-a',
+      fileName: 'deck.html',
+    });
   });
 });

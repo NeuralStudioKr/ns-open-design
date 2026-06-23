@@ -20,6 +20,7 @@
  */
 
 import { createRoleMarkerGuard, type RoleMarkerGuard } from './role-marker-guard.js';
+import { stripLeakedPseudoToolXml } from './think-tag-splitter.js';
 
 type StreamEvent = Record<string, unknown>;
 type EventSink = (event: StreamEvent) => void;
@@ -211,6 +212,7 @@ export function createClaudeStreamHandler(
   function emitSafeText(msgId: string | null, text: string, eventType: string = 'text_delta') {
     if (eventType === 'text_delta') {
       text = stripDuplicateArtifactText(text);
+      text = stripLeakedPseudoToolXml(text);
       if (!text) return;
     }
     if (eventType !== 'text_delta' || !msgId) {

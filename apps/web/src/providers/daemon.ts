@@ -10,6 +10,7 @@
  *                 non-zero (tail appended to the error message).
  */
 import type { AgentEvent, ChatCommentAttachment, ChatMessage } from '../types';
+import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import type { AmrEntryAttribution } from '../analytics/amr-attribution';
 import type {
   ChatAnalyticsHints,
@@ -987,7 +988,8 @@ async function consumeDaemonRun({
           const event = parsed as unknown as ChatSseEvent;
 
           if (event.event === 'stdout') {
-            const chunk = String(event.data.chunk ?? '');
+            const chunk = stripLeakedPseudoToolXml(String(event.data.chunk ?? ''));
+            if (!chunk) continue;
             acc += chunk;
             handlers.onDelta(chunk);
             handlers.onAgentEvent({ kind: 'text', text: chunk });
@@ -1013,11 +1015,14 @@ async function consumeDaemonRun({
             const translated = translateAgentEvent(event.data);
             if (!translated) continue;
             if (translated.kind === 'text') {
-              acc += translated.text;
-              handlers.onDelta(translated.text);
+              const text = stripLeakedPseudoToolXml(translated.text);
+              if (!text) continue;
+              acc += text;
+              handlers.onDelta(text);
+              handlers.onAgentEvent({ ...translated, text });
+            } else {
+              handlers.onAgentEvent(translated);
             }
-            handlers.onAgentEvent(translated);
-            continue;
           }
 
           if (event.event === 'start') {

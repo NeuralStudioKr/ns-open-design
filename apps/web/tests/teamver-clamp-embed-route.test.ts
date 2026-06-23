@@ -8,6 +8,7 @@ import {
 const embedBranding = {
   hideNavViews: new Set(["tasks", "plugins", "integrations"] as const),
   hidePluginRegistry: true,
+  slideOnlyMvp: true,
 };
 
 describe("clampTeamverEmbedRoute", () => {
@@ -21,6 +22,19 @@ describe("clampTeamverEmbedRoute", () => {
       view: "home",
     });
     expect(clampTeamverEmbedRoute({ kind: "home", view: "tasks" }, embedBranding)).toEqual({
+      kind: "home",
+      view: "home",
+    });
+  });
+
+  it("redirects design-system workspace routes in slide-only embed", () => {
+    expect(clampTeamverEmbedRoute({ kind: "design-system-create" }, embedBranding)).toEqual({
+      kind: "home",
+      view: "home",
+    });
+    expect(
+      clampTeamverEmbedRoute({ kind: "design-system-detail", designSystemId: "ds-1" }, embedBranding),
+    ).toEqual({
       kind: "home",
       view: "home",
     });

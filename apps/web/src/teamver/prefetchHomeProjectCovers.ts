@@ -1,4 +1,5 @@
 import type { ProjectCoverHint } from "@open-design/contracts";
+import { isTeamverEmbedMode } from "./designApiBase";
 import { HOME_COVER_FETCH_CONCURRENCY, HOME_RECENT_LIST_LIMIT } from "./projectListLimits";
 import type { Project } from "../types";
 import {
@@ -8,6 +9,7 @@ import {
 } from "./projectCoverLoader";
 import { fetchProjectCoverHints, projectCoverFileFromHint } from "./projectCoverHints";
 import type { ProjectCoverFile } from "./projectPreviewFile";
+import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 
 /** Home recent rail — one cover-hints batch, then at most six shallow resolves. */
 export async function prefetchHomeProjectCovers(
@@ -17,7 +19,12 @@ export async function prefetchHomeProjectCovers(
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, HOME_RECENT_LIST_LIMIT);
 
-  const needsHint = recent.filter((project) => projectNeedsCoverFileFetch(project));
+  const skipNetwork =
+    isTeamverEmbedMode() && !isTeamverEmbedDesignSurfaceEnabled();
+
+  const needsHint = skipNetwork
+    ? []
+    : recent.filter((project) => projectNeedsCoverFileFetch(project));
   if (needsHint.length > 0) {
     const hints = await fetchProjectCoverHints(needsHint.map((project) => project.id));
     const positive: Record<string, ProjectCoverFile> = {};

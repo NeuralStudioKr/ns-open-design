@@ -25,6 +25,8 @@ export interface PetTaskSummary {
   count: number;
   /** Active run conversation — embed background-run banner deep-link. */
   conversationId?: string | null;
+  /** Deck HTML preview file — embed background-run reopen. */
+  previewFileName?: string | null;
 }
 
 export interface PetRecentTaskSummary {

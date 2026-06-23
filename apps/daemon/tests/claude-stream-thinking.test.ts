@@ -94,6 +94,32 @@ describe('claude-stream role-marker guard scope', () => {
     expect(text).toBe('OK.');
   });
 
+  it('strips leaked pseudo-tool XML from text_delta', () => {
+    const { events, sink } = collect();
+    const handler = createClaudeStreamHandler(sink);
+
+    feedJsonl(handler, [
+      { type: 'message_start', message: { id: 'msg-pseudo-1' } },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'text_delta',
+          text: 'Answer.\n<function_calls><invoke name="TodoWrite"></invoke></function_calls>\nDone.',
+        },
+      },
+    ]);
+
+    const text = events
+      .filter((e) => e.type === 'text_delta')
+      .map((e) => e.delta)
+      .join('');
+    expect(text).not.toContain('function_calls');
+    expect(text).not.toContain('<invoke');
+    expect(text).toContain('Answer.');
+    expect(text).toContain('Done.');
+  });
+
   it('emits an error event when Claude Code marks an assistant message as authentication_failed', () => {
     const { events, sink } = collect();
     const handler = createClaudeStreamHandler(sink);

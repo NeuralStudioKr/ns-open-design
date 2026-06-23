@@ -9,7 +9,15 @@ import {
 import type { Project } from '../src/types';
 
 const projects: Project[] = [
-  { id: 'p1', name: 'Landing Page', skillId: null, designSystemId: null, createdAt: 1, updatedAt: 1 },
+  {
+    id: 'p1',
+    name: 'Landing Page',
+    skillId: null,
+    designSystemId: null,
+    createdAt: 1,
+    updatedAt: 1,
+    metadata: { entryFile: 'output/deck.html' },
+  },
   { id: 'p2', name: 'Brand Deck', skillId: null, designSystemId: null, createdAt: 1, updatedAt: 1 },
 ];
 
@@ -41,7 +49,14 @@ describe('buildActiveRunSummaries', () => {
     ]);
 
     expect(summaries).toEqual([
-      { projectId: 'p1', projectName: 'Landing Page', status: 'running', count: 1, conversationId: null },
+      {
+        projectId: 'p1',
+        projectName: 'Landing Page',
+        status: 'running',
+        count: 1,
+        conversationId: null,
+        previewFileName: 'deck.html',
+      },
       { projectId: 'p2', projectName: 'Brand Deck', status: 'queued', count: 1, conversationId: null },
     ]);
     expect(buildPetTaskCenter(projects, []).recent).toEqual([]);

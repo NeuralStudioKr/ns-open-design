@@ -90,6 +90,7 @@ import {
   coerceNewProjectTab,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { clampTeamverEmbedRoute } from '../teamver/clampTeamverEmbedRoute';
 import { HomeView } from './HomeView';
 import type { PetTaskSummary } from './pet/PetOverlay';
 import { TeamverBackgroundRunsBanner } from '../teamver/components/TeamverBackgroundRunsBanner';
@@ -463,6 +464,8 @@ export function EntryShell({
     hideTopbarExecutionSwitcher,
     hideUseEverywhereChip,
     hideLocalWorkspaceControls,
+    hideNavViews,
+    hidePluginRegistry,
     slideOnlyMvp,
   } = useTeamverBranding();
   // Each entry sub-view (home / projects / design-systems) is its own
@@ -510,7 +513,14 @@ export function EntryShell({
         element: navElement,
       });
     }
-    navigate({ kind: 'home', view: next });
+    const targetRoute = teamverEmbed
+      ? clampTeamverEmbedRoute(
+          { kind: 'home', view: next },
+          { hideNavViews, hidePluginRegistry, slideOnlyMvp },
+        )
+      : { kind: 'home', view: next } as const;
+    const targetView = targetRoute.kind === 'home' ? targetRoute.view : 'home';
+    navigate({ kind: 'home', view: targetView });
   }
 
   function startPluginAuthoring(goal?: string) {
@@ -775,7 +785,7 @@ export function EntryShell({
             {!teamverEmbed ? <UpdaterPopup /> : null}
             {avatarMenu}
           </div>
-          {teamverEmbed && backgroundRunSummaries.length > 0 ? (
+          {teamverEmbed && !embedSubmitDisabled && backgroundRunSummaries.length > 0 ? (
             <TeamverBackgroundRunsBanner
               summaries={backgroundRunSummaries}
               onOpenProject={onOpenProject}

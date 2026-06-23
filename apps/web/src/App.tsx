@@ -82,6 +82,8 @@ import {
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
 import { clearTeamverEmbedListCaches } from './teamver/teamverEmbedListCaches';
+import { clearLatestPublishSummaryCache } from './teamver/latestPublishSummary';
+import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
@@ -2068,6 +2070,10 @@ function AppInner() {
     const ok = await deleteProjectApi(id);
     if (!ok) return false;
     await unregisterTeamverProjectFromRegistryIfNeeded(id);
+    if (isTeamverEmbedMode()) {
+      clearProjectCoverCache(id);
+      clearLatestPublishSummaryCache(id);
+    }
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     setProjects((curr) => curr.filter((p) => p.id !== id));

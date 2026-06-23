@@ -1,5 +1,6 @@
 import type { ChatRunStatusResponse } from '@open-design/contracts';
 import type { Project } from '../../types';
+import { projectOpenOptionsFromPreviewCover } from '../../teamver/projectPreviewFile';
 import type { PetRecentTaskSummary, PetTaskCenter, PetTaskSummary } from './PetOverlay';
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
@@ -86,7 +87,16 @@ export function buildActiveRunSummaries(
   runs: ChatRunStatusResponse[],
 ): PetTaskSummary[] {
   const center = buildPetTaskCenter(projects, runs);
-  return [...center.running, ...center.queued];
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
+  return [...center.running, ...center.queued].map((summary) => {
+    const project = projectsById.get(summary.projectId);
+    const previewFileName = project
+      ? projectOpenOptionsFromPreviewCover(project, null)?.fileName ?? null
+      : null;
+    return previewFileName
+      ? { ...summary, previewFileName }
+      : summary;
+  });
 }
 
 export function activeRunSummariesEqual(

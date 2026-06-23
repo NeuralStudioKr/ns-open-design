@@ -283,7 +283,8 @@ export function DesignsTab({
 	);
 
 	useEffect(() => {
-		if (!teamverEmbed || view !== "grid" || viewportPrefetchKey.length === 0) return;
+		if (!teamverEmbed || viewportPrefetchKey.length === 0) return;
+		if (view !== "grid" && view !== "kanban") return;
 		const batch = filteredProjects
 			.slice(0, PROJECT_LIST_VIEWPORT_BATCH)
 			.map((item) => item.project);
