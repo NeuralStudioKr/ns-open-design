@@ -21,15 +21,31 @@ export function resetEmbedRunTrackingRefs(refs: EmbedRunTrackingRefs): void {
 /** Skip completion toast when the run's project is outside the loaded workspace list. */
 export type EmbedBackgroundRunCompletionDecision = "notify" | "defer" | "suppress";
 
+export type LocallyDeletedProjectIds =
+  | ReadonlyMap<string, unknown>
+  | ReadonlySet<string>;
+
+function isLocallyDeletedProjectId(
+  id: string,
+  locallyDeletedProjectIds?: LocallyDeletedProjectIds,
+): boolean {
+  if (!locallyDeletedProjectIds) return false;
+  if (locallyDeletedProjectIds instanceof Map) return locallyDeletedProjectIds.has(id);
+  if (locallyDeletedProjectIds instanceof Set) return locallyDeletedProjectIds.has(id);
+  return false;
+}
+
 export function decideEmbedBackgroundRunCompletion(
   projectId: string | null | undefined,
   projectsById: ReadonlyMap<string, unknown>,
   projectListSettled: boolean,
   pendingLocalProjectIds?: ReadonlySet<string>,
   sessionActiveRunProjectIds?: ReadonlySet<string>,
+  locallyDeletedProjectIds?: LocallyDeletedProjectIds,
 ): EmbedBackgroundRunCompletionDecision {
   const id = projectId?.trim();
   if (!id) return "suppress";
+  if (isLocallyDeletedProjectId(id, locallyDeletedProjectIds)) return "suppress";
   if (!projectListSettled) return "defer";
   if (projectsById.has(id)) return "notify";
   if (pendingLocalProjectIds?.has(id)) return "notify";
@@ -43,13 +59,57 @@ export function buildEmbedKnownProjectIds(options: {
   pendingLocalProjectIds?: ReadonlySet<string>;
   sessionActiveRunProjectIds?: ReadonlySet<string>;
   openProjectId?: string | null;
+  locallyDeletedProjectIds?: LocallyDeletedProjectIds;
 }): Set<string> {
   const known = new Set(options.projectIds);
   for (const id of options.pendingLocalProjectIds ?? []) known.add(id);
   for (const id of options.sessionActiveRunProjectIds ?? []) known.add(id);
   const openId = options.openProjectId?.trim();
   if (openId) known.add(openId);
+  if (options.locallyDeletedProjectIds) {
+    for (const id of [...known]) {
+      if (isLocallyDeletedProjectId(id, options.locallyDeletedProjectIds)) known.delete(id);
+    }
+  }
   return known;
+}
+
+/**
+ * Drop session-tracked project ids that have either rejoined the workspace list
+ * (already tracked by `projectsById`) or were locally deleted in this session —
+ * otherwise their banner chip / completion toast resurfaces from the next poll.
+ */
+export function pruneSessionActiveRunProjectIds(
+  sessionActiveRunProjectIds: Set<string>,
+  options: {
+    projectsById: ReadonlyMap<string, unknown>;
+    locallyDeletedProjectIds?: LocallyDeletedProjectIds;
+  },
+): void {
+  for (const id of sessionActiveRunProjectIds) {
+    if (
+      options.projectsById.has(id)
+      || isLocallyDeletedProjectId(id, options.locallyDeletedProjectIds)
+    ) {
+      sessionActiveRunProjectIds.delete(id);
+    }
+  }
+}
+
+/** Orphan active-run banner chips — session-active + pending-local, minus locally deleted. */
+export function buildEmbedActiveRunAllowMissingIds(options: {
+  sessionActiveRunProjectIds: ReadonlySet<string>;
+  pendingLocalProjectIds: ReadonlySet<string>;
+  locallyDeletedProjectIds?: LocallyDeletedProjectIds;
+}): Set<string> {
+  const allow = new Set<string>();
+  for (const id of options.sessionActiveRunProjectIds) {
+    if (!isLocallyDeletedProjectId(id, options.locallyDeletedProjectIds)) allow.add(id);
+  }
+  for (const id of options.pendingLocalProjectIds) {
+    if (!isLocallyDeletedProjectId(id, options.locallyDeletedProjectIds)) allow.add(id);
+  }
+  return allow;
 }
 
 /** Drop daemon runs whose project is outside the current embed workspace context. */
@@ -71,6 +131,7 @@ export function shouldNotifyEmbedBackgroundRunCompletion(
   projectListSettled = true,
   pendingLocalProjectIds?: ReadonlySet<string>,
   sessionActiveRunProjectIds?: ReadonlySet<string>,
+  locallyDeletedProjectIds?: LocallyDeletedProjectIds,
 ): boolean {
   return decideEmbedBackgroundRunCompletion(
     projectId,
@@ -78,6 +139,7 @@ export function shouldNotifyEmbedBackgroundRunCompletion(
     projectListSettled,
     pendingLocalProjectIds,
     sessionActiveRunProjectIds,
+    locallyDeletedProjectIds,
   ) === "notify";
 }
 
@@ -88,6 +150,7 @@ export function processEmbedBackgroundRunCompletions(
   projectListSettled: boolean,
   refs: EmbedRunTrackingRefs,
   pendingLocalProjectIds?: ReadonlySet<string>,
+  locallyDeletedProjectIds?: LocallyDeletedProjectIds,
 ): ChatRunStatusResponse | undefined {
   let toastRun: ChatRunStatusResponse | undefined;
   for (const run of completed) {
@@ -97,6 +160,7 @@ export function processEmbedBackgroundRunCompletions(
       projectListSettled,
       pendingLocalProjectIds,
       refs.sessionActiveRunProjectIds.current,
+      locallyDeletedProjectIds,
     );
     if (decision === "defer") continue;
     refs.notifiedBackgroundRunIds.current.add(run.id);

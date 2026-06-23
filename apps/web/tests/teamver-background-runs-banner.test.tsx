@@ -81,4 +81,45 @@ describe('TeamverBackgroundRunsBanner', () => {
 
     expect(view.queryByRole('list')).toBeNull();
   });
+
+  it('collapses expanded list when the primary preview file changes', () => {
+    const onOpenProject = vi.fn();
+    const { rerender, container } = render(
+      <TeamverBackgroundRunsBanner
+        summaries={[
+          {
+            projectId: 'p1',
+            projectName: 'Deck A',
+            status: 'running',
+            count: 1,
+            previewFileName: 'v1.html',
+          },
+          { projectId: 'p2', projectName: 'Deck B', status: 'queued', count: 1 },
+        ]}
+        onOpenProject={onOpenProject}
+      />,
+    );
+
+    const view = within(container);
+    fireEvent.click(view.getByRole('button', { name: '2 projects running' }));
+    expect(view.getByRole('list')).toBeTruthy();
+
+    rerender(
+      <TeamverBackgroundRunsBanner
+        summaries={[
+          {
+            projectId: 'p1',
+            projectName: 'Deck A',
+            status: 'running',
+            count: 1,
+            previewFileName: 'v2.html',
+          },
+          { projectId: 'p2', projectName: 'Deck B', status: 'queued', count: 1 },
+        ]}
+        onOpenProject={onOpenProject}
+      />,
+    );
+
+    expect(view.queryByRole('list')).toBeNull();
+  });
 });

@@ -8,6 +8,8 @@ import {
   shouldNotifyEmbedBackgroundRunCompletion,
   buildEmbedKnownProjectIds,
   filterRunsForEmbedKnownProjects,
+  pruneSessionActiveRunProjectIds,
+  buildEmbedActiveRunAllowMissingIds,
 } from "../src/teamver/teamverEmbedRunTracking";
 import type { ChatRunStatusResponse } from "@open-design/contracts";
 
@@ -57,6 +59,22 @@ describe("decideEmbedBackgroundRunCompletion", () => {
     ).toBe("notify");
     expect(
       decideEmbedBackgroundRunCompletion("p-other", projects, true, undefined, sessionActive),
+    ).toBe("suppress");
+  });
+
+  it("suppresses locally deleted projects even when session-active", () => {
+    const projects = new Map<string, unknown>();
+    const sessionActive = new Set(["p-deleted"]);
+    const deleted = new Map([["p-deleted", 1]]);
+    expect(
+      decideEmbedBackgroundRunCompletion(
+        "p-deleted",
+        projects,
+        true,
+        undefined,
+        sessionActive,
+        deleted,
+      ),
     ).toBe("suppress");
   });
 
@@ -146,6 +164,14 @@ describe("buildEmbedKnownProjectIds", () => {
     });
     expect(known).toEqual(new Set(["p1", "p-new", "p-in-flight", "p-deep"]));
   });
+
+  it("excludes locally deleted project ids", () => {
+    const known = buildEmbedKnownProjectIds({
+      projectIds: ["p1", "p-deleted"],
+      locallyDeletedProjectIds: new Map([["p-deleted", 1]]),
+    });
+    expect(known).toEqual(new Set(["p1"]));
+  });
 });
 
 describe("filterRunsForEmbedKnownProjects", () => {
@@ -163,5 +189,28 @@ describe("filterRunsForEmbedKnownProjects", () => {
       { id: "r1", projectId: "p1", status: "running", updatedAt: 1, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
     ];
     expect(filterRunsForEmbedKnownProjects(runs, new Set())).toEqual([]);
+  });
+});
+
+describe("pruneSessionActiveRunProjectIds", () => {
+  it("drops ids that rejoined the list or were locally deleted", () => {
+    const sessionActive = new Set(["p1", "p-orphan", "p-deleted"]);
+    const projectsById = new Map([["p1", {}]]);
+    const deleted = new Map([["p-deleted", 1]]);
+
+    pruneSessionActiveRunProjectIds(sessionActive, { projectsById, locallyDeletedProjectIds: deleted });
+
+    expect(sessionActive).toEqual(new Set(["p-orphan"]));
+  });
+});
+
+describe("buildEmbedActiveRunAllowMissingIds", () => {
+  it("merges session-active and pending-local minus locally deleted", () => {
+    const allow = buildEmbedActiveRunAllowMissingIds({
+      sessionActiveRunProjectIds: new Set(["p-in-flight", "p-deleted"]),
+      pendingLocalProjectIds: new Set(["p-new", "p-deleted"]),
+      locallyDeletedProjectIds: new Map([["p-deleted", 1]]),
+    });
+    expect(allow).toEqual(new Set(["p-in-flight", "p-new"]));
   });
 });

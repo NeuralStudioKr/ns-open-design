@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import type { PetTaskSummary } from "../../components/pet/PetOverlay";
+import { buildActiveRunSignature } from "../../components/pet/taskCenter";
 import { useT } from "../../i18n";
 
 type Props = {
@@ -24,9 +25,13 @@ function statusLabelKey(status: PetTaskSummary["status"]): "teamver.backgroundRu
 export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
+  const primarySignature = useMemo(
+    () => buildActiveRunSignature(summaries.slice(0, 1)),
+    [summaries],
+  );
   useEffect(() => {
     setExpanded(false);
-  }, [summaries.length, summaries[0]?.projectId]);
+  }, [primarySignature, summaries.length]);
   if (summaries.length === 0) return null;
 
   const primary = summaries[0]!;

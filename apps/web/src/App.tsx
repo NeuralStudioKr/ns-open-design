@@ -83,7 +83,7 @@ import {
 } from './teamver/projectRegistry';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
-import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects } from './teamver/teamverEmbedRunTracking';
+import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
@@ -1213,9 +1213,12 @@ function AppInner() {
       const next = prev
         .filter(
           (summary) =>
-            projectsById.has(summary.projectId)
-            || pendingLocalProjectIdsRef.current.has(summary.projectId)
-            || sessionActiveRunProjectIdsRef.current.has(summary.projectId),
+            !locallyDeletedProjectIdsRef.current.has(summary.projectId)
+            && (
+              projectsById.has(summary.projectId)
+              || pendingLocalProjectIdsRef.current.has(summary.projectId)
+              || sessionActiveRunProjectIdsRef.current.has(summary.projectId)
+            ),
         )
         .map((summary) => {
         const project = projectsById.get(summary.projectId);
@@ -1297,6 +1300,7 @@ function AppInner() {
         const knownProjectIds = buildEmbedKnownProjectIds({
           projectIds: result.projects.map((project) => project.id),
           pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+          locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
         });
         void listProjectRuns()
           .then((runs) => {
@@ -2056,20 +2060,17 @@ function AppInner() {
 
       const currentProjects = projectsRef.current;
       const projectsById = new Map(currentProjects.map((project) => [project.id, project]));
-      for (const id of sessionActiveRunProjectIdsRef.current) {
-        if (
-          projectsById.has(id)
-          || locallyDeletedProjectIdsRef.current.has(id)
-        ) {
-          sessionActiveRunProjectIdsRef.current.delete(id);
-        }
-      }
+      pruneSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current, {
+        projectsById,
+        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
+      });
       const knownProjectIds = isTeamverEmbedMode()
         ? buildEmbedKnownProjectIds({
             projectIds: currentProjects.map((project) => project.id),
             pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
             sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
             openProjectId: routeRef.current.kind === 'project' ? routeRef.current.projectId : null,
+            locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
           })
         : null;
       const trackedRuns = knownProjectIds
@@ -2110,6 +2111,7 @@ function AppInner() {
             !projectsLoadingRef.current,
             embedRunRefs,
             pendingLocalProjectIdsRef.current,
+            locallyDeletedProjectIdsRef.current,
           )
         : (() => {
             for (const run of completed) notifiedBackgroundRunIdsRef.current.add(run.id);
@@ -2179,10 +2181,11 @@ function AppInner() {
         setPetTaskCenter({ running: [], queued: [], recent: [] });
       }
 
-      const allowMissingProjectIds = new Set([
-        ...sessionActiveRunProjectIdsRef.current,
-        ...pendingLocalProjectIdsRef.current,
-      ]);
+      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
+      });
       const activeSummaries = buildActiveRunSummaries(
         currentProjects,
         isTeamverEmbedMode() ? trackedRuns : runs,
