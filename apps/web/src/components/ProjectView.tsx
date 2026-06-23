@@ -1129,6 +1129,16 @@ export function ProjectView({
   // last name we persisted so re-renders during streaming don't spawn
   // duplicate writes.
   const savedArtifactRef = useRef<string | null>(null);
+  /** Dedupe stream onDone vs onRunStatus terminal HTML auto-open for the same assistant row. */
+  const htmlAutoOpenClaimedRef = useRef<Set<string>>(new Set());
+  const htmlAutoOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    htmlAutoOpenClaimedRef.current.clear();
+    if (htmlAutoOpenTimerRef.current !== null) {
+      clearTimeout(htmlAutoOpenTimerRef.current);
+      htmlAutoOpenTimerRef.current = null;
+    }
+  }, [project.id]);
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
   // the file as a tab once. Keying off the tool_use_id (rather than
@@ -3321,6 +3331,55 @@ export function ProjectView({
       const runIsVisible = () =>
         messagesConversationIdRef.current === runConversationId;
 
+      const scheduleStreamRunHtmlAutoOpen = (fullText: string, delayMs = 0) => {
+        const execute = () => {
+          if (htmlAutoOpenClaimedRef.current.has(assistantId)) return;
+          htmlAutoOpenClaimedRef.current.add(assistantId);
+          void (async () => {
+            let nextFiles = await refreshProjectFiles();
+            const finalText = streamedText || fullText;
+            const artifactToPersist = parsedArtifact?.html
+              ? parsedArtifact
+              : artifactFromStandaloneHtml(finalText);
+            if (artifactToPersist?.html) {
+              const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+              const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
+                artifactHtml: artifactToPersist.html,
+                producedFiles: producedBeforeFallback,
+                readProjectHtml,
+                allowAnyHtmlWrite: assistantAgentId === 'claude',
+              });
+              if (sameTurnHtmlWrite) {
+                savedArtifactRef.current = sameTurnHtmlWrite.name;
+                if (runIsVisible()) requestOpenFile(sameTurnHtmlWrite.name);
+              } else {
+                await persistArtifact(artifactToPersist, nextFiles, finalText);
+                nextFiles = await refreshProjectFiles();
+              }
+            }
+            const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+            const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
+            if (producedHtmlToOpen && runIsVisible()) requestOpenFile(producedHtmlToOpen);
+            updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
+            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+              telemetryFinalized: true,
+            });
+            await auditDesignSystemWorkspaceAfterRun(assistantId);
+          })();
+        };
+        if (delayMs > 0) {
+          if (htmlAutoOpenTimerRef.current !== null) {
+            clearTimeout(htmlAutoOpenTimerRef.current);
+          }
+          htmlAutoOpenTimerRef.current = window.setTimeout(() => {
+            htmlAutoOpenTimerRef.current = null;
+            execute();
+          }, delayMs);
+        } else {
+          execute();
+        }
+      };
+
       const updateAssistant = (updater: (prev: ChatMessage) => ChatMessage) => {
         latestAssistantMsg = updater(latestAssistantMsg);
         if (!runIsVisible()) return;
@@ -3614,41 +3673,7 @@ export function ProjectView({
             cancelController,
           );
           if (ownsCurrentRun) updateConversationLatestRun(finalRunStatus ?? 'succeeded', endedAt);
-          // Refetch the file list directly (rather than just bumping the
-          // refresh signal) so we can diff against the pre-turn snapshot
-          // and attach the new files to the assistant message as download
-          // chips.
-          void (async () => {
-            let nextFiles = await refreshProjectFiles();
-            const finalText = streamedText || fullText;
-            const artifactToPersist = parsedArtifact?.html
-              ? parsedArtifact
-              : artifactFromStandaloneHtml(finalText);
-            if (artifactToPersist?.html) {
-              const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-              const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
-                artifactHtml: artifactToPersist.html,
-                producedFiles: producedBeforeFallback,
-                readProjectHtml,
-                allowAnyHtmlWrite: assistantAgentId === 'claude',
-              });
-              if (sameTurnHtmlWrite) {
-                savedArtifactRef.current = sameTurnHtmlWrite.name;
-                if (runIsVisible()) requestOpenFile(sameTurnHtmlWrite.name);
-              } else {
-                await persistArtifact(artifactToPersist, nextFiles, finalText);
-                nextFiles = await refreshProjectFiles();
-              }
-            }
-            const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-            const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
-            if (producedHtmlToOpen && runIsVisible()) requestOpenFile(producedHtmlToOpen);
-            updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
-            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
-              telemetryFinalized: true,
-            });
-            await auditDesignSystemWorkspaceAfterRun(assistantId);
-          })();
+          scheduleStreamRunHtmlAutoOpen(fullText);
           onProjectsRefresh();
           releaseOwnedDaemonRun();
         },
@@ -3797,6 +3822,11 @@ export function ProjectView({
             updateConversationLatestRun(runStatus, endedAt);
             if (isTerminalRunStatus(runStatus)) {
               clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
+              if (runStatus === 'succeeded') {
+                // Terminal status can arrive before onDone when SSE drops early —
+                // defer so Write tool results land before auto-open.
+                scheduleStreamRunHtmlAutoOpen(streamedText, 400);
+              }
               scheduleConversationMessageRefresh(runConversationId);
             }
           },

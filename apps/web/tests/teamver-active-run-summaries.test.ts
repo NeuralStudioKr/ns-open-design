@@ -18,7 +18,7 @@ const projects: Project[] = [
     designSystemId: null,
     createdAt: 1,
     updatedAt: 1,
-    metadata: { entryFile: 'output/deck.html' },
+    metadata: { kind: 'deck', entryFile: 'output/deck.html' },
   },
   { id: 'p2', name: 'Brand Deck', skillId: null, designSystemId: null, createdAt: 1, updatedAt: 1 },
 ];
@@ -99,6 +99,22 @@ describe('buildActiveRunSummaries', () => {
     const withoutPreview = [{ ...base[0]!, previewFileName: undefined }];
     expect(activeRunSummariesEqual(base, withoutPreview)).toBe(false);
     expect(activeRunSummariesEqual(base, [{ ...base[0]! }])).toBe(true);
+  });
+
+  it('includes session-active runs when project list is empty', () => {
+    const summaries = buildActiveRunSummaries([], [
+      run('r1', 'p-deep', 'running', 10, 'conv-a'),
+    ], new Set(['p-deep']));
+
+    expect(summaries).toEqual([
+      {
+        projectId: 'p-deep',
+        projectName: 'AI Design',
+        status: 'running',
+        count: 1,
+        conversationId: 'conv-a',
+      },
+    ]);
   });
 
   it('buildActiveRunSignature includes preview and rename fields', () => {

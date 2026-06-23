@@ -6,6 +6,8 @@ import {
   resetEmbedRunTrackingRefs,
   seedEmbedRunTrackingFromRuns,
   shouldNotifyEmbedBackgroundRunCompletion,
+  buildEmbedKnownProjectIds,
+  filterRunsForEmbedKnownProjects,
 } from "../src/teamver/teamverEmbedRunTracking";
 import type { ChatRunStatusResponse } from "@open-design/contracts";
 
@@ -16,6 +18,7 @@ describe("resetEmbedRunTrackingRefs", () => {
       notifiedBackgroundRunIds: { current: new Set(["r2"]) },
       wasActiveRun: { current: true },
       activeRunSignature: { current: "p1:running:1" },
+      sessionActiveRunProjectIds: { current: new Set(["p1"]) },
     };
 
     resetEmbedRunTrackingRefs(refs);
@@ -24,6 +27,7 @@ describe("resetEmbedRunTrackingRefs", () => {
     expect(refs.notifiedBackgroundRunIds.current.size).toBe(0);
     expect(refs.wasActiveRun.current).toBe(false);
     expect(refs.activeRunSignature.current).toBe("");
+    expect(refs.sessionActiveRunProjectIds.current.size).toBe(0);
   });
 });
 
@@ -45,6 +49,17 @@ describe("decideEmbedBackgroundRunCompletion", () => {
     ).toBe("notify");
   });
 
+  it("notifies session-active projects when workspace list is empty", () => {
+    const projects = new Map<string, unknown>();
+    const sessionActive = new Set(["p-in-flight"]);
+    expect(
+      decideEmbedBackgroundRunCompletion("p-in-flight", projects, true, undefined, sessionActive),
+    ).toBe("notify");
+    expect(
+      decideEmbedBackgroundRunCompletion("p-other", projects, true, undefined, sessionActive),
+    ).toBe("suppress");
+  });
+
   it("shouldNotify wrapper matches notify decision", () => {
     const projects = new Map([["p1", {}]]);
     expect(shouldNotifyEmbedBackgroundRunCompletion("p1", projects, true)).toBe(true);
@@ -59,6 +74,7 @@ describe("processEmbedBackgroundRunCompletions", () => {
       notifiedBackgroundRunIds: { current: new Set<string>() },
       wasActiveRun: { current: false },
       activeRunSignature: { current: "" },
+      sessionActiveRunProjectIds: { current: new Set<string>() },
     };
     const projects = new Map([["p1", {}]]);
     const completed: ChatRunStatusResponse[] = [
@@ -83,6 +99,7 @@ describe("seedEmbedRunTrackingFromRuns", () => {
       notifiedBackgroundRunIds: { current: new Set<string>() },
       wasActiveRun: { current: false },
       activeRunSignature: { current: "" },
+      sessionActiveRunProjectIds: { current: new Set<string>() },
     };
     const runs: ChatRunStatusResponse[] = [
       { id: "r1", projectId: "p1", status: "running", updatedAt: 1, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
@@ -93,6 +110,58 @@ describe("seedEmbedRunTrackingFromRuns", () => {
     seedEmbedRunTrackingFromRuns(refs, runs);
 
     expect(refs.activeRunIds.current).toEqual(new Set(["r1", "q1"]));
+    expect(refs.sessionActiveRunProjectIds.current).toEqual(new Set(["p1", "p2"]));
     expect(refs.notifiedBackgroundRunIds.current).toEqual(new Set(["r2"]));
+  });
+
+  it("tracks active runs only from workspace subset while marking all terminal runs notified", () => {
+    const refs = {
+      activeRunIds: { current: new Set<string>() },
+      notifiedBackgroundRunIds: { current: new Set<string>() },
+      wasActiveRun: { current: false },
+      activeRunSignature: { current: "" },
+      sessionActiveRunProjectIds: { current: new Set<string>() },
+    };
+    const runs: ChatRunStatusResponse[] = [
+      { id: "r1", projectId: "p1", status: "running", updatedAt: 1, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
+      { id: "rX", projectId: "p-other", status: "running", updatedAt: 2, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
+      { id: "r2", projectId: "p-other", status: "succeeded", updatedAt: 3, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
+    ];
+
+    seedEmbedRunTrackingFromRuns(refs, runs, runs.filter((run) => run.projectId === "p1"));
+
+    expect(refs.activeRunIds.current).toEqual(new Set(["r1"]));
+    expect(refs.sessionActiveRunProjectIds.current).toEqual(new Set(["p1"]));
+    expect(refs.notifiedBackgroundRunIds.current).toEqual(new Set(["r2"]));
+  });
+});
+
+describe("buildEmbedKnownProjectIds", () => {
+  it("merges list, pending-local, session-active, and open project route", () => {
+    const known = buildEmbedKnownProjectIds({
+      projectIds: ["p1"],
+      pendingLocalProjectIds: new Set(["p-new"]),
+      sessionActiveRunProjectIds: new Set(["p-in-flight"]),
+      openProjectId: "p-deep",
+    });
+    expect(known).toEqual(new Set(["p1", "p-new", "p-in-flight", "p-deep"]));
+  });
+});
+
+describe("filterRunsForEmbedKnownProjects", () => {
+  it("drops runs outside the workspace project set", () => {
+    const runs: ChatRunStatusResponse[] = [
+      { id: "r1", projectId: "p1", status: "running", updatedAt: 1, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
+      { id: "r2", projectId: "p-other", status: "running", updatedAt: 2, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
+    ];
+    const filtered = filterRunsForEmbedKnownProjects(runs, new Set(["p1"]));
+    expect(filtered.map((run) => run.id)).toEqual(["r1"]);
+  });
+
+  it("returns empty when no known project ids", () => {
+    const runs: ChatRunStatusResponse[] = [
+      { id: "r1", projectId: "p1", status: "running", updatedAt: 1, createdAt: 0, conversationId: null, assistantMessageId: null, agentId: null },
+    ];
+    expect(filterRunsForEmbedKnownProjects(runs, new Set())).toEqual([]);
   });
 });

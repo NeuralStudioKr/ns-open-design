@@ -126,6 +126,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-embed-share-policy.test.ts \
       tests/internal-agent-markup.test.ts \
       tests/teamver-embed-slide-only.test.ts \
+      tests/teamver-designs-tab-kanban.test.ts \
+      tests/teamver-warm-embed-list-caches.test.ts \
       tests/teamver-embed-config-lock.test.ts \
       tests/teamver-usage-report.test.ts \
       tests/providers/api-proxy.test.ts \

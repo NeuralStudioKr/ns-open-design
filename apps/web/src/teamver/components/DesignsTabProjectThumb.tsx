@@ -7,6 +7,7 @@ type Props = {
   project: Project;
   liveCount?: number;
   liveCountLabel?: string;
+  className?: string;
   onCoverOverride?: (cover: ProjectCoverFile | null) => void;
 };
 
@@ -15,6 +16,7 @@ export function DesignsTabProjectThumb({
   project,
   liveCount = 0,
   liveCountLabel,
+  className,
   onCoverOverride,
 }: Props) {
   const { anchorRef, cover, override } = useLazyProjectCover(project, { deferUntilVisible: true });
@@ -23,10 +25,19 @@ export function DesignsTabProjectThumb({
     onCoverOverride?.(override);
   }, [override, onCoverOverride]);
 
+  const thumbClassName = [
+    "design-card-thumb",
+    "project-thumb",
+    `project-thumb-${cover.kind}`,
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
       ref={anchorRef}
-      className={`design-card-thumb project-thumb project-thumb-${cover.kind}`}
+      className={thumbClassName}
       style={cover.style}
       aria-hidden
     >

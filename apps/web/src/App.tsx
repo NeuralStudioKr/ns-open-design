@@ -83,11 +83,12 @@ import {
 } from './teamver/projectRegistry';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
-import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions } from './teamver/teamverEmbedRunTracking';
+import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
+import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
 import { projectOpenOptionsFromPreviewCover } from './teamver/projectPreviewFile';
 import {
   formatTeamverDesignDisabledMessage,
@@ -458,6 +459,7 @@ function AppInner() {
   } | null>(null);
   const activeRunIdsRef = useRef<Set<string>>(new Set());
   const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
+  const sessionActiveRunProjectIdsRef = useRef<Set<string>>(new Set());
   const projectsRef = useRef<Project[]>(projects);
   const wasActiveRunRef = useRef(false);
   const activeRunSignatureRef = useRef("");
@@ -930,6 +932,7 @@ function AppInner() {
           setWorkingDirError(result.errorMessage);
         } else {
           reconcileFetchedProjects(result.projects, request);
+          warmEmbedProjectListCaches(result.projects);
         }
         setProjectsLoading(false);
       })();
@@ -956,7 +959,7 @@ function AppInner() {
       // before daemon overrides it.
       void Promise.all([
         fetchDaemonConfig(),
-        fetchComposioConfigFromDaemon(),
+        isTeamverEmbedMode() ? Promise.resolve(null) : fetchComposioConfigFromDaemon(),
         fetchMediaProvidersFromDaemon(),
         isTeamverEmbedMode()
           ? fetchDesignAuthSession().then(async (session) => {
@@ -1034,7 +1037,10 @@ function AppInner() {
           });
         }
         void syncConfigToDaemon(lockedNext);
-        void syncComposioConfigToDaemon(lockedNext.composio);
+        // Embed: Composio UI is hidden; daemon PUT is loopback-only (403 on remote staging).
+        if (!isTeamverEmbedMode()) {
+          void syncComposioConfigToDaemon(lockedNext.composio);
+        }
         latestPersistedConfigRef.current = lockedNext;
         setConfig(lockedNext);
 
@@ -1179,6 +1185,7 @@ function AppInner() {
       return;
     }
     reconcileFetchedProjects(result.projects, request);
+    warmEmbedProjectListCaches(result.projects);
   }, [beginProjectListRequest, reconcileFetchedProjects]);
 
   const notifyEmbedSubmitBlocked = useCallback(() => {
@@ -1207,7 +1214,8 @@ function AppInner() {
         .filter(
           (summary) =>
             projectsById.has(summary.projectId)
-            || pendingLocalProjectIdsRef.current.has(summary.projectId),
+            || pendingLocalProjectIdsRef.current.has(summary.projectId)
+            || sessionActiveRunProjectIdsRef.current.has(summary.projectId),
         )
         .map((summary) => {
         const project = projectsById.get(summary.projectId);
@@ -1230,6 +1238,16 @@ function AppInner() {
       return activeRunSummariesEqual(prev, next) ? prev : next;
     });
   }, [projects]);
+
+  // Dismiss run-completion toast once the user opens that project (list/back nav).
+  const activeRouteProjectIdForToast =
+    route.kind === 'project' ? route.projectId : null;
+  useEffect(() => {
+    if (!isTeamverEmbedMode() || !activeRouteProjectIdForToast) return;
+    setBackgroundRunNotice((notice) =>
+      notice?.projectId === activeRouteProjectIdForToast ? null : notice,
+    );
+  }, [activeRouteProjectIdForToast]);
 
   // Embed: leave project workspace when Design app becomes disabled mid-session.
   useEffect(() => {
@@ -1256,20 +1274,8 @@ function AppInner() {
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
         wasActiveRun: wasActiveRunRef,
         activeRunSignature: activeRunSignatureRef,
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
       });
-      void listProjectRuns()
-        .then((runs) => {
-          seedEmbedRunTrackingFromRuns(
-            {
-              activeRunIds: activeRunIdsRef,
-              notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
-              wasActiveRun: wasActiveRunRef,
-              activeRunSignature: activeRunSignatureRef,
-            },
-            runs,
-          );
-        })
-        .catch(() => {});
       void (async () => {
         try {
           await syncAllDaemonProjectsToRegistry();
@@ -1287,6 +1293,26 @@ function AppInner() {
         }
         reconcileFetchedProjects(result.projects, request);
         setProjectsLoading(false);
+        warmEmbedProjectListCaches(result.projects);
+        const knownProjectIds = buildEmbedKnownProjectIds({
+          projectIds: result.projects.map((project) => project.id),
+          pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        });
+        void listProjectRuns()
+          .then((runs) => {
+            seedEmbedRunTrackingFromRuns(
+              {
+                activeRunIds: activeRunIdsRef,
+                notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+                wasActiveRun: wasActiveRunRef,
+                activeRunSignature: activeRunSignatureRef,
+                sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
+              },
+              runs,
+              filterRunsForEmbedKnownProjects(runs, knownProjectIds),
+            );
+          })
+          .catch(() => {});
         const current = routeRef.current;
         if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
@@ -1310,6 +1336,7 @@ function AppInner() {
           notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
           wasActiveRun: wasActiveRunRef,
           activeRunSignature: activeRunSignatureRef,
+          sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
         });
         void listProjectRuns()
           .then((runs) => {
@@ -1319,8 +1346,10 @@ function AppInner() {
                 notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
                 wasActiveRun: wasActiveRunRef,
                 activeRunSignature: activeRunSignatureRef,
+                sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
               },
               runs,
+              [],
             );
           })
           .catch(() => {});
@@ -2014,6 +2043,7 @@ function AppInner() {
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
         wasActiveRun: wasActiveRunRef,
         activeRunSignature: activeRunSignatureRef,
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
       });
       return;
     }
@@ -2026,15 +2056,37 @@ function AppInner() {
 
       const currentProjects = projectsRef.current;
       const projectsById = new Map(currentProjects.map((project) => [project.id, project]));
+      for (const id of sessionActiveRunProjectIdsRef.current) {
+        if (
+          projectsById.has(id)
+          || locallyDeletedProjectIdsRef.current.has(id)
+        ) {
+          sessionActiveRunProjectIdsRef.current.delete(id);
+        }
+      }
+      const knownProjectIds = isTeamverEmbedMode()
+        ? buildEmbedKnownProjectIds({
+            projectIds: currentProjects.map((project) => project.id),
+            pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+            sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+            openProjectId: routeRef.current.kind === 'project' ? routeRef.current.projectId : null,
+          })
+        : null;
+      const trackedRuns = knownProjectIds
+        ? filterRunsForEmbedKnownProjects(runs, knownProjectIds)
+        : runs;
       const previousActiveRunIds = activeRunIdsRef.current;
-      const nextActiveRunIds = new Set(
-        runs
-          .filter((run) => run.status === 'queued' || run.status === 'running')
-          .map((run) => run.id),
-      );
+      const nextActiveRunIds = new Set<string>();
+      for (const run of trackedRuns) {
+        if (run.status === 'queued' || run.status === 'running') {
+          nextActiveRunIds.add(run.id);
+          const projectId = run.projectId?.trim();
+          if (projectId) sessionActiveRunProjectIdsRef.current.add(projectId);
+        }
+      }
       activeRunIdsRef.current = nextActiveRunIds;
 
-      const completed = runs
+      const completed = trackedRuns
         .filter(
           (run) =>
             (run.status === 'succeeded' || run.status === 'failed')
@@ -2049,6 +2101,7 @@ function AppInner() {
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
         wasActiveRun: wasActiveRunRef,
         activeRunSignature: activeRunSignatureRef,
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
       };
       const completedRun = isTeamverEmbedMode()
         ? processEmbedBackgroundRunCompletions(
@@ -2063,12 +2116,10 @@ function AppInner() {
             return completed[0];
           })();
 
-      if (
-        isTeamverEmbedMode()
-        && completedRun?.projectId
-        && !(route.kind === 'project' && route.projectId === completedRun.projectId)
-      ) {
-        const projectName = projectsById.get(completedRun.projectId)?.name ?? 'AI Design';
+      if (isTeamverEmbedMode() && completedRun?.projectId) {
+        const currentRoute = routeRef.current;
+        const inSameProject =
+          currentRoute.kind === 'project' && currentRoute.projectId === completedRun.projectId;
         let completedProject = projectsById.get(completedRun.projectId);
         if (completedRun.status === 'succeeded') {
           const fresh = await getProject(completedRun.projectId);
@@ -2084,37 +2135,39 @@ function AppInner() {
             });
           }
         }
-        const resolvedProjectName = completedProject?.name ?? projectName;
-        const status = completedRun.status as 'succeeded' | 'failed';
-        const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
-        setBackgroundRunNotice({
-          runId: completedRun.id,
-          projectId: completedRun.projectId,
-          projectName: resolvedProjectName,
-          conversationId: completedRun.conversationId ?? null,
-          status,
-          reopenExtras,
-        });
+        if (!inSameProject) {
+          const resolvedProjectName = completedProject?.name ?? 'AI Design';
+          const status = completedRun.status as 'succeeded' | 'failed';
+          const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
+          setBackgroundRunNotice({
+            runId: completedRun.id,
+            projectId: completedRun.projectId,
+            projectName: resolvedProjectName,
+            conversationId: completedRun.conversationId ?? null,
+            status,
+            reopenExtras,
+          });
 
-        const notifications = configRef.current.notifications ?? DEFAULT_NOTIFICATIONS;
-        if (notifications.soundEnabled) {
-          playSound(status === 'succeeded'
-            ? notifications.successSoundId
-            : notifications.failureSoundId);
-        }
-        if (notifications.desktopEnabled) {
-          const shouldInterrupt = status === 'failed' || document.hidden || !document.hasFocus();
-          if (shouldInterrupt) {
-            void showCompletionNotification({
-              status,
-              title: status === 'succeeded' ? '슬라이드 작업 완료' : '슬라이드 작업 실패',
-              body: resolvedProjectName,
-              onClick: () => {
-                window.focus();
-                setBackgroundRunNotice(null);
-                void navigateToProject(completedRun.projectId!, reopenExtras);
-              },
-            });
+          const notifications = configRef.current.notifications ?? DEFAULT_NOTIFICATIONS;
+          if (notifications.soundEnabled) {
+            playSound(status === 'succeeded'
+              ? notifications.successSoundId
+              : notifications.failureSoundId);
+          }
+          if (notifications.desktopEnabled) {
+            const shouldInterrupt = status === 'failed' || document.hidden || !document.hasFocus();
+            if (shouldInterrupt) {
+              void showCompletionNotification({
+                status,
+                title: status === 'succeeded' ? '슬라이드 작업 완료' : '슬라이드 작업 실패',
+                body: resolvedProjectName,
+                onClick: () => {
+                  window.focus();
+                  setBackgroundRunNotice(null);
+                  void navigateToProject(completedRun.projectId!, reopenExtras);
+                },
+              });
+            }
           }
         }
       }
@@ -2126,7 +2179,15 @@ function AppInner() {
         setPetTaskCenter({ running: [], queued: [], recent: [] });
       }
 
-      const activeSummaries = buildActiveRunSummaries(currentProjects, runs);
+      const allowMissingProjectIds = new Set([
+        ...sessionActiveRunProjectIdsRef.current,
+        ...pendingLocalProjectIdsRef.current,
+      ]);
+      const activeSummaries = buildActiveRunSummaries(
+        currentProjects,
+        isTeamverEmbedMode() ? trackedRuns : runs,
+        allowMissingProjectIds,
+      );
       if (isTeamverEmbedMode()) {
         setBackgroundRunSummaries((prev) =>
           activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
@@ -2146,6 +2207,7 @@ function AppInner() {
           const result = await loadProjectListSafe();
           if (!cancelled && result.ok) {
             reconcileFetchedProjects(result.projects, request);
+            warmEmbedProjectListCaches(result.projects);
           }
         }
       }
@@ -2168,7 +2230,6 @@ function AppInner() {
     daemonLive,
     navigateToProject,
     reconcileFetchedProjects,
-    route,
   ]);
 
   const handleOpenLiveArtifact = useCallback((projectId: string, artifactId: string) => {
@@ -2184,6 +2245,7 @@ function AppInner() {
     }
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
+    sessionActiveRunProjectIdsRef.current.delete(id);
     setProjects((curr) => curr.filter((p) => p.id !== id));
     setBackgroundRunNotice((notice) => (notice?.projectId === id ? null : notice));
     setBackgroundRunSummaries((prev) => prev.filter((summary) => summary.projectId !== id));
@@ -2378,6 +2440,7 @@ function AppInner() {
           }
           return curr.map((candidate) => (candidate.id === project.id ? project : candidate));
         });
+        warmEmbedProjectListCaches([project]);
         return;
       }
       const request = beginProjectListRequest();
@@ -2391,6 +2454,7 @@ function AppInner() {
       }
       const applied = reconcileFetchedProjects(result.projects, request);
       if (!applied) return;
+      warmEmbedProjectListCaches(result.projects);
       const fetchedProject = locallyDeletedProjectIdsRef.current.has(route.projectId)
         ? undefined
         : result.projects.find((p) => p.id === route.projectId);

@@ -7,6 +7,7 @@
 #   3) design-api /api/healthz/deps 가 config.project_storage=s3 + checks.od_storage=ok 인가
 #   4) daemon /api/health/storage 가 mode=s3 + ok=true 인가
 #   5) Drive publish 의존성 (Main BE drive credentials) 이 design-api 에 wired 됐는가
+#   6) litestream sidecar LITESTREAM_BUCKET 이 OD_S3_BUCKET 과 일치하는가
 #
 # 실패 시 exit 1. validate_deploy_env.sh / smoke_design.sh 둘이 다루지 못하는
 # "compose up 이후 실제 컨테이너 ENV·헬스" 까지 묶어 한 화면에 표시한다.
@@ -27,6 +28,7 @@ ENV_FILE=""
 ENV_LABEL=""
 DAEMON_CONTAINER="teamver-open-design-daemon"
 API_CONTAINER="teamver-design-api"
+LITESTREAM_CONTAINER="teamver-design-litestream"
 
 usage() {
   cat <<'EOF'
@@ -76,6 +78,8 @@ CHECK_CONTAINER_ENV="${CHECK_CONTAINER_ENV:-1}"
 
 pass=0
 fail=0
+AUDIT_DEPS_OD_STORAGE=""
+AUDIT_STORAGE_REASON=""
 
 ok()   { echo "✓ $1"; pass=$((pass + 1)); }
 nope() { echo "✗ $1"; fail=$((fail + 1)); }
@@ -154,11 +158,47 @@ container_storage_check() {
   else
     nope "$label container OD_S3_PREFIX unset"
   fi
+  local bucket
+  bucket="$(docker exec "$container" sh -lc 'printf "%s" "${OD_S3_BUCKET:-}"' 2>/dev/null || echo "")"
+  if [[ -n "$bucket" && -n "${OD_S3_BUCKET:-}" ]]; then
+    if [[ "$bucket" == "${OD_S3_BUCKET}" ]]; then
+      ok "$label container OD_S3_BUCKET=$bucket"
+    else
+      nope "$label container OD_S3_BUCKET=$bucket != .env OD_S3_BUCKET=${OD_S3_BUCKET}"
+    fi
+  elif [[ -n "${OD_S3_BUCKET:-}" ]]; then
+    nope "$label container OD_S3_BUCKET unset (.env=${OD_S3_BUCKET})"
+  fi
+}
+
+container_litestream_bucket_check() {
+  if ! command -v docker >/dev/null 2>&1; then
+    skip "litestream container ENV check skipped (docker not available)"
+    return
+  fi
+  if ! docker inspect "$LITESTREAM_CONTAINER" >/dev/null 2>&1; then
+    skip "litestream container '$LITESTREAM_CONTAINER' not running"
+    return
+  fi
+  local bucket
+  bucket="$(docker exec "$LITESTREAM_CONTAINER" sh -lc 'printf "%s" "${LITESTREAM_BUCKET:-}"' 2>/dev/null || echo "")"
+  if [[ -z "$bucket" ]]; then
+    nope "litestream container LITESTREAM_BUCKET unset"
+    return
+  fi
+  if [[ -n "${OD_S3_BUCKET:-}" && "$bucket" == "${OD_S3_BUCKET}" ]]; then
+    ok "litestream container LITESTREAM_BUCKET=$bucket (matches OD_S3_BUCKET)"
+  elif [[ -n "${OD_S3_BUCKET:-}" ]]; then
+    nope "litestream container LITESTREAM_BUCKET=$bucket != OD_S3_BUCKET=${OD_S3_BUCKET}"
+  else
+    ok "litestream container LITESTREAM_BUCKET=$bucket"
+  fi
 }
 
 if [[ "$CHECK_CONTAINER_ENV" == "1" ]]; then
   container_storage_check "$DAEMON_CONTAINER" "OD daemon"
   container_storage_check "$API_CONTAINER" "design-api"
+  container_litestream_bucket_check
 fi
 
 # --- 3) design-api /api/healthz/deps ------------------------------------
@@ -166,6 +206,7 @@ deps_json="$(curl -sf --max-time 8 "${DESIGN_API_LOCAL_URL}/api/healthz/deps" 2>
 if [[ -n "$deps_json" ]]; then
   deps_storage="$(printf '%s' "$deps_json" | sed -n 's/.*"project_storage":"\([^"]*\)".*/\1/p' | head -1)"
   deps_od_storage="$(printf '%s' "$deps_json" | sed -n 's/.*"od_storage":"\([^"]*\)".*/\1/p' | head -1)"
+  AUDIT_DEPS_OD_STORAGE="$deps_od_storage"
   deps_db="$(printf '%s' "$deps_json" | sed -n 's/.*"db":"\([^"]*\)".*/\1/p' | head -1)"
   if [[ "$deps_storage" == "s3" ]]; then
     ok "design-api deps config.project_storage=s3"
@@ -204,6 +245,7 @@ if [[ -n "$storage_json" ]]; then
     ok "daemon /api/health/storage ok=true"
   else
     storage_reason="$(printf '%s' "$storage_json" | sed -n 's/.*"reason":"\([^"]*\)".*/\1/p' | head -1)"
+    AUDIT_STORAGE_REASON="$storage_reason"
     nope "daemon /api/health/storage ok=$storage_ok reason=${storage_reason:-?}"
   fi
 else
@@ -242,6 +284,26 @@ if (( fail > 0 )); then
   echo
   echo "Storage isolation FAILED — 사용자 파일이 local-disk 에 남거나 다음 deploy 에서"
   echo "유실될 수 있습니다. .env / docker-compose / IAM·bucket 을 확인하세요."
+  if [[ "$AUDIT_DEPS_OD_STORAGE" == "degraded" || "$AUDIT_STORAGE_REASON" != "" ]]; then
+    echo
+    echo "S3 triage (docs-teamver/18_EC2_IAM_Instance_Profile_S3_설정.md):"
+    case "${AUDIT_STORAGE_REASON:-}" in
+      storage_not_initialized)
+        echo "  · daemon S3 backend 미초기화 — compose up·daemon crash loop·OD_S3_* env 확인"
+        ;;
+      probe_timeout)
+        echo "  · S3 probe timeout — bucket/region/network·security group 확인"
+        ;;
+    esac
+    if [[ "${AUDIT_STORAGE_REASON:-}" == *AccessDenied* || "${AUDIT_STORAGE_REASON:-}" == *Forbidden* ]]; then
+      echo "  · IAM policy: OD_S3_BUCKET/OD_S3_PREFIX vs instance profile scope (§3)"
+    fi
+    if [[ "${AUDIT_STORAGE_REASON:-}" == *credentials* || "${AUDIT_STORAGE_REASON:-}" == *accessKeyId* || "${AUDIT_STORAGE_REASON:-}" == *Credential* ]]; then
+      echo "  · 컨테이너 creds: EC2 instance profile + IMDS hop limit=2 (§5-4, §7-3)"
+    fi
+    echo "  · loopback: curl -H \"Authorization: Bearer \$OD_API_TOKEN\" ${DAEMON_LOCAL_URL}/api/health/storage"
+    echo "  · container IMDS: docker exec ${DAEMON_CONTAINER} … (doc §7-3)"
+  fi
   exit 1
 fi
 echo "Storage isolation OK — daemon SSOT=S3, design-api SSOT=RDS, Drive publish=Main BE Drive"

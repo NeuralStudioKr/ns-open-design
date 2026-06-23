@@ -868,6 +868,8 @@ export function DesignsTab({
 											const skill = skillName(p.skillId);
 											const ds = dsName(p.designSystemId);
 											const designSystemProject = isDesignSystemProject(p);
+											const previewCover = coverOverrides[p.id] ?? null;
+											const previewFileName = projectPreviewDeepLinkFileName(p, previewCover);
 											const openKanbanCard = () => {
 												onOpen(
 													p.id,
@@ -904,6 +906,11 @@ export function DesignsTab({
 													>
 														<Icon name="close" size={12} />
 													</button>
+													<DesignsTabProjectThumb
+														project={p}
+														className="design-kanban-card-thumb"
+														onCoverOverride={(cover) => handleCoverOverride(p.id, cover)}
+													/>
 													<div
 														className="design-kanban-card-name"
 														title={p.name}
@@ -926,6 +933,18 @@ export function DesignsTab({
 															? ` · ${relativeTime(p.updatedAt, t)}`
 															: ""}
 													</div>
+													{teamverEmbed && !designSystemProject ? (
+														<div className="design-kanban-card-embed-chips">
+															<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
+															{previewFileName ? (
+																<TeamverProjectPreviewChip
+																	projectId={p.id}
+																	fileName={previewFileName}
+																	onOpen={onOpen}
+																/>
+															) : null}
+														</div>
+													) : null}
 												</div>
 											);
 										})

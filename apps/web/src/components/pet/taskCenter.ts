@@ -8,6 +8,7 @@ const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
 export function buildPetTaskCenter(
   projects: Project[],
   runs: ChatRunStatusResponse[],
+  allowMissingProjectIds?: ReadonlySet<string>,
 ): PetTaskCenter {
   const projectsById = new Map(projects.map((project) => [project.id, project]));
   const running = new Map<string, PetTaskSummary>();
@@ -17,15 +18,17 @@ export function buildPetTaskCenter(
   for (const run of runs) {
     if (!run.projectId) continue;
     const project = projectsById.get(run.projectId);
-    if (!project) continue;
+    if (!project && !allowMissingProjectIds?.has(run.projectId)) continue;
+    const projectName = project?.name ?? 'AI Design';
     if (run.status === 'running') {
-      addActiveSummary(running, run, project.name, 'running');
+      addActiveSummary(running, run, projectName, 'running');
       continue;
     }
     if (run.status === 'queued') {
-      addActiveSummary(queued, run, project.name, 'queued');
+      addActiveSummary(queued, run, projectName, 'queued');
       continue;
     }
+    if (!project) continue;
     if (TERMINAL_STATUSES.has(run.status)) {
       const prev = recentByProject.get(run.projectId);
       if (prev && prev.updatedAt >= run.updatedAt) continue;
@@ -85,8 +88,9 @@ function attachPrimaryConversations(
 export function buildActiveRunSummaries(
   projects: Project[],
   runs: ChatRunStatusResponse[],
+  allowMissingProjectIds?: ReadonlySet<string>,
 ): PetTaskSummary[] {
-  const center = buildPetTaskCenter(projects, runs);
+  const center = buildPetTaskCenter(projects, runs, allowMissingProjectIds);
   const projectsById = new Map(projects.map((project) => [project.id, project]));
   return [...center.running, ...center.queued].map((summary) => {
     const project = projectsById.get(summary.projectId);
