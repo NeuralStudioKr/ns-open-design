@@ -3,6 +3,7 @@ import type { Project } from "../types";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
+import { readTeamverViteEnv } from "./teamverViteEnv";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
 
 async function waitForEmbedBootIfNeeded(): Promise<void> {
@@ -28,7 +29,7 @@ const REGISTRY_LIST_CACHE_MS = 15_000;
 const SYNC_ALL_MIN_INTERVAL_MS = 60_000;
 
 function legacyRegistryMigrationEnabled(): boolean {
-  return import.meta.env.VITE_TEAMVER_LEGACY_REGISTRY_SYNC === "1";
+  return readTeamverViteEnv("VITE_TEAMVER_LEGACY_REGISTRY_SYNC") === "1";
 }
 
 const feAccessCache = new Map<string, { allowed: boolean; at: number }>();

@@ -117,6 +117,19 @@ describe('Teamver project registry access', () => {
     vi.unstubAllEnvs();
   });
 
+  it('syncAllDaemonProjectsToRegistry is a no-op when legacy flag is unset', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const getClient = vi.mocked(designBffClient.getDesignBffClient);
+    getClient.mockClear();
+    getClient.mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get: vi.fn(), post: vi.fn() },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(syncAllDaemonProjectsToRegistry()).resolves.toBeUndefined();
+    expect(getClient).not.toHaveBeenCalled();
+  });
+
   it('registers legacy daemon projects then checks registry membership', async () => {
     vi.stubEnv('VITE_TEAMVER_LEGACY_REGISTRY_SYNC', '1');
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);

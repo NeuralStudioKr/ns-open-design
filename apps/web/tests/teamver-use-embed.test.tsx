@@ -6,6 +6,7 @@ import { useTeamverEmbed } from "../src/teamver/useTeamverEmbed";
 import { TEAMVER_WORKSPACE_CHANGED_EVENT } from "../src/teamver/teamverWorkspaceEvents";
 import * as designApiBase from "../src/teamver/designApiBase";
 import * as designBffClient from "../src/teamver/designBffClient";
+import * as teamverEmbedSession from "../src/teamver/teamverEmbedSession";
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
@@ -15,6 +16,13 @@ vi.mock("../src/teamver/designApiBase", () => ({
 vi.mock("../src/teamver/teamverEmbedBoot", () => ({
   waitForTeamverEmbedBoot: vi.fn(async () => undefined),
   isTeamverEmbedBootComplete: vi.fn(() => true),
+}));
+
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  clearTeamverEmbedSessionState: vi.fn(async () => undefined),
+  setTeamverEmbedSessionAuthenticated: vi.fn(),
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+  subscribeTeamverEmbedSessionChanged: vi.fn(() => () => {}),
 }));
 
 vi.mock("../src/teamver/designBffClient", () => ({
@@ -117,5 +125,31 @@ describe("useTeamverEmbed", () => {
       expect(result.current.authenticated).toBe(false);
     });
     expect(designBffClient.fetchDesignAuthSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps authenticated UI when a forced re-probe is unreachable", async () => {
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      })
+      .mockResolvedValueOnce(null);
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ force: true });
+    });
+
+    expect(result.current.authenticated).toBe(true);
+    expect(result.current.error).toBe("session_unreachable");
+    expect(teamverEmbedSession.clearTeamverEmbedSessionState).not.toHaveBeenCalled();
   });
 });

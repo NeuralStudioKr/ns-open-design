@@ -929,7 +929,11 @@ function AppInner() {
                 if (session?.authenticated) {
                   setTeamverEmbedSessionAuthenticated(true);
                   await syncTeamverWorkspaceFromSession(session);
-                  await syncAllDaemonProjectsToRegistry();
+                  try {
+                    await syncAllDaemonProjectsToRegistry();
+                  } catch (err) {
+                    console.warn("[teamver] embed boot registry sync failed", err);
+                  }
                 } else {
                   await clearTeamverEmbedSessionState();
                 }
@@ -1770,8 +1774,8 @@ function AppInner() {
   }, [activeProjectRouteId]);
 
   const handleOpenProject = useCallback(
-    (id: string) => {
-      void navigateToProject(id);
+    (id: string, options?: { fileName?: string }) => {
+      void navigateToProject(id, { fileName: options?.fileName ?? null });
     },
     [navigateToProject],
   );

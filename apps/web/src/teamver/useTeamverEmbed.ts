@@ -7,6 +7,7 @@ import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import {
   clearTeamverEmbedSessionState,
+  isTeamverEmbedSessionAuthenticated,
   setTeamverEmbedSessionAuthenticated,
   subscribeTeamverEmbedSessionChanged,
 } from "./teamverEmbedSession";
@@ -39,7 +40,7 @@ export type TeamverEmbedState = {
   workspaces: WorkspaceListItem[];
   error: string | null;
   switchWorkspace: (workspaceId: string) => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (options?: { force?: boolean }) => Promise<void>;
 };
 
 const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
@@ -74,6 +75,12 @@ function readUserLabel(user: DesignAuthSessionUser | null | undefined): string |
   );
 }
 
+function hadEmbedSession(): boolean {
+  return isTeamverEmbedSessionAuthenticated();
+}
+
+const FOCUS_SESSION_REFRESH_MS = 500;
+
 export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const [state, setState] = useState(INITIAL);
   const stateRef = useRef(state);
@@ -95,6 +102,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       const session = await fetchDesignAuthSession({ force });
       if (!session) {
+        if (hadEmbedSession() || stateRef.current.authenticated) {
+          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
+          return;
+        }
         await clearTeamverEmbedSessionState();
         setState({ ...INITIAL, loading: false, error: "session_unreachable" });
         return;
@@ -126,7 +137,11 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
       // Registry sync runs on App boot — skip duplicate work on initial banner hydrate.
       if (force && session.authenticated && activeWorkspaceId) {
-        await syncAllDaemonProjectsToRegistry();
+        try {
+          await syncAllDaemonProjectsToRegistry();
+        } catch (err) {
+          console.warn("[teamver] registry sync on session refresh failed", err);
+        }
       }
 
       setState({
@@ -148,9 +163,26 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         redirectToTeamverLogin();
         return;
       }
+      if (hadEmbedSession() || stateRef.current.authenticated) {
+        setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
+        return;
+      }
       setState({ ...INITIAL, loading: false, error: "session_unreachable" });
     }
   }, [enabled]);
+
+  const focusRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleFocusSessionRefresh = useCallback(() => {
+    if (document.visibilityState !== "visible") return;
+    if (focusRefreshTimerRef.current) {
+      clearTimeout(focusRefreshTimerRef.current);
+    }
+    focusRefreshTimerRef.current = setTimeout(() => {
+      focusRefreshTimerRef.current = null;
+      void refresh({ force: true });
+    }, FOCUS_SESSION_REFRESH_MS);
+  }, [refresh]);
 
   const switchWorkspace = useCallback(async (workspaceId: string) => {
     const trimmed = workspaceId.trim();
@@ -179,18 +211,19 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
     const onReturn = () => {
-      if (document.visibilityState !== "visible") return;
-      void refresh({ force: true });
+      scheduleFocusSessionRefresh();
     };
     window.addEventListener("pageshow", onReturn);
-    window.addEventListener("focus", onReturn);
     document.addEventListener("visibilitychange", onReturn);
     return () => {
+      if (focusRefreshTimerRef.current) {
+        clearTimeout(focusRefreshTimerRef.current);
+        focusRefreshTimerRef.current = null;
+      }
       window.removeEventListener("pageshow", onReturn);
-      window.removeEventListener("focus", onReturn);
       document.removeEventListener("visibilitychange", onReturn);
     };
-  }, [enabled, refresh]);
+  }, [enabled, scheduleFocusSessionRefresh]);
 
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
