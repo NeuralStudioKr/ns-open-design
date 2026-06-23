@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,8 +8,9 @@ import pytest
 from teamver_app_sdk.errors import TeamverAPIError
 
 from app.db.models import DesignProject
-from app.errors import BadRequestError, UnauthorizedError
+from app.errors import ApiError, BadRequestError, UnauthorizedError
 from app.schemas.drive_import import DriveImportAssetBody
+from app.services import drive_import_service
 from app.services.drive_import_service import import_drive_assets
 
 
@@ -152,3 +154,129 @@ async def test_import_drive_assets_rejects_unsupported_file_type_per_asset() -> 
     assert result.failed[0].asset_id == "AST-2"
     assert result.failed[0].error_code == "unsupported_drive_import_file_type"
     teamver_client.drive.download_bytes.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_import_drive_assets_caps_total_download_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(drive_import_service, "MAX_IMPORT_BYTES", 10)
+    monkeypatch.setattr(drive_import_service, "MAX_BATCH_IMPORT_BYTES", 10)
+    teamver_client = MagicMock()
+    teamver_client.drive.download_bytes = AsyncMock(side_effect=[b"123456", b"12345"])
+    daemon = AsyncMock()
+    daemon.upload_project_file.return_value = {
+        "name": "first.png",
+        "path": "refs/drive/first.png",
+        "size": 6,
+    }
+
+    result = await import_drive_assets(
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        assets=[
+            DriveImportAssetBody(asset_id="AST-1", filename="first.png"),
+            DriveImportAssetBody(asset_id="AST-2", filename="second.png"),
+            DriveImportAssetBody(asset_id="AST-3", filename="third.png"),
+        ],
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 207
+    assert [item.asset_id for item in result.imported] == ["AST-1"]
+    assert [item.error_code for item in result.failed] == [
+        "drive_import_batch_too_large",
+        "drive_import_batch_too_large",
+    ]
+    assert teamver_client.drive.download_bytes.await_args_list[0].kwargs["max_bytes"] == 10
+    assert teamver_client.drive.download_bytes.await_args_list[1].kwargs["max_bytes"] == 4
+    assert teamver_client.drive.download_bytes.await_count == 2
+    assert daemon.upload_project_file.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_import_drive_assets_skips_duplicate_asset_and_path_before_download() -> None:
+    teamver_client = MagicMock()
+    teamver_client.drive.download_bytes = AsyncMock(return_value=b"ok")
+    daemon = AsyncMock()
+    daemon.upload_project_file.return_value = {
+        "name": "first.png",
+        "path": "refs/drive/first.png",
+        "size": 2,
+    }
+
+    result = await import_drive_assets(
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        assets=[
+            DriveImportAssetBody(asset_id="AST-1", filename="first.png"),
+            DriveImportAssetBody(asset_id="AST-1", filename="other.png"),
+            DriveImportAssetBody(asset_id="AST-3", filename="first.png"),
+        ],
+        od_daemon=daemon,
+    )
+
+    assert [item.error_code for item in result.failed] == [
+        "duplicate_drive_import_asset",
+        "duplicate_drive_import_path",
+    ]
+    assert teamver_client.drive.download_bytes.await_count == 1
+    assert daemon.upload_project_file.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_import_drive_assets_limits_concurrent_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(drive_import_service, "_IMPORT_REQUEST_LIMITER", asyncio.Semaphore(1))
+    active = 0
+    max_active = 0
+
+    async def download_bytes(**_: object) -> bytes:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        return b"ok"
+
+    teamver_client = MagicMock()
+    teamver_client.drive.download_bytes = AsyncMock(side_effect=download_bytes)
+
+    async def run(asset_id: str) -> None:
+        daemon = AsyncMock()
+        daemon.upload_project_file.return_value = {
+            "name": f"{asset_id}.png",
+            "path": f"refs/drive/{asset_id}.png",
+            "size": 2,
+        }
+        result = await import_drive_assets(
+            teamver_client=teamver_client,
+            access_token="token",
+            project=_project(),
+            assets=[DriveImportAssetBody(asset_id=asset_id, filename=f"{asset_id}.png")],
+            od_daemon=daemon,
+        )
+        assert result.http_status == 201
+
+    await asyncio.gather(run("AST-1"), run("AST-2"))
+
+    assert max_active == 1
+
+
+@pytest.mark.asyncio
+async def test_import_drive_assets_fails_fast_when_transfer_capacity_is_busy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(drive_import_service, "_IMPORT_REQUEST_LIMITER", asyncio.Semaphore(0))
+    monkeypatch.setattr(drive_import_service, "IMPORT_QUEUE_WAIT_SECONDS", 0.01)
+
+    with pytest.raises(ApiError) as raised:
+        await import_drive_assets(
+            teamver_client=MagicMock(),
+            access_token="token",
+            project=_project(),
+            assets=[DriveImportAssetBody(asset_id="AST-1", filename="first.png")],
+            od_daemon=AsyncMock(),
+        )
+
+    assert raised.value.status_code == 429
+    assert raised.value.code == "drive_import_busy"

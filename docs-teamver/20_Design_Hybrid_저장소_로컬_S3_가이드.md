@@ -183,6 +183,13 @@ evict 후에도 **S3 SSOT는 유지**. 다음 접근 시 sync-down. 일부 sync-
 | 동시 materialize (여러 project) | scratch 합산 | evict 전까지 증가 |
 | sync-up 실패 반복 | scratch에 dirty 유지 | S3는 마지막 성공 시점 — 알람 `od_s3_sync_up_failed` |
 
+### 4.5 Drive import 부하 제한
+
+Drive 가져오기는 design-api에서 파일을 순차 처리하며 파일당 50MB, 요청당 총 100MB,
+worker당 동시 요청 2개로 제한한다. 동일 asset/path 반복은 다운로드 전에 차단하므로
+불필요한 네트워크·메모리·scratch 쓰기를 만들지 않는다. 상세 저장 순서는
+[16 §5.2](./16_S3_데이터_저장_시점_SSOT.md#52-파일업로드-api-변경-직후-lazy-sync-up).
+
 ---
 
 ## 5. S3 용량 (의도적으로 증가)

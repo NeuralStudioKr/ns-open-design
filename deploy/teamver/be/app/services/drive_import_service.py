@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import posixpath
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -8,7 +9,7 @@ from typing import Any
 from teamver_app_sdk.errors import TeamverAPIError
 
 from ..db.models import DesignProject
-from ..errors import BadGatewayError, BadRequestError, DesignDomainError, UnauthorizedError
+from ..errors import ApiError, BadGatewayError, BadRequestError, DesignDomainError, UnauthorizedError
 from ..schemas.drive_import import (
     DriveImportAssetBody,
     DriveImportAssetResponse,
@@ -19,6 +20,13 @@ from .od_daemon_client import OdDaemonClient, OdDaemonIdentity
 
 DEFAULT_IMPORT_DIR = "refs/drive"
 MAX_IMPORT_BYTES = 50 * 1024 * 1024
+MAX_BATCH_IMPORT_BYTES = 100 * 1024 * 1024
+MAX_CONCURRENT_IMPORT_REQUESTS = 2
+IMPORT_QUEUE_WAIT_SECONDS = 2.0
+
+# Each request is already sequential per asset. Capping whole requests keeps
+# Drive download + multipart upload memory/network pressure bounded per worker.
+_IMPORT_REQUEST_LIMITER = asyncio.Semaphore(MAX_CONCURRENT_IMPORT_REQUESTS)
 
 
 @dataclass(frozen=True)
@@ -111,6 +119,34 @@ async def import_drive_assets(
     if len(assets) > 12:
         raise BadRequestError("too_many_assets")
 
+    try:
+        await asyncio.wait_for(
+            _IMPORT_REQUEST_LIMITER.acquire(),
+            timeout=IMPORT_QUEUE_WAIT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise ApiError(429, "drive_import_busy", code="drive_import_busy") from exc
+    try:
+        return await _import_drive_assets_bounded(
+            teamver_client=teamver_client,
+            access_token=access_token,
+            project=project,
+            assets=assets,
+            od_daemon=od_daemon,
+        )
+    finally:
+        _IMPORT_REQUEST_LIMITER.release()
+
+
+async def _import_drive_assets_bounded(
+    *,
+    teamver_client: Any,
+    access_token: str,
+    project: DesignProject,
+    assets: list[DriveImportAssetBody],
+    od_daemon: OdDaemonClient | None,
+) -> DriveImportResult:
+
     daemon = od_daemon or OdDaemonClient()
     identity = OdDaemonIdentity(
         user_id=project.owner_user_id,
@@ -119,10 +155,32 @@ async def import_drive_assets(
     )
     imported: list[DriveImportAssetResponse] = []
     failed: list[DriveImportFailureResponse] = []
+    downloaded_bytes = 0
+    seen_asset_ids: set[str] = set()
+    seen_paths: set[str] = set()
 
     for asset in assets:
         try:
             target = _resolve_import_target(asset)
+            normalized_asset_id = asset.asset_id.strip()
+            if normalized_asset_id in seen_asset_ids:
+                failed.append(
+                    DriveImportFailureResponse(
+                        asset_id=asset.asset_id,
+                        error_code="duplicate_drive_import_asset",
+                    ),
+                )
+                continue
+            seen_asset_ids.add(normalized_asset_id)
+            if target.path in seen_paths:
+                failed.append(
+                    DriveImportFailureResponse(
+                        asset_id=asset.asset_id,
+                        error_code="duplicate_drive_import_path",
+                    ),
+                )
+                continue
+            seen_paths.add(target.path)
             type_error = validate_drive_import_file_type(target.filename, target.mime_type)
             if type_error:
                 failed.append(
@@ -132,11 +190,30 @@ async def import_drive_assets(
                     ),
                 )
                 continue
+            remaining_bytes = MAX_BATCH_IMPORT_BYTES - downloaded_bytes
+            if remaining_bytes <= 0:
+                failed.append(
+                    DriveImportFailureResponse(
+                        asset_id=asset.asset_id,
+                        error_code="drive_import_batch_too_large",
+                    ),
+                )
+                continue
             content = await teamver_client.drive.download_bytes(
                 access_token=access_token,
                 asset_id=asset.asset_id,
-                max_bytes=MAX_IMPORT_BYTES,
+                max_bytes=min(MAX_IMPORT_BYTES, remaining_bytes),
             )
+            if len(content) > remaining_bytes:
+                failed.append(
+                    DriveImportFailureResponse(
+                        asset_id=asset.asset_id,
+                        error_code="drive_import_batch_too_large",
+                    ),
+                )
+                downloaded_bytes = MAX_BATCH_IMPORT_BYTES
+                continue
+            downloaded_bytes += len(content)
             uploaded = await daemon.upload_project_file(
                 project.od_project_id,
                 filename=target.filename,
