@@ -1138,6 +1138,12 @@ export function ProjectView({
       clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
     }
+    return () => {
+      if (htmlAutoOpenTimerRef.current !== null) {
+        clearTimeout(htmlAutoOpenTimerRef.current);
+        htmlAutoOpenTimerRef.current = null;
+      }
+    };
   }, [project.id]);
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
@@ -2850,6 +2856,14 @@ export function ProjectView({
                 const artifactToPersist = parsedArtifact?.html
                   ? parsedArtifact
                   : artifactFromStandaloneHtml(replayedContent);
+                // Stream onDone may have already opened the HTML for this same
+                // assistant row. Claim once so reattach + late stream events
+                // can't fire two `requestOpenFile` for the same row.
+                const claimHtmlAutoOpenForMessage = (): boolean => {
+                  if (htmlAutoOpenClaimedRef.current.has(message.id)) return false;
+                  htmlAutoOpenClaimedRef.current.add(message.id);
+                  return true;
+                };
                 if (artifactToPersist?.html) {
                   const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                   const runStartedAt = status.createdAt || message.startedAt || message.createdAt;
@@ -2865,7 +2879,9 @@ export function ProjectView({
                   });
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
-                    requestOpenFile(recoveredExistingArtifact.name);
+                    if (claimHtmlAutoOpenForMessage()) {
+                      requestOpenFile(recoveredExistingArtifact.name);
+                    }
                   } else {
                     await persistArtifact(artifactToPersist, nextFiles, replayedContent);
                     nextFiles = await refreshProjectFiles();
@@ -2874,7 +2890,9 @@ export function ProjectView({
                 const diff = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                 const produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
                 const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
-                if (producedHtmlToOpen) requestOpenFile(producedHtmlToOpen);
+                if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
+                  requestOpenFile(producedHtmlToOpen);
+                }
                 if (produced.length > 0) {
                   updateMessageById(
                     message.id,

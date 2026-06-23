@@ -39,6 +39,10 @@ describe("fetchDesignAuthSession", () => {
     vi.resetModules();
   });
 
+  beforeEach(() => {
+    document.cookie = "";
+  });
+
   it("attempts one BFF refresh without visible cookies, then stops on 400", async () => {
     getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
 
@@ -152,7 +156,39 @@ describe("fetchDesignAuthSession", () => {
     expect(session?.authenticated).toBe(true);
   });
 
-  it("stops after BFF refresh 400 without calling Main BE", async () => {
+  it("does not retry refresh after bare BFF 400 on a second session probe", async () => {
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    await fetchDesignAuthSession();
+    await fetchDesignAuthSession();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call Main BE refresh on bare HttpOnly attempt when BFF returns 502", async () => {
+    getMock
+      .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
+      .mockResolvedValueOnce({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 502 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    const session = await fetchDesignAuthSession();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/teamver-bff/auth/refresh",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(session?.authenticated).toBe(false);
+  });
+
+  it("stops after BFF refresh 400 without calling Main BE when cookie hint exists", async () => {
     document.cookie = "teamver_access_token=stale";
     getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
 

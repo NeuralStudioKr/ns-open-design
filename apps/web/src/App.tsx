@@ -90,10 +90,10 @@ import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate'
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
 import {
-  patchEmbedBackgroundRunNoticeForProject,
   patchEmbedBackgroundRunSummaryForProject,
+  syncEmbedBackgroundRunSurfacesForProject,
+  type EmbedBackgroundRunNotice,
 } from './teamver/embedBackgroundRunSurfaces';
-import { projectOpenOptionsFromPreviewCover } from './teamver/projectPreviewFile';
 import {
   formatTeamverDesignDisabledMessage,
   isTeamverDesignAppEnabled,
@@ -453,14 +453,7 @@ function AppInner() {
     recent: [],
   });
   const [backgroundRunSummaries, setBackgroundRunSummaries] = useState<PetTaskSummary[]>([]);
-  const [backgroundRunNotice, setBackgroundRunNotice] = useState<{
-    runId: string;
-    projectId: string;
-    projectName: string;
-    conversationId: string | null;
-    status: 'succeeded' | 'failed';
-    reopenExtras: { conversationId?: string | null; fileName?: string | null };
-  } | null>(null);
+  const [backgroundRunNotice, setBackgroundRunNotice] = useState<EmbedBackgroundRunNotice | null>(null);
   const activeRunIdsRef = useRef<Set<string>>(new Set());
   const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
   const sessionActiveRunProjectIdsRef = useRef<Set<string>>(new Set());
@@ -1225,23 +1218,10 @@ function AppInner() {
             ),
         )
         .map((summary) => {
-        const project = projectsById.get(summary.projectId);
-        if (!project) return summary;
-        const previewFileName = projectOpenOptionsFromPreviewCover(project, null)?.fileName ?? null;
-        if (
-          project.name === summary.projectName
-          && previewFileName === (summary.previewFileName ?? null)
-        ) {
-          return summary;
-        }
-        const updated: PetTaskSummary = { ...summary, projectName: project.name };
-        if (previewFileName) {
-          updated.previewFileName = previewFileName;
-        } else {
-          delete updated.previewFileName;
-        }
-        return updated;
-      });
+          const project = projectsById.get(summary.projectId);
+          if (!project) return summary;
+          return patchEmbedBackgroundRunSummaryForProject(summary, project);
+        });
       return activeRunSummariesEqual(prev, next) ? prev : next;
     });
   }, [projects]);
@@ -2275,10 +2255,10 @@ function AppInner() {
     );
     if (isTeamverEmbedMode()) {
       setBackgroundRunNotice((notice) =>
-        patchEmbedBackgroundRunNoticeForProject(notice, optimistic),
+        syncEmbedBackgroundRunSurfacesForProject(optimistic, { notice, summaries: [] }).notice,
       );
       setBackgroundRunSummaries((prev) =>
-        prev.map((summary) => patchEmbedBackgroundRunSummaryForProject(summary, optimistic)),
+        syncEmbedBackgroundRunSurfacesForProject(optimistic, { notice: null, summaries: prev }).summaries,
       );
     }
     const updated = await patchProject(id, { name: trimmed });
@@ -2288,10 +2268,10 @@ function AppInner() {
       );
       if (isTeamverEmbedMode()) {
         setBackgroundRunNotice((notice) =>
-          patchEmbedBackgroundRunNoticeForProject(notice, previous),
+          syncEmbedBackgroundRunSurfacesForProject(previous, { notice, summaries: [] }).notice,
         );
         setBackgroundRunSummaries((prev) =>
-          prev.map((summary) => patchEmbedBackgroundRunSummaryForProject(summary, previous)),
+          syncEmbedBackgroundRunSurfacesForProject(previous, { notice: null, summaries: prev }).summaries,
         );
       }
       return;
@@ -2353,10 +2333,10 @@ function AppInner() {
     });
     if (isTeamverEmbedMode()) {
       setBackgroundRunNotice((notice) =>
-        patchEmbedBackgroundRunNoticeForProject(notice, updated),
+        syncEmbedBackgroundRunSurfacesForProject(updated, { notice, summaries: [] }).notice,
       );
       setBackgroundRunSummaries((prev) =>
-        prev.map((summary) => patchEmbedBackgroundRunSummaryForProject(summary, updated)),
+        syncEmbedBackgroundRunSurfacesForProject(updated, { notice: null, summaries: prev }).summaries,
       );
     }
   }, [iframeKeepAlivePool]);

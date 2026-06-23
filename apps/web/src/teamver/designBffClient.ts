@@ -120,6 +120,10 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     authRefreshDeclinedForSession = true;
     return false;
   }
+  // No visible cookie hint — avoid Main BE refresh noise after a single BFF attempt.
+  if (isBareAttempt) {
+    return false;
+  }
 
   const mainRefresh = `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}/api/auth/refresh`;
   const mainResult = await postAuthRefresh(mainRefresh);

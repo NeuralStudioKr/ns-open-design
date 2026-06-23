@@ -36,6 +36,12 @@ export function patchEmbedBackgroundRunSummaryForProject(
 ): PetTaskSummary {
   if (summary.projectId !== project.id) return summary;
   const previewFileName = projectOpenOptionsFromPreviewCover(project, null)?.fileName ?? null;
+  if (
+    project.name === summary.projectName
+    && previewFileName === (summary.previewFileName ?? null)
+  ) {
+    return summary;
+  }
   const updated: PetTaskSummary = { ...summary, projectName: project.name };
   if (previewFileName) {
     updated.previewFileName = previewFileName;

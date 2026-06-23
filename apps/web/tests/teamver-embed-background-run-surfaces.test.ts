@@ -58,4 +58,15 @@ describe("patchEmbedBackgroundRunSummaryForProject", () => {
     expect(patched.projectName).toBe("Deck A");
     expect(patched.previewFileName).toBe("v1.html");
   });
+
+  it("returns the same summary reference when metadata is unchanged", () => {
+    const summary: PetTaskSummary = {
+      projectId: "p1",
+      projectName: "Deck A",
+      status: "running",
+      count: 1,
+      previewFileName: "v1.html",
+    };
+    expect(patchEmbedBackgroundRunSummaryForProject(summary, project)).toBe(summary);
+  });
 });
