@@ -12,7 +12,10 @@ import {
   resolveDesignBffRefreshUrl,
   resolveTeamverMainApiBaseUrl,
   redirectToTeamverLogin,
+  prepareTeamverLoginNavigation,
 } from "./designApiBase";
+import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -66,24 +69,66 @@ const SESSION_PROBE_OPTIONS = {
   skipAuthRecovery: true,
 } as const;
 
-async function postAuthRefresh(url: string): Promise<boolean> {
+async function postAuthRefresh(url: string): Promise<{ ok: boolean; status: number }> {
   try {
     const response = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
     });
-    return response.ok;
+    return { ok: response.ok, status: response.status };
   } catch {
-    return false;
+    return { ok: false, status: 0 };
   }
+}
+
+let authRefreshDeclinedForSession = false;
+
+/** @internal vitest */
+export function resetDesignAuthRefreshDeclinedForTests(): void {
+  authRefreshDeclinedForSession = false;
+}
+
+function resetDesignAuthRefreshDeclined(): void {
+  authRefreshDeclinedForSession = false;
+}
+
+function shouldAttemptCookieRefresh(): boolean {
+  if (authRefreshDeclinedForSession) return false;
+  return hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated();
 }
 
 /** Cookie-only SSO: refresh may relay Set-Cookie without JSON access_token (tokenStore is null). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
-  if (await postAuthRefresh(resolveDesignBffRefreshUrl())) return true;
+  if (!shouldAttemptCookieRefresh()) return false;
+
+  const bffResult = await postAuthRefresh(resolveDesignBffRefreshUrl());
+  if (bffResult.ok) {
+    resetDesignAuthRefreshDeclined();
+    return true;
+  }
+  if (bffResult.status === 400) {
+    authRefreshDeclinedForSession = true;
+    return false;
+  }
+
   const mainRefresh = `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}/api/auth/refresh`;
-  return postAuthRefresh(mainRefresh);
+  const mainResult = await postAuthRefresh(mainRefresh);
+  if (mainResult.ok) {
+    resetDesignAuthRefreshDeclined();
+    return true;
+  }
+  if (mainResult.status === 400) {
+    authRefreshDeclinedForSession = true;
+  }
+  return false;
+}
+
+/** Sign-in / post-login return — bust caches so the next probe is not stale. */
+export function prepareDesignAuthSessionReload(): void {
+  prepareTeamverLoginNavigation();
+  resetDesignAuthRefreshDeclined();
+  invalidateDesignAuthSessionCache();
 }
 
 function normalizeDesignAuthSession(raw: unknown): DesignAuthSession | null {
@@ -142,6 +187,7 @@ export function resetDesignAuthSessionCacheForTests(): void {
 
 export function invalidateDesignAuthSessionCache(): void {
   cachedSession = null;
+  resetDesignAuthRefreshDeclined();
 }
 
 async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
@@ -175,11 +221,13 @@ async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
   let session = await loadWithAuthRecovery();
   if (session.authenticated) return session;
 
-  // Plan B cookie SSO — Main BE refresh updates HttpOnly cookie; retry session probe.
-  const refreshed = await refreshDesignAuthCookie();
-  if (refreshed) {
-    session = await loadWithAuthRecovery();
-    if (session.authenticated) return session;
+  // Plan B cookie SSO — only when refresh credentials may exist (skip bare 400 spam).
+  if (shouldAttemptCookieRefresh()) {
+    const refreshed = await refreshDesignAuthCookie();
+    if (refreshed) {
+      session = await loadWithAuthRecovery();
+      if (session.authenticated) return session;
+    }
   }
 
   return session;
@@ -209,7 +257,11 @@ export async function fetchDesignAuthSession(
 
   const run = async (): Promise<DesignAuthSession | null> => {
     const value = await loadDesignAuthSessionOnce();
-    cachedSession = { value, at: Date.now() };
+    if (value?.authenticated) {
+      cachedSession = { value, at: Date.now() };
+    } else {
+      cachedSession = null;
+    }
     return value;
   };
 

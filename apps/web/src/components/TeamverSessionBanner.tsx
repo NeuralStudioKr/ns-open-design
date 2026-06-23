@@ -1,6 +1,7 @@
 import { Icon } from "./Icon";
 import { useT } from "../i18n";
 import { resolveTeamverLoginUrl, resolveTeamverMainOrigin } from "../teamver/designApiBase";
+import { prepareDesignAuthSessionReload } from "../teamver/designBffClient";
 import { TeamverAvatarGlyph } from "../teamver/components/TeamverAvatarGlyph";
 import { TeamverWorkspaceSwitcher } from "../teamver/components/TeamverWorkspaceSwitcher";
 import { useTeamverEmbed } from "../teamver/useTeamverEmbed";
@@ -75,7 +76,11 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
 
   return (
     <div className="teamver-embed-bar" data-state="warn" data-testid="teamver-embed-bar">
-      <a className="teamver-embed-bar__signin" href={resolveTeamverLoginUrl()}>
+      <a
+        className="teamver-embed-bar__signin"
+        href={resolveTeamverLoginUrl()}
+        onClick={() => prepareDesignAuthSessionReload()}
+      >
         {t("teamver.embed.signIn")}
       </a>
     </div>

@@ -28,6 +28,10 @@ vi.mock('../../src/teamver/designApiBase', () => ({
   resolveTeamverMainOrigin: () => 'https://teamver.com',
 }));
 
+vi.mock('../../src/teamver/designBffClient', () => ({
+  prepareDesignAuthSessionReload: vi.fn(),
+}));
+
 function renderBanner() {
   return render(
     <I18nProvider initial="ko">

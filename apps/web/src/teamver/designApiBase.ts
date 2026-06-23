@@ -48,6 +48,20 @@ export function resolveTeamverLoginUrl(returnTo?: string | null): string {
 const LOGIN_REDIRECT_COOLDOWN_MS = 5_000;
 const LOGIN_REDIRECT_STORAGE_KEY = "teamver:login-redirect-at";
 
+export function resetTeamverLoginRedirectCooldown(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY);
+  } catch {
+    // sessionStorage blocked
+  }
+}
+
+/** Sign-in navigation — drop stale session cache so post-login probe is fresh. */
+export function prepareTeamverLoginNavigation(): void {
+  resetTeamverLoginRedirectCooldown();
+}
+
 export function redirectToTeamverLogin(returnTo?: string | null): void {
   if (typeof window === "undefined") return;
 

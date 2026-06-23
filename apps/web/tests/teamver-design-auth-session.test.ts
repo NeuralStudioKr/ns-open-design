@@ -31,10 +31,25 @@ describe("fetchDesignAuthSession", () => {
   afterEach(() => {
     getMock.mockReset();
     vi.unstubAllGlobals();
+    document.cookie = "";
     vi.resetModules();
   });
 
+  it("does not call refresh when unauthenticated and no Teamver cookies are present", async () => {
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    const session = await fetchDesignAuthSession();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(session?.authenticated).toBe(false);
+  });
+
   it("retries session after cookie refresh when first probe is unauthenticated", async () => {
+    document.cookie = "teamver_access_token=stale";
     getMock
       .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
       .mockResolvedValueOnce({
@@ -43,7 +58,7 @@ describe("fetchDesignAuthSession", () => {
         workspaces: [{ id: "WS-1", name: "Alpha" }],
       });
 
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetchMock);
 
     const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
@@ -79,6 +94,7 @@ describe("fetchDesignAuthSession", () => {
   });
 
   it("falls back to Main BE refresh when same-origin BFF refresh fails", async () => {
+    document.cookie = "teamver_access_token=stale";
     getMock
       .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
       .mockResolvedValueOnce({
@@ -89,8 +105,8 @@ describe("fetchDesignAuthSession", () => {
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: true });
+      .mockResolvedValueOnce({ ok: false, status: 502 })
+      .mockResolvedValueOnce({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetchMock);
 
     const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
@@ -107,5 +123,23 @@ describe("fetchDesignAuthSession", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(session?.authenticated).toBe(true);
+  });
+
+  it("stops after BFF refresh 400 without calling Main BE", async () => {
+    document.cookie = "teamver_access_token=stale";
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    const session = await fetchDesignAuthSession();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/teamver-bff/auth/refresh",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(session?.authenticated).toBe(false);
   });
 });

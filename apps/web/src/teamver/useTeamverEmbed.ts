@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
-import { fetchDesignAuthSession, getDesignBffClient, type DesignAuthSessionUser } from "./designBffClient";
+import { fetchDesignAuthSession, getDesignBffClient, prepareDesignAuthSessionReload, type DesignAuthSessionUser } from "./designBffClient";
 import { isTeamverEmbedMode, redirectToTeamverLogin } from "./designApiBase";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
@@ -211,6 +211,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
     const onReturn = () => {
+      prepareDesignAuthSessionReload();
       scheduleFocusSessionRefresh();
     };
     window.addEventListener("pageshow", onReturn);
