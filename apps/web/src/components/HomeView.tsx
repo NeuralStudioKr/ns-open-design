@@ -207,7 +207,7 @@ interface Props {
   designSystems?: DesignSystemSummary[];
   defaultDesignSystemId?: string | null;
   onSubmit: (payload: PluginLoopSubmit) => void;
-  onOpenProject: (id: string) => void;
+  onOpenProject: (id: string, options?: { fileName?: string }) => void;
   onViewAllProjects: () => void;
   onBrowseRegistry?: () => void;
   onOpenIntegrations?: () => void;
@@ -1718,7 +1718,7 @@ export function HomeView({
         projects={projects}
         designSystems={designSystems}
         {...(projectsLoading !== undefined ? { loading: projectsLoading } : {})}
-        onOpen={(id) => {
+        onOpen={(id, options) => {
           // P0 ui_click area=recent_projects element=project_card — emit
           // before navigation so the event isn't lost when the host
           // re-renders into the project view.
@@ -1731,7 +1731,7 @@ export function HomeView({
             project_id: id,
             ...(projectKind ? { project_kind: projectKind } : {}),
           });
-          onOpenProject(id);
+          onOpenProject(id, options);
         }}
         onViewAll={() => {
           trackRecentProjectsClick(analytics.track, {

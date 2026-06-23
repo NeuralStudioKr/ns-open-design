@@ -25,8 +25,11 @@ from ..schemas.drive_import import (
     ImportDriveProjectResponse,
 )
 from ..schemas.publish import (
+    BatchLatestPublishBody,
+    BatchLatestPublishSummariesResponse,
     DesignOutputListResponse,
     DesignOutputResponse,
+    LatestPublishSummaryResponse,
     PublishProjectBody,
     PublishProjectResponse,
 )
@@ -217,6 +220,61 @@ async def list_projects(
         owner_user_id=auth.user_id,
     )
     return DesignProjectListResponse(projects=[_to_response(row) for row in rows])
+
+
+def _summaries_from_ready_outputs(
+    od_project_ids: list[str],
+    rows: list[DesignOutput],
+) -> list[LatestPublishSummaryResponse]:
+    grouped: dict[str, list[DesignOutput]] = {}
+    for row in rows:
+        grouped.setdefault(row.od_project_id, []).append(row)
+
+    summaries: list[LatestPublishSummaryResponse] = []
+    for od_project_id in od_project_ids:
+        ready = grouped.get(od_project_id, [])
+        if not ready:
+            continue
+        latest = ready[0]
+        summaries.append(
+            LatestPublishSummaryResponse(
+                od_project_id=od_project_id,
+                version=len(ready),
+                kind=latest.kind,
+                drive_asset_id=latest.drive_asset_id,
+                filename=latest.filename,
+            ),
+        )
+    return summaries
+
+
+@router.post("/batch/outputs/latest", response_model=BatchLatestPublishSummariesResponse)
+async def batch_latest_publish_summaries(
+    body: BatchLatestPublishBody,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> BatchLatestPublishSummariesResponse:
+    workspace_id = require_workspace_context(auth)
+    seen: set[str] = set()
+    od_project_ids: list[str] = []
+    for raw in body.od_project_ids:
+        trimmed = raw.strip()
+        if not trimmed or trimmed in seen:
+            continue
+        seen.add(trimmed)
+        od_project_ids.append(trimmed)
+        if len(od_project_ids) >= 12:
+            break
+
+    rows = await design_output_crud.alist_ready_outputs_for_od_projects(
+        db,
+        od_project_ids=od_project_ids,
+        workspace_id=workspace_id,
+        owner_user_id=auth.user_id,
+    )
+    return BatchLatestPublishSummariesResponse(
+        summaries=_summaries_from_ready_outputs(od_project_ids, rows),
+    )
 
 
 @router.get("/{project_ref}", response_model=DesignProjectResponse)

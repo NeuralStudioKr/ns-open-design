@@ -8,7 +8,7 @@ import {
   shouldShowHomeCommunityGallery,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
-import { embedSlideOnlyOutboundBlockReason } from '../src/teamver/branding/embedSlideOnlyOutboundGuard';
+import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../src/teamver/branding/embedSlideOnlyOutboundGuard';
 
 describe('embed slide-only plugin policy', () => {
   it('keeps deck plugins only in slide-only MVP', () => {
@@ -64,6 +64,15 @@ describe('embed slide-only plugin policy', () => {
       hidePrimaryCategoryFacets: false,
       lockedFacetCategory: null,
     });
+  });
+});
+
+describe('embedBlockedComposerSlashReason', () => {
+  it('blocks /pet and /hatch in slide-only MVP', () => {
+    expect(embedBlockedComposerSlashReason('/pet wake', { slideOnlyMvp: true })).toContain('펫');
+    expect(embedBlockedComposerSlashReason('/hatch dragon', { slideOnlyMvp: true })).toContain('펫');
+    expect(embedBlockedComposerSlashReason('/search foo', { slideOnlyMvp: true })).toBeNull();
+    expect(embedBlockedComposerSlashReason('/pet wake', { slideOnlyMvp: false })).toBeNull();
   });
 });
 

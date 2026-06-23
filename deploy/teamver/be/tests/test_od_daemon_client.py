@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -72,3 +73,41 @@ async def test_daemon_client_upload_project_file_posts_multipart(monkeypatch: py
     headers = http.post.await_args.kwargs["headers"]
     assert headers["Authorization"] == "Bearer od-secret-token"
     assert headers["X-Teamver-User-Id"] == "u1"
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_upload_project_file_path_streams_file_handle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {
+        "files": [{"name": "large.pdf", "path": "refs/large.pdf", "size": 5}],
+    }
+    http = AsyncMock()
+    http.post = AsyncMock(return_value=response)
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: http)
+    source = tmp_path / "large.pdf"
+    source.write_bytes(b"large")
+
+    uploaded = await OdDaemonClient(
+        base_url="http://daemon.test",
+        api_token="od-secret-token",
+    ).upload_project_file_path(
+        "od1",
+        filename="large.pdf",
+        file_path=source,
+        content_type="application/pdf",
+        directory="refs",
+        identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+    )
+
+    assert uploaded["path"] == "refs/large.pdf"
+    file_tuple = http.post.await_args.kwargs["files"]["files"]
+    assert file_tuple[0] == "large.pdf"
+    assert file_tuple[1].name == str(source)
+    assert file_tuple[1].closed is True
+    assert file_tuple[2] == "application/pdf"

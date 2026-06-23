@@ -256,7 +256,7 @@ SNS_TOPIC_ARN=arn:aws:sns:ap-northeast-2:<acct>:teamver-design-alerts \
 4. `od_scratch_disk_usage` + `overThreshold:true` → `TeamverDesignScratchOverThreshold` 알람
 5. `teamver_project_access_5xx` 마커 → `TeamverDesignProjectAccess5xx` 알람 (>=5 / 5min)
 
-`od_scratch_disk_usage` 활성화는 `.env.production`:
+`od_scratch_disk_usage` 활성화는 `.env.production` (상세: [21 Scratch 디스크 메트릭](../../../docs-teamver/21_OD_SCRATCH_DISK_METRICS_가이드.md)):
 - `OD_SCRATCH_DISK_METRICS=1`
 - `OD_SCRATCH_DISK_THRESHOLD_MB=2048` (기본)
 - `OD_SCRATCH_DISK_METRIC_INTERVAL_MS=300000` (기본 5분)

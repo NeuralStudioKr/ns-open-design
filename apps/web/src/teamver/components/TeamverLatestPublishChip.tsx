@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { useT } from "../../i18n";
 import { isTeamverEmbedMode } from "../designApiBase";
@@ -11,6 +11,8 @@ import { TEAMVER_PUBLISH_OUTPUTS_CHANGED_EVENT } from "../teamverPublishEvents";
 
 type Props = {
   projectId: string;
+  /** Full project list — fetch only when the card scrolls into view. */
+  deferUntilVisible?: boolean;
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -24,9 +26,30 @@ function kindLabel(kind: string): string {
 }
 
 /** Embed project cards — latest Drive publish deep link (vN). */
-export function TeamverLatestPublishChip({ projectId }: Props) {
+export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false }: Props) {
   const t = useT();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(!deferUntilVisible);
   const [summary, setSummary] = useState<TeamverLatestPublishSummary | null>(null);
+
+  useEffect(() => {
+    if (!deferUntilVisible) return;
+    const node = anchorRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [deferUntilVisible, projectId]);
 
   const refresh = useCallback(async () => {
     if (!isTeamverEmbedMode()) return;
@@ -35,7 +58,7 @@ export function TeamverLatestPublishChip({ projectId }: Props) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!isTeamverEmbedMode()) return;
+    if (!visible || !isTeamverEmbedMode()) return;
     let cancelled = false;
     void fetchLatestPublishSummary(projectId).then((next) => {
       if (!cancelled) setSummary(next);
@@ -43,7 +66,7 @@ export function TeamverLatestPublishChip({ projectId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, visible]);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -59,24 +82,32 @@ export function TeamverLatestPublishChip({ projectId }: Props) {
     };
   }, [projectId, refresh]);
 
-  if (!summary) return null;
+  if (!visible) {
+    return <span ref={anchorRef} className="teamver-latest-publish-chip-anchor" aria-hidden />;
+  }
+
+  if (!summary) {
+    return <span ref={anchorRef} className="teamver-latest-publish-chip-anchor" aria-hidden />;
+  }
 
   return (
-    <a
-      href={summary.driveUrl}
-      className="teamver-latest-publish-chip"
-      target="_blank"
-      rel="noopener noreferrer"
-      title={t("teamver.publish.chipTitle", {
-        version: summary.version,
-        kind: kindLabel(summary.kind),
-        filename: summary.filename,
-      })}
-      data-testid={`teamver-publish-chip-${projectId}`}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <Icon name="external-link" size={11} aria-hidden />
-      <span>{t("teamver.publish.chipLabel", { version: summary.version })}</span>
-    </a>
+    <span ref={anchorRef} className="teamver-latest-publish-chip-anchor">
+      <a
+        href={summary.driveUrl}
+        className="teamver-latest-publish-chip"
+        target="_blank"
+        rel="noopener noreferrer"
+        title={t("teamver.publish.chipTitle", {
+          version: summary.version,
+          kind: kindLabel(summary.kind),
+          filename: summary.filename,
+        })}
+        data-testid={`teamver-publish-chip-${projectId}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Icon name="external-link" size={11} aria-hidden />
+        <span>{t("teamver.publish.chipLabel", { version: summary.version })}</span>
+      </a>
+    </span>
   );
 }

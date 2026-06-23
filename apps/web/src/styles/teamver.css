@@ -581,6 +581,11 @@
   font-size: 0.68rem;
 }
 
+.teamver-latest-publish-chip-anchor {
+  display: inline;
+  vertical-align: middle;
+}
+
 .teamver-latest-publish-chip {
   display: inline-flex;
   align-items: center;
@@ -600,4 +605,26 @@
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
   text-decoration: none;
+}
+
+.teamver-project-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 25%, var(--border));
+  background: color-mix(in srgb, var(--text-muted) 6%, var(--bg-elevated));
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  vertical-align: middle;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.teamver-project-preview-chip:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 40%, var(--border));
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--bg-elevated));
+  color: var(--text);
 }

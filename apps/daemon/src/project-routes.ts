@@ -36,6 +36,9 @@ import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
+import { resolveProjectCoverHint } from './project-cover-hints.js';
+
+const PROJECT_COVER_HINTS_BATCH_MAX = 12;
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -1047,6 +1050,41 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
             ),
           })),
       };
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  app.post('/api/projects/cover-hints', async (req, res) => {
+    try {
+      const rawIds = Array.isArray(req.body?.projectIds) ? req.body.projectIds : [];
+      const seen = new Set<string>();
+      const projectIds: string[] = [];
+      for (const raw of rawIds) {
+        if (typeof raw !== 'string') continue;
+        const id = raw.trim();
+        if (!isSafeId(id) || seen.has(id)) continue;
+        seen.add(id);
+        projectIds.push(id);
+        if (projectIds.length >= PROJECT_COVER_HINTS_BATCH_MAX) break;
+      }
+      const locations = await configuredProjectLocations();
+      /** @type {import('@open-design/contracts').ProjectCoverHint[]} */
+      const hints = [];
+      for (const projectId of projectIds) {
+        const project = getProject(db, projectId);
+        if (!project || !projectVisibleForLocations(project, locations)) continue;
+        const resolved = await resolveProjectCoverHint(PROJECTS_DIR, projectId, project);
+        hints.push({
+          projectId,
+          entryFile: resolved?.entryFile ?? null,
+          coverKind: resolved?.coverKind ?? null,
+          coverPath: resolved?.coverPath ?? null,
+        });
+      }
+      /** @type {import('@open-design/contracts').ProjectCoverHintsResponse} */
+      const body = { hints };
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL_ERROR', String(err));

@@ -21,8 +21,20 @@ describe("driveImportedToChatAttachments", () => {
     ]);
 
     expect(attachments).toEqual([
-      { path: "refs/logo.png", name: "logo.png", kind: "image", size: 1200 },
-      { path: "refs/data.csv", name: "data.csv", kind: "file", size: 88 },
+      {
+        path: "refs/logo.png",
+        name: "logo.png",
+        kind: "image",
+        size: 1200,
+        source: { type: "teamver-drive", assetId: "AST-1" },
+      },
+      {
+        path: "refs/data.csv",
+        name: "data.csv",
+        kind: "file",
+        size: 88,
+        source: { type: "teamver-drive", assetId: "AST-2" },
+      },
     ]);
   });
 });

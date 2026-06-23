@@ -1,8 +1,25 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchSummaryMock = vi.fn();
+
+class MockIntersectionObserver {
+  static last: MockIntersectionObserver | null = null;
+
+  constructor(private readonly callback: IntersectionObserverCallback) {
+    MockIntersectionObserver.last = this;
+  }
+
+  observe() {}
+
+  disconnect() {}
+
+  triggerVisible() {
+    const entry = { isIntersecting: true } as IntersectionObserverEntry;
+    this.callback([entry], this as unknown as IntersectionObserver);
+  }
+}
 
 vi.mock('../src/i18n', () => ({
   useT: () => (key: string, vars?: Record<string, string | number>) => {
@@ -26,6 +43,12 @@ import { TeamverLatestPublishChip } from '../src/teamver/components/TeamverLates
 describe('TeamverLatestPublishChip', () => {
   beforeEach(() => {
     fetchSummaryMock.mockReset();
+    MockIntersectionObserver.last = null;
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('renders Drive version link when a ready publish exists', async () => {
@@ -50,5 +73,23 @@ describe('TeamverLatestPublishChip', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('teamver-publish-chip-p-empty')).toBeNull();
     });
+  });
+
+  it('defers fetch until visible when deferUntilVisible is set', async () => {
+    fetchSummaryMock.mockResolvedValue({
+      projectId: 'p-defer',
+      version: 1,
+      kind: 'html',
+      driveUrl: 'https://drive.example/a/1',
+      filename: 'Deck.html',
+    });
+
+    render(<TeamverLatestPublishChip projectId="p-defer" deferUntilVisible />);
+    expect(fetchSummaryMock).not.toHaveBeenCalled();
+
+    MockIntersectionObserver.last?.triggerVisible();
+
+    await screen.findByTestId('teamver-publish-chip-p-defer');
+    expect(fetchSummaryMock).toHaveBeenCalledWith('p-defer');
   });
 });

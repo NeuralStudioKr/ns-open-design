@@ -27,6 +27,7 @@ import {
 import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
+import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import type { TodoItem } from '../runtime/todos';
 import type { AppliedPluginSnapshot, ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
@@ -3324,24 +3325,38 @@ function UserMessageImpl({
               ? () => onRequestOpenFile?.(baseName)
               : undefined;
             return (
-              <button
-                type="button"
-                key={a.path}
-                className={`user-attachment staged-${a.kind}${openable ? ' openable' : ''}`}
-                onClick={handleOpen}
-                disabled={!openable}
-                title={openable ? t('chat.openFile', { name: baseName }) : a.path}
-              >
-                <span className="staged-order" aria-label={`Attachment ${index + 1}`}>
-                  {index + 1}
-                </span>
-                {a.kind === 'image' && projectId ? (
-                  <img src={projectRawUrl(projectId, a.path)} alt={a.name} />
-                ) : (
-                  <Icon name="file" size={14} />
-                )}
-                <span className="staged-name">{a.name}</span>
-              </button>
+              <div key={a.path} className="user-attachment-row">
+                <button
+                  type="button"
+                  className={`user-attachment staged-${a.kind}${openable ? ' openable' : ''}`}
+                  onClick={handleOpen}
+                  disabled={!openable}
+                  title={openable ? t('chat.openFile', { name: baseName }) : a.path}
+                >
+                  <span className="staged-order" aria-label={`Attachment ${index + 1}`}>
+                    {index + 1}
+                  </span>
+                  {a.kind === 'image' && projectId ? (
+                    <img src={projectRawUrl(projectId, a.path)} alt={a.name} />
+                  ) : (
+                    <Icon name="file" size={14} />
+                  )}
+                  <span className="staged-name">{a.name}</span>
+                </button>
+                {a.source?.type === 'teamver-drive' ? (
+                  <a
+                    className="user-attachment-source-link staged-source-link"
+                    href={resolveTeamverDriveAssetUrl(a.source.assetId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Teamver 드라이브에서 원본 열기"
+                    data-tooltip="Teamver 드라이브에서 원본 열기"
+                    aria-label={`${a.name} 원본을 Teamver 드라이브에서 열기`}
+                  >
+                    <Icon name="external-link" size={11} />
+                  </a>
+                ) : null}
+              </div>
             );
           })}
         </div>

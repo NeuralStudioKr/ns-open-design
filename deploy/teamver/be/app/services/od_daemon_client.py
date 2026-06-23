@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -105,6 +106,45 @@ class OdDaemonClient:
         *,
         filename: str,
         content: bytes,
+        content_type: str,
+        directory: str | None,
+        identity: OdDaemonIdentity,
+    ) -> dict[str, Any]:
+        return await self._upload_project_file_content(
+            od_project_id,
+            filename=filename,
+            content=content,
+            content_type=content_type,
+            directory=directory,
+            identity=identity,
+        )
+
+    async def upload_project_file_path(
+        self,
+        od_project_id: str,
+        *,
+        filename: str,
+        file_path: Path,
+        content_type: str,
+        directory: str | None,
+        identity: OdDaemonIdentity,
+    ) -> dict[str, Any]:
+        with file_path.open("rb") as content:
+            return await self._upload_project_file_content(
+                od_project_id,
+                filename=filename,
+                content=content,
+                content_type=content_type,
+                directory=directory,
+                identity=identity,
+            )
+
+    async def _upload_project_file_content(
+        self,
+        od_project_id: str,
+        *,
+        filename: str,
+        content: Any,
         content_type: str,
         directory: str | None,
         identity: OdDaemonIdentity,

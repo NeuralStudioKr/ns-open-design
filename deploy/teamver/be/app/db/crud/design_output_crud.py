@@ -68,3 +68,25 @@ async def alist_outputs_for_project(
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def alist_ready_outputs_for_od_projects(
+    db: AsyncSession,
+    *,
+    od_project_ids: list[str],
+    workspace_id: str,
+    owner_user_id: str,
+) -> list[DesignOutput]:
+    if not od_project_ids:
+        return []
+    stmt = (
+        select(DesignOutput)
+        .where(DesignOutput.od_project_id.in_(od_project_ids))
+        .where(DesignOutput.workspace_id == workspace_id)
+        .where(DesignOutput.owner_user_id == owner_user_id)
+        .where(DesignOutput.publish_status == "ready")
+        .where(DesignOutput.drive_asset_id != "")
+        .order_by(DesignOutput.published_at.desc(), DesignOutput.id.desc())
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())

@@ -1,5 +1,7 @@
 import type { TeamverBrandingConfig } from "./config";
 
+const EMBED_BLOCKED_COMPOSER_SLASH = /^\/(?:pet|hatch)\b/i;
+
 const MEDIA_INTENT_PATTERNS: readonly RegExp[] = [
   /\b(generate|create|make|produce|render)\b.{0,40}\b(image|images|photo|picture|illustration|video|videos|clip|movie|audio|voiceover|hyperframes?|motion\s+graphic)\b/i,
   /\b(image|images|photo|video|videos|clip|audio|hyperframes?)\b.{0,40}\b(generate|create|make|produce|render)\b/i,
@@ -10,6 +12,18 @@ const MEDIA_INTENT_PATTERNS: readonly RegExp[] = [
   /(오디오|음성|보이스).{0,20}(만들|생성|제작)/u,
   /hyperframes/i,
 ];
+
+/** Block inline `/pet` and `/hatch` slash commands in embed slide-only MVP (doc 13 C-7). */
+export function embedBlockedComposerSlashReason(
+  prompt: string,
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): string | null {
+  if (!branding.slideOnlyMvp) return null;
+  const trimmed = prompt.trim();
+  if (!trimmed) return null;
+  if (!EMBED_BLOCKED_COMPOSER_SLASH.test(trimmed)) return null;
+  return "Teamver Design embed에서는 Codex 펫(/pet, /hatch) 명령을 사용할 수 없습니다. 슬라이드 덱 작업만 지원합니다.";
+}
 
 export function embedSlideOnlyOutboundBlockReason(
   prompt: string,

@@ -52,6 +52,12 @@ def _ensure_teamver_sdk_stub() -> None:
     class WorkspaceNotFoundError(TeamverAPIError):
         pass
 
+    class DriveUploadError(TeamverAPIError):
+        pass
+
+    class DriveConfirmError(TeamverAPIError):
+        pass
+
     for name, cls in [
         ("TeamverAPIError", TeamverAPIError),
         ("AuthenticationError", AuthenticationError),
@@ -59,6 +65,8 @@ def _ensure_teamver_sdk_stub() -> None:
         ("AppDisabledError", AppDisabledError),
         ("PermissionDeniedError", PermissionDeniedError),
         ("WorkspaceNotFoundError", WorkspaceNotFoundError),
+        ("DriveUploadError", DriveUploadError),
+        ("DriveConfirmError", DriveConfirmError),
     ]:
         setattr(errors, name, cls)
 

@@ -19,6 +19,7 @@
 | **[16 S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** | **언제 S3에 올라가는지 · scratch/sync-up · RDS·Drive·Litestream 구분** |
 | **[19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** | **버킷·폴더(prefix)별 저장 내용 · 자동 생성 · lifecycle** |
 | **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** | **로컬 scratch+S3 · Litestream · 용량·evict · FAQ** |
+| **[21 Scratch 디스크 메트릭](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** | **`OD_SCRATCH_DISK_METRICS` 목적·부하·배포 preflight·FAQ** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -39,6 +40,7 @@
 | 16 | **[S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** |
 | 19 | **[S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** |
 | 20 | **[Hybrid 저장소 (로컬+S3)](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** |
+| 21 | **[Scratch 디스크 메트릭](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |

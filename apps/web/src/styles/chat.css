@@ -2206,6 +2206,12 @@
   justify-content: flex-end;
   margin-bottom: 4px;
 }
+.user-attachment-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 260px;
+}
 .user-attachment {
   display: inline-flex;
   align-items: center;

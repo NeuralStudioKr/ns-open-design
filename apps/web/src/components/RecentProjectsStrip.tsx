@@ -9,13 +9,21 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n';
-import { fetchProjectFiles, projectFileUrl } from '../providers/registry';
-import type { DesignSystemSummary, Project, ProjectDisplayStatus, ProjectFile } from '../types';
+import type { DesignSystemSummary, Project, ProjectDisplayStatus } from '../types';
 import { Icon } from './Icon';
 import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
+import { TeamverProjectPreviewChip } from '../teamver/components/TeamverProjectPreviewChip';
+import {
+  projectPreviewDeepLinkFileName,
+  type ProjectCoverFile,
+} from '../teamver/projectPreviewFile';
+import { buildProjectCardCover } from '../teamver/projectCardCover';
+import { prefetchHomeProjectCovers } from '../teamver/prefetchHomeProjectCovers';
+import { homePublishChipPrefetchIds } from '../teamver/embedPublishChipProjects';
+import { prefetchLatestPublishSummaries } from '../teamver/latestPublishSummary';
 
 interface Props {
   projects: Project[];
@@ -25,7 +33,7 @@ interface Props {
   /** Retained for call-site compatibility; the strip skips rendering
    *  while the list is loading so we never need a loading state. */
   loading?: boolean;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, options?: { fileName?: string }) => void;
   onViewAll: () => void;
   limit?: number;
 }
@@ -52,7 +60,7 @@ export function RecentProjectsStrip({
     [projects, limit],
   );
   const [coverByProject, setCoverByProject] = useState<
-    Record<string, { kind: 'html' | 'image' | 'video' | 'logo'; name: string } | null>
+    Record<string, ProjectCoverFile | null>
   >({});
 
   useEffect(() => {
@@ -62,62 +70,24 @@ export function RecentProjectsStrip({
       return;
     }
 
-    void Promise.all(
-      recent.map(async (project) => {
-        const designSystemProject = isDesignSystemProject(project);
-        if (project.metadata?.entryFile && !designSystemProject) return [project.id, null] as const;
-        let files: Awaited<ReturnType<typeof fetchProjectFiles>>;
-        try {
-          files = await fetchProjectFiles(project.id);
-        } catch {
-          return [project.id, null] as const;
-        }
-        if (designSystemProject) {
-          const logo = findDesignSystemLogoFile(files);
-          if (logo) {
-            return [
-              project.id,
-              { kind: 'logo' as const, name: logo.path ?? logo.name },
-            ] as const;
-          }
-          return [project.id, null] as const;
-        }
-        const html =
-          files.find((file) => (file.path ?? file.name) === 'index.html') ??
-          files
-            .filter((file) => file.kind === 'html')
-            .sort((a, b) => b.mtime - a.mtime)[0];
-        if (html) {
-          return [
-            project.id,
-            { kind: 'html' as const, name: html.path ?? html.name },
-          ] as const;
-        }
-        const image = files
-          .filter((file) => file.kind === 'image')
-          .sort((a, b) => b.mtime - a.mtime)[0];
-        if (image) {
-          return [
-            project.id,
-            { kind: 'image' as const, name: image.path ?? image.name },
-          ] as const;
-        }
-        const video = files
-          .filter((file) => file.kind === 'video')
-          .sort((a, b) => b.mtime - a.mtime)[0];
-        if (video) {
-          return [
-            project.id,
-            { kind: 'video' as const, name: video.path ?? video.name },
-          ] as const;
-        }
-        return [project.id, null] as const;
-      }),
-    ).then((entries) => {
+    void prefetchHomeProjectCovers(recent).then((entries) => {
       if (cancelled) return;
-      setCoverByProject(Object.fromEntries(entries));
+      setCoverByProject(entries);
     });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [recent]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    let cancelled = false;
+    const ids = homePublishChipPrefetchIds(recent);
+    if (ids.length === 0) return;
+    void prefetchLatestPublishSummaries(ids).then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
@@ -148,7 +118,9 @@ export function RecentProjectsStrip({
       </header>
       <div className="recent-projects__row" role="list">
         {recent.map((project) => {
-          const cover = projectCover(project, coverByProject[project.id] ?? null);
+          const coverOverride = coverByProject[project.id] ?? null;
+          const cover = buildProjectCardCover(project, coverOverride);
+          const previewFileName = projectPreviewDeepLinkFileName(project, coverOverride);
           const designSystemProject = isDesignSystemProject(project);
           const status: ProjectDisplayStatus = project.status?.value ?? 'not_started';
           const publishedDesignSystem = isPublishedDesignSystemProject(project, designSystems);
@@ -218,6 +190,16 @@ export function RecentProjectsStrip({
                     <>
                       <span className="recent-projects__card-sep" aria-hidden>·</span>
                       <TeamverLatestPublishChip projectId={project.id} />
+                      {previewFileName ? (
+                        <>
+                          <span className="recent-projects__card-sep" aria-hidden>·</span>
+                          <TeamverProjectPreviewChip
+                            projectId={project.id}
+                            fileName={previewFileName}
+                            onOpen={onOpen}
+                          />
+                        </>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -432,45 +414,6 @@ function relativeTime(ts: number, t: ReturnType<typeof useT>): string {
   return new Date(ts).toLocaleDateString();
 }
 
-function projectCover(
-  project: Project,
-  override: { kind: 'html' | 'image' | 'video' | 'logo'; name: string } | null,
-): {
-  kind: 'image' | 'video' | 'html' | 'logo' | 'fallback';
-  src?: string;
-  style: CSSProperties;
-  initial: string;
-} {
-  let h = 0;
-  for (let i = 0; i < project.id.length; i += 1) {
-    h = (h * 31 + project.id.charCodeAt(i)) >>> 0;
-  }
-  const hue = h % 360;
-  const hue2 = (hue + 38) % 360;
-  const style: CSSProperties = {
-    background: `radial-gradient(circle at 30% 28%, hsl(${hue} 70% 78% / 0.55), transparent 42%), linear-gradient(135deg, hsl(${hue} 65% 88%), hsl(${hue2} 70% 90%))`,
-  };
-  const trimmed = project.name.trim();
-  const initial = (trimmed ? Array.from(trimmed)[0]! : '?').toUpperCase();
-  if (override) {
-    return {
-      kind: override.kind,
-      src: projectFileUrl(project.id, override.name),
-      style,
-      initial,
-    };
-  }
-  const meta = project.metadata;
-  const entry = meta?.entryFile;
-  if (entry) {
-    const src = projectFileUrl(project.id, entry);
-    if (meta?.kind === 'image') return { kind: 'image', src, style, initial };
-    if (meta?.kind === 'video') return { kind: 'video', src, style, initial };
-    if (/\.html?$/i.test(entry)) return { kind: 'html', src, style, initial };
-  }
-  return { kind: 'fallback', style, initial };
-}
-
 type ProjectCategory = 'prototype' | 'live-artifact' | 'slide' | 'media';
 
 function projectCategory(project: Project): ProjectCategory {
@@ -502,16 +445,3 @@ function DesignSystemProjectTag() {
   return <span className="design-card-tag tag-design-system">Design System</span>;
 }
 
-function findDesignSystemLogoFile(files: ProjectFile[]): ProjectFile | null {
-  const logoCandidates = files
-    .filter((file) => file.type !== 'dir')
-    .filter((file) => {
-      const name = file.path ?? file.name;
-      return file.kind === 'image' || /\.(svg|png|jpe?g|webp|gif)$/iu.test(name);
-    });
-  return (
-    logoCandidates.find((file) => (file.path ?? file.name).toLowerCase() === 'assets/logo.svg') ??
-    logoCandidates.find((file) => /(^|\/)(logo|wordmark|brand-mark|brandmark|mark|icon|favicon)[^/]*\.(svg|png|jpe?g|webp|gif)$/iu.test(file.path ?? file.name)) ??
-    null
-  );
-}

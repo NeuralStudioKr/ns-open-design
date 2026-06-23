@@ -157,7 +157,7 @@ evict 후에도 **S3 SSOT는 유지**. 다음 접근 시 sync-down. 일부 sync-
 | 메커니즘 | env / 도구 | 설명 |
 |----------|------------|------|
 | **run 후 evict** | `OD_SCRATCH_EVICT_AFTER_RUN=1` | scratch 프로젝트 트리 삭제 |
-| **scratch 디스크 샘플** | `OD_SCRATCH_DISK_METRICS=1` | `od_scratch_disk_usage` JSON 마커 |
+| **scratch 디스크 샘플** | `OD_SCRATCH_DISK_METRICS=1` | `od_scratch_disk_usage` JSON 마커 — **[21 가이드](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** |
 | **threshold** | `OD_SCRATCH_DISK_THRESHOLD_MB` (기본 **2048**) | 초과 시 `overThreshold: true` |
 | **주기 샘플** | `OD_SCRATCH_DISK_METRIC_INTERVAL_MS` (기본 300000) | 5분마다 periodic 마커 |
 | **CloudWatch 알람** | `print_cloudwatch_alarm_commands.sh` | scratch·sync-up 실패 필터 |
@@ -187,7 +187,10 @@ evict 후에도 **S3 SSOT는 유지**. 다음 접근 시 sync-down. 일부 sync-
 
 Drive 가져오기는 design-api에서 파일을 순차 처리하며 파일당 50MB, 요청당 총 100MB,
 worker당 동시 요청 2개로 제한한다. 동일 asset/path 반복은 다운로드 전에 차단하므로
-불필요한 네트워크·메모리·scratch 쓰기를 만들지 않는다. 상세 저장 순서는
+불필요한 네트워크·메모리·scratch 쓰기를 만들지 않는다. presigned GET은 1MB chunk로
+요청 전용 임시 파일에 기록하고 그 file handle을 daemon multipart로 전달한다. 파일별
+upload 종료 즉시 임시 파일을 삭제하므로 네트워크 요청 수는 늘리지 않으면서 대형
+`bytes`/multipart 메모리 중복을 제거한다. 상세 저장 순서는
 [16 §5.2](./16_S3_데이터_저장_시점_SSOT.md#52-파일업로드-api-변경-직후-lazy-sync-up).
 
 ---

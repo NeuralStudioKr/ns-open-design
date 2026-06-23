@@ -1,5 +1,4 @@
-import type { CSSProperties } from "react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@open-design/components";
 import { projectKindToTracking } from "@open-design/contracts/analytics";
 import { useAnalytics } from "../analytics/provider";
@@ -10,13 +9,12 @@ import {
   trackProjectsMorePopoverClick,
 } from "../analytics/events";
 import { useT } from "../i18n";
-import { deleteLiveArtifact, fetchLiveArtifacts, fetchProjectFiles, liveArtifactPreviewUrl, projectFileUrl } from "../providers/registry";
+import { deleteLiveArtifact, fetchLiveArtifacts, liveArtifactPreviewUrl } from "../providers/registry";
 import type {
 	DesignSystemSummary,
 	LiveArtifactSummary,
 	Project,
 	ProjectDisplayStatus,
-	ProjectFile,
 	SkillSummary,
 } from "../types";
 import { AnimatePresence } from "motion/react";
@@ -25,7 +23,14 @@ import { isDesignSystemProject, isPublishedDesignSystemProject } from "./design-
 import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
 import { isTeamverEmbedMode } from "../teamver/designApiBase";
+import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
+import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectThumb";
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
+import { TeamverProjectPreviewChip } from "../teamver/components/TeamverProjectPreviewChip";
+import {
+	projectPreviewDeepLinkFileName,
+	type ProjectCoverFile,
+} from "../teamver/projectPreviewFile";
 
 type SubTab = "recent" | "yours";
 type ViewMode = "grid" | "kanban";
@@ -68,7 +73,7 @@ interface Props {
 	projects: Project[];
 	skills: SkillSummary[];
 	designSystems: DesignSystemSummary[];
-	onOpen: (id: string) => void;
+	onOpen: (id: string, options?: { fileName?: string }) => void;
 	onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
 	onDelete: (id: string) => Promise<boolean | void> | boolean | void;
 	onRename?: (id: string, name: string) => void;
@@ -89,6 +94,7 @@ export function DesignsTab({
 	const confirmTitleId = useId();
 	const t = useT();
 	const teamverEmbed = isTeamverEmbedMode();
+	const { slideOnlyMvp } = useTeamverBranding();
 	const analytics = useAnalytics();
 	// P0 page_view page_name=projects — fire once when the tab mounts so
 	// `/projects` landings register even before the user clicks anything.
@@ -105,9 +111,14 @@ export function DesignsTab({
 	const [liveArtifactsByProject, setLiveArtifactsByProject] = useState<
 		Record<string, LiveArtifactSummary[]>
 	>({});
-	const [coverByProject, setCoverByProject] = useState<
-		Record<string, { kind: "html" | "image" | "video" | "logo"; name: string } | null>
-	>({});
+	const [coverOverrides, setCoverOverrides] = useState<Record<string, ProjectCoverFile | null>>({});
+
+	const handleCoverOverride = useCallback((projectId: string, cover: ProjectCoverFile | null) => {
+		setCoverOverrides((prev) => {
+			if (prev[projectId] === cover) return prev;
+			return { ...prev, [projectId]: cover };
+		});
+	}, []);
 	const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 	const [selectMode, setSelectMode] = useState(false);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -137,7 +148,7 @@ export function DesignsTab({
 	useEffect(() => {
 		let cancelled = false;
 		const projectIds = projects.map((project) => project.id);
-		if (projectIds.length === 0) {
+		if (projectIds.length === 0 || slideOnlyMvp) {
 			setLiveArtifactsByProject({});
 			return;
 		}
@@ -155,73 +166,7 @@ export function DesignsTab({
 		return () => {
 			cancelled = true;
 		};
-	}, [projects]);
-
-	useEffect(() => {
-		let cancelled = false;
-		if (projects.length === 0) {
-			setCoverByProject({});
-			return;
-		}
-		void Promise.all(
-			projects.map(async (project) => {
-				const designSystemProject = isDesignSystemProject(project);
-				if (project.metadata?.entryFile && !designSystemProject) return [project.id, null] as const;
-				let files: Awaited<ReturnType<typeof fetchProjectFiles>>;
-				try {
-					files = await fetchProjectFiles(project.id);
-				} catch {
-					return [project.id, null] as const;
-				}
-				if (designSystemProject) {
-					const logo = findDesignSystemLogoFile(files);
-					if (logo) {
-						return [
-							project.id,
-							{ kind: "logo" as const, name: logo.path ?? logo.name },
-						] as const;
-					}
-					return [project.id, null] as const;
-				}
-				const html =
-					files.find((f) => (f.path ?? f.name) === "index.html") ??
-					files
-						.filter((f) => f.kind === "html")
-						.sort((a, b) => b.mtime - a.mtime)[0];
-				if (html) {
-					return [
-						project.id,
-						{ kind: "html" as const, name: html.path ?? html.name },
-					] as const;
-				}
-				const image = files
-					.filter((f) => f.kind === "image")
-					.sort((a, b) => b.mtime - a.mtime)[0];
-				if (image) {
-					return [
-						project.id,
-						{ kind: "image" as const, name: image.path ?? image.name },
-					] as const;
-				}
-				const video = files
-					.filter((f) => f.kind === "video")
-					.sort((a, b) => b.mtime - a.mtime)[0];
-				if (video) {
-					return [
-						project.id,
-						{ kind: "video" as const, name: video.path ?? video.name },
-					] as const;
-				}
-				return [project.id, null] as const;
-			}),
-		).then((entries) => {
-			if (cancelled) return;
-			setCoverByProject(Object.fromEntries(entries));
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [projects]);
+	}, [projects, slideOnlyMvp]);
 
 	useEffect(() => {
 		if (!menuOpenId) return;
@@ -662,7 +607,10 @@ export function DesignsTab({
 
 						const liveCount = liveArtifactsByProject[p.id]?.length ?? 0;
 						const status = p.status?.value ?? "not_started";
-						const cover = projectCover(p, coverByProject[p.id] ?? null);
+						const previewFileName = projectPreviewDeepLinkFileName(
+							p,
+							coverOverrides[p.id] ?? null,
+						);
 						const isSelected = selected.has(p.id);
 						const designSystemProject = isDesignSystemProject(p);
 						const publishedDesignSystem = isPublishedDesignSystemProject(p, designSystems);
@@ -783,33 +731,12 @@ export function DesignsTab({
 									) : null}
 								</div>
 								)}
-								<div
-									className={`design-card-thumb project-thumb project-thumb-${cover.kind}`}
-									style={cover.style}
-									aria-hidden
-								>
-									{(cover.kind === "image" || cover.kind === "logo") && cover.src ? (
-										<img className="thumb-media" src={cover.src} alt="" loading="lazy" />
-									) : cover.kind === "video" && cover.src ? (
-										<video className="thumb-media" src={cover.src} muted preload="metadata" playsInline />
-									) : cover.kind === "html" && cover.src ? (
-										<iframe
-											className="thumb-iframe"
-											src={cover.src}
-											title=""
-											loading="lazy"
-											sandbox="allow-scripts"
-											tabIndex={-1}
-										/>
-									) : (
-										<span className="project-thumb-glyph">{cover.initial}</span>
-									)}
-									{liveCount > 0 ? (
-										<span className="design-live-count">
-											{t("designs.liveCount", { n: liveCount })}
-										</span>
-									) : null}
-								</div>
+								<DesignsTabProjectThumb
+									project={p}
+									liveCount={liveCount}
+									liveCountLabel={liveCount > 0 ? t("designs.liveCount", { n: liveCount }) : undefined}
+									onCoverOverride={(cover) => handleCoverOverride(p.id, cover)}
+								/>
 								<div className="design-card-meta-block">
 									<div className="design-card-tag-row">
 										{designSystemProject ? (
@@ -838,7 +765,17 @@ export function DesignsTab({
 											{teamverEmbed && !designSystemProject ? (
 												<>
 													{" · "}
-													<TeamverLatestPublishChip projectId={p.id} />
+													<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
+													{previewFileName ? (
+														<>
+															{" · "}
+															<TeamverProjectPreviewChip
+																projectId={p.id}
+																fileName={previewFileName}
+																onOpen={onOpen}
+															/>
+														</>
+													) : null}
 												</>
 											) : null}
 										</span>
@@ -1079,45 +1016,6 @@ function isOrbitProject(project: Project): boolean {
 }
 
 
-function projectCover(
-	project: Project,
-	override: { kind: "html" | "image" | "video" | "logo"; name: string } | null,
-): {
-	kind: "image" | "video" | "html" | "logo" | "fallback";
-	src?: string;
-	style: CSSProperties;
-	initial: string;
-} {
-	let h = 0;
-	for (let i = 0; i < project.id.length; i++) {
-		h = (h * 31 + project.id.charCodeAt(i)) >>> 0;
-	}
-	const hue = h % 360;
-	const hue2 = (hue + 38) % 360;
-	const style: CSSProperties = {
-		background: `radial-gradient(circle at 30% 28%, hsl(${hue} 70% 78% / 0.55), transparent 42%), linear-gradient(135deg, hsl(${hue} 65% 88%), hsl(${hue2} 70% 90%))`,
-	};
-	const trimmed = project.name.trim();
-	const initial = (trimmed ? Array.from(trimmed)[0]! : "?").toUpperCase();
-	if (override) {
-		return {
-			kind: override.kind,
-			src: projectFileUrl(project.id, override.name),
-			style,
-			initial,
-		};
-	}
-	const meta = project.metadata;
-	const entry = meta?.entryFile;
-	if (entry) {
-		const src = projectFileUrl(project.id, entry);
-		if (meta?.kind === "image") return { kind: "image", src, style, initial };
-		if (meta?.kind === "video") return { kind: "video", src, style, initial };
-		if (/\.html?$/i.test(entry)) return { kind: "html", src, style, initial };
-	}
-	return { kind: "fallback", style, initial };
-}
-
 type ProjectCategory = "prototype" | "live-artifact" | "slide" | "media";
 
 function projectCategory(project: Project): ProjectCategory {
@@ -1150,19 +1048,5 @@ function ProjectTag({ category }: { category: ProjectCategory }) {
 function DesignSystemProjectTag() {
 	return (
 		<span className="design-card-tag tag-design-system">Design System</span>
-	);
-}
-
-function findDesignSystemLogoFile(files: ProjectFile[]): ProjectFile | null {
-	const logoCandidates = files
-		.filter((file) => file.type !== "dir")
-		.filter((file) => {
-			const name = file.path ?? file.name;
-			return file.kind === "image" || /\.(svg|png|jpe?g|webp|gif)$/iu.test(name);
-		});
-	return (
-		logoCandidates.find((file) => (file.path ?? file.name).toLowerCase() === "assets/logo.svg") ??
-		logoCandidates.find((file) => /(^|\/)(logo|wordmark|brand-mark|brandmark|mark|icon|favicon)[^/]*\.(svg|png|jpe?g|webp|gif)$/iu.test(file.path ?? file.name)) ??
-		null
 	);
 }

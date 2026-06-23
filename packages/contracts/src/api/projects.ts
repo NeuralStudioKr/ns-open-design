@@ -269,6 +269,23 @@ export interface ProjectsResponse {
   projects: Project[];
 }
 
+export type ProjectCoverHintKind = "html" | "image" | "video" | "logo";
+
+export interface ProjectCoverHint {
+  projectId: string;
+  entryFile?: string | null;
+  coverKind?: ProjectCoverHintKind | null;
+  coverPath?: string | null;
+}
+
+export interface ProjectCoverHintsRequest {
+  projectIds: string[];
+}
+
+export interface ProjectCoverHintsResponse {
+  hints: ProjectCoverHint[];
+}
+
 export interface ProjectResponse {
   project: Project;
 }

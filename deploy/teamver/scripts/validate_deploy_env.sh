@@ -295,7 +295,7 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
     warn "OD_SCRATCH_DISK_METRICS=1 — run 종료 시 od_scratch_disk_usage JSON 마커 emit (threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048}, periodic interval ms=${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-300000})"
   else
     if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
-      fail "OD_SCRATCH_DISK_METRICS=1 필요 — hosted scratch 디스크 용량 감지 필수"
+      fail "OD_SCRATCH_DISK_METRICS=1 필요 — hosted scratch 디스크 용량 감지 필수 ($ENV_FILE 에 추가하거나 bash scripts/apply_staging_s3_env.sh / apply_production_s3_env.sh 로 S3 키 backfill)"
     else
       warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성"
     fi

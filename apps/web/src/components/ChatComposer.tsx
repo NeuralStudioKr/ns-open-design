@@ -55,7 +55,7 @@ import {
 import { CANVAS_CREATE_SLIDES_PROMPT } from '../teamver/canvasSlideLaunch';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
-import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
+import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -2146,6 +2146,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     async function submit() {
       const prompt = draft.trim();
       if (sendDisabled) return;
+      const embedSlashBlock = embedBlockedComposerSlashReason(prompt, { slideOnlyMvp });
+      if (embedSlashBlock) {
+        setUploadError(embedSlashBlock);
+        return;
+      }
       // Intercept `/pet …` and `/mcp` before sending so the slash command
       // never hits the agent — these are local UX hooks, not model prompts.
       if (tryHandlePetSlash()) return;

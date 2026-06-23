@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import posixpath
+import tempfile
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
+import httpx
 from teamver_app_sdk.errors import TeamverAPIError
 
 from ..db.models import DesignProject
@@ -27,6 +29,7 @@ IMPORT_QUEUE_WAIT_SECONDS = 2.0
 # Each request is already sequential per asset. Capping whole requests keeps
 # Drive download + multipart upload memory/network pressure bounded per worker.
 _IMPORT_REQUEST_LIMITER = asyncio.Semaphore(MAX_CONCURRENT_IMPORT_REQUESTS)
+_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,66 @@ def _error_code(exc: BaseException, fallback: str) -> str:
     return fallback
 
 
+def _drive_download_error(
+    message: str,
+    *,
+    code: str | None = None,
+    status_code: int | None = None,
+    response_body: str | None = None,
+) -> TeamverAPIError:
+    error = TeamverAPIError(message)
+    if code is not None:
+        error.code = code
+    if status_code is not None:
+        error.status_code = status_code
+    if response_body is not None:
+        error.response_body = response_body
+    return error
+
+
+async def _download_drive_asset_to_path(
+    *,
+    drive_client: Any,
+    access_token: str,
+    asset_id: str,
+    destination: Path,
+    max_bytes: int,
+) -> int:
+    download = await drive_client.create_download_url(
+        access_token=access_token,
+        asset_id=asset_id,
+    )
+    size = 0
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream("GET", download.download_url) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    raise _drive_download_error(
+                        f"presigned download failed with status {response.status_code}",
+                        status_code=response.status_code,
+                        response_body=body.decode("utf-8", errors="replace"),
+                    )
+                content_length = response.headers.get("content-length")
+                if content_length and content_length.isdigit() and int(content_length) > max_bytes:
+                    raise _drive_download_error(
+                        "presigned download exceeded max_bytes limit",
+                        code="drive.download_too_large",
+                    )
+                with destination.open("wb") as output:
+                    async for chunk in response.aiter_bytes(chunk_size=_DOWNLOAD_CHUNK_BYTES):
+                        size += len(chunk)
+                        if size > max_bytes:
+                            raise _drive_download_error(
+                                "presigned download exceeded max_bytes limit",
+                                code="drive.download_too_large",
+                            )
+                        await asyncio.to_thread(output.write, chunk)
+    except (httpx.TimeoutException, httpx.TransportError) as exc:
+        raise _drive_download_error(str(exc), code=exc.__class__.__name__) from exc
+    return size
+
+
 async def import_drive_assets(
     *,
     teamver_client: Any,
@@ -124,7 +187,7 @@ async def import_drive_assets(
             _IMPORT_REQUEST_LIMITER.acquire(),
             timeout=IMPORT_QUEUE_WAIT_SECONDS,
         )
-    except TimeoutError as exc:
+    except asyncio.TimeoutError as exc:
         raise ApiError(429, "drive_import_busy", code="drive_import_busy") from exc
     try:
         return await _import_drive_assets_bounded(
@@ -160,6 +223,7 @@ async def _import_drive_assets_bounded(
     seen_paths: set[str] = set()
 
     for asset in assets:
+        remaining_bytes = MAX_BATCH_IMPORT_BYTES - downloaded_bytes
         try:
             target = _resolve_import_target(asset)
             normalized_asset_id = asset.asset_id.strip()
@@ -190,7 +254,6 @@ async def _import_drive_assets_bounded(
                     ),
                 )
                 continue
-            remaining_bytes = MAX_BATCH_IMPORT_BYTES - downloaded_bytes
             if remaining_bytes <= 0:
                 failed.append(
                     DriveImportFailureResponse(
@@ -199,43 +262,42 @@ async def _import_drive_assets_bounded(
                     ),
                 )
                 continue
-            content = await teamver_client.drive.download_bytes(
-                access_token=access_token,
-                asset_id=asset.asset_id,
-                max_bytes=min(MAX_IMPORT_BYTES, remaining_bytes),
-            )
-            if len(content) > remaining_bytes:
-                failed.append(
-                    DriveImportFailureResponse(
-                        asset_id=asset.asset_id,
-                        error_code="drive_import_batch_too_large",
-                    ),
+            with tempfile.TemporaryDirectory(prefix="teamver-drive-import-") as temp_dir:
+                temp_path = Path(temp_dir) / target.filename
+                downloaded_size = await _download_drive_asset_to_path(
+                    drive_client=teamver_client.drive,
+                    access_token=access_token,
+                    asset_id=asset.asset_id,
+                    destination=temp_path,
+                    max_bytes=min(MAX_IMPORT_BYTES, remaining_bytes),
                 )
-                downloaded_bytes = MAX_BATCH_IMPORT_BYTES
-                continue
-            downloaded_bytes += len(content)
-            uploaded = await daemon.upload_project_file(
-                project.od_project_id,
-                filename=target.filename,
-                content=content,
-                content_type=target.mime_type,
-                directory=target.directory,
-                identity=identity,
-            )
+                downloaded_bytes += downloaded_size
+                uploaded = await daemon.upload_project_file_path(
+                    project.od_project_id,
+                    filename=target.filename,
+                    file_path=temp_path,
+                    content_type=target.mime_type,
+                    directory=target.directory,
+                    identity=identity,
+                )
             imported.append(
                 DriveImportAssetResponse(
                     asset_id=asset.asset_id,
                     path=str(uploaded.get("path") or target.path),
                     name=str(uploaded.get("name") or target.filename),
-                    size_bytes=int(uploaded.get("size") or len(content)),
+                    size_bytes=int(uploaded.get("size") or downloaded_size),
                     mime_type=target.mime_type,
                 ),
             )
         except TeamverAPIError as exc:
+            error_code = _error_code(exc, "drive_download_failed")
+            if error_code == "drive.download_too_large" and remaining_bytes < MAX_IMPORT_BYTES:
+                error_code = "drive_import_batch_too_large"
+                downloaded_bytes = MAX_BATCH_IMPORT_BYTES
             failed.append(
                 DriveImportFailureResponse(
                     asset_id=asset.asset_id,
-                    error_code=_error_code(exc, "drive_download_failed"),
+                    error_code=error_code,
                 ),
             )
         except BadRequestError:

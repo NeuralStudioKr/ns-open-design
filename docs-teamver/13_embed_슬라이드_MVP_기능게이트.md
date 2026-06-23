@@ -46,7 +46,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | C-4 | `ChatComposer` `+` 메뉴 동일 | 프로젝트 composer 동일 row | 동일 | ✅ |
 | C-5 | `HomeHero` @멘션 picker | 탭: All · Files · Plugins · Skills · MCP · Connectors | `hideComposerIntegrations` (MCP·Connectors 탭 제거) | ✅ |
 | C-6 | `ChatComposer` slash 팔레트 | `/mcp`, `/mcp <id>`, `/search` | `hideComposerIntegrations` (MCP 슬래시 제거) | ✅ |
-| C-7 | `ChatComposer` slash 인라인 | `/pet`, `/hatch` 인라인 명령 (palette 노출 X) | embed 시 결과적으로 unreachable — Settings·Codex CLI 차단으로 무력화 | 🟡 문서화 |
+| C-7 | `ChatComposer` slash 인라인 | `/pet`, `/hatch` 인라인 명령 (palette 노출 X) | embed `slideOnlyMvp` 시 `embedBlockedComposerSlashReason`으로 submit 차단 | ✅ |
 | C-8 | `ChatComposer` `DesignToolboxPanel` actions | `image-gen`, `video-gen`, `motion`, `motion-polish` | **`slideOnlyMvp`** (`visibleDesignToolboxActions`) | ✅ loop 152 |
 | C-9 | `ChatComposer` `DesignToolboxPanel` resources | MCP servers·MCP templates·connectors | `hideComposerIntegrations` | ✅ loop 152 |
 | C-10 | `AssistantMessage` `NextStepActions` | "More" 메뉴의 미디어/모션 액션 | `slideOnlyMvp` (toolbox 필터 공유) | ✅ loop 152 |

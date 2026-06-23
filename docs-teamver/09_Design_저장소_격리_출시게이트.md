@@ -304,6 +304,7 @@ Design EC2 는 Terraform 으로 **root + od-data** EBS 2개 ([07 §3.5](./07_VM_
 | od-data 용량 (tfvars) | Staging **30 GiB**, Production **100 GiB** — project SSOT 아님, export·동시 run 여유 |
 | 알람 | od-data·scratch 80% — [07](./07_VM_배포_인프라.md) |
 | eviction | run 완료 후 project scratch 삭제 가능 (SSOT=S3) |
+| scratch 용량 관측 | `OD_SCRATCH_DISK_METRICS=1` — [21 가이드](./21_OD_SCRATCH_DISK_METRICS_가이드.md) |
 
 ### 8.3 동시성 (v1)
 

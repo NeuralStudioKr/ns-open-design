@@ -49,6 +49,33 @@ class DesignOutputListResponse(BaseModel):
     outputs: list[DesignOutputResponse]
 
 
+class BatchLatestPublishBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    od_project_ids: list[str] = Field(
+        default_factory=list,
+        min_length=1,
+        max_length=12,
+        validation_alias=AliasChoices("od_project_ids", "odProjectIds"),
+    )
+
+
+class LatestPublishSummaryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    od_project_id: str = Field(serialization_alias="odProjectId")
+    version: int
+    kind: str
+    drive_asset_id: str = Field(serialization_alias="driveAssetId")
+    filename: str
+
+
+class BatchLatestPublishSummariesResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    summaries: list[LatestPublishSummaryResponse]
+
+
 class PublishProjectResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
