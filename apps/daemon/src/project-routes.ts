@@ -1350,10 +1350,19 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   app.post('/api/projects/:id/scratch/sync-up', async (req, res) => {
     const projectId = req.params.id;
-    if (ctx.projectStorageHooks) {
-      await ctx.projectStorageHooks.persistAfterMutation(req, projectId);
+    try {
+      if (ctx.projectStorageHooks) {
+        await ctx.projectStorageHooks.persistAfterMutation(req, projectId, { strict: true });
+      }
+      res.status(204).end();
+    } catch (err) {
+      sendApiError(
+        res,
+        502,
+        'PROJECT_STORAGE_SYNC_FAILED',
+        err instanceof Error ? err.message : 'project storage sync failed',
+      );
     }
-    res.status(204).end();
   });
 
   app.get('/api/projects/:id', async (req, res) => {

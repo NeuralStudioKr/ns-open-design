@@ -27,6 +27,11 @@ TEAMVER_DESIGN_API_URL=http://teamver-design-api:8000
 OD_PROJECT_STORAGE=s3
 OD_S3_BUCKET=teamver-design-staging-data
 OD_S3_REGION=ap-northeast-2
+OD_SCRATCH_EVICT_AFTER_RUN=1
+OD_S3_SYNC_UP_METRICS=1
+OD_SCRATCH_DISK_METRICS=1
+OD_SCRATCH_DISK_THRESHOLD_MB=2048
+OD_SCRATCH_DISK_METRIC_INTERVAL_MS=300000
 TRUST_TEAMVER_PROXY_HEADERS=true
 TEAMVER_OD_API_KEY=test-managed-api-key
 TEAMVER_REGISTRY_APP_ID=ai-design
@@ -159,24 +164,21 @@ if ! grep -q 'TEAMVER_DRIVE_PUBLISH_FOLDER_ID 설정됨' <<< "$drive_out"; then
 fi
 rm -f "$DRIVE_ENV"
 
-# Scratch eviction + sync-up metrics warn lines (s3 mode).
-if ! grep -q 'OD_SCRATCH_EVICT_AFTER_RUN 미설정' <<< "$clean_out"; then
-  echo "❌ baseline should warn about OD_SCRATCH_EVICT_AFTER_RUN 미설정"
-  echo "$clean_out"
-  exit 1
-fi
-if ! grep -q 'OD_S3_SYNC_UP_METRICS!=1' <<< "$clean_out"; then
-  echo "❌ baseline should warn about OD_S3_SYNC_UP_METRICS!=1"
-  echo "$clean_out"
-  exit 1
-fi
-if ! grep -q 'OD_SCRATCH_DISK_METRICS!=1' <<< "$clean_out"; then
-  echo "❌ baseline should warn about OD_SCRATCH_DISK_METRICS!=1"
-  echo "$clean_out"
-  exit 1
-fi
+# Hosted S3 requires scratch capacity and sync failure visibility settings.
+for key in OD_SCRATCH_EVICT_AFTER_RUN OD_S3_SYNC_UP_METRICS OD_SCRATCH_DISK_METRICS; do
+  MISSING_ENV="$(mktemp)"
+  grep -v "^${key}=" "$TMP_ENV" > "$MISSING_ENV" || true
+  missing_out="$(bash "$SCRIPT" --staging --rds --env-file "$MISSING_ENV" 2>&1 || true)"
+  if ! grep -q "${key}=1 필요" <<< "$missing_out"; then
+    echo "❌ hosted S3 without ${key}=1 must fail preflight"
+    echo "$missing_out"
+    rm -f "$MISSING_ENV"
+    exit 1
+  fi
+  rm -f "$MISSING_ENV"
+done
 
-echo "✓ validate_deploy_env DRIVE/SCRATCH/SYNC-UP warnings ok"
+echo "✓ validate_deploy_env DRIVE + hosted SCRATCH/SYNC-UP gates ok"
 
 # Daemon billing bridge warnings.
 if ! grep -q 'daemon billing bridge 활성\|daemon billing bridge OFF' <<< "$clean_out"; then

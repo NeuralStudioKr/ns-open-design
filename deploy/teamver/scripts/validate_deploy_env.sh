@@ -70,6 +70,9 @@ unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
   OD_PROJECT_STORAGE OD_S3_BUCKET OD_S3_REGION AWS_REGION \
   OD_S3_ENDPOINT OD_S3_ACCESS_KEY_ID AWS_ACCESS_KEY_ID \
   OD_S3_ALLOW_SCRATCH_FALLBACK \
+  OD_SCRATCH_EVICT_AFTER_RUN OD_S3_SYNC_UP_METRICS \
+  OD_SCRATCH_DISK_METRICS OD_SCRATCH_DISK_THRESHOLD_MB \
+  OD_SCRATCH_DISK_METRIC_INTERVAL_MS \
   POSTGRES_HOST POSTGRES_PASSWD POSTGRES_DB POSTGRES_USER \
   TEAMVER_REGISTRY_APP_ID TEAMVER_REGISTRY_KEY_ID TEAMVER_REGISTRY_ACCESS_KEY \
   LITESTREAM_BUCKET TEAMVER_DRIVE_PUBLISH_FOLDER_ID \
@@ -273,16 +276,26 @@ fi
 if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
   if [[ "${OD_SCRATCH_EVICT_AFTER_RUN:-}" == "1" ]]; then
     warn "OD_SCRATCH_EVICT_AFTER_RUN=1 — run 종료 후 scratch project tree 제거 (디스크 절약, 다음 access는 sync-down)"
+  elif [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+    fail "OD_SCRATCH_EVICT_AFTER_RUN=1 필요 — hosted S3 mode에서 run 완료 후 scratch 용량 회수 필수"
   else
     warn "OD_SCRATCH_EVICT_AFTER_RUN 미설정 — scratch는 lazy TTL/디스크 알람으로만 관리됨"
   fi
   if [[ -z "${OD_S3_SYNC_UP_METRICS:-}" || "${OD_S3_SYNC_UP_METRICS}" != "1" ]]; then
-    warn "OD_S3_SYNC_UP_METRICS!=1 — lazy/run-end sync-up failed JSON 마커가 비활성 (CW od_s3_sync_up_failed 알람 영향 없음 — run-end는 항상 emit)"
+    if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+      fail "OD_S3_SYNC_UP_METRICS=1 필요 — hosted S3 sync-up 실패 감지 필수"
+    else
+      warn "OD_S3_SYNC_UP_METRICS!=1 — lazy sync-up failed JSON 마커 비활성"
+    fi
   fi
   if [[ "${OD_SCRATCH_DISK_METRICS:-}" == "1" ]]; then
     warn "OD_SCRATCH_DISK_METRICS=1 — run 종료 시 od_scratch_disk_usage JSON 마커 emit (threshold MB=${OD_SCRATCH_DISK_THRESHOLD_MB:-2048}, periodic interval ms=${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-300000})"
   else
-    warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성 (CW od_scratch_disk_usage 알람 무효)"
+    if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+      fail "OD_SCRATCH_DISK_METRICS=1 필요 — hosted scratch 디스크 용량 감지 필수"
+    else
+      warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성"
+    fi
   fi
   if [[ "${OD_S3_PURGE_ON_DELETE:-}" == "0" ]]; then
     warn "OD_S3_PURGE_ON_DELETE=0 — registry delete 시 tenant S3 prefix 유지 (scratch evict만)"

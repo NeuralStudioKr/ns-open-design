@@ -130,8 +130,12 @@ export function createProjectMaterializationRuntime(
               }),
             );
           }
-          if (process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1') {
+          if (result.failed === 0 && process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1') {
             await storage.evictScratchProject(projectId);
+          } else if (result.failed > 0 && process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1') {
+            console.warn(
+              `[project-materialization] retaining scratch for ${projectId}: ${result.failed} S3 upload(s) failed`,
+            );
           }
           await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end');
         } catch (err) {

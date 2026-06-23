@@ -232,6 +232,8 @@ describe('createProjectMaterializationRuntime', () => {
 
   it('emits od_s3_sync_up_failed marker when some files fail on sync-up', async () => {
     const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-fail-'));
+    const previousEvict = process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+    process.env.OD_SCRATCH_EVICT_AFTER_RUN = '1';
     try {
       const fakeRemote = {
         listFiles: async () => [],
@@ -245,6 +247,7 @@ describe('createProjectMaterializationRuntime', () => {
         fakeRemote as any,
       );
       vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 2, skipped: 1, failed: 1 });
+      const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
       const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
       const runtime = createProjectMaterializationRuntime(layout, storage);
       const infos: string[] = [];
@@ -265,11 +268,14 @@ describe('createProjectMaterializationRuntime', () => {
         expect(marker).toContain('"stage":"run_end"');
         expect(marker).toContain('"failed":1');
         expect(marker).toContain('"uploaded":2');
+        expect(evict).not.toHaveBeenCalled();
       } finally {
         infoSpy.mockRestore();
         warnSpy.mockRestore();
       }
     } finally {
+      if (previousEvict === undefined) delete process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+      else process.env.OD_SCRATCH_EVICT_AFTER_RUN = previousEvict;
       await rm(scratchRoot, { recursive: true, force: true });
     }
   });

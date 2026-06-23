@@ -8,7 +8,11 @@ import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
 
 export type ProjectStorageAccessHooks = {
   ensureMaterialized: (req: Request, projectId: string) => Promise<void>;
-  persistAfterMutation: (req: Request, projectId: string) => Promise<void>;
+  persistAfterMutation: (
+    req: Request,
+    projectId: string,
+    options?: { strict?: boolean },
+  ) => Promise<void>;
   onProjectRemoved: (req: Request, projectId: string) => Promise<void>;
 };
 
@@ -100,7 +104,11 @@ export function createProjectStorageAccessHooks(
     }
   }
 
-  async function persistAfterMutation(req: Request, projectId: string): Promise<void> {
+  async function persistAfterMutation(
+    req: Request,
+    projectId: string,
+    options?: { strict?: boolean },
+  ): Promise<void> {
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
 
@@ -120,11 +128,15 @@ export function createProjectStorageAccessHooks(
           uploaded: result.uploaded,
         }));
       }
+      if (result.failed > 0 && options?.strict) {
+        throw new Error(`project_storage_sync_failed:${result.failed}`);
+      }
     } catch (err) {
       console.warn(
         `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
         err instanceof Error ? err.message : err,
       );
+      if (options?.strict) throw err;
     }
   }
 

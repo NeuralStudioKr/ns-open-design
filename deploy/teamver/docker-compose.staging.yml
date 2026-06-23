@@ -3,6 +3,14 @@
 #   docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging ...
 
 services:
+  open-design-daemon:
+    environment:
+      OD_SCRATCH_EVICT_AFTER_RUN: "1"
+      OD_S3_SYNC_UP_METRICS: "1"
+      OD_SCRATCH_DISK_METRICS: "1"
+      OD_SCRATCH_DISK_THRESHOLD_MB: ${OD_SCRATCH_DISK_THRESHOLD_MB:-2048}
+      OD_SCRATCH_DISK_METRIC_INTERVAL_MS: ${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-300000}
+
   teamver-design-api:
     env_file:
       - .env.staging

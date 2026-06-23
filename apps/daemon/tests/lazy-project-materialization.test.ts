@@ -70,6 +70,34 @@ describe('createProjectStorageAccessHooks', () => {
     }
   });
 
+  it('reports partial sync-up failures only for strict persistence requests', async () => {
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 1, skipped: 0, failed: 1 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await expect(
+        hooks!.persistAfterMutation(mockReq('POST', '/api/projects/p1/files'), 'p1'),
+      ).resolves.toBeUndefined();
+      await expect(
+        hooks!.persistAfterMutation(
+          mockReq('POST', '/api/projects/p1/scratch/sync-up'),
+          'p1',
+          { strict: true },
+        ),
+      ).rejects.toThrow('project_storage_sync_failed:1');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('onProjectRemoved purges remote then evicts scratch (default purge on)', async () => {
     const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
     delete process.env.OD_S3_PURGE_ON_DELETE;
