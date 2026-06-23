@@ -1204,9 +1204,14 @@ function AppInner() {
       if (prev.length === 0) return prev;
       const projectsById = new Map(projects.map((project) => [project.id, project]));
       const next = prev
-        .filter((summary) => projectsById.has(summary.projectId))
+        .filter(
+          (summary) =>
+            projectsById.has(summary.projectId)
+            || pendingLocalProjectIdsRef.current.has(summary.projectId),
+        )
         .map((summary) => {
-        const project = projectsById.get(summary.projectId)!;
+        const project = projectsById.get(summary.projectId);
+        if (!project) return summary;
         const previewFileName = projectOpenOptionsFromPreviewCover(project, null)?.fileName ?? null;
         if (
           project.name === summary.projectName
@@ -1989,7 +1994,7 @@ function AppInner() {
   }, [activeProjectRouteId]);
 
   const handleOpenProject = useCallback(
-    (id: string, options?: { fileName?: string; conversationId?: string | null }) => {
+    (id: string, options?: { fileName?: string | null; conversationId?: string | null }) => {
       void navigateToProject(id, {
         fileName: options?.fileName ?? null,
         ...(options?.conversationId !== undefined
@@ -2261,6 +2266,7 @@ function AppInner() {
         && previous?.metadata?.entryFile !== updated.metadata?.entryFile
       ) {
         clearProjectCoverCache(updated.id);
+        void prefetchDesignsTabViewport([updated]);
       }
       if (
         previous
