@@ -69,10 +69,15 @@ import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEven
 import {
   assertTeamverProjectAccessIfNeeded,
   ensureTeamverProjectRegisteredById,
+  formatTeamverProjectRegistryErrorMessage,
   registerTeamverProjectIfNeeded,
   syncAllDaemonProjectsToRegistry,
+  TeamverProjectRegistryError,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
+import { clearTeamverEmbedListCaches } from './teamver/teamverEmbedListCaches';
+import { resetEmbedRunTrackingRefs } from './teamver/teamverEmbedRunTracking';
+import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -483,6 +488,8 @@ function AppInner() {
   // can't overwrite the saved state with `''` before hydration lands.
   const [composioConfigLoading, setComposioConfigLoading] = useState(true);
   const route = useRoute();
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const analytics = useAnalytics();
 
   const beginAgentStreamRequest = useCallback(() => {
@@ -1135,15 +1142,39 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
-      void refreshProjects();
+      clearTeamverEmbedListCaches();
+      setBackgroundRunSummaries([]);
+      resetEmbedRunTrackingRefs({
+        activeRunIds: activeRunIdsRef,
+        notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+        wasActiveRun: wasActiveRunRef,
+        activeRunSignature: activeRunSignatureRef,
+      });
+      void (async () => {
+        const request = beginProjectListRequest();
+        const list = await listProjects();
+        reconcileFetchedProjects(list, request);
+        const current = routeRef.current;
+        if (shouldNavigateHomeAfterWorkspaceProjectList(current, list)) {
+          navigate({ kind: 'home', view: 'home' }, { replace: true });
+        }
+      })();
     });
-  }, [refreshProjects]);
+  }, [beginProjectListRequest, reconcileFetchedProjects]);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
+        clearTeamverEmbedListCaches();
         setProjects([]);
+        setBackgroundRunSummaries([]);
+        resetEmbedRunTrackingRefs({
+          activeRunIds: activeRunIdsRef,
+          notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+          wasActiveRun: wasActiveRunRef,
+          activeRunSignature: activeRunSignatureRef,
+        });
         return;
       }
       void refreshProjects();
@@ -1472,6 +1503,10 @@ function AppInner() {
           },
           { requestId: input.requestId },
         );
+        if (isTeamverEmbedMode() && err instanceof TeamverProjectRegistryError) {
+          setWorkingDirError(formatTeamverProjectRegistryErrorMessage(err.code));
+          return false;
+        }
         throw err;
       }
       if (!result) {
@@ -1774,8 +1809,13 @@ function AppInner() {
   }, [activeProjectRouteId]);
 
   const handleOpenProject = useCallback(
-    (id: string, options?: { fileName?: string }) => {
-      void navigateToProject(id, { fileName: options?.fileName ?? null });
+    (id: string, options?: { fileName?: string; conversationId?: string | null }) => {
+      void navigateToProject(id, {
+        fileName: options?.fileName ?? null,
+        ...(options?.conversationId !== undefined
+          ? { conversationId: options.conversationId }
+          : {}),
+      });
     },
     [navigateToProject],
   );
@@ -1784,8 +1824,12 @@ function AppInner() {
     if (!daemonLive) {
       setPetTaskCenter({ running: [], queued: [], recent: [] });
       setBackgroundRunSummaries([]);
-      wasActiveRunRef.current = false;
-      activeRunIdsRef.current.clear();
+      resetEmbedRunTrackingRefs({
+        activeRunIds: activeRunIdsRef,
+        notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+        wasActiveRun: wasActiveRunRef,
+        activeRunSignature: activeRunSignatureRef,
+      });
       return;
     }
 

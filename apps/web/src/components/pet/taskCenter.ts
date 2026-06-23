@@ -18,11 +18,11 @@ export function buildPetTaskCenter(
     const project = projectsById.get(run.projectId);
     if (!project) continue;
     if (run.status === 'running') {
-      addActiveSummary(running, run.projectId, project.name, 'running');
+      addActiveSummary(running, run, project.name, 'running');
       continue;
     }
     if (run.status === 'queued') {
-      addActiveSummary(queued, run.projectId, project.name, 'queued');
+      addActiveSummary(queued, run, project.name, 'queued');
       continue;
     }
     if (TERMINAL_STATUSES.has(run.status)) {
@@ -38,13 +38,46 @@ export function buildPetTaskCenter(
   }
 
   return {
-    running: sortActiveSummaries([...running.values()]),
-    queued: sortActiveSummaries([...queued.values()]),
+    running: attachPrimaryConversations(sortActiveSummaries([...running.values()]), runs),
+    queued: attachPrimaryConversations(sortActiveSummaries([...queued.values()]), runs),
     recent: [...recentByProject.values()]
       .filter((task) => !running.has(task.projectId) && !queued.has(task.projectId))
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 3),
   };
+}
+
+/** Prefer a running run's conversation; else the latest queued/running run with conversationId. */
+export function primaryConversationIdForProject(
+  runs: ChatRunStatusResponse[],
+  projectId: string,
+): string | null {
+  let best: { id: string; updatedAt: number; running: boolean } | null = null;
+  for (const run of runs) {
+    if (run.projectId !== projectId) continue;
+    if (run.status !== 'running' && run.status !== 'queued') continue;
+    const id = run.conversationId?.trim();
+    if (!id) continue;
+    const running = run.status === 'running';
+    if (
+      !best
+      || (running && !best.running)
+      || (running === best.running && run.updatedAt >= best.updatedAt)
+    ) {
+      best = { id, updatedAt: run.updatedAt, running };
+    }
+  }
+  return best?.id ?? null;
+}
+
+function attachPrimaryConversations(
+  summaries: PetTaskSummary[],
+  runs: ChatRunStatusResponse[],
+): PetTaskSummary[] {
+  return summaries.map((summary) => ({
+    ...summary,
+    conversationId: primaryConversationIdForProject(runs, summary.projectId),
+  }));
 }
 
 /** Active (queued + running) runs for embed background-run surfaces. */
@@ -69,21 +102,23 @@ export function activeRunSummariesEqual(
       && item.projectName === other.projectName
       && item.status === other.status
       && item.count === other.count
+      && item.conversationId === other.conversationId
     );
   });
 }
 
 function addActiveSummary(
   summaries: Map<string, PetTaskSummary>,
-  projectId: string,
+  run: ChatRunStatusResponse,
   projectName: string,
   status: PetTaskSummary['status'],
 ) {
+  const projectId = run.projectId!;
   const prev = summaries.get(projectId);
   summaries.set(projectId, {
     projectId,
     projectName,
-    status,
+    status: prev?.status === 'running' ? 'running' : status,
     count: (prev?.count ?? 0) + 1,
   });
 }

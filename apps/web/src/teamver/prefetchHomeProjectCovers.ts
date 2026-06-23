@@ -20,14 +20,15 @@ export async function prefetchHomeProjectCovers(
   const needsHint = recent.filter((project) => projectNeedsCoverFileFetch(project));
   if (needsHint.length > 0) {
     const hints = await fetchProjectCoverHints(needsHint.map((project) => project.id));
-    seedProjectCoverHints(
-      Object.fromEntries(
-        needsHint.map((project) => {
-          const hint = hints[project.id];
-          return [project.id, hint ? projectCoverFileFromHint(hint) : null] as const;
-        }),
-      ),
-    );
+    const positive: Record<string, ProjectCoverFile> = {};
+    for (const project of needsHint) {
+      const hint = hints[project.id];
+      const cover = hint ? projectCoverFileFromHint(hint) : null;
+      if (cover) positive[project.id] = cover;
+    }
+    if (Object.keys(positive).length > 0) {
+      seedProjectCoverHints(positive);
+    }
   }
 
   return resolveProjectCoverFiles(recent, {

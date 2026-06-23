@@ -4,6 +4,7 @@ import type { ChatRunStatusResponse } from '@open-design/contracts';
 import {
   buildActiveRunSummaries,
   buildPetTaskCenter,
+  primaryConversationIdForProject,
 } from '../src/components/pet/taskCenter';
 import type { Project } from '../src/types';
 
@@ -17,11 +18,12 @@ function run(
   projectId: string,
   status: ChatRunStatusResponse['status'],
   updatedAt: number,
+  conversationId: string | null = null,
 ): ChatRunStatusResponse {
   return {
     id,
     projectId,
-    conversationId: null,
+    conversationId,
     assistantMessageId: null,
     agentId: null,
     status,
@@ -39,9 +41,30 @@ describe('buildActiveRunSummaries', () => {
     ]);
 
     expect(summaries).toEqual([
-      { projectId: 'p1', projectName: 'Landing Page', status: 'running', count: 1 },
-      { projectId: 'p2', projectName: 'Brand Deck', status: 'queued', count: 1 },
+      { projectId: 'p1', projectName: 'Landing Page', status: 'running', count: 1, conversationId: null },
+      { projectId: 'p2', projectName: 'Brand Deck', status: 'queued', count: 1, conversationId: null },
     ]);
     expect(buildPetTaskCenter(projects, []).recent).toEqual([]);
+  });
+
+  it('attaches primary conversationId for embed background-run deep-link', () => {
+    const summaries = buildActiveRunSummaries(projects, [
+      run('r1', 'p1', 'running', 10, 'conv-a'),
+      run('q1', 'p2', 'queued', 11, 'conv-b'),
+    ]);
+
+    expect(summaries[0]?.conversationId).toBe('conv-a');
+    expect(summaries[1]?.conversationId).toBe('conv-b');
+  });
+
+  it('prefers running conversation over newer queued on the same project', () => {
+    const id = primaryConversationIdForProject(
+      [
+        run('q1', 'p1', 'queued', 20, 'conv-queued'),
+        run('r1', 'p1', 'running', 10, 'conv-running'),
+      ],
+      'p1',
+    );
+    expect(id).toBe('conv-running');
   });
 });

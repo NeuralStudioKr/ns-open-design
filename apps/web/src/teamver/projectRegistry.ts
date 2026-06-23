@@ -25,10 +25,31 @@ export type TeamverRegisteredProject = {
 };
 
 export class TeamverProjectRegistryError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
     this.name = "TeamverProjectRegistryError";
+    this.code = code;
   }
+}
+
+const REGISTRY_ERROR_MESSAGES: Record<string, string> = {
+  teamver_project_registry_unavailable:
+    "Teamver Design 연동을 사용할 수 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
+  teamver_workspace_required:
+    "워크스페이스를 선택한 뒤 프로젝트를 만들어 주세요.",
+  teamver_project_registry_sync_failed:
+    "프로젝트를 워크스페이스 저장소에 등록하지 못했습니다. 잠시 후 다시 시도하세요.",
+};
+
+/** Embed create — registry hard-fail 사용자 메시지. */
+export function formatTeamverProjectRegistryErrorMessage(
+  code: string,
+  fallback = "프로젝트를 만들 수 없습니다. 잠시 후 다시 시도하세요.",
+): string {
+  const key = code.trim();
+  return REGISTRY_ERROR_MESSAGES[key] ?? fallback;
 }
 
 const FE_ACCESS_CACHE_MS = 30_000;

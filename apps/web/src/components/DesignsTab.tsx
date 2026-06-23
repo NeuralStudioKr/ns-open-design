@@ -28,8 +28,10 @@ import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectT
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
 import { TeamverProjectPreviewChip } from "../teamver/components/TeamverProjectPreviewChip";
 import {
-	projectPreviewDeepLinkFileName,
-	type ProjectCoverFile,
+  projectOpenOptionsFromPreviewCover,
+  projectPreviewDeepLinkFileName,
+  projectCoverFilesEqual,
+  type ProjectCoverFile,
 } from "../teamver/projectPreviewFile";
 
 type SubTab = "recent" | "yours";
@@ -115,7 +117,7 @@ export function DesignsTab({
 
 	const handleCoverOverride = useCallback((projectId: string, cover: ProjectCoverFile | null) => {
 		setCoverOverrides((prev) => {
-			if (prev[projectId] === cover) return prev;
+			if (projectCoverFilesEqual(prev[projectId], cover)) return prev;
 			return { ...prev, [projectId]: cover };
 		});
 	}, []);
@@ -607,10 +609,11 @@ export function DesignsTab({
 
 						const liveCount = liveArtifactsByProject[p.id]?.length ?? 0;
 						const status = p.status?.value ?? "not_started";
-						const previewFileName = projectPreviewDeepLinkFileName(
-							p,
-							coverOverrides[p.id] ?? null,
-						);
+						const previewCover = coverOverrides[p.id] ?? null;
+						const previewFileName = projectPreviewDeepLinkFileName(p, previewCover);
+						const openProjectCard = () => {
+							onOpen(p.id, projectOpenOptionsFromPreviewCover(p, previewCover));
+						};
 						const isSelected = selected.has(p.id);
 						const designSystemProject = isDesignSystemProject(p);
 						const publishedDesignSystem = isPublishedDesignSystemProject(p, designSystems);
@@ -633,14 +636,14 @@ export function DesignsTab({
 											project_id: p.id,
 											...(projectKind ? { project_kind: projectKind } : {}),
 										});
-										onOpen(p.id);
+										openProjectCard();
 									}
 								}}
 								onKeyDown={(e) => {
 									if (e.key === "Enter" || e.key === " ") {
 										e.preventDefault();
 										if (selectMode) toggleSelected(p.id);
-										else onOpen(p.id);
+										else openProjectCard();
 									}
 								}}
 							>
@@ -816,17 +819,20 @@ export function DesignsTab({
 											const skill = skillName(p.skillId);
 											const ds = dsName(p.designSystemId);
 											const designSystemProject = isDesignSystemProject(p);
+											const openKanbanCard = () => {
+												onOpen(p.id, projectOpenOptionsFromPreviewCover(p, null));
+											};
 											return (
 												<div
 													key={p.id}
 													className={`design-kanban-card status-${status}${designSystemProject ? " is-design-system-project" : ""}`}
 													role="button"
 													tabIndex={0}
-													onClick={() => onOpen(p.id)}
+													onClick={openKanbanCard}
 													onKeyDown={(e) => {
 														if (e.key === "Enter" || e.key === " ") {
 															e.preventDefault();
-															onOpen(p.id);
+															openKanbanCard();
 														}
 													}}
 												>

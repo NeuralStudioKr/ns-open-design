@@ -7,9 +7,11 @@ import {
   fetchTeamverProject,
   filterProjectsByTeamverRegistryIfNeeded,
   listTeamverRegisteredProjectIds,
+  formatTeamverProjectRegistryErrorMessage,
   registerTeamverProjectIfNeeded,
   resetTeamverProjectRegistryStateForTests,
   syncAllDaemonProjectsToRegistry,
+  TeamverProjectRegistryError,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from '../src/teamver/projectRegistry';
 import * as designApiBase from '../src/teamver/designApiBase';
@@ -366,5 +368,20 @@ describe('Teamver project registry delete', () => {
       workspaceId: 'ws1',
       skipAuthHeader: true,
     });
+  });
+});
+
+describe('formatTeamverProjectRegistryErrorMessage', () => {
+  it('maps registry error codes to Korean user messages', () => {
+    expect(formatTeamverProjectRegistryErrorMessage('teamver_project_registry_sync_failed')).toContain(
+      '등록',
+    );
+    expect(formatTeamverProjectRegistryErrorMessage('unknown_code', 'fallback')).toBe('fallback');
+  });
+
+  it('exposes code on TeamverProjectRegistryError', () => {
+    const err = new TeamverProjectRegistryError('teamver_workspace_required');
+    expect(err.code).toBe('teamver_workspace_required');
+    expect(formatTeamverProjectRegistryErrorMessage(err.code)).toContain('워크스페이스');
   });
 });

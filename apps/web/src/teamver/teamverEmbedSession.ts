@@ -1,6 +1,6 @@
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
-import { invalidateTeamverProjectRegistryCaches } from "./projectRegistry";
+import { clearTeamverEmbedListCaches } from "./teamverEmbedListCaches";
 
 const ACTIVE_WORKSPACE_KEY = "teamver_design_active_workspace_id";
 
@@ -51,7 +51,7 @@ export function isTeamverEmbedSessionAuthenticated(): boolean {
 /** Drop stale workspace + registry caches when cookie SSO is absent. */
 export async function clearTeamverEmbedSessionState(): Promise<void> {
   setTeamverEmbedSessionAuthenticated(false);
-  invalidateTeamverProjectRegistryCaches();
+  clearTeamverEmbedListCaches();
 
   const client = getDesignBffClient();
   const store = client?.workspaceStore as { clear?: () => Promise<void> | void } | null | undefined;

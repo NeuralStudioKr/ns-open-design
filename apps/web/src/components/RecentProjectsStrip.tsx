@@ -17,6 +17,7 @@ import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
 import { TeamverProjectPreviewChip } from '../teamver/components/TeamverProjectPreviewChip';
 import {
+  projectOpenOptionsFromPreviewCover,
   projectPreviewDeepLinkFileName,
   type ProjectCoverFile,
 } from '../teamver/projectPreviewFile';
@@ -133,7 +134,7 @@ export function RecentProjectsStrip({
               type="button"
               role="listitem"
               className={`recent-projects__card${designSystemProject ? ' is-design-system-project' : ''}`}
-              onClick={() => onOpen(project.id)}
+              onClick={() => onOpen(project.id, projectOpenOptionsFromPreviewCover(project, coverOverride))}
               title={project.name}
               data-project-id={project.id}
             >

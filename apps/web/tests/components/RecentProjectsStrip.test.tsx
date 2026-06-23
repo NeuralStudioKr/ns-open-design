@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RecentProjectsStrip } from '../../src/components/RecentProjectsStrip';
@@ -133,5 +133,30 @@ describe('RecentProjectsStrip', () => {
         '/api/projects/project-html/files/index.html',
       );
     });
+  });
+
+  it('opens deck projects with preview file deep-link', async () => {
+    const onOpen = vi.fn();
+    const { container } = render(
+      <RecentProjectsStrip
+        projects={[
+          project({
+            id: 'project-deck',
+            name: 'Simple Deck',
+            updatedAt: 4,
+            metadata: { kind: 'deck', entryFile: 'deck.html' },
+          }),
+        ]}
+        onOpen={onOpen}
+        onViewAll={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-project-id="project-deck"]')).toBeTruthy();
+    });
+
+    fireEvent.click(container.querySelector('[data-project-id="project-deck"]')!);
+    expect(onOpen).toHaveBeenCalledWith('project-deck', { fileName: 'deck.html' });
   });
 });

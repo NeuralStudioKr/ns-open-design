@@ -5,7 +5,7 @@ import { useT } from "../../i18n";
 
 type Props = {
   summaries: PetTaskSummary[];
-  onOpenProject: (projectId: string) => void;
+  onOpenProject: (projectId: string, options?: { conversationId?: string | null }) => void;
 };
 
 function statusLabelKey(status: PetTaskSummary["status"]): "teamver.backgroundRuns.running" | "teamver.backgroundRuns.queued" {
@@ -71,7 +71,7 @@ export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props)
         <button
           type="button"
           className="teamver-background-runs__open"
-          onClick={() => onOpenProject(primary.projectId)}
+          onClick={() => onOpenProject(primary.projectId, { conversationId: primary.conversationId ?? null })}
           data-testid="teamver-background-runs-open"
         >
           <span>{t("teamver.backgroundRuns.open")}</span>
@@ -82,7 +82,7 @@ export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props)
         <ul className="teamver-background-runs__list">
           {summaries.map((summary) => (
             <li key={summary.projectId}>
-              <button type="button" onClick={() => onOpenProject(summary.projectId)}>
+              <button type="button" onClick={() => onOpenProject(summary.projectId, { conversationId: summary.conversationId ?? null })}>
                 <span>{summary.projectName}</span>
                 <small>
                   {t(statusLabelKey(summary.status))}

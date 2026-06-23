@@ -78,7 +78,12 @@ async function drainCoverHintBatch(): Promise<void> {
 
 async function ensureCoverHintBatch(): Promise<void> {
   if (!activeHintBatch) {
-    activeHintBatch = drainCoverHintBatch().finally(() => {
+    activeHintBatch = (async () => {
+      await new Promise<void>((resolve) => {
+        queueMicrotask(() => resolve());
+      });
+      await drainCoverHintBatch();
+    })().finally(() => {
       activeHintBatch = null;
     });
   }

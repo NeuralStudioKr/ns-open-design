@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   pickProjectCoverFile,
+  projectCoverFilesEqual,
+  projectOpenOptionsFromPreviewCover,
   projectPreviewDeepLinkFileName,
 } from "../src/teamver/projectPreviewFile";
 import type { Project, ProjectFile } from "../src/types";
@@ -52,5 +54,20 @@ describe("projectPreviewFile", () => {
   it("returns null for non-html covers", () => {
     const cover = { kind: "image" as const, name: "hero.png" };
     expect(projectPreviewDeepLinkFileName(project(), cover)).toBeNull();
+  });
+
+  it("compares cover files by kind and path", () => {
+    const cover = { kind: "html" as const, name: "deck.html" };
+    expect(projectCoverFilesEqual(cover, { kind: "html", name: "deck.html" })).toBe(true);
+    expect(projectCoverFilesEqual(cover, { kind: "image", name: "deck.html" })).toBe(false);
+    expect(projectCoverFilesEqual(null, null)).toBe(true);
+  });
+
+  it("builds onOpen options from preview cover", () => {
+    const cover = { kind: "html" as const, name: "deck.html" };
+    expect(projectOpenOptionsFromPreviewCover(project({ metadata: { kind: "deck" } }), cover)).toEqual({
+      fileName: "deck.html",
+    });
+    expect(projectOpenOptionsFromPreviewCover(project(), null)).toBeUndefined();
   });
 });

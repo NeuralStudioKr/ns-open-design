@@ -13,9 +13,9 @@ vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: () => true,
 }));
 
-const invalidateTeamverProjectRegistryCaches = vi.fn();
-vi.mock("../src/teamver/projectRegistry", () => ({
-  invalidateTeamverProjectRegistryCaches: () => invalidateTeamverProjectRegistryCaches(),
+const clearTeamverEmbedListCaches = vi.fn();
+vi.mock("../src/teamver/teamverEmbedListCaches", () => ({
+  clearTeamverEmbedListCaches: () => clearTeamverEmbedListCaches(),
 }));
 
 const workspaceClear = vi.fn();
@@ -28,7 +28,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
 describe("teamverEmbedSession", () => {
   afterEach(() => {
     setTeamverEmbedSessionAuthenticated(false);
-    invalidateTeamverProjectRegistryCaches.mockClear();
+    clearTeamverEmbedListCaches.mockClear();
     workspaceClear.mockClear();
     localStorage.clear();
   });
@@ -39,11 +39,11 @@ describe("teamverEmbedSession", () => {
     expect(isTeamverEmbedSessionAuthenticated()).toBe(true);
   });
 
-  it("clears workspace + registry caches when logging out", async () => {
+  it("clears workspace + embed list caches when logging out", async () => {
     setTeamverEmbedSessionAuthenticated(true);
     await clearTeamverEmbedSessionState();
     expect(isTeamverEmbedSessionAuthenticated()).toBe(false);
-    expect(invalidateTeamverProjectRegistryCaches).toHaveBeenCalled();
+    expect(clearTeamverEmbedListCaches).toHaveBeenCalled();
     expect(workspaceClear).toHaveBeenCalled();
   });
 

@@ -23,6 +23,8 @@ export interface PetTaskSummary {
   projectName: string;
   status: 'queued' | 'running';
   count: number;
+  /** Active run conversation — embed background-run banner deep-link. */
+  conversationId?: string | null;
 }
 
 export interface PetRecentTaskSummary {

@@ -114,6 +114,11 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-project-preview-file.test.ts \
       tests/teamver-project-preview-chip.test.tsx \
       tests/teamver-project-cover-loader.test.ts \
+      tests/teamver-embed-list-caches.test.ts \
+      tests/teamver-embed-run-tracking.test.ts \
+      tests/teamver-workspace-project-route.test.ts \
+      tests/teamver-embed-session.test.ts \
+      tests/components/RecentProjectsStrip.test.tsx \
       tests/teamver-active-run-summaries.test.ts \
       tests/teamver-background-runs-banner.test.tsx \
       tests/teamver-branding-head.test.tsx \

@@ -81,6 +81,24 @@ export function projectPreviewDeepLinkFileName(
   return null;
 }
 
+/** `onOpen` options when a project card should land on the HTML preview tab. */
+export function projectOpenOptionsFromPreviewCover(
+  project: Project,
+  cover: ProjectCoverFile | null | undefined,
+): { fileName: string } | undefined {
+  const fileName = projectPreviewDeepLinkFileName(project, cover);
+  return fileName ? { fileName } : undefined;
+}
+
+export function projectCoverFilesEqual(
+  left: ProjectCoverFile | null | undefined,
+  right: ProjectCoverFile | null | undefined,
+): boolean {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return left.kind === right.kind && left.name === right.name;
+}
+
 function basename(path: string): string {
   return path.split("/").pop() || path;
 }
