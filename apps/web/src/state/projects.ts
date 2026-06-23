@@ -45,6 +45,20 @@ import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSessi
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
 
+async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'name'>): Promise<void> {
+  try {
+    await registerTeamverProjectIfNeeded(project);
+  } catch (err) {
+    try {
+      await fetch(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE' });
+    } catch {
+      // The registry failure is the actionable error. Scratch cleanup remains
+      // best-effort when the daemon is also unavailable.
+    }
+    throw err;
+  }
+}
+
 export async function listProjects(): Promise<Project[]> {
   try {
     if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) {
@@ -127,7 +141,7 @@ export async function createProject(input: {
       conversationId: string;
       appliedPluginSnapshotId?: string;
     };
-    await registerTeamverProjectIfNeeded(result.project);
+    await registerCreatedProjectOrRollback(result.project);
     return {
       ...result,
       project: sanitizeProjectForEmbed(result.project),
@@ -191,7 +205,7 @@ export async function importFolderProject(
     throw new Error(message);
   }
   const result = (await resp.json()) as ImportFolderResponse;
-  await registerTeamverProjectIfNeeded(result.project);
+  await registerCreatedProjectOrRollback(result.project);
   return result;
 }
 
@@ -219,7 +233,7 @@ export async function importClaudeDesignZip(
     conversationId: string;
     entryFile: string;
   };
-  await registerTeamverProjectIfNeeded(result.project);
+  await registerCreatedProjectOrRollback(result.project);
   return result;
 }
 
@@ -981,7 +995,7 @@ export async function createPluginShareProject(
       | null;
     if (resp.ok && body?.ok && body.project && body.conversationId) {
       const outcome = body as CreatePluginShareProjectResponse & { ok: true };
-      await registerTeamverProjectIfNeeded(outcome.project);
+      await registerCreatedProjectOrRollback(outcome.project);
       return outcome;
     }
     const errorMessage =

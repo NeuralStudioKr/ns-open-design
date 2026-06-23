@@ -24,6 +24,13 @@ export type TeamverRegisteredProject = {
   ownerUserId?: string;
 };
 
+export class TeamverProjectRegistryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamverProjectRegistryError";
+  }
+}
+
 const FE_ACCESS_CACHE_MS = 30_000;
 const REGISTRY_LIST_CACHE_MS = 15_000;
 const SYNC_ALL_MIN_INTERVAL_MS = 60_000;
@@ -123,10 +130,10 @@ export async function registerTeamverProjectIfNeeded(
   }
 
   const client = getDesignBffClient();
-  if (!client) return;
+  if (!client) throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
 
   const workspaceId = (await client.workspaceStore?.get())?.trim();
-  if (!workspaceId) return;
+  if (!workspaceId) throw new TeamverProjectRegistryError("teamver_workspace_required");
 
   try {
     await client.http.post(
@@ -146,6 +153,7 @@ export async function registerTeamverProjectIfNeeded(
       return;
     }
     console.warn("[teamver] project registry sync failed", err);
+    throw new TeamverProjectRegistryError("teamver_project_registry_sync_failed");
   }
 }
 

@@ -106,6 +106,30 @@ describe('Teamver project registry register', () => {
       registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
     ).resolves.toBeUndefined();
   });
+
+  it('rejects embed registration when the BFF client is unavailable', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
+    ).rejects.toThrow('teamver_project_registry_unavailable');
+  });
+
+  it('rejects embed registration when registry upsert fails', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        post: vi.fn(async () => {
+          throw new NetworkError({ message: 'upstream', status: 502 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
+    ).rejects.toThrow('teamver_project_registry_sync_failed');
+  });
 });
 
 describe('Teamver project registry access', () => {

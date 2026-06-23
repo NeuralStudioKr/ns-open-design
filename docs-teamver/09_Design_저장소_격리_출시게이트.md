@@ -176,6 +176,7 @@ CREATE INDEX idx_design_projects_workspace ON design_projects (workspace_id, upd
 - OD web daemon project create, folder/ZIP import, plugin-share project, host import response 성공 후 design-api registry best-effort 등록 반영.
 - Teamver embed list는 registry 조회 성공 시 `od_project_id` 기준으로 daemon list를 필터 (BE list는 owner 스코프). registry 조회 실패 시 daemon list를 노출하지 않고 **fail-closed**한다.
 - daemon legacy project 전체를 현재 workspace registry에 upsert하는 이관 경로는 기본 비활성이다. 명시적 `VITE_TEAMVER_LEGACY_REGISTRY_SYNC=1`에서만 한시적으로 허용한다.
+- hosted project create/import/share는 daemon 생성 후 registry upsert를 필수 단계로 처리한다. BFF/workspace/registry 실패를 성공으로 숨기지 않고, 생성된 daemon project를 best-effort rollback한 뒤 사용자에게 실패를 반환한다.
 - managed S3에서 request identity 또는 registry `s3_prefix`를 해석하지 못하면 flat/global remote prefix로 fallback하지 않고 요청을 실패시킨다. request override가 registry SSOT와 달라도 거부한다. standalone OD(미관리 모드)만 flat remote를 유지한다.
 - **smoke**: `scripts/smoke_design.sh --staging` (+ `/access`, `/outputs`, healthz tables). staging/production 모드는 `SMOKE_REQUIRE_OD_STORAGE=1` 이 기본 on 이므로 `checks.od_storage=degraded` 는 실패가 정상이다. 긴급 진단 시에만 `SMOKE_REQUIRE_OD_STORAGE=0` 으로 임시 우회한다.
 - **daemon S3 init**: `OD_PROJECT_STORAGE=s3` 인데 bucket/region/IAM/creds 문제로 S3 backend 초기화가 실패하면 `od_s3_storage_init_failed` 마커 후 daemon 기동 실패가 기본값이다. `OD_S3_ALLOW_SCRATCH_FALLBACK=1` 은 로컬/디버그 전용이며 staging/production preflight 와 storage audit 에서 실패한다.
@@ -538,6 +539,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 | 2026-06-19 | S3 sync hard-fail review fix — soft-deleted reactivation / insert-race reactivation 경로도 sync 실패 시 명시 rollback 하도록 보강, 2개 회귀 테스트 추가 |
 | 2026-06-19 | registry create S3 sync hard-fail — `OD_PROJECT_STORAGE=s3` 에서 daemon `scratch/sync-up` 실패 시 design-api create rollback + 502, Track A runner에 daemon S3 startup test 포함 |
 | 2026-06-22 | hosted tenant fail-closed — registry list/access 장애 시 daemon project 노출 차단, legacy 전체 upsert 기본 off, managed S3 identity/prefix 누락 시 flat remote fallback 금지 |
+| 2026-06-23 | hosted project create 원자성 — registry upsert 실패 시 create/import/share 성공 반환 금지 + daemon project rollback |
 | 2026-06-19 | S3 init fail-fast — daemon S3 backend 초기화 실패 시 scratch-only fallback 기본 차단, `od_s3_storage_init_failed` 마커, `OD_S3_ALLOW_SCRATCH_FALLBACK=1` staging/prod 배포 가드 실패 처리 |
 | 2026-06-19 | storage smoke/prod env 출시 게이트 hardening — staging/production smoke storage hard-fail 기본 on, post-deploy smoke 동일 적용, production env hard guard(LLM key·정적 AWS key·staging token) 추가. 남음: EC2 staging `checks.od_storage=ok` 실증 |
 | 2026-06-18 | staging smoke 결과 반영 — RDS registry tables OK, S3 storage probe `checks.od_storage=degraded`; public daemon `/api/health/storage` 302는 nginx auth gate로 분류 |
