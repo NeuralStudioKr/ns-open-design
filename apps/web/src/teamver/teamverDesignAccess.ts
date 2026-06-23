@@ -73,6 +73,22 @@ export function isTeamverDesignAppEnabled(workspaceId: string): boolean {
   return snapshot.appEnabled;
 }
 
+/** Embed composer Drive import / Canvas handoff — BFF + workspace + Design app enabled. */
+export function isTeamverEmbedDriveImportAllowed(params: {
+  bffPresent: boolean;
+  workspaceId: string | null | undefined;
+  snapshotAppEnabled?: boolean;
+}): boolean {
+  if (!params.bffPresent) return false;
+  const trimmed = params.workspaceId?.trim();
+  if (!trimmed) return false;
+  if (!isTeamverEmbedMode()) return true;
+  const snapEnabled =
+    params.snapshotAppEnabled ?? readTeamverDesignAccessSnapshot()?.appEnabled ?? true;
+  if (!snapEnabled) return false;
+  return isTeamverDesignAppEnabled(trimmed);
+}
+
 function readPermissionsAppEnabled(permissions: {
   appEnabled?: boolean;
 } | null | undefined): boolean {

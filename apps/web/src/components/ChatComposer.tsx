@@ -38,7 +38,12 @@ import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { getDesignBffClient } from '../teamver/designBffClient';
-import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import {
+  isTeamverEmbedDriveImportAllowed,
+  readTeamverDesignAccessSnapshot,
+  subscribeTeamverDesignAccessChanged,
+} from '../teamver/teamverDesignAccess';
 import {
   driveImportedToChatAttachments,
   importTeamverDriveAssets,
@@ -464,6 +469,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
+    const [designAppEnabled, setDesignAppEnabled] = useState(
+      () => readTeamverDesignAccessSnapshot()?.appEnabled ?? true,
+    );
     const [driveImportOpen, setDriveImportOpen] = useState(false);
     const [driveImportBusy, setDriveImportBusy] = useState(false);
     const [driveImportPartial, setDriveImportPartial] = useState<TeamverDriveImportPartialResult | null>(null);
@@ -529,6 +537,29 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       };
     }, []);
     useEffect(() => {
+      if (!isTeamverEmbedMode()) return;
+      const sync = () => {
+        setDesignAppEnabled(readTeamverDesignAccessSnapshot()?.appEnabled ?? true);
+      };
+      sync();
+      return subscribeTeamverDesignAccessChanged(sync);
+    }, []);
+    const teamverDriveImportAllowed = useMemo(
+      () =>
+        isTeamverEmbedDriveImportAllowed({
+          bffPresent: teamverDriveImportEnabled,
+          workspaceId: teamverWorkspaceId,
+          snapshotAppEnabled: designAppEnabled,
+        }),
+      [teamverDriveImportEnabled, teamverWorkspaceId, designAppEnabled],
+    );
+    useEffect(() => {
+      if (teamverDriveImportAllowed) return;
+      setDriveImportOpen(false);
+      setCanvasSlideLaunch(null);
+      setDriveLaunchAssets([]);
+    }, [teamverDriveImportAllowed]);
+    useEffect(() => {
       if (!teamverDriveImportEnabled) return;
       const client = getDesignBffClient();
       if (!client?.workspaceStore) return;
@@ -543,7 +574,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       };
     }, [teamverDriveImportEnabled]);
     useEffect(() => {
-      if (!teamverDriveImportEnabled || !teamverWorkspaceId) return;
+      if (!teamverDriveImportAllowed) return;
       const handoff = readTeamverDriveLaunchHandoff();
       if (!handoff) return;
       const intent = readTeamverDriveLaunchIntent();
@@ -554,7 +585,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       }
       setDriveLaunchAssets([handoff]);
       setDriveImportOpen(true);
-    }, [teamverDriveImportEnabled, teamverWorkspaceId]);
+    }, [teamverDriveImportAllowed]);
     const rememberRecentDir = useCallback(async (dir: string) => {
       setRecentDirs((prev) => [dir, ...prev.filter((d) => d !== dir)].slice(0, 5));
       const persisted = await pushRecentLinkedDir(dir);
@@ -1467,6 +1498,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     async function importDriveAttachments(assets: TeamverDriveImportAsset[]) {
       if (assets.length === 0) return;
+      if (!teamverDriveImportAllowed) return;
       const blocked: TeamverDriveImportAsset[] = [];
       const allowedAssets: TeamverDriveImportAsset[] = [];
       if (slideOnlyMvp) {
@@ -1531,6 +1563,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     async function confirmCanvasSlideLaunch() {
       if (!canvasSlideLaunch || canvasSlideLaunchBusy || streaming) return;
+      if (!teamverDriveImportAllowed) return;
       const asset = canvasSlideLaunch;
       const blocked = embedAttachBlockReason(asset.filename ?? asset.assetId, {
         mimeType: asset.mimeType,
@@ -2544,7 +2577,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 fileInputRef.current?.click();
               }}
               onAttachFromDrive={
-                teamverDriveImportEnabled && teamverWorkspaceId
+                teamverDriveImportAllowed
                   ? () => {
                       trackChatPanelClick(analytics.track, {
                         page_name: 'chat_panel',
@@ -2740,7 +2773,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             hideUseAction
           />
         ) : null}
-        {teamverDriveImportEnabled && teamverWorkspaceId && canvasSlideLaunch ? (
+        {teamverDriveImportAllowed && canvasSlideLaunch ? (
           <TeamverCanvasSlideLaunchModal
             open
             asset={canvasSlideLaunch}
@@ -2751,7 +2784,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             onConfirm={confirmCanvasSlideLaunch}
           />
         ) : null}
-        {teamverDriveImportEnabled && teamverWorkspaceId ? (
+        {teamverDriveImportAllowed && teamverWorkspaceId ? (
           <TeamverDriveImportModal
             open={driveImportOpen}
             workspaceId={teamverWorkspaceId}

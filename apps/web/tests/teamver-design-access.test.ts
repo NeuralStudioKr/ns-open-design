@@ -13,6 +13,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
 import {
   assertTeamverDesignAppEnabled,
   isTeamverDesignAppEnabled,
+  isTeamverEmbedDriveImportAllowed,
   readTeamverDesignAccessSnapshot,
   snapshotFromWorkspace,
   updateTeamverDesignAccessSnapshot,
@@ -66,5 +67,35 @@ describe("teamverDesignAccess", () => {
     await expect(assertTeamverDesignAppEnabled("WS-1")).rejects.toThrow(
       "design_app_disabled",
     );
+  });
+
+  it("blocks embed Drive import when Design app is disabled", () => {
+    updateTeamverDesignAccessSnapshot("WS-1", false, "design_app_disabled");
+    expect(
+      isTeamverEmbedDriveImportAllowed({
+        bffPresent: true,
+        workspaceId: "WS-1",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows embed Drive import when BFF and workspace are ready", () => {
+    updateTeamverDesignAccessSnapshot("WS-1", true, null);
+    expect(
+      isTeamverEmbedDriveImportAllowed({
+        bffPresent: true,
+        workspaceId: "WS-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("requires workspace id for embed Drive import", () => {
+    updateTeamverDesignAccessSnapshot("WS-1", true, null);
+    expect(
+      isTeamverEmbedDriveImportAllowed({
+        bffPresent: true,
+        workspaceId: null,
+      }),
+    ).toBe(false);
   });
 });
