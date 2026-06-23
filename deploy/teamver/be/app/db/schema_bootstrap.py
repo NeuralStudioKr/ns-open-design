@@ -72,6 +72,12 @@ def apply_postgres_schema_patches() -> None:
 
     patches = [
         "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS run_id TEXT;",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS total_tokens INTEGER;",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS run_status TEXT;",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS token_count_source TEXT NOT NULL DEFAULT 'unknown';",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS registry_usage_id TEXT;",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS billing_status TEXT NOT NULL DEFAULT 'not_attempted';",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS credits_committed BOOLEAN NOT NULL DEFAULT FALSE;",
         """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_token_usage_workspace_run
           ON ai_model_token_usages (workspace_id, run_id)

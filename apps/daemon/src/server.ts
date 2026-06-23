@@ -290,7 +290,7 @@ import {
   reportRunCompletedFromDaemon,
   reportRunFeedbackFromDaemon,
 } from './langfuse-bridge.js';
-import { reportTeamverUsageFromDaemon } from './teamver-usage-bridge.js';
+import { reportTeamverUsageFromDaemon, finalizeTeamverUsageBillingFromDaemon } from './teamver-usage-bridge.js';
 import {
   commitTeamverBillingFromDaemon,
   refundTeamverBillingFromDaemon,
@@ -3182,16 +3182,35 @@ export function createFinalizedMessageTelemetryReporter({
       // workspace identity missing).
       void (async () => {
         const usageId = (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId ?? null;
+        const workspaceId = run.teamverIdentity?.workspaceId?.trim() ?? '';
         if (!usageId) return;
         const status = saved.runStatus;
         if (status === 'succeeded') {
-          await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
+          const ok = await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
+          if (workspaceId) {
+            await finalizeTeamverUsageBillingFromDaemon({
+              runId: run.id,
+              workspaceId,
+              billingStatus: ok ? 'committed' : 'commit_failed',
+              creditsCommitted: ok,
+              registryUsageId: usageId,
+            });
+          }
         } else if (status === 'failed' || status === 'canceled') {
-          await refundTeamverBillingFromDaemon({
+          const ok = await refundTeamverBillingFromDaemon({
             runId: run.id,
             usageId,
             reason: status === 'canceled' ? 'design_run_canceled' : 'design_run_failed',
           });
+          if (workspaceId) {
+            await finalizeTeamverUsageBillingFromDaemon({
+              runId: run.id,
+              workspaceId,
+              billingStatus: ok ? 'refunded' : 'refund_failed',
+              creditsCommitted: false,
+              registryUsageId: usageId,
+            });
+          }
         }
       })();
       const state = delivery ?? {

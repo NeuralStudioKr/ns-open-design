@@ -39,12 +39,18 @@ async def record_usage_event(
         model_name=body.model_name,
         input_tokens=body.input_tokens,
         output_tokens=body.output_tokens,
+        total_tokens=body.total_tokens,
         scope=UsageScope(
             user_id=ctx.user.user_id,
             workspace_id=workspace_id,
             project_id=body.project_id,
             run_id=body.run_id,
             operation=body.operation,
+            run_status=body.run_status,
+            token_count_source=body.token_count_source,
+            registry_usage_id=body.registry_usage_id,
+            billing_status=body.billing_status,
+            credits_committed=body.credits_committed,
         ),
     )
     logger.info(

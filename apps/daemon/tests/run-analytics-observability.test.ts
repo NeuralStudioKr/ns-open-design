@@ -585,6 +585,30 @@ describe('scanRunEventsForUsageAnalytics', () => {
     });
   });
 
+  it('reads BYOK proxy top-level usage events (event=usage)', () => {
+    const result = scanRunEventsForUsageAnalytics(
+      [
+        {
+          event: 'usage',
+          data: {
+            input_tokens: 120,
+            output_tokens: 45,
+            model: 'claude-sonnet-4-5',
+          },
+        },
+      ],
+      '',
+      0,
+    );
+
+    expect(result).toMatchObject({
+      input_tokens: 120,
+      output_tokens: 45,
+      token_count_source: 'provider_usage',
+      agent_reported_model: 'claude-sonnet-4-5',
+    });
+  });
+
   it('reports unknown token source for plain mock agents without usage events', () => {
     const result = scanRunEventsForUsageAnalytics(
       [{ event: 'agent', data: { type: 'text_delta', delta: 'plain output' } }],

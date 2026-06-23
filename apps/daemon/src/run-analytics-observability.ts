@@ -113,20 +113,74 @@ function durationBetween(
   return Math.round(end - start);
 }
 
+function applyUsagePayloadToScan(
+  usage: Record<string, unknown>,
+  state: {
+    inputTokens: number | undefined;
+    outputTokens: number | undefined;
+    providerTotalTokens: number | undefined;
+    cacheReadInputTokens: number | undefined;
+    cacheCreationInputTokens: number | undefined;
+    cacheTokenSource: RunUsageAnalytics['cache_token_source'];
+    haveUsageTokens: boolean;
+  },
+): void {
+  const inputTokens = firstNumber(usage, ['input_tokens', 'inputTokens', 'prompt_tokens']);
+  const outputTokens = firstNumber(usage, ['output_tokens', 'outputTokens', 'completion_tokens']);
+  const providerTotalTokens = firstNumber(usage, ['total_tokens', 'totalTokens']);
+  const anthropicCacheReadInputTokens = firstNumber(usage, ['cache_read_input_tokens']);
+  const normalizedCachedReadInputTokens = firstNumber(
+    usage,
+    ['cached_input_tokens', 'cache_read_tokens', 'cached_read_tokens'],
+  );
+  const openAiCachedInputTokens = readNestedNumber(usage, ['prompt_tokens_details', 'cached_tokens']);
+  const cacheReadInputTokens =
+    anthropicCacheReadInputTokens ?? normalizedCachedReadInputTokens ?? openAiCachedInputTokens;
+  const anthropicCacheCreationInputTokens = firstNumber(
+    usage,
+    ['cache_creation_input_tokens', 'cache_write_input_tokens', 'cache_creation_tokens'],
+    [['cache_creation', 'input_tokens']],
+  );
+  const normalizedCachedWriteInputTokens = firstNumber(usage, ['cached_write_tokens']);
+  const cacheCreationInputTokens =
+    anthropicCacheCreationInputTokens ?? normalizedCachedWriteInputTokens;
+
+  state.inputTokens = inputTokens;
+  state.outputTokens = outputTokens;
+  state.providerTotalTokens = providerTotalTokens;
+  state.cacheReadInputTokens = cacheReadInputTokens;
+  state.cacheCreationInputTokens = cacheCreationInputTokens;
+  if (
+    anthropicCacheReadInputTokens !== undefined ||
+    anthropicCacheCreationInputTokens !== undefined
+  ) {
+    state.cacheTokenSource = 'anthropic';
+  } else if (
+    normalizedCachedReadInputTokens !== undefined ||
+    normalizedCachedWriteInputTokens !== undefined ||
+    openAiCachedInputTokens !== undefined
+  ) {
+    state.cacheTokenSource = 'openai';
+  }
+  state.haveUsageTokens = inputTokens !== undefined || outputTokens !== undefined;
+}
+
 export function scanRunEventsForUsageAnalytics(
   events: RunEventForAnalyticsObservability[],
   reqBodyModel: unknown,
   userQueryTokens: number,
 ): RunUsageAnalytics {
-  let inputTokens: number | undefined;
-  let outputTokens: number | undefined;
-  let providerTotalTokens: number | undefined;
-  let cacheReadInputTokens: number | undefined;
-  let cacheCreationInputTokens: number | undefined;
-  let cacheTokenSource: RunUsageAnalytics['cache_token_source'] = 'unavailable';
+  const scanState = {
+    inputTokens: undefined as number | undefined,
+    outputTokens: undefined as number | undefined,
+    providerTotalTokens: undefined as number | undefined,
+    cacheReadInputTokens: undefined as number | undefined,
+    cacheCreationInputTokens: undefined as number | undefined,
+    cacheTokenSource: 'unavailable' as RunUsageAnalytics['cache_token_source'],
+    haveUsageTokens: false,
+  };
   let agentReportedModel: string | null = null;
   const needAgentModel = !hasExplicitRequestedModelForAnalytics(reqBodyModel);
-  let haveUsageTokens = false;
 
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const ev = events[i];
@@ -138,63 +192,30 @@ export function scanRunEventsForUsageAnalytics(
           label?: string;
           model?: unknown;
           detail?: unknown;
+          input_tokens?: unknown;
+          inputTokens?: unknown;
+          output_tokens?: unknown;
+          outputTokens?: unknown;
         }
       | null
       | undefined;
-    if (ev?.event === 'agent' && data?.type === 'usage' && !haveUsageTokens) {
+
+    if (ev?.event === 'usage' && !scanState.haveUsageTokens && data && typeof data === 'object') {
+      const usagePayload =
+        data.usage && typeof data.usage === 'object' ? data.usage : data;
+      applyUsagePayloadToScan(usagePayload, scanState);
+      const modelCandidate = typeof data.model === 'string' ? data.model.trim() : '';
+      if (modelCandidate) agentReportedModel = modelCandidate;
+    }
+
+    if (ev?.event === 'agent' && data?.type === 'usage' && !scanState.haveUsageTokens) {
       const usage = data.usage && typeof data.usage === 'object'
         ? data.usage
         : data.modelUsage && typeof data.modelUsage === 'object'
           ? data.modelUsage
           : null;
       if (usage) {
-        inputTokens = firstNumber(usage, ['input_tokens', 'prompt_tokens']);
-        outputTokens = firstNumber(usage, ['output_tokens', 'completion_tokens']);
-        providerTotalTokens = firstNumber(usage, ['total_tokens', 'totalTokens']);
-        const anthropicCacheReadInputTokens = firstNumber(
-          usage,
-          ['cache_read_input_tokens'],
-        );
-        const normalizedCachedReadInputTokens = firstNumber(
-          usage,
-          ['cached_input_tokens', 'cache_read_tokens', 'cached_read_tokens'],
-        );
-        const openAiCachedInputTokens = readNestedNumber(
-          usage,
-          ['prompt_tokens_details', 'cached_tokens'],
-        );
-        cacheReadInputTokens =
-          anthropicCacheReadInputTokens ??
-          normalizedCachedReadInputTokens ??
-          openAiCachedInputTokens;
-        const anthropicCacheCreationInputTokens = firstNumber(
-          usage,
-          [
-            'cache_creation_input_tokens',
-            'cache_write_input_tokens',
-            'cache_creation_tokens',
-          ],
-          [['cache_creation', 'input_tokens']],
-        );
-        const normalizedCachedWriteInputTokens = firstNumber(
-          usage,
-          ['cached_write_tokens'],
-        );
-        cacheCreationInputTokens =
-          anthropicCacheCreationInputTokens ?? normalizedCachedWriteInputTokens;
-        if (
-          anthropicCacheReadInputTokens !== undefined ||
-          anthropicCacheCreationInputTokens !== undefined
-        ) {
-          cacheTokenSource = 'anthropic';
-        } else if (
-          normalizedCachedReadInputTokens !== undefined ||
-          normalizedCachedWriteInputTokens !== undefined ||
-          openAiCachedInputTokens !== undefined
-        ) {
-          cacheTokenSource = 'openai';
-        }
-        haveUsageTokens = inputTokens !== undefined || outputTokens !== undefined;
+        applyUsagePayloadToScan(usage, scanState);
       }
     }
 
@@ -215,8 +236,18 @@ export function scanRunEventsForUsageAnalytics(
       }
     }
 
-    if (haveUsageTokens && (!needAgentModel || agentReportedModel)) break;
+    if (scanState.haveUsageTokens && (!needAgentModel || agentReportedModel)) break;
   }
+
+  const {
+    inputTokens,
+    outputTokens,
+    providerTotalTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
+    cacheTokenSource,
+    haveUsageTokens,
+  } = scanState;
 
   const inputTokensEffective =
     inputTokens !== undefined

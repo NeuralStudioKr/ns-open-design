@@ -56,6 +56,10 @@ function billingDisabledByKillSwitch(): boolean {
   return (process.env.TEAMVER_BILLING_DISABLED ?? '').trim() === '1';
 }
 
+export function teamverBillingDisabled(): boolean {
+  return billingDisabledByKillSwitch();
+}
+
 function billingEnv(): { baseUrl: string; apiKey: string } | null {
   if (billingDisabledByKillSwitch()) return null;
   const baseUrl = teamverDesignApiBaseUrl();

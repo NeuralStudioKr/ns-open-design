@@ -26,6 +26,11 @@ class UsageEventBody(BaseModel):
         default=0,
         validation_alias=AliasChoices("output_tokens", "outputTokens"),
     )
+    total_tokens: Optional[int] = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("total_tokens", "totalTokens"),
+    )
     operation: str = "design_run"
     project_id: Optional[str] = Field(
         default=None,
@@ -34,6 +39,26 @@ class UsageEventBody(BaseModel):
     run_id: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("run_id", "runId"),
+    )
+    run_status: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("run_status", "runStatus"),
+    )
+    token_count_source: str = Field(
+        default="unknown",
+        validation_alias=AliasChoices("token_count_source", "tokenCountSource"),
+    )
+    registry_usage_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("registry_usage_id", "registryUsageId"),
+    )
+    billing_status: str = Field(
+        default="not_attempted",
+        validation_alias=AliasChoices("billing_status", "billingStatus"),
+    )
+    credits_committed: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("credits_committed", "creditsCommitted"),
     )
 
 

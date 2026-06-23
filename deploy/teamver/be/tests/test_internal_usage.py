@@ -28,8 +28,13 @@ async def test_record_internal_usage_event_schedules_log(monkeypatch):
         model_name="claude-sonnet-4-5",
         input_tokens=10,
         output_tokens=20,
+        total_tokens=30,
         project_id="od1",
         run_id="run-1",
+        run_status="succeeded",
+        token_count_source="provider_usage",
+        billing_status="not_configured",
+        credits_committed=False,
     )
     response = await record_internal_usage_event(body, True)
 
@@ -37,8 +42,12 @@ async def test_record_internal_usage_event_schedules_log(monkeypatch):
     assert response.status_code == 204
     assert len(scheduled) == 1
     assert scheduled[0]["model_name"] == "claude-sonnet-4-5"
+    assert scheduled[0]["total_tokens"] == 30
     scope = scheduled[0]["scope"]
     assert scope.user_id == "u1"
     assert scope.workspace_id == "ws1"
     assert scope.project_id == "od1"
     assert scope.run_id == "run-1"
+    assert scope.run_status == "succeeded"
+    assert scope.token_count_source == "provider_usage"
+    assert scope.billing_status == "not_configured"

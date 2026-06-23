@@ -79,6 +79,41 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
       output_tokens: 22,
       project_id: 'od1',
       run_id: 'run-1',
+      token_count_source: 'provider_usage',
+      billing_status: 'not_configured',
+      credits_committed: false,
+    });
+  });
+
+  it('reads BYOK top-level usage events for token reporting', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 204, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await reportTeamverUsageFromDaemon({
+      run: {
+        id: 'run-byok',
+        status: 'succeeded',
+        model: 'gpt-4o',
+        teamverIdentity: { userId: 'u1', workspaceId: 'ws1' },
+        events: [
+          {
+            event: 'usage',
+            data: { input_tokens: 50, output_tokens: 12, model: 'gpt-4o' },
+          },
+        ],
+      },
+      reportedRuns: new Set(),
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown[])[1]?.body));
+    expect(body).toMatchObject({
+      input_tokens: 50,
+      output_tokens: 12,
+      model_name: 'gpt-4o',
+      token_count_source: 'provider_usage',
     });
   });
 
