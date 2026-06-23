@@ -2051,6 +2051,7 @@ function AppInner() {
             projectsById,
             !projectsLoadingRef.current,
             embedRunRefs,
+            pendingLocalProjectIdsRef.current,
           )
         : (() => {
             for (const run of completed) notifiedBackgroundRunIdsRef.current.add(run.id);
@@ -2070,6 +2071,7 @@ function AppInner() {
           if (fresh) {
             completedProject = fresh;
             clearProjectCoverCache(completedRun.projectId);
+            void prefetchDesignsTabViewport([fresh]);
             setProjects((curr) => {
               const idx = curr.findIndex((item) => item.id === fresh.id);
               if (idx < 0) return [...curr, fresh];
@@ -2254,6 +2256,12 @@ function AppInner() {
   const handleProjectChange = useCallback((updated: Project) => {
     setProjects((curr) => {
       const previous = curr.find((p) => p.id === updated.id);
+      if (
+        isTeamverEmbedMode()
+        && previous?.metadata?.entryFile !== updated.metadata?.entryFile
+      ) {
+        clearProjectCoverCache(updated.id);
+      }
       if (
         previous
         && (

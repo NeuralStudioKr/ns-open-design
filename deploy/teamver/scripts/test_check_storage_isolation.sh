@@ -30,6 +30,7 @@ write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=local" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
   "OD_S3_PREFIX=design/" \
+  "LITESTREAM_BUCKET=teamver-design-staging-data" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
 cd "$WORK"
@@ -58,6 +59,7 @@ write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=s3" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
   "OD_S3_PREFIX=design/" \
+  "LITESTREAM_BUCKET=teamver-design-staging-data" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
 out_s3="$(CHECK_CONTAINER_ENV=0 \
@@ -85,6 +87,7 @@ write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=s3" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
   "OD_S3_PREFIX=design/" \
+  "LITESTREAM_BUCKET=teamver-design-staging-data" \
   "OD_S3_ALLOW_SCRATCH_FALLBACK=1" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
@@ -103,6 +106,7 @@ write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=s3" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
   "OD_S3_PREFIX=design" \
+  "LITESTREAM_BUCKET=teamver-design-staging-data" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
 out_prefix="$(CHECK_CONTAINER_ENV=0 \
@@ -115,5 +119,23 @@ if ! grep -q 'OD_S3_PREFIX=design (must end with /' <<< "$out_prefix"; then
   exit 1
 fi
 echo "✓ check_storage_isolation fails when OD_S3_PREFIX lacks trailing slash"
+
+write_env "$WORK/.env.staging" \
+  "OD_PROJECT_STORAGE=s3" \
+  "OD_S3_BUCKET=teamver-design-staging-data" \
+  "OD_S3_PREFIX=design/" \
+  "LITESTREAM_BUCKET=wrong-bucket" \
+  "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
+
+out_litestream="$(CHECK_CONTAINER_ENV=0 \
+  DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
+  DAEMON_LOCAL_URL=http://127.0.0.1:1 \
+  bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
+if ! grep -q 'LITESTREAM_BUCKET=wrong-bucket != OD_S3_BUCKET' <<< "$out_litestream"; then
+  echo "❌ expected Litestream bucket mismatch guard"
+  echo "$out_litestream"
+  exit 1
+fi
+echo "✓ check_storage_isolation fails when LITESTREAM_BUCKET mismatches OD_S3_BUCKET"
 
 echo "✓ all check_storage_isolation fixtures passed"

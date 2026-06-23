@@ -37,6 +37,14 @@ describe("decideEmbedBackgroundRunCompletion", () => {
     expect(decideEmbedBackgroundRunCompletion(null, projects, true)).toBe("suppress");
   });
 
+  it("notifies pending-local projects before server list hydration", () => {
+    const projects = new Map<string, unknown>();
+    const pending = new Set(["p-new"]);
+    expect(
+      decideEmbedBackgroundRunCompletion("p-new", projects, true, pending),
+    ).toBe("notify");
+  });
+
   it("shouldNotify wrapper matches notify decision", () => {
     const projects = new Map([["p1", {}]]);
     expect(shouldNotifyEmbedBackgroundRunCompletion("p1", projects, true)).toBe(true);

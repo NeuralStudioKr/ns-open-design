@@ -113,6 +113,16 @@ else
   nope "$ENV_FILE OD_S3_PREFIX unset (tenant prefix required for workspace isolation)"
 fi
 
+if [[ -n "${OD_S3_BUCKET:-}" && -n "${LITESTREAM_BUCKET:-}" ]]; then
+  if [[ "${LITESTREAM_BUCKET}" == "${OD_S3_BUCKET}" ]]; then
+    ok "LITESTREAM_BUCKET matches OD_S3_BUCKET (app.sqlite replica co-located)"
+  else
+    nope "LITESTREAM_BUCKET=${LITESTREAM_BUCKET} != OD_S3_BUCKET=${OD_S3_BUCKET} (sqlite replica must use project bucket)"
+  fi
+elif [[ -n "${OD_S3_BUCKET:-}" ]]; then
+  skip "LITESTREAM_BUCKET unset (Litestream replica optional in dev)"
+fi
+
 # --- 2) 컨테이너 ENV (docker exec) --------------------------------------
 container_storage_check() {
   local container="$1"

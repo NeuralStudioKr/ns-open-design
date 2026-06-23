@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamverBackgroundRunsBanner } from '../src/teamver/components/TeamverBackgroundRunsBanner';
 
@@ -16,7 +16,16 @@ vi.mock('../src/i18n', () => ({
   },
 }));
 
+afterEach(() => {
+  cleanup();
+});
+
 describe('TeamverBackgroundRunsBanner', () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
   it('opens the primary project when clicked', () => {
     const onOpenProject = vi.fn();
     render(
@@ -42,5 +51,34 @@ describe('TeamverBackgroundRunsBanner', () => {
       conversationId: 'conv-a',
       fileName: 'deck.html',
     });
+  });
+
+  it('collapses expanded list when the primary project changes', () => {
+    const onOpenProject = vi.fn();
+    const { rerender, container } = render(
+      <TeamverBackgroundRunsBanner
+        summaries={[
+          { projectId: 'p1', projectName: 'Deck A', status: 'running', count: 1 },
+          { projectId: 'p2', projectName: 'Deck B', status: 'queued', count: 1 },
+        ]}
+        onOpenProject={onOpenProject}
+      />,
+    );
+
+    const view = within(container);
+    fireEvent.click(view.getByRole('button', { name: '2 projects running' }));
+    expect(view.getByRole('list')).toBeTruthy();
+
+    rerender(
+      <TeamverBackgroundRunsBanner
+        summaries={[
+          { projectId: 'p3', projectName: 'Deck C', status: 'running', count: 1 },
+          { projectId: 'p2', projectName: 'Deck B', status: 'queued', count: 1 },
+        ]}
+        onOpenProject={onOpenProject}
+      />,
+    );
+
+    expect(view.queryByRole('list')).toBeNull();
   });
 });
