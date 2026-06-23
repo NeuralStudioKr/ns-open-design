@@ -97,6 +97,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-import-drive-assets.test.ts \
       tests/teamver-drive-import-attachments.test.ts \
       tests/teamver-drive-import-list.test.ts \
+      tests/teamver-drive-api.test.ts \
       tests/teamver-drive-import-thumbnails.test.ts \
       tests/teamver-drive-file-visual.test.ts \
       tests/teamver-embed-file-attach-policy.test.ts \
@@ -117,6 +118,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-embed-list-caches.test.ts \
       tests/teamver-embed-run-tracking.test.ts \
       tests/teamver-embed-background-run-surfaces.test.ts \
+      tests/teamver-design-auth-session.test.ts \
+      tests/teamver-auth-cookie-hints.test.ts \
       tests/teamver-workspace-project-route.test.ts \
       tests/teamver-embed-session.test.ts \
       tests/components/RecentProjectsStrip.test.tsx \

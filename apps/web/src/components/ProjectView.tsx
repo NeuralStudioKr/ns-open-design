@@ -1131,16 +1131,16 @@ export function ProjectView({
   const savedArtifactRef = useRef<string | null>(null);
   /** Dedupe stream onDone vs onRunStatus terminal HTML auto-open for the same assistant row. */
   const htmlAutoOpenClaimedRef = useRef<Set<string>>(new Set());
-  const htmlAutoOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const htmlAutoOpenTimerRef = useRef<number | null>(null);
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
-      clearTimeout(htmlAutoOpenTimerRef.current);
+      window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
     }
     return () => {
       if (htmlAutoOpenTimerRef.current !== null) {
-        clearTimeout(htmlAutoOpenTimerRef.current);
+        window.clearTimeout(htmlAutoOpenTimerRef.current);
         htmlAutoOpenTimerRef.current = null;
       }
     };
@@ -3387,7 +3387,7 @@ export function ProjectView({
         };
         if (delayMs > 0) {
           if (htmlAutoOpenTimerRef.current !== null) {
-            clearTimeout(htmlAutoOpenTimerRef.current);
+            window.clearTimeout(htmlAutoOpenTimerRef.current);
           }
           htmlAutoOpenTimerRef.current = window.setTimeout(() => {
             htmlAutoOpenTimerRef.current = null;

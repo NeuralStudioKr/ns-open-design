@@ -5,6 +5,7 @@ import type { Project } from "../src/types";
 import {
   patchEmbedBackgroundRunNoticeForProject,
   patchEmbedBackgroundRunSummaryForProject,
+  projectAffectsEmbedBackgroundRunSurfaces,
 } from "../src/teamver/embedBackgroundRunSurfaces";
 
 const project: Project = {
@@ -16,6 +17,34 @@ const project: Project = {
   updatedAt: 2,
   metadata: { kind: "deck", entryFile: "output/v1.html" },
 };
+
+describe("projectAffectsEmbedBackgroundRunSurfaces", () => {
+  it("is false when only unrelated fields change", () => {
+    const previous: Project = {
+      ...project,
+      updatedAt: 1,
+      skillId: "skill-a",
+    };
+    const updated: Project = {
+      ...previous,
+      updatedAt: 99,
+      skillId: "skill-b",
+    };
+    expect(projectAffectsEmbedBackgroundRunSurfaces(previous, updated)).toBe(false);
+  });
+
+  it("is true when name or entryFile changes", () => {
+    expect(
+      projectAffectsEmbedBackgroundRunSurfaces(project, { ...project, name: "Renamed" }),
+    ).toBe(true);
+    expect(
+      projectAffectsEmbedBackgroundRunSurfaces(project, {
+        ...project,
+        metadata: { kind: "deck", entryFile: "output/v2.html" },
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("patchEmbedBackgroundRunNoticeForProject", () => {
   it("updates reopen extras when entryFile changes on success toast", () => {

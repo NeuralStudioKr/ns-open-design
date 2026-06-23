@@ -51,7 +51,7 @@ function normalizeFolderId(folder: RawFolder): string | null {
 }
 
 function normalizeFolderName(folder: RawFolder): string {
-  return (folder.name ?? "").trim() || "Untitled folder";
+  return (folder.name ?? "").trim() || "이름 없는 폴더";
 }
 
 function normalizeRootFolderId(raw: unknown): string | null {
@@ -111,8 +111,8 @@ async function fetchPersonalTargets(workspaceId: string): Promise<TeamverDrivePu
   const targets: TeamverDrivePublishTarget[] = [
     {
       id: "personal-root",
-      label: "My Drive",
-      description: "Personal drive root",
+      label: "내 드라이브",
+      description: "개인 드라이브 루트",
       folderId: rootFolderId,
       sharedDriveId: null,
     },
@@ -123,7 +123,7 @@ async function fetchPersonalTargets(workspaceId: string): Promise<TeamverDrivePu
     targets.push({
       id: `personal:${folderId}`,
       label: folderTargetLabel(row.folder, row.depth),
-      description: "My Drive folder",
+      description: "내 드라이브 폴더",
       folderId,
       sharedDriveId: null,
     });
@@ -145,7 +145,7 @@ async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDriv
         const targets: TeamverDrivePublishTarget[] = [{
           id: `shared:${drive.id}`,
           label: drive.name,
-          description: "Team drive root",
+          description: "팀 드라이브 루트",
           folderId: rootFolderId,
           sharedDriveId: drive.id,
         }];
@@ -155,7 +155,7 @@ async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDriv
           targets.push({
             id: `shared:${drive.id}:${folderId}`,
             label: `${drive.name} / ${folderTargetLabel(row.folder, Math.max(0, row.depth - 1))}`,
-            description: "Team drive folder",
+            description: "팀 드라이브 폴더",
             folderId,
             sharedDriveId: drive.id,
           });
@@ -165,7 +165,7 @@ async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDriv
         return [{
           id: `shared:${drive.id}`,
           label: drive.name,
-          description: "Team drive root",
+          description: "팀 드라이브 루트",
           folderId: null,
           sharedDriveId: drive.id,
         }];
@@ -196,8 +196,8 @@ export async function listTeamverDrivePublishTargets(
   return [
     {
       id: "personal-default",
-      label: "My Drive",
-      description: "Default Drive destination",
+      label: "내 드라이브",
+      description: "기본 드라이브 위치",
       folderId: null,
       sharedDriveId: null,
     },
@@ -209,7 +209,7 @@ function scopeRootTarget(scope: TeamverDriveImportScope): TeamverDrivePublishTar
     return {
       id: `shared:${scope.sharedDriveId}`,
       label: scope.label,
-      description: "Team drive root",
+      description: "팀 드라이브 루트",
       folderId: scope.folderId,
       sharedDriveId: scope.sharedDriveId,
     };
@@ -217,7 +217,7 @@ function scopeRootTarget(scope: TeamverDriveImportScope): TeamverDrivePublishTar
   return {
     id: "personal-root",
     label: scope.label,
-    description: "Personal drive root",
+    description: "개인 드라이브 루트",
     folderId: scope.folderId,
     sharedDriveId: null,
   };
@@ -282,7 +282,7 @@ export async function searchTeamverDrivePublishTargets(
           ? `shared:${sharedDriveId}:${row.folderId}`
           : `personal:${row.folderId}`,
         label: scope ? `${scope.label} / ${row.name}` : row.name,
-        description: sharedDriveId ? "Team drive folder search result" : "My Drive folder search result",
+        description: sharedDriveId ? "팀 드라이브 폴더 검색 결과" : "내 드라이브 폴더 검색 결과",
         folderId: row.folderId,
         sharedDriveId,
       });

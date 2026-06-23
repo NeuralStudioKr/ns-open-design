@@ -1,5 +1,6 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
+import { refreshDesignAuthCookie } from "./designBffClient";
 
 export function teamverDriveApiUrl(path: string): string {
   return `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}${path}`;
@@ -9,10 +10,18 @@ export async function getTeamverDriveJson(path: string, workspaceId?: string | n
   const headers: Record<string, string> = { Accept: "application/json" };
   const trimmedWorkspaceId = workspaceId?.trim();
   if (trimmedWorkspaceId) headers["X-Workspace-Id"] = trimmedWorkspaceId;
-  const response = await fetch(teamverDriveApiUrl(path), {
-    credentials: "include",
-    headers,
-  });
+  const doFetch = () =>
+    fetch(teamverDriveApiUrl(path), {
+      credentials: "include",
+      headers,
+    });
+  let response = await doFetch();
+  // Main BE Drive cookie can lapse independently of BFF session probe — retry
+  // once with a BFF refresh before surfacing 401/403 to publish/import UIs.
+  if (response.status === 401 || response.status === 403) {
+    const refreshed = await refreshDesignAuthCookie();
+    if (refreshed) response = await doFetch();
+  }
   if (!response.ok) {
     throw new Error(`teamver_drive_fetch_failed:${response.status}`);
   }

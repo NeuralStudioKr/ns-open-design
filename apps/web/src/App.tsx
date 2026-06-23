@@ -89,8 +89,10 @@ import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWo
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
+import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
 import {
   patchEmbedBackgroundRunSummaryForProject,
+  projectAffectsEmbedBackgroundRunSurfaces,
   syncEmbedBackgroundRunSurfacesForProject,
   type EmbedBackgroundRunNotice,
 } from './teamver/embedBackgroundRunSurfaces';
@@ -1253,6 +1255,8 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
+      pendingLocalProjectIdsRef.current.clear();
+      locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
       setBackgroundRunSummaries([]);
       setBackgroundRunNotice(null);
@@ -2116,6 +2120,7 @@ function AppInner() {
             completedProject = fresh;
             clearProjectCoverCache(completedRun.projectId);
             void prefetchDesignsTabViewport([fresh]);
+            void prefetchLatestPublishSummaries([completedRun.projectId]);
             setProjects((curr) => {
               const idx = curr.findIndex((item) => item.id === fresh.id);
               if (idx < 0) return [...curr, fresh];
@@ -2310,8 +2315,8 @@ function AppInner() {
   }, [route]);
 
   const handleProjectChange = useCallback((updated: Project) => {
+    const previous = projectsRef.current.find((p) => p.id === updated.id);
     setProjects((curr) => {
-      const previous = curr.find((p) => p.id === updated.id);
       if (
         isTeamverEmbedMode()
         && previous?.metadata?.entryFile !== updated.metadata?.entryFile
@@ -2331,7 +2336,10 @@ function AppInner() {
       }
       return curr.map((p) => (p.id === updated.id ? updated : p));
     });
-    if (isTeamverEmbedMode()) {
+    if (
+      isTeamverEmbedMode()
+      && projectAffectsEmbedBackgroundRunSurfaces(previous, updated)
+    ) {
       setBackgroundRunNotice((notice) =>
         syncEmbedBackgroundRunSurfacesForProject(updated, { notice, summaries: [] }).notice,
       );

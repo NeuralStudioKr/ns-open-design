@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/teamver/designApiBase", () => ({
-  resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
-}));
+vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/teamver/designApiBase")>();
+  return {
+    ...actual,
+    resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
+  };
+});
 
 import {
   listTeamverDriveImportRecent,

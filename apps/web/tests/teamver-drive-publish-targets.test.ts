@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/teamver/designApiBase", () => ({
-  resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
-}));
+vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/teamver/designApiBase")>();
+  return {
+    ...actual,
+    resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
+  };
+});
 
 import {
   listTeamverDrivePublishTargets,
@@ -110,8 +114,8 @@ describe("listTeamverDrivePublishTargets", () => {
     await expect(listTeamverDrivePublishTargets("ws-1")).resolves.toEqual([
       {
         id: "personal-default",
-        label: "My Drive",
-        description: "Default Drive destination",
+        label: "내 드라이브",
+        description: "기본 드라이브 위치",
         folderId: null,
         sharedDriveId: null,
       },

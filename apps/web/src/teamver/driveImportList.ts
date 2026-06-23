@@ -111,7 +111,7 @@ export async function listTeamverDriveImportScopes(workspaceId: string): Promise
   if (!trimmed) return [];
 
   const scopes: TeamverDriveImportScope[] = [
-    { mode: "personal", folderId: null, label: "My Drive" },
+    { mode: "personal", folderId: null, label: "내 드라이브" },
   ];
 
   try {

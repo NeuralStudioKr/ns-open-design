@@ -12,6 +12,18 @@ export type EmbedBackgroundRunNotice = {
   reopenExtras: { conversationId?: string | null; fileName?: string | null };
 };
 
+/** Whether project metadata changes should refresh embed background-run surfaces. */
+export function projectAffectsEmbedBackgroundRunSurfaces(
+  previous: Project | undefined,
+  updated: Project,
+): boolean {
+  if (!previous || previous.id !== updated.id) return true;
+  return (
+    previous.name !== updated.name
+    || previous.metadata?.entryFile !== updated.metadata?.entryFile
+  );
+}
+
 /** Patch completion-toast reopen extras when project metadata (name·entryFile) changes. */
 export function patchEmbedBackgroundRunNoticeForProject(
   notice: EmbedBackgroundRunNotice | null,
@@ -22,6 +34,13 @@ export function patchEmbedBackgroundRunNoticeForProject(
     { status: notice.status, conversationId: notice.conversationId },
     project,
   );
+  if (
+    notice.projectName === project.name
+    && notice.reopenExtras.conversationId === reopenExtras.conversationId
+    && notice.reopenExtras.fileName === reopenExtras.fileName
+  ) {
+    return notice;
+  }
   return {
     ...notice,
     projectName: project.name,

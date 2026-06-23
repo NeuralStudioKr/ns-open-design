@@ -1,18 +1,30 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
+  hasProbableTeamverAuthCookie: vi.fn(() => {
+    if (typeof document === "undefined") return false;
+    return document.cookie.includes("teamver_access_token=")
+      || document.cookie.includes("teamver_refresh_token=");
+  }),
+}));
 
 vi.mock("../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
 }));
 
-vi.mock("../src/teamver/designApiBase", () => ({
-  isTeamverEmbedMode: vi.fn(() => true),
-  resolveTeamverDesignApiBase: vi.fn(() => ""),
-  resolveTeamverDesignApiCrossOriginFallback: vi.fn(() => null),
-  resolveDesignBffRefreshUrl: vi.fn(() => "/teamver-bff/auth/refresh"),
-  redirectToTeamverLogin: vi.fn(),
-  resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
-}));
+vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/teamver/designApiBase")>();
+  return {
+    ...actual,
+    isTeamverEmbedMode: vi.fn(() => true),
+    resolveTeamverDesignApiBase: vi.fn(() => ""),
+    resolveTeamverDesignApiCrossOriginFallback: vi.fn(() => null),
+    resolveDesignBffRefreshUrl: vi.fn(() => "/teamver-bff/auth/refresh"),
+    redirectToTeamverLogin: vi.fn(),
+    resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
+  };
+});
 
 const getMock = vi.fn();
 
@@ -31,16 +43,40 @@ vi.mock("@teamver/app-sdk", () => ({
   },
 }));
 
+import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
+import { hasProbableTeamverAuthCookie } from "../src/teamver/teamverAuthCookieHints";
+
+async function forceBareAuthCookieHints(): Promise<void> {
+  document.cookie = "";
+  vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+  vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(false);
+}
+
 describe("fetchDesignAuthSession", () => {
-  afterEach(() => {
+  afterEach(async () => {
     getMock.mockReset();
     vi.unstubAllGlobals();
     document.cookie = "";
-    vi.resetModules();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+    vi.mocked(hasProbableTeamverAuthCookie).mockImplementation(() => {
+      if (typeof document === "undefined") return false;
+      return document.cookie.includes("teamver_access_token=")
+        || document.cookie.includes("teamver_refresh_token=");
+    });
+    const { resetDesignAuthRefreshDeclinedForTests, resetDesignAuthSessionCacheForTests } =
+      await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    resetDesignAuthSessionCacheForTests();
   });
 
   beforeEach(() => {
     document.cookie = "";
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+    vi.mocked(hasProbableTeamverAuthCookie).mockImplementation(() => {
+      if (typeof document === "undefined") return false;
+      return document.cookie.includes("teamver_access_token=")
+        || document.cookie.includes("teamver_refresh_token=");
+    });
   });
 
   it("attempts one BFF refresh without visible cookies, then stops on 400", async () => {
@@ -157,6 +193,7 @@ describe("fetchDesignAuthSession", () => {
   });
 
   it("does not retry refresh after bare BFF 400 on a second session probe", async () => {
+    await forceBareAuthCookieHints();
     getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
@@ -170,9 +207,8 @@ describe("fetchDesignAuthSession", () => {
   });
 
   it("does not call Main BE refresh on bare HttpOnly attempt when BFF returns 502", async () => {
-    getMock
-      .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
-      .mockResolvedValueOnce({ authenticated: false, workspaces: [] });
+    await forceBareAuthCookieHints();
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 502 });
     vi.stubGlobal("fetch", fetchMock);
@@ -181,6 +217,9 @@ describe("fetchDesignAuthSession", () => {
     const session = await fetchDesignAuthSession();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes("stg-api.teamver.com")),
+    ).toBe(false);
     expect(fetchMock).toHaveBeenCalledWith(
       "/teamver-bff/auth/refresh",
       expect.objectContaining({ method: "POST" }),
