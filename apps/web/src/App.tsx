@@ -386,6 +386,7 @@ export function App() {
 function AppInner() {
   const { t } = useI18n();
   const { hideWorkspaceTabsBar, slideOnlyMvp } = useTeamverBranding();
+  const embedEntryBackView = slideOnlyMvp ? 'home' : 'design-systems';
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const clientType = useMemo(() => detectClientType(), []);
   useModalWindowDragGuard();
@@ -450,6 +451,7 @@ function AppInner() {
     projectName: string;
     conversationId: string | null;
     status: 'succeeded' | 'failed';
+    reopenExtras: { conversationId?: string | null; fileName?: string | null };
   } | null>(null);
   const activeRunIdsRef = useRef<Set<string>>(new Set());
   const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
@@ -1993,6 +1995,7 @@ function AppInner() {
           projectName,
           conversationId: completedRun.conversationId ?? null,
           status,
+          reopenExtras,
         });
 
         const notifications = configRef.current.notifications ?? DEFAULT_NOTIFICATIONS;
@@ -2098,7 +2101,13 @@ function AppInner() {
     setProjects((curr) =>
       curr.map((p) => (p.id === id ? { ...p, name: trimmed } : p)),
     );
-    void patchProject(id, { name: trimmed });
+    const updated = await patchProject(id, { name: trimmed });
+    if (!updated || !isTeamverEmbedMode()) return;
+    try {
+      await registerTeamverProjectIfNeeded(updated);
+    } catch (err) {
+      console.warn('[teamver] registry sync after project rename failed', err);
+    }
   }, []);
 
   const handleBack = useCallback(() => {
@@ -2469,7 +2478,7 @@ function AppInner() {
   } else if (route.kind === 'design-system-create') {
     appMain = (
       <DesignSystemCreationFlow
-        onBack={() => navigate({ kind: 'home', view: 'design-systems' })}
+        onBack={() => navigate({ kind: 'home', view: embedEntryBackView })}
         onCreated={(projectId, project) => {
           if (project) {
             setProjects((curr) => [
@@ -2497,7 +2506,7 @@ function AppInner() {
         selectedId={config.designSystemId}
         config={config}
         agents={agents}
-        onBack={() => navigate({ kind: 'home', view: 'design-systems' })}
+        onBack={() => navigate({ kind: 'home', view: embedEntryBackView })}
         onOpenProject={(projectId) => {
           void navigateToProject(projectId, { conversationId: null, fileName: null });
         }}
@@ -2593,8 +2602,13 @@ function AppInner() {
         onDeleteProject={handleDeleteProject}
         onRenameProject={handleRenameProject}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
-        onCreateDesignSystem={() => navigate({ kind: 'design-system-create' })}
-        onOpenDesignSystem={(id: string) => navigate({ kind: 'design-system-detail', designSystemId: id })}
+        {...(slideOnlyMvp
+          ? {}
+          : {
+              onCreateDesignSystem: () => navigate({ kind: 'design-system-create' }),
+              onOpenDesignSystem: (id: string) =>
+                navigate({ kind: 'design-system-detail', designSystemId: id }),
+            })}
         onDesignSystemsRefresh={refreshDesignSystems}
         onPersistComposioKey={handleConfigPersistComposioKey}
         onOpenSettings={openSettings}
@@ -2701,16 +2715,9 @@ function AppInner() {
             : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
           actionLabel="프로젝트 열기"
           onAction={() => {
-            const project = projects.find((item) => item.id === backgroundRunNotice.projectId);
             void navigateToProject(
               backgroundRunNotice.projectId,
-              navigateExtrasForBackgroundRun(
-                {
-                  status: backgroundRunNotice.status,
-                  conversationId: backgroundRunNotice.conversationId,
-                },
-                project,
-              ),
+              backgroundRunNotice.reopenExtras,
             );
           }}
           tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}

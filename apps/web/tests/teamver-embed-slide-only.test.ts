@@ -69,6 +69,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     const homeHero = readSource('src/components/HomeHero.tsx');
     const newProject = readSource('src/components/NewProjectPanel.tsx');
     const entryShell = readSource('src/components/EntryShell.tsx');
+    const entryNavRail = readSource('src/components/EntryNavRail.tsx');
     const chatComposer = readSource('src/components/ChatComposer.tsx');
     const plusMenu = readSource('src/components/ComposerPlusMenu.tsx');
     const nextStepActions = readSource('src/components/NextStepActions.tsx');
@@ -77,6 +78,9 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(homeHero).toContain('hideComposerIntegrations');
     expect(newProject).toContain('visibleNewProjectTabs');
     expect(entryShell).toContain('defaultNewProjectTab');
+    expect(entryShell).toContain('!slideOnlyMvp');
+    expect(entryNavRail).toContain('!slideOnlyMvp');
+    expect(entryNavRail).toContain('entry-nav-design-systems');
     expect(chatComposer).toContain('showMcp={!hideComposerIntegrations}');
     expect(chatComposer).toContain('visibleDesignToolboxActions');
     expect(nextStepActions).toContain('visibleDesignToolboxActions');

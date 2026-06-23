@@ -857,6 +857,7 @@ export function EntryShell({
                 onCreatePluginShareProject={onCreatePluginShareProject}
               />
             </div>
+            {!slideOnlyMvp ? (
             <div data-testid="entry-view-design-systems" data-active={view === 'design-systems' ? 'true' : 'false'} {...inactiveViewProps(view === 'design-systems')}>
               {designSystemsLoading ? (
                 <CenteredLoader label={t('common.loading')} />
@@ -878,6 +879,7 @@ export function EntryShell({
                 </div>
               )}
             </div>
+            ) : null}
             {view === 'integrations' ? (
               <IntegrationsView
                 config={config}

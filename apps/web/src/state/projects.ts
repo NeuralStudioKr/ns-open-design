@@ -42,6 +42,7 @@ import {
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
+import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
@@ -446,7 +447,7 @@ export async function listMessages(
     );
     if (!resp.ok) return [];
     const json = (await resp.json()) as { messages: ChatMessage[] };
-    return json.messages ?? [];
+    return (json.messages ?? []).map(sanitizeChatMessageLeakedPseudoTool);
   } catch {
     return [];
   }
@@ -468,9 +469,11 @@ export async function saveMessage(
   options: SaveMessageOptions = {},
 ): Promise<void> {
   try {
-    const savedMessage = options.telemetryFinalized
-      ? { ...message, telemetryFinalized: true }
-      : message;
+    const savedMessage = sanitizeChatMessageLeakedPseudoTool(
+      options.telemetryFinalized
+        ? { ...message, telemetryFinalized: true }
+        : message,
+    );
     const resp = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
       {
