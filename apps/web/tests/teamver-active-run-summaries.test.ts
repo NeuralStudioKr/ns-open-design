@@ -5,6 +5,8 @@ import {
   buildActiveRunSummaries,
   buildPetTaskCenter,
   primaryConversationIdForProject,
+  activeRunSummariesEqual,
+  buildActiveRunSignature,
 } from '../src/components/pet/taskCenter';
 import type { Project } from '../src/types';
 
@@ -81,5 +83,39 @@ describe('buildActiveRunSummaries', () => {
       'p1',
     );
     expect(id).toBe('conv-running');
+  });
+
+  it('treats previewFileName changes as unequal for banner refresh', () => {
+    const base = [
+      {
+        projectId: 'p1',
+        projectName: 'Landing Page',
+        status: 'running' as const,
+        count: 1,
+        conversationId: 'conv-a',
+        previewFileName: 'deck.html',
+      },
+    ];
+    const withoutPreview = [{ ...base[0]!, previewFileName: undefined }];
+    expect(activeRunSummariesEqual(base, withoutPreview)).toBe(false);
+    expect(activeRunSummariesEqual(base, [{ ...base[0]! }])).toBe(true);
+  });
+
+  it('buildActiveRunSignature includes preview and rename fields', () => {
+    const summaries = [
+      {
+        projectId: 'p1',
+        projectName: 'Deck A',
+        status: 'running' as const,
+        count: 1,
+        conversationId: 'conv-a',
+        previewFileName: 'deck.html',
+      },
+    ];
+    expect(buildActiveRunSignature(summaries)).toBe(
+      'p1:Deck A:running:1:conv-a:deck.html',
+    );
+    const renamed = [{ ...summaries[0]!, projectName: 'Deck B' }];
+    expect(buildActiveRunSignature(renamed)).not.toBe(buildActiveRunSignature(summaries));
   });
 });

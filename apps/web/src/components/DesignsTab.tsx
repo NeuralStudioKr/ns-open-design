@@ -119,6 +119,30 @@ export function DesignsTab({
 		Record<string, LiveArtifactSummary[]>
 	>({});
 	const [coverOverrides, setCoverOverrides] = useState<Record<string, ProjectCoverFile | null>>({});
+	const projectEntryFileSnapshotRef = useRef<Map<string, string | undefined>>(new Map());
+
+	useEffect(() => {
+		setCoverOverrides((prev) => {
+			const snapshot = projectEntryFileSnapshotRef.current;
+			const projectIds = new Set(projects.map((project) => project.id));
+			for (const id of snapshot.keys()) {
+				if (!projectIds.has(id)) snapshot.delete(id);
+			}
+			if (Object.keys(prev).length === 0) return prev;
+			let changed = false;
+			const next = { ...prev };
+			for (const project of projects) {
+				const entryFile = project.metadata?.entryFile ?? undefined;
+				const previousEntry = snapshot.get(project.id);
+				if (previousEntry !== entryFile && prev[project.id] != null) {
+					delete next[project.id];
+					changed = true;
+				}
+				snapshot.set(project.id, entryFile);
+			}
+			return changed ? next : prev;
+		});
+	}, [projects]);
 
 	const handleCoverOverride = useCallback((projectId: string, cover: ProjectCoverFile | null) => {
 		setCoverOverrides((prev) => {

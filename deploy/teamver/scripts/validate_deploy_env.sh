@@ -132,6 +132,14 @@ esac
 
 if [[ "$RESOLVED_PROJECT_STORAGE" == "s3" ]]; then
   require_nonempty OD_S3_BUCKET
+  if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+    require_nonempty OD_S3_PREFIX
+    if [[ "${OD_S3_PREFIX:-}" != */ ]]; then
+      fail "OD_S3_PREFIX=${OD_S3_PREFIX:-} — trailing slash 필요 (예: design/)"
+    fi
+  elif [[ -n "${OD_S3_PREFIX:-}" && "${OD_S3_PREFIX}" != */ ]]; then
+    warn "OD_S3_PREFIX=${OD_S3_PREFIX} — trailing slash 권장 (예: design/)"
+  fi
   require_nonempty TEAMVER_DESIGN_API_URL
   if [[ "$REQUIRE_S3_STORAGE" == true && "${OD_S3_ALLOW_SCRATCH_FALLBACK:-0}" == "1" ]]; then
     fail "OD_S3_ALLOW_SCRATCH_FALLBACK=1 — staging/production 은 S3 초기화 실패 시 scratch-only fallback 금지"

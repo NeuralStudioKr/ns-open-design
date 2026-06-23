@@ -99,8 +99,6 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
     return () => {
       window.removeEventListener(TEAMVER_PUBLISH_OUTPUTS_CHANGED_EVENT, handlePublishChanged);
     };
-  }, [projectId, refresh]);
-
   }, [projectId, refresh, designSurfaceEnabled]);
 
   if (!isTeamverEmbedMode() || !designSurfaceEnabled) {

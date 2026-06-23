@@ -101,6 +101,18 @@ else
   nope "$ENV_FILE OD_S3_BUCKET unset"
 fi
 
+s3_prefix="${OD_S3_PREFIX:-}"
+if [[ -n "$s3_prefix" ]]; then
+  ok "$ENV_FILE OD_S3_PREFIX=$s3_prefix"
+  if [[ "$s3_prefix" == */ ]]; then
+    ok "OD_S3_PREFIX trailing slash (tenant isolation prefix)"
+  else
+    nope "OD_S3_PREFIX=$s3_prefix (must end with / e.g. design/)"
+  fi
+else
+  nope "$ENV_FILE OD_S3_PREFIX unset (tenant prefix required for workspace isolation)"
+fi
+
 # --- 2) 컨테이너 ENV (docker exec) --------------------------------------
 container_storage_check() {
   local container="$1"
@@ -120,6 +132,17 @@ container_storage_check() {
     ok "$label container OD_PROJECT_STORAGE=s3"
   else
     nope "$label container OD_PROJECT_STORAGE=$actual (compose 가 .env 를 못 읽었거나 default :-local 에 떨어짐)"
+  fi
+  local prefix
+  prefix="$(docker exec "$container" sh -lc 'printf "%s" "${OD_S3_PREFIX:-}"' 2>/dev/null || echo "")"
+  if [[ -n "$prefix" ]]; then
+    if [[ "$prefix" == */ ]]; then
+      ok "$label container OD_S3_PREFIX=$prefix"
+    else
+      nope "$label container OD_S3_PREFIX=$prefix (must end with / e.g. design/)"
+    fi
+  else
+    nope "$label container OD_S3_PREFIX unset"
   fi
 }
 

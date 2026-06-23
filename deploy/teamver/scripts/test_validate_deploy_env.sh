@@ -26,6 +26,7 @@ POSTGRES_PASSWD=test-db-pass
 TEAMVER_DESIGN_API_URL=http://teamver-design-api:8000
 OD_PROJECT_STORAGE=s3
 OD_S3_BUCKET=teamver-design-staging-data
+OD_S3_PREFIX=design/
 OD_S3_REGION=ap-northeast-2
 OD_SCRATCH_EVICT_AFTER_RUN=1
 OD_S3_SYNC_UP_METRICS=1
@@ -98,6 +99,18 @@ if ! grep -q 'TEAMVER_OD_API_KEY 필요' <<< "$nokey_out"; then
 fi
 rm -f "$NOKEY_ENV"
 echo "✓ staging TEAMVER_OD_API_KEY gate ok"
+
+BAD_PREFIX_ENV="$(mktemp)"
+sed 's/^OD_S3_PREFIX=design\//OD_S3_PREFIX=design/' "$TMP_ENV" > "$BAD_PREFIX_ENV"
+bad_prefix_out="$(bash "$SCRIPT" --staging --rds --env-file "$BAD_PREFIX_ENV" 2>&1 || true)"
+if ! grep -q 'OD_S3_PREFIX=design — trailing slash' <<< "$bad_prefix_out"; then
+  echo "❌ staging must reject OD_S3_PREFIX without trailing slash"
+  echo "$bad_prefix_out"
+  rm -f "$BAD_PREFIX_ENV"
+  exit 1
+fi
+rm -f "$BAD_PREFIX_ENV"
+echo "✓ validate_deploy_env rejects OD_S3_PREFIX without trailing slash"
 
 if ! grep -q 'TEAMVER_REGISTRY_\* 설정됨' <<< "$clean_out"; then
   echo "❌ expected REGISTRY 설정됨 warning in baseline"

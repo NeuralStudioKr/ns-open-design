@@ -22,7 +22,7 @@ import type { CreateInput, ImportClaudeDesignOutcome } from './components/NewPro
 import { MemoryToast } from './components/MemoryToast';
 import { Toast } from './components/Toast';
 import { PetOverlay, type PetTaskCenter, type PetTaskSummary } from './components/pet/PetOverlay';
-import { buildActiveRunSummaries, activeRunSummariesEqual, buildPetTaskCenter } from './components/pet/taskCenter';
+import { buildActiveRunSummaries, activeRunSummariesEqual, buildActiveRunSignature, buildPetTaskCenter } from './components/pet/taskCenter';
 import { migrateCustomPetAtlas } from './components/pet/pets';
 import { ProjectView } from './components/ProjectView';
 import { TeamverWorkspaceEscapeBar } from './components/TeamverWorkspaceEscapeBar';
@@ -82,10 +82,13 @@ import {
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
-import { resetEmbedRunTrackingRefs } from './teamver/teamverEmbedRunTracking';
+import { clearProjectCoverCache } from './teamver/projectCoverLoader';
+import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
+import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
+import { projectOpenOptionsFromPreviewCover } from './teamver/projectPreviewFile';
 import {
   formatTeamverDesignDisabledMessage,
   isTeamverDesignAppEnabled,
@@ -489,6 +492,10 @@ function AppInner() {
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [dsLoading, setDsLoading] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(true);
+  const projectsLoadingRef = useRef(projectsLoading);
+  useEffect(() => {
+    projectsLoadingRef.current = projectsLoading;
+  }, [projectsLoading]);
   const [promptTemplatesLoading, setPromptTemplatesLoading] = useState(true);
   // Goes true once the daemon-persisted config (agentId/designSystemId/etc.)
   // has merged into local state. Auto-selection effects below wait on this
@@ -1191,11 +1198,41 @@ function AppInner() {
     return subscribeTeamverDesignAccessChanged(syncDesignAccess);
   }, []);
 
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    setBackgroundRunSummaries((prev) => {
+      if (prev.length === 0) return prev;
+      const projectsById = new Map(projects.map((project) => [project.id, project]));
+      const next = prev
+        .filter((summary) => projectsById.has(summary.projectId))
+        .map((summary) => {
+        const project = projectsById.get(summary.projectId)!;
+        const previewFileName = projectOpenOptionsFromPreviewCover(project, null)?.fileName ?? null;
+        if (
+          project.name === summary.projectName
+          && previewFileName === (summary.previewFileName ?? null)
+        ) {
+          return summary;
+        }
+        const updated: PetTaskSummary = { ...summary, projectName: project.name };
+        if (previewFileName) {
+          updated.previewFileName = previewFileName;
+        } else {
+          delete updated.previewFileName;
+        }
+        return updated;
+      });
+      return activeRunSummariesEqual(prev, next) ? prev : next;
+    });
+  }, [projects]);
+
   // Embed: leave project workspace when Design app becomes disabled mid-session.
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverDesignAccessChanged((detail) => {
       if (detail.appEnabled) return;
+      setBackgroundRunNotice(null);
+      setBackgroundRunSummaries([]);
       const current = routeRef.current;
       if (current.kind !== 'project') return;
       setWorkingDirError(formatTeamverDesignDisabledMessage(detail.appDisabledReason));
@@ -1208,12 +1245,26 @@ function AppInner() {
     return subscribeTeamverWorkspaceChanged(() => {
       clearTeamverEmbedListCaches();
       setBackgroundRunSummaries([]);
+      setBackgroundRunNotice(null);
       resetEmbedRunTrackingRefs({
         activeRunIds: activeRunIdsRef,
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
         wasActiveRun: wasActiveRunRef,
         activeRunSignature: activeRunSignatureRef,
       });
+      void listProjectRuns()
+        .then((runs) => {
+          seedEmbedRunTrackingFromRuns(
+            {
+              activeRunIds: activeRunIdsRef,
+              notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+              wasActiveRun: wasActiveRunRef,
+              activeRunSignature: activeRunSignatureRef,
+            },
+            runs,
+          );
+        })
+        .catch(() => {});
       void (async () => {
         try {
           await syncAllDaemonProjectsToRegistry();
@@ -1221,13 +1272,16 @@ function AppInner() {
           console.warn("[teamver] registry sync on workspace switch failed", err);
         }
         const request = beginProjectListRequest();
+        setProjectsLoading(true);
         setProjects([]);
         const result = await loadProjectListSafe();
         if (!result.ok) {
           setWorkingDirError(result.errorMessage);
+          setProjectsLoading(false);
           return;
         }
         reconcileFetchedProjects(result.projects, request);
+        setProjectsLoading(false);
         const current = routeRef.current;
         if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
@@ -1243,16 +1297,35 @@ function AppInner() {
       if (!authenticated) {
         clearTeamverEmbedListCaches();
         setProjects([]);
+        setProjectsLoading(false);
         setBackgroundRunSummaries([]);
+        setBackgroundRunNotice(null);
         resetEmbedRunTrackingRefs({
           activeRunIds: activeRunIdsRef,
           notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
           wasActiveRun: wasActiveRunRef,
           activeRunSignature: activeRunSignatureRef,
         });
+        void listProjectRuns()
+          .then((runs) => {
+            seedEmbedRunTrackingFromRuns(
+              {
+                activeRunIds: activeRunIdsRef,
+                notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+                wasActiveRun: wasActiveRunRef,
+                activeRunSignature: activeRunSignatureRef,
+              },
+              runs,
+            );
+          })
+          .catch(() => {});
         return;
       }
-      void refreshProjects();
+      void (async () => {
+        setProjectsLoading(true);
+        await refreshProjects();
+        setProjectsLoading(false);
+      })();
     });
   }, [refreshProjects]);
 
@@ -1965,9 +2038,25 @@ function AppInner() {
             && run.projectId,
         )
         .sort((a, b) => b.updatedAt - a.updatedAt);
-      for (const run of completed) notifiedBackgroundRunIdsRef.current.add(run.id);
 
-      const completedRun = completed[0];
+      const embedRunRefs = {
+        activeRunIds: activeRunIdsRef,
+        notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
+        wasActiveRun: wasActiveRunRef,
+        activeRunSignature: activeRunSignatureRef,
+      };
+      const completedRun = isTeamverEmbedMode()
+        ? processEmbedBackgroundRunCompletions(
+            completed,
+            projectsById,
+            !projectsLoadingRef.current,
+            embedRunRefs,
+          )
+        : (() => {
+            for (const run of completed) notifiedBackgroundRunIdsRef.current.add(run.id);
+            return completed[0];
+          })();
+
       if (
         isTeamverEmbedMode()
         && completedRun?.projectId
@@ -1980,6 +2069,7 @@ function AppInner() {
           if (cancelled) return;
           if (fresh) {
             completedProject = fresh;
+            clearProjectCoverCache(completedRun.projectId);
             setProjects((curr) => {
               const idx = curr.findIndex((item) => item.id === fresh.id);
               if (idx < 0) return [...curr, fresh];
@@ -1987,12 +2077,13 @@ function AppInner() {
             });
           }
         }
+        const resolvedProjectName = completedProject?.name ?? projectName;
         const status = completedRun.status as 'succeeded' | 'failed';
         const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
         setBackgroundRunNotice({
           runId: completedRun.id,
           projectId: completedRun.projectId,
-          projectName,
+          projectName: resolvedProjectName,
           conversationId: completedRun.conversationId ?? null,
           status,
           reopenExtras,
@@ -2010,9 +2101,10 @@ function AppInner() {
             void showCompletionNotification({
               status,
               title: status === 'succeeded' ? '슬라이드 작업 완료' : '슬라이드 작업 실패',
-              body: projectName,
+              body: resolvedProjectName,
               onClick: () => {
                 window.focus();
+                setBackgroundRunNotice(null);
                 void navigateToProject(completedRun.projectId!, reopenExtras);
               },
             });
@@ -2035,10 +2127,7 @@ function AppInner() {
       }
 
       const active = activeSummaries.length > 0;
-      const signature = activeSummaries
-        .map((item) => `${item.projectId}:${item.status}:${item.count}:${item.conversationId ?? ""}`)
-        .sort()
-        .join("|");
+      const signature = buildActiveRunSignature(activeSummaries);
       const hadActive = wasActiveRunRef.current;
       wasActiveRunRef.current = active;
 
@@ -2089,6 +2178,8 @@ function AppInner() {
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     setProjects((curr) => curr.filter((p) => p.id !== id));
+    setBackgroundRunNotice((notice) => (notice?.projectId === id ? null : notice));
+    setBackgroundRunSummaries((prev) => prev.filter((summary) => summary.projectId !== id));
     if (route.kind === 'project' && route.projectId === id) {
       navigate({ kind: 'home', view: 'home' });
     }
@@ -2098,11 +2189,36 @@ function AppInner() {
   const handleRenameProject = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const previousName = projectsRef.current.find((p) => p.id === id)?.name;
     setProjects((curr) =>
       curr.map((p) => (p.id === id ? { ...p, name: trimmed } : p)),
     );
+    setBackgroundRunNotice((notice) =>
+      notice?.projectId === id ? { ...notice, projectName: trimmed } : notice,
+    );
+    setBackgroundRunSummaries((prev) =>
+      prev.map((summary) =>
+        summary.projectId === id ? { ...summary, projectName: trimmed } : summary,
+      ),
+    );
     const updated = await patchProject(id, { name: trimmed });
-    if (!updated || !isTeamverEmbedMode()) return;
+    if (!updated) {
+      if (previousName) {
+        setProjects((curr) =>
+          curr.map((p) => (p.id === id ? { ...p, name: previousName } : p)),
+        );
+        setBackgroundRunNotice((notice) =>
+          notice?.projectId === id ? { ...notice, projectName: previousName } : notice,
+        );
+        setBackgroundRunSummaries((prev) =>
+          prev.map((summary) =>
+            summary.projectId === id ? { ...summary, projectName: previousName } : summary,
+          ),
+        );
+      }
+      return;
+    }
+    if (!isTeamverEmbedMode()) return;
     try {
       await registerTeamverProjectIfNeeded(updated);
     } catch (err) {
@@ -2715,6 +2831,7 @@ function AppInner() {
             : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
           actionLabel="프로젝트 열기"
           onAction={() => {
+            setBackgroundRunNotice(null);
             void navigateToProject(
               backgroundRunNotice.projectId,
               backgroundRunNotice.reopenExtras,

@@ -29,6 +29,7 @@ write_env() {
 write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=local" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
+  "OD_S3_PREFIX=design/" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
 cd "$WORK"
@@ -56,6 +57,7 @@ echo "✓ check_storage_isolation fails when OD_PROJECT_STORAGE=local"
 write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=s3" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
+  "OD_S3_PREFIX=design/" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
 out_s3="$(CHECK_CONTAINER_ENV=0 \
@@ -82,6 +84,7 @@ echo "✓ check_storage_isolation reports unreachable backends without env overr
 write_env "$WORK/.env.staging" \
   "OD_PROJECT_STORAGE=s3" \
   "OD_S3_BUCKET=teamver-design-staging-data" \
+  "OD_S3_PREFIX=design/" \
   "OD_S3_ALLOW_SCRATCH_FALLBACK=1" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
@@ -95,5 +98,22 @@ if ! grep -q 'OD_S3_ALLOW_SCRATCH_FALLBACK=1' <<< "$out_fallback"; then
   exit 1
 fi
 echo "✓ check_storage_isolation fails when scratch fallback is enabled"
+
+write_env "$WORK/.env.staging" \
+  "OD_PROJECT_STORAGE=s3" \
+  "OD_S3_BUCKET=teamver-design-staging-data" \
+  "OD_S3_PREFIX=design" \
+  "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
+
+out_prefix="$(CHECK_CONTAINER_ENV=0 \
+  DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
+  DAEMON_LOCAL_URL=http://127.0.0.1:1 \
+  bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
+if ! grep -q 'OD_S3_PREFIX=design (must end with /' <<< "$out_prefix"; then
+  echo "❌ expected trailing-slash guard for OD_S3_PREFIX"
+  echo "$out_prefix"
+  exit 1
+fi
+echo "✓ check_storage_isolation fails when OD_S3_PREFIX lacks trailing slash"
 
 echo "✓ all check_storage_isolation fixtures passed"

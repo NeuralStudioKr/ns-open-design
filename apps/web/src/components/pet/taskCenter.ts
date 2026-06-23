@@ -113,8 +113,20 @@ export function activeRunSummariesEqual(
       && item.status === other.status
       && item.count === other.count
       && item.conversationId === other.conversationId
+      && item.previewFileName === other.previewFileName
     );
   });
+}
+
+/** Signature for embed active-run project-list refresh — includes preview + rename fields. */
+export function buildActiveRunSignature(summaries: PetTaskSummary[]): string {
+  return summaries
+    .map(
+      (item) =>
+        `${item.projectId}:${item.projectName}:${item.status}:${item.count}:${item.conversationId ?? ""}:${item.previewFileName ?? ""}`,
+    )
+    .sort()
+    .join("|");
 }
 
 function addActiveSummary(

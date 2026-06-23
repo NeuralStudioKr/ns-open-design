@@ -26,7 +26,7 @@ export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props)
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     if (summaries.length <= 1) setExpanded(false);
-  }, [summaries.length]);
+  }, [summaries.length, summaries[0]?.projectId]);
   if (summaries.length === 0) return null;
 
   const primary = summaries[0]!;
