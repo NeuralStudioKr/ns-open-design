@@ -3,6 +3,7 @@ import { batchFetchLatestPublishSummaries } from "./batchLatestPublishSummary";
 import { listTeamverProjectOutputs } from "./listProjectOutputs";
 import { PUBLISH_CHIP_BATCH_MAX } from "./publishChipLimits";
 import { sortReadyPublishOutputsDesc } from "./publishToDrive";
+import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 
 export type TeamverLatestPublishSummary = {
   projectId: string;
@@ -104,6 +105,9 @@ export async function fetchLatestPublishSummary(
 ): Promise<TeamverLatestPublishSummary | null> {
   const id = projectId.trim();
   if (!id) return null;
+  if (isTeamverEmbedMode() && !isTeamverEmbedDesignSurfaceEnabled()) {
+    return null;
+  }
 
   const existing = cache.get(id);
   if (existing) return existing;

@@ -66,6 +66,12 @@ export function formatTeamverDesignDisabledMessage(reason?: string | null): stri
   return "이 워크스페이스에서는 Teamver Design을 사용할 수 없습니다. 워크스페이스 관리자에게 문의하세요.";
 }
 
+/** Embed read/write surfaces (chat, import, publish) — false when Design app disabled. */
+export function isTeamverEmbedDesignSurfaceEnabled(): boolean {
+  if (!isTeamverEmbedMode()) return true;
+  return readTeamverDesignAccessSnapshot()?.appEnabled ?? true;
+}
+
 /** Fast path from last session/workspace snapshot (fail-open when unknown). */
 export function isTeamverDesignAppEnabled(workspaceId: string): boolean {
   const trimmed = workspaceId.trim();

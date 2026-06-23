@@ -3,6 +3,10 @@ import { Icon } from "../../components/Icon";
 import { useT } from "../../i18n";
 import { isTeamverEmbedMode } from "../designApiBase";
 import {
+  isTeamverEmbedDesignSurfaceEnabled,
+  subscribeTeamverDesignAccessChanged,
+} from "../teamverDesignAccess";
+import {
   clearLatestPublishSummaryCache,
   fetchLatestPublishSummary,
   type TeamverLatestPublishSummary,
@@ -31,6 +35,18 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(!deferUntilVisible);
   const [summary, setSummary] = useState<TeamverLatestPublishSummary | null>(null);
+  const [designSurfaceEnabled, setDesignSurfaceEnabled] = useState(
+    () => isTeamverEmbedDesignSurfaceEnabled(),
+  );
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const sync = () => {
+      setDesignSurfaceEnabled(isTeamverEmbedDesignSurfaceEnabled());
+    };
+    sync();
+    return subscribeTeamverDesignAccessChanged(sync);
+  }, []);
 
   useEffect(() => {
     if (!deferUntilVisible) return;
@@ -58,7 +74,10 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
   }, [projectId]);
 
   useEffect(() => {
-    if (!visible || !isTeamverEmbedMode()) return;
+    if (!visible || !isTeamverEmbedMode() || !designSurfaceEnabled) {
+      setSummary(null);
+      return;
+    }
     let cancelled = false;
     void fetchLatestPublishSummary(projectId).then((next) => {
       if (!cancelled) setSummary(next);
@@ -66,10 +85,10 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
     return () => {
       cancelled = true;
     };
-  }, [projectId, visible]);
+  }, [projectId, visible, designSurfaceEnabled]);
 
   useEffect(() => {
-    if (!isTeamverEmbedMode()) return;
+    if (!isTeamverEmbedMode() || !designSurfaceEnabled) return;
     const handlePublishChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail;
       if (detail?.projectId && detail.projectId !== projectId) return;
@@ -81,6 +100,12 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
       window.removeEventListener(TEAMVER_PUBLISH_OUTPUTS_CHANGED_EVENT, handlePublishChanged);
     };
   }, [projectId, refresh]);
+
+  }, [projectId, refresh, designSurfaceEnabled]);
+
+  if (!isTeamverEmbedMode() || !designSurfaceEnabled) {
+    return null;
+  }
 
   if (!visible) {
     return <span ref={anchorRef} className="teamver-latest-publish-chip-anchor" aria-hidden />;

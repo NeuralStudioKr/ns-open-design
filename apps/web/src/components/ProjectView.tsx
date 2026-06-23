@@ -329,6 +329,9 @@ interface Props {
   onProjectsRefresh: () => void;
   onChangeDefaultDesignSystem?: (designSystemId: string | null) => void;
   onDesignSystemsRefresh?: () => Promise<void> | void;
+  /** Embed — block chat/run submit when workspace Design app is disabled. */
+  embedSubmitDisabled?: boolean;
+  onEmbedSubmitBlocked?: () => void;
 }
 
 interface QueuedChatSend {
@@ -834,6 +837,8 @@ export function ProjectView({
   onProjectsRefresh,
   onChangeDefaultDesignSystem,
   onDesignSystemsRefresh,
+  embedSubmitDisabled = false,
+  onEmbedSubmitBlocked,
 }: Props) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
@@ -1182,7 +1187,8 @@ export function ProjectView({
     currentConversationHasActiveRun && !currentConversationStreaming;
   const currentConversationSendDisabled = currentConversationLoading
     || failedMessagesConversationId === activeConversationId
-    || currentConversationAwaitingActiveRunAttach;
+    || currentConversationAwaitingActiveRunAttach
+    || embedSubmitDisabled;
   const currentConversationActionDisabled = currentConversationBusy || currentConversationSendDisabled;
   const currentConversationQueueDisabled = currentConversationLoading
     || failedMessagesConversationId === activeConversationId;
@@ -3104,6 +3110,10 @@ export function ProjectView({
       meta?: ProjectChatSendMeta,
       baseMessages?: ChatMessage[],
     ) => {
+      if (embedSubmitDisabled) {
+        onEmbedSubmitBlocked?.();
+        return false;
+      }
       if (!activeConversationId) return false;
       if (messagesConversationIdRef.current !== activeConversationId) return false;
       const runSessionMode = meta?.sessionMode ?? activeSessionMode;
@@ -3919,6 +3929,8 @@ export function ProjectView({
       activeConversationId,
       activeSessionMode,
       currentConversationBusy,
+      embedSubmitDisabled,
+      onEmbedSubmitBlocked,
       queueChatSendForCurrentConversation,
       messages,
       config,

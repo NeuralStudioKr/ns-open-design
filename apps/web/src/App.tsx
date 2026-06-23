@@ -65,6 +65,10 @@ import {
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
+import {
+  clampTeamverEmbedRoute,
+  teamverEmbedRouteChanged,
+} from './teamver/clampTeamverEmbedRoute';
 import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
 import {
   assertTeamverProjectAccessIfNeeded,
@@ -1091,6 +1095,16 @@ function AppInner() {
     if (!isTeamverEmbedMode()) return;
     return installTeamverEmbedHistoryBoundary();
   }, []);
+
+  // Embed: block deep-links to hidden OD surfaces (plugins / integrations / marketplace).
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const branding = resolveTeamverBranding();
+    const clamped = clampTeamverEmbedRoute(route, branding);
+    if (teamverEmbedRouteChanged(route, clamped)) {
+      navigate(clamped, { replace: true });
+    }
+  }, [route]);
 
   // Embed: daemon merge or config writers can drift mode/agent — re-apply lock.
   useEffect(() => {
@@ -2503,6 +2517,8 @@ function AppInner() {
         onProjectsRefresh={refreshProjects}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
         onDesignSystemsRefresh={refreshDesignSystems}
+        embedSubmitDisabled={isTeamverEmbedMode() && !embedDesignAppEnabled}
+        onEmbedSubmitBlocked={notifyEmbedSubmitBlocked}
       />
     );
   } else {
