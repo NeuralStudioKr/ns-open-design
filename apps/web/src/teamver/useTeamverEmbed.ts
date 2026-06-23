@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
-import { fetchDesignAuthSession, getDesignBffClient } from "./designBffClient";
+import { fetchDesignAuthSession, getDesignBffClient, type DesignAuthSessionUser } from "./designBffClient";
 import { isTeamverEmbedMode, redirectToTeamverLogin } from "./designApiBase";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
+  subscribeTeamverEmbedSessionChanged,
 } from "./teamverEmbedSession";
+import {
+  isTeamverEmbedBootComplete,
+  waitForTeamverEmbedBoot,
+} from "./teamverEmbedBoot";
 import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
@@ -55,8 +60,6 @@ function isSessionExpiredError(err: unknown): boolean {
   return err instanceof NetworkError && err.status === 401;
 }
 
-import type { DesignAuthSessionUser } from "./designBffClient";
-
 function readUserId(user: DesignAuthSessionUser | null | undefined): string | null {
   return user?.userId?.trim() || null;
 }
@@ -76,15 +79,21 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { force?: boolean }) => {
     if (!enabled || !isTeamverEmbedMode()) {
       setState(INITIAL);
       return;
     }
 
+    const force = options?.force ?? false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const session = await fetchDesignAuthSession();
+      // App boot runs the first session probe + registry sync — avoid racing refresh/clear.
+      if (!force && !isTeamverEmbedBootComplete()) {
+        await waitForTeamverEmbedBoot();
+      }
+
+      const session = await fetchDesignAuthSession({ force });
       if (!session) {
         await clearTeamverEmbedSessionState();
         setState({ ...INITIAL, loading: false, error: "session_unreachable" });
@@ -115,7 +124,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (activeWorkspaceId && activeWorkspace) {
         snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
       }
-      if (session.authenticated && activeWorkspaceId) {
+      // Registry sync runs on App boot — skip duplicate work on initial banner hydrate.
+      if (force && session.authenticated && activeWorkspaceId) {
         await syncAllDaemonProjectsToRegistry();
       }
 
@@ -170,7 +180,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     if (!enabled || !isTeamverEmbedMode()) return;
     const onReturn = () => {
       if (document.visibilityState !== "visible") return;
-      void refresh();
+      void refresh({ force: true });
     };
     window.addEventListener("pageshow", onReturn);
     window.addEventListener("focus", onReturn);
@@ -180,6 +190,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       window.removeEventListener("focus", onReturn);
       document.removeEventListener("visibilitychange", onReturn);
     };
+  }, [enabled, refresh]);
+
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (authenticated && !stateRef.current.authenticated && !stateRef.current.loading) {
+        void refresh();
+      }
+    });
   }, [enabled, refresh]);
 
   return {

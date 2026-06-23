@@ -10,6 +10,7 @@ import {
   resolveTeamverDesignApiBase,
   resolveTeamverDesignApiCrossOriginFallback,
   resolveDesignBffRefreshUrl,
+  resolveTeamverMainApiBaseUrl,
   redirectToTeamverLogin,
 } from "./designApiBase";
 
@@ -65,10 +66,9 @@ const SESSION_PROBE_OPTIONS = {
   skipAuthRecovery: true,
 } as const;
 
-/** Cookie-only SSO: refresh may relay Set-Cookie without JSON access_token (tokenStore is null). */
-export async function refreshDesignAuthCookie(): Promise<boolean> {
+async function postAuthRefresh(url: string): Promise<boolean> {
   try {
-    const response = await fetch(resolveDesignBffRefreshUrl(), {
+    const response = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
@@ -79,8 +79,28 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
   }
 }
 
+/** Cookie-only SSO: refresh may relay Set-Cookie without JSON access_token (tokenStore is null). */
+export async function refreshDesignAuthCookie(): Promise<boolean> {
+  if (await postAuthRefresh(resolveDesignBffRefreshUrl())) return true;
+  const mainRefresh = `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}/api/auth/refresh`;
+  return postAuthRefresh(mainRefresh);
+}
+
+function normalizeDesignAuthSession(raw: unknown): DesignAuthSession | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.authenticated !== "boolean") return null;
+  return raw as DesignAuthSession;
+}
+
 async function probeDesignAuthSession(client: TeamverClient): Promise<DesignAuthSession> {
-  return client.http.get<DesignAuthSession>("/auth/session", SESSION_PROBE_OPTIONS);
+  const raw = await client.http.get<unknown>("/auth/session", SESSION_PROBE_OPTIONS);
+  const session = normalizeDesignAuthSession(raw);
+  if (session) return session;
+  throw new NetworkError({
+    status: 404,
+    message: "Invalid session response (expected JSON from design-api BFF)",
+  });
 }
 
 function shouldUseDesignApiSessionFallback(err: unknown): boolean {
@@ -99,13 +119,32 @@ async function fetchDesignAuthSessionCrossOriginFallback(): Promise<DesignAuthSe
     });
     if (!response.ok) return null;
     const body = (await response.json()) as Record<string, unknown>;
-    return snakeToCamelDeep(body) as DesignAuthSession;
+    return normalizeDesignAuthSession(snakeToCamelDeep(body));
   } catch {
     return null;
   }
 }
 
-export async function fetchDesignAuthSession(): Promise<DesignAuthSession | null> {
+export type FetchDesignAuthSessionOptions = {
+  /** Bypass short-lived cache — tab focus / explicit re-auth. */
+  force?: boolean;
+};
+
+let inFlightSession: Promise<DesignAuthSession | null> | null = null;
+let cachedSession: { value: DesignAuthSession | null; at: number } | null = null;
+const SESSION_CACHE_MS = 5_000;
+
+/** @internal vitest */
+export function resetDesignAuthSessionCacheForTests(): void {
+  inFlightSession = null;
+  cachedSession = null;
+}
+
+export function invalidateDesignAuthSessionCache(): void {
+  cachedSession = null;
+}
+
+async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
   const client = getDesignBffClient();
   if (!client) return null;
 
@@ -144,6 +183,40 @@ export async function fetchDesignAuthSession(): Promise<DesignAuthSession | null
   }
 
   return session;
+}
+
+export async function fetchDesignAuthSession(
+  options?: FetchDesignAuthSessionOptions,
+): Promise<DesignAuthSession | null> {
+  const force = options?.force ?? false;
+
+  if (force) {
+    invalidateDesignAuthSessionCache();
+    if (inFlightSession) {
+      await inFlightSession.catch(() => null);
+    }
+  } else if (inFlightSession) {
+    return inFlightSession;
+  }
+
+  if (
+    !force &&
+    cachedSession &&
+    Date.now() - cachedSession.at < SESSION_CACHE_MS
+  ) {
+    return cachedSession.value;
+  }
+
+  const run = async (): Promise<DesignAuthSession | null> => {
+    const value = await loadDesignAuthSessionOnce();
+    cachedSession = { value, at: Date.now() };
+    return value;
+  };
+
+  inFlightSession = run().finally(() => {
+    inFlightSession = null;
+  });
+  return inFlightSession;
 }
 
 export async function fetchTeamverRuntimeConfig(): Promise<TeamverRuntimeConfigResponse | null> {

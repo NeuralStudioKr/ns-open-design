@@ -12,6 +12,11 @@ vi.mock("../src/teamver/designApiBase", () => ({
   resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/signin"),
 }));
 
+vi.mock("../src/teamver/teamverEmbedBoot", () => ({
+  waitForTeamverEmbedBoot: vi.fn(async () => undefined),
+  isTeamverEmbedBootComplete: vi.fn(() => true),
+}));
+
 vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
   getDesignBffClient: vi.fn(),
