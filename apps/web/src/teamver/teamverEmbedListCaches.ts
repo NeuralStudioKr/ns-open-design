@@ -8,3 +8,11 @@ export function clearTeamverEmbedListCaches(): void {
   clearProjectCoverCache();
   clearLatestPublishSummaryCache();
 }
+
+/** Single-project purge after delete — cover hints + publish chip cache. */
+export function clearTeamverEmbedProjectCaches(projectId: string): void {
+  const id = projectId.trim();
+  if (!id) return;
+  clearProjectCoverCache(id);
+  clearLatestPublishSummaryCache(id);
+}

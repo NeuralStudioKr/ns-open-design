@@ -81,9 +81,7 @@ import {
   TeamverProjectRegistryError,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
-import { clearTeamverEmbedListCaches } from './teamver/teamverEmbedListCaches';
-import { clearLatestPublishSummaryCache } from './teamver/latestPublishSummary';
-import { clearProjectCoverCache } from './teamver/projectCoverLoader';
+import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { resetEmbedRunTrackingRefs } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
@@ -1974,7 +1972,19 @@ function AppInner() {
         && !(route.kind === 'project' && route.projectId === completedRun.projectId)
       ) {
         const projectName = projectsById.get(completedRun.projectId)?.name ?? 'AI Design';
-        const completedProject = projectsById.get(completedRun.projectId);
+        let completedProject = projectsById.get(completedRun.projectId);
+        if (completedRun.status === 'succeeded') {
+          const fresh = await getProject(completedRun.projectId);
+          if (cancelled) return;
+          if (fresh) {
+            completedProject = fresh;
+            setProjects((curr) => {
+              const idx = curr.findIndex((item) => item.id === fresh.id);
+              if (idx < 0) return [...curr, fresh];
+              return curr.map((item) => (item.id === fresh.id ? fresh : item));
+            });
+          }
+        }
         const status = completedRun.status as 'succeeded' | 'failed';
         const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
         setBackgroundRunNotice({
@@ -2071,8 +2081,7 @@ function AppInner() {
     if (!ok) return false;
     await unregisterTeamverProjectFromRegistryIfNeeded(id);
     if (isTeamverEmbedMode()) {
-      clearProjectCoverCache(id);
-      clearLatestPublishSummaryCache(id);
+      clearTeamverEmbedProjectCaches(id);
     }
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });

@@ -22,6 +22,9 @@ export function clampTeamverEmbedRoute(
     if (route.kind === "design-system-create" || route.kind === "design-system-detail") {
       return EMBED_HOME_FALLBACK;
     }
+    if (route.kind === "home" && route.view === "design-systems") {
+      return EMBED_HOME_FALLBACK;
+    }
   }
 
   if (route.kind === "home") {

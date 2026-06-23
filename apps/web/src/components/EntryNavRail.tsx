@@ -67,7 +67,7 @@ function NavButton({ active, ariaLabel, tooltip, onClick, testId, disabled = fal
 export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisabled = false, open, onClose }: Props) {
   const t = useT();
   const brandLabel = useBrandLabel();
-  const { enabled: teamverEmbed, hideNavViews } = useTeamverBranding();
+  const { enabled: teamverEmbed, hideNavViews, slideOnlyMvp } = useTeamverBranding();
   const homeLabel = t('entry.navHome');
   const isHome = view === 'home';
 
@@ -171,6 +171,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
           <Icon name="kanban" size={18} />
         </NavButton>
         ) : null}
+        {!slideOnlyMvp ? (
         <NavButton
           active={view === 'design-systems'}
           ariaLabel={t('entry.navDesignSystems')}
@@ -180,6 +181,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
         >
           <Icon name="blocks" size={18} />
         </NavButton>
+        ) : null}
         {!hideNavViews.has('plugins') ? (
         <NavButton
           active={view === 'plugins'}

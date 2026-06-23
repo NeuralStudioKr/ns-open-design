@@ -38,6 +38,10 @@ describe("clampTeamverEmbedRoute", () => {
       kind: "home",
       view: "home",
     });
+    expect(clampTeamverEmbedRoute({ kind: "home", view: "design-systems" }, embedBranding)).toEqual({
+      kind: "home",
+      view: "home",
+    });
   });
 
   it("redirects marketplace routes when plugin registry is hidden", () => {
