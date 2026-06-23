@@ -71,7 +71,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # Litestream sidecar — enable with: docker compose --profile litestream up -d
+  # Litestream sidecar — deploy.sh always targets this service on hosted environments.
   litestream:
     profiles:
       - litestream

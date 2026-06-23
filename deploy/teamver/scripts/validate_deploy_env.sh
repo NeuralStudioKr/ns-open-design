@@ -75,7 +75,7 @@ unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
   OD_SCRATCH_DISK_METRIC_INTERVAL_MS \
   POSTGRES_HOST POSTGRES_PASSWD POSTGRES_DB POSTGRES_USER \
   TEAMVER_REGISTRY_APP_ID TEAMVER_REGISTRY_KEY_ID TEAMVER_REGISTRY_ACCESS_KEY \
-  LITESTREAM_BUCKET TEAMVER_DRIVE_PUBLISH_FOLDER_ID \
+  LITESTREAM_BUCKET LITESTREAM_REGION TEAMVER_DRIVE_PUBLISH_FOLDER_ID \
   TRUST_TEAMVER_PROXY_HEADERS TEAMVER_BILLING_DISABLED
 
 # shellcheck disable=SC1090
@@ -215,12 +215,6 @@ if [[ "$ENV_FILE" == ".env.production" ]]; then
     fi
   fi
 
-  # G2 — Litestream replica 없이 prod 진입 시 app.sqlite 손실 시 메타 복구
-  # 불가. 강제는 하지 않지만 명시적 경고.
-  if [[ -z "${LITESTREAM_BUCKET:-}" ]]; then
-    warn "production: LITESTREAM_BUCKET 미설정 — app.sqlite Litestream replica 비활성 (P2-1; restore_app_sqlite_from_s3.sh 미가용)"
-  fi
-
   # G7 — Drive publish folder 없이 prod 진입 시 publish 가 Drive root 에 떨어짐
   # (multi-workspace 격리 위반). example 가이드에 따라 staging/prod 는 폴더 권장.
   if [[ -z "${TEAMVER_DRIVE_PUBLISH_FOLDER_ID:-}" ]]; then
@@ -231,6 +225,17 @@ if [[ "$ENV_FILE" == ".env.production" ]]; then
   # 기본값이 staging 과 같으면 token leakage 위험.
   if [[ -n "${OD_API_TOKEN:-}" && "${OD_API_TOKEN}" == *"staging"* ]]; then
     fail "production: OD_API_TOKEN 값에 'staging' 포함 — staging 토큰 재사용 의심, prod 전용 토큰 발급 필요"
+  fi
+fi
+
+# Hosted app.sqlite durability — deploy.sh always starts Litestream for
+# staging/production. Missing or divergent replica destinations must fail
+# before compose starts; otherwise chat/run metadata remains EBS-only.
+if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+  require_nonempty LITESTREAM_BUCKET
+  require_nonempty LITESTREAM_REGION
+  if [[ -n "${OD_S3_BUCKET:-}" && "${LITESTREAM_BUCKET:-}" != "${OD_S3_BUCKET}" ]]; then
+    fail "LITESTREAM_BUCKET=${LITESTREAM_BUCKET:-} — app.sqlite replica는 프로젝트 S3 bucket(OD_S3_BUCKET=${OD_S3_BUCKET})과 동일해야 함"
   fi
 fi
 

@@ -220,7 +220,7 @@ if [[ "$USE_MINIO" == true ]]; then
   COMPOSE_EXTRA_ARGS+=(--profile minio)
 fi
 
-SERVICES=(open-design-daemon teamver-design-api)
+SERVICES=(open-design-daemon teamver-design-api litestream)
 if [[ "$USE_LOCAL_DB" == true ]]; then
   SERVICES=(design-db "${SERVICES[@]}")
 fi
@@ -234,6 +234,26 @@ fi
 
 "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" up -d --build "${SERVICES[@]}"
 "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" ps
+
+wait_for_litestream_running() {
+  local max_attempts=15
+  echo "==> Waiting for Litestream app.sqlite replica (${max_attempts}x2s) …"
+  for _ in $(seq 1 "$max_attempts"); do
+    local running
+    running="$(
+      "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" \
+        ps --status running --services litestream 2>/dev/null || true
+    )"
+    if grep -qx 'litestream' <<< "$running"; then
+      echo "✓ Litestream replica process running"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "❌ Litestream failed to stay running — app.sqlite would remain EBS-only"
+  "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" logs litestream --tail 80 || true
+  return 1
+}
 
 wait_for_sidecar_ready() {
   local be_port od_port
@@ -257,6 +277,7 @@ wait_for_sidecar_ready() {
   return 1
 }
 
+wait_for_litestream_running
 wait_for_sidecar_ready || true
 
 ENV_FLAG="$(design_compose_env_flag)"

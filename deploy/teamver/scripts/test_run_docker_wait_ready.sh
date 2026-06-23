@@ -27,6 +27,9 @@ if grep -q 'ln -sf' "$DEPLOY"; then
 fi
 
 for needle in \
+  'wait_for_litestream_running()' \
+  'ps --status running --services litestream' \
+  'wait_for_litestream_running' \
   'wait_for_sidecar_ready()' \
   'BE_PORT=' \
   'OD_PORT=' \
@@ -45,9 +48,15 @@ done
 up_line="$(grep -n 'DESIGN_COMPOSE_ARGS\[@\]}.*up -d --build' "$DEPLOY" | cut -d: -f1 | head -1)"
 wait_line="$(grep -n 'wait_for_sidecar_ready || true' "$DEPLOY" | cut -d: -f1 | head -1)"
 seed_line="$(grep -n 'seed_od_runtime_config.sh' "$DEPLOY" | cut -d: -f1 | head -1)"
+litestream_wait_line="$(grep -n '^wait_for_litestream_running$' "$DEPLOY" | cut -d: -f1 | head -1)"
 
 if [[ -z "$up_line" || -z "$wait_line" || -z "$seed_line" ]]; then
   echo "❌ unable to locate deploy compose/wait/seed lines"
+  exit 1
+fi
+
+if [[ -z "$litestream_wait_line" || "$litestream_wait_line" -le "$up_line" || "$litestream_wait_line" -ge "$wait_line" ]]; then
+  echo "❌ Litestream readiness gate must run after compose up and before API readiness"
   exit 1
 fi
 

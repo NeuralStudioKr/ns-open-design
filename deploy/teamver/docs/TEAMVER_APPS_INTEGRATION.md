@@ -172,7 +172,9 @@ TEAMVER_DESIGN_API_URL=http://teamver-design-api:8000
 OD_PROJECT_LAZY_SYNC_TTL_MS=60000
 ```
 
-EC2 IAM instance profile 사용 시 `OD_S3_ACCESS_KEY_ID` 불필요. Litestream: `docker compose --profile litestream up -d`.
+EC2 IAM instance profile 사용 시 `OD_S3_ACCESS_KEY_ID` 불필요. Hosted 배포는
+`deploy.sh`가 Litestream을 항상 시작하며, `LITESTREAM_BUCKET`(=`OD_S3_BUCKET`)과
+`LITESTREAM_REGION` 누락 또는 sidecar running 실패 시 배포를 중단한다.
 
 상세: [09 Phase 0~3](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md)
 

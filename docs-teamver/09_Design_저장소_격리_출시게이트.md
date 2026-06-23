@@ -105,7 +105,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ✅ |
 | P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ✅ |
 | P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose ✅ · daemon S3 init fail-fast ✅ · smoke storage hard-fail 기본 on ✅ · staging smoke `checks.od_storage=degraded` |
-| P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 config·profile ✅ · prod 검증 ☐ |
+| P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 hosted 자동 기동·env/preflight·running hard gate ✅ · 실제 replica/restore 검증 ☐ |
 | P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) + `deploy/teamver/scripts` | 🟡 alarm command ✅ · EC2 apply ☐ |
 | P0-7 | RDS `teamver_design_*` database | Terraform + SQL | ✅ |
 
@@ -130,7 +130,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 config·profile ✅ |
+| P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 config·hosted 필수 자동 기동 ✅ · 실제 S3 replica 증적 ☐ |
 | P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` + `scripts/restore_app_sqlite_from_s3.sh` | ✅ Litestream + fallback snapshot 모드, `--apply`로 daemon 컨테이너 직접 적용, fixture `test_restore_app_sqlite_from_s3.sh` |
 | P2-3 | (대안) `app.sqlite` → S3 fallback — Litestream 불가 시 | `deploy/teamver` | 🟡 manual fallback script ✅ · cron 미사용 |
 
@@ -474,7 +474,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 | 체크 | 자동화 스크립트 | Phase |
 |------|----------------|-------|
 | S3 workspace/user/project prefix 객체 생성 | `smoke_design.sh` (`SMOKE_REQUIRE_OD_STORAGE=1` default-on staging/prod) + `check_storage_isolation.sh` + `run_staging_track_a_e2e.sh` (`TEAMVER_S3_BUCKET`) | Phase 5 / 8 / 9 |
-| EC2 volume 삭제 후 복구 (Litestream) | `validate_deploy_env.sh --production` (LITESTREAM_BUCKET warn) + 별도 `restore_app_sqlite_from_s3.sh` 수동 | Phase 1 (warn) |
+| EC2 volume 삭제 후 복구 (Litestream) | hosted `LITESTREAM_BUCKET/REGION` preflight hard gate + `deploy.sh` 자동 기동/running 확인 + `restore_app_sqlite_from_s3.sh` 수동 | Phase 1 (실복구 증적 필요) |
 | 사용자 A/B access 403 | `run_staging_track_a_e2e.sh` (`TEAMVER_COOKIE_USER_B` 격리) | Phase 9 |
 | design-api `GET /projects` workspace 필터 | `run_staging_track_a_e2e.sh` (S-8b) | Phase 9 |
 | agent run 후 S3 sync-up | `smoke_design.sh` storage probe + daemon `/api/health/storage` | Phase 5 |
@@ -532,6 +532,7 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 | 일자 | 내용 |
 |------|------|
 | 2026-06-22 | [20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) — 로컬 scratch+S3, Litestream, 용량 SSOT |
+| 2026-06-23 | hosted DB 내구성 hard gate — staging/production deploy가 Litestream을 항상 시작하고 running 실패 시 중단; replica bucket/region 누락·프로젝트 bucket 불일치 preflight 차단 |
 | 2026-06-22 | §8.2 EC2 **root + od-data** 2볼륨 정리 — [07 §3.5](./07_VM_배포_인프라.md); 용량 표 Staging 30 / Prod 100 GiB (od-data) |
 | 2026-06-22 | production strict E2E gate — `print_production_track_a_e2e_env.sh` + `--e2e-strict`; auth/usage DB/Drive publish/S3 object 검증의 skip-only 성공 차단 |
 | 2026-06-19 | Production Phase 0 helper — `print/apply/run_production_phase0_activate.sh` 로 prod 전용 RDS+S3 env 병합·dry-run·preflight 제공, fixture 3종 Track A runner 연결 |

@@ -32,6 +32,8 @@ OD_S3_SYNC_UP_METRICS=1
 OD_SCRATCH_DISK_METRICS=1
 OD_SCRATCH_DISK_THRESHOLD_MB=2048
 OD_SCRATCH_DISK_METRIC_INTERVAL_MS=300000
+LITESTREAM_BUCKET=teamver-design-staging-data
+LITESTREAM_REGION=ap-northeast-2
 TRUST_TEAMVER_PROXY_HEADERS=true
 TEAMVER_OD_API_KEY=test-managed-api-key
 TEAMVER_REGISTRY_APP_ID=ai-design
@@ -179,6 +181,33 @@ for key in OD_SCRATCH_EVICT_AFTER_RUN OD_S3_SYNC_UP_METRICS OD_SCRATCH_DISK_METR
 done
 
 echo "✓ validate_deploy_env DRIVE + hosted SCRATCH/SYNC-UP gates ok"
+
+# Hosted app.sqlite must always have a Litestream destination.
+for key in LITESTREAM_BUCKET LITESTREAM_REGION; do
+  MISSING_ENV="$(mktemp)"
+  grep -v "^${key}=" "$TMP_ENV" > "$MISSING_ENV" || true
+  missing_out="$(bash "$SCRIPT" --staging --rds --env-file "$MISSING_ENV" 2>&1 || true)"
+  if ! grep -q "${key} 가 비어 있습니다" <<< "$missing_out"; then
+    echo "❌ hosted deployment without ${key} must fail preflight"
+    echo "$missing_out"
+    rm -f "$MISSING_ENV"
+    exit 1
+  fi
+  rm -f "$MISSING_ENV"
+done
+
+MISMATCH_LITESTREAM_ENV="$(mktemp)"
+sed 's/^LITESTREAM_BUCKET=.*/LITESTREAM_BUCKET=wrong-bucket/' "$TMP_ENV" > "$MISMATCH_LITESTREAM_ENV"
+mismatch_out="$(bash "$SCRIPT" --staging --rds --env-file "$MISMATCH_LITESTREAM_ENV" 2>&1 || true)"
+if ! grep -q '프로젝트 S3 bucket.*동일해야 함' <<< "$mismatch_out"; then
+  echo "❌ Litestream bucket mismatch must fail preflight"
+  echo "$mismatch_out"
+  rm -f "$MISMATCH_LITESTREAM_ENV"
+  exit 1
+fi
+rm -f "$MISMATCH_LITESTREAM_ENV"
+
+echo "✓ validate_deploy_env hosted Litestream durability gates ok"
 
 # Daemon billing bridge warnings.
 if ! grep -q 'daemon billing bridge 활성\|daemon billing bridge OFF' <<< "$clean_out"; then
