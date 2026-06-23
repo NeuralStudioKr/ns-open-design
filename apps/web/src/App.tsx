@@ -1189,6 +1189,18 @@ function AppInner() {
     return subscribeTeamverDesignAccessChanged(syncDesignAccess);
   }, []);
 
+  // Embed: leave project workspace when Design app becomes disabled mid-session.
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverDesignAccessChanged((detail) => {
+      if (detail.appEnabled) return;
+      const current = routeRef.current;
+      if (current.kind !== 'project') return;
+      setWorkingDirError(formatTeamverDesignDisabledMessage(detail.appDisabledReason));
+      navigate({ kind: 'home', view: 'home' }, { replace: true });
+    });
+  }, []);
+
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {

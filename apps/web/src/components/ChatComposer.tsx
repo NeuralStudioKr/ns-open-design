@@ -41,7 +41,7 @@ import { getDesignBffClient } from '../teamver/designBffClient';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import {
   isTeamverEmbedDriveImportAllowed,
-  readTeamverDesignAccessSnapshot,
+  isTeamverEmbedDesignSurfaceEnabled,
   subscribeTeamverDesignAccessChanged,
 } from '../teamver/teamverDesignAccess';
 import {
@@ -469,9 +469,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
-    const [designAppEnabled, setDesignAppEnabled] = useState(
-      () => readTeamverDesignAccessSnapshot()?.appEnabled ?? true,
-    );
+    const [designAccessTick, setDesignAccessTick] = useState(0);
     const [driveImportOpen, setDriveImportOpen] = useState(false);
     const [driveImportBusy, setDriveImportBusy] = useState(false);
     const [driveImportPartial, setDriveImportPartial] = useState<TeamverDriveImportPartialResult | null>(null);
@@ -538,20 +536,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }, []);
     useEffect(() => {
       if (!isTeamverEmbedMode()) return;
-      const sync = () => {
-        setDesignAppEnabled(readTeamverDesignAccessSnapshot()?.appEnabled ?? true);
-      };
-      sync();
-      return subscribeTeamverDesignAccessChanged(sync);
+      return subscribeTeamverDesignAccessChanged(() => {
+        setDesignAccessTick((tick) => tick + 1);
+      });
     }, []);
     const teamverDriveImportAllowed = useMemo(
       () =>
         isTeamverEmbedDriveImportAllowed({
           bffPresent: teamverDriveImportEnabled,
           workspaceId: teamverWorkspaceId,
-          snapshotAppEnabled: designAppEnabled,
+          snapshotAppEnabled: isTeamverEmbedDesignSurfaceEnabled(),
         }),
-      [teamverDriveImportEnabled, teamverWorkspaceId, designAppEnabled],
+      [teamverDriveImportEnabled, teamverWorkspaceId, designAccessTick],
     );
     useEffect(() => {
       if (teamverDriveImportAllowed) return;

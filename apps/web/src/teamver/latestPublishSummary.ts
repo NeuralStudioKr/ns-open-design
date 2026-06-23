@@ -89,6 +89,7 @@ async function ensurePublishSummaryBatch(): Promise<void> {
 /** Warm chip cache for project cards — one batch API call instead of N `/outputs`. */
 export async function prefetchLatestPublishSummaries(projectIds: string[]): Promise<void> {
   if (!isTeamverEmbedMode()) return;
+  if (!isTeamverEmbedDesignSurfaceEnabled()) return;
 
   for (const raw of projectIds) {
     const id = raw.trim();

@@ -33,6 +33,8 @@ import {
   projectCoverFilesEqual,
   type ProjectCoverFile,
 } from "../teamver/projectPreviewFile";
+import { prefetchDesignsTabViewport } from "../teamver/prefetchDesignsTabViewport";
+import { PROJECT_LIST_VIEWPORT_BATCH } from "../teamver/projectListLimits";
 
 type SubTab = "recent" | "yours";
 type ViewMode = "grid" | "kanban";
@@ -270,6 +272,23 @@ export function DesignsTab({
 			),
 		[filtered],
 	);
+
+	const viewportPrefetchKey = useMemo(
+		() =>
+			filteredProjects
+				.slice(0, PROJECT_LIST_VIEWPORT_BATCH)
+				.map((item) => item.project.id)
+				.join("|"),
+		[filteredProjects],
+	);
+
+	useEffect(() => {
+		if (!teamverEmbed || view !== "grid" || viewportPrefetchKey.length === 0) return;
+		const batch = filteredProjects
+			.slice(0, PROJECT_LIST_VIEWPORT_BATCH)
+			.map((item) => item.project);
+		void prefetchDesignsTabViewport(batch);
+	}, [teamverEmbed, view, viewportPrefetchKey, filteredProjects]);
 
 	const skillName = (id: string | null) =>
 		skills.find((s) => s.id === id)?.name ?? "";
