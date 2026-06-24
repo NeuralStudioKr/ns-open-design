@@ -12,7 +12,6 @@ import {
   type TeamverLatestPublishSummary,
 } from "../latestPublishSummary";
 import { TEAMVER_PUBLISH_OUTPUTS_CHANGED_EVENT } from "../teamverPublishEvents";
-import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
 
 type Props = {
   projectId: string;
@@ -102,14 +101,13 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
     };
   }, [projectId, refresh, designSurfaceEnabled]);
 
-  useEffect(() => {
-    if (!isTeamverEmbedMode() || !designSurfaceEnabled) return;
-    return subscribeTeamverWorkspaceChanged(() => {
-      clearLatestPublishSummaryCache(projectId);
-      setSummary(null);
-      void refresh();
-    });
-  }, [projectId, refresh, designSurfaceEnabled]);
+  // loop 347 — workspace switch is handled centrally by App.tsx:
+  // `subscribeTeamverWorkspaceChanged` → `clearTeamverEmbedListCaches()` +
+  // `setProjects([])` causes every chip to unmount before the new project
+  // list mounts fresh chips against a warm batch cache. A chip-level
+  // listener (loop 344) fires while the component is already on its way to
+  // unmount, doing redundant work and risking "can't update unmounted
+  // component" warnings. We rely on the centralized clear instead.
 
   if (!isTeamverEmbedMode() || !designSurfaceEnabled) {
     return null;
