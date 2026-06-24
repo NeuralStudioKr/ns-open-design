@@ -106,9 +106,16 @@ describe('Teamver embed branding policy', () => {
     const chatPane = readFileSync(resolve(webRoot, 'src/components/ChatPane.tsx'), 'utf8');
     const designFiles = readFileSync(resolve(webRoot, 'src/components/DesignFilesPanel.tsx'), 'utf8');
     const fileWorkspace = readFileSync(resolve(webRoot, 'src/components/FileWorkspace.tsx'), 'utf8');
+    const fileViewer = readFileSync(resolve(webRoot, 'src/components/FileViewer.tsx'), 'utf8');
+    const projectView = readFileSync(resolve(webRoot, 'src/components/ProjectView.tsx'), 'utf8');
+    const previewModal = readFileSync(resolve(webRoot, 'src/components/PreviewModal.tsx'), 'utf8');
     expect(chatComposer).toContain('useTeamverT');
     expect(chatPane).toContain('useTeamverT');
     expect(designFiles).toContain('useTeamverT');
     expect(fileWorkspace).toContain('useTeamverT');
+    expect(fileViewer).toContain('useTeamverT');
+    expect(fileViewer).not.toMatch(/\buseT\(\)/);
+    expect(projectView).toContain('useTeamverT');
+    expect(previewModal).toContain('useTeamverT');
   });
 });

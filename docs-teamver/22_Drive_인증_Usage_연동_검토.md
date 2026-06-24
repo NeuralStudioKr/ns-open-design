@@ -177,7 +177,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 |---|------|---|------|
 | S-1 | Drive publish picker **최근 위치** (workspace localStorage ring) | P1 | ✅ loop 356 |
 | S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ✅ loop 359 |
-| S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | 🟡 Chat/DesignFiles/FileWorkspace ✅ |
+| S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | ✅ loop 360 |
 | S-4 | embed slide E2E wording 잔여 (FileViewer download aria 등) | P1 | ✅ loop 357 |
 | S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 코드 ✅ · 실관측 ☐ |
 | S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 |
