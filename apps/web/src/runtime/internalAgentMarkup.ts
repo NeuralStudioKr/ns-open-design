@@ -19,13 +19,39 @@ const CLOSED_REDACTED_THINKING_RE = new RegExp(
 );
 const OPEN_REDACTED_THINKING_RE = new RegExp(`<${REDACTED_THINKING_TAG}[^>]*>`, "i");
 
+/** Qwen / DeepSeek-style thinking blocks leaked into the text channel. */
+const CLOSED_THINKING_RE = /<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi;
+const OPEN_THINKING_RE = /<thinking\b[^>]*>/i;
+const CLOSED_THINK_RE = /<think\b[^>]*>[\s\S]*?<\/think>/gi;
+const OPEN_THINK_RE = /<think\b[^>]*>/i;
+
 /** Cursor / agent system reminders echoed into assistant prose. */
 const CLOSED_SYSTEM_REMINDER_RE = /<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi;
 const OPEN_SYSTEM_REMINDER_RE = /<system-reminder\b[^>]*>/i;
 
+/** Agent runtime tool-status narration (TodoWrite progress) leaked into stdout prose. */
+const CLOSED_INFO_RE = /<info\b[^>]*>[\s\S]*?<\/info>/gi;
+const OPEN_INFO_RE = /<info\b[^>]*>/i;
+
+/** CLI / API pseudo-tool XML leaked into assistant text instead of structured tool_use. */
+const CLOSED_FUNCTION_CALLS_RE = /<function_calls\b[^>]*>[\s\S]*?<\/function_calls>/gi;
+const CLOSED_INVOKE_RE = /<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi;
+const CLOSED_PARAMETER_RE = /<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi;
+const CLOSED_FUNCTION_RESULTS_RE = /<function_results\b[^>]*>[\s\S]*?<\/function_results>/gi;
+const CLOSED_TODO_LIST_RE = /<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi;
+const CLOSED_TOOL_CALL_RE = /<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi;
+const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
+
 /** Narrated tool calls some models emit when tools are unavailable or ignored. */
 const FAKE_TOOL_NARRATION_RE =
-  /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell)[^\]]*\]/gi;
+  /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate)[^\]]*\]/gi;
+
+/** Fake file-read protocol prose observed in #313 (`[读取 template.html …]`). */
+const FAKE_FILE_READ_NARRATION_RE = /\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi;
+
+/** Plain-text agent runtime status lines (often wrapped in `<info>` but sometimes bare). */
+const AGENT_RUNTIME_STATUS_LINE_RE =
+  /^\s*(?:TodoWrite called with \d+ tasks|Marking task \d+ as (?:in_progress|completed|pending|cancelled|stopped)|Running tool: \w+|Tool (?:completed|failed): \w+)\s*$/gim;
 
 function findCloseTag(input: string, from: number, closeTag: string): number {
   const closeLower = closeTag.toLowerCase();
@@ -59,17 +85,43 @@ function stripTrailingOpenTag(
   return { text: input, hadOpenInternalMarkup: false };
 }
 
-/** Remove completed internal markup blocks and fake tool narration from prose. */
-export function stripInternalOpenDesignMarkup(input: string): string {
-  let out = input.replace(CLOSED_OD_TAG_RE, "");
-  out = out.replace(CLOSED_REDACTED_THINKING_RE, "");
-  out = out.replace(CLOSED_SYSTEM_REMINDER_RE, "");
-  out = out.replace(FAKE_TOOL_NARRATION_RE, "");
-  return out.replace(/\n{3,}/g, "\n\n").trimEnd();
+function collapseExtraBlankLines(input: string): string {
+  return input.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
 
 /**
- * While streaming, drop a trailing unclosed `<od…>` block so users never see
+ * Single-pass sanitizer for all known leaked agent / pseudo-tool markup in
+ * assistant prose. Used by stream handlers, persistence, and display.
+ */
+export function sanitizeLeakedAgentProse(input: string): string {
+  if (!input) return input;
+  let out = input;
+  out = out.replace(CLOSED_FUNCTION_CALLS_RE, "");
+  out = out.replace(CLOSED_INVOKE_RE, "");
+  out = out.replace(CLOSED_PARAMETER_RE, "");
+  out = out.replace(CLOSED_FUNCTION_RESULTS_RE, "");
+  out = out.replace(CLOSED_TODO_LIST_RE, "");
+  out = out.replace(CLOSED_TOOL_CALL_RE, "");
+  out = out.replace(CLOSED_ANTML_RE, "");
+  out = out.replace(CLOSED_INFO_RE, "");
+  out = out.replace(CLOSED_OD_TAG_RE, "");
+  out = out.replace(CLOSED_REDACTED_THINKING_RE, "");
+  out = out.replace(CLOSED_THINKING_RE, "");
+  out = out.replace(CLOSED_THINK_RE, "");
+  out = out.replace(CLOSED_SYSTEM_REMINDER_RE, "");
+  out = out.replace(FAKE_TOOL_NARRATION_RE, "");
+  out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
+  out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
+  return collapseExtraBlankLines(out);
+}
+
+/** Remove completed internal markup blocks and fake tool narration from prose. */
+export function stripInternalOpenDesignMarkup(input: string): string {
+  return sanitizeLeakedAgentProse(input);
+}
+
+/**
+ * While streaming, drop a trailing unclosed internal block so users never see
  * half-written todo/thinking JSON in the chat log.
  */
 export function stripTrailingOpenInternalMarkup(
@@ -100,12 +152,27 @@ export function stripTrailingOpenInternalMarkup(
     return { text: thinking.text, hadOpenInternalMarkup: true };
   }
 
-  const reminder = stripTrailingOpenTag(thinking.text, OPEN_SYSTEM_REMINDER_RE, "system-reminder");
+  const qwenThinking = stripTrailingOpenTag(thinking.text, OPEN_THINKING_RE, "thinking");
+  if (qwenThinking.hadOpenInternalMarkup) {
+    return { text: qwenThinking.text, hadOpenInternalMarkup: true };
+  }
+
+  const deepseekThink = stripTrailingOpenTag(qwenThinking.text, OPEN_THINK_RE, "think");
+  if (deepseekThink.hadOpenInternalMarkup) {
+    return { text: deepseekThink.text, hadOpenInternalMarkup: true };
+  }
+
+  const reminder = stripTrailingOpenTag(deepseekThink.text, OPEN_SYSTEM_REMINDER_RE, "system-reminder");
   if (reminder.hadOpenInternalMarkup) {
     return { text: reminder.text, hadOpenInternalMarkup: true };
   }
 
-  return { text: reminder.text, hadOpenInternalMarkup: false };
+  const info = stripTrailingOpenTag(reminder.text, OPEN_INFO_RE, "info");
+  if (info.hadOpenInternalMarkup) {
+    return { text: info.text, hadOpenInternalMarkup: true };
+  }
+
+  return { text: info.text, hadOpenInternalMarkup: false };
 }
 
 /** Combined display sanitizer for assistant prose (history + live stream). */
@@ -113,7 +180,7 @@ export function sanitizeAssistantProseForDisplay(
   input: string,
   options: { streaming?: boolean } = {},
 ): string {
-  const closed = stripInternalOpenDesignMarkup(input);
+  const closed = sanitizeLeakedAgentProse(input);
   if (!options.streaming) return closed;
   return stripTrailingOpenInternalMarkup(closed).text;
 }

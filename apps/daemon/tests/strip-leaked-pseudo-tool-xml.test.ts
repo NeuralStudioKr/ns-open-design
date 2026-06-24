@@ -25,4 +25,27 @@ describe('stripLeakedPseudoToolXml', () => {
     expect(out).toContain('Plan:');
     expect(out).toContain('Proceed.');
   });
+
+  it('removes agent runtime info narration leaked into stdout', () => {
+    const input = [
+      '<info>TodoWrite called with 9 tasks</info>',
+      '슬라이드 구성 계획:',
+      '<info>Marking task 2 as completed</info>',
+    ].join('\n');
+    const out = stripLeakedPseudoToolXml(input);
+    expect(out).not.toContain('<info>');
+    expect(out).not.toContain('TodoWrite called');
+    expect(out).toContain('슬라이드 구성 계획:');
+  });
+
+  it('removes thinking tags, fake file reads, and bare status lines', () => {
+    const input = [
+      '<thinking>hidden</thinking>',
+      '[读取 template.html]',
+      'Marking task 1 as in_progress',
+      'Visible answer.',
+    ].join('\n');
+    const out = stripLeakedPseudoToolXml(input);
+    expect(out).toBe('Visible answer.');
+  });
 });

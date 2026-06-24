@@ -94,7 +94,28 @@ export function stripLeakedPseudoToolXml(text: string): string {
   let out = text;
   out = out.replace(/<function_calls\b[^>]*>[\s\S]*?<\/function_calls>/gi, "");
   out = out.replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, "");
+  out = out.replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, "");
+  out = out.replace(/<function_results\b[^>]*>[\s\S]*?<\/function_results>/gi, "");
   out = out.replace(/<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi, "");
   out = out.replace(/<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi, "");
-  return out;
+  out = out.replace(/<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi, "");
+  out = out.replace(/<info\b[^>]*>[\s\S]*?<\/info>/gi, "");
+  out = out.replace(/<(od[A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+  out = out.replace(
+    new RegExp(`<${REDACTED_THINKING_TAG}[^>]*>[\\s\\S]*?</${REDACTED_THINKING_TAG}>`, "gi"),
+    "",
+  );
+  out = out.replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi, "");
+  out = out.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  out = out.replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi, "");
+  out = out.replace(
+    /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate)[^\]]*\]/gi,
+    "",
+  );
+  out = out.replace(/\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi, "");
+  out = out.replace(
+    /^\s*(?:TodoWrite called with \d+ tasks|Marking task \d+ as (?:in_progress|completed|pending|cancelled|stopped)|Running tool: \w+|Tool (?:completed|failed): \w+)\s*$/gim,
+    "",
+  );
+  return out.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
