@@ -1478,12 +1478,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         if (partial) {
           const failedCount = result.failed.length;
           const uploadedCount = result.uploaded.length;
-          const detail = result.error ? ` (${result.error})` : '';
+          const detail =
+            slideOnlyMvp || !result.error ? '' : ` (${result.error})`;
           setUploadError(
             slideOnlyMvp
               ? uploadedCount > 0
-                ? `${uploadedCount}개 파일을 첨부했지만 ${failedCount}개는 실패했습니다${detail}.`
-                : `파일 ${failedCount}개 첨부에 실패했습니다${detail}.`
+                ? `${uploadedCount}개 파일을 첨부했지만 ${failedCount}개는 실패했습니다.`
+                : `파일 ${failedCount}개 첨부에 실패했습니다.`
               : uploadedCount > 0
                 ? `Attached ${uploadedCount} file(s), but ${failedCount} failed${detail}.`
                 : `Attachment upload failed for ${failedCount} file(s)${detail}.`,
@@ -1502,7 +1503,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         const detail = err instanceof Error ? err.message : String(err);
         setUploadError(
           slideOnlyMvp
-            ? `파일 첨부에 실패했습니다 — ${detail}.`
+            ? `파일 첨부에 실패했습니다.`
             : `Attachment upload failed (${detail}).`,
         );
         trackFileUploadResult(analytics.track, {
@@ -1719,10 +1720,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
               if (result.failed.length > 0) {
-                const detailText = result.error ? ` (${result.error})` : '';
+                const detailText =
+                  slideOnlyMvp || !result.error ? '' : ` (${result.error})`;
                 setUploadError(
                   slideOnlyMvp
-                    ? `파일 ${result.failed.length}개 첨부에 실패했습니다${detailText}.`
+                    ? `파일 ${result.failed.length}개 첨부에 실패했습니다.`
                     : `Attachment upload failed for ${result.failed.length} file(s)${detailText}.`,
                 );
                 if (uploaded.length === 0) {
@@ -3042,8 +3044,16 @@ function workspaceContextTitle(item: WorkspaceContextItem): string {
 }
 
 function workspaceContextDescription(item: WorkspaceContextItem): string {
-  if (item.kind === 'design-files') return item.path || 'Project files';
-  if (item.kind === 'terminal') return item.title || 'Terminal session';
+  const embed = isTeamverEmbedMode();
+  if (item.kind === 'design-files') {
+    return item.path || (embed ? '프로젝트 파일' : 'Project files');
+  }
+  if (item.kind === 'terminal') {
+    return item.title || (embed ? '터미널 세션' : 'Terminal session');
+  }
+  if (item.kind === 'browser') {
+    return item.url || item.title || (embed ? '브라우저' : 'Browser');
+  }
   return item.url || item.path || item.absolutePath || item.title || item.tabId || item.id;
 }
 
@@ -3076,6 +3086,27 @@ function workspaceContextSearchText(item: WorkspaceContextItem): string {
 }
 
 function workspaceContextKindLabel(kind: WorkspaceContextItem['kind']): string {
+  if (isTeamverEmbedMode()) {
+    switch (kind) {
+      case 'browser':
+        return '브라우저';
+      case 'design-files':
+        return '디자인 파일';
+      case 'design-system':
+        return '디자인 시스템';
+      case 'folder':
+        return '폴더';
+      case 'terminal':
+        return '터미널';
+      case 'side-chat':
+        return '사이드 채팅';
+      case 'live-artifact':
+        return '라이브 산출물';
+      case 'file':
+      default:
+        return '파일';
+    }
+  }
   switch (kind) {
     case 'browser':
       return 'Browser';
@@ -3192,7 +3223,9 @@ function StagedRunContexts({
       {workspaceItems.map((workspaceItem) => {
         const kindLabel =
           workspaceItem.id === currentWorkspaceContextId
-            ? 'Current'
+            ? isTeamverEmbedMode()
+              ? '현재'
+              : 'Current'
             : workspaceContextKindLabel(workspaceItem.kind);
         return (
           <div
@@ -3294,9 +3327,13 @@ function StagedRunContexts({
       {attachments.map((a, index) => {
         const canPreview = a.kind === 'image' && Boolean(projectId);
         const imageUrl = canPreview ? projectRawUrl(projectId!, a.path) : null;
+        const embed = isTeamverEmbedMode();
         return (
           <div key={a.path} className={`staged-chip staged-${a.kind}`}>
-            <span className="staged-order" aria-label={`Attachment ${index + 1}`}>
+            <span
+              className="staged-order"
+              aria-label={embed ? `첨부 ${index + 1}` : `Attachment ${index + 1}`}
+            >
               {index + 1}
             </span>
             {canPreview && imageUrl ? (
@@ -3305,7 +3342,7 @@ function StagedRunContexts({
                 className="staged-preview-trigger"
                 onClick={() => setPreview(a)}
                 title={a.path}
-                aria-label={`Preview ${a.name}`}
+                aria-label={embed ? `${a.name} 미리보기` : `Preview ${a.name}`}
               >
                 <img src={imageUrl} alt="" aria-hidden />
                 <span className="staged-name">{a.name}</span>

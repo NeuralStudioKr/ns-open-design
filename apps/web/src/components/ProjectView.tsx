@@ -172,7 +172,12 @@ import {
   formatProjectConversationCreateError,
   formatProjectConversationListError,
   formatProjectMessagesLoadError,
+  formatProjectArtifactRejectedError,
+  formatProjectArtifactSaveFailedError,
+  formatProjectArtifactStubWarning,
+  formatProjectRunErrorForUser,
 } from '../teamver/projectErrorMessages';
+import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -1150,6 +1155,15 @@ export function ProjectView({
       }
     };
   }, [project.id]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverWorkspaceChanged(() => {
+      setError(null);
+      setConversationLoadError(null);
+    });
+  }, []);
+
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
   // the file as a tab once. Keying off the tool_use_id (rather than
@@ -1848,7 +1862,12 @@ export function ProjectView({
       if (ext === '.html') {
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
-          setError(`Refused to save artifact "${art.identifier || art.title || 'untitled'}": ${validation.reason}`);
+          setError(
+            formatProjectArtifactRejectedError(
+              art.identifier || art.title || 'untitled',
+              validation.reason,
+            ),
+          );
           return;
         }
       }
@@ -1889,8 +1908,7 @@ export function ProjectView({
         // model shipped a placeholder.
         if (file.stubGuardWarning) {
           setError(
-            `Saved "${file.name}", but the model may have shipped a placeholder: ` +
-              `${file.stubGuardWarning.message}`,
+            formatProjectArtifactStubWarning(file.name, file.stubGuardWarning.message),
           );
         }
         // Auto-open the freshly-persisted artifact as a tab so the user
@@ -1906,10 +1924,7 @@ export function ProjectView({
         // the structured details for any specific error type.
         // Clear the saved-artifact ref so the user can retry.
         savedArtifactRef.current = '';
-        setError(
-          `Couldn't save artifact "${fileName}". The write failed — ` +
-            'check the daemon logs for details.',
-        );
+        setError(formatProjectArtifactSaveFailedError(fileName));
       }
     },
     [project.id, project.designSystemId, project.skillId, requestOpenFile],
@@ -2921,7 +2936,7 @@ export function ProjectView({
               textBuffer.cancel();
               unregisterTextBuffer();
               if (runMayFinalize) {
-                setError(err.message);
+                setError(formatProjectRunErrorForUser(err));
                 appendAssistantErrorEvent(message.id, err.message, errorCode);
                 updateMessageById(
                   message.id,
@@ -2978,9 +2993,9 @@ export function ProjectView({
             const runMayFinalize =
               !supersededRunsRef.current.has(controller);
             if ((err as Error).name !== 'AbortError' && runMayFinalize) {
-              const msg = err instanceof Error ? err.message : String(err);
+              const msg = formatProjectRunErrorForUser(err);
               setError(msg);
-              appendAssistantErrorEvent(message.id, msg);
+              appendAssistantErrorEvent(message.id, err instanceof Error ? err.message : String(err));
               updateMessageById(
                 message.id,
                 (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
@@ -3714,7 +3729,7 @@ export function ProjectView({
           textBuffer.flush();
           releaseOwnTextBuffer();
           if (runMayFinalize) {
-            if (runIsVisible()) setError(err.message);
+            if (runIsVisible()) setError(formatProjectRunErrorForUser(err));
             updateAssistant((prev) => ({
               ...appendErrorStatusEvent(prev, err.message, errorCode),
               endedAt,

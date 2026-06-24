@@ -12,6 +12,7 @@ import {
   type TeamverLatestPublishSummary,
 } from "../latestPublishSummary";
 import { TEAMVER_PUBLISH_OUTPUTS_CHANGED_EVENT } from "../teamverPublishEvents";
+import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
 
 type Props = {
   projectId: string;
@@ -99,6 +100,15 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
     return () => {
       window.removeEventListener(TEAMVER_PUBLISH_OUTPUTS_CHANGED_EVENT, handlePublishChanged);
     };
+  }, [projectId, refresh, designSurfaceEnabled]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode() || !designSurfaceEnabled) return;
+    return subscribeTeamverWorkspaceChanged(() => {
+      clearLatestPublishSummaryCache(projectId);
+      setSummary(null);
+      void refresh();
+    });
   }, [projectId, refresh, designSurfaceEnabled]);
 
   if (!isTeamverEmbedMode() || !designSurfaceEnabled) {

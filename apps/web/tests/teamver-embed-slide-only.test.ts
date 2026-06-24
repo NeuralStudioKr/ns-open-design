@@ -91,5 +91,17 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(chatComposer).toContain('teamverDriveImportAllowed');
     expect(chatComposer).toContain('importTeamverDriveAssets');
     expect(chatComposer).toContain('embedAttachBlockReason');
+    expect(chatComposer).toContain("intent === 'create-slides'");
+    expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');
+    expect(chatComposer).toContain('setCanvasSlideLaunch(null)');
+    expect(chatComposer).toContain('setDriveImportPartial(null)');
+    expect(chatComposer).toContain('subscribeTeamverWorkspaceChanged');
+    expect(chatComposer).toContain("embed ? '브라우저'");
+  });
+
+  it("clears ProjectView error banners on workspace switch", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("subscribeTeamverWorkspaceChanged");
+    expect(projectView).toContain("setConversationLoadError(null)");
   });
 });

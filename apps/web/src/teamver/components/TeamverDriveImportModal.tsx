@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnalytics } from "../../analytics/provider";
 import { Icon } from "../../components/Icon";
 import type { TeamverDriveImportAsset, TeamverDriveImportPartialResult } from "../importDriveAssets";
-import { formatDriveImportErrorForUser } from "../importDriveAssets";
+import { formatDriveImportErrorForUser, formatTeamverDriveImportErrorMessage } from "../importDriveAssets";
 import { useT } from "../../i18n";
 import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
 import {
@@ -163,7 +163,7 @@ export function TeamverDriveImportModal({
     } catch (err) {
       setRows([]);
       setRecentRows([]);
-      setError(err instanceof Error ? err.message : "드라이브 파일 목록을 불러오지 못했습니다.");
+      setError(formatTeamverDriveImportErrorMessage(err));
     } finally {
       setLoading(false);
     }

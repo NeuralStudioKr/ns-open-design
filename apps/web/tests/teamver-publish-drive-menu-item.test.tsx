@@ -14,7 +14,7 @@ const listTargetsMock = vi.fn(async (_workspaceId: string, _options?: { limit?: 
   {
     id: "shared:SD-1:FLD-EXPORTS",
     label: "Product / Exports",
-    description: "Team drive folder",
+    description: "팀 드라이브 폴더",
     folderId: "FLD-EXPORTS",
     sharedDriveId: "SD-1",
   },
@@ -23,7 +23,7 @@ const searchTargetsMock = vi.fn(async (_workspaceId: string, _query: string, _op
   {
     id: "shared:SD-2:FLD-REMOTE",
     label: "Marketing / Launch exports",
-    description: "Team drive folder search result",
+    description: "팀 드라이브 폴더 검색 결과",
     folderId: "FLD-REMOTE",
     sharedDriveId: "SD-2",
   },

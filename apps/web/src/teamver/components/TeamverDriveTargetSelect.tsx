@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { Icon } from "../../components/Icon";
+import { isTeamverEmbedMode } from "../designApiBase";
 import type { TeamverDrivePublishTarget } from "../drivePublishTargets";
 
 type Props = {
@@ -44,7 +45,7 @@ export function TeamverDriveTargetSelect({
   selectedTargetId,
   disabled = false,
   loading = false,
-  ariaLabel = "Teamver Drive destination",
+  ariaLabel = isTeamverEmbedMode() ? "Teamver 드라이브 저장 위치" : "Teamver Drive destination",
   onChange,
 }: Props) {
   const [open, setOpen] = useState(false);

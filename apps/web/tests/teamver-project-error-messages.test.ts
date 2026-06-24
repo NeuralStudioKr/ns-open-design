@@ -43,4 +43,22 @@ describe("project conversation error messages", () => {
       "대화의 메시지를 불러오지 못했습니다.",
     );
   });
+
+  it("returns Korean artifact save errors in embed mode", async () => {
+    mockedEmbedMode.mockReturnValue(true);
+    const {
+      formatProjectArtifactRejectedError,
+      formatProjectArtifactSaveFailedError,
+      formatProjectArtifactStubWarning,
+      formatProjectRunErrorForUser,
+    } = await import("../src/teamver/projectErrorMessages");
+    expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
+      "저장을 거부",
+    );
+    expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장하지 못했습니다");
+    expect(formatProjectArtifactStubWarning("deck.html", "stub")).toContain("플레이스홀더");
+    expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
+      "슬라이드 실행",
+    );
+  });
 });

@@ -55,6 +55,14 @@ export function formatDriveImportErrorForUser(code: string): string {
     invalid_filename: "파일 이름이 올바르지 않습니다.",
   };
   if (exact[trimmed]) return exact[trimmed];
+
+  if (trimmed.startsWith("teamver_drive_fetch_failed:401") || trimmed.startsWith("teamver_drive_fetch_failed:403")) {
+    return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 다시 시도하세요.";
+  }
+  if (trimmed.startsWith("teamver_drive_fetch_failed:")) {
+    return "드라이브 파일 목록을 불러오지 못했습니다.";
+  }
+
   return trimmed;
 }
 

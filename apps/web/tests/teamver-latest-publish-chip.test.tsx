@@ -38,6 +38,12 @@ vi.mock('../src/teamver/latestPublishSummary', () => ({
   clearLatestPublishSummaryCache: vi.fn(),
 }));
 
+vi.mock('../src/teamver/teamverDesignAccess', () => ({
+  isTeamverEmbedDesignSurfaceEnabled: vi.fn(() => true),
+  subscribeTeamverDesignAccessChanged: vi.fn(() => () => {}),
+}));
+
+import { clearLatestPublishSummaryCache } from '../src/teamver/latestPublishSummary';
 import { TeamverLatestPublishChip } from '../src/teamver/components/TeamverLatestPublishChip';
 
 describe('TeamverLatestPublishChip', () => {
@@ -91,5 +97,40 @@ describe('TeamverLatestPublishChip', () => {
 
     await screen.findByTestId('teamver-publish-chip-p-defer');
     expect(fetchSummaryMock).toHaveBeenCalledWith('p-defer');
+  });
+
+  it('clears stale summary and refetches on workspace switch', async () => {
+    const { dispatchTeamverWorkspaceChanged } = await import(
+      '../src/teamver/teamverWorkspaceEvents'
+    );
+
+    let fetchCount = 0;
+    fetchSummaryMock.mockImplementation(async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return {
+          projectId: 'p-ws',
+          version: 2,
+          kind: 'html',
+          driveUrl: 'https://drive.example/a/ws1',
+          filename: 'Deck.html',
+        };
+      }
+      return null;
+    });
+
+    render(<TeamverLatestPublishChip projectId="p-ws" />);
+    await screen.findByTestId('teamver-publish-chip-p-ws');
+    const callsBeforeSwitch = fetchSummaryMock.mock.calls.length;
+
+    dispatchTeamverWorkspaceChanged('ws-2');
+
+    await waitFor(() => {
+      expect(clearLatestPublishSummaryCache).toHaveBeenCalledWith('p-ws');
+      expect(fetchSummaryMock.mock.calls.length).toBeGreaterThan(callsBeforeSwitch);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('teamver-publish-chip-p-ws')).toBeNull();
+    });
   });
 });

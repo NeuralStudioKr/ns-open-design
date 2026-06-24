@@ -55,10 +55,13 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
     expect(menuItem).toContain('Teamver 드라이브로 HTML 발행');
     expect(menuItem).toContain('선택한 팀 드라이브로 HTML 발행');
     expect(menuItem).toContain('발행 중…');
-    // Soft-pending hint copy stays intact so a partial workspace bridge still
-    // tells the user what's happening instead of disabling the publish row.
-    expect(menuItem).toContain('Drive 작업공간 연결 중 — 기본 위치로 발행됩니다.');
-    expect(menuItem).toContain('Drive 폴더 목록을 불러오지 못했습니다. 찾아보기로 다시 시도하세요.');
+    // Error hints route through formatPublishErrorCodeForUser (loop 334+).
+    expect(menuItem).toContain('formatPublishErrorCodeForUser');
+    const publishErrors = readSource('src/teamver/publishToDrive.ts');
+    expect(publishErrors).toContain('Teamver 작업공간 연결 중입니다 — 기본 위치로 발행됩니다.');
+    expect(publishErrors).toContain(
+      'Drive 폴더 목록을 불러오지 못했습니다 — 찾아보기 또는 다시 시도하세요.',
+    );
   });
 
   it('pins HTML-only Drive publish (loop 174)', () => {

@@ -947,6 +947,7 @@ function AppInner() {
         if (!result.ok) {
           setWorkingDirError(result.errorMessage);
         } else {
+          setWorkingDirError(null);
           reconcileFetchedProjects(result.projects, request);
           warmEmbedProjectListCaches(result.projects);
         }
@@ -1200,6 +1201,7 @@ function AppInner() {
       setWorkingDirError(result.errorMessage);
       return;
     }
+    setWorkingDirError(null);
     reconcileFetchedProjects(result.projects, request);
     warmEmbedProjectListCaches(result.projects);
   }, [beginProjectListRequest, reconcileFetchedProjects]);
@@ -1302,6 +1304,7 @@ function AppInner() {
         }
         reconcileFetchedProjects(result.projects, request);
         setProjectsLoading(false);
+        setWorkingDirError(null);
         warmEmbedProjectListCaches(result.projects);
         const knownProjectIds = buildEmbedKnownProjectIds({
           projectIds: result.projects.map((project) => project.id),
@@ -2492,6 +2495,7 @@ function AppInner() {
         }
         return;
       }
+      setWorkingDirError(null);
       const applied = reconcileFetchedProjects(result.projects, request);
       if (!applied) return;
       warmEmbedProjectListCaches(result.projects);

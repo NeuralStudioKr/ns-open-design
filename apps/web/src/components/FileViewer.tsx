@@ -30,7 +30,7 @@ import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useT, useI18n } from '../i18n';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
-import { resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
 import type { Dict, Locale } from '../i18n/types';
 import {
@@ -5999,6 +5999,10 @@ function HtmlViewer({
     return () => window.removeEventListener('message', onMessage);
   }, [isOurPreviewIframeSource, manualEditMode, source]);
 
+  function manualEditUserMessage(english: string, korean: string): string {
+    return isTeamverEmbedMode() ? korean : english;
+  }
+
   function nextManualEditPreviewVersion(): number {
     manualEditPreviewVersionRef.current += 1;
     return manualEditPreviewVersionRef.current;
@@ -6015,7 +6019,12 @@ function HtmlViewer({
     savedSource: string,
   ) {
     if (id !== '__body__' && !readManualEditOuterHtml(savedSource, id)) {
-      setManualEditError('The selected target no longer exists in the saved source. Refreshing the preview.');
+      setManualEditError(
+        manualEditUserMessage(
+          'The selected target no longer exists in the saved source. Refreshing the preview.',
+          '저장된 소스에서 선택한 요소를 찾을 수 없어 미리보기를 새로고침합니다.',
+        ),
+      );
       setSelectedManualEditTarget(null);
       setManualEditFrozenSource(null);
       setReloadKey((key) => key + 1);
@@ -6039,7 +6048,12 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...repairStyles },
     }));
-    setManualEditError('Saved styles differed from the active preview. Reconciled the selected target from source.');
+    setManualEditError(
+      manualEditUserMessage(
+        'Saved styles differed from the active preview. Reconciled the selected target from source.',
+        '저장된 스타일이 미리보기와 달라 소스 기준으로 맞췄습니다.',
+      ),
+    );
   }
 
   function clearManualEditStyleTimer() {
@@ -6185,12 +6199,17 @@ function HtmlViewer({
       const baseSource = sourceRef.current;
       const result = applyManualEditPatch(baseSource, patch);
       if (!result.ok) {
-        setManualEditError(result.error ?? 'Could not apply edit.');
+        setManualEditError(
+          result.error ?? (isTeamverEmbedMode() ? '편집을 적용하지 못했습니다.' : 'Could not apply edit.'),
+        );
         return false;
       }
       if (!(await confirmManualEditHistorySource(
         baseSource,
-        'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+        manualEditUserMessage(
+          'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+          '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+        ),
       ))) return false;
       const saved = await writeProjectTextFileDetailed(projectId, file.name, result.source, {
         artifactManifest: file.artifactManifest,
@@ -6200,7 +6219,9 @@ function HtmlViewer({
         const code = 'code' in saved ? saved.code : undefined;
         const message = 'message' in saved ? saved.message : 'Unknown save error';
         setManualEditError(
-          `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+          isTeamverEmbedMode()
+            ? `편집한 파일을 저장하지 못했습니다${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`
+            : `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
         );
         return false;
       }
@@ -6276,13 +6297,18 @@ function HtmlViewer({
     try {
       if (!(await confirmManualEditHistorySource(
         latest.afterSource,
-        'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
+        manualEditUserMessage(
+          'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
+          '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
+        ),
       ))) return;
       const saved = await writeProjectTextFile(projectId, file.name, latest.beforeSource, {
         artifactManifest: file.artifactManifest,
       });
       if (!saved) {
-        setManualEditError('Could not save the undo result.');
+        setManualEditError(
+          manualEditUserMessage('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
+        );
         return;
       }
       setSource(latest.beforeSource);
@@ -6308,13 +6334,18 @@ function HtmlViewer({
     try {
       if (!(await confirmManualEditHistorySource(
         latest.beforeSource,
-        'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
+        manualEditUserMessage(
+          'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
+          '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
+        ),
       ))) return;
       const saved = await writeProjectTextFile(projectId, file.name, latest.afterSource, {
         artifactManifest: file.artifactManifest,
       });
       if (!saved) {
-        setManualEditError('Could not save the redo result.');
+        setManualEditError(
+          manualEditUserMessage('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
+        );
         return;
       }
       setSource(latest.afterSource);
@@ -8821,8 +8852,8 @@ function HtmlViewer({
                   )}
                   <button
                     type="button"
-                    title="Close Inspect Hint"
-                    aria-label="Close Inspect Hint"
+                    title={isTeamverEmbedMode() ? '검사 안내 닫기' : 'Close Inspect Hint'}
+                    aria-label={isTeamverEmbedMode() ? '검사 안내 닫기' : 'Close Inspect Hint'}
                     onClick={() => setOpenHintBox(false)}
                     className="orbit-artifact-ghost"
                   >

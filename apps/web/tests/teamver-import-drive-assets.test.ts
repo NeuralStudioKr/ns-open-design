@@ -138,5 +138,9 @@ describe("formatDriveImportErrorForUser", () => {
     expect(formatTeamverDriveImportErrorMessage(new Error("drive_download_failed"))).toContain(
       "다운로드",
     );
+    expect(formatDriveImportErrorForUser("teamver_drive_fetch_failed:401")).toMatch(/세션/);
+    expect(formatDriveImportErrorForUser("teamver_drive_fetch_failed:500")).toMatch(
+      /목록을 불러오지/,
+    );
   });
 });
