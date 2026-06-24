@@ -105,4 +105,10 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain("setConversationLoadError(null)");
     expect(projectView).toContain("formatProjectConversationErrorForUser");
   });
+
+  it("routes run failure chat status events through Korean formatter in embed", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err)");
+    expect(projectView).toContain("appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode)");
+  });
 });

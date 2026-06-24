@@ -12,7 +12,8 @@ import {
 } from "react";
 import { createPortal } from 'react-dom';
 import { Button } from '@open-design/components';
-import { useI18n, useT } from '../i18n';
+import { useI18n } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import type { Dict, Locale } from '../i18n/types';
 import {
@@ -404,7 +405,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     },
     ref
   ) {
-    const t = useT();
+    const t = useTeamverT();
     const branding = useTeamverBranding();
     const {
       hideLocalWorkspaceControls,

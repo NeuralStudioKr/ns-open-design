@@ -9,6 +9,7 @@ export type TeamverUsageEvent = {
   operation?: string;
   projectId?: string;
   runId?: string;
+  runStatus?: string;
 };
 
 export type TeamverUsageAcceptedResponse = {
@@ -38,6 +39,7 @@ async function postUsageEvent(
       operation: event.operation ?? "design_run",
       projectId: event.projectId,
       runId: event.runId,
+      runStatus: event.runStatus,
     },
     {
       workspaceId: event.workspaceId,

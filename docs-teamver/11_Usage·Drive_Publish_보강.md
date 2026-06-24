@@ -4,7 +4,7 @@
 
 **개발 SSOT:** 본 문서 · [04 구현 우선순위](./04_구현_우선순위.md) · **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
-**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md) · [10 세션·OD패치](./10_세션·OD패치_보강.md) · [06 Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)
+**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md) · [10 세션·OD패치](./10_세션·OD패치_보강.md) · [22 Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md) · [06 Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)
 
 ---
 
@@ -75,17 +75,18 @@ class UsageEventBody(BaseModel):
 
 인증: user JWT + `X-Workspace-Id` + workspace 일치 검증.
 
-### 2.2 daemon run-end (Langfuse만 연결)
+### 2.2 daemon run-end (Teamver usage + billing bridge)
 
 | 훅 | 경로 | Teamver |
 |----|------|---------|
-| `createFinalizedMessageTelemetryReporter` | `apps/daemon/src/server.ts` L3017–3161 | ❌ |
-| Message PUT 트리거 | `server.ts` L6597–6601 | ❌ |
-| Terminal fallback | `server.ts` L5981–6014 | ❌ |
-| `run_finished` PostHog | `server.ts` L15091–15216 | ❌ |
-| Token scan SSOT | `run-analytics-observability.ts` L116–275 | 재사용 가능 |
+| `reportTeamverUsageFromDaemon` | `apps/daemon/src/server.ts` (finalize reporter) | ✅ M2M `/api/internal/usage/events` |
+| Registry billing commit/refund | `server.ts` + `teamver-billing-bridge.ts` | ✅ `teamverBillingUsageId` lifecycle |
+| FE-first usage (authoritative workspace) | `maybeReportTeamverUsageAfterSave.ts` | ✅ user JWT `/usage/events` + active `X-Workspace-Id` |
+| Daemon run identity | `readTeamverIdentityFromRequest` + nginx `$teamver_daemon_workspace_id` | ✅ FE `X-Workspace-Id` → run `teamverIdentity.workspaceId` (loop 354) |
 
 **트리거 조건:** `saved.runStatus` ∈ `{succeeded, failed, canceled}` + `body.telemetryFinalized === true`
+
+**Workspace 정렬:** embed workspace switch 후 daemon run·usage·publish가 동일 workspace를 쓰려면 FE가 `/api/runs`에 `X-Workspace-Id`(active store)를 보내고, nginx가 session-check default보다 우선 적용한다.
 
 ### 2.3 Drive (Phase 4 — v1 코드 ✅, staging E2E ☐)
 

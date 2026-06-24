@@ -2939,7 +2939,7 @@ export function ProjectView({
               unregisterTextBuffer();
               if (runMayFinalize) {
                 setError(formatProjectRunErrorForUser(err));
-                appendAssistantErrorEvent(message.id, err.message, errorCode);
+                appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err), errorCode);
                 updateMessageById(
                   message.id,
                   (prev) => ({
@@ -2997,7 +2997,7 @@ export function ProjectView({
             if ((err as Error).name !== 'AbortError' && runMayFinalize) {
               const msg = formatProjectRunErrorForUser(err);
               setError(msg);
-              appendAssistantErrorEvent(message.id, err instanceof Error ? err.message : String(err));
+              appendAssistantErrorEvent(message.id, msg);
               updateMessageById(
                 message.id,
                 (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
@@ -3733,7 +3733,7 @@ export function ProjectView({
           if (runMayFinalize) {
             if (runIsVisible()) setError(formatProjectRunErrorForUser(err));
             updateAssistant((prev) => ({
-              ...appendErrorStatusEvent(prev, err.message, errorCode),
+              ...appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode),
               endedAt,
               runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
                 ? 'failed'

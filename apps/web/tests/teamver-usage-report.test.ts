@@ -124,6 +124,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       outputTokens: 50,
       projectId: 'p1',
       runId: 'run-abc',
+      runStatus: 'succeeded',
     });
   });
 
@@ -156,6 +157,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       outputTokens: 15,
       projectId: 'p1',
       runId: 'run-api',
+      runStatus: 'succeeded',
     });
   });
 });

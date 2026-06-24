@@ -35,6 +35,11 @@ export type TeamverBrandingConfig = {
   hideSettingsDialogLink: boolean;
   allowedSettingsSections: ReadonlySet<TeamverEmbedSettingsSection> | null;
   hideStudioExecutionControls: boolean;
+  /**
+   * Hide OD-specific tips on the project edit surface (embed default on):
+   * Design Files footer (rotating tips + drop hint), empty-chat starter
+   * examples, connect-repo CTA, FileViewer inspect/comment hint box.
+   */
   hideUsefulTips: boolean;
   hideHandoffButton: boolean;
   /** Chat assistant role header — hide provider/model labels. */

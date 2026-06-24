@@ -30,6 +30,7 @@ import type {
   SseErrorPayload,
 } from '@open-design/contracts';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { buildTeamverDaemonRequestHeaders } from '../teamver/teamverDaemonHeaders';
 import { stripInternalOpenDesignMarkup } from '../runtime/internalAgentMarkup';
 import type { StreamHandlers } from './anthropic';
 
@@ -622,16 +623,17 @@ export async function streamViaDaemon({
   const body = JSON.stringify(request);
 
   try {
+    const headers = await buildTeamverDaemonRequestHeaders({
+      'Content-Type': 'application/json',
+      // Tells the daemon which front-end carrier started the run so the
+      // telemetry trace can be tagged 'client:desktop' vs 'client:web'.
+      // The daemon falls back to a User-Agent sniff when this header is
+      // absent (e.g. third-party clients), so omitting it in tests is OK.
+      'X-OD-Client': detectClientType(),
+    });
     const createResp = await fetch('/api/runs', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Tells the daemon which front-end carrier started the run so the
-        // telemetry trace can be tagged 'client:desktop' vs 'client:web'.
-        // The daemon falls back to a User-Agent sniff when this header is
-        // absent (e.g. third-party clients), so omitting it in tests is OK.
-        'X-OD-Client': detectClientType(),
-      },
+      headers,
       body,
     });
 

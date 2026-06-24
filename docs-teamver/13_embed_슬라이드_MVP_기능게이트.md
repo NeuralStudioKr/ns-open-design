@@ -87,11 +87,21 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | `/pet wake` / `/pet adopt` | Settings 핀 차단 → no-op | 문서 |
 | Library / Pets settings 섹션 | `allowedSettingsSections` 미포함 | OK |
 
-### 2.6 P3 — 인프라/저장 (09 게이트, 이 문서 범위 외)
+### 2.6 P1 — OD tip·starter 비노출 (loop 350–351)
+
+| ID | 위치 | OD 동작 | embed 결정 | 게이트 |
+|----|------|---------|-----------|--------|
+| T-1 | `DesignFilesPanel` footer | Discord/GitHub/Community rotating tip + drop hint | **hide** | `hideUsefulTips` |
+| T-2 | `ChatPane` empty state | 「Start a conversation」+ starter prompt cards + GitHub connect-repo | **hide** | 동일 |
+| T-3 | `FileViewer` preview | inspect/comment empty-hint overlay (`data-od-id` 안내) | **hide** | 동일 |
+
+loop 351: embed empty chat은 composer만 노출(import folder artifacts 경로 제외). `InspectPanel` 라벨은 embed 한글(기능 유지).
+
+### 2.7 P3 — 인프라/저장 (09 게이트, 이 문서 범위 외)
 
 [09_Design_저장소_격리](./09_Design_저장소_격리_출시게이트.md) · [12 §2.5](./12_embed_로컬UX_제거_체크리스트.md)
 
-### 2.7 P0 — Share / Publish 정책 (loop 171 + 173 + 174 + 175)
+### 2.8 P0 — Share / Publish 정책 (loop 171 + 173 + 174 + 175)
 
 **원칙:** 워크스페이스 콘텐츠는 **Teamver tenant 경계 안에서만 공유**한다. Drive Publish + 로컬 export 외의 모든 외부 share 진입점을 embed에서 hide. 추가 share 기능 개발은 **MVP 범위에서 제외**한다 — 확장이 필요해지면 Drive 권한 모델(Main BE) 위에서 통합한다.
 
@@ -121,6 +131,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | `hideCommunityGallery` | `true` | standalone 풀 카탈로그 숨김; `slideOnlyMvp`와 함께 slide-only **커뮤니티** 갤러리로 대체 (`shouldShowHomeCommunityGallery`) |
 | `hidePluginRegistry` | `true` | `+` 메뉴 "Add plugin" 행 + plugin marketplace 진입 |
 | `hideExternalShareSurfaces` | `true` | (loop 171) FileViewer chrome share-menu / PreviewModal social·copy_link / Share-to-OD community contribute. Drive Publish + 로컬 export 는 유지 |
+| `hideUsefulTips` | `true` | (loop 350–351) Design Files footer tip, empty-chat starter/connect-repo, FileViewer inspect hint. OD onboarding copy 차단 |
 | `hideAssistantThinkingDetails` | `false` | (loop 183) thinking은 `ThinkingBlock` 접힘 UI; prose leak은 `internalAgentMarkup` + daemon `thinking_delta` 분리 |
 
 헬퍼 (`slideOnlyMvpPolicy.ts`):
@@ -194,6 +205,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-24 | loop 350–351 — §2.6 `hideUsefulTips` tip/starter surface 표 + §3 플래그 행. empty chat 전면 hide, InspectPanel embed 한글 |
 | 2026-06-22 | loop 175 (docket) — PDF / PPTX Drive 발행 **별도 트랙 보류 결정**. 사용자 리포트 ("프레젠테이션인데 PDF/PPTX 불가능은 말이 안 된다") 후 옵션 7종 (OD 내 Playwright / 메인 BE internal endpoint / ECS·Fargate worker / Lambda + chromium-layer / 외부 SaaS / 클라이언트 측 / WeasyPrint·wkhtmltopdf) + 응답 모델 (sync vs async) 비교를 [00 §loop 175](./00_구현_내역_누적.md) 에 archive. 현재 HTML-only 발행 + 로컬 PDF 다운로드 안내가 그대로 유효. 재검토 트리거: AI 어시스턴트가 Drive PDF 인덱싱 use-case 우선순위 / 사내 PDF 인프라 가용성 결정 / 사용자 리포트 누적 / PPTX 트랙 정식 착수 |
 | 2026-06-22 | loop 174 — Drive 발행 이력 panel (`TeamverDrivePublishHistory`, `v{N}` 라벨 · 상대 시각 · Drive 딥 링크) 메뉴 상단 mount. ZIP 칩 제거 → HTML 단일 발행 (`formats: ["html"]` 정적). 마지막 발행 위치 `localStorage` 기억 (workspace+project 격리). PDF 발행은 daemon PDF exporter 가 desktop-only 라 별도 BE 트랙 (Playwright/Chromium) — MenuItem 에 안내 한 줄 |
 | 2026-06-22 | loop 173 — Teamver 드라이브 발행 UI 한글화 + HTML/ZIP 포맷 선택 + custom listbox (`TeamverDriveTargetSelect`). `Open in Teamver Drive` 메뉴 항목 영구 제거 (toast 의 Drive 링크로 대체). PDF 는 BE headless renderer 도입 시 동일 UI 패턴으로 확장 — 별도 트랙 |

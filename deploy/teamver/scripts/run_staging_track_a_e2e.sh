@@ -4,6 +4,7 @@
 # Replaces the manual checklist items in:
 #   docs-teamver/10_세션·OD패치_보강.md §6 (S-8)
 #   docs-teamver/11_Usage·Drive_Publish_보강.md §8 (U-6 / D-5)
+#   docs-teamver/22_Drive_인증_Usage_연동_검토.md §5 (W-1)
 #   docs-teamver/09_Design_저장소_격리_출시게이트.md §14 (multi-user 403)
 #
 # Strategy: design-api 의 정상 흐름을 curl 로 끝까지 두드린 다음 RDS 에서
@@ -17,6 +18,7 @@
 #
 # Optional env:
 #   TEAMVER_COOKIE_USER_B='teamver_access_token=...'    # 다중 사용자 403 격리
+#   TEAMVER_ALT_WORKSPACE_ID=<user A 의 두 번째 workspace> # W-1 header alignment (loop 355)
 #   TEAMVER_OD_PROJECT_ID=<user A 가 만들었던 OD project id>
 #   TEAMVER_DRIVE_IMPORT_ASSET_ID=<Drive asset id for D-6a import probe>
 #   TEAMVER_DRIVE_IMPORT_FILENAME=<slide-friendly filename for D-6a, default e2e-import.txt>
@@ -63,6 +65,7 @@ env:
 
 optional:
   TEAMVER_COOKIE_USER_B   다중 사용자 403 격리 검증
+  TEAMVER_ALT_WORKSPACE_ID  W-1 alt workspace + X-Workspace-Id permissions (loop 355)
   TEAMVER_OD_PROJECT_ID   D-5 publish / D-6 import 대상 (없으면 skip)
   TEAMVER_DRIVE_IMPORT_ASSET_ID  D-6a import-drive 성공 probe (없으면 skip)
   TEAMVER_DRIVE_IMPORT_FILENAME  D-6a import filename (default e2e-import.txt)
@@ -195,6 +198,30 @@ if [[ -n "$session_workspace_id" ]]; then
   fi
 else
   skipped "S-8b project list — session workspace 없음"
+fi
+
+# ---- W-1: explicit X-Workspace-Id (loop 354/355 workspace alignment) ---------
+if [[ -z "${TEAMVER_ALT_WORKSPACE_ID:-}" ]]; then
+  skipped "W-1 alt workspace header — TEAMVER_ALT_WORKSPACE_ID 미설정 (옵션)"
+elif [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "W-1 alt workspace header — TEAMVER_COOKIE 필요"
+elif [[ "${TEAMVER_ALT_WORKSPACE_ID}" == "${session_workspace_id:-}" ]]; then
+  skipped "W-1 alt workspace header — ALT equals session default (다른 workspace 지정 필요)"
+else
+  perm_code="$(curl_code "${API_BASE}/api/v1/permissions/${TEAMVER_ALT_WORKSPACE_ID}" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${TEAMVER_ALT_WORKSPACE_ID}")"
+  case "$perm_code" in
+    200)
+      passed "W-1 permissions/${TEAMVER_ALT_WORKSPACE_ID} with X-Workspace-Id → 200"
+      ;;
+    401|403)
+      failed "W-1 alt workspace permissions ${perm_code} — cookie lacks alt workspace membership"
+      ;;
+    *)
+      failed "W-1 alt workspace permissions ${perm_code}"
+      ;;
+  esac
 fi
 
 # ---- S-8c: runtime-config (embed slide/API-mode prerequisite) ---------------

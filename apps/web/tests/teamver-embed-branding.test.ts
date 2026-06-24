@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { resolveTeamverBranding } from '../src/teamver/branding/config';
 import * as designApiBase from '../src/teamver/designApiBase';
+
+const webRoot = resolve(import.meta.dirname, '..');
 
 vi.mock('../src/teamver/designApiBase', () => ({
   isTeamverEmbedMode: vi.fn(() => false),
@@ -79,5 +83,32 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideCommunityGallery).toBe(false);
     expect(branding.hidePluginRegistry).toBe(false);
     expect(branding.hideHandoffButton).toBe(false);
+    expect(branding.hideUsefulTips).toBe(false);
+  });
+
+  it('hides OD-specific project edit tips in embed surfaces', () => {
+    const chatPane = readFileSync(resolve(webRoot, 'src/components/ChatPane.tsx'), 'utf8');
+    const designFiles = readFileSync(resolve(webRoot, 'src/components/DesignFilesPanel.tsx'), 'utf8');
+    const fileViewer = readFileSync(resolve(webRoot, 'src/components/FileViewer.tsx'), 'utf8');
+
+    expect(chatPane).toContain('hideUsefulTips');
+    expect(chatPane).toContain('hideUsefulTips ? null : (');
+    expect(chatPane).toContain('chat-examples');
+    expect(designFiles).toContain('!hideUsefulTips ? (');
+    expect(designFiles).toContain('df-footer-info');
+    expect(fileViewer).toContain('hideUsefulTips');
+    expect(fileViewer).toContain('&& !hideUsefulTips ? (');
+    expect(fileViewer).toContain('inspect-empty-hint-container');
+  });
+
+  it('routes project edit chat through useTeamverT', () => {
+    const chatComposer = readFileSync(resolve(webRoot, 'src/components/ChatComposer.tsx'), 'utf8');
+    const chatPane = readFileSync(resolve(webRoot, 'src/components/ChatPane.tsx'), 'utf8');
+    const designFiles = readFileSync(resolve(webRoot, 'src/components/DesignFilesPanel.tsx'), 'utf8');
+    const fileWorkspace = readFileSync(resolve(webRoot, 'src/components/FileWorkspace.tsx'), 'utf8');
+    expect(chatComposer).toContain('useTeamverT');
+    expect(chatPane).toContain('useTeamverT');
+    expect(designFiles).toContain('useTeamverT');
+    expect(fileWorkspace).toContain('useTeamverT');
   });
 });

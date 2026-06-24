@@ -19,15 +19,16 @@ trap 'rm -rf "$WORK"' EXIT
 # 1) env 가 모두 없으면 5 skipped, exit 0.
 unset_env() {
   unset TEAMVER_COOKIE TEAMVER_COOKIE_USER_B TEAMVER_INTERNAL_API_KEY \
-        TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID MAIN_BE_DATABASE_URL \
+        TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID TEAMVER_ALT_WORKSPACE_ID \
+        MAIN_BE_DATABASE_URL \
         TEAMVER_S3_BUCKET OD_S3_BUCKET TEAMVER_S3_PREFIX SKIP_DRIVE SKIP_DB \
         SKIP_DRIVE_IMPORT_POLICY SKIP_S3_OBJECT DESIGN_HOST DESIGN_API_HOST 2>/dev/null || true
 }
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 9 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 9 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 10 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 10 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then

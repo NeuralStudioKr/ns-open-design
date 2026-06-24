@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAnalytics } from '../analytics/provider';
 import { trackFileManagerClick } from '../analytics/events';
-import { useT } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import type { Dict } from '../i18n/types';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
@@ -191,7 +191,7 @@ function prefersReducedMotion(): boolean {
 // advances to the next — mirroring Claude Design's empty-state hint. Under
 // prefers-reduced-motion the full tip is shown immediately and just cycles.
 function RotatingTip() {
-  const t = useT();
+  const t = useTeamverT();
   const { hideExternalLinks, hideUsefulTips } = useTeamverBranding();
   if (hideUsefulTips) return null;
   const usefulTips = useMemo(
@@ -300,8 +300,9 @@ export function DesignFilesPanel({
   navState,
   onNavStateChange,
 }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   const analytics = useAnalytics();
+  const { hideUsefulTips } = useTeamverBranding();
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropReadError, setDropReadError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
@@ -1113,6 +1114,7 @@ export function DesignFilesPanel({
               ))}
             </>
           )}
+          {!hideUsefulTips ? (
           <div className="df-footer-info">
             {running ? (
               <RotatingTip />
@@ -1126,6 +1128,7 @@ export function DesignFilesPanel({
               </div>
             )}
           </div>
+          ) : null}
         </div>
         {draggingFiles ? (
           <div className="df-drop-overlay" aria-hidden>
@@ -1226,7 +1229,7 @@ function DfPreview({
   onOpen: () => void;
   onClose: () => void;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const url = projectFileUrl(projectId, file.name);
   const rendersSketchJson = isRenderableSketchJson(file);
   const openPreviewLabel = `${t('designFiles.previewOpen')} ${file.name}`;

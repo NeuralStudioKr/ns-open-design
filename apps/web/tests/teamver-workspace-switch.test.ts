@@ -28,6 +28,13 @@ describe("embed workspace switch side effects", () => {
     expect(block).toContain("clearTeamverEmbedListCaches()");
   });
 
+  it("forwards active workspace on daemon run create in embed", () => {
+    const daemon = readSource("src/providers/daemon.ts");
+    const headers = readSource("src/teamver/teamverDaemonHeaders.ts");
+    expect(daemon).toContain("buildTeamverDaemonRequestHeaders");
+    expect(headers).toContain("X-Workspace-Id");
+  });
+
   it("clears stale workingDirError after refreshProjects succeeds", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");

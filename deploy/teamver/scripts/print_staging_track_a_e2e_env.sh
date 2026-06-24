@@ -70,6 +70,9 @@ export TEAMVER_OD_PROJECT_ID='<DPRJ_... or od project id>'
 export TEAMVER_DRIVE_IMPORT_ASSET_ID='<AST-... from Teamver Drive>'
 export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 
+# W-1 (loop 355) — user A 의 두 번째 workspace id (session default 와 달라야 함):
+# export TEAMVER_ALT_WORKSPACE_ID='<WS-... from /auth/session workspaces[]>'
+
 # S3 tenant object probe (uses /access X-Teamver-S3-Prefix by default):
 export TEAMVER_S3_BUCKET='${s3_bucket}'
 

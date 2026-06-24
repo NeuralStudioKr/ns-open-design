@@ -83,7 +83,17 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 
 **문서:** [13_embed_슬라이드_MVP_기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [14_Design_Drive_연동_설계](./14_Design_Drive_연동_설계.md)
 
-### 2.5 P3 — 인프라/저장 (09, VM)
+### 2.5 P1 — OD tip·starter 비노출 (loop 350–351)
+
+| ID | 위치 | 동작 | 게이트 |
+|----|------|------|--------|
+| T-1 | `DesignFilesPanel` footer | rotating useful-info tip + drop hint | `hideUsefulTips` |
+| T-2 | `ChatPane` empty state | 「대화 시작하기」+ starter examples + connect-repo CTA | `hideUsefulTips` |
+| T-3 | `FileViewer` | inspect/comment empty-hint box | `hideUsefulTips` |
+
+**브랜딩 플래그:** `hideUsefulTips: true` (embed 기본). standalone OD는 영향 없음.
+
+### 2.6 P3 — 인프라/저장 (09, VM)
 
 | 항목 | embed 기대 |
 |------|------------|
@@ -133,6 +143,9 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
 - [ ] Publish to Drive → Browse — 개인/팀 Drive folder 검색·선택 가능
 - [ ] Settings → language/appearance만
+- [ ] 프로젝트 편집 — Design Files footer tip/drop hint 없음
+- [ ] 프로젝트 편집 — empty chat starter/「대화 시작하기」/connect-repo CTA 없음
+- [ ] 프로젝트 편집 — preview inspect/comment hint box 없음
 
 ---
 
@@ -140,6 +153,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-24 | loop 350–351 — `hideUsefulTips` surface 확장(Design Files footer·empty chat·inspect hint), §2.6·검증 항목 추가 |
 | 2026-06-19 | loop 153 — HomeHero `hidePluginRegistry` 보강, Drive publish 검색형 folder picker 1차 |
 | 2026-06-19 | loop 152 — hideCommunityGallery / hidePluginRegistry / toolbox actions 필터, 14 Drive 설계 문서 |
 | 2026-06-18 | loop 152 (선행) — slideOnlyMvp / hideComposerIntegrations (13 문서) |

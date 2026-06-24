@@ -43,7 +43,7 @@ export function formatProjectArtifactStubWarning(fileName: string, message: stri
     : `Saved "${fileName}", but the model may have shipped a placeholder: ${message}`;
 }
 
-/** User-facing run/stream failure banner — embed avoids raw daemon/SSE English. */
+/** User-facing run/stream failure — embed avoids raw daemon/SSE English (banner + chat status). */
 export function formatProjectRunErrorForUser(err: unknown): string {
   if (!isTeamverEmbedMode()) {
     return err instanceof Error ? err.message : String(err);

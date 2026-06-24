@@ -56,7 +56,9 @@ function firstHeaderValue(value: string | string[] | undefined): string {
 
 export function readTeamverIdentityFromRequest(req: Request): TeamverRequestIdentity | null {
   const userId = firstHeaderValue(req.headers['x-teamver-user-id']);
-  const workspaceId = firstHeaderValue(req.headers['x-teamver-workspace-id']);
+  const workspaceFromClient = firstHeaderValue(req.headers['x-workspace-id']);
+  const workspaceFromSession = firstHeaderValue(req.headers['x-teamver-workspace-id']);
+  const workspaceId = workspaceFromClient || workspaceFromSession;
   if (!userId || !workspaceId) return null;
 
   const identity: TeamverRequestIdentity = { userId, workspaceId };

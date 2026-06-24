@@ -31,6 +31,7 @@ import { useT, useI18n } from '../i18n';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
 import type { Dict, Locale } from '../i18n/types';
 import {
@@ -2937,6 +2938,7 @@ function InspectPanel({
   const radiusNum = pxToNumber(radius);
 
   const justSaved = savedAt && Date.now() - savedAt < 4000;
+  const embed = isTeamverEmbedMode();
 
   return (
     <aside className="inspect-panel" data-testid="inspect-panel">
@@ -2945,7 +2947,7 @@ function InspectPanel({
           <strong title={target.label || target.elementId}>{target.label || target.elementId}</strong>
           <code title={target.selector}>{target.elementId}</code>
         </div>
-        <Button variant="ghost" onClick={onClose} aria-label="Close inspect">
+        <Button variant="ghost" onClick={onClose} aria-label={embedUiLabel('Close inspect', '검사 패널 닫기')}>
           ×
         </Button>
       </header>
@@ -2956,20 +2958,33 @@ function InspectPanel({
             i
           </div>
           <div className="inspect-ancestor-notice-text">
-            You clicked <strong>{target.clickedDescendant.label}</strong>
-            {target.clickedDescendant.text
-              ? ` ("${target.clickedDescendant.text.slice(0, 40)}${target.clickedDescendant.text.length > 40 ? '...' : ''}")`
-              : ''}
-            , but it has no <code>data-od-id</code> annotation. Editing{' '}
-            <strong>{target.label || target.elementId}</strong> instead, the nearest annotated ancestor.
+            {embed ? (
+              <>
+                <strong>{target.clickedDescendant.label}</strong>
+                {target.clickedDescendant.text
+                  ? ` ("${target.clickedDescendant.text.slice(0, 40)}${target.clickedDescendant.text.length > 40 ? '...' : ''}")`
+                  : ''}
+                은(는) 주석이 없어 편집할 수 없습니다. 가장 가까운 주석 요소{' '}
+                <strong>{target.label || target.elementId}</strong>을(를) 대신 편집합니다.
+              </>
+            ) : (
+              <>
+                You clicked <strong>{target.clickedDescendant.label}</strong>
+                {target.clickedDescendant.text
+                  ? ` ("${target.clickedDescendant.text.slice(0, 40)}${target.clickedDescendant.text.length > 40 ? '...' : ''}")`
+                  : ''}
+                , but it has no <code>data-od-id</code> annotation. Editing{' '}
+                <strong>{target.label || target.elementId}</strong> instead, the nearest annotated ancestor.
+              </>
+            )}
           </div>
         </div>
       ) : null}
 
       <section className="inspect-section">
-        <div className="inspect-section-label">Colors</div>
+        <div className="inspect-section-label">{embedUiLabel('Colors', '색상')}</div>
         <div className="inspect-row">
-          <label htmlFor="ip-color">Text</label>
+          <label htmlFor="ip-color">{embedUiLabel('Text', '텍스트')}</label>
           <Input
             id="ip-color"
             data-testid="inspect-color"
@@ -2985,7 +3000,7 @@ function InspectPanel({
           />
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-bg">Background</label>
+          <label htmlFor="ip-bg">{embedUiLabel('Background', '배경')}</label>
           <Input
             id="ip-bg"
             data-testid="inspect-bg"
@@ -3003,9 +3018,9 @@ function InspectPanel({
       </section>
 
       <section className="inspect-section">
-        <div className="inspect-section-label">Typography</div>
+        <div className="inspect-section-label">{embedUiLabel('Typography', '타이포그래피')}</div>
         <div className="inspect-row">
-          <label htmlFor="ip-fs">Size</label>
+          <label htmlFor="ip-fs">{embedUiLabel('Size', '크기')}</label>
           <input
             id="ip-fs"
             data-testid="inspect-font-size"
@@ -3019,7 +3034,7 @@ function InspectPanel({
           <span className="inspect-row-value">{Math.round(fontSizeNum)}px</span>
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-fw">Weight</label>
+          <label htmlFor="ip-fw">{embedUiLabel('Weight', '굵기')}</label>
           <Select
             id="ip-fw"
             value={fontWeight}
@@ -3031,7 +3046,7 @@ function InspectPanel({
           </Select>
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-ta">Align</label>
+          <label htmlFor="ip-ta">{embedUiLabel('Align', '정렬')}</label>
           <Select
             id="ip-ta"
             value={textAlign}
@@ -3045,9 +3060,9 @@ function InspectPanel({
       </section>
 
       <section className="inspect-section">
-        <div className="inspect-section-label">Spacing &amp; Shape</div>
+        <div className="inspect-section-label">{embedUiLabel('Spacing & Shape', '간격·모양')}</div>
         <div className="inspect-row">
-          <label htmlFor="ip-pad">Padding</label>
+          <label htmlFor="ip-pad">{embedUiLabel('Padding', '패딩')}</label>
           <input
             id="ip-pad"
             data-testid="inspect-padding"
@@ -3061,7 +3076,7 @@ function InspectPanel({
           <span className="inspect-row-value">{Math.round(paddingNum)}px</span>
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-rad">Radius</label>
+          <label htmlFor="ip-rad">{embedUiLabel('Radius', '모서리')}</label>
           <input
             id="ip-rad"
             data-testid="inspect-radius"
@@ -3084,7 +3099,7 @@ function InspectPanel({
             onResetElement(target.elementId);
           }}
         >
-          Reset element
+          {embedUiLabel('Reset element', '요소 초기화')}
         </Button>
         <Button
           variant="primary"
@@ -3092,7 +3107,11 @@ function InspectPanel({
           disabled={saving}
           onClick={onSaveToSource}
         >
-          {saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save to source'}
+          {saving
+            ? embedUiLabel('Saving…', '저장 중…')
+            : justSaved
+              ? embedUiLabel('Saved ✓', '저장됨 ✓')
+              : embedUiLabel('Save to source', '소스에 저장')}
         </Button>
       </footer>
       {error ? <div className="inspect-panel-error">{error}</div> : null}
@@ -3611,7 +3630,7 @@ function CommentPreviewOverlays({
                 onOpenCommentRef.current(comment, snapshot);
               }}
               title={`${markerNumber}. ${label}: ${comment.note}`}
-              aria-label={`Open comment for ${label}`}
+              aria-label={embedUiLabel(`Open comment for ${label}`, `${label} 주석 열기`)}
             >
               {markerNumber}
             </button>
@@ -4464,7 +4483,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips } = useTeamverBranding();
   // Shared helper for the share menu: emit studio_click share_option on
   // entry and artifact_export_result on resolution. Sync exports report
   // success immediately after the call returns; async exports get .then
@@ -5991,17 +6010,13 @@ function HtmlViewer({
           id: String(data.id),
           kind: 'set-text',
           value: String(data.value),
-        }, 'Edit text');
+        }, embedUiLabel('Edit text', '텍스트 편집'));
         return;
       }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [isOurPreviewIframeSource, manualEditMode, source]);
-
-  function manualEditUserMessage(english: string, korean: string): string {
-    return isTeamverEmbedMode() ? korean : english;
-  }
 
   function nextManualEditPreviewVersion(): number {
     manualEditPreviewVersionRef.current += 1;
@@ -6020,7 +6035,7 @@ function HtmlViewer({
   ) {
     if (id !== '__body__' && !readManualEditOuterHtml(savedSource, id)) {
       setManualEditError(
-        manualEditUserMessage(
+        embedUiLabel(
           'The selected target no longer exists in the saved source. Refreshing the preview.',
           '저장된 소스에서 선택한 요소를 찾을 수 없어 미리보기를 새로고침합니다.',
         ),
@@ -6049,7 +6064,7 @@ function HtmlViewer({
       styles: { ...current.styles, ...repairStyles },
     }));
     setManualEditError(
-      manualEditUserMessage(
+      embedUiLabel(
         'Saved styles differed from the active preview. Reconciled the selected target from source.',
         '저장된 스타일이 미리보기와 달라 소스 기준으로 맞췄습니다.',
       ),
@@ -6200,13 +6215,13 @@ function HtmlViewer({
       const result = applyManualEditPatch(baseSource, patch);
       if (!result.ok) {
         setManualEditError(
-          result.error ?? (isTeamverEmbedMode() ? '편집을 적용하지 못했습니다.' : 'Could not apply edit.'),
+          result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
         );
         return false;
       }
       if (!(await confirmManualEditHistorySource(
         baseSource,
-        manualEditUserMessage(
+        embedUiLabel(
           'The file changed outside manual edit mode. Refreshing before applying manual edits.',
           '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
         ),
@@ -6219,9 +6234,10 @@ function HtmlViewer({
         const code = 'code' in saved ? saved.code : undefined;
         const message = 'message' in saved ? saved.message : 'Unknown save error';
         setManualEditError(
-          isTeamverEmbedMode()
-            ? `편집한 파일을 저장하지 못했습니다${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`
-            : `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+          embedUiLabel(
+            `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+            '편집한 파일을 저장하지 못했습니다.',
+          ),
         );
         return false;
       }
@@ -6297,7 +6313,7 @@ function HtmlViewer({
     try {
       if (!(await confirmManualEditHistorySource(
         latest.afterSource,
-        manualEditUserMessage(
+        embedUiLabel(
           'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
           '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
         ),
@@ -6307,7 +6323,7 @@ function HtmlViewer({
       });
       if (!saved) {
         setManualEditError(
-          manualEditUserMessage('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
+          embedUiLabel('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
         );
         return;
       }
@@ -6334,7 +6350,7 @@ function HtmlViewer({
     try {
       if (!(await confirmManualEditHistorySource(
         latest.beforeSource,
-        manualEditUserMessage(
+        embedUiLabel(
           'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
           '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
         ),
@@ -6344,7 +6360,7 @@ function HtmlViewer({
       });
       if (!saved) {
         setManualEditError(
-          manualEditUserMessage('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
+          embedUiLabel('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
         );
         return;
       }
@@ -6491,7 +6507,9 @@ function HtmlViewer({
       setInspectSavedAt(Date.now());
       setReloadKey((k) => k + 1);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Save failed';
+      const msg = isTeamverEmbedMode()
+        ? '소스에 저장하지 못했습니다.'
+        : (err instanceof Error ? err.message : 'Save failed');
       setInspectError(msg);
       // The error banner inside the inspect panel is easy to miss when the
       // user is focused on the iframe preview — surface failures in the
@@ -8040,7 +8058,7 @@ function HtmlViewer({
           >
             <Icon name="reload" size={14} />
           </button>
-          <div className="viewer-tabs" role="tablist" aria-label="View mode">
+          <div className="viewer-tabs" role="tablist" aria-label={embedUiLabel('View mode', '보기 모드')}>
             {([
               ['preview', t('fileViewer.preview')],
               ['source', t('fileViewer.source')],
@@ -8414,12 +8432,17 @@ function HtmlViewer({
                     }
                     aria-haspopup="menu"
                     aria-expanded={downloadMenuOpen}
+                    aria-label={t('fileViewer.download')}
                     onClick={openDownloadMenu}
                   >
                     <span>{t('fileViewer.download')}</span>
                   </button>
                   {downloadMenuOpen ? (
-                    <div className="share-menu-popover" role="menu">
+                    <div
+                      className="share-menu-popover"
+                      role="menu"
+                      aria-label={embedUiLabel('Download and export options', '다운로드 및 내보내기')}
+                    >
                   <button
                     type="button"
                     className="share-menu-item"
@@ -8828,7 +8851,8 @@ function HtmlViewer({
               {inspectMode
                 && openHintBox
                 && !activeInspectTarget
-                && !activeCommentTarget ? (
+                && !activeCommentTarget
+                && !hideUsefulTips ? (
                 <div
                   className="inspect-empty-hint-container"
                   data-testid="inspect-empty-hint-container"
@@ -8852,8 +8876,8 @@ function HtmlViewer({
                   )}
                   <button
                     type="button"
-                    title={isTeamverEmbedMode() ? '검사 안내 닫기' : 'Close Inspect Hint'}
-                    aria-label={isTeamverEmbedMode() ? '검사 안내 닫기' : 'Close Inspect Hint'}
+                    title={embedUiLabel('Close Inspect Hint', '검사 안내 닫기')}
+                    aria-label={embedUiLabel('Close Inspect Hint', '검사 안내 닫기')}
                     onClick={() => setOpenHintBox(false)}
                     className="orbit-artifact-ghost"
                   >
@@ -10165,13 +10189,18 @@ function MarkdownViewer({
                 className="viewer-action"
                 aria-haspopup="menu"
                 aria-expanded={downloadMenuOpen}
+                aria-label={t('fileViewer.download')}
                 onClick={() => setDownloadMenuOpen((v) => !v)}
               >
                 <Icon name="download" size={13} />
                 <span>{t('fileViewer.download')}</span>
               </button>
               {downloadMenuOpen ? (
-                <div className="share-menu-popover" role="menu">
+                <div
+                  className="share-menu-popover"
+                  role="menu"
+                  aria-label={embedUiLabel('Download and export options', '다운로드 및 내보내기')}
+                >
                   <button
                     type="button"
                     className="share-menu-item"

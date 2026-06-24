@@ -7,6 +7,10 @@ import {
   searchTeamverDrivePublishTargets,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
+import {
+  pushRecentPublishTarget,
+  readRecentPublishTargets,
+} from "../drivePublishRecentTargets";
 import { TeamverDrivePickerModal } from "./TeamverDrivePickerModal";
 import { TeamverDrivePublishHistory } from "./TeamverDrivePublishHistory";
 import { TeamverDriveTargetSelect } from "./TeamverDriveTargetSelect";
@@ -139,6 +143,7 @@ export function TeamverPublishDriveMenuItem({
   ]);
   const [selectedTargetId, setSelectedTargetId] = useState<string>(DEFAULT_PUBLISH_TARGET.id);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [recentTargets, setRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
   // loop 174 — bumped after every successful publish so the embedded
   // `TeamverDrivePublishHistory` refetches and shows the new row in place
   // (otherwise the operator wouldn't see their just-uploaded artifact
@@ -200,6 +205,10 @@ export function TeamverPublishDriveMenuItem({
     void refreshTargets();
   }, [refreshTargets]);
 
+  useEffect(() => {
+    setRecentTargets(readRecentPublishTargets(workspaceId));
+  }, [workspaceId, pickerOpen, historyRefreshKey]);
+
   // Workspace switch — refetch targets and drop the previous tenant's
   // selection. Without this the menu keeps the prior workspace's folder tree
   // (or a `folderId` from `localStorage` keyed under another workspace) and
@@ -256,6 +265,8 @@ export function TeamverPublishDriveMenuItem({
       // want the operator to revisit their target choice on retry instead of
       // silently locking in a broken folder.
       writeLastTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
+      if (selectedTarget) pushRecentPublishTarget(workspaceId, selectedTarget);
+      setRecentTargets(readRecentPublishTargets(workspaceId));
       setHistoryRefreshKey((current) => current + 1);
       clearLatestPublishSummaryCache(projectId);
       notifyTeamverPublishOutputsChanged(projectId);
@@ -343,6 +354,7 @@ export function TeamverPublishDriveMenuItem({
         open={pickerOpen}
         workspaceId={workspaceId}
         targets={targets}
+        recentTargets={recentTargets}
         selectedTargetId={selectedTargetId}
         loading={loadingTargets}
         onSearch={workspaceId ? handleSearchTargets : undefined}

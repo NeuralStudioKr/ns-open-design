@@ -50,6 +50,12 @@ describe('Teamver embed external share-surface gating (loop 171)', () => {
     expect(fileViewer).toContain('{showExternalShareMenu ? (');
     // Drive Publish menu item stays — local-only download menu is unaffected.
     expect(fileViewer).toContain('TeamverPublishDriveMenuItem');
+    expect(fileViewer).toContain("from '../teamver/embedUiLabels'");
+    expect(fileViewer).toContain("aria-label={embedUiLabel('View mode', '보기 모드')}");
+    expect(fileViewer).toContain('aria-label={t(\'fileViewer.download\')}');
+    expect(fileViewer).toContain("aria-label={embedUiLabel(`Open comment for ${label}`, `${label} 주석 열기`)}");
+    expect(fileViewer).toContain("embedUiLabel('Colors', '색상')");
+    expect(fileViewer).toContain("aria-label={embedUiLabel('Download and export options', '다운로드 및 내보내기')}");
   });
 
   it('gates the PreviewModal share popover social/copy_link section', () => {

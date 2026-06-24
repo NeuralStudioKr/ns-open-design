@@ -62,6 +62,9 @@ describe("project conversation error messages", () => {
     expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
       "슬라이드 실행",
     );
+    const sessionErr = new Error("session probe failed") as Error & { code?: string };
+    sessionErr.code = "session_unreachable";
+    expect(formatProjectRunErrorForUser(sessionErr)).toContain("Teamver 세션");
     expect(
       formatProjectConversationErrorForUser(
         new Error("Network request failed"),

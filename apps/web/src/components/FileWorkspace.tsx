@@ -17,7 +17,7 @@ import {
   trackTabLauncherClick,
 } from '../analytics/events';
 import { deriveUploadCohort } from '../analytics/upload-tracking';
-import { useT } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isMacPlatform } from '../utils/platform';
 import {
   deleteProjectFile,
@@ -435,7 +435,7 @@ export function FileWorkspace({
   onSubmitQuestionForm,
   focusQuestionsRequest = null,
 }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   // The chat column only shows a compact Questions banner; the form itself
   // lives here, including after submission when a banner click can reopen the
   // answered preview.
@@ -3923,7 +3923,7 @@ function Tab({
   onDrop?: (event: ReactDragEvent<HTMLDivElement>) => void;
   onDragEnd?: () => void;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const iconName = iconNameOverride ?? kindIconName(kind);
   const tabTitle = title ?? (meta ? `${label} ${meta}` : label);
   return (

@@ -30,6 +30,8 @@ describe("teamver embed locale", () => {
       title: "Teamver Design",
       subtitle: "Create with AI",
     });
+    expect(overrides["chat.activeFilePlaceholder"]).toBe("슬라이드 {file} 변경 요청…");
+    expect(overrides["chat.startTitle"]).toBe("슬라이드 작업 시작");
     const resolved = resolveTeamverEmbedTranslation(
       "Open Design",
       { enabled: true, title: "Teamver Design" },
@@ -45,5 +47,19 @@ describe("teamver embed locale", () => {
         "dsManager.createBody",
       ),
     ).toBe("Teach Teamver Design your brand.");
+  });
+
+  it("interpolates vars on embed key overrides", () => {
+    const overrides = teamverEmbedOverrides("Teamver Design");
+    const base = resolveTeamverEmbedTranslation(
+      "Open Design에 {file} 변경 요청...",
+      { enabled: true, title: "Teamver Design" },
+      overrides,
+      "chat.activeFilePlaceholder",
+    );
+    expect(base).toBe("슬라이드 {file} 변경 요청…");
+    expect(base.replace(/\{(\w+)\}/g, (_, name: string) => "deck.html")).toBe(
+      "슬라이드 deck.html 변경 요청…",
+    );
   });
 });

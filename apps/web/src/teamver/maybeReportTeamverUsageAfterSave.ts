@@ -44,6 +44,7 @@ export async function maybeReportTeamverUsageAfterSave(
     outputTokens: usage?.outputTokens ?? 0,
     projectId,
     runId,
+    runStatus: message.runStatus,
   });
 
   if (runId) reportedRunIds.add(runId);

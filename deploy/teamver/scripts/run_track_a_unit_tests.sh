@@ -75,6 +75,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-billing-bridge.test.ts \
       tests/teamver-usage-bridge.test.ts \
       tests/teamver-project-access.test.ts \
+      tests/teamver-request-identity.test.ts \
       tests/teamver-project-storage-meta.test.ts \
       tests/project-storage-startup.test.ts \
       tests/teamver-linked-dirs-gate.test.ts \
@@ -107,6 +108,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-canvas-slide-launch-modal.test.tsx \
       tests/teamver-drive-launch-handoff.test.ts \
       tests/teamver-drive-publish-targets.test.ts \
+      tests/teamver-drive-publish-recent-targets.test.ts \
       tests/teamver-publish-drive-menu-item.test.tsx \
       tests/teamver-embed-drive-publish-ui.test.ts \
       tests/teamver-list-project-outputs.test.ts \
@@ -127,7 +129,9 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-background-runs-banner.test.tsx \
       tests/teamver-branding-head.test.tsx \
       tests/teamver-embed-branding.test.ts \
+      tests/teamver-embed-locale.test.ts \
       tests/teamver-embed-share-policy.test.ts \
+      tests/teamver-embed-ui-labels.test.ts \
       tests/internal-agent-markup.test.ts \
       tests/teamver-embed-slide-only.test.ts \
       tests/teamver-designs-tab-kanban.test.ts \
@@ -142,6 +146,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-workspace-utils.test.ts \
       tests/teamver-sync-workspace.test.ts \
       tests/teamver-workspace-switch.test.ts \
+      tests/teamver-daemon-workspace-headers.test.ts \
       tests/teamver-drive-target-select.test.tsx \
       tests/teamver-comment-target-display.test.ts \
       tests/teamver-design-access.test.ts \

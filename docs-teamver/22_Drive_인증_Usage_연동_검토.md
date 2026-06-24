@@ -1,0 +1,221 @@
+# Drive · Main 인증 · Usage 연동 검토 (2026-06-24)
+
+**목적:** embed Track A의 Drive publish/import, Main Teamver cookie SSO, usage 집계·billing wiring이 코드·단위 테스트 기준으로 정상인지 점검하고, **출시 전 남은 검증·리스크**를 SSOT로 고정한다.
+
+**관련:** [11 Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md) · [10 세션·OD패치](./10_세션·OD패치_보강.md) · [14 Design Drive 연동](./14_Design_Drive_연동_설계.md) · [00 구현 내역](./00_구현_내역_누적.md) loop 354
+
+---
+
+## 1. 한 줄 결론
+
+| 축 | 코드 wiring | 단위 테스트 | Staging E2E | 주요 리스크 |
+|----|------------|------------|-------------|------------|
+| **Drive** | ✅ | ✅ (10+ suite) | ☐ | publish full browser, 실 Drive asset |
+| **Main 인증** | ✅ | ✅ | ☐ | nginx 배포 후 workspace header 실관측 |
+| **Usage** | ✅ FE+daemon+BE | ✅ | ☐ | run → RDS row 실환경 |
+
+> **loop 354**에서 workspace switch 후 daemon run identity 불일치(P1)를 **FE header + nginx map + daemon identity**로 정렬했다. **nginx conf 적용·staging E2E**가 남는다.
+
+---
+
+## 2. Drive 연동
+
+### 2.1 동작 중인 항목 ✅
+
+| 기능 | FE | BE | 비고 |
+|------|----|----|------|
+| Publish HTML → Drive | `publishToDrive.ts`, `TeamverPublishDriveMenuItem` | `POST /projects/{id}/publish` | SDK 3-step presigned |
+| Publish target picker | `TeamverDrivePickerModal`, `drivePublishTargets.ts` | `folderId` + `sharedDriveId` | folder search/drill-down ✅ |
+| Workspace switch → target reset | `subscribeTeamverWorkspaceChanged` | — | loop 335–340, 회귀 테스트 |
+| Import composer 첨부 | `TeamverDriveImportModal`, `importDriveAssets.ts` | `POST /import-drive` | batch 12, policy reject |
+| Drive API (Main BE) | `driveApi.ts` | Main BE `/api/drive/*` | cookie + `X-Workspace-Id`, 401 refresh |
+| Publish history chip | `latestPublishSummary.ts`, publish chip | `design_outputs` | workspace-scoped cache |
+
+**근거 테스트:** `teamver-publish-drive*.test.ts`, `teamver-drive-*` (import/list/api/thumbnails), `teamver-publish-drive-menu-item.test.tsx` (workspace switch pin).
+
+### 2.2 Gap · 후속
+
+| ID | 우선 | 내용 | 상태 |
+|----|------|------|------|
+| D-G1 | P1 | Staging E2E D-5/D-6/D-7 — publish `driveAssetId`, import happy path | ☐ `run_staging_track_a_e2e.sh` |
+| D-G2 | P2 | Publish full Drive browser (import modal 수준 recent/grid) | ☐ [14 §3.4](./14_Design_Drive_연동_설계.md) |
+| D-G3 | P2 | PDF publish — daemon desktop-only, embed HTML-only (의도적) | 문서화됨 |
+| D-G4 | P2 | `TeamverDriveImportModal` 단독 mount 시 workspace prop 의존 | 부모 `ChatComposer`가 switch 처리 — 현재 OK |
+
+---
+
+## 3. Main Teamver 인증
+
+### 3.1 동작 중인 항목 ✅
+
+| 기능 | 구현 | 비고 |
+|------|------|------|
+| Cookie-only BFF | `designBffClient.ts` — `withCredentials`, `tokenStore: null` | same-origin `/teamver-bff` |
+| Session probe | `fetchDesignAuthSession` | 5s cache, in-flight dedup |
+| Cookie refresh | `refreshDesignAuthCookie` | BFF → Main BE fallback |
+| 401 recovery | `withDesignBffCookieAuthRecovery` | publish/import/usage 공통 |
+| Workspace store | `setActiveTeamverWorkspace`, localStorage keys | `teamver_design_active_workspace_id` |
+| Embed session hook | `useTeamverEmbed` | pageshow refresh, 401 → login |
+| BE session relay | `deploy/teamver/be/routers/auth.py` | Set-Cookie refresh |
+| nginx auth_request | `design.teamver.com*.conf` | session-check → user/workspace inject |
+
+**근거 테스트:** `teamver-design-auth-session.test.ts`, `teamver-workspace-switcher.test.tsx`, `teamver-sync-workspace.test.ts`, `teamver-workspace-switch.test.ts`.
+
+### 3.2 loop 354 — workspace 정렬 (P1 수정)
+
+**문제:** workspace switch 후 FE active workspace(localStorage)와 daemon run `teamverIdentity`가 어긋날 수 있었다. nginx는 session-check **default workspace**만 `X-Teamver-Workspace-Id`로 주입하고, Drive/publish/usage(BFF)는 FE store 기준이었다.
+
+**수정 (loop 354):**
+
+```text
+[FE embed] streamViaDaemon POST /api/runs
+    │  Header: X-Workspace-Id = active store
+    ▼
+[nginx] map $http_x_workspace_id → $teamver_daemon_workspace_id
+    │  (FE header 우선, 없으면 session-check default)
+    ▼
+[daemon] readTeamverIdentityFromRequest
+    │  X-Workspace-Id > X-Teamver-Workspace-Id
+    ▼
+run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
+```
+
+| 파일 | 변경 |
+|------|------|
+| `apps/web/src/teamver/teamverDaemonHeaders.ts` | embed `/api/runs` header |
+| `apps/web/src/providers/daemon.ts` | `buildTeamverDaemonRequestHeaders` |
+| `apps/daemon/src/teamver-project-access.ts` | identity workspace 우선순위 |
+| `deploy/teamver/devops/nginx/*.conf` | `$teamver_daemon_workspace_id` map |
+
+**배포 필요:** staging/prod VM에 nginx conf reload (`apply_teamver_design_*_nginx_conf.sh`).
+
+### 3.3 Gap · 후속
+
+| ID | 우선 | 내용 | 상태 |
+|----|------|------|------|
+| A-G1 | P1 | nginx loop 354 map **VM 적용** + staging 실관측 | ☐ |
+| A-G2 | P1 | W-1 E2E — alt workspace + `X-Workspace-Id` permissions probe | 🟡 loop 355 script |
+| A-G3 | P2 | Browser 수동 — WS-A run → WS-B switch → usage row `workspace_id` | ☐ 체크리스트 §5 |
+
+---
+
+## 4. Usage 기록
+
+### 4.1 동작 중인 항목 ✅
+
+| 경로 | 트리거 | endpoint | 멱등 |
+|------|--------|----------|------|
+| **FE-first** | `saveMessage` + `telemetryFinalized` | `POST /api/v1/usage/events` (user JWT) | `reportedRunIds` Set |
+| **Daemon M2M** | run terminal + identity | `POST /api/internal/usage/events` | `(workspace_id, run_id)` upsert |
+| **Billing** | reserve → commit/refund | `internal/billing/*` + finalize | `teamverBillingUsageId` |
+
+**FE hook:** `state/projects.ts` → `maybeReportTeamverUsageAfterSave` → `reportUsage.ts`
+
+**Daemon bridge:** `teamver-usage-bridge.ts` ← `server.ts` finalize reporter
+
+**BE:** `usage_report.py` (202 + requestId), `internal_usage.py` (M2M), `token_usage_crud.aupsert_usage`
+
+**loop 354 추가:** FE usage payload에 `runStatus` 전송.
+
+**근거 테스트:** `teamver-usage-report.test.ts`, `teamver-report-usage.test.ts`, `teamver-usage-bridge.test.ts`, BE `test_internal_usage.py`.
+
+### 4.2 이중 경로 정책
+
+FE와 daemon이 **동일 run**에 usage를 보고할 수 있다. BE upsert는 `(workspace_id, run_id)` 기준 merge.
+
+**전제:** loop 354 이후 daemon `teamverIdentity.workspaceId` = FE active workspace. 불일치 시 **다른 workspace에 2행** 가능 → W-1·수동 체크리스트로 검증.
+
+### 4.3 Gap · 후속
+
+| ID | 우선 | 내용 | 상태 |
+|----|------|------|------|
+| U-G1 | P1 | U-6 staging E2E — M2M + RDS row count | ☐ |
+| U-G2 | P2 | FE `token_count_source` 미전송 (daemon은 전송) | ☐ |
+| U-G3 | P2 | doc §2.2 stale “daemon ❌” | ✅ loop 354 갱신 |
+
+---
+
+## 5. Staging E2E 체크리스트
+
+### 5.1 자동 (`run_staging_track_a_e2e.sh`)
+
+```bash
+# env 템플릿
+bash deploy/teamver/scripts/print_staging_track_a_e2e_env.sh --from-env deploy/teamver/.env.staging
+
+# 실행 (EC2 또는 VPN)
+bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
+```
+
+| Phase | 검증 |
+|-------|------|
+| S-8a/b/c | cookie session, project list, runtime-config |
+| U-6a/b/c | internal usage M2M, 멱등, RDS row |
+| D-5/D-7 | publish + `driveAssetId` |
+| D-6b/D-6a | import policy reject, real asset import |
+| S3 | tenant prefix object |
+| isolation | user B → user A project 403 |
+| **W-1** | alt workspace + `X-Workspace-Id` permissions (loop 355, optional) |
+
+**strict launch:** `run_post_deploy_track_a.sh --e2e-strict` — skip-only 성공 불가.
+
+### 5.2 수동 (workspace switch · browser)
+
+1. stg-design.teamver.com 로그인 — workspace **A** 선택
+2. 슬라이드 프로젝트에서 run 1회 → 완료 대기
+3. workspace switcher → workspace **B**
+4. publish 1회 (Drive) — Network 탭 `X-Workspace-Id: B` 확인
+5. RDS: `SELECT workspace_id, run_id FROM ai_model_token_usages ORDER BY created_at DESC LIMIT 5` — 최근 row가 **B**
+
+---
+
+## 6. 권장 다음 작업 (우선순위)
+
+### 6.1 서비스·제품 (코드 루프 — **우선**)
+
+| # | 작업 | P | 상태 |
+|---|------|---|------|
+| S-1 | Drive publish picker **최근 위치** (workspace localStorage ring) | P1 | ✅ loop 356 |
+| S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ☐ [14 §3.4 step 7b](./14_Design_Drive_연동_설계.md) |
+| S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | 🟡 Chat/DesignFiles/FileWorkspace ✅ |
+| S-4 | embed slide E2E wording 잔여 (FileViewer download aria 등) | P1 | ✅ loop 357 |
+| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 코드 ✅ · 실관측 ☐ |
+| S-6 | 목록 cover-hints N+1 제거 | P0 | 🟡 loop 195+ |
+
+> **원칙:** nginx 배포·staging E2E·RDS psql은 **ops 트랙** — 제품 코드 루프와 분리. [04 §코드 루프 우선순위](./04_구현_우선순위.md) 참고.
+
+### 6.2 Ops·출시 게이트 (별도 트랙)
+
+| # | 작업 | 비용 |
+|---|------|------|
+| O-1 | nginx loop 354 map staging/prod VM 적용 | ops 1회 |
+| O-2 | Staging E2E full run (cookie + RDS + Drive asset) | ops 1회 |
+| O-3 | W-1 `TEAMVER_ALT_WORKSPACE_ID` E2E (loop 355) | code ✅ |
+| O-4 | Browser workspace switch 수동 체크리스트 §5.2 | QA 15분 |
+
+---
+
+## 7. 코드 위치 빠른 참조
+
+| 영역 | 경로 |
+|------|------|
+| Drive publish | `apps/web/src/teamver/publishToDrive.ts` |
+| Drive import | `apps/web/src/teamver/importDriveAssets.ts` |
+| Auth session | `apps/web/src/teamver/designBffClient.ts` |
+| Embed session UI | `apps/web/src/teamver/useTeamverEmbed.ts` |
+| Usage FE | `apps/web/src/teamver/maybeReportTeamverUsageAfterSave.ts` |
+| Usage daemon | `apps/daemon/src/teamver-usage-bridge.ts` |
+| Daemon workspace header | `apps/web/src/teamver/teamverDaemonHeaders.ts` |
+| BE usage | `deploy/teamver/be/app/routers/usage_report.py` |
+| BE internal usage | `deploy/teamver/be/app/routers/internal_usage.py` |
+| E2E script | `deploy/teamver/scripts/run_staging_track_a_e2e.sh` |
+
+---
+
+## 변경 이력
+
+| 일자 | 내용 |
+|------|------|
+| 2026-06-24 | loop 354 검토 초판 — Drive/auth/usage 판정, workspace 정렬, E2E 체크리스트 |
+| 2026-06-24 | loop 356 — publish picker 최근 위치 (S-1) |
+| 2026-06-24 | loop 355 — W-1 alt workspace E2E probe 추가 |

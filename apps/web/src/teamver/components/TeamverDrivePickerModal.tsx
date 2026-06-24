@@ -20,6 +20,7 @@ type Props = {
   open: boolean;
   workspaceId?: string | null;
   targets: TeamverDrivePublishTarget[];
+  recentTargets?: TeamverDrivePublishTarget[];
   selectedTargetId: string;
   loading?: boolean;
   onSearch?: (query: string) => Promise<TeamverDrivePublishTarget[]>;
@@ -88,6 +89,7 @@ export function TeamverDrivePickerModal({
   open,
   workspaceId,
   targets,
+  recentTargets = [],
   selectedTargetId,
   loading = false,
   onSearch,
@@ -121,6 +123,10 @@ export function TeamverDrivePickerModal({
     : browseTargets.length > 0
       ? browseTargets
       : filteredTargets;
+  const showRecentSection =
+    !searching
+    && currentFolderId == null
+    && recentTargets.length > 0;
 
   useEffect(() => {
     if (!open || !workspaceId?.trim()) {
@@ -307,7 +313,41 @@ export function TeamverDrivePickerModal({
         </label>
 
         <div className="teamver-drive-picker-list" role="listbox" aria-label="드라이브 폴더 목록">
-          {loading || browseLoading || (searchLoading && displayedTargets.length === 0) ? (
+          {showRecentSection ? (
+            <div
+              className="teamver-drive-import-section"
+              data-testid="teamver-drive-picker-recent"
+            >
+              <div className="teamver-drive-import-section-label">최근 위치</div>
+              {recentTargets.map((target) => {
+                const selected = target.id === selectedTargetId;
+                return (
+                  <button
+                    key={`recent:${target.id}`}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={`teamver-drive-picker-row${selected ? " is-selected" : ""}`}
+                    data-testid={`teamver-drive-picker-target-${target.id}`}
+                    onClick={() => {
+                      onSelect(target);
+                      onClose();
+                    }}
+                  >
+                    <span className="teamver-drive-picker-row-icon">
+                      <Icon name={target.sharedDriveId ? "folder-filled" : "folder"} size={15} />
+                    </span>
+                    <span className="teamver-drive-picker-row-copy">
+                      <span>{target.label}</span>
+                      <small>{target.description}</small>
+                    </span>
+                    {selected ? <Icon name="check" size={15} /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {loading || browseLoading || (searchLoading && displayedTargets.length === 0 && !showRecentSection) ? (
             <div className="teamver-drive-picker-empty">
               {searching ? "드라이브 폴더 검색 중…" : "드라이브 폴더 불러오는 중…"}
             </div>

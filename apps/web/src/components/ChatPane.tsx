@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom';
 import { useAnalytics } from '../analytics/provider';
 import { trackChatPanelClick, trackMessageQueueClick, trackRunFailedToastSurfaceView } from '../analytics/events';
 import { attributedAmrUrl, recordAmrEntry } from '../analytics/amr-attribution';
-import { useT } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import {
   FEATURED_DESIGN_TOOLBOX_ACTION_IDS,
   findDesignToolboxSkill,
@@ -28,6 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import type { TodoItem } from '../runtime/todos';
 import type { AppliedPluginSnapshot, ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
@@ -745,8 +746,9 @@ export function ChatPane({
   designSystemPicker,
   config,
 }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   const analytics = useAnalytics();
+  const { hideUsefulTips } = useTeamverBranding();
   const amrProfile = config?.agentCliEnv?.amr?.[AMR_PROFILE_ENV_KEY] ?? null;
   const logRef = useRef<HTMLDivElement | null>(null);
   const chatLogScrollIdleTimerRef = useRef<number | null>(null);
@@ -1844,82 +1846,80 @@ export function ChatPane({
             >
               {loading ? <ChatConversationLoading t={t} /> : null}
               {messages.length === 0 && !loading ? (
-                <div className="chat-empty-wrap">
-                  {showImportedFolderArtifacts ? (
-                    <ImportedFolderArtifacts
-                      projectId={projectId}
-                      files={importedFolderArtifacts}
-                      onOpenFile={onRequestOpenFile}
-                      t={t}
-                    />
-                  ) : (
-                    <>
-                      <div className="chat-empty">
-                        <span className="chat-empty-title">
-                          {t('chat.startTitle')}
+                showImportedFolderArtifacts ? (
+                  <ImportedFolderArtifacts
+                    projectId={projectId}
+                    files={importedFolderArtifacts}
+                    onOpenFile={onRequestOpenFile}
+                    t={t}
+                  />
+                ) : hideUsefulTips ? null : (
+                  <div className="chat-empty-wrap">
+                    <div className="chat-empty">
+                      <span className="chat-empty-title">
+                        {t('chat.startTitle')}
+                      </span>
+                    </div>
+                    <div className="chat-examples" role="list">
+                      {pickStarters(projectMetadata, t).map((ex, i) => (
+                        <button
+                          key={`${ex.title}-${i}`}
+                          type="button"
+                          role="listitem"
+                          className="chat-example"
+                          style={{ animationDelay: `${i * 70}ms` }}
+                          onClick={() => {
+                            trackChatPanelClick(analytics.track, {
+                              page_name: 'chat_panel',
+                              area: 'chat_panel',
+                              element: 'template_card',
+                            });
+                            composerRef.current?.setDraft(ex.prompt);
+                          }}
+                          title={t('chat.fillInputTitle')}
+                        >
+                          <span className="chat-example-icon" aria-hidden>
+                            {ex.icon}
+                          </span>
+                          <span className="chat-example-body">
+                            <span className="chat-example-head">
+                              <span className="chat-example-title">{ex.title}</span>
+                              <span className="chat-example-tag">{ex.tag}</span>
+                            </span>
+                            <span className="chat-example-prompt">{ex.prompt}</span>
+                          </span>
+                          <span className="chat-example-cta" aria-hidden>
+                            ↵
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {connectRepoNeeded ? (
+                      <div className="chat-connect-repo" role="note">
+                        <span className="chat-connect-repo-icon" aria-hidden>
+                          <Icon name="github" size={18} />
                         </span>
-                      </div>
-                      <div className="chat-examples" role="list">
-                        {pickStarters(projectMetadata, t).map((ex, i) => (
-                          <button
-                            key={`${ex.title}-${i}`}
-                            type="button"
-                            role="listitem"
-                            className="chat-example"
-                            style={{ animationDelay: `${i * 70}ms` }}
-                            onClick={() => {
-                              trackChatPanelClick(analytics.track, {
-                                page_name: 'chat_panel',
-                                area: 'chat_panel',
-                                element: 'template_card',
-                              });
-                              composerRef.current?.setDraft(ex.prompt);
-                            }}
-                            title={t('chat.fillInputTitle')}
-                          >
-                            <span className="chat-example-icon" aria-hidden>
-                              {ex.icon}
-                            </span>
-                            <span className="chat-example-body">
-                              <span className="chat-example-head">
-                                <span className="chat-example-title">{ex.title}</span>
-                                <span className="chat-example-tag">{ex.tag}</span>
-                              </span>
-                              <span className="chat-example-prompt">{ex.prompt}</span>
-                            </span>
-                            <span className="chat-example-cta" aria-hidden>
-                              ↵
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                      {connectRepoNeeded ? (
-                        <div className="chat-connect-repo" role="note">
-                          <span className="chat-connect-repo-icon" aria-hidden>
-                            <Icon name="github" size={18} />
+                        <span className="chat-connect-repo-body">
+                          <span className="chat-connect-repo-title">
+                            {repoConnectCopy(githubConnected).cardTitle}
                           </span>
-                          <span className="chat-connect-repo-body">
-                            <span className="chat-connect-repo-title">
-                              {repoConnectCopy(githubConnected).cardTitle}
-                            </span>
-                            <span className="chat-connect-repo-text">
-                              {repoConnectCopy(githubConnected).cardBody}
-                            </span>
+                          <span className="chat-connect-repo-text">
+                            {repoConnectCopy(githubConnected).cardBody}
                           </span>
-                          <button
-                            type="button"
-                            className="primary-ghost"
-                            disabled={githubConnected === undefined}
-                            onClick={() => onConnectRepo?.()}
-                          >
-                            <Icon name="github" size={13} />
-                            {repoConnectCopy(githubConnected).buttonLabel}
-                          </button>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                </div>
+                        </span>
+                        <button
+                          type="button"
+                          className="primary-ghost"
+                          disabled={githubConnected === undefined}
+                          onClick={() => onConnectRepo?.()}
+                        >
+                          <Icon name="github" size={13} />
+                          {repoConnectCopy(githubConnected).buttonLabel}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )
               ) : null}
               <ChatRows
                 messages={messages}
@@ -2703,7 +2703,7 @@ function QueuedSendStrip({
   onReorder?: (orderedIds: string[]) => void;
   onSendNow?: (id: string) => void;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const [dragState, setDragState] = useState<QueuedSendDragState | null>(null);
   if (items.length === 0) return null;
   const canReorder = Boolean(onReorder && items.length > 1);
