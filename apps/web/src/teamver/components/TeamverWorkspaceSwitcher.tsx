@@ -61,13 +61,11 @@ export function TeamverWorkspaceSwitcher({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const active =
-    workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ??
-    workspaces[0] ??
-    null;
-
+  const active = activeWorkspaceId
+    ? workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null
+    : null;
   const multiple = workspaces.length > 1;
-  const activeLabel = readWorkspaceLabel(active);
+  const activeLabel = active ? readWorkspaceLabel(active) : "워크스페이스 준비 중…";
 
   useEffect(() => {
     if (!open) return;
@@ -91,11 +89,31 @@ export function TeamverWorkspaceSwitcher({
 
   if (workspaces.length === 0) return null;
 
+  if (!active) {
+    return (
+      <div
+        className="teamver-workspace-switcher teamver-workspace-switcher--static teamver-workspace-switcher--pending"
+        data-testid="teamver-workspace-switcher"
+        data-workspace-ready="false"
+      >
+        <span
+          className="teamver-workspace-trigger teamver-workspace-trigger--pending"
+          title={activeLabel}
+          aria-label={`워크스페이스: ${activeLabel}`}
+          data-testid="teamver-workspace-chip"
+        >
+          <span className="teamver-workspace-trigger__label">{activeLabel}</span>
+        </span>
+      </div>
+    );
+  }
+
   if (!multiple) {
     return (
       <div
         className="teamver-workspace-switcher teamver-workspace-switcher--static"
         data-testid="teamver-workspace-switcher"
+        data-workspace-ready="true"
       >
         <span
           className="teamver-workspace-trigger"
@@ -118,7 +136,7 @@ export function TeamverWorkspaceSwitcher({
         aria-expanded={open}
         aria-label={`워크스페이스: ${activeLabel}`}
         title={activeLabel}
-        disabled={disabled}
+        disabled={disabled || !active}
         data-testid="teamver-workspace-chip"
         onClick={() => setOpen((value) => !value)}
       >

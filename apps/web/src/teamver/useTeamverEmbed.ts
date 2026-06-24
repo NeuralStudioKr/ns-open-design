@@ -25,7 +25,7 @@ import {
 } from "./workspaceUtils";
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
-import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
+import { syncAllDaemonProjectsToRegistry, resolveActiveTeamverWorkspaceIdForEmbed } from "./projectRegistry";
 
 export type TeamverEmbedState = {
   loading: boolean;
@@ -243,11 +243,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   };
 }
 
-/** Read active workspace id from store without a full session round-trip. */
+/** Read active workspace id — store first, then session bootstrap fallback. */
 export async function readActiveTeamverWorkspaceId(): Promise<string | null> {
-  const client = getDesignBffClient();
-  const value = await client?.workspaceStore?.get();
-  return value?.trim() || null;
+  return resolveActiveTeamverWorkspaceIdForEmbed();
 }
 
 export { pickDefaultWorkspaceId };

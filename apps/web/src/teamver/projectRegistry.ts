@@ -170,7 +170,7 @@ export async function registerTeamverProjectIfNeeded(
   const client = getDesignBffClient();
   if (!client) throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
 
-  const workspaceId = (await client.workspaceStore?.get())?.trim();
+  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) throw new TeamverProjectRegistryError("teamver_workspace_required");
 
   try {
@@ -244,7 +244,7 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   await syncAllInflight;
 }
 
-async function resolveRegistryWorkspaceId(): Promise<string | null> {
+async function resolveActiveTeamverWorkspaceId(): Promise<string | null> {
   const client = getDesignBffClient();
   if (!client) return null;
 
@@ -257,6 +257,12 @@ async function resolveRegistryWorkspaceId(): Promise<string | null> {
   return workspaceId || null;
 }
 
+/** Embed registry/API calls — localStorage store with session bootstrap fallback. */
+export async function resolveActiveTeamverWorkspaceIdForEmbed(): Promise<string | null> {
+  if (!isTeamverEmbedMode()) return null;
+  return resolveActiveTeamverWorkspaceId();
+}
+
 export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
   if (!isTeamverEmbedMode()) return null;
   await waitForEmbedBootIfNeeded();
@@ -265,7 +271,7 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
   if (!client) return null;
 
   try {
-    const workspaceId = await resolveRegistryWorkspaceId();
+    const workspaceId = await resolveActiveTeamverWorkspaceId();
     if (!workspaceId) return null;
     const result = await withDesignBffCookieAuthRecovery(() =>
       client.http.get<{ projects?: TeamverRegisteredProject[] }>(

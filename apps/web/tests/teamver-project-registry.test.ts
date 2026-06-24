@@ -24,6 +24,14 @@ vi.mock('../src/teamver/designApiBase', () => ({
   isTeamverEmbedMode: vi.fn(() => false),
 }));
 
+vi.mock('../src/teamver/syncTeamverWorkspace', () => ({
+  syncTeamverWorkspaceFromSession: vi.fn(async (session) => {
+    const workspaces = session?.workspaces ?? [];
+    const id = workspaces[0]?.id?.trim();
+    return id || null;
+  }),
+}));
+
 vi.mock('../src/teamver/designBffClient', () => ({
   getDesignBffClient: vi.fn(() => null),
   fetchDesignAuthSession: vi.fn(async () => null),
@@ -161,6 +169,31 @@ describe('Teamver project registry register', () => {
     await expect(
       registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
     ).rejects.toThrow('teamver_project_registry_unavailable');
+  });
+
+  it('bootstraps workspace from session when local store is empty', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi.fn(async () => undefined);
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: true,
+      workspaces: [{ id: 'ws-boot', name: 'Boot WS', role: 'owner' }],
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: {
+        get: vi.fn(async () => null),
+      },
+      http: { post },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
+    ).resolves.toBeUndefined();
+
+    expect(post).toHaveBeenCalledWith(
+      '/projects',
+      { odProjectId: 'p1', title: 'Demo' },
+      expect.objectContaining({ workspaceId: 'ws-boot' }),
+    );
   });
 
   it('rejects embed registration when registry upsert fails', async () => {

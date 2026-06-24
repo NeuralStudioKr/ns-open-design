@@ -7,6 +7,20 @@ describe("TeamverWorkspaceSwitcher", () => {
   afterEach(() => {
     cleanup();
   });
+  it("shows pending label when active workspace is not resolved yet", () => {
+    render(
+      <TeamverWorkspaceSwitcher
+        workspaces={[{ id: "WS-1", name: "Alpha", role: "owner" }]}
+        activeWorkspaceId={null}
+        onSwitch={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("teamver-workspace-switcher").getAttribute("data-workspace-ready")).toBe(
+      "false",
+    );
+    expect(screen.getByText("워크스페이스 준비 중…")).toBeTruthy();
+  });
+
   it("renders single workspace chip without menu", () => {
     render(
       <TeamverWorkspaceSwitcher
