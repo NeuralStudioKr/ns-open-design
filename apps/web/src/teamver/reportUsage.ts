@@ -6,6 +6,7 @@ export type TeamverUsageEvent = {
   modelName: string;
   inputTokens: number;
   outputTokens: number;
+  tokenCountSource?: "provider_usage" | "estimated" | "unknown";
   operation?: string;
   projectId?: string;
   runId?: string;
@@ -40,6 +41,7 @@ async function postUsageEvent(
       projectId: event.projectId,
       runId: event.runId,
       runStatus: event.runStatus,
+      tokenCountSource: event.tokenCountSource ?? "unknown",
     },
     {
       workspaceId: event.workspaceId,

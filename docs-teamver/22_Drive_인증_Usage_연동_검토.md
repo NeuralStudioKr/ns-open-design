@@ -130,7 +130,7 @@ FE와 daemon이 **동일 run**에 usage를 보고할 수 있다. BE upsert는 `(
 | ID | 우선 | 내용 | 상태 |
 |----|------|------|------|
 | U-G1 | P1 | U-6 staging E2E — M2M + RDS row count | ☐ |
-| U-G2 | P2 | FE `token_count_source` 미전송 (daemon은 전송) | ☐ |
+| U-G2 | P2 | FE `token_count_source` 전송 (daemon은 전송) | ✅ loop 363 |
 | U-G3 | P2 | doc §2.2 stale “daemon ❌” | ✅ loop 354 갱신 |
 
 ---

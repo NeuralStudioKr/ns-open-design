@@ -15,13 +15,24 @@ export function extractLatestUsageFromEvents(events: AgentEvent[] | undefined) {
     const event = events[i];
     if (!event) continue;
     if (event.kind === "usage") {
+      const inputTokens = event.inputTokens ?? 0;
+      const outputTokens = event.outputTokens ?? 0;
       return {
-        inputTokens: event.inputTokens ?? 0,
-        outputTokens: event.outputTokens ?? 0,
+        inputTokens,
+        outputTokens,
+        tokenCountSource: resolveTokenCountSource(inputTokens, outputTokens),
       };
     }
   }
   return null;
+}
+
+/** Align with daemon run-analytics: non-zero usage events imply provider counts. */
+export function resolveTokenCountSource(
+  inputTokens: number,
+  outputTokens: number,
+): "provider_usage" | "unknown" {
+  return inputTokens + outputTokens > 0 ? "provider_usage" : "unknown";
 }
 
 export function extractModelNameFromEvents(events: AgentEvent[] | undefined): string | null {

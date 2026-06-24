@@ -42,6 +42,7 @@ export async function maybeReportTeamverUsageAfterSave(
     modelName,
     inputTokens: usage?.inputTokens ?? 0,
     outputTokens: usage?.outputTokens ?? 0,
+    tokenCountSource: usage?.tokenCountSource ?? "unknown",
     projectId,
     runId,
     runStatus: message.runStatus,

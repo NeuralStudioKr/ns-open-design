@@ -5,6 +5,7 @@ import {
   extractModelNameFromEvents,
   isTerminalRunStatus,
   resolveTeamverUsageModelName,
+  resolveTokenCountSource,
 } from '../src/teamver/usageAttribution';
 import {
   pinTeamverExecutionConfig,
@@ -39,7 +40,22 @@ describe('usageAttribution', () => {
         { kind: 'usage', inputTokens: 10, outputTokens: 5 },
         { kind: 'usage', inputTokens: 99, outputTokens: 1 },
       ]),
-    ).toEqual({ inputTokens: 99, outputTokens: 1 });
+    ).toEqual({
+      inputTokens: 99,
+      outputTokens: 1,
+      tokenCountSource: 'provider_usage',
+    });
+  });
+
+  it('marks zero-token usage as unknown source', () => {
+    expect(resolveTokenCountSource(0, 0)).toBe('unknown');
+    expect(
+      extractLatestUsageFromEvents([{ kind: 'usage', inputTokens: 0, outputTokens: 0 }]),
+    ).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      tokenCountSource: 'unknown',
+    });
   });
 
   it('extracts model name from status events', () => {
@@ -122,6 +138,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       modelName: 'claude-sonnet-4-5',
       inputTokens: 100,
       outputTokens: 50,
+      tokenCountSource: 'provider_usage',
       projectId: 'p1',
       runId: 'run-abc',
       runStatus: 'succeeded',
@@ -155,6 +172,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       modelName: 'claude-sonnet-4-5',
       inputTokens: 120,
       outputTokens: 15,
+      tokenCountSource: 'provider_usage',
       projectId: 'p1',
       runId: 'run-api',
       runStatus: 'succeeded',
