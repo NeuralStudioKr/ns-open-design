@@ -51,6 +51,8 @@ describe("project conversation error messages", () => {
       formatProjectArtifactSaveFailedError,
       formatProjectArtifactStubWarning,
       formatProjectRunErrorForUser,
+      formatProjectConversationErrorForUser,
+      formatProjectForkConversationError,
     } = await import("../src/teamver/projectErrorMessages");
     expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
       "저장을 거부",
@@ -60,5 +62,20 @@ describe("project conversation error messages", () => {
     expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
       "슬라이드 실행",
     );
+    expect(
+      formatProjectConversationErrorForUser(
+        new Error("Network request failed"),
+        "슬라이드 프로젝트의 대화 목록을 불러오지 못했습니다.",
+      ),
+    ).toBe("슬라이드 프로젝트의 대화 목록을 불러오지 못했습니다.");
+    expect(formatProjectForkConversationError()).toBe("대화를 복제하지 못했습니다.");
+  });
+
+  it("passes through raw conversation errors in standalone OD", async () => {
+    mockedEmbedMode.mockReturnValue(false);
+    const { formatProjectConversationErrorForUser } = await import("../src/teamver/projectErrorMessages");
+    expect(
+      formatProjectConversationErrorForUser(new Error("custom"), "fallback"),
+    ).toBe("custom");
   });
 });

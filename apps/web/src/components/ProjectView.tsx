@@ -171,11 +171,13 @@ import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   formatProjectConversationCreateError,
   formatProjectConversationListError,
+  formatProjectConversationErrorForUser,
   formatProjectMessagesLoadError,
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
   formatProjectRunErrorForUser,
+  formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
@@ -1435,7 +1437,7 @@ export function ProjectView({
         }
       } catch (err) {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : formatProjectConversationListError();
+        const message = formatProjectConversationErrorForUser(err, formatProjectConversationListError());
         setConversations([]);
         setActiveConversationId(null);
         setConversationLoadError(message);
@@ -1535,7 +1537,7 @@ export function ProjectView({
         setFailedMessagesConversationId(null);
       } catch (err) {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : formatProjectMessagesLoadError();
+        const message = formatProjectConversationErrorForUser(err, formatProjectMessagesLoadError());
         setMessages([]);
         setPreviewComments([]);
         setAttachedComments([]);
@@ -4810,7 +4812,7 @@ export function ProjectView({
       );
       setError(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : formatProjectConversationCreateError();
+      const message = formatProjectConversationErrorForUser(err, formatProjectConversationCreateError());
       setConversationLoadError(message);
       setError(message);
     } finally {
@@ -4970,7 +4972,10 @@ export function ProjectView({
         onProjectsRefresh();
         setError(null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : t('chat.forkConversationFailed');
+        const message = formatProjectConversationErrorForUser(
+          err,
+          isTeamverEmbedMode() ? formatProjectForkConversationError() : t('chat.forkConversationFailed'),
+        );
         setConversationLoadError(message);
         setError(message);
       } finally {

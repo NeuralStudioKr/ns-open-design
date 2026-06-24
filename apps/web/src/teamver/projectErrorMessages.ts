@@ -54,3 +54,17 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   }
   return "슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.";
 }
+
+/** User-facing conversation lifecycle banner — embed avoids raw API/daemon English. */
+export function formatProjectConversationErrorForUser(err: unknown, fallback: string): string {
+  if (!isTeamverEmbedMode()) {
+    return err instanceof Error ? err.message : fallback;
+  }
+  return fallback;
+}
+
+export function formatProjectForkConversationError(): string {
+  return isTeamverEmbedMode()
+    ? "대화를 복제하지 못했습니다."
+    : "Could not fork this conversation.";
+}

@@ -103,5 +103,6 @@ describe('Teamver embed slide-only MVP policy', () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     expect(projectView).toContain("subscribeTeamverWorkspaceChanged");
     expect(projectView).toContain("setConversationLoadError(null)");
+    expect(projectView).toContain("formatProjectConversationErrorForUser");
   });
 });
