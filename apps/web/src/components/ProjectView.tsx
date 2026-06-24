@@ -24,6 +24,7 @@ import {
 } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
 import { useI18n } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
 import {
   fetchChatRunStatus,
@@ -852,7 +853,8 @@ export function ProjectView({
   embedSubmitDisabled = false,
   onEmbedSubmitBlocked,
 }: Props) {
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
+  const t = useTeamverT();
   const analytics = useAnalytics();
   const {
     hideStudioExecutionControls,

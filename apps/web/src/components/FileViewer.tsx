@@ -27,7 +27,8 @@ import {
 } from '../analytics/events';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
-import { useT, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
@@ -1095,7 +1096,7 @@ export function LiveArtifactViewer({
   liveArtifactEvents?: LiveArtifactEventItem[];
   onRefreshArtifacts?: () => Promise<void> | void;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const tabs = useMemo(() => liveArtifactViewerTabs(t), [t]);
   const [mode, setMode] = useState<LiveArtifactViewerTab>('preview');
   const [detail, setDetail] = useState<LiveArtifact | null>(null);
@@ -1651,7 +1652,7 @@ function LiveArtifactCodePanel({
   artifactId: string;
   reloadKey: number;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const [variant, setVariant] = useState<LiveArtifactCodeVariant>('template');
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1982,7 +1983,7 @@ export function LiveArtifactRefreshHistoryPanel({
   sessionEvents: LiveArtifactRefreshEvent[];
   persistedEvents?: LiveArtifactRefreshLogEntry[];
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const { locale } = useI18n();
   const [now, setNow] = useState(() => Date.now());
 
@@ -2266,7 +2267,7 @@ function FileActions({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   return (
     <div className="viewer-toolbar-actions">
       <a
@@ -4076,7 +4077,7 @@ function ReactModulePointer({
   entries: string[];
   onOpenEntry?: (name: string) => void;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   return (
     <div className="viewer-module-pointer" role="note">
       <Icon name="info" size={20} />
@@ -4111,7 +4112,7 @@ function ReactComponentViewer({
   file: ProjectFile;
   onOpenFileReplacing?: (openName: string, closeName: string) => void;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
   const [source, setSource] = useState<string | null>(null);
   const [srcDoc, setSrcDoc] = useState('');
@@ -4353,7 +4354,7 @@ function BinaryViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   return (
     <div className="viewer binary-viewer">
       <div className="viewer-toolbar">
@@ -4380,7 +4381,7 @@ function DocumentPreviewViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const [preview, setPreview] = useState<ProjectFilePreview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -4475,7 +4476,8 @@ function HtmlViewer({
   downloadRequest?: { nonce: number } | null;
   slideNavRequest?: { slideIndex: number; nonce: number } | null;
 }) {
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
+  const t = useTeamverT();
   const analytics = useAnalytics();
   // loop 171 — Embed (Teamver) hides every external share/publish surface
   // (Vercel/Cloudflare deploy, share-link copy/open, Project social share).
@@ -9623,7 +9625,7 @@ function ImageViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
   return (
     <div className="viewer image-viewer">
@@ -9667,7 +9669,7 @@ function SketchViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   return (
     <div className="viewer image-viewer sketch-viewer">
       <div className="viewer-toolbar">
@@ -9692,7 +9694,7 @@ function VideoViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
   return (
     <div className="viewer video-viewer">
@@ -9718,7 +9720,7 @@ function AudioViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
   return (
     <div className="viewer audio-viewer">
@@ -9756,7 +9758,7 @@ export function SvgViewer({
   initialMode = 'preview',
   initialSource,
 }: SvgViewerProps) {
-  const t = useT();
+  const t = useTeamverT();
   const [mode, setMode] = useState<SvgViewerMode>(initialMode);
   const [source, setSource] = useState<string | null>(initialSource ?? null);
   const [loadingSource, setLoadingSource] = useState(false);
@@ -9864,7 +9866,7 @@ function TextViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const [text, setText] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -10066,7 +10068,7 @@ function MarkdownViewer({
   projectId: string;
   file: ProjectFile;
 }) {
-  const t = useT();
+  const t = useTeamverT();
   const [text, setText] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);

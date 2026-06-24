@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useT } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import {
@@ -264,7 +264,7 @@ export function PreviewModal({
   onSidebarToggleClick,
   onSharePopoverItemClick,
 }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   // loop 171 — Teamver embed hides external share surfaces (social
   // platforms + copy share-link / share-text). Local file exports
   // (PDF / ZIP / HTML / image) stay visible because they download to
