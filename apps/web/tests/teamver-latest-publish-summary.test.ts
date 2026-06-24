@@ -144,4 +144,39 @@ describe('fetchLatestPublishSummary', () => {
     expect(batchPostMock).not.toHaveBeenCalled();
     expect(listOutputsMock).toHaveBeenCalledWith('p1');
   });
+
+  it('keeps batched fetch when per-project clear runs alongside an in-flight drain', async () => {
+    let resolveBatch: ((value: unknown) => void) | null = null;
+    batchPostMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveBatch = resolve;
+        }),
+    );
+
+    const inflight = fetchLatestPublishSummary('p1');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(typeof resolveBatch).toBe('function');
+
+    clearLatestPublishSummaryCache('p1');
+    clearLatestPublishSummaryCache('p2');
+    clearLatestPublishSummaryCache('p3');
+
+    resolveBatch!({
+      summaries: [
+        {
+          odProjectId: 'p1',
+          version: 4,
+          kind: 'html',
+          driveAssetId: 'AST-LIVE',
+          filename: 'deck.html',
+        },
+      ],
+    });
+
+    const summary = await inflight;
+    expect(summary?.driveUrl).toBe('https://drive.example/a/AST-LIVE');
+    expect(batchPostMock).toHaveBeenCalledTimes(1);
+    expect(listOutputsMock).not.toHaveBeenCalled();
+  });
 });

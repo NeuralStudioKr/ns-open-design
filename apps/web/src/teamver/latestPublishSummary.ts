@@ -19,12 +19,15 @@ let activeBatch: Promise<void> | null = null;
 let batchGeneration = 0;
 
 export function clearLatestPublishSummaryCache(projectId?: string): void {
-  batchGeneration += 1;
   if (projectId?.trim()) {
+    // Per-project clear (publish success, single-project purge) must NOT bump
+    // batchGeneration — doing so aborts the in-flight drain and forces every
+    // other chip to fall back to its own `/outputs` call.
     cache.delete(projectId.trim());
     pendingBatchIds.delete(projectId.trim());
     return;
   }
+  batchGeneration += 1;
   cache.clear();
   pendingBatchIds.clear();
   activeBatch = null;
