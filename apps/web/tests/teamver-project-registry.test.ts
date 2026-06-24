@@ -26,6 +26,8 @@ vi.mock('../src/teamver/designApiBase', () => ({
 
 vi.mock('../src/teamver/designBffClient', () => ({
   getDesignBffClient: vi.fn(() => null),
+  fetchDesignAuthSession: vi.fn(async () => null),
+  withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
 }));
 
 describe('Teamver project registry payload', () => {
@@ -95,6 +97,39 @@ describe('Teamver project registry list', () => {
     await expect(
       filterProjectsByTeamverRegistryIfNeeded([{ id: 'p1' }]),
     ).rejects.toMatchObject({ code: 'teamver_project_registry_list_failed' });
+  });
+
+  it('retries registry list once after cookie auth recovery on 401', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    let callCount = 0;
+    const get = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        throw new NetworkError({ status: 401, message: 'unauthorized' });
+      }
+      return { projects: [{ odProjectId: 'p1' }] };
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.mocked(designBffClient.withDesignBffCookieAuthRecovery).mockImplementation(
+      async (request) => {
+        try {
+          return await request();
+        } catch (err) {
+          if (err instanceof NetworkError && err.status === 401 && callCount === 1) {
+            return await request();
+          }
+          throw err;
+        }
+      },
+    );
+
+    await expect(
+      filterProjectsByTeamverRegistryIfNeeded([{ id: 'p1' }, { id: 'p2' }]),
+    ).resolves.toEqual([{ id: 'p1' }]);
+    expect(get).toHaveBeenCalledTimes(2);
   });
 });
 

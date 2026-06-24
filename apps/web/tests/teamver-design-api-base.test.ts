@@ -31,6 +31,13 @@ describe("resolveTeamverDesignApiBase", () => {
     expect(resolveTeamverDesignApiBase()).toBe("");
   });
 
+  it("uses same-origin BFF on localhost embed docker (daemon /teamver-bff proxy)", async () => {
+    setLocation("localhost");
+    vi.stubEnv("NODE_ENV", "production");
+    const { resolveTeamverDesignApiBase } = await import("../src/teamver/designApiBase");
+    expect(resolveTeamverDesignApiBase()).toBe("");
+  });
+
   it("keeps cross-origin API host when already on design-api subdomain", async () => {
     setLocation("stg-design-api.teamver.com");
     const { resolveTeamverDesignApiBase } = await import("../src/teamver/designApiBase");

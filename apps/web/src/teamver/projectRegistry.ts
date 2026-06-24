@@ -1,9 +1,14 @@
 import { NetworkError } from "@teamver/app-sdk";
 import type { Project } from "../types";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
-import { getDesignBffClient } from "./designBffClient";
+import {
+  fetchDesignAuthSession,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { readTeamverViteEnv } from "./teamverViteEnv";
+import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
 
 async function waitForEmbedBootIfNeeded(): Promise<void> {
@@ -239,6 +244,19 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   await syncAllInflight;
 }
 
+async function resolveRegistryWorkspaceId(): Promise<string | null> {
+  const client = getDesignBffClient();
+  if (!client) return null;
+
+  let workspaceId = (await client.workspaceStore?.get())?.trim() || null;
+  if (workspaceId) return workspaceId;
+
+  const session = await fetchDesignAuthSession();
+  if (!session?.authenticated) return null;
+  workspaceId = (await syncTeamverWorkspaceFromSession(session))?.trim() || null;
+  return workspaceId || null;
+}
+
 export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
   if (!isTeamverEmbedMode()) return null;
   await waitForEmbedBootIfNeeded();
@@ -247,14 +265,16 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
   if (!client) return null;
 
   try {
-    const workspaceId = await client.workspaceStore?.get();
-    if (!workspaceId?.trim()) return null;
-    const result = await client.http.get<{ projects?: TeamverRegisteredProject[] }>(
-      "/projects",
-      {
-        workspaceId: workspaceId.trim(),
-        skipAuthHeader: true,
-      },
+    const workspaceId = await resolveRegistryWorkspaceId();
+    if (!workspaceId) return null;
+    const result = await withDesignBffCookieAuthRecovery(() =>
+      client.http.get<{ projects?: TeamverRegisteredProject[] }>(
+        "/projects",
+        {
+          workspaceId,
+          skipAuthHeader: true,
+        },
+      ),
     );
     const ids = new Set<string>();
     for (const project of result.projects ?? []) {

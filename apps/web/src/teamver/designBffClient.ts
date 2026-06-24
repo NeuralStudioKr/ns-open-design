@@ -101,6 +101,21 @@ function shouldAttemptCookieRefresh(): boolean {
   return !unauthenticatedRefreshAttempted;
 }
 
+/** Cookie-only SSO: retry a BFF request once after refresh (tokenStore is null). */
+export async function withDesignBffCookieAuthRecovery<T>(
+  request: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await request();
+  } catch (err) {
+    if (err instanceof NetworkError && err.status === 401) {
+      const refreshed = await refreshDesignAuthCookie();
+      if (refreshed) return await request();
+    }
+    throw err;
+  }
+}
+
 /** Cookie-only SSO: refresh may relay Set-Cookie without JSON access_token (tokenStore is null). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (!shouldAttemptCookieRefresh()) return false;
