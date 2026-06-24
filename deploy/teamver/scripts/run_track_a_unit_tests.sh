@@ -142,6 +142,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-usage-report.test.ts \
       tests/providers/api-proxy.test.ts \
       tests/teamver-project-registry.test.ts \
+      tests/teamver-active-workspace.test.ts \
       tests/teamver-load-project-list.test.ts \
       tests/teamver-background-run-navigate.test.ts \
       tests/teamver-use-embed.test.tsx \

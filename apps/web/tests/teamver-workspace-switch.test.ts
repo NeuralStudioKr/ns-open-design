@@ -32,7 +32,49 @@ describe("embed workspace switch side effects", () => {
     const daemon = readSource("src/providers/daemon.ts");
     const headers = readSource("src/teamver/teamverDaemonHeaders.ts");
     expect(daemon).toContain("buildTeamverDaemonRequestHeaders");
+    expect(headers).toContain("readActiveTeamverWorkspaceId");
     expect(headers).toContain("X-Workspace-Id");
+  });
+
+  it("routes embed BFF workspace reads through activeTeamverWorkspace helper", () => {
+    for (const relativePath of [
+      "src/teamver/publishToDrive.ts",
+      "src/teamver/importDriveAssets.ts",
+      "src/teamver/listProjectOutputs.ts",
+      "src/teamver/batchLatestPublishSummary.ts",
+      "src/teamver/maybeReportTeamverUsageAfterSave.ts",
+      "src/teamver/components/TeamverPublishDriveMenuItem.tsx",
+      "src/components/ChatComposer.tsx",
+    ]) {
+      const source = readSource(relativePath);
+      expect(source).toMatch(/activeTeamverWorkspace|readActiveTeamverWorkspaceId|requireActiveTeamverWorkspaceId|resolveActiveTeamverWorkspaceId/);
+      expect(source).not.toMatch(/workspaceStore\?\.get\(\)/);
+    }
+  });
+
+  it("forwards active workspace on daemon run list polling in embed", () => {
+    const daemon = readSource("src/providers/daemon.ts");
+    expect(daemon).toMatch(
+      /export async function listProjectRuns[\s\S]*?buildTeamverDaemonRequestHeaders/,
+    );
+    expect(daemon).toMatch(
+      /export async function listActiveChatRuns[\s\S]*?buildTeamverDaemonRequestHeaders/,
+    );
+  });
+
+  it("clears background run UI and re-seeds run tracking on workspace switch", () => {
+    const app = readSource("src/App.tsx");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    expect(start).toBeGreaterThan(0);
+    const block = app.slice(start, start + 3200);
+    expect(block).toContain("setBackgroundRunSummaries([])");
+    expect(block).toContain("setBackgroundRunNotice(null)");
+    expect(block).toContain("resetEmbedRunTrackingRefs");
+    expect(block).toContain("filterRunsForEmbedKnownProjects");
+    expect(block).toContain("seedEmbedRunTrackingFromRuns");
+    expect(block.indexOf("resetEmbedRunTrackingRefs")).toBeLessThan(
+      block.indexOf("seedEmbedRunTrackingFromRuns"),
+    );
   });
 
   it("clears stale workingDirError after refreshProjects succeeds", () => {

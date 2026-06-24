@@ -4,7 +4,7 @@
 # Replaces the manual checklist items in:
 #   docs-teamver/10_세션·OD패치_보강.md §6 (S-8)
 #   docs-teamver/11_Usage·Drive_Publish_보강.md §8 (U-6 / D-5)
-#   docs-teamver/22_Drive_인증_Usage_연동_검토.md §5 (W-1)
+#   docs-teamver/22_Drive_인증_Usage_연동_검토.md §5 (W-1, S-5)
 #   docs-teamver/09_Design_저장소_격리_출시게이트.md §14 (multi-user 403)
 #
 # Strategy: design-api 의 정상 흐름을 curl 로 끝까지 두드린 다음 RDS 에서
@@ -220,6 +220,35 @@ else
       ;;
     *)
       failed "W-1 alt workspace permissions ${perm_code}"
+      ;;
+  esac
+fi
+
+# ---- S-5: daemon /api/runs + workspace header (loop 365 background run poll) --
+if [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "S-5 daemon /api/runs — TEAMVER_COOKIE 필요"
+elif [[ -z "${session_workspace_id:-}" ]]; then
+  skipped "S-5 daemon /api/runs — session workspace 없음"
+else
+  runs_body="$(curl_body "${DESIGN_BASE}/api/runs" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  runs_code="$(curl_code "${DESIGN_BASE}/api/runs" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  case "$runs_code" in
+    200)
+      if printf '%s' "$runs_body" | grep -q '"runs"'; then
+        passed "S-5 ${DESIGN_HOST}/api/runs with X-Workspace-Id → 200 (runs payload)"
+      else
+        failed "S-5 /api/runs 200 but missing runs field — daemon proxy misconfigured"
+      fi
+      ;;
+    401|403)
+      failed "S-5 /api/runs ${runs_code} — cookie/session invalid on design host"
+      ;;
+    *)
+      failed "S-5 /api/runs ${runs_code} — design nginx/daemon unreachable"
       ;;
   esac
 fi

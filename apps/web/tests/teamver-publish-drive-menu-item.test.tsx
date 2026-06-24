@@ -67,6 +67,16 @@ vi.mock("../src/teamver/designBffClient", () => ({
   })),
 }));
 
+vi.mock("../src/teamver/activeTeamverWorkspace", () => ({
+  readActiveTeamverWorkspaceId: () => getWorkspaceMock(),
+  resolveActiveTeamverWorkspaceIdForEmbed: () => getWorkspaceMock(),
+  requireActiveTeamverWorkspaceId: async () => {
+    const id = await getWorkspaceMock();
+    if (!id) throw new Error("teamver_workspace_required");
+    return id;
+  },
+}));
+
 vi.mock("../src/teamver/drivePublishTargets", () => ({
   listTeamverDrivePublishTargets: (workspaceId: string, options?: { limit?: number }) =>
     listTargetsMock(workspaceId, options),
@@ -495,7 +505,7 @@ describe("TeamverPublishDriveMenuItem", () => {
   });
 
   it("treats a null workspace bridge as a soft pending state, not a deadlock", async () => {
-    getWorkspaceMock.mockResolvedValueOnce("");
+    getWorkspaceMock.mockResolvedValueOnce(null);
 
     render(
       <TeamverPublishDriveMenuItem

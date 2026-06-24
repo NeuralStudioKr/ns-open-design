@@ -1,6 +1,7 @@
 import type { ChatAttachment } from "@open-design/contracts";
 import type { Dict } from "../i18n/types";
 import { getDesignBffClient } from "./designBffClient";
+import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 export type TeamverDriveImportAsset = {
@@ -114,10 +115,7 @@ export async function importTeamverDriveAssets(
     throw new Error("teamver_design_client_unavailable");
   }
 
-  const workspaceId = await client.workspaceStore?.get();
-  if (!workspaceId?.trim()) {
-    throw new Error("teamver_workspace_required");
-  }
+  const workspaceId = await requireActiveTeamverWorkspaceId();
   if (assets.length === 0) {
     throw new Error("drive_import_assets_required");
   }
@@ -125,13 +123,13 @@ export async function importTeamverDriveAssets(
     throw new Error("drive_import_too_many_assets");
   }
 
-  await assertTeamverDesignAppEnabled(workspaceId.trim());
+  await assertTeamverDesignAppEnabled(workspaceId);
 
   const response = await client.http.post<DriveImportResponse>(
     `/projects/${encodeURIComponent(projectId)}/import-drive`,
     { assets },
     {
-      workspaceId: workspaceId.trim(),
+      workspaceId,
       skipAuthHeader: true,
     },
   );

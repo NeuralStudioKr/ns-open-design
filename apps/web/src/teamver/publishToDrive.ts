@@ -1,6 +1,7 @@
 import { NetworkError } from "@teamver/app-sdk";
 import { getDesignBffClient } from "./designBffClient";
 import { readTeamverViteEnv } from "./teamverViteEnv";
+import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 /**
@@ -200,12 +201,9 @@ export async function publishTeamverDesignToDrive(
     throw new Error("teamver_design_client_unavailable");
   }
 
-  const workspaceId = await client.workspaceStore?.get();
-  if (!workspaceId?.trim()) {
-    throw new Error("teamver_workspace_required");
-  }
+  const workspaceId = await requireActiveTeamverWorkspaceId();
 
-  await assertTeamverDesignAppEnabled(workspaceId.trim());
+  await assertTeamverDesignAppEnabled(workspaceId);
 
   const formats = params.formats?.length ? params.formats : ["html"];
   const body = {
@@ -220,7 +218,7 @@ export async function publishTeamverDesignToDrive(
       `/projects/${encodeURIComponent(params.projectId)}/publish`,
       body,
       {
-        workspaceId: workspaceId.trim(),
+        workspaceId: workspaceId,
         skipAuthHeader: true,
       },
     );

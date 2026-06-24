@@ -2,13 +2,12 @@ import { NetworkError } from "@teamver/app-sdk";
 import type { Project } from "../types";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import {
-  fetchDesignAuthSession,
   getDesignBffClient,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { readTeamverViteEnv } from "./teamverViteEnv";
-import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
+import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
 
 async function waitForEmbedBootIfNeeded(): Promise<void> {
@@ -218,7 +217,7 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   const client = getDesignBffClient();
   if (!client) return;
 
-  const workspaceId = (await client.workspaceStore?.get())?.trim();
+  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) return;
 
   const now = Date.now();
@@ -244,24 +243,6 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   await syncAllInflight;
 }
 
-async function resolveActiveTeamverWorkspaceId(): Promise<string | null> {
-  const client = getDesignBffClient();
-  if (!client) return null;
-
-  let workspaceId = (await client.workspaceStore?.get())?.trim() || null;
-  if (workspaceId) return workspaceId;
-
-  const session = await fetchDesignAuthSession();
-  if (!session?.authenticated) return null;
-  workspaceId = (await syncTeamverWorkspaceFromSession(session))?.trim() || null;
-  return workspaceId || null;
-}
-
-/** Embed registry/API calls — localStorage store with session bootstrap fallback. */
-export async function resolveActiveTeamverWorkspaceIdForEmbed(): Promise<string | null> {
-  if (!isTeamverEmbedMode()) return null;
-  return resolveActiveTeamverWorkspaceId();
-}
 
 export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
   if (!isTeamverEmbedMode()) return null;
@@ -319,7 +300,7 @@ export async function fetchTeamverProject(
   if (!client) return null;
 
   try {
-    const workspaceId = await client.workspaceStore?.get();
+    const workspaceId = await resolveActiveTeamverWorkspaceId();
     if (!workspaceId?.trim()) return null;
 
     return await client.http.get<TeamverRegisteredProject>(
@@ -360,7 +341,7 @@ export async function assertTeamverProjectAccessIfNeeded(
   const client = getDesignBffClient();
   if (!client) return false;
 
-  const workspaceId = (await client.workspaceStore?.get())?.trim();
+  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) return false;
 
   const cacheKey = `${workspaceId}:${trimmedId}`;
@@ -405,7 +386,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
   if (!client) return;
 
   try {
-    const workspaceId = await client.workspaceStore?.get();
+    const workspaceId = await resolveActiveTeamverWorkspaceId();
     if (!workspaceId?.trim()) return;
 
     await client.http.delete<void>(

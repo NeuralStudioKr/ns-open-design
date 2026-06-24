@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { isTeamverEmbedMode } from "../designApiBase";
 import { getDesignBffClient } from "../designBffClient";
+import { readActiveTeamverWorkspaceId } from "../activeTeamverWorkspace";
 import {
   listTeamverDrivePublishTargets,
   searchTeamverDrivePublishTargets,
@@ -169,8 +170,7 @@ export function TeamverPublishDriveMenuItem({
     setLoadingTargets(true);
     setTargetsError(null);
     try {
-      const wsRaw = await getDesignBffClient()?.workspaceStore?.get();
-      const ws = wsRaw?.trim() || null;
+      const ws = (await readActiveTeamverWorkspaceId())?.trim() || null;
       if (seq !== fetchSeqRef.current) return;
       setWorkspaceId(ws);
       if (!ws) {

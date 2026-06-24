@@ -874,7 +874,8 @@ export async function listActiveChatRuns(
 ): Promise<ChatRunStatusResponse[]> {
   try {
     const qs = new URLSearchParams({ projectId, conversationId, status: 'active' });
-    const resp = await fetch(`/api/runs?${qs.toString()}`);
+    const headers = await buildTeamverDaemonRequestHeaders({});
+    const resp = await fetch(`/api/runs?${qs.toString()}`, { headers });
     if (!resp.ok) return [];
     const body = (await resp.json()) as ChatRunListResponse;
     return body.runs ?? [];
@@ -885,7 +886,8 @@ export async function listActiveChatRuns(
 
 export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
   try {
-    const resp = await fetch('/api/runs');
+    const headers = await buildTeamverDaemonRequestHeaders({});
+    const resp = await fetch('/api/runs', { headers });
     if (!resp.ok) return [];
     const body = (await resp.json()) as ChatRunListResponse;
     return body.runs ?? [];

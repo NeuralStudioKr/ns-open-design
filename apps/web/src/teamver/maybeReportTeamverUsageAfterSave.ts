@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../types";
+import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import {
@@ -26,19 +27,15 @@ export async function maybeReportTeamverUsageAfterSave(
   const client = getDesignBffClient();
   if (!client) return;
 
-  const workspaceId =
-    (await client.workspaceStore?.get()) ??
-    (typeof window !== "undefined"
-      ? window.localStorage.getItem("teamver_design_active_workspace_id")
-      : null);
-  if (!workspaceId?.trim()) return;
-  if (!isTeamverDesignAppEnabled(workspaceId.trim())) return;
+  const workspaceId = await resolveActiveTeamverWorkspaceIdForEmbed();
+  if (!workspaceId) return;
+  if (!isTeamverDesignAppEnabled(workspaceId)) return;
 
   const usage = extractLatestUsageFromEvents(message.events);
   const modelName = resolveTeamverUsageModelName(message.events);
 
   await reportTeamverDesignUsage({
-    workspaceId: workspaceId.trim(),
+    workspaceId: workspaceId,
     modelName,
     inputTokens: usage?.inputTokens ?? 0,
     outputTokens: usage?.outputTokens ?? 0,

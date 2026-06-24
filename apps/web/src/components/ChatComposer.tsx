@@ -39,6 +39,7 @@ import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
 import { getDesignBffClient } from '../teamver/designBffClient';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import {
   isTeamverEmbedDriveImportAllowed,
@@ -561,12 +562,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }, [teamverDriveImportAllowed]);
     useEffect(() => {
       if (!teamverDriveImportEnabled) return;
-      const client = getDesignBffClient();
-      if (!client?.workspaceStore) return;
       let cancelled = false;
-      void Promise.resolve(client.workspaceStore.get()).then((id) => {
+      void readActiveTeamverWorkspaceId().then((id) => {
         if (cancelled) return;
-        const trimmed = typeof id === 'string' ? id.trim() : '';
+        const trimmed = id?.trim() || '';
         setTeamverWorkspaceId(trimmed || null);
       });
       // Resync on workspace switch so Drive import/upload stays scoped to the

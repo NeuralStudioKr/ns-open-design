@@ -1,5 +1,5 @@
 import { isTeamverEmbedMode } from "./designApiBase";
-import { readActiveTeamverWorkspaceId } from "./useTeamverEmbed";
+import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
 export async function buildTeamverDaemonRequestHeaders(

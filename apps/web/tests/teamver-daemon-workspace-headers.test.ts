@@ -6,12 +6,12 @@ const designApiBase = vi.hoisted(() => ({
   isTeamverEmbedMode: vi.fn(() => false),
 }));
 
-const useTeamverEmbed = vi.hoisted(() => ({
+const activeWorkspace = vi.hoisted(() => ({
   readActiveTeamverWorkspaceId: vi.fn(async () => null as string | null),
 }));
 
 vi.mock("../src/teamver/designApiBase", () => designApiBase);
-vi.mock("../src/teamver/useTeamverEmbed", () => useTeamverEmbed);
+vi.mock("../src/teamver/activeTeamverWorkspace", () => activeWorkspace);
 
 describe("buildTeamverDaemonRequestHeaders", () => {
   afterEach(() => {
@@ -22,12 +22,12 @@ describe("buildTeamverDaemonRequestHeaders", () => {
     designApiBase.isTeamverEmbedMode.mockReturnValue(false);
     const headers = await buildTeamverDaemonRequestHeaders({ "X-OD-Client": "web" });
     expect(headers).toEqual({ "X-OD-Client": "web" });
-    expect(useTeamverEmbed.readActiveTeamverWorkspaceId).not.toHaveBeenCalled();
+    expect(activeWorkspace.readActiveTeamverWorkspaceId).not.toHaveBeenCalled();
   });
 
   it("adds X-Workspace-Id from active store in embed mode", async () => {
     designApiBase.isTeamverEmbedMode.mockReturnValue(true);
-    useTeamverEmbed.readActiveTeamverWorkspaceId.mockResolvedValue("ws-active");
+    activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue("ws-active");
     const headers = await buildTeamverDaemonRequestHeaders({
       "Content-Type": "application/json",
       "X-OD-Client": "web",
@@ -37,7 +37,7 @@ describe("buildTeamverDaemonRequestHeaders", () => {
 
   it("omits workspace header when store is empty", async () => {
     designApiBase.isTeamverEmbedMode.mockReturnValue(true);
-    useTeamverEmbed.readActiveTeamverWorkspaceId.mockResolvedValue(null);
+    activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue(null);
     const headers = await buildTeamverDaemonRequestHeaders({ "X-OD-Client": "web" });
     expect(headers).not.toHaveProperty("X-Workspace-Id");
   });

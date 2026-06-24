@@ -1,3 +1,4 @@
+import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import {
@@ -28,13 +29,13 @@ export async function listTeamverProjectOutputs(
   const client = getDesignBffClient();
   if (!client) return null;
 
-  const workspaceId = await client.workspaceStore?.get();
-  if (!workspaceId?.trim()) return null;
+  const workspaceId = await resolveActiveTeamverWorkspaceIdForEmbed();
+  if (!workspaceId) return null;
 
   const response = await client.http.get<OutputsListResponse>(
     `/projects/${encodeURIComponent(trimmedId)}/outputs`,
     {
-      workspaceId: workspaceId.trim(),
+      workspaceId,
       skipAuthHeader: true,
     },
   );

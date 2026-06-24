@@ -1,3 +1,4 @@
+import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from "./designApiBase";
 import type { TeamverLatestPublishSummary } from "./latestPublishSummary";
@@ -48,15 +49,15 @@ export async function batchFetchLatestPublishSummaries(
   const client = getDesignBffClient();
   if (!client) return { status: "skipped" };
 
-  const workspaceId = await client.workspaceStore?.get();
-  if (!workspaceId?.trim()) return { status: "skipped" };
+  const workspaceId = await resolveActiveTeamverWorkspaceIdForEmbed();
+  if (!workspaceId) return { status: "skipped" };
 
   try {
     const response = await client.http.post<BatchLatestPublishResponse>(
       "/projects/batch/outputs/latest",
       { odProjectIds: ids },
       {
-        workspaceId: workspaceId.trim(),
+        workspaceId,
         skipAuthHeader: true,
       },
     );
