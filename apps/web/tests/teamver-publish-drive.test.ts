@@ -230,6 +230,7 @@ describe("formatPublishErrorCodeForUser", () => {
     expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/저장소 업로드/);
     expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/완료하지 못/);
     expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/슬라이드 파일/);
+    expect(formatPublishErrorCodeForUser("outputs_fetch_failed")).toMatch(/발행 이력/);
   });
 
   it("falls back to raw code for unknown errors", () => {

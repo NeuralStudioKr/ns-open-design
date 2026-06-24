@@ -10,6 +10,7 @@ import type {
   PreviewCommentTarget,
   PreviewVisualMarkKind,
 } from './types';
+import { isTeamverEmbedMode } from './teamver/designApiBase';
 
 export interface PreviewCommentSnapshot {
   filePath: string;
@@ -68,12 +69,15 @@ export function commentTargetDisplayName(
   },
   fallback = 'Annotation',
 ): string {
-  if (target.selectionKind === 'visual') return 'Visual mark';
+  const embed = isTeamverEmbedMode();
+  if (target.selectionKind === 'visual') {
+    return embed ? '시각 마크' : 'Visual mark';
+  }
   const label = String(target.label ?? '').trim();
   if (label && !isInternalCommentTargetName(label)) return label;
   const elementId = String(target.elementId ?? '').trim();
   if (elementId && !isInternalCommentTargetName(elementId)) return elementId;
-  return fallback;
+  return embed ? '주석' : fallback;
 }
 
 export function targetFromSnapshot(snapshot: PreviewCommentSnapshot): PreviewCommentTarget {

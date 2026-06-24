@@ -37,6 +37,34 @@ export function formatDriveImportErrorCode(
   return translated === key ? code : translated;
 }
 
+/** Korean user-facing Drive import errors for embed (no i18n Dict extension). */
+export function formatDriveImportErrorForUser(code: string): string {
+  const trimmed = code.trim();
+  if (!trimmed) return "Drive 가져오기에 실패했습니다 — 세션을 확인하고 다시 시도하세요.";
+
+  const exact: Record<string, string> = {
+    teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
+    teamver_design_client_unavailable:
+      "Teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
+    drive_import_failed: "Drive 가져오기에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",
+    drive_import_assets_required: "가져올 Drive 파일을 선택하세요.",
+    drive_import_too_many_assets: "한 번에 가져올 수 있는 Drive 파일은 12개까지입니다.",
+    unsupported_drive_import_file_type: "슬라이드 첨부에 지원하지 않는 파일 형식입니다.",
+    drive_download_failed: "Teamver Drive에서 다운로드할 수 없습니다.",
+    od_daemon_import_failed: "Design 프로젝트에 저장할 수 없습니다.",
+    invalid_filename: "파일 이름이 올바르지 않습니다.",
+  };
+  if (exact[trimmed]) return exact[trimmed];
+  return trimmed;
+}
+
+export function formatTeamverDriveImportErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return formatDriveImportErrorForUser(err.message);
+  }
+  return formatDriveImportErrorForUser(String(err));
+}
+
 export type TeamverDriveImportFailure = {
   assetId: string;
   errorCode: string;

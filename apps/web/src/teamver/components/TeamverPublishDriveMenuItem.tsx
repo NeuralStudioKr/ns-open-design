@@ -13,6 +13,7 @@ import { TeamverDriveTargetSelect } from "./TeamverDriveTargetSelect";
 import {
   pickReadyPublishOutputs,
   publishTeamverDesignToDrive,
+  formatPublishErrorCodeForUser,
   type TeamverPublishDriveFormat,
   type TeamverPublishDriveOutput,
 } from "../publishToDrive";
@@ -286,12 +287,9 @@ export function TeamverPublishDriveMenuItem({
   const disabledForPublish = busy;
   const disabledForBrowse = busy;
   const targetSelectDisabled = busy;
-  const errorHint =
-    targetsError === "teamver_workspace_pending"
-      ? "Drive 작업공간 연결 중 — 기본 위치로 발행됩니다."
-      : targetsError
-        ? "Drive 폴더 목록을 불러오지 못했습니다. 찾아보기로 다시 시도하세요."
-        : null;
+  const errorHint = targetsError
+    ? formatPublishErrorCodeForUser(targetsError)
+    : null;
 
   const publishLabel = busy
     ? "발행 중…"

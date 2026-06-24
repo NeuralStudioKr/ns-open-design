@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnalytics } from "../../analytics/provider";
 import { Icon } from "../../components/Icon";
 import type { TeamverDriveImportAsset, TeamverDriveImportPartialResult } from "../importDriveAssets";
-import { formatDriveImportErrorCode } from "../importDriveAssets";
+import { formatDriveImportErrorForUser } from "../importDriveAssets";
 import { useT } from "../../i18n";
 import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
 import {
@@ -522,7 +522,7 @@ export function TeamverDriveImportModal({
                     {failure.asset.filename ?? failure.asset.assetId}
                   </span>
                   <span className="teamver-drive-import-partial-reason">
-                    {formatDriveImportErrorCode(failure.errorCode, t)}
+                    {formatDriveImportErrorForUser(failure.errorCode)}
                   </span>
                 </li>
               ))}

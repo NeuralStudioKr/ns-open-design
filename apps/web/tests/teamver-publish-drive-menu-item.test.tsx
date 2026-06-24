@@ -6,8 +6,8 @@ const getWorkspaceMock = vi.fn(async () => "ws-1");
 const listTargetsMock = vi.fn(async (_workspaceId: string, _options?: { limit?: number }) => [
   {
     id: "personal-root",
-    label: "My Drive",
-    description: "Personal drive root",
+    label: "내 드라이브",
+    description: "개인 드라이브 루트",
     folderId: "FLD-MY-ROOT",
     sharedDriveId: null,
   },
@@ -29,7 +29,7 @@ const searchTargetsMock = vi.fn(async (_workspaceId: string, _query: string, _op
   },
 ]);
 const listImportScopesMock = vi.fn(async (_workspaceId: string) => [
-  { mode: "personal" as const, folderId: null, label: "My Drive" },
+  { mode: "personal" as const, folderId: null, label: "내 드라이브" },
   { mode: "shared" as const, sharedDriveId: "SD-1", folderId: null, label: "Product" },
 ]);
 const listImportRowsMock = vi.fn(async (_args: unknown) => [
@@ -83,11 +83,16 @@ vi.mock("../src/teamver/driveImportList", () => ({
   listTeamverDriveImportRows: (args: unknown) => listImportRowsMock(args),
 }));
 
-vi.mock("../src/teamver/publishToDrive", () => ({
-  publishTeamverDesignToDrive: (args: unknown) => publishMock(args),
-  pickReadyPublishOutputs: (outputs: Array<{ publishStatus?: string }>) =>
-    outputs.filter((output) => output.publishStatus === "ready"),
-}));
+vi.mock("../src/teamver/publishToDrive", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/teamver/publishToDrive")>();
+  return {
+    ...actual,
+    formatPublishErrorCodeForUser: actual.formatPublishErrorCodeForUser,
+    publishTeamverDesignToDrive: (args: unknown) => publishMock(args),
+    pickReadyPublishOutputs: (outputs: Array<{ publishStatus?: string }>) =>
+      outputs.filter((output) => output.publishStatus === "ready"),
+  };
+});
 
 vi.mock("../src/teamver/listProjectOutputs", () => ({
   listTeamverProjectOutputs: (projectId: string) => listOutputsMock(projectId),
@@ -147,7 +152,7 @@ describe("TeamverPublishDriveMenuItem", () => {
       target: { value: "exports" },
     });
 
-    expect(within(modal).queryByText("My Drive")).toBeNull();
+    expect(within(modal).queryByText("내 드라이브")).toBeNull();
     fireEvent.click(screen.getByTestId("teamver-drive-picker-target-shared:SD-1:FLD-EXPORTS"));
 
     await waitFor(() => {
@@ -462,8 +467,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     listTargetsMock.mockResolvedValueOnce([
       {
         id: "personal-root",
-        label: "My Drive",
-        description: "Personal drive root",
+        label: "내 드라이브",
+        description: "개인 드라이브 루트",
         folderId: "FLD-MY-ROOT",
         sharedDriveId: null,
       },

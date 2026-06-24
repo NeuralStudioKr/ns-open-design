@@ -47,6 +47,8 @@ import {
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import {
   driveImportedToChatAttachments,
+  formatDriveImportErrorForUser,
+  formatTeamverDriveImportErrorMessage,
   importTeamverDriveAssets,
   type TeamverDriveImportPartialResult,
   type TeamverDriveImportAsset,
@@ -577,6 +579,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         // cannot be attached after the switch.
         setDriveImportOpen(false);
         setDriveLaunchAssets([]);
+        setCanvasSlideLaunch(null);
+        setDriveImportPartial(null);
       });
       return () => {
         cancelled = true;
@@ -1445,9 +1449,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           .slice(0, 2)
           .map((file) => file.name)
           .join(', ');
-        const suffix = blocked.length > 2 ? ` +${blocked.length - 2} more` : '';
+        const suffix = blocked.length > 2 ? ` 외 ${blocked.length - 2}개` : '';
         setUploadError(
-          `Skipped ${blocked.length} file(s) outside slide MVP attach policy (${preview}${suffix}).`,
+          `슬라이드 첨부 정책에 맞지 않는 파일 ${blocked.length}개를 건너뛰었습니다${preview ? ` (${preview}${suffix})` : ''}.`,
         );
       }
       if (allowedFiles.length === 0) return;
@@ -1476,9 +1480,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           const uploadedCount = result.uploaded.length;
           const detail = result.error ? ` (${result.error})` : '';
           setUploadError(
-            uploadedCount > 0
-              ? `Attached ${uploadedCount} file(s), but ${failedCount} failed${detail}.`
-              : `Attachment upload failed for ${failedCount} file(s)${detail}.`,
+            slideOnlyMvp
+              ? uploadedCount > 0
+                ? `${uploadedCount}개 파일을 첨부했지만 ${failedCount}개는 실패했습니다${detail}.`
+                : `파일 ${failedCount}개 첨부에 실패했습니다${detail}.`
+              : uploadedCount > 0
+                ? `Attached ${uploadedCount} file(s), but ${failedCount} failed${detail}.`
+                : `Attachment upload failed for ${failedCount} file(s)${detail}.`,
           );
           console.warn('Some attachments failed to upload', result.failed);
         }
@@ -1492,7 +1500,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        setUploadError(`Attachment upload failed (${detail}).`);
+        setUploadError(
+          slideOnlyMvp
+            ? `파일 첨부에 실패했습니다 — ${detail}.`
+            : `Attachment upload failed (${detail}).`,
+        );
         trackFileUploadResult(analytics.track, {
           page_name: 'chat_panel',
           area: 'chat_composer',
@@ -1525,7 +1537,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       }
       if (slideOnlyMvp && blocked.length > 0) {
         setUploadError(
-          `Skipped ${blocked.length} Drive file(s) outside slide MVP attach policy.`,
+          `슬라이드 첨부 정책에 맞지 않는 Drive 파일 ${blocked.length}개를 건너뛰었습니다.`,
         );
       }
       if (allowedAssets.length === 0) return;
@@ -1564,8 +1576,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setDriveLaunchAssets([]);
         }
       } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        setUploadError(`Drive import failed (${detail}).`);
+        setUploadError(formatTeamverDriveImportErrorMessage(err));
       } finally {
         setDriveImportBusy(false);
       }
@@ -1594,7 +1605,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         const result = await importTeamverDriveAssets(id, [asset]);
         if (result.partial || result.imported.length === 0) {
           const errorCode = result.failed[0]?.errorCode ?? 'drive_import_failed';
-          setUploadError(`Drive import failed (${errorCode}).`);
+          setUploadError(formatDriveImportErrorForUser(errorCode));
           setDriveLaunchAssets([asset]);
           setDriveImportOpen(true);
           setCanvasSlideLaunch(null);
@@ -1617,8 +1628,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           designSystemId: designSystemIdForRun,
         });
       } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        setUploadError(`Drive import failed (${detail}).`);
+        setUploadError(formatTeamverDriveImportErrorMessage(err));
         setDriveLaunchAssets([asset]);
         setDriveImportOpen(true);
         setCanvasSlideLaunch(null);
@@ -1710,7 +1720,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               }
               if (result.failed.length > 0) {
                 const detailText = result.error ? ` (${result.error})` : '';
-                setUploadError(`Attachment upload failed for ${result.failed.length} file(s)${detailText}.`);
+                setUploadError(
+                  slideOnlyMvp
+                    ? `파일 ${result.failed.length}개 첨부에 실패했습니다${detailText}.`
+                    : `Attachment upload failed for ${result.failed.length} file(s)${detailText}.`,
+                );
                 if (uploaded.length === 0) {
                   ack({ ok: false, message: t('chat.annotationUploadFailed') });
                   return;
@@ -1791,7 +1805,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ack({ ok: false, message: t('chat.annotationFailed') });
           } catch (err) {
             console.warn('Could not send annotation', err);
-            setUploadError(err instanceof Error ? err.message : t('chat.annotationFailed'));
+            setUploadError(slideOnlyMvp ? t('chat.annotationFailed') : (err instanceof Error ? err.message : t('chat.annotationFailed')));
             ack({ ok: false, message: t('chat.annotationFailed') });
           } finally {
             setUploading(false);
@@ -1812,6 +1826,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       stagedSkills,
       stagedVisualComments,
       streaming,
+      slideOnlyMvp,
       t,
     ]);
 

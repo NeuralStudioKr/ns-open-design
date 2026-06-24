@@ -1,5 +1,6 @@
 import type { LocalStorageWorkspaceStore, WorkspaceListItem } from "@teamver/app-sdk";
 import { getDesignBffClient, type DesignAuthSession } from "./designBffClient";
+import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
 import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
@@ -40,9 +41,11 @@ export async function syncTeamverWorkspaceFromSession(
   if (resolved && resolved !== active) {
     await store.set(resolved);
     active = resolved;
+    dispatchTeamverWorkspaceChanged(resolved);
   } else if (!active && resolved) {
     await store.set(resolved);
     active = resolved;
+    dispatchTeamverWorkspaceChanged(resolved);
   }
 
   if (userId && active && typeof store.setLastForUser === "function") {

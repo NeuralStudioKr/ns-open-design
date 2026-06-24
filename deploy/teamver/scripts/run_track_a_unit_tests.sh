@@ -140,6 +140,8 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-background-run-navigate.test.ts \
       tests/teamver-use-embed.test.tsx \
       tests/teamver-workspace-utils.test.ts \
+      tests/teamver-sync-workspace.test.ts \
+      tests/teamver-comment-target-display.test.ts \
       tests/teamver-design-access.test.ts \
       tests/teamver-embed-local-ui.test.ts \
       tests/teamver-embed-local-workspace-policy.test.ts \

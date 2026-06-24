@@ -42,7 +42,7 @@ describe("TeamverDriveImportModal", () => {
     searchRowsMock.mockReset();
     fetchThumbnailsMock.mockReset();
     trackMock.mockReset();
-    listScopesMock.mockResolvedValue([{ mode: "personal", folderId: null, label: "My Drive" }]);
+    listScopesMock.mockResolvedValue([{ mode: "personal", folderId: null, label: "내 드라이브" }]);
     listRowsMock.mockResolvedValue([
       { kind: "asset", assetId: "AST-1", name: "logo.svg", mimeType: "image/svg+xml" },
       { kind: "folder", folderId: "FLD-1", name: "Assets" },
@@ -211,6 +211,7 @@ describe("TeamverDriveImportModal", () => {
 
     expect(await screen.findByTestId("teamver-drive-import-partial")).toBeTruthy();
     expect(screen.getByText("clip.mp4")).toBeTruthy();
+    expect(screen.getByText("슬라이드 첨부에 지원하지 않는 파일 형식입니다.")).toBeTruthy();
     fireEvent.click(screen.getByTestId("teamver-drive-import-retry"));
     expect(onRetryFailed).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId("teamver-drive-import-done"));

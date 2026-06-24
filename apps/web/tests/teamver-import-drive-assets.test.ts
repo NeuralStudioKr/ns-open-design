@@ -121,3 +121,22 @@ describe("formatDriveImportErrorCode", () => {
     expect(formatDriveImportErrorCode("unknown_code", t)).toBe("unknown_code");
   });
 });
+
+describe("formatDriveImportErrorForUser", () => {
+  it("maps embed Drive import error codes to Korean user messages", async () => {
+    const {
+      formatDriveImportErrorForUser,
+      formatTeamverDriveImportErrorMessage,
+    } = await import("../src/teamver/importDriveAssets");
+
+    expect(formatDriveImportErrorForUser("teamver_workspace_required")).toContain(
+      "작업공간",
+    );
+    expect(formatDriveImportErrorForUser("drive_import_failed")).toContain(
+      "Drive 가져오기",
+    );
+    expect(formatTeamverDriveImportErrorMessage(new Error("drive_download_failed"))).toContain(
+      "다운로드",
+    );
+  });
+});

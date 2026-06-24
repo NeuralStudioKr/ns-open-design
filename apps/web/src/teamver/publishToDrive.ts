@@ -139,8 +139,9 @@ export function formatPublishErrorCodeForUser(code: string): string {
     od_daemon_export_failed: "프로젝트를 내보낼 수 없습니다 — 작업을 저장한 뒤 다시 시도하세요.",
     publish_failed: "발행에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",
     publish_all_failed: "발행에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",
-    teamver_workspace_pending: "Teamver 작업공간 연결 중입니다 — 잠시 후 다시 시도하세요.",
+    teamver_workspace_pending: "Teamver 작업공간 연결 중입니다 — 기본 위치로 발행됩니다.",
     drive_publish_targets_failed: "Drive 폴더 목록을 불러오지 못했습니다 — 찾아보기 또는 다시 시도하세요.",
+    outputs_fetch_failed: "Drive 발행 이력을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.",
   };
   if (exact[trimmed]) return exact[trimmed];
 
