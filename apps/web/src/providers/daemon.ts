@@ -687,7 +687,8 @@ export async function reattachDaemonRun(options: DaemonReattachOptions): Promise
 
 export async function fetchChatRunStatus(runId: string): Promise<ChatRunStatusResponse | null> {
   try {
-    const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
+    const headers = await buildTeamverDaemonRequestHeaders({});
+    const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { headers });
     if (!resp.ok) return null;
     return (await resp.json()) as ChatRunStatusResponse;
   } catch {
@@ -858,9 +859,12 @@ export async function reportChatRunFeedback(req: {
   customReason: string;
 }): Promise<void> {
   try {
+    const headers = await buildTeamverDaemonRequestHeaders({
+      'Content-Type': 'application/json',
+    });
     await fetch(`/api/runs/${encodeURIComponent(req.runId)}/feedback`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(req),
     });
   } catch {
@@ -931,7 +935,14 @@ async function consumeDaemonRun({
   const cancelRun = () => {
     if (canceled) return;
     canceled = true;
-    void fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' }).catch(() => {});
+    void (async () => {
+      try {
+        const headers = await buildTeamverDaemonRequestHeaders({});
+        await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST', headers });
+      } catch {
+        // Best-effort.
+      }
+    })();
   };
 
   cancelSignal?.addEventListener('abort', cancelRun, { once: true });
@@ -945,8 +956,10 @@ async function consumeDaemonRun({
       const qs = lastEventId ? `?after=${encodeURIComponent(lastEventId)}` : '';
       let resp: Response;
       try {
+        const headers = await buildTeamverDaemonRequestHeaders({});
         resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/events${qs}`, {
           method: 'GET',
+          headers,
           signal,
         });
       } catch (err) {

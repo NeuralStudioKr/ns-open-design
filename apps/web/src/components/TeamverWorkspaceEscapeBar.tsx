@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { useT } from "../i18n";
+import { useTeamverT } from "../teamver/branding/useTeamverT";
 import { resolveTeamverMainOrigin } from "../teamver/designApiBase";
 
 type Props = {
@@ -8,7 +8,7 @@ type Props = {
 
 /** Embed project workspace — internal Design home vs external Teamver app. */
 export function TeamverWorkspaceEscapeBar({ onDesignHome }: Props) {
-  const t = useT();
+  const t = useTeamverT();
 
   return (
     <header

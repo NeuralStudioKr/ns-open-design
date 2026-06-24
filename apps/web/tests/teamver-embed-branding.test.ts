@@ -144,6 +144,14 @@ describe('Teamver embed branding policy', () => {
       resolve(webRoot, 'src/teamver/components/EntryTopbarChips.tsx'),
       'utf8',
     );
+    const sessionBanner = readFileSync(
+      resolve(webRoot, 'src/components/TeamverSessionBanner.tsx'),
+      'utf8',
+    );
+    const escapeBar = readFileSync(
+      resolve(webRoot, 'src/components/TeamverWorkspaceEscapeBar.tsx'),
+      'utf8',
+    );
     const brandLabel = readFileSync(
       resolve(webRoot, 'src/teamver/branding/useBrandLabel.ts'),
       'utf8',
@@ -156,6 +164,8 @@ describe('Teamver embed branding policy', () => {
       previewChip,
       canvasLaunch,
       topbarChips,
+      sessionBanner,
+      escapeBar,
       brandLabel,
     ]) {
       expect(source).toContain('useTeamverT');

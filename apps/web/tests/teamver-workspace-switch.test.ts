@@ -60,6 +60,18 @@ describe("embed workspace switch side effects", () => {
     expect(daemon).toMatch(
       /export async function listActiveChatRuns[\s\S]*?buildTeamverDaemonRequestHeaders/,
     );
+    expect(daemon).toMatch(
+      /export async function fetchChatRunStatus[\s\S]*?buildTeamverDaemonRequestHeaders/,
+    );
+    expect(daemon).toMatch(
+      /buildTeamverDaemonRequestHeaders[\s\S]*?\/api\/runs\/\$\{encodeURIComponent\(runId\)\}\/cancel/,
+    );
+    expect(daemon).toMatch(
+      /buildTeamverDaemonRequestHeaders[\s\S]*?\/api\/runs\/\$\{encodeURIComponent\(runId\)\}\/events/,
+    );
+    expect(daemon).toMatch(
+      /export async function reportChatRunFeedback[\s\S]*?buildTeamverDaemonRequestHeaders/,
+    );
   });
 
   it("clears background run UI and re-seeds run tracking on workspace switch", () => {

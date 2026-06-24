@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { useT } from "../i18n";
+import { useTeamverT } from "../teamver/branding/useTeamverT";
 import { resolveTeamverLoginUrl, resolveTeamverMainOrigin } from "../teamver/designApiBase";
 import { prepareDesignAuthSessionReload } from "../teamver/designBffClient";
 import { TeamverAvatarGlyph } from "../teamver/components/TeamverAvatarGlyph";
@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function TeamverSessionBanner({ teamverEmbed }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   const embed = useTeamverEmbed(teamverEmbed);
 
   if (!teamverEmbed) return null;
