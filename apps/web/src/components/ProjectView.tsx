@@ -168,6 +168,11 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import {
+  formatProjectConversationCreateError,
+  formatProjectConversationListError,
+  formatProjectMessagesLoadError,
+} from '../teamver/projectErrorMessages';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -1400,7 +1405,7 @@ export function ProjectView({
             setConversations([fresh]);
             setActiveConversationId(fresh.id);
           } else {
-            throw new Error('Could not create a conversation for this project.');
+            throw new Error(formatProjectConversationCreateError());
           }
         } else {
           setConversations(list);
@@ -1416,7 +1421,7 @@ export function ProjectView({
         }
       } catch (err) {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : 'Could not load conversations for this project.';
+        const message = err instanceof Error ? err.message : formatProjectConversationListError();
         setConversations([]);
         setActiveConversationId(null);
         setConversationLoadError(message);
@@ -1516,7 +1521,7 @@ export function ProjectView({
         setFailedMessagesConversationId(null);
       } catch (err) {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : 'Could not load messages for this conversation.';
+        const message = err instanceof Error ? err.message : formatProjectMessagesLoadError();
         setMessages([]);
         setPreviewComments([]);
         setAttachedComments([]);
@@ -4763,7 +4768,7 @@ export function ProjectView({
     setConversationLoadError(null);
     try {
       const fresh = await createConversation(project.id);
-      if (!fresh) throw new Error('Could not create a conversation for this project.');
+      if (!fresh) throw new Error(formatProjectConversationCreateError());
       // Eagerly clear messages and update ref so rapid clicks don't create
       // duplicate empty conversations before the effect resolves.
       setMessages([]);
@@ -4790,7 +4795,7 @@ export function ProjectView({
       );
       setError(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not create a conversation for this project.';
+      const message = err instanceof Error ? err.message : formatProjectConversationCreateError();
       setConversationLoadError(message);
       setError(message);
     } finally {

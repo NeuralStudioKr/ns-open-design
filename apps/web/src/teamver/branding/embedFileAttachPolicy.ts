@@ -110,16 +110,16 @@ export function embedAttachBlockReason(
   if (!options?.slideOnlyMvp) return null;
 
   const trimmed = name.trim();
-  if (!trimmed) return "File name is required.";
+  if (!trimmed) return "파일 이름이 필요합니다.";
 
   const sizeBytes = options.sizeBytes;
   if (typeof sizeBytes === "number" && sizeBytes > EMBED_SLIDE_ATTACH_MAX_BYTES) {
-    return "File exceeds the 50 MB embed attach limit.";
+    return "슬라이드 첨부 한도(50MB)를 초과했습니다.";
   }
 
   const ext = fileExtension(trimmed);
   if (ext && BLOCKED_EXTENSIONS.has(ext)) {
-    return "This file type is outside the slide MVP attach policy.";
+    return "슬라이드 MVP 첨부 정책에서 지원하지 않는 파일 형식입니다.";
   }
 
   if (ext && SLIDE_FRIENDLY_EXTENSIONS.has(ext)) return null;
@@ -127,5 +127,5 @@ export function embedAttachBlockReason(
   const mimeType = options.mimeType?.trim() ?? "";
   if (mimeType && mimeMatchesSlideFriendly(mimeType)) return null;
 
-  return "Only slide-friendly files (images, PDF, DOCX, PPTX, MD, CSV, JSON, HTML) can be attached in embed mode.";
+  return "슬라이드 embed에서는 이미지, PDF, DOCX, PPTX, MD, CSV, JSON, HTML만 첨부할 수 있습니다.";
 }

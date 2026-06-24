@@ -50,7 +50,7 @@ import {
 import { useTeamverBranding } from './teamver/branding/TeamverBrandingProvider';
 import { isDesignTemplateEnabled } from './teamver/branding/designTemplateVisibility';
 import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } from './teamver/branding/applyEmbedConfigLock';
-import { mergeTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
+import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
@@ -560,6 +560,23 @@ function AppInner() {
       generation: projectListRequestGenerationRef.current,
       mutationVersion: projectListMutationVersionRef.current,
     };
+  }, []);
+
+  // Re-fetch design-api `runtime-config` after workspace switch / pageshow so
+  // BE env rotations propagate without a full reload. Skips persist/state when
+  // the merge is a no-op (same key/protocol/baseUrl/model).
+  const reloadTeamverRuntimeConfig = useCallback(async () => {
+    if (!isTeamverEmbedMode()) return;
+    try {
+      const prevConfig = latestPersistedConfigRef.current;
+      const merged = await reloadTeamverRuntimeConfigIntoAppConfig(prevConfig);
+      if (merged === prevConfig) return;
+      const locked = saveConfig(merged);
+      latestPersistedConfigRef.current = locked;
+      setConfig(locked);
+    } catch (err) {
+      console.warn("[teamver] runtime-config reload failed", err);
+    }
   }, []);
 
   const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
@@ -1273,6 +1290,7 @@ function AppInner() {
         } catch (err) {
           console.warn("[teamver] registry sync on workspace switch failed", err);
         }
+        void reloadTeamverRuntimeConfig();
         const request = beginProjectListRequest();
         setProjectsLoading(true);
         setProjects([]);
@@ -1312,7 +1330,23 @@ function AppInner() {
         }
       })();
     });
-  }, [beginProjectListRequest, reconcileFetchedProjects]);
+  }, [beginProjectListRequest, reconcileFetchedProjects, reloadTeamverRuntimeConfig]);
+
+  // Pageshow/visibility return — recover from sleep/standby/backgrounded tab
+  // and pick up BE runtime-config changes (rotated keys, model swap, base url).
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const handler = () => {
+      if (document.visibilityState !== "visible") return;
+      void reloadTeamverRuntimeConfig();
+    };
+    window.addEventListener("pageshow", handler);
+    document.addEventListener("visibilitychange", handler);
+    return () => {
+      window.removeEventListener("pageshow", handler);
+      document.removeEventListener("visibilitychange", handler);
+    };
+  }, [reloadTeamverRuntimeConfig]);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -1352,10 +1386,11 @@ function AppInner() {
       void (async () => {
         setProjectsLoading(true);
         await refreshProjects();
+        void reloadTeamverRuntimeConfig();
         setProjectsLoading(false);
       })();
     });
-  }, [refreshProjects]);
+  }, [refreshProjects, reloadTeamverRuntimeConfig]);
 
   const refreshDesignSystems = useCallback(async () => {
     const list = await fetchDesignSystems();

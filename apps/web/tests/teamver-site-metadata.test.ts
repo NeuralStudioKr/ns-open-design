@@ -51,9 +51,9 @@ describe("Teamver site metadata", () => {
     expect(buildRootLayoutMetadata().title).toBe("Open Design");
   });
 
-  it("uses Teamver loading shell copy in embed builds", () => {
+  it("uses Korean Teamver loading shell copy in embed builds", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
-    expect(resolveLoadingShellLabel()).toBe("Loading Teamver Design…");
+    expect(resolveLoadingShellLabel()).toBe("Teamver Design 불러오는 중…");
   });
 
   it("exposes document title separate from OG title", () => {

@@ -7,10 +7,12 @@ import { TEAMVER_WORKSPACE_CHANGED_EVENT } from "../src/teamver/teamverWorkspace
 import * as designApiBase from "../src/teamver/designApiBase";
 import * as designBffClient from "../src/teamver/designBffClient";
 import * as teamverEmbedSession from "../src/teamver/teamverEmbedSession";
+import { NetworkError } from "@teamver/app-sdk";
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
   resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/signin"),
+  redirectToTeamverLogin: vi.fn(),
 }));
 
 vi.mock("../src/teamver/teamverEmbedBoot", () => ({
@@ -28,6 +30,7 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
 vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
   getDesignBffClient: vi.fn(),
+  prepareDesignAuthSessionReload: vi.fn(),
 }));
 
 describe("useTeamverEmbed", () => {
@@ -151,5 +154,19 @@ describe("useTeamverEmbed", () => {
     expect(result.current.authenticated).toBe(true);
     expect(result.current.error).toBe("session_unreachable");
     expect(teamverEmbedSession.clearTeamverEmbedSessionState).not.toHaveBeenCalled();
+  });
+
+  it("prepares session reload before redirecting on 401 session expiry", async () => {
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockRejectedValue(
+      new NetworkError({ status: 401, message: "Unauthorized" }),
+    );
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designBffClient.prepareDesignAuthSessionReload).toHaveBeenCalledTimes(1);
+      expect(designApiBase.redirectToTeamverLogin).toHaveBeenCalledTimes(1);
+    });
+    expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalledTimes(1);
   });
 });

@@ -36,7 +36,7 @@ function targetFromScope(scope: TeamverDriveImportScope): TeamverDrivePublishTar
     return {
       id: `shared:${scope.sharedDriveId}`,
       label: scope.label,
-      description: "Team drive root",
+      description: "팀 드라이브 루트",
       folderId: scope.folderId,
       sharedDriveId: scope.sharedDriveId,
     };
@@ -44,7 +44,7 @@ function targetFromScope(scope: TeamverDriveImportScope): TeamverDrivePublishTar
   return {
     id: "personal-root",
     label: scope.label,
-    description: "Personal drive root",
+    description: "개인 드라이브 루트",
     folderId: scope.folderId,
     sharedDriveId: null,
   };
@@ -58,7 +58,7 @@ function targetFromFolder(
   return {
     id: sharedDriveId ? `shared:${sharedDriveId}:${folder.folderId}` : `personal:${folder.folderId}`,
     label: scope.mode === "shared" ? `${scope.label} / ${folder.name}` : folder.name,
-    description: scope.mode === "shared" ? "Team drive folder" : "My Drive folder",
+    description: scope.mode === "shared" ? "팀 드라이브 폴더" : "내 드라이브 폴더",
     folderId: folder.folderId,
     sharedDriveId,
   };
@@ -136,13 +136,13 @@ export function TeamverDrivePickerModal({
         if (canceled) return;
         const resolved = nextScopes.length > 0
           ? nextScopes
-          : [{ mode: "personal", folderId: null, label: "My Drive" } satisfies TeamverDriveImportScope];
+          : [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
         setScopes(resolved);
         setScopeIndex(0);
         setNavStack([rootCrumb(resolved[0]!)]);
       } catch {
         if (canceled) return;
-        const fallback = [{ mode: "personal", folderId: null, label: "My Drive" } satisfies TeamverDriveImportScope];
+        const fallback = [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
         setScopes(fallback);
         setScopeIndex(0);
         setNavStack([rootCrumb(fallback[0]!)]);
@@ -176,7 +176,7 @@ export function TeamverDrivePickerModal({
       } catch {
         if (!canceled) {
           setBrowseTargets([]);
-          setBrowseError("Drive folder browse failed");
+          setBrowseError("드라이브 폴더를 불러오지 못했습니다");
         }
       } finally {
         if (!canceled) setBrowseLoading(false);
@@ -205,7 +205,7 @@ export function TeamverDrivePickerModal({
         } catch {
           if (!canceled) {
             setSearchTargets([]);
-            setSearchError("Drive search failed");
+            setSearchError("드라이브 검색에 실패했습니다");
           }
         } finally {
           if (!canceled) setSearchLoading(false);
@@ -237,13 +237,13 @@ export function TeamverDrivePickerModal({
       >
         <header className="teamver-drive-picker-head">
           <div>
-            <h2 id="teamver-drive-picker-title">Choose Drive folder</h2>
-            <p>Pick a personal or team Drive destination for this export.</p>
+            <h2 id="teamver-drive-picker-title">드라이브 폴더 선택</h2>
+            <p>이 내보내기를 저장할 개인/팀 드라이브 폴더를 선택하세요.</p>
           </div>
           <button
             type="button"
             className="teamver-drive-picker-close"
-            aria-label="Close Drive picker"
+            aria-label="드라이브 선택 닫기"
             onClick={onClose}
           >
             <Icon name="close" size={16} />
@@ -251,7 +251,7 @@ export function TeamverDrivePickerModal({
         </header>
 
         {scopes.length > 1 && !searching ? (
-          <div className="teamver-drive-import-tabs" role="tablist" aria-label="Drive scope">
+          <div className="teamver-drive-import-tabs" role="tablist" aria-label="드라이브 범위">
             {scopes.map((scope, index) => (
               <button
                 key={scope.mode === "personal" ? "personal" : scope.sharedDriveId}
@@ -272,7 +272,7 @@ export function TeamverDrivePickerModal({
         ) : null}
 
         {navStack.length > 0 && !searching ? (
-          <nav className="teamver-drive-import-crumb" aria-label="Drive folder path">
+          <nav className="teamver-drive-import-crumb" aria-label="드라이브 폴더 경로">
             {navStack.map((crumb, index) => {
               const isLast = index === navStack.length - 1;
               return (
@@ -300,16 +300,16 @@ export function TeamverDrivePickerModal({
           <input
             autoFocus
             value={query}
-            aria-label="Search Drive folders"
-            placeholder="Search folders"
+            aria-label="드라이브 폴더 검색"
+            placeholder="폴더 검색"
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
         </label>
 
-        <div className="teamver-drive-picker-list" role="listbox" aria-label="Drive folders">
+        <div className="teamver-drive-picker-list" role="listbox" aria-label="드라이브 폴더 목록">
           {loading || browseLoading || (searchLoading && displayedTargets.length === 0) ? (
             <div className="teamver-drive-picker-empty">
-              {searching ? "Searching Drive folders…" : "Loading Drive folders…"}
+              {searching ? "드라이브 폴더 검색 중…" : "드라이브 폴더 불러오는 중…"}
             </div>
           ) : browseError && displayedTargets.length === 0 ? (
             <div className="teamver-drive-picker-empty">{browseError}</div>
@@ -354,7 +354,7 @@ export function TeamverDrivePickerModal({
               );
             })
           ) : (
-            <div className="teamver-drive-picker-empty">No matching folders</div>
+            <div className="teamver-drive-picker-empty">일치하는 폴더가 없습니다.</div>
           )}
         </div>
         {!searching && currentTarget ? (
@@ -371,7 +371,7 @@ export function TeamverDrivePickerModal({
                 onClose();
               }}
             >
-              Use this folder
+              이 폴더 사용
             </button>
           </footer>
         ) : null}

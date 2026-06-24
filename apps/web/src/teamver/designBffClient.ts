@@ -56,6 +56,7 @@ export function getDesignBffClient(): TeamverClient | null {
       }),
       withCredentials: true,
       onAuthExpired: () => {
+        prepareDesignAuthSessionReload();
         redirectToTeamverLogin();
       },
     });

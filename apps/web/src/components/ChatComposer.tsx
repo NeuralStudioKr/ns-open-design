@@ -44,6 +44,7 @@ import {
   isTeamverEmbedDesignSurfaceEnabled,
   subscribeTeamverDesignAccessChanged,
 } from '../teamver/teamverDesignAccess';
+import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import {
   driveImportedToChatAttachments,
   importTeamverDriveAssets,
@@ -565,8 +566,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         const trimmed = typeof id === 'string' ? id.trim() : '';
         setTeamverWorkspaceId(trimmed || null);
       });
+      // Resync on workspace switch so Drive import/upload stays scoped to the
+      // active tenant — without this the composer keeps the mount-time id and
+      // every Main BE Drive fetch leaks the previous workspace.
+      const unsubscribe = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
+        if (cancelled) return;
+        const trimmed = workspaceId.trim();
+        setTeamverWorkspaceId(trimmed || null);
+        // Drop in-flight import UI so asset picks from the previous tenant
+        // cannot be attached after the switch.
+        setDriveImportOpen(false);
+        setDriveLaunchAssets([]);
+      });
       return () => {
         cancelled = true;
+        unsubscribe();
       };
     }, [teamverDriveImportEnabled]);
     useEffect(() => {

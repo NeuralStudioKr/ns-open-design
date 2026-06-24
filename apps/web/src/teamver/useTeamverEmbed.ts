@@ -160,6 +160,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     } catch (err) {
       if (isSessionExpiredError(err)) {
         await clearTeamverEmbedSessionState();
+        prepareDesignAuthSessionReload();
         redirectToTeamverLogin();
         return;
       }

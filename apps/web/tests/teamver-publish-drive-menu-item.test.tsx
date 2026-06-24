@@ -143,7 +143,7 @@ describe("TeamverPublishDriveMenuItem", () => {
 
     fireEvent.click(screen.getByRole("button", browseButtonOptions));
     const modal = screen.getByTestId("teamver-drive-picker-modal");
-    fireEvent.change(within(modal).getByRole("textbox", { name: "Search Drive folders" }), {
+    fireEvent.change(within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" }), {
       target: { value: "exports" },
     });
 
@@ -196,7 +196,7 @@ describe("TeamverPublishDriveMenuItem", () => {
 
     fireEvent.click(screen.getByRole("button", browseButtonOptions));
     const modal = screen.getByTestId("teamver-drive-picker-modal");
-    fireEvent.change(within(modal).getByRole("textbox", { name: "Search Drive folders" }), {
+    fireEvent.change(within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" }), {
       target: { value: "launch" },
     });
 
@@ -508,6 +508,62 @@ describe("TeamverPublishDriveMenuItem", () => {
     expect(trigger.hasAttribute("disabled")).toBe(false);
     const browseButton = screen.getByTestId("teamver-drive-target-browse");
     expect(browseButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  // loop 335 — workspace switch must drop the previous tenant's target cache
+  // and selection. Without this fix the menu reuses ws-1's `selectedTargetId`
+  // (potentially backed by a stale `folderId`/`sharedDriveId`) when publishing
+  // from ws-2 and the artifact lands in the wrong tenant.
+  it("refetches publish targets and resets selection on workspace switch", async () => {
+    const { dispatchTeamverWorkspaceChanged } = await import(
+      "../src/teamver/teamverWorkspaceEvents"
+    );
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledTimes(1);
+      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+    });
+
+    const trigger = screen.getByTestId("teamver-drive-target-select");
+    fireEvent.click(trigger);
+    const popover = await screen.findByTestId("teamver-drive-target-popover");
+    fireEvent.click(
+      within(popover).getByTestId("teamver-drive-target-option-shared:SD-1:FLD-EXPORTS"),
+    );
+
+    getWorkspaceMock.mockResolvedValueOnce("ws-2");
+    listTargetsMock.mockResolvedValueOnce([
+      {
+        id: "personal-root",
+        label: "내 드라이브",
+        description: "개인 드라이브 루트",
+        folderId: "FLD-WS2-ROOT",
+        sharedDriveId: null,
+      },
+    ]);
+    dispatchTeamverWorkspaceChanged("ws-2");
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledWith("ws-2", { limit: 200 });
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: null,
+          sharedDriveId: null,
+        }),
+      );
+    });
   });
 
   it("browses Drive folders and keeps the browsed folder as publish target", async () => {

@@ -146,7 +146,7 @@ describe("TeamverDriveImportModal", () => {
     );
 
     await screen.findByTestId("teamver-drive-import-modal");
-    fireEvent.change(screen.getByLabelText("Search Drive files"), {
+    fireEvent.change(screen.getByLabelText("드라이브 파일 검색"), {
       target: { value: "deck" },
     });
 

@@ -163,7 +163,7 @@ export function TeamverDriveImportModal({
     } catch (err) {
       setRows([]);
       setRecentRows([]);
-      setError(err instanceof Error ? err.message : "drive_import_list_failed");
+      setError(err instanceof Error ? err.message : "드라이브 파일 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -190,11 +190,11 @@ export function TeamverDriveImportModal({
         const nextScopes = await listTeamverDriveImportScopes(workspaceId);
         if (!cancelled) {
           setScopes(
-            nextScopes.length > 0 ? nextScopes : [{ mode: "personal", folderId: null, label: "My Drive" }],
+            nextScopes.length > 0 ? nextScopes : [{ mode: "personal", folderId: null, label: "내 드라이브" }],
           );
         }
       } catch {
-        if (!cancelled) setScopes([{ mode: "personal", folderId: null, label: "My Drive" }]);
+        if (!cancelled) setScopes([{ mode: "personal", folderId: null, label: "내 드라이브" }]);
       }
     })();
     return () => {
@@ -320,7 +320,7 @@ export function TeamverDriveImportModal({
     const thumbUrl = thumbUrls.get(row.assetId);
     const iconName = driveImportAssetIconName(row.name, row.mimeType);
     const sizeLabel = formatDriveFileSize(row.sizeBytes);
-    const meta = blocked ? "Not supported in embed" : sizeLabel ?? row.mimeType ?? "file";
+    const meta = blocked ? "슬라이드에서 지원하지 않음" : sizeLabel ?? row.mimeType ?? "파일";
 
     return (
       <button
@@ -377,13 +377,13 @@ export function TeamverDriveImportModal({
       >
         <header className="teamver-drive-picker-head">
           <div>
-            <h2 id="teamver-drive-import-title">Attach from Teamver Drive</h2>
-            <p>Select up to {MAX_PICK} files to import into this project.</p>
+            <h2 id="teamver-drive-import-title">팀버 드라이브에서 가져오기</h2>
+            <p>최대 {MAX_PICK}개 파일을 이 프로젝트로 가져올 수 있습니다.</p>
           </div>
           <button
             type="button"
             className="teamver-drive-picker-close"
-            aria-label="Close Drive import"
+            aria-label="드라이브 가져오기 닫기"
             disabled={confirming}
             onClick={onClose}
           >
@@ -392,7 +392,7 @@ export function TeamverDriveImportModal({
         </header>
 
         {scopes.length > 1 ? (
-          <div className="teamver-drive-import-tabs" role="tablist" aria-label="Drive scope">
+          <div className="teamver-drive-import-tabs" role="tablist" aria-label="드라이브 범위">
             {scopes.map((scope, index) => (
               <button
                 key={scope.mode === "personal" ? "personal" : scope.sharedDriveId}
@@ -414,7 +414,7 @@ export function TeamverDriveImportModal({
           </div>
         ) : null}
 
-        <nav className="teamver-drive-import-crumb" aria-label="Drive folder path">
+        <nav className="teamver-drive-import-crumb" aria-label="드라이브 폴더 경로">
           {navStack.map((crumb, index) => {
             const isLast = index === navStack.length - 1;
             return (
@@ -445,27 +445,27 @@ export function TeamverDriveImportModal({
           <Icon name="search" size={14} />
           <input
             value={query}
-            aria-label="Search Drive files"
+            aria-label="드라이브 파일 검색"
             placeholder={
               searchMode || query.trim().length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN
-                ? "Search Drive"
-                : "Search in this folder"
+                ? "드라이브 전체 검색"
+                : "이 폴더에서 검색"
             }
             disabled={confirming}
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
         </label>
 
-        <div className="teamver-drive-picker-list teamver-drive-import-list" role="listbox" aria-label="Drive files">
+        <div className="teamver-drive-picker-list teamver-drive-import-list" role="listbox" aria-label="드라이브 파일 목록">
           {loading ? (
-            <div className="teamver-drive-picker-empty">Loading Drive files…</div>
+            <div className="teamver-drive-picker-empty">드라이브 파일 불러오는 중…</div>
           ) : error ? (
             <div className="teamver-drive-picker-empty">{error}</div>
           ) : (
             <>
               {showRecent && recentRows.length > 0 ? (
                 <div className="teamver-drive-import-section" data-testid="teamver-drive-import-recent">
-                  <div className="teamver-drive-import-section-label">Recent</div>
+                  <div className="teamver-drive-import-section-label">최근</div>
                   {renderAssetGrid(recentRows, "recent")}
                 </div>
               ) : null}
@@ -473,7 +473,7 @@ export function TeamverDriveImportModal({
               {folderRows.length > 0 || browseAssetRows.length > 0 ? (
                 <>
                   {showRecent && recentRows.length > 0 && (folderRows.length > 0 || browseAssetRows.length > 0) ? (
-                    <div className="teamver-drive-import-section-label">Browse</div>
+                    <div className="teamver-drive-import-section-label">탐색</div>
                   ) : null}
                   {folderRows.map((row) => (
                     <button
@@ -489,7 +489,7 @@ export function TeamverDriveImportModal({
                       </span>
                       <span className="teamver-drive-picker-row-copy">
                         <span>{row.name}</span>
-                        <small>Folder</small>
+                        <small>폴더</small>
                       </span>
                       <Icon name="chevron-right" size={14} />
                     </button>
@@ -498,7 +498,7 @@ export function TeamverDriveImportModal({
                 </>
               ) : showRecent && recentRows.length > 0 ? null : (
                 <div className="teamver-drive-picker-empty">
-                  {searchMode ? "No matching Drive files" : "No files in this folder"}
+                  {searchMode ? "일치하는 드라이브 파일이 없습니다" : "이 폴더에 파일이 없습니다"}
                 </div>
               )}
             </>
@@ -532,11 +532,11 @@ export function TeamverDriveImportModal({
 
         <footer className="teamver-drive-import-footer">
           <span className="teamver-drive-import-count">
-            {selectedCount} selected (max {MAX_PICK})
+            {selectedCount}개 선택됨 (최대 {MAX_PICK}개)
           </span>
           <div className="teamver-drive-import-actions">
             <button type="button" className="teamver-drive-import-cancel" disabled={confirming} onClick={onClose}>
-              Cancel
+              취소
             </button>
             {partialResult && partialResult.importedCount > 0 ? (
               <button
@@ -577,7 +577,7 @@ export function TeamverDriveImportModal({
                 void onConfirm(assets);
               }}
             >
-              {confirming ? "Importing…" : "Attach"}
+              {confirming ? "가져오는 중…" : "첨부"}
             </button>
             ) : null}
           </div>

@@ -23,6 +23,7 @@ import {
   readTeamverDesignAccessSnapshot,
   subscribeTeamverDesignAccessChanged,
 } from "../teamverDesignAccess";
+import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
 
 type Props = {
   projectId: string;
@@ -196,6 +197,20 @@ export function TeamverPublishDriveMenuItem({
 
   useEffect(() => {
     void refreshTargets();
+  }, [refreshTargets]);
+
+  // Workspace switch — refetch targets and drop the previous tenant's
+  // selection. Without this the menu keeps the prior workspace's folder tree
+  // (or a `folderId` from `localStorage` keyed under another workspace) and
+  // the next publish lands in the wrong tenant.
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverWorkspaceChanged(() => {
+      setSelectedTargetId(DEFAULT_PUBLISH_TARGET.id);
+      setTargets([DEFAULT_PUBLISH_TARGET]);
+      setHistoryRefreshKey((key) => key + 1);
+      void refreshTargets();
+    });
   }, [refreshTargets]);
 
   const selectedTarget = useMemo(

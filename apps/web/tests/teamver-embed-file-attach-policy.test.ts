@@ -22,10 +22,10 @@ describe("embedFileAttachPolicy", () => {
   });
 
   it("blocks video and executable extensions in embed mode", () => {
-    expect(embedAttachBlockReason("clip.mp4", { slideOnlyMvp: true })).toContain("slide MVP");
-    expect(embedAttachBlockReason("setup.exe", { slideOnlyMvp: true })).toContain("slide MVP");
-    expect(embedAttachBlockReason("installer.pkg", { slideOnlyMvp: true })).toContain("slide MVP");
-    expect(embedAttachBlockReason("virus.scr", { slideOnlyMvp: true })).toContain("slide MVP");
+    expect(embedAttachBlockReason("clip.mp4", { slideOnlyMvp: true })).toContain("슬라이드 MVP");
+    expect(embedAttachBlockReason("setup.exe", { slideOnlyMvp: true })).toContain("슬라이드 MVP");
+    expect(embedAttachBlockReason("installer.pkg", { slideOnlyMvp: true })).toContain("슬라이드 MVP");
+    expect(embedAttachBlockReason("virus.scr", { slideOnlyMvp: true })).toContain("슬라이드 MVP");
   });
 
   it("blocks oversize files in embed mode", () => {
@@ -33,7 +33,7 @@ describe("embedFileAttachPolicy", () => {
       slideOnlyMvp: true,
       sizeBytes: EMBED_SLIDE_ATTACH_MAX_BYTES + 1,
     });
-    expect(reason).toContain("50 MB");
+    expect(reason).toContain("50MB");
   });
 
   it("does not block standalone OD uploads", () => {

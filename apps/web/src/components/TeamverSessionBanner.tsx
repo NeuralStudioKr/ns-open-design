@@ -24,8 +24,16 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
     );
   }
 
+  // BFF transient failure can keep `authenticated=true` while session probe lost
+  // contact (`error: "session_unreachable"`) — surface a retry chip without
+  // collapsing the bar so workspace switch + account links stay reachable.
+  const sessionUnreachable = embed.error === "session_unreachable";
+  const handleRetrySession = () => {
+    void embed.refresh({ force: true });
+  };
+
   if (embed.authenticated) {
-    const barState = embed.designAppEnabled ? "ok" : "warn";
+    const barState = !embed.designAppEnabled || sessionUnreachable ? "warn" : "ok";
     return (
       <div className="teamver-embed-bar" data-state={barState} data-testid="teamver-embed-bar">
         <div className="teamver-embed-bar__group teamver-embed-bar__group--workspace">
@@ -43,8 +51,27 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
               {t("teamver.embed.designDisabled")}
             </span>
           ) : null}
+          {sessionUnreachable ? (
+            <span
+              className="teamver-embed-bar__warn"
+              data-testid="teamver-embed-session-warn"
+            >
+              세션 확인 실패
+            </span>
+          ) : null}
         </div>
         <div className="teamver-embed-bar__group teamver-embed-bar__group--account">
+          {sessionUnreachable ? (
+            <button
+              type="button"
+              className="teamver-embed-bar__retry"
+              data-testid="teamver-embed-session-retry"
+              disabled={embed.loading}
+              onClick={handleRetrySession}
+            >
+              세션 다시 확인
+            </button>
+          ) : null}
           <a
             className="teamver-embed-bar__main-link teamver-embed-bar__teamver-app"
             href={resolveTeamverMainOrigin()}
@@ -83,6 +110,17 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
       >
         {t("teamver.embed.signIn")}
       </a>
+      {sessionUnreachable ? (
+        <button
+          type="button"
+          className="teamver-embed-bar__retry"
+          data-testid="teamver-embed-session-retry"
+          disabled={embed.loading}
+          onClick={handleRetrySession}
+        >
+          다시 시도
+        </button>
+      ) : null}
     </div>
   );
 }

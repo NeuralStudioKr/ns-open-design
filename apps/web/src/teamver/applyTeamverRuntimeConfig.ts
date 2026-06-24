@@ -1,5 +1,6 @@
 import type { ApiProtocol, AppConfig } from "../types";
 import { pinTeamverExecutionConfig } from "./branding/pinnedExecutionConfig";
+import { fetchTeamverRuntimeConfig } from "./designBffClient";
 
 export type TeamverRuntimeConfig = {
   configured: boolean;
@@ -62,4 +63,18 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
     model,
     apiProtocolConfigs: {},
   };
+}
+
+/**
+ * Re-fetch design-api `runtime-config` and merge into `baseConfig`. Returns
+ * the same reference when nothing changed so callers can skip persist/state
+ * writes. Used on workspace switch and `pageshow` to recover from BE env
+ * changes without a full reload.
+ */
+export async function reloadTeamverRuntimeConfigIntoAppConfig(
+  baseConfig: AppConfig,
+): Promise<AppConfig> {
+  const runtime = await fetchTeamverRuntimeConfig();
+  if (!runtime?.configured) return baseConfig;
+  return mergeTeamverRuntimeConfigIntoAppConfig(baseConfig, runtime);
 }
