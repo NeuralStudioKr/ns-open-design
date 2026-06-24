@@ -77,6 +77,16 @@ describe("embed workspace switch side effects", () => {
     );
   });
 
+  it("gates embed create/chat until active workspace is resolved", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain("embedWorkspaceId");
+    expect(app).toContain("embedInteractionDisabled");
+    expect(app).toMatch(
+      /embedInteractionDisabled[\s\S]*?embedSubmitDisabled=\{embedInteractionDisabled\}/,
+    );
+    expect(app).toContain('formatTeamverProjectRegistryErrorMessage("teamver_workspace_required")');
+  });
+
   it("clears stale workingDirError after refreshProjects succeeds", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");

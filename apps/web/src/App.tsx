@@ -424,6 +424,7 @@ function AppInner() {
   // effect while the project actually stayed in the managed root.
   const [workingDirError, setWorkingDirError] = useState<string | null>(null);
   const [embedDesignAppEnabled, setEmbedDesignAppEnabled] = useState(true);
+  const [embedWorkspaceId, setEmbedWorkspaceId] = useState<string | null>(null);
   const [settingsWelcome, setSettingsWelcome] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection>('execution');
   const [settingsHighlight, setSettingsHighlight] = useState<SettingsHighlight>(null);
@@ -1207,11 +1208,41 @@ function AppInner() {
   }, [beginProjectListRequest, reconcileFetchedProjects]);
 
   const notifyEmbedSubmitBlocked = useCallback(() => {
+    if (isTeamverEmbedMode() && !embedWorkspaceId) {
+      setWorkingDirError(
+        formatTeamverProjectRegistryErrorMessage("teamver_workspace_required"),
+      );
+      return;
+    }
     setWorkingDirError(
       formatTeamverDesignDisabledMessage(
         readTeamverDesignAccessSnapshot()?.appDisabledReason,
       ),
     );
+  }, [embedWorkspaceId]);
+
+  const embedInteractionDisabled =
+    isTeamverEmbedMode() && (!embedDesignAppEnabled || !embedWorkspaceId);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) {
+      setEmbedWorkspaceId(null);
+      return;
+    }
+    let cancelled = false;
+    const syncWorkspace = async () => {
+      const id = (await readActiveTeamverWorkspaceId())?.trim() || null;
+      if (!cancelled) setEmbedWorkspaceId(id);
+    };
+    void syncWorkspace();
+    const unsubscribe = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
+      const trimmed = workspaceId.trim();
+      setEmbedWorkspaceId(trimmed || null);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -1678,7 +1709,13 @@ function AppInner() {
         kind === 'template' ? 'template' : 'blank';
       if (isTeamverEmbedMode()) {
         const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
-        if (workspaceId && !isTeamverDesignAppEnabled(workspaceId)) {
+        if (!workspaceId) {
+          setWorkingDirError(
+            formatTeamverProjectRegistryErrorMessage("teamver_workspace_required"),
+          );
+          return false;
+        }
+        if (!isTeamverDesignAppEnabled(workspaceId)) {
           setWorkingDirError(
             formatTeamverDesignDisabledMessage(
               readTeamverDesignAccessSnapshot()?.appDisabledReason,
@@ -2791,7 +2828,7 @@ function AppInner() {
         onProjectsRefresh={refreshProjects}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
         onDesignSystemsRefresh={refreshDesignSystems}
-        embedSubmitDisabled={isTeamverEmbedMode() && !embedDesignAppEnabled}
+        embedSubmitDisabled={embedInteractionDisabled}
         onEmbedSubmitBlocked={notifyEmbedSubmitBlocked}
       />
     );
@@ -2852,7 +2889,7 @@ function AppInner() {
         onOpenSettings={openSettings}
         onCompleteOnboarding={handleCompleteOnboarding}
         backgroundRunSummaries={backgroundRunSummaries}
-        embedSubmitDisabled={isTeamverEmbedMode() && !embedDesignAppEnabled}
+        embedSubmitDisabled={embedInteractionDisabled}
         onEmbedSubmitBlocked={notifyEmbedSubmitBlocked}
       />
     );
