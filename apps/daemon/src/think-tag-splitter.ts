@@ -88,7 +88,8 @@ export function createThinkTagSplitter(
   };
 }
 
-/** Remove CLI-style pseudo-tool XML leaked into BYOK/API chat deltas (#313). */
+/** Remove CLI-style pseudo-tool XML leaked into BYOK/API chat deltas (#313).
+ *  Keep patterns in sync with apps/web/src/runtime/internalAgentMarkup.ts `sanitizeLeakedAgentProse`. */
 export function stripLeakedPseudoToolXml(text: string): string {
   if (!text) return text;
   let out = text;

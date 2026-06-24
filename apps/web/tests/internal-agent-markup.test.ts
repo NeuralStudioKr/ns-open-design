@@ -82,6 +82,19 @@ describe("internalAgentMarkup", () => {
     expect(text).toBe("Working…");
   });
 
+  it("strips trailing open pseudo-tool tags while streaming", () => {
+    const cases = [
+      ["Working…\n<function_calls><invoke", "Working…"],
+      ["Plan\n<todo-list><item>Step", "Plan"],
+      ["Next\n<invoke name=\"Write\">", "Next"],
+    ] as const;
+    for (const [streaming, expected] of cases) {
+      const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(streaming);
+      expect(hadOpenInternalMarkup).toBe(true);
+      expect(text).toBe(expected);
+    }
+  });
+
   it("strips pseudo-tool XML, thinking tags, fake file reads, and bare status lines", () => {
     const input = [
       "<function_calls><invoke name=\"Write\"><parameter name=\"path\">x.html</parameter></invoke></function_calls>",

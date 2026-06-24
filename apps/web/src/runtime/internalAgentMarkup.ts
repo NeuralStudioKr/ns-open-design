@@ -35,11 +35,16 @@ const OPEN_INFO_RE = /<info\b[^>]*>/i;
 
 /** CLI / API pseudo-tool XML leaked into assistant text instead of structured tool_use. */
 const CLOSED_FUNCTION_CALLS_RE = /<function_calls\b[^>]*>[\s\S]*?<\/function_calls>/gi;
+const OPEN_FUNCTION_CALLS_RE = /<function_calls\b[^>]*>/i;
 const CLOSED_INVOKE_RE = /<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi;
+const OPEN_INVOKE_RE = /<invoke\b[^>]*>/i;
 const CLOSED_PARAMETER_RE = /<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi;
+const OPEN_PARAMETER_RE = /<parameter\b[^>]*>/i;
 const CLOSED_FUNCTION_RESULTS_RE = /<function_results\b[^>]*>[\s\S]*?<\/function_results>/gi;
 const CLOSED_TODO_LIST_RE = /<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi;
+const OPEN_TODO_LIST_RE = /<todo-list\b[^>]*>/i;
 const CLOSED_TOOL_CALL_RE = /<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi;
+const OPEN_TOOL_CALL_RE = /<tool-call\b[^>]*>/i;
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
 
 /** Narrated tool calls some models emit when tools are unavailable or ignored. */
@@ -152,27 +157,27 @@ export function stripTrailingOpenInternalMarkup(
     return { text: thinking.text, hadOpenInternalMarkup: true };
   }
 
-  const qwenThinking = stripTrailingOpenTag(thinking.text, OPEN_THINKING_RE, "thinking");
-  if (qwenThinking.hadOpenInternalMarkup) {
-    return { text: qwenThinking.text, hadOpenInternalMarkup: true };
+  const openTagChain: Array<{ re: RegExp; name: string }> = [
+    { re: OPEN_FUNCTION_CALLS_RE, name: "function_calls" },
+    { re: OPEN_INVOKE_RE, name: "invoke" },
+    { re: OPEN_PARAMETER_RE, name: "parameter" },
+    { re: OPEN_TODO_LIST_RE, name: "todo-list" },
+    { re: OPEN_TOOL_CALL_RE, name: "tool-call" },
+    { re: OPEN_THINKING_RE, name: "thinking" },
+    { re: OPEN_THINK_RE, name: "think" },
+    { re: OPEN_SYSTEM_REMINDER_RE, name: "system-reminder" },
+    { re: OPEN_INFO_RE, name: "info" },
+  ];
+  let text = thinking.text;
+  for (const { re, name } of openTagChain) {
+    const next = stripTrailingOpenTag(text, re, name);
+    if (next.hadOpenInternalMarkup) {
+      return { text: next.text, hadOpenInternalMarkup: true };
+    }
+    text = next.text;
   }
 
-  const deepseekThink = stripTrailingOpenTag(qwenThinking.text, OPEN_THINK_RE, "think");
-  if (deepseekThink.hadOpenInternalMarkup) {
-    return { text: deepseekThink.text, hadOpenInternalMarkup: true };
-  }
-
-  const reminder = stripTrailingOpenTag(deepseekThink.text, OPEN_SYSTEM_REMINDER_RE, "system-reminder");
-  if (reminder.hadOpenInternalMarkup) {
-    return { text: reminder.text, hadOpenInternalMarkup: true };
-  }
-
-  const info = stripTrailingOpenTag(reminder.text, OPEN_INFO_RE, "info");
-  if (info.hadOpenInternalMarkup) {
-    return { text: info.text, hadOpenInternalMarkup: true };
-  }
-
-  return { text: info.text, hadOpenInternalMarkup: false };
+  return { text, hadOpenInternalMarkup: false };
 }
 
 /** Combined display sanitizer for assistant prose (history + live stream). */
