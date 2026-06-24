@@ -107,7 +107,7 @@ Main Mobile도 파일 상세 모달에서 동일 query 계약을 사용한다. i
 4. **Server-side folder search**: import browser의 Main Drive search/list API를 재사용해 publish destination 검색 — ✅ loop 167.
 5. **API 클라이언트 추출**: `teamver/drive/driveApi.ts` — Main Drive fetch/normalize 공통화 — ✅ loop 168.
 6. **Folder browser**: personal/team scope tab + breadcrumb + folder drill-down — ✅ loop 168.
-7. **Full browser**: 최근 파일 + 자산 그리드형 publish destination helper — 🟡 loop 356 **최근 위치(localStorage)** ✅ · Drive home grid ☐.
+7. **Full browser**: 최근 파일 + 자산 그리드형 publish destination helper — ✅ loop 356 **최근 위치(localStorage)** · loop 359 **Drive 홈 최근 grid** (`/home/recent` → folder quick picks).
 
 ### 3.2.2 구현됨 — Phase 1-2a
 

@@ -176,11 +176,11 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | # | 작업 | P | 상태 |
 |---|------|---|------|
 | S-1 | Drive publish picker **최근 위치** (workspace localStorage ring) | P1 | ✅ loop 356 |
-| S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ☐ [14 §3.4 step 7b](./14_Design_Drive_연동_설계.md) |
+| S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ✅ loop 359 |
 | S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | 🟡 Chat/DesignFiles/FileWorkspace ✅ |
 | S-4 | embed slide E2E wording 잔여 (FileViewer download aria 등) | P1 | ✅ loop 357 |
 | S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 코드 ✅ · 실관측 ☐ |
-| S-6 | 목록 cover-hints N+1 제거 | P0 | 🟡 loop 195+ |
+| S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 |
 
 > **원칙:** nginx 배포·staging E2E·RDS psql은 **ops 트랙** — 제품 코드 루프와 분리. [04 §코드 루프 우선순위](./04_구현_우선순위.md) 참고.
 

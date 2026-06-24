@@ -122,6 +122,17 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
     expect(menuItem).toContain('merged.some((target) => target.id === remembered)');
   });
 
+  it('loads Drive home recent folder grid in the publish picker (loop 359 · S-2)', () => {
+    const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
+    expect(picker).toContain('listTeamverDrivePublishHomeRecentTargets');
+    expect(picker).toContain('data-testid="teamver-drive-picker-home-recent"');
+    expect(picker).toContain('Drive 홈 최근');
+
+    const homeRecent = readSource('src/teamver/drivePublishHomeRecent.ts');
+    expect(homeRecent).toContain('/api/v2/drive/home/recent');
+    expect(homeRecent).toContain('assets,shared_with_me');
+  });
+
   it('keeps the format type union narrow in publishToDrive (loop 173)', () => {
     const publish = readSource('src/teamver/publishToDrive.ts');
     expect(publish).toContain('TeamverPublishDriveFormat');

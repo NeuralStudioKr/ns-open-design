@@ -4,6 +4,7 @@ import {
   TEAMVER_DRIVE_PUBLISH_SEARCH_MIN,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
+import { listTeamverDrivePublishHomeRecentTargets } from "../drivePublishHomeRecent";
 import {
   listTeamverDriveImportRows,
   listTeamverDriveImportScopes,
@@ -106,6 +107,8 @@ export function TeamverDrivePickerModal({
   const [browseTargets, setBrowseTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
+  const [homeRecentTargets, setHomeRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
+  const [homeRecentLoading, setHomeRecentLoading] = useState(false);
   const filteredTargets = useMemo(
     () => targets.filter((target) => matchesTarget(target, query)),
     [query, targets],
@@ -127,6 +130,50 @@ export function TeamverDrivePickerModal({
     !searching
     && currentFolderId == null
     && recentTargets.length > 0;
+  const displayedHomeRecentTargets = useMemo(() => {
+    if (searching || currentFolderId != null) return [];
+    const localIds = new Set(recentTargets.map((target) => target.id));
+    return homeRecentTargets.filter((target) => !localIds.has(target.id));
+  }, [currentFolderId, homeRecentTargets, recentTargets, searching]);
+  const showHomeRecentSection = displayedHomeRecentTargets.length > 0;
+
+  function selectTarget(target: TeamverDrivePublishTarget) {
+    onSelect(target);
+    onClose();
+  }
+
+  function renderFolderGrid(
+    targets: TeamverDrivePublishTarget[],
+    keyPrefix: string,
+    testIdPrefix: string,
+  ) {
+    return (
+      <div className="teamver-drive-import-grid" role="group">
+        {targets.map((target) => {
+          const selected = target.id === selectedTargetId;
+          return (
+            <button
+              key={`${keyPrefix}:${target.id}`}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              className={`teamver-drive-import-card${selected ? " is-selected" : ""}`}
+              data-testid={`${testIdPrefix}-${target.id}`}
+              onClick={() => selectTarget(target)}
+            >
+              <span className="teamver-drive-import-card-visual" aria-hidden>
+                <Icon name={target.sharedDriveId ? "folder-filled" : "folder"} size={18} />
+              </span>
+              <span className="teamver-drive-import-card-copy">
+                <span>{target.label}</span>
+                <small>{target.description}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (!open || !workspaceId?.trim()) {
@@ -192,6 +239,29 @@ export function TeamverDrivePickerModal({
       canceled = true;
     };
   }, [activeScope, currentFolderId, open, searching, workspaceId]);
+
+  useEffect(() => {
+    if (!open || !workspaceId?.trim() || searching || currentFolderId != null) {
+      setHomeRecentTargets([]);
+      setHomeRecentLoading(false);
+      return;
+    }
+    let canceled = false;
+    setHomeRecentLoading(true);
+    void (async () => {
+      try {
+        const targets = await listTeamverDrivePublishHomeRecentTargets(workspaceId, { limit: 12 });
+        if (!canceled) setHomeRecentTargets(targets);
+      } catch {
+        if (!canceled) setHomeRecentTargets([]);
+      } finally {
+        if (!canceled) setHomeRecentLoading(false);
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [currentFolderId, open, searching, workspaceId]);
 
   useEffect(() => {
     if (!open || !onSearch || trimmedQuery.length < TEAMVER_DRIVE_PUBLISH_SEARCH_MIN) {
@@ -329,10 +399,7 @@ export function TeamverDrivePickerModal({
                     aria-selected={selected}
                     className={`teamver-drive-picker-row${selected ? " is-selected" : ""}`}
                     data-testid={`teamver-drive-picker-target-${target.id}`}
-                    onClick={() => {
-                      onSelect(target);
-                      onClose();
-                    }}
+                    onClick={() => selectTarget(target)}
                   >
                     <span className="teamver-drive-picker-row-icon">
                       <Icon name={target.sharedDriveId ? "folder-filled" : "folder"} size={15} />
@@ -347,7 +414,26 @@ export function TeamverDrivePickerModal({
               })}
             </div>
           ) : null}
-          {loading || browseLoading || (searchLoading && displayedTargets.length === 0 && !showRecentSection) ? (
+          {homeRecentLoading && !showHomeRecentSection && !showRecentSection ? (
+            <div className="teamver-drive-picker-empty">Drive 홈 최근 불러오는 중…</div>
+          ) : null}
+          {showHomeRecentSection ? (
+            <div
+              className="teamver-drive-import-section"
+              data-testid="teamver-drive-picker-home-recent"
+            >
+              <div className="teamver-drive-import-section-label">Drive 홈 최근</div>
+              {renderFolderGrid(
+                displayedHomeRecentTargets,
+                "home-recent",
+                "teamver-drive-picker-home-recent",
+              )}
+            </div>
+          ) : null}
+          {(showRecentSection || showHomeRecentSection) && displayedTargets.length > 0 ? (
+            <div className="teamver-drive-import-section-label">폴더 탐색</div>
+          ) : null}
+          {loading || browseLoading || (searchLoading && displayedTargets.length === 0 && !showRecentSection && !showHomeRecentSection) ? (
             <div className="teamver-drive-picker-empty">
               {searching ? "드라이브 폴더 검색 중…" : "드라이브 폴더 불러오는 중…"}
             </div>

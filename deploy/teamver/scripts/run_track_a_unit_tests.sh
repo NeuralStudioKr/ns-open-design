@@ -109,6 +109,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-drive-launch-handoff.test.ts \
       tests/teamver-drive-publish-targets.test.ts \
       tests/teamver-drive-publish-recent-targets.test.ts \
+      tests/teamver-drive-publish-home-recent.test.ts \
       tests/teamver-publish-drive-menu-item.test.tsx \
       tests/teamver-embed-drive-publish-ui.test.ts \
       tests/teamver-list-project-outputs.test.ts \
@@ -117,6 +118,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-project-preview-file.test.ts \
       tests/teamver-project-preview-chip.test.tsx \
       tests/teamver-project-cover-loader.test.ts \
+      tests/teamver-prefetch-cover-coalesce.test.ts \
       tests/teamver-embed-list-caches.test.ts \
       tests/teamver-embed-run-tracking.test.ts \
       tests/teamver-embed-background-run-surfaces.test.ts \

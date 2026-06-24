@@ -10,6 +10,7 @@ vi.mock("../src/providers/registry", () => ({
 vi.stubGlobal("fetch", (...args: unknown[]) => fetchCoverHintsMock(...args));
 
 import {
+  prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
   resetProjectCoverLoaderStateForTests,
   resolveProjectCoverFile,
@@ -130,5 +131,90 @@ describe("projectCoverLoader", () => {
     expect(Object.keys(covers)).toHaveLength(8);
     expect(maxInFlight).toBeLessThanOrEqual(2);
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(8);
+  });
+
+  it("prefetchProjectCoverHintsForProjects drains via shared batch queue", async () => {
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        hints: [
+          {
+            projectId: "p1",
+            entryFile: "deck.html",
+            coverKind: "html",
+            coverPath: "deck.html",
+          },
+        ],
+      }),
+    });
+
+    const projects = [
+      project({ id: "p1", metadata: { kind: "deck" } }),
+      project({ id: "p2", metadata: { kind: "deck" } }),
+    ];
+
+    await prefetchProjectCoverHintsForProjects(projects);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+    await expect(resolveProjectCoverFile(projects[0]!)).resolves.toEqual({
+      kind: "html",
+      name: "deck.html",
+    });
+  });
+
+  it("merges parallel prefetchProjectCoverHintsForProjects into one HTTP call", async () => {
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+
+    const batchA = [
+      project({ id: "p1", metadata: { kind: "deck" } }),
+      project({ id: "p2", metadata: { kind: "deck" } }),
+    ];
+    const batchB = [
+      project({ id: "p3", metadata: { kind: "deck" } }),
+      project({ id: "p4", metadata: { kind: "deck" } }),
+    ];
+
+    await Promise.all([
+      prefetchProjectCoverHintsForProjects(batchA),
+      prefetchProjectCoverHintsForProjects(batchB),
+    ]);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchCoverHintsMock.mock.calls[0]?.[1]?.body ?? "{}"));
+    expect(body.projectIds).toEqual(expect.arrayContaining(["p1", "p2", "p3", "p4"]));
+  });
+
+  it("does not re-hint after prefetch until hint TTL expires", async () => {
+    vi.useFakeTimers();
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+    fetchProjectFilesMock.mockResolvedValue([
+      { name: "deck.html", kind: "html", mtime: 1, size: 1, mime: "text/html" },
+    ]);
+
+    const deck = project({ id: "p1", metadata: { kind: "deck" } });
+    await prefetchProjectCoverHintsForProjects([deck]);
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+
+    fetchCoverHintsMock.mockClear();
+    await resolveProjectCoverFile(deck);
+    expect(fetchCoverHintsMock).not.toHaveBeenCalled();
+    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(1);
+
+    fetchCoverHintsMock.mockClear();
+    fetchProjectFilesMock.mockClear();
+    vi.advanceTimersByTime(61_000);
+
+    await prefetchProjectCoverHintsForProjects([deck]);
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 });

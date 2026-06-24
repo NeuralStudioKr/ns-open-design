@@ -11,7 +11,18 @@ const DEFAULT_COVER_FETCH_CONCURRENCY = 4;
 const coverCache = new Map<string, { cover: ProjectCoverFile | null; at: number }>();
 const inflight = new Map<string, Promise<ProjectCoverFile | null>>();
 const pendingHintIds = new Set<string>();
+const hintCheckedAt = new Map<string, number>();
 let activeHintBatch: Promise<void> | null = null;
+
+function hintsCheckedRecently(id: string): boolean {
+  const at = hintCheckedAt.get(id);
+  return at !== undefined && Date.now() - at < COVER_FETCH_CACHE_MS;
+}
+
+function markHintsChecked(ids: string[]): void {
+  const now = Date.now();
+  for (const id of ids) hintCheckedAt.set(id, now);
+}
 
 /** True when project card cover cannot be resolved from metadata alone. */
 export function projectNeedsCoverFileFetch(project: Project): boolean {
@@ -21,14 +32,17 @@ export function projectNeedsCoverFileFetch(project: Project): boolean {
 
 export function clearProjectCoverCache(projectId?: string): void {
   if (projectId?.trim()) {
-    coverCache.delete(projectId.trim());
-    inflight.delete(projectId.trim());
-    pendingHintIds.delete(projectId.trim());
+    const id = projectId.trim();
+    coverCache.delete(id);
+    inflight.delete(id);
+    pendingHintIds.delete(id);
+    hintCheckedAt.delete(id);
     return;
   }
   coverCache.clear();
   inflight.clear();
   pendingHintIds.clear();
+  hintCheckedAt.clear();
   activeHintBatch = null;
 }
 
@@ -39,6 +53,26 @@ export function seedProjectCoverHints(covers: Record<string, ProjectCoverFile | 
     if (coverCache.has(projectId)) continue;
     coverCache.set(projectId, { cover, at: now });
   }
+}
+
+/**
+ * Enqueue cover-hints for many cards and drain via the shared coalesced batch
+ * (max PROJECT_LIST_VIEWPORT_BATCH per HTTP). Prefetch + lazy resolve share
+ * the same queue so warmEmbed cannot double-hit /cover-hints.
+ */
+export async function prefetchProjectCoverHintsForProjects(
+  projects: Project[],
+): Promise<void> {
+  for (const project of projects) {
+    if (!projectNeedsCoverFileFetch(project)) continue;
+    const id = project.id.trim();
+    if (!id || hintsCheckedRecently(id)) continue;
+    const cached = coverCache.get(id);
+    if (cached?.cover && Date.now() - cached.at < COVER_FETCH_CACHE_MS) continue;
+    pendingHintIds.add(id);
+  }
+  if (pendingHintIds.size === 0) return;
+  await ensureCoverHintBatch();
 }
 
 function seedPositiveCoverHints(hints: Record<string, ProjectCoverFile | null>): void {
@@ -55,8 +89,9 @@ async function drainCoverHintBatch(): Promise<void> {
   while (pendingHintIds.size > 0) {
     const missing = [...pendingHintIds]
       .filter((id) => {
+        if (hintsCheckedRecently(id)) return false;
         const cached = coverCache.get(id);
-        return !cached || Date.now() - cached.at >= COVER_FETCH_CACHE_MS;
+        return !cached?.cover || Date.now() - cached.at >= COVER_FETCH_CACHE_MS;
       })
       .slice(0, PROJECT_LIST_VIEWPORT_BATCH);
     for (const id of missing) {
@@ -68,6 +103,7 @@ async function drainCoverHintBatch(): Promise<void> {
     }
 
     const hints = await fetchProjectCoverHints(missing);
+    markHintsChecked(missing);
     seedPositiveCoverHints(
       Object.fromEntries(
         missing.map((id) => [id, hints[id] ? projectCoverFileFromHint(hints[id]!) : null] as const),
@@ -113,11 +149,13 @@ export async function resolveProjectCoverFile(
 
   const run = (async () => {
     try {
-      pendingHintIds.add(id);
-      await ensureCoverHintBatch();
+      if (!hintsCheckedRecently(id)) {
+        pendingHintIds.add(id);
+        await ensureCoverHintBatch();
+      }
 
       const hinted = coverCache.get(id);
-      if (hinted && Date.now() - hinted.at < COVER_FETCH_CACHE_MS && hinted.cover) {
+      if (hinted?.cover && Date.now() - hinted.at < COVER_FETCH_CACHE_MS) {
         return hinted.cover;
       }
 
