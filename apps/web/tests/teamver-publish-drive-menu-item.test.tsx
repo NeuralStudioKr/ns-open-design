@@ -581,6 +581,43 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
+  it("closes the publish picker modal on workspace switch", async () => {
+    const { dispatchTeamverWorkspaceChanged } = await import(
+      "../src/teamver/teamverWorkspaceEvents"
+    );
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+    });
+
+    fireEvent.click(screen.getByRole("button", browseButtonOptions));
+    expect(screen.getByTestId("teamver-drive-picker-modal")).toBeTruthy();
+
+    getWorkspaceMock.mockResolvedValueOnce("ws-2");
+    listTargetsMock.mockResolvedValueOnce([
+      {
+        id: "personal-root",
+        label: "내 드라이브",
+        description: "개인 드라이브 루트",
+        folderId: "FLD-WS2-ROOT",
+        sharedDriveId: null,
+      },
+    ]);
+    dispatchTeamverWorkspaceChanged("ws-2");
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("teamver-drive-picker-modal")).toBeNull();
+    });
+  });
+
   it("browses Drive folders and keeps the browsed folder as publish target", async () => {
     render(
       <TeamverPublishDriveMenuItem

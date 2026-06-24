@@ -120,6 +120,7 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
     // guard — silently selecting a folder that no longer exists would route
     // the publish to the BE default without telling the operator.
     expect(menuItem).toContain('merged.some((target) => target.id === remembered)');
+    expect(menuItem).toContain('setPickerOpen(false)');
   });
 
   it('loads Drive home recent folder grid in the publish picker (loop 359 · S-2)', () => {

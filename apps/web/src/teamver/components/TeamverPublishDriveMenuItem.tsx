@@ -216,6 +216,7 @@ export function TeamverPublishDriveMenuItem({
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
+      setPickerOpen(false);
       setSelectedTargetId(DEFAULT_PUBLISH_TARGET.id);
       setTargets([DEFAULT_PUBLISH_TARGET]);
       setHistoryRefreshKey((key) => key + 1);

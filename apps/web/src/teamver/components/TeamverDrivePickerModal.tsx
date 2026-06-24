@@ -212,6 +212,13 @@ export function TeamverDrivePickerModal({
   }, [open, workspaceId]);
 
   useEffect(() => {
+    setQuery("");
+    setSearchTargets(null);
+    setSearchLoading(false);
+    setSearchError(null);
+  }, [workspaceId]);
+
+  useEffect(() => {
     if (!open || !workspaceId?.trim() || !activeScope || searching) return;
     let canceled = false;
     setBrowseLoading(true);
