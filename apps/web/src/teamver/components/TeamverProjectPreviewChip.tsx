@@ -1,5 +1,5 @@
 import { Icon } from "../../components/Icon";
-import { useT } from "../../i18n";
+import { useTeamverT } from "../branding/useTeamverT";
 import { isTeamverEmbedMode } from "../designApiBase";
 
 type Props = {
@@ -10,7 +10,7 @@ type Props = {
 
 /** Embed project cards — open project with latest HTML/deck file focused. */
 export function TeamverProjectPreviewChip({ projectId, fileName, onOpen }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   if (!isTeamverEmbedMode()) return null;
 
   const title = `${t("common.openPreview")}: ${fileName}`;

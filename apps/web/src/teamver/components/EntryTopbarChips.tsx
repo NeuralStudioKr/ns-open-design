@@ -5,14 +5,14 @@ import {
   formatDiscordPresenceCount,
   useDiscordPresence,
 } from "../../components/useDiscordPresence";
-import { useT } from "../../i18n";
+import { useTeamverT } from "../branding/useTeamverT";
 import { isTeamverEmbedMode } from "../designApiBase";
 
 const DISCORD_URL = "https://discord.gg/mHAjSMV6gz";
 
 /** EntryShell topbar embed/non-embed chips — upstream drift 최소화 (10 §4.2). */
 export function EntryTopbarChips() {
-  const t = useT();
+  const t = useTeamverT();
   const teamverEmbed = isTeamverEmbedMode();
   const discordPresence = useDiscordPresence();
 

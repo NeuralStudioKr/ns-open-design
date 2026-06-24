@@ -118,4 +118,48 @@ describe('Teamver embed branding policy', () => {
     expect(projectView).toContain('useTeamverT');
     expect(previewModal).toContain('useTeamverT');
   });
+
+  it('routes Teamver shell components through useTeamverT', () => {
+    const publishChip = readFileSync(
+      resolve(webRoot, 'src/teamver/components/TeamverLatestPublishChip.tsx'),
+      'utf8',
+    );
+    const importModal = readFileSync(
+      resolve(webRoot, 'src/teamver/components/TeamverDriveImportModal.tsx'),
+      'utf8',
+    );
+    const runsBanner = readFileSync(
+      resolve(webRoot, 'src/teamver/components/TeamverBackgroundRunsBanner.tsx'),
+      'utf8',
+    );
+    const previewChip = readFileSync(
+      resolve(webRoot, 'src/teamver/components/TeamverProjectPreviewChip.tsx'),
+      'utf8',
+    );
+    const canvasLaunch = readFileSync(
+      resolve(webRoot, 'src/teamver/components/TeamverCanvasSlideLaunchModal.tsx'),
+      'utf8',
+    );
+    const topbarChips = readFileSync(
+      resolve(webRoot, 'src/teamver/components/EntryTopbarChips.tsx'),
+      'utf8',
+    );
+    const brandLabel = readFileSync(
+      resolve(webRoot, 'src/teamver/branding/useBrandLabel.ts'),
+      'utf8',
+    );
+
+    for (const source of [
+      publishChip,
+      importModal,
+      runsBanner,
+      previewChip,
+      canvasLaunch,
+      topbarChips,
+      brandLabel,
+    ]) {
+      expect(source).toContain('useTeamverT');
+      expect(source).not.toMatch(/\buseT\(\)/);
+    }
+  });
 });

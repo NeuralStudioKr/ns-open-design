@@ -1,5 +1,5 @@
 import { Icon } from "../../components/Icon";
-import { useT } from "../../i18n";
+import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
 import { driveImportAssetIconName } from "../driveFileVisual";
 
@@ -18,7 +18,7 @@ export function TeamverCanvasSlideLaunchModal({
   onConfirm,
   onClose,
 }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   if (!open) return null;
 
   const filename = asset.filename?.trim() || asset.assetId;

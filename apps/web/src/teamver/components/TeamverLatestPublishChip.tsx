@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { useT } from "../../i18n";
+import { useTeamverT } from "../branding/useTeamverT";
 import { isTeamverEmbedMode } from "../designApiBase";
 import {
   isTeamverEmbedDesignSurfaceEnabled,
@@ -31,7 +31,7 @@ function kindLabel(kind: string): string {
 
 /** Embed project cards — latest Drive publish deep link (vN). */
 export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(!deferUntilVisible);
   const [summary, setSummary] = useState<TeamverLatestPublishSummary | null>(null);

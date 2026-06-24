@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import type { PetTaskSummary } from "../../components/pet/PetOverlay";
 import { buildActiveRunSignature } from "../../components/pet/taskCenter";
-import { useT } from "../../i18n";
+import { useTeamverT } from "../branding/useTeamverT";
 
 type Props = {
   summaries: PetTaskSummary[];
@@ -23,7 +23,7 @@ function statusLabelKey(status: PetTaskSummary["status"]): "teamver.backgroundRu
  * (pet overlay is often disabled in Teamver embed).
  */
 export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   const [expanded, setExpanded] = useState(false);
   const primarySignature = useMemo(
     () => buildActiveRunSignature(summaries.slice(0, 1)),

@@ -3,7 +3,7 @@ import { useAnalytics } from "../../analytics/provider";
 import { Icon } from "../../components/Icon";
 import type { TeamverDriveImportAsset, TeamverDriveImportPartialResult } from "../importDriveAssets";
 import { formatDriveImportErrorForUser, formatTeamverDriveImportErrorMessage } from "../importDriveAssets";
-import { useT } from "../../i18n";
+import { useTeamverT } from "../branding/useTeamverT";
 import { useTeamverBranding } from "../branding/TeamverBrandingProvider";
 import {
   embedAttachBlockReason,
@@ -78,7 +78,7 @@ export function TeamverDriveImportModal({
   onRetryFailed,
   onDismissPartial,
 }: Props) {
-  const t = useT();
+  const t = useTeamverT();
   const branding = useTeamverBranding();
   const analytics = useAnalytics();
   const attachPolicyActive = shouldApplyEmbedFileAttachPolicy(branding);
