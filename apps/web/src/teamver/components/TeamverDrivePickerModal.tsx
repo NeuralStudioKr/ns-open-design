@@ -136,6 +136,11 @@ export function TeamverDrivePickerModal({
     return homeRecentTargets.filter((target) => !localIds.has(target.id));
   }, [currentFolderId, homeRecentTargets, recentTargets, searching]);
   const showHomeRecentSection = displayedHomeRecentTargets.length > 0;
+  const showInitialLoading =
+    !searching
+    && !showRecentSection
+    && !showHomeRecentSection
+    && (loading || browseLoading || homeRecentLoading);
 
   function selectTarget(target: TeamverDrivePublishTarget) {
     onSelect(target);
@@ -414,8 +419,8 @@ export function TeamverDrivePickerModal({
               })}
             </div>
           ) : null}
-          {homeRecentLoading && !showHomeRecentSection && !showRecentSection ? (
-            <div className="teamver-drive-picker-empty">Drive 홈 최근 불러오는 중…</div>
+          {showInitialLoading ? (
+            <div className="teamver-drive-picker-empty">드라이브 불러오는 중…</div>
           ) : null}
           {showHomeRecentSection ? (
             <div
@@ -433,7 +438,7 @@ export function TeamverDrivePickerModal({
           {(showRecentSection || showHomeRecentSection) && displayedTargets.length > 0 ? (
             <div className="teamver-drive-import-section-label">폴더 탐색</div>
           ) : null}
-          {loading || browseLoading || (searchLoading && displayedTargets.length === 0 && !showRecentSection && !showHomeRecentSection) ? (
+          {showInitialLoading ? null : loading || browseLoading || (searchLoading && displayedTargets.length === 0) ? (
             <div className="teamver-drive-picker-empty">
               {searching ? "드라이브 폴더 검색 중…" : "드라이브 폴더 불러오는 중…"}
             </div>

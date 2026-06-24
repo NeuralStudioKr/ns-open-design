@@ -101,7 +101,7 @@ describe('Teamver embed branding policy', () => {
     expect(fileViewer).toContain('inspect-empty-hint-container');
   });
 
-  it('routes project edit chat through useTeamverT', () => {
+  it('routes project edit surfaces through useTeamverT', () => {
     const chatComposer = readFileSync(resolve(webRoot, 'src/components/ChatComposer.tsx'), 'utf8');
     const chatPane = readFileSync(resolve(webRoot, 'src/components/ChatPane.tsx'), 'utf8');
     const designFiles = readFileSync(resolve(webRoot, 'src/components/DesignFilesPanel.tsx'), 'utf8');
