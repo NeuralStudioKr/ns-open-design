@@ -112,6 +112,9 @@ scheme=https
 [[ "$USE_HTTPS" != true ]] && scheme=http
 API_BASE="${scheme}://${DESIGN_API_HOST}"
 DESIGN_BASE="${scheme}://${DESIGN_HOST}"
+BE_PORT="${BE_PORT:-16000}"
+# nginx blocks /api/internal/* from the public internet — loopback only (smoke_design 동형).
+INTERNAL_API_BASE="${DESIGN_API_LOCAL_URL:-http://127.0.0.1:${BE_PORT}}"
 
 pass=0
 fail=0
@@ -120,6 +123,52 @@ skip=0
 passed() { echo "✓ $1"; pass=$((pass + 1)); }
 failed() { echo "✗ $1"; fail=$((fail + 1)); }
 skipped() { echo "○ $1"; skip=$((skip + 1)); }
+
+# design-api /access 는 daemon od_project_id 만 허용. publish/import 는 DPRJ ref.
+resolve_daemon_od_project_id() {
+  local ref="${1:-}"
+  if [[ -z "$ref" ]]; then
+    return 1
+  fi
+  if [[ "$ref" != DPRJ-* ]]; then
+    printf '%s' "$ref"
+    return 0
+  fi
+  if [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+    return 1
+  fi
+  local proj_json od_id
+  proj_json="$(curl_body "${API_BASE}/api/v1/projects/${ref}" -H "Cookie: ${TEAMVER_COOKIE}")"
+  if command -v python3 >/dev/null 2>&1; then
+    od_id="$(printf '%s' "$proj_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('odProjectId') or d.get('od_project_id') or '')" 2>/dev/null || true)"
+  else
+    od_id="$(printf '%s' "$proj_json" | sed -n 's/.*"odProjectId":"\([^"]*\)".*/\1/p' | head -1)"
+  fi
+  if [[ -n "$od_id" ]]; then
+    printf '%s' "$od_id"
+    return 0
+  fi
+  return 1
+}
+
+parse_session_identity() {
+  local body="$1"
+  session_user_id=""
+  session_workspace_id=""
+  if command -v python3 >/dev/null 2>&1; then
+    session_user_id="$(printf '%s' "$body" | python3 -c "import json,sys; d=json.load(sys.stdin); u=d.get('user') or {}; print(u.get('id') or u.get('user_id') or '')" 2>/dev/null || true)"
+    session_workspace_id="$(printf '%s' "$body" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('default_workspace_id') or d.get('defaultWorkspaceId') or '')" 2>/dev/null || true)"
+  fi
+  if [[ -z "$session_workspace_id" ]]; then
+    session_workspace_id="$(printf '%s' "$body" | sed -n 's/.*"default_workspace_id":"\([^"]*\)".*/\1/p' | head -1)"
+  fi
+  if [[ -z "$session_workspace_id" ]]; then
+    session_workspace_id="$(printf '%s' "$body" | sed -n 's/.*"defaultWorkspaceId":"\([^"]*\)".*/\1/p' | head -1)"
+  fi
+  if [[ -z "$session_user_id" ]]; then
+    session_user_id="$(printf '%s' "$body" | sed -n 's/.*"user_id":"\([^"]*\)".*/\1/p' | head -1)"
+  fi
+}
 
 if [[ "$REQUIRE_CORE" -eq 1 ]]; then
   core_missing=()
@@ -186,14 +235,10 @@ require_env_or_skip() {
 session_workspace_id=""
 session_user_id=""
 if require_env_or_skip TEAMVER_COOKIE "S-8a auth/session"; then
-  session_body="$(curl_body "${API_BASE}/api/auth/session" -H "Cookie: ${TEAMVER_COOKIE}")"
-  session_code="$(curl_code "${API_BASE}/api/auth/session" -H "Cookie: ${TEAMVER_COOKIE}")"
+  session_body="$(curl_body "${API_BASE}/api/v1/auth/session" -H "Cookie: ${TEAMVER_COOKIE}")"
+  session_code="$(curl_code "${API_BASE}/api/v1/auth/session" -H "Cookie: ${TEAMVER_COOKIE}")"
   if [[ "$session_code" == "200" ]]; then
-    session_user_id="$(printf '%s' "$session_body" | sed -n 's/.*"user_id":"\([^"]*\)".*/\1/p' | head -1)"
-    session_workspace_id="$(printf '%s' "$session_body" | sed -n 's/.*"workspace_id":"\([^"]*\)".*/\1/p' | head -1)"
-    if [[ -z "$session_workspace_id" ]]; then
-      session_workspace_id="$(printf '%s' "$session_body" | sed -n 's/.*"workspaceId":"\([^"]*\)".*/\1/p' | head -1)"
-    fi
+    parse_session_identity "$session_body"
     if [[ -n "$session_user_id" || -n "$session_workspace_id" ]]; then
       passed "S-8a auth/session 200 — user=${session_user_id:-?} workspace=${session_workspace_id:-?}"
     else
@@ -416,7 +461,7 @@ if require_env_or_skip TEAMVER_INTERNAL_API_KEY "U-6 usage M2M"; then
   e2e_run_id="${prefix}${ts}-${rand}"
   body="{\"user_id\":\"${session_user_id:-e2e-user}\",\"workspace_id\":\"${session_workspace_id:-e2e-ws}\",\"model_name\":\"e2e-mock-model\",\"input_tokens\":1,\"output_tokens\":1,\"operation\":\"design_e2e\",\"run_id\":\"${e2e_run_id}\"}"
 
-  usage_code1="$(curl_code "${API_BASE}/api/internal/usage/events" \
+  usage_code1="$(curl_code "${INTERNAL_API_BASE}/api/internal/usage/events" \
     -X POST -H "Content-Type: application/json" \
     -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
     --data "$body")"
@@ -429,7 +474,7 @@ if require_env_or_skip TEAMVER_INTERNAL_API_KEY "U-6 usage M2M"; then
 
   # 두 번째 요청은 dedupe — 응답은 동일하지만 row 는 1건이어야.
   if [[ "$usage_event_ok" == true ]]; then
-    usage_code2="$(curl_code "${API_BASE}/api/internal/usage/events" \
+    usage_code2="$(curl_code "${INTERNAL_API_BASE}/api/internal/usage/events" \
       -X POST -H "Content-Type: application/json" \
       -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
       --data "$body")"
@@ -543,11 +588,11 @@ else
       fi
 
       if [[ -n "${MAIN_BE_DATABASE_URL:-}" ]] && command -v psql >/dev/null 2>&1; then
-        # design_outputs.od_project_id 컬럼이 OD project id 를 보관.
+        # design_outputs.project_id = DPRJ ref, od_project_id = daemon id.
         sleep 1
         recent="$(PGOPTIONS='-c default_transaction_read_only=on' \
           psql "$MAIN_BE_DATABASE_URL" -At \
-          -c "SELECT count(*) FROM design_outputs WHERE od_project_id = '${TEAMVER_OD_PROJECT_ID}' AND published_at >= NOW() - INTERVAL '5 minutes';" 2>/dev/null || echo "?")"
+          -c "SELECT count(*) FROM design_outputs WHERE (project_id = '${TEAMVER_OD_PROJECT_ID}' OR od_project_id = '${TEAMVER_OD_PROJECT_ID}') AND published_at >= NOW() - INTERVAL '5 minutes';" 2>/dev/null || echo "?")"
         if [[ "$recent" =~ ^[1-9][0-9]*$ ]]; then
           passed "D-5b design_outputs row 생성 확인 (recent count=${recent})"
         elif [[ "$recent" == "0" ]]; then
@@ -676,11 +721,14 @@ else
     skipped "S3 tenant object — aws CLI 미설치"
   else
     tenant_prefix="${TEAMVER_S3_PREFIX:-}"
-    if [[ -z "$tenant_prefix" ]]; then
+    access_od_id="$(resolve_daemon_od_project_id "${TEAMVER_OD_PROJECT_ID}" || true)"
+    if [[ -z "$access_od_id" ]]; then
+      failed "S3 tenant object — daemon od_project_id resolve 실패 (TEAMVER_OD_PROJECT_ID=${TEAMVER_OD_PROJECT_ID})"
+    elif [[ -z "$tenant_prefix" ]]; then
       headers_tmp="$(mktemp)"
       access_code="$(curl -s -o /dev/null -D "$headers_tmp" -w '%{http_code}' --max-time 20 \
         -H "Cookie: ${TEAMVER_COOKIE}" \
-        "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/access" 2>/dev/null || echo 000)"
+        "${API_BASE}/api/v1/projects/${access_od_id}/access" 2>/dev/null || echo 000)"
       if [[ "$access_code" == "204" || "$access_code" == "200" ]]; then
         tenant_prefix="$(awk 'BEGIN{IGNORECASE=1} /^X-Teamver-S3-Prefix:/ {sub(/\r$/,""); print substr($0, index($0,":")+1)}' "$headers_tmp" | xargs | head -1)"
       fi
@@ -708,22 +756,27 @@ if [[ -z "${TEAMVER_COOKIE_USER_B:-}" ]]; then
 elif [[ -z "${TEAMVER_OD_PROJECT_ID:-}" ]]; then
   skipped "isolation — TEAMVER_OD_PROJECT_ID 미설정 (옵션)"
 else
-  iso_code="$(curl_code "${API_BASE}/api/v1/projects/${TEAMVER_OD_PROJECT_ID}/access" \
-    -H "Cookie: ${TEAMVER_COOKIE_USER_B}")"
-  case "$iso_code" in
-    403|404)
-      passed "isolation user B → user A project /access ${iso_code} (403/404 OK)"
-      ;;
-    204|200)
-      failed "isolation user B → user A project /access ${iso_code} — Phase 3 격리 BREACH"
-      ;;
-    401)
-      failed "isolation user B cookie ${iso_code} — TEAMVER_COOKIE_USER_B 인증 실패"
-      ;;
-    *)
-      failed "isolation unexpected code ${iso_code}"
-      ;;
-  esac
+  iso_access_id="$(resolve_daemon_od_project_id "${TEAMVER_OD_PROJECT_ID}" || true)"
+  if [[ -z "$iso_access_id" ]]; then
+    skipped "isolation — daemon od_project_id resolve 실패"
+  else
+    iso_code="$(curl_code "${API_BASE}/api/v1/projects/${iso_access_id}/access" \
+      -H "Cookie: ${TEAMVER_COOKIE_USER_B}")"
+    case "$iso_code" in
+      403|404)
+        passed "isolation user B → user A project /access ${iso_code} (403/404 OK)"
+        ;;
+      204|200)
+        failed "isolation user B → user A project /access ${iso_code} — Phase 3 격리 BREACH"
+        ;;
+      401)
+        failed "isolation user B cookie ${iso_code} — TEAMVER_COOKIE_USER_B 인증 실패"
+        ;;
+      *)
+        failed "isolation unexpected code ${iso_code}"
+        ;;
+    esac
+  fi
 fi
 
 # ---- P-1: plugin asset no-auth (sandbox subresource; docs-teamver/25) --------

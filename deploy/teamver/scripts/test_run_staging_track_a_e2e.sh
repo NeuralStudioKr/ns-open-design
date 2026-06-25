@@ -81,11 +81,11 @@ emit_body() {
 }
 
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      emit_body '{"user_id":"u-test","workspace_id":"ws-test","workspaceId":"ws-test"}'
+      emit_body '{"authenticated":true,"default_workspace_id":"ws-test","user":{"id":"u-test"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*)
@@ -233,11 +233,11 @@ emit_body() {
   fi
 }
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+      emit_body '{"authenticated":true,"default_workspace_id":"ws-test","user":{"id":"u-test"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
@@ -332,11 +332,11 @@ emit_body() {
   fi
 }
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+      emit_body '{"authenticated":true,"default_workspace_id":"ws-test","user":{"id":"u-test"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
@@ -435,11 +435,11 @@ emit_body() {
   fi
 }
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+      emit_body '{"authenticated":true,"default_workspace_id":"ws-test","user":{"id":"u-test"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
@@ -543,11 +543,11 @@ emit_body() {
   fi
 }
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      emit_body '{"user_id":"u-test","workspace_id":"ws-test"}'
+      emit_body '{"authenticated":true,"default_workspace_id":"ws-test","user":{"id":"u-test"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
@@ -628,11 +628,11 @@ for a in "$@"; do URL="$a"; done
 emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
 
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      echo '{"user_id":"u-test","workspace_id":"ws-test"}'
+      echo '{"authenticated":true,"default_workspace_id":"ws-test","user":{"id":"u-test"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
@@ -696,11 +696,11 @@ done
 for a in "$@"; do URL="$a"; done
 emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      echo '{"user_id":"u","workspace_id":"w"}'
+      echo '{"authenticated":true,"default_workspace_id":"w","user":{"id":"u"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
@@ -767,11 +767,11 @@ done
 for a in "$@"; do URL="$a"; done
 emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
 case "$URL" in
-  *"/api/auth/session")
+  *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
     else
-      echo '{"user_id":"u","workspace_id":"w"}'
+      echo '{"authenticated":true,"default_workspace_id":"w","user":{"id":"u"}}'
     fi
     ;;
   *"/api/v1/projects?workspace_id="*) emit_code 200 ;;
