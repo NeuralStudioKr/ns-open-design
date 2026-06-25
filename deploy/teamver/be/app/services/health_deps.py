@@ -31,6 +31,8 @@ def collect_config_summary() -> dict[str, object]:
         "bootstrap": "enabled" if settings.teamver_bootstrap_enabled else "disabled",
         "project_storage": (settings.od_project_storage or "local").strip().lower() or "local",
         "registry_creds": "configured" if registry_configured() else "missing",
+        "drive_proxy_timeout_seconds": settings.teamver_http_timeout_seconds,
+        "drive_proxy_long_timeout_seconds": settings.teamver_drive_proxy_long_timeout_seconds,
     }
 
 

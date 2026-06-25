@@ -316,6 +316,39 @@ else
   esac
 fi
 
+# ---- D-B2: drive shared-drive list BFF (complements D-B1 personal folder) ----
+if [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "D-B2 drive shared-drive BFF — TEAMVER_COOKIE 필요"
+elif [[ -z "${session_workspace_id:-}" ]]; then
+  skipped "D-B2 drive shared-drive BFF — session workspace 없음"
+else
+  drive_sd_url="${DESIGN_BASE}/teamver-bff/drive/api/v2/shared-drive"
+  drive_sd_body="$(curl_body "$drive_sd_url" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  drive_sd_code="$(curl_code "$drive_sd_url" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  case "$drive_sd_code" in
+    200)
+      if printf '%s' "$drive_sd_body" | grep -qE '\[\]|"data"|shared_drive|sharedDrive'; then
+        passed "D-B2 ${DESIGN_HOST}/teamver-bff/drive shared-drive list → 200"
+      else
+        failed "D-B2 shared-drive 200 but body shape unexpected"
+      fi
+      ;;
+    401|403)
+      failed "D-B2 shared-drive BFF ${drive_sd_code} — cookie/workspace invalid"
+      ;;
+    502)
+      failed "D-B2 shared-drive BFF 502 — Main BE unreachable (teamver_drive_unreachable)"
+      ;;
+    *)
+      failed "D-B2 shared-drive BFF ${drive_sd_code}"
+      ;;
+  esac
+fi
+
 # ---- U-6: usage event + 멱등 ------------------------------------------------
 usage_event_ok=false
 e2e_run_id=""

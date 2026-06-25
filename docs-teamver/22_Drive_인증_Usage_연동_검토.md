@@ -42,6 +42,7 @@
 | D-G3 | P2 | PDF publish — daemon desktop-only, embed HTML-only (의도적) | 문서화됨 |
 | D-G4 | P2 | `TeamverDriveImportModal` 단독 mount 시 workspace prop 의존 | 부모 `ChatComposer`가 switch 처리 — 현재 OK |
 | D-G5 | P1 | **D-B1** staging E2E — embed `/teamver-bff/drive` browse shallow folder | ✅ `run_staging_track_a_e2e.sh` |
+| D-G6 | P1 | **D-B2** staging E2E — embed `/teamver-bff/drive` shared-drive list | ✅ `run_staging_track_a_e2e.sh` |
 
 ---
 
@@ -174,6 +175,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | **W-1** | alt workspace + `X-Workspace-Id` permissions (loop 355, optional) |
 | **S-5** | design `/api/runs` + `X-Workspace-Id` poll probe (loop 365) |
 | **D-B1** | embed `/teamver-bff/drive/api/drive/folder?shallow_tree=true` → 200 + `root_folder_id` (loop 397) |
+| **D-B2** | embed `/teamver-bff/drive/api/v2/shared-drive` → 200 + list body (loop 401) |
 
 **strict launch:** `run_post_deploy_track_a.sh --e2e-strict` — skip-only 성공 불가.
 
@@ -247,6 +249,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | loop 401 — D-B2 shared-drive E2E, check_sidecar_deps fixture, healthz timeout config |
 | 2026-06-25 | loop 397 — D-B1 drive browse BFF E2E, Main BE triage §5.2, long proxy timeout |
 | 2026-06-24 | loop 354 검토 초판 — Drive/auth/usage 판정, workspace 정렬, E2E 체크리스트 |
 | 2026-06-24 | loop 356 — publish picker 최근 위치 (S-1) |

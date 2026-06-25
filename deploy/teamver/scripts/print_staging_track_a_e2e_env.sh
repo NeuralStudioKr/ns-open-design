@@ -77,6 +77,7 @@ export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 export TEAMVER_S3_BUCKET='${s3_bucket}'
 
 # S-8c (slide/API chat) — cookie 만 있으면 runtime-config configured=true + model 검증.
+# D-B1/D-B2 (loop 397–398) — embed /teamver-bff/drive browse (folder shallow + shared-drive list).
 # D-7 — publish 201 시 outputs[].driveAssetId non-empty 검증.
 # D-8 — publish 207 partial 시 ready output 의 driveAssetId 도 non-empty 검증.
 # publish 실패 시 outputs[].errorCode prefix 로 phase 식별 (loop 177):

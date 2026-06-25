@@ -16,7 +16,7 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# 1) env 가 모두 없으면 12 skipped, exit 0.
+# 1) env 가 모두 없으면 13 skipped, exit 0.
 unset_env() {
   unset TEAMVER_COOKIE TEAMVER_COOKIE_USER_B TEAMVER_INTERNAL_API_KEY \
         TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID TEAMVER_ALT_WORKSPACE_ID \
@@ -27,8 +27,8 @@ unset_env() {
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 12 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 12 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 13 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 13 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
@@ -96,6 +96,13 @@ case "$URL" in
       emit_code 200
     else
       emit_body '{"runs":[]}'
+    fi
+    ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
     fi
     ;;
   *"/teamver-bff/drive/"*)
@@ -176,6 +183,7 @@ for needle in \
   'S-8b /api/v1/projects' \
   'S-5 stg-design.teamver.com/api/runs with X-Workspace-Id → 200' \
   'D-B1 stg-design.teamver.com/teamver-bff/drive browse folder shallow → 200' \
+  'D-B2 stg-design.teamver.com/teamver-bff/drive shared-drive list → 200' \
   'S-8c runtime-config configured=true' \
   'U-6a /api/internal/usage/events' \
   'U-6b 멱등 두 번째 POST' \
@@ -230,6 +238,13 @@ case "$URL" in
       emit_code 200
     else
       echo '{"runs":[]}'
+    fi
+    ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
     fi
     ;;
   *"/teamver-bff/drive/"*)
@@ -315,6 +330,13 @@ case "$URL" in
       emit_code 200
     else
       echo '{"runs":[]}'
+    fi
+    ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
     fi
     ;;
   *"/teamver-bff/drive/"*)
@@ -404,6 +426,13 @@ case "$URL" in
       emit_code 200
     else
       echo '{"runs":[]}'
+    fi
+    ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
     fi
     ;;
   *"/teamver-bff/drive/"*)
@@ -500,6 +529,13 @@ case "$URL" in
       echo '{"runs":[]}'
     fi
     ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
+    fi
+    ;;
   *"/teamver-bff/drive/"*)
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
@@ -571,6 +607,13 @@ case "$URL" in
       echo '{"runs":[]}'
     fi
     ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
+    fi
+    ;;
   *"/teamver-bff/drive/"*)
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
@@ -623,6 +666,13 @@ case "$URL" in
       emit_code 200
     else
       echo '{"runs":[]}'
+    fi
+    ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"data":[]}'
     fi
     ;;
   *"/teamver-bff/drive/"*)
@@ -680,6 +730,13 @@ case "$URL" in
       emit_code 200
     else
       echo '{"runs":[]}'
+    fi
+    ;;
+  *"/teamver-bff/drive/api/v2/shared-drive")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      echo '{"data":[]}'
     fi
     ;;
   *"/teamver-bff/drive/"*)

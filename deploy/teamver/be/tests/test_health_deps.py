@@ -38,6 +38,18 @@ async def test_collect_dependency_status_shape(monkeypatch: pytest.MonkeyPatch) 
     assert payload["config"]["project_storage"] in {"local", "s3"}
 
 
+def test_collect_config_summary_includes_drive_proxy_timeouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(health_deps.settings, "teamver_http_timeout_seconds", 5.0)
+    monkeypatch.setattr(health_deps.settings, "teamver_drive_proxy_long_timeout_seconds", 30.0)
+
+    config = health_deps.collect_config_summary()
+
+    assert config["drive_proxy_timeout_seconds"] == 5.0
+    assert config["drive_proxy_long_timeout_seconds"] == 30.0
+
+
 @pytest.mark.asyncio
 async def test_collect_dependency_status_degraded_when_daemon_down(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health_deps, "_check_db", lambda: _ok())

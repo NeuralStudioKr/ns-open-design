@@ -22,6 +22,7 @@ for needle in \
   'TEAMVER_PUBLISH_ARTIFACT_FILE=' \
   'TEAMVER_DRIVE_IMPORT_ASSET_ID=' \
   'TEAMVER_DRIVE_IMPORT_FILENAME=' \
+  'D-B1/D-B2' \
   'D-6b policy probe' \
   'D-7 — publish 201' \
   'D-8 — publish 207' \
