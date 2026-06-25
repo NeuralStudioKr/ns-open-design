@@ -5,7 +5,7 @@
 #   docs-teamver/10_세션·OD패치_보강.md §6 (S-8)
 #   docs-teamver/11_Usage·Drive_Publish_보강.md §8 (U-6 / D-5)
 #   docs-teamver/22_Drive_인증_Usage_연동_검토.md §5 (W-1, S-5, D-B1)
-#   docs-teamver/09_Design_저장소_격리_출시게이트.md §14 (multi-user 403)
+#   docs-teamver/25_플러그인_preview_샌드박스_nginx_보강.md (P-1 plugin asset)
 #
 # Strategy: design-api 의 정상 흐름을 curl 로 끝까지 두드린 다음 RDS 에서
 # 결과 row 가 생겼는지 psql 로 직접 확인. browser/playwright 없이 EC2 cron
@@ -75,6 +75,8 @@ optional:
   SKIP_RUNTIME=1                 S-8c runtime-config probe 비활성
   SKIP_DRIVE_IMPORT_POLICY=1     D-6b policy reject probe 비활성
   SKIP_S3_OBJECT=1               S3 tenant object probe 비활성
+  TEAMVER_E2E_PLUGIN_PREVIEW=1   P-1 plugin asset no-auth probe (staging VM)
+  SKIP_PLUGIN_PREVIEW=1          P-1 비활성
   SKIP_DRIVE=1 / SKIP_DB=1
   TEAMVER_E2E_RUN_PREFIX  usage run_id prefix (default e2e-)
 EOF
@@ -720,6 +722,48 @@ else
       ;;
     *)
       failed "isolation unexpected code ${iso_code}"
+      ;;
+  esac
+fi
+
+# ---- P-1: plugin asset no-auth (sandbox subresource; docs-teamver/25) --------
+if [[ -n "${SKIP_PLUGIN_PREVIEW:-}" ]]; then
+  skipped "P-1 plugin asset no-auth — SKIP_PLUGIN_PREVIEW=1"
+elif [[ -z "${TEAMVER_E2E_PLUGIN_PREVIEW:-}" ]]; then
+  skipped "P-1 plugin asset no-auth — TEAMVER_E2E_PLUGIN_PREVIEW=1 미설정 (staging VM/cron)"
+else
+  plugin_asset_url="${DESIGN_BASE}/api/plugins/example-html-ppt-zhangzara-creative-mode/asset/assets/deck-stage.js"
+  p1_headers="$(mktemp)"
+  p1_code="$(curl -s -o /dev/null -D "$p1_headers" -w '%{http_code}' --max-time 20 "$plugin_asset_url" 2>/dev/null || echo 000)"
+  p1_location="$(awk 'BEGIN{IGNORECASE=1} /^Location:/ {sub(/\r$/,""); print substr($0, index($0,":")+1)}' "$p1_headers" | xargs | head -1)"
+  p1_csp="$(awk 'BEGIN{IGNORECASE=1} /^Content-Security-Policy:/ {sub(/\r$/,""); print substr($0, index($0,":")+2)}' "$p1_headers" | head -1)"
+  rm -f "$p1_headers"
+  case "$p1_code" in
+    000)
+      skipped "P-1 plugin asset — curl unreachable (offline?)"
+      ;;
+    200)
+      if grep -q 'fonts.googleapis.com' <<< "$p1_csp"; then
+        passed "P-1 plugin asset → 200 + Teamver CSP (fonts)"
+      else
+        failed "P-1 plugin asset 200 but CSP missing fonts.googleapis.com — nginx inc 미적용?"
+      fi
+      ;;
+    404)
+      passed "P-1 plugin asset → 404 (plugin 미설치; signin redirect 없음)"
+      ;;
+    302|301)
+      if grep -qi 'auth/signin' <<< "$p1_location"; then
+        failed "P-1 plugin asset ${p1_code} signin redirect — teamver-design-plugin-preview.inc 미적용"
+      else
+        failed "P-1 plugin asset unexpected redirect ${p1_code} → ${p1_location}"
+      fi
+      ;;
+    401|403)
+      failed "P-1 plugin asset ${p1_code} — session gate still on asset path"
+      ;;
+    *)
+      failed "P-1 plugin asset ${p1_code}"
       ;;
   esac
 fi

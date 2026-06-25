@@ -16,7 +16,7 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# 1) env 가 모두 없으면 14 skipped, exit 0.
+# 1) env 가 모두 없으면 15 skipped, exit 0.
 unset_env() {
   unset TEAMVER_COOKIE TEAMVER_COOKIE_USER_B TEAMVER_INTERNAL_API_KEY \
         TEAMVER_OD_PROJECT_ID TEAMVER_DRIVE_IMPORT_ASSET_ID TEAMVER_ALT_WORKSPACE_ID \
@@ -27,8 +27,8 @@ unset_env() {
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 14 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 14 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 15 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 15 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then

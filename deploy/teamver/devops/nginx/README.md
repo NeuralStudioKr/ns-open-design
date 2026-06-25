@@ -50,6 +50,8 @@ bash scripts/run_docker.sh --staging
 
 ## 3. Nginx 적용 (slides 동형)
 
+**전제:** 현재 디렉터리가 `deploy/teamver` (`.../ns-open-design/deploy/teamver`).
+
 ```bash
 cd devops/nginx
 chmod +x apply_teamver_design_staging_nginx_conf.sh issue_stg_design_teamver_cert.sh
@@ -77,6 +79,10 @@ for h in stg-design.teamver.com stg-design-api.teamver.com; do
 done
 curl -sSI https://stg-design.teamver.com/   # 미인증 → 302 stg.teamver.com/login
 
+# plugin asset (sandbox subresource — no session cookie; docs-teamver/25)
+curl -sSI "https://stg-design.teamver.com/api/plugins/example-html-ppt-zhangzara-creative-mode/asset/assets/deck-stage.js" | head -15
+# 기대: 200 application/javascript (또는 404 plugin 미설치), Location signin 없음
+
 # design-api CORS preflight (embed → design-api cross-origin POST)
 curl -si -X OPTIONS \
   -H "Origin: https://stg-design.teamver.com" \
@@ -96,6 +102,8 @@ curl -si -X OPTIONS \
 | `stg-design.teamver.com.https.conf` | 443 TLS |
 | `issue_stg_design_teamver_cert.sh` | SAN 2 인증서 |
 | `apply_teamver_design_staging_nginx_conf.sh` | conf apply |
+| `teamver-design-od-bff.inc.conf` | same-origin design-api BFF (`/teamver-bff/*`) |
+| `teamver-design-plugin-preview.inc.conf` | plugin/skill preview sandbox — asset no-auth + CSP ([25](../../../docs-teamver/25_플러그인_preview_샌드박스_nginx_보강.md)) |
 | `teamver-design-od-token.conf.example` | OD_API_TOKEN (서버 로컬) |
 
 **프로덕션 conf:** `design.teamver.com.http.conf` — staging VM 에 enable 하지 않음.
