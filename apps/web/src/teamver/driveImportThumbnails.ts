@@ -1,6 +1,5 @@
-import { snakeToCamelDeep } from "@teamver/app-sdk";
-import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
 import { isDriveImageAsset } from "./driveFileVisual";
+import { postTeamverDriveJson } from "./driveApi";
 
 export type DriveImportThumbnailRequest = {
   assetId: string;
@@ -34,37 +33,28 @@ export async function fetchTeamverDriveImportThumbnails(params: {
   const batch = [...unique.values()].slice(0, MAX_THUMBNAIL_BATCH);
   if (batch.length === 0) return new Map();
 
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    "X-Workspace-Id": workspaceId,
-  };
-
-  const response = await fetch(
-    `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}/api/v2/asset/object-url/batch`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers,
-      body: JSON.stringify({
+  try {
+    const raw = (await postTeamverDriveJson(
+      "/api/v2/asset/object-url/batch",
+      {
         items: batch.map((item) => ({
           asset_id: item.assetId,
           shared_drive_id: item.sharedDriveId ?? null,
         })),
-      }),
-    },
-  );
-  if (!response.ok) return new Map();
+      },
+      workspaceId,
+    )) as {
+      items?: Array<{ assetId?: string; objectUrl?: string; error?: string }>;
+    };
 
-  const raw = snakeToCamelDeep(await response.json()) as {
-    items?: Array<{ assetId?: string; objectUrl?: string; error?: string }>;
-  };
-
-  const out = new Map<string, string>();
-  for (const item of raw.items ?? []) {
-    const assetId = item.assetId?.trim();
-    const url = item.objectUrl?.trim();
-    if (assetId && url && !item.error) out.set(assetId, url);
+    const out = new Map<string, string>();
+    for (const item of raw.items ?? []) {
+      const assetId = item.assetId?.trim();
+      const url = item.objectUrl?.trim();
+      if (assetId && url && !item.error) out.set(assetId, url);
+    }
+    return out;
+  } catch {
+    return new Map();
   }
-  return out;
 }

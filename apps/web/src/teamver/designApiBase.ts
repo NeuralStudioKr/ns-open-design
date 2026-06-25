@@ -103,11 +103,19 @@ export function resolveTeamverMainApiBaseUrl(): string {
   return "http://127.0.0.1:8000";
 }
 
-/** Main FE Drive asset deep link — opens detail modal via `?asset=` (D-6). */
+/** Main BE Drive asset deep link — opens detail modal via `?asset=` (D-6). */
 export function resolveTeamverDriveAssetUrl(assetId: string): string {
   const id = assetId.trim();
   const origin = resolveTeamverMainOrigin().replace(/\/+$/, "");
   return `${origin}/drive?asset=${encodeURIComponent(id)}`;
+}
+
+/** Same-origin BFF base for Drive browse/search (proxies to Main BE via design-api). */
+export function resolveTeamverDriveBffBase(): string {
+  const designBase = resolveTeamverDesignApiBase();
+  if (designBase === "") return "/teamver-bff/drive";
+  if (designBase) return `${designBase.replace(/\/+$/, "")}/api/v1/drive`;
+  return "http://127.0.0.1:16000/api/v1/drive";
 }
 
 /** Cross-origin design-api when same-origin `/teamver-bff` is unavailable (nginx inc 미적용 등). */

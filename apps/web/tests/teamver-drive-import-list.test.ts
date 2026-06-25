@@ -4,7 +4,7 @@ vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/teamver/designApiBase")>();
   return {
     ...actual,
-    resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
+    resolveTeamverDriveBffBase: vi.fn(() => "/teamver-bff/drive"),
   };
 });
 

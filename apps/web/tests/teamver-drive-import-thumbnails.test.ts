@@ -1,36 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/teamver/designApiBase", () => ({
-  resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
+const postTeamverDriveJson = vi.fn();
+
+vi.mock("../src/teamver/driveApi", () => ({
+  postTeamverDriveJson: (...args: unknown[]) => postTeamverDriveJson(...args),
 }));
 
 import { fetchTeamverDriveImportThumbnails } from "../src/teamver/driveImportThumbnails";
 
 describe("fetchTeamverDriveImportThumbnails", () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
+    postTeamverDriveJson.mockReset();
   });
 
   it("requests presigned object URLs for image assets only", async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
-      expect(body.items).toEqual([
-        { asset_id: "AST-IMG", shared_drive_id: null },
-      ]);
-      return Response.json({
-        items: [
-          {
-            asset_id: "AST-IMG",
-            object_url: "https://cdn.example/preview.png",
-          },
-          {
-            asset_id: "AST-DOC",
-            error: "not_image",
-          },
-        ],
-      });
+    postTeamverDriveJson.mockResolvedValue({
+      items: [
+        {
+          assetId: "AST-IMG",
+          objectUrl: "https://cdn.example/preview.png",
+        },
+        {
+          assetId: "AST-DOC",
+          error: "not_image",
+        },
+      ],
     });
-    vi.stubGlobal("fetch", fetchMock);
 
     const urls = await fetchTeamverDriveImportThumbnails({
       workspaceId: "ws-1",
@@ -40,16 +35,19 @@ describe("fetchTeamverDriveImportThumbnails", () => {
       ],
     });
 
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(postTeamverDriveJson).toHaveBeenCalledWith(
+      "/api/v2/asset/object-url/batch",
+      {
+        items: [{ asset_id: "AST-IMG", shared_drive_id: null }],
+      },
+      "ws-1",
+    );
     expect(urls.get("AST-IMG")).toBe("https://cdn.example/preview.png");
     expect(urls.has("AST-DOC")).toBe(false);
   });
 
   it("returns empty map when batch request fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("forbidden", { status: 403 })),
-    );
+    postTeamverDriveJson.mockRejectedValue(new Error("teamver_drive_fetch_failed:403"));
 
     const urls = await fetchTeamverDriveImportThumbnails({
       workspaceId: "ws-1",

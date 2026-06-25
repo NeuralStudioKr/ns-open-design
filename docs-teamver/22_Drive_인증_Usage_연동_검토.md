@@ -28,7 +28,7 @@
 | Publish target picker | `TeamverDrivePickerModal`, `drivePublishTargets.ts` | `folderId` + `sharedDriveId` | folder search/drill-down ✅ |
 | Workspace switch → target reset | `subscribeTeamverWorkspaceChanged` | — | loop 335–340, 회귀 테스트 |
 | Import composer 첨부 | `TeamverDriveImportModal`, `importDriveAssets.ts` | `POST /import-drive` | batch 12, policy reject |
-| Drive API (Main BE) | `driveApi.ts` | Main BE `/api/drive/*` | cookie + `X-Workspace-Id`, 401 refresh |
+| Drive API (browse/search/thumbnail) | `driveApi.ts` → `/teamver-bff/drive/*` BFF proxy | design-api → Main BE `/api/drive/*` |
 | Publish history chip | `latestPublishSummary.ts`, publish chip | `design_outputs` | workspace-scoped cache |
 
 **근거 테스트:** `teamver-publish-drive*.test.ts`, `teamver-drive-*` (import/list/api/thumbnails), `teamver-publish-drive-menu-item.test.tsx` (workspace switch pin).

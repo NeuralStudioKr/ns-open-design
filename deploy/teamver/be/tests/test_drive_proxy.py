@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import os
+from typing import Any
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+
+from app.errors import BadGatewayError, ForbiddenError
+from app.services import drive_proxy
+
+
+def test_normalize_and_validate_drive_path_allows_list_and_search() -> None:
+    assert drive_proxy.normalize_and_validate_drive_path("/api/drive/list") == "api/drive/list"
+    assert (
+        drive_proxy.normalize_and_validate_drive_path("api/v2/drive/home/search")
+        == "api/v2/drive/home/search"
+    )
+    assert (
+        drive_proxy.normalize_and_validate_drive_path("api/v2/shared-drive/sd-1/folder-tree")
+        == "api/v2/shared-drive/sd-1/folder-tree"
+    )
+
+
+def test_normalize_and_validate_drive_path_blocks_traversal() -> None:
+    with pytest.raises(ForbiddenError, match="drive_path_not_allowed"):
+        drive_proxy.normalize_and_validate_drive_path("api/../internal")
+
+
+def test_normalize_and_validate_drive_path_blocks_unknown_routes() -> None:
+    with pytest.raises(ForbiddenError, match="drive_path_not_allowed"):
+        drive_proxy.normalize_and_validate_drive_path("api/v1/users/me")
+
+
+@pytest.mark.asyncio
+async def test_forward_drive_request_passes_token_and_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class _Response:
+        status_code = 200
+        content = b'{"ok":true}'
+        headers = httpx.Headers({"content-type": "application/json"})
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def request(self, method: str, url: str, **kwargs: Any) -> _Response:
+            captured["method"] = method
+            captured["url"] = url
+            captured["headers"] = kwargs.get("headers")
+            return _Response()
+
+    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", lambda **_: _Client())
+
+    status, _headers, content = await drive_proxy.forward_drive_request(
+        method="GET",
+        path="api/drive/list",
+        query="limit=10",
+        body=None,
+        content_type=None,
+        access_token="jwt-token",
+        workspace_id="ws-1",
+    )
+
+    assert status == 200
+    assert content == b'{"ok":true}'
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/api/drive/list?limit=10")
+    assert captured["headers"]["Authorization"] == "Bearer jwt-token"
+    assert captured["headers"]["X-Workspace-Id"] == "ws-1"
+
+
+def test_pass_through_headers_strips_set_cookie() -> None:
+    headers = httpx.Headers(
+        {
+            "content-type": "application/json",
+            "set-cookie": "teamver_session=abc; Path=/; HttpOnly",
+        }
+    )
+    passed = drive_proxy._pass_through_headers(headers)
+    assert passed == {"content-type": "application/json"}
+
+
+@pytest.mark.asyncio
+async def test_forward_drive_request_maps_network_error_to_bad_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def request(self, *_args: object, **_kwargs: object) -> None:
+            raise httpx.ConnectError("main be down")
+
+    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", lambda **_: _Client())
+
+    with pytest.raises(BadGatewayError, match="teamver_drive_unreachable"):
+        await drive_proxy.forward_drive_request(
+            method="GET",
+            path="api/drive/list",
+            query="",
+            body=None,
+            content_type=None,
+            access_token="jwt-token",
+            workspace_id="ws-1",
+        )

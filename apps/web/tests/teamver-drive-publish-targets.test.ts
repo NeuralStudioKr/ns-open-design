@@ -4,7 +4,7 @@ vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/teamver/designApiBase")>();
   return {
     ...actual,
-    resolveTeamverMainApiBaseUrl: vi.fn(() => "https://stg-api.teamver.com"),
+    resolveTeamverDriveBffBase: vi.fn(() => "/teamver-bff/drive"),
   };
 });
 
@@ -66,12 +66,13 @@ describe("listTeamverDrivePublishTargets", () => {
 
     const targets = await listTeamverDrivePublishTargets("ws-1");
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://stg-api.teamver.com/api/drive/folder?shallow_tree=true",
-      expect.objectContaining({
-        credentials: "include",
-        headers: expect.objectContaining({ "X-Workspace-Id": "ws-1" }),
-      }),
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/teamver-bff/drive/api/drive/folder?shallow_tree=true",
+    );
+    const firstHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(firstHeaders.get("X-Workspace-Id")).toBe("ws-1");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ credentials: "include", method: "GET" }),
     );
     expect(targets).toEqual([
       expect.objectContaining({

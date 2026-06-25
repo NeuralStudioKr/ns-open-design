@@ -14,6 +14,7 @@ from .db.schema_bootstrap import ensure_postgres_schema
 from .exception_handlers import register_exception_handlers
 from .routers.auth import router as auth_router
 from .routers.bootstrap import router as bootstrap_router
+from .routers.drive import router as drive_router
 from .routers.health import router as health_router
 from .routers.projects import router as projects_router
 from .routers.token_usage import router as token_usage_router
@@ -54,6 +55,7 @@ app.add_middleware(
 app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(auth_router)
 app.include_router(bootstrap_router)
+app.include_router(drive_router)
 app.include_router(runtime_config_router)
 app.include_router(projects_router)
 app.include_router(usage_report_router)

@@ -1,27 +1,60 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
-import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
+import { resolveTeamverDriveBffBase } from "./designApiBase";
 import { refreshDesignAuthCookie } from "./designBffClient";
 
 export function teamverDriveApiUrl(path: string): string {
-  return `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}${path}`;
+  const suffix = path.replace(/^\//, "");
+  return `${resolveTeamverDriveBffBase().replace(/\/+$/, "")}/${suffix}`;
 }
 
-export async function getTeamverDriveJson(path: string, workspaceId?: string | null): Promise<unknown> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+async function teamverDriveFetch(
+  path: string,
+  init: RequestInit,
+  workspaceId?: string | null,
+): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
   const trimmedWorkspaceId = workspaceId?.trim();
-  if (trimmedWorkspaceId) headers["X-Workspace-Id"] = trimmedWorkspaceId;
+  if (trimmedWorkspaceId) headers.set("X-Workspace-Id", trimmedWorkspaceId);
+
   const doFetch = () =>
     fetch(teamverDriveApiUrl(path), {
+      ...init,
       credentials: "include",
       headers,
     });
+
   let response = await doFetch();
-  // Main BE Drive cookie can lapse independently of BFF session probe — retry
-  // once with a BFF refresh before surfacing 401/403 to publish/import UIs.
   if (response.status === 401 || response.status === 403) {
     const refreshed = await refreshDesignAuthCookie();
     if (refreshed) response = await doFetch();
   }
+  return response;
+}
+
+export async function getTeamverDriveJson(path: string, workspaceId?: string | null): Promise<unknown> {
+  const response = await teamverDriveFetch(path, { method: "GET" }, workspaceId);
+  if (!response.ok) {
+    throw new Error(`teamver_drive_fetch_failed:${response.status}`);
+  }
+  const raw = await response.json();
+  return snakeToCamelDeep(raw);
+}
+
+export async function postTeamverDriveJson(
+  path: string,
+  body: unknown,
+  workspaceId?: string | null,
+): Promise<unknown> {
+  const response = await teamverDriveFetch(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    workspaceId,
+  );
   if (!response.ok) {
     throw new Error(`teamver_drive_fetch_failed:${response.status}`);
   }
