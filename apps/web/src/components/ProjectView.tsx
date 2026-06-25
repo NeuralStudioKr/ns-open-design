@@ -8,6 +8,7 @@ import {
   useLayoutEffect,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { AnimatePresence } from 'motion/react';
@@ -379,6 +380,24 @@ const DESIGN_SYSTEM_AUDIT_AUTO_REPAIR_ATTEMPTS = 2;
 // Survives ProjectView route unmounts so returning to a conversation does not
 // attach a second SSE consumer while the original background consumer lives.
 const locallyConsumedDaemonRunIds = new Set<string>();
+
+function releaseLocallyConsumedDaemonRun(runId: string | null | undefined): void {
+  const id = runId?.trim();
+  if (!id) return;
+  locallyConsumedDaemonRunIds.delete(id);
+}
+
+/** Detach the primary stream SSE without POST /cancel — daemon run keeps going. */
+function detachPrimaryRunStreamWithoutCancel(
+  abortRef: MutableRefObject<AbortController | null>,
+  cancelRef: MutableRefObject<AbortController | null>,
+  ownedRunId: string | null,
+): void {
+  abortRef.current?.abort();
+  abortRef.current = null;
+  cancelRef.current = null;
+  releaseLocallyConsumedDaemonRun(ownedRunId);
+}
 // Trailing-debounce window for the canonical (daemon + SQLite) tab-state write.
 // Embedded-browser navigation bursts settle well within this; the local cache
 // is written immediately so nothing is lost if the daemon write is coalesced.
@@ -1121,6 +1140,7 @@ export function ProjectView({
   >(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelRef = useRef<AbortController | null>(null);
+  const primaryOwnedDaemonRunIdRef = useRef<string | null>(null);
   // Runs explicitly superseded by a "send now" interrupt. Their abort
   // controller is recorded here synchronously — before handleStop() clears the
   // active refs — so the run's late terminal callbacks (which the daemon still
@@ -1553,16 +1573,15 @@ export function ProjectView({
 
   useEffect(() => {
     return () => {
-      // Initial daemon runs outlive this route. Keep their consumer alive so
-      // text and produced files are persisted while the user works elsewhere;
-      // explicit Stop still owns cancelRef and the daemon cancel endpoint.
+      // Daemon runs outlive this route, but the browser-side SSE consumer must
+      // detach on unmount so a remount can reattach and restore Stop/streaming
+      // UI. Explicit Stop still owns cancelRef and POST /api/runs/:id/cancel.
       sendTextBufferRef.current = null;
-      // Unmounts / conversation switches should only detach local stream
-      // consumers. Aborting the daemon cancel controllers here turns routine
-      // cleanup into an explicit POST /api/runs/:id/cancel, which can mark a
-      // live run canceled even when the user never clicked Stop.
-      abortRef.current = null;
-      cancelRef.current = null;
+      detachPrimaryRunStreamWithoutCancel(
+        abortRef,
+        cancelRef,
+        primaryOwnedDaemonRunIdRef.current,
+      );
       for (const textBuffer of reattachTextBuffersRef.current) textBuffer.cancel();
       reattachTextBuffersRef.current.clear();
       for (const controller of reattachControllersRef.current.values()) {
@@ -1597,8 +1616,11 @@ export function ProjectView({
   const detachLocalRunStreamConsumers = useCallback(() => {
     cancelSendTextBuffer(false);
     cancelReattachTextBuffers(false);
-    abortRef.current = null;
-    cancelRef.current = null;
+    detachPrimaryRunStreamWithoutCancel(
+      abortRef,
+      cancelRef,
+      primaryOwnedDaemonRunIdRef.current,
+    );
     for (const controller of reattachControllersRef.current.values()) {
       controller.abort();
     }
@@ -3650,7 +3672,10 @@ export function ProjectView({
       let ownedDaemonRunId: string | null = null;
       const releaseOwnedDaemonRun = () => {
         if (!ownedDaemonRunId) return;
-        locallyConsumedDaemonRunIds.delete(ownedDaemonRunId);
+        releaseLocallyConsumedDaemonRun(ownedDaemonRunId);
+        if (primaryOwnedDaemonRunIdRef.current === ownedDaemonRunId) {
+          primaryOwnedDaemonRunIdRef.current = null;
+        }
         ownedDaemonRunId = null;
       };
       abortRef.current = controller;
@@ -3886,6 +3911,7 @@ export function ProjectView({
           ...(runAnalyticsHints ? { analyticsHints: runAnalyticsHints } : {}),
           onRunCreated: (runId) => {
             ownedDaemonRunId = runId;
+            primaryOwnedDaemonRunIdRef.current = runId;
             locallyConsumedDaemonRunIds.add(runId);
             const pinnedAssistant = {
               ...latestAssistantMsg,
