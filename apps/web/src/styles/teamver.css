@@ -330,6 +330,16 @@
   justify-content: flex-end;
 }
 
+/* Teamver embed — left nav rail stays docked; no Manus collapse/topbar toggle. */
+.entry-shell--teamver-embed.entry-shell--no-header .entry {
+  grid-template-columns: var(--entry-rail-width, 56px) minmax(0, 1fr);
+}
+
+.entry-shell--teamver-embed .entry-rail-toggle,
+.entry-shell--teamver-embed .entry-nav-rail__collapse {
+  display: none;
+}
+
 /* Teamver embed — hide Figma-style workspace tab strip; navigation via rail/back/URL. */
 .workspace-shell.workspace-shell--no-tabs {
   grid-template-rows: minmax(0, 1fr);

@@ -121,6 +121,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
               />
             )}
           </button>
+          {!teamverEmbed ? (
           <button
             type="button"
             className="entry-nav-rail__collapse"
@@ -131,6 +132,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
           >
             <Icon name="panel-left" size={20} />
           </button>
+          ) : null}
         </div>
         <div className="entry-nav-rail__logo-divider" role="separator" aria-hidden="true" />
         <NavButton

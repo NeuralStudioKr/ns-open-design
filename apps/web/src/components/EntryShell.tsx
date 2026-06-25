@@ -483,10 +483,13 @@ export function EntryShell({
   // Its open/collapsed state is persisted (localStorage) so it survives a
   // home -> project -> home round trip (EntryShell unmounts on the project
   // route) and a reload, instead of snapping back to collapsed.
-  const [railOpen, setRailOpen] = useState<boolean>(readStoredRailOpen);
+  const [railOpen, setRailOpen] = useState<boolean>(() =>
+    teamverEmbed ? true : readStoredRailOpen(),
+  );
   useEffect(() => {
     writeStoredRailOpen(railOpen);
   }, [railOpen]);
+  const effectiveRailOpen = teamverEmbed || railOpen;
   const [localProviderModelsCache, setLocalProviderModelsCache] =
     useState<ProviderModelsCache>({});
   const hasSharedProviderModelsCache =
@@ -745,18 +748,19 @@ export function EntryShell({
   );
 
   return (
-    <div className="entry-shell entry-shell--no-header">
-      <div className={`entry${railOpen ? ' entry--rail-open' : ''}`}>
+    <div className={`entry-shell entry-shell--no-header${teamverEmbed ? ' entry-shell--teamver-embed' : ''}`}>
+      <div className={`entry${effectiveRailOpen ? ' entry--rail-open' : ''}`}>
         <EntryNavRail
           view={view}
           onViewChange={changeView}
           onNewProject={() => openNewProject()}
           newProjectDisabled={teamverEmbed && embedSubmitDisabled}
-          open={railOpen}
+          open={effectiveRailOpen}
           onClose={() => setRailOpen(false)}
         />
         <main className="entry-main entry-main--scroll" ref={entryMainScrollRef}>
           <div className="entry-main__topbar">
+            {!teamverEmbed ? (
             <button
               type="button"
               className="entry-rail-toggle"
@@ -767,6 +771,7 @@ export function EntryShell({
             >
               <Icon name="panel-left" size={20} />
             </button>
+            ) : null}
             <div
               className={`entry-main__topbar-chips${
                 teamverEmbed ? ' entry-main__topbar-chips--teamver-embed' : ' entry-main__topbar-chips--icon-only'
