@@ -28,8 +28,11 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
   // contact (`error: "session_unreachable"`) — surface a retry chip without
   // collapsing the bar so workspace switch + account links stay reachable.
   const sessionUnreachable = embed.error === "session_unreachable";
+  // Explicit user retry — clear sticky 400/401 refresh-decline markers so a
+  // genuinely transient failure can recover. Auto-refresh on visibility/focus
+  // intentionally preserves the decline guard (see useTeamverEmbed).
   const handleRetrySession = () => {
-    void embed.refresh({ force: true });
+    void embed.refresh({ force: true, resetRefreshState: true });
   };
 
   if (embed.authenticated) {

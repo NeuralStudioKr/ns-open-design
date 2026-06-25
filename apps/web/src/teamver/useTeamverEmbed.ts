@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
-import { fetchDesignAuthSession, getDesignBffClient, prepareDesignAuthSessionReload, type DesignAuthSessionUser } from "./designBffClient";
+import {
+  fetchDesignAuthSession,
+  getDesignBffClient,
+  invalidateDesignAuthSessionCache,
+  prepareDesignAuthSessionReload,
+  resetDesignAuthRefreshState,
+  type DesignAuthSessionUser,
+} from "./designBffClient";
 import { isTeamverEmbedMode, redirectToTeamverLogin } from "./designApiBase";
+import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import {
@@ -40,7 +48,14 @@ export type TeamverEmbedState = {
   workspaces: WorkspaceListItem[];
   error: string | null;
   switchWorkspace: (workspaceId: string) => Promise<void>;
-  refresh: (options?: { force?: boolean }) => Promise<void>;
+  /**
+   * Re-probe `/teamver-bff/auth/session`.
+   * - `force` — bypass the 5s session cache (used by visibility/focus auto-refresh).
+   * - `resetRefreshState` — also clear sticky 400/401 decline markers so a previously
+   *   declined `/teamver-bff/auth/refresh` is retried. Reserve for explicit user
+   *   retry (Banner button) or events that prove auth state changed.
+   */
+  refresh: (options?: { force?: boolean; resetRefreshState?: boolean }) => Promise<void>;
 };
 
 const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
@@ -86,13 +101,14 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const refresh = useCallback(async (options?: { force?: boolean }) => {
+  const refresh = useCallback(async (options?: { force?: boolean; resetRefreshState?: boolean }) => {
     if (!enabled || !isTeamverEmbedMode()) {
       setState(INITIAL);
       return;
     }
 
     const force = options?.force ?? false;
+    const resetRefreshState = options?.resetRefreshState ?? false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
       // App boot runs the first session probe + registry sync — avoid racing refresh/clear.
@@ -100,7 +116,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         await waitForTeamverEmbedBoot();
       }
 
-      const session = await fetchDesignAuthSession({ force });
+      const session = await fetchDesignAuthSession({ force, resetRefreshState });
       if (!session) {
         if (hadEmbedSession() || stateRef.current.authenticated) {
           setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
@@ -209,10 +225,30 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     void refresh();
   }, [refresh]);
 
+  // Track the cookie-hint state at the time of the last visibility-change
+  // refresh so we only reset the sticky refresh-decline markers when an auth
+  // cookie newly *appeared* (likely sign-in in another tab) — not on every
+  // focus, which previously spammed `/teamver-bff/auth/refresh` with 400 on
+  // each tab switch for accounts whose JWT lookup fails server-side.
+  const lastCookieHintRef = useRef<boolean>(
+    isTeamverEmbedMode()
+      ? hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()
+      : false,
+  );
+
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
     const onReturn = () => {
-      prepareDesignAuthSessionReload();
+      const cookieHintNow =
+        hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated();
+      const cookieHintAppeared = cookieHintNow && !lastCookieHintRef.current;
+      lastCookieHintRef.current = cookieHintNow;
+      if (cookieHintAppeared) {
+        // Cookie likely refreshed elsewhere — clear sticky 400/401 decline so
+        // we re-probe + retry refresh once on this focus.
+        resetDesignAuthRefreshState();
+      }
+      invalidateDesignAuthSessionCache();
       scheduleFocusSessionRefresh();
     };
     window.addEventListener("pageshow", onReturn);

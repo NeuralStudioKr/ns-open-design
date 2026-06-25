@@ -156,8 +156,20 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
 /** Sign-in / post-login return — bust caches so the next probe is not stale. */
 export function prepareDesignAuthSessionReload(): void {
   prepareTeamverLoginNavigation();
-  resetDesignAuthRefreshDeclined();
+  resetDesignAuthRefreshState();
   invalidateDesignAuthSessionCache();
+}
+
+/**
+ * Sticky 400/401 guard reset — only for events that legitimately indicate auth
+ * state may have changed (post sign-in return, explicit user retry, or a fresh
+ * cookie hint appearing). Visibility/focus alone must NOT call this, otherwise
+ * `/teamver-bff/auth/refresh` keeps spamming 400 on every tab switch when the
+ * underlying account is missing/deleted.
+ */
+export function resetDesignAuthRefreshState(): void {
+  authRefreshDeclinedForSession = false;
+  unauthenticatedRefreshAttempted = false;
 }
 
 function normalizeDesignAuthSession(raw: unknown): DesignAuthSession | null {
@@ -202,6 +214,14 @@ async function fetchDesignAuthSessionCrossOriginFallback(): Promise<DesignAuthSe
 export type FetchDesignAuthSessionOptions = {
   /** Bypass short-lived cache — tab focus / explicit re-auth. */
   force?: boolean;
+  /**
+   * Clear sticky refresh-decline markers before probing. Use only for events
+   * that justify retrying a previously-declined refresh (explicit user retry,
+   * post sign-in return). Auto-refresh on visibility/focus must leave this
+   * unset, otherwise a 400 from `/teamver-bff/auth/refresh` (e.g. deleted
+   * account) repeats on every tab switch.
+   */
+  resetRefreshState?: boolean;
 };
 
 let inFlightSession: Promise<DesignAuthSession | null> | null = null;
@@ -214,10 +234,15 @@ export function resetDesignAuthSessionCacheForTests(): void {
   cachedSession = null;
 }
 
+/**
+ * Clear the short-lived `/auth/session` cache so the next probe re-hits the
+ * BFF. Decline markers (`authRefreshDeclinedForSession`,
+ * `unauthenticatedRefreshAttempted`) are **intentionally preserved** — see
+ * `resetDesignAuthRefreshState` for the explicit reset path used by sign-in
+ * return, user retry button, and "new cookie hint detected".
+ */
 export function invalidateDesignAuthSessionCache(): void {
   cachedSession = null;
-  resetDesignAuthRefreshDeclined();
-  unauthenticatedRefreshAttempted = false;
 }
 
 async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
@@ -267,6 +292,10 @@ export async function fetchDesignAuthSession(
   options?: FetchDesignAuthSessionOptions,
 ): Promise<DesignAuthSession | null> {
   const force = options?.force ?? false;
+
+  if (options?.resetRefreshState) {
+    resetDesignAuthRefreshState();
+  }
 
   if (force) {
     invalidateDesignAuthSessionCache();

@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTeamverEmbed } from "../src/teamver/useTeamverEmbed";
 import { TEAMVER_WORKSPACE_CHANGED_EVENT } from "../src/teamver/teamverWorkspaceEvents";
 import * as designApiBase from "../src/teamver/designApiBase";
 import * as designBffClient from "../src/teamver/designBffClient";
 import * as teamverEmbedSession from "../src/teamver/teamverEmbedSession";
+import * as teamverAuthCookieHints from "../src/teamver/teamverAuthCookieHints";
 import { NetworkError } from "@teamver/app-sdk";
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -31,13 +32,30 @@ vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
   getDesignBffClient: vi.fn(),
   prepareDesignAuthSessionReload: vi.fn(),
+  invalidateDesignAuthSessionCache: vi.fn(),
+  resetDesignAuthRefreshState: vi.fn(),
+}));
+
+vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
+  hasProbableTeamverAuthCookie: vi.fn(() => false),
 }));
 
 describe("useTeamverEmbed", () => {
-  afterEach(() => {
+  beforeEach(() => {
+    cleanup();
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
     vi.mocked(designBffClient.fetchDesignAuthSession).mockReset();
     vi.mocked(designBffClient.getDesignBffClient).mockReset();
+    vi.mocked(designBffClient.invalidateDesignAuthSessionCache).mockClear();
+    vi.mocked(designBffClient.resetDesignAuthRefreshState).mockClear();
+    vi.mocked(designBffClient.prepareDesignAuthSessionReload).mockClear();
+    vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
+    vi.unstubAllGlobals();
+  });
+
+  afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -168,5 +186,70 @@ describe("useTeamverEmbed", () => {
       expect(designApiBase.redirectToTeamverLogin).toHaveBeenCalledTimes(1);
     });
     expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalledTimes(1);
+  });
+
+  it("visibility/focus refresh busts session cache without resetting sticky refresh-decline", async () => {
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledTimes(1);
+    });
+
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockClear();
+    vi.mocked(designBffClient.invalidateDesignAuthSessionCache).mockClear();
+    vi.mocked(designBffClient.resetDesignAuthRefreshState).mockClear();
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(designBffClient.invalidateDesignAuthSessionCache).toHaveBeenCalledTimes(1);
+    expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
+    expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
+      force: true,
+      resetRefreshState: false,
+    });
+    expect(designBffClient.fetchDesignAuthSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ resetRefreshState: true }),
+    );
+  });
+
+  it("resets sticky refresh-decline when an auth cookie hint newly appears on focus", async () => {
+    vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledTimes(1);
+    });
+
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockClear();
+    vi.mocked(designBffClient.resetDesignAuthRefreshState).mockClear();
+    vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(true);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(designBffClient.resetDesignAuthRefreshState).toHaveBeenCalledTimes(1);
+    expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
+      force: true,
+      resetRefreshState: false,
+    });
   });
 });

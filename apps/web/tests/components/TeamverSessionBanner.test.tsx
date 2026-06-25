@@ -127,7 +127,13 @@ describe('TeamverSessionBanner', () => {
     const retry = screen.getByTestId('teamver-embed-session-retry');
     expect(retry.textContent).toContain('세션 다시 확인');
     fireEvent.click(retry);
-    expect(embedState.refresh).toHaveBeenCalledWith({ force: true });
+    // Explicit user retry clears the sticky refresh-decline guard so a
+    // previously-declined `/teamver-bff/auth/refresh` (e.g. 400 from
+    // `user_not_found`) gets one fresh attempt.
+    expect(embedState.refresh).toHaveBeenCalledWith({
+      force: true,
+      resetRefreshState: true,
+    });
   });
 
   it('renders a retry button alongside sign-in when unauthenticated due to session_unreachable', () => {
@@ -140,6 +146,9 @@ describe('TeamverSessionBanner', () => {
     const retry = screen.getByTestId('teamver-embed-session-retry');
     expect(retry.textContent).toContain('다시 시도');
     fireEvent.click(retry);
-    expect(embedState.refresh).toHaveBeenCalledWith({ force: true });
+    expect(embedState.refresh).toHaveBeenCalledWith({
+      force: true,
+      resetRefreshState: true,
+    });
   });
 });

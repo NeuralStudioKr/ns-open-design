@@ -244,4 +244,83 @@ describe("fetchDesignAuthSession", () => {
     );
     expect(session?.authenticated).toBe(false);
   });
+
+  // loop 380 — visibility-change auto-refresh must NOT keep retrying a
+  // declined `/teamver-bff/auth/refresh`. Previously
+  // `invalidateDesignAuthSessionCache()` also reset the sticky decline marker,
+  // so every tab focus re-fired the 400. Now `force: true` only busts the
+  // session cache; the decline guard stays in place until an explicit
+  // `resetRefreshState: true` (banner retry) or new cookie hint appears.
+  it("keeps the refresh-decline marker sticky across force:true session probes", async () => {
+    document.cookie = "teamver_access_token=stale";
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+
+    await fetchDesignAuthSession();
+    await fetchDesignAuthSession({ force: true });
+    await fetchDesignAuthSession({ force: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resetRefreshState: true on an explicit retry sends a fresh refresh attempt", async () => {
+    document.cookie = "teamver_access_token=stale";
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+
+    await fetchDesignAuthSession();
+    await fetchDesignAuthSession({ force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Banner "다시 시도" path — explicit decline reset.
+    await fetchDesignAuthSession({ force: true, resetRefreshState: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidateDesignAuthSessionCache preserves the refresh-decline guard", async () => {
+    await forceBareAuthCookieHints();
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession, invalidateDesignAuthSessionCache } = await import(
+      "../src/teamver/designBffClient"
+    );
+
+    await fetchDesignAuthSession();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    invalidateDesignAuthSessionCache();
+    await fetchDesignAuthSession();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resetDesignAuthRefreshState releases the decline guard on next probe", async () => {
+    await forceBareAuthCookieHints();
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession, resetDesignAuthRefreshState } = await import(
+      "../src/teamver/designBffClient"
+    );
+
+    await fetchDesignAuthSession();
+    await fetchDesignAuthSession();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resetDesignAuthRefreshState();
+    await fetchDesignAuthSession({ force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
