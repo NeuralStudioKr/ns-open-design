@@ -13,4 +13,4 @@ dbs:
         bucket: ${LITESTREAM_BUCKET}
         path: litestream/app.sqlite
         region: ${LITESTREAM_REGION:-ap-northeast-2}
-        sync-interval: 1s
+        sync-interval: ${LITESTREAM_SYNC_INTERVAL:-3s}

@@ -34,7 +34,7 @@ write_env "$WORK/.env.staging" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
 cd "$WORK"
-out_local="$(CHECK_CONTAINER_ENV=0 \
+out_local="$(CHECK_CONTAINER_ENV=0 CHECK_LITESTREAM_REPLICA=0 \
   DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
   DAEMON_LOCAL_URL=http://127.0.0.1:1 \
   bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
@@ -44,7 +44,7 @@ if ! grep -q '✗ .env.staging OD_PROJECT_STORAGE=local' <<< "$out_local"; then
   exit 1
 fi
 # Should also exit non-zero with that case.
-if CHECK_CONTAINER_ENV=0 \
+if CHECK_CONTAINER_ENV=0 CHECK_LITESTREAM_REPLICA=0 \
    DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
    DAEMON_LOCAL_URL=http://127.0.0.1:1 \
    bash scripts/check_storage_isolation.sh --staging >/dev/null 2>&1; then
@@ -62,7 +62,7 @@ write_env "$WORK/.env.staging" \
   "LITESTREAM_BUCKET=teamver-design-staging-data" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
-out_s3="$(CHECK_CONTAINER_ENV=0 \
+out_s3="$(CHECK_CONTAINER_ENV=0 CHECK_LITESTREAM_REPLICA=0 \
   DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
   DAEMON_LOCAL_URL=http://127.0.0.1:1 \
   bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
@@ -91,7 +91,7 @@ write_env "$WORK/.env.staging" \
   "OD_S3_ALLOW_SCRATCH_FALLBACK=1" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
-out_fallback="$(CHECK_CONTAINER_ENV=0 \
+out_fallback="$(CHECK_CONTAINER_ENV=0 CHECK_LITESTREAM_REPLICA=0 \
   DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
   DAEMON_LOCAL_URL=http://127.0.0.1:1 \
   bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
@@ -109,7 +109,7 @@ write_env "$WORK/.env.staging" \
   "LITESTREAM_BUCKET=teamver-design-staging-data" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
-out_prefix="$(CHECK_CONTAINER_ENV=0 \
+out_prefix="$(CHECK_CONTAINER_ENV=0 CHECK_LITESTREAM_REPLICA=0 \
   DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
   DAEMON_LOCAL_URL=http://127.0.0.1:1 \
   bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"
@@ -127,7 +127,7 @@ write_env "$WORK/.env.staging" \
   "LITESTREAM_BUCKET=wrong-bucket" \
   "TEAMVER_API_BASE_URL=https://stg-api.teamver.com"
 
-out_litestream="$(CHECK_CONTAINER_ENV=0 \
+out_litestream="$(CHECK_CONTAINER_ENV=0 CHECK_LITESTREAM_REPLICA=0 \
   DESIGN_API_LOCAL_URL=http://127.0.0.1:1 \
   DAEMON_LOCAL_URL=http://127.0.0.1:1 \
   bash scripts/check_storage_isolation.sh --staging 2>&1 || true)"

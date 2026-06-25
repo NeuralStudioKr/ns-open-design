@@ -8,6 +8,7 @@
 #   4) daemon /api/health/storage 가 mode=s3 + ok=true 인가
 #   5) Drive publish 의존성 (Main BE drive credentials) 이 design-api 에 wired 됐는가
 #   6) litestream sidecar LITESTREAM_BUCKET 이 OD_S3_BUCKET 과 일치하는가
+#   7) litestream running + S3 replica 객체 (verify_litestream_replica.sh)
 #
 # 실패 시 exit 1. validate_deploy_env.sh / smoke_design.sh 둘이 다루지 못하는
 # "compose up 이후 실제 컨테이너 ENV·헬스" 까지 묶어 한 화면에 표시한다.
@@ -42,6 +43,8 @@ ENV:
   DAEMON_LOCAL_URL       daemon loopback     (default http://127.0.0.1:7456)
   OD_API_TOKEN           daemon bearer token (default: parsed from .env)
   CHECK_CONTAINER_ENV    1 일 때 docker exec 으로 컨테이너 ENV 직접 검사 (default 1)
+  CHECK_LITESTREAM_REPLICA 1 일 때 §7 Litestream S3 replica probe (default 1, staging/prod)
+  CHECK_LITESTREAM_S3_PROBE 1 일 때 §7 에서 aws s3 ls (default 1; EC2 IAM 필요)
 EOF
 }
 
@@ -177,7 +180,17 @@ container_litestream_bucket_check() {
     return
   fi
   if ! docker inspect "$LITESTREAM_CONTAINER" >/dev/null 2>&1; then
-    skip "litestream container '$LITESTREAM_CONTAINER' not running"
+    if [[ "$ENV_LABEL" == "staging" || "$ENV_LABEL" == "production" ]]; then
+      nope "litestream container '$LITESTREAM_CONTAINER' not running (deploy.sh hosted gate)"
+    else
+      skip "litestream container '$LITESTREAM_CONTAINER' not running"
+    fi
+    return
+  fi
+  local state
+  state="$(docker inspect -f '{{.State.Status}}' "$LITESTREAM_CONTAINER" 2>/dev/null || echo unknown)"
+  if [[ "$state" != "running" ]]; then
+    nope "litestream container state=$state (expected running)"
     return
   fi
   local bucket
@@ -192,6 +205,11 @@ container_litestream_bucket_check() {
     nope "litestream container LITESTREAM_BUCKET=$bucket != OD_S3_BUCKET=${OD_S3_BUCKET}"
   else
     ok "litestream container LITESTREAM_BUCKET=$bucket"
+  fi
+  local sync_iv
+  sync_iv="$(docker exec "$LITESTREAM_CONTAINER" sh -lc 'printf "%s" "${LITESTREAM_SYNC_INTERVAL:-}"' 2>/dev/null || echo "")"
+  if [[ -n "$sync_iv" ]]; then
+    ok "litestream container LITESTREAM_SYNC_INTERVAL=$sync_iv"
   fi
 }
 
@@ -275,6 +293,19 @@ if command -v docker >/dev/null 2>&1 && docker inspect "$DAEMON_CONTAINER" >/dev
     ok "daemon scratch dir: $scratch_in_compose"
   else
     skip "OD_SCRATCH_DIR unset (default /app/.od/scratch)"
+  fi
+fi
+
+# --- 7) Litestream S3 replica (G2 / P2-1) ---------------------------------
+if [[ "${CHECK_LITESTREAM_REPLICA:-1}" == "1" && ( "$ENV_LABEL" == "staging" || "$ENV_LABEL" == "production" ) ]]; then
+  echo
+  echo "==> Litestream replica (G2)"
+  litestream_probe_env=()
+  if [[ "${CHECK_LITESTREAM_S3_PROBE:-1}" != "1" ]]; then
+    litestream_probe_env=(SKIP_S3_PROBE=1)
+  fi
+  if ! env "${litestream_probe_env[@]}" bash "$ROOT/scripts/verify_litestream_replica.sh" "--$ENV_LABEL"; then
+    fail=$((fail + 1))
   fi
 fi
 

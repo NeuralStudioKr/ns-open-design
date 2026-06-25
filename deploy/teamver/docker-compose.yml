@@ -87,14 +87,18 @@ services:
     image: litestream/litestream:0.3.13
     container_name: teamver-design-litestream
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
     command: ["replicate", "-config", "/etc/litestream.yml"]
     environment:
       OD_DATA_DIR: /data
       LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:?Set LITESTREAM_BUCKET (terraform output project_data_bucket)}
       LITESTREAM_REGION: ${LITESTREAM_REGION:-ap-northeast-2}
+      LITESTREAM_SYNC_INTERVAL: ${LITESTREAM_SYNC_INTERVAL:-3s}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
     volumes:
-      - teamver_od_data:/data:ro
+      # RW required — Litestream creates _litestream_seq in app.sqlite (readonly → sync error).
+      - teamver_od_data:/data
       - ./litestream.yml:/etc/litestream.yml:ro
 
   design-db:

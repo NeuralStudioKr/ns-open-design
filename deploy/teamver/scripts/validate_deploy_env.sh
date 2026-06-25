@@ -250,8 +250,15 @@ fi
 if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
   require_nonempty LITESTREAM_BUCKET
   require_nonempty LITESTREAM_REGION
-  if [[ -n "${OD_S3_BUCKET:-}" && "${LITESTREAM_BUCKET:-}" != "${OD_S3_BUCKET}" ]]; then
+  if [[ "${LITESTREAM_BUCKET:-}" != "${OD_S3_BUCKET}" ]]; then
     fail "LITESTREAM_BUCKET=${LITESTREAM_BUCKET:-} — app.sqlite replica는 프로젝트 S3 bucket(OD_S3_BUCKET=${OD_S3_BUCKET})과 동일해야 함"
+  fi
+  if [[ -n "${LITESTREAM_SYNC_INTERVAL:-}" ]]; then
+    if [[ ! "${LITESTREAM_SYNC_INTERVAL}" =~ ^[0-9]+(ms|s|m|h)$ ]]; then
+      fail "LITESTREAM_SYNC_INTERVAL=${LITESTREAM_SYNC_INTERVAL} — 형식 예: 3s, 1s, 500ms"
+    else
+      warn "LITESTREAM_SYNC_INTERVAL=${LITESTREAM_SYNC_INTERVAL} (기본 3s — RPO·부하 튜닝)"
+    fi
   fi
 fi
 

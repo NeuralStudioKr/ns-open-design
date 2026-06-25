@@ -66,6 +66,11 @@ if ! grep -qF 'SERVICES=(open-design-daemon teamver-design-api litestream)' "$DE
   exit 1
 fi
 
+if grep -q 'teamver_od_data:/data:ro' "$ROOT/docker-compose.yml"; then
+  echo "❌ litestream od-data volume must be RW (Litestream writes _litestream_seq to app.sqlite)"
+  exit 1
+fi
+
 if grep -E '^[[:space:]]+env_file:' "$ROOT/docker-compose.yml" | grep -qv '^[[:space:]]*#'; then
   echo "❌ base docker-compose.yml must not set teamver-design-api env_file (use override)"
   exit 1

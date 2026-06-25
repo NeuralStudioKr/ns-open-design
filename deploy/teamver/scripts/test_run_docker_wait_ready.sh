@@ -29,6 +29,7 @@ fi
 for needle in \
   'wait_for_litestream_running()' \
   'ps --status running --services litestream' \
+  'attempt to write a readonly database' \
   'wait_for_litestream_running' \
   'wait_for_sidecar_ready()' \
   'BE_PORT=' \

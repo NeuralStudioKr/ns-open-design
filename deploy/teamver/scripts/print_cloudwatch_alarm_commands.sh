@@ -22,6 +22,8 @@
 #     (`od_s3_remote_purged` + `$.failed > 0`)
 #   - log metric filter + alarm: design-api DB connection 5xx
 #     (`teamver_design_api_db_5xx`) — loop 138 RDS SSL incident detection
+#   - (optional) Litestream log group error filter — LITESTREAM_LOG_GROUP 설정 시
+#   - EC2 cron/SSM: `verify_litestream_replica.sh` (S3 replica 객체 증적, P2-1)
 
 set -euo pipefail
 
@@ -32,6 +34,7 @@ DESIGN_API_LOG_GROUP="${DESIGN_API_LOG_GROUP:-}"
 SNS_TOPIC_ARN="${SNS_TOPIC_ARN:-}"
 REGION="${AWS_REGION:-ap-northeast-2}"
 SCRATCH_PATH="${SCRATCH_PATH:-/app/.od/scratch}"
+LITESTREAM_LOG_GROUP="${LITESTREAM_LOG_GROUP:-}"
 APPLY=0
 
 usage() {
@@ -44,11 +47,13 @@ while (( $# )); do
       ENV_NAME="staging"
       LOG_GROUP="${LOG_GROUP:-/teamver/design/staging/open-design-daemon}"
       DESIGN_API_LOG_GROUP="${DESIGN_API_LOG_GROUP:-/teamver/design/staging/design-api}"
+      LITESTREAM_LOG_GROUP="${LITESTREAM_LOG_GROUP:-/teamver/design/staging/litestream}"
       ;;
     --production)
       ENV_NAME="production"
       LOG_GROUP="${LOG_GROUP:-/teamver/design/prod/open-design-daemon}"
       DESIGN_API_LOG_GROUP="${DESIGN_API_LOG_GROUP:-/teamver/design/prod/design-api}"
+      LITESTREAM_LOG_GROUP="${LITESTREAM_LOG_GROUP:-/teamver/design/prod/litestream}"
       ;;
     --apply) APPLY=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -237,6 +242,31 @@ declare -a DESIGN_API_DB_ALARM=(
   --treat-missing-data notBreaching
 )
 
+# Litestream sidecar — docker awslogs driver 로 LITESTREAM_LOG_GROUP 에 수집할 때만 유효.
+declare -a LITESTREAM_ERROR_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "${LITESTREAM_LOG_GROUP:-/teamver/design/${ENV_NAME}/litestream}"
+  --filter-name "teamver-design-${ENV_NAME}-litestream-error"
+  --filter-pattern '?ERROR ?error ?"level=error" ?fatal'
+  --metric-transformations
+    "metricName=TeamverDesignLitestreamError,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a LITESTREAM_ERROR_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-litestream-error"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignLitestreamError"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
 if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SYNC_UP_ALARM+=("${alarm_action_args[@]}")
   USAGE_ALARM+=("${alarm_action_args[@]}")
@@ -245,6 +275,7 @@ if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SCRATCH_BYTES_ALARM+=("${alarm_action_args[@]}")
   REMOTE_PURGE_ALARM+=("${alarm_action_args[@]}")
   DESIGN_API_DB_ALARM+=("${alarm_action_args[@]}")
+  LITESTREAM_ERROR_ALARM+=("${alarm_action_args[@]}")
 fi
 
 emit() {
@@ -281,7 +312,14 @@ run_or_emit "10) Log metric filter: registry delete S3 purge partial failure" "$
 run_or_emit "11) Alarm: S3 remote purge failed (any failed>0 in 5 minutes)" "${REMOTE_PURGE_ALARM[@]}"
 run_or_emit "12) Log metric filter: design-api DB connection 5xx" "${DESIGN_API_DB_FILTER[@]}"
 run_or_emit "13) Alarm: design-api DB 5xx (any in 5 minutes)" "${DESIGN_API_DB_ALARM[@]}"
+run_or_emit "14) Log metric filter: Litestream errors (requires LITESTREAM_LOG_GROUP / awslogs)" "${LITESTREAM_ERROR_FILTER[@]}"
+run_or_emit "15) Alarm: Litestream error log (any in 5 minutes)" "${LITESTREAM_ERROR_ALARM[@]}"
 
 if [[ "$APPLY" -eq 0 ]]; then
+  echo "# Litestream S3 replica (P2-1): EC2에서 주기적으로"
+  echo "#   bash scripts/verify_litestream_replica.sh --${ENV_NAME}"
+  echo "# AWS Console: S3 → teamver-design-${ENV_NAME}-data → prefix litestream/app.sqlite/"
+  echo "# Tip: re-run with --apply to execute (requires aws CLI + IAM)."
+else
   echo "# Tip: re-run with --apply to execute (requires aws CLI + IAM)."
 fi

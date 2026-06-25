@@ -85,7 +85,7 @@ OD_SCRATCH_DISK_METRICS=1
 OD_SCRATCH_DISK_THRESHOLD_MB=2048
 OD_SCRATCH_DISK_METRIC_INTERVAL_MS=300000
 
-# Litestream (optional — docker compose --profile litestream up -d)
+# Litestream (hosted 필수 — deploy.sh가 항상 sidecar 시작)
 # LITESTREAM_BUCKET=${bucket}
 # LITESTREAM_REGION=${region}
 

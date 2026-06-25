@@ -256,6 +256,19 @@ wait_for_litestream_running() {
     )"
     if grep -qx 'litestream' <<< "$running"; then
       echo "✓ Litestream replica process running"
+      sleep 3
+      local litestream_logs
+      litestream_logs="$(docker logs teamver-design-litestream --tail 50 2>&1 || true)"
+      if grep -q 'attempt to write a readonly database' <<< "$litestream_logs"; then
+        echo "❌ Litestream sync blocked: readonly database (compose teamver_od_data:/data must be RW, not :ro)"
+        echo "$litestream_logs" | tail -8
+        return 1
+      fi
+      if echo "$litestream_logs" | tail -8 | grep -q 'AccessDenied'; then
+        echo "❌ Litestream S3 AccessDenied — instance profile litestream/* 또는 IMDS hop limit 확인"
+        echo "$litestream_logs" | tail -8
+        return 1
+      fi
       return 0
     fi
     sleep 2
