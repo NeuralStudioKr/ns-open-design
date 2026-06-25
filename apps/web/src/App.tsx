@@ -2153,7 +2153,7 @@ function AppInner() {
     }
 
     let cancelled = false;
-    let runsPollTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let runsPollTimer: number | null = null;
     let runsPollInFlight = false;
     let runsPollPending = false;
 
