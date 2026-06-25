@@ -5,7 +5,7 @@
 
 **관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** (로컬+S3·Litestream·용량) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** · **[17 Production 출시 순서](./17_Production_출시_작업_순서.md)** · **[18 EC2 IAM·S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** · **[22 Drive·Usage 연동](./22_Drive_인증_Usage_연동_검토.md)**
 
-**갱신:** 2026-06-25 (loop 392~402 코드·ops 동기화)
+**갱신:** 2026-06-25 (loop 392~402 코드·ops · staging EC2 storage/Litestream 실증 반영)
 
 ## 용어 (이 문서에서)
 
@@ -59,7 +59,7 @@
 | 구분 | 상태 | 비고 |
 |------|------|------|
 | **코드 (Phase 0~3)** | 🟡 **대부분 ✅** | materialize·registry·access middleware·smoke/isolation 스크립트 완료 |
-| **EC2 ops 실증** | ☐ **미통과** | `run_post_deploy_track_a.sh --e2e-strict` (`run_staging_track_a_e2e.sh --require-core`) · `checks.od_storage=ok` |
+| **EC2 ops 실증** | 🟡 **부분 통과** | `check_storage_isolation.sh` 21/21 · `od_storage=ok` · Litestream snapshot ✅ · **`--e2e-strict` ☐** |
 | **Production 공개** | ❌ **금지** | G1~G6 EC2 증적 전까지 |
 
 **남은 blocker (ops):** 위 [용어](#용어-이-문서에서) §ops blocker — [§TODO](#todo-후속-작업) · [04 O-2~O-3](./04_구현_우선순위.md#todo-후속-작업)
@@ -104,8 +104,8 @@ SaaS 공개 출시에는 **저장소 내구성 + 격리** 둘 다 필수다.
 
 | # | 기준 | Phase | 상태 (2026-06-25) |
 |---|------|-------|-------------------|
-| G1 | 프로젝트 파일 SSOT → **S3** (IAM instance profile, lifecycle) | 0, 1 | 🟡 코드·terraform ✅ · staging `od_storage=ok` ☐ |
-| G2 | `app.sqlite` **Litestream → S3** (또는 동등 PITR) | 2 | 🟡 config·deploy hard gate ✅ · live replica 증적 ☐ |
+| G1 | 프로젝트 파일 SSOT → **S3** (IAM instance profile, lifecycle) | 0, 1 | 🟡 코드·terraform ✅ · staging **`od_storage=ok` ✅** (2026-06-25 EC2) |
+| G2 | `app.sqlite` **Litestream → S3** (또는 동등 PITR) | 2 | 🟡 live replica **✅** (snapshot/WAL 로그) · **restore drill ☐** |
 | G3 | **design-api `design_projects`** registry + workspace/user 격리 API | 3 | ✅ |
 | G4 | OD web — 프로젝트 list/create → **design-api 경유** | 3 | ✅ 코드 · EC2 `--e2e-strict` ☐ |
 | G5 | daemon — project 접근 시 **design-api access 검증** | 3 | ✅ |
@@ -169,8 +169,8 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P0-1 | S3 bucket `teamver-design-{staging,prod}-data` | `ns-teamver-devops` | ✅ |
 | P0-2 | EC2 IAM instance profile — bucket prefix R/W | `ns-teamver-devops` | ✅ terraform · [18](./18_EC2_IAM_Instance_Profile_S3_설정.md) |
 | P0-3 | S3 lifecycle + **Versioning** (overwrite 복구) | `ns-teamver-devops` | ✅ `scripts/s3_lifecycle_policy.sh` |
-| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose·validate hard-fail ✅ · daemon S3 init fail-fast ✅ · smoke storage hard-fail 기본 on ✅ · **EC2 `checks.od_storage=ok` ☐** |
-| P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 hosted 자동 기동·env/preflight·running hard gate ✅ · **live S3 replica/restore EC2 증적 ☐** |
+| P0-4 | `.env.*` — `OD_PROJECT_STORAGE=s3`, `OD_S3_*` | `deploy/teamver` | 🟡 env·compose·validate hard-fail ✅ · daemon S3 init fail-fast ✅ · smoke storage hard-fail 기본 on ✅ · **EC2 `checks.od_storage=ok` ✅** |
+| P0-5 | Litestream sidecar / config (compose) | `deploy/teamver` | 🟡 hosted 자동 기동·env/preflight·running hard gate ✅ · **live S3 replica ✅** · **restore EC2 drill ☐** |
 | P0-6 | volume → scratch 전용 (용량·알람 runbook) | [07](./07_VM_배포_인프라.md) + `deploy/teamver/scripts` | 🟡 `OD_SCRATCH_DISK_METRICS` · `print_cloudwatch_alarm_commands.sh` ✅ · **EC2 alarm apply ☐** |
 | P0-7 | RDS `teamver_design_*` database | Terraform + SQL | ✅ |
 
@@ -195,7 +195,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
-| P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 `litestream.yml` · `LITESTREAM_SYNC_INTERVAL` · `verify_litestream_replica.sh` ✅ · **EC2 S3 replica 객체·lag 증적 ☐** |
+| P2-1 | Litestream → S3 replica config | `deploy/teamver` | 🟡 `litestream.yml` · `verify_litestream_replica.sh` ✅ · **EC2 snapshot/WAL 로그 ✅** (2026-06-25) · restore drill ☐ |
 | P2-2 | restore runbook (snapshot 시점 → compose up) | `deploy/teamver/docs` + `scripts/restore_app_sqlite_from_s3.sh` | ✅ Litestream + fallback snapshot · `--apply` daemon 직접 적용 · `test_restore_app_sqlite_from_s3.sh` |
 | P2-3 | (대안) `app.sqlite` → S3 fallback — Litestream 불가 시 | `deploy/teamver` | ✅ `backup_sqlite_to_s3.sh` manual fallback (cron 미사용 = 의도) |
 
@@ -349,8 +349,8 @@ dbs:
 |-----------|------|------|
 | `POSTGRES_*` → `teamver_design_*` | usage + **design_projects** + **design_outputs** | ✅ schema·healthz |
 | `TEAMVER_*` | Main BE bootstrap | ✅ |
-| `OD_PROJECT_STORAGE` / `OD_S3_*` | daemon S3 SSOT | ✅ example·validate · **EC2 live `od_storage=ok` ☐** |
-| `LITESTREAM_*` | SQLite replica (`LITESTREAM_SYNC_INTERVAL` 기본 3s) | ✅ compose·preflight·`verify_litestream_replica.sh` · **EC2 replica 증적 ☐** |
+| `OD_PROJECT_STORAGE` / `OD_S3_*` | daemon S3 SSOT | ✅ example·validate · **EC2 `od_storage=ok` ✅** |
+| `LITESTREAM_*` | SQLite replica (`LITESTREAM_SYNC_INTERVAL` 기본 3s) | ✅ compose·preflight·`verify_litestream_replica.sh` · **EC2 live replica ✅** · restore drill ☐ |
 
 ---
 
@@ -609,19 +609,33 @@ design-api hot path는 RDS; S3 listing은 admin/incident만. Drive 파일은 Mai
 
 ## 14. 검증 체크리스트 (Staging E2E)
 
-**범례:** ✅ 자동화 완료 · 🟡 스크립트 있음 / EC2 미실행 · ☐ 수동
+**범례 — 자동화:** ✅ 스크립트·fixture 완료 · 🟡 runbook/수동 유지 · ☐ 미착수  
+**범례 — EC2 실증:** ✅ staging EC2에서 pass · 🟡 부분(일부 probe skip) · ☐ 미실행
+
+**Prod blocker 해제**에는 아래 **전 항목 EC2 ✅** + [§2 G1~G6](#2-출시-acceptance-criteria)가 필요하다. `--e2e-strict` 미통과 시 blocker **유지**.
+
+### 14.0 Staging EC2 실증 스냅샷 (2026-06-25)
+
+Design Staging EC2 (`ip-10-10-101-169`, `deploy/teamver`)에서 아래를 실행·통과했다.
+
+```bash
+bash scripts/check_storage_isolation.sh --staging   # 21 passed, 0 failed
+bash scripts/verify_litestream_replica.sh --staging # 3 passed (S3 ls skipped — host awscli 없음)
+# Litestream 로그: snapshot written · write wal segment
+# design-api deps: checks.od_storage=ok · checks.db=ok
+```
 
 | # | 체크 | 자동화 | EC2 실증 |
 |---|------|--------|----------|
-| 1 | S3 workspace/user/project prefix 객체 생성 | ✅ `smoke_design.sh` + `check_storage_isolation.sh` + E2E S3 probe | ☐ |
-| 2 | EC2 volume 삭제 후 S3+Litestream 복구 | 🟡 `restore_app_sqlite_from_s3.sh` runbook | ☐ |
-| 3 | 사용자 A/B access 403 | ✅ `run_staging_track_a_e2e.sh` (`TEAMVER_COOKIE_USER_B`) | ☐ |
-| 4 | design-api `GET /projects` workspace 필터 | ✅ E2E S-8b | ☐ |
-| 5 | agent run 후 S3 sync-up | ✅ `smoke_design.sh` + `/api/health/storage` | ☐ |
-| 6 | sync-up 실패 알람·retry | 🟡 daemon marker + `print_cloudwatch_alarm_commands.sh` | ☐ CW apply |
-| 7 | scratch 80% 알람 | 🟡 `OD_SCRATCH_DISK_METRICS` + CW script | ☐ 인위 트리거 |
-| 8 | FUSE mount 미사용 | ✅ `check_storage_isolation.sh` | ☐ |
-| 9 | hosted external baseDir import 거부 | ✅ `check_sidecar_deps.sh` | ☐ |
+| 1 | S3 workspace/user/project prefix 객체 생성 | ✅ `smoke_design.sh` + `check_storage_isolation.sh` + E2E S3 probe | 🟡 `od_storage=ok` · isolation pass · **`--require-core` tenant `aws s3 ls` ☐** |
+| 2 | EC2 volume 삭제 후 S3+Litestream 복구 | 🟡 `restore_app_sqlite_from_s3.sh` runbook | ☐ restore drill 미실행 |
+| 3 | 사용자 A/B access 403 | ✅ `run_staging_track_a_e2e.sh` (`TEAMVER_COOKIE_USER_B`) | ☐ `--e2e-strict` 미실행 |
+| 4 | design-api `GET /projects` workspace 필터 | ✅ E2E S-8b | ☐ `--e2e-strict` 미실행 |
+| 5 | agent run 후 S3 sync-up | ✅ `smoke_design.sh` + `/api/health/storage` | ✅ `mode=s3` · `ok=true` · `od_storage=ok` |
+| 6 | sync-up 실패 알람·retry | 🟡 daemon marker + `print_cloudwatch_alarm_commands.sh` | ☐ CW `--apply` |
+| 7 | scratch 80% 알람 | 🟡 `OD_SCRATCH_DISK_METRICS` + CW script | ☐ 인위 트리거 · CW `--apply` |
+| 8 | FUSE mount 미사용 | ✅ `check_storage_isolation.sh` (Hybrid s3·scratch 경로) | ✅ isolation 21/21 |
+| 9 | hosted external baseDir import 거부 | ✅ `check_sidecar_deps.sh` | ☐ E2E Phase 0 / sidecar probe 미실행 |
 
 **일괄 실행 (EC2):**
 
@@ -639,23 +653,25 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 
 수동 체크 → 자동화 스크립트 매핑. staging 점검은 `run_post_deploy_track_a.sh --staging --rds --smoke --e2e`, production 출시 증적은 `run_post_deploy_track_a.sh --production --rds --smoke --e2e-strict`로 실행한다. strict 모드는 핵심 env/tool 누락과 DB·Drive·S3 skip을 hard fail 한다.
 
-| 체크 | 자동화 스크립트 | 코드 | EC2 |
-|------|----------------|------|-----|
-| S3 tenant prefix 객체 | `smoke_design.sh` + `check_storage_isolation.sh` + `run_staging_track_a_e2e.sh` (`TEAMVER_S3_BUCKET`) | ✅ | ☐ |
-| Litestream 복구 | `restore_app_sqlite_from_s3.sh` + deploy Litestream hard gate | ✅ | ☐ |
+| 체크 | 자동화 스크립트 | 코드 | EC2 (2026-06-25) |
+|------|----------------|------|------------------|
+| S3 tenant prefix 객체 | `smoke_design.sh` + `check_storage_isolation.sh` + `run_staging_track_a_e2e.sh` (`TEAMVER_S3_BUCKET`) | ✅ | 🟡 isolation + `od_storage=ok` · strict S3 ls ☐ |
+| Litestream live replica | `verify_litestream_replica.sh` + deploy Litestream hard gate | ✅ | ✅ snapshot/WAL 로그 · verify container pass |
+| Litestream restore drill | `restore_app_sqlite_from_s3.sh` | ✅ | ☐ |
 | 사용자 A/B access 403 | `run_staging_track_a_e2e.sh` | ✅ | ☐ |
 | `GET /projects` workspace 필터 | `run_staging_track_a_e2e.sh` (S-8b) | ✅ | ☐ |
-| agent run 후 S3 sync-up | `smoke_design.sh` + `/api/health/storage` | ✅ | ☐ |
+| agent run 후 S3 sync-up | `smoke_design.sh` + `/api/health/storage` | ✅ | ✅ |
 | sync-up 실패 알람 | `print_cloudwatch_alarm_commands.sh` (`od_s3_sync_up_failed`) | ✅ | ☐ apply |
-| scratch 80% 알람 | `validate_deploy_env.sh` + CW alarm | ✅ | ☐ |
-| FUSE 미사용 | `check_storage_isolation.sh` | ✅ | ☐ |
+| scratch 80% 알람 | `validate_deploy_env.sh` + CW alarm | ✅ | ☐ apply · 인위 트리거 |
+| FUSE 미사용 | `check_storage_isolation.sh` | ✅ | ✅ |
 | baseDir import 거부 | `check_sidecar_deps.sh` | ✅ | ☐ |
 | usage `run_id` 멱등 | `run_staging_track_a_e2e.sh` U-6 | ✅ | ☐ |
 | publish → `design_outputs` | `run_staging_track_a_e2e.sh` D-5/D-7 | ✅ | ☐ |
 | Main BE M2M wiring | `check_main_be_design_wiring.sh --live` | ✅ | ☐ |
 | Drive BFF browse (격리 무관·G7) | `run_staging_track_a_e2e.sh` D-B1/D-B2/D-B3 | ✅ | ☐ |
 
-미커버 (수동 유지): EC2 volume 의도적 손상 복구, scratch 80% 인위 트리거.
+미커버 (수동 유지): EC2 volume 의도적 손상 복구, scratch 80% 인위 트리거.  
+**다음 ops:** `run_post_deploy_track_a.sh --staging --rds --smoke --e2e-strict` → §14 #3·#4·14.1 usage/publish/Drive 행 일괄 ✅.
 
 ---
 
@@ -663,9 +679,9 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 
 | Phase | 기간 | 코드 | EC2 ops (Prod blocker) |
 |-------|------|------|------------------------|
-| 0 인프라 | ~1주 | ✅ | 🟡 `od_storage=ok` ☐ |
-| 1 ProjectStorage + Materializing | ~2~3주 | ✅ (P1-4 defer) | 🟡 |
-| 2 Litestream | ~1주 | ✅ | 🟡 live replica ☐ |
+| 0 인프라 | ~1주 | ✅ | 🟡 `od_storage=ok` **✅** · CW alarm apply ☐ |
+| 1 ProjectStorage + Materializing | ~2~3주 | ✅ (P1-4 defer) | 🟡 sync-up EC2 **✅** |
+| 2 Litestream | ~1주 | ✅ | 🟡 live replica **✅** · restore drill ☐ |
 | 3 registry + isolation | ~2주 | ✅ | 🟡 `--e2e-strict` ☐ |
 | 4 Drive (G7) | ~1~2주 | 🟡 | 🟡 |
 
@@ -705,11 +721,12 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 | | 작업 | ID |
 |---|------|-----|
 | ☐ | staging EC2 IAM instance profile + `run_staging_phase0_activate.sh --from-terraform` | O-2 |
-| ☐ | `bash scripts/smoke_design.sh --staging` → `checks.od_storage=ok` (degraded 아님) | O-2 |
-| ☐ | `bash scripts/check_storage_isolation.sh --staging` 전 항목 pass | O-2 |
+| ✅ | `checks.od_storage=ok` (2026-06-25 — `check_storage_isolation.sh` §deps) | O-2 |
+| ✅ | `bash scripts/check_storage_isolation.sh --staging` 21/21 pass | O-2 |
 | ☐ | `bash scripts/run_post_deploy_track_a.sh --staging --rds --smoke --e2e-strict` full run (내부 `run_staging_track_a_e2e.sh --require-core`) | O-3 |
-| ☐ | Litestream live replica (`verify_litestream_replica.sh`) + `restore_app_sqlite_from_s3.sh` EC2 실복구 1회 | P2-1 |
+| 🟡 | Litestream live replica ✅ (`verify_litestream_replica.sh` · snapshot 로그) · **`restore_app_sqlite_from_s3.sh` drill ☐** | P2-1 |
 | ☐ | `print_cloudwatch_alarm_commands.sh --staging --apply` (sync-up · scratch · usage 5xx) | P0-6/P1-10 |
+| ☐ | EC2 `awscli` 설치 → `verify_litestream_replica.sh` S3 ls probe까지 ✓ (선택) | P2-1 |
 
 ### P1↓ — 코드 defer (출시 blocker 아님)
 
@@ -723,6 +740,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | **§14 EC2 실증 반영** — staging `check_storage_isolation` 21/21 · `od_storage=ok` · Litestream snapshot/WAL · §14.0 스냅샷 표 · G1/G2/P0-4/P2-1/TODO 부분 ✅ |
 | 2026-06-25 | **정합성 2차** — IAM `litestream/*`·`sqlite-backups/*` · E2E strict=`run_post_deploy --e2e-strict`/`--require-core` · access `{od_project_id}` · embed list fail-closed · usage BFF/M2M · Track B Drive 범위 수정 · env `OD_S3_PREFIX` vs tenant prefix |
 | 2026-06-25 | **코드·문서 정합** — §3 `design_outputs`·publish·Drive BFF·3 RDS 테이블; hosted access(P3-6) 문구 |
 | 2026-06-25 | **문서 최신화** — G1~G7·Phase 0~4 진행 표 코드/EC2 분리; loop 392~402 반영; §14 체크리스트 자동화/EC2 열; TODO [04 O-2/O-3](./04_구현_우선순위.md) 정렬 |
