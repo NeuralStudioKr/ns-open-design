@@ -36,6 +36,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | S-2 | `HomeHero` shortcuts (⋯) | Create plugin, From Figma | 동일 | ✅ |
 | S-3 | `NewProjectPanel` tabs | Media (image/video/audio), Prototype, Live artifact, Other | `slideOnlyMvp` (`visibleNewProjectTabs`) | ✅ |
 | S-4 | `EntryShell` openNewProject | 기본 탭 `prototype` → embed `deck` | `defaultNewProjectTab` | ✅ |
+| S-4b | `EntryShell` `handlePluginLoopSubmit` 메타데이터 `kind` 정규화 | 자유 입력은 `projectKind=other`로 들어올 수 있어 daemon 시스템 프롬프트의 non-slide discovery 라디오를 깨움. embed `slideOnlyMvp` 시 `other`/기존 metadata와 무관하게 `deck`으로 고정 | `slideOnlyMvp` (`resolvePluginLoopProjectKind`) + daemon slide-only discovery override | ✅ loop 381 · loop 388 |
 | S-5 | `HomeView` 하단 community gallery / Templates | embed: **「커뮤니티」** + deck 플러그인만 + **1차 필터(Prototype·Video…) 숨김** + deck **서브카테고리** 유지. Design templates는 Home/Settings 모두 FE 필터뿐 아니라 daemon listing도 `/api/design-templates?mode=deck`으로 축소; standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` + `communityGalleryFacetUi` + daemon `mode=deck` | ✅ loop 152+ · loop 385 · loop 386 |
 
 ### 2.2 P0 — Composer / + 메뉴 / 슬래시 (전수)
@@ -64,7 +65,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | Use everywhere chip | `hideUseEverywhereChip` | ✅ |
 | Updater popup | `EntryShell` embed 분기 | ✅ |
 | Workspace tab strip | `hideWorkspaceTabsBar` | ✅ |
-| Project workspace escape bar | `TeamverWorkspaceEscapeBar` — Design 홈(내부) + Teamver 앱(외부) | ✅ loop 183 |
+| Project workspace escape bar | `TeamverWorkspaceEscapeBar` — Design 홈(내부) + Teamver 앱(외부). embed `ProjectView`는 ChatPane `onBack`/`backLabel`을 숨겨 상위 네비를 escape bar 하나로 통일 | ✅ loop 183 · loop 389 |
 
 ### 2.4 P0 — 파일 첨부 정책 (검토)
 
@@ -86,6 +87,21 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | `/hatch <concept>` 슬래시 | Codex CLI 의존 → embed에서 실행 실패 | low risk, 문서 |
 | `/pet wake` / `/pet adopt` | Settings 핀 차단 → no-op | 문서 |
 | Library / Pets settings 섹션 | `allowedSettingsSections` 미포함 | OK |
+
+### 2.5b P0 — daemon 시스템 프롬프트 / `<question-form>` 옵션 정제 (loop 388)
+
+| ID | 위치 | OD 기본 동작 | embed 결정 | 게이트 |
+|----|------|--------------|-----------|--------|
+| Q-1 | `discovery.ts` `<question-form id="task-type">` (Default-router) | `taskType` 라디오에 `Prototype` / `Live artifact` / `Slide deck` / `Image` / `Video` / `HyperFrames` / `Audio` / `Other` 8지선다 | **task-type 폼 전체 미발행** — `mediaExecution.mode==='disabled'` 시 artifact kind는 항상 `Slide deck` | `TEAMVER_SLIDE_ONLY_SCOPE` (daemon `prompts/system.ts`) |
+| Q-2 | `discovery.ts` `<question-form id="discovery">` (Quick brief — 30s) `output` 질문 | `Slide deck / pitch`·`Single web prototype / landing`·`Multi-screen app prototype`·`Dashboard / tool UI`·`Editorial / marketing page`·`Other — I'll describe` 6지선다 | **output 질문 전체 드롭** — kind는 이미 deck로 고정, 「무엇을 만들까요?」 라디오 자체를 제거 | 동일 |
+| Q-3 | `discovery.ts` `<question-form id="discovery">` `platform` 질문 | `Responsive web`·`Desktop web`·`iOS app`·`Android app`·`Tablet app`·`Desktop app`·`Fixed canvas (1920×1080)` 7지선다 | **deck-friendly 캔버스로만 한정** — `Fixed canvas (16:9, 1920×1080)`·`Fixed canvas (4:3, 1440×1080)`·`Web viewer (responsive)` 3지선다. iOS/Android/Tablet/Desktop 앱 옵션은 명시 금지 | 동일 |
+| Q-4 | `direction-cards` / `media-*` 보조 폼 | direction picker, media surface routing 폼 | **발행 금지** — 보조 폼이 비-deck artifact로 라우팅하면 정책 위반 | 동일 |
+| Q-5 | 사용자 프롬프트에 "이미지/동영상/대시보드 만들어줘"가 섞여 있을 때 | discovery 통해 진행 | **거부 + 슬라이드 제안** — 프롬프트가 "slide"라는 단어를 함께 포함해도 비-deck artifact는 생성 금지 | 동일 + FE `embedSlideOnlyOutboundBlockReason` |
+
+**원칙:**
+1. **출처 단일화** — `TEAMVER_SLIDE_ONLY_SCOPE`가 `DISCOVERY_AND_PHILOSOPHY`보다 뒤(아래)에 합쳐지도록 composer 순서를 유지한다. locale override(`renderUiLocalePrompt`)보다도 뒤에 합쳐 zh-CN의 「单页网页原型 / 落地页」류 옵션도 함께 무력화한다.
+2. **FE/BE 이중 안전선** — FE는 metadata.kind를 deck로 고정(S-4b)·outbound guard로 미디어 키워드 차단; daemon 시스템 프롬프트는 위의 Q-1~Q-5 override로 모델 응답에서 비-deck 옵션을 제거. 둘 중 하나가 우회되어도 다른 한쪽이 잡는다.
+3. **테스트 SSOT** — `apps/daemon/tests/prompts/system.test.ts` ▶ describe `slide-only discovery / question-form override` 7케이스(precedence × 2, task-type/output drop, banned 옵션 enumeration, platform whitelist, 비-deck 거부, 비-embed 미주입) + `apps/web/tests/teamver-embed-slide-only.test.ts` ▶ `forces home free-form submit metadata.kind to deck` 1케이스.
 
 ### 2.6 P1 — OD tip·starter 비노출 (loop 350–351)
 
@@ -205,6 +221,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | loop 388 — §2.1 S-4b (`handlePluginLoopSubmit` 메타데이터 `kind` 정규화: `other` 포함 → `deck`) + §2.5b daemon 시스템 프롬프트 `<question-form>` 옵션 정제 표(Q-1~Q-5) 추가. 사용자가 "슬라이드 만들어줘"라고 요청해도 `<question-form>` 가 「단일 웹 프로토타입 / 랜딩」·「멀티스크린 앱」·「대시보드 / 툴 UI」·「에디토리얼 / 마케팅 페이지」·「iOS 앱」·「Android 앱」을 함께 제안하던 회귀를 차단. `TEAMVER_SLIDE_ONLY_SCOPE` 가 `DISCOVERY_AND_PHILOSOPHY` + `renderUiLocalePrompt` 보다 뒤에 합성되도록 precedence 보장 + 단위 테스트 추가 |
 | 2026-06-24 | loop 350–351 — §2.6 `hideUsefulTips` tip/starter surface 표 + §3 플래그 행. empty chat 전면 hide, InspectPanel embed 한글 |
 | 2026-06-22 | loop 175 (docket) — PDF / PPTX Drive 발행 **별도 트랙 보류 결정**. 사용자 리포트 ("프레젠테이션인데 PDF/PPTX 불가능은 말이 안 된다") 후 옵션 7종 (OD 내 Playwright / 메인 BE internal endpoint / ECS·Fargate worker / Lambda + chromium-layer / 외부 SaaS / 클라이언트 측 / WeasyPrint·wkhtmltopdf) + 응답 모델 (sync vs async) 비교를 [00 §loop 175](./00_구현_내역_누적.md) 에 archive. 현재 HTML-only 발행 + 로컬 PDF 다운로드 안내가 그대로 유효. 재검토 트리거: AI 어시스턴트가 Drive PDF 인덱싱 use-case 우선순위 / 사내 PDF 인프라 가용성 결정 / 사용자 리포트 누적 / PPTX 트랙 정식 착수 |
 | 2026-06-22 | loop 174 — Drive 발행 이력 panel (`TeamverDrivePublishHistory`, `v{N}` 라벨 · 상대 시각 · Drive 딥 링크) 메뉴 상단 mount. ZIP 칩 제거 → HTML 단일 발행 (`formats: ["html"]` 정적). 마지막 발행 위치 `localStorage` 기억 (workspace+project 격리). PDF 발행은 daemon PDF exporter 가 desktop-only 라 별도 BE 트랙 (Playwright/Chromium) — MenuItem 에 안내 한 줄 |

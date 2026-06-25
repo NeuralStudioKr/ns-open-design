@@ -591,6 +591,11 @@ export function EntryShell({
     });
   }
 
+  function resolvePluginLoopProjectKind(payload: PluginLoopSubmit): ProjectMetadata['kind'] {
+    if (slideOnlyMvp) return 'deck';
+    return payload.projectKind ?? payload.projectMetadata?.kind ?? 'prototype';
+  }
+
   // Plan §3.F5 — the home prompt-loop submit path. The user picks a
   // plugin (which calls /api/plugins/:id/apply and binds a snapshot),
   // edits the rendered example query if any, then presses Enter. We
@@ -619,7 +624,12 @@ export function EntryShell({
         : fallbackName;
     const metadata: ProjectMetadata = {
       ...(payload.projectMetadata ?? {}),
-      kind: payload.projectKind ?? payload.projectMetadata?.kind ?? 'prototype',
+      // Teamver embed slide-only MVP locks the artifact to a deck. Free-form
+      // Home submits arrive as projectKind=`other`; letting that win makes
+      // the daemon ask non-slide discovery questions even though the UI hides
+      // those surfaces. Pinning the kind here removes the ambiguity before
+      // the run reaches the daemon.
+      kind: resolvePluginLoopProjectKind(payload),
       nameSource: 'prompt',
       ...(payload.contextPlugins && payload.contextPlugins.length > 0
         ? { contextPlugins: payload.contextPlugins }

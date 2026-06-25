@@ -65,6 +65,16 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('motion-polish')).toBe(true);
   });
 
+  it('forces home free-form submit metadata.kind to deck in slide-only embed (loop 388)', () => {
+    const entryShell = readSource('src/components/EntryShell.tsx');
+
+    // Free-form Home submits arrive as projectKind='other'. In slide-only
+    // embed, that must still become kind='deck' before the daemon sees it.
+    expect(entryShell).toContain("if (slideOnlyMvp) return 'deck'");
+    expect(entryShell).toContain("payload.projectKind ?? payload.projectMetadata?.kind ?? 'prototype'");
+    expect(entryShell).not.toMatch(/kind:\s*payload\.projectKind\s*\?\?\s*payload\.projectMetadata\?\.kind\s*\?\?\s*['"]prototype['"]/);
+  });
+
   it('wires slide-only gates into entry and composer surfaces', () => {
     const homeHero = readSource('src/components/HomeHero.tsx');
     const newProject = readSource('src/components/NewProjectPanel.tsx');

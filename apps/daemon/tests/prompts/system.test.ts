@@ -435,6 +435,105 @@ describe('composeSystemPrompt', () => {
       expect(prompt).not.toContain('## Media generation (if asked)');
     });
 
+    describe('slide-only discovery / question-form override (loop 388)', () => {
+      it('pins the discovery-override block AFTER the discovery layer so its precedence wins', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        const discoveryIdx = prompt.indexOf('RULE 1 — turn 1 must emit a `<question-form id="discovery">`');
+        const overrideIdx = prompt.indexOf('Discovery / question-form override (slide-only mode)');
+
+        expect(discoveryIdx).toBeGreaterThan(-1);
+        expect(overrideIdx).toBeGreaterThan(-1);
+        expect(overrideIdx).toBeGreaterThan(discoveryIdx);
+      });
+
+      it('pins the slide-only override AFTER the UI locale override so it also wins over the localized quick-brief examples (zh-CN)', () => {
+        // The Simplified Chinese branch of `renderUiLocalePrompt` ships
+        // explicit option labels like "单页网页原型 / 落地页", "多屏应用原型",
+        // "数据看板 / 工具界面", "iOS 应用", "Android 应用". The slide-only
+        // override must stack later so it strips those options from the form
+        // even when the user's locale block already named them.
+        const prompt = composeSystemPrompt({
+          locale: 'zh-CN',
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        const localeIdx = prompt.indexOf('# UI locale override');
+        const overrideIdx = prompt.indexOf('Discovery / question-form override (slide-only mode)');
+
+        expect(localeIdx).toBeGreaterThan(-1);
+        expect(overrideIdx).toBeGreaterThan(-1);
+        expect(overrideIdx).toBeGreaterThan(localeIdx);
+      });
+
+      it('forbids emitting the task-type form and the output / kind question in the discovery form', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        expect(prompt).toContain('`<question-form id="task-type">`');
+        expect(prompt).toMatch(/do \*\*NOT\*\* emit it/i);
+        expect(prompt).toMatch(/Drop the `output` question entirely/i);
+        expect(prompt).toContain('"What are we making?"');
+      });
+
+      it('lists every non-slide artifact label that must NOT appear in question-form options', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        const bannedFromQuestions = [
+          'Single web prototype / landing',
+          'Multi-screen app prototype',
+          'Dashboard / tool UI',
+          'Editorial / marketing page',
+          "Other — I'll describe",
+        ];
+        for (const label of bannedFromQuestions) {
+          expect(prompt).toContain(label);
+        }
+        expect(prompt).toMatch(/Never list .*Single web prototype/i);
+      });
+
+      it('restricts the platform question to deck-friendly canvas options', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        expect(prompt).toMatch(/Replace the `platform` question/i);
+        expect(prompt).toContain('Fixed canvas (16:9, 1920×1080)');
+        expect(prompt).toContain('Web viewer (responsive)');
+        expect(prompt).toMatch(/Never list iOS app \/ Android app \/ Tablet app \/ Desktop app/i);
+      });
+
+      it('refuses to silently produce non-deck artifacts even when the prompt also says "slide"', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        expect(prompt).toMatch(/do \*\*NOT\*\* silently produce it/i);
+        expect(prompt).toMatch(/even when the request also contains the word "slide" or "deck"/i);
+      });
+
+      it('does not inject the discovery override when slide-only is OFF (standalone OD)', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'prototype' } as any,
+          mediaExecution: { mode: 'enabled' } as any,
+        });
+
+        expect(prompt).not.toContain('Discovery / question-form override (slide-only mode)');
+        expect(prompt).not.toContain('Teamver embed — slide deck scope only');
+      });
+    });
+
     it('keeps external MCP tools visible when OD-owned media execution is disabled', () => {
       const prompt = composeSystemPrompt({
         connectedExternalMcp: [{ id: 'external-media', label: 'External media' }],
