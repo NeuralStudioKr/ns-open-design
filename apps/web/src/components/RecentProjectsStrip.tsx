@@ -15,10 +15,8 @@ import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { TeamverLatestPublishChip } from '../teamver/components/TeamverLatestPublishChip';
-import { TeamverProjectPreviewChip } from '../teamver/components/TeamverProjectPreviewChip';
 import {
   projectOpenOptionsFromPreviewCover,
-  projectPreviewDeepLinkFileName,
   type ProjectCoverFile,
 } from '../teamver/projectPreviewFile';
 import { buildProjectCardCover } from '../teamver/projectCardCover';
@@ -121,7 +119,6 @@ export function RecentProjectsStrip({
         {recent.map((project) => {
           const coverOverride = coverByProject[project.id] ?? null;
           const cover = buildProjectCardCover(project, coverOverride);
-          const previewFileName = projectPreviewDeepLinkFileName(project, coverOverride);
           const designSystemProject = isDesignSystemProject(project);
           const status: ProjectDisplayStatus = project.status?.value ?? 'not_started';
           const publishedDesignSystem = isPublishedDesignSystemProject(project, designSystems);
@@ -191,16 +188,6 @@ export function RecentProjectsStrip({
                     <>
                       <span className="recent-projects__card-sep" aria-hidden>·</span>
                       <TeamverLatestPublishChip projectId={project.id} />
-                      {previewFileName ? (
-                        <>
-                          <span className="recent-projects__card-sep" aria-hidden>·</span>
-                          <TeamverProjectPreviewChip
-                            projectId={project.id}
-                            fileName={previewFileName}
-                            onOpen={onOpen}
-                          />
-                        </>
-                      ) : null}
                     </>
                   ) : null}
                 </div>

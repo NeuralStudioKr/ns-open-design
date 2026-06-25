@@ -116,7 +116,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-latest-publish-summary.test.ts \
       tests/teamver-latest-publish-chip.test.tsx \
       tests/teamver-project-preview-file.test.ts \
-      tests/teamver-project-preview-chip.test.tsx \
+      tests/teamver-project-card-embed-chips.test.ts \
       tests/teamver-project-cover-loader.test.ts \
       tests/teamver-prefetch-cover-coalesce.test.ts \
       tests/teamver-embed-list-caches.test.ts \

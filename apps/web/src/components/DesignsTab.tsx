@@ -26,10 +26,8 @@ import { isTeamverEmbedMode } from "../teamver/designApiBase";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
 import { DesignsTabProjectThumb } from "../teamver/components/DesignsTabProjectThumb";
 import { TeamverLatestPublishChip } from "../teamver/components/TeamverLatestPublishChip";
-import { TeamverProjectPreviewChip } from "../teamver/components/TeamverProjectPreviewChip";
 import {
   projectOpenOptionsFromPreviewCover,
-  projectPreviewDeepLinkFileName,
   projectCoverFilesEqual,
   type ProjectCoverFile,
 } from "../teamver/projectPreviewFile";
@@ -659,7 +657,6 @@ export function DesignsTab({
 						const liveCount = liveArtifactsByProject[p.id]?.length ?? 0;
 						const status = p.status?.value ?? "not_started";
 						const previewCover = coverOverrides[p.id] ?? null;
-						const previewFileName = projectPreviewDeepLinkFileName(p, previewCover);
 						const openProjectCard = () => {
 							onOpen(p.id, projectOpenOptionsFromPreviewCover(p, previewCover));
 						};
@@ -818,16 +815,6 @@ export function DesignsTab({
 												<>
 													{" · "}
 													<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
-													{previewFileName ? (
-														<>
-															{" · "}
-															<TeamverProjectPreviewChip
-																projectId={p.id}
-																fileName={previewFileName}
-																onOpen={onOpen}
-															/>
-														</>
-													) : null}
 												</>
 											) : null}
 										</span>
@@ -868,8 +855,6 @@ export function DesignsTab({
 											const skill = skillName(p.skillId);
 											const ds = dsName(p.designSystemId);
 											const designSystemProject = isDesignSystemProject(p);
-											const previewCover = coverOverrides[p.id] ?? null;
-											const previewFileName = projectPreviewDeepLinkFileName(p, previewCover);
 											const openKanbanCard = () => {
 												onOpen(
 													p.id,
@@ -936,13 +921,6 @@ export function DesignsTab({
 													{teamverEmbed && !designSystemProject ? (
 														<div className="design-kanban-card-embed-chips">
 															<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
-															{previewFileName ? (
-																<TeamverProjectPreviewChip
-																	projectId={p.id}
-																	fileName={previewFileName}
-																	onOpen={onOpen}
-																/>
-															) : null}
 														</div>
 													) : null}
 												</div>

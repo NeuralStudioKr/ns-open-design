@@ -132,10 +132,6 @@ describe('Teamver embed branding policy', () => {
       resolve(webRoot, 'src/teamver/components/TeamverBackgroundRunsBanner.tsx'),
       'utf8',
     );
-    const previewChip = readFileSync(
-      resolve(webRoot, 'src/teamver/components/TeamverProjectPreviewChip.tsx'),
-      'utf8',
-    );
     const canvasLaunch = readFileSync(
       resolve(webRoot, 'src/teamver/components/TeamverCanvasSlideLaunchModal.tsx'),
       'utf8',
@@ -161,7 +157,6 @@ describe('Teamver embed branding policy', () => {
       publishChip,
       importModal,
       runsBanner,
-      previewChip,
       canvasLaunch,
       topbarChips,
       sessionBanner,
