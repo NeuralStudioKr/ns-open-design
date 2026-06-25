@@ -5914,8 +5914,8 @@ export function ProjectView({
                 setProjectActionsToast({ message, details: null });
               }}
               embedSlideDesignSystemFallbackId={embedSlideDesignSystemFallbackId}
-              onBack={onBack}
-              backLabel={t('project.backToProjects')}
+              onBack={isTeamverEmbedMode() ? undefined : onBack}
+              backLabel={isTeamverEmbedMode() ? undefined : t('project.backToProjects')}
               composerFooterAccessory={
                 hideStudioExecutionControls ? undefined : executionControls
               }
