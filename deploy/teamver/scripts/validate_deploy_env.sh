@@ -302,6 +302,11 @@ fi
 if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
   if [[ "${OD_SCRATCH_EVICT_AFTER_RUN:-}" == "1" ]]; then
     warn "OD_SCRATCH_EVICT_AFTER_RUN=1 — run 종료 후 scratch project tree 제거 (디스크 절약, 다음 access는 sync-down)"
+    if [[ "${OD_SCRATCH_EVICT_IDLE:-}" == "0" ]]; then
+      warn "OD_SCRATCH_EVICT_IDLE=0 — lazy-only scratch는 periodic idle evict 비활성"
+    elif [[ "${OD_SCRATCH_EVICT_IDLE:-}" == "1" || -z "${OD_SCRATCH_EVICT_IDLE:-}" ]]; then
+      warn "OD_SCRATCH_EVICT_IDLE 활성 — lazy materialize 후 ${OD_SCRATCH_EVICT_IDLE_AFTER_MS:-2×OD_PROJECT_LAZY_SYNC_TTL_MS} ms idle 시 scratch evict (OD_SCRATCH_DISK_METRIC_INTERVAL_MS 주기)"
+    fi
   elif [[ "$REQUIRE_S3_STORAGE" == true ]]; then
     fail "OD_SCRATCH_EVICT_AFTER_RUN=1 필요 — hosted S3 mode에서 run 완료 후 scratch 용량 회수 필수"
   else

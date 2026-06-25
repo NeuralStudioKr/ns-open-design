@@ -13,6 +13,11 @@ import {
   measureScratchDiskUsage,
   scratchDiskMetricsEnabled,
 } from './scratch-disk-usage.js';
+import {
+  evictIdleScratchProjects,
+  scratchIdleEvictAfterMs,
+  scratchIdleEvictEnabled,
+} from './scratch-idle-eviction.js';
 
 type RunLike = {
   id?: string;
@@ -91,11 +96,23 @@ export function createProjectMaterializationRuntime(
     activeProjectRuns.set(projectId, 1);
     const remote = await resolveRunRemote(run, projectId);
     await withProjectLock(projectId, async () => {
+      const syncDownStarted = Date.now();
       const result = await storage.syncDown(projectId, remote);
       const prefixNote = run.teamverS3Prefix ? ` prefix=${run.teamverS3Prefix}` : '';
       console.info(
         `[project-materialization] sync-down ${projectId}: ${result.files} file(s)${prefixNote}`,
       );
+      if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+        console.info(
+          JSON.stringify({
+            metric: 'od_s3_sync_down',
+            projectId,
+            files: result.files,
+            durationMs: Date.now() - syncDownStarted,
+            runId: typeof run.id === 'string' ? run.id : undefined,
+          }),
+        );
+      }
     });
     run.projectMaterializationStartedAt = Date.now();
   }
@@ -212,18 +229,35 @@ export function createProjectMaterializationRuntime(
     }
   }
 
-  // Optional periodic disk-usage sampler so idle daemons still emit a metric
-  // when scratch slowly grows (e.g. failed evict, stuck materialization). The
-  // run-end path covers active workloads; this catches the long-tail case.
+  // Optional periodic sampler: scratch disk usage + idle project eviction.
   let periodicTimer: NodeJS.Timeout | null = null;
   let disposed = false;
-  if (isS3ProjectStorageLayout(layout) && scratchDiskMetricsEnabled()) {
+  const metricsEnabled = isS3ProjectStorageLayout(layout) && scratchDiskMetricsEnabled();
+  const idleEvictEnabled = isS3ProjectStorageLayout(layout) && scratchIdleEvictEnabled();
+  if (metricsEnabled || idleEvictEnabled) {
     const raw = (process.env.OD_SCRATCH_DISK_METRIC_INTERVAL_MS ?? '').trim();
     const intervalMs = raw ? Number(raw) : 5 * 60 * 1000;
     if (Number.isFinite(intervalMs) && intervalMs > 0) {
-      const scratchDir = layout.scratchDir;
+      const scratchDir = isS3ProjectStorageLayout(layout) ? layout.scratchDir : '';
+      const projectsDir = isS3ProjectStorageLayout(layout) ? layout.projectsDir : '';
       periodicTimer = setInterval(() => {
-        void emitPeriodicScratchDiskUsageMarker(scratchDir);
+        if (metricsEnabled && scratchDir) {
+          void emitPeriodicScratchDiskUsageMarker(scratchDir);
+        }
+        if (idleEvictEnabled && storage && projectsDir) {
+          void evictIdleScratchProjects({
+            projectsDir,
+            storage,
+            isActiveProject: (projectId) => (activeProjectRuns.get(projectId) ?? 0) > 0,
+            idleAfterMs: scratchIdleEvictAfterMs(),
+            withProjectLock: (projectId, fn) => withProjectLock(projectId, fn),
+          }).catch((err) => {
+            console.warn(
+              '[project-materialization] idle scratch evict sweep failed:',
+              err instanceof Error ? err.message : err,
+            );
+          });
+        }
       }, intervalMs);
       // Don't block process exit on this metric timer.
       if (typeof periodicTimer.unref === 'function') periodicTimer.unref();

@@ -97,6 +97,22 @@ describe('createProjectMaterializationRuntime — periodic scratch sampler', () 
     expect(drainAfter).toHaveLength(1);
   });
 
+  it('starts periodic timer for idle evict when disk metrics are disabled', async () => {
+    vi.stubEnv('OD_SCRATCH_EVICT_AFTER_RUN', '1');
+    vi.stubEnv('OD_SCRATCH_EVICT_IDLE', '1');
+    vi.stubEnv('OD_SCRATCH_DISK_METRIC_INTERVAL_MS', '40');
+    delete process.env.OD_SCRATCH_DISK_METRICS;
+
+    const runtime = createProjectMaterializationRuntime(s3Layout(), null);
+    await sleep(150);
+
+    const diskCalls = infoLines()
+      .filter((line) => line.includes('"od_scratch_disk_usage"'));
+    expect(diskCalls).toHaveLength(0);
+
+    runtime.dispose();
+  });
+
   it('does not emit a drain marker when metrics are disabled', async () => {
     const runtime = createProjectMaterializationRuntime(s3Layout(), null);
     runtime.dispose();

@@ -128,6 +128,7 @@ Browser ──► daemon ──► scratch/projects/<id>/  ◄──sync-down─
 | 트리거 | 동작 |
 |--------|------|
 | `OD_SCRATCH_EVICT_AFTER_RUN=1` (hosted 강제) | **run 종료 sync-up 실패 0건일 때만** `scratch/projects/<id>/` 삭제 |
+| `OD_SCRATCH_EVICT_IDLE=1` (기본: post-run evict 시 on) | **active run 없음** + 디렉터리 mtime > `OD_SCRATCH_EVICT_IDLE_AFTER_MS`(기본 2×lazy TTL) → periodic sweep evict |
 | `POST …/scratch/evict` | design-api delete 등 |
 | registry delete | evict + (기본) S3 tenant **purge** |
 
@@ -157,6 +158,8 @@ evict 후에도 **S3 SSOT는 유지**. 다음 접근 시 sync-down. 일부 sync-
 | 메커니즘 | env / 도구 | 설명 |
 |----------|------------|------|
 | **run 후 evict** | `OD_SCRATCH_EVICT_AFTER_RUN=1` | scratch 프로젝트 트리 삭제 |
+| **idle evict** | `OD_SCRATCH_EVICT_IDLE=1` | lazy-only 잔류 scratch 주기 정리 |
+| **sync-down 관측** | `OD_S3_SYNC_UP_METRICS=1` | `od_s3_sync_down` JSON (files·durationMs) |
 | **scratch 디스크 샘플** | `OD_SCRATCH_DISK_METRICS=1` | `od_scratch_disk_usage` JSON 마커 — **[21 가이드](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** |
 | **threshold** | `OD_SCRATCH_DISK_THRESHOLD_MB` (기본 **2048**) | 초과 시 `overThreshold: true` |
 | **주기 샘플** | `OD_SCRATCH_DISK_METRIC_INTERVAL_MS` (기본 300000) | 5분마다 periodic 마커 |

@@ -186,6 +186,38 @@ describe('createProjectMaterializationRuntime', () => {
     }
   });
 
+  it('emits od_s3_sync_down marker when metrics enabled on beforeChatRun', async () => {
+    const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-syncdown-'));
+    const remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-syncdown-remote-'));
+    const previousMetrics = process.env.OD_S3_SYNC_UP_METRICS;
+    process.env.OD_S3_SYNC_UP_METRICS = '1';
+    try {
+      const storage = new MaterializingProjectStorage(
+        new LocalProjectStorage(scratchRoot),
+        new LocalProjectStorage(remoteRoot),
+      );
+      const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+      const runtime = createProjectMaterializationRuntime(layout, storage);
+      const infos: string[] = [];
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation((m: unknown) => {
+        if (typeof m === 'string') infos.push(m);
+      });
+      try {
+        await runtime.beforeChatRun({ id: 'run-sd', projectId: 'p-sd' });
+        const marker = infos.find((line) => line.includes('"metric":"od_s3_sync_down"'));
+        expect(marker, infos.join('\n')).toBeTruthy();
+        expect(marker).toContain('"projectId":"p-sd"');
+      } finally {
+        infoSpy.mockRestore();
+      }
+    } finally {
+      if (previousMetrics === undefined) delete process.env.OD_S3_SYNC_UP_METRICS;
+      else process.env.OD_S3_SYNC_UP_METRICS = previousMetrics;
+      await rm(scratchRoot, { recursive: true, force: true });
+      await rm(remoteRoot, { recursive: true, force: true });
+    }
+  });
+
   it('emits od_s3_sync_up_failed marker when run-end sync-up throws', async () => {
     const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-throw-'));
     try {
