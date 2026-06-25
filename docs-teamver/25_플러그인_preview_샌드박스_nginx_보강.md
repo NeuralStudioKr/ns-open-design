@@ -86,9 +86,12 @@ embed·갤러리 preview iframe:
 
 | location | auth_request | CSP |
 |----------|--------------|-----|
-| `^/api/plugins/[^/]+/asset/` | **없음** (GET/HEAD only) | Teamver embed CSP (fonts 허용) |
-| `^/api/plugins/[^/]+/(preview\|example/)` | **유지** | 동일 CSP 교체 |
-| `^/api/skills/[^/]+/assets/` | **없음** (GET/HEAD only) | daemon 기본 (CSP 없음) |
+| `/api/plugins/` → nested `~ /asset/` | **없음** (GET/HEAD only) | Teamver embed CSP (fonts 허용) |
+| `/api/plugins/` → nested `~ /(preview\|example)/` | **유지** | 동일 CSP 교체 |
+| `/api/plugins/` → nested catch-all `~ ^/api/plugins/` | **유지** (apply·metadata 등) | daemon 기본 |
+| `/api/skills/` → nested `~ /assets/` | **없음** (GET/HEAD only) | daemon 기본 |
+
+**parent `location /api/plugins/` 에는 `auth_request` 없음** — nginx nested 상속으로 asset이 다시 signin 302를 받는 것을 방지.
 
 daemon upstream: `127.0.0.1:7456` (loopback 고정 — staging/prod 공통).
 
@@ -166,13 +169,21 @@ curl -sSI "https://stg-design.teamver.com/api/plugins/example-html-ppt-zhangzara
 이미 그 안에 있다면 `deploy/teamver`를 **한 번 더 붙이지 마세요.**
 
 ```bash
-# deploy/teamver 에서 (프롬프트: .../deploy/teamver$)
-cd devops/nginx
+# 1) 최신 conf 반영 (include + stg https conf 가 레포에 있어야 함)
+cd ~/neural/ns-open-design   # clone 경로에 맞게
+git pull origin staging
+
+# 2) deploy/teamver 에서 nginx 적용
+cd deploy/teamver/devops/nginx
 sudo bash ./apply_teamver_design_staging_nginx_conf.sh ./stg-design.teamver.com.https.conf \
   --disable stg-design.teamver.com.http.conf
+
+# 3) 적용 확인 (VM에서)
+cd ../..
+bash scripts/check_plugin_preview_nginx_applied.sh --staging --curl
 ```
 
-`deploy/teamver`를 벗어나지 않고 한 줄로:
+`deploy/teamver`에 이미 있을 때 한 줄 apply:
 
 ```bash
 sudo bash devops/nginx/apply_teamver_design_staging_nginx_conf.sh \
@@ -180,13 +191,16 @@ sudo bash devops/nginx/apply_teamver_design_staging_nginx_conf.sh \
   --disable stg-design.teamver.com.http.conf
 ```
 
-레포 루트(`ns-open-design`)에 있을 때만:
+### 6.5 트러블슈팅 — curl 이 여전히 302 signin
 
-```bash
-cd deploy/teamver/devops/nginx
-sudo bash ./apply_teamver_design_staging_nginx_conf.sh ./stg-design.teamver.com.https.conf \
-  --disable stg-design.teamver.com.http.conf
-```
+| 확인 | 명령 |
+|------|------|
+| main conf에 include 있는지 | `grep plugin-preview /etc/nginx/sites-enabled/stg-design.teamver.com.https.conf` |
+| inc 파일 복사됐는지 | `ls -l /etc/nginx/sites-available/teamver-design-plugin-preview.inc.conf` |
+| nginx 런타임에 반영됐는지 | `sudo nginx -T 2>/dev/null \| grep -A2 'location /api/plugins/'` |
+| 종합 | `bash scripts/check_plugin_preview_nginx_applied.sh --staging --curl` |
+
+302가 나오면 대부분 **git pull 없이 apply** 했거나, **include 파일이 sites-available에 없음** (apply 스크립트가 `teamver-design*.inc.conf` 를 복사함).
 
 상세 runbook: `deploy/teamver/devops/nginx/README.md` §3.
 

@@ -109,6 +109,8 @@ if (( ${#inc_files[@]} )); then
   echo "📎 include 적용: ${#inc_files[@]} file(s) → $SITES_AVAILABLE_DIR"
 fi
 
+DEPLOY_TEAMVER_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 nginx -t
 systemctl reload nginx
 echo "✅ 완료."
+echo "   Verify: bash \"$DEPLOY_TEAMVER_ROOT/scripts/check_plugin_preview_nginx_applied.sh\" --staging --curl"

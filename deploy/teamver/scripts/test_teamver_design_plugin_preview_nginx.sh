@@ -32,9 +32,11 @@ do
 done
 
 needles=(
-  'location ~ ^/api/plugins/[^/]+/asset/'
-  'location ~ ^/api/plugins/[^/]+/(preview|example/)'
-  'location ~ ^/api/skills/[^/]+/assets/'
+  'location /api/plugins/'
+  'location ~ /asset/'
+  'location ~ /(preview|example)/'
+  'location /api/skills/'
+  'location ~ /assets/'
   'proxy_hide_header Content-Security-Policy'
   'fonts.googleapis.com'
   'limit_except GET HEAD'
@@ -46,15 +48,21 @@ for needle in "${needles[@]}"; do
   fi
 done
 
-# Asset route must not use auth_request (session gate breaks sandbox subresources).
-if awk '/^location ~ \^\/api\/plugins/,/^}/' "$INC" | head -20 | grep -q 'auth_request'; then
-  echo "❌ plugin asset location must not use auth_request"
+# Asset nested block must not use auth_request.
+asset_section="$(awk '/location ~ \/asset\//,/^    \}/' "$INC")"
+if grep -q 'auth_request' <<< "$asset_section"; then
+  echo "❌ plugin asset nested location must not use auth_request"
   exit 1
 fi
 
-# Preview route must keep auth_request.
-if ! awk '/preview\|example\//,/^}/' "$INC" | grep -q 'auth_request /_teamver_auth'; then
-  echo "❌ plugin preview location must keep auth_request"
+# Parent must not set auth_request (nginx inherits to nested locations).
+if awk '/^location \/api\/plugins\/ \{/,/^}/' "$INC" | grep -q '^    auth_request'; then
+  echo "❌ /api/plugins/ parent must not set auth_request (use nested catch-all)"
+  exit 1
+fi
+
+if ! grep -q 'location ~ \^/api/plugins/' "$INC"; then
+  echo "❌ inc missing nested catch-all location ~ ^/api/plugins/"
   exit 1
 fi
 
