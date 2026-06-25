@@ -83,6 +83,24 @@ def apply_postgres_schema_patches() -> None:
           ON ai_model_token_usages (workspace_id, run_id)
           WHERE run_id IS NOT NULL AND run_id <> '';
         """,
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;",
+        "ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;",
+        "UPDATE ai_model_token_usages SET created_at = used_at WHERE created_at IS NULL;",
+        "UPDATE ai_model_token_usages SET updated_at = used_at WHERE updated_at IS NULL;",
+        "ALTER TABLE ai_model_token_usages ALTER COLUMN created_at SET DEFAULT now();",
+        "ALTER TABLE ai_model_token_usages ALTER COLUMN updated_at SET DEFAULT now();",
+        """
+        DO $$ BEGIN
+          ALTER TABLE ai_model_token_usages ALTER COLUMN created_at SET NOT NULL;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+        """,
+        """
+        DO $$ BEGIN
+          ALTER TABLE ai_model_token_usages ALTER COLUMN updated_at SET NOT NULL;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+        """,
         """
         CREATE TABLE IF NOT EXISTS design_projects (
           id TEXT PRIMARY KEY,
@@ -119,8 +137,18 @@ def apply_postgres_schema_patches() -> None:
           artifact_file TEXT,
           publish_status TEXT NOT NULL DEFAULT 'ready',
           published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        """,
+        "ALTER TABLE design_outputs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;",
+        "UPDATE design_outputs SET updated_at = COALESCE(created_at, published_at) WHERE updated_at IS NULL;",
+        "ALTER TABLE design_outputs ALTER COLUMN updated_at SET DEFAULT now();",
+        """
+        DO $$ BEGIN
+          ALTER TABLE design_outputs ALTER COLUMN updated_at SET NOT NULL;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
         """,
         """
         ALTER TABLE design_outputs

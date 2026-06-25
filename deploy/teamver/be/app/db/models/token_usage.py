@@ -5,11 +5,15 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, utcnow
+from .base import BaseModel, utcnow
 
 
-class AiModelTokenUsage(Base):
-    """Per-run model usage ledger — tokens + billing snapshot (Registry Phase 2)."""
+class AiModelTokenUsage(BaseModel):
+    """Per-run model usage ledger — tokens + billing snapshot (Registry Phase 2).
+
+    ``used_at`` — provider/event time (집계·M2M 필터).
+    ``created_at`` / ``updated_at`` — row audit (insert / upsert·billing 갱신).
+    """
 
     __tablename__ = "ai_model_token_usages"
     __table_args__ = (

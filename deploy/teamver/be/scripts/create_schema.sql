@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS ai_model_token_usages (
   token_count_source TEXT NOT NULL DEFAULT 'unknown',
   registry_usage_id TEXT,
   billing_status TEXT NOT NULL DEFAULT 'not_attempted',
-  credits_committed BOOLEAN NOT NULL DEFAULT FALSE
+  credits_committed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_token_usages_used_at ON ai_model_token_usages (used_at);

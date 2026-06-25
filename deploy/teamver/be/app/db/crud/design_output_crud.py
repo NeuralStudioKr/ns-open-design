@@ -49,6 +49,7 @@ async def acreate_output(
         publish_status=publish_status,
         published_at=now,
         created_at=now,
+        updated_at=now,
     )
     db.add(row)
     await db.flush()

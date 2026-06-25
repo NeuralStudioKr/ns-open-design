@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import AiModelTokenUsage
+from ..models.base import utcnow
 from ..newid import new_token_usage_id
 
 
@@ -52,6 +53,10 @@ def _should_replace_token_counts(existing: AiModelTokenUsage, incoming: dict[str
     return incoming_total > existing_total
 
 
+def _touch_usage_row_updated_at(row: AiModelTokenUsage) -> None:
+    row.updated_at = utcnow()
+
+
 def _apply_usage_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
     row.model_name = str(fields.get("model_name") or row.model_name)
     row.input_tokens = max(0, int(fields.get("input_tokens") or 0))
@@ -74,6 +79,7 @@ def _apply_usage_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
         row.billing_status = str(fields["billing_status"])
     if fields.get("credits_committed") is not None:
         row.credits_committed = bool(fields["credits_committed"])
+    _touch_usage_row_updated_at(row)
 
 
 async def aupsert_usage(
@@ -127,6 +133,7 @@ async def aupsert_usage(
                     existing.run_status = str(fields["run_status"])
                 if fields.get("token_count_source") == "provider_usage" and existing.token_count_source != "provider_usage":
                     existing.token_count_source = "provider_usage"
+                _touch_usage_row_updated_at(existing)
             await db.flush()
             await db.refresh(existing)
             return existing
@@ -171,6 +178,7 @@ async def aupdate_usage_billing_by_run(
     row.credits_committed = credits_committed
     if registry_usage_id:
         row.registry_usage_id = registry_usage_id
+    _touch_usage_row_updated_at(row)
     await db.flush()
     await db.refresh(row)
     return row
