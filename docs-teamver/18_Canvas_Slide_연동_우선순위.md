@@ -66,7 +66,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 |---|---|---|
 | 1 | **Canvas import 확인 + slide run 시작을 하나의 확정 action으로 통합** | 핵심 UX 단축 — ✅ loop 191 one-confirm modal | **완료** |
 | 2 | **기본 source 구조화** | MD/HTML의 heading·paragraph·image 순서를 정규화. 필요하면 design-api에서 처리 |
-| 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 |
+| 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 | **🟡 loop 398** — 성공 toast → preview + publish menu |
 | 4 | **Design System 기본 적용** | Canvas 원본 테마 복제보다 workspace Design System/기본 slide theme를 적용하는 편이 품질 대비 효과가 큼 | **✅ loop 192** |
 
 ### P2 — 출시 후
