@@ -145,6 +145,16 @@ describe("internalAgentMarkup", () => {
     const input = "<info>TodoWrite called with 3 tasks</info>\n\n본문";
     expect(stripLeakedPseudoToolXml(input)).toBe("본문");
   });
+
+  it("web and daemon import the contracts SSOT for pseudo-tool stripping", async () => {
+    const contracts = await import("@open-design/contracts");
+    const daemonStrip = (await import("../../daemon/src/think-tag-splitter.js"))
+      .stripLeakedPseudoToolXml;
+    const sample =
+      "<tool_call>{\"name\":\"Write\",\"arguments\":{}}</tool_call>\n\n본문";
+    expect(stripLeakedPseudoToolXml(sample)).toBe(contracts.sanitizeLeakedAgentProse(sample));
+    expect(daemonStrip(sample)).toBe(contracts.sanitizeLeakedAgentProse(sample));
+  });
 });
 
 describe("sanitizeChatMessageLeakedPseudoTool (expanded)", () => {

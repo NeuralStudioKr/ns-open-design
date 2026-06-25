@@ -1,3 +1,11 @@
+import { sanitizeLeakedAgentProse } from "@open-design/contracts";
+
+/** Remove CLI-style pseudo-tool XML leaked into BYOK/API chat deltas (#313).
+ *  SSOT: `@open-design/contracts` `sanitizeLeakedAgentProse`. */
+export function stripLeakedPseudoToolXml(text: string): string {
+  return sanitizeLeakedAgentProse(text);
+}
+
 const REDACTED_THINKING_TAG = "redacted_thinking";
 
 /** Streaming-safe splitter for MiniMax redacted_thinking markers in delta.content. */
@@ -86,40 +94,4 @@ export function createThinkTagSplitter(
       return { visible: tail, thinking: "" };
     },
   };
-}
-
-/** Remove CLI-style pseudo-tool XML leaked into BYOK/API chat deltas (#313).
- *  Keep patterns in sync with apps/web/src/runtime/internalAgentMarkup.ts `sanitizeLeakedAgentProse`. */
-export function stripLeakedPseudoToolXml(text: string): string {
-  if (!text) return text;
-  let out = text;
-  out = out.replace(/<function_calls\b[^>]*>[\s\S]*?<\/function_calls>/gi, "");
-  out = out.replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, "");
-  out = out.replace(/<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi, "");
-  out = out.replace(/<function_results\b[^>]*>[\s\S]*?<\/function_results>/gi, "");
-  out = out.replace(/<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi, "");
-  out = out.replace(/<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi, "");
-  out = out.replace(/<tool_call\b[^>]*>[\s\S]*?<\/tool_call>/gi, "");
-  out = out.replace(/<tool_result\b[^>]*>[\s\S]*?<\/tool_result>/gi, "");
-  out = out.replace(/<function_call\b[^>]*>[\s\S]*?<\/function_call>/gi, "");
-  out = out.replace(/<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi, "");
-  out = out.replace(/<info\b[^>]*>[\s\S]*?<\/info>/gi, "");
-  out = out.replace(/<(od[A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
-  out = out.replace(
-    new RegExp(`<${REDACTED_THINKING_TAG}[^>]*>[\\s\\S]*?</${REDACTED_THINKING_TAG}>`, "gi"),
-    "",
-  );
-  out = out.replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi, "");
-  out = out.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
-  out = out.replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi, "");
-  out = out.replace(
-    /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|TodoUpdate|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate|ApplyPatch|MultiEdit|NotebookEdit)[^\]]*\]/gi,
-    "",
-  );
-  out = out.replace(/\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi, "");
-  out = out.replace(
-    /^\s*(?:TodoWrite called with \d+ tasks|Marking task \d+ as (?:in_progress|completed|pending|cancelled|stopped)|Running tool: \w+|Tool (?:completed|failed): \w+)\s*$/gim,
-    "",
-  );
-  return out.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
