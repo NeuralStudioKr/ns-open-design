@@ -48,4 +48,20 @@ describe('stripLeakedPseudoToolXml', () => {
     const out = stripLeakedPseudoToolXml(input);
     expect(out).toBe('Visible answer.');
   });
+
+  it('removes Cursor-style tool_call JSON blocks', () => {
+    const input = [
+      'Plan ready.',
+      '<tool_call>',
+      '{"name":"TodoUpdate","arguments":{"updates":[]}}',
+      '</tool_call>',
+      '<tool_result>ok</tool_result>',
+      'Proceed.',
+    ].join('\n');
+    const out = stripLeakedPseudoToolXml(input);
+    expect(out).not.toContain('tool_call');
+    expect(out).not.toContain('TodoUpdate');
+    expect(out).toContain('Plan ready.');
+    expect(out).toContain('Proceed.');
+  });
 });

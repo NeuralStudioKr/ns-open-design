@@ -45,11 +45,18 @@ const CLOSED_TODO_LIST_RE = /<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi;
 const OPEN_TODO_LIST_RE = /<todo-list\b[^>]*>/i;
 const CLOSED_TOOL_CALL_RE = /<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi;
 const OPEN_TOOL_CALL_RE = /<tool-call\b[^>]*>/i;
+/** Cursor / OpenAI-style `<tool_call>{…}</tool_call>` leaked into text_delta (#313 follow-up). */
+const CLOSED_TOOL_CALL_UNDERSCORE_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call>/gi;
+const OPEN_TOOL_CALL_UNDERSCORE_RE = /<tool_call\b[^>]*>/i;
+const CLOSED_TOOL_RESULT_UNDERSCORE_RE = /<tool_result\b[^>]*>[\s\S]*?<\/tool_result>/gi;
+const OPEN_TOOL_RESULT_UNDERSCORE_RE = /<tool_result\b[^>]*>/i;
+const CLOSED_FUNCTION_CALL_RE = /<function_call\b[^>]*>[\s\S]*?<\/function_call>/gi;
+const OPEN_FUNCTION_CALL_RE = /<function_call\b[^>]*>/i;
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
 
 /** Narrated tool calls some models emit when tools are unavailable or ignored. */
 const FAKE_TOOL_NARRATION_RE =
-  /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate)[^\]]*\]/gi;
+  /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|TodoUpdate|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate|ApplyPatch|MultiEdit|NotebookEdit)[^\]]*\]/gi;
 
 /** Fake file-read protocol prose observed in #313 (`[读取 template.html …]`). */
 const FAKE_FILE_READ_NARRATION_RE = /\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi;
@@ -107,6 +114,9 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(CLOSED_FUNCTION_RESULTS_RE, "");
   out = out.replace(CLOSED_TODO_LIST_RE, "");
   out = out.replace(CLOSED_TOOL_CALL_RE, "");
+  out = out.replace(CLOSED_TOOL_CALL_UNDERSCORE_RE, "");
+  out = out.replace(CLOSED_TOOL_RESULT_UNDERSCORE_RE, "");
+  out = out.replace(CLOSED_FUNCTION_CALL_RE, "");
   out = out.replace(CLOSED_ANTML_RE, "");
   out = out.replace(CLOSED_INFO_RE, "");
   out = out.replace(CLOSED_OD_TAG_RE, "");
@@ -163,6 +173,9 @@ export function stripTrailingOpenInternalMarkup(
     { re: OPEN_PARAMETER_RE, name: "parameter" },
     { re: OPEN_TODO_LIST_RE, name: "todo-list" },
     { re: OPEN_TOOL_CALL_RE, name: "tool-call" },
+    { re: OPEN_TOOL_CALL_UNDERSCORE_RE, name: "tool_call" },
+    { re: OPEN_TOOL_RESULT_UNDERSCORE_RE, name: "tool_result" },
+    { re: OPEN_FUNCTION_CALL_RE, name: "function_call" },
     { re: OPEN_THINKING_RE, name: "thinking" },
     { re: OPEN_THINK_RE, name: "think" },
     { re: OPEN_SYSTEM_REMINDER_RE, name: "system-reminder" },
@@ -183,9 +196,8 @@ export function stripTrailingOpenInternalMarkup(
 /** Combined display sanitizer for assistant prose (history + live stream). */
 export function sanitizeAssistantProseForDisplay(
   input: string,
-  options: { streaming?: boolean } = {},
+  _options: { streaming?: boolean } = {},
 ): string {
   const closed = sanitizeLeakedAgentProse(input);
-  if (!options.streaming) return closed;
   return stripTrailingOpenInternalMarkup(closed).text;
 }

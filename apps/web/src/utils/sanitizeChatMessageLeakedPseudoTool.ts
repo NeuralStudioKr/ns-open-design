@@ -1,19 +1,19 @@
 import type { ChatMessage } from "../types";
-import { sanitizeLeakedAgentProse } from "../runtime/internalAgentMarkup";
+import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 
 /** Strip leaked CLI pseudo-tool XML from persisted assistant/user message bodies. */
 export function sanitizeChatMessageLeakedPseudoTool(message: ChatMessage): ChatMessage {
   let changed = false;
 
   const content = message.content ?? "";
-  const nextContent = sanitizeLeakedAgentProse(content);
+  const nextContent = sanitizeAssistantProseForDisplay(content);
   if (nextContent !== content) changed = true;
 
   let nextEvents = message.events;
   if (message.events?.length) {
     nextEvents = message.events.map((event) => {
       if (event.kind !== "text" || typeof event.text !== "string") return event;
-      const text = sanitizeLeakedAgentProse(event.text);
+      const text = sanitizeAssistantProseForDisplay(event.text);
       if (text === event.text) return event;
       changed = true;
       return { ...event, text };

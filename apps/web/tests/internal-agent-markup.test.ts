@@ -87,12 +87,37 @@ describe("internalAgentMarkup", () => {
       ["Working…\n<function_calls><invoke", "Working…"],
       ["Plan\n<todo-list><item>Step", "Plan"],
       ["Next\n<invoke name=\"Write\">", "Next"],
+      ["Draft\n<tool_call>\n{\"name\": \"Write\"", "Draft"],
     ] as const;
     for (const [streaming, expected] of cases) {
       const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(streaming);
       expect(hadOpenInternalMarkup).toBe(true);
       expect(text).toBe(expected);
     }
+  });
+
+  it("strips Cursor-style tool_call blocks with JSON payloads", () => {
+    const input = [
+      "슬라이드 구성 계획:",
+      "<tool_call>",
+      '{"name": "TodoUpdate", "arguments": {"updates": [{"index": 1, "status": "completed"}]}}',
+      "</tool_call>",
+      "<tool_call>",
+      '{"name": "Write", "arguments": {"path": "index.html", "content": "<!doctype html>"}}',
+      "</tool_call>",
+      "본문 시작",
+    ].join("\n");
+    const out = sanitizeLeakedAgentProse(input);
+    expect(out).not.toContain("<tool_call>");
+    expect(out).not.toContain("TodoUpdate");
+    expect(out).not.toContain("<!doctype html>");
+    expect(out).toContain("슬라이드 구성 계획:");
+    expect(out).toContain("본문 시작");
+  });
+
+  it("sanitizeAssistantProseForDisplay strips unclosed tool_call in history too", () => {
+    const input = "Visible intro\n<tool_call>\n{\"name\": \"Write\", \"arguments\":";
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("Visible intro");
   });
 
   it("strips pseudo-tool XML, thinking tags, fake file reads, and bare status lines", () => {

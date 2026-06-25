@@ -99,6 +99,9 @@ export function stripLeakedPseudoToolXml(text: string): string {
   out = out.replace(/<function_results\b[^>]*>[\s\S]*?<\/function_results>/gi, "");
   out = out.replace(/<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi, "");
   out = out.replace(/<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi, "");
+  out = out.replace(/<tool_call\b[^>]*>[\s\S]*?<\/tool_call>/gi, "");
+  out = out.replace(/<tool_result\b[^>]*>[\s\S]*?<\/tool_result>/gi, "");
+  out = out.replace(/<function_call\b[^>]*>[\s\S]*?<\/function_call>/gi, "");
   out = out.replace(/<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi, "");
   out = out.replace(/<info\b[^>]*>[\s\S]*?<\/info>/gi, "");
   out = out.replace(/<(od[A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
@@ -110,7 +113,7 @@ export function stripLeakedPseudoToolXml(text: string): string {
   out = out.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
   out = out.replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi, "");
   out = out.replace(
-    /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate)[^\]]*\]/gi,
+    /\[(?:正在调用|calling|invoking)\s+(?:TodoWrite|TodoUpdate|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate|ApplyPatch|MultiEdit|NotebookEdit)[^\]]*\]/gi,
     "",
   );
   out = out.replace(/\[(?:读取|Reading|reading)\s+[^\]]{1,240}\]/gi, "");
