@@ -582,6 +582,60 @@ export function listProjects(db: SqliteDb) {
   return rows.map(normalizeProject);
 }
 
+export type ProjectListCursor = {
+  updatedAt: number;
+  id: string;
+};
+
+export function encodeProjectListCursor(cursor: ProjectListCursor): string {
+  return `${cursor.updatedAt}:${encodeURIComponent(cursor.id)}`;
+}
+
+export function parseProjectListCursor(raw: unknown): ProjectListCursor | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const colon = trimmed.indexOf(':');
+  if (colon <= 0) return null;
+  const updatedAt = Number(trimmed.slice(0, colon));
+  const id = decodeURIComponent(trimmed.slice(colon + 1));
+  if (!Number.isFinite(updatedAt) || !id) return null;
+  return { updatedAt, id };
+}
+
+export function listProjectsPage(
+  db: SqliteDb,
+  options: { limit: number; cursor?: ProjectListCursor | null },
+): { projects: ReturnType<typeof normalizeProject>[]; hasMore: boolean; nextCursor: string | null } {
+  const limit = Math.max(1, Math.min(Math.floor(options.limit), 100));
+  const cursor = options.cursor ?? null;
+  const params: unknown[] = [];
+  let where = '';
+  if (cursor) {
+    where = 'WHERE (updated_at < ? OR (updated_at = ? AND id < ?))';
+    params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+  }
+  params.push(limit + 1);
+  const rows = db
+    .prepare(
+      `SELECT ${PROJECT_COLS}
+         FROM projects
+         ${where}
+        ORDER BY updated_at DESC, id DESC
+        LIMIT ?`,
+    )
+    .all(...params) as DbRow[];
+  const hasMore = rows.length > limit;
+  const slice = hasMore ? rows.slice(0, limit) : rows;
+  const projects = slice.map(normalizeProject);
+  const last = projects.at(-1);
+  const nextCursor =
+    hasMore && last
+      ? encodeProjectListCursor({ updatedAt: last.updatedAt, id: last.id })
+      : null;
+  return { projects, hasMore, nextCursor };
+}
+
 export function listLatestProjectRunStatuses(db: SqliteDb) {
   const rows = db
     .prepare(

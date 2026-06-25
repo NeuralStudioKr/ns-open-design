@@ -89,6 +89,10 @@ interface Props {
   skillsLoading?: boolean;
   designSystemsLoading?: boolean;
   projectsLoading?: boolean;
+  projectsPageLoading?: boolean;
+  projectsHasMore?: boolean;
+  projectsLoadingMore?: boolean;
+  onLoadMoreProjects?: () => void;
   promptTemplatesLoading?: boolean;
   onCreateProject: (
     input: CreateInput & {
@@ -249,6 +253,10 @@ export function EntryView({
   skillsLoading = false,
   designSystemsLoading = false,
   projectsLoading = false,
+  projectsPageLoading = false,
+  projectsHasMore = false,
+  projectsLoadingMore = false,
+  onLoadMoreProjects,
   promptTemplatesLoading: _promptTemplatesLoading = false,
   onCreateProject,
   onCreatePluginShareProject,
@@ -352,6 +360,10 @@ export function EntryView({
       skillsLoading={skillsLoading}
       designSystemsLoading={designSystemsLoading}
       projectsLoading={projectsLoading}
+      projectsPageLoading={projectsPageLoading}
+      projectsHasMore={projectsHasMore}
+      projectsLoadingMore={projectsLoadingMore}
+      onLoadMoreProjects={onLoadMoreProjects}
       config={config}
       providerModelsCache={providerModelsCache}
       onProviderModelsCacheChange={onProviderModelsCacheChange}

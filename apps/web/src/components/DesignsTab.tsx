@@ -82,6 +82,9 @@ interface Props {
 	onNewProject?: () => void;
 	/** Embed — Design 앱 비활성 workspace에서 empty-state CTA 비활성. */
 	createDisabled?: boolean;
+	hasMoreProjects?: boolean;
+	projectsLoadingMore?: boolean;
+	onLoadMoreProjects?: () => void;
 }
 
 export function DesignsTab({
@@ -94,6 +97,9 @@ export function DesignsTab({
 	onRename,
 	onNewProject,
 	createDisabled = false,
+	hasMoreProjects = false,
+	projectsLoadingMore = false,
+	onLoadMoreProjects,
 }: Props) {
 	const renameTitleId = useId();
 	const confirmTitleId = useId();
@@ -933,6 +939,22 @@ export function DesignsTab({
 					})}
 				</div>
 			)}
+			{hasMoreProjects && onLoadMoreProjects ? (
+				<div className="designs-load-more">
+					<button
+						type="button"
+						className="secondary"
+						disabled={projectsLoadingMore}
+						data-testid="designs-load-more"
+						onClick={() => {
+							if (projectsLoadingMore) return;
+							onLoadMoreProjects();
+						}}
+					>
+						{projectsLoadingMore ? t("common.loading") : t("teamver.driveImport.loadMore")}
+					</button>
+				</div>
+			) : null}
 			{renameTarget ? (
 				<Dialog
 					as="form"

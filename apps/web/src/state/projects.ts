@@ -42,10 +42,33 @@ import {
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
+import {
+  HOME_RECENT_LIST_LIMIT,
+  PROJECT_LIST_PAGE_SIZE,
+} from '../teamver/projectListLimits';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
+
+export type ProjectsListPageResult = {
+  projects: Project[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+async function normalizeProjectsResponse(projects: Project[]): Promise<Project[]> {
+  return filterProjectsByTeamverRegistryIfNeeded(
+    projects.map((project) => sanitizeProjectForEmbed(project)),
+  );
+}
+
+async function fetchProjectsListWhenAuthenticated(url: string): Promise<Response | null> {
+  if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) {
+    return null;
+  }
+  return fetch(url);
+}
 
 async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'name'>): Promise<void> {
   try {
@@ -61,18 +84,69 @@ async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'n
   }
 }
 
-export async function listProjects(): Promise<Project[]> {
+export async function listRecentProjects(
+  limit = HOME_RECENT_LIST_LIMIT,
+): Promise<Project[]> {
   try {
-    if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) {
-      return [];
-    }
-    const resp = await fetch('/api/projects');
+    const resp = await fetchProjectsListWhenAuthenticated(
+      `/api/projects/recent?limit=${encodeURIComponent(String(limit))}`,
+    );
+    if (!resp) return [];
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects: Project[] };
-    const projects = json.projects ?? [];
-    return await filterProjectsByTeamverRegistryIfNeeded(
-      projects.map((project) => sanitizeProjectForEmbed(project)),
-    );
+    return normalizeProjectsResponse(json.projects ?? []);
+  } catch (err) {
+    if (err instanceof TeamverProjectRegistryError) {
+      throw err;
+    }
+    return [];
+  }
+}
+
+export async function listProjectsPage(options?: {
+  limit?: number;
+  cursor?: string | null;
+}): Promise<ProjectsListPageResult> {
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', String(options?.limit ?? PROJECT_LIST_PAGE_SIZE));
+    if (options?.cursor) {
+      params.set('cursor', options.cursor);
+    }
+    const resp = await fetchProjectsListWhenAuthenticated(`/api/projects?${params.toString()}`);
+    if (!resp) {
+      return { projects: [], hasMore: false, nextCursor: null };
+    }
+    if (!resp.ok) {
+      return { projects: [], hasMore: false, nextCursor: null };
+    }
+    const json = (await resp.json()) as {
+      projects: Project[];
+      hasMore?: boolean;
+      nextCursor?: string | null;
+    };
+    const projects = await normalizeProjectsResponse(json.projects ?? []);
+    return {
+      projects,
+      hasMore: json.hasMore === true,
+      nextCursor: typeof json.nextCursor === 'string' ? json.nextCursor : null,
+    };
+  } catch (err) {
+    if (err instanceof TeamverProjectRegistryError) {
+      throw err;
+    }
+    return { projects: [], hasMore: false, nextCursor: null };
+  }
+}
+
+/** Full daemon listing — used by registry sync and legacy refresh paths. */
+export async function listProjects(): Promise<Project[]> {
+  try {
+    const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
+    if (!resp) return [];
+    if (!resp.ok) return [];
+    const json = (await resp.json()) as { projects: Project[] };
+    return normalizeProjectsResponse(json.projects ?? []);
   } catch (err) {
     if (err instanceof TeamverProjectRegistryError) {
       throw err;

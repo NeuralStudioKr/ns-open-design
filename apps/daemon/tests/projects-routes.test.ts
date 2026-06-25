@@ -1239,6 +1239,107 @@ describe('project locations routes', () => {
       ]),
     );
   });
+
+  it('GET /api/projects/recent returns a capped recent slice', async () => {
+    const stamp = Date.now();
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const projectId = `proj-recent-${stamp}-${i}`;
+      ids.push(projectId);
+      const resp = await fetch(`${baseUrl}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: projectId,
+          name: `Recent ${i}`,
+          skillId: null,
+          designSystemId: null,
+        }),
+      });
+      expect(resp.status).toBe(200);
+    }
+    for (const [index, projectId] of ids.entries()) {
+      const touchResp = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `Recent touch ${index}` }),
+      });
+      expect(touchResp.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const recentResp = await fetch(`${baseUrl}/api/projects/recent?limit=2`);
+    expect(recentResp.status).toBe(200);
+    const recentBody = (await recentResp.json()) as { projects: Array<{ id: string }> };
+    const recentStampIds = recentBody.projects
+      .map((project) => project.id)
+      .filter((id) => id.startsWith(`proj-recent-${stamp}-`));
+    expect(recentStampIds).toEqual([
+      `proj-recent-${stamp}-2`,
+      `proj-recent-${stamp}-1`,
+    ]);
+  });
+
+  it('GET /api/projects supports cursor pagination when limit is set', async () => {
+    const stamp = Date.now();
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const projectId = `proj-page-${stamp}-${i}`;
+      ids.push(projectId);
+      const resp = await fetch(`${baseUrl}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: projectId,
+          name: `Paged ${i}`,
+          skillId: null,
+          designSystemId: null,
+        }),
+      });
+      expect(resp.status).toBe(200);
+    }
+    for (const [index, projectId] of ids.entries()) {
+      const touchResp = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `Paged touch ${index}` }),
+      });
+      expect(touchResp.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const pageStampIds = (projects: Array<{ id: string }>) =>
+      projects
+        .map((project) => project.id)
+        .filter((id) => id.startsWith(`proj-page-${stamp}-`));
+
+    const firstResp = await fetch(`${baseUrl}/api/projects?limit=2`);
+    expect(firstResp.status).toBe(200);
+    const firstBody = (await firstResp.json()) as {
+      projects: Array<{ id: string }>;
+      hasMore: boolean;
+      nextCursor: string | null;
+    };
+    expect(pageStampIds(firstBody.projects)).toEqual([
+      `proj-page-${stamp}-2`,
+      `proj-page-${stamp}-1`,
+    ]);
+    expect(firstBody.hasMore).toBe(true);
+    expect(firstBody.nextCursor).toBeTruthy();
+
+    const secondResp = await fetch(
+      `${baseUrl}/api/projects?limit=2&cursor=${encodeURIComponent(firstBody.nextCursor ?? '')}`,
+    );
+    expect(secondResp.status).toBe(200);
+    const secondBody = (await secondResp.json()) as {
+      projects: Array<{ id: string }>;
+      hasMore: boolean;
+      nextCursor: string | null;
+    };
+    expect(pageStampIds(secondBody.projects)).toEqual([`proj-page-${stamp}-0`]);
+    expect(secondBody.hasMore).toBeTypeOf('boolean');
+    expect(secondBody.nextCursor === null || typeof secondBody.nextCursor === 'string').toBe(true);
+  });
 });
 
 async function withSandboxMode<T>(run: () => Promise<T>): Promise<T> {

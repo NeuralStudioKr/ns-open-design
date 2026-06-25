@@ -1,6 +1,9 @@
 /** Home recent-projects rail — matches `RecentProjectsStrip` default limit. */
 export const HOME_RECENT_LIST_LIMIT = 6;
 
+/** Default daemon page size for `GET /api/projects?limit=`. */
+export const PROJECT_LIST_PAGE_SIZE = 24;
+
 /** One viewport page of cards (batch / coalesced fetch ceiling). */
 export const PROJECT_LIST_VIEWPORT_BATCH = 12;
 

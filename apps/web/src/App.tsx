@@ -89,7 +89,7 @@ import {
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
-import { loadProjectListSafe } from './teamver/loadProjectList';
+import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
@@ -506,7 +506,12 @@ function AppInner() {
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [dsLoading, setDsLoading] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsHasMore, setProjectsHasMore] = useState(false);
+  const [projectsLoadingMore, setProjectsLoadingMore] = useState(false);
+  const [projectsPageLoading, setProjectsPageLoading] = useState(false);
   const projectsLoadingRef = useRef(projectsLoading);
+  const projectsPageLoadedRef = useRef(false);
+  const projectsNextCursorRef = useRef<string | null>(null);
   useEffect(() => {
     projectsLoadingRef.current = projectsLoading;
   }, [projectsLoading]);
@@ -955,7 +960,7 @@ function AppInner() {
           await waitForTeamverEmbedBoot();
         }
         if (cancelled) return;
-        const result = await loadProjectListSafe();
+        const result = await loadRecentProjectsForHome();
         if (cancelled) return;
         if (!result.ok) {
           setWorkingDirError(result.errorMessage);
@@ -1208,9 +1213,88 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const mergeProjectsByRecency = useCallback((current: Project[], incoming: Project[]) => {
+    const merged = new Map<string, Project>();
+    for (const project of [...current, ...incoming]) {
+      merged.set(project.id, project);
+    }
+    return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, []);
+
+  const applyProjectsPageResult = useCallback((
+    result: { projects: Project[]; hasMore: boolean; nextCursor: string | null },
+    request: ProjectListRequest,
+    mode: 'replace' | 'append',
+  ) => {
+    projectsNextCursorRef.current = result.nextCursor;
+    setProjectsHasMore(result.hasMore);
+    if (mode === 'replace') {
+      reconcileFetchedProjects(result.projects, request);
+    } else {
+      setProjects((current) => mergeProjectsByRecency(current, result.projects));
+    }
+    warmEmbedProjectListCaches(result.projects);
+  }, [mergeProjectsByRecency, reconcileFetchedProjects]);
+
+  const ensureProjectsListPageLoaded = useCallback(async () => {
+    if (projectsPageLoadedRef.current) return;
+    projectsPageLoadedRef.current = true;
+    setProjectsPageLoading(true);
+    const request = beginProjectListRequest();
+    try {
+      const result = await loadProjectListPage();
+      if (!result.ok) {
+        projectsPageLoadedRef.current = false;
+        setWorkingDirError(result.errorMessage);
+        return;
+      }
+      setWorkingDirError(null);
+      applyProjectsPageResult(result, request, 'replace');
+    } finally {
+      setProjectsPageLoading(false);
+    }
+  }, [applyProjectsPageResult, beginProjectListRequest]);
+
+  const loadMoreProjects = useCallback(async () => {
+    if (projectsLoadingMore || !projectsHasMore || !projectsNextCursorRef.current) return;
+    setProjectsLoadingMore(true);
+    try {
+      let cursor: string | null = projectsNextCursorRef.current;
+      // Embed registry filter can drop an entire daemon page — advance until
+      // we surface rows or exhaust server pages (cap avoids runaway loops).
+      for (let attempt = 0; attempt < 8 && cursor; attempt += 1) {
+        const result = await loadProjectListPage(cursor);
+        if (!result.ok) {
+          setWorkingDirError(result.errorMessage);
+          return;
+        }
+        projectsNextCursorRef.current = result.nextCursor;
+        setProjectsHasMore(result.hasMore);
+        if (result.projects.length > 0) {
+          setProjects((current) => mergeProjectsByRecency(current, result.projects));
+          warmEmbedProjectListCaches(result.projects);
+        }
+        if (result.projects.length > 0 || !result.hasMore) break;
+        cursor = result.nextCursor;
+      }
+    } finally {
+      setProjectsLoadingMore(false);
+    }
+  }, [mergeProjectsByRecency, projectsHasMore, projectsLoadingMore]);
+
   const refreshProjects = useCallback(async () => {
     const request = beginProjectListRequest();
-    const result = await loadProjectListSafe();
+    if (projectsPageLoadedRef.current) {
+      const result = await loadProjectListPage();
+      if (!result.ok) {
+        setWorkingDirError(result.errorMessage);
+        return;
+      }
+      setWorkingDirError(null);
+      applyProjectsPageResult(result, request, 'replace');
+      return;
+    }
+    const result = await loadRecentProjectsForHome();
     if (!result.ok) {
       setWorkingDirError(result.errorMessage);
       return;
@@ -1218,7 +1302,12 @@ function AppInner() {
     setWorkingDirError(null);
     reconcileFetchedProjects(result.projects, request);
     warmEmbedProjectListCaches(result.projects);
-  }, [beginProjectListRequest, reconcileFetchedProjects]);
+  }, [applyProjectsPageResult, beginProjectListRequest, reconcileFetchedProjects]);
+
+  useEffect(() => {
+    if (route.kind !== 'home' || route.view !== 'projects') return;
+    void ensureProjectsListPageLoaded();
+  }, [route, ensureProjectsListPageLoaded]);
 
   const notifyEmbedSubmitBlocked = useCallback(() => {
     if (isTeamverEmbedMode() && !embedWorkspaceId) {
@@ -1340,7 +1429,10 @@ function AppInner() {
         const request = beginProjectListRequest();
         setProjectsLoading(true);
         setProjects([]);
-        const result = await loadProjectListSafe();
+        projectsPageLoadedRef.current = false;
+        projectsNextCursorRef.current = null;
+        setProjectsHasMore(false);
+        const result = await loadRecentProjectsForHome();
         if (!result.ok) {
           setWorkingDirError(result.errorMessage);
           setProjectsLoading(false);
@@ -2947,6 +3039,10 @@ function AppInner() {
         skillsLoading={skillsLoading}
         designSystemsLoading={dsLoading}
         projectsLoading={projectsLoading}
+        projectsPageLoading={projectsPageLoading}
+        projectsHasMore={projectsHasMore}
+        projectsLoadingMore={projectsLoadingMore}
+        onLoadMoreProjects={loadMoreProjects}
         promptTemplatesLoading={promptTemplatesLoading}
         onCreateProject={handleCreateProject}
         onCreatePluginShareProject={handleCreatePluginShareProject}

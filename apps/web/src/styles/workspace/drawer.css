@@ -433,6 +433,11 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 14px;
 }
+.designs-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
 .design-card {
   position: relative;
   background: var(--bg-panel);

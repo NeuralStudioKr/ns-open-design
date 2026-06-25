@@ -269,6 +269,17 @@ export interface ProjectsResponse {
   projects: Project[];
 }
 
+/** Paginated `GET /api/projects?limit=&cursor=` body. */
+export interface PaginatedProjectsResponse extends ProjectsResponse {
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+/** Lightweight `GET /api/projects/recent?limit=` body for home surfaces. */
+export interface RecentProjectsResponse {
+  projects: Project[];
+}
+
 export type ProjectCoverHintKind = "html" | "image" | "video" | "logo";
 
 export interface ProjectCoverHint {

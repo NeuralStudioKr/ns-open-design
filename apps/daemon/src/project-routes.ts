@@ -22,6 +22,7 @@ import type { RouteDeps } from './server-context.js';
 import { readAnalyticsContext } from './analytics.js';
 import { listSkills } from './skills.js';
 import { isSafeId } from './projects.js';
+import { listProjectsPage, parseProjectListCursor } from './db.js';
 import {
   BUILT_IN_PROJECT_LOCATION_ID,
   allProjectLocations,
@@ -912,6 +913,57 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       .map((project: any) => project.id);
   }
 
+  const PROJECT_LIST_DEFAULT_LIMIT = 24;
+  const PROJECT_LIST_MAX_LIMIT = 100;
+  const PROJECT_RECENT_DEFAULT_LIMIT = 6;
+  const PROJECT_RECENT_MAX_LIMIT = 24;
+
+  function parseProjectsListLimit(raw: unknown, fallback: number, max: number): number {
+    const n = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(1, Math.min(Math.floor(n), max));
+  }
+
+  async function buildProjectListingContext() {
+    const locations = await configuredProjectLocations();
+    const latestRunStatuses = listLatestProjectRunStatuses(db);
+    const awaitingInputProjects = listProjectsAwaitingInput(db);
+    const activeRunStatuses = new Map<string, ReturnType<typeof projectStatusFromRun>>();
+    for (const run of design.runs.list()) {
+      if (!run.projectId) continue;
+      const runStatus = projectStatusFromRun(run);
+      if (design.runs.isTerminal(run.status)) {
+        const existing = latestRunStatuses.get(run.projectId);
+        if (!existing || run.updatedAt > (existing.updatedAt ?? 0)) {
+          latestRunStatuses.set(run.projectId, runStatus);
+        }
+      } else {
+        const existing = activeRunStatuses.get(run.projectId);
+        if (!existing || run.updatedAt > (existing.updatedAt ?? 0)) {
+          activeRunStatuses.set(run.projectId, runStatus);
+        }
+      }
+    }
+    return { locations, latestRunStatuses, awaitingInputProjects, activeRunStatuses };
+  }
+
+  function enrichProjectsForListing(
+    rawProjects: Array<{ id: string } & Record<string, unknown>>,
+    context: Awaited<ReturnType<typeof buildProjectListingContext>>,
+  ) {
+    return rawProjects
+      .filter((project) => projectVisibleForLocations(project, context.locations))
+      .map((project) => ({
+        ...project,
+        status: composeProjectDisplayStatus(
+          context.activeRunStatuses.get(project.id) ??
+            context.latestRunStatuses.get(project.id) ?? { value: 'not_started' },
+          context.awaitingInputProjects,
+          project.id,
+        ),
+      }));
+  }
+
   app.get('/api/project-locations', async (_req, res) => {
     try {
       const locations = await configuredProjectLocations();
@@ -1015,40 +1067,55 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     }
   });
 
-  app.get('/api/projects', async (_req, res) => {
+  app.get('/api/projects/recent', async (req, res) => {
     try {
-      const locations = await configuredProjectLocations();
-      const latestRunStatuses = listLatestProjectRunStatuses(db);
-      const awaitingInputProjects = listProjectsAwaitingInput(db);
-      const activeRunStatuses = new Map();
-      for (const run of design.runs.list()) {
-        if (!run.projectId) continue;
-        const runStatus = projectStatusFromRun(run);
-        if (design.runs.isTerminal(run.status)) {
-          const existing = latestRunStatuses.get(run.projectId);
-          if (!existing || run.updatedAt > (existing.updatedAt ?? 0)) {
-            latestRunStatuses.set(run.projectId, runStatus);
-          }
-        } else {
-          const existing = activeRunStatuses.get(run.projectId);
-          if (!existing || run.updatedAt > (existing.updatedAt ?? 0)) {
-            activeRunStatuses.set(run.projectId, runStatus);
-          }
-        }
-      }
-      /** @type {import('@open-design/contracts').ProjectsResponse} */
+      const limit = parseProjectsListLimit(
+        req.query.limit,
+        PROJECT_RECENT_DEFAULT_LIMIT,
+        PROJECT_RECENT_MAX_LIMIT,
+      );
+      const page = listProjectsPage(db, { limit });
+      const context = await buildProjectListingContext();
+      /** @type {import('@open-design/contracts').RecentProjectsResponse} */
       const body = {
-        projects: listProjects(db)
-          .filter((project: any) => projectVisibleForLocations(project, locations))
-          .map((project: any) => ({
-            ...project,
-            status: composeProjectDisplayStatus(
-              activeRunStatuses.get(project.id) ??
-                latestRunStatuses.get(project.id) ?? { value: 'not_started' },
-              awaitingInputProjects,
-              project.id,
-            ),
-          })),
+        projects: enrichProjectsForListing(page.projects, context),
+      };
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  app.get('/api/projects', async (req, res) => {
+    try {
+      const limitRaw = req.query.limit;
+      const cursorRaw = req.query.cursor;
+      const paginated = limitRaw !== undefined || cursorRaw !== undefined;
+      const context = await buildProjectListingContext();
+      if (!paginated) {
+        /** @type {import('@open-design/contracts').ProjectsResponse} */
+        const body = {
+          projects: enrichProjectsForListing(listProjects(db), context),
+        };
+        res.json(body);
+        return;
+      }
+      const limit = parseProjectsListLimit(
+        limitRaw,
+        PROJECT_LIST_DEFAULT_LIMIT,
+        PROJECT_LIST_MAX_LIMIT,
+      );
+      const page = listProjectsPage(db, {
+        limit,
+        cursor: parseProjectListCursor(
+          typeof cursorRaw === 'string' ? cursorRaw : undefined,
+        ),
+      });
+      /** @type {import('@open-design/contracts').PaginatedProjectsResponse} */
+      const body = {
+        projects: enrichProjectsForListing(page.projects, context),
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
       };
       res.json(body);
     } catch (err: any) {

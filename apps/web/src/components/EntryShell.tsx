@@ -294,6 +294,10 @@ interface Props {
   skillsLoading?: boolean;
   designSystemsLoading?: boolean;
   projectsLoading?: boolean;
+  projectsPageLoading?: boolean;
+  projectsHasMore?: boolean;
+  projectsLoadingMore?: boolean;
+  onLoadMoreProjects?: () => void;
   // Execution / model-switching context. Threaded down from `App` so the
   // top-bar `InlineModelSwitcher` can render the active mode/agent/model
   // and persist changes through the same callbacks the project view uses.
@@ -425,6 +429,10 @@ export function EntryShell({
   skillsLoading = false,
   designSystemsLoading = false,
   projectsLoading = false,
+  projectsPageLoading = false,
+  projectsHasMore = false,
+  projectsLoadingMore = false,
+  onLoadMoreProjects,
   config,
   providerModelsCache: sharedProviderModelsCache,
   onProviderModelsCacheChange,
@@ -844,7 +852,7 @@ export function EntryShell({
               />
             </div>
             <div data-testid="entry-view-projects" data-active={view === 'projects' ? 'true' : 'false'} {...inactiveViewProps(view === 'projects')}>
-              {projectsLoading || skillsLoading || designSystemsLoading ? (
+              {projectsLoading || projectsPageLoading || skillsLoading || designSystemsLoading ? (
                 <CenteredLoader label={t('common.loading')} />
               ) : (
                 <div className="entry-section">
@@ -861,6 +869,9 @@ export function EntryShell({
                     onRename={onRenameProject}
                     onNewProject={() => openNewProject()}
                     createDisabled={teamverEmbed && embedSubmitDisabled}
+                    hasMoreProjects={projectsHasMore}
+                    projectsLoadingMore={projectsLoadingMore}
+                    onLoadMoreProjects={onLoadMoreProjects}
                   />
                 </div>
               )}
