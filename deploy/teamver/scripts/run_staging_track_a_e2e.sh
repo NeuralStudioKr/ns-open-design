@@ -396,7 +396,8 @@ else
     -H "X-Workspace-Id: ${session_workspace_id}")"
   case "$drive_sd_code" in
     200)
-      if printf '%s' "$drive_sd_body" | grep -qE '\[\]|"data"|shared_drive|sharedDrive'; then
+      # Main BE returns List[SharedDriveResponse] — bare JSON array (possibly non-empty).
+      if printf '%s' "$drive_sd_body" | grep -qE '^[[:space:]]*\[|shared_drive|sharedDrive|"data"'; then
         passed "D-B2 ${DESIGN_HOST}/teamver-bff/drive shared-drive list → 200"
       else
         failed "D-B2 shared-drive 200 but body shape unexpected"
