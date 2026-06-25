@@ -1696,6 +1696,7 @@ export function HomeView({
     setSelectedPluginContexts([]);
     setSelectedMcpContexts([]);
     setSelectedConnectorContexts([]);
+    setStagedFiles([]);
     setStagedDriveAssets([]);
   }
 

@@ -519,7 +519,7 @@ export function TeamverDriveImportModal({
       >
         <header className="teamver-drive-picker-head">
           <div>
-            <h2 id="teamver-drive-import-title">팀버 드라이브에서 가져오기</h2>
+            <h2 id="teamver-drive-import-title">teamver Drive에서 가져오기</h2>
             <p>
               {stagingMode === "home"
                 ? `최대 ${MAX_PICK}개 파일을 새 슬라이드에 첨부할 수 있습니다.`

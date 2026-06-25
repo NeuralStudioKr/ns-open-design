@@ -1012,7 +1012,8 @@
 .teamver-drive-picker-backdrop {
   position: fixed;
   inset: 0;
-  z-index: calc(var(--viewer-action-menu-z) + 20);
+  /* Home hero input-card peaks at 1700 when the mention picker is mounted. */
+  z-index: 1800;
   display: flex;
   align-items: center;
   justify-content: center;
