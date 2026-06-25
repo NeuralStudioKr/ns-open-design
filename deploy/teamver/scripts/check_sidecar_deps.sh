@@ -96,6 +96,16 @@ if [[ -n "$deps_json" ]]; then
     echo "✗ daemon dependency unavailable"
     fail=$((fail + 1))
   fi
+  main_be="$(echo "$deps_json" | sed -n 's/.*"main_be":"\([^"]*\)".*/\1/p' | head -1)"
+  if [[ -n "$main_be" ]]; then
+    if [[ "$main_be" == "ok" ]]; then
+      echo "✓ deps main_be=$main_be"
+      pass=$((pass + 1))
+    else
+      echo "✗ deps main_be=$main_be (Drive browse BFF·bootstrap·session-check 실패 가능 — Main BE 복구 필요)"
+      fail=$((fail + 1))
+    fi
+  fi
   if echo "$deps_json" | grep -q '"managed_api":"missing"'; then
     echo "○ config.managed_api missing (embed BYOK only unless TEAMVER_OD_API_KEY set)"
   fi

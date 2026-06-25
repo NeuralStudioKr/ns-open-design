@@ -32,6 +32,9 @@ class Settings(BaseModel):
         os.getenv("TEAMVER_BOOTSTRAP_CACHE_TTL_SECONDS", "120")
     )
     teamver_http_timeout_seconds: float = float(os.getenv("TEAMVER_HTTP_TIMEOUT_SECONDS", "5"))
+    teamver_drive_proxy_long_timeout_seconds: float = float(
+        os.getenv("TEAMVER_DRIVE_PROXY_LONG_TIMEOUT_SECONDS", "30")
+    )
     teamver_bootstrap_enabled: bool = Field(
         default_factory=lambda: _env_bool("TEAMVER_BOOTSTRAP_ENABLED", default=True)
     )

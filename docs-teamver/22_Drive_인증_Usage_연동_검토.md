@@ -41,6 +41,7 @@
 | D-G2 | P2 | Publish full Drive browser (import modal 수준 recent/grid) | ☐ [14 §3.4](./14_Design_Drive_연동_설계.md) |
 | D-G3 | P2 | PDF publish — daemon desktop-only, embed HTML-only (의도적) | 문서화됨 |
 | D-G4 | P2 | `TeamverDriveImportModal` 단독 mount 시 workspace prop 의존 | 부모 `ChatComposer`가 switch 처리 — 현재 OK |
+| D-G5 | P1 | **D-B1** staging E2E — embed `/teamver-bff/drive` browse shallow folder | ✅ `run_staging_track_a_e2e.sh` |
 
 ---
 
@@ -172,10 +173,22 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | isolation | user B → user A project 403 |
 | **W-1** | alt workspace + `X-Workspace-Id` permissions (loop 355, optional) |
 | **S-5** | design `/api/runs` + `X-Workspace-Id` poll probe (loop 365) |
+| **D-B1** | embed `/teamver-bff/drive/api/drive/folder?shallow_tree=true` → 200 + `root_folder_id` (loop 397) |
 
 **strict launch:** `run_post_deploy_track_a.sh --e2e-strict` — skip-only 성공 불가.
 
-### 5.2 수동 (workspace switch · browser)
+### 5.2 Main BE 장애 triage (Drive browse·session·runs)
+
+| 증상 | 원인 | 확인 |
+|------|------|------|
+| Drive import 모달 browse 502 | design-api `teamver_drive_unreachable` | `curl -sf https://stg-design-api.teamver.com/api/healthz/deps` → `checks.main_be` |
+| `/api/v1/auth/session` 502 | bootstrap Main BE down | design-api 로그 `[drive_proxy]` 또는 bootstrap 502 |
+| embed `/api/runs` 500 | nginx `auth_request` session-check 실패 (Main BE) | design-api/daemon 로그 없음 — Main BE·nginx 먼저 |
+| D-B1 E2E fail 502 | 동일 | EC2: `bash deploy/teamver/scripts/check_sidecar_deps.sh --staging` |
+
+**복구 순서:** Main BE health → `check_main_be_design_wiring.sh --staging --live` → design-api redeploy 불필요 시 nginx만 재적용.
+
+### 5.3 수동 (workspace switch · browser)
 
 1. stg-design.teamver.com 로그인 — workspace **A** 선택
 2. 슬라이드 프로젝트에서 run 1회 → 완료 대기
@@ -218,6 +231,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 |------|------|
 | Drive publish | `apps/web/src/teamver/publishToDrive.ts` |
 | Drive import | `apps/web/src/teamver/importDriveAssets.ts` |
+| Drive browse BFF | `apps/web/src/teamver/driveApi.ts` → `deploy/teamver/be/app/routers/drive.py` |
 | Auth session | `apps/web/src/teamver/designBffClient.ts` |
 | Embed session UI | `apps/web/src/teamver/useTeamverEmbed.ts` |
 | Usage FE | `apps/web/src/teamver/maybeReportTeamverUsageAfterSave.ts` |
@@ -233,6 +247,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | loop 397 — D-B1 drive browse BFF E2E, Main BE triage §5.2, long proxy timeout |
 | 2026-06-24 | loop 354 검토 초판 — Drive/auth/usage 판정, workspace 정렬, E2E 체크리스트 |
 | 2026-06-24 | loop 356 — publish picker 최근 위치 (S-1) |
 | 2026-06-24 | loop 355 — W-1 alt workspace E2E probe 추가 |

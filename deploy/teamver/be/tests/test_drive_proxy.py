@@ -35,6 +35,61 @@ def test_normalize_and_validate_drive_path_blocks_unknown_routes() -> None:
         drive_proxy.normalize_and_validate_drive_path("api/v1/users/me")
 
 
+def test_resolve_drive_proxy_timeout_seconds_uses_long_for_thumbnail_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(drive_proxy.settings, "teamver_http_timeout_seconds", 5.0)
+    monkeypatch.setattr(drive_proxy.settings, "teamver_drive_proxy_long_timeout_seconds", 30.0)
+    assert (
+        drive_proxy.resolve_drive_proxy_timeout_seconds("api/v2/asset/object-url/batch") == 30.0
+    )
+    assert drive_proxy.resolve_drive_proxy_timeout_seconds("api/drive/list") == 5.0
+
+
+@pytest.mark.asyncio
+async def test_forward_drive_request_uses_long_timeout_for_thumbnail_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Response:
+        status_code = 200
+        content = b"{}"
+        headers = httpx.Headers({"content-type": "application/json"})
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def request(self, *_args: object, **_kwargs: object) -> _Response:
+            return _Response()
+
+    def _client_factory(**kwargs: object) -> _Client:
+        captured["timeout"] = kwargs.get("timeout")
+        return _Client()
+
+    monkeypatch.setattr(drive_proxy.settings, "teamver_http_timeout_seconds", 5.0)
+    monkeypatch.setattr(drive_proxy.settings, "teamver_drive_proxy_long_timeout_seconds", 30.0)
+    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", _client_factory)
+
+    await drive_proxy.forward_drive_request(
+        method="POST",
+        path="api/v2/asset/object-url/batch",
+        query="",
+        body=b"{}",
+        content_type="application/json",
+        access_token="jwt-token",
+        workspace_id="ws-1",
+    )
+
+    timeout = captured["timeout"]
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.read == 30.0
+
+
 @pytest.mark.asyncio
 async def test_forward_drive_request_passes_token_and_workspace(
     monkeypatch: pytest.MonkeyPatch,

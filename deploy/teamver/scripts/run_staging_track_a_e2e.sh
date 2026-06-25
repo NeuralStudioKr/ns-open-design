@@ -4,7 +4,7 @@
 # Replaces the manual checklist items in:
 #   docs-teamver/10_세션·OD패치_보강.md §6 (S-8)
 #   docs-teamver/11_Usage·Drive_Publish_보강.md §8 (U-6 / D-5)
-#   docs-teamver/22_Drive_인증_Usage_연동_검토.md §5 (W-1, S-5)
+#   docs-teamver/22_Drive_인증_Usage_연동_검토.md §5 (W-1, S-5, D-B1)
 #   docs-teamver/09_Design_저장소_격리_출시게이트.md §14 (multi-user 403)
 #
 # Strategy: design-api 의 정상 흐름을 curl 로 끝까지 두드린 다음 RDS 에서
@@ -281,6 +281,39 @@ else
   else
     failed "S-8c runtime-config ${runtime_code}"
   fi
+fi
+
+# ---- D-B1: drive browse BFF (embed same-origin → design-api → Main BE) --------
+if [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "D-B1 drive browse BFF — TEAMVER_COOKIE 필요"
+elif [[ -z "${session_workspace_id:-}" ]]; then
+  skipped "D-B1 drive browse BFF — session workspace 없음"
+else
+  drive_bff_url="${DESIGN_BASE}/teamver-bff/drive/api/drive/folder?shallow_tree=true"
+  drive_bff_body="$(curl_body "$drive_bff_url" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  drive_bff_code="$(curl_code "$drive_bff_url" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  case "$drive_bff_code" in
+    200)
+      if printf '%s' "$drive_bff_body" | grep -qE 'root_folder_id|rootFolderId'; then
+        passed "D-B1 ${DESIGN_HOST}/teamver-bff/drive browse folder shallow → 200"
+      else
+        failed "D-B1 drive browse 200 but missing root_folder_id in body"
+      fi
+      ;;
+    401|403)
+      failed "D-B1 drive browse BFF ${drive_bff_code} — cookie/workspace invalid"
+      ;;
+    502)
+      failed "D-B1 drive browse BFF 502 — Main BE unreachable (teamver_drive_unreachable; /api/healthz/deps main_be 확인)"
+      ;;
+    *)
+      failed "D-B1 drive browse BFF ${drive_bff_code}"
+      ;;
+  esac
 fi
 
 # ---- U-6: usage event + 멱등 ------------------------------------------------

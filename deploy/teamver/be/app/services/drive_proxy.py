@@ -22,6 +22,8 @@ _ALLOWED_EXACT = frozenset(
     }
 )
 
+_LONG_TIMEOUT_EXACT = frozenset({"api/v2/asset/object-url/batch"})
+
 _ALLOWED_PREFIXES = (
     "api/drive/",
     "api/v2/drive/",
@@ -56,6 +58,13 @@ def normalize_and_validate_drive_path(path: str) -> str:
     if any(stripped.startswith(prefix) for prefix in _ALLOWED_PREFIXES):
         return stripped
     raise ForbiddenError("drive_path_not_allowed")
+
+
+def resolve_drive_proxy_timeout_seconds(path: str) -> float:
+    stripped = path.strip().lstrip("/")
+    if stripped in _LONG_TIMEOUT_EXACT:
+        return settings.teamver_drive_proxy_long_timeout_seconds
+    return settings.teamver_http_timeout_seconds
 
 
 def _pass_through_headers(headers: httpx.Headers) -> dict[str, str]:
@@ -93,7 +102,7 @@ async def forward_drive_request(
     if body is not None and content_type:
         headers["Content-Type"] = content_type
 
-    timeout = httpx.Timeout(settings.teamver_http_timeout_seconds)
+    timeout = httpx.Timeout(resolve_drive_proxy_timeout_seconds(normalized))
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.request(method.upper(), url, headers=headers, content=body)
