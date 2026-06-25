@@ -1,4 +1,6 @@
-/** One-shot arm — open Teamver publish menu after background-run preview deep-link. */
+/** One-shot arm — open Teamver publish menu after run success preview auto-open. */
+
+import { isTeamverEmbedMode } from "./designApiBase";
 
 export type TeamverPublishMenuArm = {
   projectId: string;
@@ -12,6 +14,16 @@ export function armTeamverPublishMenuOnProjectOpen(projectId: string, fileName: 
   const name = fileName.trim();
   if (!id || !name) return;
   pendingPublishMenuArm = { projectId: id, fileName: name };
+}
+
+/** Embed in-project run success — arm publish menu before HTML preview auto-open. */
+export function maybeArmTeamverPublishMenuAfterRunSuccess(
+  projectId: string,
+  htmlFileName: string | null | undefined,
+): void {
+  const name = htmlFileName?.trim();
+  if (!name || !isTeamverEmbedMode()) return;
+  armTeamverPublishMenuOnProjectOpen(projectId, name);
 }
 
 export function consumeTeamverPublishMenuArm(

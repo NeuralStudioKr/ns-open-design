@@ -215,8 +215,8 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE run API header ✅ loop 365–368 · ProjectView stream detach ✅ loop 396/399 · background publish menu 🟡 loop 398 · browser 실관측 ☐ |
 | S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 + loop 392(home) + loop 393(DesignsTab) + loop 400(header) |
 | S-7 | Teamver shell 컴포넌트 `useTeamverT` (chip/banner/import modal 등) | P2 | ✅ loop 364–369 |
-| **S-8** | **in-project run 성공** → preview + publish menu arm (loop 398 background 경로만 완료) | P0 | ☐ **loop 402** |
-| **S-9** | publish **one-click** — 마지막 target 자동 publish | P1 | ☐ loop 403 |
+| **S-8** | **in-project run 성공** → preview + publish menu arm | P0 | ✅ **loop 403** |
+| **S-9** | publish **one-click** — 마지막 target 자동 publish | P1 | ☐ loop 404 |
 | **S-10** | session logout 후 stream detach browser QA | P0 | ☐ loop 399 코드 완료 · QA만 남음 |
 
 > **원칙:** nginx 배포·staging E2E·RDS psql은 **ops 트랙** — 제품 코드 루프와 분리. [04 §코드 루프 우선순위](./04_구현_우선순위.md) 참고.
@@ -265,8 +265,8 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | ID | ☐ | 내용 |
 |----|---|------|
 | S-5 | ☐ | workspace switch 중 stream detach + publish 동선 browser QA |
-| S-8 | ☐ | **loop 402** — in-project run 성공 publish menu arm |
-| S-9 | ☐ | **loop 403** — one-click publish (마지막 target) |
+| S-8 | ✅ | **loop 403** — in-project run 성공 publish menu arm |
+| S-9 | ☐ | **loop 404** — one-click publish (마지막 target) |
 | S-10 | ☐ | logout stream detach browser QA (loop 399) |
 
 ---
@@ -293,6 +293,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | loop 403 — in-project run success publish menu arm (S-8) |
 | 2026-06-25 | loop 402 — D-B3 thumbnail batch E2E, validate_deploy_env timeout warn |
 | 2026-06-25 | loop 392~401 후속 TODO — §TODO 신설, S-8~S-10 (in-project publish, one-click, logout QA) |
 | 2026-06-25 | loop 401 — D-B2 shared-drive E2E, check_sidecar_deps fixture, healthz timeout config |

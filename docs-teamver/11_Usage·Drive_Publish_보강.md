@@ -967,7 +967,7 @@ Browser
 |---|------|
 | ☐ | D-5/D-6/D-7 staging E2E full run |
 | ☐ | D-6a 실 Drive asset import |
-| ☐ | loop 403 one-click publish (마지막 target 자동 발행) |
+| ☐ | loop 404 one-click publish (마지막 target 자동 발행) |
 
 ### Phase B (metered billing — §4.9)
 

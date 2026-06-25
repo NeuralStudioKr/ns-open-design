@@ -151,6 +151,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-load-project-list.test.ts \
       tests/teamver-background-run-navigate.test.ts \
       tests/teamver-background-run-publish-flow.test.ts \
+      tests/teamver-in-project-run-publish-flow.test.ts \
       tests/teamver-post-run-navigation.test.ts \
       tests/teamver-use-embed.test.tsx \
       tests/teamver-workspace-utils.test.ts \

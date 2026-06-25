@@ -182,7 +182,7 @@ import {
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
-import { consumeTeamverPublishMenuArm } from '../teamver/teamverPostRunNavigation';
+import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -2921,6 +2921,10 @@ export function ProjectView({
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
                     if (claimHtmlAutoOpenForMessage()) {
+                      maybeArmTeamverPublishMenuAfterRunSuccess(
+                        project.id,
+                        recoveredExistingArtifact.name,
+                      );
                       requestOpenFile(recoveredExistingArtifact.name);
                     }
                   } else {
@@ -2932,6 +2936,7 @@ export function ProjectView({
                 const produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
                 const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
+                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
                   requestOpenFile(producedHtmlToOpen);
                 }
                 if (produced.length > 0) {
@@ -3432,9 +3437,12 @@ export function ProjectView({
                   readProjectHtml,
                   allowAnyHtmlWrite: assistantAgentId === 'claude',
                 });
-                if (sameTurnHtmlWrite) {
-                  savedArtifactRef.current = sameTurnHtmlWrite.name;
-                  if (runIsVisible()) requestOpenFile(sameTurnHtmlWrite.name);
+                  if (sameTurnHtmlWrite) {
+                    savedArtifactRef.current = sameTurnHtmlWrite.name;
+                    if (runIsVisible()) {
+                      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
+                      requestOpenFile(sameTurnHtmlWrite.name);
+                    }
                 } else {
                   await persistArtifact(artifactToPersist, nextFiles, finalText);
                   nextFiles = await refreshProjectFiles();
@@ -3442,7 +3450,10 @@ export function ProjectView({
               }
               const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
               const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
-              if (producedHtmlToOpen && runIsVisible()) requestOpenFile(producedHtmlToOpen);
+              if (producedHtmlToOpen && runIsVisible()) {
+                maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
+                requestOpenFile(producedHtmlToOpen);
+              }
               updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
             }
             void saveMessage(project.id, runConversationId, latestAssistantMsg, {

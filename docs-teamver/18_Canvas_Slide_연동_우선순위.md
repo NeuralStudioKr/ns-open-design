@@ -66,7 +66,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 |---|---|---|
 | 1 | **Canvas import 확인 + slide run 시작을 하나의 확정 action으로 통합** | 핵심 UX 단축 — ✅ loop 191 one-confirm modal | **완료** |
 | 2 | **기본 source 구조화** | MD/HTML의 heading·paragraph·image 순서를 정규화. 필요하면 design-api에서 처리 |
-| 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 | **🟡 loop 398** — background toast → preview + publish menu · **in-project** ☐ loop 402 · one-click ☐ loop 403 |
+| 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 | **🟡 loop 398/403** — publish menu arm · one-click ☐ loop 404 |
 | 4 | **Design System 기본 적용** | Canvas 원본 테마 복제보다 workspace Design System/기본 slide theme를 적용하는 편이 품질 대비 효과가 큼 | **✅ loop 192** |
 
 ### P2 — 출시 후
@@ -149,6 +149,6 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 
 | loop | ☐ | 작업 |
 |------|---|------|
-| **402** | ☐ | **in-project run 성공** — `ProjectView` `scheduleStreamRunHtmlAutoOpen` 경로에 `armTeamverPublishMenuOnProjectOpen` 연동 (background만 loop 398 완료) |
-| **403** | ☐ | **one-click publish** — 마지막 `teamver.drive.lastPublishTarget` 으로 메뉴 오픈 없이 `publishToDrive` 실행 |
+| ~~403~~ | ✅ | ~~**in-project run 성공** — publish menu arm~~ |
+| **404** | ☐ | **one-click publish** — 마지막 target 자동 발행 |
 | — | ☐ | MD/HTML source 구조화 normalizer — **보류** (P1 #2) |
