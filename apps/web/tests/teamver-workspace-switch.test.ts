@@ -107,6 +107,13 @@ describe("embed workspace switch side effects", () => {
     );
   });
 
+  it("ProjectView detaches local run streams on embed session logout (loop 399)", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    expect(projectView).toMatch(
+      /subscribeTeamverEmbedSessionChanged[\s\S]*?detachLocalRunStreamConsumers\(\)/,
+    );
+  });
+
   it("clears stale workingDirError after refreshProjects succeeds", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");

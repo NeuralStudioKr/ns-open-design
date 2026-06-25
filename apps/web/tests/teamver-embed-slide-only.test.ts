@@ -135,6 +135,14 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(detachBlock).not.toContain("cancelRef.current?.abort()");
   });
 
+  it("detaches local run streams on embed session logout (loop 399)", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("subscribeTeamverEmbedSessionChanged");
+    expect(projectView).toMatch(
+      /subscribeTeamverEmbedSessionChanged[\s\S]*?if \(authenticated\) return;[\s\S]*?detachLocalRunStreamConsumers\(\)/,
+    );
+  });
+
   it("routes run failure chat status events through Korean formatter in embed", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     expect(projectView).toContain("appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err)");

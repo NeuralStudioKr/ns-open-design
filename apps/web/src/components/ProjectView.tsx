@@ -181,6 +181,7 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
+import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
@@ -3071,6 +3072,17 @@ export function ProjectView({
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
+      setError(null);
+      setConversationLoadError(null);
+      detachLocalRunStreamConsumers();
+      commitQueuedChatSends([]);
+    });
+  }, [commitQueuedChatSends, detachLocalRunStreamConsumers]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (authenticated) return;
       setError(null);
       setConversationLoadError(null);
       detachLocalRunStreamConsumers();
