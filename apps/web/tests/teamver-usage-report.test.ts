@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   extractLatestUsageFromEvents,
@@ -12,7 +12,10 @@ import {
   pinTeamverExecutionConfig,
   resetPinnedTeamverExecutionConfigForTests,
 } from '../src/teamver/branding/pinnedExecutionConfig';
-import { maybeReportTeamverUsageAfterSave } from '../src/teamver/maybeReportTeamverUsageAfterSave';
+import {
+  maybeReportTeamverUsageAfterSave,
+  resetTeamverReportedRunIdsForTests,
+} from '../src/teamver/maybeReportTeamverUsageAfterSave';
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
 import * as reportUsage from '../src/teamver/reportUsage';
@@ -120,10 +123,14 @@ describe('usageAttribution', () => {
 });
 
 describe('maybeReportTeamverUsageAfterSave', () => {
+  beforeEach(() => {
+    resetTeamverReportedRunIdsForTests();
+  });
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
     vi.mocked(reportUsage.reportTeamverDesignUsage).mockClear();
+    resetTeamverReportedRunIdsForTests();
   });
 
   it('no-ops outside embed mode', async () => {
@@ -198,6 +205,95 @@ describe('maybeReportTeamverUsageAfterSave', () => {
         totalTokens: 100,
       }),
     );
+  });
+
+  it('still reports a row for terminal failed/canceled runs (zero tokens, unknown source)', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await maybeReportTeamverUsageAfterSave(
+      'p1',
+      {
+        id: 'm-fail',
+        role: 'assistant',
+        content: '',
+        runStatus: 'failed',
+        runId: 'run-fail',
+        events: [{ kind: 'status', label: 'model', detail: 'claude-sonnet-4-5' }],
+      },
+      { telemetryFinalized: true },
+    );
+
+    // Even without usage events, billing finalize needs a ledger row for
+    // refund/commit_failed status to attach to. The report fires with zero
+    // tokens + unknown source so the BE upsert creates the row.
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runStatus: 'failed',
+        runId: 'run-fail',
+        inputTokens: 0,
+        outputTokens: 0,
+        tokenCountSource: 'unknown',
+      }),
+    );
+  });
+
+  it('caps the in-memory dedupe set so long-lived embed tabs do not leak', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    // Cap is 1024 → push 1025 distinct runs; the oldest (run-0) must roll out
+    // and become re-reportable. Newer runs still dedupe.
+    const cap = 1024;
+    for (let i = 0; i <= cap; i += 1) {
+      await maybeReportTeamverUsageAfterSave(
+        'p1',
+        {
+          id: `m-${i}`,
+          role: 'assistant',
+          content: '',
+          runStatus: 'succeeded',
+          runId: `run-${i}`,
+          events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
+        },
+        { telemetryFinalized: true },
+      );
+    }
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(cap + 1);
+
+    // run-0 was evicted (FIFO) → reports again.
+    await maybeReportTeamverUsageAfterSave(
+      'p1',
+      {
+        id: 'm-0',
+        role: 'assistant',
+        content: '',
+        runStatus: 'succeeded',
+        runId: 'run-0',
+        events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
+      },
+      { telemetryFinalized: true },
+    );
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(cap + 2);
+
+    // The most-recent run still dedupes.
+    await maybeReportTeamverUsageAfterSave(
+      'p1',
+      {
+        id: `m-${cap}`,
+        role: 'assistant',
+        content: '',
+        runStatus: 'succeeded',
+        runId: `run-${cap}`,
+        events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
+      },
+      { telemetryFinalized: true },
+    );
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(cap + 2);
   });
 
   it('reports API-mode usage with requesting label and usage events', async () => {

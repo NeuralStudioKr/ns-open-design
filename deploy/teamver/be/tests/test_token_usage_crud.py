@@ -287,14 +287,16 @@ async def test_aupsert_usage_recovers_from_integrity_race(
 
 
 @pytest.mark.asyncio
-async def test_aupsert_usage_preserves_total_when_incoming_total_missing(
+async def test_aupsert_usage_derives_total_when_replace_and_total_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``total_tokens`` must never silently nullify a richer existing value.
+    """Replace path with FE-style payload (no ``total_tokens``) must derive a
+    non-null total from input+output so credit_meter can read it later.
 
-    Anthropic cache-aware totals (input_effective + output) can be larger than
-    a downstream writer's input+output pair; the upsert previously overwrote
-    ``total_tokens`` with ``None`` when the new payload omitted it.
+    Before the fix the replace path overwrote ``total_tokens`` with ``None``
+    whenever the new payload omitted it, leaving the ledger row with valid
+    input/output but a NULL total — credit_meter would then fall back to
+    ``flat`` because it could not read a positive total.
     """
     created = datetime(2026, 6, 1, tzinfo=timezone.utc)
     existing = AiModelTokenUsage(
@@ -302,7 +304,7 @@ async def test_aupsert_usage_preserves_total_when_incoming_total_missing(
         model_name="claude-sonnet-4-5",
         input_tokens=100,
         output_tokens=40,
-        total_tokens=9_999,  # daemon scan included cache tokens
+        total_tokens=140,
         user_id="u1",
         workspace_id="ws1",
         used_at=created,
@@ -328,7 +330,7 @@ async def test_aupsert_usage_preserves_total_when_incoming_total_missing(
     await token_usage_crud.aupsert_usage(
         db,
         model_name="claude-sonnet-4-5",
-        input_tokens=200,  # higher than existing → replace path triggers
+        input_tokens=200,
         output_tokens=80,
         user_id="u1",
         workspace_id="ws1",
@@ -337,12 +339,69 @@ async def test_aupsert_usage_preserves_total_when_incoming_total_missing(
         project_id="p1",
         run_id="run-total",
         token_count_source="provider_usage",
-        total_tokens=None,  # FE-style payload omits total
+        total_tokens=None,
     )
 
-    # input + output (280) becomes the new ledger total. Existing 9999 is
-    # rebuilt rather than left stale, but never nullified.
+    assert existing.input_tokens == 200
+    assert existing.output_tokens == 80
     assert existing.total_tokens == 280
+
+
+@pytest.mark.asyncio
+async def test_aupsert_usage_keeps_richer_total_when_incoming_tokens_smaller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cache-aware total (e.g. 9999 from daemon) must survive a thinner
+    FE-style replay (input+output much smaller) that would otherwise enter
+    the merge path with no token update.
+    """
+    created = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    existing = AiModelTokenUsage(
+        id="ATU-total-rich",
+        model_name="claude-sonnet-4-5",
+        input_tokens=100,
+        output_tokens=40,
+        total_tokens=9_999,
+        user_id="u1",
+        workspace_id="ws1",
+        used_at=created,
+        operation="design_run",
+        project_id="p1",
+        run_id="run-total-rich",
+        token_count_source="provider_usage",
+        billing_status="reserved",
+        credits_committed=False,
+        created_at=created,
+        updated_at=created,
+    )
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock(side_effect=lambda row: row)
+
+    async def fake_find(*_args, **_kwargs):
+        return existing
+
+    monkeypatch.setattr(token_usage_crud, "afind_usage_by_run", fake_find)
+
+    await token_usage_crud.aupsert_usage(
+        db,
+        model_name="claude-sonnet-4-5",
+        input_tokens=10,
+        output_tokens=5,
+        user_id="u1",
+        workspace_id="ws1",
+        used_at=datetime.now(timezone.utc),
+        operation="design_run",
+        project_id="p1",
+        run_id="run-total-rich",
+        token_count_source="provider_usage",
+        total_tokens=None,
+    )
+
+    assert existing.total_tokens == 9_999
+    assert existing.input_tokens == 100
+    assert existing.output_tokens == 40
 
 
 @pytest.mark.asyncio

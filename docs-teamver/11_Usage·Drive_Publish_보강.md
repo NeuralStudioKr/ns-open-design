@@ -102,9 +102,32 @@ class UsageEventBody(BaseModel):
 
 **loop 375 (BYOK run_id):** embed BYOK(`mode=api`)는 daemon `runId` 없음 → FE usage report 시 `assistantMessage.id`를 `run_id`로 사용해 `(workspace_id, run_id)` upsert 멱등. 후속 과금 SSOT는 **§4**.
 
-**loop 380 (ledger 병합 보강):** daemon usage M2M·FE-first usage·billing-finalize가 같은 `(workspace_id, run_id)` row를 다른 순서로 쓰더라도 `billing_status=committed`·`registry_usage_id`·`credits_committed`를 `not_attempted` 기본값으로 되돌리지 않는다. billing finalize가 먼저 도착하면 0-token stub row를 만들고, 이후 provider usage가 도착하면 토큰·`total_tokens`만 풍부하게 병합한다.
+**loop 380 (ledger 정합성 + 관측 보강 — 실측 과금 전 P0):**
+
+| 영역 | 변경 |
+|------|------|
+| BE `_apply_billing_fields` | `_BILLING_STATUS_PRIORITY` precedence — `committed=5 > refunded=4 > commit_failed/refund_failed=3 > reserved=2 > disabled/not_configured/not_metered=1 > not_attempted=0`. 한 번 `committed`인 row는 frozen — FE 기본값 replay로 `not_attempted`·`credits_committed=False`·`registry_usage_id=None` 다운그레이드 차단. |
+| BE `aupdate_usage_billing_by_run` | usage payload보다 finalize가 먼저 도착하면 0-token stub row insert(workspace/run/model/usage_id/status 보존) → 이후 provider usage가 토큰만 병합. |
+| BE `aupsert_usage` | `uq_token_usage_workspace_run` race 시 `IntegrityError` catch → rollback → refetch → `_merge_into_existing`. `teamver_usage_5xx aupsert_usage integrity race` 마커. |
+| BE `_apply_usage_fields` | replace path에서 `total_tokens=None` 입력이 들어와도 `input+output` 또는 기존 richer total 유지(credit_meter flat fallback 방지). |
+| daemon `server.ts` finalize | `void reportTeamverUsageFromDaemon` + `void commit/refund/finalize` **병렬** fire를 제거하고 **usage report → commit/refund → billing-finalize** 직렬화. BE stub fallback과 이중 안전(§4.8). |
+| web `reportUsage.ts` | usage POST 실패(non-retryable 또는 retry 실패) 시 `teamver_usage_5xx` 구조화 마커(`stage=usage.events_client_drop` / `usage.events_client_retry_drop`) — design-api fronting 로그·CW alarm filter가 FE drop을 인지. |
+| web `maybeReportTeamverUsageAfterSave` | `reportedRunIds` Set 1024 cap + FIFO eviction. evict된 run은 한 번 더 보고되지만 BE `(workspace_id, run_id)` upsert가 권위 dedupe. |
+
+**테스트:** BE `test_token_usage_crud` 9 case(downgrade 방지, finalize-before-usage stub, IntegrityError merge, total preserve/derive) · web `teamver-usage-report` 5 case(failed/canceled 보고, 1024 cap eviction) · web `teamver-report-usage` 2 case(drop marker) — 모두 통과.
 
 **Workspace 정렬:** embed workspace switch 후 daemon run·usage·publish가 동일 workspace를 쓰려면 FE가 `/api/runs`에 `X-Workspace-Id`(active store)를 보내고, nginx가 session-check default보다 우선 적용한다.
+
+### 2.4 보장되는 ledger 불변식 (loop 380)
+
+후속 실측 과금(§4) 구현 시 아래 불변식을 전제할 수 있다.
+
+1. **단일 row**: `(workspace_id, run_id)`별 정확히 1행. 두 writer가 동시에 insert하면 `IntegrityError` 후 병합(§2.2 loop 380).
+2. **No-downgrade**: `billing_status` precedence는 단조증가만 허용. 한 번 `committed`인 row의 `credits_committed`/`registry_usage_id`는 frozen.
+3. **No-finalize-drop**: Registry commit/refund가 먼저 도착해도 stub row를 만들어 finalize 결과를 보존 → 후속 usage payload가 토큰만 추가로 병합.
+4. **총 토큰 보존**: replace path에서도 기존 richer `total_tokens`(Anthropic cache 포함)는 `derived = input+output`이 더 클 때만 갱신. 입력 누락(`total_tokens=None`)으로 nullify되지 않음.
+5. **FE drop 관측**: FE usage POST 실패는 `teamver_usage_5xx` JSON 마커로 console에 남아 design-api fronting 로그/CW alarm filter가 인지 가능(BE 5xx 마커와 동일 스키마).
+6. **순서 안전**: daemon은 `usage report → commit/refund → billing-finalize` 순서를 직렬화. 단, BE는 어떤 순서로 와도 정합성을 보장(2~3번 불변식이 우선).
 
 ### 2.3 Drive (Phase 4 — v1 코드 ✅, staging E2E ☐)
 
@@ -488,8 +511,8 @@ def meter_design_run(
 
 | 경로 | usage ledger | Registry billing | 후속 |
 |------|--------------|------------------|------|
-| **daemon CLI** (embed) | ✅ scan + M2M / FE | ✅ reserve@start, commit@end | amount를 `credit_meter`로 교체 (§4.4) |
-| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` | ❌ reserve 없음 | run 키=`assistantMessage.id` 멱등 (코드) · **billing hook 추가** (§4.4 B 권장) |
+| **daemon CLI** (embed) | ✅ scan + M2M / FE-first (race-safe, §2.4) | ✅ reserve@start (flat), commit/refund@end (직렬화, §4.8) | amount를 `credit_meter`로 교체 (§4.4) |
+| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` (run 키=`assistantMessage.id`) · billing snapshot=`not_attempted` (frozen 아님) | ❌ reserve/commit 없음 — daemon이 없어 lifecycle hook 불가 | **U-G6 / §4.4 전략 B**: FE-only billing hook(`reserveTeamverBillingFromBffMessage` 후속) — `run_id=message.id` 키로 reserve→commit (BE M2M에 `/api/internal/billing/reserve`가 이미 있으므로 FE를 user JWT로 콜) |
 | **standalone OD** | — | skip (no `TEAMVER_DESIGN_API_URL`) | — |
 | **plain stdout agent** | `unknown` / 0 | flat reserve만 | usage 없으면 §4.5.1 정책 |
 
@@ -497,11 +520,25 @@ def meter_design_run(
 
 ### 4.8 terminal hook 순서 · race
 
-**현재:** `server.ts` finalize에서 `reportTeamverUsageFromDaemon`와 `commit/refund`가 **병렬** `void` 시작.
+**현재(loop 380 이후):** `server.ts` finalize는 다음 순서로 **직렬화**됨.
 
-**완화됨(loop 380):** commit이 usage row upsert보다 먼저 끝나도 `billing-finalize`가 stub row를 만들고, 후속 usage upsert가 과금 snapshot을 downgrade하지 않는다. 남은 후속은 “정확한 amount 산정”과 “terminal hook 순서 단순화”다.
+```text
+void (async () => {
+  await reportTeamverUsageFromDaemon(...);           // 1) /api/internal/usage/events
+  if (!usageId) return;
+  if (succeeded) {
+    const ok = await commitTeamverBillingFromDaemon(...);    // 2) Registry commit
+    await finalizeTeamverUsageBillingFromDaemon(...);        // 3) /api/internal/usage/billing-finalize
+  } else if (failed || canceled) {
+    const ok = await refundTeamverBillingFromDaemon(...);
+    await finalizeTeamverUsageBillingFromDaemon(...);
+  }
+})();
+```
 
-**후속 권장 순서 (succeeded)**
+**BE-side 이중 안전 (loop 380):** 외부 호출자가 다른 순서로 보내거나 FE-first + daemon이 동시에 보내도 §2.4 불변식이 정합성을 보장한다 — finalize가 먼저 도착하면 stub row 생성, committed snapshot은 downgrade되지 않음, IntegrityError race는 merge.
+
+**후속 metered 권장 순서 (succeeded)**
 
 ```text
 1. scanRunEventsForUsageAnalytics(run.events)
@@ -518,15 +555,19 @@ def meter_design_run(
 ### 4.9 후속 구현 체크리스트 (권장 순서)
 
 ```text
-[x] 0. ledger race-safe merge: billing-finalize stub + no committed downgrade
+[x] 0a. ledger race-safe merge: billing-finalize stub + no committed downgrade (loop 380)
+[x] 0b. aupsert_usage IntegrityError → merge into surviving row (loop 380)
+[x] 0c. _apply_usage_fields total_tokens 보존(replace path 미입력 시 derive/preserve, loop 380)
+[x] 0d. daemon terminal hook 직렬화(usage → commit/refund → finalize, loop 380)
+[x] 0e. FE drop 관측 — teamver_usage_5xx JSON 마커 + reportedRunIds 1024 cap (loop 380)
 [ ] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [ ] 3. daemon reserve: amount=0 제거 → meter upper bound 또는 전략 B로 이동
-[ ] 4. terminal hook 순서 정리 (§4.8)
-[ ] 5. embed BYOK billing — message.id run 키 + post-run reserve/commit
-[ ] 6. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
-[ ] 7. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
-[ ] 8. (선택) Main BE metered commit API — 전략 C
+[ ] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only)
+[ ] 5. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
+[ ] 6. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
+[ ] 7. (선택) Main BE metered commit API — 전략 C
+[ ] 8. CW alarm filter — `metric:"teamver_usage_5xx" stage:usage.events_client_drop` (FE drop 누적)
 ```
 
 **테스트 파일 (추가 제안)**

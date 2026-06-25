@@ -3182,16 +3182,26 @@ export function createFinalizedMessageTelemetryReporter({
         persistedEndedAt: saved.endedAt,
         appVersion: getAppVersion(),
       });
-      void reportTeamverUsageFromDaemon({
-        run,
-        persistedRunStatus: saved.runStatus,
-        reportedRuns,
-      });
       // Teamver Registry billing (Phase 2) — commit on success, refund on
       // fail/cancel. usageId is stashed on the run object by the reserve
       // path. No-op when reservation was skipped (registry creds unset or
       // workspace identity missing).
+      //
+      // ORDERING contract (avoid ledger ↔ Registry drift):
+      //   1. POST /api/internal/usage/events   (row insert/upsert)
+      //   2. POST Registry commit | refund
+      //   3. POST /api/internal/usage/billing-finalize (patch billing snapshot)
+      //
+      // Step 1 must run before step 3 so the ledger has a row to patch. The
+      // BE finalize endpoint will create a minimal stub row when it doesn't
+      // find one (race-safe), but ordering keeps the happy path observable
+      // (single row, no stub overwrite) and matches docs-teamver/11 §4.8.
       void (async () => {
+        await reportTeamverUsageFromDaemon({
+          run,
+          persistedRunStatus: saved.runStatus,
+          reportedRuns,
+        });
         const usageId = (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId ?? null;
         const workspaceId = run.teamverIdentity?.workspaceId?.trim() ?? '';
         if (!usageId) return;
