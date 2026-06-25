@@ -154,13 +154,31 @@ describe('teamver-billing-bridge', () => {
       expect(JSON.parse(String(init.body)).amount).toBe(7);
     });
 
-    it('ignores non-positive RESERVE_AMOUNT fallback (passes amount=0 to BE)', async () => {
+    it('skips without HTTP when caller amount is 0 and fallback is not configured', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      const fetchMock: FetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await reserveTeamverBillingFromDaemon({
+        runId: 'run-1',
+        identity,
+        amount: 0,
+      });
+      expect(result).toEqual({
+        ok: true,
+        usageId: null,
+        skipped: true,
+        error: 'billing_amount_not_configured',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-positive RESERVE_AMOUNT fallback and skips without HTTP', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
       vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '-5');
-      const fetchMock: FetchMock = vi.fn(async () =>
-        jsonResponse(200, { ok: true, usage_id: null, error: 'registry_not_configured' }),
-      );
+      const fetchMock: FetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
 
       const result = await reserveTeamverBillingFromDaemon({
@@ -170,13 +188,15 @@ describe('teamver-billing-bridge', () => {
       });
       expect(result.ok).toBe(true);
       expect(result.usageId).toBeNull();
-      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(JSON.parse(String(init.body)).amount).toBe(0);
+      expect(result.skipped).toBe(true);
+      expect(result.error).toBe('billing_amount_not_configured');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('treats registry_not_configured BE response as ok without usage_id', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '25');
       const fetchMock: FetchMock = vi.fn(async () =>
         jsonResponse(200, { ok: true, usage_id: null, error: 'registry_not_configured' }),
       );

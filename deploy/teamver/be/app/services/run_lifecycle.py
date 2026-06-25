@@ -78,6 +78,12 @@ async def reserve_run(
         return ReservationResult(ok=False, usage_id=None, error="missing_workspace_id")
     if amount < 0:
         return ReservationResult(ok=False, usage_id=None, error="invalid_amount")
+    if amount == 0:
+        logger.info(
+            "billing reserve skipped — amount not configured workspace=%s",
+            workspace_id,
+        )
+        return ReservationResult(ok=True, usage_id=None, error="billing_amount_not_configured")
 
     if not _registry_configured():
         logger.info(

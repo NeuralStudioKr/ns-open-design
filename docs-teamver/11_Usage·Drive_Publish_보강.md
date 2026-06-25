@@ -50,8 +50,8 @@
 | FE in-memory 멱등 | `reportedRunIds` Set | ✅ |
 | Phase 2 wrapper | `services/teamver_billing.py` L24–49 | 🟡 import 0 |
 | Run lifecycle | `services/run_lifecycle.py` reserve/commit/refund | ✅ orchestrator + daemon bridge wiring + production registry credential 필수 |
-| Internal billing M2M | `routers/internal_billing.py` `/api/internal/billing/{reserve,commit,refund}` | ✅ M2M endpoints + 6 unit tests + smoke probe (reserve/commit/refund 모두) |
-| Daemon billing bridge | `apps/daemon/src/teamver-billing-bridge.ts` reserve→commit/refund | ✅ best-effort + 구조화 `teamver_usage_5xx` JSON 마커 + `TEAMVER_BILLING_RESERVE_AMOUNT` / `TEAMVER_BILLING_TIMEOUT_MS` / `TEAMVER_BILLING_DISABLED` env knobs + 18 unit tests |
+| Internal billing M2M | `routers/internal_billing.py` `/api/internal/billing/{reserve,commit,refund}` | ✅ M2M endpoints + amount=0 skip + smoke probe (reserve/commit/refund 모두) |
+| Daemon billing bridge | `apps/daemon/src/teamver-billing-bridge.ts` reserve→commit/refund | ✅ best-effort + amount=0/no-fallback skip + 구조화 `teamver_usage_5xx` JSON 마커 + `TEAMVER_BILLING_RESERVE_AMOUNT` / `TEAMVER_BILLING_TIMEOUT_MS` / `TEAMVER_BILLING_DISABLED` env knobs |
 | CW usage 5xx marker | `token_usage_log.py` + `print_cloudwatch_alarm_commands.sh` | ✅ |
 
 **UsageEventBody** (`usage_report.py`):
@@ -293,7 +293,7 @@ export async function reportTeamverDesignUsage(params: UsageParams): Promise<voi
 
 | 시점 | 상태 |
 |------|------|
-| **지금 (As-Is)** | Registry **reserve → commit/refund 골격** 동작. `amount`는 **앱이 정한 고정 크레딧(T)** (`TEAMVER_BILLING_RESERVE_AMOUNT` 폴백). ledger `input_tokens`/`output_tokens`는 **과금 계산에 미사용**. |
+| **지금 (As-Is)** | Registry **reserve → commit/refund 골격** 동작. `amount`는 **앱이 정한 고정 크레딧(T)** (`TEAMVER_BILLING_RESERVE_AMOUNT` 폴백). fallback 미설정/비양수면 reserve는 **skip**되고 ledger `input_tokens`/`output_tokens`는 과금 계산에 미사용. |
 | **목표 (To-Be)** | provider 실측 토큰 + 모델 단가 → **크레딧 T 환산** 후 reserve/commit. ledger·`registry_usage_id`·`billing_status`로 감사·정산 추적. |
 
 ---
@@ -305,7 +305,8 @@ export async function reportTeamverDesignUsage(params: UsageParams): Promise<voi
 ```text
 [run create — apps/daemon/src/server.ts ~L11844]
   reserveTeamverBillingFromDaemon({ amount: 0 })
-    → POST design-api /api/internal/billing/reserve
+    → TEAMVER_BILLING_RESERVE_AMOUNT 양수면 POST design-api /api/internal/billing/reserve
+    → fallback 미설정/비양수면 billing_amount_not_configured skip
     → Main BE POST /api/billing/reserve { workspace_id, amount }
     → ai_app_billing_reservations (status=reserved) + usage_id
     → run.teamverBillingUsageId = usage_id
@@ -313,12 +314,12 @@ export async function reportTeamverDesignUsage(params: UsageParams): Promise<voi
 [agent 실행 … provider usage → run.events / message.events]
 
 [run terminal — server.ts finalize reporter]
-  ├─ (parallel) reportTeamverUsageFromDaemon → POST /api/internal/usage/events
-  │     → ai_model_token_usages upsert (provider tokens + billing snapshot)
-  └─ commitTeamverBillingFromDaemon | refundTeamverBillingFromDaemon
-        → POST /api/internal/billing/{commit|refund}
-        → finalizeTeamverUsageBillingFromDaemon → POST /api/internal/usage/billing-finalize
-              → ledger billing_status / credits_committed / registry_usage_id 갱신
+  1. reportTeamverUsageFromDaemon → POST /api/internal/usage/events
+       → ai_model_token_usages upsert (provider tokens + billing snapshot)
+  2. commitTeamverBillingFromDaemon | refundTeamverBillingFromDaemon
+       → POST /api/internal/billing/{commit|refund}
+  3. finalizeTeamverUsageBillingFromDaemon → POST /api/internal/usage/billing-finalize
+       → ledger billing_status / credits_committed / registry_usage_id 갱신
 ```
 
 #### 4.1.2 amount 산정 (현재)
@@ -326,7 +327,7 @@ export async function reportTeamverDesignUsage(params: UsageParams): Promise<voi
 | 입력 | 실제 동작 |
 |------|-----------|
 | daemon `reserve` body `amount` | 호출부가 **`0` 고정** (`server.ts` L11853) |
-| `TEAMVER_BILLING_RESERVE_AMOUNT` | caller `amount==0` 일 때만 env 정수 폴백 (`teamver-billing-bridge.ts`) |
+| `TEAMVER_BILLING_RESERVE_AMOUNT` | caller `amount==0` 일 때만 env 양수 정수 폴백. 미설정/비양수면 Registry 호출 없이 `billing_amount_not_configured` skip |
 | provider `input_tokens`/`output_tokens` | **reserve/commit에 미반영** — ledger 기록만 |
 
 #### 4.1.3 구현 파일 맵
@@ -560,6 +561,7 @@ void (async () => {
 [x] 0c. _apply_usage_fields total_tokens 보존(replace path 미입력 시 derive/preserve, loop 380)
 [x] 0d. daemon terminal hook 직렬화(usage → commit/refund → finalize, loop 380)
 [x] 0e. FE drop 관측 — teamver_usage_5xx JSON 마커 + reportedRunIds 1024 cap (loop 380)
+[x] 0f. amount=0/no-fallback reserve skip — Registry 0 amount 호출 차단 (loop 382)
 [ ] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [ ] 3. daemon reserve: amount=0 제거 → meter upper bound 또는 전략 B로 이동

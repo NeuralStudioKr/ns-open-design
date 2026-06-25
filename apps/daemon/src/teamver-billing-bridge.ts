@@ -11,7 +11,7 @@
 // Env knobs:
 //   - `TEAMVER_BILLING_DISABLED=1`        — kill switch, all calls no-op.
 //   - `TEAMVER_BILLING_RESERVE_AMOUNT=N`  — fallback amount when caller
-//     passes amount==0 (positive int; invalid/NaN is ignored).
+//     passes amount==0 (positive int; invalid/NaN/non-positive skips billing).
 //   - `TEAMVER_BILLING_TIMEOUT_MS=ms`     — override HTTP timeout
 //     (clamped to 100..30000; default 5000).
 //
@@ -147,6 +147,9 @@ export async function reserveTeamverBillingFromDaemon(
   const amount = resolveReserveAmount(args.amount);
   if (amount === null) {
     return { ok: false, usageId: null, error: 'invalid_amount' };
+  }
+  if (amount <= 0) {
+    return { ok: true, usageId: null, skipped: true, error: 'billing_amount_not_configured' };
   }
 
   const env = billingEnv();

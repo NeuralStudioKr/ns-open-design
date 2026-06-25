@@ -70,6 +70,22 @@ async def test_reserve_endpoint_passes_registry_not_configured_through(
 
 
 @pytest.mark.asyncio
+async def test_reserve_endpoint_skips_zero_amount_before_registry_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def must_not_call(**kwargs):  # pragma: no cover - safety
+        raise AssertionError("billing must be skipped when amount is 0")
+
+    monkeypatch.setattr(run_lifecycle.teamver_billing, "reserve_credits", must_not_call)
+
+    body = ReserveBody(workspace_id="ws-1", amount=0)
+    response = await reserve_run(body, True)
+    assert response.ok is True
+    assert response.usage_id is None
+    assert response.error == "billing_amount_not_configured"
+
+
+@pytest.mark.asyncio
 async def test_commit_endpoint_returns_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 

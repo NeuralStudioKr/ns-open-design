@@ -62,6 +62,23 @@ async def test_reserve_run_skips_when_registry_not_configured(
 
 
 @pytest.mark.asyncio
+async def test_reserve_run_skips_zero_amount_before_registry_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_reserve(**kwargs):  # pragma: no cover - never called
+        raise AssertionError("must not call registry with amount=0")
+
+    monkeypatch.setattr(
+        run_lifecycle.teamver_billing, "reserve_credits", fake_reserve
+    )
+
+    result = await run_lifecycle.reserve_run(workspace_id="ws-1", amount=0)
+    assert result.ok is True
+    assert result.usage_id is None
+    assert result.error == "billing_amount_not_configured"
+
+
+@pytest.mark.asyncio
 async def test_reserve_run_rejects_missing_workspace() -> None:
     result = await run_lifecycle.reserve_run(workspace_id="", amount=1)
     assert result.ok is False
