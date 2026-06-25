@@ -8,6 +8,11 @@ import { pickProjectCoverFile, type ProjectCoverFile } from "./projectPreviewFil
 const COVER_FETCH_CACHE_MS = 60_000;
 const DEFAULT_COVER_FETCH_CONCURRENCY = 4;
 
+export type ResolveProjectCoverOptions = {
+  /** When false, stop after cover-hints/metadata — skip full `/files` listing. */
+  allowFilesFallback?: boolean;
+};
+
 const coverCache = new Map<string, { cover: ProjectCoverFile | null; at: number }>();
 const inflight = new Map<string, Promise<ProjectCoverFile | null>>();
 const pendingHintIds = new Set<string>();
@@ -133,7 +138,9 @@ export function resetProjectCoverLoaderStateForTests(): void {
 
 export async function resolveProjectCoverFile(
   project: Project,
+  options: ResolveProjectCoverOptions = {},
 ): Promise<ProjectCoverFile | null> {
+  const allowFilesFallback = options.allowFilesFallback !== false;
   if (!projectNeedsCoverFileFetch(project)) return null;
 
   const id = project.id.trim();
@@ -159,6 +166,11 @@ export async function resolveProjectCoverFile(
         return hinted.cover;
       }
 
+      if (!allowFilesFallback) {
+        coverCache.set(id, { cover: null, at: Date.now() });
+        return null;
+      }
+
       const files = await fetchProjectFiles(id);
       const cover = pickProjectCoverFile(project, files);
       coverCache.set(id, { cover, at: Date.now() });
@@ -177,9 +189,10 @@ export async function resolveProjectCoverFile(
 
 export async function resolveProjectCoverFiles(
   projects: Project[],
-  options: { concurrency?: number } = {},
+  options: ResolveProjectCoverOptions & { concurrency?: number } = {},
 ): Promise<Record<string, ProjectCoverFile | null>> {
-  const concurrency = Math.max(1, options.concurrency ?? DEFAULT_COVER_FETCH_CONCURRENCY);
+  const { concurrency: concurrencyOption, ...resolveOptions } = options;
+  const concurrency = Math.max(1, concurrencyOption ?? DEFAULT_COVER_FETCH_CONCURRENCY);
   const result: Record<string, ProjectCoverFile | null> = {};
   const toFetch: Project[] = [];
 
@@ -192,7 +205,7 @@ export async function resolveProjectCoverFiles(
   }
 
   await mapPool(toFetch, concurrency, async (project) => {
-    result[project.id] = await resolveProjectCoverFile(project);
+    result[project.id] = await resolveProjectCoverFile(project, resolveOptions);
   });
 
   return result;

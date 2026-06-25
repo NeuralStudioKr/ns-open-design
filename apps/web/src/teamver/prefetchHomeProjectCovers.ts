@@ -1,4 +1,3 @@
-import { isTeamverEmbedMode } from "./designApiBase";
 import { HOME_COVER_FETCH_CONCURRENCY, HOME_RECENT_LIST_LIMIT } from "./projectListLimits";
 import type { Project } from "../types";
 import {
@@ -8,8 +7,9 @@ import {
 } from "./projectCoverLoader";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
+import { isTeamverEmbedMode } from "./designApiBase";
 
-/** Home recent rail — coalesced cover-hints batch, then at most six shallow resolves. */
+/** Home recent rail — cover-hints batch only; no per-project `/files` listing. */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
 ): Promise<Record<string, ProjectCoverFile | null>> {
@@ -28,5 +28,6 @@ export async function prefetchHomeProjectCovers(
 
   return resolveProjectCoverFiles(recent, {
     concurrency: HOME_COVER_FETCH_CONCURRENCY,
+    allowFilesFallback: false,
   });
 }

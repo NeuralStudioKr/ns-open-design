@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchCoverHintsMock = vi.fn(async () => ({ ok: false }));
+const fetchProjectFilesMock = vi.fn(async () => []);
 const prefetchLatestPublishSummariesMock = vi.fn();
 
 vi.stubGlobal("fetch", (...args: unknown[]) => fetchCoverHintsMock(...args));
 
 vi.mock("../src/providers/registry", () => ({
-  fetchProjectFiles: vi.fn(async () => []),
+  fetchProjectFiles: (...args: unknown[]) => fetchProjectFilesMock(...args),
 }));
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -42,6 +43,8 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
   beforeEach(() => {
     fetchCoverHintsMock.mockReset();
     fetchCoverHintsMock.mockResolvedValue({ ok: true, json: async () => ({ hints: [] }) });
+    fetchProjectFilesMock.mockReset();
+    fetchProjectFilesMock.mockResolvedValue([]);
     prefetchLatestPublishSummariesMock.mockReset();
     resetProjectCoverLoaderStateForTests();
   });
@@ -62,5 +65,17 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     expect(prefetchLatestPublishSummariesMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+  });
+
+  it("home recent prefetch uses cover-hints only and skips /files listing", async () => {
+    const projects = Array.from({ length: 6 }, (_, index) =>
+      project(`home-${index}`, 100 - index),
+    );
+
+    await prefetchHomeProjectCovers(projects);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
   });
 });

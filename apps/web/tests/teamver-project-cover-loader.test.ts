@@ -102,6 +102,30 @@ describe("projectCoverLoader", () => {
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
   });
 
+  it("skips /files listing when allowFilesFallback is false", async () => {
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+    fetchProjectFilesMock.mockResolvedValue([
+      { name: "deck.html", kind: "html", mtime: 1, size: 1, mime: "text/html" },
+    ]);
+
+    const projects = [
+      project({ id: "p1", metadata: { kind: "deck" } }),
+      project({ id: "p2", metadata: { kind: "deck" } }),
+    ];
+
+    const covers = await resolveProjectCoverFiles(projects, {
+      allowFilesFallback: false,
+    });
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+    expect(covers.p1).toBeNull();
+    expect(covers.p2).toBeNull();
+  });
+
   it("limits concurrent file fetches in batch resolve", async () => {
     let inFlight = 0;
     let maxInFlight = 0;
