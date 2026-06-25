@@ -217,7 +217,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 + loop 392(home) + loop 393(DesignsTab) + loop 400(header) |
 | S-7 | Teamver shell 컴포넌트 `useTeamverT` (chip/banner/import modal 등) | P2 | ✅ loop 364–369 |
 | **S-8** | **in-project run 성공** → preview + publish menu arm | P0 | ✅ **loop 403** |
-| **S-9** | publish **one-click** — 마지막 target 자동 publish | P1 | ☐ loop 404 |
+| **S-9** | publish **one-click** — 마지막 target 자동 publish | P1 | ✅ **loop 409** |
 | **S-10** | session logout 후 stream detach browser QA | P0 | ☐ loop 399 코드 완료 · QA만 남음 |
 
 > **원칙:** nginx 배포·staging E2E·RDS psql은 **ops 트랙** — 제품 코드 루프와 분리. [04 §코드 루프 우선순위](./04_구현_우선순위.md) 참고.
@@ -267,7 +267,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 |----|---|------|
 | S-5 | ☐ | workspace switch 중 stream detach + publish 동선 browser QA |
 | S-8 | ✅ | **loop 403** — in-project run 성공 publish menu arm |
-| S-9 | ☐ | **loop 404** — one-click publish (마지막 target) |
+| S-9 | ✅ | **loop 409** — one-click publish (마지막 target) |
 | S-10 | ☐ | logout stream detach browser QA (loop 399) |
 
 ---

@@ -184,6 +184,10 @@ import {
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
+import {
+  buildOneClickPublishToast,
+  maybeOneClickPublishToDrive,
+} from '../teamver/teamverOneClickPublish';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -1064,6 +1068,7 @@ export function ProjectView({
     message: string;
     details: string | null;
     code?: string | null;
+    detailsHref?: string | null;
   } | null>(null);
   const [chatSeed, setChatSeed] = useState<{ id: string; value: string } | null>(null);
   const [autoAuditRepairSeed, setAutoAuditRepairSeed] =
@@ -2136,7 +2141,23 @@ export function ProjectView({
     if (!isTeamverEmbedMode()) return;
     if (!routeFileName) return;
     if (!consumeTeamverPublishMenuArm(project.id, routeFileName)) return;
-    setDownloadRequest({ name: routeFileName, nonce: Date.now() });
+
+    let cancelled = false;
+    void (async () => {
+      const result = await maybeOneClickPublishToDrive(project.id, routeFileName);
+      if (cancelled) return;
+      const toast = buildOneClickPublishToast(result);
+      if (toast) {
+        setProjectActionsToast(toast);
+        return;
+      }
+      if (result.status === "skipped") {
+        setShareRequest({ name: routeFileName, nonce: Date.now() });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [project.id, routeFileName]);
 
   // Sync the URL when the active tab changes, so reload + share-link both
@@ -6196,6 +6217,7 @@ export function ProjectView({
           <Toast
             message={projectActionsToast.message}
             details={projectActionsToast.details}
+            detailsHref={projectActionsToast.detailsHref}
             code={projectActionsToast.code}
             onDismiss={() => setProjectActionsToast(null)}
           />

@@ -4,6 +4,12 @@ import { isTeamverEmbedMode } from "../designApiBase";
 import { getDesignBffClient } from "../designBffClient";
 import { readActiveTeamverWorkspaceId } from "../activeTeamverWorkspace";
 import {
+  DEFAULT_PUBLISH_TARGET,
+  ensureDefaultPublishTarget,
+  readLastPublishTargetId,
+  writeLastPublishTargetId,
+} from "../drivePublishLastTarget";
+import {
   listTeamverDrivePublishTargets,
   searchTeamverDrivePublishTargets,
   type TeamverDrivePublishTarget,
@@ -40,20 +46,6 @@ type Props = {
 };
 
 /**
- * loop 176 — Always-available default destination so the menu never deadlocks
- * when the workspace bridge or `listTeamverDrivePublishTargets` fail. Picking
- * this option publishes to the user's Drive root (BE falls back to
- * `settings.teamver_drive_publish_folder_id` env or the personal root).
- */
-const DEFAULT_PUBLISH_TARGET: TeamverDrivePublishTarget = {
-  id: "personal-default",
-  label: "내 드라이브",
-  description: "기본 드라이브 위치",
-  folderId: null,
-  sharedDriveId: null,
-};
-
-/**
  * loop 174 — Publish format policy:
  *
  *   - **HTML** is the only output we send to Drive. Main Teamver consumers
@@ -75,58 +67,6 @@ const DEFAULT_PUBLISH_TARGET: TeamverDrivePublishTarget = {
  * future format additions in `publishToDrive.ts`.
  */
 const PUBLISH_FORMATS: readonly TeamverPublishDriveFormat[] = ["html"];
-
-function ensureDefaultTarget(
-  targets: readonly TeamverDrivePublishTarget[],
-): TeamverDrivePublishTarget[] {
-  if (targets.length === 0) return [DEFAULT_PUBLISH_TARGET];
-  if (targets.some((target) => target.folderId == null && target.sharedDriveId == null)) {
-    return [...targets];
-  }
-  return [DEFAULT_PUBLISH_TARGET, ...targets];
-}
-
-/**
- * loop 174 — Remember the operator's last publish destination so the next
- * publish doesn't reset to "내 드라이브" every time. Keyed by workspace AND
- * project: a different workspace switch must NOT leak destinations across
- * tenants, and a different project inside the same workspace may legitimately
- * have a different "right answer" folder.
- */
-function lastTargetStorageKey(workspaceId: string | null, projectId: string): string | null {
-  const ws = workspaceId?.trim();
-  const proj = projectId.trim();
-  if (!ws || !proj) return null;
-  return `teamver.drive.lastPublishTarget.${ws}.${proj}`;
-}
-
-function readLastTargetId(workspaceId: string | null, projectId: string): string | null {
-  if (typeof window === "undefined") return null;
-  const key = lastTargetStorageKey(workspaceId, projectId);
-  if (!key) return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeLastTargetId(
-  workspaceId: string | null,
-  projectId: string,
-  targetId: string | null,
-): void {
-  if (typeof window === "undefined") return;
-  const key = lastTargetStorageKey(workspaceId, projectId);
-  if (!key) return;
-  try {
-    if (!targetId) window.localStorage.removeItem(key);
-    else window.localStorage.setItem(key, targetId);
-  } catch {
-    // Storage might be disabled (private mode, quota); preference loss is
-    // harmless — the dropdown just defaults back to `내 드라이브`.
-  }
-}
 
 export function TeamverPublishDriveMenuItem({
   projectId,
@@ -176,25 +116,25 @@ export function TeamverPublishDriveMenuItem({
       if (!ws) {
         // Workspace bridge isn't ready yet — keep the default option active and
         // surface a soft hint instead of locking the menu (loop 176 deadlock fix).
-        setTargets(ensureDefaultTarget([]));
+        setTargets(ensureDefaultPublishTarget([]));
         setTargetsError("teamver_workspace_pending");
         return;
       }
       const next = await listTeamverDrivePublishTargets(ws, { limit: 200 });
       if (seq !== fetchSeqRef.current) return;
-      const merged = ensureDefaultTarget(next);
+      const merged = ensureDefaultPublishTarget(next);
       setTargets(merged);
       // loop 174 — restore the last-used destination once we know which
       // targets are available. The lookup is workspace+project-scoped so a
       // remembered folder that no longer exists silently falls back to the
       // default instead of confusing the operator with a stale label.
-      const remembered = readLastTargetId(ws, projectId);
+      const remembered = readLastPublishTargetId(ws, projectId);
       if (remembered && merged.some((target) => target.id === remembered)) {
         setSelectedTargetId(remembered);
       }
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
-      setTargets(ensureDefaultTarget([]));
+      setTargets(ensureDefaultPublishTarget([]));
       setTargetsError(err instanceof Error ? err.message : "drive_publish_targets_failed");
     } finally {
       if (seq === fetchSeqRef.current) setLoadingTargets(false);
@@ -265,7 +205,7 @@ export function TeamverPublishDriveMenuItem({
       // it. We only persist after a green publish — if the request fails we
       // want the operator to revisit their target choice on retry instead of
       // silently locking in a broken folder.
-      writeLastTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
+      writeLastPublishTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
       if (selectedTarget) pushRecentPublishTarget(workspaceId, selectedTarget);
       setRecentTargets(readRecentPublishTargets(workspaceId));
       setHistoryRefreshKey((current) => current + 1);

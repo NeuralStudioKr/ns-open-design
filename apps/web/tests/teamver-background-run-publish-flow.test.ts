@@ -16,8 +16,9 @@ describe("embed background run success publish flow (loop 398)", () => {
     expect(app).toContain("armTeamverPublishMenuOnProjectOpen");
     expect(app).toContain("미리보기 · Drive 발행");
     expect(projectView).toContain("consumeTeamverPublishMenuArm");
+    expect(projectView).toContain("maybeOneClickPublishToDrive");
     expect(projectView).toMatch(
-      /consumeTeamverPublishMenuArm[\s\S]*?setDownloadRequest\(\{ name: routeFileName, nonce:/,
+      /result\.status === "skipped"[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
   });
 });

@@ -8,16 +8,20 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(webRoot, relativePath), "utf8");
 }
 
-describe("embed in-project run success publish flow (loop 402)", () => {
-  it("arms publish menu from ProjectView html auto-open before consume on preview", () => {
+describe("embed in-project run success publish flow (loop 403)", () => {
+  it("arms publish menu and one-click publishes or opens deploy menu on preview", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
 
     expect(projectView).toContain("maybeArmTeamverPublishMenuAfterRunSuccess");
     expect(projectView).toMatch(
       /maybeArmTeamverPublishMenuAfterRunSuccess[\s\S]*?requestOpenFile\(producedHtmlToOpen\)/,
     );
+    expect(projectView).toContain("maybeOneClickPublishToDrive");
     expect(projectView).toMatch(
-      /consumeTeamverPublishMenuArm[\s\S]*?setDownloadRequest\(\{ name: routeFileName, nonce:/,
+      /consumeTeamverPublishMenuArm[\s\S]*?maybeOneClickPublishToDrive/,
+    );
+    expect(projectView).toMatch(
+      /result\.status === "skipped"[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
   });
 });
