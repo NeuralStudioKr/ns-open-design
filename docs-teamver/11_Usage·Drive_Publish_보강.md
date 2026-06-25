@@ -102,6 +102,8 @@ class UsageEventBody(BaseModel):
 
 **loop 375 (BYOK run_id):** embed BYOK(`mode=api`)는 daemon `runId` 없음 → FE usage report 시 `assistantMessage.id`를 `run_id`로 사용해 `(workspace_id, run_id)` upsert 멱등. 후속 과금 SSOT는 **§4**.
 
+**loop 380 (ledger 병합 보강):** daemon usage M2M·FE-first usage·billing-finalize가 같은 `(workspace_id, run_id)` row를 다른 순서로 쓰더라도 `billing_status=committed`·`registry_usage_id`·`credits_committed`를 `not_attempted` 기본값으로 되돌리지 않는다. billing finalize가 먼저 도착하면 0-token stub row를 만들고, 이후 provider usage가 도착하면 토큰·`total_tokens`만 풍부하게 병합한다.
+
 **Workspace 정렬:** embed workspace switch 후 daemon run·usage·publish가 동일 workspace를 쓰려면 FE가 `/api/runs`에 `X-Workspace-Id`(active store)를 보내고, nginx가 session-check default보다 우선 적용한다.
 
 ### 2.3 Drive (Phase 4 — v1 코드 ✅, staging E2E ☐)
@@ -473,7 +475,12 @@ def meter_design_run(
 | `used_at` | LLM 호출·집계 시각 (M2M by-model 필터) |
 | `created_at` / `updated_at` | row·billing 갱신 감사 (loop 374) |
 
-**upsert 규칙** (`token_usage_crud.aupsert_usage`): incoming non-zero tokens가 기존 0 row를 갱신. incoming 0은 기존 실측을 **덮어쓰지 않음**.
+**upsert 규칙** (`token_usage_crud.aupsert_usage`):
+
+- incoming non-zero tokens가 기존 0 row를 갱신. incoming 0은 기존 실측을 **덮어쓰지 않음**.
+- billing snapshot은 precedence 기반으로만 전진한다: `not_attempted` < `reserved` < `commit_failed`/`refund_failed` < `refunded` < `committed`.
+- `committed` row는 frozen: FE replay·daemon retry의 기본 `not_attempted` payload가 `registry_usage_id`·`credits_committed`를 지우지 못한다.
+- billing-finalize가 usage upsert보다 먼저 오면 0-token stub row를 insert하고, 후속 provider usage가 토큰·모델명·`total_tokens`를 병합한다.
 
 ---
 
@@ -492,7 +499,7 @@ def meter_design_run(
 
 **현재:** `server.ts` finalize에서 `reportTeamverUsageFromDaemon`와 `commit/refund`가 **병렬** `void` 시작.
 
-**위험:** commit이 usage row upsert보다 먼저 끝나면, 짧은 창에 ledger `billing_status`가 stale.
+**완화됨(loop 380):** commit이 usage row upsert보다 먼저 끝나도 `billing-finalize`가 stub row를 만들고, 후속 usage upsert가 과금 snapshot을 downgrade하지 않는다. 남은 후속은 “정확한 amount 산정”과 “terminal hook 순서 단순화”다.
 
 **후속 권장 순서 (succeeded)**
 
@@ -511,6 +518,7 @@ def meter_design_run(
 ### 4.9 후속 구현 체크리스트 (권장 순서)
 
 ```text
+[x] 0. ledger race-safe merge: billing-finalize stub + no committed downgrade
 [ ] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [ ] 3. daemon reserve: amount=0 제거 → meter upper bound 또는 전략 B로 이동

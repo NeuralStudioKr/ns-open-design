@@ -1,14 +1,55 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import AiModelTokenUsage
 from ..models.base import utcnow
 from ..newid import new_token_usage_id
+
+logger = logging.getLogger(__name__)
+
+
+# Billing status precedence for the Registry Phase 2 ledger / Main BE Registry
+# lifecycle. Two writers (FE-first user JWT, daemon M2M, billing finalize) can
+# upsert the same (workspace_id, run_id) row in either order; the ledger must
+# never *downgrade* a more-final status (e.g. ``committed``) back to a default
+# / earlier one (e.g. ``not_attempted`` that Pydantic fills when FE omits the
+# field). Higher number = more final. Unknown / empty input is treated as
+# precedence ``-1`` (skip the field entirely) so an absent payload never wins
+# over an existing value.
+_BILLING_STATUS_PRIORITY: dict[str, int] = {
+    "not_attempted": 0,
+    "disabled": 1,
+    "not_configured": 1,
+    "not_metered": 1,
+    "reserved": 2,
+    "commit_failed": 3,
+    "refund_failed": 3,
+    "refunded": 4,
+    "committed": 5,
+}
+
+
+def _billing_status_priority(value: str | None) -> int:
+    if not value:
+        return -1
+    return _BILLING_STATUS_PRIORITY.get(str(value).strip(), -1)
+
+
+def _should_overwrite_billing_status(existing: str | None, incoming: str | None) -> bool:
+    incoming_priority = _billing_status_priority(incoming)
+    if incoming_priority < 0:
+        return False
+    existing_priority = _billing_status_priority(existing)
+    if existing_priority < 0:
+        return True
+    return incoming_priority >= existing_priority
 
 
 def _as_utc_aware(dt: datetime) -> datetime:
@@ -57,12 +98,57 @@ def _touch_usage_row_updated_at(row: AiModelTokenUsage) -> None:
     row.updated_at = utcnow()
 
 
+def _apply_billing_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
+    """Update the billing snapshot in-place, never downgrading existing state.
+
+    Once a row reaches ``committed`` the credits + ``registry_usage_id`` are
+    frozen. A later writer (e.g. FE replay of the same ``run_id`` with
+    defaults) MUST NOT clear them. For mid-flight transitions we follow
+    ``_BILLING_STATUS_PRIORITY`` so the more-final status wins.
+    """
+    if row.billing_status == "committed":
+        # Frozen: ignore any subsequent billing payload (including FE defaults).
+        return
+    incoming_status = fields.get("billing_status")
+    if _should_overwrite_billing_status(row.billing_status, incoming_status):
+        row.billing_status = str(incoming_status)
+        # ``credits_committed`` tracks billing_status — only flip when the
+        # status transition justifies it. A False default coming alongside a
+        # non-committed status is a no-op for the True case (we never had
+        # True without 'committed' upstream).
+        incoming_committed = fields.get("credits_committed")
+        if incoming_committed is True:
+            row.credits_committed = True
+        elif incoming_committed is False and str(incoming_status) != "committed":
+            # Allow refund/refunded paths to clear the committed flag, but keep
+            # True intact if no downgrade is happening.
+            if row.credits_committed and str(incoming_status) in {"refunded", "refund_failed"}:
+                row.credits_committed = False
+    incoming_usage_id = fields.get("registry_usage_id")
+    if incoming_usage_id:
+        # registry_usage_id should be set once and never overwritten with a
+        # different value. Only fill when empty.
+        if not row.registry_usage_id:
+            row.registry_usage_id = str(incoming_usage_id)
+
+
 def _apply_usage_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
     row.model_name = str(fields.get("model_name") or row.model_name)
     row.input_tokens = max(0, int(fields.get("input_tokens") or 0))
     row.output_tokens = max(0, int(fields.get("output_tokens") or 0))
-    total = fields.get("total_tokens")
-    row.total_tokens = int(total) if isinstance(total, int) and total >= 0 else None
+    incoming_total = fields.get("total_tokens")
+    if isinstance(incoming_total, int) and incoming_total >= 0:
+        row.total_tokens = incoming_total
+    else:
+        # Preserve a previously-computed total (incl. Anthropic cache tokens)
+        # when it is richer than the new input+output pair; otherwise derive so
+        # the ledger always reflects the token counts credit_meter can read.
+        derived = max(0, row.input_tokens) + max(0, row.output_tokens)
+        existing_total = row.total_tokens if isinstance(row.total_tokens, int) else None
+        if derived > 0 and (existing_total is None or existing_total <= 0 or derived > existing_total):
+            row.total_tokens = derived
+        elif existing_total is None or existing_total <= 0:
+            row.total_tokens = None
     row.user_id = fields.get("user_id") or row.user_id
     row.workspace_id = fields.get("workspace_id") or row.workspace_id
     row.used_at = fields.get("used_at") or row.used_at
@@ -73,12 +159,7 @@ def _apply_usage_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
         row.run_status = str(fields["run_status"])
     if fields.get("token_count_source"):
         row.token_count_source = str(fields["token_count_source"])
-    if fields.get("registry_usage_id") is not None:
-        row.registry_usage_id = fields.get("registry_usage_id") or None
-    if fields.get("billing_status"):
-        row.billing_status = str(fields["billing_status"])
-    if fields.get("credits_committed") is not None:
-        row.credits_committed = bool(fields["credits_committed"])
+    _apply_billing_fields(row, fields)
     _touch_usage_row_updated_at(row)
 
 
@@ -122,28 +203,22 @@ async def aupsert_usage(
     if workspace_id and run_id:
         existing = await afind_usage_by_run(db, workspace_id=workspace_id, run_id=run_id)
         if existing is not None:
-            if _should_replace_token_counts(existing, fields):
-                _apply_usage_fields(existing, fields)
-            else:
-                if fields.get("registry_usage_id"):
-                    existing.registry_usage_id = fields.get("registry_usage_id") or None
-                if fields.get("billing_status"):
-                    existing.billing_status = str(fields["billing_status"])
-                if fields.get("run_status"):
-                    existing.run_status = str(fields["run_status"])
-                if fields.get("token_count_source") == "provider_usage" and existing.token_count_source != "provider_usage":
-                    existing.token_count_source = "provider_usage"
-                _touch_usage_row_updated_at(existing)
+            _merge_into_existing(existing, fields)
             await db.flush()
             await db.refresh(existing)
             return existing
 
+    derived_total = (
+        total_tokens
+        if total_tokens is not None and total_tokens >= 0
+        else (max(0, input_tokens) + max(0, output_tokens) or None)
+    )
     row = AiModelTokenUsage(
         id=new_token_usage_id(),
         model_name=model_name,
         input_tokens=max(0, input_tokens),
         output_tokens=max(0, output_tokens),
-        total_tokens=total_tokens if total_tokens is not None and total_tokens >= 0 else None,
+        total_tokens=derived_total,
         user_id=user_id,
         workspace_id=workspace_id,
         used_at=used_at,
@@ -157,9 +232,48 @@ async def aupsert_usage(
         credits_committed=bool(credits_committed),
     )
     db.add(row)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # uq_token_usage_workspace_run race — another writer (FE vs daemon,
+        # or two daemon retries) inserted first while we were preparing this
+        # row. Roll the in-flight insert back, refetch, and merge our payload
+        # into the surviving row so neither writer silently loses data.
+        await db.rollback()
+        logger.warning(
+            "teamver_usage_5xx aupsert_usage integrity race workspace=%s run=%s — merging into existing row",
+            workspace_id,
+            run_id,
+        )
+        if not (workspace_id and run_id):
+            raise
+        existing = await afind_usage_by_run(db, workspace_id=workspace_id, run_id=run_id)
+        if existing is None:
+            # Race resolved differently (e.g. the other writer was rolled
+            # back too). Re-raise so the caller can retry — losing a single
+            # row is better than persisting a stale snapshot.
+            raise
+        _merge_into_existing(existing, fields)
+        await db.flush()
+        await db.refresh(existing)
+        return existing
     await db.refresh(row)
     return row
+
+
+def _merge_into_existing(existing: AiModelTokenUsage, fields: dict[str, Any]) -> None:
+    if _should_replace_token_counts(existing, fields):
+        _apply_usage_fields(existing, fields)
+        return
+    if fields.get("run_status"):
+        existing.run_status = str(fields["run_status"])
+    if (
+        fields.get("token_count_source") == "provider_usage"
+        and existing.token_count_source != "provider_usage"
+    ):
+        existing.token_count_source = "provider_usage"
+    _apply_billing_fields(existing, fields)
+    _touch_usage_row_updated_at(existing)
 
 
 async def aupdate_usage_billing_by_run(
@@ -170,14 +284,72 @@ async def aupdate_usage_billing_by_run(
     billing_status: str,
     credits_committed: bool,
     registry_usage_id: str | None = None,
+    used_at: datetime | None = None,
+    user_id: str | None = None,
+    model_name: str | None = None,
+    operation: str | None = None,
+    project_id: str | None = None,
+    run_status: str | None = None,
 ) -> AiModelTokenUsage | None:
+    """Patch the billing snapshot on the (workspace_id, run_id) ledger row.
+
+    Race-safe upsert: when the usage event hasn't landed yet (daemon billing
+    finalize can win the schedule against a fire-and-forget usage report), we
+    insert a minimal row so the Registry commit/refund is never dropped on
+    the floor. The token-count payload arriving later still merges in via
+    :func:`aupsert_usage` because that path replaces only when incoming
+    counts are richer than the stub.
+    """
     row = await afind_usage_by_run(db, workspace_id=workspace_id, run_id=run_id)
     if row is None:
-        return None
-    row.billing_status = billing_status
-    row.credits_committed = credits_committed
-    if registry_usage_id:
-        row.registry_usage_id = registry_usage_id
+        stub_used_at = used_at or utcnow()
+        derived_status = billing_status if billing_status else "not_attempted"
+        stub = AiModelTokenUsage(
+            id=new_token_usage_id(),
+            model_name=(model_name or "unknown").strip() or "unknown",
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=None,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            used_at=stub_used_at,
+            operation=operation or "design_run",
+            project_id=project_id,
+            run_id=run_id,
+            run_status=run_status,
+            token_count_source="unknown",
+            registry_usage_id=registry_usage_id,
+            billing_status=derived_status,
+            credits_committed=bool(credits_committed),
+        )
+        db.add(stub)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            logger.warning(
+                "teamver_usage_5xx finalize stub integrity race workspace=%s run=%s",
+                workspace_id,
+                run_id,
+            )
+            row = await afind_usage_by_run(db, workspace_id=workspace_id, run_id=run_id)
+            if row is None:
+                raise
+        else:
+            await db.refresh(stub)
+            return stub
+    # Existing row (either pre-existed or appeared during the race retry).
+    assert row is not None
+    _apply_billing_fields(
+        row,
+        {
+            "billing_status": billing_status,
+            "credits_committed": credits_committed,
+            "registry_usage_id": registry_usage_id,
+        },
+    )
+    if run_status:
+        row.run_status = str(run_status)
     _touch_usage_row_updated_at(row)
     await db.flush()
     await db.refresh(row)
