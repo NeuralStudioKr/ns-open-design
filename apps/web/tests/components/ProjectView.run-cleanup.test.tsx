@@ -297,6 +297,103 @@ describe('ProjectView daemon cleanup', () => {
     window.sessionStorage.clear();
   });
 
+  it('reattaches and restores streaming after unmount detaches the primary SSE consumer', async () => {
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    fetchChatRunStatus.mockResolvedValue({
+      id: 'run-reattach',
+      status: 'running',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      exitCode: null,
+      signal: null,
+    });
+    reattachDaemonRun.mockImplementation(async () => new Promise<void>(() => {}));
+
+    let capturedOnRunCreated: ((runId: string) => void) | null = null;
+    let capturedStreamSignal: AbortSignal | null = null;
+    let capturedCancelSignal: AbortSignal | null = null;
+    streamViaDaemon.mockImplementation(async (options: {
+      signal: AbortSignal;
+      cancelSignal?: AbortSignal;
+      onRunCreated?: (runId: string) => void;
+    }) => {
+      capturedOnRunCreated = options.onRunCreated ?? null;
+      capturedStreamSignal = options.signal;
+      capturedCancelSignal = options.cancelSignal ?? null;
+      return new Promise<void>(() => {});
+    });
+
+    const project = {
+      id: 'project-reattach',
+      name: 'Project',
+      skillId: null,
+      designSystemId: null,
+    };
+    const commonProps = {
+      routeFileName: null,
+      config: { mode: 'daemon', agentId: 'agent-1', notifications: undefined, agentModels: {} } as never,
+      agents: [{ id: 'agent-1', name: 'OpenCode', models: [] } as never],
+      skills: [],
+      designTemplates: [],
+      designSystems: [],
+      daemonLive: true,
+      onModeChange: () => {},
+      onAgentChange: () => {},
+      onAgentModelChange: () => {},
+      onRefreshAgents: () => {},
+      onOpenSettings: () => {},
+      onBack: () => {},
+      onClearPendingPrompt: () => {},
+      onTouchProject: () => {},
+      onProjectChange: () => {},
+      onProjectsRefresh: () => {},
+    };
+
+    const view = render(
+      <ProjectView project={project as never} {...commonProps} />,
+    );
+
+    const sendProps = await waitForReadyChatPaneProps();
+    await sendProps.onSend!('keep running in background', [], []);
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    capturedOnRunCreated!('run-reattach');
+
+    view.unmount();
+    expect((capturedStreamSignal as AbortSignal | null)?.aborted).toBe(true);
+    expect((capturedCancelSignal as AbortSignal | null)?.aborted).toBe(false);
+
+    listMessages.mockResolvedValue([
+      {
+        id: 'assistant-reattach',
+        role: 'assistant',
+        content: 'working',
+        createdAt: Date.now(),
+        runId: 'run-reattach',
+        runStatus: 'running',
+      },
+    ]);
+    reattachDaemonRun.mockClear();
+    chatPaneSpy.mockClear();
+
+    render(<ProjectView project={project as never} {...commonProps} />);
+
+    await waitFor(() => expect(reattachDaemonRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'run-reattach' }),
+    ));
+    await waitFor(() => {
+      expect(chatPaneSpy.mock.calls.at(-1)?.[0]?.streaming).toBe(true);
+    });
+  });
+
   it('does not abort daemon cancel reattach controllers during unmount cleanup', async () => {
     let seenCancelSignal: { aborted: boolean } | null = null;
     let seenSignal: { aborted: boolean } | null = null;
