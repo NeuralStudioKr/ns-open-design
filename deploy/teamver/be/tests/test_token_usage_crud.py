@@ -15,6 +15,50 @@ from app.db.models.token_usage import AiModelTokenUsage
 
 
 @pytest.mark.asyncio
+async def test_aupsert_usage_persists_usage_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime.now(timezone.utc)
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock(side_effect=lambda row: row)
+
+    async def fake_find(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(token_usage_crud, "afind_usage_by_run", fake_find)
+
+    result = await token_usage_crud.aupsert_usage(
+        db,
+        model_name="claude-sonnet-4-5",
+        input_tokens=100,
+        output_tokens=40,
+        user_id="u1",
+        workspace_id="ws1",
+        used_at=now,
+        operation="design_run",
+        project_id="p1",
+        run_id="run-meta",
+        token_count_source="provider_usage",
+        cache_read_input_tokens=200,
+        cache_creation_input_tokens=50,
+        provider_reported_model="claude-sonnet-4-5-20250929",
+        api_protocol="anthropic",
+        credits_amount_t=12,
+        latency_ms=1500,
+        stop_reason="end_turn",
+    )
+
+    assert result.cache_read_input_tokens == 200
+    assert result.cache_creation_input_tokens == 50
+    assert result.provider_reported_model == "claude-sonnet-4-5-20250929"
+    assert result.api_protocol == "anthropic"
+    assert result.credits_amount_t == 12
+    assert result.latency_ms == 1500
+    assert result.stop_reason == "end_turn"
+    assert result.total_tokens == 390
+
+
+@pytest.mark.asyncio
 async def test_aupsert_usage_updates_zero_row_when_better_tokens_arrive(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
     existing = AiModelTokenUsage(

@@ -128,11 +128,30 @@ export async function streamProxyEndpoint(
             typeof parsed.data.model === 'string' && parsed.data.model.trim()
               ? parsed.data.model.trim()
               : undefined;
+          const cacheReadInputTokens = Number(
+            parsed.data.cache_read_input_tokens ?? parsed.data.cacheReadInputTokens ?? 0,
+          );
+          const cacheCreationInputTokens = Number(
+            parsed.data.cache_creation_input_tokens ?? parsed.data.cacheCreationInputTokens ?? 0,
+          );
+          const stopReason =
+            typeof parsed.data.stop_reason === 'string' && parsed.data.stop_reason.trim()
+              ? parsed.data.stop_reason.trim()
+              : typeof parsed.data.stopReason === 'string' && parsed.data.stopReason.trim()
+                ? parsed.data.stopReason.trim()
+                : undefined;
           if (Number.isFinite(inputTokens) && Number.isFinite(outputTokens)) {
             handlers.onUsage?.({
               inputTokens: Math.max(0, inputTokens),
               outputTokens: Math.max(0, outputTokens),
               model,
+              ...(Number.isFinite(cacheReadInputTokens) && cacheReadInputTokens > 0
+                ? { cacheReadInputTokens: Math.max(0, cacheReadInputTokens) }
+                : {}),
+              ...(Number.isFinite(cacheCreationInputTokens) && cacheCreationInputTokens > 0
+                ? { cacheCreationInputTokens: Math.max(0, cacheCreationInputTokens) }
+                : {}),
+              ...(stopReason ? { stopReason } : {}),
             });
           }
           continue;

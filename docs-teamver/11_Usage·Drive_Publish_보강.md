@@ -432,9 +432,9 @@ run end (succeeded):
 
 ---
 
-### 4.5 `credit_meter` 모듈 설계안 (미구현)
+### 4.5 `credit_meter` 모듈 (loop 405 구현)
 
-**신규 파일 (제안):** `deploy/teamver/be/app/services/credit_meter.py`
+**구현 파일:** `deploy/teamver/be/app/services/credit_meter.py` · env `DESIGN_MODEL_PRICES_JSON` · ledger `credits_amount_t` (audit only until U-G6 commit).
 
 ```python
 @dataclass(frozen=True)
@@ -562,7 +562,7 @@ void (async () => {
 [x] 0d. daemon terminal hook 직렬화(usage → commit/refund → finalize, loop 380)
 [x] 0e. FE drop 관측 — teamver_usage_5xx JSON 마커 + reportedRunIds 1024 cap (loop 380)
 [x] 0f. amount=0/no-fallback reserve skip — Registry 0 amount 호출 차단 (loop 382)
-[ ] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests
+[x] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests (loop 405)
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [ ] 3. daemon reserve: amount=0 제거 → meter upper bound 또는 전략 B로 이동
 [ ] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only)

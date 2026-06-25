@@ -51,6 +51,13 @@ async def record_usage_event(
             registry_usage_id=body.registry_usage_id,
             billing_status=body.billing_status,
             credits_committed=body.credits_committed,
+            cache_read_input_tokens=body.cache_read_input_tokens,
+            cache_creation_input_tokens=body.cache_creation_input_tokens,
+            provider_reported_model=body.provider_reported_model,
+            api_protocol=body.api_protocol,
+            credits_amount_t=body.credits_amount_t,
+            latency_ms=body.latency_ms,
+            stop_reason=body.stop_reason,
         ),
     )
     logger.info(

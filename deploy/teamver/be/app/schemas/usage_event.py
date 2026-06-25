@@ -60,6 +60,38 @@ class UsageEventBody(BaseModel):
         default=False,
         validation_alias=AliasChoices("credits_committed", "creditsCommitted"),
     )
+    cache_read_input_tokens: Optional[int] = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("cache_read_input_tokens", "cacheReadInputTokens"),
+    )
+    cache_creation_input_tokens: Optional[int] = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("cache_creation_input_tokens", "cacheCreationInputTokens"),
+    )
+    provider_reported_model: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("provider_reported_model", "providerReportedModel"),
+    )
+    api_protocol: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("api_protocol", "apiProtocol"),
+    )
+    credits_amount_t: Optional[int] = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("credits_amount_t", "creditsAmountT"),
+    )
+    latency_ms: Optional[int] = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("latency_ms", "latencyMs"),
+    )
+    stop_reason: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("stop_reason", "stopReason"),
+    )
 
 
 class UsageEventAcceptedResponse(BaseModel):

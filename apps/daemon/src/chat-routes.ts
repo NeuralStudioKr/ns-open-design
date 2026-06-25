@@ -666,12 +666,26 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     inputTokens: number,
     outputTokens: number,
     model?: string,
+    extras?: {
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+      stop_reason?: string;
+      api_protocol?: string;
+    },
   ) => {
     if (inputTokens > 0 || outputTokens > 0) {
       sse.send('usage', {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         model,
+        ...(extras?.cache_read_input_tokens != null && extras.cache_read_input_tokens > 0
+          ? { cache_read_input_tokens: extras.cache_read_input_tokens }
+          : {}),
+        ...(extras?.cache_creation_input_tokens != null && extras.cache_creation_input_tokens > 0
+          ? { cache_creation_input_tokens: extras.cache_creation_input_tokens }
+          : {}),
+        ...(extras?.stop_reason ? { stop_reason: extras.stop_reason } : {}),
+        ...(extras?.api_protocol ? { api_protocol: extras.api_protocol } : {}),
       });
     }
   };
@@ -714,6 +728,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // a mid-stream error mints a 0-token ledger row for a paid request.
     let inputTokens = 0;
     let outputTokens = 0;
+    let cacheReadInputTokens = 0;
+    let cacheCreationInputTokens = 0;
+    let stopReason: string | undefined;
+    const anthropicUsageExtras = () => ({
+      cache_read_input_tokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
+      cache_creation_input_tokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
+      stop_reason: stopReason,
+      api_protocol: 'anthropic',
+    });
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model: opts.payload?.model });
@@ -747,7 +770,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           // Emit accumulated usage BEFORE the error so the FE proxy client
           // (api-proxy.ts) records it for billing — api-proxy handles the
           // `usage` frame before flowing onError into the run lifecycle.
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
           sendProxyError(sse, message, { details: data });
           ended = true;
           return true;
@@ -756,16 +779,25 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           const usage = data.message.usage;
           if (typeof usage.input_tokens === 'number') inputTokens = usage.input_tokens;
           if (typeof usage.output_tokens === 'number') outputTokens = usage.output_tokens;
+          if (typeof usage.cache_read_input_tokens === 'number') {
+            cacheReadInputTokens = usage.cache_read_input_tokens;
+          }
+          if (typeof usage.cache_creation_input_tokens === 'number') {
+            cacheCreationInputTokens = usage.cache_creation_input_tokens;
+          }
         }
         if (event === 'message_delta' && data.usage) {
           if (typeof data.usage.output_tokens === 'number') {
             outputTokens = data.usage.output_tokens;
           }
+          if (typeof data.delta?.stop_reason === 'string' && data.delta.stop_reason.trim()) {
+            stopReason = data.delta.stop_reason.trim();
+          }
         }
         if (event === 'content_block_delta' && typeof data.delta?.text === 'string') {
           guard.sendDelta(data.delta.text);
           if (guard.contaminated) {
-            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
+            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
             sse.send('end', {});
             ended = true;
             return true;
@@ -773,7 +805,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         if (event === 'message_stop') {
           guard.flushThinkTag();
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
           sse.send('end', {});
           ended = true;
           return true;
@@ -782,7 +814,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
-        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
+        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
         sse.send('end', {});
       }
       sse.end();
@@ -791,7 +823,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // Network drop or dispatcher error mid-stream: same rationale as the
       // upstream-error branch above. If message_start already populated the
       // accumulators, the user was already charged for input_tokens.
-      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
+      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {

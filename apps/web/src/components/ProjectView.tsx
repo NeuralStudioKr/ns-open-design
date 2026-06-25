@@ -3999,6 +3999,7 @@ export function ProjectView({
         );
         pushEvent({ kind: 'status', label: 'requesting', detail: config.model });
         let accumulatedAssistantText = '';
+        const streamStartedAt = Date.now();
         void streamMessage(config, systemPrompt, apiHistory, controller.signal, {
           onDelta: (delta) => {
             accumulatedAssistantText += delta;
@@ -4014,6 +4015,15 @@ export function ProjectView({
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
               ...(usage.model ? { model: usage.model } : {}),
+              ...(usage.cacheReadInputTokens != null && usage.cacheReadInputTokens > 0
+                ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+                : {}),
+              ...(usage.cacheCreationInputTokens != null && usage.cacheCreationInputTokens > 0
+                ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
+                : {}),
+              ...(config.apiProtocol ? { apiProtocol: config.apiProtocol } : {}),
+              latencyMs: Date.now() - streamStartedAt,
+              ...(usage.stopReason ? { stopReason: usage.stopReason } : {}),
             });
           },
           onDone: () => {

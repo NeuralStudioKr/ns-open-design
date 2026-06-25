@@ -126,7 +126,7 @@ describe('anthropic.ts direct SDK onUsage capture', () => {
     });
   });
 
-  it('folds cache_creation_input_tokens + cache_read_input_tokens into inputTokens', async () => {
+  it('reports cache_creation_input_tokens + cache_read_input_tokens separately from prompt input', async () => {
     const { streamMessage } = await import('../../src/providers/anthropic');
 
     queueStream(new FakeMessageStream({
@@ -149,8 +149,10 @@ describe('anthropic.ts direct SDK onUsage capture', () => {
     );
 
     expect(onUsage).toHaveBeenCalledWith({
-      inputTokens: 350,
+      inputTokens: 100,
       outputTokens: 25,
+      cacheReadInputTokens: 200,
+      cacheCreationInputTokens: 50,
       model: 'claude-sonnet-4-5',
     });
   });

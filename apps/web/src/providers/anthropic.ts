@@ -27,6 +27,11 @@ export type ProxyUsageSnapshot = {
   inputTokens: number;
   outputTokens: number;
   model?: string;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  apiProtocol?: string;
+  latencyMs?: number;
+  stopReason?: string;
 };
 
 export interface StreamHandlers {
@@ -170,17 +175,28 @@ function emitAnthropicUsage(
   const promptTokens = nonNegativeInt(usage.input_tokens);
   const cacheCreation = nonNegativeInt(usage.cache_creation_input_tokens);
   const cacheRead = nonNegativeInt(usage.cache_read_input_tokens);
-  const inputTokens = promptTokens + cacheCreation + cacheRead;
   const outputTokens = nonNegativeInt(usage.output_tokens);
 
-  if (inputTokens === 0 && outputTokens === 0) return false;
+  if (promptTokens + cacheCreation + cacheRead + outputTokens === 0) return false;
 
   const reportedModel =
     typeof finalMessage?.model === 'string' && finalMessage.model.trim()
       ? finalMessage.model.trim()
       : fallbackModel;
 
-  handlers.onUsage({ inputTokens, outputTokens, model: reportedModel });
+  const stopReason =
+    typeof (finalMessage as { stop_reason?: unknown } | null | undefined)?.stop_reason === 'string'
+      ? String((finalMessage as { stop_reason: string }).stop_reason).trim() || undefined
+      : undefined;
+
+  handlers.onUsage({
+    inputTokens: promptTokens,
+    outputTokens,
+    ...(cacheRead > 0 ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(cacheCreation > 0 ? { cacheCreationInputTokens: cacheCreation } : {}),
+    model: reportedModel,
+    ...(stopReason ? { stopReason } : {}),
+  });
   return true;
 }
 

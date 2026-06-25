@@ -32,6 +32,13 @@ class InternalUsageEventBody(BaseModel):
     registry_usage_id: Optional[str] = None
     billing_status: str = "not_attempted"
     credits_committed: bool = False
+    cache_read_input_tokens: Optional[int] = Field(default=None, ge=0)
+    cache_creation_input_tokens: Optional[int] = Field(default=None, ge=0)
+    provider_reported_model: Optional[str] = None
+    api_protocol: Optional[str] = None
+    credits_amount_t: Optional[int] = Field(default=None, ge=0)
+    latency_ms: Optional[int] = Field(default=None, ge=0)
+    stop_reason: Optional[str] = None
 
 
 class InternalUsageBillingFinalizeBody(BaseModel):
@@ -71,6 +78,13 @@ async def record_internal_usage_event(
             registry_usage_id=body.registry_usage_id,
             billing_status=body.billing_status,
             credits_committed=body.credits_committed,
+            cache_read_input_tokens=body.cache_read_input_tokens,
+            cache_creation_input_tokens=body.cache_creation_input_tokens,
+            provider_reported_model=body.provider_reported_model,
+            api_protocol=body.api_protocol,
+            credits_amount_t=body.credits_amount_t,
+            latency_ms=body.latency_ms,
+            stop_reason=body.stop_reason,
         ),
     )
     return Response(status_code=204)

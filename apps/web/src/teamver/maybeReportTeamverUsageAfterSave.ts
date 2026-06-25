@@ -6,6 +6,7 @@ import {
   extractLatestUsageFromEvents,
   isTerminalRunStatus,
   resolveTeamverUsageModelName,
+  sumUsageTokens,
 } from "./usageAttribution";
 import { reportTeamverDesignUsage } from "./reportUsage";
 import { isTeamverDesignAppEnabled } from "./teamverDesignAccess";
@@ -87,13 +88,14 @@ export async function maybeReportTeamverUsageAfterSave(
   const modelName = resolveTeamverUsageModelName(message.events);
   const inputTokens = usage?.inputTokens ?? 0;
   const outputTokens = usage?.outputTokens ?? 0;
+  const tokenTotal = usage ? sumUsageTokens(usage) : 0;
 
   // Beacon for 0-token regressions. The FE path covers BYOK runs where the
   // upstream SDK / proxy didn't surface usage — exactly the gap loop 390
   // closed for Anthropic direct SDK. Logging here makes future regressions
   // visible in browser devtools + the design-api access log it gets shipped
   // to via the SDK's tap on console.warn.
-  if (inputTokens === 0 && outputTokens === 0) {
+  if (tokenTotal === 0) {
     emitClientUsageZeroMarker({
       workspaceId,
       modelName,
@@ -112,11 +114,17 @@ export async function maybeReportTeamverUsageAfterSave(
       modelName,
       inputTokens,
       outputTokens,
-      totalTokens: inputTokens + outputTokens > 0 ? inputTokens + outputTokens : undefined,
+      totalTokens: tokenTotal > 0 ? tokenTotal : undefined,
       tokenCountSource: usage?.tokenCountSource ?? "unknown",
       projectId,
       runId: usageRunId,
       runStatus: message.runStatus,
+      cacheReadInputTokens: usage?.cacheReadInputTokens,
+      cacheCreationInputTokens: usage?.cacheCreationInputTokens,
+      providerReportedModel: usage?.providerReportedModel,
+      apiProtocol: usage?.apiProtocol,
+      latencyMs: usage?.latencyMs,
+      stopReason: usage?.stopReason,
     });
     rememberReportedRunId(usageRunId);
   } finally {

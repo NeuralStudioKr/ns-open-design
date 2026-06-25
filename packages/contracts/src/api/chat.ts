@@ -402,7 +402,19 @@ export type PersistedAgentEvent =
       confidence?: number;
       draftPath?: string | null;
     }
-  | { kind: 'usage'; inputTokens?: number; outputTokens?: number; costUsd?: number; durationMs?: number; model?: string }
+  | {
+      kind: 'usage';
+      inputTokens?: number;
+      outputTokens?: number;
+      costUsd?: number;
+      durationMs?: number;
+      model?: string;
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+      apiProtocol?: string;
+      latencyMs?: number;
+      stopReason?: string;
+    }
   | { kind: 'raw'; line: string };
 
 export interface ChatMessage {

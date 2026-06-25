@@ -189,6 +189,31 @@ function applyUsagePayloadToScan(
   state.haveUsageTokens = inputTokens !== undefined || outputTokens !== undefined;
 }
 
+export function extractLastStopReasonFromRunEvents(
+  events: RunEventForAnalyticsObservability[],
+): string | null {
+  let last: string | null = null;
+  for (const rec of events) {
+    if (rec.event !== 'agent') continue;
+    const data = rec.data as Record<string, unknown> | null | undefined;
+    if (!data || typeof data !== 'object') continue;
+    if (data.type === 'result' && typeof data.stop_reason === 'string' && data.stop_reason.trim()) {
+      last = data.stop_reason.trim();
+      continue;
+    }
+    if (data.type === 'message_delta') {
+      const delta = data.delta as Record<string, unknown> | undefined;
+      if (typeof delta?.stop_reason === 'string' && delta.stop_reason.trim()) {
+        last = delta.stop_reason.trim();
+      }
+    }
+    if (typeof data.stop_reason === 'string' && data.stop_reason.trim()) {
+      last = data.stop_reason.trim();
+    }
+  }
+  return last;
+}
+
 export function scanRunEventsForUsageAnalytics(
   events: RunEventForAnalyticsObservability[],
   reqBodyModel: unknown,

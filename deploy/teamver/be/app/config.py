@@ -17,6 +17,16 @@ def _env_bool(name: str, *, default: bool) -> bool:
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_nonneg_int(name: str, *, default: int = 0) -> int:
+    v = os.getenv(name)
+    if v is None or not str(v).strip():
+        return default
+    try:
+        return max(0, int(str(v).strip()))
+    except ValueError:
+        return default
+
+
 class Settings(BaseModel):
     app_name: str = "Teamver Design API"
     api_prefix: str = "/api"
@@ -59,6 +69,10 @@ class Settings(BaseModel):
     teamver_billing_disabled: bool = Field(
         default_factory=lambda: _env_bool("TEAMVER_BILLING_DISABLED", default=False)
     )
+    teamver_billing_reserve_amount: int = Field(
+        default_factory=lambda: _env_nonneg_int("TEAMVER_BILLING_RESERVE_AMOUNT", default=0)
+    )
+    design_model_prices_json: str = os.getenv("DESIGN_MODEL_PRICES_JSON", "")
 
     # Embed managed API mode — server env only (never VITE_* / git)
     teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "anthropic")

@@ -1,5 +1,5 @@
 import { TERMINAL_RUN_STATUSES } from './runs.js';
-import { scanRunEventsForUsageAnalytics } from './run-analytics-observability.js';
+import { scanRunEventsForUsageAnalytics, extractLastStopReasonFromRunEvents } from './run-analytics-observability.js';
 import { teamverBillingDisabled } from './teamver-billing-bridge.js';
 import { teamverDesignApiBaseUrl } from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
@@ -11,6 +11,9 @@ type DaemonRunForUsage = {
   model?: string;
   teamverIdentity?: TeamverRequestIdentity | null;
   teamverBillingUsageId?: string | null;
+  createdAt?: number;
+  updatedAt?: number;
+  apiProtocol?: string | null;
   events: Array<{
     event: string;
     data: unknown;
@@ -105,6 +108,13 @@ export async function reportTeamverUsageFromDaemon({
     (typeof run.model === 'string' && run.model.trim() ? run.model.trim() : 'unknown');
   const billing = resolveBillingSnapshot(run);
   const runStatus = resolvePersistedRunStatus(run, persistedRunStatus);
+  const stopReason = extractLastStopReasonFromRunEvents(run.events);
+  const latencyMs =
+    typeof run.createdAt === 'number'
+    && typeof run.updatedAt === 'number'
+    && run.updatedAt >= run.createdAt
+      ? Math.round(run.updatedAt - run.createdAt)
+      : null;
 
   // Early-warning beacon for usage-capture regressions. A terminal run with
   // zero input AND zero output tokens means the upstream provider gave us
@@ -151,6 +161,12 @@ export async function reportTeamverUsageFromDaemon({
         registry_usage_id: billing.registry_usage_id,
         billing_status: billing.billing_status,
         credits_committed: billing.credits_committed,
+        cache_read_input_tokens: usage.cache_read_input_tokens ?? null,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens ?? null,
+        provider_reported_model: usage.agent_reported_model ?? null,
+        api_protocol: (run.apiProtocol ?? '').trim() || 'claude-agent',
+        latency_ms: latencyMs,
+        stop_reason: stopReason,
       }),
       signal: AbortSignal.timeout(5_000),
     });

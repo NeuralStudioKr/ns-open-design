@@ -72,18 +72,86 @@ async def afind_usage_by_run(
     return result.scalar_one_or_none()
 
 
-def _token_total(input_tokens: int, output_tokens: int, total_tokens: int | None) -> int:
+def _token_total(
+    input_tokens: int,
+    output_tokens: int,
+    total_tokens: int | None,
+    *,
+    cache_read_input_tokens: int | None = None,
+    cache_creation_input_tokens: int | None = None,
+) -> int:
     if total_tokens is not None and total_tokens > 0:
         return total_tokens
-    return max(0, input_tokens) + max(0, output_tokens)
+    return (
+        max(0, input_tokens)
+        + max(0, output_tokens)
+        + max(0, cache_read_input_tokens or 0)
+        + max(0, cache_creation_input_tokens or 0)
+    )
+
+
+def _optional_nonneg_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _apply_metadata_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
+    cache_read = _optional_nonneg_int(fields.get("cache_read_input_tokens"))
+    if cache_read is not None and cache_read > 0:
+        row.cache_read_input_tokens = cache_read
+    cache_create = _optional_nonneg_int(fields.get("cache_creation_input_tokens"))
+    if cache_create is not None and cache_create > 0:
+        row.cache_creation_input_tokens = cache_create
+
+    provider_model = _optional_str(fields.get("provider_reported_model"))
+    if provider_model:
+        row.provider_reported_model = provider_model
+
+    api_protocol = _optional_str(fields.get("api_protocol"))
+    if api_protocol:
+        row.api_protocol = api_protocol
+
+    credits_amount = _optional_nonneg_int(fields.get("credits_amount_t"))
+    if credits_amount is not None and credits_amount > 0:
+        if row.credits_amount_t is None or credits_amount >= (row.credits_amount_t or 0):
+            row.credits_amount_t = credits_amount
+
+    latency = _optional_nonneg_int(fields.get("latency_ms"))
+    if latency is not None and latency > 0:
+        if row.latency_ms is None or latency >= row.latency_ms:
+            row.latency_ms = latency
+
+    stop_reason = _optional_str(fields.get("stop_reason"))
+    if stop_reason:
+        row.stop_reason = stop_reason
 
 
 def _should_replace_token_counts(existing: AiModelTokenUsage, incoming: dict[str, Any]) -> bool:
-    existing_total = _token_total(existing.input_tokens, existing.output_tokens, existing.total_tokens)
+    existing_total = _token_total(
+        existing.input_tokens,
+        existing.output_tokens,
+        existing.total_tokens,
+        cache_read_input_tokens=existing.cache_read_input_tokens,
+        cache_creation_input_tokens=existing.cache_creation_input_tokens,
+    )
     incoming_total = _token_total(
         int(incoming.get("input_tokens") or 0),
         int(incoming.get("output_tokens") or 0),
         incoming.get("total_tokens"),
+        cache_read_input_tokens=_optional_nonneg_int(incoming.get("cache_read_input_tokens")),
+        cache_creation_input_tokens=_optional_nonneg_int(incoming.get("cache_creation_input_tokens")),
     )
     if incoming_total <= 0:
         return False
@@ -159,6 +227,7 @@ def _apply_usage_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
         row.run_status = str(fields["run_status"])
     if fields.get("token_count_source"):
         row.token_count_source = str(fields["token_count_source"])
+    _apply_metadata_fields(row, fields)
     _apply_billing_fields(row, fields)
     _touch_usage_row_updated_at(row)
 
@@ -181,6 +250,13 @@ async def aupsert_usage(
     registry_usage_id: str | None = None,
     billing_status: str = "not_attempted",
     credits_committed: bool = False,
+    cache_read_input_tokens: int | None = None,
+    cache_creation_input_tokens: int | None = None,
+    provider_reported_model: str | None = None,
+    api_protocol: str | None = None,
+    credits_amount_t: int | None = None,
+    latency_ms: int | None = None,
+    stop_reason: str | None = None,
 ) -> AiModelTokenUsage:
     fields: dict[str, Any] = {
         "model_name": model_name,
@@ -198,6 +274,13 @@ async def aupsert_usage(
         "registry_usage_id": registry_usage_id,
         "billing_status": billing_status,
         "credits_committed": credits_committed,
+        "cache_read_input_tokens": cache_read_input_tokens,
+        "cache_creation_input_tokens": cache_creation_input_tokens,
+        "provider_reported_model": provider_reported_model,
+        "api_protocol": api_protocol,
+        "credits_amount_t": credits_amount_t,
+        "latency_ms": latency_ms,
+        "stop_reason": stop_reason,
     }
 
     if workspace_id and run_id:
@@ -211,7 +294,13 @@ async def aupsert_usage(
     derived_total = (
         total_tokens
         if total_tokens is not None and total_tokens >= 0
-        else (max(0, input_tokens) + max(0, output_tokens) or None)
+        else (
+            max(0, input_tokens)
+            + max(0, output_tokens)
+            + max(0, cache_read_input_tokens or 0)
+            + max(0, cache_creation_input_tokens or 0)
+            or None
+        )
     )
     row = AiModelTokenUsage(
         id=new_token_usage_id(),
@@ -230,6 +319,13 @@ async def aupsert_usage(
         registry_usage_id=registry_usage_id,
         billing_status=billing_status or "not_attempted",
         credits_committed=bool(credits_committed),
+        cache_read_input_tokens=cache_read_input_tokens,
+        cache_creation_input_tokens=cache_creation_input_tokens,
+        provider_reported_model=provider_reported_model,
+        api_protocol=api_protocol,
+        credits_amount_t=credits_amount_t,
+        latency_ms=latency_ms,
+        stop_reason=stop_reason,
     )
     db.add(row)
     try:
@@ -272,6 +368,7 @@ def _merge_into_existing(existing: AiModelTokenUsage, fields: dict[str, Any]) ->
         and existing.token_count_source != "provider_usage"
     ):
         existing.token_count_source = "provider_usage"
+    _apply_metadata_fields(existing, fields)
     _apply_billing_fields(existing, fields)
     _touch_usage_row_updated_at(existing)
 

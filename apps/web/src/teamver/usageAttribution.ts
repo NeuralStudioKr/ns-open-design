@@ -43,7 +43,31 @@ export function normalizeProviderUsagePayload(
   };
 }
 
-export function extractLatestUsageFromEvents(events: AgentEvent[] | undefined) {
+export type TeamverUsageAttribution = {
+  inputTokens: number;
+  outputTokens: number;
+  tokenCountSource: "provider_usage" | "unknown";
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  providerReportedModel?: string;
+  apiProtocol?: string;
+  latencyMs?: number;
+  stopReason?: string;
+};
+
+export function sumUsageTokens(usage: Pick<
+  TeamverUsageAttribution,
+  "inputTokens" | "outputTokens" | "cacheReadInputTokens" | "cacheCreationInputTokens"
+>): number {
+  return (
+    usage.inputTokens
+    + usage.outputTokens
+    + (usage.cacheReadInputTokens ?? 0)
+    + (usage.cacheCreationInputTokens ?? 0)
+  );
+}
+
+export function extractLatestUsageFromEvents(events: AgentEvent[] | undefined): TeamverUsageAttribution | null {
   if (!events?.length) return null;
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
@@ -51,11 +75,37 @@ export function extractLatestUsageFromEvents(events: AgentEvent[] | undefined) {
     if (event.kind === "usage") {
       const inputTokens = event.inputTokens ?? 0;
       const outputTokens = event.outputTokens ?? 0;
-      if (inputTokens + outputTokens <= 0) continue;
+      const cacheReadInputTokens = event.cacheReadInputTokens;
+      const cacheCreationInputTokens = event.cacheCreationInputTokens;
+      const tokenSum = sumUsageTokens({
+        inputTokens,
+        outputTokens,
+        cacheReadInputTokens,
+        cacheCreationInputTokens,
+      });
+      if (tokenSum <= 0) continue;
       return {
         inputTokens,
         outputTokens,
-        tokenCountSource: resolveTokenCountSource(inputTokens, outputTokens),
+        tokenCountSource: "provider_usage",
+        ...(cacheReadInputTokens != null && cacheReadInputTokens > 0
+          ? { cacheReadInputTokens }
+          : {}),
+        ...(cacheCreationInputTokens != null && cacheCreationInputTokens > 0
+          ? { cacheCreationInputTokens }
+          : {}),
+        ...(typeof event.model === "string" && event.model.trim()
+          ? { providerReportedModel: event.model.trim() }
+          : {}),
+        ...(typeof event.apiProtocol === "string" && event.apiProtocol.trim()
+          ? { apiProtocol: event.apiProtocol.trim() }
+          : {}),
+        ...(typeof event.latencyMs === "number" && Number.isFinite(event.latencyMs) && event.latencyMs > 0
+          ? { latencyMs: Math.round(event.latencyMs) }
+          : {}),
+        ...(typeof event.stopReason === "string" && event.stopReason.trim()
+          ? { stopReason: event.stopReason.trim() }
+          : {}),
       };
     }
   }
@@ -75,9 +125,6 @@ export function extractModelNameFromEvents(events: AgentEvent[] | undefined): st
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
     if (!event) continue;
-    // Provider-reported model on the usage event is the most authoritative
-    // source for billing — upstream may route to a different snapshot than
-    // the user's Settings pin (e.g. claude-sonnet-4-5-20250514 vs alias).
     if (event.kind === "usage" && typeof event.model === "string" && event.model.trim()) {
       return event.model.trim();
     }

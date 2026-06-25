@@ -17,6 +17,13 @@ CREATE TABLE IF NOT EXISTS ai_model_token_usages (
   registry_usage_id TEXT,
   billing_status TEXT NOT NULL DEFAULT 'not_attempted',
   credits_committed BOOLEAN NOT NULL DEFAULT FALSE,
+  cache_read_input_tokens INTEGER,
+  cache_creation_input_tokens INTEGER,
+  provider_reported_model TEXT,
+  api_protocol TEXT,
+  credits_amount_t INTEGER,
+  latency_ms INTEGER,
+  stop_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -33,6 +40,13 @@ ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS token_count_source TE
 ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS registry_usage_id TEXT;
 ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS billing_status TEXT NOT NULL DEFAULT 'not_attempted';
 ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS credits_committed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS cache_read_input_tokens INTEGER;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS cache_creation_input_tokens INTEGER;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS provider_reported_model TEXT;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS api_protocol TEXT;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS credits_amount_t INTEGER;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS latency_ms INTEGER;
+ALTER TABLE ai_model_token_usages ADD COLUMN IF NOT EXISTS stop_reason TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_token_usage_workspace_run
   ON ai_model_token_usages (workspace_id, run_id)

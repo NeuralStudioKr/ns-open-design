@@ -12,6 +12,12 @@ export type TeamverUsageEvent = {
   projectId?: string;
   runId?: string;
   runStatus?: string;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  providerReportedModel?: string;
+  apiProtocol?: string;
+  latencyMs?: number;
+  stopReason?: string;
 };
 
 export type TeamverUsageAcceptedResponse = {
@@ -46,6 +52,16 @@ async function postUsageEvent(
       runId: event.runId,
       runStatus: event.runStatus,
       tokenCountSource: event.tokenCountSource ?? "unknown",
+      ...(event.cacheReadInputTokens != null && event.cacheReadInputTokens > 0
+        ? { cacheReadInputTokens: event.cacheReadInputTokens }
+        : {}),
+      ...(event.cacheCreationInputTokens != null && event.cacheCreationInputTokens > 0
+        ? { cacheCreationInputTokens: event.cacheCreationInputTokens }
+        : {}),
+      ...(event.providerReportedModel ? { providerReportedModel: event.providerReportedModel } : {}),
+      ...(event.apiProtocol ? { apiProtocol: event.apiProtocol } : {}),
+      ...(event.latencyMs != null && event.latencyMs > 0 ? { latencyMs: event.latencyMs } : {}),
+      ...(event.stopReason ? { stopReason: event.stopReason } : {}),
     },
     {
       workspaceId: event.workspaceId,
