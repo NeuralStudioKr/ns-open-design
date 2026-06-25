@@ -45,11 +45,12 @@ jobs:
     # Manual dispatch is always allowed. A "/explore" PR comment is allowed only
     # from a user with write access (OWNER/MEMBER/COLLABORATOR), never on issues.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.repository == 'nexu-io/open-design' &&
+      (github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
       startsWith(github.event.comment.body, '/explore') &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)))
 
     steps:
       - name: Acknowledge /explore command

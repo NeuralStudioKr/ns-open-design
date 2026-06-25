@@ -1,5 +1,8 @@
 name: ci
 
+# Upstream Open Design CI only. Teamver fork (NeuralStudioKr/ns-open-design) keeps
+# Actions off on push/PR — run checks locally or via workflow_dispatch when needed.
+
 on:
   pull_request:
   merge_group:
@@ -28,7 +31,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  upstream_only:
+    if: github.repository == 'nexu-io/open-design'
+    name: Upstream CI gate
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI runs on nexu-io/open-design only."
+
   change_scopes:
+    needs: upstream_only
     name: Detect CI change scopes
     runs-on: ubuntu-latest
     outputs:
@@ -142,6 +153,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   blob_guard:
+    needs: upstream_only
     name: Guard changed file sizes
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -553,7 +565,9 @@ jobs:
     # `Validate workspace` until a later ruleset follow-up explicitly moves the
     # required check over to `Validate workspace gate` from `ci-gate`.
     name: Validate workspace
+    if: ${{ github.repository == 'nexu-io/open-design' && always() }}
     needs:
+      - upstream_only
       - change_scopes
       - blob_guard
       - preflight
@@ -564,7 +578,6 @@ jobs:
       - web_workspace_tests
       - browser_tests
       - build_workspaces
-    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -586,7 +599,7 @@ jobs:
     name: Runtime trace
     needs:
       - validate
-    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.repository == 'nexu-io/open-design' && always() && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

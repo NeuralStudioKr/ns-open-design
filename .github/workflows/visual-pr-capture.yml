@@ -26,7 +26,7 @@ concurrency:
 jobs:
   capture:
     name: Capture PR visual screenshots
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ github.repository == 'nexu-io/open-design' && !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 

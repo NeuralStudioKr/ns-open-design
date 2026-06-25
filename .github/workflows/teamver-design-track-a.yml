@@ -1,27 +1,10 @@
 name: teamver-design-track-a
 
 # Teamver Design Track A — design-api pytest (+ embed vitest when vendor present).
-# Fork/staging branch CI; does not replace upstream OD main CI.
+# Auto CI is disabled on the Teamver fork; run locally via
+# deploy/teamver/scripts/run_track_a_unit_tests.sh or trigger manually here.
 
 on:
-  push:
-    branches:
-      - staging
-    paths:
-      - 'deploy/teamver/**'
-      - 'apps/web/src/teamver/**'
-      - 'apps/web/tests/teamver-*'
-      - 'apps/daemon/src/teamver-*'
-      - 'apps/daemon/src/project-routes.ts'
-      - '.github/workflows/teamver-design-track-a.yml'
-  pull_request:
-    paths:
-      - 'deploy/teamver/**'
-      - 'apps/web/src/teamver/**'
-      - 'apps/web/tests/teamver-*'
-      - 'apps/daemon/src/teamver-*'
-      - 'apps/daemon/src/project-routes.ts'
-      - '.github/workflows/teamver-design-track-a.yml'
   workflow_dispatch:
 
 concurrency:

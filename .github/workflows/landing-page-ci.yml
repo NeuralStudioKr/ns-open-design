@@ -71,6 +71,7 @@ concurrency:
 jobs:
   validate:
     name: Validate landing page
+    if: github.repository == 'nexu-io/open-design'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

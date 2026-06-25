@@ -30,7 +30,7 @@ jobs:
     # Fork PR capture artifacts are untrusted. Always validate the live PR state
     # and only execute trusted base-repository code before publishing comments
     # or reports.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.repository == 'nexu-io/open-design' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 

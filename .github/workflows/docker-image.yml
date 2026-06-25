@@ -11,6 +11,7 @@ on:
 
 jobs:
   build-and-push:
+    if: github.repository == 'nexu-io/open-design'
     runs-on: ubuntu-latest
     permissions:
       contents: read
