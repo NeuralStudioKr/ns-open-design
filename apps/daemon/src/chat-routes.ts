@@ -731,10 +731,19 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     let cacheReadInputTokens = 0;
     let cacheCreationInputTokens = 0;
     let stopReason: string | undefined;
-    const anthropicUsageExtras = () => ({
-      cache_read_input_tokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
-      cache_creation_input_tokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
-      stop_reason: stopReason,
+    const anthropicUsageExtras = (): {
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+      stop_reason?: string;
+      api_protocol?: string;
+    } => ({
+      ...(cacheReadInputTokens > 0
+        ? { cache_read_input_tokens: cacheReadInputTokens }
+        : {}),
+      ...(cacheCreationInputTokens > 0
+        ? { cache_creation_input_tokens: cacheCreationInputTokens }
+        : {}),
+      ...(stopReason ? { stop_reason: stopReason } : {}),
       api_protocol: 'anthropic',
     });
     try {
