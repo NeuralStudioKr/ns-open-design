@@ -121,6 +121,20 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain("formatProjectConversationErrorForUser");
   });
 
+  it("detaches local run streams without daemon cancel on workspace switch (loop 396)", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("detachLocalRunStreamConsumers");
+    expect(projectView).toMatch(
+      /subscribeTeamverWorkspaceChanged[\s\S]*?detachLocalRunStreamConsumers\(\)/,
+    );
+    const detachStart = projectView.indexOf("const detachLocalRunStreamConsumers");
+    expect(detachStart).toBeGreaterThan(0);
+    const detachEnd = projectView.indexOf("}, [cancelReattachTextBuffers", detachStart);
+    const detachBlock = projectView.slice(detachStart, detachEnd);
+    expect(detachBlock).toContain("reattachControllersRef.current.clear()");
+    expect(detachBlock).not.toContain("cancelRef.current?.abort()");
+  });
+
   it("routes run failure chat status events through Korean formatter in embed", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     expect(projectView).toContain("appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err)");

@@ -1160,14 +1160,6 @@ export function ProjectView({
     };
   }, [project.id]);
 
-  useEffect(() => {
-    if (!isTeamverEmbedMode()) return;
-    return subscribeTeamverWorkspaceChanged(() => {
-      setError(null);
-      setConversationLoadError(null);
-    });
-  }, []);
-
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
   // the file as a tab once. Keying off the tool_use_id (rather than
@@ -1598,6 +1590,22 @@ export function ProjectView({
     }
     reattachTextBuffersRef.current.clear();
   }, []);
+
+  /** Detach browser-side run streams without POST /cancel — run continues as background. */
+  const detachLocalRunStreamConsumers = useCallback(() => {
+    cancelSendTextBuffer(false);
+    cancelReattachTextBuffers(false);
+    abortRef.current = null;
+    cancelRef.current = null;
+    for (const controller of reattachControllersRef.current.values()) {
+      controller.abort();
+    }
+    reattachControllersRef.current.clear();
+    reattachCancelControllersRef.current.clear();
+    streamingConversationIdRef.current = null;
+    setStreamingConversationId(null);
+    setStreaming(false);
+  }, [cancelReattachTextBuffers, cancelSendTextBuffer]);
 
   const notifyCompletedRun = useCallback((last: ChatMessage) => {
     // Round 7 (mrcfps @ useDesignMdState.ts:131): a chat turn just
@@ -3051,6 +3059,16 @@ export function ProjectView({
     setQueuedChatSends(next);
     saveQueuedChatSends(project.id, next);
   }, [project.id]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverWorkspaceChanged(() => {
+      setError(null);
+      setConversationLoadError(null);
+      detachLocalRunStreamConsumers();
+      commitQueuedChatSends([]);
+    });
+  }, [commitQueuedChatSends, detachLocalRunStreamConsumers]);
 
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
     const next = [...queuedChatSendsRef.current, item];

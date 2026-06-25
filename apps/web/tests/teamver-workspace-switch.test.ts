@@ -99,6 +99,14 @@ describe("embed workspace switch side effects", () => {
     expect(app).toContain('formatTeamverProjectRegistryErrorMessage("teamver_workspace_required")');
   });
 
+  it("ProjectView detaches local run streams on workspace switch without POST cancel (loop 396)", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    expect(projectView).toContain("detachLocalRunStreamConsumers");
+    expect(projectView).toMatch(
+      /subscribeTeamverWorkspaceChanged[\s\S]*?commitQueuedChatSends\(\[\]\)/,
+    );
+  });
+
   it("clears stale workingDirError after refreshProjects succeeds", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");
