@@ -81,6 +81,11 @@ import {
   TeamverProjectRegistryError,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from './teamver/projectRegistry';
+import {
+  driveImportedToChatAttachments,
+  formatTeamverDriveImportErrorMessage,
+  importTeamverDriveAssets,
+} from './teamver/importDriveAssets';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
@@ -1692,6 +1697,7 @@ function AppInner() {
         autoSendFirstMessage?: boolean;
         requestId?: string;
         pendingFiles?: File[];
+        pendingDriveAssets?: import('./teamver/importDriveAssets').TeamverDriveImportAsset[];
         userWorkingDirToken?: string;
       },
     ): Promise<boolean> => {
@@ -1793,6 +1799,12 @@ function AppInner() {
       const pendingFiles = Array.isArray(input.pendingFiles)
         ? input.pendingFiles.filter((file): file is File => file instanceof File)
         : [];
+      const pendingDriveAssets = Array.isArray(input.pendingDriveAssets)
+        ? input.pendingDriveAssets.filter(
+            (asset): asset is import('./teamver/importDriveAssets').TeamverDriveImportAsset =>
+              Boolean(asset && typeof asset === 'object' && typeof asset.assetId === 'string'),
+          )
+        : [];
       // Flip the project onto the user-picked working directory BEFORE
       // uploading staged Home attachments. `replaceProjectWorkingDir` changes
       // `metadata.baseDir`, so the project starts reading from the external
@@ -1853,6 +1865,22 @@ function AppInner() {
             ? { error_code: uploadResult.error }
             : {}),
         });
+      }
+      if (!workingDirHandoffFailed && pendingDriveAssets.length > 0) {
+        try {
+          const driveResult = await importTeamverDriveAssets(result.project.id, pendingDriveAssets);
+          const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
+          firstMessageAttachments = [...firstMessageAttachments, ...driveAttachments];
+          if (driveResult.partial) {
+            console.warn('Some Home Drive attachments failed to import', driveResult.failed);
+            setWorkingDirError(
+              `일부 Drive 파일을 가져오지 못했습니다 (${driveResult.failed.length}개). 프로젝트는 생성되었습니다.`,
+            );
+          }
+        } catch (err) {
+          console.warn('Home Drive import failed for new project', err);
+          setWorkingDirError(formatTeamverDriveImportErrorMessage(err));
+        }
       }
       trackProjectCreateResult(
         analytics.track,

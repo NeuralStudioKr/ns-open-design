@@ -19,6 +19,7 @@ import { TrustBadge } from './TrustBadge';
 import { authorInitials, derivePluginSourceLinks } from '../runtime/plugin-source';
 import { useAnalytics } from '../analytics/provider';
 import { trackPluginLoopClick } from '../analytics/events';
+import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
 
 export interface PluginLoopSubmit {
   prompt: string;
@@ -55,6 +56,8 @@ export interface PluginLoopSubmit {
   // Files staged on Home before the project exists. App uploads them
   // into the created project's Design Files before the first auto-send.
   attachments?: File[];
+  // Drive assets staged on Home; imported after project creation (same cap as modal).
+  driveAttachments?: TeamverDriveImportAsset[];
   examplePromptContext?: { title: string; artifactType: string; brief: Record<string, string> };
 }
 

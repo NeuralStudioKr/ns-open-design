@@ -24,6 +24,9 @@
   background: var(--bg-subtle);
   color: var(--text);
 }
+.plus-menu__popup--with-drive {
+  min-width: min(240px, calc(100vw - 24px));
+}
 .plus-menu__popup {
   position: fixed;
   bottom: auto;

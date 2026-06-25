@@ -31,6 +31,15 @@ export type TeamverDriveImportScope =
   | { mode: "personal"; folderId: string | null; label: string }
   | { mode: "shared"; sharedDriveId: string; folderId: string | null; label: string };
 
+/** Keep browse/recent rows scoped to the active personal vs shared-drive tab. */
+export function importRowMatchesScope(
+  row: TeamverDriveImportListRow,
+  scope: TeamverDriveImportScope,
+): boolean {
+  if (scope.mode === "personal") return !row.sharedDriveId;
+  return row.sharedDriveId === scope.sharedDriveId;
+}
+
 function extractListItems(raw: unknown): unknown[] {
   return extractTeamverDriveItems(raw);
 }

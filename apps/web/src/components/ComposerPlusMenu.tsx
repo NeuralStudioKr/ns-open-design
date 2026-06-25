@@ -14,6 +14,7 @@ import type {
   McpServerConfig,
 } from '@open-design/contracts';
 import { useI18n, useT } from '../i18n';
+import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { ComposerPluginPreview } from './ComposerPluginPreview';
 import { localizePluginTitle } from './plugins-home/localization';
 import { resolveFlyoutSide } from './composer-flyout-placement';
@@ -197,6 +198,7 @@ export function ComposerPlusMenu({
   onOpen,
 }: ComposerPlusMenuProps) {
   const t = useT();
+  const teamverT = useTeamverT();
   const { locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [submenu, setSubmenu] = useState<
@@ -386,7 +388,7 @@ export function ComposerPlusMenu({
       {open && typeof document !== 'undefined' ? createPortal(
         <div
           ref={popupRef}
-          className={`plus-menu__popup plus-menu__popup--flyout-${flyoutPlacement} plus-menu__popup--flyout-y-${flyoutVerticalPlacement}`}
+          className={`plus-menu__popup plus-menu__popup--flyout-${flyoutPlacement} plus-menu__popup--flyout-y-${flyoutVerticalPlacement}${onAttachFromDrive ? ' plus-menu__popup--with-drive' : ''}`}
           role="menu"
           style={popupStyle}
         >
@@ -421,7 +423,7 @@ export function ComposerPlusMenu({
               }}
             >
               <Icon name="folder-filled" size={15} className="plus-menu__item-icon" />
-              <span>Attach from Drive</span>
+              <span>{teamverT('teamver.driveImport.attachFromMenu')}</span>
             </button>
           ) : null}
           {showConnectors ? (

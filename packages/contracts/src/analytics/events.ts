@@ -1150,7 +1150,9 @@ export interface HomeChatComposerClickProps {
     // jumping to the add-resource surface (`resource_kind`).
     | 'plus_menu_open'
     | 'plus_pick'
-    | 'plus_add';
+    | 'plus_add'
+    // Teamver embed: "+" menu → "Import from Drive" opening the Drive picker.
+    | 'drive_import_open';
   // For `plus_pick` / `plus_add`: which kind of resource (and its id on pick).
   resource_kind?: 'connector' | 'plugin' | 'mcp';
   resource_id?: string;
@@ -1396,7 +1398,7 @@ export interface PluginImportModalClickProps {
 
 // Teamver embed — confirming a multi-select import from the Drive picker.
 export interface DriveImportModalClickProps {
-  page_name: 'chat_panel';
+  page_name: 'home' | 'chat_panel';
   area: 'drive_import_modal';
   element: 'drive_import_pick';
   asset_count: number;
@@ -2392,7 +2394,7 @@ export interface PluginImportModalSurfaceViewProps {
 // Fires once per modal open (deduped at emit site) so pick clicks have a
 // denominator.
 export interface DriveImportModalSurfaceViewProps {
-  page_name: 'chat_panel';
+  page_name: 'home' | 'chat_panel';
   area: 'drive_import_modal';
 }
 

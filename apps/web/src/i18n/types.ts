@@ -436,6 +436,12 @@ export interface Dict {
   'teamver.backgroundRuns.open': string;
   'teamver.publish.chipLabel': string;
   'teamver.publish.chipTitle': string;
+  'teamver.driveImport.attachFromMenu': string;
+  'teamver.driveImport.loadMore': string;
+  'teamver.driveImport.attachCount': string;
+  'teamver.driveImport.selectedCount': string;
+  'teamver.driveImport.pickHint': string;
+  'teamver.driveImport.maxPickReached': string;
   'teamver.driveImport.partialSuccess': string;
   'teamver.driveImport.partialFailedLead': string;
   'teamver.driveImport.done': string;

@@ -6,6 +6,7 @@ export type TeamverUsageEvent = {
   modelName: string;
   inputTokens: number;
   outputTokens: number;
+  totalTokens?: number;
   tokenCountSource?: "provider_usage" | "estimated" | "unknown";
   operation?: string;
   projectId?: string;
@@ -37,6 +38,9 @@ async function postUsageEvent(
       modelName: event.modelName,
       inputTokens: event.inputTokens,
       outputTokens: event.outputTokens,
+      ...(event.totalTokens != null && event.totalTokens > 0
+        ? { totalTokens: event.totalTokens }
+        : {}),
       operation: event.operation ?? "design_run",
       projectId: event.projectId,
       runId: event.runId,

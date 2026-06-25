@@ -39,6 +39,7 @@ import {
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { TeamverLogo } from '../teamver/branding/TeamverLogo';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
+import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
 import type { SkillSummary } from '../types';
 import { Icon, type IconName } from './Icon';
 import { useAnalytics } from '../analytics/provider';
@@ -165,6 +166,9 @@ interface Props {
   stagedFiles?: File[];
   onAddFiles?: (files: File[]) => void;
   onRemoveFile?: (index: number) => void;
+  stagedDriveAssets?: TeamverDriveImportAsset[];
+  onRemoveDriveAsset?: (index: number) => void;
+  onAttachFromDrive?: () => void;
   pluginOptions: InstalledPluginRecord[];
   pluginsLoading: boolean;
   skillOptions?: SkillSummary[];
@@ -232,6 +236,7 @@ const EMPTY_PLUGIN_INPUT_VALUES: Record<string, unknown> = {};
 const EMPTY_INPUT_NAMES: string[] = [];
 const EMPTY_DESIGN_SYSTEMS: DesignSystemSummary[] = [];
 const EMPTY_STAGED_FILES: File[] = [];
+const EMPTY_STAGED_DRIVE_ASSETS: TeamverDriveImportAsset[] = [];
 const EMPTY_SKILLS: SkillSummary[] = [];
 const EMPTY_MCP_OPTIONS: McpServerConfig[] = [];
 const EMPTY_CONNECTOR_OPTIONS: ConnectorDetail[] = [];
@@ -273,6 +278,9 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     stagedFiles = EMPTY_STAGED_FILES,
     onAddFiles = () => undefined,
     onRemoveFile = () => undefined,
+    stagedDriveAssets = EMPTY_STAGED_DRIVE_ASSETS,
+    onRemoveDriveAsset = () => undefined,
+    onAttachFromDrive,
     pluginOptions,
     pluginsLoading,
     skillOptions = EMPTY_SKILLS,
@@ -340,7 +348,9 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   const mentionPickerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shortcutsMenuRef = useRef<HTMLDivElement>(null);
-  const canSubmit = (prompt.trim().length > 0 || stagedFiles.length > 0) && !submitDisabled;
+  const canSubmit =
+    (prompt.trim().length > 0 || stagedFiles.length > 0 || stagedDriveAssets.length > 0) &&
+    !submitDisabled;
   const previewHomeFile = useMemo(() => {
     if (!previewHomeFileKey) return null;
     return stagedFiles.find((file, index) => homeFileKey(file, index) === previewHomeFileKey) ?? null;
@@ -971,7 +981,8 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     contextItemCount > 0 ||
     (showActivePluginChip && activePluginTitle) ||
     activeSkillTitle ||
-    stagedFiles.length > 0;
+    stagedFiles.length > 0 ||
+    stagedDriveAssets.length > 0;
 
   let optionRenderIndex = 0;
 
@@ -1072,6 +1083,37 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                         className="home-hero__active-clear od-tooltip"
                         onClick={() => removeFileChip(index, file)}
                         aria-label={t('chat.removeAria', { name: file.name })}
+                        title={t('homeHero.removeFile')}
+                        data-tooltip={t('homeHero.removeFile')}
+                      >
+                        <Icon name="close" size={9} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </span>
+            ) : null}
+            {stagedDriveAssets.length > 0 ? (
+              <span className="home-hero__active-file-group" data-testid="home-hero-staged-drive-assets">
+                {stagedDriveAssets.map((asset, index) => {
+                  const label = asset.filename ?? asset.assetId;
+                  return (
+                    <span
+                      key={`${asset.assetId}:${index}`}
+                      className="home-hero__active-chip home-hero__active-chip--context home-hero__active-chip--file"
+                      title={label}
+                    >
+                      <span className="home-hero__active-file-body">
+                        <span className="home-hero__active-icon" aria-hidden>
+                          <Icon name="folder-filled" size={12} />
+                        </span>
+                        <span className="home-hero__active-label">{label}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="home-hero__active-clear od-tooltip"
+                        onClick={() => onRemoveDriveAsset(index)}
+                        aria-label={t('chat.removeAria', { name: label })}
                         title={t('homeHero.removeFile')}
                         data-tooltip={t('homeHero.removeFile')}
                       >
@@ -1468,6 +1510,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 });
                 fileInputRef.current?.click();
               }}
+              onAttachFromDrive={onAttachFromDrive}
             />
             {activeCreateChip ? (
               <ActiveTypeChip chip={activeCreateChip} onClear={onClearActiveChip} />

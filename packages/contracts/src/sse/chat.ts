@@ -78,6 +78,18 @@ export interface ChatSseEndPayload {
   resumable?: boolean;
 }
 
+/** Top-level BYOK/proxy usage snapshot (event: usage). Distinct from agent
+ *  payloads `{ type: 'usage' }` on event: agent — both normalize to the same
+ *  token fields on the web client. */
+export interface ChatSseUsagePayload {
+  input_tokens?: number;
+  output_tokens?: number;
+  model?: string;
+  usage?: { input_tokens?: number; output_tokens?: number };
+  costUsd?: number;
+  durationMs?: number;
+}
+
 export type DaemonAgentPayload =
   | { type: 'status'; label: string; model?: string; ttftMs?: number; detail?: string }
   | { type: 'text_delta'; delta: string }
@@ -107,5 +119,6 @@ export type ChatSseEvent =
   | SseTransportEvent<'agent', DaemonAgentPayload>
   | SseTransportEvent<'stdout', ChatSseChunkPayload>
   | SseTransportEvent<'stderr', ChatSseChunkPayload>
+  | SseTransportEvent<'usage', ChatSseUsagePayload>
   | SseTransportEvent<'error', SseErrorPayload>
   | SseTransportEvent<'end', ChatSseEndPayload>;

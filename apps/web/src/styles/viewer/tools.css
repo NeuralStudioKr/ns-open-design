@@ -1176,6 +1176,14 @@
 .teamver-drive-import-modal {
   width: min(720px, calc(100vw - 32px));
   max-height: min(78vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.teamver-drive-import-modal .teamver-drive-import-tabs,
+.teamver-drive-import-modal .teamver-drive-import-crumb,
+.teamver-drive-import-modal .teamver-drive-picker-search {
+  flex-shrink: 0;
 }
 .teamver-drive-import-grid {
   display: grid;
@@ -1203,6 +1211,7 @@
 .teamver-drive-import-card.is-selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .teamver-drive-import-card.is-blocked {
   opacity: 0.55;
@@ -1213,6 +1222,7 @@
   cursor: not-allowed;
 }
 .teamver-drive-import-card-visual {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1222,6 +1232,20 @@
   background: color-mix(in srgb, var(--border) 28%, transparent);
   color: var(--text-muted);
   overflow: hidden;
+}
+.teamver-drive-import-card-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 .teamver-drive-import-card-thumb {
   width: 100%;
@@ -1296,7 +1320,80 @@
   font-size: 12px;
 }
 .teamver-drive-import-list {
-  min-height: 220px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  position: relative;
+}
+.teamver-drive-import-list.is-refreshing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-panel) 35%, transparent);
+}
+.teamver-drive-import-hint {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.teamver-drive-import-action-hint {
+  flex-shrink: 0;
+  margin: 0 16px 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--amber, #f59e0b) 12%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.teamver-drive-import-selected {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px;
+  max-height: 84px;
+  overflow-y: auto;
+}
+.teamver-drive-import-selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(220px, 100%);
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.teamver-drive-import-selected-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.teamver-drive-import-load-more {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 8px 12px 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.teamver-drive-import-load-more:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+.teamver-drive-import-load-more:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .teamver-drive-import-section {
   display: flex;
@@ -1311,12 +1408,15 @@
   color: var(--text-muted);
 }
 .teamver-drive-import-footer {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.06);
 }
 .teamver-drive-import-count {
   font-size: 12px;
@@ -1341,6 +1441,10 @@
   border: none;
   background: var(--accent);
   color: var(--accent-contrast, #fff);
+}
+.teamver-drive-import-attach:not(:disabled) {
+  min-width: 96px;
+  font-weight: 600;
 }
 .teamver-drive-import-attach:disabled {
   opacity: 0.55;

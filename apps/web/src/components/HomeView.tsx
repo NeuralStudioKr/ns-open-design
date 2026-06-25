@@ -100,6 +100,18 @@ import {
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
+import { getDesignBffClient } from '../teamver/designBffClient';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
+import {
+  isTeamverEmbedDriveImportAllowed,
+  isTeamverEmbedDesignSurfaceEnabled,
+  subscribeTeamverDesignAccessChanged,
+} from '../teamver/teamverDesignAccess';
+import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
+import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
+import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
+
+const HOME_DRIVE_IMPORT_MAX = 12;
 
 export interface ActivePlugin {
   record: InstalledPluginRecord;
@@ -289,6 +301,50 @@ export function HomeView({
   const [selectedMcpContexts, setSelectedMcpContexts] = useState<SelectedMcpContext[]>([]);
   const [selectedConnectorContexts, setSelectedConnectorContexts] = useState<SelectedConnectorContext[]>([]);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [stagedDriveAssets, setStagedDriveAssets] = useState<TeamverDriveImportAsset[]>([]);
+  const [driveImportOpen, setDriveImportOpen] = useState(false);
+  const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
+  const [designAccessTick, setDesignAccessTick] = useState(0);
+  const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
+  const teamverDriveImportAllowed = useMemo(
+    () =>
+      isTeamverEmbedDriveImportAllowed({
+        bffPresent: teamverDriveImportEnabled,
+        workspaceId: teamverWorkspaceId,
+        snapshotAppEnabled: isTeamverEmbedDesignSurfaceEnabled(),
+      }),
+    [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
+  );
+  useEffect(() => {
+    if (!teamverDriveImportEnabled) return;
+    let cancelled = false;
+    void readActiveTeamverWorkspaceId().then((id) => {
+      if (cancelled) return;
+      const trimmed = id?.trim() || '';
+      setTeamverWorkspaceId(trimmed || null);
+    });
+    const unsubscribe = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
+      if (cancelled) return;
+      const trimmed = workspaceId.trim();
+      setTeamverWorkspaceId(trimmed || null);
+      setDriveImportOpen(false);
+      setStagedDriveAssets([]);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [teamverDriveImportEnabled]);
+  useEffect(() => {
+    if (!teamverDriveImportEnabled) return;
+    return subscribeTeamverDesignAccessChanged(() => {
+      setDesignAccessTick((tick) => tick + 1);
+    });
+  }, [teamverDriveImportEnabled]);
+  useEffect(() => {
+    if (teamverDriveImportAllowed) return;
+    setDriveImportOpen(false);
+  }, [teamverDriveImportAllowed]);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   // Token paired with `workingDir` when picked through the desktop host's
   // native dialog. Spent on the post-creation working-dir POST so the
@@ -593,13 +649,15 @@ export function HomeView({
       contextOnlyPlugins +
       contextOnlyMcp +
       contextOnlyConnectors +
-      stagedFiles.length
+      stagedFiles.length +
+      stagedDriveAssets.length
     );
   }, [
     activeContextItemCount,
     selectedConnectorContexts,
     selectedMcpContexts,
     selectedPluginContexts,
+    stagedDriveAssets.length,
     stagedFiles.length,
   ]);
 
@@ -995,7 +1053,7 @@ export function HomeView({
     // Plain Use doesn't seed the composer; with no draft and no staged
     // files (or with required inputs still missing) the send button stays
     // disabled, and flashing a disabled button points at a dead end.
-    if (submittable && (prompt.trim().length > 0 || stagedFiles.length > 0)) {
+    if (submittable && (prompt.trim().length > 0 || stagedFiles.length > 0 || stagedDriveAssets.length > 0)) {
       inputRef.current?.pulseSend();
     }
   }
@@ -1143,6 +1201,25 @@ export function HomeView({
 
   function removeStagedFile(index: number) {
     setStagedFiles((current) => current.filter((_, i) => i !== index));
+  }
+
+  function stageDriveAssets(assets: TeamverDriveImportAsset[]) {
+    if (assets.length === 0) return;
+    setStagedDriveAssets((current) => {
+      const next = [...current];
+      for (const asset of assets) {
+        if (next.length >= HOME_DRIVE_IMPORT_MAX) break;
+        if (next.some((item) => item.assetId === asset.assetId)) continue;
+        next.push(asset);
+      }
+      return next.slice(0, HOME_DRIVE_IMPORT_MAX);
+    });
+    setError(null);
+    focusPromptAtEnd();
+  }
+
+  function removeStagedDriveAsset(index: number) {
+    setStagedDriveAssets((current) => current.filter((_, i) => i !== index));
   }
 
   async function handlePickWorkingDir() {
@@ -1464,7 +1541,7 @@ export function HomeView({
 
   async function submit() {
     const trimmed = prompt.trim();
-    if (!trimmed && stagedFiles.length === 0) return;
+    if (!trimmed && stagedFiles.length === 0 && stagedDriveAssets.length === 0) return;
     const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(trimmed, { slideOnlyMvp });
     if (slideOnlyBlock) {
       setError(slideOnlyBlock);
@@ -1604,6 +1681,7 @@ export function HomeView({
       contextMcpServers,
       contextConnectors,
       attachments: stagedFiles,
+      ...(stagedDriveAssets.length > 0 ? { driveAttachments: stagedDriveAssets } : {}),
       ...(hideLocalWorkspaceControls || !workingDir ? {} : { workingDir }),
       ...(hideLocalWorkspaceControls || !workingDirToken ? {} : { workingDirToken }),
       conversationMode: sessionMode,
@@ -1618,6 +1696,7 @@ export function HomeView({
     setSelectedPluginContexts([]);
     setSelectedMcpContexts([]);
     setSelectedConnectorContexts([]);
+    setStagedDriveAssets([]);
   }
 
   return (
@@ -1666,6 +1745,20 @@ export function HomeView({
         stagedFiles={stagedFiles}
         onAddFiles={stageFiles}
         onRemoveFile={removeStagedFile}
+        stagedDriveAssets={stagedDriveAssets}
+        onRemoveDriveAsset={removeStagedDriveAsset}
+        onAttachFromDrive={
+          teamverDriveImportAllowed
+            ? () => {
+                trackHomeChatComposerClick(analytics.track, {
+                  page_name: 'home',
+                  area: 'chat_composer',
+                  element: 'drive_import_open',
+                });
+                setDriveImportOpen(true);
+              }
+            : undefined
+        }
         pluginOptions={communityPlugins}
         pluginsLoading={pluginsLoading}
         skillOptions={selectableSkills}
@@ -1716,6 +1809,19 @@ export function HomeView({
         onExamplePromptStatusChange={handleExamplePromptStatusChange}
         executionSwitcher={executionSwitcher}
       />
+      {teamverDriveImportAllowed && teamverWorkspaceId ? (
+        <TeamverDriveImportModal
+          open={driveImportOpen}
+          workspaceId={teamverWorkspaceId}
+          stagingMode="home"
+          analyticsPageName="home"
+          onClose={() => setDriveImportOpen(false)}
+          onConfirm={(assets) => {
+            stageDriveAssets(assets);
+            setDriveImportOpen(false);
+          }}
+        />
+      ) : null}
 
       <RecentProjectsStrip
         projects={projects}

@@ -75,6 +75,16 @@ class UsageEventBody(BaseModel):
 
 인증: user JWT + `X-Workspace-Id` + workspace 일치 검증.
 
+### 2.1.1 Provider 토큰 vs Teamver 크레딧 (구분 필수)
+
+| 저장 위치 | `input_tokens` / `output_tokens` | `registry_usage_id` · `billing_status` · `credits_committed` |
+|-----------|----------------------------------|--------------------------------------------------------------|
+| **의미** | **모델 API 제공사** usage (Claude `input_tokens`·`output_tokens`, OpenAI `prompt_tokens`·`completion_tokens` 등) | **Teamver Registry** 예약·확정·환불 스냅샷 (플랫폼 과금 단위, Main BE `credit_balance`와 연동) |
+| **수집** | daemon `scanRunEventsForUsageAnalytics` · BYOK proxy SSE `event: usage` · FE `message.events` | run 시작 `reserve` → 종료 `commit`/`refund` (daemon `teamver-billing-bridge`) |
+| **같은 숫자?** | **아님** — ledger의 토큰 열은 upstream LLM 토큰. 크레딧(T)은 `amount`·단가표·마진으로 별도 산정 (Main BE `104_사용량_단가_과금_테이블_및_차감_구조.md` §1). |
+
+`token_count_source`: `provider_usage` = 제공사가 emit한 non-zero counts · `unknown` = plain stdout 등 usage 미수집.
+
 ### 2.2 daemon run-end (Teamver usage + billing bridge)
 
 | 훅 | 경로 | Teamver |
@@ -89,6 +99,8 @@ class UsageEventBody(BaseModel):
 **loop 373 (0-token 수정):** FE는 `message.events`의 non-zero `usage` + `telemetryFinalized`가 모두 필요. gap — (1) BYOK top-level `event: usage` SSE 미적재, (2) daemon top-level usage 미-persist, (3) Claude `result.stats`만 있을 때 null usage, (4) trailing 0-token usage가 scan/report 덮어씀, (5) auto-open 중복 시 `telemetryFinalized` 미저장.
 
 **loop 374 (audit 컬럼):** `ai_model_token_usages`에 `created_at`·`updated_at` 추가. `used_at`≠audit — upsert·billing finalize는 `updated_at` 갱신. `design_outputs`에 `updated_at` 추가.
+
+**loop 375 (BYOK run_id):** embed BYOK(`mode=api`)는 daemon `runId` 없음 → FE usage report 시 `assistantMessage.id`를 `run_id`로 사용해 `(workspace_id, run_id)` upsert 멱등.
 
 **Workspace 정렬:** embed workspace switch 후 daemon run·usage·publish가 동일 workspace를 쓰려면 FE가 `/api/runs`에 `X-Workspace-Id`(active store)를 보내고, nginx가 session-check default보다 우선 적용한다.
 

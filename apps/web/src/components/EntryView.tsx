@@ -98,6 +98,7 @@ interface Props {
       pluginInputs?: Record<string, unknown>;
       autoSendFirstMessage?: boolean;
       pendingFiles?: File[];
+      pendingDriveAssets?: import('../teamver/importDriveAssets').TeamverDriveImportAsset[];
     },
   ) => Promise<boolean> | boolean | void;
   onCreatePluginShareProject: (

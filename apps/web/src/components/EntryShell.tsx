@@ -330,6 +330,7 @@ interface Props {
       conversationMode?: ChatSessionMode;
       autoSendFirstMessage?: boolean;
       pendingFiles?: File[];
+      pendingDriveAssets?: import('../teamver/importDriveAssets').TeamverDriveImportAsset[];
     },
   ) => Promise<boolean> | boolean | void;
   onCreatePluginShareProject: (
@@ -606,7 +607,11 @@ export function EntryShell({
   // before continuing.
   function handlePluginLoopSubmit(payload: PluginLoopSubmit) {
     const head = payload.prompt.trim().split(/\s+/).slice(0, 8).join(' ');
-    const firstAttachmentName = payload.attachments?.[0]?.name ?? '';
+    const firstAttachmentName =
+      payload.attachments?.[0]?.name ??
+      payload.driveAttachments?.[0]?.filename ??
+      payload.driveAttachments?.[0]?.assetId ??
+      '';
     const fallbackName = head.length > 0 ? head : firstAttachmentName || 'Untitled';
     const name =
       payload.pluginTitle && payload.pluginTitle.trim().length > 0
@@ -655,6 +660,9 @@ export function EntryShell({
       ...(payload.conversationMode ? { conversationMode: payload.conversationMode } : {}),
       ...(payload.attachments && payload.attachments.length > 0
         ? { pendingFiles: payload.attachments }
+        : {}),
+      ...(payload.driveAttachments && payload.driveAttachments.length > 0
+        ? { pendingDriveAssets: payload.driveAttachments }
         : {}),
       // No `userWorkingDirToken`: linkedDirs grant read-only `--add-dir`
       // access and are validated by the daemon at create time, so they do

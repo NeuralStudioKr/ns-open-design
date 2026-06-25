@@ -162,11 +162,42 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       modelName: 'claude-sonnet-4-5',
       inputTokens: 100,
       outputTokens: 50,
+      totalTokens: 150,
       tokenCountSource: 'provider_usage',
       projectId: 'p1',
       runId: 'run-abc',
       runStatus: 'succeeded',
     });
+  });
+
+  it('uses assistant message id as run_id when daemon runId is absent (BYOK)', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    const message = {
+      id: 'assistant-msg-42',
+      role: 'assistant' as const,
+      content: '',
+      runStatus: 'succeeded' as const,
+      events: [
+        { kind: 'usage' as const, inputTokens: 80, outputTokens: 20 },
+      ],
+    };
+
+    await maybeReportTeamverUsageAfterSave('p1', message, { telemetryFinalized: true });
+    await maybeReportTeamverUsageAfterSave('p1', message, { telemetryFinalized: true });
+
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: 'assistant-msg-42',
+        inputTokens: 80,
+        outputTokens: 20,
+        totalTokens: 100,
+      }),
+    );
   });
 
   it('reports API-mode usage with requesting label and usage events', async () => {
@@ -196,6 +227,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       modelName: 'claude-sonnet-4-5',
       inputTokens: 120,
       outputTokens: 15,
+      totalTokens: 135,
       tokenCountSource: 'provider_usage',
       projectId: 'p1',
       runId: 'run-api',

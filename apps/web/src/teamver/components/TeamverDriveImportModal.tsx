@@ -16,6 +16,7 @@ import {
 } from "../driveFileVisual";
 import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import {
+  importRowMatchesScope,
   listTeamverDriveImportRecent,
   listTeamverDriveImportRows,
   listTeamverDriveImportScopes,
@@ -32,6 +33,9 @@ import {
 
 const MAX_PICK = 12;
 const SEARCH_DEBOUNCE_MS = 300;
+const BROWSE_PAGE_SIZE = 24;
+const BROWSE_MAX = 80;
+const SEARCH_LIMIT = 40;
 const EMPTY_INITIAL_ASSETS: TeamverDriveImportAsset[] = [];
 
 type NavCrumb = {
@@ -49,6 +53,9 @@ type Props = {
   partialResult?: TeamverDriveImportPartialResult | null;
   onRetryFailed?: () => void;
   onDismissPartial?: () => void;
+  /** Home composer stages assets before a project exists; default is project attach. */
+  stagingMode?: "project" | "home";
+  analyticsPageName?: "home" | "chat_panel";
 };
 
 function scopeKey(scope: TeamverDriveImportScope, folderId: string | null): string {
@@ -67,6 +74,14 @@ function matchesLocalQuery(row: TeamverDriveImportListRow, query: string): boole
   return row.name.toLowerCase().includes(q) || row.assetId.toLowerCase().includes(q);
 }
 
+function assetFromRow(row: TeamverDriveImportAssetRow): TeamverDriveImportAsset {
+  return {
+    assetId: row.assetId,
+    filename: row.name,
+    mimeType: row.mimeType,
+  };
+}
+
 export function TeamverDriveImportModal({
   open,
   workspaceId,
@@ -77,23 +92,37 @@ export function TeamverDriveImportModal({
   partialResult = null,
   onRetryFailed,
   onDismissPartial,
+  stagingMode = "project",
+  analyticsPageName = "chat_panel",
 }: Props) {
   const t = useTeamverT();
   const branding = useTeamverBranding();
   const analytics = useAnalytics();
   const attachPolicyActive = shouldApplyEmbedFileAttachPolicy(branding);
   const surfaceTrackedRef = useRef(false);
+  const openSessionRef = useRef(false);
+  const modalRef = useRef<HTMLElement | null>(null);
+  const listHasContentRef = useRef(false);
   const [scopes, setScopes] = useState<TeamverDriveImportScope[]>([]);
   const [scopeIndex, setScopeIndex] = useState(0);
   const [navStack, setNavStack] = useState<NavCrumb[]>([]);
   const [rows, setRows] = useState<TeamverDriveImportListRow[]>([]);
   const [recentRows, setRecentRows] = useState<TeamverDriveImportAssetRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionHint, setActionHint] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState<Map<string, TeamverDriveImportAsset>>(new Map());
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
+  const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
+  const [browseHasMore, setBrowseHasMore] = useState(false);
+
+  const selectedAssets = useMemo(() => Array.from(selected.values()), [selected]);
+  const selectedCount = selectedAssets.length;
+  const canAttach = selectedCount > 0 && !confirming;
+  const showFullLoader = loading && rows.length === 0 && recentRows.length === 0;
 
   const activeScope = scopes[scopeIndex] ?? null;
   const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
@@ -108,10 +137,10 @@ export function TeamverDriveImportModal({
     if (surfaceTrackedRef.current) return;
     surfaceTrackedRef.current = true;
     trackTeamverDriveImportModalSurfaceView(analytics.track, {
-      page_name: "chat_panel",
+      page_name: analyticsPageName,
       area: "drive_import_modal",
     });
-  }, [analytics.track, open]);
+  }, [analytics.track, analyticsPageName, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -119,9 +148,19 @@ export function TeamverDriveImportModal({
     return () => window.clearTimeout(timer);
   }, [open, query]);
 
+  useEffect(() => {
+    if (!open) return;
+    setBrowseLimit(BROWSE_PAGE_SIZE);
+  }, [activeScope, currentFolderId, debouncedQuery, open, scopeIndex]);
+
+  useEffect(() => {
+    listHasContentRef.current = rows.length > 0 || recentRows.length > 0;
+  }, [recentRows.length, rows.length]);
+
   const refreshRows = useCallback(async () => {
     if (!open || !workspaceId.trim() || !activeScope) return;
-    setLoading(true);
+    if (listHasContentRef.current) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
       const sharedDriveId = activeScope.mode === "shared" ? activeScope.sharedDriveId : null;
@@ -132,10 +171,11 @@ export function TeamverDriveImportModal({
           workspaceId,
           query: trimmedQuery,
           sharedDriveId,
-          limit: 80,
+          limit: SEARCH_LIMIT,
         });
         setRecentRows([]);
-        setRows(searchRows);
+        setRows(searchRows.filter((row) => importRowMatchesScope(row, activeScope)));
+        setBrowseHasMore(false);
         return;
       }
 
@@ -143,17 +183,24 @@ export function TeamverDriveImportModal({
         workspaceId,
         folderId: currentFolderId,
         sharedDriveId,
-        limit: 80,
+        limit: browseLimit,
       });
-      setRows(browseRows);
+      const scopedBrowseRows = browseRows.filter((row) => importRowMatchesScope(row, activeScope));
+      setRows(scopedBrowseRows);
+      setBrowseHasMore(scopedBrowseRows.length >= browseLimit && browseLimit < BROWSE_MAX);
 
       if (currentFolderId == null) {
         try {
           const recent = await listTeamverDriveImportRecent({ workspaceId, limit: 16 });
           const browseAssetIds = new Set(
-            browseRows.filter((row) => row.kind === "asset").map((row) => row.assetId),
+            scopedBrowseRows.filter((row) => row.kind === "asset").map((row) => row.assetId),
           );
-          setRecentRows(recent.filter((row) => !browseAssetIds.has(row.assetId)));
+          setRecentRows(
+            recent.filter(
+              (row) =>
+                importRowMatchesScope(row, activeScope) && !browseAssetIds.has(row.assetId),
+            ),
+          );
         } catch {
           setRecentRows([]);
         }
@@ -163,14 +210,22 @@ export function TeamverDriveImportModal({
     } catch (err) {
       setRows([]);
       setRecentRows([]);
+      setBrowseHasMore(false);
       setError(formatTeamverDriveImportErrorMessage(err));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [activeScope, currentFolderId, debouncedQuery, open, workspaceId]);
+  }, [activeScope, browseLimit, currentFolderId, debouncedQuery, open, workspaceId]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      openSessionRef.current = false;
+      return;
+    }
+    if (openSessionRef.current) return;
+    openSessionRef.current = true;
+
     const initial = new Map<string, TeamverDriveImportAsset>();
     for (const asset of initialAssets.slice(0, MAX_PICK)) {
       const blocked = embedAttachBlockReason(asset.filename ?? asset.assetId, {
@@ -184,6 +239,14 @@ export function TeamverDriveImportModal({
     setDebouncedQuery("");
     setScopeIndex(0);
     setNavStack([]);
+    setRows([]);
+    setRecentRows([]);
+    setError(null);
+    setActionHint(null);
+    setBrowseLimit(BROWSE_PAGE_SIZE);
+    setBrowseHasMore(false);
+    listHasContentRef.current = false;
+
     let cancelled = false;
     void (async () => {
       try {
@@ -274,33 +337,103 @@ export function TeamverDriveImportModal({
     };
   }, [open, thumbnailTargets, workspaceId]);
 
+  const confirmAssets = useCallback(
+    (assets: TeamverDriveImportAsset[]) => {
+      if (assets.length === 0 || confirming || partialResult) return;
+      trackTeamverDriveImportPickClick(analytics.track, {
+        page_name: analyticsPageName,
+        area: "drive_import_modal",
+        element: "drive_import_pick",
+        asset_count: assets.length,
+      });
+      void onConfirm(assets);
+    },
+    [analytics.track, analyticsPageName, confirming, onConfirm, partialResult],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !confirming) {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key === "Enter" && !confirming && !partialResult && selectedCount > 0) {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest(".teamver-drive-picker-search input")) {
+          return;
+        }
+        event.preventDefault();
+        confirmAssets(selectedAssets);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmAssets, confirming, onClose, open, partialResult, selectedAssets, selectedCount]);
+
+  useEffect(() => {
+    if (!actionHint) return;
+    const timer = window.setTimeout(() => setActionHint(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [actionHint]);
+
   if (!open) return null;
 
-  const selectedCount = selected.size;
-  const canAttach = selectedCount > 0 && !confirming;
-
-  function toggleAsset(row: TeamverDriveImportAssetRow) {
-    const blockReason = embedAttachBlockReason(row.name, {
+  function assetBlockReason(row: TeamverDriveImportAssetRow): string | null {
+    return embedAttachBlockReason(row.name, {
       mimeType: row.mimeType,
       sizeBytes: row.sizeBytes,
       slideOnlyMvp: attachPolicyActive,
     });
-    if (blockReason) return;
+  }
+
+  function toggleAsset(row: TeamverDriveImportAssetRow) {
+    const blockReason = assetBlockReason(row);
+    if (blockReason) {
+      setActionHint(blockReason);
+      return;
+    }
 
     setSelected((current) => {
       const next = new Map(current);
       if (next.has(row.assetId)) {
         next.delete(row.assetId);
+        setActionHint(null);
         return next;
       }
-      if (next.size >= MAX_PICK) return current;
-      next.set(row.assetId, {
-        assetId: row.assetId,
-        filename: row.name,
-        mimeType: row.mimeType,
-      });
+      if (next.size >= MAX_PICK) {
+        setActionHint(t("teamver.driveImport.maxPickReached", { max: MAX_PICK }));
+        return current;
+      }
+      next.set(row.assetId, assetFromRow(row));
+      setActionHint(null);
       return next;
     });
+  }
+
+  function confirmAssetRow(row: TeamverDriveImportAssetRow) {
+    const blockReason = assetBlockReason(row);
+    if (blockReason) {
+      setActionHint(blockReason);
+      return;
+    }
+    if (confirming || partialResult) return;
+
+    let assets = selectedAssets;
+    if (!selected.has(row.assetId)) {
+      if (selectedCount >= MAX_PICK) {
+        setActionHint(t("teamver.driveImport.maxPickReached", { max: MAX_PICK }));
+        return;
+      }
+      assets = [...selectedAssets, assetFromRow(row)];
+      setSelected((current) => {
+        const next = new Map(current);
+        next.set(row.assetId, assetFromRow(row));
+        return next;
+      });
+    }
+    confirmAssets(assets);
   }
 
   function enterFolder(row: Extract<TeamverDriveImportListRow, { kind: "folder" }>) {
@@ -311,11 +444,7 @@ export function TeamverDriveImportModal({
 
   function renderAssetCard(row: TeamverDriveImportAssetRow, keyPrefix: string) {
     const picked = selected.has(row.assetId);
-    const blockReason = embedAttachBlockReason(row.name, {
-      mimeType: row.mimeType,
-      sizeBytes: row.sizeBytes,
-      slideOnlyMvp: attachPolicyActive,
-    });
+    const blockReason = assetBlockReason(row);
     const blocked = blockReason != null;
     const thumbUrl = thumbUrls.get(row.assetId);
     const iconName = driveImportAssetIconName(row.name, row.mimeType);
@@ -331,15 +460,27 @@ export function TeamverDriveImportModal({
         title={blockReason ?? row.name}
         className={`teamver-drive-import-card${picked ? " is-selected" : ""}${blocked ? " is-blocked" : ""}`}
         data-testid={`teamver-drive-import-asset-${row.assetId}`}
-        disabled={confirming || blocked || (!picked && selectedCount >= MAX_PICK)}
-        onClick={() => toggleAsset(row)}
+        disabled={confirming || (!picked && !blocked && selectedCount >= MAX_PICK)}
+        onClick={(event) => {
+          if (event.detail > 1) return;
+          toggleAsset(row);
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          confirmAssetRow(row);
+        }}
       >
         <span className="teamver-drive-import-card-visual" aria-hidden>
           {thumbUrl ? (
             <img src={thumbUrl} alt="" className="teamver-drive-import-card-thumb" loading="lazy" />
           ) : (
-            <Icon name={picked ? "check" : iconName} size={22} />
+            <Icon name={iconName} size={22} />
           )}
+          {picked ? (
+            <span className="teamver-drive-import-card-check" aria-hidden>
+              <Icon name="check" size={14} />
+            </span>
+          ) : null}
         </span>
         <span className="teamver-drive-import-card-copy">
           <span className="teamver-drive-import-card-name" title={row.name}>
@@ -369,6 +510,7 @@ export function TeamverDriveImportModal({
       }}
     >
       <section
+        ref={modalRef}
         className="teamver-drive-picker-modal teamver-drive-import-modal"
         role="dialog"
         aria-modal="true"
@@ -378,7 +520,12 @@ export function TeamverDriveImportModal({
         <header className="teamver-drive-picker-head">
           <div>
             <h2 id="teamver-drive-import-title">팀버 드라이브에서 가져오기</h2>
-            <p>최대 {MAX_PICK}개 파일을 이 프로젝트로 가져올 수 있습니다.</p>
+            <p>
+              {stagingMode === "home"
+                ? `최대 ${MAX_PICK}개 파일을 새 슬라이드에 첨부할 수 있습니다.`
+                : `최대 ${MAX_PICK}개 파일을 이 프로젝트로 가져올 수 있습니다.`}
+            </p>
+            <p className="teamver-drive-import-hint">{t("teamver.driveImport.pickHint")}</p>
           </div>
           <button
             type="button"
@@ -406,6 +553,9 @@ export function TeamverDriveImportModal({
                   setNavStack([rootCrumb(scope)]);
                   setQuery("");
                   setDebouncedQuery("");
+                  setRows([]);
+                  setRecentRows([]);
+                  setBrowseLimit(BROWSE_PAGE_SIZE);
                 }}
               >
                 {scope.label}
@@ -456,8 +606,13 @@ export function TeamverDriveImportModal({
           />
         </label>
 
-        <div className="teamver-drive-picker-list teamver-drive-import-list" role="listbox" aria-label="드라이브 파일 목록">
-          {loading ? (
+        <div
+          className={`teamver-drive-picker-list teamver-drive-import-list${refreshing ? " is-refreshing" : ""}`}
+          role="listbox"
+          aria-label="드라이브 파일 목록"
+          aria-busy={refreshing || showFullLoader}
+        >
+          {showFullLoader ? (
             <div className="teamver-drive-picker-empty">드라이브 파일 불러오는 중…</div>
           ) : error ? (
             <div className="teamver-drive-picker-empty">{error}</div>
@@ -501,6 +656,19 @@ export function TeamverDriveImportModal({
                   {searchMode ? "일치하는 드라이브 파일이 없습니다" : "이 폴더에 파일이 없습니다"}
                 </div>
               )}
+              {!searchMode && browseHasMore ? (
+                <button
+                  type="button"
+                  className="teamver-drive-import-load-more"
+                  disabled={confirming || loading}
+                  data-testid="teamver-drive-import-load-more"
+                  onClick={() =>
+                    setBrowseLimit((current) => Math.min(current + BROWSE_PAGE_SIZE, BROWSE_MAX))
+                  }
+                >
+                  {t("teamver.driveImport.loadMore")}
+                </button>
+              ) : null}
             </>
           )}
         </div>
@@ -530,9 +698,41 @@ export function TeamverDriveImportModal({
           </div>
         ) : null}
 
+        {actionHint ? (
+          <p className="teamver-drive-import-action-hint" role="status" data-testid="teamver-drive-import-action-hint">
+            {actionHint}
+          </p>
+        ) : null}
+
+        {selectedCount > 0 && !partialResult ? (
+          <div className="teamver-drive-import-selected" data-testid="teamver-drive-import-selected">
+            {selectedAssets.map((asset) => (
+              <button
+                key={asset.assetId}
+                type="button"
+                className="teamver-drive-import-selected-chip"
+                disabled={confirming}
+                title={asset.filename ?? asset.assetId}
+                onClick={() => {
+                  setSelected((current) => {
+                    const next = new Map(current);
+                    next.delete(asset.assetId);
+                    return next;
+                  });
+                }}
+              >
+                <span className="teamver-drive-import-selected-name">
+                  {asset.filename ?? asset.assetId}
+                </span>
+                <Icon name="close" size={12} />
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <footer className="teamver-drive-import-footer">
           <span className="teamver-drive-import-count">
-            {selectedCount}개 선택됨 (최대 {MAX_PICK}개)
+            {t("teamver.driveImport.selectedCount", { n: selectedCount, max: MAX_PICK })}
           </span>
           <div className="teamver-drive-import-actions">
             <button type="button" className="teamver-drive-import-cancel" disabled={confirming} onClick={onClose}>
@@ -566,18 +766,13 @@ export function TeamverDriveImportModal({
               className="teamver-drive-import-attach"
               disabled={!canAttach}
               data-testid="teamver-drive-import-attach"
-              onClick={() => {
-                const assets = Array.from(selected.values());
-                trackTeamverDriveImportPickClick(analytics.track, {
-                  page_name: "chat_panel",
-                  area: "drive_import_modal",
-                  element: "drive_import_pick",
-                  asset_count: assets.length,
-                });
-                void onConfirm(assets);
-              }}
+              onClick={() => confirmAssets(selectedAssets)}
             >
-              {confirming ? "가져오는 중…" : "첨부"}
+              {confirming
+                ? "가져오는 중…"
+                : selectedCount > 0
+                  ? t("teamver.driveImport.attachCount", { n: selectedCount })
+                  : "첨부"}
             </button>
             ) : null}
           </div>
