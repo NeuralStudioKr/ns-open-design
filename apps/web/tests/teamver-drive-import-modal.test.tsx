@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { TeamverDriveImportModal } from "../src/teamver/components/TeamverDriveImportModal";
 
 const listScopesMock = vi.fn();
-const listRowsMock = vi.fn();
+const browsePageMock = vi.fn();
 const listRecentMock = vi.fn();
 const searchRowsMock = vi.fn();
 const fetchThumbnailsMock = vi.fn();
@@ -14,7 +14,7 @@ vi.mock("../src/teamver/driveImportList", async (importOriginal) => {
   return {
     ...actual,
     listTeamverDriveImportScopes: (...args: unknown[]) => listScopesMock(...args),
-    listTeamverDriveImportRows: (...args: unknown[]) => listRowsMock(...args),
+    browseTeamverDriveImportPage: (...args: unknown[]) => browsePageMock(...args),
     listTeamverDriveImportRecent: (...args: unknown[]) => listRecentMock(...args),
     searchTeamverDriveImportRows: (...args: unknown[]) => searchRowsMock(...args),
   };
@@ -41,17 +41,23 @@ describe("TeamverDriveImportModal", () => {
 
   beforeEach(() => {
     listScopesMock.mockReset();
-    listRowsMock.mockReset();
+    browsePageMock.mockReset();
     listRecentMock.mockReset();
     searchRowsMock.mockReset();
     fetchThumbnailsMock.mockReset();
     trackMock.mockReset();
     useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: false });
-    listScopesMock.mockResolvedValue([{ mode: "personal", folderId: null, label: "내 드라이브" }]);
-    listRowsMock.mockResolvedValue([
-      { kind: "asset", assetId: "AST-1", name: "logo.svg", mimeType: "image/svg+xml" },
-      { kind: "folder", folderId: "FLD-1", name: "Assets" },
+    listScopesMock.mockResolvedValue([
+      { mode: "personal", folderId: "ROOT-PERSONAL", label: "내 드라이브" },
     ]);
+    browsePageMock.mockResolvedValue({
+      rows: [
+        { kind: "asset", assetId: "AST-1", name: "logo.svg", mimeType: "image/svg+xml" },
+        { kind: "folder", folderId: "FLD-1", name: "Assets" },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    });
     listRecentMock.mockResolvedValue([
       { kind: "asset", assetId: "AST-RECENT", name: "brand.png", mimeType: "image/png" },
     ]);
@@ -115,13 +121,17 @@ describe("TeamverDriveImportModal", () => {
   });
 
   it("navigates into folders with breadcrumb labels", async () => {
-    listRowsMock
-      .mockResolvedValueOnce([
-        { kind: "folder", folderId: "FLD-1", name: "Assets" },
-      ])
-      .mockResolvedValueOnce([
-        { kind: "asset", assetId: "AST-INNER", name: "inner.csv", mimeType: "text/csv" },
-      ]);
+    browsePageMock
+      .mockResolvedValueOnce({
+        rows: [{ kind: "folder", folderId: "FLD-1", name: "Assets" }],
+        hasMore: false,
+        nextCursor: null,
+      })
+      .mockResolvedValueOnce({
+        rows: [{ kind: "asset", assetId: "AST-INNER", name: "inner.csv", mimeType: "text/csv" }],
+        hasMore: false,
+        nextCursor: null,
+      });
 
     render(
       <TeamverDriveImportModal
@@ -167,9 +177,11 @@ describe("TeamverDriveImportModal", () => {
   });
 
   it("loads image thumbnails for grid cards", async () => {
-    listRowsMock.mockResolvedValue([
-      { kind: "asset", assetId: "AST-IMG", name: "logo.png", mimeType: "image/png" },
-    ]);
+    browsePageMock.mockResolvedValue({
+      rows: [{ kind: "asset", assetId: "AST-IMG", name: "logo.png", mimeType: "image/png" }],
+      hasMore: false,
+      nextCursor: null,
+    });
     fetchThumbnailsMock.mockResolvedValue(new Map([["AST-IMG", "https://cdn.example/logo.png"]]));
 
     render(
@@ -214,9 +226,11 @@ describe("TeamverDriveImportModal", () => {
 
   it("shows blocked hint when unsupported file is clicked", async () => {
     useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: true });
-    listRowsMock.mockResolvedValue([
-      { kind: "asset", assetId: "AST-VIDEO", name: "clip.mp4", mimeType: "video/mp4" },
-    ]);
+    browsePageMock.mockResolvedValue({
+      rows: [{ kind: "asset", assetId: "AST-VIDEO", name: "clip.mp4", mimeType: "video/mp4" }],
+      hasMore: false,
+      nextCursor: null,
+    });
     listRecentMock.mockResolvedValue([]);
 
     render(
@@ -266,14 +280,13 @@ describe("TeamverDriveImportModal", () => {
 
   it("filters recent rows by active shared-drive scope", async () => {
     listScopesMock.mockResolvedValue([
-      { mode: "personal", folderId: null, label: "내 드라이브" },
-      { mode: "shared", sharedDriveId: "SD-1", folderId: null, label: "개발팀" },
+      { mode: "personal", folderId: "ROOT-PERSONAL", label: "내 드라이브" },
+      { mode: "shared", sharedDriveId: "SD-1", folderId: "ROOT-SD-1", label: "개발팀" },
     ]);
     listRecentMock.mockResolvedValue([
       { kind: "asset", assetId: "AST-PERSONAL", name: "mine.png", mimeType: "image/png", sharedDriveId: null },
-      { kind: "asset", assetId: "AST-SHARED", name: "team.png", mimeType: "image/png", sharedDriveId: "SD-1" },
     ]);
-    listRowsMock.mockResolvedValue([]);
+    browsePageMock.mockResolvedValue({ rows: [], hasMore: false, nextCursor: null });
 
     render(
       <TeamverDriveImportModal
@@ -285,13 +298,11 @@ describe("TeamverDriveImportModal", () => {
     );
 
     expect(await screen.findByTestId("teamver-drive-import-asset-AST-PERSONAL")).toBeTruthy();
-    expect(screen.queryByTestId("teamver-drive-import-asset-AST-SHARED")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: "개발팀" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("teamver-drive-import-asset-AST-SHARED")).toBeTruthy();
-      expect(screen.queryByTestId("teamver-drive-import-asset-AST-PERSONAL")).toBeNull();
+      expect(screen.queryByTestId("teamver-drive-import-recent")).toBeNull();
     });
   });
 
@@ -356,17 +367,30 @@ describe("TeamverDriveImportModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("loads more browse rows in pages", async () => {
-    listRowsMock.mockImplementation(({ limit }: { limit?: number }) =>
-      Promise.resolve(
-        Array.from({ length: limit ?? 24 }, (_, index) => ({
+  it("loads more browse rows with cursor pagination", async () => {
+    browsePageMock
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 24 }, (_, index) => ({
           kind: "asset" as const,
           assetId: `AST-${index + 1}`,
           name: `file-${index + 1}.png`,
           mimeType: "image/png",
         })),
-      ),
-    );
+        hasMore: true,
+        nextCursor: "cursor-page-2",
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            kind: "asset" as const,
+            assetId: "AST-25",
+            name: "file-25.png",
+            mimeType: "image/png",
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+      });
 
     render(
       <TeamverDriveImportModal
@@ -378,10 +402,21 @@ describe("TeamverDriveImportModal", () => {
     );
 
     await screen.findByTestId("teamver-drive-import-asset-AST-1");
-    expect(listRowsMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 24 }));
+    expect(browsePageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        limit: 24,
+        before: null,
+      }),
+    );
     fireEvent.click(screen.getByTestId("teamver-drive-import-load-more"));
     await waitFor(() => {
-      expect(listRowsMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 48 }));
+      expect(browsePageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          before: "cursor-page-2",
+        }),
+      );
+      expect(screen.getByTestId("teamver-drive-import-asset-AST-25")).toBeTruthy();
     });
   });
 });

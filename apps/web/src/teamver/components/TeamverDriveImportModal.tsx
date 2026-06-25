@@ -17,11 +17,12 @@ import {
 } from "../driveFileVisual";
 import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import {
+  browseTeamverDriveImportPage,
   importRowMatchesScope,
   listTeamverDriveImportRecent,
-  listTeamverDriveImportRows,
   listTeamverDriveImportScopes,
   searchTeamverDriveImportRows,
+  TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
   TEAMVER_DRIVE_IMPORT_SEARCH_MIN,
   type TeamverDriveImportAssetRow,
   type TeamverDriveImportListRow,
@@ -34,8 +35,6 @@ import {
 
 const MAX_PICK = 12;
 const SEARCH_DEBOUNCE_MS = 300;
-const BROWSE_PAGE_SIZE = 24;
-const BROWSE_MAX = 80;
 const SEARCH_LIMIT = 40;
 const EMPTY_INITIAL_ASSETS: TeamverDriveImportAsset[] = [];
 
@@ -121,7 +120,7 @@ export function TeamverDriveImportModal({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState<Map<string, TeamverDriveImportAsset>>(new Map());
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
-  const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE_SIZE);
+  const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
   const [browseHasMore, setBrowseHasMore] = useState(false);
 
   const selectedAssets = useMemo(() => Array.from(selected.values()), [selected]);
@@ -132,7 +131,8 @@ export function TeamverDriveImportModal({
   const activeScope = scopes[scopeIndex] ?? null;
   const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
   const searchMode = debouncedQuery.trim().length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN;
-  const showRecent = !searchMode && currentFolderId == null;
+  const showRecent =
+    !searchMode && currentFolderId == null && activeScope?.mode === "personal";
 
   useEffect(() => {
     if (!open) {
@@ -155,73 +155,79 @@ export function TeamverDriveImportModal({
 
   useEffect(() => {
     if (!open) return;
-    setBrowseLimit(BROWSE_PAGE_SIZE);
+    setBrowseNextCursor(null);
   }, [activeScope, currentFolderId, debouncedQuery, open, scopeIndex]);
 
   useEffect(() => {
     listHasContentRef.current = rows.length > 0 || recentRows.length > 0;
   }, [recentRows.length, rows.length]);
 
-  const refreshRows = useCallback(async () => {
-    if (!open || !workspaceId.trim() || !activeScope) return;
-    if (listHasContentRef.current) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      const sharedDriveId = activeScope.mode === "shared" ? activeScope.sharedDriveId : null;
-      const trimmedQuery = debouncedQuery.trim();
+  const refreshRows = useCallback(
+    async (options?: { append?: boolean; before?: string | null }) => {
+      if (!open || !workspaceId.trim() || !activeScope) return;
+      const append = options?.append ?? false;
+      if (listHasContentRef.current && !append) setRefreshing(true);
+      else if (!append) setLoading(true);
+      setError(null);
+      try {
+        const sharedDriveId = activeScope.mode === "shared" ? activeScope.sharedDriveId : null;
+        const trimmedQuery = debouncedQuery.trim();
 
-      if (trimmedQuery.length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN) {
-        const searchRows = await searchTeamverDriveImportRows({
+        if (trimmedQuery.length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN) {
+          const searchRows = await searchTeamverDriveImportRows({
+            workspaceId,
+            query: trimmedQuery,
+            sharedDriveId,
+            limit: SEARCH_LIMIT,
+          });
+          setRecentRows([]);
+          setRows(searchRows.filter((row) => importRowMatchesScope(row, activeScope)));
+          setBrowseHasMore(false);
+          setBrowseNextCursor(null);
+          return;
+        }
+
+        const page = await browseTeamverDriveImportPage({
           workspaceId,
-          query: trimmedQuery,
-          sharedDriveId,
-          limit: SEARCH_LIMIT,
+          scope: activeScope,
+          navFolderId: currentFolderId,
+          limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
+          before: options?.before ?? null,
         });
-        setRecentRows([]);
-        setRows(searchRows.filter((row) => importRowMatchesScope(row, activeScope)));
-        setBrowseHasMore(false);
-        return;
-      }
+        setBrowseHasMore(page.hasMore);
+        setBrowseNextCursor(page.nextCursor);
+        setRows((current) => (append ? [...current, ...page.rows] : page.rows));
 
-      const browseRows = await listTeamverDriveImportRows({
-        workspaceId,
-        folderId: currentFolderId,
-        sharedDriveId,
-        limit: browseLimit,
-      });
-      const scopedBrowseRows = browseRows.filter((row) => importRowMatchesScope(row, activeScope));
-      setRows(scopedBrowseRows);
-      setBrowseHasMore(scopedBrowseRows.length >= browseLimit && browseLimit < BROWSE_MAX);
-
-      if (currentFolderId == null) {
-        try {
-          const recent = await listTeamverDriveImportRecent({ workspaceId, limit: 16 });
-          const browseAssetIds = new Set(
-            scopedBrowseRows.filter((row) => row.kind === "asset").map((row) => row.assetId),
-          );
-          setRecentRows(
-            recent.filter(
-              (row) =>
-                importRowMatchesScope(row, activeScope) && !browseAssetIds.has(row.assetId),
-            ),
-          );
-        } catch {
+        if (showRecent && !append) {
+          try {
+            const recent = await listTeamverDriveImportRecent({ workspaceId, limit: 16 });
+            const browseAssetIds = new Set(
+              page.rows.filter((row) => row.kind === "asset").map((row) => row.assetId),
+            );
+            setRecentRows(
+              recent.filter((row) => !browseAssetIds.has(row.assetId)),
+            );
+          } catch {
+            setRecentRows([]);
+          }
+        } else if (!append) {
           setRecentRows([]);
         }
-      } else {
-        setRecentRows([]);
+      } catch (err) {
+        if (!append) {
+          setRows([]);
+          setRecentRows([]);
+        }
+        setBrowseHasMore(false);
+        setBrowseNextCursor(null);
+        setError(formatTeamverDriveImportErrorMessage(err));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (err) {
-      setRows([]);
-      setRecentRows([]);
-      setBrowseHasMore(false);
-      setError(formatTeamverDriveImportErrorMessage(err));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [activeScope, browseLimit, currentFolderId, debouncedQuery, open, workspaceId]);
+    },
+    [activeScope, currentFolderId, debouncedQuery, open, showRecent, workspaceId],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -248,7 +254,7 @@ export function TeamverDriveImportModal({
     setRecentRows([]);
     setError(null);
     setActionHint(null);
-    setBrowseLimit(BROWSE_PAGE_SIZE);
+    setBrowseNextCursor(null);
     setBrowseHasMore(false);
     listHasContentRef.current = false;
 
@@ -590,7 +596,7 @@ export function TeamverDriveImportModal({
                   setDebouncedQuery("");
                   setRows([]);
                   setRecentRows([]);
-                  setBrowseLimit(BROWSE_PAGE_SIZE);
+                  setBrowseNextCursor(null);
                 }}
               >
                 {scope.label}
@@ -697,9 +703,7 @@ export function TeamverDriveImportModal({
                   className="teamver-drive-import-load-more"
                   disabled={confirming || loading}
                   data-testid="teamver-drive-import-load-more"
-                  onClick={() =>
-                    setBrowseLimit((current) => Math.min(current + BROWSE_PAGE_SIZE, BROWSE_MAX))
-                  }
+                  onClick={() => void refreshRows({ append: true, before: browseNextCursor })}
                 >
                   {t("teamver.driveImport.loadMore")}
                 </button>
