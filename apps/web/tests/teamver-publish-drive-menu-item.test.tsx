@@ -618,6 +618,40 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
+  // loop 378 — publish picker must escape the share-menu stacking context so
+  // it doesn't get clipped under Home recents / project preview cards, and
+  // must lock the background scroll while open so the operator's wheel
+  // events don't leak through to the host page.
+  it("portals the publish picker to <body> and locks background scroll while open", async () => {
+    const host = document.createElement("div");
+    host.className = "entry-main--scroll";
+    host.style.overflow = "auto";
+    document.body.appendChild(host);
+    try {
+      render(
+        <TeamverPublishDriveMenuItem
+          projectId="od-1"
+          artifactFile="deck/index.html"
+          onCloseMenu={vi.fn()}
+        />,
+        { container: host },
+      );
+
+      await waitFor(() => {
+        expect(listTargetsMock).toHaveBeenCalled();
+      });
+
+      fireEvent.click(screen.getByRole("button", browseButtonOptions));
+      const modal = await screen.findByTestId("teamver-drive-picker-modal");
+      expect(host.contains(modal)).toBe(false);
+      expect(document.body.contains(modal)).toBe(true);
+      expect(document.body.style.overflow).toBe("hidden");
+      expect(host.style.overflow).toBe("hidden");
+    } finally {
+      document.body.removeChild(host);
+    }
+  });
+
   it("browses Drive folders and keeps the browsed folder as publish target", async () => {
     render(
       <TeamverPublishDriveMenuItem

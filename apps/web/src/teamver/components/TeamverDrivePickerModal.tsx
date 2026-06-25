@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../../components/Icon";
 import {
   TEAMVER_DRIVE_PUBLISH_SEARCH_MIN,
@@ -275,6 +276,46 @@ export function TeamverDrivePickerModal({
     };
   }, [currentFolderId, open, searching, workspaceId]);
 
+  // Backdrop dismissal must distinguish click-from-backdrop vs.
+  // drag-from-inside-released-on-backdrop. Without `mousedown` source check
+  // a text selection inside the list collapses the modal when the user
+  // releases over the backdrop (very common with long folder labels).
+  const backdropMouseDownRef = useRef(false);
+
+  // ESC + portal+ scroll lock parity with TeamverDriveImportModal so the
+  // publish picker doesn't let the host (Home recents / project panel)
+  // scroll while it's open or stack underneath embed preview cards.
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const scrollContainers = Array.from(document.querySelectorAll(".entry-main--scroll"));
+    const prevScrollOverflows = scrollContainers.map(
+      (node) => (node as HTMLElement).style.overflow,
+    );
+    document.body.style.overflow = "hidden";
+    scrollContainers.forEach((node) => {
+      (node as HTMLElement).style.overflow = "hidden";
+    });
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      scrollContainers.forEach((node, index) => {
+        (node as HTMLElement).style.overflow = prevScrollOverflows[index] ?? "";
+      });
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open || !onSearch || trimmedQuery.length < TEAMVER_DRIVE_PUBLISH_SEARCH_MIN) {
       setSearchTargets(null);
@@ -308,12 +349,17 @@ export function TeamverDrivePickerModal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
+    (
     <div
       className="teamver-drive-picker-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        backdropMouseDownRef.current = event.target === event.currentTarget;
+      }}
+      onMouseUp={(event) => {
+        if (event.target === event.currentTarget && backdropMouseDownRef.current) onClose();
+        backdropMouseDownRef.current = false;
       }}
     >
       <section
@@ -515,5 +561,7 @@ export function TeamverDrivePickerModal({
         ) : null}
       </section>
     </div>
+    ),
+    document.body,
   );
 }

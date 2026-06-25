@@ -11,7 +11,7 @@
 ## 한 줄 결론
 
 > **Usage Phase 1은 FE-first(saveMessage 종료 hook)로 wiring하고, Drive Publish v1은 HTML+ZIP만 지원한다.**  
-> Registry reserve/commit(Phase 2)은 hosted 출시 P0이다. production은 registry credentials가 없으면 기동/배포를 차단하고, staging은 `TEAMVER_BILLING_DISABLED=1`을 명시한 경우만 임시 비활성을 허용한다.
+> Registry reserve/commit **골격**은 daemon run-path에 연결됨(Phase 2a). **실측 토큰 → 크레딧(T) 환산·정확 차감**은 미구현 — 후속 SSOT는 **§4**. production은 registry credentials가 없으면 기동/배포를 차단하고, staging은 `TEAMVER_BILLING_DISABLED=1`을 명시한 경우만 임시 비활성을 허용한다.
 
 ---
 
@@ -24,7 +24,7 @@
 | U3 | token attribution | daemon만 | message.events `usage` | **P0** | ✅ |
 | U4 | 에러 가시성 | 항상 204 | 202 + request id | **P1** | ✅ |
 | U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
-| U6 | Registry billing | `teamver_billing.py` wrapper만 | run lifecycle reserve/commit/refund | **P0** | ✅ daemon run-path 통합 + hosted credential fail-fast |
+| U6 | Registry billing | reserve/commit **골격** (flat `TEAMVER_BILLING_RESERVE_AMOUNT`) | 실측 토큰 → 크레딧(T) 환산 후 reserve/commit | **P0** | 🟡 골격 ✅ · metered ☐ — **§4** |
 | U7 | usage 5xx 알람 | 없음 | CW `teamver_usage_5xx` log metric + alarm | **P1** | ✅ |
 | D1 | Drive Publish | `POST /projects/{id}/publish` ✅ | HTML/ZIP publish + history | **G7** | ✅ |
 | D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
@@ -100,7 +100,7 @@ class UsageEventBody(BaseModel):
 
 **loop 374 (audit 컬럼):** `ai_model_token_usages`에 `created_at`·`updated_at` 추가. `used_at`≠audit — upsert·billing finalize는 `updated_at` 갱신. `design_outputs`에 `updated_at` 추가.
 
-**loop 375 (BYOK run_id):** embed BYOK(`mode=api`)는 daemon `runId` 없음 → FE usage report 시 `assistantMessage.id`를 `run_id`로 사용해 `(workspace_id, run_id)` upsert 멱등.
+**loop 375 (BYOK run_id):** embed BYOK(`mode=api`)는 daemon `runId` 없음 → FE usage report 시 `assistantMessage.id`를 `run_id`로 사용해 `(workspace_id, run_id)` upsert 멱등. 후속 과금 SSOT는 **§4**.
 
 **Workspace 정렬:** embed workspace switch 후 daemon run·usage·publish가 동일 workspace를 쓰려면 FE가 `/api/runs`에 `X-Workspace-Id`(active store)를 보내고, nginx가 session-check default보다 우선 적용한다.
 
@@ -259,32 +259,277 @@ export async function reportTeamverDesignUsage(params: UsageParams): Promise<voi
 
 ---
 
-## 4. Phase 2 — Registry reserve/commit (출시 후)
+## 4. Phase 2 — Registry billing · 후속 실측 과금 SSOT
 
-### 4.1 lifecycle
+> **이 섹션은 후속 구현(토큰 → 크레딧 환산 · 정확 차감) 시 SSOT.**  
+> Phase 1 usage ledger는 §3 · §2.1.1. Main BE Registry 계약은 `ns-teamver-be` `120_14` · `116_2` §0.3.
+
+### 4.0 한 줄 결론
+
+| 시점 | 상태 |
+|------|------|
+| **지금 (As-Is)** | Registry **reserve → commit/refund 골격** 동작. `amount`는 **앱이 정한 고정 크레딧(T)** (`TEAMVER_BILLING_RESERVE_AMOUNT` 폴백). ledger `input_tokens`/`output_tokens`는 **과금 계산에 미사용**. |
+| **목표 (To-Be)** | provider 실측 토큰 + 모델 단가 → **크레딧 T 환산** 후 reserve/commit. ledger·`registry_usage_id`·`billing_status`로 감사·정산 추적. |
+
+---
+
+### 4.1 As-Is — 지금 코드가 하는 일
+
+#### 4.1.1 lifecycle (daemon CLI run)
 
 ```text
-run create (FE 또는 design-api pre-check)
-  → reserve_credits(workspace_id, estimated_amount) → usage_id
-  → store usage_id on run metadata (optional)
+[run create — apps/daemon/src/server.ts ~L11844]
+  reserveTeamverBillingFromDaemon({ amount: 0 })
+    → POST design-api /api/internal/billing/reserve
+    → Main BE POST /api/billing/reserve { workspace_id, amount }
+    → ai_app_billing_reservations (status=reserved) + usage_id
+    → run.teamverBillingUsageId = usage_id
 
-run succeeded + usage logged
-  → commit_usage(usage_id)
+[agent 실행 … provider usage → run.events / message.events]
 
-run failed/canceled before commit
-  → refund_usage(usage_id, reason="design_run_failed")
+[run terminal — server.ts finalize reporter]
+  ├─ (parallel) reportTeamverUsageFromDaemon → POST /api/internal/usage/events
+  │     → ai_model_token_usages upsert (provider tokens + billing snapshot)
+  └─ commitTeamverBillingFromDaemon | refundTeamverBillingFromDaemon
+        → POST /api/internal/billing/{commit|refund}
+        → finalizeTeamverUsageBillingFromDaemon → POST /api/internal/usage/billing-finalize
+              → ledger billing_status / credits_committed / registry_usage_id 갱신
 ```
 
-### 4.2 amount 산정
+#### 4.1.2 amount 산정 (현재)
+
+| 입력 | 실제 동작 |
+|------|-----------|
+| daemon `reserve` body `amount` | 호출부가 **`0` 고정** (`server.ts` L11853) |
+| `TEAMVER_BILLING_RESERVE_AMOUNT` | caller `amount==0` 일 때만 env 정수 폴백 (`teamver-billing-bridge.ts`) |
+| provider `input_tokens`/`output_tokens` | **reserve/commit에 미반영** — ledger 기록만 |
+
+#### 4.1.3 구현 파일 맵
+
+| 레이어 | 경로 |
+|--------|------|
+| Registry 호출 (design-api) | `deploy/teamver/be/app/services/teamver_billing.py` → SDK `BillingClient` |
+| orchestrator | `deploy/teamver/be/app/services/run_lifecycle.py` |
+| M2M API | `deploy/teamver/be/app/routers/internal_billing.py` |
+| daemon bridge | `apps/daemon/src/teamver-billing-bridge.ts` |
+| usage ledger + billing snapshot | `deploy/teamver/be/app/db/crud/token_usage_crud.py` · `token_usage_log.py` |
+| usage M2M | `deploy/teamver/be/app/routers/internal_usage.py` · `usage_report.py` |
+| FE usage (ledger만) | `apps/web/src/teamver/maybeReportTeamverUsageAfterSave.ts` — **billing lifecycle 없음** |
+
+#### 4.1.4 env · kill switch
+
+```bash
+TEAMVER_REGISTRY_APP_ID=...
+TEAMVER_REGISTRY_KEY_ID=...
+TEAMVER_REGISTRY_ACCESS_KEY=...
+TEAMVER_BILLING_RESERVE_AMOUNT=100    # flat 크레딧 T (amount=0 폴백)
+TEAMVER_BILLING_TIMEOUT_MS=5000
+TEAMVER_BILLING_DISABLED=1            # staging 임시 OFF (production은 creds 필수)
+```
+
+---
+
+### 4.2 To-Be — 실측 기반 크레딧 차감 목표
+
+**원칙**
+
+1. **ledger** (`ai_model_token_usages`) — provider upstream 토큰·모델명·`token_count_source` **감사·집계 SSOT** (§2.1.1).
+2. **Registry** (`ai_app_billing_reservations`) — 워크스페이스 **크레딧(T) 잔액 차감** SSOT. `amount`는 **앱(Design)이 산출한 정수 크레딧**.
+3. 두 숫자는 **자동 동일하지 않음**. 환산 모듈이 ledger 입력 → `amount_t`를 만든다.
+
+**목표 공식 (후속)**
 
 ```text
-estimated_amount = (input_tokens + output_tokens) × model_unit_price
+amount_t = ceil(
+  price_input_per_1k(model) * input_tokens_effective / 1000
++ price_output_per_1k(model) * output_tokens / 1000
++ optional_cache_surcharge(...)
+)
 ```
 
-- v1 price table: design-api env `DESIGN_MODEL_PRICES_JSON` 또는 Main BE 조회 (후속)
-- reserve는 **상한 추정** (run 시작 전), commit은 **실측** (Phase 2 정책 결정)
+- `input_tokens_effective`: Anthropic cache read/creation 포함 여부는 `run-analytics-observability`와 동일 정책으로 SSOT 통일.
+- `token_count_source === 'unknown'` 또는 tokens==0: §4.5.1 정책 적용 (skip / flat minimum / refuse commit).
 
-### 4.3 Admin registry key
+---
+
+### 4.3 Main BE Registry API 제약 (후속 설계 필독)
+
+근거: `ns-teamver-be/src/service/registry_billing_service.py` · `116_2` §0.3.
+
+| API | body | 잔액 변화 | Design에 대한 함의 |
+|-----|------|-----------|-------------------|
+| `POST /api/billing/reserve` | `workspace_id`, **`amount`** (int > 0) | **없음** (가용 잔액만 검사) | **차감액은 reserve 시점에 확정** |
+| `POST /api/billing/commit` | **`usage_id`만** | **−reserved amount** | commit 시 실측 토큰·단가 **전달 불가** |
+| `POST /api/billing/refund` | `usage_id`, `reason` | **없음** | 예약 취소 |
+
+**따라서** 문서에만 있던 “commit 시 실측 반영”은 **현 Registry API만으로는 불가**. 후속은 아래 전략 A/B/C 중 선택하거나 Main BE에 **metered commit / partial refund** API 협의(전략 C).
+
+---
+
+### 4.4 reserve 시점 전략 (후속 구현 시 택 1)
+
+#### 전략 A — run 전 상한 예약 → commit 전액 (구현 단순, 과다 차감 위험)
+
+```text
+run start:
+  estimate_t = credit_meter.estimate_upper_bound(model, context_hint)
+  reserve(amount=estimate_t) → usage_id
+run end (succeeded):
+  scan provider tokens → ledger upsert
+  commit(usage_id)   # estimate_t 전액 차감
+```
+
+- 상한: `DESIGN_BILLING_MAX_RESERVE_T` cap, 또는 `max(prompt_budget, TEAMVER_BILLING_RESERVE_AMOUNT)`.
+- 실측 << 상한이면 **과다 차감** → 운영 정책 또는 전략 C 필요.
+
+#### 전략 B — run 후 실측 산출 → reserve + 즉시 commit (실측에 가깝)
+
+```text
+run end (succeeded):
+  scan provider tokens → amount_t = credit_meter.meter(...)
+  if amount_t <= 0: refund 기존 예약 or skip
+  else:
+    reserve(amount=amount_t) → usage_id   # 사후 예약
+    commit(usage_id)
+    ledger upsert (+ registry_usage_id)
+```
+
+- run **중** 잔액 부족은 막을 수 없음 (사후 검사).
+- 기존 run-start reserve 제거 또는 failed run용 최소 예약만 유지.
+
+#### 전략 C — Main BE API 확장 (가장 정확, 플랫폼 작업)
+
+- 예: `commit { usage_id, amount_t }` (amount_t ≤ reserved), 초과분 `refund` 또는 추가 `reserve`.
+- Design은 ledger·환산 모듈만 구현하고 commit payload 확장에 맞춤.
+
+**권장 (Track A 단계적):** staging은 **A + cap**으로 파이프 검증 → production 전 **B 또는 C**로 실측 정합.
+
+---
+
+### 4.5 `credit_meter` 모듈 설계안 (미구현)
+
+**신규 파일 (제안):** `deploy/teamver/be/app/services/credit_meter.py`
+
+```python
+@dataclass(frozen=True)
+class MeteredCredits:
+    amount_t: int
+    input_tokens: int
+    output_tokens: int
+    model_name: str
+    token_count_source: str  # provider_usage | unknown
+    policy: str              # metered | flat_fallback | skipped
+
+def meter_design_run(
+    *,
+    model_name: str,
+    input_tokens: int,
+    output_tokens: int,
+    token_count_source: str,
+    cache_read_input_tokens: int | None = None,
+    cache_creation_input_tokens: int | None = None,
+) -> MeteredCredits: ...
+```
+
+**단가 소스 (우선순위 제안)**
+
+1. design-api env `DESIGN_MODEL_PRICES_JSON` (모델별 input/output per-1k **크레딧 T**)
+2. Main BE M2M `ai_model_pricing` 조회 (후속 — 캐시·환율·마진 SSOT는 Main BE `TokenService`와 정합)
+3. 폴백: `TEAMVER_BILLING_RESERVE_AMOUNT` 또는 `token_cost_setting`의 `aiapp_design` 키
+
+**`DESIGN_MODEL_PRICES_JSON` 예시**
+
+```json
+{
+  "claude-sonnet-4-5": { "input_per_1k_t": 3, "output_per_1k_t": 15 },
+  "gpt-4o": { "input_per_1k_t": 5, "output_per_1k_t": 20 }
+}
+```
+
+#### 4.5.1 `token_count_source`별 과금 정책 (제안)
+
+| `token_count_source` | tokens | 제안 |
+|----------------------|--------|------|
+| `provider_usage` | > 0 | `credit_meter.meter` → reserve/commit |
+| `provider_usage` | 0 | flat minimum 또는 refund (운영 선택) |
+| `unknown` | 0 | **commit skip** + ledger만 `billing_status=not_metered` |
+| `unknown` | — | flat `TEAMVER_BILLING_RESERVE_AMOUNT` (현행에 가까움) |
+
+---
+
+### 4.6 ledger 스키마 — 과금 연동 필드
+
+`ai_model_token_usages` (design-api RDS):
+
+| 컬럼 | 과금 연동 역할 |
+|------|----------------|
+| `input_tokens` / `output_tokens` / `total_tokens` | **환산 입력** (provider upstream, §2.1.1) |
+| `model_name` | 단가 테이블 키 |
+| `token_count_source` | 실측 vs flat/skip 정책 분기 |
+| `run_id` | `(workspace_id, run_id)` 멱등 · Registry row와 1:1 맞춤 |
+| `registry_usage_id` | `ai_app_billing_reservations.usage_id` FK 논리 링크 |
+| `billing_status` | `not_attempted` · `reserved` · `committed` · `refunded` · `commit_failed` · `not_metered` … |
+| `credits_committed` | commit 성공 bool 스냅샷 |
+| `used_at` | LLM 호출·집계 시각 (M2M by-model 필터) |
+| `created_at` / `updated_at` | row·billing 갱신 감사 (loop 374) |
+
+**upsert 규칙** (`token_usage_crud.aupsert_usage`): incoming non-zero tokens가 기존 0 row를 갱신. incoming 0은 기존 실측을 **덮어쓰지 않음**.
+
+---
+
+### 4.7 경로별 gap (후속 작업)
+
+| 경로 | usage ledger | Registry billing | 후속 |
+|------|--------------|------------------|------|
+| **daemon CLI** (embed) | ✅ scan + M2M / FE | ✅ reserve@start, commit@end | amount를 `credit_meter`로 교체 (§4.4) |
+| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` | ❌ reserve 없음 | run 키=`assistantMessage.id` 멱등 (코드) · **billing hook 추가** (§4.4 B 권장) |
+| **standalone OD** | — | skip (no `TEAMVER_DESIGN_API_URL`) | — |
+| **plain stdout agent** | `unknown` / 0 | flat reserve만 | usage 없으면 §4.5.1 정책 |
+
+---
+
+### 4.8 terminal hook 순서 · race
+
+**현재:** `server.ts` finalize에서 `reportTeamverUsageFromDaemon`와 `commit/refund`가 **병렬** `void` 시작.
+
+**위험:** commit이 usage row upsert보다 먼저 끝나면, 짧은 창에 ledger `billing_status`가 stale.
+
+**후속 권장 순서 (succeeded)**
+
+```text
+1. scanRunEventsForUsageAnalytics(run.events)
+2. amount_t = credit_meter.meter(...)
+3. POST /api/internal/usage/events (tokens + registry_usage_id + billing_status=reserved)
+4. POST /api/internal/billing/commit
+5. POST /api/internal/usage/billing-finalize (committed)
+```
+
+실패 시: `commit_failed` / `refund` + ledger `billing_status` 반영. 단계별 `teamver_usage_5xx` stage 유지.
+
+---
+
+### 4.9 후속 구현 체크리스트 (권장 순서)
+
+```text
+[ ] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests
+[ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
+[ ] 3. daemon reserve: amount=0 제거 → meter upper bound 또는 전략 B로 이동
+[ ] 4. terminal hook 순서 정리 (§4.8)
+[ ] 5. embed BYOK billing — message.id run 키 + post-run reserve/commit
+[ ] 6. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
+[ ] 7. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
+[ ] 8. (선택) Main BE metered commit API — 전략 C
+```
+
+**테스트 파일 (추가 제안)**
+
+- `deploy/teamver/be/tests/test_credit_meter.py`
+- `apps/daemon/tests/teamver-billing-metered.test.ts` (reserve amount assert)
+- E2E: `run_staging_track_a_e2e.sh` U-6 확장 — `billing_status`, `registry_usage_id` non-null
+
+---
+
+### 4.10 Admin · Registry key
 
 Main BE Admin → Registry app `design` key 발급:
 
@@ -294,21 +539,31 @@ TEAMVER_REGISTRY_KEY_ID=...
 TEAMVER_REGISTRY_ACCESS_KEY=...
 ```
 
-### 4.4 호출부 — `services/run_lifecycle.py` (신규)
+Hosted guard: `deploy/teamver/be/app/config.py` — production은 registry creds 또는 `TEAMVER_BILLING_DISABLED` 명시 필수.
+
+---
+
+### 4.11 관련 문서 (Main BE · 플랫폼)
+
+| 문서 | 내용 |
+|------|------|
+| `ns-teamver-be/docs/104_사용량_단가_과금_테이블_및_차감_구조.md` | upstream 토큰 vs 플랫폼 T vs USD |
+| `ns-teamver-be/docs/116_2_AI_App_Registry_구현_점검.md` | Registry reserve amount = **앱이 정한 크레딧** |
+| `ns-teamver-be/docs/120_14_I15_registry_billing_mvp.md` | reserve/commit/refund MVP |
+| `ns-teamver-be/docs/118_워크스페이스_과금_크레딧_구현현황.md` | 잔액·차감 파이프라인 |
+
+**주의:** Main BE 내장 앱(`POST /api/aiapps/{id}/run`)은 **성공 후 고정 단가** 차감. Design Registry 갈래는 **앱이 amount를 책임** — 토큰 자동 환산 없음 (`116_2` §0.1 #5).
+
+---
+
+### 4.12 (레거시) run_lifecycle pseudo — orchestrator는 이미 존재
+
+`services/run_lifecycle.py`에 아래가 **이미 구현됨**. 후속은 caller가 `amount`를 `credit_meter` 결과로 넘기도록 변경.
 
 ```python
-async def on_run_start(workspace_id: str, estimated_tokens: int) -> str:
-    result = await reserve_credits(workspace_id=workspace_id, amount=estimated_tokens)
-    return result["usage_id"]
-
-async def on_run_success(usage_id: str) -> None:
-    await commit_usage(usage_id=usage_id)
-
-async def on_run_failure(usage_id: str) -> None:
-    await refund_usage(usage_id=usage_id)
+# reserve_run(workspace_id, amount, reason) → ReservationResult
+# commit_run(usage_id) / refund_run(usage_id, reason)
 ```
-
-**연동 시점:** Track B job queue 또는 FE pre-check (출시 후).
 
 ---
 

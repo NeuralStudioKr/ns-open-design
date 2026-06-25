@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAnalytics } from "../../analytics/provider";
 import { Icon } from "../../components/Icon";
 import type { TeamverDriveImportAsset, TeamverDriveImportPartialResult } from "../importDriveAssets";
@@ -103,6 +104,10 @@ export function TeamverDriveImportModal({
   const openSessionRef = useRef(false);
   const modalRef = useRef<HTMLElement | null>(null);
   const listHasContentRef = useRef(false);
+  // Track whether the *mousedown* started on the backdrop itself so a drag
+  // that begins inside the list (e.g. selecting a long file name) and ends
+  // on the backdrop doesn't dismiss the modal.
+  const backdropMouseDownRef = useRef(false);
   const [scopes, setScopes] = useState<TeamverDriveImportScope[]>([]);
   const [scopeIndex, setScopeIndex] = useState(0);
   const [navStack, setNavStack] = useState<NavCrumb[]>([]);
@@ -378,6 +383,25 @@ export function TeamverDriveImportModal({
     return () => window.clearTimeout(timer);
   }, [actionHint]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const scrollContainers = Array.from(document.querySelectorAll(".entry-main--scroll"));
+    const prevScrollOverflows = scrollContainers.map(
+      (node) => (node as HTMLElement).style.overflow,
+    );
+    document.body.style.overflow = "hidden";
+    scrollContainers.forEach((node) => {
+      (node as HTMLElement).style.overflow = "hidden";
+    });
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      scrollContainers.forEach((node, index) => {
+        (node as HTMLElement).style.overflow = prevScrollOverflows[index] ?? "";
+      });
+    };
+  }, [open]);
+
   if (!open) return null;
 
   function assetBlockReason(row: TeamverDriveImportAssetRow): string | null {
@@ -501,12 +525,23 @@ export function TeamverDriveImportModal({
     );
   }
 
-  return (
+  return createPortal(
+    (
     <div
       className="teamver-drive-picker-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !confirming) onClose();
+        backdropMouseDownRef.current = event.target === event.currentTarget;
+      }}
+      onMouseUp={(event) => {
+        if (
+          event.target === event.currentTarget
+          && backdropMouseDownRef.current
+          && !confirming
+        ) {
+          onClose();
+        }
+        backdropMouseDownRef.current = false;
       }}
     >
       <section
@@ -779,5 +814,7 @@ export function TeamverDriveImportModal({
         </footer>
       </section>
     </div>
+    ),
+    document.body,
   );
 }

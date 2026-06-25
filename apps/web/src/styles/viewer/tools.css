@@ -1012,13 +1012,14 @@
 .teamver-drive-picker-backdrop {
   position: fixed;
   inset: 0;
-  /* Home hero input-card peaks at 1700 when the mention picker is mounted. */
-  z-index: 1800;
+  /* Portaled to body — above Home hero (1700) and tooltip layer (4000). */
+  z-index: 5000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   background: rgba(15, 23, 42, 0.26);
+  overscroll-behavior: contain;
 }
 .teamver-drive-picker-modal {
   width: min(560px, calc(100vw - 32px));
@@ -1093,6 +1094,7 @@
   min-height: 220px;
   overflow: auto;
   padding: 0 10px 12px;
+  overscroll-behavior: contain;
 }
 .teamver-drive-picker-row {
   display: flex;
@@ -1325,6 +1327,7 @@
   flex: 1 1 auto;
   overflow-y: auto;
   position: relative;
+  overscroll-behavior: contain;
 }
 .teamver-drive-import-list.is-refreshing::after {
   content: "";

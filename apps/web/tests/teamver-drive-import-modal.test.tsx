@@ -295,6 +295,67 @@ describe("TeamverDriveImportModal", () => {
     });
   });
 
+  it("renders into document.body and locks background scroll while open", async () => {
+    const host = document.createElement("div");
+    host.className = "entry-main--scroll";
+    host.style.overflow = "auto";
+    document.body.appendChild(host);
+    try {
+      const { unmount } = render(
+        <TeamverDriveImportModal
+          open
+          workspaceId="ws-1"
+          onClose={() => undefined}
+          onConfirm={async () => undefined}
+        />,
+        { container: host },
+      );
+
+      const modal = await screen.findByTestId("teamver-drive-import-modal");
+      // Portal target is <body>, not the test host container.
+      expect(host.contains(modal)).toBe(false);
+      expect(document.body.contains(modal)).toBe(true);
+      // Background containers must be locked so the hero/recent strips don't
+      // scroll under the open modal.
+      expect(document.body.style.overflow).toBe("hidden");
+      expect(host.style.overflow).toBe("hidden");
+
+      unmount();
+      // Both overflows must be restored on unmount so a subsequent close
+      // doesn't trap the page in a frozen state.
+      expect(document.body.style.overflow).toBe("");
+      expect(host.style.overflow).toBe("auto");
+    } finally {
+      document.body.removeChild(host);
+    }
+  });
+
+  it("does not close when a drag starts inside the list and ends on the backdrop", async () => {
+    const onClose = vi.fn();
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={onClose}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    const modal = await screen.findByTestId("teamver-drive-import-modal");
+    const backdrop = modal.parentElement as HTMLElement;
+    expect(backdrop.className).toContain("teamver-drive-picker-backdrop");
+
+    // mousedown inside modal, mouseup on backdrop — must NOT dismiss.
+    fireEvent.mouseDown(modal);
+    fireEvent.mouseUp(backdrop);
+    expect(onClose).not.toHaveBeenCalled();
+
+    // mousedown + mouseup on backdrop — dismisses.
+    fireEvent.mouseDown(backdrop);
+    fireEvent.mouseUp(backdrop);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("loads more browse rows in pages", async () => {
     listRowsMock.mockImplementation(({ limit }: { limit?: number }) =>
       Promise.resolve(
