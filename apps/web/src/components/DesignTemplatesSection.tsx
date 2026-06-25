@@ -35,12 +35,14 @@ export function DesignTemplatesSection({ cfg, setCfg }: Props) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await fetchDesignTemplates();
+      const list = await fetchDesignTemplates(
+        branding.slideOnlyMvp ? { mode: 'deck' } : undefined,
+      );
       setTemplates(list);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [branding.slideOnlyMvp]);
 
   useEffect(() => {
     void refresh();
