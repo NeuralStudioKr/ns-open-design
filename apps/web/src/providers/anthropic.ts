@@ -90,9 +90,23 @@ export async function streamMessage(
 
   const client = makeClient(cfg);
   let acc = '';
+  let stream: ReturnType<typeof client.messages.stream> | undefined;
+  // Guard so that emitting from both the success path (authoritative
+  // finalMessage) and the catch path (best-effort currentMessage snapshot)
+  // never reports tokens twice for the same run. We always prefer the
+  // success-path payload when both are available.
+  let usageEmitted = false;
+  const tryEmitUsage = (
+    snapshot: { usage?: unknown; model?: unknown } | null | undefined,
+  ): void => {
+    if (usageEmitted) return;
+    if (emitAnthropicUsage(handlers, snapshot, cfg.model)) {
+      usageEmitted = true;
+    }
+  };
 
   try {
-    const stream = client.messages.stream(
+    stream = client.messages.stream(
       {
         model: cfg.model,
         max_tokens: effectiveMaxTokens(cfg),
@@ -107,10 +121,70 @@ export async function streamMessage(
       handlers.onDelta(delta);
     });
 
-    await stream.finalMessage();
+    // Without this, embed BYOK runs report 0-token rows with billing_status
+    // 'not_attempted'. The proxy-based providers go through api-proxy.ts which
+    // already lifts usage off the SSE wire; the direct SDK path here is the
+    // remaining gap. See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+    const finalMessage = await stream.finalMessage();
+    tryEmitUsage(finalMessage);
     handlers.onDone(acc);
   } catch (err) {
+    // Even on abort or mid-stream error the provider has already counted
+    // input_tokens (and any output_tokens streamed before the failure), so
+    // we must still report whatever the SDK accumulated. Without this an
+    // aborted run lands a 0-token ledger row that the user was actually
+    // charged for upstream. `currentMessage` is the SDK's live snapshot
+    // populated via message_start / message_delta events; it survives until
+    // the next successful turn ends.
+    if (stream?.currentMessage) {
+      tryEmitUsage(stream.currentMessage as { usage?: unknown; model?: unknown });
+    }
     if ((err as Error).name === 'AbortError') return;
     handlers.onError(err instanceof Error ? err : new Error(String(err)));
   }
+}
+
+// Anthropic charges separately for prompt vs cache-creation vs cache-read
+// input. The billing ledger only models a single `inputTokens` bucket, so we
+// fold cache_creation + cache_read into the input total to keep credit math
+// monotonic — under-reporting cached reads would let a user pay 0 for prompt
+// caching even though the provider still bills for it.
+// Returns true when onUsage was invoked so callers can suppress duplicate
+// emissions from the catch path.
+function emitAnthropicUsage(
+  handlers: StreamHandlers,
+  finalMessage: { usage?: unknown; model?: unknown } | null | undefined,
+  fallbackModel: string,
+): boolean {
+  if (!handlers.onUsage) return false;
+  const usage = (finalMessage?.usage ?? null) as
+    | {
+        input_tokens?: unknown;
+        output_tokens?: unknown;
+        cache_creation_input_tokens?: unknown;
+        cache_read_input_tokens?: unknown;
+      }
+    | null;
+  if (!usage || typeof usage !== 'object') return false;
+
+  const promptTokens = nonNegativeInt(usage.input_tokens);
+  const cacheCreation = nonNegativeInt(usage.cache_creation_input_tokens);
+  const cacheRead = nonNegativeInt(usage.cache_read_input_tokens);
+  const inputTokens = promptTokens + cacheCreation + cacheRead;
+  const outputTokens = nonNegativeInt(usage.output_tokens);
+
+  if (inputTokens === 0 && outputTokens === 0) return false;
+
+  const reportedModel =
+    typeof finalMessage?.model === 'string' && finalMessage.model.trim()
+      ? finalMessage.model.trim()
+      : fallbackModel;
+
+  handlers.onUsage({ inputTokens, outputTokens, model: reportedModel });
+  return true;
+}
+
+function nonNegativeInt(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.floor(value);
 }

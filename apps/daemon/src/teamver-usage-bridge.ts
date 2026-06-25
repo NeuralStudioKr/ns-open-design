@@ -106,6 +106,24 @@ export async function reportTeamverUsageFromDaemon({
   const billing = resolveBillingSnapshot(run);
   const runStatus = resolvePersistedRunStatus(run, persistedRunStatus);
 
+  // Early-warning beacon for usage-capture regressions. A terminal run with
+  // zero input AND zero output tokens means the upstream provider gave us
+  // nothing usable (or our extractor failed) — we still post the row so the
+  // BE can stamp a ledger entry, but ops needs a grep handle to spot this
+  // *before* it shows up as a billing dispute. The 0-token regression that
+  // motivated loop 390/391 (ATU-FO5LT28NQBB5) would have surfaced here.
+  if ((usage.input_tokens ?? 0) === 0 && (usage.output_tokens ?? 0) === 0) {
+    emitUsage5xxMarker('usage.zero_tokens', {
+      runId: run.id,
+      workspaceId: run.teamverIdentity?.workspaceId ?? null,
+      projectId: run.projectId ?? null,
+      modelName,
+      runStatus: runStatus || null,
+      tokenCountSource: usage.token_count_source ?? 'unknown',
+      eventCount: run.events.length,
+    });
+  }
+
   const baseUrl = teamverDesignApiBaseUrl();
   const apiKey = teamverInternalApiKey();
   if (!baseUrl || !apiKey) return;

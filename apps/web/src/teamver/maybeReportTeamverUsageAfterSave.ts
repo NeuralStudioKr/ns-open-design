@@ -10,6 +10,24 @@ import {
 import { reportTeamverDesignUsage } from "./reportUsage";
 import { isTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
+// Structured marker so ops dashboards can grep `teamver_usage_zero_tokens`
+// to spot the next 0-token regression *before* it becomes a billing dispute.
+// Matches the daemon-side beacon shape in teamver-usage-bridge.ts.
+function emitClientUsageZeroMarker(payload: Record<string, unknown>): void {
+  try {
+    console.warn(
+      JSON.stringify({
+        metric: "teamver_usage_zero_tokens",
+        stage: "fe.maybe_report",
+        ts: Date.now(),
+        ...payload,
+      }),
+    );
+  } catch {
+    // never let observability break the chat finalize flow.
+  }
+}
+
 // Long-lived tabs (week-long embed sessions) accumulate runs over time. Cap
 // the dedupe set so the helper never leaks memory; the BE upsert is the
 // authoritative dedupe on (workspace_id, run_id) anyway, so a rotated-out
@@ -17,6 +35,11 @@ import { isTeamverDesignAppEnabled } from "./teamverDesignAccess";
 // thousands of newer runs.
 const REPORTED_RUN_ID_CAP = 1024;
 const reportedRunIds = new Set<string>();
+// In-flight requests for the same runId — guards against concurrent
+// `persistMessage` retries firing duplicate POSTs while the first is still
+// awaiting the network. We hold the entry only for the lifetime of one
+// network call so memory is bounded by concurrency, not history.
+const inFlightRunIds = new Set<string>();
 
 function rememberReportedRunId(usageRunId: string): void {
   reportedRunIds.add(usageRunId);
@@ -29,6 +52,7 @@ function rememberReportedRunId(usageRunId: string): void {
 /** @internal vitest */
 export function resetTeamverReportedRunIdsForTests(): void {
   reportedRunIds.clear();
+  inFlightRunIds.clear();
 }
 
 export async function maybeReportTeamverUsageAfterSave(
@@ -45,6 +69,7 @@ export async function maybeReportTeamverUsageAfterSave(
   // design-api (workspace_id, run_id) upsert dedupes one row per chat turn.
   const usageRunId = runId || message.id;
   if (reportedRunIds.has(usageRunId)) return;
+  if (inFlightRunIds.has(usageRunId)) return;
 
   const client = getDesignBffClient();
   if (!client) return;
@@ -53,22 +78,48 @@ export async function maybeReportTeamverUsageAfterSave(
   if (!workspaceId) return;
   if (!isTeamverDesignAppEnabled(workspaceId)) return;
 
+  // Re-check after async resolution — a sibling call may have completed
+  // while we awaited workspace resolution.
+  if (reportedRunIds.has(usageRunId)) return;
+  if (inFlightRunIds.has(usageRunId)) return;
+
   const usage = extractLatestUsageFromEvents(message.events);
   const modelName = resolveTeamverUsageModelName(message.events);
   const inputTokens = usage?.inputTokens ?? 0;
   const outputTokens = usage?.outputTokens ?? 0;
 
-  await reportTeamverDesignUsage({
-    workspaceId: workspaceId,
-    modelName,
-    inputTokens,
-    outputTokens,
-    totalTokens: inputTokens + outputTokens > 0 ? inputTokens + outputTokens : undefined,
-    tokenCountSource: usage?.tokenCountSource ?? "unknown",
-    projectId,
-    runId: usageRunId,
-    runStatus: message.runStatus,
-  });
+  // Beacon for 0-token regressions. The FE path covers BYOK runs where the
+  // upstream SDK / proxy didn't surface usage — exactly the gap loop 390
+  // closed for Anthropic direct SDK. Logging here makes future regressions
+  // visible in browser devtools + the design-api access log it gets shipped
+  // to via the SDK's tap on console.warn.
+  if (inputTokens === 0 && outputTokens === 0) {
+    emitClientUsageZeroMarker({
+      workspaceId,
+      modelName,
+      projectId,
+      runId: usageRunId,
+      runStatus: message.runStatus,
+      tokenCountSource: usage?.tokenCountSource ?? "unknown",
+      eventCount: message.events?.length ?? 0,
+    });
+  }
 
-  rememberReportedRunId(usageRunId);
+  inFlightRunIds.add(usageRunId);
+  try {
+    await reportTeamverDesignUsage({
+      workspaceId: workspaceId,
+      modelName,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens > 0 ? inputTokens + outputTokens : undefined,
+      tokenCountSource: usage?.tokenCountSource ?? "unknown",
+      projectId,
+      runId: usageRunId,
+      runStatus: message.runStatus,
+    });
+    rememberReportedRunId(usageRunId);
+  } finally {
+    inFlightRunIds.delete(usageRunId);
+  }
 }

@@ -708,6 +708,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   ) => {
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
+    // Hoist usage accumulators above the try block so the catch path can
+    // still emit whatever the upstream charged before failing. Anthropic
+    // bills input_tokens the moment `message_start` arrives; losing that on
+    // a mid-stream error mints a 0-token ledger row for a paid request.
+    let inputTokens = 0;
+    let outputTokens = 0;
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model: opts.payload?.model });
@@ -733,13 +739,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
 
       let ended = false;
-      let inputTokens = 0;
-      let outputTokens = 0;
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ event, data }: any) => {
         if (!data) return false;
         if (event === 'error' || data.type === 'error') {
           const message = data.error?.message || data.message || 'Anthropic upstream error';
+          // Emit accumulated usage BEFORE the error so the FE proxy client
+          // (api-proxy.ts) records it for billing — api-proxy handles the
+          // `usage` frame before flowing onError into the run lifecycle.
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
           sendProxyError(sse, message, { details: data });
           ended = true;
           return true;
@@ -780,6 +788,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.end();
     } catch (err: any) {
       console.error(`[${opts.logTag}] internal error: ${err.message}`);
+      // Network drop or dispatcher error mid-stream: same rationale as the
+      // upstream-error branch above. If message_start already populated the
+      // accumulators, the user was already charged for input_tokens.
+      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -815,6 +827,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   ) => {
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
+    // Hoisted so any mid-stream failure (provider error event, dropped
+    // socket, dispatcher rejection) can still ship the usage Gemini already
+    // billed for via usageMetadata.
+    let inputTokens = 0;
+    let outputTokens = 0;
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model: opts.model });
@@ -845,14 +862,31 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
           sendProxyError(sse, `Gemini error: ${streamError}`, { details: data });
           ended = true;
           return true;
+        }
+        // Gemini's streamGenerateContent emits incremental + a terminal chunk
+        // both carrying usageMetadata. Take the latest non-zero pair so partial
+        // streams still report whatever the API was able to count, and full
+        // streams converge on the final totals (which include thinking tokens
+        // in candidatesTokenCount). Without this the BYOK row lands 0/0 —
+        // see docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+        if (data.usageMetadata && typeof data.usageMetadata === 'object') {
+          const um = data.usageMetadata;
+          if (typeof um.promptTokenCount === 'number' && um.promptTokenCount > 0) {
+            inputTokens = um.promptTokenCount;
+          }
+          if (typeof um.candidatesTokenCount === 'number' && um.candidatesTokenCount > 0) {
+            outputTokens = um.candidatesTokenCount;
+          }
         }
         const delta = extractGeminiText(data);
         if (delta) {
           guard.sendDelta(delta);
           if (guard.contaminated) {
+            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
             sse.send('end', {});
             ended = true;
             return true;
@@ -860,6 +894,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         const blockMessage = extractGeminiBlockMessage(data);
         if (blockMessage) {
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
           sendProxyError(sse, blockMessage, { details: data });
           ended = true;
           return true;
@@ -868,11 +903,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
+        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[${opts.logTag}] internal error: ${err.message}`);
+      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1060,10 +1097,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192,
       ),
       stream: true,
+      // OpenAI-compatible endpoints omit the final usage chunk during SSE
+      // streaming unless this is set; without it BYOK rows land in
+      // ai_model_token_usages with 0/0 tokens. See
+      // docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+      stream_options: { include_usage: true },
     };
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
+    // Hoist usage accumulators so error / catch paths can still emit
+    // whatever the upstream charged before the failure point. See
+    // runAnthropicChatStream above for the same rationale.
+    let inputTokens = 0;
+    let outputTokens = 0;
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model });
@@ -1096,8 +1143,6 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
 
       let ended = false;
-      let inputTokens = 0;
-      let outputTokens = 0;
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ payload, data }: any) => {
         if (payload === '[DONE]') {
@@ -1110,6 +1155,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
           sendProxyError(sse, `Provider error: ${streamError}`, { details: data });
           ended = true;
           return true;
@@ -1139,6 +1185,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:openai] internal error: ${err.message}`);
+      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1200,21 +1247,32 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
     const effectiveMaxTokens =
       typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
+    // Azure OpenAI Service supports the same stream_options.include_usage knob
+    // as openai.com — without it the final SSE `usage` chunk is omitted and
+    // BYOK rows land 0/0. See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+    const streamUsageOpts = { stream_options: { include_usage: true } };
     const payload = {
       ...(usesVersionedOpenAIPath ? { model } : {}),
       messages: payloadMessages,
       ...buildLegacyMaxTokensParam(effectiveMaxTokens),
       stream: true,
+      ...streamUsageOpts,
     };
     const retryPayload = {
       ...(usesVersionedOpenAIPath ? { model } : {}),
       messages: payloadMessages,
       ...buildMaxCompletionTokensParam(effectiveMaxTokens),
       stream: true,
+      ...streamUsageOpts,
     };
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
+    // Same hoisting rationale as runAnthropicChatStream / openai proxy:
+    // emit accumulated usage in every error/catch path so a mid-stream
+    // failure doesn't drop the input_tokens the user was already charged.
+    let inputTokens = 0;
+    let outputTokens = 0;
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model });
@@ -1269,6 +1327,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       await streamUpstreamSse(response, ({ payload: ssePayload, data }: any) => {
         if (ssePayload === '[DONE]') {
           guard.flushThinkTag();
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
           return true;
@@ -1276,13 +1335,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
           sendProxyError(sse, `Azure error: ${streamError}`, { details: data });
           ended = true;
           return true;
         }
+        if (data.usage && typeof data.usage === 'object') {
+          const usage = data.usage;
+          if (typeof usage.prompt_tokens === 'number') inputTokens = usage.prompt_tokens;
+          if (typeof usage.completion_tokens === 'number') outputTokens = usage.completion_tokens;
+        }
         const delta = extractOpenAIText(data);
         if (delta) { guard.sendDelta(delta); 
           if (guard.contaminated) { 
+            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
             sse.send('end', {}); 
             ended = true; 
             return true; 
@@ -1292,11 +1358,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
+        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:azure] internal error: ${err.message}`);
+      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1378,6 +1446,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
+    // Hoisted so the catch block can still emit best-effort usage if any
+    // `prompt_eval_count`/`eval_count` arrived before the failure. Most
+    // Ollama errors happen before any chunks land, but local network drops
+    // mid-stream are common — covering both paths keeps billing correct.
+    let inputTokens = 0;
+    let outputTokens = 0;
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model });
@@ -1404,8 +1478,19 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const guard = createDeltaGuard(sse);
       await streamUpstreamNdjson(response, ({ data }: any) => {
         if (!data) return false;
+        // Ollama emits usage counts only in the terminal `done:true` chunk
+        // (prompt_eval_count / eval_count). Some local builds omit them — in
+        // that case sendProxyUsageIfPresent will skip the SSE and the row
+        // stays 0/0 (best-effort; see 24_AI_API_usage_capture_경로별_분석.md).
+        if (typeof data.prompt_eval_count === 'number') {
+          inputTokens = data.prompt_eval_count;
+        }
+        if (typeof data.eval_count === 'number') {
+          outputTokens = data.eval_count;
+        }
         if (data.done) {
           guard.flushThinkTag();
+          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
           return true;
@@ -1414,6 +1499,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (typeof content === 'string' && content) { 
           guard.sendDelta(content); 
           if (guard.contaminated) { 
+            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
             sse.send('end', {}); 
             ended = true; 
             return true; 
@@ -1423,11 +1509,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
+        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:ollama] internal error: ${err.message}`);
+      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1622,6 +1710,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // a typed result describing what to do next (loop on tool calls,
     // close the stream, or bail on error). Closures capture all the
     // SSE helpers from registerChatRoutes.
+    // Tool-loop turns are separate upstream calls; bill them as a single
+    // logical run by summing prompt/completion tokens across all turns. The
+    // outer loop reads from this accumulator before sending the terminal
+    // `end` SSE. See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+    const turnUsage = { inputTokens: 0, outputTokens: 0 };
+
     const runTurn = async (
       sse: any,
       messagesForTurn: any[],
@@ -1632,6 +1726,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         max_tokens:
           typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192,
         stream: true,
+        // OpenAI-compatible endpoints omit usage in streaming responses
+        // unless this is set.
+        stream_options: { include_usage: true },
         tools: opts.tools,
         tool_choice: 'auto',
       };
@@ -1650,6 +1747,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const errorText = await response.text();
         console.error(
           `[${opts.logTag}] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
+        );
+        // Flush prior-turn usage before the error so the ledger captures
+        // whatever earlier turns in this loop already billed.
+        sendProxyUsageIfPresent(
+          sse,
+          turnUsage.inputTokens,
+          turnUsage.outputTokens,
+          model,
         );
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
@@ -1672,6 +1777,19 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (streamErr) {
           providerError = streamErr;
           return true;
+        }
+
+        // include_usage emits the usage chunk *after* the last text chunk
+        // with `choices: []`. Read it before the choices check below so the
+        // accumulator gets updated even when the chunk carries no choices.
+        if (data.usage && typeof data.usage === 'object') {
+          const usage = data.usage;
+          if (typeof usage.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
+            turnUsage.inputTokens += usage.prompt_tokens;
+          }
+          if (typeof usage.completion_tokens === 'number' && usage.completion_tokens > 0) {
+            turnUsage.outputTokens += usage.completion_tokens;
+          }
         }
 
         const choices = (data as any).choices;
@@ -1723,6 +1841,17 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       guard.flushThinkTag();
 
       if (providerError) {
+        // Usage frame ALWAYS precedes error frame on the SSE wire because
+        // api-proxy.ts (FE) short-circuits on `event: error` and skips
+        // anything after it. The accumulator already contains tokens from
+        // this turn plus all prior turns in the loop, which is what the
+        // user was billed for upstream.
+        sendProxyUsageIfPresent(
+          sse,
+          turnUsage.inputTokens,
+          turnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, `Provider error: ${providerError}`, {
           details: providerError,
         });
@@ -1816,6 +1945,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // content blocks (id/name from content_block_start, args JSON from
     // input_json_delta), and report the stop_reason. The shared executeOneTool
     // backs each tool; results return as `tool_result` blocks next round.
+    // Shared usage accumulator across all anthropic turns — same role as
+    // turnUsage in the OpenAI tool loop below.
+    const anthTurnUsage = { inputTokens: 0, outputTokens: 0 };
     const runAnthropicToolTurn = async (
       sse: any,
       anthropicUrl: string,
@@ -1847,6 +1979,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.error(
           `[${opts.logTag}] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
         );
+        // Flush any usage accumulated by prior turns in this loop before
+        // surfacing the error — even though *this* turn was rejected with
+        // zero billing, the earlier turns were charged upstream.
+        sendProxyUsageIfPresent(
+          sse,
+          anthTurnUsage.inputTokens,
+          anthTurnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
@@ -1859,12 +2000,22 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       const blocks: Record<number, { type: string; id?: string; name?: string; json: string }> = {};
       let stopReason = '';
       let providerError = '';
+      // Per-turn usage. Anthropic emits input_tokens in message_start and the
+      // FINAL output_tokens in message_delta — we add input once and override
+      // output as the stream progresses. Commit to anthTurnUsage at end.
+      let perTurnInput = 0;
+      let perTurnOutput = 0;
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ event, data }: any) => {
         if (!data) return false;
         if (event === 'error' || data.type === 'error') {
           providerError = data.error?.message || data.message || 'Anthropic upstream error';
           return true;
+        }
+        if (event === 'message_start' && data.message?.usage) {
+          const u = data.message.usage;
+          if (typeof u.input_tokens === 'number') perTurnInput = u.input_tokens;
+          if (typeof u.output_tokens === 'number') perTurnOutput = u.output_tokens;
         }
         if (event === 'content_block_start') {
           const idx = typeof data.index === 'number' ? data.index : 0;
@@ -1885,14 +2036,28 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           }
         } else if (event === 'message_delta') {
           if (typeof data.delta?.stop_reason === 'string') stopReason = data.delta.stop_reason;
+          if (typeof data.usage?.output_tokens === 'number') {
+            perTurnOutput = data.usage.output_tokens;
+          }
         } else if (event === 'message_stop') {
           guard.flushThinkTag();
           return true;
         }
         return false;
       });
+      anthTurnUsage.inputTokens += Math.max(0, perTurnInput);
+      anthTurnUsage.outputTokens += Math.max(0, perTurnOutput);
       guard.flushThinkTag();
       if (providerError) {
+        // Usage MUST precede error on the wire: api-proxy.ts short-circuits
+        // on `event: error`. The accumulator already includes this turn
+        // and every prior turn the user was billed for.
+        sendProxyUsageIfPresent(
+          sse,
+          anthTurnUsage.inputTokens,
+          anthTurnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, `Provider error: ${providerError}`, { details: providerError });
         return { kind: 'error' };
       }
@@ -1936,6 +2101,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           const turn = await runAnthropicToolTurn(sse, anthropicUrl, headers, convMessages);
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
+            sendProxyUsageIfPresent(
+              sse,
+              anthTurnUsage.inputTokens,
+              anthTurnUsage.outputTokens,
+              model,
+            );
             sse.send('end', {});
             return sse.end();
           }
@@ -1962,10 +2133,25 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.warn(
           `[${opts.logTag}] anthropic tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
         );
+        sendProxyUsageIfPresent(
+          sse,
+          anthTurnUsage.inputTokens,
+          anthTurnUsage.outputTokens,
+          model,
+        );
         sse.send('end', {});
         return sse.end();
       } catch (err: any) {
         console.error(`[${opts.logTag}] internal error: ${err.message}`);
+        // Catch covers network drops / dispatcher rejections / executeOneTool
+        // throws. Flush accumulated turn usage before the error frame so
+        // api-proxy.ts records what the user was actually billed for.
+        sendProxyUsageIfPresent(
+          sse,
+          anthTurnUsage.inputTokens,
+          anthTurnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
         sse.end();
       } finally {
@@ -1974,6 +2160,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     };
 
     // ---- Gemini native tool loop (aihubmix gemini/imagen models) ----------
+    // Per-loop usage accumulator — same role as turnUsage / anthTurnUsage.
+    const geminiTurnUsage = { inputTokens: 0, outputTokens: 0 };
     const runGeminiToolTurn = async (
       sse: any,
       geminiUrl: string,
@@ -2010,6 +2198,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.error(
           `[${opts.logTag}] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
         );
+        // Flush any usage prior turns accumulated before surfacing the
+        // error — those turns already billed upstream.
+        sendProxyUsageIfPresent(
+          sse,
+          geminiTurnUsage.inputTokens,
+          geminiTurnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
@@ -2027,6 +2223,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // object (signature included) rather than reconstructing {functionCall}.
       const functionCallParts: any[] = [];
       let providerError = '';
+      // Per-turn snapshot of usageMetadata. Gemini reports totals (not deltas)
+      // in every chunk, so capture the last non-zero values and commit once.
+      let perTurnInput = 0;
+      let perTurnOutput = 0;
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ data }: any) => {
         if (!data) return false;
@@ -2034,6 +2234,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (streamError) {
           providerError = streamError;
           return true;
+        }
+        if (data.usageMetadata && typeof data.usageMetadata === 'object') {
+          const um = data.usageMetadata;
+          if (typeof um.promptTokenCount === 'number' && um.promptTokenCount > 0) {
+            perTurnInput = um.promptTokenCount;
+          }
+          if (typeof um.candidatesTokenCount === 'number' && um.candidatesTokenCount > 0) {
+            perTurnOutput = um.candidatesTokenCount;
+          }
         }
         const parts = (data as any)?.candidates?.[0]?.content?.parts;
         if (Array.isArray(parts)) {
@@ -2061,8 +2270,19 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         return false;
       });
+      geminiTurnUsage.inputTokens += perTurnInput;
+      geminiTurnUsage.outputTokens += perTurnOutput;
       guard.flushThinkTag();
       if (providerError) {
+        // Usage MUST precede error on the wire: api-proxy.ts short-circuits
+        // on `event: error`. Accumulator carries this turn + every prior
+        // turn the user was billed for.
+        sendProxyUsageIfPresent(
+          sse,
+          geminiTurnUsage.inputTokens,
+          geminiTurnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, `Gemini error: ${providerError}`, { details: providerError });
         return { kind: 'error' };
       }
@@ -2095,6 +2315,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           const turn = await runGeminiToolTurn(sse, geminiUrl, headers, contents);
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
+            sendProxyUsageIfPresent(
+              sse,
+              geminiTurnUsage.inputTokens,
+              geminiTurnUsage.outputTokens,
+              model,
+            );
             sse.send('end', {});
             return sse.end();
           }
@@ -2122,10 +2348,25 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         console.warn(
           `[${opts.logTag}] gemini tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
         );
+        sendProxyUsageIfPresent(
+          sse,
+          geminiTurnUsage.inputTokens,
+          geminiTurnUsage.outputTokens,
+          model,
+        );
         sse.send('end', {});
         return sse.end();
       } catch (err: any) {
         console.error(`[${opts.logTag}] internal error: ${err.message}`);
+        // Catch covers network drops / dispatcher rejections / executeOneTool
+        // throws. Emit accumulated usage before the error frame so
+        // api-proxy.ts records what the user was billed for upstream.
+        sendProxyUsageIfPresent(
+          sse,
+          geminiTurnUsage.inputTokens,
+          geminiTurnUsage.outputTokens,
+          model,
+        );
         sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
         sse.end();
       } finally {
@@ -2217,8 +2458,19 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.send('start', { model });
       for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
         const turn = await runTurn(sse, workingMessages);
-        if (turn.kind === 'error') return sse.end();
+        if (turn.kind === 'error') {
+          // runTurn already emitted usage + error frames in the right
+          // order (usage before error, because api-proxy.ts short-
+          // circuits on `event: error`). Nothing to emit here.
+          return sse.end();
+        }
         if (turn.kind === 'text_end') {
+          sendProxyUsageIfPresent(
+            sse,
+            turnUsage.inputTokens,
+            turnUsage.outputTokens,
+            model,
+          );
           sse.send('end', {});
           return sse.end();
         }
@@ -2253,14 +2505,32 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
       // Tool loop exhausted — the model still wants to call tools but we
       // refuse a 4th round. Close the stream gracefully; the last text
-      // delta the model emitted (if any) is already on the wire.
+      // delta the model emitted (if any) is already on the wire. Even on a
+      // bounded close we still owe the BYOK ledger whatever tokens did get
+      // spent across the turns we already ran.
       console.warn(
         `[${opts.logTag}] tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
+      );
+      sendProxyUsageIfPresent(
+        sse,
+        turnUsage.inputTokens,
+        turnUsage.outputTokens,
+        model,
       );
       sse.send('end', {});
       return sse.end();
     } catch (err: any) {
       console.error(`[${opts.logTag}] internal error: ${err.message}`);
+      // Catch covers network drops, dispatcher rejections, and unexpected
+      // throws inside executeOneTool. Any turns that completed before the
+      // throw already consumed tokens — emit them before the error frame
+      // so api-proxy.ts records the usage on its way to onError.
+      sendProxyUsageIfPresent(
+        sse,
+        turnUsage.inputTokens,
+        turnUsage.outputTokens,
+        model,
+      );
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {

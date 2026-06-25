@@ -4013,6 +4013,7 @@ export function ProjectView({
               kind: 'usage',
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
+              ...(usage.model ? { model: usage.model } : {}),
             });
           },
           onDone: () => {

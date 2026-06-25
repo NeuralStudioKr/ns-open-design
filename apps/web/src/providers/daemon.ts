@@ -1022,10 +1022,15 @@ async function consumeDaemonRun({
           if (event.event === 'usage') {
             const normalized = normalizeProviderUsagePayload(event.data);
             if (normalized) {
+              const model =
+                typeof (event.data as { model?: unknown })?.model === 'string'
+                  ? String((event.data as { model: string }).model).trim()
+                  : undefined;
               handlers.onAgentEvent({
                 kind: 'usage',
                 inputTokens: normalized.inputTokens,
                 outputTokens: normalized.outputTokens,
+                ...(model ? { model } : {}),
               });
             }
             continue;
@@ -1290,12 +1295,15 @@ function translateAgentEvent(data: DaemonAgentPayload): AgentEvent | null {
   if (t === 'usage') {
     const normalized = normalizeProviderUsagePayload(data);
     if (!normalized) return null;
+    const model =
+      typeof data.model === 'string' && data.model.trim() ? data.model.trim() : undefined;
     return {
       kind: 'usage',
       inputTokens: normalized.inputTokens,
       outputTokens: normalized.outputTokens,
       costUsd: typeof data.costUsd === 'number' ? data.costUsd : undefined,
       durationMs: typeof data.durationMs === 'number' ? data.durationMs : undefined,
+      ...(model ? { model } : {}),
     };
   }
   if (t === 'fabricated_role_marker' && typeof data.marker === 'string') {

@@ -93,6 +93,15 @@ describe('usageAttribution', () => {
     ).toBe('claude-sonnet-4-5');
   });
 
+  it('prefers provider-reported model on usage event over status pin', () => {
+    expect(
+      extractModelNameFromEvents([
+        { kind: 'status', label: 'requesting', detail: 'claude-sonnet-4-5' },
+        { kind: 'usage', inputTokens: 100, outputTokens: 20, model: 'claude-sonnet-4-5-20250514' },
+      ]),
+    ).toBe('claude-sonnet-4-5-20250514');
+  });
+
   it('extracts model name from API-mode requesting and daemon initializing labels', () => {
     expect(
       extractModelNameFromEvents([
@@ -238,6 +247,101 @@ describe('maybeReportTeamverUsageAfterSave', () => {
         tokenCountSource: 'unknown',
       }),
     );
+  });
+
+  // Closes the loop on the 0-token regression (ATU-FO5LT28NQBB5):
+  //   anthropic.ts direct SDK → handlers.onUsage → message.events.push('usage')
+  //   → maybeReportTeamverUsageAfterSave → reportTeamverDesignUsage
+  // with provider_usage source and the real cache_creation/cache_read folded
+  // into inputTokens. See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+  it('records non-zero ledger usage when direct Anthropic SDK reports onUsage', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws-embed') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    // Simulate what ProjectView does after anthropic.ts onUsage fires.
+    // anthropic.ts folds prompt + cache_creation + cache_read into inputTokens
+    // before invoking the callback; the value mirrors that arithmetic.
+    const onUsageFromAnthropic = { inputTokens: 137 + 11 + 200, outputTokens: 42 };
+    const message = {
+      id: 'assistant-direct-sdk',
+      role: 'assistant' as const,
+      content: 'hi',
+      runStatus: 'succeeded' as const,
+      events: [
+        { kind: 'status' as const, label: 'model', detail: 'claude-sonnet-4-5' },
+        {
+          kind: 'usage' as const,
+          inputTokens: onUsageFromAnthropic.inputTokens,
+          outputTokens: onUsageFromAnthropic.outputTokens,
+        },
+      ],
+    };
+
+    await maybeReportTeamverUsageAfterSave('p-embed', message, { telemetryFinalized: true });
+
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith({
+      workspaceId: 'ws-embed',
+      modelName: 'claude-sonnet-4-5',
+      inputTokens: 348,
+      outputTokens: 42,
+      totalTokens: 390,
+      tokenCountSource: 'provider_usage',
+      projectId: 'p-embed',
+      runId: 'assistant-direct-sdk',
+      runStatus: 'succeeded',
+    });
+  });
+
+  // Loop 391 hardening: concurrent persistMessage retries for the same
+  // runId must not fan out into duplicate POSTs while the first is still
+  // awaiting the network. Without the inFlight guard a fast-clicking user
+  // (or a React StrictMode double-mount) could double-bill via the FE.
+  it('does not fan out duplicate POSTs when two concurrent calls share a runId', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws-embed') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    // Hold the report mock pending so we can race two callers through the
+    // function body before either resolves.
+    let releaseFirst: (value: string | null) => void = () => {};
+    const firstPending = new Promise<string | null>((resolve) => {
+      releaseFirst = resolve;
+    });
+    vi.mocked(reportUsage.reportTeamverDesignUsage)
+      .mockImplementationOnce(() => firstPending)
+      .mockImplementation(async () => null);
+
+    const message = {
+      id: 'assistant-race',
+      role: 'assistant' as const,
+      content: 'hi',
+      runStatus: 'succeeded' as const,
+      runId: 'run-race-1',
+      events: [{ kind: 'usage' as const, inputTokens: 50, outputTokens: 10 }],
+    };
+
+    const pendingA = maybeReportTeamverUsageAfterSave('p1', message, {
+      telemetryFinalized: true,
+    });
+    const pendingB = maybeReportTeamverUsageAfterSave('p1', message, {
+      telemetryFinalized: true,
+    });
+
+    // Let microtasks run so both calls reach the inFlight guard.
+    await Promise.resolve();
+    await Promise.resolve();
+    releaseFirst(null);
+    await Promise.all([pendingA, pendingB]);
+
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
+
+    // Subsequent calls with the same runId still dedupe via reportedRunIds.
+    await maybeReportTeamverUsageAfterSave('p1', message, { telemetryFinalized: true });
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
   });
 
   it('caps the in-memory dedupe set so long-lived embed tabs do not leak', async () => {

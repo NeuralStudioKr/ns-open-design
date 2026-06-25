@@ -18,6 +18,25 @@ function findUsage5xxMarker(spy: ReturnType<typeof vi.spyOn>, stage: string) {
   return null;
 }
 
+function findUsageMarker(
+  spy: ReturnType<typeof vi.spyOn>,
+  stage: string,
+): Record<string, unknown> | null {
+  for (const call of spy.mock.calls) {
+    const arg = call[0];
+    if (typeof arg !== 'string') continue;
+    try {
+      const parsed = JSON.parse(arg) as Record<string, unknown>;
+      if (parsed.stage === stage) {
+        return parsed;
+      }
+    } catch {
+      // ignore non-JSON warns
+    }
+  }
+  return null;
+}
+
 describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -225,5 +244,74 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
     const marker = findUsage5xxMarker(warnSpy, 'usage.events');
     expect(marker).not.toBeNull();
     expect((marker?.body as string).length).toBe(200);
+  });
+
+  // Loop 391 observability: a terminal run that lands with 0/0 tokens means
+  // the provider gave us nothing (or our extractor regressed). Emit a beacon
+  // BEFORE posting so the CloudWatch metric filter can alert before the
+  // billing dispute hits support.
+  it('emits zero_tokens beacon when terminal run has no usage data', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 204, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await reportTeamverUsageFromDaemon({
+      run: {
+        id: 'run-zero',
+        projectId: 'p-zero',
+        status: 'succeeded',
+        model: 'claude-sonnet-4-5',
+        teamverIdentity: { userId: 'u-zero', workspaceId: 'ws-zero' },
+        events: [
+          { event: 'agent', data: { type: 'status', label: 'model', model: 'claude-sonnet-4-5' } },
+        ],
+      },
+      reportedRuns: new Set(),
+    });
+
+    const marker = findUsageMarker(warnSpy, 'usage.zero_tokens');
+    expect(marker).not.toBeNull();
+    expect(marker).toMatchObject({
+      metric: 'teamver_usage_5xx',
+      stage: 'usage.zero_tokens',
+      runId: 'run-zero',
+      workspaceId: 'ws-zero',
+      modelName: 'claude-sonnet-4-5',
+      tokenCountSource: 'unknown',
+    });
+    // We still post the row even when 0/0 — BE creates the ledger entry so
+    // the billing finalize stub still has something to merge into.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT emit zero_tokens beacon when run has non-zero usage', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 204, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await reportTeamverUsageFromDaemon({
+      run: {
+        id: 'run-nonzero',
+        status: 'succeeded',
+        model: 'gpt-4o',
+        teamverIdentity: { userId: 'u', workspaceId: 'ws' },
+        events: [
+          {
+            event: 'usage',
+            data: { input_tokens: 100, output_tokens: 25, model: 'gpt-4o' },
+          },
+        ],
+      },
+      reportedRuns: new Set(),
+    });
+
+    const marker = findUsageMarker(warnSpy, 'usage.zero_tokens');
+    expect(marker).toBeNull();
   });
 });

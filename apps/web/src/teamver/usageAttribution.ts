@@ -75,6 +75,16 @@ export function extractModelNameFromEvents(events: AgentEvent[] | undefined): st
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
     if (!event) continue;
+    // Provider-reported model on the usage event is the most authoritative
+    // source for billing — upstream may route to a different snapshot than
+    // the user's Settings pin (e.g. claude-sonnet-4-5-20250514 vs alias).
+    if (event.kind === "usage" && typeof event.model === "string" && event.model.trim()) {
+      return event.model.trim();
+    }
+  }
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (!event) continue;
     if (
       event.kind === "status"
       && MODEL_STATUS_LABELS.has(event.label)

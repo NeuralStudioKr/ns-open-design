@@ -112,6 +112,270 @@ describe('API proxy routes', () => {
     expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
   });
 
+  // The following BYOK proxies used to drop upstream usage chunks on the
+  // floor, so embed BYOK rows landed input_tokens=0 / output_tokens=0 with
+  // billing_status='not_attempted'. The tests pin the daemon-side fix that
+  // extracts upstream usage and re-emits it as a `usage` SSE before `end`.
+  // See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+
+  it('forwards OpenAI upstream usage chunk as proxy usage SSE before end', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"choices":[{"delta":{"content":"hi"}}]}',
+        '',
+        'data: {"choices":[],"usage":{"prompt_tokens":33,"completion_tokens":4,"total_tokens":37}}',
+        '',
+        'data: [DONE]',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/openai/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'sk-openai',
+        model: 'gpt-test',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":33');
+    expect(text).toContain('"output_tokens":4');
+    expect(text).toContain('"model":"gpt-test"');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
+
+    const upstreamCall = fetchMock.mock.calls.find(
+      ([input]) => !String(input).startsWith(baseUrl),
+    );
+    expect(upstreamCall).toBeDefined();
+    const body = JSON.parse(String((upstreamCall![1] as RequestInit).body));
+    expect(body.stream_options).toEqual({ include_usage: true });
+  });
+
+  it('forwards Azure upstream usage chunk as proxy usage SSE before end', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        '',
+        'data: {"choices":[],"usage":{"prompt_tokens":51,"completion_tokens":8}}',
+        '',
+        'data: [DONE]',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/azure/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://resource.openai.azure.com',
+        apiKey: 'azure-key',
+        model: 'deployment-one',
+        apiVersion: '2024-10-21',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":51');
+    expect(text).toContain('"output_tokens":8');
+    expect(text).toContain('"model":"deployment-one"');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
+
+    const upstreamCall = fetchMock.mock.calls.find(
+      ([input]) => !String(input).startsWith(baseUrl),
+    );
+    expect(upstreamCall).toBeDefined();
+    const body = JSON.parse(String((upstreamCall![1] as RequestInit).body));
+    expect(body.stream_options).toEqual({ include_usage: true });
+  });
+
+  it('forwards Google Gemini usageMetadata as proxy usage SSE before end', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}',
+        '',
+        'data: {"candidates":[{"content":{"parts":[{"text":" there"}]}}],"usageMetadata":{"promptTokenCount":17,"candidatesTokenCount":3,"totalTokenCount":20}}',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/google/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        apiKey: 'google-key',
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":17');
+    expect(text).toContain('"output_tokens":3');
+    expect(text).toContain('"model":"gemini-2.0-flash"');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
+  });
+
+  it('forwards Ollama final-chunk eval counts as proxy usage SSE before end', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(
+        new Response(
+          new TextEncoder().encode(
+            [
+              '{"message":{"content":"hi"},"done":false}',
+              '{"message":{"content":""},"done":true,"prompt_eval_count":61,"eval_count":12}',
+              '',
+            ].join('\n'),
+          ),
+          { status: 200, headers: { 'content-type': 'application/x-ndjson' } },
+        ),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/ollama/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://ollama.example.com',
+        apiKey: 'ollama-key',
+        model: 'llama3',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":61');
+    expect(text).toContain('"output_tokens":12');
+    expect(text).toContain('"model":"llama3"');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
+  });
+
+  // Regression guards for loop 391: every error path that runs AFTER usage
+  // data has already been received from upstream must emit `event: usage`
+  // BEFORE `event: error` (api-proxy.ts short-circuits on error). Without
+  // this an aborted / mid-stream-failed run lands a 0-token ledger row even
+  // though the user was charged upstream.
+  it('emits usage before error when Anthropic upstream errors mid-stream', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'event: message_start',
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":210,"output_tokens":0}}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"part"}}',
+        '',
+        'event: error',
+        'data: {"type":"error","error":{"message":"overloaded"}}',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/anthropic/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.anthropic.com',
+        apiKey: 'sk-ant',
+        model: 'claude-test',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":210');
+    expect(text).toContain('event: error');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: error'));
+  });
+
+  it('emits usage before error when OpenAI upstream emits an error chunk after usage', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"choices":[{"delta":{"content":"hi"}}]}',
+        '',
+        'data: {"choices":[],"usage":{"prompt_tokens":77,"completion_tokens":4}}',
+        '',
+        'data: {"error":{"message":"server_error"}}',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/openai/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'sk-openai',
+        model: 'gpt-test',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":77');
+    expect(text).toContain('"output_tokens":4');
+    expect(text).toContain('event: error');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: error'));
+  });
+
+  it('emits usage before error when Gemini upstream emits an error chunk after usageMetadata', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"hi"}]}}],"usageMetadata":{"promptTokenCount":33,"candidatesTokenCount":2}}',
+        '',
+        'data: {"error":{"message":"upstream blew up"}}',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/google/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: 'goog-key',
+        model: 'gemini-test',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":33');
+    expect(text).toContain('event: error');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: error'));
+  });
+
   it.each([
     {
       provider: 'anthropic',
@@ -1090,6 +1354,53 @@ describe('API proxy routes', () => {
     );
   });
 
+  // SenseAudio + AIHubMix OpenAI-family chat go through the tool-loop runner
+  // in registerByokToolChatProxy. That runner used to swallow upstream usage
+  // chunks because the request never opted into stream_options.include_usage
+  // and runTurn had no usage extraction. This test pins both behaviors so a
+  // single-turn (text_end) BYOK chat lands non-zero tokens on the wire.
+  it('forwards SenseAudio tool-loop upstream usage chunk as proxy usage SSE', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}',
+        '',
+        'data: {"choices":[],"usage":{"prompt_tokens":77,"completion_tokens":9}}',
+        '',
+        'data: [DONE]',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/senseaudio/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.senseaudio.cn',
+        apiKey: 'sa-test',
+        projectId: 'test-project',
+        model: 'senseaudio-s2',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: usage');
+    expect(text).toContain('"input_tokens":77');
+    expect(text).toContain('"output_tokens":9');
+    expect(text).toContain('"model":"senseaudio-s2"');
+    expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
+
+    const upstreamCall = fetchMock.mock.calls.find(
+      ([input]) => !String(input).startsWith(baseUrl),
+    );
+    expect(upstreamCall).toBeDefined();
+    const body = JSON.parse(String((upstreamCall![1] as RequestInit).body));
+    expect(body.stream_options).toEqual({ include_usage: true });
+  });
+
   it('defaults SenseAudio base URL to api.senseaudio.cn when caller omits it', async () => {
     const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
       const url = String(input);
@@ -1201,10 +1512,9 @@ describe('API proxy routes', () => {
     const body = JSON.parse(String((upstreamCall![1] as FetchInit)?.body));
     expect(body.tool_choice).toBe('auto');
     expect(Array.isArray(body.tools)).toBe(true);
-    expect(body.tools[0]).toMatchObject({
-      type: 'function',
-      function: { name: 'generate_image' },
-    });
+    const toolNames = body.tools.map((t: { function?: { name?: string } }) => t?.function?.name);
+    expect(toolNames).toContain('generate_image');
+    expect(toolNames).toContain('web_fetch');
   });
 
   it('routes AIHubMix to /v1/chat/completions with tools + APP-Code header', async () => {
@@ -1239,10 +1549,9 @@ describe('API proxy routes', () => {
     expect(String(upstreamCall![0])).toBe('https://aihubmix.com/v1/chat/completions');
     const init = upstreamCall![1] as FetchInit;
     const body = JSON.parse(String(init?.body));
-    expect(body.tools[0]).toMatchObject({
-      type: 'function',
-      function: { name: 'generate_image' },
-    });
+    const toolNames = body.tools.map((t: { function?: { name?: string } }) => t?.function?.name);
+    expect(toolNames).toContain('generate_image');
+    expect(toolNames).toContain('web_fetch');
     const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers.Authorization ?? headers.authorization).toBe('Bearer ah-test');
     // APP-Code is injected only when the fixed code is configured; the test
