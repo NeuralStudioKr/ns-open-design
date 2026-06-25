@@ -212,6 +212,16 @@ if [[ "$VENDOR_CHECK_ONLY" == true ]]; then
   exit 0
 fi
 
+export DOCKER_CLIENT_TIMEOUT="${DOCKER_CLIENT_TIMEOUT:-300}"
+export COMPOSE_HTTP_TIMEOUT="${COMPOSE_HTTP_TIMEOUT:-300}"
+
+if [[ -x "$SCRIPT_DIR/scripts/prepull_docker_base_images.sh" ]]; then
+  bash "$SCRIPT_DIR/scripts/prepull_docker_base_images.sh" "$ENV_FILE" || {
+    echo "❌ Base image pre-pull failed (Docker Hub/ECR network). 재시도 또는 .env 에 NODE_BASE_IMAGE/PYTHON_BASE_IMAGE 확인." >&2
+    exit 1
+  }
+fi
+
 COMPOSE_EXTRA_ARGS=()
 if [[ "$USE_LOCAL_DB" == true ]]; then
   COMPOSE_EXTRA_ARGS+=(--profile local-db)

@@ -1,4 +1,19 @@
-FROM python:3.12-slim
+ARG PYTHON_IMAGE=docker.io/library/python:3.12-slim
+FROM ${PYTHON_IMAGE}
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+ARG NO_PROXY
+
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    http_proxy=${http_proxy} \
+    https_proxy=${https_proxy} \
+    no_proxy=${no_proxy} \
+    NO_PROXY=${NO_PROXY}
 
 WORKDIR /app
 
