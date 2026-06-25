@@ -9,6 +9,40 @@ export function isTerminalRunStatus(status: string | undefined): boolean {
   return status != null && TERMINAL_RUN_STATUSES.has(status);
 }
 
+function readUsageNumber(value: unknown, keys: string[]): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const candidate = record[key];
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/** Normalize provider usage payloads (nested usage, top-level BYOK SSE, stats).
+ *  Keep in sync with daemon `normalizeUsageTokenCounts` (run-analytics-observability.ts). */
+export function normalizeProviderUsagePayload(
+  payload: unknown,
+): { inputTokens: number; outputTokens: number } | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const usagePayload =
+    record.usage && typeof record.usage === "object"
+      ? record.usage
+      : record.modelUsage && typeof record.modelUsage === "object"
+        ? record.modelUsage
+        : record.stats && typeof record.stats === "object"
+          ? record.stats
+          : record;
+  const inputTokens = readUsageNumber(usagePayload, ["input_tokens", "inputTokens", "prompt_tokens"]);
+  const outputTokens = readUsageNumber(usagePayload, ["output_tokens", "outputTokens", "completion_tokens"]);
+  if (inputTokens === undefined && outputTokens === undefined) return null;
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+  };
+}
+
 export function extractLatestUsageFromEvents(events: AgentEvent[] | undefined) {
   if (!events?.length) return null;
   for (let i = events.length - 1; i >= 0; i--) {
@@ -17,6 +51,7 @@ export function extractLatestUsageFromEvents(events: AgentEvent[] | undefined) {
     if (event.kind === "usage") {
       const inputTokens = event.inputTokens ?? 0;
       const outputTokens = event.outputTokens ?? 0;
+      if (inputTokens + outputTokens <= 0) continue;
       return {
         inputTokens,
         outputTokens,

@@ -4,6 +4,7 @@ import {
   extractLatestUsageFromEvents,
   extractModelNameFromEvents,
   isTerminalRunStatus,
+  normalizeProviderUsagePayload,
   resolveTeamverUsageModelName,
   resolveTokenCountSource,
 } from '../src/teamver/usageAttribution';
@@ -51,11 +52,34 @@ describe('usageAttribution', () => {
     expect(resolveTokenCountSource(0, 0)).toBe('unknown');
     expect(
       extractLatestUsageFromEvents([{ kind: 'usage', inputTokens: 0, outputTokens: 0 }]),
+    ).toBeNull();
+  });
+
+  it('skips trailing zero-token usage events and keeps the latest non-zero counts', () => {
+    expect(
+      extractLatestUsageFromEvents([
+        { kind: 'usage', inputTokens: 42, outputTokens: 7 },
+        { kind: 'usage', inputTokens: 0, outputTokens: 0 },
+      ]),
     ).toEqual({
-      inputTokens: 0,
-      outputTokens: 0,
-      tokenCountSource: 'unknown',
+      inputTokens: 42,
+      outputTokens: 7,
+      tokenCountSource: 'provider_usage',
     });
+  });
+
+  it('normalizes provider usage payload shapes', () => {
+    expect(
+      normalizeProviderUsagePayload({
+        input_tokens: 120,
+        output_tokens: 45,
+      }),
+    ).toEqual({ inputTokens: 120, outputTokens: 45 });
+    expect(
+      normalizeProviderUsagePayload({
+        usage: { prompt_tokens: 11, completion_tokens: 4 },
+      }),
+    ).toEqual({ inputTokens: 11, outputTokens: 4 });
   });
 
   it('extracts model name from status events', () => {

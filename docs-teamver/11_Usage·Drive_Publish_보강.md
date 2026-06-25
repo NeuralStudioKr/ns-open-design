@@ -86,6 +86,8 @@ class UsageEventBody(BaseModel):
 
 **트리거 조건:** `saved.runStatus` ∈ `{succeeded, failed, canceled}` + `body.telemetryFinalized === true`
 
+**loop 373 (0-token 수정):** FE는 `message.events`의 non-zero `usage` + `telemetryFinalized`가 모두 필요. gap — (1) BYOK top-level `event: usage` SSE 미적재, (2) daemon top-level usage 미-persist, (3) Claude `result.stats`만 있을 때 null usage, (4) trailing 0-token usage가 scan/report 덮어씀, (5) auto-open 중복 시 `telemetryFinalized` 미저장.
+
 **Workspace 정렬:** embed workspace switch 후 daemon run·usage·publish가 동일 workspace를 쓰려면 FE가 `/api/runs`에 `X-Workspace-Id`(active store)를 보내고, nginx가 session-check default보다 우선 적용한다.
 
 ### 2.3 Drive (Phase 4 — v1 코드 ✅, staging E2E ☐)

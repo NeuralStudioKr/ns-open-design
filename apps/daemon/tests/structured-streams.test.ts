@@ -972,4 +972,27 @@ describe('structured agent stream fixtures', () => {
       durationMs: 1234,
     });
   });
+
+  it('emits Claude Code result usage tokens from stats when usage is absent', () => {
+    const events: unknown[] = [];
+    const handler = createClaudeStreamHandler((event: unknown) => events.push(event));
+    handler.feed(`${JSON.stringify({
+      type: 'result',
+      status: 'success',
+      stats: { input_tokens: 120, output_tokens: 45, cached: 0, duration_ms: 250 },
+    })}\n`);
+    handler.flush();
+
+    expect(events).toContainEqual({
+      type: 'usage',
+      usage: {
+        input_tokens: 120,
+        output_tokens: 45,
+        cache_read_input_tokens: 0,
+      },
+      costUsd: null,
+      durationMs: 250,
+      stopReason: null,
+    });
+  });
 });

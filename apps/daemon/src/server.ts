@@ -276,6 +276,7 @@ import { decideSafeRunRetry } from './run-retry-policy.js';
 import {
   amrUserIdForRunAnalytics,
   hasExplicitRequestedModelForAnalytics,
+  normalizeUsageTokenCounts,
   scanRunEventsForUsageAnalytics,
   summarizeRunTimingAnalytics,
 } from './run-analytics-observability.js';
@@ -2803,6 +2804,15 @@ function runSseEventToPersistedAgentEvent(event, data) {
       ...(message ? { detail: message } : {}),
     };
   }
+  if (event === 'usage') {
+    const normalized = normalizeUsageTokenCounts(data);
+    if (!normalized) return null;
+    return {
+      kind: 'usage',
+      inputTokens: normalized.input_tokens,
+      outputTokens: normalized.output_tokens,
+    };
+  }
   if (event !== 'agent') return null;
   return daemonAgentPayloadToPersistedAgentEvent(data);
 }
@@ -2867,11 +2877,12 @@ function daemonAgentPayloadToPersistedAgentEvent(data) {
     };
   }
   if (type === 'usage') {
-    const usage = data.usage && typeof data.usage === 'object' ? data.usage : {};
+    const normalized = normalizeUsageTokenCounts(data);
+    if (!normalized) return null;
     return {
       kind: 'usage',
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
+      inputTokens: normalized.input_tokens,
+      outputTokens: normalized.output_tokens,
       ...(typeof data.costUsd === 'number' ? { costUsd: data.costUsd } : {}),
       ...(typeof data.durationMs === 'number' ? { durationMs: data.durationMs } : {}),
     };

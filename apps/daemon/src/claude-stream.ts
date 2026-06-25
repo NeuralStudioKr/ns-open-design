@@ -487,11 +487,30 @@ export function createClaudeStreamHandler(
     }
 
     if (obj.type === 'result') {
+      let usage: Record<string, unknown> | null =
+        isRecord(obj.usage) ? obj.usage : null;
+      if (!usage && isRecord(obj.stats)) {
+        usage = {};
+        if (typeof obj.stats.input_tokens === 'number') {
+          usage.input_tokens = obj.stats.input_tokens;
+        }
+        if (typeof obj.stats.output_tokens === 'number') {
+          usage.output_tokens = obj.stats.output_tokens;
+        }
+        if (typeof obj.stats.cached === 'number') {
+          usage.cache_read_input_tokens = obj.stats.cached;
+        }
+      }
       onEvent({
         type: 'usage',
-        usage: obj.usage ?? null,
+        usage,
         costUsd: obj.total_cost_usd ?? null,
-        durationMs: obj.duration_ms ?? null,
+        durationMs:
+          typeof obj.duration_ms === 'number'
+            ? obj.duration_ms
+            : isRecord(obj.stats) && typeof obj.stats.duration_ms === 'number'
+              ? obj.stats.duration_ms
+              : null,
         stopReason: obj.stop_reason ?? null,
       });
       return;

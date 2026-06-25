@@ -1,9 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  normalizeUsageTokenCounts,
   scanRunEventsForUsageAnalytics,
   summarizeRunTimingAnalytics,
 } from '../src/run-analytics-observability.js';
+
+describe('normalizeUsageTokenCounts', () => {
+  it('reads nested usage, top-level BYOK SSE, and stats payloads', () => {
+    expect(
+      normalizeUsageTokenCounts({
+        usage: { input_tokens: 10, output_tokens: 4 },
+      }),
+    ).toEqual({ input_tokens: 10, output_tokens: 4 });
+    expect(
+      normalizeUsageTokenCounts({
+        input_tokens: 120,
+        output_tokens: 45,
+      }),
+    ).toEqual({ input_tokens: 120, output_tokens: 45 });
+    expect(
+      normalizeUsageTokenCounts({
+        stats: { input_tokens: 9, output_tokens: 3 },
+      }),
+    ).toEqual({ input_tokens: 9, output_tokens: 3 });
+  });
+});
 
 describe('scanRunEventsForUsageAnalytics', () => {
   it('extracts provider usage, cache tokens, and estimated context tokens', () => {

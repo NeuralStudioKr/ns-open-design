@@ -756,6 +756,42 @@ describe('streamViaDaemon', () => {
     expect(handlers.onDone).toHaveBeenCalledWith('');
   });
 
+  it('forwards BYOK top-level usage SSE events to onAgentEvent', async () => {
+    const handlers = createDaemonHandlers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce(jsonResponse({ runId: 'run-1' }))
+        .mockResolvedValueOnce(
+          sseResponse(
+            [
+              'event: usage',
+              'data: {"input_tokens":120,"output_tokens":45,"model":"claude-sonnet-4-5"}',
+              '',
+              'event: end',
+              'data: {"code":0,"status":"succeeded"}',
+              '',
+              '',
+            ].join('\n'),
+          ),
+        ),
+    );
+
+    await streamViaDaemon({
+      agentId: 'mock',
+      history: [{ id: '1', role: 'user', content: 'hello' }],
+      systemPrompt: '',
+      signal: new AbortController().signal,
+      handlers,
+    });
+
+    expect(handlers.onAgentEvent).toHaveBeenCalledWith({
+      kind: 'usage',
+      inputTokens: 120,
+      outputTokens: 45,
+    });
+  });
+
   it('continues normal stdout and end handling around comments', async () => {
     const handlers = createDaemonHandlers();
     vi.stubGlobal(

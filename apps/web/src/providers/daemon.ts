@@ -56,6 +56,7 @@ import {
   type PersistedArtifactFileRef,
 } from '../artifacts/strip';
 import { trackRunProgress, trackRunStart, trackRunTerminal } from '../observability/stuck-run';
+import { normalizeProviderUsagePayload } from '../teamver/usageAttribution';
 
 const MAX_TRANSCRIPT_MESSAGE_CHARS = 12_000;
 const LARGE_TOOL_RESULT_CHARS = 8_000;
@@ -1018,6 +1019,18 @@ async function consumeDaemonRun({
             continue;
           }
 
+          if (event.event === 'usage') {
+            const normalized = normalizeProviderUsagePayload(event.data);
+            if (normalized) {
+              handlers.onAgentEvent({
+                kind: 'usage',
+                inputTokens: normalized.inputTokens,
+                outputTokens: normalized.outputTokens,
+              });
+            }
+            continue;
+          }
+
           if (event.event === 'agent') {
             if (event.data.type === 'tool_input_delta') {
               if (
@@ -1275,11 +1288,12 @@ function translateAgentEvent(data: DaemonAgentPayload): AgentEvent | null {
     };
   }
   if (t === 'usage') {
-    const usage = (data.usage ?? {}) as Record<string, number>;
+    const normalized = normalizeProviderUsagePayload(data);
+    if (!normalized) return null;
     return {
       kind: 'usage',
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
+      inputTokens: normalized.inputTokens,
+      outputTokens: normalized.outputTokens,
       costUsd: typeof data.costUsd === 'number' ? data.costUsd : undefined,
       durationMs: typeof data.durationMs === 'number' ? data.durationMs : undefined,
     };

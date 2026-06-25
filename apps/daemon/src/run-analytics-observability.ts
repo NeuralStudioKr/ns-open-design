@@ -103,6 +103,30 @@ function firstNumber(
   return undefined;
 }
 
+/** Normalize provider usage payloads (nested usage, top-level BYOK SSE, stats).
+ *  Keep in sync with web `normalizeProviderUsagePayload` (usageAttribution.ts). */
+export function normalizeUsageTokenCounts(
+  payload: unknown,
+): { input_tokens: number; output_tokens: number } | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as Record<string, unknown>;
+  const usagePayload =
+    record.usage && typeof record.usage === 'object'
+      ? (record.usage as Record<string, unknown>)
+      : record.modelUsage && typeof record.modelUsage === 'object'
+        ? (record.modelUsage as Record<string, unknown>)
+        : record.stats && typeof record.stats === 'object'
+          ? (record.stats as Record<string, unknown>)
+          : record;
+  const inputTokens = firstNumber(usagePayload, ['input_tokens', 'inputTokens', 'prompt_tokens']);
+  const outputTokens = firstNumber(usagePayload, ['output_tokens', 'outputTokens', 'completion_tokens']);
+  if (inputTokens === undefined && outputTokens === undefined) return null;
+  return {
+    input_tokens: inputTokens ?? 0,
+    output_tokens: outputTokens ?? 0,
+  };
+}
+
 function durationBetween(
   start: number | undefined,
   end: number | undefined,

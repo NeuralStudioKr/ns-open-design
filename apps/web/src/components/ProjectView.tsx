@@ -3375,38 +3375,44 @@ export function ProjectView({
 
       const scheduleStreamRunHtmlAutoOpen = (fullText: string, delayMs = 0) => {
         const execute = () => {
-          if (htmlAutoOpenClaimedRef.current.has(assistantId)) return;
-          htmlAutoOpenClaimedRef.current.add(assistantId);
+          const alreadyClaimed = htmlAutoOpenClaimedRef.current.has(assistantId);
+          if (!alreadyClaimed) {
+            htmlAutoOpenClaimedRef.current.add(assistantId);
+          }
           void (async () => {
-            let nextFiles = await refreshProjectFiles();
-            const finalText = streamedText || fullText;
-            const artifactToPersist = parsedArtifact?.html
-              ? parsedArtifact
-              : artifactFromStandaloneHtml(finalText);
-            if (artifactToPersist?.html) {
-              const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-              const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
-                artifactHtml: artifactToPersist.html,
-                producedFiles: producedBeforeFallback,
-                readProjectHtml,
-                allowAnyHtmlWrite: assistantAgentId === 'claude',
-              });
-              if (sameTurnHtmlWrite) {
-                savedArtifactRef.current = sameTurnHtmlWrite.name;
-                if (runIsVisible()) requestOpenFile(sameTurnHtmlWrite.name);
-              } else {
-                await persistArtifact(artifactToPersist, nextFiles, finalText);
-                nextFiles = await refreshProjectFiles();
+            if (!alreadyClaimed) {
+              let nextFiles = await refreshProjectFiles();
+              const finalText = streamedText || fullText;
+              const artifactToPersist = parsedArtifact?.html
+                ? parsedArtifact
+                : artifactFromStandaloneHtml(finalText);
+              if (artifactToPersist?.html) {
+                const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+                const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
+                  artifactHtml: artifactToPersist.html,
+                  producedFiles: producedBeforeFallback,
+                  readProjectHtml,
+                  allowAnyHtmlWrite: assistantAgentId === 'claude',
+                });
+                if (sameTurnHtmlWrite) {
+                  savedArtifactRef.current = sameTurnHtmlWrite.name;
+                  if (runIsVisible()) requestOpenFile(sameTurnHtmlWrite.name);
+                } else {
+                  await persistArtifact(artifactToPersist, nextFiles, finalText);
+                  nextFiles = await refreshProjectFiles();
+                }
               }
+              const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+              const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
+              if (producedHtmlToOpen && runIsVisible()) requestOpenFile(producedHtmlToOpen);
+              updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
             }
-            const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-            const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
-            if (producedHtmlToOpen && runIsVisible()) requestOpenFile(producedHtmlToOpen);
-            updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
             void saveMessage(project.id, runConversationId, latestAssistantMsg, {
               telemetryFinalized: true,
             });
-            await auditDesignSystemWorkspaceAfterRun(assistantId);
+            if (!alreadyClaimed) {
+              await auditDesignSystemWorkspaceAfterRun(assistantId);
+            }
           })();
         };
         if (delayMs > 0) {
