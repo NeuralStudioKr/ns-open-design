@@ -95,6 +95,8 @@ if command -v docker >/dev/null 2>&1; then
       ok "litestream container running ($LITESTREAM_CONTAINER)"
       if docker logs "$LITESTREAM_CONTAINER" --tail 200 2>&1 | grep -q 'attempt to write a readonly database'; then
         nope "litestream logs: readonly database — compose volume teamver_od_data:/data must be RW (not :ro)"
+      elif docker logs "$LITESTREAM_CONTAINER" --tail 200 2>&1 | grep -qE 'GetBucketLocation|AccessDenied'; then
+        nope "litestream logs: S3 IAM — role needs s3:GetBucketLocation + litestream/* (doc 18 §3.1)"
       fi
       container_interval="$(docker exec "$LITESTREAM_CONTAINER" sh -lc 'printf "%s" "${LITESTREAM_SYNC_INTERVAL:-}"' 2>/dev/null || true)"
       if [[ -n "$container_interval" ]]; then

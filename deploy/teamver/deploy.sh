@@ -264,8 +264,8 @@ wait_for_litestream_running() {
         echo "$litestream_logs" | tail -8
         return 1
       fi
-      if echo "$litestream_logs" | tail -8 | grep -q 'AccessDenied'; then
-        echo "❌ Litestream S3 AccessDenied — instance profile litestream/* 또는 IMDS hop limit 확인"
+      if echo "$litestream_logs" | tail -8 | grep -qE 'AccessDenied|GetBucketLocation'; then
+        echo "❌ Litestream S3 IAM — role에 s3:GetBucketLocation + litestream/* 필요 (doc 18 §3.1 · terraform s3.tf apply)"
         echo "$litestream_logs" | tail -8
         return 1
       fi

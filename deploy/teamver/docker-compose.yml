@@ -96,6 +96,10 @@ services:
       LITESTREAM_REGION: ${LITESTREAM_REGION:-ap-northeast-2}
       LITESTREAM_SYNC_INTERVAL: ${LITESTREAM_SYNC_INTERVAL:-3s}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      # Staging: OD_S3_* static key 가 있으면 Litestream도 사용 (instance profile IAM 패치 전 임시).
+      # Production: 비워 두면 instance profile(IMDS)만 사용.
+      AWS_ACCESS_KEY_ID: ${OD_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${OD_S3_SECRET_ACCESS_KEY:-}
     volumes:
       # RW required — Litestream creates _litestream_seq in app.sqlite (readonly → sync error).
       - teamver_od_data:/data
