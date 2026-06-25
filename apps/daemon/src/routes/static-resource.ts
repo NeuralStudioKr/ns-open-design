@@ -36,6 +36,30 @@ export interface RegisterStaticResourceRoutesDeps extends RouteDeps<'http' | 'pa
   };
 }
 
+const DESIGN_TEMPLATE_LIST_MODES = new Set([
+  'prototype',
+  'deck',
+  'template',
+  'image',
+  'video',
+  'audio',
+]);
+
+function parseDesignTemplateModeFilter(raw: unknown): Set<string> | null {
+  const values = Array.isArray(raw) ? raw : [raw];
+  const modes = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    for (const part of value.split(',')) {
+      const mode = part.trim().toLowerCase();
+      if (DESIGN_TEMPLATE_LIST_MODES.has(mode)) {
+        modes.add(mode);
+      }
+    }
+  }
+  return modes.size > 0 ? modes : null;
+}
+
 export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticResourceRoutesDeps) {
   const {
     RUNTIME_DATA_DIR,
@@ -161,9 +185,13 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   // (so the web client can reuse SkillSummary types) but rooted at
   // DESIGN_TEMPLATE_ROOTS so the listing stays focused on template-style
   // entries without bleeding functional skills into the EntryView gallery.
-  app.get('/api/design-templates', async (_req, res) => {
+  app.get('/api/design-templates', async (req, res) => {
     try {
-      const templates = await listAllDesignTemplates();
+      const modeFilter = parseDesignTemplateModeFilter(req.query.mode);
+      const templates = (await listAllDesignTemplates()).filter((template) => {
+        if (!modeFilter) return true;
+        return modeFilter.has(template.mode);
+      });
       res.json({
         designTemplates: templates.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,

@@ -73,6 +73,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     const chatComposer = readSource('src/components/ChatComposer.tsx');
     const plusMenu = readSource('src/components/ComposerPlusMenu.tsx');
     const nextStepActions = readSource('src/components/NextStepActions.tsx');
+    const app = readSource('src/App.tsx');
 
     expect(homeHero).toContain('homeHeroChipsForGroup');
     expect(homeHero).toContain('hideComposerIntegrations');
@@ -90,6 +91,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(chatComposer).toContain('isTeamverEmbedDriveImportAllowed');
     expect(chatComposer).toContain('teamverDriveImportAllowed');
     expect(chatComposer).toContain('importTeamverDriveAssets');
+    expect(app).toContain("fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck' } : undefined)");
     expect(chatComposer).toContain('embedAttachBlockReason');
     expect(chatComposer).toContain("intent === 'create-slides'");
     expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');

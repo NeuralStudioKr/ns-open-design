@@ -450,6 +450,10 @@ function AppInner() {
   // audio templates) — sourced from /api/design-templates and shown in the
   // EntryView Templates tab. See specs/current/skills-and-design-templates.md.
   const [designTemplates, setDesignTemplates] = useState<SkillSummary[]>([]);
+  const fetchDesignTemplatesForCurrentBranding = useCallback(
+    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck' } : undefined),
+    [slideOnlyMvp],
+  );
   const [designSystems, setDesignSystems] = useState<DesignSystemSummary[]>([]);
   const [pendingDesignSystemRevisionJobs, setPendingDesignSystemRevisionJobs] = useState<
     Record<string, DesignSystemGenerationJob>
@@ -929,7 +933,7 @@ function AppInner() {
         maybeClearLoading();
       });
 
-      void fetchDesignTemplates().then((list) => {
+      void fetchDesignTemplatesForCurrentBranding().then((list) => {
         if (cancelled) return;
         setDesignTemplates(list);
         templatesReady = true;
@@ -1088,6 +1092,7 @@ function AppInner() {
   }, [
     beginAgentStreamRequest,
     beginProjectListRequest,
+    fetchDesignTemplatesForCurrentBranding,
     isCurrentAgentStreamRequest,
     reconcileFetchedProjects,
   ]);
@@ -2464,7 +2469,7 @@ function AppInner() {
   const handleSkillsChanged = useCallback(
     (affectedSkillId?: string) => {
       void fetchSkills().then((list) => setSkills(list));
-      void fetchDesignTemplates().then((list) => setDesignTemplates(list));
+      void fetchDesignTemplatesForCurrentBranding().then((list) => setDesignTemplates(list));
       iframeKeepAlivePool.evictMatching(
         (entry) => {
           const proj = projectsRef.current.find((p) => p.id === entry.projectId);
@@ -2475,7 +2480,7 @@ function AppInner() {
         { includeActive: true },
       );
     },
-    [iframeKeepAlivePool],
+    [fetchDesignTemplatesForCurrentBranding, iframeKeepAlivePool],
   );
 
   const handleDesignSystemsChanged = useCallback(

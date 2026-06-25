@@ -15,6 +15,7 @@ describe('static resource mutation routes', () => {
   let baseUrl: string;
   let tempRoot: string;
   let catalogReadCount = 0;
+  let designTemplatesCatalog: Array<Record<string, unknown>> = [];
 
   beforeAll(
     () =>
@@ -63,7 +64,7 @@ describe('static resource mutation routes', () => {
               catalogReadCount += 1;
               return [];
             },
-            listAllDesignTemplates: async () => [],
+            listAllDesignTemplates: async () => designTemplatesCatalog as never,
             listAllSkillLikeEntries: async () => [],
             mimeFor: () => 'application/octet-stream',
           },
@@ -86,6 +87,10 @@ describe('static resource mutation routes', () => {
         });
       }),
   );
+
+  afterEach(() => {
+    designTemplatesCatalog = [];
+  });
 
   it.each([
     ['POST', '/api/skills/install'],
@@ -150,6 +155,42 @@ describe('static resource mutation routes', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST' });
     expect(catalogReadCount).toBe(0);
+  });
+
+  it('filters design templates by mode before serializing the listing', async () => {
+    designTemplatesCatalog = [
+      {
+        id: 'deck-template',
+        name: 'Deck',
+        description: 'Slides',
+        mode: 'deck',
+        category: 'deck',
+        source: 'built-in',
+        body: '# deck body omitted from list',
+        dir: path.join(tempRoot, 'design-templates', 'deck-template'),
+      },
+      {
+        id: 'video-template',
+        name: 'Video',
+        description: 'Video',
+        mode: 'video',
+        category: 'video-generation',
+        source: 'built-in',
+        body: '# video body omitted from list',
+        dir: path.join(tempRoot, 'design-templates', 'video-template'),
+      },
+    ];
+
+    const res = await fetch(`${baseUrl}/api/design-templates?mode=deck`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      designTemplates: Array<{ id: string; mode: string; body?: string; dir?: string; hasBody?: boolean }>;
+    };
+    expect(body.designTemplates.map((template) => template.id)).toEqual(['deck-template']);
+    expect(body.designTemplates[0]).toMatchObject({ mode: 'deck', hasBody: true });
+    expect(body.designTemplates[0].body).toBeUndefined();
+    expect(body.designTemplates[0].dir).toBeUndefined();
   });
 });
 

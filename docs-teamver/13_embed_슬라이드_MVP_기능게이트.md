@@ -36,7 +36,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | S-2 | `HomeHero` shortcuts (⋯) | Create plugin, From Figma | 동일 | ✅ |
 | S-3 | `NewProjectPanel` tabs | Media (image/video/audio), Prototype, Live artifact, Other | `slideOnlyMvp` (`visibleNewProjectTabs`) | ✅ |
 | S-4 | `EntryShell` openNewProject | 기본 탭 `prototype` → embed `deck` | `defaultNewProjectTab` | ✅ |
-| S-5 | `HomeView` 하단 community gallery | embed: **「커뮤니티」** + deck 플러그인만 + **1차 필터(Prototype·Video…) 숨김** + deck **서브카테고리** 유지 (`shouldHideCommunityPrimaryFacets` / `lockedFacetCategory`); standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` + `communityGalleryFacetUi` | ✅ loop 152+ |
+| S-5 | `HomeView` 하단 community gallery / Templates | embed: **「커뮤니티」** + deck 플러그인만 + **1차 필터(Prototype·Video…) 숨김** + deck **서브카테고리** 유지. Design templates는 FE 필터뿐 아니라 daemon listing도 `/api/design-templates?mode=deck`으로 축소; standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` + `communityGalleryFacetUi` + daemon `mode=deck` | ✅ loop 152+ · loop 385 |
 
 ### 2.2 P0 — Composer / + 메뉴 / 슬래시 (전수)
 

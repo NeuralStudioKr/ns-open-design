@@ -13,6 +13,7 @@ import {
   fetchAppVersionInfo,
   fetchConnectorDetail,
   fetchConnectorDiscovery,
+  fetchDesignTemplates,
   fetchPluginExampleHtml,
   fetchPluginPreviewHtml,
   fetchProjectDesignSystemPackageAudit,
@@ -127,6 +128,39 @@ describe('fetchAppVersionInfo', () => {
     );
 
     await expect(fetchAppVersionInfo()).resolves.toBeNull();
+  });
+});
+
+describe('fetchDesignTemplates', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('requests the unfiltered design-template catalog by default', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ designTemplates: [] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchDesignTemplates()).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/design-templates');
+  });
+
+  it('passes a server-side mode filter when requested', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ designTemplates: [{ id: 'deck-1', mode: 'deck' }] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchDesignTemplates({ mode: 'deck' })).resolves.toEqual([
+      { id: 'deck-1', mode: 'deck' },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/design-templates?mode=deck');
   });
 });
 

@@ -222,9 +222,19 @@ export async function fetchSkills(): Promise<SkillSummary[]> {
 // fetched from a separate registry root so the EntryView Templates tab
 // and Settings → Skills surface stay decoupled. See
 // specs/current/skills-and-design-templates.md.
-export async function fetchDesignTemplates(): Promise<SkillSummary[]> {
+export async function fetchDesignTemplates(options?: {
+  mode?: SkillSummary["mode"] | readonly SkillSummary["mode"][];
+}): Promise<SkillSummary[]> {
   try {
-    const resp = await fetch('/api/design-templates');
+    const modes = Array.isArray(options?.mode)
+      ? options.mode
+      : options?.mode
+        ? [options.mode]
+        : [];
+    const query = modes.length > 0
+      ? `?mode=${encodeURIComponent(modes.join(","))}`
+      : "";
+    const resp = await fetch(`/api/design-templates${query}`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { designTemplates: SkillSummary[] };
     return json.designTemplates ?? [];
