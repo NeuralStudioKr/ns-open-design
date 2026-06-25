@@ -1,7 +1,11 @@
 import { Icon } from "./Icon";
 import { useTeamverT } from "../teamver/branding/useTeamverT";
 import { resolveTeamverLoginUrl, resolveTeamverMainOrigin } from "../teamver/designApiBase";
-import { prepareDesignAuthSessionReload } from "../teamver/designBffClient";
+import {
+  isDesignAuthRefreshDeclined,
+  prepareDesignAuthSessionReload,
+} from "../teamver/designBffClient";
+import { hasProbableTeamverAuthCookie } from "../teamver/teamverAuthCookieHints";
 import { TeamverAvatarGlyph } from "../teamver/components/TeamverAvatarGlyph";
 import { TeamverWorkspaceSwitcher } from "../teamver/components/TeamverWorkspaceSwitcher";
 import { useTeamverEmbed } from "../teamver/useTeamverEmbed";
@@ -28,6 +32,11 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
   // contact (`error: "session_unreachable"`) — surface a retry chip without
   // collapsing the bar so workspace switch + account links stay reachable.
   const sessionUnreachable = embed.error === "session_unreachable";
+  const sessionNeedsRecovery =
+    sessionUnreachable ||
+    (!embed.authenticated &&
+      embed.error === "not_authenticated" &&
+      (hasProbableTeamverAuthCookie() || isDesignAuthRefreshDeclined()));
   // Explicit user retry — clear sticky 400/401 refresh-decline markers so a
   // genuinely transient failure can recover. Auto-refresh on visibility/focus
   // intentionally preserves the decline guard (see useTeamverEmbed).
@@ -113,7 +122,7 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
       >
         {t("teamver.embed.signIn")}
       </a>
-      {sessionUnreachable ? (
+      {sessionNeedsRecovery ? (
         <button
           type="button"
           className="teamver-embed-bar__retry"

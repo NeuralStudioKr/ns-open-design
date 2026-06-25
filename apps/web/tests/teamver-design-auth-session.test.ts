@@ -323,4 +323,47 @@ describe("fetchDesignAuthSession", () => {
     await fetchDesignAuthSession({ force: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("resetDesignAuthBareRefreshAttempt re-enables HttpOnly-only refresh without clearing 400 decline", async () => {
+    await forceBareAuthCookieHints();
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      fetchDesignAuthSession,
+      isDesignAuthRefreshDeclined,
+      resetDesignAuthBareRefreshAttempt,
+    } = await import("../src/teamver/designBffClient");
+
+    await fetchDesignAuthSession();
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resetDesignAuthBareRefreshAttempt();
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    await fetchDesignAuthSession({ force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resetDesignAuthBareRefreshAttempt allows another bare refresh when not declined", async () => {
+    await forceBareAuthCookieHints();
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 502 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession, resetDesignAuthBareRefreshAttempt } = await import(
+      "../src/teamver/designBffClient"
+    );
+
+    await fetchDesignAuthSession();
+    await fetchDesignAuthSession();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resetDesignAuthBareRefreshAttempt();
+    await fetchDesignAuthSession({ force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

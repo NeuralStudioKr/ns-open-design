@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamverSessionBanner } from '../../src/components/TeamverSessionBanner';
 import { I18nProvider } from '../../src/i18n';
+import * as designBffClient from '../../src/teamver/designBffClient';
+import * as teamverAuthCookieHints from '../../src/teamver/teamverAuthCookieHints';
 
 const embedState = vi.hoisted(() => ({
   loading: false,
@@ -32,6 +34,11 @@ vi.mock('../../src/teamver/designApiBase', () => ({
 
 vi.mock('../../src/teamver/designBffClient', () => ({
   prepareDesignAuthSessionReload: vi.fn(),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
+}));
+
+vi.mock('../../src/teamver/teamverAuthCookieHints', () => ({
+  hasProbableTeamverAuthCookie: vi.fn(() => false),
 }));
 
 function renderBanner() {
@@ -56,6 +63,8 @@ describe('TeamverSessionBanner', () => {
     embedState.activeWorkspaceId = null;
     embedState.error = null;
     embedState.refresh.mockClear();
+    vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
+    vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
   });
 
   it('renders nothing outside embed mode', () => {
@@ -150,5 +159,16 @@ describe('TeamverSessionBanner', () => {
       force: true,
       resetRefreshState: true,
     });
+  });
+
+  it('renders a retry button when not_authenticated but a refresh-decline or cookie hint exists', () => {
+    embedState.authenticated = false;
+    embedState.error = 'not_authenticated';
+    vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(true);
+
+    renderBanner();
+
+    expect(screen.getByRole('link', { name: 'Teamver 로그인' })).toBeTruthy();
+    expect(screen.getByTestId('teamver-embed-session-retry')).toBeTruthy();
   });
 });

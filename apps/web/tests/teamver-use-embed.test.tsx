@@ -34,6 +34,8 @@ vi.mock("../src/teamver/designBffClient", () => ({
   prepareDesignAuthSessionReload: vi.fn(),
   invalidateDesignAuthSessionCache: vi.fn(),
   resetDesignAuthRefreshState: vi.fn(),
+  resetDesignAuthBareRefreshAttempt: vi.fn(),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
 }));
 
 vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
@@ -49,6 +51,8 @@ describe("useTeamverEmbed", () => {
     vi.mocked(designBffClient.getDesignBffClient).mockReset();
     vi.mocked(designBffClient.invalidateDesignAuthSessionCache).mockClear();
     vi.mocked(designBffClient.resetDesignAuthRefreshState).mockClear();
+    vi.mocked(designBffClient.resetDesignAuthBareRefreshAttempt).mockClear();
+    vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
     vi.mocked(designBffClient.prepareDesignAuthSessionReload).mockClear();
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
     vi.unstubAllGlobals();
@@ -213,6 +217,7 @@ describe("useTeamverEmbed", () => {
 
     expect(designBffClient.invalidateDesignAuthSessionCache).toHaveBeenCalledTimes(1);
     expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
+    expect(designBffClient.resetDesignAuthBareRefreshAttempt).not.toHaveBeenCalled();
     expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
       force: true,
       resetRefreshState: false,
@@ -251,5 +256,51 @@ describe("useTeamverEmbed", () => {
       force: true,
       resetRefreshState: false,
     });
+  });
+
+  it("resets bare refresh attempt on focus when unauthenticated with a visible cookie hint", async () => {
+    vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledTimes(1);
+    });
+
+    vi.mocked(designBffClient.resetDesignAuthBareRefreshAttempt).mockClear();
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(designBffClient.resetDesignAuthBareRefreshAttempt).toHaveBeenCalledTimes(1);
+    expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
+  });
+
+  it("resets full refresh state on bfcache pageshow restore", async () => {
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledTimes(1);
+    });
+
+    vi.mocked(designBffClient.resetDesignAuthRefreshState).mockClear();
+
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(designBffClient.resetDesignAuthRefreshState).toHaveBeenCalledTimes(1);
   });
 });

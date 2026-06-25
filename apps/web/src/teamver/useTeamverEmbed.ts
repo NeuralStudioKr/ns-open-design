@@ -5,7 +5,9 @@ import {
   fetchDesignAuthSession,
   getDesignBffClient,
   invalidateDesignAuthSessionCache,
+  isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
+  resetDesignAuthBareRefreshAttempt,
   resetDesignAuthRefreshState,
   type DesignAuthSessionUser,
 } from "./designBffClient";
@@ -94,12 +96,21 @@ function hadEmbedSession(): boolean {
   return isTeamverEmbedSessionAuthenticated();
 }
 
+function readAuthCookieHint(): boolean {
+  return hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated();
+}
+
 const FOCUS_SESSION_REFRESH_MS = 500;
 
 export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const [state, setState] = useState(INITIAL);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // Track visible cookie / embed-session hint so focus can detect cross-tab login.
+  const lastCookieHintRef = useRef<boolean>(
+    isTeamverEmbedMode() ? readAuthCookieHint() : false,
+  );
 
   const refresh = useCallback(async (options?: { force?: boolean; resetRefreshState?: boolean }) => {
     if (!enabled || !isTeamverEmbedMode()) {
@@ -129,6 +140,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       if (!session.authenticated) {
         await clearTeamverEmbedSessionState();
+        lastCookieHintRef.current = readAuthCookieHint();
         setState({
           ...INITIAL,
           loading: false,
@@ -162,7 +174,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       setState({
         loading: false,
-        authenticated: Boolean(session.authenticated),
+        authenticated: true,
         userLabel: readUserLabel(session.user),
         userId,
         userImageUrl: readUserImageUrl(session.user),
@@ -171,11 +183,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         designAppEnabled,
         designDisabledReason,
         workspaces,
-        error: session.authenticated ? null : "not_authenticated",
+        error: null,
       });
     } catch (err) {
       if (isSessionExpiredError(err)) {
         await clearTeamverEmbedSessionState();
+        lastCookieHintRef.current = readAuthCookieHint();
+        setState((prev) => ({ ...prev, loading: false }));
         prepareDesignAuthSessionReload();
         redirectToTeamverLogin();
         return;
@@ -225,41 +239,50 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     void refresh();
   }, [refresh]);
 
-  // Track the cookie-hint state at the time of the last visibility-change
-  // refresh so we only reset the sticky refresh-decline markers when an auth
-  // cookie newly *appeared* (likely sign-in in another tab) — not on every
-  // focus, which previously spammed `/teamver-bff/auth/refresh` with 400 on
-  // each tab switch for accounts whose JWT lookup fails server-side.
-  const lastCookieHintRef = useRef<boolean>(
-    isTeamverEmbedMode()
-      ? hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()
-      : false,
-  );
-
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
-    const onReturn = () => {
-      const cookieHintNow =
-        hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated();
+
+    const onFocusReturn = (event?: Event) => {
+      const cookieHintNow = readAuthCookieHint();
       const cookieHintAppeared = cookieHintNow && !lastCookieHintRef.current;
-      lastCookieHintRef.current = cookieHintNow;
-      if (cookieHintAppeared) {
-        // Cookie likely refreshed elsewhere — clear sticky 400/401 decline so
-        // we re-probe + retry refresh once on this focus.
+      const pageshowPersisted =
+        event?.type === "pageshow" && (event as PageTransitionEvent).persisted === true;
+
+      if (cookieHintAppeared || pageshowPersisted) {
+        // Cross-tab login, bfcache restore, or fresh visible cookie — retry refresh once.
         resetDesignAuthRefreshState();
+      } else if (
+        !stateRef.current.authenticated &&
+        !isDesignAuthRefreshDeclined() &&
+        cookieHintNow
+      ) {
+        // Visible cookie exists but UI is logged out — allow one refresh retry per focus
+        // without clearing sticky 400 decline (deleted-account JWT).
+        resetDesignAuthBareRefreshAttempt();
       }
+
+      lastCookieHintRef.current = cookieHintNow;
       invalidateDesignAuthSessionCache();
       scheduleFocusSessionRefresh();
     };
-    window.addEventListener("pageshow", onReturn);
-    document.addEventListener("visibilitychange", onReturn);
+
+    const onPageShow = (event: Event) => {
+      onFocusReturn(event);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      onFocusReturn();
+    };
+
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       if (focusRefreshTimerRef.current) {
         clearTimeout(focusRefreshTimerRef.current);
         focusRefreshTimerRef.current = null;
       }
-      window.removeEventListener("pageshow", onReturn);
-      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [enabled, scheduleFocusSessionRefresh]);
 

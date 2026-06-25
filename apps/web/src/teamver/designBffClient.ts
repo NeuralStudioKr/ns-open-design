@@ -172,6 +172,19 @@ export function resetDesignAuthRefreshState(): void {
   unauthenticatedRefreshAttempted = false;
 }
 
+/** Sticky 400 from `/teamver-bff/auth/refresh` — UI may offer explicit retry. */
+export function isDesignAuthRefreshDeclined(): boolean {
+  return authRefreshDeclinedForSession;
+}
+
+/**
+ * Re-allow a single HttpOnly-only refresh attempt (cross-tab login) without
+ * clearing the sticky 400 decline guard.
+ */
+export function resetDesignAuthBareRefreshAttempt(): void {
+  unauthenticatedRefreshAttempted = false;
+}
+
 function normalizeDesignAuthSession(raw: unknown): DesignAuthSession | null {
   if (typeof raw !== "object" || raw === null) return null;
   const record = raw as Record<string, unknown>;
