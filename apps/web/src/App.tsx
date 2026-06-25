@@ -92,6 +92,7 @@ import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBa
 import { loadProjectListSafe } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
+import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
 import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
@@ -2283,7 +2284,11 @@ function AppInner() {
                 onClick: () => {
                   window.focus();
                   setBackgroundRunNotice(null);
-                  void navigateToProject(completedRun.projectId!, reopenExtras);
+                  const extras = reopenExtras;
+                  if (status === 'succeeded' && extras.fileName?.trim()) {
+                    armTeamverPublishMenuOnProjectOpen(completedRun.projectId!, extras.fileName);
+                  }
+                  void navigateToProject(completedRun.projectId!, extras);
                 },
               });
             }
@@ -3068,13 +3073,24 @@ function AppInner() {
           message={backgroundRunNotice.status === 'succeeded'
             ? `${backgroundRunNotice.projectName} 슬라이드 작업이 완료되었습니다.`
             : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
-          actionLabel="프로젝트 열기"
+          details={backgroundRunNotice.status === 'succeeded' && backgroundRunNotice.reopenExtras.fileName
+            ? '미리보기 후 보내기 메뉴에서 Drive에 발행할 수 있습니다.'
+            : undefined}
+          actionLabel={
+            backgroundRunNotice.status === 'succeeded' && backgroundRunNotice.reopenExtras.fileName
+              ? '미리보기 · Drive 발행'
+              : '프로젝트 열기'
+          }
           onAction={() => {
+            const notice = backgroundRunNotice;
             setBackgroundRunNotice(null);
-            void navigateToProject(
-              backgroundRunNotice.projectId,
-              backgroundRunNotice.reopenExtras,
-            );
+            if (notice.status === 'succeeded' && notice.reopenExtras.fileName?.trim()) {
+              armTeamverPublishMenuOnProjectOpen(
+                notice.projectId,
+                notice.reopenExtras.fileName,
+              );
+            }
+            void navigateToProject(notice.projectId, notice.reopenExtras);
           }}
           tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}
           role={backgroundRunNotice.status === 'failed' ? 'alert' : 'status'}

@@ -181,6 +181,7 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
+import { consumeTeamverPublishMenuArm } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -2107,6 +2108,13 @@ export function ProjectView({
     if (!routeFileName) return;
     requestOpenFile(routeFileName);
   }, [routeFileName, requestOpenFile]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    if (!routeFileName) return;
+    if (!consumeTeamverPublishMenuArm(project.id, routeFileName)) return;
+    setDownloadRequest({ name: routeFileName, nonce: Date.now() });
+  }, [project.id, routeFileName]);
 
   // Sync the URL when the active tab changes, so reload + share-link both
   // land back on the same view. Replace (not push) on tab activation so the
