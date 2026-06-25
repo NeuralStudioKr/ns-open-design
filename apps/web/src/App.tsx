@@ -186,6 +186,8 @@ import type {
 const APP_CONFIG_CHANGED_EVENT = 'open-design:app-config-changed';
 const AMR_AGENT_ID = 'amr';
 const AMR_PROFILE_ENV_KEY = 'OPEN_DESIGN_AMR_PROFILE';
+const RUNS_POLL_ACTIVE_MS = 5_000;
+const RUNS_POLL_IDLE_MS = 30_000;
 
 export function shouldSyncMediaProvidersOnSave(
   mediaProviders: AppConfig['mediaProviders'],
@@ -2151,6 +2153,22 @@ function AppInner() {
     }
 
     let cancelled = false;
+    let runsPollTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let runsPollInFlight = false;
+    let runsPollPending = false;
+
+    function clearRunsPollTimer() {
+      if (runsPollTimer !== null) {
+        window.clearTimeout(runsPollTimer);
+        runsPollTimer = null;
+      }
+    }
+
+    function nextRunsPollDelay() {
+      if (!isTeamverEmbedMode()) return 2_000;
+      if (wasActiveRunRef.current) return RUNS_POLL_ACTIVE_MS;
+      return RUNS_POLL_IDLE_MS;
+    }
 
     const refresh = async () => {
       const runs = await listProjectRuns();
@@ -2314,17 +2332,46 @@ function AppInner() {
         }
       }
     };
+
+    function scheduleNextRunsPoll() {
+      if (cancelled) return;
+      clearRunsPollTimer();
+      runsPollTimer = window.setTimeout(() => {
+        runsPollTimer = null;
+        runRunsPoll();
+      }, nextRunsPollDelay());
+    }
+
+    function runRunsPoll() {
+      if (cancelled) return;
+      if (runsPollInFlight) {
+        runsPollPending = true;
+        return;
+      }
+      runsPollInFlight = true;
+      void refresh().finally(() => {
+        runsPollInFlight = false;
+        if (cancelled) return;
+        if (runsPollPending) {
+          runsPollPending = false;
+          runRunsPoll();
+          return;
+        }
+        scheduleNextRunsPoll();
+      });
+    }
+
     const handleRunsChanged = () => {
-      void refresh();
+      clearRunsPollTimer();
+      runRunsPoll();
     };
 
-    void refresh();
+    runRunsPoll();
     window.addEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
-    const id = window.setInterval(refresh, 2000);
     return () => {
       cancelled = true;
       window.removeEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
-      window.clearInterval(id);
+      clearRunsPollTimer();
     };
   }, [
     beginProjectListRequest,

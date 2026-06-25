@@ -122,6 +122,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-project-cover-loader.test.ts \
       tests/teamver-prefetch-cover-coalesce.test.ts \
       tests/teamver-embed-list-caches.test.ts \
+      tests/teamver-api-polling-cadence.test.ts \
       tests/teamver-embed-run-tracking.test.ts \
       tests/teamver-embed-background-run-surfaces.test.ts \
       tests/teamver-design-auth-session.test.ts \

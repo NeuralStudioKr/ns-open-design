@@ -55,7 +55,7 @@
 | Cookie refresh | `refreshDesignAuthCookie` | BFF → Main BE fallback |
 | 401 recovery | `withDesignBffCookieAuthRecovery` | publish/import/usage 공통 |
 | Workspace store | `setActiveTeamverWorkspace`, localStorage keys | `teamver_design_active_workspace_id` |
-| Embed session hook | `useTeamverEmbed` | pageshow refresh, 401 → login |
+| Embed session hook | `useTeamverEmbed` | pageshow refresh, 401 → login. 일반 focus/visibility 재검증은 **5분** throttle |
 | BE session relay | `deploy/teamver/be/routers/auth.py` | Set-Cookie refresh |
 | nginx auth_request | `design.teamver.com*.conf` | session-check → user/workspace inject |
 
@@ -88,6 +88,15 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 | `deploy/teamver/devops/nginx/*.conf` | `$teamver_daemon_workspace_id` map |
 
 **배포 필요:** staging/prod VM에 nginx conf reload (`apply_teamver_design_*_nginx_conf.sh`).
+
+### 3.2b loop 390 — session/runs 호출 부하 완화
+
+| 호출 | 기존 | loop 390 이후 |
+|------|------|---------------|
+| `/teamver-bff/auth/session` | `useTeamverEmbed`가 tab focus/visibility 복귀마다 cache bust + force probe | 일반 focus/visibility는 **5분** 최소 간격. cookie hint 새 등장·bfcache restore만 즉시 재검증 |
+| `/api/runs` | embed에서도 `setInterval(refresh, 2000)` 고정 polling | `RUNS_CHANGED_EVENT`/초기 즉시 조회, active run 5초, idle 30초. in-flight/pending guard로 중첩 요청 방지 |
+
+운영 효과: 열린 embed 탭이 idle 상태일 때 Main BE OAuth session check와 daemon runs list 조회가 계속 2초/탭 단위로 누적되는 현상을 줄인다. 새 작업 시작은 `RUNS_CHANGED_EVENT`로 즉시 감지하므로 슬라이드 처리 UX 지연은 최소화한다.
 
 ### 3.3 Gap · 후속
 

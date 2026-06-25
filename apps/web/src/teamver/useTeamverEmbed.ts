@@ -101,6 +101,8 @@ function readAuthCookieHint(): boolean {
 }
 
 const FOCUS_SESSION_REFRESH_MS = 500;
+/** Routine focus/visibility session re-probes — cookie hint / bfcache restore bypass this. */
+const FOCUS_SESSION_REFRESH_MIN_INTERVAL_MS = 5 * 60_000;
 
 export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const [state, setState] = useState(INITIAL);
@@ -203,14 +205,25 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   }, [enabled]);
 
   const focusRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFocusSessionRefreshAtRef = useRef(0);
 
-  const scheduleFocusSessionRefresh = useCallback(() => {
+  const scheduleFocusSessionRefresh = useCallback((options?: { bypassThrottle?: boolean }) => {
     if (document.visibilityState !== "visible") return;
+    const now = Date.now();
+    const bypassThrottle = options?.bypassThrottle ?? false;
+    if (
+      !bypassThrottle &&
+      now - lastFocusSessionRefreshAtRef.current < FOCUS_SESSION_REFRESH_MIN_INTERVAL_MS
+    ) {
+      return;
+    }
     if (focusRefreshTimerRef.current) {
       clearTimeout(focusRefreshTimerRef.current);
     }
+    lastFocusSessionRefreshAtRef.current = now;
     focusRefreshTimerRef.current = setTimeout(() => {
       focusRefreshTimerRef.current = null;
+      invalidateDesignAuthSessionCache();
       void refresh({ force: true });
     }, FOCUS_SESSION_REFRESH_MS);
   }, [refresh]);
@@ -262,8 +275,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       lastCookieHintRef.current = cookieHintNow;
-      invalidateDesignAuthSessionCache();
-      scheduleFocusSessionRefresh();
+      scheduleFocusSessionRefresh({
+        bypassThrottle: cookieHintAppeared || pageshowPersisted,
+      });
     };
 
     const onPageShow = (event: Event) => {
