@@ -528,6 +528,22 @@ design-api hot path는 RDS; boto3 listing은 admin/집계만. Drive는 [03](./03
 
 ---
 
+## TODO (후속 작업)
+
+**갱신:** 2026-06-25. **Prod blocker.** 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
+
+| ☐ | 작업 | Phase |
+|---|------|-------|
+| ☐ | staging EC2에 IAM instance profile + `OD_S3_BUCKET`/`OD_S3_REGION` env 적용 | 0 |
+| ☐ | `run_staging_phase0_activate.sh` 실행 후 `checks.od_storage=ok` | 0 |
+| ☐ | `bash scripts/smoke_design.sh --staging` — storage degraded → ok | 0 |
+| ☐ | `check_storage_isolation.sh --staging` 전 항목 pass | 0~3 |
+| ☐ | `run_staging_track_a_e2e.sh` S3 tenant prefix object probe | 3 |
+| ☐ | Litestream prod restore runbook 실검증 | 2 |
+| ☐ | `projects.ts` → ProjectStorage 전면 wiring | 1 (defer) |
+
+---
+
 ## 변경 이력
 
 | 일자 | 내용 |

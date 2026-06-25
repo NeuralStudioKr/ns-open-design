@@ -8,6 +8,8 @@
 
 ## 지금 할 일 (출시 1순위)
 
+**후속 작업 전체 목록:** [04 §TODO (후속 작업)](./04_구현_우선순위.md#todo-후속-작업) — loop 402(in-project publish) · ops 게이트 · billing.
+
 | 문서 | 내용 |
 |------|------|
 | **[09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md)** | **Prod blocker — S3 · Litestream · registry · 진행 표** |

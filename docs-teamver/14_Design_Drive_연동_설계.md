@@ -303,6 +303,33 @@ Content-Type: application/json
 
 ---
 
+## TODO (후속 작업)
+
+**갱신:** 2026-06-25. 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
+
+### Drive publish/import
+
+| ☐ | 작업 |
+|---|------|
+| ☐ | D-5/D-6/D-7 staging E2E — publish `driveAssetId` + import happy path |
+| ☐ | D-6a 실 Drive asset import (`TEAMVER_DRIVE_IMPORT_ASSET_ID`) |
+| ☐ | Publish full Drive browser (Phase 1-2c) — import modal 수준 recent/grid |
+| ☐ | Drive import **다중 파일 handoff** (loop 404) |
+| ☐ | import 원본 → Main Drive deep-link |
+
+### Usage·billing
+
+| ☐ | 작업 | SSOT |
+|---|------|------|
+| ☐ | U-6 staging E2E — M2M + RDS row count | §3 |
+| ☐ | `credit_meter.py` + unit tests | §4.9 #1 |
+| ☐ | 전략 A/B/C 확정 (PM·Main BE) | §4.9 #2 |
+| ☐ | daemon reserve amount → metered | §4.9 #3 |
+| ☐ | embed BYOK billing (U-G6) | §4.7 |
+| ☐ | staging E2E billing_status + registry_usage_id | §4.9 #6 |
+
+---
+
 ## 8. 변경 이력
 
 | 일자 | 내용 |

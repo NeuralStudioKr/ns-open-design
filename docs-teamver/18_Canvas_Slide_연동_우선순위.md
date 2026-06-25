@@ -66,7 +66,7 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 |---|---|---|
 | 1 | **Canvas import 확인 + slide run 시작을 하나의 확정 action으로 통합** | 핵심 UX 단축 — ✅ loop 191 one-confirm modal | **완료** |
 | 2 | **기본 source 구조화** | MD/HTML의 heading·paragraph·image 순서를 정규화. 필요하면 design-api에서 처리 |
-| 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 | **🟡 loop 398** — 성공 toast → preview + publish menu |
+| 3 | **결과 HTML/deck 미리보기·Drive publish 완료 동선** | 생성 성공 후 결과 확인·저장을 짧게 만듦 | **🟡 loop 398** — background toast → preview + publish menu · **in-project** ☐ loop 402 · one-click ☐ loop 403 |
 | 4 | **Design System 기본 적용** | Canvas 원본 테마 복제보다 workspace Design System/기본 slide theme를 적용하는 편이 품질 대비 효과가 큼 | **✅ loop 192** |
 
 ### P2 — 출시 후
@@ -130,3 +130,25 @@ Canvas 연동은 아래가 동작하면 1차 완료로 본다.
 - design-api `Settings`는 hosted 환경에서 storage가 `s3`가 아니거나 로컬 인증 fallback이 켜져 있으면 기동을 거부한다.
 
 **남음 P0:** 코드 강제는 완료. staging의 실제 IAM/bucket env를 적용해 `checks.od_storage=ok`로 전환하고, 개인/팀 Drive source로 slide lifecycle 종단을 인수한다.
+
+---
+
+## TODO (후속 작업)
+
+**갱신:** 2026-06-25. 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
+
+### P0 인수 (신규 기능 아님)
+
+| ☐ | 작업 |
+|---|------|
+| ☐ | 개인 Drive / 팀 Drive 각 1건 — import → run → 결과 재진입 (§2 체크리스트) |
+| ☐ | Canvas HTML source — 제목·섹션·핵심 본문 slide 반영 확인 (§2) |
+| ☐ | slide lifecycle browser QA — workspace switch / logout / background run (S-5) |
+
+### P1 코드 (loop 398 follow-up)
+
+| loop | ☐ | 작업 |
+|------|---|------|
+| **402** | ☐ | **in-project run 성공** — `ProjectView` `scheduleStreamRunHtmlAutoOpen` 경로에 `armTeamverPublishMenuOnProjectOpen` 연동 (background만 loop 398 완료) |
+| **403** | ☐ | **one-click publish** — 마지막 `teamver.drive.lastPublishTarget` 으로 메뉴 오픈 없이 `publishToDrive` 실행 |
+| — | ☐ | MD/HTML source 구조화 normalizer — **보류** (P1 #2) |

@@ -950,6 +950,38 @@ Browser
 
 ---
 
+## TODO (후속 작업)
+
+**갱신:** 2026-06-25. 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
+
+### Phase U (usage wiring)
+
+| ☐ | 작업 |
+|---|------|
+| ☐ | U-6 staging E2E — internal usage M2M + RDS `ai_model_token_usages` row |
+| ☐ | Main BE design M2M `fetch_token_usage_by_model` staging 실증 |
+
+### Phase D (Drive publish)
+
+| ☐ | 작업 |
+|---|------|
+| ☐ | D-5/D-6/D-7 staging E2E full run |
+| ☐ | D-6a 실 Drive asset import |
+| ☐ | loop 403 one-click publish (마지막 target 자동 발행) |
+
+### Phase B (metered billing — §4.9)
+
+§4.9 체크리스트 항목 `[ ] 1`~`[ ] 8` 참고. 핵심:
+
+| ☐ | 작업 |
+|---|------|
+| ☐ | `credit_meter.py` + `DESIGN_MODEL_PRICES_JSON` |
+| ☐ | 전략 A/B/C 확정 |
+| ☐ | embed BYOK billing (U-G6) |
+| ☐ | staging E2E reserve/commit ledger 일치 |
+
+---
+
 ## 변경 이력
 
 | 일자 | 내용 |

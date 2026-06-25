@@ -210,9 +210,12 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ✅ loop 359 |
 | S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | ✅ loop 360 |
 | S-4 | embed slide E2E wording 잔여 (FileViewer download aria 등) | P1 | ✅ loop 357 |
-| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE run API header ✅ loop 365–368 · ProjectView stream detach ✅ loop 396 · browser 실관측 ☐ |
-| S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 |
+| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE run API header ✅ loop 365–368 · ProjectView stream detach ✅ loop 396/399 · background publish menu 🟡 loop 398 · browser 실관측 ☐ |
+| S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 + loop 392(home) + loop 393(DesignsTab) + loop 400(header) |
 | S-7 | Teamver shell 컴포넌트 `useTeamverT` (chip/banner/import modal 등) | P2 | ✅ loop 364–369 |
+| **S-8** | **in-project run 성공** → preview + publish menu arm (loop 398 background 경로만 완료) | P0 | ☐ **loop 402** |
+| **S-9** | publish **one-click** — 마지막 target 자동 publish | P1 | ☐ loop 403 |
+| **S-10** | session logout 후 stream detach browser QA | P0 | ☐ loop 399 코드 완료 · QA만 남음 |
 
 > **원칙:** nginx 배포·staging E2E·RDS psql은 **ops 트랙** — 제품 코드 루프와 분리. [04 §코드 루프 우선순위](./04_구현_우선순위.md) 참고.
 
@@ -223,7 +226,46 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | O-1 | nginx loop 354 map staging/prod VM 적용 | ops 1회 |
 | O-2 | Staging E2E full run (cookie + RDS + Drive asset) | ops 1회 |
 | O-3 | W-1 `TEAMVER_ALT_WORKSPACE_ID` E2E (loop 355) | code ✅ |
-| O-4 | Browser workspace switch 수동 체크리스트 §5.2 | QA 15분 |
+| O-4 | Browser workspace switch 수동 체크리스트 §5.3 | QA 15min |
+
+---
+
+## TODO (후속 작업)
+
+**갱신:** 2026-06-25. 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
+
+### Drive (§2)
+
+| ID | ☐ | 내용 |
+|----|---|------|
+| D-G1 | ☐ | Staging E2E D-5/D-6/D-7 full run — `run_staging_track_a_e2e.sh --e2e-strict` |
+| D-G2 | ☐ | Publish full Drive browser (import modal 수준) — [14](./14_Design_Drive_연동_설계.md) |
+| D-G7 | ☐ | D-6a 실 Drive asset import (`TEAMVER_DRIVE_IMPORT_ASSET_ID`) |
+
+### 인증 (§3)
+
+| ID | ☐ | 내용 |
+|----|---|------|
+| A-G1 | ☐ | nginx loop 354 map VM 적용 + staging 실관측 |
+| A-G3 | ☐ | Browser — WS-A run → WS-B switch → usage row `workspace_id` (§5.3) |
+
+### Usage (§4)
+
+| ID | ☐ | 내용 |
+|----|---|------|
+| U-G1 | ☐ | U-6 staging E2E — M2M + RDS row count |
+| U-G4 | ☐ | 실측 토큰 → 크레딧(T) 환산 — [11 §4](./11_Usage·Drive_Publish_보강.md) |
+| U-G5 | ☐ | Registry commit amount 전략 A/B/C — [11 §4.3](./11_Usage·Drive_Publish_보강.md) |
+| U-G6 | ☐ | embed BYOK billing hook — [11 §4.7](./11_Usage·Drive_Publish_보강.md) |
+
+### Lifecycle·UX (§6.1)
+
+| ID | ☐ | 내용 |
+|----|---|------|
+| S-5 | ☐ | workspace switch 중 stream detach + publish 동선 browser QA |
+| S-8 | ☐ | **loop 402** — in-project run 성공 publish menu arm |
+| S-9 | ☐ | **loop 403** — one-click publish (마지막 target) |
+| S-10 | ☐ | logout stream detach browser QA (loop 399) |
 
 ---
 
@@ -249,6 +291,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | loop 392~401 후속 TODO — §TODO 신설, S-8~S-10 (in-project publish, one-click, logout QA) |
 | 2026-06-25 | loop 401 — D-B2 shared-drive E2E, check_sidecar_deps fixture, healthz timeout config |
 | 2026-06-25 | loop 397 — D-B1 drive browse BFF E2E, Main BE triage §5.2, long proxy timeout |
 | 2026-06-24 | loop 354 검토 초판 — Drive/auth/usage 판정, workspace 정렬, E2E 체크리스트 |
