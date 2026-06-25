@@ -73,3 +73,49 @@ def test_drive_proxy_rejects_disallowed_path() -> None:
     client = TestClient(_build_app(), raise_server_exceptions=False)
     response = client.get("/api/v1/drive/api/internal/users")
     assert response.status_code == 403
+
+
+def test_drive_proxy_post_batch_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class _Response:
+        status_code = 200
+        content = b'{"items":[{"asset_id":"AST-1","object_url":"https://cdn.example/x.png"}]}'
+        headers = httpx.Headers({"content-type": "application/json"})
+
+    class _Client:
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def request(self, method: str, url: str, **kwargs: Any) -> _Response:
+            captured["method"] = method
+            captured["url"] = url
+            captured["timeout"] = kwargs.get("timeout")
+            captured["content"] = kwargs.get("content")
+            return _Response()
+
+    def _client_factory(**kwargs: object) -> _Client:
+        captured["client_timeout"] = kwargs.get("timeout")
+        return _Client()
+
+    monkeypatch.setattr(drive_proxy.settings, "teamver_http_timeout_seconds", 5.0)
+    monkeypatch.setattr(drive_proxy.settings, "teamver_drive_proxy_long_timeout_seconds", 30.0)
+    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", _client_factory)
+
+    client = TestClient(_build_app(), raise_server_exceptions=False)
+    response = client.post(
+        "/api/v1/drive/api/v2/asset/object-url/batch",
+        json={"items": [{"asset_id": "AST-1", "shared_drive_id": None}]},
+        headers={"X-Workspace-Id": "ws1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["object_url"] == "https://cdn.example/x.png"
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/api/v2/asset/object-url/batch")
+    timeout = captured["client_timeout"]
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.read == 30.0

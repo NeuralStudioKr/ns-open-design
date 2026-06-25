@@ -183,6 +183,14 @@ if [[ "${TRUST_TEAMVER_PROXY_HEADERS:-}" != "true" ]]; then
   warn "TRUST_TEAMVER_PROXY_HEADERS!=true — nginx identity 헤더 신뢰 비활성 (publish access gate 영향)"
 fi
 
+http_timeout="${TEAMVER_HTTP_TIMEOUT_SECONDS:-5}"
+long_timeout="${TEAMVER_DRIVE_PROXY_LONG_TIMEOUT_SECONDS:-30}"
+if [[ "$http_timeout" =~ ^[0-9]+([.][0-9]+)?$ && "$long_timeout" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  if awk -v a="$long_timeout" -v b="$http_timeout" 'BEGIN{exit !(a+0 < b+0)}'; then
+    warn "TEAMVER_DRIVE_PROXY_LONG_TIMEOUT_SECONDS(${long_timeout}) < TEAMVER_HTTP_TIMEOUT_SECONDS(${http_timeout}) — thumbnail batch timeout should be >= browse"
+  fi
+fi
+
 if [[ -z "${TEAMVER_OD_API_KEY:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
   warn "TEAMVER_OD_API_KEY·ANTHROPIC_API_KEY 모두 없음 — embed managed API/chat 비활성 (BYOK만)"
 fi

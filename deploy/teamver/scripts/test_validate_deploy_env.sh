@@ -204,6 +204,22 @@ if ! grep -q 'TEAMVER_DRIVE_PUBLISH_FOLDER_ID 설정됨' <<< "$drive_out"; then
 fi
 rm -f "$DRIVE_ENV"
 
+# Drive proxy timeout — long must be >= browse (warn only).
+TIMEOUT_ENV="$(mktemp)"
+cat "$TMP_ENV" > "$TIMEOUT_ENV"
+{
+  echo 'TEAMVER_HTTP_TIMEOUT_SECONDS=10'
+  echo 'TEAMVER_DRIVE_PROXY_LONG_TIMEOUT_SECONDS=5'
+} >> "$TIMEOUT_ENV"
+timeout_out="$(bash "$SCRIPT" --staging --rds --env-file "$TIMEOUT_ENV" 2>&1)"
+if ! grep -q 'thumbnail batch timeout should be >= browse' <<< "$timeout_out"; then
+  echo "❌ expected drive proxy long<browse timeout warning"
+  rm -f "$TIMEOUT_ENV"
+  echo "$timeout_out"
+  exit 1
+fi
+rm -f "$TIMEOUT_ENV"
+
 # Hosted S3 requires scratch capacity and sync failure visibility settings.
 for key in OD_SCRATCH_EVICT_AFTER_RUN OD_S3_SYNC_UP_METRICS OD_SCRATCH_DISK_METRICS; do
   MISSING_ENV="$(mktemp)"

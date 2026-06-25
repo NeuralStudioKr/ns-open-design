@@ -43,6 +43,7 @@
 | D-G4 | P2 | `TeamverDriveImportModal` 단독 mount 시 workspace prop 의존 | 부모 `ChatComposer`가 switch 처리 — 현재 OK |
 | D-G5 | P1 | **D-B1** staging E2E — embed `/teamver-bff/drive` browse shallow folder | ✅ `run_staging_track_a_e2e.sh` |
 | D-G6 | P1 | **D-B2** staging E2E — embed `/teamver-bff/drive` shared-drive list | ✅ `run_staging_track_a_e2e.sh` |
+| D-G7 | P1 | **D-B3** staging E2E — embed thumbnail batch `POST object-url/batch` | ✅ `run_staging_track_a_e2e.sh` |
 
 ---
 
@@ -176,6 +177,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | **S-5** | design `/api/runs` + `X-Workspace-Id` poll probe (loop 365) |
 | **D-B1** | embed `/teamver-bff/drive/api/drive/folder?shallow_tree=true` → 200 + `root_folder_id` (loop 397) |
 | **D-B2** | embed `/teamver-bff/drive/api/v2/shared-drive` → 200 + list body (loop 401) |
+| **D-B3** | embed `POST …/api/v2/asset/object-url/batch` → 200 or 4xx probe (loop 402) |
 
 **strict launch:** `run_post_deploy_track_a.sh --e2e-strict` — skip-only 성공 불가.
 
@@ -291,6 +293,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | loop 402 — D-B3 thumbnail batch E2E, validate_deploy_env timeout warn |
 | 2026-06-25 | loop 392~401 후속 TODO — §TODO 신설, S-8~S-10 (in-project publish, one-click, logout QA) |
 | 2026-06-25 | loop 401 — D-B2 shared-drive E2E, check_sidecar_deps fixture, healthz timeout config |
 | 2026-06-25 | loop 397 — D-B1 drive browse BFF E2E, Main BE triage §5.2, long proxy timeout |

@@ -150,6 +150,24 @@ curl_body() {
   curl -s --max-time 20 "$@" "$url" 2>/dev/null || true
 }
 
+curl_post_code() {
+  local url="$1"
+  local data="$2"
+  shift 2
+  curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST \
+    -H "Content-Type: application/json" \
+    --data "$data" "$@" "$url" 2>/dev/null || echo 000
+}
+
+curl_post_body() {
+  local url="$1"
+  local data="$2"
+  shift 2
+  curl -s --max-time 30 -X POST \
+    -H "Content-Type: application/json" \
+    --data "$data" "$@" "$url" 2>/dev/null || true
+}
+
 # ---- env preflight ----------------------------------------------------------
 echo "==> Track A staging E2E ($ENV_MODE) — $API_BASE"
 
@@ -345,6 +363,43 @@ else
       ;;
     *)
       failed "D-B2 shared-drive BFF ${drive_sd_code}"
+      ;;
+  esac
+fi
+
+# ---- D-B3: drive thumbnail batch BFF (POST presign — import modal path) -------
+if [[ -z "${TEAMVER_COOKIE:-}" ]]; then
+  skipped "D-B3 drive thumbnail batch BFF — TEAMVER_COOKIE 필요"
+elif [[ -z "${session_workspace_id:-}" ]]; then
+  skipped "D-B3 drive thumbnail batch BFF — session workspace 없음"
+else
+  drive_batch_url="${DESIGN_BASE}/teamver-bff/drive/api/v2/asset/object-url/batch"
+  drive_batch_body='{"items":[{"asset_id":"e2e-thumbnail-probe","shared_drive_id":null}]}'
+  batch_resp="$(curl_post_body "$drive_batch_url" "$drive_batch_body" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  batch_code="$(curl_post_code "$drive_batch_url" "$drive_batch_body" \
+    -H "Cookie: ${TEAMVER_COOKIE}" \
+    -H "X-Workspace-Id: ${session_workspace_id}")"
+  case "$batch_code" in
+    200)
+      if printf '%s' "$batch_resp" | grep -qE '"items"|"object_url"|objectUrl'; then
+        passed "D-B3 ${DESIGN_HOST}/teamver-bff/drive thumbnail batch POST → 200"
+      else
+        failed "D-B3 thumbnail batch 200 but missing items in body"
+      fi
+      ;;
+    400|404|422)
+      passed "D-B3 thumbnail batch POST → ${batch_code} (BFF reachable; probe asset rejected by Main BE)"
+      ;;
+    401|403)
+      failed "D-B3 thumbnail batch BFF ${batch_code} — cookie/workspace invalid"
+      ;;
+    502)
+      failed "D-B3 thumbnail batch BFF 502 — Main BE unreachable (teamver_drive_unreachable)"
+      ;;
+    *)
+      failed "D-B3 thumbnail batch BFF ${batch_code}"
       ;;
   esac
 fi

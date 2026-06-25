@@ -47,6 +47,8 @@ export TEAMVER_S3_BUCKET='${s3_bucket}'
 export TEAMVER_DRIVE_IMPORT_ASSET_ID='<production Drive asset id>'
 export TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.txt'
 
+# Drive BFF (D-B1/D-B2/D-B3) — cookie + session workspace 필요.
+
 # Optional cross-user isolation evidence:
 # export TEAMVER_COOKIE_USER_B='teamver_access_token=<second production user cookie>'
 

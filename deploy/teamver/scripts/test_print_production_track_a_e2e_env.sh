@@ -20,6 +20,7 @@ for needle in \
   'prod_admin:<password>@prod-db.internal:5433/teamver_prod?sslmode=require' \
   "TEAMVER_INTERNAL_API_KEY='<from .env.production TEAMVER_INTERNAL_API_KEY>'" \
   "TEAMVER_S3_BUCKET='prod-design-bucket'" \
+  'D-B1/D-B2/D-B3' \
   'run_post_deploy_track_a.sh --production --rds --smoke --e2e-strict'
 do
   grep -qF "$needle" <<< "$out" || { echo "❌ missing: $needle"; exit 1; }
