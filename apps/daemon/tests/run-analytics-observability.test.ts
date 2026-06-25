@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  extractLastStopReasonFromRunEvents,
   normalizeUsageTokenCounts,
   scanRunEventsForUsageAnalytics,
   summarizeRunTimingAnalytics,
@@ -24,6 +25,17 @@ describe('normalizeUsageTokenCounts', () => {
         stats: { input_tokens: 9, output_tokens: 3 },
       }),
     ).toEqual({ input_tokens: 9, output_tokens: 3 });
+  });
+});
+
+describe('extractLastStopReasonFromRunEvents', () => {
+  it('returns the last stop_reason from agent events', () => {
+    expect(
+      extractLastStopReasonFromRunEvents([
+        { event: 'agent', data: { type: 'message_delta', delta: { stop_reason: 'tool_use' } } },
+        { event: 'agent', data: { type: 'result', stop_reason: 'end_turn' } },
+      ]),
+    ).toBe('end_turn');
   });
 });
 

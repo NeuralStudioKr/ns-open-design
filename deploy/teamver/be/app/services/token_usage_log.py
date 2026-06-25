@@ -43,16 +43,15 @@ async def alog_token_usage(
     scope: UsageScope,
 ) -> None:
     metered = meter_design_run(
-        model_name=model_name,
+        model_name=(scope.provider_reported_model or model_name).strip() or model_name,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         token_count_source=scope.token_count_source,
         cache_read_input_tokens=scope.cache_read_input_tokens,
         cache_creation_input_tokens=scope.cache_creation_input_tokens,
     )
-    credits_amount_t = scope.credits_amount_t
-    if credits_amount_t is None and metered.amount_t > 0:
-        credits_amount_t = metered.amount_t
+    # Server-side meter is SSOT for audit — never trust client-supplied credits.
+    credits_amount_t = metered.amount_t if metered.amount_t > 0 else None
     try:
         async with async_session_maker() as db:
             await token_usage_crud.aupsert_usage(

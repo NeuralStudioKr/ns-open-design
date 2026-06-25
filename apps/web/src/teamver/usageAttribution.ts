@@ -9,6 +9,16 @@ export function isTerminalRunStatus(status: string | undefined): boolean {
   return status != null && TERMINAL_RUN_STATUSES.has(status);
 }
 
+/** Normalize provider usage payloads (nested usage, top-level BYOK SSE, stats).
+ *  Keep in sync with daemon `normalizeUsageTokenCounts` (run-analytics-observability.ts). */
+export function normalizeProviderUsagePayload(
+  payload: unknown,
+): { inputTokens: number; outputTokens: number } | null {
+  const details = extractProviderUsageDetails(payload);
+  if (!details) return null;
+  return { inputTokens: details.inputTokens, outputTokens: details.outputTokens };
+}
+
 function readUsageNumber(value: unknown, keys: string[]): number | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
@@ -19,11 +29,18 @@ function readUsageNumber(value: unknown, keys: string[]): number | undefined {
   return undefined;
 }
 
-/** Normalize provider usage payloads (nested usage, top-level BYOK SSE, stats).
- *  Keep in sync with daemon `normalizeUsageTokenCounts` (run-analytics-observability.ts). */
-export function normalizeProviderUsagePayload(
+/** Full provider usage breakdown for ledger metadata (cache, model, stop reason). */
+export function extractProviderUsageDetails(
   payload: unknown,
-): { inputTokens: number; outputTokens: number } | null {
+): {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  model?: string;
+  stopReason?: string;
+  latencyMs?: number;
+} | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
   const usagePayload =
@@ -34,12 +51,48 @@ export function normalizeProviderUsagePayload(
         : record.stats && typeof record.stats === "object"
           ? record.stats
           : record;
-  const inputTokens = readUsageNumber(usagePayload, ["input_tokens", "inputTokens", "prompt_tokens"]);
-  const outputTokens = readUsageNumber(usagePayload, ["output_tokens", "outputTokens", "completion_tokens"]);
-  if (inputTokens === undefined && outputTokens === undefined) return null;
+  const usageRecord = usagePayload as Record<string, unknown>;
+  const inputTokens = readUsageNumber(usageRecord, ["input_tokens", "inputTokens", "prompt_tokens"]) ?? 0;
+  const outputTokens = readUsageNumber(usageRecord, ["output_tokens", "outputTokens", "completion_tokens"]) ?? 0;
+  const cacheReadInputTokens = readUsageNumber(usageRecord, [
+    "cache_read_input_tokens",
+    "cacheReadInputTokens",
+    "cached_tokens",
+  ]);
+  const cacheCreationInputTokens = readUsageNumber(usageRecord, [
+    "cache_creation_input_tokens",
+    "cacheCreationInputTokens",
+  ]);
+  const tokenSum =
+    inputTokens + outputTokens + (cacheReadInputTokens ?? 0) + (cacheCreationInputTokens ?? 0);
+  if (tokenSum <= 0) return null;
+
+  const model =
+    typeof record.model === "string" && record.model.trim()
+      ? record.model.trim()
+      : typeof usageRecord.model === "string" && usageRecord.model.trim()
+        ? usageRecord.model.trim()
+        : undefined;
+  const stopReason =
+    typeof record.stop_reason === "string" && record.stop_reason.trim()
+      ? record.stop_reason.trim()
+      : typeof record.stopReason === "string" && record.stopReason.trim()
+        ? record.stopReason.trim()
+        : undefined;
+  const latencyMs = readUsageNumber(record, ["latency_ms", "latencyMs", "duration_ms", "durationMs"]);
+
   return {
-    inputTokens: inputTokens ?? 0,
-    outputTokens: outputTokens ?? 0,
+    inputTokens,
+    outputTokens,
+    ...(cacheReadInputTokens != null && cacheReadInputTokens > 0
+      ? { cacheReadInputTokens }
+      : {}),
+    ...(cacheCreationInputTokens != null && cacheCreationInputTokens > 0
+      ? { cacheCreationInputTokens }
+      : {}),
+    ...(model ? { model } : {}),
+    ...(stopReason ? { stopReason } : {}),
+    ...(latencyMs != null && latencyMs > 0 ? { latencyMs: Math.round(latencyMs) } : {}),
   };
 }
 

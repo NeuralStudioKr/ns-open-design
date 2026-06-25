@@ -149,11 +149,9 @@ export async function streamMessage(
   }
 }
 
-// Anthropic charges separately for prompt vs cache-creation vs cache-read
-// input. The billing ledger only models a single `inputTokens` bucket, so we
-// fold cache_creation + cache_read into the input total to keep credit math
-// monotonic — under-reporting cached reads would let a user pay 0 for prompt
-// caching even though the provider still bills for it.
+// Anthropic bills prompt, cache-creation, and cache-read input separately.
+// Store each bucket in its own ledger column so credit_meter can apply
+// cache-specific per-1k rates (see deploy/teamver/be/app/services/credit_meter.py).
 // Returns true when onUsage was invoked so callers can suppress duplicate
 // emissions from the catch path.
 function emitAnthropicUsage(

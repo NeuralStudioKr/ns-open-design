@@ -59,6 +59,56 @@ async def test_aupsert_usage_persists_usage_metadata(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
+async def test_aupsert_usage_derives_total_with_cache_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime.now(timezone.utc)
+    existing = AiModelTokenUsage(
+        id="ATU-cache-total",
+        model_name="claude-sonnet-4-5",
+        input_tokens=100,
+        output_tokens=40,
+        total_tokens=100,
+        user_id="u1",
+        workspace_id="ws1",
+        used_at=now,
+        operation="design_run",
+        project_id="p1",
+        run_id="run-cache-total",
+        token_count_source="provider_usage",
+        billing_status="not_attempted",
+        credits_committed=False,
+        created_at=now,
+        updated_at=now,
+    )
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock(side_effect=lambda row: row)
+
+    async def fake_find(*_args, **_kwargs):
+        return existing
+
+    monkeypatch.setattr(token_usage_crud, "afind_usage_by_run", fake_find)
+
+    result = await token_usage_crud.aupsert_usage(
+        db,
+        model_name="claude-sonnet-4-5",
+        input_tokens=100,
+        output_tokens=40,
+        user_id="u1",
+        workspace_id="ws1",
+        used_at=now,
+        operation="design_run",
+        project_id="p1",
+        run_id="run-cache-total",
+        token_count_source="provider_usage",
+        cache_read_input_tokens=200,
+        cache_creation_input_tokens=50,
+    )
+
+    assert result.total_tokens == 390
+
+
+@pytest.mark.asyncio
 async def test_aupsert_usage_updates_zero_row_when_better_tokens_arrive(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
     existing = AiModelTokenUsage(

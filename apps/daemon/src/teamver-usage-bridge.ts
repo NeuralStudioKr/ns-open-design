@@ -122,7 +122,12 @@ export async function reportTeamverUsageFromDaemon({
   // BE can stamp a ledger entry, but ops needs a grep handle to spot this
   // *before* it shows up as a billing dispute. The 0-token regression that
   // motivated loop 390/391 (ATU-FO5LT28NQBB5) would have surfaced here.
-  if ((usage.input_tokens ?? 0) === 0 && (usage.output_tokens ?? 0) === 0) {
+  if (
+    (usage.input_tokens ?? 0) === 0
+    && (usage.output_tokens ?? 0) === 0
+    && (usage.cache_read_input_tokens ?? 0) === 0
+    && (usage.cache_creation_input_tokens ?? 0) === 0
+  ) {
     emitUsage5xxMarker('usage.zero_tokens', {
       runId: run.id,
       workspaceId: run.teamverIdentity?.workspaceId ?? null,

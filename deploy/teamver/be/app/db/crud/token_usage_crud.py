@@ -208,10 +208,18 @@ def _apply_usage_fields(row: AiModelTokenUsage, fields: dict[str, Any]) -> None:
     if isinstance(incoming_total, int) and incoming_total >= 0:
         row.total_tokens = incoming_total
     else:
-        # Preserve a previously-computed total (incl. Anthropic cache tokens)
-        # when it is richer than the new input+output pair; otherwise derive so
-        # the ledger always reflects the token counts credit_meter can read.
-        derived = max(0, row.input_tokens) + max(0, row.output_tokens)
+        cache_read = _optional_nonneg_int(fields.get("cache_read_input_tokens"))
+        if cache_read is None:
+            cache_read = row.cache_read_input_tokens
+        cache_create = _optional_nonneg_int(fields.get("cache_creation_input_tokens"))
+        if cache_create is None:
+            cache_create = row.cache_creation_input_tokens
+        derived = (
+            max(0, row.input_tokens)
+            + max(0, row.output_tokens)
+            + max(0, cache_read or 0)
+            + max(0, cache_create or 0)
+        )
         existing_total = row.total_tokens if isinstance(row.total_tokens, int) else None
         if derived > 0 and (existing_total is None or existing_total <= 0 or derived > existing_total):
             row.total_tokens = derived

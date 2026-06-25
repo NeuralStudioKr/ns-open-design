@@ -266,6 +266,8 @@ export function scanRunEventsForUsageAnalytics(
       if (usage) {
         applyUsagePayloadToScan(usage, scanState);
       }
+      const modelCandidate = typeof data.model === 'string' ? data.model.trim() : '';
+      if (modelCandidate) agentReportedModel = modelCandidate;
     }
 
     if (

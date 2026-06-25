@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extractLatestUsageFromEvents,
   extractModelNameFromEvents,
+  extractProviderUsageDetails,
   isTerminalRunStatus,
   normalizeProviderUsagePayload,
   resolveTeamverUsageModelName,
@@ -83,6 +84,28 @@ describe('usageAttribution', () => {
         usage: { prompt_tokens: 11, completion_tokens: 4 },
       }),
     ).toEqual({ inputTokens: 11, outputTokens: 4 });
+  });
+
+  it('extracts provider usage metadata including cache buckets', () => {
+    expect(
+      extractProviderUsageDetails({
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 3,
+        model: 'gpt-4o',
+        stop_reason: 'end_turn',
+        latency_ms: 900,
+      }),
+    ).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadInputTokens: 20,
+      cacheCreationInputTokens: 3,
+      model: 'gpt-4o',
+      stopReason: 'end_turn',
+      latencyMs: 900,
+    });
   });
 
   it('extracts model name from status events', () => {
@@ -252,18 +275,15 @@ describe('maybeReportTeamverUsageAfterSave', () => {
   // Closes the loop on the 0-token regression (ATU-FO5LT28NQBB5):
   //   anthropic.ts direct SDK → handlers.onUsage → message.events.push('usage')
   //   → maybeReportTeamverUsageAfterSave → reportTeamverDesignUsage
-  // with provider_usage source and the real cache_creation/cache_read folded
-  // into inputTokens. See docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
+  // with provider_usage source and cache tokens in separate columns (loop 405).
   it('records non-zero ledger usage when direct Anthropic SDK reports onUsage', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws-embed') },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
-    // Simulate what ProjectView does after anthropic.ts onUsage fires.
-    // anthropic.ts folds prompt + cache_creation + cache_read into inputTokens
-    // before invoking the callback; the value mirrors that arithmetic.
-    const onUsageFromAnthropic = { inputTokens: 137 + 11 + 200, outputTokens: 42 };
+    // Simulate what ProjectView does after anthropic.ts onUsage fires (loop 405:
+    // prompt input separate from cache buckets).
     const message = {
       id: 'assistant-direct-sdk',
       role: 'assistant' as const,
@@ -273,8 +293,14 @@ describe('maybeReportTeamverUsageAfterSave', () => {
         { kind: 'status' as const, label: 'model', detail: 'claude-sonnet-4-5' },
         {
           kind: 'usage' as const,
-          inputTokens: onUsageFromAnthropic.inputTokens,
-          outputTokens: onUsageFromAnthropic.outputTokens,
+          inputTokens: 137,
+          outputTokens: 42,
+          cacheReadInputTokens: 200,
+          cacheCreationInputTokens: 11,
+          model: 'claude-sonnet-4-5-20250929',
+          apiProtocol: 'anthropic',
+          latencyMs: 1200,
+          stopReason: 'end_turn',
         },
       ],
     };
@@ -284,14 +310,20 @@ describe('maybeReportTeamverUsageAfterSave', () => {
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith({
       workspaceId: 'ws-embed',
-      modelName: 'claude-sonnet-4-5',
-      inputTokens: 348,
+      modelName: 'claude-sonnet-4-5-20250929',
+      inputTokens: 137,
       outputTokens: 42,
       totalTokens: 390,
       tokenCountSource: 'provider_usage',
       projectId: 'p-embed',
       runId: 'assistant-direct-sdk',
       runStatus: 'succeeded',
+      cacheReadInputTokens: 200,
+      cacheCreationInputTokens: 11,
+      providerReportedModel: 'claude-sonnet-4-5-20250929',
+      apiProtocol: 'anthropic',
+      latencyMs: 1200,
+      stopReason: 'end_turn',
     });
   });
 

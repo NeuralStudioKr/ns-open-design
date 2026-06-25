@@ -56,7 +56,7 @@ import {
   type PersistedArtifactFileRef,
 } from '../artifacts/strip';
 import { trackRunProgress, trackRunStart, trackRunTerminal } from '../observability/stuck-run';
-import { normalizeProviderUsagePayload } from '../teamver/usageAttribution';
+import { extractProviderUsageDetails } from '../teamver/usageAttribution';
 
 const MAX_TRANSCRIPT_MESSAGE_CHARS = 12_000;
 const LARGE_TOOL_RESULT_CHARS = 8_000;
@@ -1020,17 +1020,22 @@ async function consumeDaemonRun({
           }
 
           if (event.event === 'usage') {
-            const normalized = normalizeProviderUsagePayload(event.data);
-            if (normalized) {
-              const model =
-                typeof (event.data as { model?: unknown })?.model === 'string'
-                  ? String((event.data as { model: string }).model).trim()
-                  : undefined;
+            const details = extractProviderUsageDetails(event.data);
+            if (details) {
               handlers.onAgentEvent({
                 kind: 'usage',
-                inputTokens: normalized.inputTokens,
-                outputTokens: normalized.outputTokens,
-                ...(model ? { model } : {}),
+                inputTokens: details.inputTokens,
+                outputTokens: details.outputTokens,
+                ...(details.model ? { model: details.model } : {}),
+                ...(details.cacheReadInputTokens != null
+                  ? { cacheReadInputTokens: details.cacheReadInputTokens }
+                  : {}),
+                ...(details.cacheCreationInputTokens != null
+                  ? { cacheCreationInputTokens: details.cacheCreationInputTokens }
+                  : {}),
+                ...(details.latencyMs != null ? { latencyMs: details.latencyMs } : {}),
+                ...(details.stopReason ? { stopReason: details.stopReason } : {}),
+                apiProtocol: 'claude-agent',
               });
             }
             continue;
@@ -1293,17 +1298,23 @@ function translateAgentEvent(data: DaemonAgentPayload): AgentEvent | null {
     };
   }
   if (t === 'usage') {
-    const normalized = normalizeProviderUsagePayload(data);
-    if (!normalized) return null;
-    const model =
-      typeof data.model === 'string' && data.model.trim() ? data.model.trim() : undefined;
+    const details = extractProviderUsageDetails(data);
+    if (!details) return null;
     return {
       kind: 'usage',
-      inputTokens: normalized.inputTokens,
-      outputTokens: normalized.outputTokens,
+      inputTokens: details.inputTokens,
+      outputTokens: details.outputTokens,
       costUsd: typeof data.costUsd === 'number' ? data.costUsd : undefined,
-      durationMs: typeof data.durationMs === 'number' ? data.durationMs : undefined,
-      ...(model ? { model } : {}),
+      durationMs: details.latencyMs ?? (typeof data.durationMs === 'number' ? data.durationMs : undefined),
+      ...(details.model ? { model: details.model } : {}),
+      ...(details.cacheReadInputTokens != null
+        ? { cacheReadInputTokens: details.cacheReadInputTokens }
+        : {}),
+      ...(details.cacheCreationInputTokens != null
+        ? { cacheCreationInputTokens: details.cacheCreationInputTokens }
+        : {}),
+      ...(details.stopReason ? { stopReason: details.stopReason } : {}),
+      apiProtocol: 'claude-agent',
     };
   }
   if (t === 'fabricated_role_marker' && typeof data.marker === 'string') {

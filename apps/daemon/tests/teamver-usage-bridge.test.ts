@@ -59,6 +59,56 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('posts usage metadata fields for terminal teamver runs', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 204, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await reportTeamverUsageFromDaemon({
+      run: {
+        id: 'run-meta',
+        projectId: 'od-meta',
+        status: 'succeeded',
+        model: 'claude-sonnet-4-5',
+        createdAt: 1_000,
+        updatedAt: 2_500,
+        apiProtocol: 'claude-agent',
+        teamverIdentity: { userId: 'u1', workspaceId: 'ws1' },
+        events: [
+          {
+            event: 'agent',
+            data: {
+              type: 'usage',
+              usage: {
+                input_tokens: 100,
+                output_tokens: 40,
+                cache_read_input_tokens: 200,
+                cache_creation_input_tokens: 50,
+              },
+              model: 'claude-sonnet-4-5-20250929',
+            },
+          },
+          {
+            event: 'agent',
+            data: { type: 'result', stop_reason: 'end_turn' },
+          },
+        ],
+      },
+      reportedRuns: new Set(),
+    });
+
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown[])[1]?.body))).toMatchObject({
+      cache_read_input_tokens: 200,
+      cache_creation_input_tokens: 50,
+      provider_reported_model: 'claude-sonnet-4-5-20250929',
+      api_protocol: 'claude-agent',
+      latency_ms: 1500,
+      stop_reason: 'end_turn',
+    });
+  });
+
   it('posts internal usage event for terminal teamver runs', async () => {
     vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
     vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
