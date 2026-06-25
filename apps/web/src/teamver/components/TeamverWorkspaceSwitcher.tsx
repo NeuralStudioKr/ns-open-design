@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { Icon } from "../../components/Icon";
 import { TeamverAvatarGlyph } from "./TeamverAvatarGlyph";
@@ -8,10 +8,8 @@ import {
   formatWorkspaceMenuLabel,
   isWorkspaceAppEnabled,
 } from "../workspaceUtils";
-import {
-  readWorkspaceImageUrl,
-  workspaceNameInitial,
-} from "../teamverEmbedVisuals";
+import { readWorkspaceImageUrl } from "../teamverEmbedVisuals";
+import { computeWorkspaceMenuLayout } from "../teamverWorkspaceMenuLayout";
 
 type Props = {
   workspaces: WorkspaceListItem[];
@@ -59,13 +57,50 @@ export function TeamverWorkspaceSwitcher({
   disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | undefined>();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const active = activeWorkspaceId
     ? workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null
     : null;
   const multiple = workspaces.length > 1;
   const activeLabel = active ? readWorkspaceLabel(active) : "워크스페이스 준비 중…";
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(undefined);
+      return;
+    }
+
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const layout = computeWorkspaceMenuLayout(rect, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+      setMenuStyle({
+        position: "fixed",
+        ...(layout.top !== undefined
+          ? { top: layout.top, bottom: "auto" }
+          : { top: "auto", bottom: layout.bottom }),
+        left: layout.left,
+        width: layout.width,
+        maxHeight: layout.maxHeight,
+        overflowY: "auto",
+        zIndex: 1000,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -74,8 +109,18 @@ export function TeamverWorkspaceSwitcher({
         setOpen(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
     window.addEventListener("mousedown", onPointerDown);
-    return () => window.removeEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   const handleSelect = useCallback(
@@ -130,6 +175,7 @@ export function TeamverWorkspaceSwitcher({
   return (
     <div className="teamver-workspace-switcher" ref={rootRef} data-testid="teamver-workspace-switcher">
       <button
+        ref={triggerRef}
         type="button"
         className="teamver-workspace-trigger"
         aria-haspopup="listbox"
@@ -142,8 +188,14 @@ export function TeamverWorkspaceSwitcher({
       >
         <WorkspaceTriggerContent workspace={active} multiple={multiple} open={open} />
       </button>
-      {open ? (
-        <div className="teamver-workspace-menu" role="listbox" aria-label="워크스페이스 선택">
+      {open && menuStyle ? (
+        <div
+          className="teamver-workspace-menu teamver-workspace-menu--floating"
+          role="listbox"
+          aria-label="워크스페이스 선택"
+          style={menuStyle}
+          data-testid="teamver-workspace-menu"
+        >
           <p className="teamver-workspace-menu__heading">워크스페이스</p>
           {workspaces.map((workspace) => {
             const id = readWorkspaceId(workspace);

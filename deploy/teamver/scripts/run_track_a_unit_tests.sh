@@ -163,6 +163,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-amr-embed-skip.test.ts \
       tests/teamver-login-url.test.ts \
       tests/teamver-workspace-switcher.test.tsx \
+      tests/teamver-workspace-menu-layout.test.ts \
       tests/teamver-embed-visuals.test.ts \
       tests/components/TeamverSessionBanner.test.tsx \
       tests/teamver-project-error-messages.test.ts \

@@ -48,6 +48,9 @@ describe("TeamverWorkspaceSwitcher", () => {
 
     const scoped = within(view.getByTestId("teamver-workspace-switcher"));
     fireEvent.click(scoped.getByRole("button", { name: /워크스페이스: Alpha/i }));
+    const menu = scoped.getByTestId("teamver-workspace-menu");
+    expect(menu.className).toContain("teamver-workspace-menu--floating");
+    expect(menu.style.position).toBe("fixed");
     fireEvent.click(scoped.getByRole("option", { name: /Beta Team/i }));
     expect(onSwitch).toHaveBeenCalledWith("WS-2");
   });

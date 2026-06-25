@@ -219,11 +219,6 @@
 }
 
 .teamver-workspace-menu {
-  position: absolute;
-  top: calc(100% + 0.45rem);
-  right: 0;
-  left: auto;
-  z-index: 60;
   min-width: 15rem;
   max-width: min(20rem, 80vw);
   padding: 0.45rem;
@@ -231,6 +226,17 @@
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   box-shadow: var(--shadow-lg);
+}
+
+.teamver-workspace-menu--floating {
+  position: fixed;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  min-width: 0;
+  max-width: none;
+  z-index: 1000;
 }
 
 .teamver-workspace-menu__heading {
