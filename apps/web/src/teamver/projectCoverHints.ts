@@ -1,6 +1,7 @@
 import type { ProjectCoverHint, ProjectCoverHintsResponse } from "@open-design/contracts";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
+import { buildTeamverDaemonRequestHeaders } from "./teamverDaemonHeaders";
 
 export function projectCoverFileFromHint(hint: ProjectCoverHint): ProjectCoverFile | null {
   if (hint.coverPath && hint.coverKind) {
@@ -26,9 +27,10 @@ export async function fetchProjectCoverHints(
   if (ids.length === 0) return result;
 
   try {
+    const headers = await buildTeamverDaemonRequestHeaders({ "content-type": "application/json" });
     const response = await fetch("/api/projects/cover-hints", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ projectIds: ids }),
     });
     if (!response.ok) return result;
