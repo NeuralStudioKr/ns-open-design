@@ -20,4 +20,10 @@ describe("DesignsTab kanban lazy cover thumb", () => {
     expect(drawerCss).toContain(".design-kanban-card-thumb");
     expect(drawerCss).toContain(".design-kanban-card-embed-chips");
   });
+
+  it("lazy cover loader uses embed hints-only list surface options (loop 393)", () => {
+    const lazyCover = readSource("src/teamver/useLazyProjectCover.ts");
+    expect(lazyCover).toContain("resolveProjectCoverOptionsForListSurface");
+    expect(lazyCover).toContain("allowFilesFallback");
+  });
 });

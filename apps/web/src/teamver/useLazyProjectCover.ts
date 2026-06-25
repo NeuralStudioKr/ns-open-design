@@ -4,11 +4,14 @@ import { buildProjectCardCover, type ProjectCardCover } from "./projectCardCover
 import {
   projectNeedsCoverFileFetch,
   resolveProjectCoverFile,
+  resolveProjectCoverOptionsForListSurface,
 } from "./projectCoverLoader";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 
 type Options = {
   deferUntilVisible?: boolean;
+  /** When omitted, embed list surfaces default to hints-only (no `/files` fallback). */
+  allowFilesFallback?: boolean;
 };
 
 type LazyProjectCoverState = {
@@ -22,7 +25,10 @@ export function useLazyProjectCover(
   project: Project,
   options: Options = {},
 ): LazyProjectCoverState {
-  const { deferUntilVisible = true } = options;
+  const { deferUntilVisible = true, allowFilesFallback: allowFilesFallbackOption } = options;
+  const listSurfaceOptions = resolveProjectCoverOptionsForListSurface();
+  const allowFilesFallback =
+    allowFilesFallbackOption ?? listSurfaceOptions.allowFilesFallback !== false;
   const anchorRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(!deferUntilVisible);
   const [override, setOverride] = useState<ProjectCoverFile | null>(null);
@@ -54,7 +60,7 @@ export function useLazyProjectCover(
       return;
     }
     let cancelled = false;
-    void resolveProjectCoverFile(project).then((next) => {
+    void resolveProjectCoverFile(project, { allowFilesFallback }).then((next) => {
       if (cancelled) return;
       setOverride(next);
       setFetched(true);
@@ -62,7 +68,7 @@ export function useLazyProjectCover(
     return () => {
       cancelled = true;
     };
-  }, [project, visible, fetched]);
+  }, [allowFilesFallback, project, visible, fetched]);
 
   return {
     anchorRef,

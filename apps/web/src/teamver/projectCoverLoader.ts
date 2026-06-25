@@ -1,9 +1,11 @@
 import { isDesignSystemProject } from "../components/design-system-project";
 import { fetchProjectFiles } from "../providers/registry";
 import type { Project } from "../types";
+import { isTeamverEmbedMode } from "./designApiBase";
 import { fetchProjectCoverHints, projectCoverFileFromHint } from "./projectCoverHints";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
 import { pickProjectCoverFile, type ProjectCoverFile } from "./projectPreviewFile";
+import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 
 const COVER_FETCH_CACHE_MS = 60_000;
 const DEFAULT_COVER_FETCH_CONCURRENCY = 4;
@@ -12,6 +14,15 @@ export type ResolveProjectCoverOptions = {
   /** When false, stop after cover-hints/metadata — skip full `/files` listing. */
   allowFilesFallback?: boolean;
 };
+
+/** Embed project list cards — cover-hints + metadata only; no per-card `/files` listing. */
+export function embedProjectCoverHintsOnly(): boolean {
+  return isTeamverEmbedMode() && isTeamverEmbedDesignSurfaceEnabled();
+}
+
+export function resolveProjectCoverOptionsForListSurface(): ResolveProjectCoverOptions {
+  return embedProjectCoverHintsOnly() ? { allowFilesFallback: false } : {};
+}
 
 const coverCache = new Map<string, { cover: ProjectCoverFile | null; at: number }>();
 const inflight = new Map<string, Promise<ProjectCoverFile | null>>();

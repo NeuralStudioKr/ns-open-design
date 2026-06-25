@@ -9,13 +9,25 @@ vi.mock("../src/providers/registry", () => ({
 
 vi.stubGlobal("fetch", (...args: unknown[]) => fetchCoverHintsMock(...args));
 
+vi.mock("../src/teamver/designApiBase", () => ({
+  isTeamverEmbedMode: vi.fn(() => false),
+}));
+
+vi.mock("../src/teamver/teamverDesignAccess", () => ({
+  isTeamverEmbedDesignSurfaceEnabled: vi.fn(() => true),
+}));
+
 import {
+  embedProjectCoverHintsOnly,
   prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
   resetProjectCoverLoaderStateForTests,
   resolveProjectCoverFile,
   resolveProjectCoverFiles,
+  resolveProjectCoverOptionsForListSurface,
 } from "../src/teamver/projectCoverLoader";
+import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
+import { isTeamverEmbedDesignSurfaceEnabled } from "../src/teamver/teamverDesignAccess";
 import type { Project } from "../src/types";
 
 function project(overrides: Partial<Project> = {}): Project {
@@ -34,11 +46,26 @@ describe("projectCoverLoader", () => {
     fetchProjectFilesMock.mockReset();
     fetchCoverHintsMock.mockReset();
     fetchCoverHintsMock.mockResolvedValue({ ok: false });
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
+    vi.mocked(isTeamverEmbedDesignSurfaceEnabled).mockReturnValue(true);
     resetProjectCoverLoaderStateForTests();
   });
 
   afterEach(() => {
     resetProjectCoverLoaderStateForTests();
+  });
+
+  it("embed list surfaces default to hints-only cover resolve options", () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(isTeamverEmbedDesignSurfaceEnabled).mockReturnValue(true);
+    expect(embedProjectCoverHintsOnly()).toBe(true);
+    expect(resolveProjectCoverOptionsForListSurface()).toEqual({
+      allowFilesFallback: false,
+    });
+
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
+    expect(embedProjectCoverHintsOnly()).toBe(false);
+    expect(resolveProjectCoverOptionsForListSurface()).toEqual({});
   });
 
   it("skips fetch when metadata entryFile is present", async () => {
