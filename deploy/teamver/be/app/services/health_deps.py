@@ -114,13 +114,17 @@ async def _check_od_storage() -> str:
     return "degraded"
 
 
+# Main BE liveness — ns-teamver-be exposes GET /api/v2/healthz (not legacy /api/health).
+_MAIN_BE_HEALTH_PATH = "/api/v2/healthz"
+
+
 async def _check_main_be() -> str:
     base = (settings.teamver_api_base_url or "").strip().rstrip("/")
     if not base:
         return "not_configured"
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"{base}/api/health")
+            response = await client.get(f"{base}{_MAIN_BE_HEALTH_PATH}")
         return "ok" if response.status_code < 400 else f"http_{response.status_code}"
     except Exception:
         logger.exception("deps check: main BE unreachable")

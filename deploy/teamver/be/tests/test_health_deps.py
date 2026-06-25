@@ -68,3 +68,31 @@ async def _ok() -> str:
 
 async def _unavailable() -> str:
     return "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_check_main_be_probes_v2_healthz(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[str] = []
+
+    class _Resp:
+        status_code = 200
+
+    class _Client:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def get(self, url: str, **_kwargs: object) -> _Resp:
+            captured.append(url)
+            return _Resp()
+
+    monkeypatch.setattr(health_deps.settings, "teamver_api_base_url", "https://stg-api.teamver.com")
+    monkeypatch.setattr(health_deps.httpx, "AsyncClient", _Client)
+
+    assert await health_deps._check_main_be() == "ok"
+    assert captured == ["https://stg-api.teamver.com/api/v2/healthz"]
