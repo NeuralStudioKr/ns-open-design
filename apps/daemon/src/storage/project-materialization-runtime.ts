@@ -18,6 +18,7 @@ import {
   scratchIdleEvictAfterMs,
   scratchIdleEvictEnabled,
 } from './scratch-idle-eviction.js';
+import { safelyEvictScratchAfterRun } from './scratch-evict-policy.js';
 
 type RunLike = {
   id?: string;
@@ -152,7 +153,7 @@ export function createProjectMaterializationRuntime(
       projectSyncFloorMs.delete(projectId);
       const remote = run.teamverRemote
         ?? projectTenantRemote.get(projectId)
-        ?? storage.flatRemote();
+        ?? await resolveRunRemote(run, projectId);
       projectTenantRemote.delete(projectId);
       await withProjectLock(projectId, async () => {
         try {
@@ -174,13 +175,13 @@ export function createProjectMaterializationRuntime(
               }),
             );
           }
-          if (result.failed === 0 && process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1') {
-            await storage.evictScratchProject(projectId);
-          } else if (result.failed > 0 && process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1') {
-            console.warn(
-              `[project-materialization] retaining scratch for ${projectId}: ${result.failed} S3 upload(s) failed`,
-            );
-          }
+          await safelyEvictScratchAfterRun({
+            storage,
+            projectId,
+            remote,
+            runStartTimeMs: startedAt,
+            syncResult: result,
+          });
           await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end');
         } catch (err) {
           // sync-up threw outright (e.g. remote unreachable, signing failure).
