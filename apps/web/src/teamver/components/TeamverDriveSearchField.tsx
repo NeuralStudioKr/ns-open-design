@@ -6,6 +6,7 @@ type Props = {
   placeholder: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  minSearchLength?: number;
   onChange: (value: string) => void;
   onSubmit: () => void;
 };
@@ -16,9 +17,12 @@ export function TeamverDriveSearchField({
   placeholder,
   disabled = false,
   autoFocus = false,
+  minSearchLength = 0,
   onChange,
   onSubmit,
 }: Props) {
+  const canSubmit = value.trim().length >= minSearchLength;
+
   return (
     <div className="teamver-drive-picker-search">
       <Icon name="search" size={14} />
@@ -33,7 +37,7 @@ export function TeamverDriveSearchField({
           if (event.key === "Enter") {
             event.preventDefault();
             event.stopPropagation();
-            onSubmit();
+            if (canSubmit) onSubmit();
           }
         }}
       />
@@ -41,8 +45,10 @@ export function TeamverDriveSearchField({
         type="button"
         className="teamver-drive-picker-search-submit"
         aria-label="검색"
-        disabled={disabled}
-        onClick={onSubmit}
+        disabled={disabled || !canSubmit}
+        onClick={() => {
+          if (canSubmit) onSubmit();
+        }}
       >
         <Icon name="search" size={14} />
       </button>

@@ -275,6 +275,30 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
+  it("does not call server search until Enter is pressed in browse modal", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(listTargetsMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", browseButtonOptions));
+    const modal = screen.getByTestId("teamver-drive-picker-modal");
+    const searchInput = within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" });
+
+    fireEvent.change(searchInput, { target: { value: "exports" } });
+    expect(searchTargetsMock).not.toHaveBeenCalled();
+    expect(within(modal).getByRole("button", { name: "검색" }).hasAttribute("disabled")).toBe(false);
+
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+    await waitFor(() => {
+      expect(searchTargetsMock).toHaveBeenCalledWith("ws-1", "exports", { limit: 80 });
+    });
+  });
+
   // loop 174 — Custom listbox replaces the native <select>
   it("uses a custom listbox (button + popover) to pick the destination", async () => {
     render(

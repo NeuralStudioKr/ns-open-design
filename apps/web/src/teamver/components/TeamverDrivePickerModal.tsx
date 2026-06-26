@@ -497,7 +497,10 @@ export function TeamverDrivePickerModal({
                     <button
                       type="button"
                       className="teamver-drive-import-crumb-btn"
-                      onClick={() => setNavStack(navStack.slice(0, index + 1))}
+                      onClick={() => {
+                        setNavStack(navStack.slice(0, index + 1));
+                        resetSearch();
+                      }}
                     >
                       {crumb.name}
                     </button>
@@ -512,6 +515,7 @@ export function TeamverDrivePickerModal({
           autoFocus
           value={query}
           ariaLabel="드라이브 폴더 검색"
+          minSearchLength={TEAMVER_DRIVE_PUBLISH_SEARCH_MIN}
           placeholder={
             searchMode
               ? "드라이브 전체 검색"

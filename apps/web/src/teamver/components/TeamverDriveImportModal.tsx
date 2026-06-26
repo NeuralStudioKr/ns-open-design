@@ -629,6 +629,7 @@ export function TeamverDriveImportModal({
         <TeamverDriveSearchField
           value={query}
           ariaLabel="드라이브 파일 검색"
+          minSearchLength={TEAMVER_DRIVE_IMPORT_SEARCH_MIN}
           placeholder={
             searchMode
               ? "드라이브 전체 검색"
