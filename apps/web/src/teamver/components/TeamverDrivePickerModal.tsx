@@ -177,6 +177,10 @@ export function TeamverDrivePickerModal({
     }
     return browseAssetRows;
   }, [browseAssetRows, searching, trimmedQuery]);
+  const displayedRecentAssetRows = useMemo(() => {
+    const browseAssetIds = new Set(browseAssetRows.map((row) => row.assetId));
+    return recentAssetRows.filter((row) => !browseAssetIds.has(row.assetId));
+  }, [browseAssetRows, recentAssetRows]);
   const showRecentSection =
     !searching
     && atScopeRoot
@@ -185,7 +189,7 @@ export function TeamverDrivePickerModal({
     !searching
     && atScopeRoot
     && activeScope?.mode === "personal"
-    && recentAssetRows.length > 0;
+    && displayedRecentAssetRows.length > 0;
   const displayedHomeRecentTargets = useMemo(() => {
     if (searching || !atScopeRoot) return [];
     const localIds = new Set(recentTargets.map((target) => target.id));
@@ -208,7 +212,7 @@ export function TeamverDrivePickerModal({
       mimeType?: string;
       sharedDriveId?: string | null;
     }> = [];
-    for (const row of [...recentAssetRows, ...displayedBrowseAssets]) {
+    for (const row of [...displayedRecentAssetRows, ...displayedBrowseAssets]) {
       if (seen.has(row.assetId)) continue;
       seen.add(row.assetId);
       if (!isDriveImageAsset(row.name, row.mimeType)) continue;
@@ -220,7 +224,7 @@ export function TeamverDrivePickerModal({
       });
     }
     return items;
-  }, [displayedBrowseAssets, recentAssetRows]);
+  }, [displayedBrowseAssets, displayedRecentAssetRows]);
 
   function selectTarget(target: TeamverDrivePublishTarget) {
     onSelect(target);
@@ -335,10 +339,19 @@ export function TeamverDrivePickerModal({
       setNavStack([]);
       setBrowseTargets([]);
       setBrowseAssetRows([]);
+      setRecentAssetRows([]);
+      setHomeRecentTargets([]);
+      setThumbUrls(new Map());
       browsePageCacheRef.current.clear();
       return;
     }
     let canceled = false;
+    setBrowseTargets([]);
+    setBrowseAssetRows([]);
+    setRecentAssetRows([]);
+    setHomeRecentTargets([]);
+    setThumbUrls(new Map());
+    browsePageCacheRef.current.clear();
     void (async () => {
       try {
         const nextScopes = await listTeamverDriveImportScopes(workspaceId);
@@ -459,6 +472,7 @@ export function TeamverDrivePickerModal({
         if (!append) {
           setBrowseTargets([]);
           setBrowseAssetRows([]);
+          setRecentAssetRows([]);
           setBrowseError("드라이브 폴더를 불러오지 못했습니다");
         }
         setBrowseHasMore(false);
@@ -752,7 +766,7 @@ export function TeamverDrivePickerModal({
               data-testid="teamver-drive-picker-recent-assets"
             >
               <div className="teamver-drive-import-section-label">최근 파일</div>
-              {renderAssetGrid(recentAssetRows, "recent-asset", (row) => {
+              {renderAssetGrid(displayedRecentAssetRows, "recent-asset", (row) => {
                 selectFolderFromRecentAsset(row as TeamverDrivePublishRecentAsset);
               })}
             </div>

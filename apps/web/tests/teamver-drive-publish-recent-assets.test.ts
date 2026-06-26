@@ -44,14 +44,6 @@ describe("listTeamverDrivePublishRecentAssets", () => {
         folderId: "FLD-1",
         sharedDriveId: null,
       },
-      {
-        assetId: "A-2",
-        name: "shared.png",
-        mimeType: "image/png",
-        sizeBytes: undefined,
-        folderId: "FLD-2",
-        sharedDriveId: "SD-1",
-      },
     ]);
     expect(getTeamverDriveJson).toHaveBeenCalledWith(
       expect.stringContaining("/api/v2/drive/home/recent"),

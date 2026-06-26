@@ -9,7 +9,7 @@ export type TeamverDrivePublishRecentAsset = {
   sharedDriveId: string | null;
 };
 
-/** Drive home `/recent` assets for publish picker thumbnail grid (Phase 1-2c). */
+/** Drive home `/recent` personal assets for publish picker thumbnail grid (Phase 1-2c). */
 export async function listTeamverDrivePublishRecentAssets(
   workspaceId: string,
   options: { limit?: number } = {},
@@ -39,6 +39,7 @@ export async function listTeamverDrivePublishRecentAssets(
     if (seen.has(assetId)) continue;
     seen.add(assetId);
     const sharedDriveId = String(row.sharedDriveId ?? "").trim() || null;
+    if (sharedDriveId) continue;
     const mimeType =
       typeof row.type === "string" && row.type.trim()
         ? row.type.trim()
