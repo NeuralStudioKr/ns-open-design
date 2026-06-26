@@ -8442,16 +8442,54 @@ export async function startServer({
     return pathOnly;
   }
 
+  function readHtmlTagAttr(tag: string, name: string): string | null {
+    const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const unquotedValue = String.raw`([^\s"'=<>` + '`' + String.raw`]+)`;
+    const attrRe = new RegExp(
+      String.raw`\b${safeName}\s*=\s*(?:"([^"]*)"|'([^']*)'|${unquotedValue})`,
+      'i',
+    );
+    const match = attrRe.exec(tag);
+    if (!match) return null;
+    return match[1] ?? match[2] ?? match[3] ?? null;
+  }
+
+  function isExternalStylesheetLink(tag: string): boolean {
+    const href = readHtmlTagAttr(tag, 'href')?.trim() ?? '';
+    if (!/^https?:\/\//i.test(href)) return false;
+    const rel = readHtmlTagAttr(tag, 'rel') ?? '';
+    const relTokens = rel.toLowerCase().split(/\s+/).filter(Boolean);
+    if (relTokens.includes('stylesheet')) return true;
+    if (relTokens.includes('preload') && /\bas\s*=\s*(['"]?)style\1/i.test(tag)) return true;
+    return relTokens.includes('modulepreload');
+  }
+
+  function stripExternalCssImportsFromStyleTags(html: string): string {
+    return html.replace(
+      /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
+      (match, attrs, css) => {
+        let stripped = false;
+        const nextCss = String(css).replace(
+          /@import\s+(?:url\(\s*)?(["']?)https?:\/\/[^"')\s;]+(?:\1\s*\))?[^;]*;?/gi,
+          () => {
+            stripped = true;
+            return '/* od stripped external css import */';
+          },
+        );
+        return stripped ? `<style${attrs}>${nextCss}</style>` : match;
+      },
+    );
+  }
+
   function rewritePluginAssetUrls(html: string, pluginId: string, baseDir: string) {
     if (typeof html !== 'string' || html.length === 0) return html;
     const safeBase = baseDir === '.' ? '' : baseDir;
     let removedExternalScript = false;
     let removedExternalStylesheet = false;
     const withoutExternalStylesheets = html.replace(
-      /<link\b([^>]*?)\bhref\s*=\s*(['"])(https?:\/\/[^'"]+)\2([^>]*)>/gi,
-      (match, before, _quote, rawValue, after) => {
-        const attrs = `${before} ${after}`;
-        if (!/\brel\s*=\s*(['"]?)(?:stylesheet|preload|modulepreload)\1/i.test(attrs)) return match;
+      /<link\b[^>]*>/gi,
+      (match) => {
+        if (!isExternalStylesheetLink(match)) return match;
         // External CSS cannot pass the sandbox CSP (`style-src 'self'`) and
         // should not be fetched from the preview iframe. Keep media assets on
         // the existing cache route, but strip third-party stylesheets so the
@@ -8471,7 +8509,9 @@ export async function startServer({
         return '<!-- od stripped external script -->';
       },
     );
-    const withAttrs = withoutExternalScripts.replace(
+    const withoutExternalCssImports = stripExternalCssImportsFromStyleTags(withoutExternalScripts);
+    if (withoutExternalCssImports !== withoutExternalScripts) removedExternalStylesheet = true;
+    const withAttrs = withoutExternalCssImports.replace(
       /(\s(?:src|href|poster)\s*=\s*)(['"])([^'"]+)(\2)/gi,
       (match, attr, quote, rawValue, closeQuote) => {
         const value = String(rawValue).trim();

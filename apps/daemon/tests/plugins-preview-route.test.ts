@@ -46,6 +46,10 @@ beforeEach(async () => {
       <html>
         <head>
           <link rel="stylesheet" href="https://cdn.example.com/deck.css">
+          <link href="https://cdn.example.com/href-first.css" rel="stylesheet">
+          <link href=https://cdn.example.com/unquoted.css rel=stylesheet>
+          <link href="https://cdn.example.com/preload.css" rel="preload" as="style">
+          <style>@import url("https://cdn.example.com/imported.css"); body { color: #111; }</style>
           <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
           <script src="https://unpkg.com/lucide@latest"></script>
         </head>
@@ -166,6 +170,11 @@ describe('GET /api/plugins/:id/preview', () => {
     const body = await resp.text();
     expect(body).toContain('preview body');
     expect(body).not.toContain('https://cdn.example.com/deck.css');
+    expect(body).not.toContain('https://cdn.example.com/href-first.css');
+    expect(body).not.toContain('https://cdn.example.com/unquoted.css');
+    expect(body).not.toContain('https://cdn.example.com/preload.css');
+    expect(body).not.toContain('https://cdn.example.com/imported.css');
+    expect(body).toContain('od stripped external css import');
     expect(body).not.toContain('https://cdn.jsdelivr.net/npm/chart.js');
     expect(body).not.toContain('https://unpkg.com/lucide@latest');
     expect(body).toContain('data-od-preview-compat');
