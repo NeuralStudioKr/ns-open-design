@@ -2,6 +2,7 @@ import type { Request, RequestHandler, Response } from 'express';
 
 import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest } from '../teamver-project-access.js';
 import type { ProjectMaterializationRuntime } from './project-materialization-runtime.js';
+import type { MaterializingProjectStorage } from './materializing-project-storage.js';
 import { resolveTeamverTenantRemoteStorage } from './teamver-project-storage-meta.js';
 import { isS3ProjectStorageLayout } from './project-storage-layout.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
@@ -53,12 +54,16 @@ function isMutatingMethod(method: string): boolean {
 export function createProjectStorageAccessHooks(
   runtime: ProjectMaterializationRuntime | null,
 ): ProjectStorageAccessHooks | null {
-  if (runtime === null || !runtime.storage || !isS3ProjectStorageLayout(runtime.layout)) {
+  if (runtime === null || !isS3ProjectStorageLayout(runtime.layout)) {
     return null;
   }
 
   const materializationRuntime = runtime;
-  const storage = materializationRuntime.storage;
+  const projectStorage = materializationRuntime.storage;
+  if (projectStorage === null) {
+    return null;
+  }
+  const storage: MaterializingProjectStorage = projectStorage;
   const lastSyncAt = new Map<string, number>();
   const inflight = new Map<string, Promise<void>>();
 
