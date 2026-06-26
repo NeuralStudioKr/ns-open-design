@@ -85,6 +85,10 @@ describe('createProjectStorageAccessHooks', () => {
   });
 
   it('reports partial sync-up failures only for strict persistence requests', async () => {
+    const previousRetries = process.env.OD_S3_STRICT_PERSIST_RETRIES;
+    const previousRetryMs = process.env.OD_S3_STRICT_PERSIST_RETRY_MS;
+    process.env.OD_S3_STRICT_PERSIST_RETRIES = '1';
+    process.env.OD_S3_STRICT_PERSIST_RETRY_MS = '0';
     const storage = new MaterializingProjectStorage(
       new LocalProjectStorage('/tmp/scratch'),
       new LocalProjectStorage('/tmp/remote'),
@@ -109,6 +113,46 @@ describe('createProjectStorageAccessHooks', () => {
       ).rejects.toThrow('project_storage_sync_failed:1');
     } finally {
       warnSpy.mockRestore();
+      if (previousRetries === undefined) delete process.env.OD_S3_STRICT_PERSIST_RETRIES;
+      else process.env.OD_S3_STRICT_PERSIST_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_STRICT_PERSIST_RETRY_MS;
+      else process.env.OD_S3_STRICT_PERSIST_RETRY_MS = previousRetryMs;
+    }
+  });
+
+  it('retries strict sync-up after transient storage errors', async () => {
+    const previousRetries = process.env.OD_S3_STRICT_PERSIST_RETRIES;
+    const previousRetryMs = process.env.OD_S3_STRICT_PERSIST_RETRY_MS;
+    process.env.OD_S3_STRICT_PERSIST_RETRIES = '2';
+    process.env.OD_S3_STRICT_PERSIST_RETRY_MS = '0';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    const syncUp = vi.spyOn(storage, 'syncUp')
+      .mockRejectedValueOnce(new Error('remote list failed'))
+      .mockResolvedValueOnce({ uploaded: 1, skipped: 0, deleted: 0, failed: 0 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await expect(
+        hooks!.persistAfterMutation(
+          mockReq('POST', '/api/projects/p1/scratch/sync-up'),
+          'p1',
+          { strict: true },
+        ),
+      ).resolves.toBeUndefined();
+      expect(syncUp).toHaveBeenCalledTimes(2);
+      expect(runtime.isProjectSyncFailed('p1')).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+      if (previousRetries === undefined) delete process.env.OD_S3_STRICT_PERSIST_RETRIES;
+      else process.env.OD_S3_STRICT_PERSIST_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_STRICT_PERSIST_RETRY_MS;
+      else process.env.OD_S3_STRICT_PERSIST_RETRY_MS = previousRetryMs;
     }
   });
 

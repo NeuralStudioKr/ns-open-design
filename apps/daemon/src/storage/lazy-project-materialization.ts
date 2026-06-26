@@ -30,6 +30,21 @@ function lazySyncTtlMs(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60_000;
 }
 
+function strictPersistRetryAttempts(): number {
+  const parsed = Number(process.env.OD_S3_STRICT_PERSIST_RETRIES ?? '');
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 3;
+}
+
+function strictPersistRetryMs(): number {
+  const parsed = Number(process.env.OD_S3_STRICT_PERSIST_RETRY_MS ?? '');
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 300;
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function isProjectMaterializationPath(pathname: string): boolean {
   if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit)(\/|$)/.test(pathname)) {
     return true;
@@ -157,7 +172,31 @@ export function createProjectStorageAccessHooks(
       }
     };
 
-    await materializationRuntime.withProjectLock(trimmedId, runPersist);
+    const maxAttempts = options?.strict ? strictPersistRetryAttempts() : 1;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await materializationRuntime.withProjectLock(trimmedId, runPersist);
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (!options?.strict || attempt >= maxAttempts) break;
+        console.warn(
+          `[project-materialization] retrying strict sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
+          err instanceof Error ? err.message : err,
+        );
+        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+          console.info(JSON.stringify({
+            metric: 'od_s3_strict_persist_retry',
+            projectId: trimmedId,
+            attempt,
+            maxAttempts,
+          }));
+        }
+        await sleep(strictPersistRetryMs() * attempt);
+      }
+    }
+    throw lastErr;
   }
 
   async function onProjectRemoved(req: Request, projectId: string): Promise<void> {
