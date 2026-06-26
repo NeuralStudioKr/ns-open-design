@@ -1,7 +1,8 @@
 import type { Request, RequestHandler } from 'express';
 
 const DEFAULT_TIMEOUT_MS = 2500;
-const ACCESS_CACHE_TTL_MS = 60_000;
+const ACCESS_GRANT_CACHE_TTL_MS = 10_000;
+const ACCESS_DENY_CACHE_TTL_MS = 5_000;
 
 export type TeamverRequestIdentity = {
   userId: string;
@@ -130,8 +131,8 @@ function rememberAccess(
 ): void {
   accessCache.set(accessCacheKey(identity, projectId), {
     allowed,
-    s3Prefix,
-    expiresAt: Date.now() + ACCESS_CACHE_TTL_MS,
+    s3Prefix: allowed ? s3Prefix : null,
+    expiresAt: Date.now() + (allowed ? ACCESS_GRANT_CACHE_TTL_MS : ACCESS_DENY_CACHE_TTL_MS),
   });
 }
 

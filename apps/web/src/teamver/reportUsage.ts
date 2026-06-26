@@ -1,5 +1,5 @@
 import { NetworkError } from "@teamver/app-sdk";
-import { getDesignBffClient } from "./designBffClient";
+import { getDesignBffClient, withDesignBffCookieAuthRecovery } from "./designBffClient";
 
 export type TeamverUsageEvent = {
   workspaceId: string;
@@ -109,14 +109,14 @@ export async function reportTeamverDesignUsage(event: TeamverUsageEvent): Promis
   if (!client) return null;
 
   try {
-    return await postUsageEvent(client, event);
+    return await withDesignBffCookieAuthRecovery(() => postUsageEvent(client, event));
   } catch (err) {
     if (!isRetryableUsageError(err)) {
       emitClientUsageDropMarker("usage.events_client_drop", event, err);
       return null;
     }
     try {
-      return await postUsageEvent(client, event);
+      return await withDesignBffCookieAuthRecovery(() => postUsageEvent(client, event));
     } catch (retryErr) {
       emitClientUsageDropMarker("usage.events_client_retry_drop", event, retryErr);
       return null;

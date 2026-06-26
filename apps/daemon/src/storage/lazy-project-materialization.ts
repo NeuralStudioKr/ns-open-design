@@ -88,12 +88,14 @@ export function createProjectStorageAccessHooks(
     }
 
     const task = (async () => {
-      const remote = await resolveRemote(req, trimmedId);
-      const result = await storage.syncDown(trimmedId, remote);
-      lastSyncAt.set(trimmedId, Date.now());
-      console.info(
-        `[project-materialization] lazy sync-down ${trimmedId}: ${result.files} file(s)`,
-      );
+      await runtime.withProjectLock(trimmedId, async () => {
+        const remote = await resolveRemote(req, trimmedId);
+        const result = await storage.syncDown(trimmedId, remote);
+        lastSyncAt.set(trimmedId, Date.now());
+        console.info(
+          `[project-materialization] lazy sync-down ${trimmedId}: ${result.files} file(s)`,
+        );
+      });
     })();
 
     inflight.set(trimmedId, task);
@@ -113,31 +115,41 @@ export function createProjectStorageAccessHooks(
     if (!trimmedId) return;
 
     lastSyncAt.delete(trimmedId);
-    try {
-      const remote = await resolveRemote(req, trimmedId);
-      // runStart=0 → upload all scratch files (non-run API writes).
-      const result = await storage.syncUp(trimmedId, remote, 0);
-      console.info(
-        `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} failed=${result.failed}`,
-      );
-      if (result.failed > 0 && process.env.OD_S3_SYNC_UP_METRICS === '1') {
-        console.info(JSON.stringify({
-          metric: 'od_s3_sync_up_failed',
-          projectId: trimmedId,
-          failed: result.failed,
-          uploaded: result.uploaded,
-        }));
+    const runPersist = async (): Promise<void> => {
+      try {
+        const remote = await resolveRemote(req, trimmedId);
+        // runStart=0 → upload all scratch files (non-run API writes).
+        const result = await storage.syncUp(trimmedId, remote, 0);
+        console.info(
+          `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} failed=${result.failed}`,
+        );
+        if (result.failed > 0 && process.env.OD_S3_SYNC_UP_METRICS === '1') {
+          console.info(JSON.stringify({
+            metric: 'od_s3_sync_up_failed',
+            projectId: trimmedId,
+            failed: result.failed,
+            uploaded: result.uploaded,
+          }));
+        }
+        if (result.failed > 0) {
+          runtime.markProjectSyncFailed(trimmedId);
+          if (options?.strict) {
+            throw new Error(`project_storage_sync_failed:${result.failed}`);
+          }
+        } else {
+          runtime.clearProjectSyncFailed(trimmedId);
+        }
+      } catch (err) {
+        runtime.markProjectSyncFailed(trimmedId);
+        console.warn(
+          `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
+          err instanceof Error ? err.message : err,
+        );
+        if (options?.strict) throw err;
       }
-      if (result.failed > 0 && options?.strict) {
-        throw new Error(`project_storage_sync_failed:${result.failed}`);
-      }
-    } catch (err) {
-      console.warn(
-        `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
-        err instanceof Error ? err.message : err,
-      );
-      if (options?.strict) throw err;
-    }
+    };
+
+    await runtime.withProjectLock(trimmedId, runPersist);
   }
 
   async function onProjectRemoved(req: Request, projectId: string): Promise<void> {
@@ -230,6 +242,16 @@ export function createLazyProjectMaterializationMiddleware(
     }
 
     if (isMutatingMethod(req.method)) {
+      try {
+        await hooks.ensureMaterialized(req, projectId);
+      } catch (err) {
+        return sendApiError(
+          res,
+          502,
+          'UPSTREAM_UNAVAILABLE',
+          err instanceof Error ? err.message : 'project storage sync failed',
+        );
+      }
       res.on('finish', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) return;
         void hooks.persistAfterMutation(req, projectId);

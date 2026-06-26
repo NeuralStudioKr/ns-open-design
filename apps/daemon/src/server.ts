@@ -3150,7 +3150,63 @@ export function createFinalizedMessageTelemetryReporter({
       return;
     }
     const reportTrigger = options.reportTrigger ?? 'final_message';
+    const finalizeTeamverUsageAndBilling = async (): Promise<void> => {
+      const usagePosted = await reportTeamverUsageFromDaemon({
+        run,
+        persistedRunStatus: saved.runStatus,
+        reportedRuns,
+      });
+      const usageId = (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId ?? null;
+      const workspaceId = run.teamverIdentity?.workspaceId?.trim() ?? '';
+      if (!usageId) return;
+      const status = saved.runStatus;
+      if (status === 'succeeded') {
+        if (!usagePosted) {
+          const ok = await refundTeamverBillingFromDaemon({
+            runId: run.id,
+            usageId,
+            reason: 'usage_post_failed',
+          });
+          if (workspaceId) {
+            await finalizeTeamverUsageBillingFromDaemon({
+              runId: run.id,
+              workspaceId,
+              billingStatus: ok ? 'refunded' : 'refund_failed',
+              creditsCommitted: false,
+              registryUsageId: usageId,
+            });
+          }
+          return;
+        }
+        const ok = await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
+        if (workspaceId) {
+          await finalizeTeamverUsageBillingFromDaemon({
+            runId: run.id,
+            workspaceId,
+            billingStatus: ok ? 'committed' : 'commit_failed',
+            creditsCommitted: ok,
+            registryUsageId: usageId,
+          });
+        }
+      } else if (status === 'failed' || status === 'canceled') {
+        const ok = await refundTeamverBillingFromDaemon({
+          runId: run.id,
+          usageId,
+          reason: status === 'canceled' ? 'design_run_canceled' : 'design_run_failed',
+        });
+        if (workspaceId) {
+          await finalizeTeamverUsageBillingFromDaemon({
+            runId: run.id,
+            workspaceId,
+            billingStatus: ok ? 'refunded' : 'refund_failed',
+            creditsCommitted: false,
+            registryUsageId: usageId,
+          });
+        }
+      }
+    };
     if (reportedRuns.has(run.id)) {
+      void finalizeTeamverUsageAndBilling();
       captureResult({
         analyticsContext: options.analyticsContext,
         conversationId: options.conversationId ?? saved.conversationId,
@@ -3197,45 +3253,7 @@ export function createFinalizedMessageTelemetryReporter({
       // find one (race-safe), but ordering keeps the happy path observable
       // (single row, no stub overwrite) and matches docs-teamver/11 §4.8.
       void (async () => {
-        const usagePosted = await reportTeamverUsageFromDaemon({
-          run,
-          persistedRunStatus: saved.runStatus,
-          reportedRuns,
-        });
-        const usageId = (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId ?? null;
-        const workspaceId = run.teamverIdentity?.workspaceId?.trim() ?? '';
-        if (!usageId) return;
-        const status = saved.runStatus;
-        if (status === 'succeeded') {
-          // Do not commit credits until the usage ledger row exists — avoids
-          // Registry commit + finalize stub with 0 tokens when POST failed.
-          if (!usagePosted) return;
-          const ok = await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
-          if (workspaceId) {
-            await finalizeTeamverUsageBillingFromDaemon({
-              runId: run.id,
-              workspaceId,
-              billingStatus: ok ? 'committed' : 'commit_failed',
-              creditsCommitted: ok,
-              registryUsageId: usageId,
-            });
-          }
-        } else if (status === 'failed' || status === 'canceled') {
-          const ok = await refundTeamverBillingFromDaemon({
-            runId: run.id,
-            usageId,
-            reason: status === 'canceled' ? 'design_run_canceled' : 'design_run_failed',
-          });
-          if (workspaceId) {
-            await finalizeTeamverUsageBillingFromDaemon({
-              runId: run.id,
-              workspaceId,
-              billingStatus: ok ? 'refunded' : 'refund_failed',
-              creditsCommitted: false,
-              registryUsageId: usageId,
-            });
-          }
-        }
+        await finalizeTeamverUsageAndBilling();
       })();
       const state = delivery ?? {
         langfuse_expected: true,

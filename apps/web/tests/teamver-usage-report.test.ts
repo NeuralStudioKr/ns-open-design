@@ -148,6 +148,22 @@ describe('usageAttribution', () => {
     resetPinnedTeamverExecutionConfigForTests();
   });
 
+  it('extracts OpenAI nested cache read tokens from provider usage payloads', () => {
+    expect(
+      extractProviderUsageDetails({
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          prompt_tokens_details: { cached_tokens: 200 },
+        },
+      }),
+    ).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadInputTokens: 200,
+    });
+  });
+
   it('returns unknown when model cannot be resolved', () => {
     resetPinnedTeamverExecutionConfigForTests();
     expect(resolveTeamverUsageModelName([])).toBe('unknown');

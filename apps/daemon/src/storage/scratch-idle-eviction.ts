@@ -29,6 +29,7 @@ export type IdleScratchEvictResult = {
   evicted: string[];
   skippedActive: string[];
   skippedRecent: string[];
+  skippedSyncFailed: string[];
 };
 
 /**
@@ -39,6 +40,8 @@ export async function evictIdleScratchProjects(options: {
   projectsDir: string;
   storage: MaterializingProjectStorage;
   isActiveProject: (projectId: string) => boolean;
+  /** Skip projects whose last sync-up failed (scratch may be only copy). */
+  shouldSkipEvict?: (projectId: string) => boolean;
   idleAfterMs?: number;
   nowMs?: number;
   /** Serialize with sync-up/sync-down (project-materialization-runtime). */
@@ -50,6 +53,7 @@ export async function evictIdleScratchProjects(options: {
     evicted: [],
     skippedActive: [],
     skippedRecent: [],
+    skippedSyncFailed: [],
   };
 
   let entries: string[];
@@ -76,6 +80,10 @@ export async function evictIdleScratchProjects(options: {
     const evictIfIdle = async (): Promise<void> => {
       if (options.isActiveProject(projectId)) {
         result.skippedActive.push(projectId);
+        return;
+      }
+      if (options.shouldSkipEvict?.(projectId)) {
+        result.skippedSyncFailed.push(projectId);
         return;
       }
       let latestStat;

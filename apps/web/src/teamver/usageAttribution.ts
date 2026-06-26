@@ -29,6 +29,15 @@ function readUsageNumber(value: unknown, keys: string[]): number | undefined {
   return undefined;
 }
 
+function readNestedUsageNumber(value: unknown, path: string[]): number | undefined {
+  let current: unknown = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return typeof current === "number" && Number.isFinite(current) ? current : undefined;
+}
+
 /** Full provider usage breakdown for ledger metadata (cache, model, stop reason). */
 export function extractProviderUsageDetails(
   payload: unknown,
@@ -54,14 +63,22 @@ export function extractProviderUsageDetails(
   const usageRecord = usagePayload as Record<string, unknown>;
   const inputTokens = readUsageNumber(usageRecord, ["input_tokens", "inputTokens", "prompt_tokens"]) ?? 0;
   const outputTokens = readUsageNumber(usageRecord, ["output_tokens", "outputTokens", "completion_tokens"]) ?? 0;
-  const cacheReadInputTokens = readUsageNumber(usageRecord, [
-    "cache_read_input_tokens",
-    "cacheReadInputTokens",
-    "cached_tokens",
-  ]);
+  const cacheReadInputTokens =
+    readUsageNumber(usageRecord, [
+      "cache_read_input_tokens",
+      "cacheReadInputTokens",
+      "cached_tokens",
+      "cached_input_tokens",
+      "cache_read_tokens",
+      "cached_read_tokens",
+    ])
+    ?? readNestedUsageNumber(usageRecord, ["prompt_tokens_details", "cached_tokens"]);
   const cacheCreationInputTokens = readUsageNumber(usageRecord, [
     "cache_creation_input_tokens",
     "cacheCreationInputTokens",
+    "cache_write_input_tokens",
+    "cache_creation_tokens",
+    "cached_write_tokens",
   ]);
   const tokenSum =
     inputTokens + outputTokens + (cacheReadInputTokens ?? 0) + (cacheCreationInputTokens ?? 0);

@@ -34,6 +34,10 @@ export type ProjectMaterializationRuntime = {
   storage: MaterializingProjectStorage | null;
   beforeChatRun: (run: RunLike) => Promise<void>;
   wrapFinish: <T extends (...args: unknown[]) => unknown>(finish: T) => T;
+  withProjectLock: <T>(projectId: string, fn: () => Promise<T>) => Promise<T>;
+  markProjectSyncFailed: (projectId: string) => void;
+  clearProjectSyncFailed: (projectId: string) => void;
+  isProjectSyncFailed: (projectId: string) => boolean;
   /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
   dispose: () => void;
 };
@@ -48,6 +52,22 @@ export function createProjectMaterializationRuntime(
   const projectSyncFloorMs = new Map<string, number>();
   /** Tenant-scoped remote resolved by the first active run on a project. */
   const projectTenantRemote = new Map<string, ProjectStorage>();
+  /** Projects whose last sync-up reported failures — idle evict must retain scratch. */
+  const projectSyncFailed = new Set<string>();
+
+  function markProjectSyncFailed(projectId: string): void {
+    const id = projectId.trim();
+    if (id) projectSyncFailed.add(id);
+  }
+
+  function clearProjectSyncFailed(projectId: string): void {
+    const id = projectId.trim();
+    if (id) projectSyncFailed.delete(id);
+  }
+
+  function isProjectSyncFailed(projectId: string): boolean {
+    return projectSyncFailed.has(projectId.trim());
+  }
 
   function trackSyncFloor(projectId: string, startedAt: number): void {
     const floor = projectSyncFloorMs.get(projectId);
@@ -175,6 +195,9 @@ export function createProjectMaterializationRuntime(
               }),
             );
           }
+          if (result.failed > 0) {
+            markProjectSyncFailed(projectId);
+          }
           await safelyEvictScratchAfterRun({
             storage,
             projectId,
@@ -182,6 +205,9 @@ export function createProjectMaterializationRuntime(
             runStartTimeMs: startedAt,
             syncResult: result,
           });
+          if (result.failed === 0) {
+            clearProjectSyncFailed(projectId);
+          }
           await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end');
         } catch (err) {
           // sync-up threw outright (e.g. remote unreachable, signing failure).
@@ -277,6 +303,7 @@ export function createProjectMaterializationRuntime(
             projectsDir,
             storage,
             isActiveProject: (projectId) => (activeProjectRuns.get(projectId) ?? 0) > 0,
+            shouldSkipEvict: (projectId) => isProjectSyncFailed(projectId),
             idleAfterMs: scratchIdleEvictAfterMs(),
             withProjectLock: (projectId, fn) => withProjectLock(projectId, fn),
           }).catch((err) => {
@@ -312,6 +339,10 @@ export function createProjectMaterializationRuntime(
     storage,
     beforeChatRun,
     wrapFinish,
+    withProjectLock,
+    markProjectSyncFailed,
+    clearProjectSyncFailed,
+    isProjectSyncFailed,
     dispose,
   };
 }

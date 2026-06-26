@@ -7,6 +7,7 @@ import * as designBffClient from '../src/teamver/designBffClient';
 
 vi.mock('../src/teamver/designBffClient', () => ({
   getDesignBffClient: vi.fn(() => null),
+  withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
 }));
 
 describe('reportTeamverDesignUsage', () => {

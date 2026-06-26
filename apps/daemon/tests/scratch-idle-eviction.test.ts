@@ -95,5 +95,24 @@ describe('scratch-idle-eviction', () => {
       expect(result.evicted).toHaveLength(0);
       expect(result.skippedRecent).toEqual(['p-recent']);
     });
+
+    it('skips projects flagged with sync failures', async () => {
+      const oldDir = path.join(projectsDir, 'p-stale');
+      await fs.mkdir(oldDir, { recursive: true });
+      const oldTime = new Date(Date.now() - 300_000);
+      await fs.utimes(oldDir, oldTime, oldTime);
+
+      const result = await evictIdleScratchProjects({
+        projectsDir,
+        storage,
+        isActiveProject: () => false,
+        shouldSkipEvict: (id) => id === 'p-stale',
+        idleAfterMs: 60_000,
+      });
+
+      expect(result.evicted).toHaveLength(0);
+      expect(result.skippedSyncFailed).toEqual(['p-stale']);
+      await expect(fs.stat(oldDir)).resolves.toBeDefined();
+    });
   });
 });

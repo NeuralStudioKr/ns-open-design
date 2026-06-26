@@ -1447,18 +1447,20 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   app.post('/api/projects/:id/scratch/evict', async (req, res) => {
     const projectId = req.params.id;
-    if (ctx.projectStorageHooks) {
-      await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
+    if (!ctx.projectStorageHooks) {
+      return sendApiError(res, 503, 'PROJECT_STORAGE_UNAVAILABLE', 'project storage hooks unavailable');
     }
+    await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
     res.status(204).end();
   });
 
   app.post('/api/projects/:id/scratch/sync-up', async (req, res) => {
     const projectId = req.params.id;
+    if (!ctx.projectStorageHooks) {
+      return sendApiError(res, 503, 'PROJECT_STORAGE_UNAVAILABLE', 'project storage hooks unavailable');
+    }
     try {
-      if (ctx.projectStorageHooks) {
-        await ctx.projectStorageHooks.persistAfterMutation(req, projectId, { strict: true });
-      }
+      await ctx.projectStorageHooks.persistAfterMutation(req, projectId, { strict: true });
       res.status(204).end();
     } catch (err) {
       sendApiError(

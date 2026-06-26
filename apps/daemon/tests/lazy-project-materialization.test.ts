@@ -70,6 +70,20 @@ describe('createProjectStorageAccessHooks', () => {
     }
   });
 
+  it('marks project sync failed on partial lazy sync-up (non-strict)', async () => {
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 0, failed: 2 });
+
+    await hooks!.persistAfterMutation(mockReq('POST', '/api/projects/p1/files'), 'p1');
+    expect(runtime.isProjectSyncFailed('p1')).toBe(true);
+  });
+
   it('reports partial sync-up failures only for strict persistence requests', async () => {
     const storage = new MaterializingProjectStorage(
       new LocalProjectStorage('/tmp/scratch'),
@@ -164,12 +178,14 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     const hooks = createProjectStorageAccessHooks(
       createProjectMaterializationRuntime(layout, storage),
     );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
     const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
     const next = vi.fn();
     const res = mockRes();
     const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
 
     await middleware(mockReq('POST', '/api/projects/p1/files'), res, next);
+    expect(ensure).toHaveBeenCalled();
     expect(next).toHaveBeenCalled();
     res.emit('finish');
     await new Promise((r) => setTimeout(r, 0));
@@ -185,12 +201,14 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     const hooks = createProjectStorageAccessHooks(
       createProjectMaterializationRuntime(layout, storage),
     );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
     const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
     const next = vi.fn();
     const res = mockRes();
     const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
 
     await middleware(mockReq('POST', '/api/projects/p1/upload'), res, next);
+    expect(ensure).toHaveBeenCalled();
     expect(next).toHaveBeenCalled();
     res.emit('finish');
     await new Promise((r) => setTimeout(r, 0));
@@ -255,6 +273,7 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     const hooks = createProjectStorageAccessHooks(
       createProjectMaterializationRuntime(layout, storage),
     );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
     const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
     const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
 
@@ -269,6 +288,7 @@ describe('createLazyProjectMaterializationMiddleware', () => {
       const res = mockRes();
       const next = vi.fn();
       await middleware(mockReq('POST', path), res, next);
+      expect(ensure).toHaveBeenCalled();
       expect(next).toHaveBeenCalled();
       res.emit('finish');
       await new Promise((r) => setTimeout(r, 0));

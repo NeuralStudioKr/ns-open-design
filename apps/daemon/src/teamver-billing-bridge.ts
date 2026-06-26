@@ -107,25 +107,33 @@ async function postJson<T>(
   body: unknown,
   timeoutMs: number,
 ): Promise<{ status: number; payload: T | null }> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'X-Teamver-Internal-Api-Key': apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const raw = await response.text().catch(() => '');
-  let payload: T | null = null;
-  if (raw) {
-    try {
-      payload = JSON.parse(raw) as T;
-    } catch {
-      payload = null;
+  const attempt = async (): Promise<{ status: number; payload: T | null }> => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Teamver-Internal-Api-Key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const raw = await response.text().catch(() => '');
+    let payload: T | null = null;
+    if (raw) {
+      try {
+        payload = JSON.parse(raw) as T;
+      } catch {
+        payload = null;
+      }
     }
+    return { status: response.status, payload };
+  };
+
+  let result = await attempt();
+  if (result.status >= 500 || result.status === 429) {
+    result = await attempt();
   }
-  return { status: response.status, payload };
+  return result;
 }
 
 function resolveReserveAmount(callerAmount: number): number | null {
