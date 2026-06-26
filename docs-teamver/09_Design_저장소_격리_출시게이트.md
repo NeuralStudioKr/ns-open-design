@@ -644,7 +644,7 @@ aws s3 ls s3://teamver-design-staging-data/design/ --recursive | awk '{print $4}
 |---|------|------|
 | ☐ | staging **`OD_S3_PURGE_ON_DELETE=0`** — UI/registry delete 시 S3 tenant **유지** (디버깅·drift audit·E2E 재사용). production은 default **on** | `.env.staging` + daemon 재기동 |
 | ☐ | §13 volume→S3 **backfill** — registry-only 프로젝트 scratch/sync-up 또는 `s3 sync` | maintenance 창 |
-| ☐ | registry create **post-commit retry** (daemon scratch/sync-up N회, 지수 backoff) | `od_registry_scratch_sync_failed` 알람 연동 전 |
+| ✅ | registry create **post-commit retry** (daemon scratch/sync-up 2회 backoff) | loop 433 — `od_registry_scratch_sync_failed` 전 transient retry |
 | ☐ | **idle scratch evict** tenant-aware guard (lazy materialize 후 S3 0 + scratch >0 evict 금지) | run-end 가드만으로 1차 커버 |
 | ☐ | CloudWatch `od_registry_scratch_sync_failed` · `od_scratch_evict_deferred` metric filter `--apply` | `print_cloudwatch_alarm_commands.sh` |
 | ☐ | staging FE `VITE_TEAMVER_LEGACY_REGISTRY_SYNC=1` **비활성** 확인 (legacy bulk upsert 금지) | 기본 off, 빌드 env 점검 |

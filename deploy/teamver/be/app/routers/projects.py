@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Annotated
 
@@ -40,6 +41,8 @@ from ..teamver_sdk import extract_request_access_token, get_teamver_client
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 logger = logging.getLogger(__name__)
+
+REGISTRY_SCRATCH_SYNC_RETRY_DELAYS_SEC = (0.5, 1.5)
 
 
 def _to_response(row: DesignProject) -> DesignProjectResponse:
@@ -117,38 +120,54 @@ async def _sync_daemon_scratch_after_registry(
     as 502 so callers can retry instead of assuming S3 SSOT is ready.
     """
     workspace_id = require_workspace_context(auth)
-    try:
-        await OdDaemonClient().sync_scratch_project(
-            row.od_project_id,
-            identity=OdDaemonIdentity(
-                user_id=auth.user_id,
-                workspace_id=workspace_id,
-                s3_prefix=row.s3_prefix,
-            ),
-        )
-    except BadGatewayError:
-        logger.warning(
-            "registry create: daemon scratch sync-up failed od_project_id=%s",
-            row.od_project_id,
-            exc_info=True,
-        )
+    identity = OdDaemonIdentity(
+        user_id=auth.user_id,
+        workspace_id=workspace_id,
+        s3_prefix=row.s3_prefix,
+    )
+    delays = (*REGISTRY_SCRATCH_SYNC_RETRY_DELAYS_SEC, None)
+    last_exc: Exception | None = None
+    for attempt, delay_sec in enumerate(delays, start=1):
+        try:
+            await OdDaemonClient().sync_scratch_project(
+                row.od_project_id,
+                identity=identity,
+            )
+            return
+        except BadGatewayError as exc:
+            last_exc = exc
+        except Exception as exc:
+            last_exc = exc
+        if delay_sec is not None:
+            logger.info(
+                '{"metric":"od_registry_scratch_sync_retry","od_project_id":"%s","attempt":%s}',
+                row.od_project_id,
+                attempt,
+            )
+            await asyncio.sleep(delay_sec)
+
+    logger.warning(
+        "registry create: daemon scratch sync-up failed od_project_id=%s",
+        row.od_project_id,
+        exc_info=(
+            (type(last_exc), last_exc, last_exc.__traceback__)
+            if last_exc is not None
+            else None
+        ),
+    )
+    if isinstance(last_exc, BadGatewayError):
         logger.info(
             '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s"}',
             row.od_project_id,
         )
-        raise
-    except Exception as exc:
-        logger.warning(
-            "registry create: daemon scratch sync-up failed od_project_id=%s",
-            row.od_project_id,
-            exc_info=True,
-        )
-        logger.info(
-            '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
-            row.od_project_id,
-            str(exc).replace('"', '\\"'),
-        )
-        raise BadGatewayError("od_daemon_scratch_sync_up_failed") from exc
+        raise last_exc
+    reason = str(last_exc).replace('"', '\\"') if last_exc is not None else "unknown"
+    logger.info(
+        '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
+        row.od_project_id,
+        reason,
+    )
+    raise BadGatewayError("od_daemon_scratch_sync_up_failed") from last_exc
 
 
 async def _commit_registry_row_if_needed(

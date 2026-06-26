@@ -84,6 +84,8 @@ async def test_create_project_raises_when_sync_fails(monkeypatch: pytest.MonkeyP
         raise BadGatewayError("od_daemon_scratch_sync_up_failed")
 
     monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
+    sleep = AsyncMock()
+    monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
 
     with pytest.raises(BadGatewayError):
         await projects_router.create_project(
@@ -93,6 +95,47 @@ async def test_create_project_raises_when_sync_fails(monkeypatch: pytest.MonkeyP
         )
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
+    assert sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_create_project_retries_transient_sync_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    sync = AsyncMock(
+        side_effect=[
+            BadGatewayError("od_daemon_scratch_sync_up_failed"),
+            None,
+        ],
+    )
+    sleep = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(return_value=row),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+    monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
+
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+        _auth(),
+        db,
+    )
+
+    assert response.od_project_id == "od1"
+    db.commit.assert_awaited_once()
+    assert sync.await_count == 2
+    sleep.assert_awaited_once_with(0.5)
 
 
 @pytest.mark.asyncio
@@ -194,6 +237,8 @@ async def test_create_project_raises_when_reactivation_sync_fails(
         raise BadGatewayError("od_daemon_scratch_sync_up_failed")
 
     monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
+    sleep = AsyncMock()
+    monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
 
     with pytest.raises(BadGatewayError):
         await projects_router.create_project(
@@ -204,6 +249,7 @@ async def test_create_project_raises_when_reactivation_sync_fails(
 
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
+    assert sleep.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -300,6 +346,8 @@ async def test_create_project_raises_when_race_reactivation_sync_fails(
         raise BadGatewayError("od_daemon_scratch_sync_up_failed")
 
     monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
+    sleep = AsyncMock()
+    monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
 
     with pytest.raises(BadGatewayError):
         await projects_router.create_project(
@@ -310,6 +358,7 @@ async def test_create_project_raises_when_race_reactivation_sync_fails(
 
     db.commit.assert_awaited_once()
     db.rollback.assert_awaited_once()
+    assert sleep.await_count == 2
 
 
 @pytest.mark.asyncio
