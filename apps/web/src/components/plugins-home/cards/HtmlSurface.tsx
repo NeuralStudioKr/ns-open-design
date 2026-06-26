@@ -17,7 +17,7 @@
 // resolve on disk (the daemon falls back to assets/*.html, but if
 // nothing in the curated list exists the route 404s and the iframe
 // renders the JSON error envelope as a blank white tile). To avoid
-// blank cards in the home gallery, we issue a single HEAD probe
+// blank cards in the home gallery, we issue a single ranged GET
 // before mounting the iframe and swap in a typographic fallback
 // when the URL is unreachable. Results are cached per-URL so
 // scrolling doesn't re-probe the same plugin.
@@ -49,11 +49,10 @@ async function probe(url: string): Promise<'ok' | 'unreachable'> {
   if (existing) return existing;
   const run = (async () => {
     try {
-      const head = await fetch(url, { method: 'HEAD' });
-      if (head.ok) return 'ok' as const;
-      // Fall back to a normal GET — the daemon's asset routes only
-      // handle GET, so HEAD may legitimately 404 even when the entry
-      // exists. Use a Range request to keep the response tiny.
+      // The daemon preview routes are GET-first, and some deployments
+      // log HEAD 404 probes even when the GET preview can render. A
+      // single ranged GET keeps the check tiny without the noisy extra
+      // request.
       const res = await fetch(url, {
         method: 'GET',
         headers: { Range: 'bytes=0-0' },

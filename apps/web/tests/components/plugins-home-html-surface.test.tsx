@@ -46,7 +46,8 @@ afterEach(() => {
 
 describe('HtmlSurface reachability probe', () => {
   it('renders the iframe once the URL probes OK and the auto-arm window elapses', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse()));
+    const fetchMock = vi.fn().mockResolvedValue(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
         preview={PREVIEW}
@@ -63,13 +64,19 @@ describe('HtmlSurface reachability probe', () => {
       },
       { timeout: 2000 },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(PREVIEW.src, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+    });
     expect(
       container.querySelector('[data-testid="plugins-home-html-fallback"]'),
     ).toBeNull();
   });
 
   it('renders the typographic fallback (no iframe) when the URL 404s', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(notFoundResponse()));
+    const fetchMock = vi.fn().mockResolvedValue(notFoundResponse());
+    vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
         preview={PREVIEW}
@@ -86,6 +93,11 @@ describe('HtmlSurface reachability probe', () => {
       },
       { timeout: 2000 },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(PREVIEW.src, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+    });
     expect(container.querySelector('iframe')).toBeNull();
     expect(
       container.querySelector('.plugins-home__html-fallback-glyph')?.textContent,
