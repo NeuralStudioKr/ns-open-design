@@ -45,7 +45,7 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
     expect(fileViewer).not.toContain('TeamverOpenDrivePublishMenuItem');
     // Korean success toast still surfaces a Drive jump-link so the standalone
     // menu item is not needed.
-    expect(fileViewer).toContain('Teamver 드라이브에서 보기');
+    expect(fileViewer).toContain('TEAMVER_DRIVE_ASSET_LINK_LABEL');
   });
 
   it('locks the Korean copy on the Drive publish row (loop 173)', () => {
@@ -104,6 +104,7 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
     expect(history).toContain('data-testid="teamver-drive-history"');
     // Korean copy keys we care about
     expect(history).toContain('Drive 발행 이력');
+    expect(history).toContain('TEAMVER_DRIVE_ASSET_LINK_LABEL');
     expect(history).toContain('아직 Teamver 드라이브에 발행한 적이 없습니다');
     // Version label format is `v{N}` driven off the DESC-sorted ready list.
     expect(history).toContain('ready.length - index');

@@ -32,6 +32,7 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
 import type { Dict, Locale } from '../i18n/types';
@@ -8529,7 +8530,7 @@ function HtmlViewer({
                           ? 'Teamver 드라이브로 일부만 발행되었습니다'
                           : 'Teamver 드라이브로 발행했습니다',
                         details: output.driveAssetId
-                          ? 'Teamver 드라이브에서 보기'
+                          ? TEAMVER_DRIVE_ASSET_LINK_LABEL
                           : `${output.filename} — 드라이브 열기`,
                         detailsHref: driveUrl,
                       });

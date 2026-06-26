@@ -61,7 +61,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 
 1. **Drive picker UX**: publish folder search/browse + 최근 파일/asset grid full browser ✅ loop 420.
 2. **Drive import UI**: composer modal/full browser와 Main Drive handoff 완료. ~~다중 파일 handoff~~ ✅ loop 419 · import 원본 deep-link ✅ loop 194.
-3. **Drive deep-link**: publish toast의 Drive asset 링크는 완료. outputs 목록의 동일 액션 정합은 후속.
+3. **Drive deep-link**: publish toast·history·project card chip에서 동일 asset URL·라벨 ✅ loop 174/187/421.
 4. **워크스페이스 자산 라이브러리 부재**: `design_systems`는 OD 자체 모델, Drive 공유 자산과 분리.
 
 ---

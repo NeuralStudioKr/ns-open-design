@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { resolveTeamverDriveAssetUrl } from "../designApiBase";
+import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from "../teamverDriveDeepLink";
 import {
   listTeamverProjectOutputs,
   type TeamverProjectOutputsResult,
@@ -209,9 +210,10 @@ export function TeamverDrivePublishHistory({ projectId, refreshKey, onError }: P
                     href={driveUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label={TEAMVER_DRIVE_ASSET_LINK_LABEL}
                     data-testid={`teamver-drive-history-open-${index}`}
                   >
-                    Drive 열기
+                    {TEAMVER_DRIVE_ASSET_LINK_LABEL}
                   </a>
                 ) : null}
               </li>
