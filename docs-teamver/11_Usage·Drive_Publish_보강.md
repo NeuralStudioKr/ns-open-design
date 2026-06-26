@@ -555,6 +555,9 @@ void (async () => {
 
 ### 4.9 후속 구현 체크리스트 (권장 순서)
 
+> **⏸ 2026-06-26 — 실제 크레딧 차감·Registry commit amount는 CTO 회의 후 착수.**  
+> infra probe(loop 425–426)는 merge 가능 — `TEAMVER_BILLING_DISABLED=1` 기본 유지.
+
 ```text
 [x] 0a. ledger race-safe merge: billing-finalize stub + no committed downgrade (loop 380)
 [x] 0b. aupsert_usage IntegrityError → merge into surviving row (loop 380)

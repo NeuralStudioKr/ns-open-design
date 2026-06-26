@@ -27,8 +27,8 @@ unset_env() {
 
 unset_env
 empty_out="$(bash "$SCRIPT" --staging 2>&1)"
-if ! grep -q '0 passed, 0 failed, 15 skipped' <<< "$empty_out"; then
-  echo "❌ empty-env run must skip 15 phases (got: $empty_out)"
+if ! grep -q '0 passed, 0 failed, 17 skipped' <<< "$empty_out"; then
+  echo "❌ empty-env run must skip 17 phases (got: $empty_out)"
   exit 1
 fi
 if ! grep -q '✓ Track A E2E ok' <<< "$empty_out"; then
@@ -136,6 +136,25 @@ case "$URL" in
   *"/api/internal/usage/events")
     emit_code 204
     ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize")
+    emit_code 204
+    ;;
   *"/api/v1/projects/"*"/publish")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 201
@@ -202,6 +221,10 @@ for needle in \
   'S-8c runtime-config configured=true' \
   'U-6a /api/internal/usage/events' \
   'U-6b 멱등 두 번째 POST' \
+  'U-6d /api/internal/billing/estimate-reserve' \
+  'U-6f-a reserve amount=' \
+  'U-6f-b usage/events billing_status=' \
+  'U-6f-c billing-finalize committed' \
   'D-5a publish proj-e2e-1' \
   'D-7 publish body outputs[].driveAssetId 채워짐' \
   'D-6b import-drive policy reject' \
@@ -226,7 +249,23 @@ for ((i=1; i<=$#; i++)); do
   esac
 done
 printf '%s\n' "$SQL" >> "${MOCK_PSQL_LOG:?}"
-printf '1\n'
+case "$SQL" in
+  *run_id*bill-*)
+    printf 'committed|t|\n'
+    ;;
+  *billing_status*)
+    printf 'not_attempted|\n'
+    ;;
+  *credits_amount_t*meter-*)
+    printf '42\n'
+    ;;
+  *count\(\*\)*)
+    printf '1\n'
+    ;;
+  *)
+    printf '1\n'
+    ;;
+esac
 MOCK
 chmod +x "$MOCK_BIN/psql"
 MOCK_PSQL_LOG="$WORK/psql.log"
@@ -320,6 +359,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/publish")
     emit_code 201
     emit_body '{"projectId":"proj-e2e-1","outputs":[{"id":"DOUT-1","kind":"html","driveAssetId":"AST-PUB","filename":"Deck.html","sizeBytes":12,"mimeType":"text/html","publishStatus":"ready"}]}'
@@ -419,6 +475,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/publish")
     emit_code 201
     emit_body '{"projectId":"proj-e2e-1","outputs":[{"id":"DOUT-1","kind":"html","driveAssetId":"","filename":"Deck.html","publishStatus":"ready"}]}'
@@ -522,6 +595,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/publish")
     emit_code 207
     emit_body '{"projectId":"proj-e2e-1","outputs":[{"id":"DOUT-HTML","kind":"html","driveAssetId":"AST-PARTIAL","filename":"Deck.html","publishStatus":"ready"},{"kind":"zip","publishStatus":"failed","errorCode":"od_daemon_export_failed"}]}'
@@ -630,6 +720,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/publish")
     emit_code 207
     emit_body '{"projectId":"proj-e2e-1","outputs":[{"kind":"html","driveAssetId":"","publishStatus":"ready"},{"kind":"zip","publishStatus":"failed","errorCode":"od_daemon_export_failed"}]}'
@@ -708,6 +815,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/publish") emit_code 401 ;;
   *"/api/v1/projects/"*"/access") emit_code 403 ;;
   *) emit_code 200 ;;
@@ -776,6 +900,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/publish") emit_code 200 ;;
   *"/api/v1/projects/"*"/access") emit_code 204 ;;
   *) emit_code 200 ;;
@@ -801,14 +942,23 @@ cat > "$MOCK_BIN/curl" <<'MOCK'
 URL=""
 WRITE_OUT=""
 HEADER_FILE=""
+OUT_FILE=""
 for ((i=1; i<=$#; i++)); do
   case "${!i}" in
     -w) j=$((i+1)); WRITE_OUT="${!j}" ;;
     -D) j=$((i+1)); HEADER_FILE="${!j}" ;;
+    -o) j=$((i+1)); OUT_FILE="${!j}" ;;
   esac
 done
 for a in "$@"; do URL="$a"; done
 emit_code() { [[ "$WRITE_OUT" == "%{http_code}" ]] && echo "$1"; }
+emit_body() {
+  if [[ -n "$OUT_FILE" ]]; then
+    printf '%s' "$1" > "$OUT_FILE"
+  else
+    printf '%s' "$1"
+  fi
+}
 case "$URL" in
   *"/api/v1/auth/session"|*"/api/auth/session")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
@@ -847,6 +997,23 @@ case "$URL" in
     fi
     ;;
   *"/api/internal/usage/events") emit_code 204 ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    else
+      emit_body '{"amount_t":42,"policy":"metered","model_name":"claude-sonnet-4-5"}'
+    fi
+    ;;
+  *"/api/internal/billing/reserve")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    else
+      emit_body '{"ok":true,"usage_id":null,"error":"registry_not_configured"}'
+    fi
+    ;;
+  *"/api/internal/usage/billing-finalize") emit_code 204 ;;
   *"/api/v1/projects/"*"/access")
     if [[ -n "$HEADER_FILE" ]]; then
       printf 'HTTP/2 204\r\nX-Teamver-S3-Prefix: design/ws_w/user_u/proj_proj-e2e-1/\r\n\r\n' > "$HEADER_FILE"

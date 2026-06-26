@@ -218,6 +218,36 @@ else
   echo "○ design-api /api/internal/billing/reserve unauthenticated → $billing_unauth_code"
 fi
 
+estimate_unauth_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"model_name":"claude-sonnet-4-5"}' \
+  "http://127.0.0.1:${BE_PORT}/api/internal/billing/estimate-reserve" 2>/dev/null || echo "000")"
+if [[ "$estimate_unauth_code" == "401" || "$estimate_unauth_code" == "403" ]]; then
+  echo "✓ design-api /api/internal/billing/estimate-reserve unauthenticated → $estimate_unauth_code"
+  pass=$((pass + 1))
+elif [[ "$estimate_unauth_code" == "404" ]]; then
+  echo "✗ design-api /api/internal/billing/estimate-reserve → 404 (endpoint missing — redeploy design-api)"
+  fail=$((fail + 1))
+else
+  echo "○ design-api /api/internal/billing/estimate-reserve unauthenticated → $estimate_unauth_code"
+fi
+
+finalize_unauth_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"workspace_id":"sidecar-probe","run_id":"sidecar-probe","billing_status":"committed"}' \
+  "http://127.0.0.1:${BE_PORT}/api/internal/usage/billing-finalize" 2>/dev/null || echo "000")"
+if [[ "$finalize_unauth_code" == "401" || "$finalize_unauth_code" == "403" ]]; then
+  echo "✓ design-api /api/internal/usage/billing-finalize unauthenticated → $finalize_unauth_code"
+  pass=$((pass + 1))
+elif [[ "$finalize_unauth_code" == "404" ]]; then
+  echo "✗ design-api /api/internal/usage/billing-finalize → 404 (endpoint missing — redeploy design-api)"
+  fail=$((fail + 1))
+else
+  echo "○ design-api /api/internal/usage/billing-finalize unauthenticated → $finalize_unauth_code"
+fi
+
 if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
   billing_auth_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
     -X POST \
@@ -230,6 +260,38 @@ if [[ -n "${TEAMVER_INTERNAL_API_KEY:-}" ]]; then
     pass=$((pass + 1))
   else
     echo "✗ design-api /api/internal/billing/reserve (M2M) → $billing_auth_code (expected 200)"
+    fail=$((fail + 1))
+  fi
+
+  estimate_body="$(mktemp)"
+  estimate_auth_code="$(curl -s -o "$estimate_body" -w '%{http_code}' --max-time 8 \
+    -X POST \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    -H 'Content-Type: application/json' \
+    -d '{"model_name":"claude-sonnet-4-5"}' \
+    "http://127.0.0.1:${BE_PORT}/api/internal/billing/estimate-reserve" 2>/dev/null || echo "000")"
+  if [[ "$estimate_auth_code" == "200" ]] \
+    && grep -q '"amount_t"' "$estimate_body" 2>/dev/null \
+    && grep -q '"policy"' "$estimate_body" 2>/dev/null; then
+    echo "✓ design-api /api/internal/billing/estimate-reserve (M2M) → 200"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api /api/internal/billing/estimate-reserve (M2M) → $estimate_auth_code body=$(tr -d '\n' < "$estimate_body" | head -c 200)"
+    fail=$((fail + 1))
+  fi
+  rm -f "$estimate_body"
+
+  finalize_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+    -X POST \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    -H 'Content-Type: application/json' \
+    -d '{"workspace_id":"sidecar-probe","run_id":"sidecar-probe-run","billing_status":"committed","credits_committed":true}' \
+    "http://127.0.0.1:${BE_PORT}/api/internal/usage/billing-finalize" 2>/dev/null || echo "000")"
+  if [[ "$finalize_code" == "204" || "$finalize_code" == "200" ]]; then
+    echo "✓ design-api /api/internal/usage/billing-finalize (M2M) → $finalize_code"
+    pass=$((pass + 1))
+  else
+    echo "✗ design-api /api/internal/usage/billing-finalize (M2M) → $finalize_code (expected 204)"
     fail=$((fail + 1))
   fi
 fi

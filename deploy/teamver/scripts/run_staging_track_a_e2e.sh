@@ -517,6 +517,216 @@ else
   [[ -z "${SKIP_DB:-}" ]] || skipped "U-6c RDS row 확인 — SKIP_DB=1"
 fi
 
+# ---- U-6d: estimate-reserve (Strategy A infra probe) ------------------------
+if require_env_or_skip TEAMVER_INTERNAL_API_KEY "U-6d estimate-reserve M2M"; then
+  estimate_tmp="$(mktemp)"
+  estimate_code="$(curl -s -o "$estimate_tmp" -w '%{http_code}' --max-time 10 \
+    -X POST -H "Content-Type: application/json" \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    --data '{"model_name":"claude-sonnet-4-5"}' \
+    "${INTERNAL_API_BASE}/api/internal/billing/estimate-reserve" 2>/dev/null || echo 000)"
+  estimate_resp="$(cat "$estimate_tmp" 2>/dev/null || true)"
+  rm -f "$estimate_tmp"
+  if [[ "$estimate_code" == "200" ]] \
+    && grep -q '"amount_t"' <<< "$estimate_resp" \
+    && grep -q '"policy"' <<< "$estimate_resp"; then
+    passed "U-6d /api/internal/billing/estimate-reserve ← 200 policy=$(sed -n 's/.*"policy":"\([^"]*\)".*/\1/p' <<< "$estimate_resp" | head -1)"
+    e2e_estimate_amount_t="$(sed -n 's/.*"amount_t":\([0-9][0-9]*\).*/\1/p' <<< "$estimate_resp" | head -1)"
+    e2e_estimate_policy="$(sed -n 's/.*"policy":"\([^"]*\)".*/\1/p' <<< "$estimate_resp" | head -1)"
+  else
+    failed "U-6d /api/internal/billing/estimate-reserve ← ${estimate_code} (expected 200 + amount_t/policy)"
+    e2e_estimate_amount_t=""
+    e2e_estimate_policy=""
+  fi
+fi
+
+# ---- U-6e: ledger billing_status + credits_amount_t audit -------------------
+if [[ "$usage_event_ok" == true && -z "${SKIP_DB:-}" ]]; then
+  if [[ -z "${MAIN_BE_DATABASE_URL:-}" ]]; then
+    skipped "U-6e ledger audit — MAIN_BE_DATABASE_URL 미설정"
+  elif ! command -v psql >/dev/null 2>&1; then
+    skipped "U-6e ledger audit — psql 미설치"
+  else
+    sleep 1
+    ledger_row="$(PGOPTIONS='-c default_transaction_read_only=on' \
+      psql "$MAIN_BE_DATABASE_URL" -At \
+      -c "SELECT coalesce(billing_status,''), coalesce(credits_amount_t::text,'') FROM ai_model_token_usages WHERE run_id = '${e2e_run_id}';" 2>/dev/null || echo "?|?")"
+    ledger_status="${ledger_row%%|*}"
+    ledger_credits="${ledger_row#*|}"
+    if [[ "$ledger_status" == "not_attempted" ]]; then
+      passed "U-6e billing_status=not_attempted (run_id=${e2e_run_id})"
+    elif [[ "$ledger_row" == "?|?" ]]; then
+      failed "U-6e psql ledger audit 실패"
+    else
+      failed "U-6e billing_status=${ledger_status} (expected not_attempted)"
+    fi
+    if [[ -n "${e2e_estimate_amount_t:-}" && "${e2e_estimate_amount_t:-0}" -gt 0 ]] \
+      && [[ "${e2e_estimate_policy:-}" == metered* ]]; then
+      meter_prefix="${TEAMVER_E2E_RUN_PREFIX:-e2e-}meter-"
+      meter_ts="$(date -u +'%Y%m%dT%H%M%SZ')"
+      meter_rand="$(printf '%04x' $((RANDOM % 65536)))"
+      meter_run_id="${meter_prefix}${meter_ts}-${meter_rand}"
+      meter_body="{\"user_id\":\"${session_user_id:-e2e-user}\",\"workspace_id\":\"${session_workspace_id:-e2e-ws}\",\"model_name\":\"claude-sonnet-4-5\",\"input_tokens\":1000,\"output_tokens\":500,\"token_count_source\":\"provider_usage\",\"operation\":\"design_e2e_meter\",\"run_id\":\"${meter_run_id}\"}"
+      meter_code="$(curl_code "${INTERNAL_API_BASE}/api/internal/usage/events" \
+        -X POST -H "Content-Type: application/json" \
+        -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+        --data "$meter_body")"
+      if [[ "$meter_code" == "204" || "$meter_code" == "200" || "$meter_code" == "202" ]]; then
+        sleep 2
+        meter_credits="$(PGOPTIONS='-c default_transaction_read_only=on' \
+          psql "$MAIN_BE_DATABASE_URL" -At \
+          -c "SELECT coalesce(credits_amount_t::text,'') FROM ai_model_token_usages WHERE run_id = '${meter_run_id}';" 2>/dev/null || echo "?")"
+        if [[ "$meter_credits" =~ ^[1-9][0-9]*$ ]]; then
+          passed "U-6e credits_amount_t=${meter_credits} (metered probe run_id=${meter_run_id})"
+        elif [[ "$meter_credits" == "?" ]]; then
+          failed "U-6e metered credits_amount_t psql 실패"
+        else
+          failed "U-6e credits_amount_t empty (expected >0 when estimate policy=${e2e_estimate_policy})"
+        fi
+      else
+        failed "U-6e metered usage POST ← ${meter_code}"
+      fi
+    elif [[ -z "${ledger_credits}" ]]; then
+      passed "U-6e credits_amount_t null (unknown token source — expected without price table)"
+    else
+      passed "U-6e credits_amount_t=${ledger_credits}"
+    fi
+  fi
+else
+  [[ -z "${SKIP_DB:-}" ]] || skipped "U-6e ledger audit — SKIP_DB=1"
+fi
+
+# ---- U-6f: billing lifecycle (estimate → reserve → usage → finalize) ----------
+# Simulates daemon terminal hook order (11 §4.8). Infra probe only — no Registry charge without creds.
+if require_env_or_skip TEAMVER_INTERNAL_API_KEY "U-6f billing lifecycle M2M"; then
+  bill_prefix="${TEAMVER_E2E_RUN_PREFIX:-e2e-}bill-"
+  bill_ts="$(date -u +'%Y%m%dT%H%M%SZ')"
+  bill_rand="$(printf '%04x' $((RANDOM % 65536)))"
+  bill_run_id="${bill_prefix}${bill_ts}-${bill_rand}"
+  bill_ws="${session_workspace_id:-e2e-ws}"
+  bill_user="${session_user_id:-e2e-user}"
+
+  reserve_amount="${e2e_estimate_amount_t:-0}"
+  reserve_amount="${reserve_amount:-0}"
+  if [[ "$reserve_amount" == "0" && -z "${e2e_estimate_policy:-}" ]]; then
+    bill_est_tmp="$(mktemp)"
+    bill_est_code="$(curl -s -o "$bill_est_tmp" -w '%{http_code}' --max-time 10 \
+      -X POST -H "Content-Type: application/json" \
+      -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+      --data '{"model_name":"claude-sonnet-4-5"}' \
+      "${INTERNAL_API_BASE}/api/internal/billing/estimate-reserve" 2>/dev/null || echo 000)"
+    if [[ "$bill_est_code" == "200" ]]; then
+      bill_est_resp="$(cat "$bill_est_tmp" 2>/dev/null || true)"
+      reserve_amount="$(sed -n 's/.*"amount_t":\([0-9][0-9]*\).*/\1/p' <<< "$bill_est_resp" | head -1)"
+      reserve_amount="${reserve_amount:-0}"
+    fi
+    rm -f "$bill_est_tmp"
+  fi
+
+  reserve_tmp="$(mktemp)"
+  reserve_json="{\"workspace_id\":\"${bill_ws}\",\"amount\":${reserve_amount},\"reason\":\"design_e2e\"}"
+  reserve_code="$(curl -s -o "$reserve_tmp" -w '%{http_code}' --max-time 15 \
+    -X POST -H "Content-Type: application/json" \
+    -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+    --data "$reserve_json" \
+    "${INTERNAL_API_BASE}/api/internal/billing/reserve" 2>/dev/null || echo 000)"
+  reserve_resp="$(cat "$reserve_tmp" 2>/dev/null || true)"
+  rm -f "$reserve_tmp"
+
+  bill_lifecycle_ok=false
+  if [[ "$reserve_code" == "200" ]] && grep -q '"ok"[[:space:]]*:[[:space:]]*true' <<< "$reserve_resp"; then
+    passed "U-6f-a reserve amount=${reserve_amount} ← 200 (run_id=${bill_run_id})"
+    bill_lifecycle_ok=true
+  else
+    failed "U-6f-a reserve amount=${reserve_amount} ← ${reserve_code} (expected 200 ok:true)"
+  fi
+
+  bill_registry_usage_id=""
+  if grep -q '"usage_id"[[:space:]]*:[[:space:]]*null' <<< "$reserve_resp"; then
+    bill_registry_usage_id=""
+  elif grep -q '"usage_id"' <<< "$reserve_resp"; then
+    bill_registry_usage_id="$(sed -n 's/.*"usage_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<< "$reserve_resp" | head -1)"
+  fi
+  bill_billing_status="not_configured"
+  if [[ -n "$bill_registry_usage_id" ]]; then
+    bill_billing_status="reserved"
+  fi
+
+  bill_finalize_code=""
+  if [[ "$bill_lifecycle_ok" == true ]]; then
+    if [[ -n "$bill_registry_usage_id" ]]; then
+      bill_usage_body="{\"user_id\":\"${bill_user}\",\"workspace_id\":\"${bill_ws}\",\"model_name\":\"claude-sonnet-4-5\",\"input_tokens\":1000,\"output_tokens\":500,\"token_count_source\":\"provider_usage\",\"operation\":\"design_e2e_bill\",\"run_id\":\"${bill_run_id}\",\"run_status\":\"succeeded\",\"billing_status\":\"${bill_billing_status}\",\"registry_usage_id\":\"${bill_registry_usage_id}\"}"
+    else
+      bill_usage_body="{\"user_id\":\"${bill_user}\",\"workspace_id\":\"${bill_ws}\",\"model_name\":\"claude-sonnet-4-5\",\"input_tokens\":1000,\"output_tokens\":500,\"token_count_source\":\"provider_usage\",\"operation\":\"design_e2e_bill\",\"run_id\":\"${bill_run_id}\",\"run_status\":\"succeeded\",\"billing_status\":\"${bill_billing_status}\"}"
+    fi
+    bill_usage_code="$(curl_code "${INTERNAL_API_BASE}/api/internal/usage/events" \
+      -X POST -H "Content-Type: application/json" \
+      -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}" \
+      --data "$bill_usage_body")"
+    bill_usage_ok=false
+    if [[ "$bill_usage_code" == "204" || "$bill_usage_code" == "200" || "$bill_usage_code" == "202" ]]; then
+      bill_usage_ok=true
+      passed "U-6f-b usage/events billing_status=${bill_billing_status} ← ${bill_usage_code}"
+    else
+      failed "U-6f-b usage/events ← ${bill_usage_code}"
+    fi
+
+    if [[ "$bill_usage_ok" == true ]]; then
+      if [[ -n "$bill_registry_usage_id" ]]; then
+        bill_finalize_body="{\"workspace_id\":\"${bill_ws}\",\"run_id\":\"${bill_run_id}\",\"billing_status\":\"committed\",\"credits_committed\":true,\"registry_usage_id\":\"${bill_registry_usage_id}\"}"
+      else
+        bill_finalize_body="{\"workspace_id\":\"${bill_ws}\",\"run_id\":\"${bill_run_id}\",\"billing_status\":\"committed\",\"credits_committed\":true}"
+      fi
+      bill_finalize_code="$(curl_post_code "${INTERNAL_API_BASE}/api/internal/usage/billing-finalize" \
+        "$bill_finalize_body" \
+        -H "X-Teamver-Internal-Api-Key: ${TEAMVER_INTERNAL_API_KEY}")"
+      if [[ "$bill_finalize_code" == "204" || "$bill_finalize_code" == "200" ]]; then
+        passed "U-6f-c billing-finalize committed ← ${bill_finalize_code}"
+      else
+        failed "U-6f-c billing-finalize ← ${bill_finalize_code} (expected 204)"
+      fi
+    else
+      skipped "U-6f-c billing-finalize — usage/events failed"
+    fi
+
+    if [[ "$bill_usage_ok" == true && ( "$bill_finalize_code" == "204" || "$bill_finalize_code" == "200" ) ]] \
+      && [[ -z "${SKIP_DB:-}" && -n "${MAIN_BE_DATABASE_URL:-}" ]] && command -v psql >/dev/null 2>&1; then
+      sleep 2
+      bill_ledger="$(PGOPTIONS='-c default_transaction_read_only=on' \
+        psql "$MAIN_BE_DATABASE_URL" -At \
+        -c "SELECT coalesce(billing_status,''), coalesce(credits_committed::text,''), coalesce(registry_usage_id,'') FROM ai_model_token_usages WHERE run_id = '${bill_run_id}';" 2>/dev/null || echo "?|?|?")"
+      bill_ledger_status="${bill_ledger%%|*}"
+      bill_ledger_rest="${bill_ledger#*|}"
+      bill_ledger_committed="${bill_ledger_rest%%|*}"
+      bill_ledger_registry="${bill_ledger_rest#*|}"
+      if [[ "$bill_ledger_status" == "committed" && "$bill_ledger_committed" == "t" ]]; then
+        passed "U-6f-d ledger committed (run_id=${bill_run_id})"
+      elif [[ "$bill_ledger" == "?|?|?" ]]; then
+        failed "U-6f-d psql ledger audit 실패"
+      else
+        failed "U-6f-d ledger status=${bill_ledger_status} committed=${bill_ledger_committed} (expected committed/t)"
+      fi
+      if [[ -n "$bill_registry_usage_id" ]]; then
+        if [[ "$bill_ledger_registry" == "$bill_registry_usage_id" ]]; then
+          passed "U-6f-d registry_usage_id=${bill_registry_usage_id}"
+        else
+          failed "U-6f-d registry_usage_id mismatch (expected ${bill_registry_usage_id}, got ${bill_ledger_registry:-empty})"
+        fi
+      fi
+    elif [[ -n "${SKIP_DB:-}" ]]; then
+      skipped "U-6f-d ledger audit — SKIP_DB=1"
+    elif [[ "$bill_usage_ok" != true ]]; then
+      skipped "U-6f-d ledger audit — usage/events failed"
+    elif [[ "$bill_finalize_code" != "204" && "$bill_finalize_code" != "200" ]]; then
+      skipped "U-6f-d ledger audit — billing-finalize failed"
+    elif [[ -z "${MAIN_BE_DATABASE_URL:-}" ]]; then
+      skipped "U-6f-d ledger audit — MAIN_BE_DATABASE_URL 미설정"
+    else
+      skipped "U-6f-d ledger audit — psql 미설치"
+    fi
+  fi
+fi
+
 # ---- D-5: publish → design_outputs row -------------------------------------
 # loop 178 — capture publish response body too so D-7 can verify
 # `outputs[].driveAssetId` is populated on 201 and that 207/502 surface a

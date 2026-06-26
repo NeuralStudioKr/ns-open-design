@@ -152,9 +152,11 @@ if [[ "$storage" == "s3" ]]; then
     flag "od_scratch_disk_usage JSON" "(disabled — set OD_SCRATCH_DISK_METRICS=1 for CW disk alarm)"
   fi
   if [[ "${OD_S3_PURGE_ON_DELETE:-}" == "0" ]]; then
-    flag "registry delete S3 purge" "(disabled — OD_S3_PURGE_ON_DELETE=0)"
+    flag "registry delete S3" "retain tenant SSOT (OD_S3_PURGE_ON_DELETE=0 — Teamver standard)"
+  elif [[ -n "${OD_S3_PURGE_ON_DELETE:-}" ]]; then
+    flag "registry delete S3" "purge ON (${OD_S3_PURGE_ON_DELETE}) — legal erasure mode"
   else
-    flag "registry delete S3 purge" "tenant prefix purge on scratch/evict (od_s3_remote_purged)"
+    flag "registry delete S3" "⚠ unset — daemon default purge ON; set =0 for retain"
   fi
 else
   flag "scratch / sync-up" "(disabled — OD_PROJECT_STORAGE!=s3)"
