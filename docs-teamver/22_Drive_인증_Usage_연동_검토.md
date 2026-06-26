@@ -107,7 +107,7 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 |----|------|------|------|
 | A-G1 | P1 | nginx loop 354 map **VM 적용** + staging 실관측 | ☐ |
 | A-G2 | P1 | W-1 E2E — alt workspace + `X-Workspace-Id` permissions probe | 🟡 loop 355 script |
-| A-G3 | P2 | Browser 수동 — WS-A run → WS-B switch → usage row `workspace_id` | ☐ 체크리스트 §5 |
+| A-G3 | P2 | Browser 수동 — WS-A run → WS-B switch → usage row `workspace_id` | 🟡 loop 425 code · browser ☐ |
 
 ---
 

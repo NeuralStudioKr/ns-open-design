@@ -54,16 +54,51 @@ describe('teamver-billing-bridge', () => {
         modelName: 'claude-sonnet-4-5',
       });
 
-      expect(amount).toBe(42);
+      expect(amount).toEqual({
+        amount: 42,
+        billingWired: true,
+        estimateUnavailable: false,
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/internal/billing/estimate-reserve');
     });
 
-    it('returns 0 when teamver env is not configured', async () => {
+    it('returns unwired result when teamver env is not configured', async () => {
       const fetchMock: FetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
-      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toBe(0);
+      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({
+        amount: 0,
+        billingWired: false,
+        estimateUnavailable: false,
+      });
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('falls back to TEAMVER_BILLING_RESERVE_AMOUNT when estimate fails', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      vi.stubEnv('TEAMVER_BILLING_RESERVE_AMOUNT', '25');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(jsonResponse(502, null));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({
+        amount: 25,
+        billingWired: true,
+        estimateUnavailable: true,
+      });
+    });
+
+    it('marks estimate unavailable when billing is wired but amount stays zero', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { amount_t: 0 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({
+        amount: 0,
+        billingWired: true,
+        estimateUnavailable: true,
+      });
     });
   });
 

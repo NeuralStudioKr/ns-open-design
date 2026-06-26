@@ -258,6 +258,16 @@ export function invalidateDesignAuthSessionCache(): void {
   cachedSession = null;
 }
 
+/** Session snapshot metadata for workspace store reconciliation (loop 425). */
+export function readCachedDesignAuthSessionMeta(): {
+  fetchedAt: number;
+  defaultWorkspaceId: string | null;
+} | null {
+  if (!cachedSession?.value?.authenticated) return null;
+  const defaultWorkspaceId = (cachedSession.value.defaultWorkspaceId ?? "").trim() || null;
+  return { fetchedAt: cachedSession.at, defaultWorkspaceId };
+}
+
 async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
   const client = getDesignBffClient();
   if (!client) return null;

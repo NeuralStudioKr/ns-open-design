@@ -148,6 +148,9 @@ storage/startup batch (5 files): **48 passed**
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-26 | loop 427 — billing estimate fail-fast + `TEAMVER_BILLING_RESERVE_AMOUNT` fallback |
+| 2026-06-26 | loop 426 — scratch fallback health `reason=scratch_fallback` |
+| 2026-06-26 | loop 425 — embed workspace session/store reconciliation (A-G3) |
 | 2026-06-26 | loop 424 — billing reserve fail-fast, registry create/delete S3 strict 502, full sync remote orphan delete |
 | 2026-06-26 | loop 419 — 2차 코드 리뷰 P1 (billing refund, lazy sync lock, access cache TTL, BYOK 401 recovery) |
 | 2026-06-26 | loop 413 — 코드 리뷰 기반 P1 수정 (dedupe-on-success, billing gate, concurrent S3 sync floor) |

@@ -1,6 +1,7 @@
 import type { LocalStorageWorkspaceStore } from "@teamver/app-sdk";
 import { getDesignBffClient } from "./designBffClient";
 import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
+import { bumpTeamverWorkspaceStoreRevision } from "./teamverWorkspaceStoreRevision";
 
 export async function setActiveTeamverWorkspace(
   workspaceId: string,
@@ -14,6 +15,7 @@ export async function setActiveTeamverWorkspace(
   if (!store) return;
 
   await store.set(trimmed);
+  bumpTeamverWorkspaceStoreRevision();
   if (userId?.trim() && typeof store.setLastForUser === "function") {
     store.setLastForUser(userId.trim(), trimmed);
   }

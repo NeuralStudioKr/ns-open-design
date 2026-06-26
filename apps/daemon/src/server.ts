@@ -262,6 +262,7 @@ import { resolveProjectStorageLayout } from './storage/project-storage-layout.js
 import {
   allowsS3ScratchFallback,
   describeStorageStartupError,
+  s3StorageHealthNotReadyReason,
 } from './storage/project-storage-startup.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
@@ -5467,10 +5468,12 @@ export async function startServer({
         if (!materializingProjectStorage) {
           clearTimeout(timer);
           if (res.headersSent) return;
+          const notReadyReason = s3StorageHealthNotReadyReason(s3ScratchFallbackActive);
           res.status(503).json({
             ok: false,
             mode: 's3',
-            reason: 'storage_not_initialized',
+            reason: notReadyReason,
+            ...(s3ScratchFallbackActive ? { fallback: true, scratchDir: PROJECTS_DIR } : {}),
             elapsedMs: Date.now() - startedAt,
           });
           return;
@@ -5992,6 +5995,7 @@ export async function startServer({
   // resolved (or stays null in local mode, where we probe the scratch
   // root directly).
   let materializingProjectStorage: MaterializingProjectStorage | null = null;
+  let s3ScratchFallbackActive = false;
   if (PROJECT_STORAGE_LAYOUT.mode === 's3') {
     try {
       const materializingStorage = await createMaterializingProjectStorage({
@@ -6031,6 +6035,7 @@ export async function startServer({
       console.warn(
         '[project-materialization] S3 storage init failed; OD_S3_ALLOW_SCRATCH_FALLBACK=1 allows scratch-only fallback for local/debug use',
       );
+      s3ScratchFallbackActive = true;
     }
   }
   const baseFinishRun = design.runs.finish.bind(design.runs);
@@ -11937,11 +11942,24 @@ export async function startServer({
     {
       const identity = (run as { teamverIdentity?: TeamverRequestIdentity | null }).teamverIdentity ?? null;
       const modelName = typeof run.model === 'string' ? run.model : '';
-      const reserveAmount = await resolveTeamverBillingReserveAmountFromDaemon({ modelName });
+      const estimate = await resolveTeamverBillingReserveAmountFromDaemon({ modelName });
+      const workspaceId = (identity?.workspaceId ?? '').trim();
+      if (
+        workspaceId &&
+        estimate.billingWired &&
+        estimate.estimateUnavailable &&
+        estimate.amount <= 0
+      ) {
+        return design.runs.fail(
+          run,
+          'BAD_REQUEST',
+          'Billing reserve estimate unavailable; cannot start this run.',
+        );
+      }
       const reserve = await reserveTeamverBillingFromDaemon({
         runId: run.id,
         identity,
-        amount: reserveAmount,
+        amount: estimate.amount,
         reason: 'design_run',
       });
       if (!reserve.skipped && !reserve.ok) {

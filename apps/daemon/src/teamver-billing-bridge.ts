@@ -142,12 +142,36 @@ function resolveReserveAmount(callerAmount: number): number | null {
   return fallback ?? 0;
 }
 
+export type ResolveTeamverBillingReserveAmountResult = {
+  amount: number;
+  billingWired: boolean;
+  estimateUnavailable: boolean;
+};
+
 export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
   modelName?: string | null;
-}): Promise<number> {
+}): Promise<ResolveTeamverBillingReserveAmountResult> {
   const env = billingEnv();
-  if (!env) return 0;
+  if (!env) {
+    return { amount: 0, billingWired: false, estimateUnavailable: false };
+  }
+
   const modelName = (args.modelName ?? '').trim() || 'default';
+  const envFallback = reserveAmountEnvFallback();
+
+  const finish = (
+    amount: number,
+    estimateUnavailable: boolean,
+  ): ResolveTeamverBillingReserveAmountResult => {
+    if (amount > 0) {
+      return { amount: Math.floor(amount), billingWired: true, estimateUnavailable };
+    }
+    if (envFallback && envFallback > 0) {
+      return { amount: envFallback, billingWired: true, estimateUnavailable: true };
+    }
+    return { amount: 0, billingWired: true, estimateUnavailable };
+  };
+
   try {
     const { status, payload } = await postJson<{
       amount_t?: number;
@@ -157,12 +181,16 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
       { model_name: modelName },
       billingTimeoutMs(),
     );
-    if (status !== 200 || !payload) return 0;
+    if (status !== 200 || !payload) {
+      return finish(0, true);
+    }
     const amount = Number(payload.amount_t);
-    if (!Number.isFinite(amount) || amount <= 0) return 0;
-    return Math.floor(amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return finish(0, true);
+    }
+    return finish(amount, false);
   } catch {
-    return 0;
+    return finish(0, true);
   }
 }
 
