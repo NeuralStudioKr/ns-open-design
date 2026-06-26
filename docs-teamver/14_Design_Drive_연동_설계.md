@@ -53,13 +53,13 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 | 검색형 folder picker | ✅ Phase 1-1 (`TeamverDrivePickerModal`, flatten target 검색) |
 | server-side folder search | ✅ Phase 1-2a (`searchTeamverDrivePublishTargets`) |
 | folder browser (scope tab / breadcrumb / drill-down) | ✅ Phase 1-2b |
-| full Drive browser (최근 파일 / asset grid) | ☐ Phase 1-2c |
+| full Drive browser (최근 파일 / asset grid) | ✅ Phase 1-2c (loop 420) |
 | Main Drive 파일 → Design import handoff | ✅ `teamverDriveAsset*` query + 사전 선택 |
 | PDF / PPTX | ❌ Phase 4+ (daemon 501) |
 
 ### 2.3 현재 한계
 
-1. **Drive picker UX**: publish folder search/browse는 완료. 최근 파일 / asset grid 기반 full browser 는 아직 없음.
+1. **Drive picker UX**: publish folder search/browse + 최근 파일/asset grid full browser ✅ loop 420.
 2. **Drive import UI**: composer modal/full browser와 Main Drive handoff 완료. ~~다중 파일 handoff~~ ✅ loop 419 · import 원본 deep-link ✅ loop 194.
 3. **Drive deep-link**: publish toast의 Drive asset 링크는 완료. outputs 목록의 동일 액션 정합은 후속.
 4. **워크스페이스 자산 라이브러리 부재**: `design_systems`는 OD 자체 모델, Drive 공유 자산과 분리.
@@ -293,7 +293,7 @@ Content-Type: application/json
 | 2026-Q3 | Phase 1-1 (검색형 folder picker) | ✅ |
 | 2026-Q3 | Phase 1-2a (publish server-side folder search) | ✅ |
 | 2026-Q3 | Phase 1-2b (publish folder browser) | ✅ |
-| 2026-Q3 | Phase 1-2c (full Drive browser) | ☐ |
+| 2026-Q3 | Phase 1-2c (full Drive browser) | ✅ loop 420 |
 | 2026-Q3~Q4 | Phase 2-1 (Drive import API/client foundation) | ✅ |
 | 2026-Q3~Q4 | Phase 2-2 (Drive import composer modal) | ✅ |
 | 2026-Q3~Q4 | Phase 2-3 (Canvas → Drive → AI Design slide handoff, Web/Mobile) | ✅ |
@@ -313,7 +313,7 @@ Content-Type: application/json
 |---|------|
 | ☐ | D-5/D-6/D-7 staging E2E — publish `driveAssetId` + import happy path |
 | ☐ | D-6a 실 Drive asset import (`TEAMVER_DRIVE_IMPORT_ASSET_ID`) |
-| ☐ | Publish full Drive browser (Phase 1-2c) — import modal 수준 recent/grid |
+| ✅ | Publish full Drive browser (Phase 1-2c) — import modal 수준 recent/grid (loop 420) |
 | ✅ | Drive import **다중 파일 handoff** (loop 419) |
 | ✅ | import 원본 → Main Drive deep-link (loop 194) |
 

@@ -138,6 +138,19 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
     expect(homeRecent).toContain('assets,shared_with_me');
   });
 
+  it('shows recent asset grid + browse thumbnails in publish picker (loop 420 · Phase 1-2c)', () => {
+    const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
+    expect(picker).toContain('listTeamverDrivePublishRecentAssets');
+    expect(picker).toContain('fetchTeamverDriveImportThumbnails');
+    expect(picker).toContain('data-testid="teamver-drive-picker-recent-assets"');
+    expect(picker).toContain('data-testid={`teamver-drive-picker-asset-${row.assetId}`}');
+    expect(picker).toContain('teamver-drive-import-grid');
+
+    const recentAssets = readSource('src/teamver/drivePublishRecentAssets.ts');
+    expect(recentAssets).toContain('folderId');
+    expect(recentAssets).toContain('/api/v2/drive/home/recent');
+  });
+
   it('keeps the format type union narrow in publishToDrive (loop 173)', () => {
     const publish = readSource('src/teamver/publishToDrive.ts');
     expect(publish).toContain('TeamverPublishDriveFormat');
