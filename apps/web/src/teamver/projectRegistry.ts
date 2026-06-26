@@ -71,6 +71,7 @@ export function formatTeamverProjectNotFoundMessage(): string {
 const FE_ACCESS_CACHE_MS = 30_000;
 const REGISTRY_LIST_CACHE_MS = 15_000;
 const SYNC_ALL_MIN_INTERVAL_MS = 60_000;
+const REGISTRY_CREATE_RETRY_DELAYS_MS = [500, 1_500] as const;
 
 function legacyRegistryMigrationEnabled(): boolean {
   return readTeamverViteEnv("VITE_TEAMVER_LEGACY_REGISTRY_SYNC") === "1";
@@ -159,7 +160,7 @@ export function buildTeamverProjectRegistryPayload(
 
 export async function registerTeamverProjectIfNeeded(
   project: Pick<Project, "id" | "name">,
-  options?: { skipBootWait?: boolean },
+  options?: { skipBootWait?: boolean; retryDelaysMs?: readonly number[] },
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (!options?.skipBootWait) {
@@ -172,26 +173,50 @@ export async function registerTeamverProjectIfNeeded(
   const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) throw new TeamverProjectRegistryError("teamver_workspace_required");
 
-  try {
-    await client.http.post(
-      "/projects",
-      buildTeamverProjectRegistryPayload(project),
-      {
-        workspaceId,
-        skipAuthHeader: true,
-      },
-    );
-    invalidateRegisteredIdsCache();
-    invalidateFeAccessCache(project.id, workspaceId);
-  } catch (err) {
-    if (err instanceof NetworkError && err.status === 409) {
+  const payload = buildTeamverProjectRegistryPayload(project);
+  const retryDelaysMs = options?.retryDelaysMs ?? REGISTRY_CREATE_RETRY_DELAYS_MS;
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      await withDesignBffCookieAuthRecovery(() =>
+        client.http.post(
+          "/projects",
+          payload,
+          {
+            workspaceId,
+            skipAuthHeader: true,
+          },
+        ),
+      );
       invalidateRegisteredIdsCache();
       invalidateFeAccessCache(project.id, workspaceId);
       return;
+    } catch (err) {
+      if (err instanceof NetworkError && err.status === 409) {
+        invalidateRegisteredIdsCache();
+        invalidateFeAccessCache(project.id, workspaceId);
+        return;
+      }
+      const delayMs = retryDelaysMs[attempt];
+      if (delayMs != null && isRetryableRegistryCreateError(err)) {
+        await delay(delayMs);
+        continue;
+      }
+      console.warn("[teamver] project registry sync failed", err);
+      throw new TeamverProjectRegistryError("teamver_project_registry_sync_failed");
     }
-    console.warn("[teamver] project registry sync failed", err);
-    throw new TeamverProjectRegistryError("teamver_project_registry_sync_failed");
   }
+}
+
+function isRetryableRegistryCreateError(err: unknown): boolean {
+  if (!(err instanceof NetworkError)) return true;
+  if (err.status == null) return true;
+  return err.status === 408 || err.status === 425 || err.status === 429 || err.status >= 500;
+}
+
+async function delay(ms: number): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Best-effort registry upsert for legacy daemon projects before access checks. */

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   assertTeamverProjectAccessIfNeeded,
@@ -34,9 +34,26 @@ vi.mock('../src/teamver/syncTeamverWorkspace', () => ({
 
 vi.mock('../src/teamver/designBffClient', () => ({
   getDesignBffClient: vi.fn(() => null),
-  fetchDesignAuthSession: vi.fn(async () => null),
+  fetchDesignAuthSession: vi.fn(async () => ({
+    authenticated: true,
+    defaultWorkspaceId: 'ws1',
+    workspaces: [{ id: 'ws1', name: 'Workspace 1', role: 'owner' }],
+  })),
+  readCachedDesignAuthSessionMeta: vi.fn(() => ({ fetchedAt: 1_000 })),
   withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
 }));
+
+beforeEach(() => {
+  vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+    authenticated: true,
+    defaultWorkspaceId: 'ws1',
+    workspaces: [{ id: 'ws1', name: 'Workspace 1', role: 'owner' }],
+  });
+  vi.mocked(designBffClient.readCachedDesignAuthSessionMeta).mockReturnValue({ fetchedAt: 1_000 });
+  vi.mocked(designBffClient.withDesignBffCookieAuthRecovery).mockImplementation(
+    (request: () => Promise<unknown>) => request(),
+  );
+});
 
 describe('Teamver project registry payload', () => {
   afterEach(() => {
@@ -198,18 +215,41 @@ describe('Teamver project registry register', () => {
 
   it('rejects embed registration when registry upsert fails', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi.fn(async () => {
+      throw new NetworkError({ message: 'upstream', status: 502 });
+    });
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
-      http: {
-        post: vi.fn(async () => {
-          throw new NetworkError({ message: 'upstream', status: 502 });
-        }),
-      },
+      http: { post },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
     await expect(
-      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
+      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }, { retryDelaysMs: [0, 0] }),
     ).rejects.toThrow('teamver_project_registry_sync_failed');
+    expect(post).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries transient registry upsert failures before surfacing create rollback errors', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new NetworkError({ message: 'bad gateway', status: 502 }))
+      .mockResolvedValueOnce(undefined);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { post },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }, { retryDelaysMs: [0] }),
+    ).resolves.toBeUndefined();
+
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenLastCalledWith(
+      '/projects',
+      { odProjectId: 'p1', title: 'Demo' },
+      expect.objectContaining({ workspaceId: 'ws1' }),
+    );
   });
 });
 
