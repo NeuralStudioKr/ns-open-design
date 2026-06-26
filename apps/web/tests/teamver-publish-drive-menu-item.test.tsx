@@ -397,6 +397,28 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
+  it("focuses the destination picker when opened from post-run menu entry", async () => {
+    window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "shared:SD-1:FLD-EXPORTS");
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        focusTargetSelectNonce={42}
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    const trigger = screen.getByTestId("teamver-drive-target-select");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(trigger);
+    });
+  });
+
   it("falls back to the default destination when the remembered target no longer exists", async () => {
     window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "gone:ABC");
 

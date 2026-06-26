@@ -9,16 +9,16 @@ function readSource(relativePath: string): string {
 }
 
 describe("embed background run success publish flow (loop 398)", () => {
-  it("arms publish menu from App completion toast and ProjectView consumes on preview open", () => {
+  it("arms publish menu from App completion toast and ProjectView opens deploy on preview", () => {
     const app = readSource("src/App.tsx");
     const projectView = readSource("src/components/ProjectView.tsx");
 
     expect(app).toContain("armTeamverPublishMenuOnProjectOpen");
     expect(app).toContain("미리보기 · Drive 발행");
     expect(projectView).toContain("consumeTeamverPublishMenuArm");
-    expect(projectView).toContain("maybeOneClickPublishToDrive");
     expect(projectView).toMatch(
-      /result\.status === "skipped"[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
+      /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
+    expect(projectView).not.toContain("maybeOneClickPublishToDrive");
   });
 });

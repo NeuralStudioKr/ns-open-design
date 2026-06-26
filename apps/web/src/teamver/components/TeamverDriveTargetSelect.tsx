@@ -18,6 +18,8 @@ type Props = {
   loading?: boolean;
   ariaLabel?: string;
   onChange: (targetId: string) => void;
+  /** When true, focus the listbox trigger once (e.g. post-run publish menu entry). */
+  requestFocus?: boolean;
 };
 
 /**
@@ -47,11 +49,13 @@ export function TeamverDriveTargetSelect({
   loading = false,
   ariaLabel = isTeamverEmbedMode() ? "Teamver 드라이브 저장 위치" : "Teamver Drive destination",
   onChange,
+  requestFocus = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
+  const focusRequestConsumedRef = useRef(false);
   const listboxId = useId();
 
   const selectedIndex = useMemo(() => {
@@ -60,6 +64,16 @@ export function TeamverDriveTargetSelect({
   }, [selectedTargetId, targets]);
 
   const selectedTarget = targets[selectedIndex];
+
+  useEffect(() => {
+    if (!requestFocus) {
+      focusRequestConsumedRef.current = false;
+      return;
+    }
+    if (focusRequestConsumedRef.current || disabled || loading) return;
+    focusRequestConsumedRef.current = true;
+    buttonRef.current?.focus({ preventScroll: true });
+  }, [requestFocus, disabled, loading]);
 
   useEffect(() => {
     if (!open) setActiveIndex(selectedIndex);

@@ -43,6 +43,8 @@ type Props = {
   onCloseMenu: () => void;
   onSuccess?: (output: TeamverPublishDriveOutput, meta?: { partial: boolean }) => void;
   onError?: (err: unknown) => void;
+  /** Focus the destination picker once after post-run menu entry (nonce dedupes). */
+  focusTargetSelectNonce?: number | null;
 };
 
 /**
@@ -74,6 +76,7 @@ export function TeamverPublishDriveMenuItem({
   onCloseMenu,
   onSuccess,
   onError,
+  focusTargetSelectNonce = null,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [loadingTargets, setLoadingTargets] = useState(false);
@@ -90,6 +93,7 @@ export function TeamverPublishDriveMenuItem({
   // (otherwise the operator wouldn't see their just-uploaded artifact
   // appear in the history until they reopen the menu).
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const consumedFocusNonceRef = useRef<number | null>(null);
   const [designAppEnabled, setDesignAppEnabled] = useState(
     () => readTeamverDesignAccessSnapshot()?.appEnabled ?? true,
   );
@@ -168,6 +172,17 @@ export function TeamverPublishDriveMenuItem({
     () => targets.find((target) => target.id === selectedTargetId) ?? targets[0] ?? DEFAULT_PUBLISH_TARGET,
     [selectedTargetId, targets],
   );
+
+  const shouldFocusTargetSelect =
+    focusTargetSelectNonce != null
+    && consumedFocusNonceRef.current !== focusTargetSelectNonce
+    && !loadingTargets
+    && !busy;
+
+  useEffect(() => {
+    if (!shouldFocusTargetSelect) return;
+    consumedFocusNonceRef.current = focusTargetSelectNonce;
+  }, [focusTargetSelectNonce, shouldFocusTargetSelect]);
 
   const handleChangeTarget = useCallback((nextId: string) => {
     setSelectedTargetId(nextId);
@@ -264,6 +279,7 @@ export function TeamverPublishDriveMenuItem({
           loading={loadingTargets}
           ariaLabel="Teamver 드라이브 저장 위치"
           onChange={handleChangeTarget}
+          requestFocus={shouldFocusTargetSelect}
         />
         <button
           type="button"

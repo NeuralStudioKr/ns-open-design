@@ -9,25 +9,25 @@ function readSource(relativePath: string): string {
 }
 
 describe("embed in-project run success publish flow (loop 403)", () => {
-  it("arms publish menu and one-click publishes or opens deploy menu on preview", () => {
+  it("arms publish menu and opens deploy menu with last target focus on preview", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
+    const fileViewer = readSource("src/components/FileViewer.tsx");
 
     expect(projectView).toContain("maybeArmTeamverPublishMenuAfterRunSuccess");
     expect(projectView).toMatch(
       /maybeArmTeamverPublishMenuAfterRunSuccess[\s\S]*?requestOpenFile\(producedHtmlToOpen\)/,
     );
-    expect(projectView).toContain("maybeOneClickPublishToDrive");
     expect(projectView).toMatch(
-      /consumeTeamverPublishMenuArm[\s\S]*?maybeOneClickPublishToDrive/,
+      /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
-    expect(projectView).toMatch(
-      /result\.status === "skipped"[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
-    );
+    expect(projectView).not.toContain("maybeOneClickPublishToDrive");
+    expect(fileViewer).toContain("focusTargetSelectNonce={drivePublishFocusNonce}");
+    expect(fileViewer).toContain("TeamverPublishDriveMenuItem");
   });
 });
 
 describe("embed background run success publish flow (loop 398)", () => {
-  it("arms publish menu from App completion toast and ProjectView consumes on preview open", () => {
+  it("arms publish menu from App completion toast and ProjectView opens deploy on preview", () => {
     const app = readSource("src/App.tsx");
     const projectView = readSource("src/components/ProjectView.tsx");
 
@@ -35,7 +35,8 @@ describe("embed background run success publish flow (loop 398)", () => {
     expect(app).toContain("미리보기 · Drive 발행");
     expect(projectView).toContain("consumeTeamverPublishMenuArm");
     expect(projectView).toMatch(
-      /consumeTeamverPublishMenuArm[\s\S]*?setDownloadRequest\(\{ name: routeFileName, nonce:/,
+      /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
+    expect(projectView).not.toContain("maybeOneClickPublishToDrive");
   });
 });

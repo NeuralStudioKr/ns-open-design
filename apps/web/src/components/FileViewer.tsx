@@ -7274,6 +7274,7 @@ function HtmlViewer({
   // lands (the file was just auto-opened), so we defer until `canShare` flips
   // true and only consume each nonce once.
   const consumedShareNonceRef = useRef<number | null>(null);
+  const [drivePublishFocusNonce, setDrivePublishFocusNonce] = useState<number | null>(null);
   useEffect(() => {
     const nonce = shareRequest?.nonce;
     if (nonce == null) return;
@@ -7284,6 +7285,7 @@ function HtmlViewer({
     markExportReadyNudgeSeen(projectId, file.name);
     setDownloadMenuOpen(false);
     setDeployMenuOpen(true);
+    setDrivePublishFocusNonce(nonce);
   }, [shareRequest?.nonce, canShare, projectId, file.name]);
 
   // Parallel to shareRequest, but opens the Download / Export menu instead — the
@@ -8518,6 +8520,7 @@ function HtmlViewer({
                   <TeamverPublishDriveMenuItem
                     projectId={projectId}
                     artifactFile={file.name}
+                    focusTargetSelectNonce={drivePublishFocusNonce}
                     onCloseMenu={() => setDownloadMenuOpen(false)}
                     onSuccess={(output, meta) => {
                       const driveUrl = output.driveAssetId
