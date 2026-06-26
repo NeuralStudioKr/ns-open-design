@@ -66,9 +66,13 @@ export async function maybeReportTeamverUsageAfterSave(
   if (!isTerminalRunStatus(message.runStatus)) return;
 
   const runId = message.runId?.trim();
+  // Hosted embed runs carry a daemon runId — M2M bridge is authoritative
+  // (billing snapshot + token attribution). FE reporting would double-post.
+  if (runId) return;
+
   // Embed BYOK (mode=api) has no daemon runId — use assistant message id so
   // design-api (workspace_id, run_id) upsert dedupes one row per chat turn.
-  const usageRunId = runId || message.id;
+  const usageRunId = message.id;
   if (reportedRunIds.has(usageRunId)) return;
   if (inFlightRunIds.has(usageRunId)) return;
 
@@ -109,7 +113,7 @@ export async function maybeReportTeamverUsageAfterSave(
 
   inFlightRunIds.add(usageRunId);
   try {
-    await reportTeamverDesignUsage({
+    const requestId = await reportTeamverDesignUsage({
       workspaceId: workspaceId,
       modelName,
       inputTokens,
@@ -126,7 +130,8 @@ export async function maybeReportTeamverUsageAfterSave(
       latencyMs: usage?.latencyMs,
       stopReason: usage?.stopReason,
     });
-    rememberReportedRunId(usageRunId);
+    // Only dedupe after design-api accepted the event — failed POSTs must retry.
+    if (requestId) rememberReportedRunId(usageRunId);
   } finally {
     inFlightRunIds.delete(usageRunId);
   }

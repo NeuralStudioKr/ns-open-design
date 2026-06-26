@@ -557,9 +557,9 @@ export async function saveMessage(
         ...(options.keepalive ? { keepalive: true } : {}),
       },
     );
-    if (resp.ok) {
-      void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
-    }
+    // Usage reporting is decoupled from message PUT success — BYOK embed has
+    // no daemon fallback, so a failed save must not drop the ledger row.
+    void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
   } catch {
     // best-effort persistence — UI keeps the message in-memory either way
   }

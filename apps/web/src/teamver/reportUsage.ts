@@ -28,9 +28,21 @@ export type TeamverUsageAcceptedResponse = {
 function isRetryableUsageError(err: unknown): boolean {
   if (err instanceof NetworkError) {
     const status = err.status ?? 0;
+    if (status === 0) return true;
     return status >= 500 || status === 429;
   }
+  // Browser fetch network failures surface as TypeError.
+  if (err instanceof TypeError) return true;
   return false;
+}
+
+function usageClientErrorMetric(err: unknown): string {
+  if (err instanceof NetworkError) {
+    const status = err.status ?? 0;
+    if (status >= 500 || status === 429) return "teamver_usage_5xx";
+    if (status >= 400) return "teamver_usage_4xx";
+  }
+  return "teamver_usage_client_error";
 }
 
 async function postUsageEvent(
@@ -71,14 +83,11 @@ async function postUsageEvent(
   return typeof response?.requestId === "string" && response.requestId ? response.requestId : null;
 }
 
-function emitClientUsage5xxMarker(stage: string, event: TeamverUsageEvent, err: unknown): void {
-  // Structured marker so design-api fronting logs / ops dashboards can grep
-  // for `teamver_usage_5xx` regardless of which side (FE vs daemon vs BE)
-  // dropped the event. Mirrors the daemon `teamver-usage-bridge.ts` shape.
+function emitClientUsageDropMarker(stage: string, event: TeamverUsageEvent, err: unknown): void {
   try {
     console.warn(
       JSON.stringify({
-        metric: "teamver_usage_5xx",
+        metric: usageClientErrorMetric(err),
         stage,
         ts: Date.now(),
         workspaceId: event.workspaceId,
@@ -103,13 +112,13 @@ export async function reportTeamverDesignUsage(event: TeamverUsageEvent): Promis
     return await postUsageEvent(client, event);
   } catch (err) {
     if (!isRetryableUsageError(err)) {
-      emitClientUsage5xxMarker("usage.events_client_drop", event, err);
+      emitClientUsageDropMarker("usage.events_client_drop", event, err);
       return null;
     }
     try {
       return await postUsageEvent(client, event);
     } catch (retryErr) {
-      emitClientUsage5xxMarker("usage.events_client_retry_drop", event, retryErr);
+      emitClientUsageDropMarker("usage.events_client_retry_drop", event, retryErr);
       return null;
     }
   }

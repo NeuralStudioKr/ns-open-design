@@ -127,14 +127,16 @@ def schedule_token_usage_log(
     total_tokens: int | None,
     scope: UsageScope,
 ) -> None:
-    coro = alog_token_usage(
-        model_name=model_name,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        total_tokens=total_tokens,
-        scope=scope,
-    )
-    _schedule_background_coro(coro, op=scope.operation, model_name=model_name)
+    def coro_factory():
+        return alog_token_usage(
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            scope=scope,
+        )
+
+    _schedule_background_coro(coro_factory, op=scope.operation, model_name=model_name)
 
 
 def schedule_usage_billing_finalize(
@@ -145,24 +147,44 @@ def schedule_usage_billing_finalize(
     credits_committed: bool,
     registry_usage_id: str | None = None,
 ) -> None:
-    coro = afinalize_usage_billing(
-        workspace_id=workspace_id,
-        run_id=run_id,
-        billing_status=billing_status,
-        credits_committed=credits_committed,
-        registry_usage_id=registry_usage_id,
-    )
-    _schedule_background_coro(coro, op="billing_finalize", model_name=run_id)
+    def coro_factory():
+        return afinalize_usage_billing(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            billing_status=billing_status,
+            credits_committed=credits_committed,
+            registry_usage_id=registry_usage_id,
+        )
+
+    _schedule_background_coro(coro_factory, op="billing_finalize", model_name=run_id)
 
 
-def _schedule_background_coro(coro, *, op: str, model_name: str) -> None:
+def _schedule_background_coro(coro_factory, *, op: str, model_name: str) -> None:
+    async def _run_with_retry() -> None:
+        try:
+            await coro_factory()
+        except Exception:
+            logger.warning(
+                "token usage background task failed op=%s model=%s — retrying once",
+                op,
+                model_name,
+            )
+            try:
+                await coro_factory()
+            except Exception:
+                logger.exception(
+                    "teamver_usage_5xx token usage log failed op=%s model=%s",
+                    op,
+                    model_name,
+                )
+
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
 
         def _thread_worker() -> None:
             try:
-                asyncio.run(coro)
+                asyncio.run(_run_with_retry())
             except Exception:
                 logger.exception(
                     "teamver_usage_5xx token usage log failed op=%s model=%s",
@@ -173,4 +195,4 @@ def _schedule_background_coro(coro, *, op: str, model_name: str) -> None:
         threading.Thread(target=_thread_worker, daemon=True, name="design-token-usage").start()
         return
 
-    loop.create_task(coro)
+    loop.create_task(_run_with_retry())

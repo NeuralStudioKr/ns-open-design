@@ -40,6 +40,21 @@ function emitUsage5xxMarker(stage: string, fields: Record<string, unknown>): voi
   }
 }
 
+function emitUsageZeroTokensMarker(fields: Record<string, unknown>): void {
+  try {
+    console.warn(
+      JSON.stringify({
+        metric: 'teamver_usage_zero_tokens',
+        stage: 'usage.zero_tokens',
+        ts: Date.now(),
+        ...fields,
+      }),
+    );
+  } catch {
+    // structured warn must never bubble — usage report is best-effort.
+  }
+}
+
 function resolvePersistedRunStatus(
   run: DaemonRunForUsage,
   persistedRunStatus?: string,
@@ -87,6 +102,59 @@ function shouldReportTeamverUsageFromDaemon(
   return TERMINAL_RUN_STATUSES.has(resolvePersistedRunStatus(run, persistedRunStatus));
 }
 
+function isRetryableUsageHttpStatus(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
+async function postInternalUsageEvent(
+  baseUrl: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  markerFields: Record<string, unknown>,
+): Promise<boolean> {
+  const url = `${baseUrl}/api/internal/usage/events`;
+  const headers = {
+    'X-Teamver-Internal-Api-Key': apiKey,
+    'Content-Type': 'application/json',
+  };
+
+  const attempt = async (): Promise<{ ok: boolean; status?: number; body?: string }> => {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) return { ok: true };
+      const text = (await response.text().catch(() => '')).slice(0, 200);
+      return { ok: false, status: response.status, body: text };
+    } catch (err) {
+      return {
+        ok: false,
+        body: err instanceof Error ? err.message : String(err),
+      };
+    }
+  };
+
+  let result = await attempt();
+  if (!result.ok && result.status != null && isRetryableUsageHttpStatus(result.status)) {
+    result = await attempt();
+  } else if (!result.ok && result.status == null) {
+    // Network / timeout — mirror FE single retry.
+    result = await attempt();
+  }
+
+  if (result.ok) return true;
+
+  emitUsage5xxMarker('usage.events', {
+    ...markerFields,
+    ...(result.status != null ? { httpStatus: result.status } : {}),
+    ...(result.body ? { body: result.body, error: result.status == null ? result.body : undefined } : {}),
+  });
+  return false;
+}
+
 export async function reportTeamverUsageFromDaemon({
   run,
   persistedRunStatus,
@@ -95,12 +163,11 @@ export async function reportTeamverUsageFromDaemon({
   run: DaemonRunForUsage;
   persistedRunStatus?: string;
   reportedRuns?: Set<string>;
-}): Promise<void> {
-  if (!shouldReportTeamverUsageFromDaemon(run, persistedRunStatus)) return;
+}): Promise<boolean> {
+  if (!shouldReportTeamverUsageFromDaemon(run, persistedRunStatus)) return false;
 
   const dedupeKey = `usage:${run.id}`;
-  if (reportedRuns?.has(dedupeKey)) return;
-  reportedRuns?.add(dedupeKey);
+  if (reportedRuns?.has(dedupeKey)) return true;
 
   const usage = scanRunEventsForUsageAnalytics(run.events, run.model, 0);
   const modelName =
@@ -116,19 +183,13 @@ export async function reportTeamverUsageFromDaemon({
       ? Math.round(run.updatedAt - run.createdAt)
       : null;
 
-  // Early-warning beacon for usage-capture regressions. A terminal run with
-  // zero input AND zero output tokens means the upstream provider gave us
-  // nothing usable (or our extractor failed) — we still post the row so the
-  // BE can stamp a ledger entry, but ops needs a grep handle to spot this
-  // *before* it shows up as a billing dispute. The 0-token regression that
-  // motivated loop 390/391 (ATU-FO5LT28NQBB5) would have surfaced here.
   if (
     (usage.input_tokens ?? 0) === 0
     && (usage.output_tokens ?? 0) === 0
     && (usage.cache_read_input_tokens ?? 0) === 0
     && (usage.cache_creation_input_tokens ?? 0) === 0
   ) {
-    emitUsage5xxMarker('usage.zero_tokens', {
+    emitUsageZeroTokensMarker({
       runId: run.id,
       workspaceId: run.teamverIdentity?.workspaceId ?? null,
       projectId: run.projectId ?? null,
@@ -141,60 +202,49 @@ export async function reportTeamverUsageFromDaemon({
 
   const baseUrl = teamverDesignApiBaseUrl();
   const apiKey = teamverInternalApiKey();
-  if (!baseUrl || !apiKey) return;
+  if (!baseUrl || !apiKey) return false;
 
   const identity = run.teamverIdentity!;
-  try {
-    const response = await fetch(`${baseUrl}/api/internal/usage/events`, {
-      method: 'POST',
-      headers: {
-        'X-Teamver-Internal-Api-Key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_id: identity.userId,
-        workspace_id: identity.workspaceId,
-        model_name: modelName,
-        input_tokens: usage.input_tokens ?? 0,
-        output_tokens: usage.output_tokens ?? 0,
-        total_tokens: usage.total_tokens ?? null,
-        operation: 'design_run',
-        project_id: run.projectId ?? null,
-        run_id: run.id,
-        run_status: runStatus || null,
-        token_count_source: usage.token_count_source ?? 'unknown',
-        registry_usage_id: billing.registry_usage_id,
-        billing_status: billing.billing_status,
-        credits_committed: billing.credits_committed,
-        cache_read_input_tokens: usage.cache_read_input_tokens ?? null,
-        cache_creation_input_tokens: usage.cache_creation_input_tokens ?? null,
-        provider_reported_model: usage.agent_reported_model ?? null,
-        api_protocol: (run.apiProtocol ?? '').trim() || 'claude-agent',
-        latency_ms: latencyMs,
-        stop_reason: stopReason,
-      }),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) {
-      const body = (await response.text().catch(() => '')).slice(0, 200);
-      emitUsage5xxMarker('usage.events', {
-        runId: run.id,
-        workspaceId: identity.workspaceId,
-        projectId: run.projectId ?? null,
-        modelName,
-        httpStatus: response.status,
-        body,
-      });
-    }
-  } catch (err) {
-    emitUsage5xxMarker('usage.events', {
-      runId: run.id,
-      workspaceId: identity.workspaceId,
-      projectId: run.projectId ?? null,
-      modelName,
-      error: err instanceof Error ? err.message : String(err),
-    });
+  const markerFields = {
+    runId: run.id,
+    workspaceId: identity.workspaceId,
+    projectId: run.projectId ?? null,
+    modelName,
+  };
+
+  const posted = await postInternalUsageEvent(
+    baseUrl,
+    apiKey,
+    {
+      user_id: identity.userId,
+      workspace_id: identity.workspaceId,
+      model_name: modelName,
+      input_tokens: usage.input_tokens ?? 0,
+      output_tokens: usage.output_tokens ?? 0,
+      total_tokens: usage.total_tokens ?? null,
+      operation: 'design_run',
+      project_id: run.projectId ?? null,
+      run_id: run.id,
+      run_status: runStatus || null,
+      token_count_source: usage.token_count_source ?? 'unknown',
+      registry_usage_id: billing.registry_usage_id,
+      billing_status: billing.billing_status,
+      credits_committed: billing.credits_committed,
+      cache_read_input_tokens: usage.cache_read_input_tokens ?? null,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens ?? null,
+      provider_reported_model: usage.agent_reported_model ?? null,
+      api_protocol: (run.apiProtocol ?? '').trim() || 'claude-agent',
+      latency_ms: latencyMs,
+      stop_reason: stopReason,
+    },
+    markerFields,
+  );
+
+  if (posted) {
+    reportedRuns?.add(dedupeKey);
+    return true;
   }
+  return false;
 }
 
 export async function finalizeTeamverUsageBillingFromDaemon(args: {

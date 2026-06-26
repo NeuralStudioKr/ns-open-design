@@ -198,7 +198,8 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await reportTeamverUsageFromDaemon({
+    const reportedRuns = new Set<string>();
+    const posted = await reportTeamverUsageFromDaemon({
       run: {
         id: 'run-2',
         projectId: 'od2',
@@ -215,8 +216,12 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
           },
         ],
       },
-      reportedRuns: new Set(),
+      reportedRuns,
     });
+
+    expect(posted).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(reportedRuns.has('usage:run-2')).toBe(false);
 
     const marker = findUsage5xxMarker(warnSpy, 'usage.events');
     expect(marker).not.toBeNull();
@@ -325,7 +330,7 @@ describe('teamver-usage-bridge.reportTeamverUsageFromDaemon', () => {
     const marker = findUsageMarker(warnSpy, 'usage.zero_tokens');
     expect(marker).not.toBeNull();
     expect(marker).toMatchObject({
-      metric: 'teamver_usage_5xx',
+      metric: 'teamver_usage_zero_tokens',
       stage: 'usage.zero_tokens',
       runId: 'run-zero',
       workspaceId: 'ws-zero',

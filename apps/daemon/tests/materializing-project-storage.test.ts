@@ -186,6 +186,47 @@ describe('createProjectMaterializationRuntime', () => {
     }
   });
 
+  it('sync-up uses earliest run floor when concurrent runs overlap', async () => {
+    const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-concurrent-'));
+    const remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-concurrent-remote-'));
+    try {
+      const storage = new MaterializingProjectStorage(
+        new LocalProjectStorage(scratchRoot),
+        new LocalProjectStorage(remoteRoot),
+      );
+      const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+      const runtime = createProjectMaterializationRuntime(layout, storage);
+
+      const run1 = { id: 'run-1', projectId: 'p1' };
+      await runtime.beforeChatRun(run1);
+      const run1Start = run1.projectMaterializationStartedAt!;
+
+      const run2 = { id: 'run-2', projectId: 'p1' };
+      await runtime.beforeChatRun(run2);
+
+      await new Promise((r) => setTimeout(r, 50));
+      const betweenRuns = Date.now();
+      await storage.writeFile('p1', 'run1.html', Buffer.from('from-run-1'));
+
+      await new Promise((r) => setTimeout(r, 1100));
+      await storage.writeFile('p1', 'run2.html', Buffer.from('from-run-2'));
+
+      const finish = vi.fn();
+      runtime.wrapFinish(finish)(run1, 'succeeded', 0, null);
+      await new Promise((r) => setTimeout(r, 20));
+      runtime.wrapFinish(finish)(run2, 'succeeded', 0, null);
+      await new Promise((r) => setTimeout(r, 50));
+
+      const remote = new LocalProjectStorage(remoteRoot);
+      expect(await remote.statFile('p1', 'run1.html')).not.toBeNull();
+      expect(await remote.statFile('p1', 'run2.html')).not.toBeNull();
+      expect(run1Start).toBeLessThan(betweenRuns);
+    } finally {
+      await rm(scratchRoot, { recursive: true, force: true });
+      await rm(remoteRoot, { recursive: true, force: true });
+    }
+  });
+
   it('emits od_s3_sync_down marker when metrics enabled on beforeChatRun', async () => {
     const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-syncdown-'));
     const remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-syncdown-remote-'));

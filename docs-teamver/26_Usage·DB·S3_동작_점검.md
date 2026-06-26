@@ -129,8 +129,24 @@ storage/startup batch (5 files): **48 passed**
 
 ---
 
+## 7. loop 413 코드 수정 (리뷰 후속)
+
+| 이슈 | 수정 |
+|------|------|
+| FE dedupe on failed POST | `requestId` 수신 후에만 `rememberReportedRunId` |
+| daemon dedupe before POST | 성공 후 `reportedRuns.add`; 5xx/timeout 1회 재시도 |
+| billing commit without ledger | `usagePosted === false` 시 commit 스킵 |
+| hosted double-post | FE skip when `message.runId` present |
+| BYOK save failure drops usage | `saveMessage` usage 보고를 PUT 성공과 분리 |
+| concurrent S3 sync-up data loss | `projectSyncFloorMs` + shared tenant remote |
+| BE fire-and-forget write loss | `token_usage_log` background 1회 재시도 |
+| zero-token false 5xx alarm | `teamver_usage_zero_tokens` 마커 분리 |
+
+---
+
 ## 6. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-26 | loop 413 — 코드 리뷰 기반 P1 수정 (dedupe-on-success, billing gate, concurrent S3 sync floor) |
 | 2026-06-26 | loop 412 — 로컬 usage/DB/S3 코드·테스트·fixture 점검 리포트 (Drive 제외) |

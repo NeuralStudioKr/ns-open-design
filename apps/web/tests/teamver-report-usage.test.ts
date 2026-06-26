@@ -92,7 +92,7 @@ describe('reportTeamverDesignUsage', () => {
       warnSpy.mockRestore();
     });
 
-    it('emits a structured teamver_usage_5xx marker on non-retryable client drop', async () => {
+    it('emits a structured client-error marker on non-retryable client drop', async () => {
       const post = vi.fn(async () => {
         throw new Error('network down');
       });
@@ -114,13 +114,33 @@ describe('reportTeamverDesignUsage', () => {
       expect(warnSpy).toHaveBeenCalledTimes(1);
       const payload = JSON.parse(warnSpy.mock.calls[0][0] as string);
       expect(payload).toMatchObject({
-        metric: 'teamver_usage_5xx',
+        metric: 'teamver_usage_client_error',
         stage: 'usage.events_client_drop',
         workspaceId: 'ws-1',
         runId: 'run-drop',
         runStatus: 'succeeded',
         modelName: 'claude-sonnet-4-5',
       });
+    });
+
+    it('retries once on generic network Error', async () => {
+      const post = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({ accepted: true, requestId: 'UREQ-retry' });
+      vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+        http: { post },
+      } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+      const requestId = await reportTeamverDesignUsage({
+        workspaceId: 'ws-1',
+        modelName: 'claude-sonnet-4-5',
+        inputTokens: 5,
+        outputTokens: 3,
+      });
+
+      expect(requestId).toBe('UREQ-retry');
+      expect(post).toHaveBeenCalledTimes(2);
     });
 
     it('retries once on 5xx NetworkError and emits the retry-drop marker on final failure', async () => {

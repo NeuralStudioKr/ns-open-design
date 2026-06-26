@@ -30,7 +30,7 @@ vi.mock('../src/teamver/designBffClient', () => ({
 }));
 
 vi.mock('../src/teamver/reportUsage', () => ({
-  reportTeamverDesignUsage: vi.fn(async () => undefined),
+  reportTeamverDesignUsage: vi.fn(async () => 'UREQ-TEST'),
 }));
 
 describe('usageAttribution', () => {
@@ -157,6 +157,7 @@ describe('usageAttribution', () => {
 describe('maybeReportTeamverUsageAfterSave', () => {
   beforeEach(() => {
     resetTeamverReportedRunIdsForTests();
+    vi.mocked(reportUsage.reportTeamverDesignUsage).mockImplementation(async () => 'UREQ-TEST');
   });
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
@@ -174,7 +175,29 @@ describe('maybeReportTeamverUsageAfterSave', () => {
     expect(reportUsage.reportTeamverDesignUsage).not.toHaveBeenCalled();
   });
 
-  it('reports usage once per run in embed mode', async () => {
+  it('skips FE reporting when daemon runId is present (hosted M2M is authoritative)', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await maybeReportTeamverUsageAfterSave(
+      'p1',
+      {
+        id: 'm-hosted',
+        role: 'assistant',
+        content: '',
+        runStatus: 'succeeded',
+        runId: 'daemon-run-1',
+        events: [{ kind: 'usage', inputTokens: 10, outputTokens: 5 }],
+      },
+      { telemetryFinalized: true },
+    );
+
+    expect(reportUsage.reportTeamverDesignUsage).not.toHaveBeenCalled();
+  });
+
+  it('reports usage once per BYOK turn in embed mode', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
@@ -185,7 +208,6 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       role: 'assistant' as const,
       content: '',
       runStatus: 'succeeded' as const,
-      runId: 'run-abc',
       events: [
         { kind: 'status' as const, label: 'model', detail: 'claude-sonnet-4-5' },
         { kind: 'usage' as const, inputTokens: 100, outputTokens: 50 },
@@ -204,7 +226,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       totalTokens: 150,
       tokenCountSource: 'provider_usage',
       projectId: 'p1',
-      runId: 'run-abc',
+      runId: 'm1',
       runStatus: 'succeeded',
     });
   });
@@ -239,7 +261,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
     );
   });
 
-  it('still reports a row for terminal failed/canceled runs (zero tokens, unknown source)', async () => {
+  it('still reports a row for terminal failed/canceled BYOK turns (zero tokens, unknown source)', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
@@ -252,19 +274,15 @@ describe('maybeReportTeamverUsageAfterSave', () => {
         role: 'assistant',
         content: '',
         runStatus: 'failed',
-        runId: 'run-fail',
         events: [{ kind: 'status', label: 'model', detail: 'claude-sonnet-4-5' }],
       },
       { telemetryFinalized: true },
     );
 
-    // Even without usage events, billing finalize needs a ledger row for
-    // refund/commit_failed status to attach to. The report fires with zero
-    // tokens + unknown source so the BE upsert creates the row.
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledWith(
       expect.objectContaining({
         runStatus: 'failed',
-        runId: 'run-fail',
+        runId: 'm-fail',
         inputTokens: 0,
         outputTokens: 0,
         tokenCountSource: 'unknown',
@@ -352,7 +370,6 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       role: 'assistant' as const,
       content: 'hi',
       runStatus: 'succeeded' as const,
-      runId: 'run-race-1',
       events: [{ kind: 'usage' as const, inputTokens: 50, outputTokens: 10 }],
     };
 
@@ -371,9 +388,9 @@ describe('maybeReportTeamverUsageAfterSave', () => {
 
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
 
-    // Subsequent calls with the same runId still dedupe via reportedRunIds.
+    // Failed POST (null requestId) must not dedupe — a later save can retry.
     await maybeReportTeamverUsageAfterSave('p1', message, { telemetryFinalized: true });
-    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(1);
+    expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(2);
   });
 
   it('caps the in-memory dedupe set so long-lived embed tabs do not leak', async () => {
@@ -393,7 +410,6 @@ describe('maybeReportTeamverUsageAfterSave', () => {
           role: 'assistant',
           content: '',
           runStatus: 'succeeded',
-          runId: `run-${i}`,
           events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
         },
         { telemetryFinalized: true },
@@ -401,7 +417,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
     }
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(cap + 1);
 
-    // run-0 was evicted (FIFO) → reports again.
+    // m-0 was evicted (FIFO) → reports again.
     await maybeReportTeamverUsageAfterSave(
       'p1',
       {
@@ -409,14 +425,13 @@ describe('maybeReportTeamverUsageAfterSave', () => {
         role: 'assistant',
         content: '',
         runStatus: 'succeeded',
-        runId: 'run-0',
         events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
       },
       { telemetryFinalized: true },
     );
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(cap + 2);
 
-    // The most-recent run still dedupes.
+    // The most-recent turn still dedupes.
     await maybeReportTeamverUsageAfterSave(
       'p1',
       {
@@ -424,7 +439,6 @@ describe('maybeReportTeamverUsageAfterSave', () => {
         role: 'assistant',
         content: '',
         runStatus: 'succeeded',
-        runId: `run-${cap}`,
         events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
       },
       { telemetryFinalized: true },
@@ -432,7 +446,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
     expect(reportUsage.reportTeamverDesignUsage).toHaveBeenCalledTimes(cap + 2);
   });
 
-  it('reports API-mode usage with requesting label and usage events', async () => {
+  it('reports API-mode BYOK usage with requesting label and usage events', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
@@ -441,11 +455,10 @@ describe('maybeReportTeamverUsageAfterSave', () => {
     await maybeReportTeamverUsageAfterSave(
       'p1',
       {
-        id: 'm1',
+        id: 'm-api',
         role: 'assistant',
         content: '',
         runStatus: 'succeeded',
-        runId: 'run-api',
         events: [
           { kind: 'status', label: 'requesting', detail: 'claude-sonnet-4-5' },
           { kind: 'usage', inputTokens: 120, outputTokens: 15 },
@@ -462,7 +475,7 @@ describe('maybeReportTeamverUsageAfterSave', () => {
       totalTokens: 135,
       tokenCountSource: 'provider_usage',
       projectId: 'p1',
-      runId: 'run-api',
+      runId: 'm-api',
       runStatus: 'succeeded',
     });
   });

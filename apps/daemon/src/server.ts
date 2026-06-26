@@ -3197,7 +3197,7 @@ export function createFinalizedMessageTelemetryReporter({
       // find one (race-safe), but ordering keeps the happy path observable
       // (single row, no stub overwrite) and matches docs-teamver/11 §4.8.
       void (async () => {
-        await reportTeamverUsageFromDaemon({
+        const usagePosted = await reportTeamverUsageFromDaemon({
           run,
           persistedRunStatus: saved.runStatus,
           reportedRuns,
@@ -3207,6 +3207,9 @@ export function createFinalizedMessageTelemetryReporter({
         if (!usageId) return;
         const status = saved.runStatus;
         if (status === 'succeeded') {
+          // Do not commit credits until the usage ledger row exists — avoids
+          // Registry commit + finalize stub with 0 tokens when POST failed.
+          if (!usagePosted) return;
           const ok = await commitTeamverBillingFromDaemon({ runId: run.id, usageId });
           if (workspaceId) {
             await finalizeTeamverUsageBillingFromDaemon({

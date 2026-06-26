@@ -43,6 +43,15 @@ export function createProjectMaterializationRuntime(
 ): ProjectMaterializationRuntime {
   const activeProjectRuns = new Map<string, number>();
   const projectLocks = new Map<string, Promise<void>>();
+  /** Earliest materialization start among overlapping runs — sync-up floor. */
+  const projectSyncFloorMs = new Map<string, number>();
+  /** Tenant-scoped remote resolved by the first active run on a project. */
+  const projectTenantRemote = new Map<string, ProjectStorage>();
+
+  function trackSyncFloor(projectId: string, startedAt: number): void {
+    const floor = projectSyncFloorMs.get(projectId);
+    projectSyncFloorMs.set(projectId, floor === undefined ? startedAt : Math.min(floor, startedAt));
+  }
 
   async function withProjectLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
     const previous = projectLocks.get(projectId) ?? Promise.resolve();
@@ -89,12 +98,22 @@ export function createProjectMaterializationRuntime(
         `[project-materialization] concurrent run on ${projectId} — v1 allows one materialized run; skipping sync-down`,
       );
       activeProjectRuns.set(projectId, active + 1);
-      run.projectMaterializationStartedAt = Date.now();
+      const now = Date.now();
+      run.projectMaterializationStartedAt = now;
+      trackSyncFloor(projectId, now);
+      const cachedRemote = projectTenantRemote.get(projectId);
+      if (cachedRemote) {
+        run.teamverRemote = cachedRemote;
+      } else {
+        const remote = await resolveRunRemote(run, projectId);
+        projectTenantRemote.set(projectId, remote);
+      }
       return;
     }
 
     activeProjectRuns.set(projectId, 1);
     const remote = await resolveRunRemote(run, projectId);
+    projectTenantRemote.set(projectId, remote);
     await withProjectLock(projectId, async () => {
       const syncDownStarted = Date.now();
       const result = await storage.syncDown(projectId, remote);
@@ -114,7 +133,9 @@ export function createProjectMaterializationRuntime(
         );
       }
     });
-    run.projectMaterializationStartedAt = Date.now();
+    const startedAt = Date.now();
+    run.projectMaterializationStartedAt = startedAt;
+    trackSyncFloor(projectId, startedAt);
   }
 
   async function afterChatRun(run: RunLike): Promise<void> {
@@ -122,11 +143,17 @@ export function createProjectMaterializationRuntime(
     const projectId = typeof run.projectId === 'string' ? run.projectId.trim() : '';
     if (!projectId) return;
 
-    const startedAt = run.projectMaterializationStartedAt ?? Date.now();
+    const startedAt = projectSyncFloorMs.get(projectId)
+      ?? run.projectMaterializationStartedAt
+      ?? Date.now();
     const active = activeProjectRuns.get(projectId) ?? 0;
     if (active <= 1) {
       activeProjectRuns.delete(projectId);
-      const remote = run.teamverRemote ?? storage.flatRemote();
+      projectSyncFloorMs.delete(projectId);
+      const remote = run.teamverRemote
+        ?? projectTenantRemote.get(projectId)
+        ?? storage.flatRemote();
+      projectTenantRemote.delete(projectId);
       await withProjectLock(projectId, async () => {
         try {
           const result = await storage.syncUp(projectId, remote, startedAt);
