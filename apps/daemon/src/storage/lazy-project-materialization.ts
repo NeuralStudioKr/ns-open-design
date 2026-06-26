@@ -53,9 +53,12 @@ function isMutatingMethod(method: string): boolean {
 export function createProjectStorageAccessHooks(
   runtime: ProjectMaterializationRuntime | null,
 ): ProjectStorageAccessHooks | null {
-  if (!runtime?.storage || !isS3ProjectStorageLayout(runtime.layout)) return null;
+  if (runtime === null || !runtime.storage || !isS3ProjectStorageLayout(runtime.layout)) {
+    return null;
+  }
 
-  const storage = runtime.storage;
+  const materializationRuntime = runtime;
+  const storage = materializationRuntime.storage;
   const lastSyncAt = new Map<string, number>();
   const inflight = new Map<string, Promise<void>>();
 
@@ -88,7 +91,7 @@ export function createProjectStorageAccessHooks(
     }
 
     const task = (async () => {
-      await runtime.withProjectLock(trimmedId, async () => {
+      await materializationRuntime.withProjectLock(trimmedId, async () => {
         const remote = await resolveRemote(req, trimmedId);
         const result = await storage.syncDown(trimmedId, remote);
         lastSyncAt.set(trimmedId, Date.now());
@@ -132,15 +135,15 @@ export function createProjectStorageAccessHooks(
           }));
         }
         if (result.failed > 0) {
-          runtime.markProjectSyncFailed(trimmedId);
+          materializationRuntime.markProjectSyncFailed(trimmedId);
           if (options?.strict) {
             throw new Error(`project_storage_sync_failed:${result.failed}`);
           }
         } else {
-          runtime.clearProjectSyncFailed(trimmedId);
+          materializationRuntime.clearProjectSyncFailed(trimmedId);
         }
       } catch (err) {
-        runtime.markProjectSyncFailed(trimmedId);
+        materializationRuntime.markProjectSyncFailed(trimmedId);
         console.warn(
           `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
           err instanceof Error ? err.message : err,
@@ -149,7 +152,7 @@ export function createProjectStorageAccessHooks(
       }
     };
 
-    await runtime.withProjectLock(trimmedId, runPersist);
+    await materializationRuntime.withProjectLock(trimmedId, runPersist);
   }
 
   async function onProjectRemoved(req: Request, projectId: string): Promise<void> {

@@ -63,7 +63,7 @@ def meter_design_run(
 ) -> MeteredCredits:
     """Estimate design-run credits (T) from provider token counts.
 
-    Does not call Registry — ledger audit field; BYOK billing uses the metered amount via loop 429 finalize-byok-run.
+    Does not call Registry — ledger audit field; BYOK billing uses the metered amount via loop 430 finalize-byok-run.
     """
     inp = max(0, input_tokens)
     out = max(0, output_tokens)

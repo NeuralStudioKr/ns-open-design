@@ -33,6 +33,7 @@ OD_S3_SYNC_UP_METRICS=1
 OD_SCRATCH_DISK_METRICS=1
 OD_SCRATCH_DISK_THRESHOLD_MB=2048
 OD_SCRATCH_DISK_METRIC_INTERVAL_MS=300000
+OD_S3_PURGE_ON_DELETE=0
 LITESTREAM_BUCKET=teamver-design-staging-data
 LITESTREAM_REGION=ap-northeast-2
 TRUST_TEAMVER_PROXY_HEADERS=true
@@ -262,6 +263,30 @@ fi
 rm -f "$MISMATCH_LITESTREAM_ENV"
 
 echo "✓ validate_deploy_env hosted Litestream durability gates ok"
+
+# Hosted requires explicit OD_S3_PURGE_ON_DELETE (Teamver standard =0).
+PURGE_MISSING_ENV="$(mktemp)"
+grep -v "^OD_S3_PURGE_ON_DELETE=" "$TMP_ENV" > "$PURGE_MISSING_ENV" || true
+purge_missing_out="$(bash "$SCRIPT" --staging --rds --env-file "$PURGE_MISSING_ENV" 2>&1 || true)"
+if ! grep -q 'OD_S3_PURGE_ON_DELETE 미설정' <<< "$purge_missing_out"; then
+  echo "❌ hosted without OD_S3_PURGE_ON_DELETE must fail preflight"
+  echo "$purge_missing_out"
+  rm -f "$PURGE_MISSING_ENV"
+  exit 1
+fi
+rm -f "$PURGE_MISSING_ENV"
+
+PURGE_ZERO_ENV="$(mktemp)"
+sed 's/^OD_S3_PURGE_ON_DELETE=.*/OD_S3_PURGE_ON_DELETE=0/' "$TMP_ENV" > "$PURGE_ZERO_ENV"
+purge_zero_out="$(bash "$SCRIPT" --staging --rds --env-file "$PURGE_ZERO_ENV" 2>&1 || true)"
+if ! grep -q 'OD_S3_PURGE_ON_DELETE=0 — delete 시 S3 tenant SSOT 유지' <<< "$purge_zero_out"; then
+  echo "❌ OD_S3_PURGE_ON_DELETE=0 should pass hosted preflight"
+  echo "$purge_zero_out"
+  rm -f "$PURGE_ZERO_ENV"
+  exit 1
+fi
+rm -f "$PURGE_ZERO_ENV"
+echo "✓ validate_deploy_env hosted OD_S3_PURGE_ON_DELETE gates ok"
 
 # Daemon billing bridge warnings.
 if ! grep -q 'daemon billing bridge 활성\|daemon billing bridge OFF' <<< "$clean_out"; then

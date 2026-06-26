@@ -146,7 +146,7 @@ FE와 daemon이 **동일 run**에 usage를 보고할 수 있다. BE upsert는 `(
 | U-G3 | P2 | doc §2.2 stale “daemon ❌” | ✅ loop 354 갱신 |
 | **U-G4** | **P1** | **실측 토큰 → 크레딧(T) 환산·정확 차감** — 현재 `TEAMVER_BILLING_RESERVE_AMOUNT` flat reserve, ledger 토큰 미연동 | ☐ 후속 — **[11 §4](./11_Usage·Drive_Publish_보강.md)** SSOT |
 | **U-G5** | **P1** | **Registry `commit`은 `usage_id`만** — commit 시 실측 amount 전달 불가. 전략 A/B/C 중 택 1 또는 Main BE API 확장 | ☐ [11 §4.3–§4.4](./11_Usage·Drive_Publish_보강.md) |
-| **U-G6** | **P2** | **embed BYOK billing** — Strategy B meter→reserve→commit (`finalize-byok-run` + FE hook) | ✅ **loop 429** — [11 §4.7](./11_Usage·Drive_Publish_보강.md) |
+| **U-G6** | **P2** | **embed BYOK billing** — Strategy B meter→reserve→commit (`finalize-byok-run` + FE hook) | ✅ **loop 430** — [11 §4.7](./11_Usage·Drive_Publish_보강.md) |
 | **U-G7** | **P0** | **terminal hook race** — usage upsert vs commit/refund 병렬 `void`, 그리고 ledger 병합 시 `committed` snapshot이 `not_attempted`로 downgrade될 수 있던 문제 | ✅ **loop 380** — daemon 직렬화 + BE precedence 병합 + finalize stub + IntegrityError merge ([11 §2.2·§2.4·§4.8](./11_Usage·Drive_Publish_보강.md)) |
 | **U-G8** | **P2** | **FE usage POST 실패 관측 부재** — non-retryable/retry 실패 시 `console.warn`만, ops grep 불가 | ✅ **loop 380** — `teamver_usage_5xx` 구조화 JSON 마커(`stage=usage.events_client_drop`/`retry_drop`) ([11 §2.2](./11_Usage·Drive_Publish_보강.md)) |
 | **U-G9** | **P3** | **장기 embed tab 메모리** — `reportedRunIds` Set unbounded | ✅ **loop 380** — 1024 cap + FIFO eviction |
@@ -308,7 +308,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | U-G1 | ☐ | U-6 staging E2E — M2M + RDS row count |
 | U-G4 | ☐ | 실측 토큰 → 크레딧(T) 환산 — [11 §4](./11_Usage·Drive_Publish_보강.md) |
 | U-G5 | ☐ | Registry commit amount 전략 A/B/C — [11 §4.3](./11_Usage·Drive_Publish_보강.md) |
-| U-G6 | ✅ loop 429 | embed BYOK billing — `finalize-byok-run` + FE hook — [11 §4.7](./11_Usage·Drive_Publish_보강.md) |
+| U-G6 | ✅ loop 430 | embed BYOK billing — `finalize-byok-run` + FE hook — [11 §4.7](./11_Usage·Drive_Publish_보강.md) |
 
 ### Lifecycle·UX (§6.1)
 

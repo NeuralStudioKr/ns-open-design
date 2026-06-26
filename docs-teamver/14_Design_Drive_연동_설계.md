@@ -321,8 +321,9 @@ Content-Type: application/json
 
 | ☐ | 작업 | SSOT |
 |---|------|------|
-| ☐ | U-6 staging E2E — M2M + RDS row count | §3 |
+| ☐ | U-6 staging E2E — M2M + RDS row count (+ U-6d/e/f infra probe ✅ loop 425–426) | §3 |
 | ☐ | `credit_meter.py` + unit tests | §4.9 #1 |
+| ⏸ | **실제 크레딧 차감·Registry commit** — CTO 회의 후 (#2–#6) | §4.9 |
 | ☐ | 전략 A/B/C 확정 (PM·Main BE) | §4.9 #2 |
 | ☐ | daemon reserve amount → metered | §4.9 #3 |
 | ☐ | embed BYOK billing (U-G6) | §4.7 |

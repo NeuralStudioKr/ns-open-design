@@ -72,7 +72,7 @@ unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
   OD_S3_ALLOW_SCRATCH_FALLBACK \
   OD_SCRATCH_EVICT_AFTER_RUN OD_S3_SYNC_UP_METRICS \
   OD_SCRATCH_DISK_METRICS OD_SCRATCH_DISK_THRESHOLD_MB \
-  OD_SCRATCH_DISK_METRIC_INTERVAL_MS \
+  OD_SCRATCH_DISK_METRIC_INTERVAL_MS OD_S3_PURGE_ON_DELETE \
   POSTGRES_HOST POSTGRES_PASSWD POSTGRES_DB POSTGRES_USER \
   TEAMVER_REGISTRY_APP_ID TEAMVER_REGISTRY_KEY_ID TEAMVER_REGISTRY_ACCESS_KEY \
   LITESTREAM_BUCKET LITESTREAM_REGION TEAMVER_DRIVE_PUBLISH_FOLDER_ID \
@@ -271,6 +271,14 @@ if [[ "$registry_set_count" -gt 0 && "$registry_set_count" -lt 3 ]]; then
   fail "TEAMVER_REGISTRY_APP_ID/KEY_ID/ACCESS_KEY 부분 설정 — 셋 모두 또는 셋 모두 비워야 함 (run_lifecycle은 셋 모두 있을 때만 reserve/commit 호출)"
 elif [[ "$registry_set_count" -eq 3 ]]; then
   warn "TEAMVER_REGISTRY_* 설정됨 — design run reserve/commit/refund 활성 (CW alarm: teamver_usage_5xx)"
+  if [[ -z "${DESIGN_MODEL_PRICES_JSON:-}" ]]; then
+    warn "DESIGN_MODEL_PRICES_JSON 미설정 — Strategy A reserve estimate·ledger credits_amount_t metered path skipped (flat_fallback/0 only)"
+  else
+    warn "DESIGN_MODEL_PRICES_JSON 설정됨 — Strategy A reserve estimate + ledger credits_amount_t meter 활성"
+    if [[ "${DESIGN_BILLING_MAX_RESERVE_T:-0}" -le 0 ]]; then
+      warn "DESIGN_BILLING_MAX_RESERVE_T=0 — reserve estimate 상한 미적용 (무제한 estimate; staging에서 cap 권장)"
+    fi
+  fi
 else
   if [[ "${TEAMVER_BILLING_DISABLED:-}" != "1" ]]; then
     fail "${DEPLOY_ENV_FLAG#--}: TEAMVER_REGISTRY_* 미설정 시 TEAMVER_BILLING_DISABLED=1 명시 필요 (Registry Phase 2 미구현·usage ledger만 기록)"
@@ -328,10 +336,21 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
       warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성"
     fi
   fi
-  if [[ "${OD_S3_PURGE_ON_DELETE:-}" == "0" ]]; then
+  purge_raw="$(printf '%s' "${OD_S3_PURGE_ON_DELETE:-}" | tr '[:upper:]' '[:lower:]' | xargs)"
+  if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+    if [[ -z "$purge_raw" ]]; then
+      fail "OD_S3_PURGE_ON_DELETE 미설정 — hosted 는 명시 필수 (Teamver 표준: =0). env 생략 시 daemon default ON → UI delete 시 S3 tenant 즉시 purge"
+    elif [[ "$purge_raw" == "0" || "$purge_raw" == "false" || "$purge_raw" == "no" || "$purge_raw" == "off" ]]; then
+      warn "OD_S3_PURGE_ON_DELETE=0 — delete 시 S3 tenant SSOT 유지 (RDS soft-delete + 분석·지원)"
+    else
+      warn "OD_S3_PURGE_ON_DELETE=${OD_S3_PURGE_ON_DELETE} — delete 시 S3 tenant purge (법적 erasure 전용. 분석·E2E 증적 소실)"
+    fi
+  elif [[ "$purge_raw" == "0" || "$purge_raw" == "false" || "$purge_raw" == "no" || "$purge_raw" == "off" ]]; then
     warn "OD_S3_PURGE_ON_DELETE=0 — registry delete 시 tenant S3 prefix 유지 (scratch evict만)"
+  elif [[ -n "$purge_raw" ]]; then
+    warn "OD_S3_PURGE_ON_DELETE=${OD_S3_PURGE_ON_DELETE} — registry delete/scratch/evict 시 tenant S3 prefix 객체 purge (od_s3_remote_purged 마커)"
   else
-    warn "OD_S3_PURGE_ON_DELETE 활성 — registry delete/scratch/evict 시 tenant S3 prefix 객체 purge (od_s3_remote_purged 마커)"
+    warn "OD_S3_PURGE_ON_DELETE 미설정 — daemon default ON (delete 시 S3 purge)"
   fi
 fi
 

@@ -63,6 +63,20 @@ case "\$URL" in
       emit ""
     fi
   ;;
+  *"/api/internal/billing/estimate-reserve")
+    if [[ "\$WRITE_OUT" == "%{http_code}" ]]; then
+      echo "401"
+    else
+      emit ""
+    fi
+  ;;
+  *"/api/internal/usage/billing-finalize")
+    if [[ "\$WRITE_OUT" == "%{http_code}" ]]; then
+      echo "401"
+    else
+      emit ""
+    fi
+  ;;
   *"/scratch/"*)
     if [[ "\$WRITE_OUT" == "%{http_code}" ]]; then
       echo "204"

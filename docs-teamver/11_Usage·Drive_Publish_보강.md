@@ -513,7 +513,7 @@ def meter_design_run(
 | 경로 | usage ledger | Registry billing | 후속 |
 |------|--------------|------------------|------|
 | **daemon CLI** (embed) | ✅ scan + M2M / FE-first (race-safe, §2.4) | ✅ reserve@start (flat), commit/refund@end (직렬화, §4.8) | amount를 `credit_meter`로 교체 (§4.4) |
-| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` + **loop 429** `finalize-byok-run` (Strategy B meter→reserve→commit, `run_id=message.id`) | ✅ cookie-auth BFF `POST /api/v1/billing/finalize-byok-run` | — |
+| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` + **loop 430** `finalize-byok-run` (Strategy B meter→reserve→commit, `run_id=message.id`) | ✅ cookie-auth BFF `POST /api/v1/billing/finalize-byok-run` | — |
 | **standalone OD** | — | skip (no `TEAMVER_DESIGN_API_URL`) | — |
 | **plain stdout agent** | `unknown` / 0 | flat reserve만 | usage 없으면 §4.5.1 정책 |
 
@@ -555,6 +555,9 @@ void (async () => {
 
 ### 4.9 후속 구현 체크리스트 (권장 순서)
 
+> **⏸ 2026-06-26 — 실제 크레딧 차감·Registry commit amount는 CTO 회의 후 착수.**  
+> infra probe(loop 425–426)는 merge 가능 — `TEAMVER_BILLING_DISABLED=1` 기본 유지.
+
 ```text
 [x] 0a. ledger race-safe merge: billing-finalize stub + no committed downgrade (loop 380)
 [x] 0b. aupsert_usage IntegrityError → merge into surviving row (loop 380)
@@ -565,7 +568,7 @@ void (async () => {
 [x] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests (loop 405)
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [x] 3. daemon reserve: estimate-reserve endpoint + run-start lookup (loop 423 · Strategy A partial)
-[x] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only hook + BFF finalize, loop 429)
+[x] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only hook + BFF finalize, loop 430)
 [ ] 5. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
 [ ] 6. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
 [ ] 7. (선택) Main BE metered commit API — 전략 C

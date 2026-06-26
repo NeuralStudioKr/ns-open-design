@@ -172,6 +172,20 @@ container_storage_check() {
   elif [[ -n "${OD_S3_BUCKET:-}" ]]; then
     nope "$label container OD_S3_BUCKET unset (.env=${OD_S3_BUCKET})"
   fi
+  if [[ "$container" == "$DAEMON_CONTAINER" ]]; then
+    local purge env_purge
+    purge="$(docker exec "$container" sh -lc 'printf "%s" "${OD_S3_PURGE_ON_DELETE:-}"' 2>/dev/null || echo "")"
+    env_purge="${OD_S3_PURGE_ON_DELETE:-}"
+    if [[ -z "${env_purge//[[:space:]]/}" ]]; then
+      nope "$label OD_S3_PURGE_ON_DELETE unset in .env (hosted must set =0 — validate_deploy_env)"
+    elif [[ "$purge" != "$env_purge" ]]; then
+      nope "$label container OD_S3_PURGE_ON_DELETE=${purge:-<unset>} (.env=${env_purge} — redeploy daemon)"
+    elif [[ "$env_purge" == "0" ]]; then
+      ok "$label container OD_S3_PURGE_ON_DELETE=0 (S3 retain on delete — Teamver standard)"
+    else
+      skip "$label container OD_S3_PURGE_ON_DELETE=${env_purge} (S3 purge on delete — legal erasure mode)"
+    fi
+  fi
 }
 
 container_litestream_bucket_check() {
