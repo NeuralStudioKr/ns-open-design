@@ -73,6 +73,7 @@ import { APP_CHROME_FILE_ACTIONS_ID } from './AppChromeHeader';
 import { FileViewer, LiveArtifactViewer } from './FileViewer';
 import {
   findProjectFileByTabName,
+  previewFileMatchesTab,
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
 import { Icon, type IconName } from './Icon';
@@ -517,6 +518,9 @@ export function FileWorkspace({
   const tabsBarRef = useRef<HTMLDivElement | null>(null);
   const draggedTabNameRef = useRef<string | null>(null);
   const ghostResolveTimerRef = useRef<number | null>(null);
+  /** Last file successfully shown for the active preview tab — survives chokidar list gaps. */
+  const lastResolvedPreviewFileRef = useRef<ProjectFile | null>(null);
+  const pendingPreviewBootstrapTabRef = useRef<string | null>(null);
   const browserTabSequenceRef = useRef(0);
   const designFilesNavProjectIdRef = useRef(projectId);
   const designFilesNavRef = useRef<DesignFilesNavState>(createDefaultDesignFilesNavState());
@@ -1472,6 +1476,22 @@ export function FileWorkspace({
     return null;
   }, [activeTab, visibleFiles, sketches]);
 
+  if (activeFile && previewFileMatchesTab(activeFile, activeTab)) {
+    lastResolvedPreviewFileRef.current = activeFile;
+  } else if (
+    lastResolvedPreviewFileRef.current
+    && !previewFileMatchesTab(lastResolvedPreviewFileRef.current, activeTab)
+  ) {
+    lastResolvedPreviewFileRef.current = null;
+  }
+
+  const previewFile = useMemo<ProjectFile | null>(() => {
+    if (activeFile) return activeFile;
+    const cached = lastResolvedPreviewFileRef.current;
+    if (cached && previewFileMatchesTab(cached, activeTab)) return cached;
+    return null;
+  }, [activeFile, activeTab]);
+
   const activeLiveArtifact = useMemo<LiveArtifactWorkspaceEntry | null>(() => {
     if (
       activeTab === DESIGN_FILES_TAB
@@ -1492,19 +1512,23 @@ export function FileWorkspace({
     && !isLiveArtifactTabId(activeTab)
     && !(isSketchName(activeTab) && sketches[activeTab]);
 
-  const pendingPreviewTab = isPreviewFileTab && !activeFile && !activeLiveArtifact;
+  const pendingPreviewTab = isPreviewFileTab && !previewFile && !activeLiveArtifact;
 
-  // A file tab can be active before the refreshed file list catches up (Write
-  // auto-open, chokidar unlink/add bursts, basename/path mismatches). Keep the
-  // preview surface in a loading state and refresh until the file resolves.
+  // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
+  // bump (chokidar bursts would otherwise remount FileViewer as "loading").
   useEffect(() => {
-    if (!pendingPreviewTab) return;
+    if (!pendingPreviewTab) {
+      pendingPreviewBootstrapTabRef.current = null;
+      return;
+    }
+    if (pendingPreviewBootstrapTabRef.current === activeTab) return;
+    pendingPreviewBootstrapTabRef.current = activeTab;
     setPreviewTabPending(true);
     const pendingMs = openRequest?.nonce ? 4000 : 1500;
     const timer = window.setTimeout(() => setPreviewTabPending(false), pendingMs);
     void onRefreshFiles();
     return () => window.clearTimeout(timer);
-  }, [pendingPreviewTab, activeTab, filesRefreshKey, openRequest?.nonce, onRefreshFiles]);
+  }, [pendingPreviewTab, activeTab, openRequest?.nonce, onRefreshFiles]);
 
   // Drop or retarget ghost tabs once loading settles and the file still isn't
   // on disk — avoids stranding users on "Open a file from Design Files".
@@ -2309,18 +2333,18 @@ export function FileWorkspace({
             liveArtifactEvents={liveArtifactEvents}
             onRefreshArtifacts={onRefreshFiles}
           />
-        ) : activeFile ? (
+        ) : previewFile ? (
           <FileViewer
             projectId={projectId}
             projectKind={projectKind}
-            file={activeFile}
+            file={previewFile}
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
             streaming={streaming}
             commentQueueOnSend={commentQueueOnSend}
             commentSendDisabled={commentSendDisabled}
-            previewComments={previewComments.filter((comment) => comment.filePath === activeFile.name)}
+            previewComments={previewComments.filter((comment) => comment.filePath === previewFile.name)}
             onSavePreviewComment={onSavePreviewComment}
             onRemovePreviewComment={onRemovePreviewComment}
             onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -2329,18 +2353,18 @@ export function FileWorkspace({
             commentPortalId={commentPortalId}
             onCommentModeChange={onCommentModeChange}
             shareRequest={
-              shareRequest && shareRequest.name === activeFile.name
+              shareRequest && shareRequest.name === previewFile.name
                 ? { nonce: shareRequest.nonce }
                 : null
             }
             downloadRequest={
-              downloadRequest && downloadRequest.name === activeFile.name
+              downloadRequest && downloadRequest.name === previewFile.name
                 ? { nonce: downloadRequest.nonce }
                 : null
             }
             slideNavRequest={deliverableSlideNavForActiveFile(
               slideNavRequest,
-              activeFile.name,
+              previewFile.name,
               slideNavDeliverableNonce,
             )}
           />

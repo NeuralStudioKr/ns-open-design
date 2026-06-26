@@ -64,6 +64,19 @@ export function findProjectFileByTabName<T extends TabResolvableFile>(
   return null;
 }
 
+/** Whether a cached project file still corresponds to an open workspace tab id. */
+export function previewFileMatchesTab(
+  file: CandidateFile,
+  tabName: string,
+): boolean {
+  if (!tabName) return false;
+  if (file.name === tabName) return true;
+  const rel = projectRelativePath(file);
+  if (rel === tabName) return true;
+  if (tabName.includes('/')) return false;
+  return basenameOf(rel) === tabName;
+}
+
 export function decideAutoOpenAfterWrite(
   filePath: string,
   nextFiles: ReadonlyArray<CandidateFile>,

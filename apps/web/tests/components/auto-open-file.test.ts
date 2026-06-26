@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decideAutoOpenAfterWrite,
   findProjectFileByTabName,
+  previewFileMatchesTab,
   selectAutoOpenProducedHtml,
 } from '../../src/components/auto-open-file';
 
@@ -191,5 +192,25 @@ describe('findProjectFileByTabName', () => {
       { name: 'b/deck.html', path: 'b/deck.html', kind: 'html', mtime: 2 },
     ]);
     expect(result).toBeNull();
+  });
+});
+
+describe('previewFileMatchesTab', () => {
+  it('matches basename tabs against nested project paths', () => {
+    expect(
+      previewFileMatchesTab(
+        { name: 'output/deck.html', path: 'output/deck.html' },
+        'deck.html',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects unrelated tabs', () => {
+    expect(
+      previewFileMatchesTab(
+        { name: 'output/deck.html', path: 'output/deck.html' },
+        'other.html',
+      ),
+    ).toBe(false);
   });
 });
