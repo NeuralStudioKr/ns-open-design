@@ -564,7 +564,7 @@ void (async () => {
 [x] 0f. amount=0/no-fallback reserve skip — Registry 0 amount 호출 차단 (loop 382)
 [x] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests (loop 405)
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
-[ ] 3. daemon reserve: amount=0 제거 → meter upper bound 또는 전략 B로 이동
+[x] 3. daemon reserve: estimate-reserve endpoint + run-start lookup (loop 423 · Strategy A partial)
 [ ] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only)
 [ ] 5. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
 [ ] 6. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치

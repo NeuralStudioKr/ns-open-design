@@ -72,6 +72,15 @@ class Settings(BaseModel):
     teamver_billing_reserve_amount: int = Field(
         default_factory=lambda: _env_nonneg_int("TEAMVER_BILLING_RESERVE_AMOUNT", default=0)
     )
+    design_billing_max_reserve_t: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_MAX_RESERVE_T", default=0)
+    )
+    design_billing_reserve_input_tokens: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_RESERVE_INPUT_TOKENS", default=32_000)
+    )
+    design_billing_reserve_output_tokens: int = Field(
+        default_factory=lambda: _env_nonneg_int("DESIGN_BILLING_RESERVE_OUTPUT_TOKENS", default=8192)
+    )
     design_model_prices_json: str = os.getenv("DESIGN_MODEL_PRICES_JSON", "")
 
     # Embed managed API mode — server env only (never VITE_* / git)

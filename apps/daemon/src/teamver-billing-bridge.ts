@@ -143,6 +143,30 @@ function resolveReserveAmount(callerAmount: number): number | null {
   return fallback ?? 0;
 }
 
+export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
+  modelName?: string | null;
+}): Promise<number> {
+  const env = billingEnv();
+  if (!env) return 0;
+  const modelName = (args.modelName ?? '').trim() || 'default';
+  try {
+    const { status, payload } = await postJson<{
+      amount_t?: number;
+    }>(
+      `${env.baseUrl}/api/internal/billing/estimate-reserve`,
+      env.apiKey,
+      { model_name: modelName },
+      billingTimeoutMs(),
+    );
+    if (status !== 200 || !payload) return 0;
+    const amount = Number(payload.amount_t);
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+    return Math.floor(amount);
+  } catch {
+    return 0;
+  }
+}
+
 export async function reserveTeamverBillingFromDaemon(
   args: ReserveTeamverBillingArgs,
 ): Promise<ReserveTeamverBillingResult> {

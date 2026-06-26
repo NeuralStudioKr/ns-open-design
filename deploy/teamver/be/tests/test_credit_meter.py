@@ -5,7 +5,7 @@ import json
 import pytest
 
 from app.config import settings
-from app.services.credit_meter import meter_design_run
+from app.services.credit_meter import estimate_design_run_reserve, meter_design_run
 
 
 @pytest.fixture(autouse=True)
@@ -79,3 +79,24 @@ def test_meter_design_run_skipped_when_no_tokens_and_no_flat(monkeypatch: pytest
     )
     assert result.policy == "skipped"
     assert result.amount_t == 0
+
+
+def test_estimate_design_run_reserve_uses_price_table_and_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "design_model_prices_json",
+        json.dumps({"claude-sonnet-4-5": {"input_per_1k_t": 3, "output_per_1k_t": 15}}),
+    )
+    monkeypatch.setattr(settings, "design_billing_reserve_input_tokens", 1000)
+    monkeypatch.setattr(settings, "design_billing_reserve_output_tokens", 1000)
+    monkeypatch.setattr(settings, "design_billing_max_reserve_t", 10)
+    result = estimate_design_run_reserve(model_name="claude-sonnet-4-5")
+    assert result.policy == "metered_capped"
+    assert result.amount_t == 10
+
+
+def test_estimate_design_run_reserve_falls_back_to_flat(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "teamver_billing_reserve_amount", 25)
+    result = estimate_design_run_reserve(model_name="unknown-model")
+    assert result.policy == "flat_fallback"
+    assert result.amount_t == 25

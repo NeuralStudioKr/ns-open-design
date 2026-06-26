@@ -9,12 +9,15 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 from app.routers import internal_billing
 from app.routers.internal_billing import (
     CommitBody,
+    EstimateReserveBody,
     RefundBody,
     ReserveBody,
     commit_run,
+    estimate_reserve,
     refund_run,
     reserve_run,
 )
+from app.services import credit_meter
 from app.services import run_lifecycle
 
 
@@ -27,6 +30,23 @@ def _registry_configured(monkeypatch: pytest.MonkeyPatch) -> None:
         "teamver_registry_access_key",
         "secret-1",
     )
+
+
+@pytest.mark.asyncio
+async def test_estimate_reserve_endpoint_returns_metered_amount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        credit_meter.settings,
+        "design_model_prices_json",
+        '{"claude-sonnet-4-5":{"input_per_1k_t":3,"output_per_1k_t":15}}',
+    )
+    monkeypatch.setattr(credit_meter.settings, "design_billing_reserve_input_tokens", 1000)
+    monkeypatch.setattr(credit_meter.settings, "design_billing_reserve_output_tokens", 0)
+
+    response = await estimate_reserve(EstimateReserveBody(model_name="claude-sonnet-4-5"), True)
+    assert response.amount_t == 3
+    assert response.policy == "metered"
 
 
 @pytest.mark.asyncio

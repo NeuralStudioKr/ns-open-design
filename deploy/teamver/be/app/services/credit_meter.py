@@ -131,3 +131,44 @@ def meter_design_run(
         token_count_source=token_count_source,
         policy="skipped",
     )
+
+
+def estimate_design_run_reserve(*, model_name: str) -> MeteredCredits:
+    """Strategy A — upper-bound reserve before run start (U-G4 / 11 §4.4).
+
+    Uses configured token budgets + price table, capped by ``DESIGN_BILLING_MAX_RESERVE_T``.
+    Falls back to ``TEAMVER_BILLING_RESERVE_AMOUNT`` when estimate is zero.
+    """
+    input_tokens = max(0, settings.design_billing_reserve_input_tokens)
+    output_tokens = max(0, settings.design_billing_reserve_output_tokens)
+    estimated = meter_design_run(
+        model_name=model_name,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        token_count_source="provider_usage",
+    )
+    amount = estimated.amount_t
+    policy = estimated.policy
+    cap = settings.design_billing_max_reserve_t
+    if cap > 0 and amount > cap:
+        amount = cap
+        policy = "metered_capped"
+
+    flat = settings.teamver_billing_reserve_amount
+    if amount <= 0 and flat > 0:
+        return MeteredCredits(
+            amount_t=flat,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model_name=model_name,
+            token_count_source="reserve_estimate",
+            policy="flat_fallback",
+        )
+    return MeteredCredits(
+        amount_t=max(0, amount),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        model_name=model_name,
+        token_count_source="reserve_estimate",
+        policy=policy,
+    )

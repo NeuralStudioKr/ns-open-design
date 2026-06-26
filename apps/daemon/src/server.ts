@@ -296,6 +296,7 @@ import {
   commitTeamverBillingFromDaemon,
   refundTeamverBillingFromDaemon,
   reserveTeamverBillingFromDaemon,
+  resolveTeamverBillingReserveAmountFromDaemon,
 } from './teamver-billing-bridge.js';
 import {
   deriveLangfuseDeliveryState,
@@ -11934,10 +11935,12 @@ export async function startServer({
     // `teamver_usage_5xx` on the design-api side. Run is NEVER aborted.
     try {
       const identity = (run as { teamverIdentity?: TeamverRequestIdentity | null }).teamverIdentity ?? null;
+      const modelName = typeof run.model === 'string' ? run.model : '';
+      const reserveAmount = await resolveTeamverBillingReserveAmountFromDaemon({ modelName });
       const reserve = await reserveTeamverBillingFromDaemon({
         runId: run.id,
         identity,
-        amount: 0,
+        amount: reserveAmount,
         reason: 'design_run',
       });
       if (reserve.ok && reserve.usageId) {

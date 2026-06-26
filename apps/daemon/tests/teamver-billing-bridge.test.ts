@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   commitTeamverBillingFromDaemon,
   refundTeamverBillingFromDaemon,
+  resolveTeamverBillingReserveAmountFromDaemon,
   reserveTeamverBillingFromDaemon,
 } from '../src/teamver-billing-bridge.js';
 
@@ -38,6 +39,32 @@ describe('teamver-billing-bridge', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  describe('resolveTeamverBillingReserveAmountFromDaemon', () => {
+    it('returns metered amount from estimate-reserve endpoint', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(200, { amount_t: 42, policy: 'metered', model_name: 'claude-sonnet-4-5' }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const amount = await resolveTeamverBillingReserveAmountFromDaemon({
+        modelName: 'claude-sonnet-4-5',
+      });
+
+      expect(amount).toBe(42);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/internal/billing/estimate-reserve');
+    });
+
+    it('returns 0 when teamver env is not configured', async () => {
+      const fetchMock: FetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('reserveTeamverBillingFromDaemon', () => {

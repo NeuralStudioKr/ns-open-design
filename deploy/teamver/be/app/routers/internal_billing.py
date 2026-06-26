@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ..services import run_lifecycle
+from ..services.credit_meter import estimate_design_run_reserve
 from ..teamver_sdk import get_internal_api_key_dependency
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,16 @@ class RefundBody(BaseModel):
     reason: str = Field(default="design_run_failed", min_length=1)
 
 
+class EstimateReserveBody(BaseModel):
+    model_name: str = Field(default="default", min_length=1)
+
+
+class EstimateReserveResponse(BaseModel):
+    amount_t: int = Field(ge=0)
+    policy: str
+    model_name: str
+
+
 class ReserveResponse(BaseModel):
     ok: bool
     usage_id: Optional[str] = None
@@ -51,6 +62,19 @@ class ReserveResponse(BaseModel):
 class AckResponse(BaseModel):
     ok: bool
     error: Optional[str] = None
+
+
+@router.post("/estimate-reserve", response_model=EstimateReserveResponse)
+async def estimate_reserve(
+    body: EstimateReserveBody,
+    _: Literal[True] = Depends(get_internal_api_key_dependency()),
+) -> EstimateReserveResponse:
+    metered = estimate_design_run_reserve(model_name=body.model_name)
+    return EstimateReserveResponse(
+        amount_t=metered.amount_t,
+        policy=metered.policy,
+        model_name=metered.model_name or body.model_name,
+    )
 
 
 @router.post("/reserve", response_model=ReserveResponse)
