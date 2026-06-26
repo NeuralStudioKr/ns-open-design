@@ -968,6 +968,7 @@ Browser
 | ☐ | D-5/D-6/D-7 staging E2E full run |
 | ☐ | D-6a 실 Drive asset import |
 | ✅ | loop 410 publish deploy menu + last target focus (409 one-click superseded) |
+| ✅ | loop 412 usage/DB/S3 로컬 점검 — 71 usage + storage tests green · [26](./26_Usage·DB·S3_동작_점검.md) · EC2 strict ☐ |
 
 ### Phase B (metered billing — §4.9)
 
