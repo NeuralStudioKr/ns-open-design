@@ -239,7 +239,7 @@ export type FetchDesignAuthSessionOptions = {
 
 let inFlightSession: Promise<DesignAuthSession | null> | null = null;
 let cachedSession: { value: DesignAuthSession | null; at: number } | null = null;
-const SESSION_CACHE_MS = 5_000;
+const SESSION_CACHE_MS = 60_000;
 
 /** @internal vitest */
 export function resetDesignAuthSessionCacheForTests(): void {

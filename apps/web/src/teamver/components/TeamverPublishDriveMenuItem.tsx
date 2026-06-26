@@ -193,6 +193,7 @@ export function TeamverPublishDriveMenuItem({
     () => targets.find((target) => target.id === selectedTargetId) ?? targets[0] ?? DEFAULT_PUBLISH_TARGET,
     [selectedTargetId, targets],
   );
+  const rememberedTargetMissing = lastTargetRestore === "missing";
 
   const shouldFocusTargetSelect =
     focusTargetSelectNonce != null
@@ -207,6 +208,7 @@ export function TeamverPublishDriveMenuItem({
 
   const handleChangeTarget = useCallback((nextId: string) => {
     setSelectedTargetId(nextId);
+    setLastTargetRestore("none");
   }, []);
 
   const handleSelectTarget = useCallback((target: TeamverDrivePublishTarget) => {
@@ -215,6 +217,7 @@ export function TeamverPublishDriveMenuItem({
       return [...current, target];
     });
     setSelectedTargetId(target.id);
+    setLastTargetRestore("none");
   }, []);
 
   const handleSearchTargets = useCallback(
@@ -227,6 +230,7 @@ export function TeamverPublishDriveMenuItem({
 
   const handlePublish = useCallback(async () => {
     if (busy) return;
+    if (rememberedTargetMissing) return;
     onCloseMenu();
     setBusy(true);
     try {
@@ -258,7 +262,7 @@ export function TeamverPublishDriveMenuItem({
     } finally {
       setBusy(false);
     }
-  }, [artifactFile, busy, onCloseMenu, onError, onSuccess, projectId, selectedTarget, workspaceId]);
+  }, [artifactFile, busy, onCloseMenu, onError, onSuccess, projectId, rememberedTargetMissing, selectedTarget, workspaceId]);
 
   const handleOpenPicker = useCallback(() => {
     setPickerOpen(true);
@@ -272,7 +276,7 @@ export function TeamverPublishDriveMenuItem({
   if (workspaceId && !isTeamverDesignAppEnabled(workspaceId)) return null;
   if (!designAppEnabled) return null;
 
-  const disabledForPublish = busy;
+  const disabledForPublish = busy || rememberedTargetMissing;
   const disabledForBrowse = busy;
   const targetSelectDisabled = busy;
   const errorHint = targetsError

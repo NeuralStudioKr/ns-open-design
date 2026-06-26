@@ -478,9 +478,13 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
 
     expect(screen.getByTestId("teamver-drive-post-run-hint").textContent).toContain("찾아보기");
+    const publishButton = screen.getByTestId("teamver-publish-drive-menu-item");
+    expect(publishButton.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(publishButton);
+    expect(publishMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to the default destination when the remembered target no longer exists", async () => {
+  it("requires an explicit destination choice when the remembered target no longer exists", async () => {
     window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "gone:ABC");
 
     render(
@@ -495,11 +499,16 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(listTargetsMock).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
-    // The mocked listTargets payload doesn't include a (null folder, null
-    // shared drive) row, so `ensureDefaultTarget` prepends the
-    // `personal-default` fallback and `selectedTarget` resolves to that row
-    // when the remembered id can't be matched against the current list.
+    const publishButton = screen.getByTestId("teamver-publish-drive-menu-item");
+    expect(publishButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByTestId("teamver-drive-target-select"));
+    fireEvent.click(screen.getByTestId("teamver-drive-target-option-personal-default"));
+
+    await waitFor(() => {
+      expect(publishButton.hasAttribute("disabled")).toBe(false);
+    });
+    fireEvent.click(publishButton);
     await waitFor(() => {
       expect(publishMock).toHaveBeenCalledWith(
         expect.objectContaining({

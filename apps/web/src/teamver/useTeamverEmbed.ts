@@ -52,7 +52,7 @@ export type TeamverEmbedState = {
   switchWorkspace: (workspaceId: string) => Promise<void>;
   /**
    * Re-probe `/teamver-bff/auth/session`.
-   * - `force` — bypass the 5s session cache (used by visibility/focus auto-refresh).
+   * - `force` — bypass the 60s session cache (used by visibility/focus auto-refresh).
    * - `resetRefreshState` — also clear sticky 400/401 decline markers so a previously
    *   declined `/teamver-bff/auth/refresh` is retried. Reserve for explicit user
    *   retry (Banner button) or events that prove auth state changed.

@@ -189,6 +189,7 @@ const AMR_AGENT_ID = 'amr';
 const AMR_PROFILE_ENV_KEY = 'OPEN_DESIGN_AMR_PROFILE';
 const RUNS_POLL_ACTIVE_MS = 5_000;
 const RUNS_POLL_IDLE_MS = 30_000;
+const RUNS_POLL_IDLE_HIDDEN_MS = 120_000;
 
 export function shouldSyncMediaProvidersOnSave(
   mediaProviders: AppConfig['mediaProviders'],
@@ -2260,6 +2261,7 @@ function AppInner() {
     function nextRunsPollDelay() {
       if (!isTeamverEmbedMode()) return 2_000;
       if (wasActiveRunRef.current) return RUNS_POLL_ACTIVE_MS;
+      if (document.visibilityState !== 'visible') return RUNS_POLL_IDLE_HIDDEN_MS;
       return RUNS_POLL_IDLE_MS;
     }
 
@@ -2463,11 +2465,22 @@ function AppInner() {
       runRunsPoll();
     };
 
+    const handleRunsVisibilityChange = () => {
+      clearRunsPollTimer();
+      if (document.visibilityState === 'visible') {
+        runRunsPoll();
+      } else {
+        scheduleNextRunsPoll();
+      }
+    };
+
     runRunsPoll();
     window.addEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
+    document.addEventListener('visibilitychange', handleRunsVisibilityChange);
     return () => {
       cancelled = true;
       window.removeEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
+      document.removeEventListener('visibilitychange', handleRunsVisibilityChange);
       clearRunsPollTimer();
     };
   }, [

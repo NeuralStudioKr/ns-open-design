@@ -170,6 +170,10 @@ parse_session_identity() {
   fi
 }
 
+sql_literal() {
+  printf "'%s'" "$(printf '%s' "${1:-}" | sed "s/'/''/g")"
+}
+
 if [[ "$REQUIRE_CORE" -eq 1 ]]; then
   core_missing=()
   for name in TEAMVER_COOKIE TEAMVER_INTERNAL_API_KEY TEAMVER_OD_PROJECT_ID MAIN_BE_DATABASE_URL; do
@@ -591,13 +595,20 @@ else
       if [[ -n "${MAIN_BE_DATABASE_URL:-}" ]] && command -v psql >/dev/null 2>&1; then
         # design_outputs.project_id = DPRJ ref, od_project_id = daemon id.
         sleep 1
+        publish_ref="${TEAMVER_OD_PROJECT_ID}"
+        publish_od_id="$(resolve_daemon_od_project_id "$publish_ref" || true)"
+        project_id_list="$(sql_literal "$publish_ref")"
+        od_id_list="$(sql_literal "$publish_ref")"
+        if [[ -n "$publish_od_id" && "$publish_od_id" != "$publish_ref" ]]; then
+          od_id_list="${od_id_list},$(sql_literal "$publish_od_id")"
+        fi
         recent="$(PGOPTIONS='-c default_transaction_read_only=on' \
           psql "$MAIN_BE_DATABASE_URL" -At \
-          -c "SELECT count(*) FROM design_outputs WHERE (project_id = '${TEAMVER_OD_PROJECT_ID}' OR od_project_id = '${TEAMVER_OD_PROJECT_ID}') AND published_at >= NOW() - INTERVAL '5 minutes';" 2>/dev/null || echo "?")"
+          -c "SELECT count(*) FROM design_outputs WHERE (project_id IN (${project_id_list}) OR od_project_id IN (${od_id_list})) AND published_at >= NOW() - INTERVAL '5 minutes';" 2>/dev/null || echo "?")"
         if [[ "$recent" =~ ^[1-9][0-9]*$ ]]; then
-          passed "D-5b design_outputs row 생성 확인 (recent count=${recent})"
+          passed "D-5b design_outputs row 생성 확인 (project_ref=${publish_ref}, od_project_id=${publish_od_id:-?}, recent count=${recent})"
         elif [[ "$recent" == "0" ]]; then
-          failed "D-5b design_outputs row 미생성 — publish 후 5분 내 row 없음"
+          failed "D-5b design_outputs row 미생성 — publish 후 5분 내 row 없음 (project_ref=${publish_ref}, od_project_id=${publish_od_id:-?})"
         else
           skipped "D-5b psql 검증 스킵 (${recent})"
         fi

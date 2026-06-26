@@ -91,6 +91,13 @@ case "$URL" in
   *"/api/v1/projects?workspace_id="*)
     emit_code 200
     ;;
+  *"/api/v1/projects/DPRJ-e2e-1")
+    if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
+      emit_code 200
+    else
+      emit_body '{"id":"DPRJ-e2e-1","odProjectId":"od-e2e-1"}'
+    fi
+    ;;
   *"/api/runs")
     if [[ "$WRITE_OUT" == "%{http_code}" ]]; then
       emit_code 200
@@ -208,6 +215,42 @@ do
   fi
 done
 echo "✓ mock-curl all-200 scenario passes"
+
+# 2b) D-5b must verify both the Teamver project ref and daemon od_project_id.
+cat > "$MOCK_BIN/psql" <<'MOCK'
+#!/usr/bin/env bash
+SQL=""
+for ((i=1; i<=$#; i++)); do
+  case "${!i}" in
+    -c) j=$((i+1)); SQL="${!j}" ;;
+  esac
+done
+printf '%s\n' "$SQL" >> "${MOCK_PSQL_LOG:?}"
+printf '1\n'
+MOCK
+chmod +x "$MOCK_BIN/psql"
+MOCK_PSQL_LOG="$WORK/psql.log"
+db_out="$(MOCK_PSQL_LOG="$MOCK_PSQL_LOG" PATH="$MOCK_BIN:$PATH" \
+  TEAMVER_COOKIE='teamver_access_token=fake' \
+  TEAMVER_INTERNAL_API_KEY='fake-m2m' \
+  TEAMVER_OD_PROJECT_ID='DPRJ-e2e-1' \
+  TEAMVER_DRIVE_IMPORT_ASSET_ID='AST-E2E' \
+  TEAMVER_DRIVE_IMPORT_FILENAME='e2e-import.svg' \
+  TEAMVER_COOKIE_USER_B='teamver_access_token=other' \
+  MAIN_BE_DATABASE_URL='postgresql://fixture/db' \
+  bash "$SCRIPT" --staging 2>&1)"
+if ! grep -qF "D-5b design_outputs row 생성 확인 (project_ref=DPRJ-e2e-1, od_project_id=od-e2e-1" <<< "$db_out"; then
+  echo "❌ D-5b DPRJ/od evidence message missing"
+  echo "$db_out"
+  exit 1
+fi
+if ! grep -qF "project_id IN ('DPRJ-e2e-1')" "$MOCK_PSQL_LOG" \
+    || ! grep -qF "od_project_id IN ('DPRJ-e2e-1','od-e2e-1')" "$MOCK_PSQL_LOG"; then
+  echo "❌ D-5b SQL must check both DPRJ ref and daemon od_project_id"
+  cat "$MOCK_PSQL_LOG"
+  exit 1
+fi
+echo "✓ D-5b DB evidence checks DPRJ ref + daemon od_project_id"
 
 # 3) import-drive 201 with empty imported[] → fail.
 cat > "$MOCK_BIN/curl" <<'MOCK'

@@ -634,7 +634,7 @@ bash scripts/run_post_deploy_track_a.sh --staging --rds --deps-only --smoke
 # → check_storage_isolation 21/21 · verify_litestream (isolation 내장)
 
 # strict E2E (Phase 9) — 2026-06-25 1차: 2 passed / 4 failed (스크립트 경로·loopback·DPRJ/id 혼동)
-# 수정: run_staging_track_a_e2e.sh (/api/v1/auth/session · INTERNAL loopback · D-5b SQL · /access od id)
+# 수정: run_staging_track_a_e2e.sh (/api/v1/auth/session · INTERNAL loopback · D-5b SQL DPRJ+daemon id · /access od id)
 bash scripts/run_staging_track_a_e2e.sh --staging --require-core   # 재실행 ☐
 bash scripts/run_post_deploy_track_a.sh --staging --rds --deps-only --smoke --e2e-strict  # 재실행 ☐
 ```
@@ -680,7 +680,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 | FUSE 미사용 | `check_storage_isolation.sh` | ✅ | ✅ |
 | baseDir import 거부 | `check_sidecar_deps.sh` | ✅ | ✅ 12/12 |
 | usage `run_id` 멱등 | `run_staging_track_a_e2e.sh` U-6 | ✅ | ☐ U-6a 403(공개 URL) 1차 실패 · **loopback 수정 후 재실행 ☐** |
-| publish → `design_outputs` | `run_staging_track_a_e2e.sh` D-5/D-7 | ✅ | 🟡 D-5a publish 200 1회 · D-5b row 0 (DPRJ/id SQL 수정 후 재실행 ☐) |
+| publish → `design_outputs` | `run_staging_track_a_e2e.sh` D-5/D-7 | ✅ | 🟡 D-5a publish 200 1회 · D-5b row 0 (DPRJ/id SQL을 DPRJ ref + daemon od id 동시 확인으로 보강 후 재실행 ☐) |
 | Main BE M2M wiring | `check_main_be_design_wiring.sh --live` | ✅ | 🟡 loopback M2M reserve 200 · Main BE `.env` 없어 A6 skip |
 | Drive BFF browse (격리 무관·G7) | `run_staging_track_a_e2e.sh` D-B1/D-B2/D-B3 | ✅ | ☐ session workspace 파싱 실패 1차 · 스크립트 수정 후 재실행 ☐ |
 
