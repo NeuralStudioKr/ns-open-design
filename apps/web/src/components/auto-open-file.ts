@@ -16,9 +16,12 @@
 //      project file (those will have a slash in `filePath` and reach this
 //      step with zero suffix matches → declined).
 
-interface CandidateFile {
+interface TabResolvableFile {
   readonly name: string;
   readonly path?: string;
+}
+
+interface CandidateFile extends TabResolvableFile {
   readonly kind?: string;
   readonly mtime?: number;
 }
@@ -43,10 +46,10 @@ export function projectRelativePath(file: CandidateFile): string {
 }
 
 /** Resolve an open workspace tab id to a project file (exact path, then basename). */
-export function findProjectFileByTabName(
+export function findProjectFileByTabName<T extends TabResolvableFile>(
   tabName: string,
-  files: ReadonlyArray<CandidateFile>,
-): CandidateFile | null {
+  files: ReadonlyArray<T>,
+): T | null {
   if (!tabName) return null;
   const exact = files.find((f) => f.name === tabName);
   if (exact) return exact;
