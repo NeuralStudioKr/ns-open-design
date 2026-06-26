@@ -397,7 +397,7 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
   });
 
-  it("focuses the destination picker when opened from post-run menu entry", async () => {
+  it("focuses and opens the destination picker when opened from post-run menu entry", async () => {
     window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "shared:SD-1:FLD-EXPORTS");
 
     render(
@@ -416,7 +416,68 @@ describe("TeamverPublishDriveMenuItem", () => {
     const trigger = screen.getByTestId("teamver-drive-target-select");
     await waitFor(() => {
       expect(document.activeElement).toBe(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
     });
+    expect(screen.getByTestId("teamver-drive-target-popover")).toBeTruthy();
+    expect(screen.getByTestId("teamver-drive-post-run-hint").textContent).toContain(
+      "Product / Exports",
+    );
+  });
+
+  it("restores a browse-only remembered target from recent targets cache", async () => {
+    const deepTarget = {
+      id: "shared:SD-9:FLD-DEEP",
+      label: "Archive / Deep exports",
+      description: "팀 드라이브 폴더",
+      folderId: "FLD-DEEP",
+      sharedDriveId: "SD-9",
+    };
+    window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, deepTarget.id);
+    window.localStorage.setItem(
+      "teamver.drive.recentPublishTargets.ws-1",
+      JSON.stringify([deepTarget]),
+    );
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: "FLD-DEEP",
+          sharedDriveId: "SD-9",
+        }),
+      );
+    });
+  });
+
+  it("surfaces a browse hint when the remembered target is missing after post-run entry", async () => {
+    window.localStorage.setItem(LOCAL_STORAGE_LAST_TARGET_KEY, "gone:ABC");
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        focusTargetSelectNonce={7}
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId("teamver-drive-post-run-hint").textContent).toContain("찾아보기");
   });
 
   it("falls back to the default destination when the remembered target no longer exists", async () => {

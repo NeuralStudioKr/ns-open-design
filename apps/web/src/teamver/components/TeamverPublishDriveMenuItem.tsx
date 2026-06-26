@@ -7,6 +7,7 @@ import {
   DEFAULT_PUBLISH_TARGET,
   ensureDefaultPublishTarget,
   readLastPublishTargetId,
+  resolvePublishTargetById,
   writeLastPublishTargetId,
 } from "../drivePublishLastTarget";
 import {
@@ -46,6 +47,8 @@ type Props = {
   /** Focus the destination picker once after post-run menu entry (nonce dedupes). */
   focusTargetSelectNonce?: number | null;
 };
+
+type LastTargetRestore = "none" | "restored" | "missing";
 
 /**
  * loop 174 — Publish format policy:
@@ -94,6 +97,7 @@ export function TeamverPublishDriveMenuItem({
   // appear in the history until they reopen the menu).
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const consumedFocusNonceRef = useRef<number | null>(null);
+  const [lastTargetRestore, setLastTargetRestore] = useState<LastTargetRestore>("none");
   const [designAppEnabled, setDesignAppEnabled] = useState(
     () => readTeamverDesignAccessSnapshot()?.appEnabled ?? true,
   );
@@ -121,24 +125,40 @@ export function TeamverPublishDriveMenuItem({
         // Workspace bridge isn't ready yet — keep the default option active and
         // surface a soft hint instead of locking the menu (loop 176 deadlock fix).
         setTargets(ensureDefaultPublishTarget([]));
+        setLastTargetRestore("none");
         setTargetsError("teamver_workspace_pending");
         return;
       }
       const next = await listTeamverDrivePublishTargets(ws, { limit: 200 });
       if (seq !== fetchSeqRef.current) return;
-      const merged = ensureDefaultPublishTarget(next);
-      setTargets(merged);
-      // loop 174 — restore the last-used destination once we know which
-      // targets are available. The lookup is workspace+project-scoped so a
-      // remembered folder that no longer exists silently falls back to the
-      // default instead of confusing the operator with a stale label.
+      let merged = ensureDefaultPublishTarget(next);
+      // loop 174/411 — restore the last-used destination once we know which
+      // targets are available. Browse-only folders may sit outside the shallow
+      // 200-row list; merge from recent targets before declaring "missing".
       const remembered = readLastPublishTargetId(ws, projectId);
-      if (remembered && merged.some((target) => target.id === remembered)) {
-        setSelectedTargetId(remembered);
+      let restoreState: LastTargetRestore = "none";
+      if (remembered) {
+        let resolved = resolvePublishTargetById(merged, remembered);
+        if (!resolved) {
+          const fromRecent = readRecentPublishTargets(ws).find((target) => target.id === remembered);
+          if (fromRecent) {
+            merged = [...merged, fromRecent];
+            resolved = fromRecent;
+          }
+        }
+        if (resolved) {
+          setSelectedTargetId(resolved.id);
+          restoreState = "restored";
+        } else {
+          restoreState = "missing";
+        }
       }
+      setLastTargetRestore(restoreState);
+      setTargets(merged);
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
       setTargets(ensureDefaultPublishTarget([]));
+      setLastTargetRestore("none");
       setTargetsError(err instanceof Error ? err.message : "drive_publish_targets_failed");
     } finally {
       if (seq === fetchSeqRef.current) setLoadingTargets(false);
@@ -163,6 +183,7 @@ export function TeamverPublishDriveMenuItem({
       setPickerOpen(false);
       setSelectedTargetId(DEFAULT_PUBLISH_TARGET.id);
       setTargets([DEFAULT_PUBLISH_TARGET]);
+      setLastTargetRestore("none");
       setHistoryRefreshKey((key) => key + 1);
       void refreshTargets();
     });
@@ -258,6 +279,20 @@ export function TeamverPublishDriveMenuItem({
     ? formatPublishErrorCodeForUser(targetsError)
     : null;
 
+  const showPostRunHint =
+    focusTargetSelectNonce != null && !loadingTargets && !targetsError;
+
+  const postRunHintText = useMemo(() => {
+    if (!showPostRunHint) return null;
+    if (lastTargetRestore === "missing") {
+      return "이전 저장 위치를 목록에서 찾을 수 없습니다. 「찾아보기」에서 폴더를 선택한 뒤 발행하세요.";
+    }
+    if (lastTargetRestore === "restored" && selectedTarget) {
+      return `「${selectedTarget.label}」(으)로 발행 예정입니다. 위치를 바꾸거나 아래 버튼을 눌러 주세요.`;
+    }
+    return "저장 위치를 확인한 뒤 아래 버튼으로 발행하세요.";
+  }, [lastTargetRestore, selectedTarget, showPostRunHint]);
+
   const publishLabel = busy
     ? "발행 중…"
     : selectedTarget?.sharedDriveId
@@ -291,6 +326,16 @@ export function TeamverPublishDriveMenuItem({
           찾아보기
         </button>
       </div>
+      {postRunHintText ? (
+        <p
+          className="teamver-drive-post-run-hint"
+          role="status"
+          aria-live="polite"
+          data-testid="teamver-drive-post-run-hint"
+        >
+          {postRunHintText}
+        </p>
+      ) : null}
       <p
         className="teamver-drive-format-note"
         data-testid="teamver-drive-format-note"

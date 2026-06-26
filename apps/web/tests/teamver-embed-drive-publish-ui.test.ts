@@ -111,15 +111,16 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
   });
 
   it('persists the last publish destination per workspace+project (loop 174)', () => {
+    const lastTarget = readSource('src/teamver/drivePublishLastTarget.ts');
     const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(menuItem).toContain('lastTargetStorageKey');
-    expect(menuItem).toContain('teamver.drive.lastPublishTarget.');
-    expect(menuItem).toContain('readLastTargetId');
-    expect(menuItem).toContain('writeLastTargetId');
-    // The remembered target must NOT bypass the "exists in current targets"
-    // guard — silently selecting a folder that no longer exists would route
-    // the publish to the BE default without telling the operator.
-    expect(menuItem).toContain('merged.some((target) => target.id === remembered)');
+    expect(lastTarget).toContain('lastPublishTargetStorageKey');
+    expect(lastTarget).toContain('teamver.drive.lastPublishTarget.');
+    expect(lastTarget).toContain('readLastPublishTargetId');
+    expect(lastTarget).toContain('writeLastPublishTargetId');
+    expect(menuItem).toContain('readLastPublishTargetId');
+    expect(menuItem).toContain('resolvePublishTargetById');
+    expect(menuItem).toContain('readRecentPublishTargets');
+    expect(menuItem).toContain('data-testid="teamver-drive-post-run-hint"');
     expect(menuItem).toContain('setPickerOpen(false)');
   });
 

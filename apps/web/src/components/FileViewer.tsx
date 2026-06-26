@@ -7265,14 +7265,12 @@ function HtmlViewer({
     return () => window.clearTimeout(timeout);
   }, [canShare, file.name, projectId]);
 
-  // Chat-side "Share" next-step action: when a new share request arrives, open
-  // the share menu (the toolbar's "Share" button → deploy menu, which holds the
-  // share-link items AND the "publish online" providers). This is the right
-  // surface for "share" — publishing is the prerequisite for a shareable link,
-  // and that publish step lives here; the download menu is export-to-disk, a
-  // different intent. The artifact source may still be loading when the request
-  // lands (the file was just auto-opened), so we defer until `canShare` flips
-  // true and only consume each nonce once.
+  // Chat-side "Share" next-step action: in Teamver embed, Drive publish lives
+  // in the Download / Export popover, so post-run share requests open that
+  // surface and focus the destination picker instead of auto-publishing.
+  // The artifact source may still be loading when the request lands (the file
+  // was just auto-opened), so we defer until `canShare` flips true and only
+  // consume each nonce once.
   const consumedShareNonceRef = useRef<number | null>(null);
   const [drivePublishFocusNonce, setDrivePublishFocusNonce] = useState<number | null>(null);
   useEffect(() => {
@@ -7283,8 +7281,8 @@ function HtmlViewer({
     consumedShareNonceRef.current = nonce;
     setExportReadyNudge(false);
     markExportReadyNudgeSeen(projectId, file.name);
-    setDownloadMenuOpen(false);
-    setDeployMenuOpen(true);
+    setDeployMenuOpen(false);
+    setDownloadMenuOpen(true);
     setDrivePublishFocusNonce(nonce);
   }, [shareRequest?.nonce, canShare, projectId, file.name]);
 

@@ -9,7 +9,7 @@ function readSource(relativePath: string): string {
 }
 
 describe("embed in-project run success publish flow (loop 403)", () => {
-  it("arms publish menu and opens deploy menu with last target focus on preview", () => {
+  it("arms publish menu and opens download menu with last target focus on preview", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     const fileViewer = readSource("src/components/FileViewer.tsx");
 
@@ -21,13 +21,14 @@ describe("embed in-project run success publish flow (loop 403)", () => {
       /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
     expect(projectView).not.toContain("maybeOneClickPublishToDrive");
+    expect(fileViewer).toContain("setDownloadMenuOpen(true)");
     expect(fileViewer).toContain("focusTargetSelectNonce={drivePublishFocusNonce}");
     expect(fileViewer).toContain("TeamverPublishDriveMenuItem");
   });
 });
 
 describe("embed background run success publish flow (loop 398)", () => {
-  it("arms publish menu from App completion toast and ProjectView opens deploy on preview", () => {
+  it("arms publish menu from App completion toast and ProjectView opens download on preview", () => {
     const app = readSource("src/App.tsx");
     const projectView = readSource("src/components/ProjectView.tsx");
 

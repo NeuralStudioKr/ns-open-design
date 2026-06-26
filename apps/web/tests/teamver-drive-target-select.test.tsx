@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
@@ -19,6 +19,10 @@ const targets = [
 ] as const;
 
 describe("TeamverDriveTargetSelect embed defaults", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("uses Korean aria-label on the trigger when embed mode and no override", () => {
     render(
       <TeamverDriveTargetSelect
@@ -30,5 +34,23 @@ describe("TeamverDriveTargetSelect embed defaults", () => {
     expect(screen.getByTestId("teamver-drive-target-select").getAttribute("aria-label")).toBe(
       "Teamver 드라이브 저장 위치",
     );
+  });
+
+  it("opens the listbox when requestFocus is set (loop 411 post-run entry)", async () => {
+    render(
+      <TeamverDriveTargetSelect
+        targets={targets}
+        selectedTargetId="personal-root"
+        requestFocus
+        onChange={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByTestId("teamver-drive-target-select");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    });
+    expect(screen.getByTestId("teamver-drive-target-popover")).toBeTruthy();
   });
 });

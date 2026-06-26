@@ -72,8 +72,12 @@ export function TeamverDriveTargetSelect({
     }
     if (focusRequestConsumedRef.current || disabled || loading) return;
     focusRequestConsumedRef.current = true;
+    // loop 411 — post-run entry opens the listbox so the pre-selected
+    // destination is visible, not just focused on the closed trigger.
+    setOpen(true);
+    setActiveIndex(selectedIndex);
     buttonRef.current?.focus({ preventScroll: true });
-  }, [requestFocus, disabled, loading]);
+  }, [requestFocus, disabled, loading, selectedIndex]);
 
   useEffect(() => {
     if (!open) setActiveIndex(selectedIndex);
