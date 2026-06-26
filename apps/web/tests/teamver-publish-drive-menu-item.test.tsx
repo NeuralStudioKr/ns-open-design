@@ -90,7 +90,22 @@ vi.mock("../src/teamver/drivePublishTargets", () => ({
 
 vi.mock("../src/teamver/driveImportList", () => ({
   listTeamverDriveImportScopes: (workspaceId: string) => listImportScopesMock(workspaceId),
+  browseTeamverDriveImportPage: async (params: {
+    workspaceId: string;
+    scope: { mode: string; sharedDriveId?: string | null; folderId?: string | null; label?: string };
+    navFolderId?: string | null;
+  }) => {
+    const sharedDriveId = params.scope.mode === "shared" ? params.scope.sharedDriveId ?? null : null;
+    const rows = await listImportRowsMock({
+      workspaceId: params.workspaceId,
+      folderId: params.navFolderId ?? params.scope.folderId ?? null,
+      sharedDriveId,
+    });
+    return { rows, hasMore: false, nextCursor: null };
+  },
+  TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE: 24,
   listTeamverDriveImportRows: (args: unknown) => listImportRowsMock(args),
+  invalidateTeamverDriveImportCaches: () => {},
 }));
 
 vi.mock("../src/teamver/publishToDrive", async (importOriginal) => {
@@ -124,6 +139,9 @@ describe("TeamverPublishDriveMenuItem", () => {
     publishMock.mockClear();
     listOutputsMock.mockClear();
     listOutputsMock.mockResolvedValue({ projectId: "DPRJ-1", outputs: [] });
+    listImportRowsMock.mockImplementation(async () => [
+      { kind: "folder" as const, folderId: "FLD-BROWSE", name: "Browse exports", sharedDriveId: null },
+    ]);
     try {
       window.localStorage.clear();
     } catch {
@@ -140,6 +158,15 @@ describe("TeamverPublishDriveMenuItem", () => {
   });
 
   it("browses searchable Drive targets and publishes HTML to the selected team folder", async () => {
+    searchTargetsMock.mockResolvedValueOnce([
+      {
+        id: "shared:SD-1:FLD-EXPORTS",
+        label: "Product / Exports",
+        description: "팀 드라이브 폴더 검색 결과",
+        folderId: "FLD-EXPORTS",
+        sharedDriveId: "SD-1",
+      },
+    ]);
     const onCloseMenu = vi.fn();
     const onSuccess = vi.fn();
 
@@ -153,7 +180,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     );
 
     await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
     });
 
     fireEvent.click(screen.getByRole("button", browseButtonOptions));
@@ -161,8 +189,17 @@ describe("TeamverPublishDriveMenuItem", () => {
     fireEvent.change(within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" }), {
       target: { value: "exports" },
     });
+    fireEvent.keyDown(within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" }), {
+      key: "Enter",
+    });
 
-    expect(within(modal).queryByText("내 드라이브")).toBeNull();
+    await waitFor(
+      () => {
+        expect(searchTargetsMock).toHaveBeenCalledWith("ws-1", "exports", { limit: 80 });
+        expect(screen.getByTestId("teamver-drive-picker-target-shared:SD-1:FLD-EXPORTS")).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
     fireEvent.click(screen.getByTestId("teamver-drive-picker-target-shared:SD-1:FLD-EXPORTS"));
 
     await waitFor(() => {
@@ -206,13 +243,17 @@ describe("TeamverPublishDriveMenuItem", () => {
     );
 
     await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
     });
 
     fireEvent.click(screen.getByRole("button", browseButtonOptions));
     const modal = screen.getByTestId("teamver-drive-picker-modal");
     fireEvent.change(within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" }), {
       target: { value: "launch" },
+    });
+    fireEvent.keyDown(within(modal).getByRole("textbox", { name: "드라이브 폴더 검색" }), {
+      key: "Enter",
     });
 
     await waitFor(() => {
@@ -532,7 +573,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     );
 
     await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
     });
 
     const trigger = screen.getByTestId("teamver-drive-target-select");
@@ -636,7 +678,8 @@ describe("TeamverPublishDriveMenuItem", () => {
 
     await waitFor(() => {
       expect(listTargetsMock).toHaveBeenCalledTimes(1);
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
     });
 
     const trigger = screen.getByTestId("teamver-drive-target-select");
@@ -659,7 +702,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     dispatchTeamverWorkspaceChanged("ws-2");
 
     await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-2", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls.some((call) => call[0] === "ws-2")).toBe(true);
     });
 
     fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
@@ -687,7 +731,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     );
 
     await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
     });
 
     fireEvent.click(screen.getByRole("button", browseButtonOptions));
@@ -714,6 +759,60 @@ describe("TeamverPublishDriveMenuItem", () => {
   // it doesn't get clipped under Home recents / project preview cards, and
   // must lock the background scroll while open so the operator's wheel
   // events don't leak through to the host page.
+  it("drills into nested folders in browse mode before selecting the destination", async () => {
+    listImportRowsMock.mockImplementation(async (args: {
+      folderId?: string | null;
+    }) => {
+      if (args.folderId === "FLD-PARENT") {
+        return [
+          { kind: "folder" as const, folderId: "FLD-CHILD", name: "Child exports", sharedDriveId: null },
+        ];
+      }
+      return [
+        { kind: "folder" as const, folderId: "FLD-PARENT", name: "Parent folder", sharedDriveId: null },
+      ];
+    });
+
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
+    });
+
+    fireEvent.click(screen.getByRole("button", browseButtonOptions));
+    const modal = screen.getByTestId("teamver-drive-picker-modal");
+
+    await waitFor(() => {
+      expect(within(modal).getByText("Parent folder")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-drive-picker-target-personal:FLD-PARENT"));
+    expect(screen.getByTestId("teamver-drive-picker-modal")).toBeTruthy();
+    await waitFor(() => {
+      expect(within(modal).getByText("Child exports")).toBeTruthy();
+    });
+    expect(within(modal).getByText("Parent folder")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("teamver-drive-picker-use-current"));
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderId: "FLD-PARENT",
+          sharedDriveId: null,
+        }),
+      );
+    });
+  });
+
   it("portals the publish picker to <body> and locks background scroll while open", async () => {
     const host = document.createElement("div");
     host.className = "entry-main--scroll";
@@ -754,7 +853,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     );
 
     await waitFor(() => {
-      expect(listTargetsMock).toHaveBeenCalledWith("ws-1", { limit: 200 });
+      expect(listTargetsMock).toHaveBeenCalled();
+      expect(listTargetsMock.mock.calls[0]?.[0]).toBe("ws-1");
     });
 
     fireEvent.click(screen.getByRole("button", browseButtonOptions));

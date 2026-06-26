@@ -150,7 +150,7 @@ describe("TeamverDriveImportModal", () => {
     });
   });
 
-  it("uses server search after debounce", async () => {
+  it("uses server search after explicit submit", async () => {
     render(
       <TeamverDriveImportModal
         open
@@ -161,19 +161,20 @@ describe("TeamverDriveImportModal", () => {
     );
 
     await screen.findByTestId("teamver-drive-import-modal");
-    fireEvent.change(screen.getByLabelText("드라이브 파일 검색"), {
+    const searchInput = screen.getByLabelText("드라이브 파일 검색");
+    fireEvent.change(searchInput, {
       target: { value: "deck" },
     });
+    expect(searchRowsMock).not.toHaveBeenCalled();
 
-    await waitFor(
-      () => {
-        expect(searchRowsMock).toHaveBeenCalledWith(
-          expect.objectContaining({ workspaceId: "ws-1", query: "deck" }),
-        );
-        expect(screen.getByTestId("teamver-drive-import-asset-AST-SEARCH")).toBeTruthy();
-      },
-      { timeout: 800 },
-    );
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(searchRowsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: "ws-1", query: "deck" }),
+      );
+      expect(screen.getByTestId("teamver-drive-import-asset-AST-SEARCH")).toBeTruthy();
+    });
   });
 
   it("loads image thumbnails for grid cards", async () => {

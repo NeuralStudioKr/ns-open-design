@@ -126,6 +126,9 @@ describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
 
   it('loads Drive home recent folder grid in the publish picker (loop 359 · S-2)', () => {
     const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
+    expect(picker).toContain('browseTeamverDriveImportPage');
+    expect(picker).toContain('enterFolder');
+    expect(picker).toContain('data-testid="teamver-drive-picker-load-more"');
     expect(picker).toContain('listTeamverDrivePublishHomeRecentTargets');
     expect(picker).toContain('data-testid="teamver-drive-picker-home-recent"');
     expect(picker).toContain('Drive 홈 최근');

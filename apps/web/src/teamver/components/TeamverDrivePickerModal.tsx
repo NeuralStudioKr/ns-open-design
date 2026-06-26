@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../../components/Icon";
 import {
@@ -7,11 +7,14 @@ import {
 } from "../drivePublishTargets";
 import { listTeamverDrivePublishHomeRecentTargets } from "../drivePublishHomeRecent";
 import {
-  listTeamverDriveImportRows,
+  browseTeamverDriveImportPage,
   listTeamverDriveImportScopes,
+  TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
   type TeamverDriveImportFolderRow,
   type TeamverDriveImportScope,
 } from "../driveImportList";
+import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
+import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 
 type NavCrumb = {
   folderId: string | null;
@@ -69,22 +72,14 @@ function targetFromFolder(
 
 function targetFromCurrentFolder(
   scope: TeamverDriveImportScope,
-  crumb: NavCrumb,
+  navStack: NavCrumb[],
 ): TeamverDrivePublishTarget {
-  if (crumb.folderId == null) return targetFromScope(scope);
-  return targetFromFolder(scope, {
-    folderId: crumb.folderId,
-    name: crumb.name,
-  });
-}
-
-function matchesTarget(target: TeamverDrivePublishTarget, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return [target.label, target.description, target.folderId ?? "", target.sharedDriveId ?? ""]
-    .join(" ")
-    .toLowerCase()
-    .includes(q);
+  const last = navStack[navStack.length - 1] ?? rootCrumb(scope);
+  const base = last.folderId == null
+    ? targetFromScope(scope)
+    : targetFromFolder(scope, { folderId: last.folderId, name: last.name });
+  const label = navStack.map((crumb) => crumb.name).join(" / ");
+  return { ...base, label };
 }
 
 export function TeamverDrivePickerModal({
@@ -98,7 +93,14 @@ export function TeamverDrivePickerModal({
   onSelect,
   onClose,
 }: Props) {
-  const [query, setQuery] = useState("");
+  const {
+    query,
+    setQuery,
+    submittedQuery,
+    searchMode,
+    submitSearch,
+    resetSearch,
+  } = useSubmittedDriveSearch(TEAMVER_DRIVE_PUBLISH_SEARCH_MIN);
   const [searchTargets, setSearchTargets] = useState<TeamverDrivePublishTarget[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -108,34 +110,44 @@ export function TeamverDrivePickerModal({
   const [browseTargets, setBrowseTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
+  const [browseHasMore, setBrowseHasMore] = useState(false);
+  const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
   const [homeRecentTargets, setHomeRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [homeRecentLoading, setHomeRecentLoading] = useState(false);
-  const filteredTargets = useMemo(
-    () => targets.filter((target) => matchesTarget(target, query)),
-    [query, targets],
-  );
+  const browseFetchSeqRef = useRef(0);
+  const searchFetchSeqRef = useRef(0);
+  const browsePageCacheRef = useRef(new Map<string, {
+    targets: TeamverDrivePublishTarget[];
+    hasMore: boolean;
+    nextCursor: string | null;
+  }>());
   const trimmedQuery = query.trim();
-  const searching = Boolean(onSearch && trimmedQuery.length >= TEAMVER_DRIVE_PUBLISH_SEARCH_MIN);
+  const searching = Boolean(onSearch && searchMode);
   const activeScope = scopes[scopeIndex] ?? null;
   const currentCrumb = navStack[navStack.length - 1] ?? null;
   const currentFolderId = currentCrumb?.folderId ?? null;
-  const currentTarget = activeScope && currentCrumb
-    ? targetFromCurrentFolder(activeScope, currentCrumb)
+  const atScopeRoot = navStack.length <= 1;
+  const currentTarget = activeScope && navStack.length > 0
+    ? targetFromCurrentFolder(activeScope, navStack)
     : null;
-  const displayedTargets = searching && searchTargets
-    ? searchTargets
-    : browseTargets.length > 0
-      ? browseTargets
-      : filteredTargets;
+  const displayedTargets = useMemo(() => {
+    if (searching) return searchTargets ?? [];
+    if (trimmedQuery) {
+      return browseTargets.filter((target) =>
+        driveSearchTextMatches(trimmedQuery, target.label, target.description),
+      );
+    }
+    return browseTargets;
+  }, [browseTargets, searchTargets, searching, trimmedQuery]);
   const showRecentSection =
     !searching
-    && currentFolderId == null
+    && atScopeRoot
     && recentTargets.length > 0;
   const displayedHomeRecentTargets = useMemo(() => {
-    if (searching || currentFolderId != null) return [];
+    if (searching || !atScopeRoot) return [];
     const localIds = new Set(recentTargets.map((target) => target.id));
     return homeRecentTargets.filter((target) => !localIds.has(target.id));
-  }, [currentFolderId, homeRecentTargets, recentTargets, searching]);
+  }, [atScopeRoot, homeRecentTargets, recentTargets, searching]);
   const showHomeRecentSection = displayedHomeRecentTargets.length > 0;
   const showInitialLoading =
     !searching
@@ -146,6 +158,18 @@ export function TeamverDrivePickerModal({
   function selectTarget(target: TeamverDrivePublishTarget) {
     onSelect(target);
     onClose();
+  }
+
+  function enterFolder(target: TeamverDrivePublishTarget) {
+    if (!target.folderId) return;
+    setNavStack((current) => [
+      ...current,
+      {
+        folderId: target.folderId,
+        name: target.label.split(" / ").at(-1) ?? target.label,
+      },
+    ]);
+    resetSearch();
   }
 
   function renderFolderGrid(
@@ -186,6 +210,7 @@ export function TeamverDrivePickerModal({
       setScopes([]);
       setNavStack([]);
       setBrowseTargets([]);
+      browsePageCacheRef.current.clear();
       return;
     }
     let canceled = false;
@@ -213,48 +238,103 @@ export function TeamverDrivePickerModal({
   }, [open, workspaceId]);
 
   useEffect(() => {
-    setQuery("");
+    if (!open) return;
+    resetSearch();
     setSearchTargets(null);
     setSearchLoading(false);
     setSearchError(null);
-  }, [workspaceId]);
+  }, [open, resetSearch, workspaceId]);
 
   useEffect(() => {
-    if (!open || !workspaceId?.trim() || !activeScope || searching) return;
-    let canceled = false;
-    setBrowseLoading(true);
-    setBrowseError(null);
-    void (async () => {
+    if (!activeScope) return;
+    setNavStack((current) => {
+      if (current.length === 0) return [rootCrumb(activeScope)];
+      const next = [...current];
+      next[0] = rootCrumb(activeScope);
+      return next;
+    });
+  }, [activeScope]);
+
+  useEffect(() => {
+    setBrowseNextCursor(null);
+    setBrowseHasMore(false);
+  }, [activeScope, currentFolderId, scopeIndex]);
+
+  const refreshBrowse = useCallback(
+    async (options?: { append?: boolean; before?: string | null }) => {
+      if (!open || !workspaceId?.trim() || !activeScope || searching) return;
+      const append = options?.append ?? false;
+      const before = options?.before ?? null;
+      const cacheKey = [
+        workspaceId.trim(),
+        activeScope.mode === "shared" ? activeScope.sharedDriveId : "personal",
+        currentFolderId ?? "root",
+        before ?? "start",
+      ].join(":");
+      if (!append) {
+        const cached = browsePageCacheRef.current.get(cacheKey);
+        if (cached) {
+          setBrowseTargets(cached.targets);
+          setBrowseHasMore(cached.hasMore);
+          setBrowseNextCursor(cached.nextCursor);
+          setBrowseLoading(false);
+          setBrowseError(null);
+          return;
+        }
+      }
+      const seq = ++browseFetchSeqRef.current;
+      if (!append) {
+        setBrowseLoading(true);
+        setBrowseError(null);
+      }
       try {
-        const sharedDriveId = activeScope.mode === "shared" ? activeScope.sharedDriveId : null;
-        const rows = await listTeamverDriveImportRows({
+        const page = await browseTeamverDriveImportPage({
           workspaceId,
-          folderId: currentFolderId,
-          sharedDriveId,
-          limit: 80,
+          scope: activeScope,
+          navFolderId: currentFolderId,
+          limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
+          before,
         });
-        if (canceled) return;
-        const folders = rows
+        if (seq !== browseFetchSeqRef.current) return;
+        const folders = page.rows
           .filter((row): row is TeamverDriveImportFolderRow => row.kind === "folder")
           .map((row) => targetFromFolder(activeScope, row));
-        const rootTarget = currentFolderId == null ? [targetFromScope(activeScope)] : [];
-        setBrowseTargets([...rootTarget, ...folders]);
+        if (!append) {
+          browsePageCacheRef.current.set(cacheKey, {
+            targets: folders,
+            hasMore: page.hasMore,
+            nextCursor: page.nextCursor,
+          });
+        }
+        setBrowseTargets((current) => (append ? [...current, ...folders] : folders));
+        setBrowseHasMore(page.hasMore);
+        setBrowseNextCursor(page.nextCursor);
       } catch {
-        if (!canceled) {
+        if (seq !== browseFetchSeqRef.current) return;
+        if (!append) {
           setBrowseTargets([]);
           setBrowseError("드라이브 폴더를 불러오지 못했습니다");
         }
+        setBrowseHasMore(false);
+        setBrowseNextCursor(null);
       } finally {
-        if (!canceled) setBrowseLoading(false);
+        if (seq === browseFetchSeqRef.current && !append) setBrowseLoading(false);
       }
-    })();
-    return () => {
-      canceled = true;
-    };
-  }, [activeScope, currentFolderId, open, searching, workspaceId]);
+    },
+    [activeScope, currentFolderId, open, searching, workspaceId],
+  );
 
   useEffect(() => {
-    if (!open || !workspaceId?.trim() || searching || currentFolderId != null) {
+    if (!open || !workspaceId?.trim() || !activeScope) return;
+    if (searching) {
+      setBrowseLoading(false);
+      return;
+    }
+    void refreshBrowse();
+  }, [activeScope, open, refreshBrowse, searching, workspaceId]);
+
+  useEffect(() => {
+    if (!open || !workspaceId?.trim() || searching || !atScopeRoot || recentTargets.length > 0) {
       setHomeRecentTargets([]);
       setHomeRecentLoading(false);
       return;
@@ -274,7 +354,7 @@ export function TeamverDrivePickerModal({
     return () => {
       canceled = true;
     };
-  }, [currentFolderId, open, searching, workspaceId]);
+  }, [atScopeRoot, open, recentTargets.length, searching, workspaceId]);
 
   // Backdrop dismissal must distinguish click-from-backdrop vs.
   // drag-from-inside-released-on-backdrop. Without `mousedown` source check
@@ -317,35 +397,34 @@ export function TeamverDrivePickerModal({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !onSearch || trimmedQuery.length < TEAMVER_DRIVE_PUBLISH_SEARCH_MIN) {
+    if (!open || !onSearch || submittedQuery.length < TEAMVER_DRIVE_PUBLISH_SEARCH_MIN) {
       setSearchTargets(null);
       setSearchLoading(false);
       setSearchError(null);
       return;
     }
     let canceled = false;
+    const seq = ++searchFetchSeqRef.current;
     setSearchLoading(true);
     setSearchError(null);
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const results = await onSearch(trimmedQuery);
-          if (!canceled) setSearchTargets(results);
-        } catch {
-          if (!canceled) {
-            setSearchTargets([]);
-            setSearchError("드라이브 검색에 실패했습니다");
-          }
-        } finally {
-          if (!canceled) setSearchLoading(false);
-        }
-      })();
-    }, 250);
+    setSearchTargets(null);
+    void (async () => {
+      try {
+        const results = await onSearch(submittedQuery);
+        if (canceled || seq !== searchFetchSeqRef.current) return;
+        setSearchTargets(results);
+      } catch {
+        if (canceled || seq !== searchFetchSeqRef.current) return;
+        setSearchTargets([]);
+        setSearchError("드라이브 검색에 실패했습니다");
+      } finally {
+        if (!canceled && seq === searchFetchSeqRef.current) setSearchLoading(false);
+      }
+    })();
     return () => {
       canceled = true;
-      window.clearTimeout(timer);
     };
-  }, [onSearch, open, trimmedQuery]);
+  }, [onSearch, open, submittedQuery]);
 
   if (!open) return null;
 
@@ -396,7 +475,7 @@ export function TeamverDrivePickerModal({
                 onClick={() => {
                   setScopeIndex(index);
                   setNavStack([rootCrumb(scope)]);
-                  setQuery("");
+                  resetSearch();
                 }}
               >
                 {scope.label}
@@ -429,16 +508,18 @@ export function TeamverDrivePickerModal({
           </nav>
         ) : null}
 
-        <label className="teamver-drive-picker-search">
-          <Icon name="search" size={14} />
-          <input
-            autoFocus
-            value={query}
-            aria-label="드라이브 폴더 검색"
-            placeholder="폴더 검색"
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
-        </label>
+        <TeamverDriveSearchField
+          autoFocus
+          value={query}
+          ariaLabel="드라이브 폴더 검색"
+          placeholder={
+            searchMode
+              ? "드라이브 전체 검색"
+              : "폴더 검색 · Enter로 전체 검색"
+          }
+          onChange={setQuery}
+          onSubmit={submitSearch}
+        />
 
         <div className="teamver-drive-picker-list" role="listbox" aria-label="드라이브 폴더 목록">
           {showRecentSection ? (
@@ -491,7 +572,7 @@ export function TeamverDrivePickerModal({
           {(showRecentSection || showHomeRecentSection) && displayedTargets.length > 0 ? (
             <div className="teamver-drive-import-section-label">폴더 탐색</div>
           ) : null}
-          {showInitialLoading ? null : loading || browseLoading || (searchLoading && displayedTargets.length === 0) ? (
+          {showInitialLoading ? null : loading || browseLoading || (searchLoading && searching) ? (
             <div className="teamver-drive-picker-empty">
               {searching ? "드라이브 폴더 검색 중…" : "드라이브 폴더 불러오는 중…"}
             </div>
@@ -511,19 +592,11 @@ export function TeamverDrivePickerModal({
                   className={`teamver-drive-picker-row${selected ? " is-selected" : ""}`}
                   data-testid={`teamver-drive-picker-target-${target.id}`}
                   onClick={() => {
-                    onSelect(target);
-                    const canEnter = !searching && target.folderId && activeScope;
-                    if (canEnter) {
-                      setNavStack((current) => [
-                        ...current,
-                        {
-                          folderId: target.folderId,
-                          name: target.label.split(" / ").at(-1) ?? target.label,
-                        },
-                      ]);
+                    if (searching) {
+                      selectTarget(target);
                       return;
                     }
-                    onClose();
+                    enterFolder(target);
                   }}
                 >
                   <span className="teamver-drive-picker-row-icon">
@@ -538,8 +611,21 @@ export function TeamverDrivePickerModal({
               );
             })
           ) : (
-            <div className="teamver-drive-picker-empty">일치하는 폴더가 없습니다.</div>
+            <div className="teamver-drive-picker-empty">
+              {searching ? "일치하는 폴더가 없습니다." : "이 폴더에 하위 폴더가 없습니다. 아래 「이 폴더 사용」으로 저장하세요."}
+            </div>
           )}
+          {!searching && browseHasMore ? (
+            <button
+              type="button"
+              className="teamver-drive-import-load-more"
+              disabled={browseLoading}
+              data-testid="teamver-drive-picker-load-more"
+              onClick={() => void refreshBrowse({ append: true, before: browseNextCursor })}
+            >
+              더 보기
+            </button>
+          ) : null}
         </div>
         {!searching && currentTarget ? (
           <footer className="teamver-drive-picker-footer">

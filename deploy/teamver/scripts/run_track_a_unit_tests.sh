@@ -62,6 +62,7 @@ bash "$ROOT/scripts/test_check_main_be_design_wiring.sh"
 bash "$ROOT/scripts/test_run_staging_phase0_activate.sh"
 bash "$ROOT/scripts/test_run_production_phase0_activate.sh"
 bash "$ROOT/scripts/test_check_storage_isolation.sh"
+bash "$ROOT/scripts/test_check_registry_s3_drift.sh"
 bash "$ROOT/scripts/test_verify_litestream_replica.sh"
 bash "$ROOT/scripts/test_check_sidecar_deps.sh"
 bash "$ROOT/scripts/test_teamver_design_plugin_preview_nginx.sh"
@@ -85,6 +86,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-linked-dirs-gate.test.ts \
       tests/project-materialization-runtime.periodic.test.ts \
       tests/scratch-idle-eviction.test.ts \
+      tests/scratch-evict-policy.test.ts \
       tests/lazy-project-materialization.test.ts \
       tests/amr-model-probe-error.test.ts \
       tests/proxy-routes.test.ts -t "forwards Anthropic upstream usage"
@@ -108,6 +110,7 @@ if [[ "$SKIP_WEB" -eq 0 ]]; then
       tests/teamver-drive-file-visual.test.ts \
       tests/teamver-embed-file-attach-policy.test.ts \
       tests/teamver-drive-import-modal.test.tsx \
+      tests/teamver-submitted-drive-search.test.ts \
       tests/teamver-canvas-slide-launch.test.ts \
       tests/teamver-embed-slide-design-system.test.ts \
       tests/teamver-canvas-slide-launch-modal.test.tsx \

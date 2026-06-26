@@ -1101,6 +1101,29 @@
   font: inherit;
   font-size: 13px;
 }
+.teamver-drive-picker-search-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0 -4px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.teamver-drive-picker-search-submit:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.teamver-drive-picker-search-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .teamver-drive-picker-list {
   min-height: 220px;
   overflow: auto;

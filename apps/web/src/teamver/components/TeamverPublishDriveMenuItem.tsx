@@ -37,6 +37,7 @@ import {
   subscribeTeamverDesignAccessChanged,
 } from "../teamverDesignAccess";
 import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
+import { invalidateTeamverDriveImportCaches } from "../driveImportList";
 
 type Props = {
   projectId: string;
@@ -129,7 +130,7 @@ export function TeamverPublishDriveMenuItem({
         setTargetsError("teamver_workspace_pending");
         return;
       }
-      const next = await listTeamverDrivePublishTargets(ws, { limit: 200 });
+      const next = await listTeamverDrivePublishTargets(ws);
       if (seq !== fetchSeqRef.current) return;
       let merged = ensureDefaultPublishTarget(next);
       // loop 174/411 — restore the last-used destination once we know which
@@ -180,6 +181,7 @@ export function TeamverPublishDriveMenuItem({
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
+      invalidateTeamverDriveImportCaches();
       setPickerOpen(false);
       setSelectedTargetId(DEFAULT_PUBLISH_TARGET.id);
       setTargets([DEFAULT_PUBLISH_TARGET]);

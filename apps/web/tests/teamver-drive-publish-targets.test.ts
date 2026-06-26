@@ -12,10 +12,12 @@ import {
   listTeamverDrivePublishTargets,
   searchTeamverDrivePublishTargets,
 } from "../src/teamver/drivePublishTargets";
+import { invalidateTeamverDriveImportCaches } from "../src/teamver/driveImportList";
 
 describe("listTeamverDrivePublishTargets", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    invalidateTeamverDriveImportCaches();
   });
 
   it("lists personal folders and shared drive folders", async () => {
@@ -64,7 +66,7 @@ describe("listTeamverDrivePublishTargets", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const targets = await listTeamverDrivePublishTargets("ws-1");
+    const targets = await listTeamverDrivePublishTargets("ws-1", { fullSharedTree: true });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/teamver-bff/drive/api/drive/folder?shallow_tree=true",
@@ -104,6 +106,51 @@ describe("listTeamverDrivePublishTargets", () => {
         sharedDriveId: "SD-1",
       }),
     ]);
+  });
+
+  it("quick-pick lists personal shallow and shared drive roots without flattening shared subtrees", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/drive/folder?shallow_tree=true")) {
+          return Response.json({
+            root_folder_id: "FLD-MY-ROOT",
+            items: [
+              {
+                folder_id: "FLD-MY-ROOT",
+                name: "Root",
+                folder_type: "ROOT",
+                children: [{ folder_id: "FLD-MY-DESIGNS", name: "Designs" }],
+              },
+            ],
+          });
+        }
+        if (url.endsWith("/api/v2/shared-drive")) {
+          return Response.json({
+            data: [{ id: "SD-1", name: "Product", status: "ACTIVE", workspace_id: "ws-1" }],
+          });
+        }
+        if (url.endsWith("/api/v2/shared-drive/SD-1/folder-tree")) {
+          return Response.json({
+            rootFolderId: "FLD-SD-ROOT",
+            items: [
+              {
+                folderId: "FLD-SD-ROOT",
+                name: "Shared Root",
+                folderType: "SHARED_ROOT",
+                children: [{ folderId: "FLD-SD-DEEP", name: "Deep" }],
+              },
+            ],
+          });
+        }
+        return new Response("missing", { status: 404 });
+      }),
+    );
+
+    const targets = await listTeamverDrivePublishTargets("ws-1");
+    expect(targets.some((target) => target.id === "personal:FLD-MY-DESIGNS")).toBe(true);
+    expect(targets.some((target) => target.id === "shared:SD-1")).toBe(true);
+    expect(targets.some((target) => target.id === "shared:SD-1:FLD-SD-DEEP")).toBe(false);
   });
 
   it("falls back to default personal destination when target APIs fail", async () => {
@@ -151,9 +198,9 @@ describe("listTeamverDrivePublishTargets", () => {
     );
 
     const defaultTargets = await listTeamverDrivePublishTargets("ws-1");
-    const modalTargets = await listTeamverDrivePublishTargets("ws-1", { limit: 40 });
+    const modalTargets = await listTeamverDrivePublishTargets("ws-1", { limit: 40, fullSharedTree: true });
 
-    expect(defaultTargets).toHaveLength(28);
+    expect(defaultTargets.length).toBeLessThanOrEqual(28);
     expect(modalTargets).toHaveLength(33);
     expect(modalTargets.at(-1)?.id).toBe("personal:FLD-31");
   });

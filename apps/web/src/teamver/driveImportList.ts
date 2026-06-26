@@ -302,24 +302,32 @@ async function resolveSharedDriveRootFolderId(
   workspaceId: string,
   sharedDriveId: string,
 ): Promise<string | null> {
+  const trimmed = workspaceId.trim();
+  const driveId = sharedDriveId.trim();
+  if (!trimmed || !driveId) return null;
+  const cacheKey = `${trimmed}:${driveId}`;
+  const cached = sharedDriveRootCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < DRIVE_IMPORT_CACHE_MS) return cached.rootFolderId;
   try {
     const tree = await getTeamverDriveJson(
-      `/api/v2/shared-drive/${encodeURIComponent(sharedDriveId)}/folder-tree`,
-      workspaceId,
+      `/api/v2/shared-drive/${encodeURIComponent(driveId)}/folder-tree`,
+      trimmed,
     );
-    return normalizeImportRootFolderId(tree);
+    const rootFolderId = normalizeImportRootFolderId(tree);
+    sharedDriveRootCache.set(cacheKey, { rootFolderId, at: Date.now() });
+    return rootFolderId;
   } catch {
     return null;
   }
 }
 
-export async function listTeamverDriveImportScopes(workspaceId: string): Promise<TeamverDriveImportScope[]> {
+async function fetchImportScopesUncached(workspaceId: string): Promise<TeamverDriveImportScope[]> {
   const trimmed = workspaceId.trim();
   if (!trimmed) return [];
 
   let personalRootId: string | null = null;
   try {
-    const personalTree = await getTeamverDriveJson("/api/drive/folder?shallow_tree=true", trimmed);
+    const personalTree = await getPersonalShallowTreeCached(trimmed);
     personalRootId = normalizeImportRootFolderId(personalTree);
   } catch {
     // personal tree optional — fall back to BE list default
@@ -330,7 +338,7 @@ export async function listTeamverDriveImportScopes(workspaceId: string): Promise
   ];
 
   try {
-    const raw = await getTeamverDriveJson("/api/v2/shared-drive", trimmed);
+    const raw = await getSharedDriveListCached(trimmed);
     const drives = extractListItems(raw);
     const sharedScopes = await Promise.all(
       drives.map(async (drive) => {
@@ -358,6 +366,96 @@ export async function listTeamverDriveImportScopes(workspaceId: string): Promise
   }
 
   return scopes;
+}
+
+/** Session-scoped Drive import caches — avoids duplicate scope/shallow fetches across publish menu + picker. */
+const DRIVE_IMPORT_CACHE_MS = 60_000;
+const importScopesCache = new Map<string, { scopes: TeamverDriveImportScope[]; at: number }>();
+const importScopesInflight = new Map<string, Promise<TeamverDriveImportScope[]>>();
+const personalShallowCache = new Map<string, { raw: unknown; at: number }>();
+const personalShallowInflight = new Map<string, Promise<unknown>>();
+const sharedDriveListCache = new Map<string, { raw: unknown; at: number }>();
+const sharedDriveListInflight = new Map<string, Promise<unknown>>();
+const sharedDriveRootCache = new Map<string, { rootFolderId: string | null; at: number }>();
+
+export function invalidateTeamverDriveImportCaches(workspaceId?: string | null): void {
+  const ws = workspaceId?.trim();
+  if (!ws) {
+    importScopesCache.clear();
+    importScopesInflight.clear();
+    personalShallowCache.clear();
+    personalShallowInflight.clear();
+    sharedDriveListCache.clear();
+    sharedDriveListInflight.clear();
+    sharedDriveRootCache.clear();
+    return;
+  }
+  importScopesCache.delete(ws);
+  importScopesInflight.delete(ws);
+  personalShallowCache.delete(ws);
+  personalShallowInflight.delete(ws);
+  sharedDriveListCache.delete(ws);
+  sharedDriveListInflight.delete(ws);
+  for (const key of sharedDriveRootCache.keys()) {
+    if (key.startsWith(`${ws}:`)) sharedDriveRootCache.delete(key);
+  }
+}
+
+/** @internal vitest — personal shallow_tree with session cache (shared with scopes + publish quick-pick). */
+export async function getPersonalShallowTreeCached(workspaceId: string): Promise<unknown> {
+  const trimmed = workspaceId.trim();
+  if (!trimmed) throw new Error("teamver_workspace_required");
+  const cached = personalShallowCache.get(trimmed);
+  if (cached && Date.now() - cached.at < DRIVE_IMPORT_CACHE_MS) return cached.raw;
+  const inflight = personalShallowInflight.get(trimmed);
+  if (inflight) return inflight;
+  const promise = getTeamverDriveJson("/api/drive/folder?shallow_tree=true", trimmed)
+    .then((raw) => {
+      personalShallowCache.set(trimmed, { raw, at: Date.now() });
+      return raw;
+    })
+    .finally(() => {
+      personalShallowInflight.delete(trimmed);
+    });
+  personalShallowInflight.set(trimmed, promise);
+  return promise;
+}
+
+async function getSharedDriveListCached(workspaceId: string): Promise<unknown> {
+  const trimmed = workspaceId.trim();
+  const cached = sharedDriveListCache.get(trimmed);
+  if (cached && Date.now() - cached.at < DRIVE_IMPORT_CACHE_MS) return cached.raw;
+  const inflight = sharedDriveListInflight.get(trimmed);
+  if (inflight) return inflight;
+  const promise = getTeamverDriveJson("/api/v2/shared-drive", trimmed)
+    .then((raw) => {
+      sharedDriveListCache.set(trimmed, { raw, at: Date.now() });
+      return raw;
+    })
+    .finally(() => {
+      sharedDriveListInflight.delete(trimmed);
+    });
+  sharedDriveListInflight.set(trimmed, promise);
+  return promise;
+}
+
+export async function listTeamverDriveImportScopes(workspaceId: string): Promise<TeamverDriveImportScope[]> {
+  const trimmed = workspaceId.trim();
+  if (!trimmed) return [];
+  const cached = importScopesCache.get(trimmed);
+  if (cached && Date.now() - cached.at < DRIVE_IMPORT_CACHE_MS) return cached.scopes;
+  const inflight = importScopesInflight.get(trimmed);
+  if (inflight) return inflight;
+  const promise = fetchImportScopesUncached(trimmed)
+    .then((scopes) => {
+      importScopesCache.set(trimmed, { scopes, at: Date.now() });
+      return scopes;
+    })
+    .finally(() => {
+      importScopesInflight.delete(trimmed);
+    });
+  importScopesInflight.set(trimmed, promise);
+  return promise;
 }
 
 function normalizeSearchHit(raw: unknown, sharedDriveId?: string | null): TeamverDriveImportListRow | null {

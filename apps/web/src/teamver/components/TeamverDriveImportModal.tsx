@@ -32,9 +32,10 @@ import {
   trackTeamverDriveImportModalSurfaceView,
   trackTeamverDriveImportPickClick,
 } from "../teamverDriveImportAnalytics";
+import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
+import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 
 const MAX_PICK = 12;
-const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_LIMIT = 40;
 const EMPTY_INITIAL_ASSETS: TeamverDriveImportAsset[] = [];
 
@@ -68,10 +69,8 @@ function rootCrumb(scope: TeamverDriveImportScope): NavCrumb {
 }
 
 function matchesLocalQuery(row: TeamverDriveImportListRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  if (row.kind === "folder") return row.name.toLowerCase().includes(q);
-  return row.name.toLowerCase().includes(q) || row.assetId.toLowerCase().includes(q);
+  if (row.kind === "folder") return driveSearchTextMatches(query, row.name);
+  return driveSearchTextMatches(query, row.name, row.assetId);
 }
 
 function assetFromRow(row: TeamverDriveImportAssetRow): TeamverDriveImportAsset {
@@ -116,8 +115,14 @@ export function TeamverDriveImportModal({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionHint, setActionHint] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const {
+    query,
+    setQuery,
+    submittedQuery,
+    searchMode,
+    submitSearch,
+    resetSearch,
+  } = useSubmittedDriveSearch(TEAMVER_DRIVE_IMPORT_SEARCH_MIN);
   const [selected, setSelected] = useState<Map<string, TeamverDriveImportAsset>>(new Map());
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
   const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
@@ -130,7 +135,6 @@ export function TeamverDriveImportModal({
 
   const activeScope = scopes[scopeIndex] ?? null;
   const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
-  const searchMode = debouncedQuery.trim().length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN;
   const showRecent =
     !searchMode && currentFolderId == null && activeScope?.mode === "personal";
 
@@ -149,14 +153,8 @@ export function TeamverDriveImportModal({
 
   useEffect(() => {
     if (!open) return;
-    const timer = window.setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [open, query]);
-
-  useEffect(() => {
-    if (!open) return;
     setBrowseNextCursor(null);
-  }, [activeScope, currentFolderId, debouncedQuery, open, scopeIndex]);
+  }, [activeScope, currentFolderId, open, scopeIndex, submittedQuery]);
 
   useEffect(() => {
     listHasContentRef.current = rows.length > 0 || recentRows.length > 0;
@@ -171,7 +169,7 @@ export function TeamverDriveImportModal({
       setError(null);
       try {
         const sharedDriveId = activeScope.mode === "shared" ? activeScope.sharedDriveId : null;
-        const trimmedQuery = debouncedQuery.trim();
+        const trimmedQuery = submittedQuery.trim();
 
         if (trimmedQuery.length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN) {
           const searchRows = await searchTeamverDriveImportRows({
@@ -226,7 +224,7 @@ export function TeamverDriveImportModal({
         setRefreshing(false);
       }
     },
-    [activeScope, currentFolderId, debouncedQuery, open, showRecent, workspaceId],
+    [activeScope, currentFolderId, open, showRecent, submittedQuery, workspaceId],
   );
 
   useEffect(() => {
@@ -246,8 +244,7 @@ export function TeamverDriveImportModal({
       if (!blocked) initial.set(asset.assetId, asset);
     }
     setSelected(initial);
-    setQuery("");
-    setDebouncedQuery("");
+    resetSearch();
     setScopeIndex(0);
     setNavStack([]);
     setRows([]);
@@ -274,7 +271,7 @@ export function TeamverDriveImportModal({
     return () => {
       cancelled = true;
     };
-  }, [attachPolicyActive, initialAssets, open, workspaceId]);
+  }, [attachPolicyActive, initialAssets, open, resetSearch, workspaceId]);
 
   useEffect(() => {
     if (!open || !partialResult || partialResult.failures.length === 0) return;
@@ -372,7 +369,7 @@ export function TeamverDriveImportModal({
       }
       if (event.key === "Enter" && !confirming && !partialResult && selectedCount > 0) {
         const target = event.target;
-        if (target instanceof HTMLElement && target.closest(".teamver-drive-picker-search input")) {
+        if (target instanceof HTMLElement && target.closest(".teamver-drive-picker-search")) {
           return;
         }
         event.preventDefault();
@@ -468,8 +465,7 @@ export function TeamverDriveImportModal({
 
   function enterFolder(row: Extract<TeamverDriveImportListRow, { kind: "folder" }>) {
     setNavStack((current) => [...current, { folderId: row.folderId, name: row.name }]);
-    setQuery("");
-    setDebouncedQuery("");
+    resetSearch();
   }
 
   function renderAssetCard(row: TeamverDriveImportAssetRow, keyPrefix: string) {
@@ -592,8 +588,7 @@ export function TeamverDriveImportModal({
                 onClick={() => {
                   setScopeIndex(index);
                   setNavStack([rootCrumb(scope)]);
-                  setQuery("");
-                  setDebouncedQuery("");
+                  resetSearch();
                   setRows([]);
                   setRecentRows([]);
                   setBrowseNextCursor(null);
@@ -620,8 +615,7 @@ export function TeamverDriveImportModal({
                     disabled={confirming}
                     onClick={() => {
                       setNavStack(navStack.slice(0, index + 1));
-                      setQuery("");
-                      setDebouncedQuery("");
+                      resetSearch();
                     }}
                   >
                     {crumb.name}
@@ -632,20 +626,18 @@ export function TeamverDriveImportModal({
           })}
         </nav>
 
-        <label className="teamver-drive-picker-search">
-          <Icon name="search" size={14} />
-          <input
-            value={query}
-            aria-label="드라이브 파일 검색"
-            placeholder={
-              searchMode || query.trim().length >= TEAMVER_DRIVE_IMPORT_SEARCH_MIN
-                ? "드라이브 전체 검색"
-                : "이 폴더에서 검색"
-            }
-            disabled={confirming}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
-        </label>
+        <TeamverDriveSearchField
+          value={query}
+          ariaLabel="드라이브 파일 검색"
+          placeholder={
+            searchMode
+              ? "드라이브 전체 검색"
+              : "이 폴더에서 검색 · Enter로 전체 검색"
+          }
+          disabled={confirming}
+          onChange={setQuery}
+          onSubmit={submitSearch}
+        />
 
         <div
           className={`teamver-drive-picker-list teamver-drive-import-list${refreshing ? " is-refreshing" : ""}`}

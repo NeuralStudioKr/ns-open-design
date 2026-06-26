@@ -1,6 +1,7 @@
 import { extractTeamverDriveItems, getTeamverDriveJson } from "./driveApi";
 import {
   TEAMVER_DRIVE_IMPORT_SEARCH_MIN,
+  getPersonalShallowTreeCached,
   listTeamverDriveImportScopes,
   searchTeamverDriveImportRows,
   type TeamverDriveImportScope,
@@ -106,7 +107,11 @@ function isSharedDrive(raw: RawSharedDrive | null): raw is RawSharedDrive & { id
 }
 
 async function fetchPersonalTargets(workspaceId: string): Promise<TeamverDrivePublishTarget[]> {
-  const raw = await getJson("/api/drive/folder?shallow_tree=true", workspaceId);
+  const raw = await getPersonalShallowTreeCached(workspaceId);
+  return buildPersonalPublishTargets(raw);
+}
+
+function buildPersonalPublishTargets(raw: unknown): TeamverDrivePublishTarget[] {
   const rootFolderId = normalizeRootFolderId(raw);
   const targets: TeamverDrivePublishTarget[] = [
     {
@@ -175,22 +180,40 @@ async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDriv
   return targetGroups.flat();
 }
 
+/** Dropdown quick-pick: personal shallow + shared roots only (no shared subfolder flatten). */
+async function fetchQuickPublishTargets(workspaceId: string): Promise<TeamverDrivePublishTarget[]> {
+  const [scopesResult, personalResult] = await Promise.allSettled([
+    listTeamverDriveImportScopes(workspaceId),
+    fetchPersonalTargets(workspaceId),
+  ]);
+  const personal = personalResult.status === "fulfilled" ? personalResult.value : [];
+  const scopes = scopesResult.status === "fulfilled" ? scopesResult.value : [];
+  const sharedRoots = scopes
+    .filter((scope): scope is Extract<TeamverDriveImportScope, { mode: "shared" }> => scope.mode === "shared")
+    .map(scopeRootTarget);
+  return dedupePublishTargets([...personal, ...sharedRoots]);
+}
+
 export async function listTeamverDrivePublishTargets(
   workspaceId: string,
-  options: { limit?: number } = {},
+  options: { limit?: number; fullSharedTree?: boolean } = {},
 ): Promise<TeamverDrivePublishTarget[]> {
   const trimmed = workspaceId.trim();
   if (!trimmed) return [];
-  const [personal, shared] = await Promise.allSettled([
-    fetchPersonalTargets(trimmed),
-    fetchSharedDriveTargets(trimmed),
-  ]);
-  const targets = [
-    ...(personal.status === "fulfilled" ? personal.value : []),
-    ...(shared.status === "fulfilled" ? shared.value : []),
-  ];
+  const limit = Math.max(1, options.limit ?? TARGET_LIMIT);
+  const targets = options.fullSharedTree
+    ? await (async () => {
+        const [personal, shared] = await Promise.allSettled([
+          fetchPersonalTargets(trimmed),
+          fetchSharedDriveTargets(trimmed),
+        ]);
+        return [
+          ...(personal.status === "fulfilled" ? personal.value : []),
+          ...(shared.status === "fulfilled" ? shared.value : []),
+        ];
+      })()
+    : await fetchQuickPublishTargets(trimmed);
   if (targets.length > 0) {
-    const limit = Math.max(1, options.limit ?? TARGET_LIMIT);
     return targets.slice(0, limit);
   }
   return [
