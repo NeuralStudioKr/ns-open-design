@@ -106,11 +106,13 @@ export class MaterializingProjectStorage implements ProjectStorage {
     projectId: string,
     remote: ProjectStorage,
     runStartTimeMs: number,
-  ): Promise<{ uploaded: number; skipped: number; failed: number }> {
+  ): Promise<{ uploaded: number; skipped: number; failed: number; deleted: number }> {
     const scratchFiles = await this.scratch.listFiles(projectId);
+    const scratchPaths = new Set(scratchFiles.map((file) => file.path));
     let uploaded = 0;
     let skipped = 0;
     let failed = 0;
+    let deleted = 0;
     for (const file of scratchFiles) {
       if (!isRunTouchedProjectFile(file.mtimeMs, runStartTimeMs)) {
         skipped += 1;
@@ -130,7 +132,29 @@ export class MaterializingProjectStorage implements ProjectStorage {
         );
       }
     }
-    return { uploaded, skipped, failed };
+
+    // Full sync (non-run API writes / registry create) must propagate scratch
+    // deletions to remote SSOT — run-scoped sync only uploads touched files.
+    if (runStartTimeMs === 0) {
+      const remoteFiles = await remote.listFiles(projectId);
+      for (const remoteFile of remoteFiles) {
+        if (scratchPaths.has(remoteFile.path)) continue;
+        try {
+          await withSyncUpRetry(async () => {
+            await remote.deleteFile(projectId, remoteFile.path);
+          });
+          deleted += 1;
+        } catch (err) {
+          failed += 1;
+          console.warn(
+            `[project-materialization] sync-up remote delete failed for ${projectId}/${remoteFile.path}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    }
+
+    return { uploaded, skipped, failed, deleted };
   }
 
   async evictScratchProject(projectId: string): Promise<void> {

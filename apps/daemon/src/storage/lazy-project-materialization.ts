@@ -121,7 +121,7 @@ export function createProjectStorageAccessHooks(
         // runStart=0 → upload all scratch files (non-run API writes).
         const result = await storage.syncUp(trimmedId, remote, 0);
         console.info(
-          `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} failed=${result.failed}`,
+          `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} deleted=${result.deleted} failed=${result.failed}`,
         );
         if (result.failed > 0 && process.env.OD_S3_SYNC_UP_METRICS === '1') {
           console.info(JSON.stringify({

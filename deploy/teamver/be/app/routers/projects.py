@@ -111,10 +111,10 @@ async def _sync_daemon_scratch_after_registry(
     *,
     auth: AuthContext,
 ) -> None:
-    """Best-effort scratch → S3 sync after registry row is durable (post-commit).
+    """Strict scratch → S3 sync after registry row is durable (post-commit).
 
-    Access gate requires a committed registry row (loop 191). Failures are logged
-    with structured markers for CloudWatch; the HTTP create still returns 200.
+    Access gate requires a committed registry row (loop 191). Failures surface
+    as 502 so callers can retry instead of assuming S3 SSOT is ready.
     """
     workspace_id = require_workspace_context(auth)
     try:
@@ -126,17 +126,17 @@ async def _sync_daemon_scratch_after_registry(
                 s3_prefix=row.s3_prefix,
             ),
         )
-    except BadGatewayError as exc:
+    except BadGatewayError:
         logger.warning(
             "registry create: daemon scratch sync-up failed od_project_id=%s",
             row.od_project_id,
             exc_info=True,
         )
         logger.info(
-            '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
+            '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s"}',
             row.od_project_id,
-            str(exc).replace('"', '\\"'),
         )
+        raise
     except Exception as exc:
         logger.warning(
             "registry create: daemon scratch sync-up failed od_project_id=%s",
@@ -148,6 +148,7 @@ async def _sync_daemon_scratch_after_registry(
             row.od_project_id,
             str(exc).replace('"', '\\"'),
         )
+        raise BadGatewayError("od_daemon_scratch_sync_up_failed") from exc
 
 
 async def _commit_registry_row_if_needed(
@@ -194,7 +195,6 @@ async def create_project(
             title=body.title,
         )
         await db.commit()
-        await _sync_daemon_scratch_after_registry(row, auth=auth)
     except IntegrityError as exc:
         await db.rollback()
         if od_project_id:
@@ -225,6 +225,7 @@ async def create_project(
         await db.rollback()
         raise
 
+    await _sync_daemon_scratch_after_registry(row, auth=auth)
     return _to_response(row)
 
 
@@ -358,26 +359,58 @@ async def delete_project(
     _ensure_project_access(row, auth)
     workspace_id = require_workspace_context(auth)
     if row.status == "active":
+        client = OdDaemonClient()
+        identity = OdDaemonIdentity(
+            user_id=auth.user_id,
+            workspace_id=workspace_id,
+            s3_prefix=row.s3_prefix,
+        )
+        try:
+            await client.sync_scratch_project(row.od_project_id, identity=identity)
+        except BadGatewayError:
+            logger.warning(
+                "registry delete: daemon scratch sync-up failed od_project_id=%s",
+                row.od_project_id,
+                exc_info=True,
+            )
+            logger.info(
+                '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","stage":"delete"}',
+                row.od_project_id,
+            )
+            raise
+        except Exception as exc:
+            logger.warning(
+                "registry delete: daemon scratch sync-up failed od_project_id=%s",
+                row.od_project_id,
+                exc_info=True,
+            )
+            raise BadGatewayError("od_daemon_scratch_sync_up_failed") from exc
+
         await design_project_crud.asoft_delete_by_od_id(
             db,
             od_project_id=od_project_id,
         )
         await db.commit()
         try:
-            await OdDaemonClient().evict_scratch_project(
-                row.od_project_id,
-                identity=OdDaemonIdentity(
-                    user_id=auth.user_id,
-                    workspace_id=workspace_id,
-                    s3_prefix=row.s3_prefix,
-                ),
-            )
-        except Exception:
+            await client.evict_scratch_project(row.od_project_id, identity=identity)
+        except BadGatewayError:
             logger.warning(
                 "registry delete: daemon scratch evict failed od_project_id=%s",
                 row.od_project_id,
                 exc_info=True,
             )
+            logger.info(
+                '{"metric":"od_registry_scratch_evict_failed","od_project_id":"%s"}',
+                row.od_project_id,
+            )
+            raise
+        except Exception as exc:
+            logger.warning(
+                "registry delete: daemon scratch evict failed od_project_id=%s",
+                row.od_project_id,
+                exc_info=True,
+            )
+            raise BadGatewayError("od_daemon_scratch_evict_failed") from exc
     return Response(status_code=204)
 
 

@@ -148,6 +148,7 @@ storage/startup batch (5 files): **48 passed**
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-26 | loop 424 — billing reserve fail-fast, registry create/delete S3 strict 502, full sync remote orphan delete |
 | 2026-06-26 | loop 419 — 2차 코드 리뷰 P1 (billing refund, lazy sync lock, access cache TTL, BYOK 401 recovery) |
 | 2026-06-26 | loop 413 — 코드 리뷰 기반 P1 수정 (dedupe-on-success, billing gate, concurrent S3 sync floor) |
 | 2026-06-26 | loop 412 — 로컬 usage/DB/S3 코드·테스트·fixture 점검 리포트 (Drive 제외) |

@@ -88,6 +88,28 @@ describe('MaterializingProjectStorage', () => {
     await expect(remoteStore.readFile('p1', 'new.txt')).resolves.toEqual(Buffer.from('new'));
     await expect(remoteStore.statFile('p1', 'old.txt')).resolves.toBeNull();
   });
+
+  it('sync-up with runStart=0 deletes remote files missing from scratch', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    const remoteStore = new LocalProjectStorage(remoteRoot);
+
+    await remoteStore.writeFile('p1', 'stale.txt', Buffer.from('stale'));
+    await storage.writeFile('p1', 'keep.txt', Buffer.from('keep'));
+
+    const up = await storage.syncUp('p1', remote, 0);
+    expect(up.uploaded).toBe(1);
+    expect(up.deleted).toBe(1);
+    expect(up.failed).toBe(0);
+    await expect(remoteStore.statFile('p1', 'keep.txt')).resolves.not.toBeNull();
+    await expect(remoteStore.statFile('p1', 'stale.txt')).resolves.toBeNull();
+  });
 });
 
 describe('TenantScopedProjectStorage', () => {

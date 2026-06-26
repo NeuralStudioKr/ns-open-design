@@ -11930,10 +11930,11 @@ export async function startServer({
     }
 
     // Teamver Registry billing (Phase 2 / 09 §3 / A9) — reserve credits before
-    // the agent starts. Best-effort: when Teamver wiring or registry creds
-    // are absent the bridge no-ops; failures log to console and emit
-    // `teamver_usage_5xx` on the design-api side. Run is NEVER aborted.
-    try {
+    // the agent starts. Skipped paths (no workspace, billing disabled, amount
+    // not configured, registry not wired) no-op. When reserve is enforced
+    // (`TEAMVER_BILLING_RESERVE_AMOUNT` or positive caller amount) a failure
+    // aborts the run — mirrors design-api `run_lifecycle.reserve_run`.
+    {
       const identity = (run as { teamverIdentity?: TeamverRequestIdentity | null }).teamverIdentity ?? null;
       const modelName = typeof run.model === 'string' ? run.model : '';
       const reserveAmount = await resolveTeamverBillingReserveAmountFromDaemon({ modelName });
@@ -11943,14 +11944,16 @@ export async function startServer({
         amount: reserveAmount,
         reason: 'design_run',
       });
+      if (!reserve.skipped && !reserve.ok) {
+        const detail = (reserve.error ?? '').trim();
+        const message = detail
+          ? `Billing reserve failed: ${detail}`
+          : 'Billing reserve failed; cannot start this run.';
+        return design.runs.fail(run, 'BAD_REQUEST', message);
+      }
       if (reserve.ok && reserve.usageId) {
         (run as { teamverBillingUsageId?: string | null }).teamverBillingUsageId = reserve.usageId;
       }
-    } catch (err) {
-      console.warn(
-        '[teamver-billing-bridge] reserve threw (continuing run):',
-        err instanceof Error ? err.message : err,
-      );
     }
 
     // Auto-memory hook. Pulls explicit "remember:" / "我是 X" / "I prefer Y"

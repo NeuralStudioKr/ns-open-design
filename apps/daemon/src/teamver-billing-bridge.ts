@@ -22,9 +22,8 @@
 //   - the design-api orchestrator skipped reserve because registry creds
 //     (`TEAMVER_REGISTRY_*`) are absent on the BE side.
 //
-// Failures degrade — never throw. Each failure emits a structured
-// `teamver_usage_5xx` JSON marker so the CloudWatch log metric filter
-// (see `print_cloudwatch_alarm_commands.sh`) picks it up.
+// Failures return `{ ok: false }` — callers that enforced reserve (non-skipped
+// path) must abort the run. Commit/refund still degrade and never throw.
 
 import { teamverDesignApiBaseUrl } from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';

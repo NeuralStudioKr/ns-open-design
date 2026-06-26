@@ -10,7 +10,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.auth_context import AuthContext
 from app.db.crud import design_project_crud
-from app.errors import ForbiddenError
+from app.errors import BadGatewayError, ForbiddenError
 from app.routers import projects as projects_router
 from app.schemas.design_project import CreateDesignProjectBody
 
@@ -63,7 +63,7 @@ async def test_create_project_syncs_daemon_scratch(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_create_project_succeeds_when_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_create_project_raises_when_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     row = _project_row()
     db = AsyncMock()
     db.commit = AsyncMock()
@@ -81,16 +81,16 @@ async def test_create_project_succeeds_when_sync_fails(monkeypatch: pytest.Monke
     )
 
     async def boom(*_args, **_kwargs):
-        raise RuntimeError("daemon down")
+        raise BadGatewayError("od_daemon_scratch_sync_up_failed")
 
     monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
 
-    response = await projects_router.create_project(
-        CreateDesignProjectBody(odProjectId="od1"),
-        _auth(),
-        db,
-    )
-    assert response.od_project_id == "od1"
+    with pytest.raises(BadGatewayError):
+        await projects_router.create_project(
+            CreateDesignProjectBody(odProjectId="od1"),
+            _auth(),
+            db,
+        )
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
 
@@ -164,7 +164,7 @@ async def test_create_project_reactivates_soft_deleted_row(
 
 
 @pytest.mark.asyncio
-async def test_create_project_keeps_reactivation_when_sync_fails(
+async def test_create_project_raises_when_reactivation_sync_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deleted = _project_row()
@@ -191,17 +191,17 @@ async def test_create_project_keeps_reactivation_when_sync_fails(
     )
 
     async def boom(*_args, **_kwargs):
-        raise RuntimeError("daemon down")
+        raise BadGatewayError("od_daemon_scratch_sync_up_failed")
 
     monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
 
-    response = await projects_router.create_project(
-        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
-        _auth(),
-        db,
-    )
+    with pytest.raises(BadGatewayError):
+        await projects_router.create_project(
+            CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+            _auth(),
+            db,
+        )
 
-    assert response.status == "active"
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
 
@@ -270,7 +270,7 @@ async def test_create_project_reactivates_soft_deleted_row_after_integrity_race(
 
 
 @pytest.mark.asyncio
-async def test_create_project_keeps_race_reactivation_when_sync_fails(
+async def test_create_project_raises_when_race_reactivation_sync_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deleted = _project_row()
@@ -297,17 +297,17 @@ async def test_create_project_keeps_race_reactivation_when_sync_fails(
     )
 
     async def boom(*_args, **_kwargs):
-        raise RuntimeError("daemon down")
+        raise BadGatewayError("od_daemon_scratch_sync_up_failed")
 
     monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
 
-    response = await projects_router.create_project(
-        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
-        _auth(),
-        db,
-    )
+    with pytest.raises(BadGatewayError):
+        await projects_router.create_project(
+            CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+            _auth(),
+            db,
+        )
 
-    assert response.status == "active"
     db.commit.assert_awaited_once()
     db.rollback.assert_awaited_once()
 
