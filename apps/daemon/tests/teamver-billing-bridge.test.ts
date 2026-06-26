@@ -88,10 +88,25 @@ describe('teamver-billing-bridge', () => {
       });
     });
 
-    it('marks estimate unavailable when billing is wired but amount stays zero', async () => {
+    it('treats legitimate zero estimate as available (reserve skip path)', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
-      const fetchMock: FetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { amount_t: 0 }));
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(200, { amount_t: 0, policy: 'skipped' }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({
+        amount: 0,
+        billingWired: true,
+        estimateUnavailable: false,
+      });
+    });
+
+    it('marks estimate unavailable on transport or non-200 responses', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'k');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue(jsonResponse(502, null));
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(resolveTeamverBillingReserveAmountFromDaemon({ modelName: 'm' })).resolves.toEqual({

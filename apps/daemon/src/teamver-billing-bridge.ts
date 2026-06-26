@@ -185,8 +185,12 @@ export async function resolveTeamverBillingReserveAmountFromDaemon(args: {
       return finish(0, true);
     }
     const amount = Number(payload.amount_t);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(amount) || amount < 0) {
       return finish(0, true);
+    }
+    if (amount === 0) {
+      // Legitimate zero estimate (no price table / billing skipped on BE) — not a transport failure.
+      return { amount: 0, billingWired: true, estimateUnavailable: false };
     }
     return finish(amount, false);
   } catch {

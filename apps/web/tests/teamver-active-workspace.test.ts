@@ -8,6 +8,7 @@ import {
 } from '../src/teamver/activeTeamverWorkspace';
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
+import { syncTeamverWorkspaceFromSession } from '../src/teamver/syncTeamverWorkspace';
 import { bumpTeamverWorkspaceStoreRevision } from '../src/teamver/teamverWorkspaceStoreRevision';
 
 const storeGetMock = vi.fn(async () => null as string | null);
@@ -17,12 +18,13 @@ vi.mock('../src/teamver/designApiBase', () => ({
 }));
 
 vi.mock('../src/teamver/syncTeamverWorkspace', () => ({
-  syncTeamverWorkspaceFromSession: vi.fn(async (session) => {
+  syncTeamverWorkspaceFromSession: vi.fn(async (session, workspaces, options) => {
+    const override = options?.preferredIdOverride?.trim();
+    if (override) return override;
     const defaultId = (session?.defaultWorkspaceId ?? '').trim();
     if (defaultId) return defaultId;
-    const workspaces = session?.workspaces ?? [];
-    const id = workspaces[0]?.id?.trim();
-    return id || null;
+    const list = workspaces ?? session?.workspaces ?? [];
+    return list[0]?.id?.trim() || null;
   }),
 }));
 
@@ -81,6 +83,11 @@ describe('activeTeamverWorkspace', () => {
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
     await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-new');
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultWorkspaceId: 'ws-new' }),
+      expect.any(Array),
+      { preferredIdOverride: 'ws-new' },
+    );
   });
 
   it('keeps embed picker store when revision is newer than session snapshot', async () => {

@@ -76,4 +76,58 @@ describe("syncTeamverWorkspaceFromSession", () => {
     expect(storeSetMock).not.toHaveBeenCalled();
     expect(events).toEqual([]);
   });
+
+  it("preferredIdOverride wins over stale store (parent workspace switch)", async () => {
+    storeGetMock.mockResolvedValue("WS-old");
+    const events: string[] = [];
+    window.addEventListener(TEAMVER_WORKSPACE_CHANGED_EVENT, (event) => {
+      events.push(
+        (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId ?? "",
+      );
+    });
+
+    const active = await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-new",
+        workspaces: [
+          { id: "WS-old", name: "Old", role: "owner" },
+          { id: "WS-new", name: "New", role: "owner" },
+        ],
+      },
+      [
+        { id: "WS-old", name: "Old", role: "owner" },
+        { id: "WS-new", name: "New", role: "owner" },
+      ],
+      { preferredIdOverride: "WS-new" },
+    );
+
+    expect(active).toBe("WS-new");
+    expect(storeSetMock).toHaveBeenCalledWith("WS-new");
+    expect(events).toContain("WS-new");
+  });
+
+  it("keeps stale store when override is not provided", async () => {
+    storeGetMock.mockResolvedValue("WS-old");
+
+    const active = await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-new",
+        workspaces: [
+          { id: "WS-old", name: "Old", role: "owner" },
+          { id: "WS-new", name: "New", role: "owner" },
+        ],
+      },
+      [
+        { id: "WS-old", name: "Old", role: "owner" },
+        { id: "WS-new", name: "New", role: "owner" },
+      ],
+    );
+
+    expect(active).toBe("WS-old");
+    expect(storeSetMock).not.toHaveBeenCalled();
+  });
 });

@@ -18,6 +18,7 @@ function readSessionUserId(session: DesignAuthSession): string | null {
 export async function syncTeamverWorkspaceFromSession(
   session: DesignAuthSession,
   workspacesInput?: WorkspaceListItem[],
+  options?: { preferredIdOverride?: string | null },
 ): Promise<string | null> {
   if (!session.authenticated) return null;
 
@@ -28,7 +29,9 @@ export async function syncTeamverWorkspaceFromSession(
   const workspaces = workspacesInput ?? normalizeWorkspaceList(session.workspaces);
   const userId = readSessionUserId(session);
 
-  let active = (await store.get())?.trim() || null;
+  const override = options?.preferredIdOverride?.trim() || null;
+  const stored = (await store.get())?.trim() || null;
+  let active = override || stored || null;
   if (!active && userId && typeof store.getPreferredWorkspaceIdForBootstrap === "function") {
     active = store.getPreferredWorkspaceIdForBootstrap(userId)?.trim() || null;
   }
@@ -38,14 +41,16 @@ export async function syncTeamverWorkspaceFromSession(
     defaultWorkspaceId: session.defaultWorkspaceId ?? null,
   });
 
-  if (resolved && resolved !== active) {
+  if (resolved && resolved !== stored) {
     await store.set(resolved);
     active = resolved;
     dispatchTeamverWorkspaceChanged(resolved);
-  } else if (!active && resolved) {
+  } else if (!stored && resolved) {
     await store.set(resolved);
     active = resolved;
     dispatchTeamverWorkspaceChanged(resolved);
+  } else if (resolved) {
+    active = resolved;
   }
 
   if (userId && active && typeof store.setLastForUser === "function") {

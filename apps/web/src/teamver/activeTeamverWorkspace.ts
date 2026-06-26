@@ -58,7 +58,9 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
     return storeId;
   }
 
-  return (await syncTeamverWorkspaceFromSession(session, workspaces))?.trim() || null;
+  return (await syncTeamverWorkspaceFromSession(session, workspaces, {
+    preferredIdOverride: sessionDefault,
+  }))?.trim() || null;
 }
 
 export async function resolveActiveTeamverWorkspaceIdForEmbed(): Promise<string | null> {

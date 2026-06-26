@@ -148,6 +148,7 @@ storage/startup batch (5 files): **48 passed**
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-26 | loop 428 — code review: workspace reconcile override + zero estimate semantics |
 | 2026-06-26 | loop 427 — billing estimate fail-fast + `TEAMVER_BILLING_RESERVE_AMOUNT` fallback |
 | 2026-06-26 | loop 426 — scratch fallback health `reason=scratch_fallback` |
 | 2026-06-26 | loop 425 — embed workspace session/store reconciliation (A-G3) |
