@@ -193,13 +193,62 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 **복구 순서:** Main BE health → `check_main_be_design_wiring.sh --staging --live` → design-api redeploy 불필요 시 nginx만 재적용.
 
-### 5.3 수동 (workspace switch · browser)
+### 5.3 수동 browser QA (S-5 · S-9 · S-10)
+
+**대상:** `https://stg-design.teamver.com` (embed) · DevTools Network · ~20분  
+**완료 기준:** 아래 표 전 항목 pass → [04](./04_구현_우선순위.md) S-5 browser QA ☐ 해제
+
+#### A. Workspace 경계 + publish header (S-5 · loop 365–368)
+
+| ☐ | 단계 | 기대 |
+|---|------|------|
+| ☐ | workspace **A** 선택 → 슬라이드 run 1회 완료 | composer Stop/streaming 정상 종료 |
+| ☐ | workspace switcher → **B** | 이전 프로젝트 SSE/stream이 B 화면에 섞이지 않음 |
+| ☐ | B에서 Drive publish 1회 | Network: publish·Drive API에 `X-Workspace-Id: <B>` |
+| ☐ | (ops) RDS 최근 usage row | `workspace_id` = **B** (아래 Legacy step 5 SQL) |
+
+#### B. Background run 재진입 (S-5 · loop 408)
+
+| ☐ | 단계 | 기대 |
+|---|------|------|
+| ☐ | run 진행 중 Home/다른 프로젝트로 이탈 | daemon run은 계속 (Network `/api/runs` active) |
+| ☐ | 동일 프로젝트 재진입 | composer **Stop** + streaming UI 복원, Send만 보이지 않음 |
+
+#### C. Post-run publish UX (S-9 · loop 410–411)
+
+| ☐ | 단계 | 기대 |
+|---|------|------|
+| ☐ | run 성공 직후 Download 메뉴 자동 오픈 | Deploy가 아닌 **Download** popover |
+| ☐ | Drive destination listbox | 마지막 target pre-select + **목록 펼침**(focus) |
+| ☐ | post-run 한 줄 hint | 저장 위치 안내 1줄만 (과한 튜토리얼 없음) |
+
+#### D. Drive publish 찾아보기·검색 (loop 412–416)
+
+| ☐ | 단계 | 기대 |
+|---|------|------|
+| ☐ | 「찾아보기」→ 폴더 클릭 | **진입만** (즉시 publish 선택 아님), breadcrumb 갱신 |
+| ☐ | 하위 없는 폴더 | 「이 폴더 사용」 footer로 publish |
+| ☐ | 검색: 1글자 입력 | **서버 검색 API 없음**, 현재 폴더 로컬 필터만 |
+| ☐ | 검색: 2글자+ **Enter** | 서버 검색 1회, 결과에서 폴더 선택 → publish |
+| ☐ | breadcrumb 상위 클릭 | 검색어·검색 결과 초기화, browse 복귀 |
+| ☐ | stale remembered target (삭제된 폴더) | publish 버튼 **비활성**, 조용한 wrong-folder fallback 없음 |
+
+#### E. Logout stream detach (S-10 · loop 399)
+
+| ☐ | 단계 | 기대 |
+|---|------|------|
+| ☐ | run 진행 중 **logout** | ProjectView stream 중단, orphan SSE 없음 |
+| ☐ | 재로그인 후 동일/다른 프로젝트 | 이전 run 이벤트가 새 세션 UI에 leak 없음 |
+
+#### Legacy workspace switch (usage row)
 
 1. stg-design.teamver.com 로그인 — workspace **A** 선택
 2. 슬라이드 프로젝트에서 run 1회 → 완료 대기
 3. workspace switcher → workspace **B**
 4. publish 1회 (Drive) — Network 탭 `X-Workspace-Id: B` 확인
 5. RDS: `SELECT workspace_id, run_id FROM ai_model_token_usages ORDER BY created_at DESC LIMIT 5` — 최근 row가 **B**
+
+**기록:** QA 날짜 · 테스터 · pass/fail · Network 캡처 경로를 [09](./09_Design_저장소_격리_출시게이트.md) 또는 팀 슬랙에 남긴다.
 
 ---
 
@@ -213,7 +262,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ✅ loop 359 |
 | S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | ✅ loop 360 |
 | S-4 | embed slide E2E wording 잔여 (FileViewer download aria 등) | P1 | ✅ loop 357 |
-| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE run API header ✅ loop 365–368 · ProjectView stream detach ✅ loop 396/399 · background publish menu 🟡 loop 398 · browser 실관측 ☐ |
+| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE ✅ loop 365–408 · publish UX ✅ loop 410–416 · **browser QA checklist** ✅ loop 417 · **실관측** ☐ [22 §5.3](./22_Drive_인증_Usage_연동_검토.md#53-수동-browser-qa-s-5--s-9--s-10) |
 | S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 + loop 392(home) + loop 393(DesignsTab) + loop 400(header) |
 | S-7 | Teamver shell 컴포넌트 `useTeamverT` (chip/banner/import modal 등) | P2 | ✅ loop 364–369 |
 | **S-8** | **in-project run 성공** → preview + publish menu arm | P0 | ✅ **loop 403** |
@@ -229,13 +278,13 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | O-1 | nginx loop 354 map staging/prod VM 적용 | ops 1회 |
 | O-2 | Staging E2E full run (cookie + RDS + Drive asset) | ops 1회 |
 | O-3 | W-1 `TEAMVER_ALT_WORKSPACE_ID` E2E (loop 355) | code ✅ |
-| O-4 | Browser workspace switch 수동 체크리스트 §5.3 | QA 15min |
+| O-4 | Browser S-5/S-9/S-10 수동 체크리스트 §5.3 | QA ~20min |
 
 ---
 
 ## TODO (후속 작업)
 
-**갱신:** 2026-06-25. 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
+**갱신:** 2026-06-26. 중앙 SSOT — [04 §TODO](./04_구현_우선순위.md#todo-후속-작업).
 
 ### Drive (§2)
 
@@ -265,10 +314,10 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | ID | ☐ | 내용 |
 |----|---|------|
-| S-5 | ☐ | workspace switch 중 stream detach + publish 동선 browser QA |
+| S-5 | ☐ | workspace switch / background run / publish / Drive browse·search browser QA — [22 §5.3](./22_Drive_인증_Usage_연동_검토.md#53-수동-browser-qa-s-5--s-9--s-10) |
 | S-8 | ✅ | **loop 403** — in-project run 성공 publish menu arm |
 | S-9 | ✅ | **loop 410** — deploy menu + last target focus |
-| S-10 | ☐ | logout stream detach browser QA (loop 399) |
+| S-10 | ☐ | logout stream detach browser QA — [22 §5.3-E](./22_Drive_인증_Usage_연동_검토.md#53-수동-browser-qa-s-5--s-9--s-10) (loop 399) |
 
 ---
 
