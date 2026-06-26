@@ -8421,7 +8421,33 @@ export async function startServer({
   function rewritePluginAssetUrls(html: string, pluginId: string, baseDir: string) {
     if (typeof html !== 'string' || html.length === 0) return html;
     const safeBase = baseDir === '.' ? '' : baseDir;
-    const withAttrs = html.replace(
+    let removedExternalScript = false;
+    let removedExternalStylesheet = false;
+    const withoutExternalStylesheets = html.replace(
+      /<link\b([^>]*?)\bhref\s*=\s*(['"])(https?:\/\/[^'"]+)\2([^>]*)>/gi,
+      (match, before, _quote, rawValue, after) => {
+        const attrs = `${before} ${after}`;
+        if (!/\brel\s*=\s*(['"]?)(?:stylesheet|preload|modulepreload)\1/i.test(attrs)) return match;
+        // External CSS cannot pass the sandbox CSP (`style-src 'self'`) and
+        // should not be fetched from the preview iframe. Keep media assets on
+        // the existing cache route, but strip third-party stylesheets so the
+        // browser console does not fill with CSP violations.
+        removedExternalStylesheet = true;
+        return '<!-- od stripped external stylesheet -->';
+      },
+    );
+    const withoutExternalScripts = withoutExternalStylesheets.replace(
+      /<script\b([^>]*?)\bsrc\s*=\s*(['"])(https?:\/\/[^'"]+)\2([^>]*)>\s*<\/script>/gi,
+      (_match, _before, _quote, rawValue) => {
+        // External JS is blocked by `script-src 'self'` and often leaves
+        // follow-up `Chart is not defined` / `lucide is not defined` errors.
+        // Remove it and inject a tiny compatibility shim below instead of
+        // broadening CSP or building a generic JS proxy.
+        removedExternalScript = true;
+        return '<!-- od stripped external script -->';
+      },
+    );
+    const withAttrs = withoutExternalScripts.replace(
       /(\s(?:src|href|poster)\s*=\s*)(['"])([^'"]+)(\2)/gi,
       (match, attr, quote, rawValue, closeQuote) => {
         const value = String(rawValue).trim();
@@ -8477,7 +8503,7 @@ export async function startServer({
         return `${quote}${assetCacheRewriteUrl(value)}${quote}`;
       },
     );
-    return withQuoted.replace(
+    const rewritten = withQuoted.replace(
       /url\(\s*(https?:\/\/[^)'"\s]+)\s*\)/gi,
       (match, rawValue) => {
         const value = String(rawValue).trim();
@@ -8485,6 +8511,36 @@ export async function startServer({
         return `url(${assetCacheRewriteUrl(value)})`;
       },
     );
+    if (!removedExternalScript && !removedExternalStylesheet) return rewritten;
+    return injectPluginPreviewCompatShim(rewritten, {
+      externalScriptRemoved: removedExternalScript,
+      externalStylesheetRemoved: removedExternalStylesheet,
+    });
+  }
+
+  function injectPluginPreviewCompatShim(
+    html: string,
+    options: { externalScriptRemoved: boolean; externalStylesheetRemoved: boolean },
+  ): string {
+    const shim = `<script data-od-preview-compat>
+(function(){
+  window.lucide = window.lucide || { createIcons: function(){}, icons: {} };
+  if (!window.Chart) {
+    var NoopChart = function(){ return { destroy:function(){}, update:function(){}, resize:function(){}, render:function(){} }; };
+    NoopChart.register = function(){};
+    NoopChart.defaults = {};
+    window.Chart = NoopChart;
+  }
+  ${options.externalStylesheetRemoved ? "document.documentElement.setAttribute('data-od-external-css-stripped','true');" : ''}
+})();
+</script>`;
+    if (/<head\b[^>]*>/i.test(html)) {
+      return html.replace(/<head\b([^>]*)>/i, `<head$1>${shim}`);
+    }
+    if (/<html\b[^>]*>/i.test(html)) {
+      return html.replace(/<html\b([^>]*)>/i, `<html$1><head>${shim}</head>`);
+    }
+    return `${shim}${html}`;
   }
 
   // Plan §6 Phase 2B + spec §11.6 / §9.2 — plugin preview + examples.

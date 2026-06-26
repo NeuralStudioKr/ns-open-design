@@ -42,7 +42,24 @@ beforeEach(async () => {
   await mkdir(path.join(folder, 'examples', 'wrapped'), { recursive: true });
   await writeFile(
     path.join(folder, 'preview', 'index.html'),
-    '<!DOCTYPE html><title>preview</title><p>preview body</p>',
+    `<!DOCTYPE html>
+      <html>
+        <head>
+          <link rel="stylesheet" href="https://cdn.example.com/deck.css">
+          <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+          <script src="https://unpkg.com/lucide@latest"></script>
+        </head>
+        <body>
+          <canvas id="chart"></canvas>
+          <i data-lucide="sparkles"></i>
+          <img src="https://cdn.example.com/hero.png">
+          <p>preview body</p>
+          <script>
+            lucide.createIcons();
+            new Chart(document.getElementById('chart'), { type: 'bar', data: { labels: [], datasets: [] } });
+          </script>
+        </body>
+      </html>`,
   );
   await writeFile(
     path.join(folder, 'examples', 'desk-warm', 'index.html'),
@@ -148,6 +165,13 @@ describe('GET /api/plugins/:id/preview', () => {
     expect(resp.headers.get('x-content-type-options')).toBe('nosniff');
     const body = await resp.text();
     expect(body).toContain('preview body');
+    expect(body).not.toContain('https://cdn.example.com/deck.css');
+    expect(body).not.toContain('https://cdn.jsdelivr.net/npm/chart.js');
+    expect(body).not.toContain('https://unpkg.com/lucide@latest');
+    expect(body).toContain('data-od-preview-compat');
+    expect(body).toContain('window.lucide');
+    expect(body).toContain('window.Chart');
+    expect(body).toContain('/api/asset-cache?url=https%3A%2F%2Fcdn.example.com%2Fhero.png');
   });
 
   it('returns 404 when the plugin id is unknown', async () => {
