@@ -43,6 +43,42 @@ let configureGlobals: AnalyticsConfigureGlobals = {
 // after every reset()/identify() so every subsequent event keeps the
 // v2 schema contract.
 let lastRegisterPayload: Record<string, unknown> | null = null;
+const ANALYTICS_CONFIG_CACHE_MS = 5 * 60_000;
+let analyticsConfigCache: { value: AnalyticsConfigResponse | null; at: number } | null = null;
+let analyticsConfigPromise: Promise<AnalyticsConfigResponse | null> | null = null;
+
+async function fetchAnalyticsConfig(options?: {
+  force?: boolean;
+}): Promise<AnalyticsConfigResponse | null> {
+  const force = options?.force ?? false;
+  const now = Date.now();
+  if (
+    !force &&
+    analyticsConfigCache &&
+    now - analyticsConfigCache.at < ANALYTICS_CONFIG_CACHE_MS
+  ) {
+    return analyticsConfigCache.value;
+  }
+  if (!force && analyticsConfigPromise) return analyticsConfigPromise;
+
+  const pending = (async (): Promise<AnalyticsConfigResponse | null> => {
+    try {
+      const res = await fetch('/api/analytics/config');
+      if (!res.ok) return null;
+      return (await res.json()) as AnalyticsConfigResponse;
+    } catch {
+      return null;
+    }
+  })();
+  analyticsConfigPromise = pending;
+  try {
+    const value = await pending;
+    analyticsConfigCache = { value, at: Date.now() };
+    return value;
+  } finally {
+    if (analyticsConfigPromise === pending) analyticsConfigPromise = null;
+  }
+}
 
 // Returns the installationId the daemon stamped on /api/analytics/config
 // after the user opted in via Privacy → "Share usage data". The provider
@@ -129,22 +165,17 @@ export function setAnalyticsUserId(userId: string | null): void {
 // until it has the PostHog `phc_` key + host + distinct_id. This bootstrap
 // step provides those.
 //
-// Runs in parallel with — and unrelated to — `getAnalyticsClient` above.
-// When the user has consented, both paths fetch the same endpoint once
-// each; the duplicate fetch is cheap and avoids cross-coupling the
-// (consent-gated) analytics init with the (always-on) error tracker.
+// Runs in parallel with — and unrelated to — `getAnalyticsClient` above, but
+// both paths share `fetchAnalyticsConfig()` so App boot emits at most one
+// `/api/analytics/config` request per cache window. Disabled responses are
+// cached too; Privacy → metrics on passes `forceConfig` to refresh immediately.
 let exceptionBootstrapPromise: Promise<void> | null = null;
 export function bootstrapExceptionTracking(context: AnalyticsContext): Promise<void> {
   if (exceptionBootstrapPromise) return exceptionBootstrapPromise;
   exceptionBootstrapPromise = (async () => {
     try {
-      const res = await fetch('/api/analytics/config');
-      if (!res.ok) {
-        clearExceptionTrackingContext();
-        return;
-      }
-      const cfg = (await res.json()) as AnalyticsConfigResponse;
-      if (!cfg.key || !cfg.host) {
+      const cfg = await fetchAnalyticsConfig();
+      if (!cfg?.key || !cfg.host) {
         clearExceptionTrackingContext();
         return;
       }
@@ -170,6 +201,7 @@ export function bootstrapExceptionTracking(context: AnalyticsContext): Promise<v
 
 export async function getAnalyticsClient(
   context: AnalyticsContext,
+  options?: { forceConfig?: boolean },
 ): Promise<PostHog | null> {
   if (client) return client;
   if (initPromise) return initPromise;
@@ -182,10 +214,8 @@ export async function getAnalyticsClient(
   // trigger a fresh init.
   const pending = (async () => {
     try {
-      const res = await fetch('/api/analytics/config');
-      if (!res.ok) return null;
-      const cfg = (await res.json()) as AnalyticsConfigResponse;
-      if (!cfg.enabled || !cfg.key || !cfg.host) return null;
+      const cfg = await fetchAnalyticsConfig({ force: options?.forceConfig });
+      if (!cfg?.enabled || !cfg.key || !cfg.host) return null;
       const telemetryEnv = cfg.env || 'unknown';
       const distinctId =
         (typeof cfg.installationId === 'string' && cfg.installationId) ||

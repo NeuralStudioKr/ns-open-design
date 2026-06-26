@@ -350,7 +350,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
               clientType: identity.clientType,
               locale,
               appVersion: resolvedAppVersion,
-            });
+            }, { forceConfig: true });
             const resolved = getResolvedAnonymousId();
             if (resolved) setResolvedAnonId(resolved);
           })();
