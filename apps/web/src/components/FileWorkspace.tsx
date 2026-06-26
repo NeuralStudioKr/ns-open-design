@@ -45,6 +45,7 @@ import {
   type ChatCommentAttachment,
   type Conversation,
   conversationIdFromSideChatTabId,
+  isLiveArtifactTabId,
   isSideChatTabId,
   isTerminalTabId,
   terminalIdFromTabId,
@@ -70,6 +71,10 @@ import type { PluginFolderAgentAction } from './design-files/pluginFolderActions
 import { designSystemGithubEvidenceState, repoConnectCopy } from './design-system-github-evidence';
 import { APP_CHROME_FILE_ACTIONS_ID } from './AppChromeHeader';
 import { FileViewer, LiveArtifactViewer } from './FileViewer';
+import {
+  findProjectFileByTabName,
+  selectAutoOpenProducedHtml,
+} from './auto-open-file';
 import { Icon, type IconName } from './Icon';
 import { Toast } from './Toast';
 import { TabLauncherMenu } from './workspace/TabLauncherMenu';
@@ -501,6 +506,7 @@ export function FileWorkspace({
   // fails on the daemon side, so the click is never a silent no-op.
   const [launcherToast, setLauncherToast] = useState<string | null>(null);
   const [tabsOverflowing, setTabsOverflowing] = useState(false);
+  const [previewTabPending, setPreviewTabPending] = useState(false);
   const [draggedTabName, setDraggedTabName] = useState<string | null>(null);
   const [dragOverTab, setDragOverTab] = useState<{
     name: string;
@@ -510,6 +516,7 @@ export function FileWorkspace({
   const launcherBtnRef = useRef<HTMLButtonElement | null>(null);
   const tabsBarRef = useRef<HTMLDivElement | null>(null);
   const draggedTabNameRef = useRef<string | null>(null);
+  const ghostResolveTimerRef = useRef<number | null>(null);
   const browserTabSequenceRef = useRef(0);
   const designFilesNavProjectIdRef = useRef(projectId);
   const designFilesNavRef = useRef<DesignFilesNavState>(createDefaultDesignFilesNavState());
@@ -1451,7 +1458,7 @@ export function FileWorkspace({
       || activeTab === QUESTIONS_TAB
       || isBrowserTabId(activeTab)
     ) return null;
-    const onDisk = visibleFiles.find((f) => f.name === activeTab);
+    const onDisk = findProjectFileByTabName(activeTab, visibleFiles);
     if (onDisk) return onDisk;
     if (isSketchName(activeTab) && sketches[activeTab]) {
       return {
@@ -1474,6 +1481,73 @@ export function FileWorkspace({
     ) return null;
     return liveArtifactEntries.find((entry) => entry.tabId === activeTab) ?? null;
   }, [activeTab, liveArtifactEntries]);
+
+  const isPreviewFileTab =
+    activeTab !== DESIGN_FILES_TAB
+    && activeTab !== DESIGN_SYSTEM_TAB
+    && activeTab !== QUESTIONS_TAB
+    && !isBrowserTabId(activeTab)
+    && !isSideChatTabId(activeTab)
+    && !isTerminalTabId(activeTab)
+    && !isLiveArtifactTabId(activeTab)
+    && !(isSketchName(activeTab) && sketches[activeTab]);
+
+  const pendingPreviewTab = isPreviewFileTab && !activeFile && !activeLiveArtifact;
+
+  // A file tab can be active before the refreshed file list catches up (Write
+  // auto-open, chokidar unlink/add bursts, basename/path mismatches). Keep the
+  // preview surface in a loading state and refresh until the file resolves.
+  useEffect(() => {
+    if (!pendingPreviewTab) return;
+    setPreviewTabPending(true);
+    const pendingMs = openRequest?.nonce ? 4000 : 1500;
+    const timer = window.setTimeout(() => setPreviewTabPending(false), pendingMs);
+    void onRefreshFiles();
+    return () => window.clearTimeout(timer);
+  }, [pendingPreviewTab, activeTab, filesRefreshKey, openRequest?.nonce, onRefreshFiles]);
+
+  // Drop or retarget ghost tabs once loading settles and the file still isn't
+  // on disk — avoids stranding users on "Open a file from Design Files".
+  useEffect(() => {
+    if (!pendingPreviewTab || streaming || previewTabPending) return;
+    if (ghostResolveTimerRef.current !== null) {
+      window.clearTimeout(ghostResolveTimerRef.current);
+    }
+    ghostResolveTimerRef.current = window.setTimeout(() => {
+      ghostResolveTimerRef.current = null;
+      const resolved = findProjectFileByTabName(activeTab, visibleFiles);
+      if (resolved) {
+        if (resolved.name !== activeTab) {
+          openFileReplacing(resolved.name, activeTab);
+        }
+        return;
+      }
+      const htmlFallback = selectAutoOpenProducedHtml(visibleFiles);
+      if (htmlFallback && htmlFallback !== activeTab) {
+        openFileReplacing(htmlFallback, activeTab);
+        return;
+      }
+      if (persistedTabs.includes(activeTab)) {
+        closeTab(activeTab);
+      } else {
+        setActiveTab(defaultRootTab);
+      }
+    }, 500);
+    return () => {
+      if (ghostResolveTimerRef.current !== null) {
+        window.clearTimeout(ghostResolveTimerRef.current);
+        ghostResolveTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pendingPreviewTab,
+    streaming,
+    previewTabPending,
+    activeTab,
+    visibleFiles,
+    filesRefreshKey,
+  ]);
 
   const activeWorkspaceContext = useMemo<WorkspaceContextItem | null>(() => {
     if (activeTab === DESIGN_SYSTEM_TAB && designSystemProject) {
@@ -2270,6 +2344,12 @@ export function FileWorkspace({
               slideNavDeliverableNonce,
             )}
           />
+        ) : pendingPreviewTab ? (
+          <div className="viewer-empty">
+            {streaming || previewTabPending
+              ? t('fileViewer.loading')
+              : t('fileViewer.previewUnavailable')}
+          </div>
         ) : (
           <div className="viewer-empty">
             {t('workspace.openFromDesignFiles')}{' '}

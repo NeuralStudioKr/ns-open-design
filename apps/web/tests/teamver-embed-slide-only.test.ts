@@ -119,6 +119,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain("subscribeTeamverWorkspaceChanged");
     expect(projectView).toContain("setConversationLoadError(null)");
     expect(projectView).toContain("formatProjectConversationErrorForUser");
+    expect(projectView).toContain("questionFormForSlideOnlyDisplay");
   });
 
   it("detaches local run streams without daemon cancel on workspace switch (loop 396)", () => {

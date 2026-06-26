@@ -10,6 +10,16 @@ import { stripLeakedPseudoToolXml } from "../src/utils/stripLeakedPseudoToolXml"
 import { sanitizeChatMessageLeakedPseudoTool } from "../src/utils/sanitizeChatMessageLeakedPseudoTool";
 
 describe("internalAgentMarkup", () => {
+  it("strips answer_operator / task_analysis from assistant prose", () => {
+    const input = [
+      "<answer_operator>",
+      "<task_analysis>hidden plan</task_analysis>",
+      "</answer_operator>",
+      "본문",
+    ].join("\n");
+    expect(stripInternalOpenDesignMarkup(input)).toBe("본문");
+  });
+
   it("strips closed odTodoWrite blocks from assistant prose", () => {
     const input = [
       "Planning the deck.",

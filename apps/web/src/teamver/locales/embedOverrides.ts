@@ -40,6 +40,9 @@ export function teamverEmbedOverrides(
   // Project edit surface — strip OD product name from composer placeholders.
   overrides["chat.activeFilePlaceholder"] = "슬라이드 {file} 변경 요청…";
   overrides["chat.startTitle"] = "슬라이드 작업 시작";
+  overrides["fileViewer.loading"] = "슬라이드 미리보기 불러오는 중…";
+  overrides["fileViewer.previewUnavailable"] =
+    "슬라이드 미리보기를 불러올 수 없습니다. 잠시 후 다시 시도하거나 채팅에서 생성 상태를 확인해 주세요.";
   overrides["chat.attachAria"] = "파일 첨부";
   overrides["teamver.driveImport.attachFromMenu"] = "드라이브에서 가져오기";
   overrides["teamver.driveImport.pickHint"] = "클릭해 선택 · 더블클릭 또는 첨부 버튼으로 적용";

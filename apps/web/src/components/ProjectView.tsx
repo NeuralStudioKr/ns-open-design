@@ -24,6 +24,7 @@ import {
   type QuestionForm,
 } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
+import { questionFormForSlideOnlyDisplay } from '../teamver/branding/embedSlideOnlyQuestionForm';
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
@@ -883,6 +884,7 @@ export function ProjectView({
     hideLocalWorkspaceControls,
     hideExternalShareSurfaces,
     slideOnlyMvp,
+    enabled: teamverEmbedEnabled,
   } = useTeamverBranding();
   const embedSlideDesignSystemFallbackId = useMemo(
     () =>
@@ -1262,8 +1264,12 @@ export function ProjectView({
   const lastAssistantMessageId =
     lastAssistantIndex >= 0 ? messages[lastAssistantIndex]?.id ?? null : null;
   const questionForm: QuestionForm | null = useMemo(
-    () => findFirstQuestionForm(lastAssistantContent)?.form ?? null,
-    [lastAssistantContent],
+    () =>
+      questionFormForSlideOnlyDisplay(
+        findFirstQuestionForm(lastAssistantContent)?.form ?? null,
+        { slideOnlyMvp, enabled: teamverEmbedEnabled },
+      ),
+    [lastAssistantContent, slideOnlyMvp, teamverEmbedEnabled],
   );
   const questionFormSubmittedAnswers = useMemo(() => {
     if (!questionForm) return undefined;
@@ -1280,8 +1286,14 @@ export function ProjectView({
   // While the form is still streaming, parse it tolerantly so the Questions tab
   // can show a frame (title) immediately and fill questions in as they arrive.
   const questionFormPreview = useMemo(
-    () => (questionsGenerating ? parsePartialQuestionForm(lastAssistantContent) : null),
-    [questionsGenerating, lastAssistantContent],
+    () =>
+      questionsGenerating
+        ? questionFormForSlideOnlyDisplay(parsePartialQuestionForm(lastAssistantContent), {
+            slideOnlyMvp,
+            enabled: teamverEmbedEnabled,
+          })
+        : null,
+    [questionsGenerating, lastAssistantContent, slideOnlyMvp, teamverEmbedEnabled],
   );
   // The active (latest, unanswered) form stays editable the whole time it's on
   // screen — while it streams in AND while the turn is still busy — so it never

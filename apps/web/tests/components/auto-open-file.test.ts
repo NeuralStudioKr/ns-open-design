@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   decideAutoOpenAfterWrite,
+  findProjectFileByTabName,
   selectAutoOpenProducedHtml,
 } from '../../src/components/auto-open-file';
 
@@ -165,6 +166,30 @@ describe('selectAutoOpenProducedHtml', () => {
       { name: 'deck.pptx', path: 'deck.pptx', kind: 'presentation', mtime: 30 },
     ]);
 
+    expect(result).toBeNull();
+  });
+});
+
+describe('findProjectFileByTabName', () => {
+  it('matches an exact project file name', () => {
+    const result = findProjectFileByTabName('index.html', [
+      { name: 'index.html', path: 'index.html', kind: 'html', mtime: 1 },
+    ]);
+    expect(result?.name).toBe('index.html');
+  });
+
+  it('matches a basename tab against a nested project file path', () => {
+    const result = findProjectFileByTabName('deck.html', [
+      { name: 'output/deck.html', path: 'output/deck.html', kind: 'html', mtime: 1 },
+    ]);
+    expect(result?.name).toBe('output/deck.html');
+  });
+
+  it('declines ambiguous basename matches', () => {
+    const result = findProjectFileByTabName('deck.html', [
+      { name: 'a/deck.html', path: 'a/deck.html', kind: 'html', mtime: 1 },
+      { name: 'b/deck.html', path: 'b/deck.html', kind: 'html', mtime: 2 },
+    ]);
     expect(result).toBeNull();
   });
 });

@@ -38,6 +38,29 @@ function basenameOf(p: string): string {
   return p.split('/').pop() ?? p;
 }
 
+export function projectRelativePath(file: CandidateFile): string {
+  return file.path ?? file.name;
+}
+
+/** Resolve an open workspace tab id to a project file (exact path, then basename). */
+export function findProjectFileByTabName(
+  tabName: string,
+  files: ReadonlyArray<CandidateFile>,
+): CandidateFile | null {
+  if (!tabName) return null;
+  const exact = files.find((f) => f.name === tabName);
+  if (exact) return exact;
+  const byPath = files.find((f) => projectRelativePath(f) === tabName);
+  if (byPath) return byPath;
+  // Tabs may store a basename while the daemon lists a nested relative path.
+  if (tabName.includes('/')) return null;
+  const basenameMatches = files.filter(
+    (f) => basenameOf(projectRelativePath(f)) === tabName,
+  );
+  if (basenameMatches.length === 1) return basenameMatches[0]!;
+  return null;
+}
+
 export function decideAutoOpenAfterWrite(
   filePath: string,
   nextFiles: ReadonlyArray<CandidateFile>,

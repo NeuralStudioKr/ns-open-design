@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { questionsFormTrackingId } from '@open-design/contracts/analytics';
 import { useT } from '../i18n';
 import { useAnalytics } from '../analytics/provider';
 import { trackQuestionsFormClick, trackQuestionsFormSurfaceView } from '../analytics/events';
 import type { QuestionForm } from '../artifacts/question-form';
+import { questionFormForSlideOnlyDisplay } from '../teamver/branding/embedSlideOnlyQuestionForm';
+import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { QuestionFormView, type QuestionFormHandle } from './QuestionForm';
 
 // Surface one new question every this many ms. The agent often emits the whole
@@ -58,7 +60,7 @@ interface Props {
 
 export function QuestionsPanel({
   projectId,
-  form,
+  form: incomingForm,
   formKey = null,
   interactive,
   submitDisabled = false,
@@ -68,6 +70,12 @@ export function QuestionsPanel({
 }: Props) {
   const t = useT();
   const analytics = useAnalytics();
+  const branding = useTeamverBranding();
+  const displayForm = useMemo(
+    () => questionFormForSlideOnlyDisplay(incomingForm, branding),
+    [incomingForm, branding],
+  );
+  const form = displayForm;
   const formRef = useRef<QuestionFormHandle>(null);
   // What drove the next submit: the Continue CTA, the Skip button, or the
   // auto-continue countdown. Read (and reset) inside submitAndClearDraft so

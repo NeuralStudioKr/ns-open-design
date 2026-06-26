@@ -29,4 +29,37 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     };
     expect(sanitizeChatMessageLeakedPseudoTool(message)).toBe(message);
   });
+
+  it("strips internal markup from thinking events on load", () => {
+    const message: ChatMessage = {
+      id: "m3",
+      role: "assistant",
+      content: "",
+      events: [
+        {
+          kind: "thinking",
+          text: "<answer_operator><task_analysis>plan</task_analysis></answer_operator>",
+        },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.events).toEqual([]);
+  });
+
+  it("drops empty text events after stripping internal markup", () => {
+    const message: ChatMessage = {
+      id: "m4",
+      role: "assistant",
+      content: "",
+      events: [
+        {
+          kind: "text",
+          text: "<answer_operator><task_analysis>only plan</task_analysis></answer_operator>",
+        },
+        { kind: "text", text: "슬라이드 구성 계획:" },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.events).toEqual([{ kind: "text", text: "슬라이드 구성 계획:" }]);
+  });
 });

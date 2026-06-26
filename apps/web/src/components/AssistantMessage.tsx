@@ -34,6 +34,7 @@ import {
   stripTrailingOpenQuestionForm,
   type QuestionForm,
 } from "../artifacts/question-form";
+import { questionFormForSlideOnlyDisplay } from "../teamver/branding/embedSlideOnlyQuestionForm";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripArtifact, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import {
@@ -441,8 +442,10 @@ function AssistantMessageImpl({
   // Compose the block list, then run the strip/suppress pipeline once.
   const blocks = useMemo(() => {
     const rawBlocks = [...buildBlocks(events), ...liveCodeBlocks];
-    const sanitized = stripInternalMarkupFromTextBlocks(
-      stripEmptyThinkingBlocks(suppressDuplicateQuestionForms(rawBlocks)),
+    const sanitized = stripEmptyProseBlocks(
+      stripInternalMarkupFromProseBlocks(
+        suppressDuplicateQuestionForms(rawBlocks),
+      ),
     );
     const visible = hideAssistantThinkingDetails
       ? sanitized.filter((block) => block.kind !== "thinking")
@@ -1916,6 +1919,7 @@ function ProseBlock({
   onRequestOpenFile?: (name: string) => void;
 }) {
   const t = useT();
+  const { slideOnlyMvp, enabled: teamverEmbedEnabled } = useTeamverBranding();
   const cleaned = useMemo(() => {
     const stripped = stripArtifact(text);
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
@@ -1968,10 +1972,16 @@ function ProseBlock({
       | { key: string; kind: "suppressed-direction" }
     > => {
       if (seg.kind === "form") {
-        if (suppressDirectionForms && isDirectionForm(seg.form)) {
+        const form =
+          questionFormForSlideOnlyDisplay(seg.form, {
+            slideOnlyMvp,
+            enabled: teamverEmbedEnabled,
+          }) ?? null;
+        if (!form) return [];
+        if (suppressDirectionForms && isDirectionForm(form)) {
           return [{ key: `f-${idx}`, kind: "suppressed-direction" }];
         }
-        return [{ key: `f-${idx}`, kind: "form", form: seg.form }];
+        return [{ key: `f-${idx}`, kind: "form", form }];
       }
       if (seg.text.trim().length === 0) return [];
       const sub = splitSystemReminders(seg.text);
@@ -2657,9 +2667,9 @@ function placeConversationTodoCard(
   });
 }
 
-function stripInternalMarkupFromTextBlocks(blocks: Block[]): Block[] {
+function stripInternalMarkupFromProseBlocks(blocks: Block[]): Block[] {
   return blocks.map((block) => {
-    if (block.kind !== "text") return block;
+    if (block.kind !== "text" && block.kind !== "thinking") return block;
     return {
       ...block,
       text: sanitizeAssistantProseForDisplay(block.text),
@@ -2667,9 +2677,9 @@ function stripInternalMarkupFromTextBlocks(blocks: Block[]): Block[] {
   });
 }
 
-function stripEmptyThinkingBlocks(blocks: Block[]): Block[] {
+function stripEmptyProseBlocks(blocks: Block[]): Block[] {
   return blocks.filter((block) => {
-    if (block.kind !== "thinking") return true;
+    if (block.kind !== "text" && block.kind !== "thinking") return true;
     return block.text.trim().length > 0;
   });
 }

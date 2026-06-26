@@ -15,6 +15,58 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(LEAKED_AGENT_PROSE_TAG_NAMES.length).toBeGreaterThanOrEqual(20);
   });
 
+  it("strips answer_operator / task_analysis planning blocks", () => {
+    const input = [
+      "<answer_operator>",
+      "<task_analysis>",
+      "User skipped all discovery fields.",
+      "Inferred defaults: Output: slide deck",
+      "Workflow: TodoWrite plan",
+      "</task_analysis>",
+      "</answer_operator>",
+      "슬라이드 구성 계획:",
+    ].join("\n");
+    expect(sanitizeLeakedAgentProse(input)).toBe("슬라이드 구성 계획:");
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("슬라이드 구성 계획:");
+  });
+
+  it("strips trailing open answer_operator while streaming", () => {
+    const input = "Working…\n<answer_operator>\n<task_analysis>\nPlan:";
+    const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
+    expect(hadOpenInternalMarkup).toBe(true);
+    expect(text).toBe("Working…");
+  });
+
+  it("strips dynamic *_operator and *_analysis suffix tags", () => {
+    const input = [
+      "<routing_operator>hidden</routing_operator>",
+      "<brief_analysis>also hidden</brief_analysis>",
+      "Visible.",
+    ].join("\n");
+    expect(sanitizeLeakedAgentProse(input)).toBe("Visible.");
+  });
+
+  it("strips extended internal planning tags", () => {
+    const input = [
+      "Answer.",
+      "<workflow>steps</workflow>",
+      "<observation>note</observation>",
+      "<hidden>x</hidden>",
+      "<execution_plan>y</execution_plan>",
+      "Done.",
+    ].join("\n");
+    expect(sanitizeLeakedAgentProse(input)).toBe("Answer.\n\nDone.");
+  });
+
+  it("handles repeated closed-tag stripping with cached global regexes", () => {
+    const input = [
+      "<thinking>a</thinking>",
+      "<thinking>b</thinking>",
+      "Visible.",
+    ].join("\n");
+    expect(sanitizeLeakedAgentProse(input)).toBe("Visible.");
+  });
+
   it("strips agent planning / reflection tags", () => {
     const input = [
       "Answer.",

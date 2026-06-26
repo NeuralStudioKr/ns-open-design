@@ -9,7 +9,8 @@
  * fixture matrix in `packages/contracts/tests/agent-prose-sanitize.test.ts`.
  */
 
-export const LEAKED_AGENT_PROSE_TAG_NAMES = [
+/** Pseudo-tool XML the model narrates when CLI tools are unavailable. Strip outer tags first. */
+const PSEUDO_TOOL_TAG_NAMES = [
   "function_calls",
   "invoke",
   "parameter",
@@ -21,6 +22,10 @@ export const LEAKED_AGENT_PROSE_TAG_NAMES = [
   "tool_result",
   "function_call",
   "info",
+] as const;
+
+/** Internal planning / reflection tags — safe to strip in any order (no nesting deps). */
+const INTERNAL_PLANNING_TAG_NAMES = [
   "thinking",
   "think",
   "system-reminder",
@@ -33,69 +38,35 @@ export const LEAKED_AGENT_PROSE_TAG_NAMES = [
   "reasoning",
   "plan",
   "action",
+  "answer_operator",
+  "task_analysis",
+  "workflow",
+  "workflow_plan",
+  "execution_plan",
+  "observation",
+  "hidden",
+  "private",
+  "meta",
+  "notes",
+  "analysis",
+  "thought",
+] as const;
+
+export const LEAKED_AGENT_PROSE_TAG_NAMES = [
+  ...PSEUDO_TOOL_TAG_NAMES,
+  ...INTERNAL_PLANNING_TAG_NAMES,
 ] as const;
 
 const CLOSED_OD_TAG_RE = /<(od[A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const OPEN_OD_TAG_RE = /<(od[A-Za-z][\w-]*)\b[^>]*>/i;
 
-const REDACTED_THINKING_TAG = "redacted_thinking";
+/** Dynamic families: `<foo_operator>`, `<bar_analysis>` without listing every variant. */
+const CLOSED_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>[\s\S]*?<\/\1>/gi;
+const OPEN_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>/gi;
+const CLOSED_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>[\s\S]*?<\/\1>/gi;
+const OPEN_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>/gi;
 
-const CLOSED_REDACTED_THINKING_RE = new RegExp(
-  `<${REDACTED_THINKING_TAG}[^>]*>[\\s\\S]*?</${REDACTED_THINKING_TAG}>`,
-  "gi",
-);
-const OPEN_REDACTED_THINKING_RE = new RegExp(`<${REDACTED_THINKING_TAG}[^>]*>`, "i");
-
-const CLOSED_THINKING_RE = /<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi;
-const OPEN_THINKING_RE = /<thinking\b[^>]*>/i;
-const CLOSED_THINK_RE = /<think\b[^>]*>[\s\S]*?<\/think>/gi;
-const OPEN_THINK_RE = /<think\b[^>]*>/i;
-
-const CLOSED_SYSTEM_REMINDER_RE = /<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/gi;
-const OPEN_SYSTEM_REMINDER_RE = /<system-reminder\b[^>]*>/i;
-
-const CLOSED_INFO_RE = /<info\b[^>]*>[\s\S]*?<\/info>/gi;
-const OPEN_INFO_RE = /<info\b[^>]*>/i;
-
-const CLOSED_FUNCTION_CALLS_RE = /<function_calls\b[^>]*>[\s\S]*?<\/function_calls>/gi;
-const OPEN_FUNCTION_CALLS_RE = /<function_calls\b[^>]*>/i;
-const CLOSED_INVOKE_RE = /<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi;
-const OPEN_INVOKE_RE = /<invoke\b[^>]*>/i;
-const CLOSED_PARAMETER_RE = /<parameter\b[^>]*>[\s\S]*?<\/parameter>/gi;
-const OPEN_PARAMETER_RE = /<parameter\b[^>]*>/i;
-const CLOSED_FUNCTION_RESULTS_RE = /<function_results\b[^>]*>[\s\S]*?<\/function_results>/gi;
-const CLOSED_FUNCTION_RESULT_RE = /<function_result\b[^>]*>[\s\S]*?<\/function_result>/gi;
-const OPEN_FUNCTION_RESULT_RE = /<function_result\b[^>]*>/i;
-const CLOSED_TODO_LIST_RE = /<todo-list\b[^>]*>[\s\S]*?<\/todo-list>/gi;
-const OPEN_TODO_LIST_RE = /<todo-list\b[^>]*>/i;
-const CLOSED_TOOL_CALL_RE = /<tool-call\b[^>]*>[\s\S]*?<\/tool-call>/gi;
-const OPEN_TOOL_CALL_RE = /<tool-call\b[^>]*>/i;
-const CLOSED_TOOL_CALL_UNDERSCORE_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call>/gi;
-const OPEN_TOOL_CALL_UNDERSCORE_RE = /<tool_call\b[^>]*>/i;
-const CLOSED_TOOL_RESULT_UNDERSCORE_RE = /<tool_result\b[^>]*>[\s\S]*?<\/tool_result>/gi;
-const OPEN_TOOL_RESULT_UNDERSCORE_RE = /<tool_result\b[^>]*>/i;
-const CLOSED_FUNCTION_CALL_RE = /<function_call\b[^>]*>[\s\S]*?<\/function_call>/gi;
-const OPEN_FUNCTION_CALL_RE = /<function_call\b[^>]*>/i;
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
-
-const CLOSED_SCRATCHPAD_RE = /<scratchpad\b[^>]*>[\s\S]*?<\/scratchpad>/gi;
-const OPEN_SCRATCHPAD_RE = /<scratchpad\b[^>]*>/i;
-const CLOSED_REFLECTION_RE = /<reflection\b[^>]*>[\s\S]*?<\/reflection>/gi;
-const OPEN_REFLECTION_RE = /<reflection\b[^>]*>/i;
-const CLOSED_INTERNAL_RE = /<internal\b[^>]*>[\s\S]*?<\/internal>/gi;
-const OPEN_INTERNAL_RE = /<internal\b[^>]*>/i;
-const CLOSED_CHAIN_OF_THOUGHT_UNDERSCORE_RE =
-  /<chain_of_thought\b[^>]*>[\s\S]*?<\/chain_of_thought>/gi;
-const OPEN_CHAIN_OF_THOUGHT_UNDERSCORE_RE = /<chain_of_thought\b[^>]*>/i;
-const CLOSED_CHAIN_OF_THOUGHT_HYPHEN_RE =
-  /<chain-of-thought\b[^>]*>[\s\S]*?<\/chain-of-thought>/gi;
-const OPEN_CHAIN_OF_THOUGHT_HYPHEN_RE = /<chain-of-thought\b[^>]*>/i;
-const CLOSED_REASONING_RE = /<reasoning\b[^>]*>[\s\S]*?<\/reasoning>/gi;
-const OPEN_REASONING_RE = /<reasoning\b[^>]*>/i;
-const CLOSED_PLAN_RE = /<plan\b[^>]*>[\s\S]*?<\/plan>/gi;
-const OPEN_PLAN_RE = /<plan\b[^>]*>/i;
-const CLOSED_ACTION_RE = /<action\b[^>]*>[\s\S]*?<\/action>/gi;
-const OPEN_ACTION_RE = /<action\b[^>]*>/i;
 
 const CLOSED_MARKDOWN_TOOL_FENCE_RE = /```(?:tool_call|tool)\s*\n[\s\S]*?```/gi;
 const OPEN_MARKDOWN_TOOL_FENCE_RE = /```(?:tool_call|tool)\s*\n/i;
@@ -118,6 +89,34 @@ const BARE_TOOL_JSON_OPEN_RE = new RegExp(
   "g",
 );
 
+const closedTagRes = new Map<string, RegExp>();
+const openTagRes = new Map<string, RegExp>();
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function closedTagRe(tagName: string): RegExp {
+  let re = closedTagRes.get(tagName);
+  if (!re) {
+    re = new RegExp(
+      `<${escapeRegExp(tagName)}\\b[^>]*>[\\s\\S]*?</${escapeRegExp(tagName)}>`,
+      "gi",
+    );
+    closedTagRes.set(tagName, re);
+  }
+  return re;
+}
+
+function openTagRe(tagName: string): RegExp {
+  let re = openTagRes.get(tagName);
+  if (!re) {
+    re = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>`, "i");
+    openTagRes.set(tagName, re);
+  }
+  return re;
+}
+
 function findCloseTag(input: string, from: number, closeTag: string): number {
   const closeLower = closeTag.toLowerCase();
   const tagLen = closeTag.length;
@@ -130,13 +129,13 @@ function findCloseTag(input: string, from: number, closeTag: string): number {
 
 function stripTrailingOpenTag(
   input: string,
-  openTagRe: RegExp,
+  openTagReSource: RegExp,
   tagName: string,
 ): { text: string; hadOpenInternalMarkup: boolean } {
   let cursor = 0;
   while (cursor < input.length) {
     const slice = input.slice(cursor);
-    const match = openTagRe.exec(slice);
+    const match = openTagReSource.exec(slice);
     if (!match) break;
     const closeTag = `</${tagName}>`;
     const openStart = cursor + match.index;
@@ -150,9 +149,34 @@ function stripTrailingOpenTag(
   return { text: input, hadOpenInternalMarkup: false };
 }
 
+function stripTrailingOpenDynamicTag(
+  input: string,
+  openTagPattern: RegExp,
+): { text: string; hadOpenInternalMarkup: boolean } {
+  let last: { index: number; tagName: string; openEnd: number } | null = null;
+  const re = new RegExp(openTagPattern.source, openTagPattern.flags.includes("g") ? openTagPattern.flags : `${openTagPattern.flags}g`);
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(input)) !== null) {
+    last = {
+      index: match.index,
+      tagName: match[1] ?? "",
+      openEnd: match.index + match[0].length,
+    };
+  }
+  if (!last || !last.tagName) {
+    return { text: input, hadOpenInternalMarkup: false };
+  }
+  const closeIdx = findCloseTag(input, last.openEnd, `</${last.tagName}>`);
+  if (closeIdx === -1) {
+    return { text: input.slice(0, last.index).trimEnd(), hadOpenInternalMarkup: true };
+  }
+  return { text: input, hadOpenInternalMarkup: false };
+}
+
 function stripTrailingOpenMarkdownToolFence(
   input: string,
 ): { text: string; hadOpenInternalMarkup: boolean } {
+  OPEN_MARKDOWN_TOOL_FENCE_RE.lastIndex = 0;
   const match = OPEN_MARKDOWN_TOOL_FENCE_RE.exec(input);
   if (!match || match.index === undefined) {
     return { text: input, hadOpenInternalMarkup: false };
@@ -183,36 +207,28 @@ function collapseExtraBlankLines(input: string): string {
   return input.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
 
+function stripClosedTagFamilies(input: string, tagNames: readonly string[]): string {
+  let out = input;
+  for (const tagName of tagNames) {
+    const re = closedTagRe(tagName);
+    // Cached /g regexes retain lastIndex — reset so back-to-back passes stay deterministic.
+    re.lastIndex = 0;
+    out = out.replace(re, "");
+  }
+  return out;
+}
+
 /** Single-pass sanitizer for known leaked agent / pseudo-tool markup in assistant prose. */
 export function sanitizeLeakedAgentProse(input: string): string {
   if (!input) return input;
   let out = input;
-  out = out.replace(CLOSED_FUNCTION_CALLS_RE, "");
-  out = out.replace(CLOSED_INVOKE_RE, "");
-  out = out.replace(CLOSED_PARAMETER_RE, "");
-  out = out.replace(CLOSED_FUNCTION_RESULTS_RE, "");
-  out = out.replace(CLOSED_FUNCTION_RESULT_RE, "");
-  out = out.replace(CLOSED_TODO_LIST_RE, "");
-  out = out.replace(CLOSED_TOOL_CALL_RE, "");
-  out = out.replace(CLOSED_TOOL_CALL_UNDERSCORE_RE, "");
-  out = out.replace(CLOSED_TOOL_RESULT_UNDERSCORE_RE, "");
-  out = out.replace(CLOSED_FUNCTION_CALL_RE, "");
+  out = stripClosedTagFamilies(out, PSEUDO_TOOL_TAG_NAMES);
   out = out.replace(CLOSED_ANTML_RE, "");
   out = out.replace(CLOSED_MARKDOWN_TOOL_FENCE_RE, "");
-  out = out.replace(CLOSED_INFO_RE, "");
   out = out.replace(CLOSED_OD_TAG_RE, "");
-  out = out.replace(CLOSED_REDACTED_THINKING_RE, "");
-  out = out.replace(CLOSED_THINKING_RE, "");
-  out = out.replace(CLOSED_THINK_RE, "");
-  out = out.replace(CLOSED_SYSTEM_REMINDER_RE, "");
-  out = out.replace(CLOSED_SCRATCHPAD_RE, "");
-  out = out.replace(CLOSED_REFLECTION_RE, "");
-  out = out.replace(CLOSED_INTERNAL_RE, "");
-  out = out.replace(CLOSED_CHAIN_OF_THOUGHT_UNDERSCORE_RE, "");
-  out = out.replace(CLOSED_CHAIN_OF_THOUGHT_HYPHEN_RE, "");
-  out = out.replace(CLOSED_REASONING_RE, "");
-  out = out.replace(CLOSED_PLAN_RE, "");
-  out = out.replace(CLOSED_ACTION_RE, "");
+  out = stripClosedTagFamilies(out, INTERNAL_PLANNING_TAG_NAMES);
+  out = out.replace(CLOSED_SUFFIX_OPERATOR_RE, "");
+  out = out.replace(CLOSED_SUFFIX_ANALYSIS_RE, "");
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
@@ -243,43 +259,24 @@ export function stripTrailingOpenInternalMarkup(
     cursor = closeIdx + closeTag.length;
   }
 
-  const thinking = stripTrailingOpenTag(
-    input,
-    OPEN_REDACTED_THINKING_RE,
-    REDACTED_THINKING_TAG,
-  );
-  if (thinking.hadOpenInternalMarkup) {
-    return { text: thinking.text, hadOpenInternalMarkup: true };
-  }
-
   const openTagChain: Array<{ re: RegExp; name: string }> = [
-    { re: OPEN_FUNCTION_CALLS_RE, name: "function_calls" },
-    { re: OPEN_INVOKE_RE, name: "invoke" },
-    { re: OPEN_PARAMETER_RE, name: "parameter" },
-    { re: OPEN_FUNCTION_RESULT_RE, name: "function_result" },
-    { re: OPEN_TODO_LIST_RE, name: "todo-list" },
-    { re: OPEN_TOOL_CALL_RE, name: "tool-call" },
-    { re: OPEN_TOOL_CALL_UNDERSCORE_RE, name: "tool_call" },
-    { re: OPEN_TOOL_RESULT_UNDERSCORE_RE, name: "tool_result" },
-    { re: OPEN_FUNCTION_CALL_RE, name: "function_call" },
-    { re: OPEN_SCRATCHPAD_RE, name: "scratchpad" },
-    { re: OPEN_REFLECTION_RE, name: "reflection" },
-    { re: OPEN_INTERNAL_RE, name: "internal" },
-    { re: OPEN_CHAIN_OF_THOUGHT_UNDERSCORE_RE, name: "chain_of_thought" },
-    { re: OPEN_CHAIN_OF_THOUGHT_HYPHEN_RE, name: "chain-of-thought" },
-    { re: OPEN_REASONING_RE, name: "reasoning" },
-    { re: OPEN_PLAN_RE, name: "plan" },
-    { re: OPEN_ACTION_RE, name: "action" },
-    { re: OPEN_THINKING_RE, name: "thinking" },
-    { re: OPEN_THINK_RE, name: "think" },
-    { re: OPEN_SYSTEM_REMINDER_RE, name: "system-reminder" },
-    { re: OPEN_INFO_RE, name: "info" },
+    ...PSEUDO_TOOL_TAG_NAMES.map((name) => ({ re: openTagRe(name), name })),
+    ...INTERNAL_PLANNING_TAG_NAMES.map((name) => ({ re: openTagRe(name), name })),
   ];
-  let text = thinking.text;
+
+  let text = input;
   for (const { re, name } of openTagChain) {
     const next = stripTrailingOpenTag(text, re, name);
     if (next.hadOpenInternalMarkup) {
       return { text: next.text, hadOpenInternalMarkup: true };
+    }
+    text = next.text;
+  }
+
+  for (const suffixRe of [OPEN_SUFFIX_OPERATOR_RE, OPEN_SUFFIX_ANALYSIS_RE]) {
+    const next = stripTrailingOpenDynamicTag(text, suffixRe);
+    if (next.hadOpenInternalMarkup) {
+      return next;
     }
     text = next.text;
   }
