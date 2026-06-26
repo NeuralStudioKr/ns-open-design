@@ -104,7 +104,7 @@ describe('safelyEvictScratchAfterRun', () => {
     const storage = await makeStorage();
     await storage.writeFile('p1', 'index.html', Buffer.from('<p>orphan</p>'));
     const remote = storage.flatRemote();
-    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 1, failed: 0 });
+    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 1, deleted: 0, failed: 0 });
     const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
     const infos: string[] = [];
     vi.spyOn(console, 'info').mockImplementation((m: unknown) => {

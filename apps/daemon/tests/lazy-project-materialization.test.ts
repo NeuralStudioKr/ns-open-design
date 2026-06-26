@@ -71,6 +71,10 @@ describe('createProjectStorageAccessHooks', () => {
   });
 
   it('marks project sync failed on partial lazy sync-up (non-strict)', async () => {
+    const previousRetries = process.env.OD_S3_BACKGROUND_PERSIST_RETRIES;
+    const previousRetryMs = process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS;
+    process.env.OD_S3_BACKGROUND_PERSIST_RETRIES = '1';
+    process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS = '0';
     const storage = new MaterializingProjectStorage(
       new LocalProjectStorage('/tmp/scratch'),
       new LocalProjectStorage('/tmp/remote'),
@@ -78,10 +82,47 @@ describe('createProjectStorageAccessHooks', () => {
     const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
     const runtime = createProjectMaterializationRuntime(layout, storage);
     const hooks = createProjectStorageAccessHooks(runtime);
-    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 0, failed: 2 });
+    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 0, deleted: 0, failed: 2 });
 
-    await hooks!.persistAfterMutation(mockReq('POST', '/api/projects/p1/files'), 'p1');
-    expect(runtime.isProjectSyncFailed('p1')).toBe(true);
+    try {
+      await hooks!.persistAfterMutation(mockReq('POST', '/api/projects/p1/files'), 'p1');
+      expect(runtime.isProjectSyncFailed('p1')).toBe(true);
+    } finally {
+      if (previousRetries === undefined) delete process.env.OD_S3_BACKGROUND_PERSIST_RETRIES;
+      else process.env.OD_S3_BACKGROUND_PERSIST_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS;
+      else process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS = previousRetryMs;
+    }
+  });
+
+  it('retries background sync-up after transient partial failures', async () => {
+    const previousRetries = process.env.OD_S3_BACKGROUND_PERSIST_RETRIES;
+    const previousRetryMs = process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS;
+    process.env.OD_S3_BACKGROUND_PERSIST_RETRIES = '2';
+    process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS = '0';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    const syncUp = vi.spyOn(storage, 'syncUp')
+      .mockResolvedValueOnce({ uploaded: 0, skipped: 0, deleted: 0, failed: 1 })
+      .mockResolvedValueOnce({ uploaded: 1, skipped: 0, deleted: 0, failed: 0 });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await hooks!.persistAfterMutation(mockReq('POST', '/api/projects/p1/files'), 'p1');
+      expect(syncUp).toHaveBeenCalledTimes(2);
+      expect(runtime.isProjectSyncFailed('p1')).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+      if (previousRetries === undefined) delete process.env.OD_S3_BACKGROUND_PERSIST_RETRIES;
+      else process.env.OD_S3_BACKGROUND_PERSIST_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS;
+      else process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS = previousRetryMs;
+    }
   });
 
   it('reports partial sync-up failures only for strict persistence requests', async () => {
@@ -97,7 +138,7 @@ describe('createProjectStorageAccessHooks', () => {
     const hooks = createProjectStorageAccessHooks(
       createProjectMaterializationRuntime(layout, storage),
     );
-    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 1, skipped: 0, failed: 1 });
+    vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 1, skipped: 0, deleted: 0, failed: 1 });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     try {

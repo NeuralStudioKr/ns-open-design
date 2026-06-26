@@ -35,9 +35,29 @@ function strictPersistRetryAttempts(): number {
   return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 3;
 }
 
+function backgroundPersistRetryAttempts(): number {
+  const parsed = Number(process.env.OD_S3_BACKGROUND_PERSIST_RETRIES ?? '');
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 2;
+}
+
 function strictPersistRetryMs(): number {
   const parsed = Number(process.env.OD_S3_STRICT_PERSIST_RETRY_MS ?? '');
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 300;
+}
+
+function backgroundPersistRetryMs(): number {
+  const parsed = Number(process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS ?? '');
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 500;
+}
+
+function materializeRetryAttempts(): number {
+  const parsed = Number(process.env.OD_S3_MATERIALIZE_RETRIES ?? '');
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 3;
+}
+
+function materializeRetryMs(): number {
+  const parsed = Number(process.env.OD_S3_MATERIALIZE_RETRY_MS ?? '');
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 250;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -111,14 +131,38 @@ export function createProjectStorageAccessHooks(
     }
 
     const task = (async () => {
-      await materializationRuntime.withProjectLock(trimmedId, async () => {
-        const remote = await resolveRemote(req, trimmedId);
-        const result = await storage.syncDown(trimmedId, remote);
-        lastSyncAt.set(trimmedId, Date.now());
-        console.info(
-          `[project-materialization] lazy sync-down ${trimmedId}: ${result.files} file(s)`,
-        );
-      });
+      const maxAttempts = materializeRetryAttempts();
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          await materializationRuntime.withProjectLock(trimmedId, async () => {
+            const remote = await resolveRemote(req, trimmedId);
+            const result = await storage.syncDown(trimmedId, remote);
+            lastSyncAt.set(trimmedId, Date.now());
+            console.info(
+              `[project-materialization] lazy sync-down ${trimmedId}: ${result.files} file(s)`,
+            );
+          });
+          return;
+        } catch (err) {
+          lastErr = err;
+          if (attempt >= maxAttempts) break;
+          console.warn(
+            `[project-materialization] retrying lazy sync-down for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
+            err instanceof Error ? err.message : err,
+          );
+          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+            console.info(JSON.stringify({
+              metric: 'od_s3_lazy_sync_down_retry',
+              projectId: trimmedId,
+              attempt,
+              maxAttempts,
+            }));
+          }
+          await sleep(materializeRetryMs() * attempt);
+        }
+      }
+      throw lastErr;
     })();
 
     inflight.set(trimmedId, task);
@@ -138,7 +182,7 @@ export function createProjectStorageAccessHooks(
     if (!trimmedId) return;
 
     lastSyncAt.delete(trimmedId);
-    const runPersist = async (): Promise<void> => {
+    const runPersist = async (): Promise<boolean> => {
       try {
         const remote = await resolveRemote(req, trimmedId);
         // runStart=0 → upload all scratch files (non-run API writes).
@@ -159,9 +203,11 @@ export function createProjectStorageAccessHooks(
           if (options?.strict) {
             throw new Error(`project_storage_sync_failed:${result.failed}`);
           }
+          return false;
         } else {
           materializationRuntime.clearProjectSyncFailed(trimmedId);
         }
+        return true;
       } catch (err) {
         materializationRuntime.markProjectSyncFailed(trimmedId);
         console.warn(
@@ -169,15 +215,30 @@ export function createProjectStorageAccessHooks(
           err instanceof Error ? err.message : err,
         );
         if (options?.strict) throw err;
+        return false;
       }
     };
 
-    const maxAttempts = options?.strict ? strictPersistRetryAttempts() : 1;
+    const maxAttempts = options?.strict ? strictPersistRetryAttempts() : backgroundPersistRetryAttempts();
+    const retryMs = options?.strict ? strictPersistRetryMs() : backgroundPersistRetryMs();
     let lastErr: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        await materializationRuntime.withProjectLock(trimmedId, runPersist);
-        return;
+        const persisted = await materializationRuntime.withProjectLock(trimmedId, runPersist);
+        if (persisted) return;
+        if (attempt >= maxAttempts) return;
+        console.warn(
+          `[project-materialization] retrying background sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after partial failure`,
+        );
+        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+          console.info(JSON.stringify({
+            metric: 'od_s3_background_persist_retry',
+            projectId: trimmedId,
+            attempt,
+            maxAttempts,
+          }));
+        }
+        await sleep(retryMs * attempt);
       } catch (err) {
         lastErr = err;
         if (!options?.strict || attempt >= maxAttempts) break;
@@ -193,10 +254,10 @@ export function createProjectStorageAccessHooks(
             maxAttempts,
           }));
         }
-        await sleep(strictPersistRetryMs() * attempt);
+        await sleep(retryMs * attempt);
       }
     }
-    throw lastErr;
+    if (options?.strict) throw lastErr;
   }
 
   async function onProjectRemoved(req: Request, projectId: string): Promise<void> {

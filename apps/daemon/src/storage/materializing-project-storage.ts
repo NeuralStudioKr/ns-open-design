@@ -16,20 +16,29 @@ import type { SigV4Credentials } from './aws-sigv4.js';
 
 const DEFAULT_SYNC_UP_ATTEMPTS = 3;
 const DEFAULT_SYNC_UP_RETRY_MS = 250;
+const DEFAULT_SYNC_DOWN_ATTEMPTS = 3;
+const DEFAULT_SYNC_DOWN_RETRY_MS = 250;
 
 async function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return;
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function withSyncUpRetry<T>(fn: () => Promise<T>): Promise<T> {
-  const attempts = Math.max(
-    1,
-    Number(process.env.OD_S3_SYNC_UP_RETRIES ?? DEFAULT_SYNC_UP_ATTEMPTS) || DEFAULT_SYNC_UP_ATTEMPTS,
-  );
-  const retryMs = Math.max(
-    50,
-    Number(process.env.OD_S3_SYNC_UP_RETRY_MS ?? DEFAULT_SYNC_UP_RETRY_MS) || DEFAULT_SYNC_UP_RETRY_MS,
-  );
+async function withStorageRetry<T>(
+  fn: () => Promise<T>,
+  attemptsEnv: string,
+  retryMsEnv: string,
+  defaultAttempts: number,
+  defaultRetryMs: number,
+): Promise<T> {
+  const parsedAttempts = Number(process.env[attemptsEnv] ?? '');
+  const attempts = Number.isFinite(parsedAttempts) && parsedAttempts >= 1
+    ? Math.floor(parsedAttempts)
+    : defaultAttempts;
+  const parsedRetryMs = Number(process.env[retryMsEnv] ?? '');
+  const retryMs = Number.isFinite(parsedRetryMs) && parsedRetryMs >= 0
+    ? parsedRetryMs
+    : defaultRetryMs;
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -41,6 +50,26 @@ async function withSyncUpRetry<T>(fn: () => Promise<T>): Promise<T> {
     }
   }
   throw lastError;
+}
+
+async function withSyncUpRetry<T>(fn: () => Promise<T>): Promise<T> {
+  return withStorageRetry(
+    fn,
+    'OD_S3_SYNC_UP_RETRIES',
+    'OD_S3_SYNC_UP_RETRY_MS',
+    DEFAULT_SYNC_UP_ATTEMPTS,
+    DEFAULT_SYNC_UP_RETRY_MS,
+  );
+}
+
+async function withSyncDownRetry<T>(fn: () => Promise<T>): Promise<T> {
+  return withStorageRetry(
+    fn,
+    'OD_S3_SYNC_DOWN_RETRIES',
+    'OD_S3_SYNC_DOWN_RETRY_MS',
+    DEFAULT_SYNC_DOWN_ATTEMPTS,
+    DEFAULT_SYNC_DOWN_RETRY_MS,
+  );
 }
 
 /**
@@ -92,10 +121,10 @@ export class MaterializingProjectStorage implements ProjectStorage {
   }
 
   async syncDown(projectId: string, remote: ProjectStorage): Promise<{ files: number }> {
-    const remoteFiles = await remote.listFiles(projectId);
+    const remoteFiles = await withSyncDownRetry(() => remote.listFiles(projectId));
     let files = 0;
     for (const file of remoteFiles) {
-      const body = await remote.readFile(projectId, file.path);
+      const body = await withSyncDownRetry(() => remote.readFile(projectId, file.path));
       await this.scratch.writeFile(projectId, file.path, body);
       files += 1;
     }
@@ -136,7 +165,7 @@ export class MaterializingProjectStorage implements ProjectStorage {
     // Full sync (non-run API writes / registry create) must propagate scratch
     // deletions to remote SSOT — run-scoped sync only uploads touched files.
     if (runStartTimeMs === 0) {
-      const remoteFiles = await remote.listFiles(projectId);
+      const remoteFiles = await withSyncUpRetry(() => remote.listFiles(projectId));
       for (const remoteFile of remoteFiles) {
         if (scratchPaths.has(remoteFile.path)) continue;
         try {

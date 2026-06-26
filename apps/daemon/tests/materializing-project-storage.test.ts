@@ -7,7 +7,7 @@ import {
   MaterializingProjectStorage,
   resolveRemoteProjectStorage,
 } from '../src/storage/materializing-project-storage.js';
-import { LocalProjectStorage, S3ProjectStorage } from '../src/storage/project-storage.js';
+import { LocalProjectStorage, S3ProjectStorage, type ProjectStorage } from '../src/storage/project-storage.js';
 import { resolveProjectStorageLayout } from '../src/storage/project-storage-layout.js';
 import { createProjectMaterializationRuntime } from '../src/storage/project-materialization-runtime.js';
 import { TenantScopedProjectStorage } from '../src/storage/tenant-scoped-project-storage.js';
@@ -62,6 +62,43 @@ describe('MaterializingProjectStorage', () => {
     expect(down.files).toBe(1);
     const local = await storage.readFile('p1', 'index.html');
     expect(local.toString('utf8')).toBe('<h1>remote</h1>');
+  });
+
+  it('sync-down retries transient remote list/read failures', async () => {
+    const previousRetries = process.env.OD_S3_SYNC_DOWN_RETRIES;
+    const previousRetryMs = process.env.OD_S3_SYNC_DOWN_RETRY_MS;
+    process.env.OD_S3_SYNC_DOWN_RETRIES = '2';
+    process.env.OD_S3_SYNC_DOWN_RETRY_MS = '0';
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage('/tmp/unused-remote'),
+    );
+    const remote: ProjectStorage = {
+      listFiles: vi.fn()
+        .mockRejectedValueOnce(new Error('s3 list failed'))
+        .mockResolvedValueOnce([{ path: 'index.html', size: 15, mtimeMs: Date.now() }]),
+      readFile: vi.fn()
+        .mockRejectedValueOnce(new Error('s3 read failed'))
+        .mockResolvedValueOnce(Buffer.from('<h1>remote</h1>')),
+      writeFile: vi.fn(),
+      deleteFile: vi.fn(),
+      statFile: vi.fn(),
+    };
+
+    try {
+      const down = await storage.syncDown('p1', remote);
+      expect(down.files).toBe(1);
+      expect(remote.listFiles).toHaveBeenCalledTimes(2);
+      expect(remote.readFile).toHaveBeenCalledTimes(2);
+      const local = await storage.readFile('p1', 'index.html');
+      expect(local.toString('utf8')).toBe('<h1>remote</h1>');
+    } finally {
+      if (previousRetries === undefined) delete process.env.OD_S3_SYNC_DOWN_RETRIES;
+      else process.env.OD_S3_SYNC_DOWN_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_SYNC_DOWN_RETRY_MS;
+      else process.env.OD_S3_SYNC_DOWN_RETRY_MS = previousRetryMs;
+    }
   });
 
   it('sync-up uploads run-touched scratch files only', async () => {
@@ -219,7 +256,7 @@ describe('createProjectMaterializationRuntime', () => {
       const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
       const runtime = createProjectMaterializationRuntime(layout, storage);
 
-      const run1 = { id: 'run-1', projectId: 'p1' };
+      const run1: { id: string; projectId: string; projectMaterializationStartedAt?: number } = { id: 'run-1', projectId: 'p1' };
       await runtime.beforeChatRun(run1);
       const run1Start = run1.projectMaterializationStartedAt!;
 
@@ -341,7 +378,7 @@ describe('createProjectMaterializationRuntime', () => {
         new LocalProjectStorage(scratchRoot),
         fakeRemote as any,
       );
-      vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 2, skipped: 1, failed: 1 });
+      vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 2, skipped: 1, deleted: 0, failed: 1 });
       const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
       const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
       const runtime = createProjectMaterializationRuntime(layout, storage);
