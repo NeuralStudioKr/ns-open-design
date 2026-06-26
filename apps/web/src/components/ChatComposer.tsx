@@ -59,7 +59,7 @@ import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImpor
 import { TeamverCanvasSlideLaunchModal } from '../teamver/components/TeamverCanvasSlideLaunchModal';
 import {
   consumeTeamverDriveLaunchHandoff,
-  readTeamverDriveLaunchHandoff,
+  readTeamverDriveLaunchHandoffAssets,
   readTeamverDriveLaunchIntent,
 } from '../teamver/driveLaunchHandoff';
 import { CANVAS_CREATE_SLIDES_PROMPT } from '../teamver/canvasSlideLaunch';
@@ -589,15 +589,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }, [teamverDriveImportEnabled]);
     useEffect(() => {
       if (!teamverDriveImportAllowed) return;
-      const handoff = readTeamverDriveLaunchHandoff();
-      if (!handoff) return;
+      const assets = readTeamverDriveLaunchHandoffAssets();
+      if (assets.length === 0) return;
       const intent = readTeamverDriveLaunchIntent();
       consumeTeamverDriveLaunchHandoff();
       if (intent === 'create-slides') {
-        setCanvasSlideLaunch(handoff);
+        setCanvasSlideLaunch(assets[0]!);
         return;
       }
-      setDriveLaunchAssets([handoff]);
+      setDriveLaunchAssets(assets);
       setDriveImportOpen(true);
     }, [teamverDriveImportAllowed]);
     const rememberRecentDir = useCallback(async (dir: string) => {
