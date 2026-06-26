@@ -19,7 +19,7 @@
 
 | 구간 | 진입점 | 수신 | 멱등 |
 |------|--------|------|------|
-| FE (embed BYOK) | `maybeReportTeamverUsageAfterSave` → `reportUsage.ts` | design BFF `POST /usage/events` → design-api | FE `reportedRunIds` + BE `(workspace_id, run_id)` upsert |
+| FE (embed BYOK) | `maybeReportTeamverUsageAfterSave` → `teamverByokBilling` → `reportUsage.ts` | BFF `POST /billing/finalize-byok-run` (meter→reserve→commit) + `POST /usage/events` | FE `reportedRunIds` + BE `(workspace_id, run_id)` upsert + ledger `committed` frozen |
 | daemon (hosted run) | `reportTeamverUsageFromDaemon` (`teamver-usage-bridge.ts`) | `POST /api/internal/usage/events` | daemon `reportedRuns` Set + BE upsert |
 | billing finalize | `finalizeTeamverUsageBillingFromDaemon` | `POST /api/internal/usage/billing-finalize` | run 단위 patch |
 

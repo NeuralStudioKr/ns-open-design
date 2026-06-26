@@ -9,6 +9,7 @@ import {
   sumUsageTokens,
 } from "./usageAttribution";
 import { reportTeamverDesignUsage } from "./reportUsage";
+import { finalizeTeamverByokBilling } from "./teamverByokBilling";
 import { isTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 // Structured marker so ops dashboards can grep `teamver_usage_zero_tokens`
@@ -113,16 +114,37 @@ export async function maybeReportTeamverUsageAfterSave(
 
   inFlightRunIds.add(usageRunId);
   try {
+    const tokenCountSource = usage?.tokenCountSource ?? "unknown";
+    const billing =
+      message.runStatus === "succeeded"
+        ? await finalizeTeamverByokBilling({
+            workspaceId,
+            runId: usageRunId,
+            runStatus: message.runStatus,
+            modelName,
+            inputTokens,
+            outputTokens,
+            tokenCountSource,
+            cacheReadInputTokens: usage?.cacheReadInputTokens,
+            cacheCreationInputTokens: usage?.cacheCreationInputTokens,
+            providerReportedModel: usage?.providerReportedModel,
+          })
+        : null;
+
     const requestId = await reportTeamverDesignUsage({
       workspaceId: workspaceId,
       modelName,
       inputTokens,
       outputTokens,
       totalTokens: tokenTotal > 0 ? tokenTotal : undefined,
-      tokenCountSource: usage?.tokenCountSource ?? "unknown",
+      tokenCountSource,
       projectId,
       runId: usageRunId,
       runStatus: message.runStatus,
+      registryUsageId: billing?.usageId ?? undefined,
+      billingStatus: billing?.billingStatus,
+      creditsCommitted: billing?.creditsCommitted,
+      creditsAmountT: billing?.creditsAmountT,
       cacheReadInputTokens: usage?.cacheReadInputTokens,
       cacheCreationInputTokens: usage?.cacheCreationInputTokens,
       providerReportedModel: usage?.providerReportedModel,

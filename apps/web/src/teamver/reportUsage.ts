@@ -12,6 +12,10 @@ export type TeamverUsageEvent = {
   projectId?: string;
   runId?: string;
   runStatus?: string;
+  registryUsageId?: string;
+  billingStatus?: string;
+  creditsCommitted?: boolean;
+  creditsAmountT?: number;
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
   providerReportedModel?: string;
@@ -64,6 +68,12 @@ async function postUsageEvent(
       runId: event.runId,
       runStatus: event.runStatus,
       tokenCountSource: event.tokenCountSource ?? "unknown",
+      ...(event.registryUsageId ? { registryUsageId: event.registryUsageId } : {}),
+      ...(event.billingStatus ? { billingStatus: event.billingStatus } : {}),
+      ...(event.creditsCommitted != null ? { creditsCommitted: event.creditsCommitted } : {}),
+      ...(event.creditsAmountT != null && event.creditsAmountT >= 0
+        ? { creditsAmountT: event.creditsAmountT }
+        : {}),
       ...(event.cacheReadInputTokens != null && event.cacheReadInputTokens > 0
         ? { cacheReadInputTokens: event.cacheReadInputTokens }
         : {}),

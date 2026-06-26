@@ -22,6 +22,7 @@ from .routers.runtime_config import router as runtime_config_router
 from .routers.internal_usage import router as internal_usage_router
 from .routers.internal_billing import router as internal_billing_router
 from .routers.usage_report import router as usage_report_router
+from .routers.billing_report import router as billing_report_router
 from .middleware.csrf import OriginGuardMiddleware
 from .teamver_sdk import teamver_client_lifespan
 
@@ -59,6 +60,7 @@ app.include_router(drive_router)
 app.include_router(runtime_config_router)
 app.include_router(projects_router)
 app.include_router(usage_report_router)
+app.include_router(billing_report_router)
 app.include_router(internal_usage_router)
 app.include_router(internal_billing_router)
 app.include_router(token_usage_router, prefix=settings.api_prefix)

@@ -513,7 +513,7 @@ def meter_design_run(
 | 경로 | usage ledger | Registry billing | 후속 |
 |------|--------------|------------------|------|
 | **daemon CLI** (embed) | ✅ scan + M2M / FE-first (race-safe, §2.4) | ✅ reserve@start (flat), commit/refund@end (직렬화, §4.8) | amount를 `credit_meter`로 교체 (§4.4) |
-| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` — **loop 390 으로 direct Anthropic SDK / azure / google / ollama / senseaudio·aihubmix tool-loop 의 onUsage 캡처 갭 모두 막음** ([24](./24_AI_API_usage_capture_경로별_분석.md)) · billing snapshot=`not_attempted` (frozen 아님) | ❌ reserve/commit 없음 — daemon이 없어 lifecycle hook 불가 | **U-G6 / §4.4 전략 B**: token capture 가 안정화됐으므로 FE-only billing hook(`reserveTeamverBillingFromBffMessage` 후속) 으로 `run_id=message.id` 키로 reserve→commit (BE M2M `/api/internal/billing/reserve` 사용) |
+| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` + **loop 429** `finalize-byok-run` (Strategy B meter→reserve→commit, `run_id=message.id`) | ✅ cookie-auth BFF `POST /api/v1/billing/finalize-byok-run` | — |
 | **standalone OD** | — | skip (no `TEAMVER_DESIGN_API_URL`) | — |
 | **plain stdout agent** | `unknown` / 0 | flat reserve만 | usage 없으면 §4.5.1 정책 |
 
@@ -565,7 +565,7 @@ void (async () => {
 [x] 1. credit_meter.py + DESIGN_MODEL_PRICES_JSON + unit tests (loop 405)
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [x] 3. daemon reserve: estimate-reserve endpoint + run-start lookup (loop 423 · Strategy A partial)
-[ ] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only)
+[x] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only hook + BFF finalize, loop 429)
 [ ] 5. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
 [ ] 6. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
 [ ] 7. (선택) Main BE metered commit API — 전략 C
