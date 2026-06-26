@@ -29,6 +29,13 @@ type RunLike = {
   teamverRemote?: ProjectStorage | null;
 };
 
+type SyncUpResult = {
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  deleted: number;
+};
+
 export type ProjectMaterializationRuntime = {
   layout: ProjectStorageLayout;
   storage: MaterializingProjectStorage | null;
@@ -41,6 +48,21 @@ export type ProjectMaterializationRuntime = {
   /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
   dispose: () => void;
 };
+
+function runEndSyncUpRetryAttempts(): number {
+  const parsed = Number(process.env.OD_S3_RUN_END_SYNC_UP_RETRIES ?? '');
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 2;
+}
+
+function runEndSyncUpRetryMs(): number {
+  const parsed = Number(process.env.OD_S3_RUN_END_SYNC_UP_RETRY_MS ?? '');
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 500;
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function createProjectMaterializationRuntime(
   layout: ProjectStorageLayout,
@@ -106,6 +128,66 @@ export function createProjectMaterializationRuntime(
     run.teamverS3Prefix = resolved.s3Prefix;
     run.teamverRemote = resolved.remote;
     return resolved.remote;
+  }
+
+  async function syncUpAfterChatRunWithRetry(
+    projectId: string,
+    remote: ProjectStorage,
+    startedAt: number,
+    run: RunLike,
+  ): Promise<SyncUpResult> {
+    const maxAttempts = runEndSyncUpRetryAttempts();
+    let lastErr: unknown;
+    let lastResult: SyncUpResult | null = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const result = await storage!.syncUp(projectId, remote, startedAt);
+        lastResult = result;
+        if (result.failed === 0 || attempt >= maxAttempts) {
+          return result;
+        }
+        console.warn(
+          `[project-materialization] retrying run-end sync-up for ${projectId} (${attempt}/${maxAttempts}) after ${result.failed} failed upload(s)`,
+        );
+        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_run_end_sync_up_retry',
+              projectId,
+              runId: typeof run.id === 'string' ? run.id : undefined,
+              attempt,
+              maxAttempts,
+              failed: result.failed,
+              uploaded: result.uploaded,
+              skipped: result.skipped,
+            }),
+          );
+        }
+        await sleep(runEndSyncUpRetryMs() * attempt);
+      } catch (err) {
+        lastErr = err;
+        if (attempt >= maxAttempts) break;
+        console.warn(
+          `[project-materialization] retrying run-end sync-up for ${projectId} (${attempt}/${maxAttempts}) after exception:`,
+          err instanceof Error ? err.message : err,
+        );
+        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_run_end_sync_up_retry',
+              projectId,
+              runId: typeof run.id === 'string' ? run.id : undefined,
+              attempt,
+              maxAttempts,
+              reason: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+        await sleep(runEndSyncUpRetryMs() * attempt);
+      }
+    }
+    if (lastResult) return lastResult;
+    throw lastErr;
   }
 
   async function beforeChatRun(run: RunLike): Promise<void> {
@@ -177,7 +259,7 @@ export function createProjectMaterializationRuntime(
       projectTenantRemote.delete(projectId);
       await withProjectLock(projectId, async () => {
         try {
-          const result = await storage.syncUp(projectId, remote, startedAt);
+          const result = await syncUpAfterChatRunWithRetry(projectId, remote, startedAt, run);
           console.info(
             `[project-materialization] sync-up ${projectId}: uploaded=${result.uploaded} skipped=${result.skipped} failed=${result.failed}`,
           );

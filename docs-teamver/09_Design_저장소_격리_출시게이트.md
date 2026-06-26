@@ -5,7 +5,7 @@
 
 **관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** (로컬+S3·Litestream·용량) · **[16 S3 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** · **[17 Production 출시 순서](./17_Production_출시_작업_순서.md)** · **[18 EC2 IAM·S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** · **[22 Drive·Usage 연동](./22_Drive_인증_Usage_연동_검토.md)**
 
-**갱신:** 2026-06-26 (loop 434~435 daemon S3 materialization retry 반영)
+**갱신:** 2026-06-26 (loop 434~436 daemon S3 materialization/run-end retry 반영)
 
 ## 용어 (이 문서에서)
 
@@ -187,7 +187,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | P1-7 | `startChatRun` 전후 materialization hook | `apps/daemon` | ✅ |
 | P1-8 | Teamver compose/env S3 연동 검증 (staging) | `deploy/teamver` | 🟡 validate·smoke·`print/apply_staging_s3_env.sh` · `run_staging_phase0_activate.sh` ✅ · `OD_S3_ALLOW_SCRATCH_FALLBACK` staging/prod 금지 ✅ · **EC2 smoke `od_storage=ok` ☐** |
 | P1-9 | MinIO/localstack integration test | `apps/daemon` | ✅ harness + compose `--profile minio` · `test_run_s3_integration_test.sh` · **EC2 AWS S3 실연동 ☐** |
-| P1-10 | sync-up/down 실패 알람·재시도 (run 종료 후/strict registry sync/lazy 조회) | `apps/daemon` + ops | 🟡 sync-down list/read retry + 파일 단위 sync-up retry 3x + strict/background 작업 전체 retry(loop 434~435) + lazy/run-end `od_s3_sync_up_failed` JSON 마커 ✅ · **CloudWatch alarm EC2 apply ☐** |
+| P1-10 | sync-up/down 실패 알람·재시도 (run 종료 후/strict registry sync/lazy 조회) | `apps/daemon` + ops | 🟡 sync-down list/read retry + 파일 단위 sync-up retry 3x + strict/background/run-end 작업 전체 retry(loop 434~436) + lazy/run-end `od_s3_sync_up_failed` JSON 마커 ✅ · **CloudWatch alarm EC2 apply ☐** |
 
 **근거 코드:** `apps/daemon/src/storage/` · `lazy-project-materialization.ts` (file/export/archive/media/finalize/deploy/plugins 경로) · run hook (`OD_PROJECT_STORAGE=s3`).
 
