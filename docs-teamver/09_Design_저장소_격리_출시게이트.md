@@ -605,6 +605,51 @@ design-api hot path는 RDS; S3 listing은 admin/incident만. Drive 파일은 Mai
 5. E2E (§14)  
 6. 구 volume snapshot 7d 보관  
 
+### 13.1 RDS ↔ S3 후속 작업 (2026-06-25)
+
+**배경:** staging에서 RDS `active` 23 vs S3 tenant 객체 3 — legacy registry 일괄 upsert·빈 create·Publish-only 경로로 **registry-only** row가 다수. 인프라(S3 mode·IAM)는 정상.
+
+**당일 반영 (코드 ✅):**
+
+| 항목 | 내용 |
+|------|------|
+| run-end evict 가드 | `apps/daemon/src/storage/scratch-evict-policy.ts` — scratch에 파일 있는데 S3 empty면 full sync-up retry 후에도 remote 0이면 evict **보류** (`od_scratch_evict_deferred`) |
+| drift audit | `bash scripts/check_registry_s3_drift.sh --staging` — active row별 S3 객체 유무 |
+| registry sync 관측 | design-api `_sync_daemon_scratch_after_registry` 실패 시 `od_registry_scratch_sync_failed` JSON log |
+
+**EC2 즉시 (ops):**
+
+```bash
+# staging: delete해도 S3 tenant 유지 (디버깅) — .env.staging 에 추가 후 daemon 재기동
+OD_S3_PURGE_ON_DELETE=0
+
+bash scripts/check_registry_s3_drift.sh --staging          # drift 목록
+export TEAMVER_OD_PROJECT_ID='<S3 객체 있는 od_project_id>'  # E2E S3 probe
+bash scripts/run_staging_track_a_e2e.sh --staging --require-core
+```
+
+**삭제 ↔ S3 (기본 동작):** UI/registry `DELETE` → design-api `status=deleted` → daemon `scratch/evict` → **`onProjectRemoved`가 tenant prefix S3 객체 DELETE** (`od_s3_remote_purged` 로그). `OD_S3_PURGE_ON_DELETE=0` 이면 scratch만 evict, **S3는 남음**. (idle evict·run-end evict는 scratch만 — S3 삭제 아님.)
+
+**3→1 원인 확인 (EC2):**
+
+```bash
+docker logs teamver-open-design-daemon 2>&1 | grep od_s3_remote_purged | tail -20
+psql "$MAIN_BE_DATABASE_URL" -c "SELECT od_project_id, updated_at FROM design_projects WHERE status='deleted' ORDER BY updated_at DESC LIMIT 10;"
+aws s3 ls s3://teamver-design-staging-data/design/ --recursive | awk '{print $4}' | sed 's|/[^/]*$||' | sort -u
+```
+
+**추후 (출시 blocker 아님 · Track A 후속):**
+
+| | 작업 | 비고 |
+|---|------|------|
+| ☐ | staging **`OD_S3_PURGE_ON_DELETE=0`** — UI/registry delete 시 S3 tenant **유지** (디버깅·drift audit·E2E 재사용). production은 default **on** | `.env.staging` + daemon 재기동 |
+| ☐ | §13 volume→S3 **backfill** — registry-only 프로젝트 scratch/sync-up 또는 `s3 sync` | maintenance 창 |
+| ☐ | registry create **post-commit retry** (daemon scratch/sync-up N회, 지수 backoff) | `od_registry_scratch_sync_failed` 알람 연동 전 |
+| ☐ | **idle scratch evict** tenant-aware guard (lazy materialize 후 S3 0 + scratch >0 evict 금지) | run-end 가드만으로 1차 커버 |
+| ☐ | CloudWatch `od_registry_scratch_sync_failed` · `od_scratch_evict_deferred` metric filter `--apply` | `print_cloudwatch_alarm_commands.sh` |
+| ☐ | staging FE `VITE_TEAMVER_LEGACY_REGISTRY_SYNC=1` **비활성** 확인 (legacy bulk upsert 금지) | 기본 off, 빌드 env 점검 |
+| ☐ | (선택) pre-commit sync hard-fail 복원 | access gate ↔ commit 순환 의존 설계 필요 |
+
 ---
 
 ## 14. 검증 체크리스트 (Staging E2E)
@@ -738,6 +783,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 | ✅ | `checks.od_storage=ok` (2026-06-25 — `check_storage_isolation.sh` §deps) | O-2 |
 | ✅ | `bash scripts/check_sidecar_deps.sh --staging` 12/12 (`main_be=ok`) | O-2 |
 | ✅ | `bash scripts/check_storage_isolation.sh --staging` 21/21 pass | O-2 |
+| 🟡 | `bash scripts/check_registry_s3_drift.sh --staging` — drift 가시화 ✅ · backfill ☐ | O-2 |
 | 🟡 | `run_post_deploy_track_a.sh --deps-only --smoke` Phase 1~8 ✅ · **`--e2e-strict` Phase 9 ☐** (E2E 스크립트 수정 후 재실행) | O-3 |
 | 🟡 | Litestream live replica ✅ (`verify_litestream_replica.sh` · snapshot 로그) · **`restore_app_sqlite_from_s3.sh` drill ☐** | P2-1 |
 | ☐ | `print_cloudwatch_alarm_commands.sh --staging --apply` (sync-up · scratch · usage 5xx) | P0-6/P1-10 |
@@ -748,6 +794,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 | | 작업 | 비고 |
 |---|------|------|
 | ☐ | `projects.ts` → `ProjectStorage` 전면 wiring | upstream 충돌 최소화 — lazy materialize로 출시 경로 커버 중 |
+| ☐ | §13.1 RDS↔S3 backfill · registry sync retry · idle evict tenant guard · CW markers | [§13.1](#131-rds--s3-후속-작업-2026-06-25) |
 
 ---
 
@@ -755,6 +802,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging --require-core
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-25 | **§13.1 RDS↔S3 후속** — run-end evict 가드(`scratch-evict-policy`) · `check_registry_s3_drift.sh` · `od_registry_scratch_sync_failed` · 16 §5.4/§10 정합 · backfill/retry/CW는 §13.1 잔여 |
 | 2026-06-25 | **§14 EC2 실증 2차** — sidecar 12/12 · smoke cookie 32/32 · #9 baseDir ✅ · #4 🟡 · E2E 1차 실패·스크립트 수정·재실행 ☐ |
 | 2026-06-25 | **§14 EC2 실증 반영** — staging `check_storage_isolation` 21/21 · `od_storage=ok` · Litestream snapshot/WAL · §14.0 스냅샷 표 · G1/G2/P0-4/P2-1/TODO 부분 ✅ |
 | 2026-06-25 | **정합성 2차** — IAM `litestream/*`·`sqlite-backups/*` · E2E strict=`run_post_deploy --e2e-strict`/`--require-core` · access `{od_project_id}` · embed list fail-closed · usage BFF/M2M · Track B Drive 범위 수정 · env `OD_S3_PREFIX` vs tenant prefix |

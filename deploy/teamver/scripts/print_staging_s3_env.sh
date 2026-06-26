@@ -77,8 +77,8 @@ OD_S3_BUCKET=${bucket}
 OD_S3_REGION=${region}
 OD_S3_PREFIX=${prefix}
 OD_PROJECT_LAZY_SYNC_TTL_MS=60000
-# registry delete 시 tenant S3 prefix purge (기본 on — 비활성: OD_S3_PURGE_ON_DELETE=0)
-# OD_S3_PURGE_ON_DELETE=0
+# registry delete — staging은 디버깅·E2E 증적 위해 S3 tenant 유지 (production은 default on)
+OD_S3_PURGE_ON_DELETE=0
 OD_SCRATCH_EVICT_AFTER_RUN=1
 OD_SCRATCH_EVICT_IDLE=1
 OD_S3_SYNC_UP_METRICS=1

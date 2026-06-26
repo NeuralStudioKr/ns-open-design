@@ -12,7 +12,7 @@ from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
 from ..db.models import DesignOutput, DesignProject
-from ..errors import ApiError, ForbiddenError, NotFoundError
+from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
     DesignProjectListResponse,
@@ -111,7 +111,11 @@ async def _sync_daemon_scratch_after_registry(
     *,
     auth: AuthContext,
 ) -> None:
-    """Best-effort scratch → S3 sync after registry row is durable (post-commit)."""
+    """Best-effort scratch → S3 sync after registry row is durable (post-commit).
+
+    Access gate requires a committed registry row (loop 191). Failures are logged
+    with structured markers for CloudWatch; the HTTP create still returns 200.
+    """
     workspace_id = require_workspace_context(auth)
     try:
         await OdDaemonClient().sync_scratch_project(
@@ -122,11 +126,27 @@ async def _sync_daemon_scratch_after_registry(
                 s3_prefix=row.s3_prefix,
             ),
         )
-    except Exception:
+    except BadGatewayError as exc:
         logger.warning(
             "registry create: daemon scratch sync-up failed od_project_id=%s",
             row.od_project_id,
             exc_info=True,
+        )
+        logger.info(
+            '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
+            row.od_project_id,
+            str(exc).replace('"', '\\"'),
+        )
+    except Exception as exc:
+        logger.warning(
+            "registry create: daemon scratch sync-up failed od_project_id=%s",
+            row.od_project_id,
+            exc_info=True,
+        )
+        logger.info(
+            '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
+            row.od_project_id,
+            str(exc).replace('"', '\\"'),
         )
 
 
