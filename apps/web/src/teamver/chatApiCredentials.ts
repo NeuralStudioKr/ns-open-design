@@ -13,9 +13,7 @@ export function hasChatApiCredentials(config: Pick<AppConfig, "apiKey" | "apiKey
 export function usesServerManagedChatApiKey(
   config: Pick<AppConfig, "apiKey" | "apiKeyConfigured">,
 ): boolean {
-  return Boolean(
-    isTeamverEmbedMode()
-    && config.apiKeyConfigured
-    && !config.apiKey?.trim(),
-  );
+  if (config.apiKey?.trim()) return false;
+  if (isTeamverEmbedMode() && isTeamverExecutionConfigLocked()) return true;
+  return Boolean(isTeamverEmbedMode() && config.apiKeyConfigured);
 }

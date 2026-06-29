@@ -10,7 +10,7 @@ vi.mock("../src/teamver/branding/applyEmbedConfigLock", () => ({
 
 import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
 import { isTeamverExecutionConfigLocked } from "../src/teamver/branding/applyEmbedConfigLock";
-import { hasChatApiCredentials } from "../src/teamver/chatApiCredentials";
+import { hasChatApiCredentials, usesServerManagedChatApiKey } from "../src/teamver/chatApiCredentials";
 
 const mockedEmbedMode = vi.mocked(isTeamverEmbedMode);
 const mockedLock = vi.mocked(isTeamverExecutionConfigLocked);
@@ -37,5 +37,12 @@ describe("hasChatApiCredentials", () => {
     mockedLock.mockReturnValue(false);
     expect(hasChatApiCredentials({ apiKey: "", apiKeyConfigured: false })).toBe(false);
     expect(hasChatApiCredentials({ apiKey: "", apiKeyConfigured: true })).toBe(true);
+  });
+
+  it("uses server-managed proxy body when execution is locked without apiKeyConfigured", () => {
+    mockedEmbedMode.mockReturnValue(true);
+    mockedLock.mockReturnValue(true);
+    expect(usesServerManagedChatApiKey({ apiKey: "", apiKeyConfigured: false })).toBe(true);
+    expect(usesServerManagedChatApiKey({ apiKey: "sk-user", apiKeyConfigured: true })).toBe(false);
   });
 });

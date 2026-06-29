@@ -177,6 +177,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { hasChatApiCredentials, usesServerManagedChatApiKey } from '../teamver/chatApiCredentials';
 import {
   formatProjectConversationCreateError,
   formatProjectConversationListError,
@@ -4021,12 +4022,12 @@ export function ProjectView({
         // re-syncs an *explicit* override when chat config drifts;
         // this snapshot covers the implicit "Same as chat" default.
         const byokChatProvider =
-          config.apiProtocol && (config.apiKey || config.apiKeyConfigured)
+          config.apiProtocol && hasChatApiCredentials(config)
             ? {
                 provider: config.apiProtocol,
-                ...(config.apiKey
-                  ? { apiKey: config.apiKey }
-                  : { useManagedApiKey: true }),
+                ...(usesServerManagedChatApiKey(config)
+                  ? { useManagedApiKey: true }
+                  : { apiKey: config.apiKey }),
                 baseUrl: config.baseUrl,
                 apiVersion:
                   config.apiProtocol === 'azure'
