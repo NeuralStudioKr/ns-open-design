@@ -523,6 +523,34 @@ def meter_design_run(
 
 > **한 줄:** loop 430은 **동작하는 임시 wiring**이지만, embed 기본(`mode=api`)에서 과금·usage ledger가 **브라우저 `saveMessage` hook**에 묶여 있어 **페이지 이탈·탭 종료** 시 누락·지연 위험이 있다. **권장 종착점은 daemon `PUT …/messages/:id` + design-api M2M** (CLI run과 동일 계열).
 
+#### 4.11.0 BYOK billing lifecycle (2026-06-29 보강)
+
+`finalize_byok_run_billing()`가 강제하는 race-safe 상태 머신:
+
+```
+not_attempted → reserved → committed                (happy)
+not_attempted → reserve_failed                      (Registry rejected)
+not_attempted → reserved → commit_failed            (commit fail + refund OK)
+not_attempted → reserved → refund_failed            (commit fail + refund fail → ops alert)
+```
+
+**멱등 / crash-resume 규약:**
+
+| existing.billing_status | 재시도 동작 |
+|-------------------------|------------|
+| `committed` | 즉시 `idempotent=True` return (Registry 호출 없음) |
+| `reserved` + `registry_usage_id` | **commit만 재시도** — reserve는 절대 다시 호출하지 않음 |
+| `commit_failed` / `refund_failed` / `reserve_failed` | terminal, `idempotent=True` return (ops 수동 reconcile) |
+| 없음 / `not_attempted` 등 | 정상 lifecycle 진입 |
+
+**핵심 안전 장치:**
+
+1. **reserve 성공 직후 `reserved` ledger stub persist** — crash 직후 재시도가 새로운 reserve를 발사하지 않도록 (이중 reserve = 이중 차감 방지).
+2. **refund 실패는 `refund_failed`로 ledger 기록** — Registry stuck 상태(credits stuck reserved)를 CW alarm filter `metric:"teamver_usage_5xx"`로 감지.
+3. **terminal failure는 절대 재시도하지 않음** — 같은 `(workspace_id, run_id)` 페어로 두 번 reserve가 가지 않음.
+
+테스트: `tests/test_byok_billing.py` (BE 11건), `tests/test_token_usage_crud.py` (precedence 2건), `tests/teamver-byok-usage-bridge.test.ts` (daemon 9건).
+
 #### 4.11.1 현재 구조 (loop 430)
 
 | 단계 | 주체 | API / 저장소 |
@@ -638,6 +666,8 @@ A. **daemon run**은 깨지지 않는다(이미 daemon billing). **embed BYOK(`m
 
 **Q. BFF `finalize-byok-run`을 당장 지워도 되나?**  
 A. **아니오.** daemon hook이 authoritative이나, 레거시 클라이언트·staging E2E(§4.11.5 #11) 검증 전까지 BFF endpoint는 유지. deprecate는 후속.
+
+**스트리밍 중간 PUT 빈도·아키텍처 SSOT:** [27_메시지_Persist_PUT_아키텍처.md](./27_메시지_Persist_PUT_아키텍처.md) — embed 기본 throttle 5s, terminal/pagehide 즉시 persist.
 
 ---
 

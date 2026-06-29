@@ -570,3 +570,31 @@ async def test_aupsert_usage_inserts_when_no_run_id() -> None:
 
     assert result is not None
     db.add.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "incoming",
+    ["reserve_failed", "commit_failed", "refund_failed", "refunded"],
+)
+def test_billing_status_priority_includes_all_lifecycle_states(incoming: str) -> None:
+    """Without these in ``_BILLING_STATUS_PRIORITY`` the precedence guard
+    falls back to ``-1`` and silently drops the incoming status — meaning a
+    ``reserve_failed`` or ``refund_failed`` ledger update would never land."""
+    assert token_usage_crud._BILLING_STATUS_PRIORITY.get(incoming) is not None
+    assert token_usage_crud._should_overwrite_billing_status("not_attempted", incoming)
+
+
+def test_billing_status_priority_committed_is_terminal() -> None:
+    """``committed`` is the highest precedence — no other status overwrites it."""
+    for incoming in [
+        "not_attempted",
+        "disabled",
+        "not_configured",
+        "not_metered",
+        "reserved",
+        "reserve_failed",
+        "commit_failed",
+        "refund_failed",
+        "refunded",
+    ]:
+        assert not token_usage_crud._should_overwrite_billing_status("committed", incoming)

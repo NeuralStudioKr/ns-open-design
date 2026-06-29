@@ -265,4 +265,123 @@ describe('teamver-byok-usage-bridge', () => {
     releaseBilling();
     await first;
   });
+
+  it('forwards idempotent committed snapshot to usage ledger on resume', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: true,
+              usage_id: 'u-existing',
+              billing_status: 'committed',
+              credits_committed: true,
+              credits_amount_t: 21,
+              idempotent: true,
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reportedRuns = new Set<string>();
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-resume',
+        role: 'assistant',
+        runStatus: 'succeeded',
+        events: [{ kind: 'usage', inputTokens: 100, outputTokens: 50 }],
+      },
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns,
+    });
+
+    expect(ok).toBe(true);
+    const usageBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    expect(usageBody.billing_status).toBe('committed');
+    expect(usageBody.registry_usage_id).toBe('u-existing');
+    expect(usageBody.credits_committed).toBe(true);
+    expect(usageBody.credits_amount_t).toBe(21);
+    expect(reportedRuns.has('byok:assistant-msg-resume')).toBe(true);
+  });
+
+  it('forwards refund_failed terminal snapshot so ops sees the stuck row', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: false,
+              usage_id: 'u-stuck',
+              billing_status: 'refund_failed',
+              credits_committed: false,
+              credits_amount_t: 10,
+              error: 'refund_failed',
+              idempotent: true,
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reportedRuns = new Set<string>();
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-stuck',
+        role: 'assistant',
+        runStatus: 'succeeded',
+        events: [{ kind: 'usage', inputTokens: 100, outputTokens: 50 }],
+      },
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns,
+    });
+
+    expect(ok).toBe(true);
+    const usageBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    expect(usageBody.billing_status).toBe('refund_failed');
+    expect(usageBody.registry_usage_id).toBe('u-stuck');
+    expect(usageBody.credits_committed).toBe(false);
+  });
+
+  it('skips identity missing / empty workspace silently', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-missing-identity',
+        role: 'assistant',
+        runStatus: 'succeeded',
+        events: [{ kind: 'usage', inputTokens: 10, outputTokens: 5 }],
+      },
+      projectId: 'od-1',
+      identity: { userId: '', workspaceId: '' },
+    });
+
+    expect(ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

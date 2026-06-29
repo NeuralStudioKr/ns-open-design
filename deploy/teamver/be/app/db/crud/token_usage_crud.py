@@ -29,9 +29,10 @@ _BILLING_STATUS_PRIORITY: dict[str, int] = {
     "not_configured": 1,
     "not_metered": 1,
     "reserved": 2,
+    "reserve_failed": 3,
     "commit_failed": 3,
-    "refund_failed": 3,
     "refunded": 4,
+    "refund_failed": 4,
     "committed": 5,
 }
 
