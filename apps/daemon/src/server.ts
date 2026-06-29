@@ -117,6 +117,11 @@ import {
   resolveSkillId,
   splitDerivedSkillId,
 } from './skills.js';
+import {
+  filterSkillsForSlideOnlyCatalog,
+  parseSkillsCatalogSlideOnlyQuery,
+  readDefaultSkillsSlideOnlyCatalogFromEnv,
+} from './skills-slide-catalog.js';
 import { validateLinkedDirs } from './linked-dirs.js';
 import { installFromTarget, uninstallById, sanitizeRepoName } from './library-install.js';
 import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './native-folder-dialog.js';
@@ -184,6 +189,9 @@ import {
   runStageWithRegistry,
   startSnapshotGc,
   uninstallPlugin,
+  filterInstalledPluginsByCatalogMode,
+  parsePluginCatalogModeFilter,
+  readDefaultPluginCatalogModeFromEnv,
 } from './plugins/index.js';
 import {
   marketplaceManifestUrlForRegistry,
@@ -7267,9 +7275,12 @@ export async function startServer({
     }
   });
 
-  app.get('/api/skills', async (_req, res) => {
+  app.get('/api/skills', async (req, res) => {
     try {
-      const skills = await listAllSkills();
+      const slideOnly =
+        parseSkillsCatalogSlideOnlyQuery(req.query.catalog)
+        ?? readDefaultSkillsSlideOnlyCatalogFromEnv();
+      const skills = filterSkillsForSlideOnlyCatalog(await listAllSkills(), slideOnly);
       // Strip full body + on-disk dir from the listing — frontend fetches the
       // body via /api/skills/:id when needed (keeps the listing payload small).
       res.json({
@@ -7580,9 +7591,13 @@ export async function startServer({
   // needed for the §12.5 walkthrough: list/get installed plugins, install
   // (SSE), uninstall, apply (returns ApplyResult + snapshotId), atom catalog,
   // and snapshot fetch by id (used by run replay tooling).
-  app.get('/api/plugins', async (_req, res) => {
+  app.get('/api/plugins', async (req, res) => {
     try {
-      const plugins = applyBakedPreviews(listInstalledPlugins(db), PLUGIN_PREVIEWS_DIR);
+      let plugins = applyBakedPreviews(listInstalledPlugins(db), PLUGIN_PREVIEWS_DIR);
+      const modeFilter =
+        parsePluginCatalogModeFilter(req.query.mode)
+        ?? readDefaultPluginCatalogModeFromEnv();
+      plugins = filterInstalledPluginsByCatalogMode(plugins, modeFilter);
       res.json({ plugins });
     } catch (err) {
       res.status(500).json({ error: String(err) });

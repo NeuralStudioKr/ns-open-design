@@ -69,6 +69,9 @@ import {
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { resolveTeamverBranding } from '../teamver/branding/config';
+import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 
 export const DEFAULT_DEPLOY_PROVIDER_ID = 'vercel-self';
 export const CLOUDFLARE_PAGES_PROVIDER_ID = 'cloudflare-pages';
@@ -207,12 +210,20 @@ export async function fetchAgentsStream(args: {
   return collected;
 }
 
-export async function fetchSkills(): Promise<SkillSummary[]> {
+export async function fetchSkills(options?: { slideOnly?: boolean }): Promise<SkillSummary[]> {
   try {
-    const resp = await fetch('/api/skills');
+    const slideOnly =
+      options?.slideOnly
+      ?? (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp);
+    const query = slideOnly ? '?catalog=slide' : '';
+    const resp = await fetch(`/api/skills${query}`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { skills: SkillSummary[] };
-    return json.skills ?? [];
+    let skills = json.skills ?? [];
+    if (slideOnly) {
+      skills = skillsForSlideOnlyMvp(skills, { slideOnlyMvp: true });
+    }
+    return skills;
   } catch {
     return [];
   }

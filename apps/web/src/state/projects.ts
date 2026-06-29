@@ -41,6 +41,8 @@ import {
   TeamverProjectRegistryError,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { resolveTeamverBranding } from '../teamver/branding/config';
+import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import {
@@ -841,16 +843,29 @@ export async function persistTabsToDaemonNow(
 
 export interface ListPluginsOptions {
   includeHidden?: boolean;
+  /** Embed slide-only — request daemon deck catalog (`manifest.od.mode === 'deck'`). */
+  mode?: 'deck';
+}
+
+function resolvePluginsListUrl(options: ListPluginsOptions): string {
+  if (options.mode === 'deck') return '/api/plugins?mode=deck';
+  if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
+    return '/api/plugins?mode=deck';
+  }
+  return '/api/plugins';
 }
 
 export async function listPlugins(
   options: ListPluginsOptions = {},
 ): Promise<InstalledPluginRecord[]> {
   try {
-    const resp = await fetch('/api/plugins');
+    const resp = await fetch(resolvePluginsListUrl(options));
     if (!resp.ok) return [];
     const json = (await resp.json()) as { plugins?: InstalledPluginRecord[] };
-    const plugins = json.plugins ?? [];
+    let plugins = json.plugins ?? [];
+    if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
+      plugins = pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp: true });
+    }
     return options.includeHidden ? plugins : plugins.filter(isVisiblePlugin);
   } catch {
     return [];

@@ -99,6 +99,24 @@ describe('listPlugins', () => {
     vi.unstubAllGlobals();
   });
 
+  it('requests deck catalog in embed slide-only mode', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({ plugins: [] }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listPlugins();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck');
+    embedSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
+
   it('hides plugins marked od.hidden from UI-facing lists', async () => {
     const visible = {
       id: 'od-new-generation',
@@ -145,27 +163,32 @@ describe('listPlugins', () => {
 describe('installGeneratedPluginFolder', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('installs a project-relative generated plugin folder', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          plugin: { id: 'generated-plugin', title: 'Generated Plugin' },
+          warnings: [],
+          message: 'Installed Generated Plugin.',
+          log: [],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
     const dispatchEvent = vi.fn();
     vi.stubGlobal('window', { dispatchEvent });
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
-      JSON.stringify({
-        ok: true,
-        plugin: { id: 'generated-plugin', title: 'Generated Plugin' },
-        warnings: [],
-        message: 'Installed Generated Plugin.',
-        log: [],
-      }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    ));
-    vi.stubGlobal('fetch', fetchMock);
 
     const outcome = await installGeneratedPluginFolder('project-1', 'generated-plugin');
 
     expect(outcome.ok).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchDaemonSpy).toHaveBeenCalledWith(
       '/api/projects/project-1/plugins/install-folder',
       expect.objectContaining({
         method: 'POST',
@@ -173,19 +196,24 @@ describe('installGeneratedPluginFolder', () => {
       }),
     );
     expect(dispatchEvent).toHaveBeenCalled();
+    fetchDaemonSpy.mockRestore();
   });
 
   it('preserves install diagnostics from non-2xx project folder responses', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
-      JSON.stringify({
-        ok: false,
-        warnings: ['Missing open-design.json'],
-        message: 'Plugin validation failed.',
-        log: ['Validating generated-plugin'],
-      }),
-      { status: 400, headers: { 'content-type': 'application/json' }, statusText: 'Bad Request' },
-    ));
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: false,
+          warnings: ['Missing open-design.json'],
+          message: 'Plugin validation failed.',
+          log: ['Validating generated-plugin'],
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' }, statusText: 'Bad Request' },
+      ),
+    );
 
     const outcome = await installGeneratedPluginFolder('project-1', 'generated-plugin');
 
@@ -195,6 +223,7 @@ describe('installGeneratedPluginFolder', () => {
       message: 'Plugin validation failed.',
       log: ['Validating generated-plugin'],
     });
+    fetchDaemonSpy.mockRestore();
   });
 });
 

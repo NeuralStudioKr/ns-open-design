@@ -131,6 +131,29 @@ describe('fetchAppVersionInfo', () => {
   });
 });
 
+describe('fetchSkills', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('requests slide-only catalog in embed slide-only mode', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ skills: [{ id: 'deck-skill', mode: 'deck' }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { fetchSkills } = await import('../../src/providers/registry');
+    await expect(fetchSkills()).resolves.toEqual([{ id: 'deck-skill', mode: 'deck' }]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/skills?catalog=slide');
+    embedSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
+});
+
 describe('fetchDesignTemplates', () => {
   afterEach(() => {
     vi.restoreAllMocks();

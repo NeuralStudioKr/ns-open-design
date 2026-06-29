@@ -103,3 +103,8 @@ export * from './snapshots.js';
 export * from './skill-candidates.js';
 export * from './trust.js';
 export * from './until.js';
+export {
+  filterInstalledPluginsByCatalogMode,
+  parsePluginCatalogModeFilter,
+  readDefaultPluginCatalogModeFromEnv,
+} from './catalog-filter.js';

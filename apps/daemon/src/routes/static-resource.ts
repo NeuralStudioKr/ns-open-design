@@ -27,6 +27,11 @@ import { listPromptTemplates, readPromptTemplate } from '../prompt-templates.js'
 import { readAppConfig } from '../app-config.js';
 import { installFromTarget, uninstallById } from '../library-install.js';
 import type { RouteDeps } from '../server-context.js';
+import {
+  filterSkillsForSlideOnlyCatalog,
+  parseSkillsCatalogSlideOnlyQuery,
+  readDefaultSkillsSlideOnlyCatalogFromEnv,
+} from '../skills-slide-catalog.js';
 
 export interface RegisterStaticResourceRoutesDeps extends RouteDeps<'http' | 'paths' | 'resources'> {
   tokenContractRebuild?: {
@@ -153,9 +158,12 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     }
   });
 
-  app.get('/api/skills', async (_req, res) => {
+  app.get('/api/skills', async (req, res) => {
     try {
-      const skills = await listAllSkills();
+      const slideOnly =
+        parseSkillsCatalogSlideOnlyQuery(req.query.catalog)
+        ?? readDefaultSkillsSlideOnlyCatalogFromEnv();
+      const skills = filterSkillsForSlideOnlyCatalog(await listAllSkills(), slideOnly);
       // Strip full body + on-disk dir from the listing — frontend fetches the
       // body via /api/skills/:id when needed (keeps the listing payload small).
       res.json({
