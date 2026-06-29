@@ -1222,3 +1222,66 @@ describe('trust-gradient', () => {
     expect(findings.find((f) => f.id === 'trust-gradient')).toBeDefined();
   });
 });
+
+describe('deck slide density lint', () => {
+  it('flags a crowded slide with headline, multiple metrics, and footer metadata', () => {
+    const html = `
+      <style>.footer { position: absolute; bottom: 56px; }</style>
+      <section class="slide active" data-screen-label="01 Cover">
+        <div class="slide-inner">
+          <h1 class="h-hero">기업 AI 도입의 실질적 효과</h1>
+          <div class="stats">
+            <div>37% 생산성 향상</div>
+            <div>30% 비용 절감</div>
+            <div>$4.4T 경제 가치</div>
+          </div>
+          <div class="slide-footer">출처 · 대상 · 규모</div>
+        </div>
+      </section>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'deck-slide-stat-rail')).toBeDefined();
+    expect(findings.find((f) => f.id === 'deck-slide-overcrowded')).toBeDefined();
+  });
+
+  it('does not flag a simple-deck big-stat slide with one metric', () => {
+    const html = `
+      <section class="slide hero dark center" data-screen-label="05 Big stat">
+        <div class="stat-num">38<span class="unit">×</span></div>
+        <p class="stat-caption">less data moved over the wire.</p>
+      </section>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'deck-slide-stat-rail')).toBeUndefined();
+    expect(findings.find((f) => f.id === 'deck-slide-overcrowded')).toBeUndefined();
+  });
+
+  it('does not flag a three-point body slide without metric rails', () => {
+    const html = `
+      <section class="slide light" data-screen-label="04 Why now">
+        <h2 class="h-xl">Three shifts make this market real.</h2>
+        <div class="pt-grid">
+          <div class="pt"><h3>Remote</h3><p>Editors work distributed.</p></div>
+          <div class="pt"><h3>AI</h3><p>Checkpoints are huge.</p></div>
+          <div class="pt"><h3>Bandwidth</h3><p>Egress costs rose.</p></div>
+        </div>
+      </section>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'deck-slide-stat-rail')).toBeUndefined();
+    expect(findings.find((f) => f.id === 'deck-slide-overcrowded')).toBeUndefined();
+  });
+
+  it('flags stat rails on non-cover slides too', () => {
+    const html = `
+      <section class="slide light" data-screen-label="07 Summary">
+        <h2 class="h-xl">Quarterly impact</h2>
+        <div>12% growth</div>
+        <div>18% savings</div>
+        <div>24% adoption</div>
+      </section>
+    `;
+    const findings = lintArtifact(html);
+    expect(findings.find((f) => f.id === 'deck-slide-stat-rail')).toBeDefined();
+  });
+});

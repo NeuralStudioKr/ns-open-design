@@ -523,6 +523,17 @@ describe('composeSystemPrompt', () => {
         expect(prompt).toMatch(/even when the request also contains the word "slide" or "deck"/i);
       });
 
+      it('includes slide layout density guidance for any slide in slide-only embed', () => {
+        const prompt = composeSystemPrompt({
+          metadata: { kind: 'deck' },
+          mediaExecution: { mode: 'disabled' },
+        });
+
+        expect(prompt).toContain('Slide layout density — every slide (not just the cover)');
+        expect(prompt).toMatch(/any slide/i);
+        expect(prompt).toContain('simple-deck');
+      });
+
       it('does not inject the discovery override when slide-only is OFF (standalone OD)', () => {
         const prompt = composeSystemPrompt({
           metadata: { kind: 'prototype' } as any,

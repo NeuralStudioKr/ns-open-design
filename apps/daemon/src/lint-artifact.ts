@@ -8,6 +8,10 @@
  * to the agent as a system message so it can self-correct on the next
  * turn. P1/P2 findings are advisories.
  *
+ * Deck-shaped artifacts (sections with class="slide") also get P1 density
+ * heuristics that catch overcrowded slides (headline + stat rail + footer)
+ * before the user sees overlap / empty-bottom layout breaks.
+ *
  * The linter is deliberately greppy: cheap, deterministic, and trivial
  * to extend. It does NOT parse HTML — false positives are tolerable
  * because each finding includes a snippet so the agent can verify.
@@ -504,6 +508,10 @@ export function lintArtifact(rawHtml: unknown): LintFinding[] {
         break;
       }
     }
+
+    for (const finding of lintDeckSlideDensity(html)) {
+      out.push(finding);
+    }
   }
 
   return out;
@@ -521,7 +529,7 @@ export function renderFindingsForAgent(findings: LintFinding[]): string {
   const sorted = [...findings].sort((a, b) => severity(a) - severity(b));
   const lines = [
     '<artifact-lint>',
-    'The artifact you just produced has the following anti-slop / design-token issues.',
+    'The artifact you just produced has the following anti-slop / design-token / deck-layout issues.',
     `${findings.filter((f) => f.severity === 'P0').length} P0 (must fix), ${findings.filter((f) => f.severity === 'P1').length} P1 (should fix), ${findings.filter((f) => f.severity === 'P2').length} P2 (nice to have).`,
     'Re-emit a corrected `<artifact>` in your next turn — do not write a separate explanation; the user has the previous version already.',
     '',
@@ -538,6 +546,92 @@ export function renderFindingsForAgent(findings: LintFinding[]): string {
 
 function severity(f: LintFinding): number {
   return f.severity === 'P0' ? 0 : f.severity === 'P1' ? 1 : 2;
+}
+
+type DeckSlideSection = {
+  index: number;
+  label: string;
+  body: string;
+};
+
+function extractDeckSlideSections(html: string): DeckSlideSection[] {
+  const sections: DeckSlideSection[] = [];
+  const re = /<section\s+([^>]*)>([\s\S]*?)<\/section>/gi;
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = re.exec(html)) !== null) {
+    const attrs = match[1] ?? '';
+    if (!/\bclass\s*=\s*["'][^"']*\bslide\b/.test(attrs)) continue;
+    index += 1;
+    const labelMatch = /data-screen-label\s*=\s*["']([^"']*)["']/i.exec(attrs);
+    sections.push({
+      index,
+      label: labelMatch?.[1] ?? `slide ${index}`,
+      body: match[2] ?? '',
+    });
+  }
+  return sections;
+}
+
+function countDeckStatSignals(slideHtml: string): number {
+  const statBlocks = (slideHtml.match(/\bstat-num\b/gi) ?? []).length;
+  const metricValues = slideHtml.match(/\b\d{1,3}\s*%|\$\s*[\d.]+(?:\s*[TMBK])?/gi) ?? [];
+  return Math.max(statBlocks, metricValues.length);
+}
+
+function slideHasDisplayHeadline(slideHtml: string): boolean {
+  return (
+    /<h1\b/i.test(slideHtml) ||
+    /\bh-hero\b/i.test(slideHtml) ||
+    /\bh-xl\b/i.test(slideHtml)
+  );
+}
+
+function slideHasFooterMeta(slideHtml: string): boolean {
+  return /\b(slide-footer|slide-meta)\b/i.test(slideHtml) ||
+    /\bclass\s*=\s*["'][^"']*\bfooter\b/i.test(slideHtml);
+}
+
+function htmlUsesAbsoluteFooterCss(html: string): boolean {
+  const css = (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n');
+  return (
+    /\.footer\s*\{[^}]*position\s*:\s*absolute/i.test(css) ||
+    /\.slide-footer\s*\{[^}]*position\s*:\s*absolute/i.test(css) ||
+    /\.slide-meta\s*\{[^}]*position\s*:\s*absolute/i.test(css)
+  );
+}
+
+function lintDeckSlideDensity(html: string): LintFinding[] {
+  const findings: LintFinding[] = [];
+  const absoluteFooterCss = htmlUsesAbsoluteFooterCss(html);
+
+  for (const slide of extractDeckSlideSections(html)) {
+    const statCount = countDeckStatSignals(slide.body);
+    const hasHeadline = slideHasDisplayHeadline(slide.body);
+    const hasFooter = slideHasFooterMeta(slide.body);
+
+    if (statCount >= 3) {
+      findings.push({
+        severity: 'P1',
+        id: 'deck-slide-stat-rail',
+        message: `Slide "${slide.label}" packs ${statCount} metric signals on one canvas — a common cause of overlap and empty bottom space.`,
+        fix: 'Split into separate big-stat slides (one number each). simple-deck Layout 3 — Big stat uses one metric per slide.',
+        snippet: clip(slide.body.slice(0, 200)),
+      });
+    }
+
+    if (hasHeadline && statCount >= 2 && (hasFooter || absoluteFooterCss)) {
+      findings.push({
+        severity: 'P1',
+        id: 'deck-slide-overcrowded',
+        message: `Slide "${slide.label}" combines a display headline, multiple metrics, and a footer/metadata band — likely to break at 1920×1080.`,
+        fix: 'Split the slide: headline alone, one metric per big-stat slide, metadata on a body slide or speaker notes. Prefer flex column + margin-top:auto over position:absolute footers.',
+        snippet: clip(slide.body.slice(0, 200)),
+      });
+    }
+  }
+
+  return findings;
 }
 
 function clip(s: string): string {

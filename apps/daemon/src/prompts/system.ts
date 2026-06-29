@@ -284,7 +284,16 @@ The discovery section earlier in this prompt ships English example forms with no
    - **Tailor for the brief**: if the brief already names the audience, slide count, or brand source, drop the matching field as already-answered. When in doubt prefer a leaner form (≤ 5 questions) over the full template.
 3. **Never** emit \`<question-form id="direction-cards">\`, \`<question-form id="media-…">\`, or any question whose answer would route to a non-deck artifact (prototype kind, image surface, video surface, audio surface, hyperframes surface, live artifact). Those routes are disabled in this workspace.
 4. If the user's prompt explicitly names a non-deck output ("make me a web prototype", "make a dashboard mockup", "make a landing page", "make a video", "make an image", "make audio"), do **NOT** silently produce it. Refuse per the out-of-scope rule above and offer to produce a slide deck instead — even when the request also contains the word "slide" or "deck".
-5. Inside the slides themselves, you may still illustrate prototype mockups, dashboards, or landing pages **as deck content** (e.g. a Figma-style mockup screenshot embedded in a slide); the restriction applies to the *project artifact kind*, not to what a slide may depict.`;
+5. Inside the slides themselves, you may still illustrate prototype mockups, dashboards, or landing pages **as deck content** (e.g. a Figma-style mockup screenshot embedded in a slide); the restriction applies to the *project artifact kind*, not to what a slide may depict.
+
+### Slide layout density — every slide (not just the cover)
+
+Broken layouts (overlapping blocks in the middle, empty bottom half) can appear on **any slide** — cover, body, stat, summary, or closing. The cause is almost always **overcrowding one 1920×1080 canvas**, not a viewer bug.
+
+1. **One idea per slide.** Split stats, footnotes, and metadata across additional slides instead of stacking them beside a headline or body grid.
+2. **Prefer simple-deck layouts** when \`plugins/_official/examples/simple-deck/references/layouts.md\` is reachable — paste the closest skeleton per slide (Cover, Body, Big stat, Three-point, …) instead of custom magazine grids.
+3. **Footer discipline on every slide:** avoid \`position:absolute\` footers combined with tall flow content; use flex column + \`margin-top:auto\` or a reserved content \`max-height\`.
+4. **Mental render at 1080px tall** for each \`<section class="slide">\` before emitting. If it looks crowded or would overlap, split the slide — do not shrink fonts to pack more in.`;
 
 const MEDIA_DISPATCH_HINT = `
 

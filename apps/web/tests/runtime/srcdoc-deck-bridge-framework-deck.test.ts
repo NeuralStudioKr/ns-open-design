@@ -63,6 +63,7 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     const out = buildSrcdoc(frameworkDeckHtml(), { deck: true });
     expect(out).not.toMatch(/<style[^>]*data-od-deck-fix/);
     expect(out).not.toContain('place-content: center !important');
+    expect(out).not.toMatch(/<style[^>]*data-od-deck-layout-guard/);
     // The bridge script itself must still ship — the framework's own
     // fit() handles centering, but the host-side counter / keyboard
     // bridge still needs the slide-state postMessage channel.

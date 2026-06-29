@@ -209,7 +209,14 @@ export const DECK_SKELETON_HTML = `<!doctype html>
     /* SLOT: per-deck styles — typography, layout helpers, slide variants.
        Add classes used by the slide content below, e.g. .title, .big-stat,
        .grid-3. Do not redefine .deck-shell / .deck-stage / .slide /
-       .deck-counter / .deck-hint or anything inside @media print. */
+       .deck-counter / .deck-hint or anything inside @media print.
+
+       Optional stack layout (only if you use .slide-inner wrappers):
+         .slide-inner { flex:1 1 auto; min-height:0; height:100%;
+           display:flex; flex-direction:column; padding:80px 120px; }
+         .slide-main { flex:1 1 auto; min-height:0; }
+         .slide-footer, .slide-meta { flex-shrink:0; margin-top:auto; }
+       Prefer position:static footers over position:absolute when flow content is tall. */
   </style>
 </head>
 <body>
@@ -383,18 +390,25 @@ Real copy only — no lorem ipsum, no invented metrics, no generic emoji icon ro
 
 ## Density and overflow discipline (the #1 cause of ugly decks)
 
-Even with the visibility toggle working, slides go ugly when content overflows the 1920×1080 canvas. Specific failure modes that ship today:
+Even with the visibility toggle working, slides go ugly when content overflows the 1920×1080 canvas. **This can happen on any slide** — cover, body, stat, summary, or closing — not only slide 01.
 
+**Broken-layout signature users report:** headline / stats / footer / sidebar blocks **overlap in the middle band**, while the **bottom half of the slide stays empty**. Cover slides trigger this most often because models pack key metrics there, but the **same overcrowding breaks slide 03, slide 07, section dividers, etc.**
+
+Specific failure modes that ship today:
+
+- ❌ Any slide that combines a display headline **plus** a multi-line subtitle **plus** a stat column or metric rail **plus** an absolutely-positioned \`.footer\` / metadata bar. Flow content and the footer collide; empty space appears below.
 - ❌ Title slides with a display headline ≥ 160px **plus** a multi-line subtitle/deck paragraph **plus** an absolutely-positioned \`.footer\` at \`bottom: ~56px\`. The flow content grows downward, the absolute footer occupies the bottom band, and the two collide in the last ~100px of the slide.
 - ❌ Stat slides with three numbers + three captions + a footer. Split into three stat slides — the framework counts slides for you, more slides cost nothing.
-- ❌ "Magazine spread" attempts that pack masthead + display headline + body grid + sidebar + absolute footer all into a single 1080px slide.
+- ❌ "Magazine spread" attempts that pack masthead + display headline + body grid + sidebar + absolute footer all into a single 1080px slide — on **any** slide index.
 
-Rules — non-negotiable:
+Rules — non-negotiable (every slide):
 
-1. **Display headlines on cover/title slides: max ~140px font-size, max 8 words, max 3 lines.** If the headline doesn't fit those bounds, the slide is the wrong shape — split it, don't shrink the font and pack more in.
-2. **Reserve a footer safe-zone.** If you use \`.footer { position: absolute; bottom: Npx; }\`, flow content above the footer must stop at least 80px before \`1080 − footer_height − N\`. Practically: don't let flow content extend into the bottom 200px of the slide. Easiest enforcement: make the slide's main content area its own \`<div style="height: 760px;">\` (or \`max-height\`), and the footer absolute below it.
+1. **Display headlines: max ~140px font-size, max 8 words, max 3 lines.** If the headline doesn't fit those bounds, the slide is the wrong shape — split it, don't shrink the font and pack more in.
+2. **Reserve a footer safe-zone.** If you use \`.footer { position: absolute; bottom: Npx; }\`, flow content above the footer must stop at least 80px before \`1080 − footer_height − N\`. Practically: don't let flow content extend into the bottom 200px of the slide. Easiest enforcement: make the slide's main content area its own \`<div style="height: 760px;">\` (or \`max-height\`), and the footer absolute below it — or use flex column with \`margin-top:auto\` on the footer instead of absolute positioning.
 3. **Body slides: ≤ 3 paragraphs, ≤ 56ch lead text width, ≤ 12 words per line.**
-4. **One idea per slide.** Two ideas = two slides.
+4. **One idea per slide.** Two ideas = two slides. Three metrics = three slides (big-stat layout), not one crowded slide.
+
+**Fix pattern when a slide feels crowded:** split it, move stats/metadata to sibling slides, or paste the closest simple-deck layout (Cover, Body, Big stat, Three-point, …) instead of inventing a custom grid. Cover slides: prefer Layout 1 — Cover (eyebrow + headline + optional lead only).
 
 ## Pre-emit self-check — run this BEFORE writing the \`<artifact>\` tag
 
@@ -403,7 +417,8 @@ For every \`<section class="slide">\`, mentally render at 1920×1080 and answer:
 - [ ] Does the slide's content fit inside the canvas without clipping or overflowing the bottom?
 - [ ] If there's an absolutely-positioned footer/header, does flow content stop before the footer's reserved band? (See Rule 2 above.)
 - [ ] Is the display headline ≤ 140px and ≤ 8 words?
-- [ ] Does the slide carry ≤ one big idea? (No mashed-together masthead + display headline + subtitle + absolute footer + sidebar.)
+- [ ] Does the slide carry ≤ one big idea? (No mashed-together masthead + display headline + subtitle + absolute footer + sidebar + stat column.)
+- [ ] Would this slide show the broken signature (overlap in the middle, empty bottom half)? If yes, split it or switch to a simple-deck layout before emitting.
 
 If any answer is "no", redesign the slide BEFORE emitting. Decks that overflow are the most common single failure mode reported by users; the user has rejected one before and will reject one again.
 
