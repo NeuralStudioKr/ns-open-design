@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'express';
 
@@ -65,6 +67,70 @@ describe('createProjectStorageAccessHooks', () => {
       expect(syncDown).toHaveBeenCalledTimes(1);
       expect(syncDown.mock.calls[0]?.[1]).toBe(remote);
     } finally {
+      if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+      else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
+    }
+  });
+
+  it('bypasses the TTL and self-heals S3 after a previous sync-up failure', async () => {
+    const previousTtl = process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+    process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = '60000';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    const syncDown = vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 0 });
+    const syncUp = vi.spyOn(storage, 'syncUp').mockResolvedValue({
+      uploaded: 1,
+      skipped: 0,
+      deleted: 0,
+      failed: 0,
+    });
+
+    try {
+      await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/files'), 'p1');
+      runtime.markProjectSyncFailed('p1');
+      await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/preview-url'), 'p1');
+
+      expect(syncDown).toHaveBeenCalledTimes(2);
+      expect(syncUp).toHaveBeenCalledTimes(1);
+      expect(runtime.isProjectSyncFailed('p1')).toBe(false);
+    } finally {
+      if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+      else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
+    }
+  });
+
+  it('keeps the failed marker when self-heal sync-up still fails', async () => {
+    const previousTtl = process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+    process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = '60000';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 0 });
+    vi.spyOn(storage, 'syncUp').mockResolvedValue({
+      uploaded: 0,
+      skipped: 0,
+      deleted: 0,
+      failed: 1,
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      runtime.markProjectSyncFailed('p1');
+      await expect(
+        hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/preview-url'), 'p1'),
+      ).rejects.toThrow('project_storage_self_heal_failed:1');
+      expect(runtime.isProjectSyncFailed('p1')).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
       if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
       else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
     }
@@ -247,6 +313,20 @@ describe('createProjectStorageAccessHooks', () => {
 });
 
 describe('createLazyProjectMaterializationMiddleware', () => {
+  it('is registered before project routes so preview/file routes cannot bypass it', () => {
+    const source = readFileSync(
+      new URL('../src/server.ts', import.meta.url),
+      'utf8',
+    );
+    const middlewareIndex = source.indexOf(
+      "app.use(\n      '/api/projects/:id',\n      createLazyProjectMaterializationMiddleware(projectStorageHooks",
+    );
+    const projectRoutesIndex = source.indexOf('registerProjectRoutes(app');
+    expect(middlewareIndex).toBeGreaterThanOrEqual(0);
+    expect(projectRoutesIndex).toBeGreaterThanOrEqual(0);
+    expect(middlewareIndex).toBeLessThan(projectRoutesIndex);
+  });
+
   it('no-ops when hooks are null', async () => {
     const next = vi.fn();
     const middleware = createLazyProjectMaterializationMiddleware(null, vi.fn());
@@ -321,6 +401,30 @@ describe('createLazyProjectMaterializationMiddleware', () => {
 
     expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
     expect(next).toHaveBeenCalled();
+  });
+
+  it('runs sync-down for project preview reads', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    for (const path of [
+      '/api/projects/p1/preview-url',
+      '/api/projects/p1/files/index.html/preview',
+    ]) {
+      ensure.mockClear();
+      const next = vi.fn();
+      await middleware(mockReq('GET', path), mockRes(), next);
+      expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
+      expect(next).toHaveBeenCalled();
+    }
   });
 
   it('materializes media/finalize/deploy/design-system file-touching routes', async () => {

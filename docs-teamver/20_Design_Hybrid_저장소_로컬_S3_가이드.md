@@ -115,13 +115,20 @@ Browser ──► daemon ──► scratch/projects/<id>/  ◄──sync-down─
 ### 3.3 sync-down — 필요할 때만
 
 - **run 시작** (`beforeChatRun`)
-- **파일 GET/변경 API** (lazy middleware, `OD_PROJECT_LAZY_SYNC_TTL_MS` 캐시)
+- **파일·preview GET/변경 API** (lazy middleware, `OD_PROJECT_LAZY_SYNC_TTL_MS` 캐시)
 - 프로젝트 **create** 시 design-api → daemon `scratch/sync-up` (registry commit 전 hard-fail)
 
 명시적 `POST …/scratch/sync-up`은 일부 파일이라도 업로드에 실패하면
 `502 PROJECT_STORAGE_SYNC_FAILED`를 반환한다. 따라서 Drive import/create가 S3 반영 실패를
 성공으로 오인해 registry만 커밋하지 않는다. 일반 mutation 후 비동기 sync-up은 요청
 응답을 지연시키지 않는 best-effort 동작을 유지한다.
+
+**loop 440 보강:** lazy middleware는 `registerProjectRoutes`보다 먼저 등록되어야 한다.
+그렇지 않으면 `/api/projects/:id/files`, `/preview-url`, `/files/:name/preview`가
+middleware를 우회해 scratch가 비어 있는 상세 진입에서 preview가 404/blank가 될 수 있다.
+또한 이전 sync-up 실패가 기록된 프로젝트는 TTL을 무시하고 상세/preview GET에서
+scratch→S3 self-heal `syncUp(runStart=0)`을 먼저 시도한 뒤 sync-down한다. 이 추가 write는
+`projectSyncFailed` 마커가 있는 프로젝트에만 수행되어 평상시 조회 부하는 기존 TTL 정책을 따른다.
 
 ### 3.4 evict — 로컬에서 지우기
 

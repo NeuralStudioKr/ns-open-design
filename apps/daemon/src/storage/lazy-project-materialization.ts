@@ -122,7 +122,8 @@ export function createProjectStorageAccessHooks(
     const ttl = lazySyncTtlMs();
     const now = Date.now();
     const previous = lastSyncAt.get(trimmedId) ?? 0;
-    if (ttl > 0 && now - previous < ttl) return;
+    const forceRefresh = materializationRuntime.isProjectSyncFailed(trimmedId);
+    if (!forceRefresh && ttl > 0 && now - previous < ttl) return;
 
     const pending = inflight.get(trimmedId);
     if (pending) {
@@ -137,6 +138,16 @@ export function createProjectStorageAccessHooks(
         try {
           await materializationRuntime.withProjectLock(trimmedId, async () => {
             const remote = await resolveRemote(req, trimmedId);
+            if (materializationRuntime.isProjectSyncFailed(trimmedId)) {
+              const heal = await storage.syncUp(trimmedId, remote, 0);
+              console.info(
+                `[project-materialization] lazy self-heal sync-up ${trimmedId}: uploaded=${heal.uploaded} skipped=${heal.skipped} deleted=${heal.deleted} failed=${heal.failed}`,
+              );
+              if (heal.failed > 0) {
+                throw new Error(`project_storage_self_heal_failed:${heal.failed}`);
+              }
+              materializationRuntime.clearProjectSyncFailed(trimmedId);
+            }
             const result = await storage.syncDown(trimmedId, remote);
             lastSyncAt.set(trimmedId, Date.now());
             console.info(

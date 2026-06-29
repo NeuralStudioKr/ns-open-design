@@ -6525,6 +6525,12 @@ export async function startServer({
     projectFiles: projectFileDeps,
   });
   registerSocialShareRoutes(app, { http: httpDeps });
+  if (projectStorageHooks) {
+    app.use(
+      '/api/projects/:id',
+      createLazyProjectMaterializationMiddleware(projectStorageHooks, httpDeps.sendApiError),
+    );
+  }
   registerProjectRoutes(app, {
     db,
     design,
@@ -6646,12 +6652,6 @@ export async function startServer({
   });
   registerDeploymentCheckRoutes(app, { db, http: httpDeps, deploy: deployDeps });
   app.use('/frames', express.static(FRAMES_DIR));
-  if (projectStorageHooks) {
-    app.use(
-      '/api/projects/:id',
-      createLazyProjectMaterializationMiddleware(projectStorageHooks, httpDeps.sendApiError),
-    );
-  }
   registerProjectExportRoutes(app, {
     db,
     http: httpDeps,
