@@ -204,7 +204,7 @@ Agent CLI는 **로컬 CWD**가 필요하므로 pure S3만으로는 불가. **영
 | # | 작업 | 레포 | 상태 |
 |---|------|------|------|
 | P3-1 | `design_projects` DDL + migration | `deploy/teamver/be` | ✅ |
-| P3-2 | `POST /api/v1/projects` — registry 생성 | `deploy/teamver/be` | ✅ S3 sync hard-fail (`OD_PROJECT_STORAGE=s3`) |
+| P3-2 | `POST /api/v1/projects` — registry 생성 | `deploy/teamver/be` | ✅ post-commit scratch sync best-effort + failure marker |
 | P3-3 | `GET /api/v1/projects` — workspace + **owner** 필터 목록 | `deploy/teamver/be` | ✅ |
 | P3-4 | `GET /api/v1/projects/{od_project_id}/access` — 204/403 | `deploy/teamver/be` | ✅ v1(owner) · `X-Teamver-S3-Prefix` |
 | P3-5 | OD web — list/create → design-api | `apps/web` | ✅ create/import/delete sync · list filter · fail-closed · **EC2 `--e2e-strict` ☐** |
@@ -284,7 +284,7 @@ CREATE TABLE design_outputs (
 | P4-1 | export/finalize → Drive upload (`teamver-app-sdk`) | `deploy/teamver/be` | ✅ `PublishService` · Main BE presigned 3-step |
 | P4-2 | `design_outputs` 테이블 + `GET /outputs` | `deploy/teamver/be` | ✅ `drive_folder_id` + `drive_shared_drive_id` |
 | P4-3 | Main FE / Drive 연동 UX | `ns-teamver-fe-v2` + embed | 🟡 `?asset=` · Open in Drive · target picker · BFF browse ✅ (loop 394) · **full folder browser ☐** |
-| P4-4 | registry create/reactivation → scratch sync-up (S3) | design-api + daemon | ✅ `POST …/scratch/sync-up`; sync 실패 시 DB rollback + 502 |
+| P4-4 | registry create/reactivation → scratch sync-up (S3) | design-api + daemon | ✅ `POST …/scratch/sync-up`; post-commit sync 실패 시 row 반환 + `od_registry_scratch_sync_failed` marker |
 
 ---
 
@@ -473,7 +473,7 @@ s3://teamver-design-{env}-data/design/ws_{ws}/user_{uid}/proj_{od_project_id}/..
 
 | Method | Path | 설명 | 상태 |
 |--------|------|------|------|
-| POST | `/api/v1/projects` | registry + s3_prefix + sync-up hard-fail | ✅ |
+| POST | `/api/v1/projects` | registry + s3_prefix + post-commit scratch sync best-effort | ✅ |
 | GET | `/api/v1/projects` | workspace 목록 | ✅ |
 | GET | `/api/v1/projects/{od_project_id}/access` | daemon 검증 (**od_project_id** 전용) | ✅ |
 | DELETE | `/api/v1/projects/{od_project_id}` | soft-delete (`status=deleted`) + scratch evict + S3 purge | ✅ |

@@ -113,11 +113,14 @@ async def _sync_daemon_scratch_after_registry(
     row: DesignProject,
     *,
     auth: AuthContext,
-) -> None:
-    """Strict scratch → S3 sync after registry row is durable (post-commit).
+) -> bool:
+    """Best-effort scratch → S3 sync after registry row is durable (post-commit).
 
-    Access gate requires a committed registry row (loop 191). Failures surface
-    as 502 so callers can retry instead of assuming S3 SSOT is ready.
+    Access gate requires a committed registry row (loop 191). Registry create is
+    not the authoritative file persistence path: daemon project creation, run
+    finish, mutation sync-up, and preview self-heal own actual file durability.
+    A post-commit scratch sync failure must therefore be observable, but must
+    not make an already-created project look like a failed create to the user.
     """
     workspace_id = require_workspace_context(auth)
     identity = OdDaemonIdentity(
@@ -133,7 +136,7 @@ async def _sync_daemon_scratch_after_registry(
                 row.od_project_id,
                 identity=identity,
             )
-            return
+            return True
         except BadGatewayError as exc:
             last_exc = exc
         except Exception as exc:
@@ -155,19 +158,13 @@ async def _sync_daemon_scratch_after_registry(
             else None
         ),
     )
-    if isinstance(last_exc, BadGatewayError):
-        logger.info(
-            '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s"}',
-            row.od_project_id,
-        )
-        raise last_exc
     reason = str(last_exc).replace('"', '\\"') if last_exc is not None else "unknown"
     logger.info(
         '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
         row.od_project_id,
         reason,
     )
-    raise BadGatewayError("od_daemon_scratch_sync_up_failed") from last_exc
+    return False
 
 
 async def _commit_registry_row_if_needed(

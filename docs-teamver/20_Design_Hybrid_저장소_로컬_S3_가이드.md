@@ -116,12 +116,13 @@ Browser ──► daemon ──► scratch/projects/<id>/  ◄──sync-down─
 
 - **run 시작** (`beforeChatRun`)
 - **파일·preview GET/변경 API** (lazy middleware, `OD_PROJECT_LAZY_SYNC_TTL_MS` 캐시)
-- 프로젝트 **create** 시 design-api → daemon `scratch/sync-up` (registry commit 전 hard-fail)
+- 프로젝트 **create** 시 design-api → daemon `scratch/sync-up` (registry commit 후 best-effort marker)
 
-명시적 `POST …/scratch/sync-up`은 일부 파일이라도 업로드에 실패하면
-`502 PROJECT_STORAGE_SYNC_FAILED`를 반환한다. 따라서 Drive import/create가 S3 반영 실패를
-성공으로 오인해 registry만 커밋하지 않는다. 일반 mutation 후 비동기 sync-up은 요청
-응답을 지연시키지 않는 best-effort 동작을 유지한다.
+명시적 운영 API `POST …/scratch/sync-up`은 일부 파일이라도 업로드에 실패하면
+`502 PROJECT_STORAGE_SYNC_FAILED`를 반환한다. 다만 design-api registry create의 post-commit
+sync-up은 실제 파일 durability의 유일 경로가 아니므로 best-effort다. 실패 시
+`od_registry_scratch_sync_failed` marker를 남기고 생성 row는 반환한다. 실제 파일은 daemon create
+2xx 후 sync-up, run-end sync-up, mutation sync-up, 상세/preview self-heal 경로가 채운다.
 
 **loop 440 보강:** lazy middleware는 `registerProjectRoutes`보다 먼저 등록되어야 한다.
 그렇지 않으면 `/api/projects/:id/files`, `/preview-url`, `/files/:name/preview`가

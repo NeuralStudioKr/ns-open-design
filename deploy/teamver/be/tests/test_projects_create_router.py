@@ -63,7 +63,9 @@ async def test_create_project_syncs_daemon_scratch(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_create_project_raises_when_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_create_project_returns_row_when_registry_sync_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     row = _project_row()
     db = AsyncMock()
     db.commit = AsyncMock()
@@ -87,12 +89,12 @@ async def test_create_project_raises_when_sync_fails(monkeypatch: pytest.MonkeyP
     sleep = AsyncMock()
     monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
 
-    with pytest.raises(BadGatewayError):
-        await projects_router.create_project(
-            CreateDesignProjectBody(odProjectId="od1"),
-            _auth(),
-            db,
-        )
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1"),
+        _auth(),
+        db,
+    )
+    assert response.od_project_id == "od1"
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
     assert sleep.await_count == 2
@@ -207,7 +209,7 @@ async def test_create_project_reactivates_soft_deleted_row(
 
 
 @pytest.mark.asyncio
-async def test_create_project_raises_when_reactivation_sync_fails(
+async def test_create_project_reactivation_returns_row_when_sync_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deleted = _project_row()
@@ -240,13 +242,13 @@ async def test_create_project_raises_when_reactivation_sync_fails(
     sleep = AsyncMock()
     monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
 
-    with pytest.raises(BadGatewayError):
-        await projects_router.create_project(
-            CreateDesignProjectBody(odProjectId="od1", title="Landing"),
-            _auth(),
-            db,
-        )
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+        _auth(),
+        db,
+    )
 
+    assert response.status == "active"
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
     assert sleep.await_count == 2
@@ -316,7 +318,7 @@ async def test_create_project_reactivates_soft_deleted_row_after_integrity_race(
 
 
 @pytest.mark.asyncio
-async def test_create_project_raises_when_race_reactivation_sync_fails(
+async def test_create_project_race_reactivation_returns_row_when_sync_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deleted = _project_row()
@@ -349,13 +351,13 @@ async def test_create_project_raises_when_race_reactivation_sync_fails(
     sleep = AsyncMock()
     monkeypatch.setattr(projects_router.asyncio, "sleep", sleep)
 
-    with pytest.raises(BadGatewayError):
-        await projects_router.create_project(
-            CreateDesignProjectBody(odProjectId="od1", title="Landing"),
-            _auth(),
-            db,
-        )
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Landing"),
+        _auth(),
+        db,
+    )
 
+    assert response.status == "active"
     db.commit.assert_awaited_once()
     db.rollback.assert_awaited_once()
     assert sleep.await_count == 2

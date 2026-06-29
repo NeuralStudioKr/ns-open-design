@@ -427,6 +427,56 @@ describe('HomeView prompt handoff', () => {
     cleanup();
   });
 
+  it('keeps the send button disabled while project creation is pending', async () => {
+    let resolveSubmit: (value: boolean) => void = () => undefined;
+    const submitPromise = new Promise<boolean>((resolve) => {
+      resolveSubmit = resolve;
+    });
+    const onSubmit = vi.fn(() => submitPromise);
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (typeof url === 'string' && url === '/api/plugins') {
+        return new Response(JSON.stringify({ plugins: [HIDDEN_DEFAULT_PLUGIN] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (typeof url === 'string' && url === '/api/mcp/servers') {
+        return new Response(JSON.stringify({ servers: [], templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    stubAnimationFrame();
+
+    render(
+      <HomeView
+        projects={[]}
+        onSubmit={onSubmit}
+        onOpenProject={() => undefined}
+        onViewAllProjects={() => undefined}
+      />,
+    );
+
+    await screen.findByTestId('home-hero-input');
+    await setPromptAndSettle('Create a slide deck');
+    const submitButton = screen.getByTestId('home-hero-submit') as HTMLButtonElement;
+    await waitFor(() => expect(submitButton.disabled).toBe(false));
+
+    fireEvent.click(submitButton);
+    await waitFor(() => expect(submitButton.disabled).toBe(true));
+    fireEvent.click(submitButton);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSubmit(true);
+      await submitPromise;
+    });
+    await waitFor(() => expect(submitButton.disabled).toBe(false));
+  });
+
   it('consumes a plugin authoring handoff once and focuses the textarea', async () => {
     let resolveApply: (response: Response) => void = () => undefined;
     const applyResponse = new Promise<Response>((resolve) => {
