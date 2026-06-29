@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { historyWithApiAttachmentContext } from '../../src/api-attachment-context';
-import { buildProxyMessages, streamProxyEndpoint } from '../../src/providers/api-proxy';
+import {
+  buildProxyMessages,
+  buildProxyResponseError,
+  streamProxyEndpoint,
+} from '../../src/providers/api-proxy';
 import type { ChatMessage } from '../../src/types';
 
 describe('buildProxyMessages', () => {
@@ -388,3 +392,69 @@ function userMessage(
     attachments,
   };
 }
+
+// Regression guard for the chat error diagnostic copy. Before parsing the
+// daemon's structured error envelope, every proxy 4xx/5xx surfaced as
+// `error_code: n/a` even when the daemon already answered with a specific
+// code (e.g. `MANAGED_API_KEY_MISSING` from a daemon container missing
+// TEAMVER_OD_API_KEY).
+describe('buildProxyResponseError', () => {
+  it('extracts the daemon error code + message from a nested error envelope', () => {
+    const err = buildProxyResponseError(
+      503,
+      JSON.stringify({
+        error: {
+          code: 'MANAGED_API_KEY_MISSING',
+          message: 'Server-managed BYOK key is not configured on this daemon.',
+        },
+      }),
+    );
+    expect(err.code).toBe('MANAGED_API_KEY_MISSING');
+    expect(err.message).toContain('MANAGED_API_KEY_MISSING');
+    expect(err.message).toContain('Server-managed BYOK key is not configured');
+    expect(err.message).toContain('proxy 503');
+  });
+
+  it('extracts code + message from a flat envelope (no nested error)', () => {
+    const err = buildProxyResponseError(
+      400,
+      JSON.stringify({ code: 'BAD_REQUEST', message: 'model is required' }),
+    );
+    expect(err.code).toBe('BAD_REQUEST');
+    expect(err.message).toContain('model is required');
+  });
+
+  it('falls back to the raw body when the response is not JSON', () => {
+    const err = buildProxyResponseError(502, '<html><body>Bad Gateway</body></html>');
+    expect(err.code).toBeUndefined();
+    expect(err.message).toContain('proxy 502');
+    expect(err.message).toContain('<html>');
+  });
+
+  it('uses "no body" when the response body is empty', () => {
+    const err = buildProxyResponseError(500, '');
+    expect(err.code).toBeUndefined();
+    expect(err.message).toBe('proxy 500: no body');
+  });
+
+  it('ignores empty/blank code fields without throwing', () => {
+    const err = buildProxyResponseError(
+      400,
+      JSON.stringify({ error: { code: '   ', message: 'something' } }),
+    );
+    expect(err.code).toBeUndefined();
+    expect(err.message).toContain('something');
+  });
+
+  it('forwards the code into Error.code so ChatPane diagnostic copy renders it', () => {
+    const err = buildProxyResponseError(
+      503,
+      JSON.stringify({ error: { code: 'MANAGED_API_KEY_MISSING', message: 'op missed env' } }),
+    );
+    // ChatPane reads `(err as Error & { code?: string }).code` — guard the
+    // exact shape so a future refactor cannot silently drop the code.
+    const typed = err as Error & { code?: string };
+    expect(typed.code).toBe('MANAGED_API_KEY_MISSING');
+    expect(typed).toBeInstanceOf(Error);
+  });
+});

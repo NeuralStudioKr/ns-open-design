@@ -267,7 +267,9 @@ import {
 import {
   createTeamverProjectAccessMiddleware,
   readTeamverIdentityFromRequest,
+  teamverDesignApiBaseUrl,
 } from './teamver-project-access.js';
+import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
 import {
@@ -3497,6 +3499,40 @@ function isLoopbackHostname(hostname) {
   if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true;
   if (net.isIP(normalized) === 4) return normalized === '127.0.0.1' || normalized.startsWith('127.');
   return false;
+}
+
+/**
+ * One-shot boot marker for managed-embed BYOK readiness. Hosted operators
+ * grep these in CloudWatch right after a deploy to confirm the daemon
+ * container actually picked up TEAMVER_OD_API_KEY from the compose env file
+ * — a misconfigured env_file used to silently strand `useManagedApiKey: true`
+ * proxy requests with `MANAGED_API_KEY_MISSING` until a real user run hit it.
+ */
+function emitTeamverManagedKeyBootMarker() {
+  const designApiUrl = teamverDesignApiBaseUrl();
+  // Non-managed daemons (desktop, OSS, dev) don't need the managed key.
+  if (!designApiUrl) return;
+  const hasManagedKey = Boolean(resolveTeamverManagedApiKeyFromEnv());
+  const payload = {
+    metric: 'teamver_managed_api_key_boot',
+    ts: Date.now(),
+    managedMode: true,
+    hasManagedKey,
+    designApiConfigured: true,
+    ...(hasManagedKey
+      ? {}
+      : {
+          hint:
+            'TEAMVER_OD_API_KEY (and/or ANTHROPIC_API_KEY) is missing from the daemon env. '
+            + 'embed BYOK proxy runs will fail with MANAGED_API_KEY_MISSING. '
+            + 'Update deploy/teamver/.env.{staging,production} + restart the open-design-daemon container.',
+        }),
+  };
+  if (hasManagedKey) {
+    console.info(JSON.stringify(payload));
+  } else {
+    console.warn(JSON.stringify(payload));
+  }
 }
 
 function isLoopbackPeerAddress(address) {
@@ -16166,6 +16202,19 @@ export async function startServer({
     let server;
     try {
       server = app.listen(port, host);
+      // Boot-time observability for managed embed BYOK. The deploy plumbing
+      // (compose env_file + docker-compose.yml explicit injection) recently
+      // caused TEAMVER_OD_API_KEY to land in design-api but not in the
+      // open-design-daemon container — every embed run then failed fast with
+      // `MANAGED_API_KEY_MISSING` (used to surface as a generic 400 →
+      // error_code: n/a). Emit a one-shot structured marker so CloudWatch
+      // log-metric-filters can alarm at deploy time instead of waiting for
+      // the first failed user run.
+      try {
+        emitTeamverManagedKeyBootMarker();
+      } catch {
+        // never block boot on observability
+      }
       server.once('listening', () => {
         // Widen the between-request idle window so kept-alive sockets
         // belonging to chat/SSE clients survive the gaps between bursts.

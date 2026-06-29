@@ -30,6 +30,8 @@ import {
  */
 export interface ProxyContext {
   projectId?: string;
+  /** Embed BYOK — ties proxy usage SSE to the assistant message row for daemon-side billing staging. */
+  assistantMessageId?: string;
   byokImageModel?: string;
   byokVideoModel?: string;
   byokSpeechModel?: string;
@@ -67,6 +69,9 @@ export async function streamProxyEndpoint(
         maxTokens: effectiveMaxTokens(cfg),
         apiVersion: cfg.apiVersion,
         ...(context?.projectId ? { projectId: context.projectId } : {}),
+        ...(context?.assistantMessageId
+          ? { assistantMessageId: context.assistantMessageId }
+          : {}),
         ...(context?.byokImageModel
           ? { byokImageModel: context.byokImageModel }
           : {}),
@@ -85,7 +90,7 @@ export async function streamProxyEndpoint(
 
     if (!resp.ok || !resp.body) {
       const text = await resp.text().catch(() => '');
-      handlers.onError(new Error(`proxy ${resp.status}: ${text || 'no body'}`));
+      handlers.onError(buildProxyResponseError(resp.status, text));
       return;
     }
 
@@ -123,7 +128,14 @@ export async function streamProxyEndpoint(
         }
 
         if (parsed.event === 'error') {
-          handlers.onError(new Error(proxyErrorMessage(parsed.data)));
+          const err = new Error(proxyErrorMessage(parsed.data)) as Error & { code?: string };
+          const codeCandidate =
+            (parsed.data as { code?: unknown }).code
+            ?? (parsed.data as { error?: { code?: unknown } }).error?.code;
+          if (typeof codeCandidate === 'string' && codeCandidate.trim()) {
+            err.code = codeCandidate.trim();
+          }
+          handlers.onError(err);
           return;
         }
 
@@ -326,4 +338,62 @@ function proxyErrorMessage(data: Record<string, unknown>): string {
     if (typeof message === 'string' && message) return message;
   }
   return String(data.message ?? 'proxy error');
+}
+
+/**
+ * Surface the daemon's structured error to the chat error card by attaching
+ * `code` to the thrown Error. Without this the chat diagnostic copy shows
+ * `error_code: n/a` even when the daemon answered with a specific code (e.g.
+ * `MANAGED_API_KEY_MISSING` when TEAMVER_OD_API_KEY is missing from the
+ * daemon env), making the failure look generic and untraceable.
+ */
+export function buildProxyResponseError(
+  status: number,
+  text: string,
+): Error & { code?: string } {
+  const parsed = parseProxyErrorEnvelope(text);
+  const codeFragment = parsed?.code ? `${parsed.code} ` : '';
+  const messageFragment =
+    (parsed?.message && parsed.message.trim())
+    || (text && text.trim())
+    || 'no body';
+  const err = new Error(`proxy ${status}: ${codeFragment}${messageFragment}`) as Error & {
+    code?: string;
+  };
+  if (parsed?.code) err.code = parsed.code;
+  return err;
+}
+
+function parseProxyErrorEnvelope(
+  text: string,
+): { code?: string; message?: string } | null {
+  if (!text || typeof text !== 'string') return null;
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const nested =
+      (parsed as { error?: unknown }).error
+      && typeof (parsed as { error?: unknown }).error === 'object'
+        ? ((parsed as { error: { code?: unknown; message?: unknown } }).error)
+        : null;
+    const code =
+      typeof nested?.code === 'string' && nested.code.trim()
+        ? nested.code.trim()
+        : typeof (parsed as { code?: unknown }).code === 'string'
+          ? (parsed as { code: string }).code.trim() || undefined
+          : undefined;
+    const message =
+      typeof nested?.message === 'string' && nested.message.trim()
+        ? nested.message.trim()
+        : typeof (parsed as { message?: unknown }).message === 'string'
+          ? (parsed as { message: string }).message.trim() || undefined
+          : undefined;
+    if (!code && !message) return null;
+    const out: { code?: string; message?: string } = {};
+    if (code) out.code = code;
+    if (message) out.message = message;
+    return out;
+  } catch {
+    return null;
+  }
 }
