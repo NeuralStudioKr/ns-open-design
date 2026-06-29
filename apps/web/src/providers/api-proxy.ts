@@ -104,7 +104,14 @@ export async function streamProxyEndpoint(
     // cancels the upstream LLM fetch. Any other abort reason (page
     // exit, route change, supersession) intentionally lets the daemon
     // drain the upstream so background sync-up commits scratch writes.
-    const proxyStreamId = resp.headers.get('x-stream-id') || resp.headers.get('X-Stream-Id') || '';
+    //
+    // `resp.headers` is missing on some test mocks (Response shape is
+    // partially stubbed). Treat that as "no streamId" so the abort hook
+    // is a no-op and the body-streaming code path is unaffected.
+    const proxyStreamId =
+      (typeof resp.headers?.get === 'function'
+        && (resp.headers.get('x-stream-id') || resp.headers.get('X-Stream-Id')))
+      || '';
     if (proxyStreamId) {
       const onSignalAbort = () => {
         // `signal.reason` carries whatever the caller passed to
