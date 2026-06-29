@@ -270,6 +270,7 @@ import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
 import {
   createLazyProjectMaterializationMiddleware,
   createProjectStorageAccessHooks,
+  scheduleProjectStoragePersistAfterResponse,
 } from './storage/lazy-project-materialization.js';
 import { deriveRunErrorCode, runResultFromStatus } from './run-result.js';
 import { classifyRunFailure, isResumableFailure } from './run-failure-classification.js';
@@ -6878,6 +6879,17 @@ export async function startServer({
           }),
         );
       }
+      // BYOK chats bypass `POST /api/runs` → `afterChatRun`, so the daemon
+      // never gets a chance to flush run-end artifacts into S3. Mirror the
+      // managed-run sync-up hook here so terminal BYOK assistant message
+      // PUTs persist scratch → S3 tenant prefix before the next idle-evict
+      // sweep deletes the local copy (catastrophic data loss without this).
+      scheduleProjectStoragePersistAfterResponse(
+        projectStorageHooks,
+        req,
+        res,
+        req.params.id,
+      );
     }
     res.json({ message: saved });
   });

@@ -132,6 +132,11 @@ export function createProjectStorageAccessHooks(
       () => storage.flatRemote(),
       s3PrefixOverride,
     );
+    // Memoize the deterministic tenant remote so the idle-evict sweep can
+    // flush scratch → S3 without needing a request context (BYOK chats only
+    // hit lazy paths — they never carry a managed run that would otherwise
+    // populate the cache via beforeChatRun).
+    materializationRuntime.rememberProjectRemote(projectId, resolved.remote);
     return resolved.remote;
   }
 
@@ -297,6 +302,10 @@ export function createProjectStorageAccessHooks(
     if (!trimmedId) return;
     lastSyncAt.delete(trimmedId);
     inflight.delete(trimmedId);
+    // Sticky remote cache must drop deleted projects so the idle sweep does
+    // not later attempt sync-up against a purged S3 prefix (and so the cache
+    // does not leak entries forever in long-running daemons).
+    materializationRuntime.forgetProjectRemote(trimmedId);
 
     if (s3RemotePurgeOnDeleteEnabled()) {
       try {

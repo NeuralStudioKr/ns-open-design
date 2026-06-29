@@ -30,11 +30,26 @@ export type IdleScratchEvictResult = {
   skippedActive: string[];
   skippedRecent: string[];
   skippedSyncFailed: string[];
+  skippedUnsynced: string[];
+};
+
+export type IdleEvictSyncUpOutcome = {
+  ok: boolean;
+  uploaded: number;
+  failed: number;
+  reason?: string;
 };
 
 /**
  * Remove scratch/projects/<id> when the directory mtime is older than idleAfterMs
  * and no chat run is active on that project.
+ *
+ * S3 SSOT guard: before deleting scratch, if `syncUpBeforeEvict` is provided,
+ * we MUST persist any pending local files to S3 first. The eviction is
+ * skipped (and emits `od_scratch_evict_deferred_unsynced`) when sync-up cannot
+ * be confirmed — scratch is the only copy of those files at that moment.
+ * This guard is critical for the BYOK chat path which never hits
+ * `afterChatRun`'s run-end sync-up.
  */
 export async function evictIdleScratchProjects(options: {
   projectsDir: string;
@@ -42,6 +57,8 @@ export async function evictIdleScratchProjects(options: {
   isActiveProject: (projectId: string) => boolean;
   /** Skip projects whose last sync-up failed (scratch may be only copy). */
   shouldSkipEvict?: (projectId: string) => boolean;
+  /** Mandatory S3 flush before evict; returning ok=false defers the evict. */
+  syncUpBeforeEvict?: (projectId: string) => Promise<IdleEvictSyncUpOutcome>;
   idleAfterMs?: number;
   nowMs?: number;
   /** Serialize with sync-up/sync-down (project-materialization-runtime). */
@@ -54,6 +71,7 @@ export async function evictIdleScratchProjects(options: {
     skippedActive: [],
     skippedRecent: [],
     skippedSyncFailed: [],
+    skippedUnsynced: [],
   };
 
   let entries: string[];
@@ -96,6 +114,35 @@ export async function evictIdleScratchProjects(options: {
       if (idleMs < idleAfterMs) {
         result.skippedRecent.push(projectId);
         return;
+      }
+
+      if (options.syncUpBeforeEvict) {
+        let outcome: IdleEvictSyncUpOutcome;
+        try {
+          outcome = await options.syncUpBeforeEvict(projectId);
+        } catch (err) {
+          outcome = {
+            ok: false,
+            uploaded: 0,
+            failed: 0,
+            reason: err instanceof Error ? err.message : 'sync_up_exception',
+          };
+        }
+        if (!outcome.ok) {
+          result.skippedUnsynced.push(projectId);
+          console.warn(
+            JSON.stringify({
+              metric: 'od_scratch_evict_deferred_unsynced',
+              projectId,
+              idleMs: Math.round(idleMs),
+              idleAfterMs,
+              uploaded: outcome.uploaded,
+              failed: outcome.failed,
+              reason: outcome.reason ?? 'unknown',
+            }),
+          );
+          return;
+        }
       }
 
       await options.storage.evictScratchProject(projectId);

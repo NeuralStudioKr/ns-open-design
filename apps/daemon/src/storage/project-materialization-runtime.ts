@@ -45,6 +45,17 @@ export type ProjectMaterializationRuntime = {
   markProjectSyncFailed: (projectId: string) => void;
   clearProjectSyncFailed: (projectId: string) => void;
   isProjectSyncFailed: (projectId: string) => boolean;
+  /**
+   * Long-lived (project_id → tenant remote) cache populated by request-scoped
+   * resolves (lazy materialization, beforeChatRun). Idle-evict uses this to
+   * sync-up without a request context. Safe to cache forever because
+   * design_projects.s3_prefix is immutable per project — drop entries only
+   * when the project itself is removed (via `forgetProjectRemote`).
+   */
+  rememberProjectRemote: (projectId: string, remote: ProjectStorage) => void;
+  getProjectRemote: (projectId: string) => ProjectStorage | undefined;
+  /** Clear the sticky remote cache entry (call from project delete hooks). */
+  forgetProjectRemote: (projectId: string) => void;
   /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
   dispose: () => void;
 };
@@ -74,8 +85,31 @@ export function createProjectMaterializationRuntime(
   const projectSyncFloorMs = new Map<string, number>();
   /** Tenant-scoped remote resolved by the first active run on a project. */
   const projectTenantRemote = new Map<string, ProjectStorage>();
+  /**
+   * Sticky remote cache keyed by projectId — survives run boundaries so that
+   * the idle-evict sweep (which has no request context) can flush scratch to
+   * S3 before deletion. design_projects.s3_prefix is immutable per project,
+   * so the mapping is deterministic and safe to cache for the daemon lifetime.
+   */
+  const projectStickyRemote = new Map<string, ProjectStorage>();
   /** Projects whose last sync-up reported failures — idle evict must retain scratch. */
   const projectSyncFailed = new Set<string>();
+
+  function rememberProjectRemote(projectId: string, remote: ProjectStorage): void {
+    const id = projectId.trim();
+    if (!id) return;
+    projectStickyRemote.set(id, remote);
+  }
+
+  function getProjectRemote(projectId: string): ProjectStorage | undefined {
+    return projectStickyRemote.get(projectId.trim());
+  }
+
+  function forgetProjectRemote(projectId: string): void {
+    const id = projectId.trim();
+    if (!id) return;
+    projectStickyRemote.delete(id);
+  }
 
   function markProjectSyncFailed(projectId: string): void {
     const id = projectId.trim();
@@ -210,6 +244,7 @@ export function createProjectMaterializationRuntime(
       } else {
         const remote = await resolveRunRemote(run, projectId);
         projectTenantRemote.set(projectId, remote);
+        rememberProjectRemote(projectId, remote);
       }
       return;
     }
@@ -217,6 +252,7 @@ export function createProjectMaterializationRuntime(
     activeProjectRuns.set(projectId, 1);
     const remote = await resolveRunRemote(run, projectId);
     projectTenantRemote.set(projectId, remote);
+    rememberProjectRemote(projectId, remote);
     await withProjectLock(projectId, async () => {
       const syncDownStarted = Date.now();
       const result = await storage.syncDown(projectId, remote);
@@ -352,6 +388,103 @@ export function createProjectMaterializationRuntime(
     }
   }
 
+  /**
+   * Pre-evict S3 flush for the idle scratch sweep.
+   *
+   * Why this exists: the BYOK chat path bypasses `POST /api/runs` and never
+   * triggers `afterChatRun`, so files written to scratch (via tool calls,
+   * direct file POSTs that didn't materialize, or proxy artifacts) can sit
+   * unsynced. Without this guard, idle-evict deletes the only copy and the
+   * project becomes unrecoverable. We refuse to evict unless scratch was
+   * already empty or we successfully push everything to S3 first.
+   */
+  async function syncUpForIdleEvict(projectId: string): Promise<{
+    ok: boolean;
+    uploaded: number;
+    failed: number;
+    reason?: string;
+  }> {
+    if (!storage || !isS3ProjectStorageLayout(layout)) {
+      return { ok: true, uploaded: 0, failed: 0 };
+    }
+    const id = projectId.trim();
+    if (!id) return { ok: true, uploaded: 0, failed: 0 };
+
+    let scratchFiles: Awaited<ReturnType<typeof storage.listFiles>>;
+    try {
+      scratchFiles = await storage.listFiles(id);
+    } catch (err) {
+      return {
+        ok: false,
+        uploaded: 0,
+        failed: 0,
+        reason: err instanceof Error ? err.message : 'scratch_list_failed',
+      };
+    }
+    if (scratchFiles.length === 0) {
+      // Nothing to lose — empty scratch directory can be safely removed.
+      return { ok: true, uploaded: 0, failed: 0 };
+    }
+
+    const remote = projectStickyRemote.get(id);
+    if (!remote) {
+      // No request ever resolved a tenant remote for this project; we have
+      // no way to know which S3 prefix is authoritative. Refuse to evict.
+      return {
+        ok: false,
+        uploaded: 0,
+        failed: 0,
+        reason: 'no_cached_remote',
+      };
+    }
+
+    try {
+      const result = await storage.syncUp(id, remote, 0);
+      if (result.failed > 0) {
+        markProjectSyncFailed(id);
+        console.info(
+          JSON.stringify({
+            metric: 'od_s3_sync_up_failed',
+            stage: 'idle_evict',
+            projectId: id,
+            failed: result.failed,
+            uploaded: result.uploaded,
+            skipped: result.skipped,
+          }),
+        );
+        return {
+          ok: false,
+          uploaded: result.uploaded,
+          failed: result.failed,
+          reason: 'sync_up_failed',
+        };
+      }
+      clearProjectSyncFailed(id);
+      if (result.uploaded > 0) {
+        console.info(
+          `[project-materialization] idle-evict sync-up ${id}: uploaded=${result.uploaded} skipped=${result.skipped}`,
+        );
+      }
+      return { ok: true, uploaded: result.uploaded, failed: 0 };
+    } catch (err) {
+      markProjectSyncFailed(id);
+      console.info(
+        JSON.stringify({
+          metric: 'od_s3_sync_up_failed',
+          stage: 'idle_evict_exception',
+          projectId: id,
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return {
+        ok: false,
+        uploaded: 0,
+        failed: 0,
+        reason: err instanceof Error ? err.message : 'sync_up_exception',
+      };
+    }
+  }
+
   async function emitPeriodicScratchDiskUsageMarker(scratchDir: string, stage = 'periodic'): Promise<void> {
     try {
       const sample = await measureScratchDiskUsage(scratchDir);
@@ -386,6 +519,7 @@ export function createProjectMaterializationRuntime(
             storage,
             isActiveProject: (projectId) => (activeProjectRuns.get(projectId) ?? 0) > 0,
             shouldSkipEvict: (projectId) => isProjectSyncFailed(projectId),
+            syncUpBeforeEvict: (projectId) => syncUpForIdleEvict(projectId),
             idleAfterMs: scratchIdleEvictAfterMs(),
             withProjectLock: (projectId, fn) => withProjectLock(projectId, fn),
           }).catch((err) => {
@@ -425,6 +559,9 @@ export function createProjectMaterializationRuntime(
     markProjectSyncFailed,
     clearProjectSyncFailed,
     isProjectSyncFailed,
+    rememberProjectRemote,
+    getProjectRemote,
+    forgetProjectRemote,
     dispose,
   };
 }

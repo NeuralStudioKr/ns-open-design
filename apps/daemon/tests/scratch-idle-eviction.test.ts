@@ -114,5 +114,73 @@ describe('scratch-idle-eviction', () => {
       expect(result.skippedSyncFailed).toEqual(['p-stale']);
       await expect(fs.stat(oldDir)).resolves.toBeDefined();
     });
+
+    it('defers eviction when syncUpBeforeEvict reports failure (unsynced scratch)', async () => {
+      const oldDir = path.join(projectsDir, 'p-unsynced');
+      await fs.mkdir(oldDir, { recursive: true });
+      await fs.writeFile(path.join(oldDir, 'artifact.html'), '<html></html>', 'utf8');
+      const oldTime = new Date(Date.now() - 300_000);
+      await fs.utimes(oldDir, oldTime, oldTime);
+
+      const calls: string[] = [];
+      const result = await evictIdleScratchProjects({
+        projectsDir,
+        storage,
+        isActiveProject: () => false,
+        idleAfterMs: 60_000,
+        syncUpBeforeEvict: async (id) => {
+          calls.push(id);
+          return { ok: false, uploaded: 0, failed: 0, reason: 'no_cached_remote' };
+        },
+      });
+
+      expect(calls).toEqual(['p-unsynced']);
+      expect(result.evicted).toHaveLength(0);
+      expect(result.skippedUnsynced).toEqual(['p-unsynced']);
+      await expect(fs.stat(oldDir)).resolves.toBeDefined();
+      await expect(fs.stat(path.join(oldDir, 'artifact.html'))).resolves.toBeDefined();
+    });
+
+    it('evicts after a successful syncUpBeforeEvict', async () => {
+      const oldDir = path.join(projectsDir, 'p-synced');
+      await fs.mkdir(oldDir, { recursive: true });
+      await fs.writeFile(path.join(oldDir, 'artifact.html'), '<html></html>', 'utf8');
+      const oldTime = new Date(Date.now() - 300_000);
+      await fs.utimes(oldDir, oldTime, oldTime);
+
+      const result = await evictIdleScratchProjects({
+        projectsDir,
+        storage,
+        isActiveProject: () => false,
+        idleAfterMs: 60_000,
+        syncUpBeforeEvict: async () => ({ ok: true, uploaded: 1, failed: 0 }),
+      });
+
+      expect(result.evicted).toEqual(['p-synced']);
+      expect(result.skippedUnsynced).toHaveLength(0);
+      await expect(fs.stat(oldDir)).rejects.toThrow();
+    });
+
+    it('treats syncUpBeforeEvict exceptions as deferral reasons', async () => {
+      const oldDir = path.join(projectsDir, 'p-throws');
+      await fs.mkdir(oldDir, { recursive: true });
+      await fs.writeFile(path.join(oldDir, 'artifact.html'), '<html></html>', 'utf8');
+      const oldTime = new Date(Date.now() - 300_000);
+      await fs.utimes(oldDir, oldTime, oldTime);
+
+      const result = await evictIdleScratchProjects({
+        projectsDir,
+        storage,
+        isActiveProject: () => false,
+        idleAfterMs: 60_000,
+        syncUpBeforeEvict: async () => {
+          throw new Error('s3 unreachable');
+        },
+      });
+
+      expect(result.evicted).toHaveLength(0);
+      expect(result.skippedUnsynced).toEqual(['p-throws']);
+      await expect(fs.stat(oldDir)).resolves.toBeDefined();
+    });
   });
 });
