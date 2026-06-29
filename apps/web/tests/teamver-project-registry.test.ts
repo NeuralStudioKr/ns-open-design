@@ -463,6 +463,28 @@ describe('Teamver project registry access', () => {
     await expect(fetchTeamverProject('missing')).resolves.toBeNull();
   });
 
+  it('listTeamverRegisteredProjectIds primes s3 prefix cache from BFF list', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => ({
+          projects: [
+            {
+              odProjectId: 'od-list-1',
+              s3Prefix: 'design/ws1/user_u1/proj_od-list-1/',
+            },
+          ],
+        })),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(listTeamverRegisteredProjectIds()).resolves.toEqual(new Set(['od-list-1']));
+    expect(readTeamverProjectS3Prefix('ws1', 'od-list-1')).toBe(
+      'design/ws1/user_u1/proj_od-list-1/',
+    );
+  });
+
   it('allows access outside embed mode', async () => {
     await expect(assertTeamverProjectAccessIfNeeded('p1')).resolves.toBe(true);
   });

@@ -337,9 +337,17 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
       ),
     );
     const ids = new Set<string>();
+    const trimmedWorkspaceId = workspaceId.trim();
     for (const project of result.projects ?? []) {
       const odProjectId = readRegistryOdProjectId(project);
-      if (odProjectId) ids.add(odProjectId);
+      if (odProjectId) {
+        ids.add(odProjectId);
+        rememberTeamverProjectS3Prefix(
+          trimmedWorkspaceId,
+          odProjectId,
+          project.s3Prefix,
+        );
+      }
     }
     return ids;
   } catch (err) {

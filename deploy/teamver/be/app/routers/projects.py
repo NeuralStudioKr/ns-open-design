@@ -109,10 +109,10 @@ async def _resolve_existing_registry_row(
     return row, False
 
 
-async def _sync_daemon_scratch_after_registry(
-    row: DesignProject,
+async def _sync_daemon_scratch_for_od_project(
+    od_project_id: str,
     *,
-    auth: AuthContext,
+    identity: OdDaemonIdentity,
 ) -> bool:
     """Best-effort scratch → S3 sync after registry row is durable (post-commit).
 
@@ -122,18 +122,12 @@ async def _sync_daemon_scratch_after_registry(
     A post-commit scratch sync failure must therefore be observable, but must
     not make an already-created project look like a failed create to the user.
     """
-    workspace_id = require_workspace_context(auth)
-    identity = OdDaemonIdentity(
-        user_id=auth.user_id,
-        workspace_id=workspace_id,
-        s3_prefix=row.s3_prefix,
-    )
     delays = (*REGISTRY_SCRATCH_SYNC_RETRY_DELAYS_SEC, None)
     last_exc: Exception | None = None
     for attempt, delay_sec in enumerate(delays, start=1):
         try:
             await OdDaemonClient().sync_scratch_project(
-                row.od_project_id,
+                od_project_id,
                 identity=identity,
             )
             return True
@@ -144,14 +138,14 @@ async def _sync_daemon_scratch_after_registry(
         if delay_sec is not None:
             logger.info(
                 '{"metric":"od_registry_scratch_sync_retry","od_project_id":"%s","attempt":%s}',
-                row.od_project_id,
+                od_project_id,
                 attempt,
             )
             await asyncio.sleep(delay_sec)
 
     logger.warning(
         "registry create: daemon scratch sync-up failed od_project_id=%s",
-        row.od_project_id,
+        od_project_id,
         exc_info=(
             (type(last_exc), last_exc, last_exc.__traceback__)
             if last_exc is not None
@@ -161,10 +155,59 @@ async def _sync_daemon_scratch_after_registry(
     reason = str(last_exc).replace('"', '\\"') if last_exc is not None else "unknown"
     logger.info(
         '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","reason":"%s"}',
-        row.od_project_id,
+        od_project_id,
         reason,
     )
     return False
+
+
+async def _sync_daemon_scratch_after_registry(
+    row: DesignProject,
+    *,
+    auth: AuthContext,
+) -> bool:
+    workspace_id = require_workspace_context(auth)
+    identity = OdDaemonIdentity(
+        user_id=auth.user_id,
+        workspace_id=workspace_id,
+        s3_prefix=row.s3_prefix,
+    )
+    return await _sync_daemon_scratch_for_od_project(row.od_project_id, identity=identity)
+
+
+def _schedule_daemon_scratch_sync_after_registry(
+    row: DesignProject,
+    *,
+    auth: AuthContext,
+) -> None:
+    """Fire-and-forget scratch sync so daemon legacy register is not blocked.
+
+    Daemon ``registerLegacyProjectInDesignApi`` awaits this POST with a short
+    timeout (``TEAMVER_PROJECT_ACCESS_TIMEOUT_MS``). A synchronous scratch
+    sync-up (with retries) used to exceed that window and poison materialization
+    with ``register_failed`` + ``hasOverride: false`` on the first BYOK run.
+    """
+    workspace_id = require_workspace_context(auth)
+    identity = OdDaemonIdentity(
+        user_id=auth.user_id,
+        workspace_id=workspace_id,
+        s3_prefix=row.s3_prefix,
+    )
+    od_project_id = row.od_project_id
+
+    async def _run() -> None:
+        try:
+            await _sync_daemon_scratch_for_od_project(
+                od_project_id,
+                identity=identity,
+            )
+        except Exception:
+            logger.exception(
+                "background registry scratch sync failed od_project_id=%s",
+                od_project_id,
+            )
+
+    asyncio.create_task(_run())
 
 
 async def _commit_registry_row_if_needed(
@@ -199,7 +242,7 @@ async def create_project(
                 auth=auth,
             )
             await _commit_registry_row_if_needed(db, changed=changed)
-            await _sync_daemon_scratch_after_registry(row, auth=auth)
+            _schedule_daemon_scratch_sync_after_registry(row, auth=auth)
             return _to_response(row)
 
     try:
@@ -234,14 +277,14 @@ async def create_project(
                         code="conflict",
                     ) from exc
                 await _commit_registry_row_if_needed(db, changed=changed)
-                await _sync_daemon_scratch_after_registry(row, auth=auth)
+                _schedule_daemon_scratch_sync_after_registry(row, auth=auth)
                 return _to_response(row)
         raise ApiError(409, "project_already_registered", code="conflict") from exc
     except Exception:
         await db.rollback()
         raise
 
-    await _sync_daemon_scratch_after_registry(row, auth=auth)
+    _schedule_daemon_scratch_sync_after_registry(row, auth=auth)
     return _to_response(row)
 
 

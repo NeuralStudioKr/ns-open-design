@@ -1,6 +1,6 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
-import { readTeamverProjectS3Prefix } from "./teamverProjectS3PrefixCache";
+import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
 
 const DAEMON_PROJECT_ID_RE =
   /\/api\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
@@ -51,7 +51,7 @@ export async function buildTeamverDaemonRequestHeaders(
   if (workspaceId) headers["X-Workspace-Id"] = workspaceId;
   const projectId = options?.projectId?.trim();
   if (workspaceId && projectId) {
-    const s3Prefix = readTeamverProjectS3Prefix(workspaceId, projectId);
+    const s3Prefix = await resolveTeamverProjectS3PrefixForDaemon(workspaceId, projectId);
     if (s3Prefix) headers["X-Teamver-S3-Prefix"] = s3Prefix;
   }
   return headers;
