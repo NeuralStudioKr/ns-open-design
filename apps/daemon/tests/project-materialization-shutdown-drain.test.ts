@@ -77,4 +77,41 @@ describe('drainAfterChatRun', () => {
     await drainPromise;
     expect(drained).toBe(true);
   });
+
+  /**
+   * Coverage gap exposed during the production-readiness review:
+   * BYOK proxy stream finalize (`endByokProxyStream`) does NOT flow
+   * through `wrapFinish` — it ran fire-and-forget on `res.close` /
+   * `res.finish`. SIGTERM drain was therefore blind to the in-flight
+   * sync-up and the daemon could exit mid-upload, dropping scratch
+   * writes. The runtime now exposes `trackExternalAfterChatRun` for
+   * callers like the BYOK proxy materializer to opt in to the drain set.
+   */
+  it('awaits external afterChatRun promises registered via trackExternalAfterChatRun', async () => {
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    runtime.trackExternalAfterChatRun(gate);
+
+    let drained = false;
+    const drainPromise = runtime.drainAfterChatRun().then(() => {
+      drained = true;
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(drained).toBe(false);
+
+    release();
+    await drainPromise;
+    expect(drained).toBe(true);
+  });
 });

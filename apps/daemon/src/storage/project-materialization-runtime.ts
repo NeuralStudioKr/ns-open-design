@@ -68,10 +68,22 @@ export type ProjectMaterializationRuntime = {
   /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
   dispose: () => void;
   /**
-   * Await in-flight `afterChatRun` work started by `wrapFinish` (SIGTERM /
-   * server close). Safe to call when the set is empty.
+   * Await in-flight `afterChatRun` work — both `wrapFinish`-tracked
+   * managed run finishers AND any external afterChatRun promises
+   * registered via `trackExternalAfterChatRun` (e.g. BYOK proxy stream
+   * finalize). Called from SIGTERM / server-close so the daemon does not
+   * exit while a sync-up is still uploading. Safe to call when the set
+   * is empty.
    */
   drainAfterChatRun: () => Promise<void>;
+  /**
+   * Register an externally-driven `afterChatRun` promise so SIGTERM /
+   * `drainAfterChatRun` waits for it. Use this from any call site that
+   * runs `afterChatRun` outside `wrapFinish` (e.g. BYOK proxy stream
+   * finalize on `res.close`). The runtime auto-removes the entry when
+   * the promise settles.
+   */
+  trackExternalAfterChatRun: (promise: Promise<void>) => void;
   /** Boot-time scratch orphans — force one sync-up on next lazy persist. */
   markBootOrphanProject: (projectId: string) => void;
   consumeBootOrphanProject: (projectId: string) => boolean;
@@ -269,6 +281,27 @@ export function createProjectMaterializationRuntime(
     const projectId = typeof run.projectId === 'string' ? run.projectId.trim() : '';
     if (!projectId) return;
 
+    /**
+     * Decrement-or-delete: pop OUR share off `activeProjectRuns`. Used by
+     * both rollback paths to avoid wiping concurrent runs' bookkeeping
+     * (an absolute `set(prevCount)` / `delete()` would corrupt the count
+     * if another run incremented between our increment and our throw).
+     *
+     * Returns true when the project has no remaining active runs after
+     * our removal — caller uses this to decide whether ancillary
+     * project-scoped state (floor entry, tenant remote) is also safe to
+     * clear.
+     */
+    function rollbackActiveRun(): boolean {
+      const current = activeProjectRuns.get(projectId) ?? 0;
+      if (current <= 1) {
+        activeProjectRuns.delete(projectId);
+        return true;
+      }
+      activeProjectRuns.set(projectId, current - 1);
+      return false;
+    }
+
     const active = activeProjectRuns.get(projectId) ?? 0;
     if (active > 0) {
       console.warn(
@@ -306,10 +339,14 @@ export function createProjectMaterializationRuntime(
           rememberProjectRemote(projectId, remote);
         }
       } catch (err) {
-        // Roll back the bookkeeping we just installed so the project does
-        // not stay pinned-active when the caller fails the run.
-        activeProjectRuns.set(projectId, active);
-        if (floorChanged) projectSyncFloorMs.delete(projectId);
+        // Roll back the bookkeeping we just installed without corrupting
+        // any concurrent run's state. Use decrement-from-current
+        // semantics: another run could have entered between our
+        // increment and this catch, and we must not delete ITS active
+        // share. Floor / tenant remote are only cleared if we are the
+        // last remaining run on this project.
+        const wasLast = rollbackActiveRun();
+        if (wasLast && floorChanged) projectSyncFloorMs.delete(projectId);
         run.projectMaterializationStartedAt = 0;
         throw err;
       }
@@ -325,7 +362,9 @@ export function createProjectMaterializationRuntime(
     try {
       remote = await resolveRunRemote(run, projectId);
     } catch (err) {
-      activeProjectRuns.delete(projectId);
+      // Mirror first-active rollback semantics: if another run entered
+      // between our `set(1)` and the resolve failure, just decrement.
+      rollbackActiveRun();
       throw err;
     }
     projectTenantRemote.set(projectId, remote);
@@ -354,13 +393,15 @@ export function createProjectMaterializationRuntime(
         }
       });
     } catch (err) {
-      // sync-down failed (or the lock body threw). Undo everything so we
-      // don't leak a phantom active run that blocks idle-evict and pins
-      // the tenant remote map. The caller is expected to surface this as
-      // a run failure via `design.runs.fail`.
-      activeProjectRuns.delete(projectId);
-      projectTenantRemote.delete(projectId);
-      if (floorChanged) projectSyncFloorMs.delete(projectId);
+      // sync-down failed (or the lock body threw). Undo only our share so
+      // we don't leak a phantom active run while preserving any concurrent
+      // run's bookkeeping. Tenant remote + floor are dropped only when we
+      // are the last remaining run on this project — otherwise the
+      // concurrent run still needs them. The caller is expected to
+      // surface this as a run failure via `design.runs.fail`.
+      const wasLast = rollbackActiveRun();
+      if (wasLast) projectTenantRemote.delete(projectId);
+      if (wasLast && floorChanged) projectSyncFloorMs.delete(projectId);
       run.projectMaterializationStartedAt = 0;
       run.teamverRemote = null;
       console.info(
@@ -368,6 +409,7 @@ export function createProjectMaterializationRuntime(
           metric: 'od_s3_before_chat_run_rollback',
           projectId,
           runId: typeof run.id === 'string' ? run.id : undefined,
+          concurrent: !wasLast,
           reason: err instanceof Error ? err.message : String(err),
         }),
       );
@@ -469,6 +511,20 @@ export function createProjectMaterializationRuntime(
   async function drainAfterChatRun(): Promise<void> {
     if (activeAfterChatRunPromises.size === 0) return;
     await Promise.allSettled([...activeAfterChatRunPromises]);
+  }
+
+  /**
+   * Register an externally-driven afterChatRun promise so the drain
+   * call site (SIGTERM / shutdown) waits for it. The promise is
+   * auto-removed when it settles regardless of outcome — `drainAfterChatRun`
+   * uses `Promise.allSettled` so rejections do not prevent the rest of
+   * the drain from completing.
+   */
+  function trackExternalAfterChatRun(promise: Promise<void>): void {
+    activeAfterChatRunPromises.add(promise);
+    void promise.finally(() => {
+      activeAfterChatRunPromises.delete(promise);
+    });
   }
 
   function markBootOrphanProject(projectId: string): void {
@@ -693,6 +749,7 @@ export function createProjectMaterializationRuntime(
     getActiveRunCount,
     dispose,
     drainAfterChatRun,
+    trackExternalAfterChatRun,
     markBootOrphanProject,
     consumeBootOrphanProject,
     hasBootOrphanProject,

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 
+import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+
 /**
  * Cancellation policy for embed BYOK proxy streams (PR1 §3.5).
  *
@@ -90,8 +92,11 @@ export type ByokProxyAbortRegistration = {
 /**
  * Register a new abortable proxy stream for `res`. Emits the
  * `X-Stream-Id` response header so the FE can subsequently target this
- * stream for cancellation. Cleans up on `res.close` / `res.finish` to
- * avoid leaking the controller for the lifetime of the daemon.
+ * stream for cancellation. Registry entries are cleared on
+ * `res.once('finish')` immediately and on `res.once('close')` after
+ * `ABORT_CLOSE_GRACE_MS` so an in-flight Stop-button abort POST can
+ * still find the entry during the race window — see the
+ * `ABORT_CLOSE_GRACE_MS` comment above for the rationale.
  *
  * Pass the returned `signal` into every upstream `fetch()` (and any
  * downstream tool fetch) so the abort cascades end-to-end.
@@ -191,6 +196,15 @@ export function neverAbortedSignal(): AbortSignal {
  * — never 4xx on unknown streamId so the FE never has to special-case a
  * race against natural completion (Stop click after the stream already
  * ended is benign).
+ *
+ * Defense-in-depth: when the registered stream carries a `workspaceId`,
+ * the abort request must originate from the same workspace (verified
+ * via the standard daemon identity headers — same path embed BYOK
+ * already uses for usage/billing). On mismatch we answer
+ * `{ aborted: false }` to avoid leaking stream existence to an
+ * unauthorized caller. `streamId` is a 122-bit cryptographically random
+ * UUID and is only delivered to the originating session via the
+ * `X-Stream-Id` response header, so the tenant check is belt-and-braces.
  */
 export function registerByokProxyAbortRoute(app: Express): void {
   app.post('/api/proxy/abort', (req, res) => {
@@ -199,6 +213,29 @@ export function registerByokProxyAbortRoute(app: Express): void {
     if (!streamId) {
       res.status(400).json({ error: 'streamId required' });
       return;
+    }
+    const entry = activeProxyStreams.get(streamId);
+    if (!entry) {
+      res.json({ aborted: false });
+      return;
+    }
+    if (entry.workspaceId) {
+      const callerWorkspaceId =
+        readTeamverIdentityFromRequest(req)?.workspaceId?.trim() ?? '';
+      if (callerWorkspaceId !== entry.workspaceId) {
+        console.warn(
+          JSON.stringify({
+            metric: 'od_byok_proxy_abort_tenant_mismatch',
+            streamId,
+            expected: entry.workspaceId,
+            // No raw caller id in logs — workspaceId already identifies tenant
+            // and we don't want to log "anonymous" / odd values verbatim.
+            callerPresent: Boolean(callerWorkspaceId),
+          }),
+        );
+        res.json({ aborted: false });
+        return;
+      }
     }
     const aborted = abortByokProxyStream(streamId);
     res.json({ aborted });

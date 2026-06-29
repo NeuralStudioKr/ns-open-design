@@ -51,6 +51,27 @@ describe('byok-proxy-materialization', () => {
     expect(readProxyBodyProjectId(null)).toBeUndefined();
   });
 
+  it('attach skips materialization for collection route slugs (recent, cover-hints)', async () => {
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const beforeSpy = vi.spyOn(runtime, 'beforeChatRun').mockResolvedValue();
+    const hooks = createByokProxyMaterializationHooks(runtime);
+    expect(hooks).not.toBeNull();
+
+    const req = mockReq();
+    const { res } = mockRes();
+
+    for (const slug of ['recent', 'cover-hints', 'RECENT']) {
+      const result = await hooks!.attachByokProxyStreamMaterialization(req, res, slug);
+      expect(result).toEqual({ ok: true });
+    }
+    expect(beforeSpy).not.toHaveBeenCalled();
+  });
+
   it('returns null outside s3 layout', () => {
     const layout = resolveProjectStorageLayout({}, '/data');
     const runtime = createProjectMaterializationRuntime(layout, null);

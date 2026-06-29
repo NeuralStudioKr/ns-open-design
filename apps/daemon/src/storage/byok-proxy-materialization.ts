@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 
 import { isSafeId as isSafeProjectId } from '../projects.js';
 import {
+  isTeamverProjectCollectionRouteSlug,
   readTeamverIdentityFromRequest,
   readTeamverS3PrefixFromRequest,
 } from '../teamver-project-access.js';
@@ -65,6 +66,8 @@ function byokProxyFailOnBeginEnabled(): boolean {
 function parseProxyProjectId(projectId: string | undefined | null): string | null {
   const trimmed = typeof projectId === 'string' ? projectId.trim() : '';
   if (!trimmed || !isSafeProjectId(trimmed)) return null;
+  // Collection route slugs (`/projects/recent`, etc.) are not registry ids.
+  if (isTeamverProjectCollectionRouteSlug(trimmed)) return null;
   return trimmed;
 }
 
@@ -187,7 +190,12 @@ export function createByokProxyMaterializationHooks(
     const finalize = () => {
       if (finalized) return;
       finalized = true;
-      void endByokProxyStream(session!).catch((err) => {
+      // Track the finalize promise through the runtime's drain set so
+      // SIGTERM / server close waits for the sync-up to finish before
+      // the daemon process exits. Without this, BYOK proxy streams that
+      // were mid-upload at shutdown silently dropped their scratch
+      // writes (managed runs were fine because `wrapFinish` tracks them).
+      const finalizePromise = endByokProxyStream(session!).catch((err) => {
         matRuntime.markProjectSyncFailed(session!.run.projectId);
         console.warn(
           '[byok-proxy-materialization] end failed:',
@@ -202,6 +210,7 @@ export function createByokProxyMaterializationHooks(
           }),
         );
       });
+      matRuntime.trackExternalAfterChatRun(finalizePromise);
     };
 
     res.once('finish', finalize);
