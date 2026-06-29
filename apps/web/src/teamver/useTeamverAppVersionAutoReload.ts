@@ -84,7 +84,7 @@ export function useTeamverAppVersionAutoReload(options?: {
     const reload = options?.reload ?? (() => window.location.reload());
 
     let cancelled = false;
-    let pendingReloadHandle: ReturnType<typeof window.setTimeout> | null = null;
+    let pendingReloadHandle: ReturnType<typeof setTimeout> | null = null;
 
     const isTabVisible = (): boolean => {
       if (typeof document === 'undefined') return true;
@@ -98,7 +98,7 @@ export function useTeamverAppVersionAutoReload(options?: {
       console.info(
         `[teamver] app version changed (${fromVersion} → ${toVersion}); reloading SPA shell in ${reloadDelayMs}ms`,
       );
-      pendingReloadHandle = window.setTimeout(() => {
+      pendingReloadHandle = setTimeout(() => {
         pendingReloadHandle = null;
         // Don't reload a hidden tab — wait for the user to come back so we
         // don't disrupt unrelated background work (e.g. another iframe).
@@ -134,7 +134,7 @@ export function useTeamverAppVersionAutoReload(options?: {
 
     void checkVersion();
 
-    const interval = window.setInterval(() => {
+    const interval = setInterval(() => {
       void checkVersion();
     }, pollIntervalMs);
 
@@ -152,9 +152,9 @@ export function useTeamverAppVersionAutoReload(options?: {
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      clearInterval(interval);
       if (pendingReloadHandle != null) {
-        window.clearTimeout(pendingReloadHandle);
+        clearTimeout(pendingReloadHandle);
       }
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVisibilityChange);
