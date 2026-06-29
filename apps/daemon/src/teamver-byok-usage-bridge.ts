@@ -107,8 +107,12 @@ async function postInternalJson(
           json = undefined;
         }
       }
-      if (response.ok) return { ok: true, json };
-      return { ok: false, status: response.status, text: text.slice(0, 200), json };
+      if (response.ok) {
+        return json != null ? { ok: true as const, json } : { ok: true as const };
+      }
+      return json != null
+        ? { ok: false as const, status: response.status, text: text.slice(0, 200), json }
+        : { ok: false as const, status: response.status, text: text.slice(0, 200) };
     } catch (err) {
       return {
         ok: false,
@@ -124,14 +128,16 @@ async function postInternalJson(
     result = await attempt();
   }
 
-  if (result.ok) return { ok: true, json: result.json };
+  if (result.ok) {
+    return result.json != null ? { ok: true, json: result.json } : { ok: true };
+  }
 
   emitUsage5xxMarker(stage, {
     ...markerFields,
     ...(result.status != null ? { httpStatus: result.status } : {}),
     ...(result.text ? { body: result.text, error: result.status == null ? result.text : undefined } : {}),
   });
-  return { ok: false, json: result.json };
+  return result.json != null ? { ok: false, json: result.json } : { ok: false };
 }
 
 /** Map persisted chat `message.events` (`kind`) to run-analytics wire shape (`event`). */
@@ -241,6 +247,14 @@ async function finalizeByokBillingFromDaemon(args: {
 
   const billingStatus =
     typeof posted.json.billing_status === 'string' ? posted.json.billing_status : 'not_attempted';
+  const businessOk = posted.json.ok !== false;
+  if (!businessOk && billingStatus === 'not_attempted') {
+    emitUsage5xxMarker('billing.finalize_byok_run', {
+      ...markerFields,
+      billingStatus,
+      error: typeof posted.json.error === 'string' ? posted.json.error : 'finalize_failed',
+    });
+  }
   return {
     usageId:
       typeof posted.json.usage_id === 'string' && posted.json.usage_id.trim()
@@ -248,11 +262,17 @@ async function finalizeByokBillingFromDaemon(args: {
         : null,
     billingStatus,
     creditsCommitted: posted.json.credits_committed === true,
-    creditsAmountT:
-      typeof posted.json.credits_amount_t === 'number' && posted.json.credits_amount_t >= 0
-        ? posted.json.credits_amount_t
-        : undefined,
+    ...(typeof posted.json.credits_amount_t === 'number' && posted.json.credits_amount_t >= 0
+      ? { creditsAmountT: posted.json.credits_amount_t }
+      : {}),
   };
+}
+
+const inFlightByokReports = new Set<string>();
+
+/** @internal vitest — reset concurrent guard between cases. */
+export function resetByokInFlightReportsForTests(): void {
+  inFlightByokReports.clear();
 }
 
 /** Embed BYOK — usage ledger + Strategy B billing on terminal message PUT (§4.11). */
@@ -275,72 +295,81 @@ export async function reportByokTeamverUsageAndBillingFromDaemon({
 
   const dedupeKey = `byok:${runId}`;
   if (reportedRuns?.has(dedupeKey)) return true;
+  if (inFlightByokReports.has(dedupeKey)) return true;
 
-  const runEvents = chatMessageEventsToRunAnalyticsEvents(message.events);
-  const usage = scanRunEventsForUsageAnalytics(runEvents, defaultByokModelName(), 0);
-  const modelName =
-    usage.agent_reported_model?.trim() || defaultByokModelName();
-  const runStatus = message.runStatus ?? '';
-  const tokenCountSource = usage.token_count_source ?? 'unknown';
-  const inputTokens = usage.input_tokens ?? 0;
-  const outputTokens = usage.output_tokens ?? 0;
-  const stopReason = extractLastStopReasonFromRunEvents(runEvents);
-  const latencyMs =
-    typeof message.startedAt === 'number'
-    && typeof message.endedAt === 'number'
-    && message.endedAt >= message.startedAt
-      ? Math.round(message.endedAt - message.startedAt)
-      : null;
+  inFlightByokReports.add(dedupeKey);
+  try {
+    const runEvents = chatMessageEventsToRunAnalyticsEvents(message.events);
+    const usage = scanRunEventsForUsageAnalytics(runEvents, defaultByokModelName(), 0);
+    const modelName =
+      usage.agent_reported_model?.trim() || defaultByokModelName();
+    const runStatus = message.runStatus ?? '';
+    const tokenCountSource = usage.token_count_source ?? 'unknown';
+    const inputTokens = usage.input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
+    const stopReason = extractLastStopReasonFromRunEvents(runEvents);
+    const latencyMs =
+      typeof message.startedAt === 'number'
+      && typeof message.endedAt === 'number'
+      && message.endedAt >= message.startedAt
+        ? Math.round(message.endedAt - message.startedAt)
+        : null;
 
-  let resolvedApiProtocol = 'byok-proxy';
-  for (let i = runEvents.length - 1; i >= 0; i -= 1) {
-    const ev = runEvents[i];
-    if (ev?.event !== 'usage') continue;
-    const protocol = (ev.data as { api_protocol?: string } | undefined)?.api_protocol?.trim();
-    if (protocol) {
-      resolvedApiProtocol = protocol;
-      break;
+    let resolvedApiProtocol = 'byok-proxy';
+    for (let i = runEvents.length - 1; i >= 0; i -= 1) {
+      const ev = runEvents[i];
+      if (ev?.event !== 'usage') continue;
+      const protocol = (ev.data as { api_protocol?: string } | undefined)?.api_protocol?.trim();
+      if (protocol) {
+        resolvedApiProtocol = protocol;
+        break;
+      }
     }
-  }
 
-  if (
-    inputTokens === 0
-    && outputTokens === 0
-    && (usage.cache_read_input_tokens ?? 0) === 0
-    && (usage.cache_creation_input_tokens ?? 0) === 0
-  ) {
-    emitUsageZeroTokensMarker({
+    if (
+      inputTokens === 0
+      && outputTokens === 0
+      && (usage.cache_read_input_tokens ?? 0) === 0
+      && (usage.cache_creation_input_tokens ?? 0) === 0
+    ) {
+      emitUsageZeroTokensMarker({
+        workspaceId,
+        projectId,
+        runId,
+        modelName,
+        runStatus,
+        tokenCountSource,
+        eventCount: message.events?.length ?? 0,
+      });
+    }
+
+    const billing = await finalizeByokBillingFromDaemon({
+      workspaceId,
+      runId,
+      runStatus,
+      modelName,
+      inputTokens,
+      outputTokens,
+      tokenCountSource,
+      ...(usage.cache_read_input_tokens != null
+        ? { cacheReadInputTokens: usage.cache_read_input_tokens }
+        : {}),
+      ...(usage.cache_creation_input_tokens != null
+        ? { cacheCreationInputTokens: usage.cache_creation_input_tokens }
+        : {}),
+      ...(usage.agent_reported_model?.trim()
+        ? { providerReportedModel: usage.agent_reported_model.trim() }
+        : {}),
+    });
+
+    const markerFields = {
+      runId,
       workspaceId,
       projectId,
-      runId,
       modelName,
-      runStatus,
-      tokenCountSource,
-      eventCount: message.events?.length ?? 0,
-    });
-  }
+    };
 
-  const billing = await finalizeByokBillingFromDaemon({
-    workspaceId,
-    runId,
-    runStatus,
-    modelName,
-    inputTokens,
-    outputTokens,
-    tokenCountSource,
-    cacheReadInputTokens: usage.cache_read_input_tokens,
-    cacheCreationInputTokens: usage.cache_creation_input_tokens,
-    providerReportedModel: usage.agent_reported_model ?? undefined,
-  });
-
-  const markerFields = {
-    runId,
-    workspaceId,
-    projectId,
-    modelName,
-  };
-
-  const usagePosted = await postInternalJson(
+    const usagePosted = await postInternalJson(
     '/api/internal/usage/events',
     {
       user_id: identity.userId.trim(),
@@ -369,9 +398,12 @@ export async function reportByokTeamverUsageAndBillingFromDaemon({
     'byok.usage.events',
   );
 
-  if (usagePosted.ok) {
-    reportedRuns?.add(dedupeKey);
-    return true;
+    if (usagePosted.ok) {
+      reportedRuns?.add(dedupeKey);
+      return true;
+    }
+    return false;
+  } finally {
+    inFlightByokReports.delete(dedupeKey);
   }
-  return false;
 }
