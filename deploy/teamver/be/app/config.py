@@ -36,6 +36,11 @@ class Settings(BaseModel):
     teamver_jwt_secret: str = os.getenv("TEAMVER_JWT_SECRET", "")
     teamver_jwt_algorithm: str = os.getenv("TEAMVER_JWT_ALGORITHM", "HS256")
     teamver_auth_cookie_name: str = os.getenv("TEAMVER_AUTH_COOKIE_NAME", "teamver_access_token")
+    teamver_auth_cookie_domain: str = os.getenv("TEAMVER_AUTH_COOKIE_DOMAIN", "")
+    teamver_auth_cookie_secure: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_AUTH_COOKIE_SECURE", default=True)
+    )
+    teamver_auth_cookie_samesite: str = os.getenv("TEAMVER_AUTH_COOKIE_SAMESITE", "lax")
     teamver_app_key: str = os.getenv("TEAMVER_APP_KEY", "design")
     teamver_internal_api_key: str = os.getenv("TEAMVER_INTERNAL_API_KEY", "")
     teamver_bootstrap_cache_ttl_seconds: float = float(

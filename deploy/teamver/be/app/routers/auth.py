@@ -5,8 +5,14 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse
 from teamver_app_sdk.errors import AuthenticationError, TeamverAPIError
 
+from ..auth_cookie_clear import (
+    append_clear_auth_cookie,
+    is_orphan_teamver_jwt_failure,
+    relay_upstream_set_cookies,
+)
 from ..config import settings
 from ..errors import BadGatewayError
 from ..teamver_sdk import (
@@ -32,6 +38,12 @@ def _empty_session() -> dict[str, Any]:
     }
 
 
+def _orphan_empty_session_response() -> JSONResponse:
+    orphan = JSONResponse(content=_empty_session())
+    append_clear_auth_cookie(orphan)
+    return orphan
+
+
 @router.get("/auth/session", response_model=None)
 async def get_auth_session(request: Request) -> Any:
     """Cookie/Bearer SSO — teamver-app-sdk ``auth.get_bootstrap`` (Docs Plan B 동형)."""
@@ -54,6 +66,13 @@ async def get_auth_session(request: Request) -> Any:
     except TeamverAPIError as exc:
         # Expired/invalid cookie — return soft empty session so FE can refresh (Plan B).
         if isinstance(exc, AuthenticationError):
+            if is_orphan_teamver_jwt_failure(
+                exc.status_code or 401,
+                message=str(exc),
+                code=exc.code,
+                response_body=exc.response_body,
+            ):
+                return _orphan_empty_session_response()
             return _empty_session()
         raise_for_teamver_error(exc)
 
@@ -91,12 +110,11 @@ async def refresh_auth_session(request: Request) -> Response:
     content_type = upstream.headers.get("content-type")
     if content_type:
         response.headers["Content-Type"] = content_type
-    if hasattr(upstream.headers, "multi_items"):
-        for key, value in upstream.headers.multi_items():
-            if key.lower() == "set-cookie":
-                response.headers.append("Set-Cookie", value)
-    else:
-        set_cookie = upstream.headers.get("set-cookie")
-        if set_cookie:
-            response.headers["Set-Cookie"] = set_cookie
+    has_upstream_clear = relay_upstream_set_cookies(upstream.headers, response)
+    body_text = upstream.content.decode("utf-8", errors="ignore") if upstream.content else ""
+    if (
+        not has_upstream_clear
+        and is_orphan_teamver_jwt_failure(upstream.status_code, body_text=body_text)
+    ):
+        append_clear_auth_cookie(response)
     return response

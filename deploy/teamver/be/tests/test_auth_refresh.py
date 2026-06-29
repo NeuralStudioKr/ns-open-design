@@ -109,6 +109,35 @@ async def test_refresh_forwards_authorization_header(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
+async def test_refresh_appends_clear_cookie_on_orphan_upstream_without_set_cookie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "teamver_api_base_url", "https://api.example.com")
+    monkeypatch.setattr(settings, "teamver_auth_cookie_name", "teamver_access_token")
+    monkeypatch.setattr(settings, "teamver_auth_cookie_domain", ".teamver.com")
+    monkeypatch.setattr(settings, "deploy_env", "staging")
+    captured: dict[str, Any] = {}
+    upstream = _FakeUpstream(
+        status_code=400,
+        content=b'{"message":"error.user_not_found"}',
+        headers=httpx.Headers({"content-type": "application/json"}),
+    )
+
+    monkeypatch.setattr(
+        "app.routers.auth.httpx.AsyncClient",
+        lambda **kwargs: _FakeAsyncClient(response=upstream, captured=captured, **kwargs),
+    )
+
+    request = _request_with_headers({"cookie": "teamver_access_token=orphan"})
+    response = await refresh_auth_session(request)
+
+    assert response.status_code == 400
+    set_cookie = response.headers.get("set-cookie") or ""
+    assert "teamver_access_token=" in set_cookie
+    assert "max-age=0" in set_cookie.lower()
+
+
+@pytest.mark.asyncio
 async def test_refresh_upstream_error_raises_bad_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
     class _BrokenClient:
         async def __aenter__(self) -> "_BrokenClient":
