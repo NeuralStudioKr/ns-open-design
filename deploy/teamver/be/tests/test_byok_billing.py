@@ -46,6 +46,7 @@ async def test_finalize_byok_run_billing_not_metered_for_unknown_zero_tokens(
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_app_id", "ai-design")
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_key_id", "key-1")
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_access_key", "secret-1")
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_disabled", False)
 
     result = await finalize_byok_run_billing(
         workspace_id="ws-1",
@@ -68,6 +69,7 @@ async def test_finalize_byok_run_billing_reserve_and_commit(
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_app_id", "ai-design")
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_key_id", "key-1")
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_access_key", "secret-1")
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_disabled", False)
     monkeypatch.setattr(
         byok_billing.settings,
         "design_model_prices_json",
@@ -88,6 +90,31 @@ async def test_finalize_byok_run_billing_reserve_and_commit(
     monkeypatch.setattr(byok_billing, "reserve_run", fake_reserve)
     monkeypatch.setattr(byok_billing, "commit_run", fake_commit)
 
+    ledger_writes: list[dict[str, object]] = []
+
+    async def fake_ledger_update(db, **kwargs):
+        ledger_writes.append(kwargs)
+        return SimpleNamespace(id="row-1")
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def commit(self):
+            return None
+
+    class FakeMaker:
+        def __call__(self):
+            return FakeSession()
+
+    monkeypatch.setattr(byok_billing, "async_session_maker", FakeMaker())
+    monkeypatch.setattr(
+        byok_billing.token_usage_crud, "aupdate_usage_billing_by_run", fake_ledger_update
+    )
+
     result = await finalize_byok_run_billing(
         workspace_id="ws-1",
         run_id="msg-3",
@@ -103,6 +130,18 @@ async def test_finalize_byok_run_billing_reserve_and_commit(
     assert result.credits_committed is True
     assert result.credits_amount_t == 33
     assert committed == ["u-byok-1"]
+    assert ledger_writes == [
+        {
+            "workspace_id": "ws-1",
+            "run_id": "msg-3",
+            "billing_status": "committed",
+            "credits_committed": True,
+            "registry_usage_id": "u-byok-1",
+            "model_name": "claude-sonnet-4-5",
+            "run_status": "succeeded",
+            "operation": "design_run_byok",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -112,6 +151,7 @@ async def test_finalize_byok_run_billing_refunds_on_commit_failure(
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_app_id", "ai-design")
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_key_id", "key-1")
     monkeypatch.setattr(byok_billing.settings, "teamver_registry_access_key", "secret-1")
+    monkeypatch.setattr(byok_billing.settings, "teamver_billing_disabled", False)
     monkeypatch.setattr(byok_billing.settings, "teamver_billing_reserve_amount", 5)
 
     async def fake_reserve(**kwargs):

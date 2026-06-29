@@ -6866,6 +6866,17 @@ export async function startServer({
           identity,
           reportedRuns,
         });
+      } else {
+        console.warn(
+          JSON.stringify({
+            metric: 'teamver_usage_5xx',
+            stage: 'byok.identity_missing',
+            ts: Date.now(),
+            projectId: req.params.id,
+            messageId: saved.id,
+            runStatus: saved.runStatus ?? null,
+          }),
+        );
       }
     }
     res.json({ message: saved });

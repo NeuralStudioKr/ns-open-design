@@ -614,6 +614,7 @@ FE saveMessage
 | 1 | `POST /api/internal/billing/finalize-byok-run` | ✅ `finalize_byok_run_billing()` 재사용 |
 | 2 | daemon message events adapter | ✅ `chatMessageEventsToRunAnalyticsEvents` |
 | 3 | feature flag | FE hook off — BYOK no-op (daemon authoritative) |
+| 3b | **ledger committed stub before return** | Registry commit 성공 직후 `aupdate_usage_billing_by_run(committed)` — usage/events 실패·daemon 재시도 시 **이중 reserve/commit 방지** |
 | 4 | design app disabled gate | FE snapshot 대신 BE/daemon workspace check |
 | 5 | 0-token 경로 | capture fix([24](./24_AI_API_usage_capture_경로별_분석.md))와 독립 — daemon 이전만으로 0-token 해결 안 됨 |
 | 6 | 관측 | `teamver_usage_5xx` stage를 daemon BYOK finalize로 통일 |

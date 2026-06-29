@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   chatMessageEventsToRunAnalyticsEvents,
   reportByokTeamverUsageAndBillingFromDaemon,
+  resetByokInFlightReportsForTests,
   shouldReportByokUsageFromMessage,
 } from '../src/teamver-byok-usage-bridge.js';
 
@@ -10,6 +11,7 @@ describe('teamver-byok-usage-bridge', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    resetByokInFlightReportsForTests();
   });
 
   it('shouldReportByokUsageFromMessage requires assistant terminal BYOK message', () => {
@@ -167,5 +169,100 @@ describe('teamver-byok-usage-bridge', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('records reserve_failed billing on usage event without double billing retry guard', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: false,
+              usage_id: null,
+              billing_status: 'reserve_failed',
+              credits_committed: false,
+              error: 'registry_denied',
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reportedRuns = new Set<string>();
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-fail',
+        role: 'assistant',
+        runStatus: 'succeeded',
+        events: [{ kind: 'usage', inputTokens: 10, outputTokens: 5 }],
+      },
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns,
+    });
+
+    expect(ok).toBe(true);
+    const usageCall = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    expect(usageCall.billing_status).toBe('reserve_failed');
+    expect(usageCall.credits_committed).toBe(false);
+  });
+
+  it('skips concurrent duplicate finalize while in flight', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    let releaseBilling!: () => void;
+    const billingGate = new Promise<void>((resolve) => {
+      releaseBilling = resolve;
+    });
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        await billingGate;
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: true,
+              usage_id: 'u-byok',
+              billing_status: 'committed',
+              credits_committed: true,
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const message = {
+      id: 'assistant-msg-concurrent',
+      role: 'assistant' as const,
+      runStatus: 'succeeded' as const,
+      events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
+    };
+    const args = {
+      message,
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns: new Set<string>(),
+    };
+
+    const first = reportByokTeamverUsageAndBillingFromDaemon(args);
+    await new Promise((r) => setTimeout(r, 10));
+    const second = await reportByokTeamverUsageAndBillingFromDaemon(args);
+    expect(second).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    releaseBilling();
+    await first;
   });
 });

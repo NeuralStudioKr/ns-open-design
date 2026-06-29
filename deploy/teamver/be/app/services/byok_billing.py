@@ -160,6 +160,26 @@ async def finalize_byok_run_billing(
             run_id,
             usage_id,
         )
+        try:
+            async with async_session_maker() as db:
+                await token_usage_crud.aupdate_usage_billing_by_run(
+                    db,
+                    workspace_id=workspace_id,
+                    run_id=run_id,
+                    billing_status="commit_failed",
+                    credits_committed=False,
+                    registry_usage_id=usage_id,
+                    model_name=meter_model,
+                    run_status=status,
+                    operation="design_run_byok",
+                )
+                await db.commit()
+        except Exception:
+            logger.exception(
+                "teamver_usage_5xx byok billing ledger commit_failed persist failed workspace=%s run=%s",
+                workspace_id,
+                run_id,
+            )
         return ByokBillingResult(
             ok=False,
             usage_id=usage_id,
@@ -168,6 +188,33 @@ async def finalize_byok_run_billing(
             credits_amount_t=metered.amount_t,
             error="commit_failed",
         )
+
+    # Persist committed snapshot before returning so a usage/events POST failure
+    # followed by daemon retry cannot double-charge Registry (idempotency reads
+    # ledger first — see test_finalize_byok_run_billing_idempotent_when_committed).
+    try:
+        async with async_session_maker() as db:
+            await token_usage_crud.aupdate_usage_billing_by_run(
+                db,
+                workspace_id=workspace_id,
+                run_id=run_id,
+                billing_status="committed",
+                credits_committed=True,
+                registry_usage_id=usage_id,
+                model_name=meter_model,
+                run_status=status,
+                operation="design_run_byok",
+            )
+            await db.commit()
+    except Exception:
+        logger.exception(
+            "teamver_usage_5xx byok billing ledger committed persist failed workspace=%s run=%s usage_id=%s",
+            workspace_id,
+            run_id,
+            usage_id,
+        )
+        # Registry is already committed — return success so callers do not retry
+        # reserve/commit. Usage ledger row may be repaired on the next usage/events upsert.
 
     return ByokBillingResult(
         ok=True,
