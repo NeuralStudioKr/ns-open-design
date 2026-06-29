@@ -141,6 +141,24 @@ describe('decideAutoOpenAfterWrite', () => {
     );
     expect(result).toEqual({ shouldOpen: true, fileName: 'landing.html' });
   });
+
+  it('declines to auto-open supporting stylesheet files in slide-only embed', () => {
+    const result = decideAutoOpenAfterWrite(
+      'css/deck.css',
+      [{ name: 'css/deck.css', path: 'css/deck.css' }],
+      { branding: { slideOnlyMvp: true } },
+    );
+    expect(result).toEqual({ shouldOpen: false, fileName: null });
+  });
+
+  it('still auto-opens html deliverables in slide-only embed', () => {
+    const result = decideAutoOpenAfterWrite(
+      'index.html',
+      [{ name: 'index.html', path: 'index.html' }],
+      { branding: { slideOnlyMvp: true } },
+    );
+    expect(result).toEqual({ shouldOpen: true, fileName: 'index.html' });
+  });
 });
 
 describe('selectAutoOpenProducedHtml', () => {

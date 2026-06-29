@@ -1943,6 +1943,7 @@ export const ko: Dict = {
   'designFiles.pageInfo': '{start}–{end} / {total}',
   'designFiles.sectionFolders': '폴더',
   'designFiles.sectionStylesheets': '스타일시트',
+  'designFiles.sectionSupporting': '지원 파일',
   'designFiles.sectionDocuments': '문서',
   'designFiles.kindStylesheet': '스타일시트',
   'designFiles.modifiedExt': '수정됨 {time} · {size} · {ext}',

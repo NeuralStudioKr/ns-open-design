@@ -4,6 +4,7 @@ import { trackFileManagerClick } from '../analytics/events';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import type { Dict } from '../i18n/types';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { partitionEmbedDesignFileSections } from '../teamver/branding/embedDeliverableFilePolicy';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { buildSrcdoc } from '../runtime/srcdoc';
@@ -303,7 +304,8 @@ export function DesignFilesPanel({
 }: Props) {
   const t = useTeamverT();
   const analytics = useAnalytics();
-  const { hideUsefulTips } = useTeamverBranding();
+  const { hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
+  const [supportingExpanded, setSupportingExpanded] = useState(false);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropReadError, setDropReadError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
@@ -388,6 +390,11 @@ export function DesignFilesPanel({
       (category) => [category, grouped.get(category)!] as const,
     );
   }, [filesAtCurrentDir]);
+
+  const { deliverableSections, supportingFiles } = useMemo(
+    () => partitionEmbedDesignFileSections(sections, { slideOnlyMvp }),
+    [sections, slideOnlyMvp],
+  );
 
   // Reset selection and renaming state when the user navigates into or out of
   // a directory.
@@ -1104,7 +1111,7 @@ export function DesignFilesPanel({
                   {dirsAtCurrentDir.map((d) => renderDirRow(d))}
                 </div>
               ) : null}
-              {sections.map(([category, sectionFiles]) => (
+              {deliverableSections.map(([category, sectionFiles]) => (
                 <div className="df-section" key={`cat:${category}`}>
                   <div className="df-section-label">
                     {sectionLabel(category, t)}
@@ -1113,6 +1120,25 @@ export function DesignFilesPanel({
                   {sectionFiles.map((f) => renderFileRow(f, category))}
                 </div>
               ))}
+              {supportingFiles.length > 0 ? (
+                <div className="df-section" key="supporting">
+                  <button
+                    type="button"
+                    className="df-section-label df-section-toggle"
+                    aria-expanded={supportingExpanded}
+                    onClick={() => setSupportingExpanded((open) => !open)}
+                  >
+                    {t('designFiles.sectionSupporting')}
+                    <span className="df-section-count">{supportingFiles.length}</span>
+                    <span className="df-section-chev" aria-hidden>
+                      <Icon name={supportingExpanded ? 'chevron-down' : 'chevron-right'} size={11} />
+                    </span>
+                  </button>
+                  {supportingExpanded
+                    ? supportingFiles.map((f) => renderFileRow(f, fileCategory(f)))
+                    : null}
+                </div>
+              ) : null}
             </>
           )}
           {!hideUsefulTips ? (

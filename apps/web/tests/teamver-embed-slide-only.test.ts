@@ -149,4 +149,17 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain("appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err)");
     expect(projectView).toContain("appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode)");
   });
+
+  it("minimizes supporting file streams and collapses design-file scaffolds in slide-only embed", () => {
+    const assistant = readSource("src/components/AssistantMessage.tsx");
+    const designFiles = readSource("src/components/DesignFilesPanel.tsx");
+    const autoOpen = readSource("src/components/auto-open-file.ts");
+
+    expect(assistant).toContain("shouldMinimizeEmbedLiveToolCode");
+    expect(assistant).toContain("filterEmbedDeliverableProducedFiles");
+    expect(assistant).toContain("hideCodeBody");
+    expect(designFiles).toContain("partitionEmbedDesignFileSections");
+    expect(designFiles).toContain("designFiles.sectionSupporting");
+    expect(autoOpen).toContain("shouldDeclineEmbedAutoOpen");
+  });
 });

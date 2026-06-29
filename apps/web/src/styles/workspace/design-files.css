@@ -241,6 +241,22 @@
   font-weight: 500;
   letter-spacing: 0;
 }
+.df-section-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.df-section-toggle:hover {
+  color: var(--text-muted);
+}
+.df-section-chev {
+  margin-left: auto;
+  color: var(--text-faint);
+}
 .df-file-row {
   transition: background 120ms var(--ease-out);
 }

@@ -9,6 +9,10 @@ import { asInProjectFilePath } from "../runtime/in-project-link";
 import { projectFileUrl } from "../providers/registry";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
+import {
+  filterEmbedDeliverableProducedFiles,
+  shouldMinimizeEmbedLiveToolCode,
+} from "../teamver/branding/embedDeliverableFilePolicy";
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 import {
@@ -420,7 +424,8 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
-  const { hideAssistantModelLabels, hideAssistantThinkingDetails, title: brandTitle } = useTeamverBranding();
+  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle } =
+    useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
   // we strip TodoWrite tool-groups out of the per-message flow to avoid the
@@ -465,17 +470,20 @@ function AssistantMessageImpl({
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
   const produced = message.producedFiles ?? [];
   const displayedProduced = useMemo(
-    () =>
-      produced.length > 0
-        ? produced
-        : inferProducedFilesFromTurn({
-            message,
-            projectFiles,
-            blocks,
-            fileOps,
-            streaming,
-          }),
-    [blocks, fileOps, message, produced, projectFiles, streaming],
+    () => {
+      const base =
+        produced.length > 0
+          ? produced
+          : inferProducedFilesFromTurn({
+              message,
+              projectFiles,
+              blocks,
+              fileOps,
+              streaming,
+            });
+      return filterEmbedDeliverableProducedFiles(base, { slideOnlyMvp });
+    },
+    [blocks, fileOps, message, produced, projectFiles, slideOnlyMvp, streaming],
   );
   // The single artifact the "next step" affordance anchors to: prefer the HTML
   // produced by THIS turn; if the final turn emitted none (a summary / continue
@@ -2031,6 +2039,10 @@ function ProseBlock({
           titleLabel={t("tool.write")}
           metaLabel={live.title || live.identifier || undefined}
           code={live.content}
+          hideCodeBody={shouldMinimizeEmbedLiveToolCode(
+            { slideOnlyMvp },
+            live.title || live.identifier || "",
+          )}
         />
       ) : null}
       {hadOpenForm ? <QuestionsBanner onOpen={onOpenQuestions} /> : null}
@@ -2391,12 +2403,20 @@ function StreamingCodeCard({
   titleLabel,
   metaLabel,
   code,
+  hideCodeBody = false,
 }: {
   titleLabel: string;
   metaLabel?: string;
   code: string;
+  hideCodeBody?: boolean;
 }) {
+  const t = useT();
   const preRef = useRef<HTMLPreElement | null>(null);
+  const lineCount = code ? code.split("\n").length : 0;
+  const summaryMeta =
+    hideCodeBody && lineCount > 0
+      ? [metaLabel, t("tool.lines", { n: lineCount })].filter(Boolean).join(" · ")
+      : metaLabel;
   // Keep the latest streamed line in view as code grows.
   useEffect(() => {
     const el = preRef.current;
@@ -2409,9 +2429,9 @@ function StreamingCodeCard({
           <Icon name="spinner" size={14} />
         </span>
         <span className="op-title shimmer-text">{titleLabel}</span>
-        {metaLabel ? <span className="op-meta">{metaLabel}</span> : null}
+        {summaryMeta ? <span className="op-meta">{summaryMeta}</span> : null}
       </div>
-      {code ? (
+      {code && !hideCodeBody ? (
         <pre className="live-code-pre" ref={preRef}>
           <code>
             {code}
@@ -2428,6 +2448,7 @@ function StreamingCodeCard({
 // `tool_use` lands.
 function LiveCodeBox({ name, raw }: { name: string; raw: string }) {
   const t = useT();
+  const { slideOnlyMvp } = useTeamverBranding();
   const file =
     extractStreamingJsonString(raw, "file_path") ??
     extractStreamingJsonString(raw, "filePath") ??
@@ -2438,12 +2459,14 @@ function LiveCodeBox({ name, raw }: { name: string; raw: string }) {
     extractStreamingJsonString(raw, "content") ??
     extractStreamingJsonString(raw, "new_string") ??
     "";
+  const hideCodeBody = shouldMinimizeEmbedLiveToolCode({ slideOnlyMvp }, file);
   const isEdit = /edit/i.test(name);
   return (
     <StreamingCodeCard
       titleLabel={isEdit ? t("tool.edit") : t("tool.write")}
       metaLabel={baseName || undefined}
       code={code}
+      hideCodeBody={hideCodeBody}
     />
   );
 }

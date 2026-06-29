@@ -3633,6 +3633,7 @@ export function ProjectView({
                   : undefined;
                 const decision = decideAutoOpenAfterWrite(filePath, nextFiles, {
                   moduleFileNames,
+                  branding: { slideOnlyMvp },
                 });
                 if (decision.shouldOpen && decision.fileName) {
                   if (runIsVisible()) requestOpenFile(decision.fileName);

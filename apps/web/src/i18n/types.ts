@@ -2547,6 +2547,7 @@ export interface Dict {
   'designFiles.pageInfo': string;
   'designFiles.sectionFolders': string;
   'designFiles.sectionStylesheets': string;
+  'designFiles.sectionSupporting': string;
   'designFiles.sectionDocuments': string;
   'designFiles.kindStylesheet': string;
   'designFiles.modifiedExt': string;

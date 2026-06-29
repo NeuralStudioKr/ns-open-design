@@ -26,6 +26,9 @@ interface CandidateFile extends TabResolvableFile {
   readonly mtime?: number;
 }
 
+import type { TeamverBrandingConfig } from '../teamver/branding/config';
+import { shouldDeclineEmbedAutoOpen } from '../teamver/branding/embedDeliverableFilePolicy';
+
 interface AutoOpenOptions {
   // Names of files that are React modules loaded by a sibling HTML entry (via
   // `<script type="text/babel" src>`). These have no standalone preview, so
@@ -33,6 +36,8 @@ interface AutoOpenOptions {
   // candidate is in this set we decline to open it. See
   // `apps/web/src/runtime/jsx-module-refs.ts` for how the set is derived.
   readonly moduleFileNames?: ReadonlySet<string>;
+  /** Embed slide-only — skip auto-open for stylesheet / scaffold JS files. */
+  readonly branding?: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>;
 }
 
 const NO_MODULES: ReadonlySet<string> = new Set();
@@ -83,12 +88,20 @@ export function decideAutoOpenAfterWrite(
   options: AutoOpenOptions = {},
 ): { shouldOpen: boolean; fileName: string | null } {
   const moduleFileNames = options.moduleFileNames ?? NO_MODULES;
+  const branding = options.branding;
   // Resolve a positive identification into an open decision, declining files
   // that are modules of a multi-file HTML entry rather than standalone pages.
-  const resolve = (fileName: string): { shouldOpen: boolean; fileName: string | null } =>
-    moduleFileNames.has(fileName)
-      ? { shouldOpen: false, fileName: null }
-      : { shouldOpen: true, fileName };
+  const resolve = (
+    file: CandidateFile,
+  ): { shouldOpen: boolean; fileName: string | null } => {
+    if (moduleFileNames.has(file.name)) {
+      return { shouldOpen: false, fileName: null };
+    }
+    if (branding && shouldDeclineEmbedAutoOpen(branding, file)) {
+      return { shouldOpen: false, fileName: null };
+    }
+    return { shouldOpen: true, fileName: file.name };
+  };
 
   if (!filePath) return { shouldOpen: false, fileName: null };
 
@@ -109,7 +122,7 @@ export function decideAutoOpenAfterWrite(
     }
   }
   if (suffixMatches.length === 1) {
-    return resolve(suffixMatches[0]!.name);
+    return resolve(suffixMatches[0]!);
   }
   if (suffixMatches.length > 1) {
     // Multiple project files plausibly correspond to this path — refuse
@@ -130,7 +143,7 @@ export function decideAutoOpenAfterWrite(
     return rel ? basenameOf(rel) === filePath : false;
   });
   if (basenameMatches.length === 1) {
-    return resolve(basenameMatches[0]!.name);
+    return resolve(basenameMatches[0]!);
   }
   return { shouldOpen: false, fileName: null };
 }
