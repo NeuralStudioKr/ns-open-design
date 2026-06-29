@@ -108,6 +108,7 @@ import {
   readTeamverDesignAccessSnapshot,
   subscribeTeamverDesignAccessChanged,
 } from './teamver/teamverDesignAccess';
+import { resolveEmbedBootSessionOptions } from './teamver/teamverEmbedAuthFlow';
 import { readActiveTeamverWorkspaceId } from './teamver/useTeamverEmbed';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
@@ -998,24 +999,27 @@ function AppInner() {
         isTeamverEmbedMode() ? Promise.resolve(null) : fetchComposioConfigFromDaemon(),
         fetchMediaProvidersFromDaemon(),
         isTeamverEmbedMode()
-          ? fetchDesignAuthSession().then(async (session) => {
-              try {
-                if (session?.authenticated) {
-                  setTeamverEmbedSessionAuthenticated(true);
-                  await syncTeamverWorkspaceFromSession(session);
-                  try {
-                    await syncAllDaemonProjectsToRegistry();
-                  } catch (err) {
-                    console.warn("[teamver] embed boot registry sync failed", err);
+          ? (() => {
+              const bootSessionOptions = resolveEmbedBootSessionOptions();
+              return fetchDesignAuthSession(bootSessionOptions).then(async (session) => {
+                try {
+                  if (session?.authenticated) {
+                    setTeamverEmbedSessionAuthenticated(true);
+                    await syncTeamverWorkspaceFromSession(session);
+                    try {
+                      await syncAllDaemonProjectsToRegistry();
+                    } catch (err) {
+                      console.warn("[teamver] embed boot registry sync failed", err);
+                    }
+                  } else {
+                    await clearTeamverEmbedSessionState();
                   }
-                } else {
-                  await clearTeamverEmbedSessionState();
+                  return await fetchTeamverRuntimeConfig();
+                } finally {
+                  completeTeamverEmbedBoot();
                 }
-                return await fetchTeamverRuntimeConfig();
-              } finally {
-                completeTeamverEmbedBoot();
-              }
-            })
+              });
+            })()
           : Promise.resolve(null),
       ]).then(([
         daemonConfig,
@@ -1334,17 +1338,27 @@ function AppInner() {
     }
     let cancelled = false;
     const syncWorkspace = async () => {
+      await waitForTeamverEmbedBoot();
+      if (cancelled) return;
       const id = (await readActiveTeamverWorkspaceId())?.trim() || null;
       if (!cancelled) setEmbedWorkspaceId(id);
     };
     void syncWorkspace();
-    const unsubscribe = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
+    const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
       const trimmed = workspaceId.trim();
       setEmbedWorkspaceId(trimmed || null);
     });
+    const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (!authenticated) {
+        setEmbedWorkspaceId(null);
+        return;
+      }
+      void syncWorkspace();
+    });
     return () => {
       cancelled = true;
-      unsubscribe();
+      unsubscribeWorkspace();
+      unsubscribeSession();
     };
   }, []);
 

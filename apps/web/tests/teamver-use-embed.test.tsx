@@ -3,11 +3,12 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTeamverEmbed } from "../src/teamver/useTeamverEmbed";
-import { TEAMVER_WORKSPACE_CHANGED_EVENT } from "../src/teamver/teamverWorkspaceEvents";
 import * as designApiBase from "../src/teamver/designApiBase";
 import * as designBffClient from "../src/teamver/designBffClient";
 import * as teamverEmbedSession from "../src/teamver/teamverEmbedSession";
 import * as teamverAuthCookieHints from "../src/teamver/teamverAuthCookieHints";
+import * as teamverAuthReturn from "../src/teamver/teamverAuthReturn";
+import * as teamverWorkspaceEvents from "../src/teamver/teamverWorkspaceEvents";
 import { NetworkError } from "@teamver/app-sdk";
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -42,6 +43,16 @@ vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
   hasProbableTeamverAuthCookie: vi.fn(() => false),
 }));
 
+vi.mock("../src/teamver/teamverAuthReturn", () => ({
+  peekTeamverAuthReturnPending: vi.fn(() => false),
+  isLikelyTeamverAuthReturnNavigation: vi.fn(() => false),
+}));
+
+vi.mock("../src/teamver/teamverWorkspaceEvents", () => ({
+  dispatchTeamverWorkspaceChanged: vi.fn(),
+  TEAMVER_WORKSPACE_CHANGED_EVENT: "teamver-workspace-changed",
+}));
+
 describe("useTeamverEmbed", () => {
   beforeEach(() => {
     cleanup();
@@ -55,6 +66,9 @@ describe("useTeamverEmbed", () => {
     vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
     vi.mocked(designBffClient.prepareDesignAuthSessionReload).mockClear();
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
+    vi.mocked(teamverAuthReturn.peekTeamverAuthReturnPending).mockReturnValue(false);
+    vi.mocked(teamverAuthReturn.isLikelyTeamverAuthReturnNavigation).mockReturnValue(false);
+    vi.mocked(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).mockClear();
     vi.unstubAllGlobals();
   });
 
@@ -82,13 +96,6 @@ describe("useTeamverEmbed", () => {
       ],
     });
 
-    const workspaceEvents: string[] = [];
-    window.addEventListener(TEAMVER_WORKSPACE_CHANGED_EVENT, (event) => {
-      workspaceEvents.push(
-        (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId ?? "",
-      );
-    });
-
     const { result } = renderHook(() => useTeamverEmbed(true));
 
     await waitFor(() => {
@@ -97,6 +104,9 @@ describe("useTeamverEmbed", () => {
     });
     expect(store.set).toHaveBeenCalledWith("WS-1");
     expect(store.setLastForUser).toHaveBeenCalledWith("user-1", "WS-1");
+    expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).toHaveBeenCalledWith("WS-1");
+
+    vi.mocked(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).mockClear();
 
     await act(async () => {
       await result.current.switchWorkspace("WS-2");
@@ -106,7 +116,31 @@ describe("useTeamverEmbed", () => {
     expect(result.current.activeWorkspaceLabel).toBe("Beta Team");
     expect(store.set).toHaveBeenLastCalledWith("WS-2");
     expect(store.setLastForUser).toHaveBeenLastCalledWith("user-1", "WS-2");
-    expect(workspaceEvents).toContain("WS-2");
+    expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).toHaveBeenCalledWith("WS-2");
+  });
+
+  it("notifies App workspace gate after auth hydrate even when store already had the id", async () => {
+    const store = {
+      get: vi.fn(async () => "WS-1"),
+      set: vi.fn(async () => undefined),
+      setLastForUser: vi.fn(),
+    };
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: store,
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: true,
+      user: { userId: "user-1", email: "u1@example.com" },
+      defaultWorkspaceId: "WS-1",
+      workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).toHaveBeenCalledWith("WS-1");
+    });
+    expect(store.set).not.toHaveBeenCalled();
   });
 
   it("surfaces designAppEnabled=false when active workspace is disabled", async () => {
@@ -302,5 +336,35 @@ describe("useTeamverEmbed", () => {
     await new Promise((resolve) => setTimeout(resolve, 600));
 
     expect(designBffClient.resetDesignAuthRefreshState).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets refresh state and retries with resetRefreshState after Main FE sign-in return", async () => {
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledTimes(1);
+    });
+
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockClear();
+    vi.mocked(designBffClient.resetDesignAuthRefreshState).mockClear();
+    vi.mocked(teamverAuthReturn.isLikelyTeamverAuthReturnNavigation).mockReturnValue(true);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(designBffClient.resetDesignAuthRefreshState).toHaveBeenCalledTimes(1);
+    expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
+      force: true,
+      resetRefreshState: true,
+    });
   });
 });

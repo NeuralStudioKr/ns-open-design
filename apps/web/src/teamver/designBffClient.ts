@@ -16,6 +16,10 @@ import {
 } from "./designApiBase";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import {
+  consumeTeamverAuthReturnPending,
+  isLikelyTeamverAuthReturnNavigation,
+} from "./teamverAuthReturn";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -85,11 +89,33 @@ async function postAuthRefresh(url: string): Promise<{ ok: boolean; status: numb
 
 let authRefreshDeclinedForSession = false;
 let unauthenticatedRefreshAttempted = false;
+/** Allows Main BE refresh fallback on HttpOnly-only attempts (sign-in return). */
+let authRecoveryRefreshActive = false;
+/** One-shot load recovery — pending flag / referrer must not stick across probes. */
+let embedAuthRecoveryLoadUsed = false;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRefreshDeclinedForSession = false;
   unauthenticatedRefreshAttempted = false;
+  authRecoveryRefreshActive = false;
+  embedAuthRecoveryLoadUsed = false;
+}
+
+function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
+  if (options?.resetRefreshState) {
+    embedAuthRecoveryLoadUsed = true;
+    return true;
+  }
+  if (embedAuthRecoveryLoadUsed) return false;
+  const recovery =
+    consumeTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
+  if (recovery) embedAuthRecoveryLoadUsed = true;
+  return recovery;
+}
+
+function setAuthRecoveryRefreshActive(active: boolean): void {
+  authRecoveryRefreshActive = active;
 }
 
 function resetDesignAuthRefreshDeclined(): void {
@@ -136,8 +162,8 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     authRefreshDeclinedForSession = true;
     return false;
   }
-  // No visible cookie hint — avoid Main BE refresh noise after a single BFF attempt.
-  if (isBareAttempt) {
+  // HttpOnly-only — skip Main BE unless sign-in return recovery is active.
+  if (isBareAttempt && !authRecoveryRefreshActive) {
     return false;
   }
 
@@ -170,6 +196,7 @@ export function prepareDesignAuthSessionReload(): void {
 export function resetDesignAuthRefreshState(): void {
   authRefreshDeclinedForSession = false;
   unauthenticatedRefreshAttempted = false;
+  embedAuthRecoveryLoadUsed = false;
 }
 
 /** Sticky 400 from `/teamver-bff/auth/refresh` — UI may offer explicit retry. */
@@ -315,10 +342,13 @@ export async function fetchDesignAuthSession(
   options?: FetchDesignAuthSessionOptions,
 ): Promise<DesignAuthSession | null> {
   const force = options?.force ?? false;
+  const recoveryLoad = resolveAuthRecoveryLoad(options);
 
   if (options?.resetRefreshState) {
     resetDesignAuthRefreshState();
   }
+
+  setAuthRecoveryRefreshActive(recoveryLoad);
 
   if (force) {
     invalidateDesignAuthSessionCache();
@@ -349,6 +379,7 @@ export async function fetchDesignAuthSession(
 
   inFlightSession = run().finally(() => {
     inFlightSession = null;
+    setAuthRecoveryRefreshActive(false);
   });
   return inFlightSession;
 }

@@ -26,6 +26,10 @@ import {
   waitForTeamverEmbedBoot,
 } from "./teamverEmbedBoot";
 import {
+  isLikelyTeamverAuthReturnNavigation,
+  peekTeamverAuthReturnPending,
+} from "./teamverAuthReturn";
+import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
   readWorkspaceId,
@@ -35,7 +39,12 @@ import {
 } from "./workspaceUtils";
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
+import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
+import {
+  resolveEmbedFocusSessionOptions,
+  shouldResetEmbedRefreshDeclineOnFocus,
+} from "./teamverEmbedAuthFlow";
 
 export type TeamverEmbedState = {
   loading: boolean;
@@ -113,6 +122,16 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const lastCookieHintRef = useRef<boolean>(
     isTeamverEmbedMode() ? readAuthCookieHint() : false,
   );
+  /** Referrer/pending sign-in return — handle once per mount (avoid focus refresh spam). */
+  const authReturnFocusHandledRef = useRef(false);
+
+  const takeAuthReturnFocusRecovery = useCallback((): boolean => {
+    if (authReturnFocusHandledRef.current) return false;
+    const recovery =
+      peekTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
+    if (recovery) authReturnFocusHandledRef.current = true;
+    return recovery;
+  }, []);
 
   const refresh = useCallback(async (options?: { force?: boolean; resetRefreshState?: boolean }) => {
     if (!enabled || !isTeamverEmbedMode()) {
@@ -164,6 +183,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         : null;
       if (activeWorkspaceId && activeWorkspace) {
         snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
+        // App embedWorkspaceId gate listens for workspace events — always notify after
+        // auth recovery even when localStorage already held the same workspace id.
+        dispatchTeamverWorkspaceChanged(activeWorkspaceId);
       }
       // Registry sync runs on App boot — skip duplicate work on initial banner hydrate.
       if (force && session.authenticated && activeWorkspaceId) {
@@ -207,10 +229,22 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const focusRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFocusSessionRefreshAtRef = useRef(0);
 
-  const scheduleFocusSessionRefresh = useCallback((options?: { bypassThrottle?: boolean }) => {
+  const scheduleFocusSessionRefresh = useCallback((options?: {
+    bypassThrottle?: boolean;
+    focusSignals?: {
+      cookieHintAppeared: boolean;
+      pageshowPersisted: boolean;
+      authReturnNavigation: boolean;
+    };
+  }) => {
     if (document.visibilityState !== "visible") return;
     const now = Date.now();
     const bypassThrottle = options?.bypassThrottle ?? false;
+    const focusSignals = options?.focusSignals ?? {
+      cookieHintAppeared: false,
+      pageshowPersisted: false,
+      authReturnNavigation: false,
+    };
     if (
       !bypassThrottle &&
       now - lastFocusSessionRefreshAtRef.current < FOCUS_SESSION_REFRESH_MIN_INTERVAL_MS
@@ -224,7 +258,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     focusRefreshTimerRef.current = setTimeout(() => {
       focusRefreshTimerRef.current = null;
       invalidateDesignAuthSessionCache();
-      void refresh({ force: true });
+      void refresh(resolveEmbedFocusSessionOptions(focusSignals));
     }, FOCUS_SESSION_REFRESH_MS);
   }, [refresh]);
 
@@ -260,9 +294,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       const cookieHintAppeared = cookieHintNow && !lastCookieHintRef.current;
       const pageshowPersisted =
         event?.type === "pageshow" && (event as PageTransitionEvent).persisted === true;
+      const authReturnNavigation = takeAuthReturnFocusRecovery();
+      const focusSignals = {
+        cookieHintAppeared,
+        pageshowPersisted,
+        authReturnNavigation,
+      };
 
-      if (cookieHintAppeared || pageshowPersisted) {
-        // Cross-tab login, bfcache restore, or fresh visible cookie — retry refresh once.
+      if (shouldResetEmbedRefreshDeclineOnFocus(focusSignals)) {
+        // Cross-tab login, bfcache restore, Main FE sign-in return, or fresh cookie.
         resetDesignAuthRefreshState();
       } else if (
         !stateRef.current.authenticated &&
@@ -276,7 +316,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       lastCookieHintRef.current = cookieHintNow;
       scheduleFocusSessionRefresh({
-        bypassThrottle: cookieHintAppeared || pageshowPersisted,
+        bypassThrottle: shouldResetEmbedRefreshDeclineOnFocus(focusSignals),
+        focusSignals,
       });
     };
 
@@ -298,7 +339,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [enabled, scheduleFocusSessionRefresh]);
+  }, [enabled, scheduleFocusSessionRefresh, takeAuthReturnFocusRecovery]);
 
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;

@@ -3,6 +3,7 @@
  * Hostname-based default; override with VITE_TEAMVER_DESIGN_API_URL at build time.
  */
 import { isTeamverViteDev, readTeamverViteEnv } from "./teamverViteEnv";
+import { markTeamverAuthReturnPending } from "./teamverAuthReturn";
 
 export function isTeamverEmbedMode(): boolean {
   const flag = readTeamverViteEnv("VITE_TEAMVER_EMBED")?.toLowerCase();
@@ -60,6 +61,7 @@ export function resetTeamverLoginRedirectCooldown(): void {
 /** Sign-in navigation — drop stale session cache so post-login probe is fresh. */
 export function prepareTeamverLoginNavigation(): void {
   resetTeamverLoginRedirectCooldown();
+  markTeamverAuthReturnPending();
 }
 
 export function redirectToTeamverLogin(returnTo?: string | null): void {
