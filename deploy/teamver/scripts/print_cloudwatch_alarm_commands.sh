@@ -28,6 +28,10 @@
 #     (`od_scratch_evict_deferred_unsynced`)
 #   - log metric filter + alarm: daemon S3 storage init failed
 #     (`od_s3_storage_init_failed`)
+#   - log metric filter + alarm: BYOK proxy begin failed (sync-down)
+#     (`od_byok_proxy_begin_failed`)
+#   - log metric filter + alarm: BYOK billing reconciliation orphan
+#     (`od_byok_billing_orphan_usage`)
 #   - EC2 cron/SSM: `verify_litestream_replica.sh` (S3 replica 객체 증적, P2-1)
 
 set -euo pipefail
@@ -344,6 +348,61 @@ declare -a REGISTRY_SCRATCH_SYNC_FAILED_ALARM=(
   --treat-missing-data notBreaching
 )
 
+# BYOK proxy fail-fast 트립 — sync-down 실패로 502 응답.
+# 사용자 화면에 명확한 오류가 노출됨을 의미 → 5분 누적 ≥1 이면 즉시
+# triage (S3 / tenant remote / network 점검).
+declare -a BYOK_PROXY_BEGIN_FAILED_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-byok-proxy-begin-failed"
+  --filter-pattern '"od_byok_proxy_begin_failed"'
+  --metric-transformations
+    "metricName=TeamverDesignByokProxyBeginFailed,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a BYOK_PROXY_BEGIN_FAILED_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-byok-proxy-begin-failed"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignByokProxyBeginFailed"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 3
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
+# Daemon-side BYOK billing reconciliation orphan — proxy SSE 가 usage 를 emit
+# 했지만 terminal message PUT 이 OD_BYOK_BILLING_STAGE_TTL_MS 안에 도착하지
+# 않아 staged usage 가 reap 됨. 빈도가 낮아야 한다 (정상은 0). 누적되면
+# FE message PUT 실패 또는 client 절단 패턴 의심.
+declare -a BYOK_BILLING_ORPHAN_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-byok-billing-orphan"
+  --filter-pattern '"od_byok_billing_orphan_usage"'
+  --metric-transformations
+    "metricName=TeamverDesignByokBillingOrphan,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a BYOK_BILLING_ORPHAN_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-byok-billing-orphan"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignByokBillingOrphan"
+  --statistic Sum
+  --period 900
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
 if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SYNC_UP_ALARM+=("${alarm_action_args[@]}")
   USAGE_ALARM+=("${alarm_action_args[@]}")
@@ -356,6 +415,8 @@ if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SCRATCH_EVICT_DEFERRED_ALARM+=("${alarm_action_args[@]}")
   S3_STORAGE_INIT_FAILED_ALARM+=("${alarm_action_args[@]}")
   REGISTRY_SCRATCH_SYNC_FAILED_ALARM+=("${alarm_action_args[@]}")
+  BYOK_PROXY_BEGIN_FAILED_ALARM+=("${alarm_action_args[@]}")
+  BYOK_BILLING_ORPHAN_ALARM+=("${alarm_action_args[@]}")
 fi
 
 emit() {
@@ -400,6 +461,10 @@ run_or_emit "18) Log metric filter: daemon S3 storage init failed" "${S3_STORAGE
 run_or_emit "19) Alarm: S3 storage init failed (any in 5 minutes)" "${S3_STORAGE_INIT_FAILED_ALARM[@]}"
 run_or_emit "20) Log metric filter: registry scratch sync failed (design-api)" "${REGISTRY_SCRATCH_SYNC_FAILED_FILTER[@]}"
 run_or_emit "21) Alarm: registry scratch sync failed (any in 5 minutes)" "${REGISTRY_SCRATCH_SYNC_FAILED_ALARM[@]}"
+run_or_emit "22) Log metric filter: BYOK proxy begin failed (sync-down)" "${BYOK_PROXY_BEGIN_FAILED_FILTER[@]}"
+run_or_emit "23) Alarm: BYOK proxy begin failed (>=3 in 5 minutes — surface-level data-loss prevention)" "${BYOK_PROXY_BEGIN_FAILED_ALARM[@]}"
+run_or_emit "24) Log metric filter: BYOK billing orphan (TTL reaped without terminal PUT)" "${BYOK_BILLING_ORPHAN_FILTER[@]}"
+run_or_emit "25) Alarm: BYOK billing orphan (any in 15 minutes — FE message PUT loss)" "${BYOK_BILLING_ORPHAN_ALARM[@]}"
 
 if [[ "$APPLY" -eq 0 ]]; then
   echo "# Litestream S3 replica (P2-1): EC2에서 주기적으로"

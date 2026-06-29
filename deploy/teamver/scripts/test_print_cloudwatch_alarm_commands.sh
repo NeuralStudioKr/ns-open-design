@@ -33,6 +33,12 @@ for needle in \
   'od_s3_remote_purged' \
   'od_scratch_disk_usage' \
   'overThreshold' \
+  'TeamverDesignByokProxyBeginFailed' \
+  'TeamverDesignByokBillingOrphan' \
+  'teamver-design-staging-byok-proxy-begin-failed' \
+  'teamver-design-staging-byok-billing-orphan' \
+  'od_byok_proxy_begin_failed' \
+  'od_byok_billing_orphan_usage' \
   'aws cloudwatch put-metric-alarm' \
   'aws logs put-metric-filter' \
   'teamver-design-alerts'
