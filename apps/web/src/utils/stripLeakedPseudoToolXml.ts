@@ -1,6 +1,6 @@
-import { sanitizeLeakedAgentProse } from "../runtime/internalAgentMarkup";
+import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 
-/** Remove CLI-style pseudo-tool XML leaked into chat text (#313). */
+/** Strip leaked pseudo-tool markup from streaming SSE chunks (preserves open `<artifact>`). */
 export function stripLeakedPseudoToolXml(text: string): string {
-  return sanitizeLeakedAgentProse(text);
+  return sanitizeAssistantProseForDisplay(text, { streaming: true });
 }

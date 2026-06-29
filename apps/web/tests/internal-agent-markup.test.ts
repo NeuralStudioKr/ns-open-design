@@ -162,8 +162,9 @@ describe("internalAgentMarkup", () => {
       .stripLeakedPseudoToolXml;
     const sample =
       "<tool_call>{\"name\":\"Write\",\"arguments\":{}}</tool_call>\n\n본문";
-    expect(stripLeakedPseudoToolXml(sample)).toBe(contracts.sanitizeLeakedAgentProse(sample));
-    expect(daemonStrip(sample)).toBe(contracts.sanitizeLeakedAgentProse(sample));
+    const expected = contracts.sanitizeAssistantProseForDisplay(sample, { streaming: true });
+    expect(stripLeakedPseudoToolXml(sample)).toBe(expected);
+    expect(daemonStrip(sample)).toBe(expected);
   });
 });
 

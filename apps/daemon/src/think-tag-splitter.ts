@@ -1,8 +1,16 @@
-import { sanitizeLeakedAgentProse } from "@open-design/contracts";
+import {
+  sanitizeAssistantProseForDisplay,
+  sanitizeLeakedAgentProse,
+} from "@open-design/contracts";
 
 /** Remove CLI-style pseudo-tool XML leaked into BYOK/API chat deltas (#313).
- *  SSOT: `@open-design/contracts` `sanitizeLeakedAgentProse`. */
+ *  SSOT: `@open-design/contracts` — streaming mode preserves open `<artifact>` for FE live panel. */
 export function stripLeakedPseudoToolXml(text: string): string {
+  return sanitizeAssistantProseForDisplay(text, { streaming: true });
+}
+
+/** History / complete-message sanitizer (no open-artifact preserve). */
+export function stripLeakedPseudoToolXmlComplete(text: string): string {
   return sanitizeLeakedAgentProse(text);
 }
 

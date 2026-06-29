@@ -1,8 +1,9 @@
 import type { AgentEvent, ChatMessage } from "../types";
+import { stripAllClosedArtifacts } from "../artifacts/strip";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 
 function sanitizeProseChunk(text: string): string {
-  return sanitizeAssistantProseForDisplay(text);
+  return sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(text));
 }
 
 function sanitizeEvent(event: AgentEvent): AgentEvent {

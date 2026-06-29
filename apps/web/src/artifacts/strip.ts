@@ -76,6 +76,17 @@ export function stripArtifact(content: string): string {
   return (content.slice(0, open) + content.slice(end + CLOSE.length)).trim();
 }
 
+/** Remove every fence-aware closed `<artifact>` block (multi-artifact turns). */
+export function stripAllClosedArtifacts(content: string): string {
+  let out = content;
+  for (let i = 0; i < 8; i += 1) {
+    const next = stripArtifact(out);
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
+
 function findSingleRecoverableHtmlFence(content: string): MarkdownFenceRange | null {
   HTML_FENCE_RE.lastIndex = 0;
   let recovered: MarkdownFenceRange | null = null;

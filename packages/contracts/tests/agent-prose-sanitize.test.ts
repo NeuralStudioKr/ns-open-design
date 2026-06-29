@@ -171,4 +171,69 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(hadOpenInternalMarkup).toBe(true);
     expect(text).toBe("진행하겠습니다.");
   });
+
+  it("strips Cursor-style tool_call blocks with JSON payloads", () => {
+    const input = [
+      "슬라이드 구성 계획:",
+      "<tool_call>",
+      '{"name": "TodoUpdate", "arguments": {"updates": [{"index": 1, "status": "completed"}]}}',
+      "</tool_call>",
+      "<tool_call>",
+      '{"name": "Write", "arguments": {"path": "index.html", "content": "<!doctype html>"}}',
+      "</tool_call>",
+      "본문 시작",
+    ].join("\n");
+    const out = sanitizeLeakedAgentProse(input);
+    expect(out).not.toContain("<tool_call>");
+    expect(out).not.toContain("TodoUpdate");
+    expect(out).not.toContain("<!doctype html>");
+    expect(out).toContain("슬라이드 구성 계획:");
+    expect(out).toContain("본문 시작");
+  });
+
+  it("strips pseudo Read/Edit/Write blocks (BYOK pseudo-tool markup leak)", () => {
+    const input = [
+      "<read>",
+      "<path>ai-adoption-effects.html</path>",
+      "</read>",
+      "",
+      '<artifact identifier="ai-adoption-effects" type="text/html" title="기업의 AI 도입 효과">',
+      "<!doctype html>",
+      '<html lang="ko"><head></head><body>hidden</body></html>',
+      "<edit>",
+      "<path>ai-adoption-effects.html</path>",
+      "<diff>",
+      "<<<<<<< SEARCH",
+      ":root { --bg: #FAFAFA; }",
+      "=======",
+      ":root { --bg: #FAFAFA; --accent-soft: #F4E8E3; }",
+      ">>>>>>> REPLACE",
+      "</diff>",
+      "</edit>",
+      "",
+      "슬라이드 초안을 반영했습니다.",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe("슬라이드 초안을 반영했습니다.");
+    expect(out).not.toContain("<read");
+    expect(out).not.toContain("<edit");
+    expect(out).not.toContain("<path>");
+    expect(out).not.toContain("<<<<<<< SEARCH");
+    expect(out).not.toContain("<!doctype html>");
+  });
+
+  it("strips trailing open read/edit/artifact in history but preserves open artifact while streaming", () => {
+    const streamingArtifact =
+      'Working…\n<artifact identifier="deck" type="text/html" title="Deck">\n<!doctype html>';
+    expect(
+      sanitizeAssistantProseForDisplay(streamingArtifact, { streaming: true }),
+    ).toBe(streamingArtifact);
+
+    const streamingRead = "Working…\n<read>\n<path>index.html</path>";
+    expect(sanitizeAssistantProseForDisplay(streamingRead, { streaming: true })).toBe("Working…");
+
+    const historyArtifact =
+      'Done.\n<artifact identifier="deck" type="text/html">\n<html></html>\n<edit>\n<path>x</path>';
+    expect(sanitizeAssistantProseForDisplay(historyArtifact)).toBe("Done.");
+  });
 });

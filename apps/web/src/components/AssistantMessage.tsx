@@ -9,6 +9,7 @@ import { asInProjectFilePath } from "../runtime/in-project-link";
 import { projectFileUrl } from "../providers/registry";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
+import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 import {
   trackAssistantFeedbackButtonClick,
@@ -36,7 +37,7 @@ import {
 } from "../artifacts/question-form";
 import { questionFormForSlideOnlyDisplay } from "../teamver/branding/embedSlideOnlyQuestionForm";
 import { parseSubmittedAnswers } from "./QuestionForm";
-import { splitStreamingArtifact, stripArtifact, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
+import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
@@ -139,7 +140,7 @@ function SkillPluginCandidateCard({
       : block.description || t("skillPluginCandidate.repoDescription");
 
   async function post(path: string, body: Record<string, unknown> = {}) {
-    const resp = await fetch(path, {
+    const resp = await fetchTeamverDaemon(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -1921,7 +1922,7 @@ function ProseBlock({
   const t = useT();
   const { slideOnlyMvp, enabled: teamverEmbedEnabled } = useTeamverBranding();
   const cleaned = useMemo(() => {
-    const stripped = stripArtifact(text);
+    const stripped = stripAllClosedArtifacts(text);
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
     return sanitizeAssistantProseForDisplay(base, { streaming });
   }, [hideRecoveredHtmlFallback, streaming, text]);

@@ -64,4 +64,16 @@ describe('stripLeakedPseudoToolXml', () => {
     expect(out).toContain('Plan ready.');
     expect(out).toContain('Proceed.');
   });
+
+  it('removes pseudo Read/Edit blocks and trailing open read while streaming', () => {
+    const closed = [
+      '<read><path>ai-adoption-effects.html</path></read>',
+      '<edit><path>x</path><diff>patch</diff></edit>',
+      '슬라이드 초안을 반영했습니다.',
+    ].join('\n');
+    expect(stripLeakedPseudoToolXml(closed)).toBe('슬라이드 초안을 반영했습니다.');
+
+    const openRead = 'Working…\n<read>\n<path>index.html</path>';
+    expect(stripLeakedPseudoToolXml(openRead)).toBe('Working…');
+  });
 });

@@ -112,4 +112,28 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
     expect(sanitized.events).toEqual([{ kind: "text", text: "슬라이드 구성 계획:" }]);
   });
+
+  it("strips read/edit pseudo-tool blocks and closed artifacts on reload", () => {
+    const message: ChatMessage = {
+      id: "m-read-edit",
+      role: "assistant",
+      content: "",
+      events: [
+        {
+          kind: "text",
+          text: [
+            "<read><path>ai-adoption-effects.html</path></read>",
+            '<artifact identifier="deck" type="text/html" title="Deck"><html></html></artifact>',
+            "<edit><path>ai-adoption-effects.html</path><diff>patch</diff></edit>",
+            "슬라이드 초안을 반영했습니다.",
+          ].join("\n"),
+        },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.events?.[0]).toEqual({
+      kind: "text",
+      text: "슬라이드 초안을 반영했습니다.",
+    });
+  });
 });

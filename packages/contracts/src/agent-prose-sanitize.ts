@@ -9,8 +9,22 @@
  * fixture matrix in `packages/contracts/tests/agent-prose-sanitize.test.ts`.
  */
 
+/** Pseudo file-operation XML emitted when CLI tools (Read/Write/Edit) are unavailable. */
+const FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES = [
+  "read",
+  "edit",
+  "write",
+  "search_replace",
+  "apply_patch",
+  "patch",
+  "delete",
+  "path",
+  "diff",
+] as const;
+
 /** Pseudo-tool XML the model narrates when CLI tools are unavailable. Strip outer tags first. */
 const PSEUDO_TOOL_TAG_NAMES = [
+  ...FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES,
   "tool",
   "tools",
   "tool_calls",
@@ -102,7 +116,71 @@ const OPEN_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
   "gi",
 );
 
+const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
+const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
+
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
+
+function isLikelyInternalMarkupLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (/^<[a-zA-Z!?/]/.test(trimmed)) return true;
+  if (/^<!doctype\b/i.test(trimmed)) return true;
+  if (trimmed.includes("<<<<<<< SEARCH")) return true;
+  return false;
+}
+
+/** Character index where trailing user-facing prose begins (inside an open artifact tail). */
+function trailingDisplayProseStart(input: string, fromIndex: number): number {
+  const tail = input.slice(fromIndex);
+  const lines = tail.split("\n");
+  let firstProseLine = -1;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const trimmed = lines[i]?.trim() ?? "";
+    if (!trimmed) {
+      if (firstProseLine !== -1) continue;
+      continue;
+    }
+    if (isLikelyInternalMarkupLine(lines[i] ?? "")) break;
+    firstProseLine = i;
+  }
+  if (firstProseLine === -1) return -1;
+  let offset = fromIndex;
+  for (let i = 0; i < firstProseLine; i += 1) {
+    offset += (lines[i]?.length ?? 0) + 1;
+  }
+  return offset;
+}
+
+/** Strip an unclosed `<artifact …>` block; preserve trailing user-facing prose after the body. */
+function stripTrailingOpenArtifact(
+  input: string,
+): { text: string; hadOpenInternalMarkup: boolean } {
+  OPEN_ARTIFACT_TAG_RE.lastIndex = 0;
+  let lastOpen: RegExpExecArray | null = null;
+  let match: RegExpExecArray | null;
+  const re = new RegExp(OPEN_ARTIFACT_TAG_RE.source, "gi");
+  while ((match = re.exec(input)) !== null) {
+    lastOpen = match;
+  }
+  if (!lastOpen || lastOpen.index === undefined) {
+    return { text: input, hadOpenInternalMarkup: false };
+  }
+  const openStart = lastOpen.index;
+  const openEnd = openStart + lastOpen[0].length;
+  const closeIdx = findCloseTag(input, openEnd, "</artifact>");
+  if (closeIdx !== -1) {
+    return { text: input, hadOpenInternalMarkup: false };
+  }
+  const proseStart = trailingDisplayProseStart(input, openEnd);
+  if (proseStart === -1) {
+    return { text: input.slice(0, openStart).trimEnd(), hadOpenInternalMarkup: true };
+  }
+  const head = input.slice(0, openStart).trimEnd();
+  const prose = input.slice(proseStart).trimStart();
+  const merged = head.length > 0 && prose.length > 0 ? `${head}\n\n${prose}` : head + prose;
+  return { text: merged.trim(), hadOpenInternalMarkup: true };
+}
 
 const CLOSED_MARKDOWN_TOOL_FENCE_RE = /```(?:tool_call|tool)\s*\n[\s\S]*?```/gi;
 const OPEN_MARKDOWN_TOOL_FENCE_RE = /```(?:tool_call|tool)\s*\n/i;
@@ -256,6 +334,7 @@ export function sanitizeLeakedAgentProse(input: string): string {
   if (!input) return input;
   let out = input;
   out = stripClosedTagFamilies(out, PSEUDO_TOOL_TAG_NAMES);
+  out = out.replace(CLOSED_ARTIFACT_RE, "");
   out = out.replace(CLOSED_ANTML_RE, "");
   out = out.replace(CLOSED_MARKDOWN_TOOL_FENCE_RE, "");
   out = out.replace(CLOSED_OD_TAG_RE, "");
@@ -276,6 +355,7 @@ export function sanitizeLeakedAgentProse(input: string): string {
 /** While streaming or loading history, drop trailing unclosed internal blocks. */
 export function stripTrailingOpenInternalMarkup(
   input: string,
+  options: { preserveOpenArtifact?: boolean } = {},
 ): { text: string; hadOpenInternalMarkup: boolean } {
   let cursor = 0;
   while (cursor < input.length) {
@@ -299,47 +379,59 @@ export function stripTrailingOpenInternalMarkup(
   ];
 
   let text = input;
+  let hadOpenInternalMarkup = false;
   for (const { re, name } of openTagChain) {
     const next = stripTrailingOpenTag(text, re, name);
     if (next.hadOpenInternalMarkup) {
-      return { text: next.text, hadOpenInternalMarkup: true };
+      hadOpenInternalMarkup = true;
+      text = next.text;
     }
-    text = next.text;
   }
 
   for (const suffixRe of [OPEN_SUFFIX_OPERATOR_RE, OPEN_SUFFIX_ANALYSIS_RE]) {
     const next = stripTrailingOpenDynamicTag(text, suffixRe);
     if (next.hadOpenInternalMarkup) {
-      return next;
+      hadOpenInternalMarkup = true;
+      text = next.text;
     }
-    text = next.text;
   }
 
   const internalFamily = stripTrailingOpenDynamicTag(text, OPEN_INTERNAL_MARKUP_FAMILY_RE);
   if (internalFamily.hadOpenInternalMarkup) {
-    return internalFamily;
+    hadOpenInternalMarkup = true;
+    text = internalFamily.text;
   }
-  text = internalFamily.text;
 
   const markdownFence = stripTrailingOpenMarkdownToolFence(text);
   if (markdownFence.hadOpenInternalMarkup) {
-    return markdownFence;
+    hadOpenInternalMarkup = true;
+    text = markdownFence.text;
   }
-  text = markdownFence.text;
 
   const bareJson = stripTrailingBareToolJson(text);
   if (bareJson.hadOpenInternalMarkup) {
-    return bareJson;
+    hadOpenInternalMarkup = true;
+    text = bareJson.text;
   }
 
-  return { text: bareJson.text, hadOpenInternalMarkup: false };
+  if (!options.preserveOpenArtifact) {
+    const openArtifact = stripTrailingOpenArtifact(text);
+    if (openArtifact.hadOpenInternalMarkup) {
+      hadOpenInternalMarkup = true;
+      text = openArtifact.text;
+    }
+  }
+
+  return { text, hadOpenInternalMarkup };
 }
 
 /** Combined display sanitizer for assistant prose (history + live stream). */
 export function sanitizeAssistantProseForDisplay(
   input: string,
-  _options: { streaming?: boolean } = {},
+  options: { streaming?: boolean } = {},
 ): string {
   const closed = sanitizeLeakedAgentProse(input);
-  return stripTrailingOpenInternalMarkup(closed).text;
+  return stripTrailingOpenInternalMarkup(closed, {
+    preserveOpenArtifact: options.streaming ?? false,
+  }).text;
 }
