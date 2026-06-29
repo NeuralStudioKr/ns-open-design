@@ -92,3 +92,12 @@ export function shouldFetchAihubmixMediaCatalog(): boolean {
 export function shouldFetchAppVersionAboutPanel(): boolean {
   return !isTeamverEmbedMode();
 }
+
+/**
+ * Open Design first-run privacy banner (`PrivacyConsentModal`).
+ * Teamver embed users accept Teamver terms at sign-up — OD usage-sharing
+ * disclosure + github PRIVACY.md link must not appear.
+ */
+export function shouldShowOpenDesignPrivacyConsent(): boolean {
+  return !isTeamverEmbedMode();
+}

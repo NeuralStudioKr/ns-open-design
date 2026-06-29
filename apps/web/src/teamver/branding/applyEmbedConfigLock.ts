@@ -52,6 +52,10 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
   const apiKeyConfigured = pinned?.managedApiConfigured || config.apiKeyConfigured;
   const apiKey = apiKeyConfigured ? "" : config.apiKey;
 
+  // Embed: skip OD first-run privacy modal — Teamver signup covers legal consent.
+  // Persist an explicit OD telemetry opt-out (usage attribution goes via BFF).
+  const autoAckOpenDesignPrivacy = config.privacyDecisionAt == null;
+
   const next: AppConfig = {
     ...config,
     mode: "api",
@@ -66,6 +70,17 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
     apiKeyConfigured,
     // Per-protocol shadow copies let the picker drift; embed uses one server profile.
     apiProtocolConfigs: {},
+    ...(autoAckOpenDesignPrivacy
+      ? {
+          privacyDecisionAt: Date.now(),
+          installationId: undefined,
+          telemetry: {
+            metrics: false,
+            content: false,
+            artifactManifest: false,
+          },
+        }
+      : {}),
   };
 
   if (

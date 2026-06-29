@@ -83,12 +83,13 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | S-9 | CLI agents SSE | `GET /api/agents?stream=1` | embed boot skip |
 | S-10 | AMR/Vela | `/api/integrations/vela/*`, `/api/amr/models` | embed skip |
 | S-11 | Prompt/media catalog | `/api/prompt-templates`, `/api/media/config` | slide-only embed boot skip |
+| S-12 | OD privacy consent banner | `PrivacyConsentModal` → Open Design PRIVACY.md | embed skip + auto `privacyDecisionAt` |
 
 **상세:** [28_embed_숨김_UI_API_점검.md](./28_embed_숨김_UI_API_점검.md) · [30_embed_home_boot_API_최적화.md](./30_embed_home_boot_API_최적화.md)
 
-| S-12 | `+` 메뉴 "Add plugin" 행 (HomeHero·ChatComposer) | 플러그인 레지스트리 진입 | `hidePluginRegistry` |
-| S-13 | `DesignToolboxPanel` actions (composer + NextStepActions "More") | image-gen · video-gen · motion · motion-polish | `slideOnlyMvp` |
-| S-14 | Drive publish destination | 개인/팀 Drive folder 검색 선택 | `TeamverDrivePickerModal` |
+| S-13 | `+` 메뉴 "Add plugin" 행 (HomeHero·ChatComposer) | 플러그인 레지스트리 진입 | `hidePluginRegistry` |
+| S-14 | `DesignToolboxPanel` actions (composer + NextStepActions "More") | image-gen · video-gen · motion · motion-polish | `slideOnlyMvp` |
+| S-15 | Drive publish destination | 개인/팀 Drive folder 검색 선택 | `TeamverDrivePickerModal` |
 
 **문서:** [13_embed_슬라이드_MVP_기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [14_Design_Drive_연동_설계](./14_Design_Drive_연동_설계.md)
 

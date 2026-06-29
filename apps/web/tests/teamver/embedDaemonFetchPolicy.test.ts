@@ -17,6 +17,7 @@ import {
   shouldFetchPromptTemplateCatalog,
   shouldFetchRecentLinkedDirs,
   shouldMountPluginRegistryView,
+  shouldShowOpenDesignPrivacyConsent,
   shouldSubscribeMemoryEvents,
 } from '../../src/teamver/embedDaemonFetchPolicy';
 
@@ -38,6 +39,7 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchPromptTemplateCatalog()).toBe(true);
     expect(shouldFetchMediaProviderConfig()).toBe(true);
     expect(shouldFetchAppVersionAboutPanel()).toBe(true);
+    expect(shouldShowOpenDesignPrivacyConsent()).toBe(true);
   });
 
   it('blocks embed-hidden surfaces and desktop-only boot fetches', () => {
@@ -54,5 +56,6 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchPromptTemplateCatalog()).toBe(false);
     expect(shouldFetchMediaProviderConfig()).toBe(false);
     expect(shouldFetchAppVersionAboutPanel()).toBe(false);
+    expect(shouldShowOpenDesignPrivacyConsent()).toBe(false);
   });
 });

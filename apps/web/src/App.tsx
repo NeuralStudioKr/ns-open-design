@@ -59,6 +59,7 @@ import {
   shouldFetchAppVersionAboutPanel,
   shouldFetchMediaProviderConfig,
   shouldFetchPromptTemplateCatalog,
+  shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
 import {
@@ -784,6 +785,7 @@ function AppInner() {
   // the modal-backdrop layer in index.css so opening Settings does not hide
   // it.
   const showPrivacyConsent =
+    shouldShowOpenDesignPrivacyConsent() &&
     daemonConfigLoaded &&
     config.privacyDecisionAt == null &&
     config.onboardingCompleted === true;

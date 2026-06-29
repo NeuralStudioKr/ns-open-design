@@ -77,4 +77,19 @@ describe("teamver embed execution config lock", () => {
     const locked = applyTeamverEmbedConfigLockIfNeeded(merged);
     expect(locked.model).toBe("claude-sonnet-4-5");
   });
+
+  it("auto-acknowledges OD privacy and opts out of OD telemetry sharing", () => {
+    const locked = applyTeamverEmbedConfigLockIfNeeded({
+      ...DEFAULT_CONFIG,
+      privacyDecisionAt: null,
+      installationId: "old-install-id",
+      telemetry: { metrics: true, content: true },
+    });
+
+    expect(locked.privacyDecisionAt).toBeTypeOf("number");
+    expect(locked.installationId).toBeUndefined();
+    expect(locked.telemetry?.metrics).toBe(false);
+    expect(locked.telemetry?.content).toBe(false);
+    expect(locked.onboardingCompleted).toBe(true);
+  });
 });
