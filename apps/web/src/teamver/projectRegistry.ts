@@ -10,6 +10,7 @@ import { readTeamverViteEnv } from "./teamverViteEnv";
 import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
+import { isTeamverProjectCollectionRouteSlug } from "./teamverProjectCollectionRouteSlugs";
 import {
   clearTeamverProjectS3Prefix,
   clearAllTeamverProjectS3PrefixCache,
@@ -133,7 +134,9 @@ async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
     const resp = await fetchTeamverDaemon("/api/projects");
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects?: Project[] };
-    return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
+    return (json.projects ?? [])
+      .filter((project) => !isTeamverProjectCollectionRouteSlug(project.id))
+      .map((project) => sanitizeProjectForEmbed(project));
   } catch {
     return [];
   }
@@ -202,6 +205,7 @@ export async function registerTeamverProjectIfNeeded(
   options?: { skipBootWait?: boolean; retryDelaysMs?: readonly number[] },
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
+  if (isTeamverProjectCollectionRouteSlug(project.id)) return;
   if (!options?.skipBootWait) {
     await waitForEmbedBootIfNeeded();
   }
@@ -269,11 +273,12 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return;
+  if (isTeamverProjectCollectionRouteSlug(trimmedId)) return;
 
   const project = (await fetchDaemonProjectsForRegistry()).find((row) => row.id === trimmedId);
   if (!project) return;
 
-  await registerTeamverProjectIfNeeded(project);
+  await registerTeamverProjectIfNeeded(project, { skipBootWait: true });
 }
 
 /** Embed boot: upsert all daemon projects into design-api registry (legacy migration). */
@@ -363,6 +368,7 @@ export async function fetchTeamverProject(
 
   const trimmedRef = projectRef.trim();
   if (!trimmedRef) return null;
+  if (isTeamverProjectCollectionRouteSlug(trimmedRef)) return null;
 
   const client = getDesignBffClient();
   if (!client) return null;
@@ -405,6 +411,7 @@ export async function assertTeamverProjectAccessIfNeeded(
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return false;
+  if (isTeamverProjectCollectionRouteSlug(trimmedId)) return false;
 
   const client = getDesignBffClient();
   if (!client) return false;

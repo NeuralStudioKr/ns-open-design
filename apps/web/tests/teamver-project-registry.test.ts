@@ -179,12 +179,32 @@ describe('Teamver project registry register', () => {
         post: vi.fn(async () => {
           throw new NetworkError({ message: 'conflict', status: 409 });
         }),
+        get: vi.fn(async () => ({
+          s3Prefix: 'design/ws_ws1/user_u1/proj_p1/',
+        })),
       },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
     await expect(
       registerTeamverProjectIfNeeded({ id: 'p1', name: 'Demo' }),
     ).resolves.toBeUndefined();
+  });
+
+  it('skips registry upsert for daemon collection route slugs', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const post = vi.fn();
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { post },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'recent', name: '' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      registerTeamverProjectIfNeeded({ id: 'cover-hints', name: '' }),
+    ).resolves.toBeUndefined();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('rejects embed registration when the BFF client is unavailable', async () => {
@@ -317,8 +337,12 @@ describe('Teamver project registry access', () => {
     let registered = false;
     const post = vi.fn(async () => {
       registered = true;
+      return { s3Prefix: 'design/ws_ws1/user_u1/proj_legacy-1/' };
     });
     const get = vi.fn(async (path: string) => {
+      if (path === '/projects/legacy-1') {
+        return { s3Prefix: 'design/ws_ws1/user_u1/proj_legacy-1/' };
+      }
       if (path !== '/projects') return undefined;
       return registered
         ? { projects: [{ odProjectId: 'legacy-1' }] }
@@ -367,10 +391,25 @@ describe('Teamver project registry access', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  it('denies access for daemon collection route slugs', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const get = vi.fn();
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get, post: vi.fn() },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(assertTeamverProjectAccessIfNeeded('recent')).resolves.toBe(false);
+    await expect(assertTeamverProjectAccessIfNeeded('cover-hints')).resolves.toBe(false);
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it('ensureTeamverProjectRegisteredById upserts from daemon list', async () => {
     vi.stubEnv('VITE_TEAMVER_LEGACY_REGISTRY_SYNC', '1');
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    const post = vi.fn(async () => ({}));
+    const post = vi.fn(async () => ({
+      s3Prefix: 'design/ws_ws1/user_u1/proj_od-legacy/',
+    }));
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
       http: { post },

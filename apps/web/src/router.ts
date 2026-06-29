@@ -5,6 +5,10 @@
 
 import { useSyncExternalStore } from 'react';
 
+import {
+  isTeamverProjectCollectionRouteSlug,
+} from './teamver/teamverProjectCollectionRouteSlugs';
+
 // Entry-shell sub-views. The home/project landing renders one of three
 // columns and each sub-view now owns a top-level path so the browser
 // back/forward buttons work, deep links are shareable, and per-tab
@@ -46,6 +50,13 @@ export function parseRoute(pathname: string): Route {
   }
   if (parts[0] === 'projects') {
     if (parts[1]) {
+      const firstSegment = decodeURIComponent(parts[1]).trim();
+      // Embed router used to treat daemon collection URLs (`/api/projects/recent`,
+      // `/api/projects/cover-hints`) as project ids when mirrored in the browser
+      // path — block that mis-route before deep-link recovery registers junk rows.
+      if (isTeamverProjectCollectionRouteSlug(firstSegment)) {
+        return { kind: 'home', view: 'projects' };
+      }
       const projectId = decodeURIComponent(parts[1]);
       // /projects/:id/conversations/:cid[/files/...]
       if (parts[2] === 'conversations' && parts[3]) {

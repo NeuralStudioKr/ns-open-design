@@ -45,6 +45,8 @@ export function teamverProjectAccessCheckUrl(projectId: string): string | null {
 }
 
 /** Collection routes under `/api/projects/*` — not OD project ids. */
+// When embed code or legacy auto-register passes these as `:id`, refuse registry
+// pollution (design_projects rows with od_project_id=recent|cover-hints).
 const PROJECT_COLLECTION_ROUTE_SLUGS = new Set(['recent', 'cover-hints']);
 
 export function isTeamverProjectCollectionRouteSlug(projectId: string): boolean {
@@ -215,6 +217,7 @@ async function registerLegacyProjectInDesignApi(
   identity: TeamverRequestIdentity,
   registryHint?: TeamverProjectRegistryHint,
 ): Promise<boolean> {
+  if (isTeamverProjectCollectionRouteSlug(projectId)) return false;
   const url = teamverDesignApiProjectsUrl();
   if (!url) return false;
 
@@ -319,6 +322,9 @@ export async function verifyTeamverProjectAccess(
   identity: TeamverRequestIdentity,
   registryHint?: TeamverProjectRegistryHint,
 ): Promise<TeamverProjectAccessResult> {
+  if (isTeamverProjectCollectionRouteSlug(projectId)) {
+    return { ok: false, kind: 'denied' };
+  }
   const cached = readCachedAccess(identity, projectId);
   if (cached) return cached;
 

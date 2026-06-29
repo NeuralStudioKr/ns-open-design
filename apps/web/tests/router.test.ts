@@ -111,4 +111,10 @@ describe('parseRoute / buildPath (issue #1505)', () => {
     expect(parseRoute('/something/else')).toEqual({ kind: 'home', view: 'home' });
     expect(parseRoute('/projects')).toEqual({ kind: 'home', view: 'projects' });
   });
+
+  it('treats daemon collection route slugs as the projects home, not project ids', () => {
+    expect(parseRoute('/projects/recent')).toEqual({ kind: 'home', view: 'projects' });
+    expect(parseRoute('/projects/cover-hints')).toEqual({ kind: 'home', view: 'projects' });
+    expect(parseRoute('/projects/RECENT')).toEqual({ kind: 'home', view: 'projects' });
+  });
 });

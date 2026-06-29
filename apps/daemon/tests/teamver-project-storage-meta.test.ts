@@ -36,6 +36,20 @@ describe('teamver-project-storage-meta', () => {
   });
 
   describe('verifyTeamverProjectAccess grant cache', () => {
+    it('rejects daemon collection route slugs without legacy auto-register', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      const fetchMock: FetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        verifyTeamverProjectAccess('recent', identity),
+      ).resolves.toEqual({ ok: false, kind: 'denied' });
+      await expect(
+        verifyTeamverProjectAccess('cover-hints', identity),
+      ).resolves.toEqual({ ok: false, kind: 'denied' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('does not cache 204 grants that omit the s3 prefix header', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       const fetchMock: FetchMock = vi.fn().mockResolvedValue({
