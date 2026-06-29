@@ -2,7 +2,7 @@
 
 **목적:** staging/production에서 “언제 S3에 뭐가 올라가는지”를 **한 문서로 고정**한다.  
 **전제:** `OD_PROJECT_STORAGE=s3` (staging/prod 필수 — [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md)).  
-**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md) · **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** (로컬+S3·용량·Litestream) · **[19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** (폴더별 저장 내용)
+**관련:** [03 키·Drive·DB](./03_키_저장소_Drive_DB.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [09 저장소·격리](./09_Design_저장소_격리_출시게이트.md) · **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** (로컬+S3·용량·Litestream) · **[19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** (폴더별 저장 내용) · **[29 BYOK api mode vs runs](./29_BYOK_api_mode_vs_runs_아키텍처.md)** (왜 BYOK 는 POST /api/runs 없음)
 
 ---
 

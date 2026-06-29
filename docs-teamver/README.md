@@ -24,6 +24,9 @@
 | **[21 Scratch 디스크 메트릭](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** | **`OD_SCRATCH_DISK_METRICS` 목적·부하·배포 preflight·FAQ** |
 | **[22 Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md)** | **Drive/auth/usage wiring 판정 · workspace 정렬 · E2E 체크리스트** |
 | **[25 플러그인 preview 샌드박스 nginx](./25_플러그인_preview_샌드박스_nginx_보강.md)** | **deck-stage.js·Google Fonts CSP · sandbox subresource · nginx 보강** |
+| **[28 embed 숨김 UI API](./28_embed_숨김_UI_API_점검.md)** | **marketing·marketplaces·agents boot — embed 불필요 호출 gate** |
+| **[27 메시지 Persist PUT](./27_메시지_Persist_PUT_아키텍처.md)** | **스트리밍 checkpoint · embed BYOK FE PUT · throttle 5s · design-api vs daemon** |
+| **[29 BYOK api mode vs runs](./29_BYOK_api_mode_vs_runs_아키텍처.md)** | **왜 POST /api/runs 없음 · S3 sync-up gap · GET vs POST · 근본 fix 옵션 · 부하 FAQ** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -46,6 +49,8 @@
 | 20 | **[Hybrid 저장소 (로컬+S3)](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** |
 | 21 | **[Scratch 디스크 메트릭](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** |
 | 22 | **[Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md)** |
+| 27 | **[메시지 Persist PUT 아키텍처](./27_메시지_Persist_PUT_아키텍처.md)** |
+| 28 | **[embed 숨김 UI API 점검](./28_embed_숨김_UI_API_점검.md)** |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
