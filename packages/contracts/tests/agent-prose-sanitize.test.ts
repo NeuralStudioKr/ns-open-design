@@ -85,6 +85,23 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).toBe("Answer.\n\nDone.");
   });
 
+  it("strips leaked todo XML blocks from assistant prose", () => {
+    const input = [
+      "알겠습니다.",
+      "<todo>",
+      "[",
+      '{"id":"1","label":"활성 DESIGN.md 확인","status":"completed"},',
+      '{"id":"2","label":"12장 슬라이드 구성","status":"in_progress"}',
+      "]",
+      "</todo>",
+      "슬라이드 구성 계획:",
+    ].join("\n");
+    const out = sanitizeLeakedAgentProse(input);
+    expect(out).toBe("알겠습니다.\n\n슬라이드 구성 계획:");
+    expect(out).not.toContain("<todo");
+    expect(out).not.toContain("활성 DESIGN.md");
+  });
+
   it("strips markdown tool_call fences", () => {
     const input = [
       "Intro",
@@ -107,5 +124,12 @@ describe("agent-prose-sanitize SSOT", () => {
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
     expect(hadOpenInternalMarkup).toBe(true);
     expect(text).toBe("Working…");
+  });
+
+  it("strips trailing open todo XML while streaming", () => {
+    const input = "진행하겠습니다.\n<todo>\n[{\"id\":\"1\",\"label\":\"작업\"";
+    const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
+    expect(hadOpenInternalMarkup).toBe(true);
+    expect(text).toBe("진행하겠습니다.");
   });
 });

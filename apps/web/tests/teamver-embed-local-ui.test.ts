@@ -16,6 +16,12 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(source).toContain("hideLocalWorkspaceControls: false");
   });
 
+  it("hides assistant thinking details in Teamver embed", () => {
+    const source = readRepoFile("apps/web/src/teamver/branding/config.ts");
+
+    expect(source).toContain("hideAssistantThinkingDetails: true");
+  });
+
   it("hides Home and project composer working directory pickers", () => {
     const homeView = readRepoFile("apps/web/src/components/HomeView.tsx");
     const chatComposer = readRepoFile("apps/web/src/components/ChatComposer.tsx");

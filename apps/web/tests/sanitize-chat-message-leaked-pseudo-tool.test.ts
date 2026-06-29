@@ -21,6 +21,31 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.events?.[1]).toEqual({ kind: "status", label: "running" });
   });
 
+  it("strips leaked todo XML from persisted assistant messages", () => {
+    const message: ChatMessage = {
+      id: "m-todo",
+      role: "assistant",
+      content: [
+        "알겠습니다.",
+        "<todo>",
+        '[{"id":"1","label":"슬라이드 구성","status":"in_progress"}]',
+        "</todo>",
+        "슬라이드 구성 계획:",
+      ].join("\n"),
+      events: [
+        {
+          kind: "text",
+          text: '진행합니다.\n<todo>[{"id":"2","label":"작성","status":"completed"}]</todo>\n완료.',
+        },
+      ],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("알겠습니다.\n\n슬라이드 구성 계획:");
+    expect(sanitized.content).not.toContain("<todo");
+    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "진행합니다.\n\n완료." });
+  });
+
   it("returns the same reference when nothing changed", () => {
     const message: ChatMessage = {
       id: "m2",

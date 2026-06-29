@@ -16,6 +16,7 @@ const PSEUDO_TOOL_TAG_NAMES = [
   "parameter",
   "function_results",
   "function_result",
+  "todo",
   "todo-list",
   "tool-call",
   "tool_call",

@@ -148,7 +148,7 @@ loop 351: embed empty chat은 composer만 노출(import folder artifacts 경로 
 | `hidePluginRegistry` | `true` | `+` 메뉴 "Add plugin" 행 + plugin marketplace 진입 |
 | `hideExternalShareSurfaces` | `true` | (loop 171) FileViewer chrome share-menu / PreviewModal social·copy_link / Share-to-OD community contribute. Drive Publish + 로컬 export 는 유지 |
 | `hideUsefulTips` | `true` | (loop 350–351) Design Files footer tip, empty-chat starter/connect-repo, FileViewer inspect hint. OD onboarding copy 차단 |
-| `hideAssistantThinkingDetails` | `false` | (loop 183) thinking은 `ThinkingBlock` 접힘 UI; prose leak은 `internalAgentMarkup` + daemon `thinking_delta` 분리 |
+| `hideAssistantThinkingDetails` | `true` | loop 437 — embed에서는 thinking block 자체를 비노출. prose leak은 `internalAgentMarkup`/contracts sanitizer + daemon `thinking_delta` 분리 |
 
 헬퍼 (`slideOnlyMvpPolicy.ts`):
 
