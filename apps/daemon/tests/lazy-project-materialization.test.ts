@@ -380,6 +380,29 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     expect(persist).toHaveBeenCalled();
   });
 
+  it('runs sync-down for raw artifact reads (preview iframe / fetchProjectFileText)', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const next = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    await middleware(
+      mockReq('GET', '/api/projects/p1/raw/ai-adoption-effects-deck.html'),
+      mockRes(),
+      next,
+    );
+
+    expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
+    expect(next).toHaveBeenCalled();
+  });
+
   it('runs sync-down for export manifest reads (publish path)', async () => {
     const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
     const storage = new MaterializingProjectStorage(

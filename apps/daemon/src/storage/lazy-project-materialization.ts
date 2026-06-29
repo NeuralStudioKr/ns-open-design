@@ -69,6 +69,11 @@ function isProjectMaterializationPath(pathname: string): boolean {
   if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit)(\/|$)/.test(pathname)) {
     return true;
   }
+  // HTML/asset previews and fetchProjectFileText load via GET /raw/* — must sync-down
+  // from S3 before sendProjectFile reads scratch (otherwise ENOENT → 404).
+  if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(pathname)) {
+    return true;
+  }
   if (/^\/api\/projects\/[^/]+\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(pathname)) {
     return true;
   }
