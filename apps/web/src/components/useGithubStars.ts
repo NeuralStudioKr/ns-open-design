@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import type { OpenDesignGithubRepoResponse } from '@open-design/contracts';
+import { shouldFetchMarketingCommunityApis } from '../teamver/embedDaemonFetchPolicy';
 
 const API = '/api/github/open-design';
 const REPO = 'https://github.com/nexu-io/open-design';
@@ -97,8 +98,10 @@ export function formatStars(count: number): string {
 
 export const GITHUB_REPO_URL = REPO;
 
-export function useGithubStars(): number | null {
+export function useGithubStars(options?: { enabled?: boolean }): number | null {
+  const enabled = options?.enabled ?? shouldFetchMarketingCommunityApis();
   const [count, setCount] = useState<number | null>(() => {
+    if (!enabled) return null;
     if (memoryCache) return memoryCache.count;
     const persisted = readPersistedCache();
     if (persisted) memoryCache = persisted;
@@ -106,6 +109,7 @@ export function useGithubStars(): number | null {
   });
 
   useEffect(() => {
+    if (!enabled) return;
     const now = Date.now();
     const cached = memoryCache ?? readPersistedCache();
     if (cached && now - cached.ts < CACHE_TTL_MS) {
@@ -152,7 +156,7 @@ export function useGithubStars(): number | null {
       }
     })();
     return () => ctrl.abort();
-  }, []);
+  }, [enabled]);
 
-  return count;
+  return enabled ? count : null;
 }

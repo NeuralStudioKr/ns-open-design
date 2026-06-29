@@ -90,6 +90,10 @@ import {
   coerceNewProjectTab,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import {
+  shouldFetchAutomationTaskApis,
+  shouldMountPluginRegistryView,
+} from '../teamver/embedDaemonFetchPolicy';
 import { clampTeamverEmbedRoute } from '../teamver/clampTeamverEmbedRoute';
 import { HomeView } from './HomeView';
 import type { PetTaskSummary } from './pet/PetOverlay';
@@ -877,19 +881,23 @@ export function EntryShell({
               )}
             </div>
             <div data-testid="entry-view-tasks" data-active={view === 'tasks' ? 'true' : 'false'} {...inactiveViewProps(view === 'tasks')}>
+              {shouldFetchAutomationTaskApis() ? (
               <TasksView
                 skills={skills}
                 designTemplates={designTemplates}
                 connectors={connectors}
                 connectorsLoading={connectorsLoading}
               />
+              ) : null}
             </div>
             <div data-testid="entry-view-plugins" data-active={view === 'plugins' ? 'true' : 'false'} {...inactiveViewProps(view === 'plugins')}>
+              {shouldMountPluginRegistryView() ? (
               <PluginsView
                 onCreatePlugin={startPluginAuthoring}
                 onUsePlugin={usePluginFromLibrary}
                 onCreatePluginShareProject={onCreatePluginShareProject}
               />
+              ) : null}
             </div>
             {!slideOnlyMvp ? (
             <div data-testid="entry-view-design-systems" data-active={view === 'design-systems' ? 'true' : 'false'} {...inactiveViewProps(view === 'design-systems')}>

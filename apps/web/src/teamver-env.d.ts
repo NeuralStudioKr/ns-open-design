@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_TEAMVER_NAV_MARK_URL?: string;
   readonly VITE_TEAMVER_HERO_TITLE?: string;
   readonly VITE_TEAMVER_HERO_SUBTITLE?: string;
+  /** BYOK streaming daemon message PUT throttle (ms). Set at Docker build via deploy .env. */
+  readonly VITE_MESSAGE_PERSIST_THROTTLE_MS?: string;
   readonly DEV: boolean;
   readonly PROD: boolean;
   readonly MODE: string;

@@ -2,7 +2,15 @@ import type { Request, RequestHandler } from 'express';
 
 const DEFAULT_TIMEOUT_MS = 2500;
 const ACCESS_GRANT_CACHE_TTL_MS = 10_000;
-const ACCESS_DENY_CACHE_TTL_MS = 5_000;
+// Permanent denials (403 / forbidden) are sticky for 5s — admin revoked
+// access, no point hammering design-api every request from a tight loop.
+const ACCESS_DENY_PERMANENT_CACHE_TTL_MS = 5_000;
+// Transient denials (404 / not-yet-registered) get a much shorter TTL because
+// the FE is very likely to register the project in design-api within the next
+// few hundred ms. A 5s sticky deny here used to translate every materialization
+// retry inside the window into a teamver_project_s3_prefix_required 502 even
+// after the row appeared.
+const ACCESS_DENY_TRANSIENT_CACHE_TTL_MS = 1_500;
 
 export type TeamverRequestIdentity = {
   userId: string;
@@ -128,11 +136,20 @@ function rememberAccess(
   projectId: string,
   allowed: boolean,
   s3Prefix: string | null,
+  options?: { denyKind?: 'transient' | 'permanent' },
 ): void {
+  let ttl: number;
+  if (allowed) {
+    ttl = ACCESS_GRANT_CACHE_TTL_MS;
+  } else if (options?.denyKind === 'transient') {
+    ttl = ACCESS_DENY_TRANSIENT_CACHE_TTL_MS;
+  } else {
+    ttl = ACCESS_DENY_PERMANENT_CACHE_TTL_MS;
+  }
   accessCache.set(accessCacheKey(identity, projectId), {
     allowed,
     s3Prefix: allowed ? s3Prefix : null,
-    expiresAt: Date.now() + (allowed ? ACCESS_GRANT_CACHE_TTL_MS : ACCESS_DENY_CACHE_TTL_MS),
+    expiresAt: Date.now() + ttl,
   });
 }
 
@@ -175,6 +192,7 @@ async function registerLegacyProjectInDesignApi(
   const title = registryHint?.title?.trim();
   if (title) body.title = title;
 
+  const startedAt = Date.now();
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -189,8 +207,26 @@ async function registerLegacyProjectInDesignApi(
       clearTeamverProjectAccessCache(projectId);
       return true;
     }
-  } catch {
-    // best-effort legacy migration — access check decides the final outcome.
+    // Non-success response: surface to ops so the same projectId hammering
+    // the access endpoint with 404→register→denied loops gets a CloudWatch
+    // alarm instead of being silently absorbed.
+    emitProjectAccessFailureMarker({
+      reason: 'register_failed',
+      projectId,
+      workspaceId: identity.workspaceId,
+      httpStatus: response.status,
+      elapsedMs: Date.now() - startedAt,
+    });
+  } catch (err) {
+    const classified = classifyFetchFailure(err);
+    emitProjectAccessFailureMarker({
+      reason: 'register_failed',
+      projectId,
+      workspaceId: identity.workspaceId,
+      failureReason: classified.reason,
+      elapsedMs: Date.now() - startedAt,
+      error: classified.message,
+    });
   }
   return false;
 }
@@ -259,7 +295,16 @@ export async function verifyTeamverProjectAccess(
   if (!teamverProjectAccessCheckUrl(projectId)) return { ok: true, s3Prefix: null };
 
   let outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
+  // 404 = "no design-api row yet". This is the common race after a fresh
+  // create: FE has spawned daemon POST /api/projects and design-api
+  // registration POST in parallel and the FE-driven subroute (e.g. GET
+  // /folders) arrives at the daemon before the design-api row is committed.
+  // We attempt a best-effort legacy register; the deny result that follows
+  // is treated as transient so the next retry inside ~1.5s can succeed
+  // instead of waiting out the 5s permanent-deny window.
+  let registerAttempted = false;
   if (outcome.kind === 'denied' && outcome.status === 404) {
+    registerAttempted = true;
     const registered = await registerLegacyProjectInDesignApi(projectId, identity, registryHint);
     if (registered) {
       outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
@@ -274,7 +319,12 @@ export async function verifyTeamverProjectAccess(
     return { ok: false, kind: 'unauthorized' };
   }
   if (outcome.kind === 'denied') {
-    rememberAccess(identity, projectId, false, null);
+    // 403 — true permission deny — sticks for the full window. 404 (no row)
+    // or any denial after a register attempt is treated as transient so the
+    // race-with-create unwinds quickly.
+    const denyKind: 'transient' | 'permanent' =
+      outcome.status === 404 || registerAttempted ? 'transient' : 'permanent';
+    rememberAccess(identity, projectId, false, null, { denyKind });
     return { ok: false, kind: 'denied' };
   }
   if (outcome.kind === 'upstream') {

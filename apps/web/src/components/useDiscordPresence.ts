@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import type { OpenDesignDiscordPresenceResponse } from '@open-design/contracts';
+import { shouldFetchMarketingCommunityApis } from '../teamver/embedDaemonFetchPolicy';
 
 const API = '/api/community/discord';
 const LS_KEY = 'open-design:discord-presence';
@@ -74,8 +75,15 @@ export function formatDiscordPresenceCount(count: number): string {
   return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`;
 }
 
-export function useDiscordPresence(): CachedPresence | null {
+export type UseDiscordPresenceOptions = {
+  /** When false, skip daemon fetch. Default: {@link shouldFetchMarketingCommunityApis}. */
+  enabled?: boolean;
+};
+
+export function useDiscordPresence(options?: UseDiscordPresenceOptions): CachedPresence | null {
+  const enabled = options?.enabled ?? shouldFetchMarketingCommunityApis();
   const [presence, setPresence] = useState<CachedPresence | null>(() => {
+    if (!enabled) return null;
     if (memoryCache) return memoryCache;
     const persisted = readPersistedCache();
     if (persisted) memoryCache = persisted;
@@ -83,6 +91,8 @@ export function useDiscordPresence(): CachedPresence | null {
   });
 
   useEffect(() => {
+    if (!enabled) return;
+
     const now = Date.now();
     const cached = memoryCache ?? readPersistedCache();
     if (cached && now - cached.ts < CACHE_TTL_MS) {
@@ -118,7 +128,7 @@ export function useDiscordPresence(): CachedPresence | null {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
 
-  return presence;
+  return enabled ? presence : null;
 }

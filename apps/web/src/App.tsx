@@ -53,6 +53,13 @@ import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } f
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import {
+  shouldFetchAgentRegistryOnBoot,
+  shouldFetchAmrIntegrationApis,
+  shouldFetchAppVersionAboutPanel,
+  shouldFetchMediaProviderConfig,
+  shouldFetchPromptTemplateCatalog,
+} from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
 import {
   clearTeamverEmbedSessionState,
@@ -110,6 +117,7 @@ import {
 } from './teamver/teamverDesignAccess';
 import { resolveEmbedBootSessionOptions } from './teamver/teamverEmbedAuthFlow';
 import { readActiveTeamverWorkspaceId } from './teamver/useTeamverEmbed';
+import { useTeamverAppVersionAutoReload } from './teamver/useTeamverAppVersionAutoReload';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import {
   daemonIsLive,
@@ -411,6 +419,12 @@ function AppInner() {
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   const clientType = useMemo(() => detectClientType(), []);
   useModalWindowDragGuard();
+  // Embed-only: poll daemon `/api/version` so a stale FE bundle does not
+  // outlive a daemon redeploy. Without this the user had to `cmd+shift+r`
+  // after every deploy to recover from `teamver_project_s3_prefix_required`
+  // 502s caused by old FE JS racing the fresh daemon API surface
+  // (docs-teamver/18_OD_Tenant_Storage.md §3.4).
+  useTeamverAppVersionAutoReload();
   // Observability marker. `apps/web/src/observability/white-screen.ts`
   // keys its "app actually mounted" success condition on this attribute
   // because the dynamic-import loading shell (`<div class="od-loading-shell">
@@ -787,7 +801,7 @@ function AppInner() {
   }, [activeProjectId, activeFileName]);
 
   useEffect(() => {
-    if (!daemonLive) return;
+    if (!daemonLive || !shouldFetchAmrIntegrationApis()) return;
     let cancelled = false;
     let timer: number | null = null;
     const pollGeneration = amrPollGenerationRef.current + 1;
@@ -836,6 +850,7 @@ function AppInner() {
   // AMR_LOGIN_STATUS_EVENT covers logins finishing in surfaces that
   // unmounted before their poll settled.
   useEffect(() => {
+    if (!shouldFetchAmrIntegrationApis()) return;
     let cancelled = false;
     const sync = async () => {
       const status = await fetchVelaLoginStatus();
@@ -893,41 +908,46 @@ function AppInner() {
       }
 
       const agentRequestId = beginAgentStreamRequest();
-      void fetchAgentsStream({
-        signal: agentStreamAbort.signal,
-        onAgent: (agent) => {
-          if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
-          setAgents((current) =>
-            mergeAmrModelsIntoAgents(
-              upsertAgent(current, agent),
-              amrModelsRef.current,
-            ),
-          );
-        },
-      })
-        .then((list) => {
-          if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
-          setAgents(
-            mergeAmrModelsIntoAgents(
-              orderAgentsByRegistry(list),
-              amrModelsRef.current,
-            ),
-          );
+      if (shouldFetchAgentRegistryOnBoot()) {
+        void fetchAgentsStream({
+          signal: agentStreamAbort.signal,
+          onAgent: (agent) => {
+            if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
+            setAgents((current) =>
+              mergeAmrModelsIntoAgents(
+                upsertAgent(current, agent),
+                amrModelsRef.current,
+              ),
+            );
+          },
         })
-        .catch((err) => {
-          if (
-            cancelled ||
-            isAbortError(err) ||
-            !isCurrentAgentStreamRequest(agentRequestId)
-          ) {
-            return;
-          }
-          setAgents([]);
-        })
-        .finally(() => {
-          if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
-          setAgentsLoading(false);
-        });
+          .then((list) => {
+            if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
+            setAgents(
+              mergeAmrModelsIntoAgents(
+                orderAgentsByRegistry(list),
+                amrModelsRef.current,
+              ),
+            );
+          })
+          .catch((err) => {
+            if (
+              cancelled ||
+              isAbortError(err) ||
+              !isCurrentAgentStreamRequest(agentRequestId)
+            ) {
+              return;
+            }
+            setAgents([]);
+          })
+          .finally(() => {
+            if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
+            setAgentsLoading(false);
+          });
+      } else {
+        setAgents([]);
+        setAgentsLoading(false);
+      }
 
       // Functional skills + design templates land independently. Both
       // gate `skillsLoading` together so the EntryView stops rendering
@@ -981,16 +1001,23 @@ function AppInner() {
         setTemplates(list);
       });
 
-      void fetchPromptTemplates().then((list) => {
-        if (cancelled) return;
-        setPromptTemplates(list);
+      if (shouldFetchPromptTemplateCatalog()) {
+        void fetchPromptTemplates().then((list) => {
+          if (cancelled) return;
+          setPromptTemplates(list);
+          setPromptTemplatesLoading(false);
+        });
+      } else {
+        setPromptTemplates([]);
         setPromptTemplatesLoading(false);
-      });
+      }
 
-      void fetchAppVersionInfo().then((info) => {
-        if (cancelled) return;
-        setAppVersionInfo(info);
-      });
+      if (shouldFetchAppVersionAboutPanel()) {
+        void fetchAppVersionInfo().then((info) => {
+          if (cancelled) return;
+          setAppVersionInfo(info);
+        });
+      }
 
       // Daemon-persisted config + composio config + media provider config land
       // together so the welcome-modal decision and daemon-backed settings
@@ -999,7 +1026,9 @@ function AppInner() {
       void Promise.all([
         fetchDaemonConfig(),
         isTeamverEmbedMode() ? Promise.resolve(null) : fetchComposioConfigFromDaemon(),
-        fetchMediaProvidersFromDaemon(),
+        shouldFetchMediaProviderConfig()
+          ? fetchMediaProvidersFromDaemon()
+          : Promise.resolve({ status: 'ok' as const, providers: {} }),
         isTeamverEmbedMode()
           ? (() => {
               const bootSessionOptions = resolveEmbedBootSessionOptions();

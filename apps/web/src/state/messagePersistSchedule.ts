@@ -1,7 +1,35 @@
 import type { SaveMessageOptions } from './projects';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { readTeamverViteEnv } from '../teamver/teamverViteEnv';
 
-/** Max rate for in-flight assistant message PUTs during streaming (~0.4/s). */
-export const MESSAGE_PERSIST_THROTTLE_MS = 2500;
+/** Local OD dev fallback when `VITE_MESSAGE_PERSIST_THROTTLE_MS` is unset. */
+export const MESSAGE_PERSIST_THROTTLE_MS_STANDALONE = 2500;
+
+/** Local embed dev fallback when env unset (hosted builds bake from deploy .env). */
+export const MESSAGE_PERSIST_THROTTLE_MS_EMBED = 5000;
+
+/** @deprecated Prefer `resolveMessagePersistThrottleMs()`. */
+export const MESSAGE_PERSIST_THROTTLE_MS = MESSAGE_PERSIST_THROTTLE_MS_STANDALONE;
+
+const MIN_MESSAGE_PERSIST_THROTTLE_MS = 1000;
+
+/**
+ * SSOT: `VITE_MESSAGE_PERSIST_THROTTLE_MS` (deploy `.env` → Docker build arg → static export).
+ * Hosted default: 5000 (see deploy/Dockerfile + .env.staging.example).
+ * Local dev only: embed 5000 / standalone 2500 when env is absent.
+ */
+export function resolveMessagePersistThrottleMs(): number {
+  const raw = readTeamverViteEnv('VITE_MESSAGE_PERSIST_THROTTLE_MS');
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= MIN_MESSAGE_PERSIST_THROTTLE_MS) {
+      return parsed;
+    }
+  }
+  return isTeamverEmbedMode()
+    ? MESSAGE_PERSIST_THROTTLE_MS_EMBED
+    : MESSAGE_PERSIST_THROTTLE_MS_STANDALONE;
+}
 
 /**
  * Throttle mid-stream message persistence. UI state still updates every frame;
@@ -13,7 +41,7 @@ export const MESSAGE_PERSIST_THROTTLE_MS = 2500;
  */
 export function createMessagePersistScheduler(
   persist: (options?: SaveMessageOptions) => void,
-  throttleMs: number = MESSAGE_PERSIST_THROTTLE_MS,
+  throttleMs: number = resolveMessagePersistThrottleMs(),
 ) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastPersistAt: number | null = null;

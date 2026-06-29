@@ -131,7 +131,10 @@ import {
   type SaveMessageOptions,
   waitGeneratedPluginShareTask,
 } from '../state/projects';
-import { createMessagePersistScheduler } from '../state/messagePersistSchedule';
+import {
+  createMessagePersistScheduler,
+  resolveMessagePersistThrottleMs,
+} from '../state/messagePersistSchedule';
 import type { AppliedPluginSnapshot, ChatAnalyticsEntryFrom, ChatSessionMode, InstalledPluginRecord, WorkspaceContextItem } from '@open-design/contracts';
 import type {
   AgentEvent,
@@ -2790,9 +2793,12 @@ export function ProjectView({
           );
         }
 
-        const persistScheduler = createMessagePersistScheduler((options) => {
-          persistMessageById(message.id, options);
-        });
+        const persistScheduler = createMessagePersistScheduler(
+          (options) => {
+            persistMessageById(message.id, options);
+          },
+          resolveMessagePersistThrottleMs(),
+        );
         const persistSoon = () => {
           persistScheduler.persistSoon();
         };
@@ -3522,9 +3528,12 @@ export function ProjectView({
           }),
         );
       };
-      const assistantPersist = createMessagePersistScheduler((options) => {
-        void saveMessage(project.id, runConversationId, latestAssistantMsg, options);
-      });
+      const assistantPersist = createMessagePersistScheduler(
+        (options) => {
+          void saveMessage(project.id, runConversationId, latestAssistantMsg, options);
+        },
+        resolveMessagePersistThrottleMs(),
+      );
       const persistAssistantSoon = () => {
         assistantPersist.persistSoon();
       };

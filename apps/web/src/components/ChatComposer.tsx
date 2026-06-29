@@ -34,6 +34,7 @@ import type {
   DesignToolboxClickProps,
 } from '@open-design/contracts/analytics';
 import { deriveUploadCohort } from '../analytics/upload-tracking';
+import { shouldFetchRecentLinkedDirs } from '../teamver/embedDaemonFetchPolicy';
 import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -531,6 +532,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const workingDir = linkedDirs[0] ?? null;
     const [recentDirs, setRecentDirs] = useState<string[]>([]);
     useEffect(() => {
+      if (!shouldFetchRecentLinkedDirs()) {
+        setRecentDirs([]);
+        return;
+      }
       let cancelled = false;
       void fetchRecentLinkedDirs().then((dirs) => {
         if (!cancelled) setRecentDirs(dirs);
@@ -538,7 +543,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return () => {
         cancelled = true;
       };
-    }, []);
+    }, [hideLocalWorkspaceControls]);
     useEffect(() => {
       if (!isTeamverEmbedMode()) return;
       return subscribeTeamverDesignAccessChanged(() => {

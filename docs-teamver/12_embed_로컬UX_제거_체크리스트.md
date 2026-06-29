@@ -77,9 +77,18 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | S-3 | `EntryShell` | New project 기본 탭 | embed → `deck` |
 | S-4 | `ChatComposer` / `HomeHero` + menu | MCP·Connectors | `hideComposerIntegrations` |
 | S-5 | `HomeView` 하단 community gallery | `HomeTemplatesReveal` + `PluginsHomeSection` | `hideCommunityGallery` |
-| S-6 | `+` 메뉴 "Add plugin" 행 (HomeHero·ChatComposer) | 플러그인 레지스트리 진입 | `hidePluginRegistry` |
-| S-7 | `DesignToolboxPanel` actions (composer + NextStepActions "More") | image-gen · video-gen · motion · motion-polish | `slideOnlyMvp` |
-| S-8 | Drive publish destination | 개인/팀 Drive folder 검색 선택 | `TeamverDrivePickerModal` |
+| S-6 | Discord 온라인 수 | `useDiscordPresence` → `GET /api/community/discord` | `shouldFetchMarketingCommunityApis()` |
+| S-7 | GitHub star 수 | `useGithubStars` → `GET /api/github/open-design` | 동일 |
+| S-8 | Social share | `POST /api/social-share` | `hideExternalLinks` / `hideExternalShareSurfaces` |
+| S-9 | CLI agents SSE | `GET /api/agents?stream=1` | embed boot skip |
+| S-10 | AMR/Vela | `/api/integrations/vela/*`, `/api/amr/models` | embed skip |
+| S-11 | Prompt/media catalog | `/api/prompt-templates`, `/api/media/config` | slide-only embed boot skip |
+
+**상세:** [28_embed_숨김_UI_API_점검.md](./28_embed_숨김_UI_API_점검.md) · [30_embed_home_boot_API_최적화.md](./30_embed_home_boot_API_최적화.md)
+
+| S-12 | `+` 메뉴 "Add plugin" 행 (HomeHero·ChatComposer) | 플러그인 레지스트리 진입 | `hidePluginRegistry` |
+| S-13 | `DesignToolboxPanel` actions (composer + NextStepActions "More") | image-gen · video-gen · motion · motion-polish | `slideOnlyMvp` |
+| S-14 | Drive publish destination | 개인/팀 Drive folder 검색 선택 | `TeamverDrivePickerModal` |
 
 **문서:** [13_embed_슬라이드_MVP_기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [14_Design_Drive_연동_설계](./14_Design_Drive_연동_설계.md)
 
@@ -139,6 +148,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh
 - [ ] New project — Deck / Template 탭만
 - [ ] + 메뉴 — Attach·Plugins(installed only, "Add plugin" 없음)만 (Connectors·MCP 없음)
 - [ ] Home 하단 — community gallery 미렌더
+- [ ] embed — `GET /api/community/discord` **미호출** (`useDiscordPresence` enabled=false)
 - [ ] Project chat → Design toolbox `+` flyout — image-gen / video-gen / motion / motion-polish 미노출
 - [ ] Assistant "More" 액션 — 미디어·모션 미노출
 - [ ] Publish to Drive → Browse — 개인/팀 Drive folder 검색·선택 가능

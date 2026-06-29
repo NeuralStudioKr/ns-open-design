@@ -264,7 +264,10 @@ import {
   describeStorageStartupError,
   s3StorageHealthNotReadyReason,
 } from './storage/project-storage-startup.js';
-import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import {
+  createTeamverProjectAccessMiddleware,
+  readTeamverIdentityFromRequest,
+} from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
 import {
@@ -1511,10 +1514,23 @@ export function resolveStaticSpaFallbackPath(req, staticDir) {
   return indexPath;
 }
 
+// Stale SPA bundles after a deploy break the contract between FE JS and the
+// fresh daemon API surface (e.g. new identity-header expectations, new route
+// shapes), surfacing as cascading 5xx / 4xx until the user hard-refreshes.
+// index.html is the single entry that pins all hashed asset URLs, so we must
+// never let it be served from a stale HTTP cache — the hashed JS / CSS chunks
+// underneath are fingerprinted and safe to cache long-term.
+function setNoCacheHeadersForSpaShell(res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+}
+
 export function registerStaticSpaFallback(app, staticDir) {
   app.get('/*splat', (req, res, next) => {
     const indexPath = resolveStaticSpaFallbackPath(req, staticDir);
     if (indexPath == null) return next();
+    setNoCacheHeadersForSpaShell(res);
     res.sendFile(indexPath);
   });
 }
@@ -5438,7 +5454,21 @@ export async function startServer({
   });
 
   if (fs.existsSync(STATIC_DIR)) {
-    app.use(express.static(STATIC_DIR));
+    app.use(
+      express.static(STATIC_DIR, {
+        // Vite output ships fingerprinted asset filenames under /assets/*.
+        // index.html (and any other unhashed top-level HTML) MUST stay
+        // no-cache so the SPA shell reaches the user fresh after every
+        // deploy (see registerStaticSpaFallback rationale).
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+          }
+        },
+      }),
+    );
   }
 
   app.get('/api/health', async (_req, res) => {
@@ -5532,6 +5562,10 @@ export async function startServer({
 
   app.get('/api/version', async (_req, res) => {
     const version = await readCurrentAppVersionInfo();
+    // FE's auto-reload-on-deploy hook polls this endpoint. If the response
+    // is HTTP-cached we'd never observe a version change after a deploy
+    // until the cache expired (the user would have to hard-refresh anyway).
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     res.json({ version });
   });
 
@@ -6531,6 +6565,22 @@ export async function startServer({
     projectFiles: projectFileDeps,
   });
   registerSocialShareRoutes(app, { http: httpDeps });
+  // Access gate MUST run before the lazy materialization middleware.
+  // Materialization resolves the tenant S3 prefix from design-api access
+  // metadata; if it runs first against a not-yet-registered project it
+  // throws `teamver_project_s3_prefix_required` → 502 (Track A 18 §3.4).
+  // Running the access middleware first lets it execute the legacy-register
+  // POST with the daemon's project title hint, prime the cache, and gate
+  // subsequent requests with a clean 404 instead of the misleading 502.
+  app.use(
+    '/api/projects/:id',
+    createTeamverProjectAccessMiddleware(httpDeps.sendApiError, (projectId) => {
+      const project = getProject(db, projectId);
+      if (!project) return null;
+      const title = typeof project.name === 'string' ? project.name.trim() : '';
+      return title ? { title } : {};
+    }),
+  );
   if (projectStorageHooks) {
     app.use(
       '/api/projects/:id',

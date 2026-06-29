@@ -11,6 +11,7 @@ import type { CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { MemoryChangeEvent } from '@open-design/contracts';
 import { useT } from '../i18n';
+import { shouldSubscribeMemoryEvents } from '../teamver/embedDaemonFetchPolicy';
 import { toastSlideUp } from '../motion';
 
 interface ActiveToast {
@@ -35,6 +36,7 @@ export function MemoryToast({ onOpenMemory }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!shouldSubscribeMemoryEvents()) return;
     // Guard for environments without EventSource (jsdom in tests, SSR).
     // The toast is purely a UX nicety; no SSE just means no auto-pop-up.
     if (typeof EventSource === 'undefined') return;

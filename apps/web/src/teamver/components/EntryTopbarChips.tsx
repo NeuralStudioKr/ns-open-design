@@ -7,6 +7,7 @@ import {
 } from "../../components/useDiscordPresence";
 import { useTeamverT } from "../branding/useTeamverT";
 import { isTeamverEmbedMode } from "../designApiBase";
+import { shouldFetchMarketingCommunityApis } from "../embedDaemonFetchPolicy";
 
 const DISCORD_URL = "https://discord.gg/mHAjSMV6gz";
 
@@ -14,7 +15,9 @@ const DISCORD_URL = "https://discord.gg/mHAjSMV6gz";
 export function EntryTopbarChips() {
   const t = useTeamverT();
   const teamverEmbed = isTeamverEmbedMode();
-  const discordPresence = useDiscordPresence();
+  const discordPresence = useDiscordPresence({
+    enabled: shouldFetchMarketingCommunityApis(),
+  });
 
   if (teamverEmbed) {
     return <TeamverSessionBanner teamverEmbed />;

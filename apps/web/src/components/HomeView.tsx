@@ -99,6 +99,10 @@ import {
   skillsForSlideOnlyMvp,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import {
+  shouldFetchAihubmixMediaCatalog,
+  shouldFetchRecentLinkedDirs,
+} from '../teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
@@ -356,6 +360,10 @@ export function HomeView({
   // whenever the user picks a folder.
   const [recentDirs, setRecentDirs] = useState<string[]>([]);
   useEffect(() => {
+    if (!shouldFetchRecentLinkedDirs()) {
+      setRecentDirs([]);
+      return;
+    }
     let cancelled = false;
     void fetchRecentLinkedDirs().then((dirs) => {
       if (!cancelled) setRecentDirs(dirs);
@@ -384,7 +392,7 @@ export function HomeView({
   const [elevenLabsVoicesLoading, setElevenLabsVoicesLoading] = useState(false);
   // Live AIHubMix image catalogue merged into the home media composer's model
   // picker (replaces the static aihubmix seeds when the fetch resolves).
-  const aihubmixImageModels = useAIHubMixImageModels();
+  const aihubmixImageModels = useAIHubMixImageModels(shouldFetchAihubmixMediaCatalog());
   const composerImageModels = useMemo(
     () => mergeAihubmixImageModels(IMAGE_MODELS, aihubmixImageModels),
     [aihubmixImageModels],

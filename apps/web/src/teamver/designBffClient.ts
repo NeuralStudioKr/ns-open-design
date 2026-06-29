@@ -426,16 +426,53 @@ export async function fetchDesignAuthSession(
   return inFlightSession;
 }
 
-export async function fetchTeamverRuntimeConfig(): Promise<TeamverRuntimeConfigResponse | null> {
+export type FetchTeamverRuntimeConfigOptions = {
+  /** Bypass short-lived cache — workspace switch / explicit reload. */
+  force?: boolean;
+};
+
+let runtimeConfigInflight: Promise<TeamverRuntimeConfigResponse | null> | null = null;
+let cachedRuntimeConfig: { value: TeamverRuntimeConfigResponse | null; at: number } | null = null;
+const RUNTIME_CONFIG_CACHE_MS = 60_000;
+
+/** @internal vitest */
+export function resetTeamverRuntimeConfigCacheForTests(): void {
+  runtimeConfigInflight = null;
+  cachedRuntimeConfig = null;
+}
+
+export async function fetchTeamverRuntimeConfig(
+  options?: FetchTeamverRuntimeConfigOptions,
+): Promise<TeamverRuntimeConfigResponse | null> {
+  const force = options?.force ?? false;
+  if (!force && runtimeConfigInflight) return runtimeConfigInflight;
+  if (
+    !force &&
+    cachedRuntimeConfig &&
+    Date.now() - cachedRuntimeConfig.at < RUNTIME_CONFIG_CACHE_MS
+  ) {
+    return cachedRuntimeConfig.value;
+  }
+
   const client = getDesignBffClient();
   if (!client) return null;
-  try {
-    return await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-      skipAuthHeader: true,
-    });
-  } catch {
-    return null;
-  }
+
+  const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
+    try {
+      const value = await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
+        skipAuthHeader: true,
+      });
+      cachedRuntimeConfig = { value, at: Date.now() };
+      return value;
+    } catch {
+      return null;
+    } finally {
+      runtimeConfigInflight = null;
+    }
+  })();
+
+  runtimeConfigInflight = run;
+  return run;
 }
 
 export type TeamverRuntimeConfigResponse = {

@@ -7658,7 +7658,7 @@ function HtmlViewer({
         ? t('fileViewer.deployLinkDelayed')
         : t('socialShare.deployFirst');
   const projectSocialShareRequest = useMemo<SocialShareRequest | null>(() => {
-    if (!socialShareDisplayUrl) return null;
+    if (hideExternalShareSurfaces || !socialShareDisplayUrl) return null;
     const title = t('socialShare.projectTitle', { title: exportTitle });
     const text = t('socialShare.projectText', {
       title: exportTitle,
@@ -7676,7 +7676,7 @@ function HtmlViewer({
         repo: OPEN_DESIGN_GITHUB_REPO_URL,
       }),
     };
-  }, [exportTitle, locale, socialShareDisplayUrl, t]);
+  }, [exportTitle, hideExternalShareSurfaces, locale, socialShareDisplayUrl, t]);
   const projectSocialShareFallback = useMemo(
     () => (projectSocialShareRequest ? buildSocialSharePayload(projectSocialShareRequest) : null),
     [projectSocialShareRequest],

@@ -23,6 +23,7 @@ import {
   trackSettingsPopoverSurfaceView,
 } from '../analytics/events';
 import { createSocialSharePayload } from '../providers/registry';
+import { shouldFetchSocialSharePayload } from '../teamver/embedDaemonFetchPolicy';
 import type { AppConfig, AppTheme } from '../types';
 import { formatDiscordPresenceCount, useDiscordPresence } from './useDiscordPresence';
 import { Icon } from './Icon';
@@ -84,7 +85,7 @@ export function EntrySettingsMenu({
   const t = useT();
   const { locale, setLocale } = useI18n();
   const { hideExternalLinks, hideSettingsDialogLink } = useTeamverBranding();
-  const discordPresence = useDiscordPresence();
+  const discordPresence = useDiscordPresence({ enabled: !hideExternalLinks });
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [openDesignShare, setOpenDesignShare] = useState<SocialShareResponse | null>(null);
@@ -160,7 +161,7 @@ export function EntrySettingsMenu({
   }, [open, analytics.track, pageName]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !shouldFetchSocialSharePayload(hideExternalLinks)) return;
     let cancelled = false;
     setOpenDesignShare(null);
     void createSocialSharePayload(openDesignShareRequest)
@@ -173,7 +174,7 @@ export function EntrySettingsMenu({
     return () => {
       cancelled = true;
     };
-  }, [open, openDesignShareRequest]);
+  }, [open, openDesignShareRequest, hideExternalLinks]);
 
   return (
     <div className="entry-settings-menu" ref={wrapRef}>

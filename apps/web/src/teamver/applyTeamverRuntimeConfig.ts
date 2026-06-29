@@ -76,7 +76,7 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
 export async function reloadTeamverRuntimeConfigIntoAppConfig(
   baseConfig: AppConfig,
 ): Promise<AppConfig> {
-  const runtime = await fetchTeamverRuntimeConfig();
+  const runtime = await fetchTeamverRuntimeConfig({ force: true });
   if (!runtime?.configured) return baseConfig;
   return mergeTeamverRuntimeConfigIntoAppConfig(baseConfig, runtime);
 }

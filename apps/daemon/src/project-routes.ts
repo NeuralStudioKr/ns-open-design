@@ -32,7 +32,7 @@ import {
   writeProjectManifest,
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
-import { createTeamverProjectAccessMiddleware, isTeamverDesignManaged } from './teamver-project-access.js';
+import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
@@ -1435,15 +1435,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     }
   });
 
-  app.use(
-    '/api/projects/:id',
-    createTeamverProjectAccessMiddleware(sendApiError, (projectId) => {
-      const project = getProject(db, projectId);
-      if (!project) return null;
-      const title = typeof project.name === 'string' ? project.name.trim() : '';
-      return title ? { title } : {};
-    }),
-  );
+  // NOTE: The teamver project access middleware used to be registered here.
+  // It now lives in server.ts so it can run BEFORE the lazy project
+  // materialization middleware, otherwise a not-yet-registered project ID
+  // surfaces as a misleading `teamver_project_s3_prefix_required` 502 from
+  // materialization instead of the proper 404 from the access gate.
+  // See: docs-teamver/18_OD_Tenant_Storage.md §3.4.
 
   app.post('/api/projects/:id/scratch/evict', async (req, res) => {
     const projectId = req.params.id;

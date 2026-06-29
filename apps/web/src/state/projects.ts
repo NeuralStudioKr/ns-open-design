@@ -85,23 +85,40 @@ async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'n
   }
 }
 
+const listRecentProjectsInflight = new Map<number, Promise<Project[]>>();
+
 export async function listRecentProjects(
   limit = HOME_RECENT_LIST_LIMIT,
 ): Promise<Project[]> {
-  try {
-    const resp = await fetchProjectsListWhenAuthenticated(
-      `/api/projects/recent?limit=${encodeURIComponent(String(limit))}`,
-    );
-    if (!resp) return [];
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { projects: Project[] };
-    return normalizeProjectsResponse(json.projects ?? []);
-  } catch (err) {
-    if (err instanceof TeamverProjectRegistryError) {
-      throw err;
+  const inflight = listRecentProjectsInflight.get(limit);
+  if (inflight) return inflight;
+
+  const run = (async (): Promise<Project[]> => {
+    try {
+      const resp = await fetchProjectsListWhenAuthenticated(
+        `/api/projects/recent?limit=${encodeURIComponent(String(limit))}`,
+      );
+      if (!resp) return [];
+      if (!resp.ok) return [];
+      const json = (await resp.json()) as { projects: Project[] };
+      return normalizeProjectsResponse(json.projects ?? []);
+    } catch (err) {
+      if (err instanceof TeamverProjectRegistryError) {
+        throw err;
+      }
+      return [];
+    } finally {
+      listRecentProjectsInflight.delete(limit);
     }
-    return [];
-  }
+  })();
+
+  listRecentProjectsInflight.set(limit, run);
+  return run;
+}
+
+/** @internal vitest */
+export function resetListRecentProjectsInflightForTests(): void {
+  listRecentProjectsInflight.clear();
 }
 
 export async function listProjectsPage(options?: {

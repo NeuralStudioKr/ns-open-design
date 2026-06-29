@@ -889,16 +889,29 @@ export async function listActiveChatRuns(
   }
 }
 
+let listProjectRunsInflight: Promise<ChatRunStatusResponse[]> | null = null;
+
+/** @internal vitest */
+export function resetListProjectRunsInflightForTests(): void {
+  listProjectRunsInflight = null;
+}
+
 export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
-  try {
-    const headers = await buildTeamverDaemonRequestHeaders({});
-    const resp = await fetch('/api/runs', { headers });
-    if (!resp.ok) return [];
-    const body = (await resp.json()) as ChatRunListResponse;
-    return body.runs ?? [];
-  } catch {
-    return [];
-  }
+  if (listProjectRunsInflight) return listProjectRunsInflight;
+  listProjectRunsInflight = (async () => {
+    try {
+      const headers = await buildTeamverDaemonRequestHeaders({});
+      const resp = await fetch('/api/runs', { headers });
+      if (!resp.ok) return [];
+      const body = (await resp.json()) as ChatRunListResponse;
+      return body.runs ?? [];
+    } catch {
+      return [];
+    } finally {
+      listProjectRunsInflight = null;
+    }
+  })();
+  return listProjectRunsInflight;
 }
 
 async function consumeDaemonRun({

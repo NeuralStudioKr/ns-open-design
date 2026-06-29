@@ -341,4 +341,150 @@ describe('Teamver project access gate', () => {
       warnSpy.mockRestore();
     }
   });
+
+  it('recovers from a 404→register-failed→register-eventually-succeeds race within ~1.5s', async () => {
+    // Reproduces the post-deploy "create project → /folders 502
+    // teamver_project_s3_prefix_required, persists for ~5s" symptom:
+    // the very first access lookup arrives before design-api has the row,
+    // the daemon's register-on-404 retry must NOT poison the deny cache
+    // for the full 5s permanent window. After ~1.5s a subsequent request
+    // must hit the upstream again and succeed once design-api has the
+    // row (here, after the second register attempt). Without the
+    // transient-deny TTL the next request would short-circuit on the
+    // cached deny and the user would see another 502 — exactly the
+    // failure mode the user reported.
+    const projectId = `teamver-access-deny-recovery-${Date.now()}`;
+    await createProject(projectId);
+
+    let registerCalls = 0;
+    let accessCalls = 0;
+    const accessServer = createServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/api/v1/projects') {
+        registerCalls += 1;
+        // First register attempt fails (e.g. transient DB error during
+        // deploy). Subsequent attempts succeed.
+        if (registerCalls === 1) {
+          res.writeHead(500);
+          res.end();
+          return;
+        }
+        res.writeHead(201);
+        res.end();
+        return;
+      }
+      if (req.method === 'GET' && req.url === `/api/v1/projects/${encodeURIComponent(projectId)}/access`) {
+        accessCalls += 1;
+        // Until the design-api row exists, access returns 404. Once register
+        // (attempt 2) succeeds, return granted with prefix.
+        if (registerCalls >= 2) {
+          res.writeHead(204, { 'X-Teamver-S3-Prefix': 'design/ws_x/user_y/proj_z/' });
+          res.end();
+          return;
+        }
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => accessServer.listen(0, '127.0.0.1', resolve));
+    const address = accessServer.address();
+    if (!address || typeof address === 'string') throw new Error('missing access server address');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      process.env.TEAMVER_DESIGN_API_URL = `http://127.0.0.1:${address.port}`;
+
+      // 1st request — register fails, deny is cached as transient.
+      const firstResp = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        headers: {
+          'X-Teamver-User-Id': 'user-deny-recover',
+          'X-Teamver-Workspace-Id': 'workspace-deny-recover',
+        },
+      });
+      expect(firstResp.status).toBe(404);
+
+      // register_failed marker must be observable so ops can alarm on it.
+      const registerMarker = findProjectAccessMarker(warnSpy, 'register_failed');
+      expect(registerMarker).not.toBeNull();
+      expect(registerMarker).toMatchObject({
+        metric: 'teamver_project_access_5xx',
+        reason: 'register_failed',
+        projectId,
+        workspaceId: 'workspace-deny-recover',
+        httpStatus: 500,
+      });
+
+      // Within the transient deny window (~1.5s) the cache short-circuits.
+      const cachedDenyResp = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        headers: {
+          'X-Teamver-User-Id': 'user-deny-recover',
+          'X-Teamver-Workspace-Id': 'workspace-deny-recover',
+        },
+      });
+      expect(cachedDenyResp.status).toBe(404);
+      // No new upstream call yet — the deny cache served it.
+      expect(registerCalls).toBe(1);
+
+      // After the transient TTL elapses (1500ms + a small buffer for jitter),
+      // the next request hits upstream again. Register succeeds this time
+      // and the access check returns granted.
+      await new Promise((resolve) => setTimeout(resolve, 1700));
+      const recoveredResp = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+        headers: {
+          'X-Teamver-User-Id': 'user-deny-recover',
+          'X-Teamver-Workspace-Id': 'workspace-deny-recover',
+        },
+      });
+      expect(recoveredResp.status).toBe(200);
+      expect(registerCalls).toBeGreaterThanOrEqual(2);
+      expect(accessCalls).toBeGreaterThanOrEqual(2);
+    } finally {
+      warnSpy.mockRestore();
+      await new Promise<void>((resolve) => accessServer.close(() => resolve()));
+    }
+  }, 10_000);
+
+  it('keeps 403 deny cached for the full permanent window (no early refresh)', async () => {
+    // Counter-test for the transient-deny fix: real permission denials
+    // (403) must still stick for the full window so we don't hammer
+    // design-api on every request in a tight UI loop. This guards
+    // against accidentally widening the transient classification.
+    const projectId = `teamver-access-403-sticky-${Date.now()}`;
+    await createProject(projectId);
+
+    let accessCalls = 0;
+    const accessServer = createServer((req, res) => {
+      if (req.method === 'GET' && req.url === `/api/v1/projects/${encodeURIComponent(projectId)}/access`) {
+        accessCalls += 1;
+        res.writeHead(403);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => accessServer.listen(0, '127.0.0.1', resolve));
+    const address = accessServer.address();
+    if (!address || typeof address === 'string') throw new Error('missing access server address');
+
+    try {
+      process.env.TEAMVER_DESIGN_API_URL = `http://127.0.0.1:${address.port}`;
+      const headers = {
+        'X-Teamver-User-Id': 'user-403-sticky',
+        'X-Teamver-Workspace-Id': 'workspace-403-sticky',
+      };
+      const r1 = await fetch(`${baseUrl}/api/projects/${projectId}`, { headers });
+      expect(r1.status).toBe(404);
+      // Wait longer than the transient window but well under the permanent one.
+      await new Promise((resolve) => setTimeout(resolve, 1700));
+      const r2 = await fetch(`${baseUrl}/api/projects/${projectId}`, { headers });
+      expect(r2.status).toBe(404);
+      // Cache should still be live — no second upstream call.
+      expect(accessCalls).toBe(1);
+    } finally {
+      await new Promise<void>((resolve) => accessServer.close(() => resolve()));
+    }
+  }, 10_000);
 });

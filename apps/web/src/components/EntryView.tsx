@@ -34,6 +34,7 @@ import {
   listenForConnectorsChanged,
 } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
+import { shouldFetchConnectorCatalog } from '../teamver/embedDaemonFetchPolicy';
 import type {
   PluginShareAction,
   PluginShareProjectOutcome,
@@ -282,10 +283,19 @@ export function EntryView({
   const [connectorsLoading, setConnectorsLoading] = useState(false);
 
   const reloadConnectorCatalog = useCallback(async (options: { refreshDiscovery?: boolean } = {}) => {
+    if (!shouldFetchConnectorCatalog()) {
+      setConnectors([]);
+      return;
+    }
     setConnectors(await fetchConnectorCatalogSnapshot(options));
   }, []);
 
   useEffect(() => {
+    if (!shouldFetchConnectorCatalog()) {
+      setConnectors([]);
+      setConnectorsLoading(false);
+      return;
+    }
     let cancelled = false;
     // Fetch connectors on mount so the New project modal can show
     // already-configured connectors without waiting for the user to
@@ -303,6 +313,7 @@ export function EntryView({
   }, []);
 
   useEffect(() => {
+    if (!shouldFetchConnectorCatalog()) return;
     function onMessage(event: MessageEvent) {
       const data = event.data;
       if (!data || typeof data !== 'object' || (data as { type?: unknown }).type !== CONNECTOR_CALLBACK_MESSAGE_TYPE) return;
@@ -314,6 +325,7 @@ export function EntryView({
   }, [reloadConnectorCatalog]);
 
   useEffect(() => {
+    if (!shouldFetchConnectorCatalog()) return;
     function onConnectorsChanged() {
       void reloadConnectorCatalog({ refreshDiscovery: true });
     }
@@ -326,6 +338,7 @@ export function EntryView({
   // Refresh connector statuses whenever the window regains focus so the UI
   // picks up a just-completed connection without manual intervention.
   useEffect(() => {
+    if (!shouldFetchConnectorCatalog()) return;
     function refreshAfterReturn() {
       void reloadConnectorCatalog({ refreshDiscovery: true });
     }

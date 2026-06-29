@@ -19,6 +19,7 @@ services:
         https_proxy: ${https_proxy:-}
         no_proxy: ${no_proxy:-}
         NO_PROXY: ${NO_PROXY:-}
+        VITE_MESSAGE_PERSIST_THROTTLE_MS: ${VITE_MESSAGE_PERSIST_THROTTLE_MS:-5000}
     restart: unless-stopped
     environment:
       NODE_ENV: production
