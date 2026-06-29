@@ -165,11 +165,13 @@ export function createByokProxyMaterializationHooks(
       );
       if (failFast) {
         if (!res.headersSent) {
+          const detail =
+            err instanceof Error ? err.message : 'sync-down failed before streaming';
           res.status(502).json({
-            error: 'project storage unavailable',
-            error_code: 'PROJECT_STORAGE_UNAVAILABLE',
-            details:
-              err instanceof Error ? err.message : 'sync-down failed before streaming',
+            error: {
+              code: 'PROJECT_STORAGE_UNAVAILABLE',
+              message: `project storage unavailable: ${detail}`,
+            },
           });
         }
         return { ok: false };

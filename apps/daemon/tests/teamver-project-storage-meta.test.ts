@@ -228,6 +228,29 @@ describe('teamver-project-storage-meta', () => {
       expect(fallback).not.toHaveBeenCalled();
     });
 
+    it('uses s3PrefixOverride when access is denied (create race)', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue({
+        status: 404,
+        headers: noopHeaders({}),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const tenant = vi.fn((prefix: string) => fakeStorage(`tenant:${prefix}`));
+      const fallback = vi.fn(() => fakeStorage('fallback'));
+
+      const result = await resolveTeamverTenantRemoteStorage(
+        'proj-1',
+        identity,
+        tenant,
+        fallback,
+        'design/ws_hint/user_hint/proj_proj-1/',
+      );
+
+      expect(result.s3Prefix).toBe('design/ws_hint/user_hint/proj_proj-1/');
+      expect(tenant).toHaveBeenCalledWith('design/ws_hint/user_hint/proj_proj-1/');
+      expect(fallback).not.toHaveBeenCalled();
+    });
+
     it('returns tenant-scoped storage when access check returns prefix', async () => {
       vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
       const fetchMock: FetchMock = vi.fn().mockResolvedValue({

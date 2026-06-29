@@ -457,4 +457,18 @@ describe('buildProxyResponseError', () => {
     expect(typed.code).toBe('MANAGED_API_KEY_MISSING');
     expect(typed).toBeInstanceOf(Error);
   });
+
+  it('parses legacy BYOK materialization 502 envelope (error_code + string error)', () => {
+    const err = buildProxyResponseError(
+      502,
+      JSON.stringify({
+        error: 'project storage unavailable',
+        error_code: 'PROJECT_STORAGE_UNAVAILABLE',
+        details: 'teamver_project_s3_prefix_required',
+      }),
+    );
+    expect(err.code).toBe('PROJECT_STORAGE_UNAVAILABLE');
+    expect(err.message).toContain('PROJECT_STORAGE_UNAVAILABLE');
+    expect(err.message).toContain('project storage unavailable');
+  });
 });

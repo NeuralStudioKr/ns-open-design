@@ -381,13 +381,19 @@ function parseProxyErrorEnvelope(
         ? nested.code.trim()
         : typeof (parsed as { code?: unknown }).code === 'string'
           ? (parsed as { code: string }).code.trim() || undefined
-          : undefined;
+          : typeof (parsed as { error_code?: unknown }).error_code === 'string'
+            ? (parsed as { error_code: string }).error_code.trim() || undefined
+            : undefined;
     const message =
       typeof nested?.message === 'string' && nested.message.trim()
         ? nested.message.trim()
         : typeof (parsed as { message?: unknown }).message === 'string'
           ? (parsed as { message: string }).message.trim() || undefined
-          : undefined;
+          : typeof (parsed as { error?: unknown }).error === 'string'
+            ? (parsed as { error: string }).error.trim() || undefined
+            : typeof (parsed as { details?: unknown }).details === 'string'
+              ? (parsed as { details: string }).details.trim() || undefined
+              : undefined;
     if (!code && !message) return null;
     const out: { code?: string; message?: string } = {};
     if (code) out.code = code;

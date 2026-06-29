@@ -52,6 +52,12 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   if (code === "session_unreachable") {
     return "Teamver 세션 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
   }
+  if (code === "MANAGED_API_KEY_MISSING") {
+    return "서버 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";
+  }
+  if (code === "PROJECT_STORAGE_UNAVAILABLE") {
+    return "프로젝트 저장소를 준비하지 못했습니다. 잠시 후 다시 시도하세요.";
+  }
   return "슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.";
 }
 

@@ -77,6 +77,16 @@ export async function resolveTeamverTenantRemoteStorage(
   }
   const access = await verifyTeamverProjectAccess(projectId, identity);
   if (!access.ok) {
+    // Embed FE caches registry s3Prefix and sends it on every project-scoped
+    // daemon call. BE sends the same header on internal sync-up. When
+    // design-api /access is still racing (404 right after create), we must
+    // not throw teamver_project_s3_prefix_required while a registry-
+    // authoritative override is present — that was the staging loop where
+    // lazy sync-up failed once then self-healed, but BYOK proxy begin still
+    // 502'd the slide run on the first attempt.
+    if (override) {
+      return { remote: createTenantRemote(override), s3Prefix: override };
+    }
     // A non-trusted caller (FE-driven request) hit a transient design-api
     // denial — emit a marker so the recurring 502 loop is actionable in
     // CloudWatch. The materialization middleware translates this throw into
@@ -86,7 +96,7 @@ export async function resolveTeamverTenantRemoteStorage(
       projectId,
       workspaceId: identity.workspaceId,
       kind: access.kind,
-      hasOverride: Boolean(override),
+      hasOverride: false,
     });
     throw new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required');
   }
