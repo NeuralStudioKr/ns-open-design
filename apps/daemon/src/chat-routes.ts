@@ -1,4 +1,4 @@
-import type { Express } from 'express';
+import type { Express, Request, Response } from 'express';
 import type { RouteDeps } from './server-context.js';
 import { seedProviderIfMissing } from './media-config.js';
 import {
@@ -38,6 +38,10 @@ import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectio
 import { googleStreamGenerateContentUrl } from './google-models.js';
 import { createRoleMarkerGuard } from './role-marker-guard.js';
 import { createThinkTagSplitter, stripLeakedPseudoToolXml } from './think-tag-splitter.js';
+import {
+  readProxyBodyProjectId,
+  type ByokProxyMaterializationHooks,
+} from './storage/byok-proxy-materialization.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -57,11 +61,28 @@ const FEEDBACK_REASON_ALLOWLIST: ReadonlySet<string> = new Set([
   'other',
 ]);
 
-export interface RegisterChatRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'chat' | 'agents' | 'critique' | 'validation' | 'lifecycle' | 'paths' | 'telemetry'> {}
+export interface RegisterChatRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'chat' | 'agents' | 'critique' | 'validation' | 'lifecycle' | 'paths' | 'telemetry'> {
+  byokProxyMaterialization?: ByokProxyMaterializationHooks | null;
+}
 
 export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   const { db, design } = ctx;
   const { sendApiError, createSseResponse } = ctx.http;
+  const byokProxyMaterialization = ctx.byokProxyMaterialization ?? null;
+
+  async function attachByokProxyMaterialization(
+    req: Request,
+    res: Response,
+    proxyBody: Record<string, unknown>,
+  ): Promise<void> {
+    if (!byokProxyMaterialization) return;
+    await byokProxyMaterialization.attachByokProxyStreamMaterialization(
+      req,
+      res,
+      readProxyBodyProjectId(proxyBody),
+    );
+  }
+
   const { testProviderConnection, testAgentConnection, getAgentDef, isKnownModel, sanitizeCustomModel, listProviderModels } = ctx.agents;
   const {
     handleCritiqueArtifact,
@@ -1089,6 +1110,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       `[proxy:anthropic] ${req.method} ${validated.parsed!.hostname} model=${model}`,
     );
 
+    await attachByokProxyMaterialization(req, res, proxyBody);
+
     return runAnthropicChatStream(res, {
       url,
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
@@ -1147,6 +1170,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // docs-teamver/24_AI_API_usage_capture_경로별_분석.md.
       stream_options: { include_usage: true },
     };
+
+    await attachByokProxyMaterialization(req, res, proxyBody);
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -1311,6 +1336,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       ...streamUsageOpts,
     };
 
+    await attachByokProxyMaterialization(req, res, proxyBody);
+
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
     // Same hoisting rationale as runAnthropicChatStream / openai proxy:
@@ -1448,6 +1475,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       `[proxy:google] ${req.method} ${validated.parsed!.hostname} model=${model}`,
     );
 
+    await attachByokProxyMaterialization(req, res, proxyBody);
+
     return runGeminiChatStream(res, {
       url,
       headers: { 'x-goog-api-key': apiKey },
@@ -1490,6 +1519,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (typeof maxTokens === 'number' && maxTokens > 0) {
       payload.options = { num_predict: maxTokens };
     }
+
+    await attachByokProxyMaterialization(req, res, proxyBody);
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -1673,6 +1704,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         'projectId is required and must be a safe identifier',
       );
     }
+
+    await attachByokProxyMaterialization(req, res, proxyBody);
 
     const effectiveBaseUrl = baseUrl || opts.defaultBaseUrl;
     const validated = await validateExternalApiBaseUrl(effectiveBaseUrl);

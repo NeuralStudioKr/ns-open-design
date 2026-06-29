@@ -275,6 +275,7 @@ import {
   createProjectStorageAccessHooks,
   scheduleProjectStoragePersistAfterResponse,
 } from './storage/lazy-project-materialization.js';
+import { createByokProxyMaterializationHooks } from './storage/byok-proxy-materialization.js';
 import { deriveRunErrorCode, runResultFromStatus } from './run-result.js';
 import { classifyRunFailure, isResumableFailure } from './run-failure-classification.js';
 import { decideSafeRunRetry } from './run-retry-policy.js';
@@ -6081,6 +6082,7 @@ export async function startServer({
   const baseFinishRun = design.runs.finish.bind(design.runs);
   design.runs.finish = projectMaterialization.wrapFinish(baseFinishRun);
   const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization);
+  const byokProxyMaterialization = createByokProxyMaterializationHooks(projectMaterialization);
 
   // Interactive Terminal sessions (node-pty). In-memory, process-local, and
   // killed on daemon shutdown — see shutdownDaemonRuns below.
@@ -16287,6 +16289,7 @@ export async function startServer({
     validation: validationDeps,
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
     telemetry: { reportFinalizedMessage, reportFeedback },
+    byokProxyMaterialization,
   });
 
   registerTeamverDesignBffProxy(app);

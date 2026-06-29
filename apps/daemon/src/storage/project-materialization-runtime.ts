@@ -40,6 +40,8 @@ export type ProjectMaterializationRuntime = {
   layout: ProjectStorageLayout;
   storage: MaterializingProjectStorage | null;
   beforeChatRun: (run: RunLike) => Promise<void>;
+  /** Run-end sync-up — also used by BYOK proxy stream finish hooks. */
+  afterChatRun: (run: RunLike) => Promise<void>;
   wrapFinish: <T extends (...args: unknown[]) => unknown>(finish: T) => T;
   withProjectLock: <T>(projectId: string, fn: () => Promise<T>) => Promise<T>;
   markProjectSyncFailed: (projectId: string) => void;
@@ -554,6 +556,7 @@ export function createProjectMaterializationRuntime(
     layout,
     storage,
     beforeChatRun,
+    afterChatRun,
     wrapFinish,
     withProjectLock,
     markProjectSyncFailed,

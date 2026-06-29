@@ -147,29 +147,34 @@ POST 가 없는 이유: `ProjectView` 의 `if (config.mode === 'daemon')` 분기
 
 ## 5. 2026-06-29 핫픽스 (배포 필수)
 
-커밋: `fix(daemon): persist BYOK chats to S3 + guard idle-evict from data loss`
+커밋: `fix(daemon): persist BYOK chats to S3 + guard idle-evict from data loss` (`5b42c2970`)
 
 ### Fix A — BYOK terminal message PUT
-
-`shouldReportByokUsageFromMessage` (assistant + `telemetryFinalized:true` + terminal `runStatus` + **runId 없음**) 통과 시:
-
-- 기존: billing/usage M2M
-- **추가:** `scheduleProjectStoragePersistAfterResponse` → `persistAfterMutation(runStart=0)` → scratch → S3
-
-→ 채팅 **턴 종료 1회** sync-up (중간 throttle PUT 은 gate 통과 안 함).
-
 ### Fix B — idle-evict S3 SSOT 가드
-
-evict 직전 `syncUpBeforeEvict`:
-
-- scratch 비어 있음 → evict OK
-- scratch + 파일 + sync 실패/remote 미캐시 → **evict 보류** (`od_scratch_evict_deferred_unsynced`)
-
 ### Fix C — sticky tenant remote cache
 
-lazy GET /files 등이 resolve 한 S3 prefix 를 daemon 메모리에 보관 → request 없는 idle sweep 도 sync-up 가능.
-
 **상세:** [16 §5.5b · §6.5](./16_S3_데이터_저장_시점_SSOT.md)
+
+---
+
+## 5b. 2026-06-29 P1 — BYOK proxy stream server hook (Option B)
+
+커밋: `feat(daemon): BYOK proxy stream materialization hooks (mode=api server-side)`
+
+**선택한 방향:** `mode=api` **유지** + daemon 이 proxy SSE lifecycle 에 materialization hook 부착. 브라우저는 `POST /api/runs` 를 호출하지 않음.
+
+| 단계 | 시점 | 동작 |
+|------|------|------|
+| ① proxy stream 시작 | `POST /api/proxy/*/stream` handler, SSE 시작 **직전** | `beforeChatRun` (sync-down, sticky remote cache) |
+| ② stream 중 | BYOK tools → scratch write | (기존과 동일) |
+| ③ HTTP response finish/close | proxy SSE `res.end()` 후 | `afterChatRun` (sync-up scratch → S3) |
+| ④ (병행) terminal message PUT | FE `telemetryFinalized` | Fix A `persistAfterMutation` — **defense in depth** |
+
+**코드:** `apps/daemon/src/storage/byok-proxy-materialization.ts` · `chat-routes.ts` (모든 `/api/proxy/*/stream`) · `server.ts` (`createByokProxyMaterializationHooks`).
+
+**env:** `OD_BYOK_PROXY_MATERIALIZATION=1` (default on, S3 mode only). `0` 으로 비활성.
+
+**왜 message PUT hook 과 병행?** proxy finish 가 네트워크 drop 등으로 `afterChatRun` 을 못 타도 terminal PUT 이 2차 sync-up. 반대로 PUT 이 throttle/실패해도 proxy finish 가 1차 sync-up.
 
 ---
 
@@ -256,15 +261,14 @@ BYOK embed 의 daemon 부하는 이미 **`POST /api/proxy/…/stream` (장시간
 ## 8. 권장 로드맵
 
 ```text
-[지금 · P0]  핫픽스 staging/production 배포
+[완료 · P0]  핫픽스 staging/production 배포
              └─ BYOK terminal sync-up + idle-evict 가드
-             └─ 검증: 새 프로젝트 → 턴 종료 → S3 객체 존재 → 10분 idle 후에도 GET /files OK
 
-[출시 직후 · P1]  Option B — proxy stream ↔ 내부 run lifecycle 통합 (daemon only)
-             └─ afterChatRun sync-up 이 BYOK 에도 자동 적용 (중복 hook 제거 가능)
-             └─ GET /api/runs 가 실제 run 반환 → stuck/cancel 기반 마련
+[완료 · P1]  Option B — proxy stream server hook (daemon only, mode=api 유지)
+             └─ beforeChatRun / afterChatRun on /api/proxy/*/stream finish
+             └─ terminal PUT hook 과 defense-in-depth 병행
 
-[안정화 후 · P2]  Option C 검토 — FE 가 POST /api/runs 로 통합할지
+[안정화 후 · P2]  Option C 검토 — FE 가 POST /api/runs 로 통합할지 (cancel/resume UX)
              └─ Option B 운영 데이터로 “FE 통합 ROI” 판단
              └─ ROI 낮으면 B 유지 (브라우저는 proxy 그대로)
 
@@ -275,11 +279,11 @@ BYOK embed 의 daemon 부하는 이미 **`POST /api/proxy/…/stream` (장시간
 
 아래가 **server-side SSOT** 로 보장되면 `mode=api` 는 Teamver embed 에 **적절**하다:
 
-1. ✅ artifact scratch write 후 **S3 sync-up** (핫픽스)
+1. ✅ artifact scratch write 후 **S3 sync-up** (핫픽스 + P1 proxy hook)
 2. ✅ idle-evict 전 sync-up 또는 defer (핫픽스)
 3. ✅ terminal billing/usage (U-G11)
-4. ☐ (P1) proxy stream start/end ↔ materialization hook
-5. ☐ (P1) cancel/resume 필요 시 run row (Option B/C)
+4. ✅ (P1) proxy stream start/end ↔ `beforeChatRun` / `afterChatRun`
+5. ☐ (P2) cancel/resume 필요 시 run row (Option C — FE `POST /api/runs`)
 
 ### 8.2 `POST /api/runs` 를 브라우저에서 쓰는 게 적절한 경우
 
@@ -346,4 +350,5 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H "X-Workspace-Id: $WS" \
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-29 | §5b P1 BYOK proxy stream server hook 구현 · 로드맵 P0/P1 완료 표시 |
 | 2026-06-29 | 초版 — assumption rot, GET vs POST, 핫픽스, Option A~D, 부하 분석, 권장 로드맵 |
