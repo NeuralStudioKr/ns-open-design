@@ -109,6 +109,7 @@ describe("agent-prose-sanitize SSOT", () => {
       '{"name":"TodoWrite","arguments":{"todos":[{"content":"hidden"}]}}',
       "</tool_call_chunk>",
       "<reasoning_trace>private chain</reasoning_trace>",
+      "<internal_notes>hidden note</internal_notes>",
       "<slide_plan_internal>hidden outline</slide_plan_internal>",
       "<todo_items>[{\"content\":\"hidden todo\"}]</todo_items>",
       "슬라이드 초안을 준비하겠습니다.",
@@ -117,6 +118,7 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).toBe("요청을 접수했습니다.\n\n슬라이드 초안을 준비하겠습니다.");
     expect(out).not.toContain("<tool_call_chunk");
     expect(out).not.toContain("private chain");
+    expect(out).not.toContain("hidden note");
     expect(out).not.toContain("hidden todo");
   });
 
@@ -153,6 +155,18 @@ describe("agent-prose-sanitize SSOT", () => {
 
   it("strips trailing open variant internal XML while streaming", () => {
     const input = "진행하겠습니다.\n<tool_call_chunk>\n{\"name\":\"TodoWrite\"";
+    const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
+    expect(hadOpenInternalMarkup).toBe(true);
+    expect(text).toBe("진행하겠습니다.");
+  });
+
+  it("strips the outer unclosed variant XML even when an inner dynamic tag is closed", () => {
+    const input = [
+      "진행하겠습니다.",
+      "<tool_call_chunk>",
+      "<function>TodoWrite</function>",
+      '{"arguments":{"todos":[{"content":"hidden"}]}}',
+    ].join("\n");
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
     expect(hadOpenInternalMarkup).toBe(true);
     expect(text).toBe("진행하겠습니다.");

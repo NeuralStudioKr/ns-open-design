@@ -46,6 +46,31 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "진행합니다.\n\n완료." });
   });
 
+  it("strips variant internal XML from persisted assistant messages", () => {
+    const message: ChatMessage = {
+      id: "m-variant-internal",
+      role: "assistant",
+      content: [
+        "진행하겠습니다.",
+        "<tool_call_chunk><function>TodoWrite</function>{}</tool_call_chunk>",
+        "<internal_notes>hidden</internal_notes>",
+        "초안을 준비합니다.",
+      ].join("\n"),
+      events: [
+        {
+          kind: "text",
+          text: "본문\n<reasoning_trace>private</reasoning_trace>\n완료.",
+        },
+      ],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("진행하겠습니다.\n\n초안을 준비합니다.");
+    expect(sanitized.content).not.toContain("tool_call_chunk");
+    expect(sanitized.content).not.toContain("internal_notes");
+    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "본문\n\n완료." });
+  });
+
   it("returns the same reference when nothing changed", () => {
     const message: ChatMessage = {
       id: "m2",

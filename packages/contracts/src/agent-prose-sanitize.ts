@@ -89,8 +89,10 @@ const CLOSED_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>[\s\S]*?<\
 const OPEN_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>/gi;
 const CLOSED_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const OPEN_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>/gi;
+const INTERNAL_MARKUP_KEYWORDS =
+  "thinking|thought|reasoning|analysis|scratchpad|reflection|todo|task|tool|function|operator|workflow|plan|planning|internal|hidden|private|meta|note|instruction|trace";
 const INTERNAL_MARKUP_NAME_PART_RE =
-  "(?:[a-z][a-z0-9_-]*[-_])?(?:thinking|thought|reasoning|analysis|scratchpad|reflection|todo|tool|function|operator|workflow|plan)[a-z0-9_-]*";
+  `(?:[a-z][a-z0-9_-]*[-_])?(?:${INTERNAL_MARKUP_KEYWORDS})[a-z0-9_-]*`;
 const CLOSED_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
   `<(${INTERNAL_MARKUP_NAME_PART_RE})\\b[^>]*>[\\s\\S]*?</\\1>`,
   "gi",
@@ -187,22 +189,19 @@ function stripTrailingOpenDynamicTag(
   input: string,
   openTagPattern: RegExp,
 ): { text: string; hadOpenInternalMarkup: boolean } {
-  let last: { index: number; tagName: string; openEnd: number } | null = null;
-  const re = new RegExp(openTagPattern.source, openTagPattern.flags.includes("g") ? openTagPattern.flags : `${openTagPattern.flags}g`);
+  const flags = openTagPattern.flags.includes("g")
+    ? openTagPattern.flags
+    : `${openTagPattern.flags}g`;
+  const re = new RegExp(openTagPattern.source, flags);
   let match: RegExpExecArray | null;
   while ((match = re.exec(input)) !== null) {
-    last = {
-      index: match.index,
-      tagName: match[1] ?? "",
-      openEnd: match.index + match[0].length,
-    };
-  }
-  if (!last || !last.tagName) {
-    return { text: input, hadOpenInternalMarkup: false };
-  }
-  const closeIdx = findCloseTag(input, last.openEnd, `</${last.tagName}>`);
-  if (closeIdx === -1) {
-    return { text: input.slice(0, last.index).trimEnd(), hadOpenInternalMarkup: true };
+    const tagName = match[1] ?? "";
+    if (!tagName) continue;
+    const openEnd = match.index + match[0].length;
+    const closeIdx = findCloseTag(input, openEnd, `</${tagName}>`);
+    if (closeIdx === -1) {
+      return { text: input.slice(0, match.index).trimEnd(), hadOpenInternalMarkup: true };
+    }
   }
   return { text: input, hadOpenInternalMarkup: false };
 }
