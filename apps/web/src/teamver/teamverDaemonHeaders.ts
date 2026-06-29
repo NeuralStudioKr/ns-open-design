@@ -42,7 +42,8 @@ export async function buildTeamverDaemonRequestHeaders(
 ): Promise<Record<string, string>> {
   if (!isTeamverEmbedMode()) return base;
   const workspaceId = await readActiveTeamverWorkspaceId();
-  const headers = workspaceId ? { ...base, "X-Workspace-Id": workspaceId } : { ...base };
+  const headers: Record<string, string> = { ...base };
+  if (workspaceId) headers["X-Workspace-Id"] = workspaceId;
   const projectId = options?.projectId?.trim();
   if (workspaceId && projectId) {
     const s3Prefix = readTeamverProjectS3Prefix(workspaceId, projectId);
