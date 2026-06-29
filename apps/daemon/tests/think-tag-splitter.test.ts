@@ -33,4 +33,17 @@ describe('createThinkTagSplitter', () => {
 
     expect(thinking.join('')).toBe('tail only');
   });
+
+  it('force-flushes an unclosed think block after 64KB without a close tag', () => {
+    const thinking: string[] = [];
+    const splitter = createThinkTagSplitter((chunk) => thinking.push(chunk));
+    const huge = 'x'.repeat(65 * 1024);
+
+    const result = splitter.feed(`${open}${huge}`);
+
+    expect(thinking.join('').length).toBeGreaterThan(0);
+    expect(thinking.join('').length).toBeLessThanOrEqual(64 * 1024);
+    expect(result.visible.length).toBeGreaterThan(0);
+    expect(result.thinking).toBe('');
+  });
 });

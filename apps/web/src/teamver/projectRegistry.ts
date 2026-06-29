@@ -13,6 +13,7 @@ import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
 import {
   clearTeamverProjectS3Prefix,
   clearAllTeamverProjectS3PrefixCache,
+  readTeamverProjectS3Prefix,
   rememberTeamverProjectS3Prefix,
 } from "./teamverProjectS3PrefixCache";
 
@@ -53,6 +54,8 @@ const REGISTRY_ERROR_MESSAGES: Record<string, string> = {
     "프로젝트를 워크스페이스 저장소에 등록하지 못했습니다. 잠시 후 다시 시도하세요.",
   teamver_project_registry_list_failed:
     "프로젝트 목록을 불러오지 못했습니다. 잠시 후 다시 시도하거나 페이지를 새로고침하세요.",
+  teamver_project_s3_prefix_required:
+    "프로젝트 저장소를 준비하지 못했습니다. 잠시 후 다시 시도하거나 페이지를 새로고침하세요.",
 };
 
 /** Embed create — registry hard-fail 사용자 메시지. */
@@ -188,6 +191,12 @@ async function rememberRegistryS3Prefix(
   rememberTeamverProjectS3Prefix(workspaceId, projectId, fetched?.s3Prefix);
 }
 
+function assertRegistryS3PrefixCached(workspaceId: string, projectId: string): void {
+  if (!readTeamverProjectS3Prefix(workspaceId, projectId)?.trim()) {
+    throw new TeamverProjectRegistryError("teamver_project_s3_prefix_required");
+  }
+}
+
 export async function registerTeamverProjectIfNeeded(
   project: Pick<Project, "id" | "name">,
   options?: { skipBootWait?: boolean; retryDelaysMs?: readonly number[] },
@@ -221,12 +230,14 @@ export async function registerTeamverProjectIfNeeded(
       invalidateRegisteredIdsCache();
       primeFeAccessAllowed(project.id, workspaceId);
       await rememberRegistryS3Prefix(project.id, workspaceId, registered);
+      assertRegistryS3PrefixCached(workspaceId, project.id);
       return;
     } catch (err) {
       if (err instanceof NetworkError && err.status === 409) {
         invalidateRegisteredIdsCache();
         primeFeAccessAllowed(project.id, workspaceId);
         await rememberRegistryS3Prefix(project.id, workspaceId);
+        assertRegistryS3PrefixCached(workspaceId, project.id);
         return;
       }
       const delayMs = retryDelaysMs[attempt];

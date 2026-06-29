@@ -81,6 +81,21 @@ describe('scanRunEventsForUsageAnalytics', () => {
     expect(result.cache_hit_ratio).toBeCloseTo(250 / 1350);
   });
 
+  it('reads model from embed BYOK requesting status when usage never arrives', () => {
+    const result = scanRunEventsForUsageAnalytics(
+      [
+        {
+          event: 'agent',
+          data: { type: 'status', label: 'requesting', detail: 'claude-sonnet-4-5' },
+        },
+      ],
+      '',
+      0,
+    );
+
+    expect(result.agent_reported_model).toBe('claude-sonnet-4-5');
+  });
+
   it('reads OpenAI-style cached prompt token details', () => {
     const result = scanRunEventsForUsageAnalytics(
       [

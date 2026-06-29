@@ -19,10 +19,17 @@ vi.mock('../../src/teamver/projectRegistry', () => ({
 }));
 
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
+import { resetDaemonAppVersionCacheForTests, fetchDaemonAppVersion } from '../../src/teamver/daemonAppVersion';
 import {
   listRecentProjects,
+  listTemplates,
   resetListRecentProjectsInflightForTests,
+  resetListTemplatesInflightForTests,
 } from '../../src/state/projects';
+import {
+  fetchDaemonConfig,
+  resetFetchDaemonConfigInflightForTests,
+} from '../../src/state/config';
 import {
   listProjectRuns,
   resetListProjectRunsInflightForTests,
@@ -32,6 +39,9 @@ describe('boot fetch dedup', () => {
   beforeEach(() => {
     resetListRecentProjectsInflightForTests();
     resetListProjectRunsInflightForTests();
+    resetListTemplatesInflightForTests();
+    resetFetchDaemonConfigInflightForTests();
+    resetDaemonAppVersionCacheForTests();
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -70,6 +80,48 @@ describe('boot fetch dedup', () => {
 
     const first = listProjectRuns();
     const second = listProjectRuns();
+    await Promise.all([first, second]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces concurrent listTemplates calls', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ templates: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const first = listTemplates();
+    const second = listTemplates();
+    await Promise.all([first, second]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces concurrent fetchDaemonConfig calls', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ config: { onboardingCompleted: true } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const first = fetchDaemonConfig();
+    const second = fetchDaemonConfig();
+    await Promise.all([first, second]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces concurrent fetchDaemonAppVersion calls', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ version: { version: '1.2.3' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const first = fetchDaemonAppVersion();
+    const second = fetchDaemonAppVersion();
     await Promise.all([first, second]);
     expect(fetch).toHaveBeenCalledTimes(1);
   });

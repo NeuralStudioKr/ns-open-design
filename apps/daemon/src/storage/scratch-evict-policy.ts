@@ -11,6 +11,12 @@ function scratchEvictAfterRunEnabled(): boolean {
   return process.env.OD_SCRATCH_EVICT_AFTER_RUN === '1';
 }
 
+/** When `0` (default), BYOK proxy stream end keeps scratch warm for the next turn. */
+function scratchEvictAfterByokTurnEnabled(): boolean {
+  const raw = (process.env.OD_SCRATCH_EVICT_AFTER_BYOK_TURN ?? '').trim();
+  return raw === '1' || raw.toLowerCase() === 'true';
+}
+
 /**
  * Run-end scratch eviction with S3 SSOT guard.
  *
@@ -24,10 +30,23 @@ export async function safelyEvictScratchAfterRun(options: {
   remote: ProjectStorage;
   runStartTimeMs: number;
   syncResult: SyncUpCounts;
+  /** True for embed BYOK proxy streams (`byok-proxy-*` run ids). */
+  isByokProxyRun?: boolean;
 }): Promise<void> {
-  const { storage, projectId, remote, runStartTimeMs, syncResult } = options;
+  const { storage, projectId, remote, runStartTimeMs, syncResult, isByokProxyRun } = options;
 
   if (!scratchEvictAfterRunEnabled()) return;
+
+  if (isByokProxyRun && !scratchEvictAfterByokTurnEnabled()) {
+    console.info(
+      JSON.stringify({
+        metric: 'od_scratch_evict_skipped_byok_turn',
+        projectId,
+        reason: 'OD_SCRATCH_EVICT_AFTER_BYOK_TURN=0',
+      }),
+    );
+    return;
+  }
 
   if (syncResult.failed > 0) {
     console.warn(

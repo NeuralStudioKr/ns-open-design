@@ -67,6 +67,16 @@ export type ProjectMaterializationRuntime = {
   getActiveRunCount: (projectId: string) => number;
   /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
   dispose: () => void;
+  /**
+   * Await in-flight `afterChatRun` work started by `wrapFinish` (SIGTERM /
+   * server close). Safe to call when the set is empty.
+   */
+  drainAfterChatRun: () => Promise<void>;
+  /** Boot-time scratch orphans — force one sync-up on next lazy persist. */
+  markBootOrphanProject: (projectId: string) => void;
+  consumeBootOrphanProject: (projectId: string) => boolean;
+  /** Boot orphan pending — bypass lazy sync-down TTL until recovered. */
+  hasBootOrphanProject: (projectId: string) => boolean;
 };
 
 function runEndSyncUpRetryAttempts(): number {
@@ -103,6 +113,10 @@ export function createProjectMaterializationRuntime(
   const projectStickyRemote = new Map<string, ProjectStorage>();
   /** Projects whose last sync-up reported failures — idle evict must retain scratch. */
   const projectSyncFailed = new Set<string>();
+  /** In-flight run-end sync-up promises — drained on daemon shutdown. */
+  const activeAfterChatRunPromises = new Set<Promise<void>>();
+  /** Scratch projects found at boot without sticky remote — one forced sync-up. */
+  const bootOrphanProjects = new Set<string>();
 
   function rememberProjectRemote(projectId: string, remote: ProjectStorage): void {
     const id = projectId.trim();
@@ -275,8 +289,22 @@ export function createProjectMaterializationRuntime(
       }
       try {
         const remote = await resolveRunRemote(run, projectId);
-        projectTenantRemote.set(projectId, remote);
-        rememberProjectRemote(projectId, remote);
+        const pinned = projectTenantRemote.get(projectId);
+        if (pinned && pinned !== remote) {
+          console.warn(
+            JSON.stringify({
+              metric: 'od_byok_concurrent_remote_mismatch',
+              projectId,
+              runId: typeof run.id === 'string' ? run.id : undefined,
+            }),
+          );
+          run.teamverRemote = pinned;
+          return;
+        }
+        if (!pinned) {
+          projectTenantRemote.set(projectId, remote);
+          rememberProjectRemote(projectId, remote);
+        }
       } catch (err) {
         // Roll back the bookkeeping we just installed so the project does
         // not stay pinned-active when the caller fails the run.
@@ -392,6 +420,8 @@ export function createProjectMaterializationRuntime(
             remote,
             runStartTimeMs: startedAt,
             syncResult: result,
+            isByokProxyRun:
+              typeof run.id === 'string' && run.id.startsWith('byok-proxy-'),
           });
           if (result.failed === 0) {
             clearProjectSyncFailed(projectId);
@@ -427,9 +457,35 @@ export function createProjectMaterializationRuntime(
   function wrapFinish<T extends (...args: unknown[]) => unknown>(finish: T): T {
     return ((run: RunLike, ...rest: unknown[]) => {
       const result = finish(run, ...rest);
-      void afterChatRun(run);
+      const promise = afterChatRun(run);
+      activeAfterChatRunPromises.add(promise);
+      void promise.finally(() => {
+        activeAfterChatRunPromises.delete(promise);
+      });
       return result;
     }) as T;
+  }
+
+  async function drainAfterChatRun(): Promise<void> {
+    if (activeAfterChatRunPromises.size === 0) return;
+    await Promise.allSettled([...activeAfterChatRunPromises]);
+  }
+
+  function markBootOrphanProject(projectId: string): void {
+    const id = projectId.trim();
+    if (!id) return;
+    bootOrphanProjects.add(id);
+  }
+
+  function consumeBootOrphanProject(projectId: string): boolean {
+    const id = projectId.trim();
+    if (!id || !bootOrphanProjects.has(id)) return false;
+    bootOrphanProjects.delete(id);
+    return true;
+  }
+
+  function hasBootOrphanProject(projectId: string): boolean {
+    return bootOrphanProjects.has(projectId.trim());
   }
 
   async function emitScratchDiskUsageMarker(
@@ -636,5 +692,9 @@ export function createProjectMaterializationRuntime(
     forgetProjectRemote,
     getActiveRunCount,
     dispose,
+    drainAfterChatRun,
+    markBootOrphanProject,
+    consumeBootOrphanProject,
+    hasBootOrphanProject,
   };
 }

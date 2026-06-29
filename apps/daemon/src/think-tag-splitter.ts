@@ -16,6 +16,21 @@ export function stripLeakedPseudoToolXmlComplete(text: string): string {
 
 const REDACTED_THINKING_TAG = "redacted_thinking";
 
+/** Cap unclosed redacted_thinking blocks so a missing close tag cannot grow without bound. */
+const OPEN_THINK_CAP_BYTES = 64 * 1024;
+
+function sliceUtf8ByBytes(text: string, maxBytes: number): { head: string; tail: string } {
+  if (maxBytes <= 0) return { head: '', tail: text };
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length <= maxBytes) return { head: text, tail: '' };
+  let end = maxBytes;
+  while (end > 0 && (buf[end]! & 0xc0) === 0x80) end -= 1;
+  return {
+    head: buf.subarray(0, end).toString('utf8'),
+    tail: buf.subarray(end).toString('utf8'),
+  };
+}
+
 /** Streaming-safe splitter for MiniMax redacted_thinking markers in delta.content. */
 export function createThinkTagSplitter(
   onThinkingChunk?: (chunk: string) => void,
@@ -27,6 +42,7 @@ export function createThinkTagSplitter(
   const CLOSE = `</${REDACTED_THINKING_TAG}>`;
   let inThink = false;
   let buffer = "";
+  let thinkOpenBytes = 0;
 
   const partialTokenSuffix = (text: string, token: string): number => {
     const max = Math.min(text.length, token.length - 1);
@@ -59,28 +75,44 @@ export function createThinkTagSplitter(
         visible += working.slice(0, openIdx);
         working = working.slice(openIdx + OPEN.length);
         inThink = true;
+        thinkOpenBytes = 0;
         continue;
       }
 
       const closeIdx = working.indexOf(CLOSE);
       if (closeIdx === -1) {
         const partial = partialTokenSuffix(working, CLOSE);
-        if (partial > 0) {
-          const chunk = working.slice(0, working.length - partial);
-          thinking += chunk;
-          if (onThinkingChunk && chunk) onThinkingChunk(chunk);
-          buffer = working.slice(working.length - partial);
-        } else {
-          thinking += working;
-          if (onThinkingChunk && working) onThinkingChunk(working);
+        const chunk = partial > 0
+          ? working.slice(0, working.length - partial)
+          : working;
+        const held = partial > 0 ? working.slice(working.length - partial) : '';
+
+        const chunkBytes = Buffer.byteLength(chunk, 'utf8');
+        if (thinkOpenBytes + chunkBytes > OPEN_THINK_CAP_BYTES) {
+          const budget = Math.max(0, OPEN_THINK_CAP_BYTES - thinkOpenBytes);
+          const { head, tail } = sliceUtf8ByBytes(chunk, budget);
+          thinking += head;
+          if (onThinkingChunk && head) onThinkingChunk(head);
+          visible += tail + held;
+          inThink = false;
+          thinkOpenBytes = 0;
+          buffer = '';
+          break;
         }
+
+        thinkOpenBytes += chunkBytes;
+        thinking += chunk;
+        if (onThinkingChunk && chunk) onThinkingChunk(chunk);
+        buffer = held;
         break;
       }
       const chunk = working.slice(0, closeIdx);
+      thinkOpenBytes += Buffer.byteLength(chunk, 'utf8');
       thinking += chunk;
       if (onThinkingChunk && chunk) onThinkingChunk(chunk);
       working = working.slice(closeIdx + CLOSE.length);
       inThink = false;
+      thinkOpenBytes = 0;
     }
 
     return { visible, thinking: onThinkingChunk ? "" : thinking };

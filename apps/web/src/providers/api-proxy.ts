@@ -15,6 +15,7 @@ import {
   hasChatApiCredentials,
   usesServerManagedChatApiKey,
 } from '../teamver/chatApiCredentials';
+import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
 
 /**
  * Optional per-request context that some protocols thread into the
@@ -60,6 +61,7 @@ export async function streamProxyEndpoint(
     const resp = await fetchTeamverDaemon(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      teamverProjectId: context?.projectId,
       body: JSON.stringify({
         baseUrl: cfg.baseUrl,
         ...(managed ? { useManagedApiKey: true } : { apiKey: cfg.apiKey }),
@@ -92,6 +94,31 @@ export async function streamProxyEndpoint(
       const text = await resp.text().catch(() => '');
       handlers.onError(buildProxyResponseError(resp.status, text));
       return;
+    }
+
+    // Embed BYOK cancellation policy (PR1 §3.5): the daemon hands us a
+    // streamId via the `X-Stream-Id` header. When the caller signals an
+    // **explicit Stop** (handleStop / onStop pass
+    // `EXPLICIT_PROXY_STOP_REASON` to `controller.abort(reason)`), fire
+    // `POST /api/proxy/abort` with `keepalive: true` so the daemon
+    // cancels the upstream LLM fetch. Any other abort reason (page
+    // exit, route change, supersession) intentionally lets the daemon
+    // drain the upstream so background sync-up commits scratch writes.
+    const proxyStreamId = resp.headers.get('x-stream-id') || resp.headers.get('X-Stream-Id') || '';
+    if (proxyStreamId) {
+      const onSignalAbort = () => {
+        // `signal.reason` carries whatever the caller passed to
+        // `controller.abort(reason)`; equality with the explicit-stop
+        // sentinel is the only safe distinction the daemon can rely on.
+        if ((signal as AbortSignal).reason === EXPLICIT_PROXY_STOP_REASON) {
+          requestProxyAbort(proxyStreamId);
+        }
+      };
+      if (signal.aborted) {
+        onSignalAbort();
+      } else {
+        signal.addEventListener('abort', onSignalAbort, { once: true });
+      }
     }
 
     const reader = resp.body.getReader();

@@ -28,6 +28,7 @@ import { questionFormForSlideOnlyDisplay } from '../teamver/branding/embedSlideO
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
+import { EXPLICIT_PROXY_STOP_REASON } from '../providers/proxyAbort';
 import {
   fetchChatRunStatus,
   fetchVelaLoginStatus,
@@ -97,6 +98,7 @@ import {
   apiProtocolModelLabel,
   usesAnthropicProxy,
 } from '../utils/apiProtocol';
+import { cleanupByokRetryArtifacts } from '../runtime/byok-retry-artifact-gc';
 import { playSound, showCompletionNotification } from '../utils/notifications';
 import { randomUUID } from '../utils/uuid';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
@@ -3257,6 +3259,18 @@ export function ProjectView({
         ? resolveRetryTarget(messages, meta.retryOfAssistantId)
         : null;
       if (meta?.retryOfAssistantId && !retryTarget) return false;
+      if (retryTarget && config.mode === 'api') {
+        try {
+          const deleted = await cleanupByokRetryArtifacts(
+            project.id,
+            projectFiles,
+            retryTarget.failedAssistant,
+          );
+          if (deleted.length > 0) await refreshProjectFiles();
+        } catch {
+          // Best-effort GC — retry must not block on stale artifact cleanup.
+        }
+      }
       const runContext = meta?.context ?? retryTarget?.userMsg.runContext;
       const historyBase = retryTarget ? retryTarget.priorMessages : baseMessages ?? messages;
       if (
@@ -4091,6 +4105,11 @@ export function ProjectView({
           onError: handlers.onError,
         }, {
           projectId: project.id,
+          // Daemon-side billing reconciliation (PR1 §3.6): the proxy stages
+          // usage SSE frames keyed by this id so the terminal message PUT
+          // can finalize Strategy-B billing even if the FE drops the PUT
+          // (browser close / network hiccup) after receiving usage.
+          assistantMessageId: assistantId,
           // SenseAudio BYOK chat reads this to pre-fill the tool param's
           // default model. Prefer the live composer override; fall back
           // to the Settings default when the composer dropdown is on
@@ -4161,16 +4180,23 @@ export function ProjectView({
     const stoppedAt = Date.now();
     cancelSendTextBuffer(true);
     cancelReattachTextBuffers(true);
-    cancelRef.current?.abort();
+    // BYOK proxy cancellation policy (PR1 §3.5): the explicit Stop
+    // button is the ONLY abort path that should propagate to the
+    // upstream LLM fetch on the daemon. We mark the abort reason so
+    // `streamProxyEndpoint` can issue `POST /api/proxy/abort` for this
+    // class of cancellation only. Page-exit / supersede paths abort
+    // without a reason so the daemon lets the stream drain naturally
+    // (background scratch sync-up still runs at run-end).
+    cancelRef.current?.abort(EXPLICIT_PROXY_STOP_REASON);
     cancelRef.current = null;
     for (const controller of reattachCancelControllersRef.current.values()) {
-      controller.abort();
+      controller.abort(EXPLICIT_PROXY_STOP_REASON);
     }
     reattachCancelControllersRef.current.clear();
-    abortRef.current?.abort();
+    abortRef.current?.abort(EXPLICIT_PROXY_STOP_REASON);
     abortRef.current = null;
     for (const controller of reattachControllersRef.current.values()) {
-      controller.abort();
+      controller.abort(EXPLICIT_PROXY_STOP_REASON);
     }
     reattachControllersRef.current.clear();
     setStreaming(false);

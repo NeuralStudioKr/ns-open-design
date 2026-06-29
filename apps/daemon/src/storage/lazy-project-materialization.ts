@@ -152,6 +152,27 @@ export function createProjectStorageAccessHooks(
     }
   }
 
+  async function maybeSyncBootOrphan(req: Request, projectId: string): Promise<boolean> {
+    if (!materializationRuntime.consumeBootOrphanProject(projectId)) return false;
+    console.info(
+      JSON.stringify({
+        metric: 'od_scratch_orphan_boot_sync_up',
+        projectId,
+      }),
+    );
+    const remote = await resolveRemote(req, projectId);
+    const result = await storage.syncUp(projectId, remote, 0);
+    console.info(
+      `[project-materialization] boot orphan sync-up ${projectId}: uploaded=${result.uploaded} skipped=${result.skipped} deleted=${result.deleted} failed=${result.failed}`,
+    );
+    if (result.failed > 0) {
+      materializationRuntime.markProjectSyncFailed(projectId);
+      throw new Error(`project_storage_boot_orphan_sync_failed:${result.failed}`);
+    }
+    materializationRuntime.clearProjectSyncFailed(projectId);
+    return true;
+  }
+
   async function ensureMaterialized(req: Request, projectId: string): Promise<void> {
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
@@ -176,7 +197,8 @@ export function createProjectStorageAccessHooks(
     const ttl = lazySyncTtlMs();
     const now = Date.now();
     const previous = lastSyncAt.get(trimmedId) ?? 0;
-    const forceRefresh = materializationRuntime.isProjectSyncFailed(trimmedId);
+    const forceRefresh = materializationRuntime.isProjectSyncFailed(trimmedId)
+      || materializationRuntime.hasBootOrphanProject(trimmedId);
     if (!forceRefresh && ttl > 0 && now - previous < ttl) return;
 
     const pending = inflight.get(trimmedId);
@@ -208,6 +230,7 @@ export function createProjectStorageAccessHooks(
               }
               materializationRuntime.clearProjectSyncFailed(trimmedId);
             }
+            await maybeSyncBootOrphan(req, trimmedId);
           });
           return;
         } catch (err) {
@@ -273,6 +296,9 @@ export function createProjectStorageAccessHooks(
 
     const runPersist = async (): Promise<boolean> => {
       try {
+        if (await maybeSyncBootOrphan(req, trimmedId)) {
+          return true;
+        }
         const remote = await resolveRemote(req, trimmedId);
         // runStart=0 → upload all scratch files (non-run API writes).
         const result = await storage.syncUp(trimmedId, remote, 0);

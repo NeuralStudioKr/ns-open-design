@@ -70,6 +70,7 @@ import {
 import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
 import {
   completeTeamverEmbedBoot,
+  isTeamverEmbedBootComplete,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
@@ -601,11 +602,11 @@ function AppInner() {
   // Re-fetch design-api `runtime-config` after workspace switch / pageshow so
   // BE env rotations propagate without a full reload. Skips persist/state when
   // the merge is a no-op (same key/protocol/baseUrl/model).
-  const reloadTeamverRuntimeConfig = useCallback(async () => {
+  const reloadTeamverRuntimeConfig = useCallback(async (options?: { force?: boolean }) => {
     if (!isTeamverEmbedMode()) return;
     try {
       const prevConfig = latestPersistedConfigRef.current;
-      const merged = await reloadTeamverRuntimeConfigIntoAppConfig(prevConfig);
+      const merged = await reloadTeamverRuntimeConfigIntoAppConfig(prevConfig, options);
       if (merged === prevConfig) return;
       const locked = saveConfig(merged);
       latestPersistedConfigRef.current = locked;
@@ -1455,6 +1456,7 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(() => {
+      if (!isTeamverEmbedBootComplete()) return;
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
@@ -1473,7 +1475,7 @@ function AppInner() {
         } catch (err) {
           console.warn("[teamver] registry sync on workspace switch failed", err);
         }
-        void reloadTeamverRuntimeConfig();
+        void reloadTeamverRuntimeConfig({ force: true });
         const request = beginProjectListRequest();
         setProjectsLoading(true);
         setProjects([]);
@@ -1490,26 +1492,7 @@ function AppInner() {
         setProjectsLoading(false);
         setWorkingDirError(null);
         warmEmbedProjectListCaches(result.projects);
-        const knownProjectIds = buildEmbedKnownProjectIds({
-          projectIds: result.projects.map((project) => project.id),
-          pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
-          locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
-        });
-        void listProjectRuns()
-          .then((runs) => {
-            seedEmbedRunTrackingFromRuns(
-              {
-                activeRunIds: activeRunIdsRef,
-                notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
-                wasActiveRun: wasActiveRunRef,
-                activeRunSignature: activeRunSignatureRef,
-                sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef,
-              },
-              runs,
-              filterRunsForEmbedKnownProjects(runs, knownProjectIds),
-            );
-          })
-          .catch(() => {});
+        window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
         const current = routeRef.current;
         if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
@@ -1573,7 +1556,7 @@ function AppInner() {
       void (async () => {
         setProjectsLoading(true);
         await refreshProjects();
-        void reloadTeamverRuntimeConfig();
+        void reloadTeamverRuntimeConfig({ force: true });
         setProjectsLoading(false);
       })();
     });

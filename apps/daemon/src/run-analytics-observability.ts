@@ -46,7 +46,16 @@ export interface RunUsageAnalytics {
   estimated_context_tokens?: number;
   cache_hit_ratio?: number;
   cache_token_source: 'anthropic' | 'openai' | 'unavailable';
-  token_count_source: 'provider_usage' | 'estimated' | 'unknown';
+  /**
+   * Provenance of the token counts. Mostly comes from upstream usage
+   * frames (`provider_usage`) or our heuristic estimator (`estimated`).
+   * `proxy_sse_staged` is used by the embed BYOK billing reconciliation
+   * map (`teamver-byok-usage-bridge.ts`) when the terminal message PUT
+   * scan returns zero tokens but the proxy stream emitted a usage SSE
+   * frame earlier in the same turn — the staged counts are then promoted
+   * into the design-api billing finalize payload.
+   */
+  token_count_source: 'provider_usage' | 'estimated' | 'unknown' | 'proxy_sse_staged';
   agent_reported_model: string | null;
 }
 
@@ -274,7 +283,14 @@ export function scanRunEventsForUsageAnalytics(
       !agentReportedModel &&
       ev?.event === 'agent' &&
       data?.type === 'status' &&
-      (data.label === 'model' || data.label === 'initializing')
+      (data.label === 'model' ||
+        data.label === 'initializing' ||
+        // Embed BYOK (mode=api) records the configured model on
+        // `{ label: 'requesting', detail: config.model }` before the
+        // proxy stream starts. Failed runs that die during materialization
+        // never emit a `usage` event — without this label the ledger falls
+        // through to `defaultByokModelName()` → `unknown`.
+        data.label === 'requesting')
     ) {
       const candidate =
         typeof data.model === 'string'

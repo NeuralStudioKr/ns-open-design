@@ -1,6 +1,6 @@
 import type { AppConfig, ChatMessage } from '../types';
 import type { StreamHandlers } from './anthropic';
-import { streamProxyEndpoint } from './api-proxy';
+import { streamProxyEndpoint, type ProxyContext } from './api-proxy';
 
 export async function streamMessageGoogle(
   cfg: AppConfig,
@@ -8,6 +8,7 @@ export async function streamMessageGoogle(
   history: ChatMessage[],
   signal: AbortSignal,
   handlers: StreamHandlers,
+  context?: ProxyContext,
 ): Promise<void> {
-  return streamProxyEndpoint('/api/proxy/google/stream', cfg, system, history, signal, handlers);
+  return streamProxyEndpoint('/api/proxy/google/stream', cfg, system, history, signal, handlers, context);
 }

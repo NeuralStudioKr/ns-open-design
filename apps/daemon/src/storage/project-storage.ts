@@ -104,6 +104,17 @@ export class LocalProjectStorage implements ProjectStorage {
     };
   }
 
+  /**
+   * Restore filesystem mtime after writeFile (sync-down preserves remote
+   * lastModified so run-end sync-up can skip unchanged files).
+   */
+  async setFileMtime(projectId: string, relpath: string, mtimeMs: number): Promise<void> {
+    if (!Number.isFinite(mtimeMs) || mtimeMs <= 0) return;
+    const abs = this.resolvePath(projectId, relpath);
+    const sec = mtimeMs / 1000;
+    await fsp.utimes(abs, sec, sec);
+  }
+
   async listFiles(projectId: string): Promise<ProjectFileMeta[]> {
     const root = path.join(this.projectsRoot, projectId);
     const out: ProjectFileMeta[] = [];

@@ -258,7 +258,11 @@ import {
   createProjectMaterializationRuntime,
   type ProjectMaterializationRuntime,
 } from './storage/project-materialization-runtime.js';
-import { resolveProjectStorageLayout } from './storage/project-storage-layout.js';
+import {
+  emitScratchOrphanAtBootMarker,
+  registerBootOrphanProjects,
+  scanScratchOrphanProjectIds,
+} from './storage/scratch-boot-recovery.js';
 import {
   allowsS3ScratchFallback,
   describeStorageStartupError,
@@ -267,6 +271,7 @@ import {
 import {
   createTeamverProjectAccessMiddleware,
   readTeamverIdentityFromRequest,
+  readTeamverS3PrefixFromRequest,
   teamverDesignApiBaseUrl,
 } from './teamver-project-access.js';
 import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
@@ -4919,7 +4924,11 @@ export function bufferedAntigravityGeminiFirstTokenAt(
 
 function withTeamverRunIdentity(req, meta) {
   const teamverIdentity = readTeamverIdentityFromRequest(req);
-  return teamverIdentity ? { ...meta, teamverIdentity } : meta;
+  const teamverS3Prefix = readTeamverS3PrefixFromRequest(req);
+  const extra = {};
+  if (teamverIdentity) extra.teamverIdentity = teamverIdentity;
+  if (teamverS3Prefix) extra.teamverS3Prefix = teamverS3Prefix;
+  return Object.keys(extra).length > 0 ? { ...meta, ...extra } : meta;
 }
 
 export async function startServer({
@@ -6090,6 +6099,14 @@ export async function startServer({
       console.info(
         `[project-materialization] S3 mode enabled — scratch=${PROJECTS_DIR} bucket=${process.env.OD_S3_BUCKET ?? ''}`,
       );
+      const bootOrphans = await scanScratchOrphanProjectIds(PROJECTS_DIR);
+      const pendingBootOrphans: string[] = [];
+      for (const projectId of bootOrphans) {
+        if (projectMaterialization.getProjectRemote(projectId)) continue;
+        emitScratchOrphanAtBootMarker(projectId);
+        pendingBootOrphans.push(projectId);
+      }
+      registerBootOrphanProjects(projectMaterialization, pendingBootOrphans);
     } catch (err) {
       const reason = describeStorageStartupError(err);
       const fallbackAllowed = allowsS3ScratchFallback(process.env);
@@ -6710,6 +6727,7 @@ export async function startServer({
     auth: authDeps,
     liveArtifacts: liveArtifactDeps,
     projectStore: projectStoreDeps,
+    projectStorageHooks,
   });
   registerDesignSystemToolRoutes(app, {
     auth: authDeps,
@@ -7491,6 +7509,12 @@ export async function startServer({
       if (!workspace) {
         return res.status(404).json({ error: 'editable design system not found' });
       }
+      scheduleProjectStoragePersistAfterResponse(
+        projectStorageHooks,
+        req,
+        res,
+        workspace.project.id,
+      );
       res.status(201).json(workspace);
     } catch (err) {
       res.status(400).json({ error: String(err) });
@@ -10460,6 +10484,7 @@ export async function startServer({
         sendApiError(res, 404, 'NOT_FOUND', 'plugin candidate not found');
         return;
       }
+      scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, req.params.id);
       res.status(result.ok ? 200 : 422).json(result);
     } catch (err) {
       res.status(400).json({ ok: false, message: String(err?.message || err) });
@@ -10516,6 +10541,7 @@ export async function startServer({
         task.endedAt = Date.now();
         notifyPluginShareTaskWaiters(task);
       });
+      scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, req.params.id);
       res.status(202).json({
         taskId,
         action,
@@ -16195,6 +16221,7 @@ export async function startServer({
       // while scratch still reflects the last run's footprint (before
       // active-run teardown triggers sync-up / evict).
       projectMaterialization.dispose();
+      await projectMaterialization.drainAfterChatRun();
       await design.runs.shutdownActive({ graceMs: resolveChatRunShutdownGraceMs() });
       await terminalService.shutdownActive();
       await design.analytics.shutdown();

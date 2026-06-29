@@ -66,13 +66,13 @@ export async function streamMessage(
   // Prefer the explicit Settings protocol; keep the legacy heuristic as a
   // fallback for configs saved before apiProtocol existed.
   if (cfg.apiProtocol === 'azure') {
-    return streamMessageAzure(cfg, system, history, signal, handlers);
+    return streamMessageAzure(cfg, system, history, signal, handlers, context);
   }
   if (cfg.apiProtocol === 'ollama') {
-    return streamMessageOllama(cfg, system, history, signal, handlers);
+    return streamMessageOllama(cfg, system, history, signal, handlers, context);
   }
   if (cfg.apiProtocol === 'google') {
-    return streamMessageGoogle(cfg, system, history, signal, handlers);
+    return streamMessageGoogle(cfg, system, history, signal, handlers, context);
   }
   if (cfg.apiProtocol === 'senseaudio') {
     return streamMessageSenseAudio(cfg, system, history, signal, handlers, context);
@@ -81,7 +81,7 @@ export async function streamMessage(
     return streamMessageAIHubMix(cfg, system, history, signal, handlers, context);
   }
   if (cfg.apiProtocol === 'openai' || (!cfg.apiProtocol && isOpenAICompatible(cfg.model, cfg.baseUrl))) {
-    return streamMessageOpenAI(cfg, system, history, signal, handlers);
+    return streamMessageOpenAI(cfg, system, history, signal, handlers, context);
   }
 
   if (usesAnthropicProxy(cfg)) {

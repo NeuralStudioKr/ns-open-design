@@ -435,6 +435,16 @@ async def publish_project_to_drive(
         raise NotFoundError("project_not_found")
     _ensure_project_access(row, auth)
 
+    workspace_id = require_workspace_context(auth)
+    await OdDaemonClient().sync_scratch_project(
+        row.od_project_id,
+        identity=OdDaemonIdentity(
+            user_id=auth.user_id,
+            workspace_id=workspace_id,
+            s3_prefix=row.s3_prefix,
+        ),
+    )
+
     access_token = auth.raw_token or extract_request_access_token(request)
     result = await publish_project(
         db,

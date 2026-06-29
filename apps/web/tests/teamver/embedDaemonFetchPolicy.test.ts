@@ -10,6 +10,7 @@ import {
   shouldFetchAihubmixMediaCatalog,
   shouldFetchAmrIntegrationApis,
   shouldFetchAppVersionAboutPanel,
+  shouldEagerLoadCommunityPluginPreviews,
   shouldFetchAutomationTaskApis,
   shouldFetchConnectorCatalog,
   shouldFetchMarketingCommunityApis,
@@ -39,6 +40,7 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchPromptTemplateCatalog()).toBe(true);
     expect(shouldFetchMediaProviderConfig()).toBe(true);
     expect(shouldFetchAppVersionAboutPanel()).toBe(true);
+    expect(shouldEagerLoadCommunityPluginPreviews()).toBe(true);
     expect(shouldShowOpenDesignPrivacyConsent()).toBe(true);
   });
 
@@ -56,6 +58,7 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchPromptTemplateCatalog()).toBe(false);
     expect(shouldFetchMediaProviderConfig()).toBe(false);
     expect(shouldFetchAppVersionAboutPanel()).toBe(false);
+    expect(shouldEagerLoadCommunityPluginPreviews()).toBe(false);
     expect(shouldShowOpenDesignPrivacyConsent()).toBe(false);
   });
 });

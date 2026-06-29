@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { Request } from 'express';
 
 import {
+  MANAGED_KEY_UNAVAILABLE,
   proxyApiKeyFailureToErrorCode,
   PROXY_API_KEY_MISSING_ERROR_CODE,
   resolveProxyStreamApiKey,
@@ -86,5 +87,11 @@ describe('resolveProxyStreamApiKey', () => {
     const mapped = proxyApiKeyFailureToErrorCode(result.failure);
     expect(mapped.code).toBe(PROXY_API_KEY_MISSING_ERROR_CODE);
     expect(mapped.httpStatus).toBe(503);
+  });
+
+  it('maps managed identity failures to MANAGED_KEY_UNAVAILABLE (400)', () => {
+    const mapped = proxyApiKeyFailureToErrorCode({ reason: 'managed_identity_missing' });
+    expect(mapped.code).toBe(MANAGED_KEY_UNAVAILABLE);
+    expect(mapped.httpStatus).toBe(400);
   });
 });

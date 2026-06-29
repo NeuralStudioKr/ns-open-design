@@ -139,6 +139,9 @@ export class MaterializingProjectStorage implements ProjectStorage {
     for (const file of remoteFiles) {
       const body = await withSyncDownRetry(() => remote.readFile(projectId, file.path));
       await this.scratch.writeFile(projectId, file.path, body);
+      if (file.mtimeMs > 0 && Number.isFinite(file.mtimeMs)) {
+        await this.scratch.setFileMtime(projectId, file.path, file.mtimeMs);
+      }
       files += 1;
     }
     return { files };

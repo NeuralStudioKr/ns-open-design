@@ -243,7 +243,7 @@ design-api registry create가 내부적으로 `scratch/sync-up` 을 호출한다
 `{ telemetryFinalized: true, runStatus: succeeded|failed|canceled }` 이며 saved
 message 가 `runId` 없는 assistant (= BYOK terminal) 인 경우.
 
-**코드:** `apps/daemon/src/server.ts` — 메시지 PUT 라우터에서
+**코드:** `apps/daemon/src/project-routes.ts` — 메시지 PUT 핸들러에서
 `shouldReportByokUsageFromMessage` gate 통과 시 `reportByokTeamverUsageAndBillingFromDaemon` 와 함께
 `scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, projectId)` 호출.
 

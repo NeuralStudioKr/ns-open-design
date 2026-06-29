@@ -7,7 +7,7 @@
  */
 import type { AppConfig, ChatMessage } from '../types';
 import type { StreamHandlers } from './anthropic';
-import { streamProxyEndpoint } from './api-proxy';
+import { streamProxyEndpoint, type ProxyContext } from './api-proxy';
 
 export async function streamMessageOpenAI(
   cfg: AppConfig,
@@ -15,8 +15,12 @@ export async function streamMessageOpenAI(
   history: ChatMessage[],
   signal: AbortSignal,
   handlers: StreamHandlers,
+  // Forward context so the proxy body carries `projectId` (S3 sync) and
+  // `assistantMessageId` (daemon-side billing staging — PR1 §3.6). The
+  // daemon ignores unknown body fields if context is absent.
+  context?: ProxyContext,
 ): Promise<void> {
-  return streamProxyEndpoint('/api/proxy/openai/stream', cfg, system, history, signal, handlers);
+  return streamProxyEndpoint('/api/proxy/openai/stream', cfg, system, history, signal, handlers, context);
 }
 
 /**

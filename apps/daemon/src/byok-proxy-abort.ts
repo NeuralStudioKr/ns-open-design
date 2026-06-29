@@ -1,0 +1,206 @@
+import { randomUUID } from 'node:crypto';
+import type { Express, Request, Response } from 'express';
+
+/**
+ * Cancellation policy for embed BYOK proxy streams (PR1 §3.5).
+ *
+ * - **Explicit Stop**: the FE Stop button calls `POST /api/proxy/abort
+ *   { streamId }` (sent with `keepalive` so page navigation does not
+ *   strand the abort). The daemon looks up the registered
+ *   `AbortController` and aborts the upstream LLM `fetch()`. The
+ *   `afterChatRun` materialization hook still runs (sync-up commits any
+ *   tool writes the agent made up to the abort point).
+ * - **Page exit / connection drop**: `req.on('close')` does NOT call the
+ *   registered abort. The upstream stream is allowed to drain naturally
+ *   so background tool work (image generation, S3 writes) finishes and
+ *   the run-end sync-up commits to S3. The browser-side fetch is dead;
+ *   the daemon just absorbs the response.
+ *
+ * This separation matches the user's explicit cancellation policy from
+ * the audit decision: "작업을 stop 한 경우에는 stop. 페이지 이탈 등을
+ * 한 경우에는 백그라운드에서 실행."
+ *
+ * `streamId` is exposed to the FE via the `X-Stream-Id` response header
+ * (set before SSE streaming starts). Stale registry entries are dropped
+ * on `res.once('finish')` immediately and on `res.once('close')` after
+ * a short grace window so an in-flight Stop-button abort POST can still
+ * target the registry entry before it's removed.
+ */
+
+/**
+ * Grace window after `res.close` before the registry entry is removed.
+ * Bridges the race where the FE Stop button fires the abort POST and the
+ * local fetch abort in the same tick — `res.close` fires within a few ms
+ * and we want the daemon-side `POST /api/proxy/abort` (which lands a few
+ * ms later) to still find the entry. Page-exit paths don't send the
+ * abort POST at all, so the only effect there is that the entry sits in
+ * the map for `ABORT_CLOSE_GRACE_MS` longer before being dropped.
+ */
+const ABORT_CLOSE_GRACE_MS = 5_000;
+
+type RegisteredStream = {
+  controller: AbortController;
+  registeredAt: number;
+  workspaceId?: string;
+  projectId?: string;
+};
+
+const activeProxyStreams = new Map<string, RegisteredStream>();
+
+/**
+ * Maximum number of entries kept in the active stream registry. Each
+ * entry is small (~5 fields) but acts as a defense-in-depth bound — a
+ * registration leak (handler that forgets to clean up on close) cannot
+ * exhaust daemon heap. When the cap is reached, the oldest entry wins
+ * eviction and its controller is aborted as a safety measure (the
+ * upstream stream was almost certainly already orphaned).
+ */
+const MAX_ACTIVE_PROXY_STREAMS = 4096;
+
+function evictOldestIfFull(): void {
+  if (activeProxyStreams.size < MAX_ACTIVE_PROXY_STREAMS) return;
+  // Map iteration order is insertion order, so the first entry is the
+  // oldest. Abort and drop it.
+  const oldestKey = activeProxyStreams.keys().next().value;
+  if (!oldestKey) return;
+  const entry = activeProxyStreams.get(oldestKey);
+  activeProxyStreams.delete(oldestKey);
+  if (entry) {
+    try {
+      entry.controller.abort();
+    } catch {
+      // best-effort
+    }
+    console.warn(
+      JSON.stringify({
+        metric: 'od_byok_proxy_abort_registry_evict',
+        streamId: oldestKey,
+        ageMs: Date.now() - entry.registeredAt,
+        size: activeProxyStreams.size,
+      }),
+    );
+  }
+}
+
+export type ByokProxyAbortRegistration = {
+  streamId: string;
+  signal: AbortSignal;
+};
+
+/**
+ * Register a new abortable proxy stream for `res`. Emits the
+ * `X-Stream-Id` response header so the FE can subsequently target this
+ * stream for cancellation. Cleans up on `res.close` / `res.finish` to
+ * avoid leaking the controller for the lifetime of the daemon.
+ *
+ * Pass the returned `signal` into every upstream `fetch()` (and any
+ * downstream tool fetch) so the abort cascades end-to-end.
+ */
+export function registerByokProxyStream(
+  _req: Request,
+  res: Response,
+  meta?: { workspaceId?: string | null; projectId?: string | null },
+): ByokProxyAbortRegistration {
+  const streamId = randomUUID();
+  const controller = new AbortController();
+  evictOldestIfFull();
+  activeProxyStreams.set(streamId, {
+    controller,
+    registeredAt: Date.now(),
+    ...(meta?.workspaceId ? { workspaceId: meta.workspaceId } : {}),
+    ...(meta?.projectId ? { projectId: meta.projectId } : {}),
+  });
+  if (!res.headersSent) {
+    try {
+      res.setHeader('X-Stream-Id', streamId);
+    } catch {
+      // headersSent race — fine to skip; FE can still abort via
+      // its local AbortController, just not via the explicit endpoint.
+    }
+  }
+  let cleared = false;
+  const clearImmediate = () => {
+    if (cleared) return;
+    cleared = true;
+    activeProxyStreams.delete(streamId);
+  };
+  res.once('finish', clearImmediate);
+  res.once('close', () => {
+    if (cleared) return;
+    setTimeout(clearImmediate, ABORT_CLOSE_GRACE_MS).unref();
+  });
+  return { streamId, signal: controller.signal };
+}
+
+/**
+ * Trigger an upstream abort for `streamId`. Returns `true` when the
+ * stream was registered and the abort was called, `false` if the stream
+ * is unknown (already finished, never registered, or wrong id).
+ */
+export function abortByokProxyStream(streamId: string): boolean {
+  const entry = activeProxyStreams.get(streamId);
+  if (!entry) return false;
+  activeProxyStreams.delete(streamId);
+  try {
+    entry.controller.abort();
+  } catch {
+    return false;
+  }
+  console.info(
+    JSON.stringify({
+      metric: 'od_byok_proxy_aborted',
+      streamId,
+      ageMs: Date.now() - entry.registeredAt,
+      ...(entry.workspaceId ? { workspaceId: entry.workspaceId } : {}),
+      ...(entry.projectId ? { projectId: entry.projectId } : {}),
+    }),
+  );
+  return true;
+}
+
+/** @internal vitest — inspect the registry size. */
+export function activeByokProxyStreamCountForTests(): number {
+  return activeProxyStreams.size;
+}
+
+/** @internal vitest — reset the registry between cases. */
+export function resetByokProxyStreamRegistryForTests(): void {
+  for (const { controller } of activeProxyStreams.values()) {
+    try {
+      controller.abort();
+    } catch {
+      // ignore
+    }
+  }
+  activeProxyStreams.clear();
+}
+
+/**
+ * Returns an unbound `AbortSignal` substitute for handlers that opt out
+ * of registration (e.g. internal-only request paths that should never be
+ * cancelled from the FE). The signal is never aborted, so plumbing it
+ * into `fetch({ signal })` is a no-op rather than a bug.
+ */
+export function neverAbortedSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
+/**
+ * Register the `POST /api/proxy/abort` endpoint. Accepts a JSON body
+ * `{ streamId: string }`. Always answers 200 with `{ aborted: boolean }`
+ * — never 4xx on unknown streamId so the FE never has to special-case a
+ * race against natural completion (Stop click after the stream already
+ * ended is benign).
+ */
+export function registerByokProxyAbortRoute(app: Express): void {
+  app.post('/api/proxy/abort', (req, res) => {
+    const streamId =
+      typeof req.body?.streamId === 'string' ? req.body.streamId.trim() : '';
+    if (!streamId) {
+      res.status(400).json({ error: 'streamId required' });
+      return;
+    }
+    const aborted = abortByokProxyStream(streamId);
+    res.json({ aborted });
+  });
+}

@@ -869,15 +869,28 @@ export async function syncMediaProvidersToDaemon(
   }
 }
 
+let fetchDaemonConfigInflight: Promise<AppConfigPrefs | null> | null = null;
+
 export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
-  try {
-    const res = await fetch('/api/app-config');
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.config ?? null;
-  } catch {
-    return null;
-  }
+  if (fetchDaemonConfigInflight) return fetchDaemonConfigInflight;
+  fetchDaemonConfigInflight = (async () => {
+    try {
+      const res = await fetch('/api/app-config');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.config ?? null;
+    } catch {
+      return null;
+    } finally {
+      fetchDaemonConfigInflight = null;
+    }
+  })();
+  return fetchDaemonConfigInflight;
+}
+
+/** @internal vitest only */
+export function resetFetchDaemonConfigInflightForTests(): void {
+  fetchDaemonConfigInflight = null;
 }
 
 export async function syncConfigToDaemon(

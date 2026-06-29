@@ -45,6 +45,18 @@ import {
   readProxyBodyProjectId,
   type ByokProxyMaterializationHooks,
 } from './storage/byok-proxy-materialization.js';
+import {
+  createByokProxyUsageBillingStager,
+  type ByokProxyUsageStager,
+  type ByokProxyUsageStagePayload,
+} from './teamver-byok-usage-bridge.js';
+import {
+  registerByokProxyStream,
+  registerByokProxyAbortRoute,
+  type ByokProxyAbortRegistration,
+} from './byok-proxy-abort.js';
+import { tryAcquireWorkspaceProxySlot } from './byok-proxy-workspace-limit.js';
+import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -73,6 +85,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   const { sendApiError, createSseResponse } = ctx.http;
   const byokProxyMaterialization = ctx.byokProxyMaterialization ?? null;
 
+  // POST /api/proxy/abort — explicit FE Stop button cancellation channel.
+  // See `byok-proxy-abort.ts` for the cancellation policy (Stop = abort,
+  // page exit = let it finish in background). Registered once at app
+  // boot so the route is present before any proxy stream starts.
+  registerByokProxyAbortRoute(app);
+
   /**
    * Wire BYOK proxy stream materialization (sync-down at start, sync-up on
    * res.finish/close). Returns `true` when the caller may proceed with the
@@ -82,18 +100,71 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
    * When materialization is disabled or no projectId is present, returns
    * `true` (transparent passthrough preserves the legacy behaviour).
    */
+  /**
+   * Wire all per-stream infrastructure for a BYOK proxy request:
+   *   1. Daemon-side billing reconciliation stager (PR1 §3.6) — stored on
+   *      `res.locals.byokUsageStager`.
+   *   2. S3 materialization sync-down + sync-up hooks (PR1 §3.4).
+   *   3. AbortController registration for the FE Stop button (PR1 §3.5)
+   *      — stored on `res.locals.byokAbort` so each handler can plumb
+   *      `abort.signal` into its upstream `fetch()` calls.
+   *
+   * Returns `true` when the caller should proceed. Returns `false` when
+   * materialization begin failed under fail-fast mode (the 502 response
+   * was already written) — callers MUST `return` immediately.
+   */
   async function attachByokProxyMaterialization(
     req: Request,
     res: Response,
     proxyBody: Record<string, unknown>,
   ): Promise<boolean> {
-    if (!byokProxyMaterialization) return true;
-    const result = await byokProxyMaterialization.attachByokProxyStreamMaterialization(
-      req,
-      res,
-      readProxyBodyProjectId(proxyBody),
-    );
-    return result.ok;
+    const stager = createByokProxyUsageBillingStager(req, proxyBody);
+    if (stager) {
+      (res.locals as { byokUsageStager?: ByokProxyUsageStager }).byokUsageStager = stager;
+    }
+    if (byokProxyMaterialization) {
+      const result = await byokProxyMaterialization.attachByokProxyStreamMaterialization(
+        req,
+        res,
+        readProxyBodyProjectId(proxyBody),
+      );
+      if (!result.ok) return false;
+    }
+    // Register the abort controller AFTER materialization succeeds so a
+    // failed begin doesn't leave a registry entry that the FE Stop
+    // button could later target. Identity + projectId are stamped onto
+    // the registry entry so structured abort markers (CloudWatch metric
+    // filters) carry tenant attribution.
+    const identity = readTeamverIdentityFromRequest(req);
+    const workspaceSlot = tryAcquireWorkspaceProxySlot(identity?.workspaceId ?? null);
+    if (!workspaceSlot) {
+      sendApiError(
+        res,
+        429,
+        'TOO_MANY_REQUESTS',
+        'too many concurrent BYOK proxy streams for this workspace',
+      );
+      return false;
+    }
+    res.once('finish', () => workspaceSlot.release());
+    res.once('close', () => workspaceSlot.release());
+    const abort = registerByokProxyStream(req, res, {
+      workspaceId: identity?.workspaceId ?? null,
+      projectId: readProxyBodyProjectId(proxyBody) ?? null,
+    });
+    (res.locals as { byokAbort?: ByokProxyAbortRegistration }).byokAbort = abort;
+    return true;
+  }
+
+  /**
+   * Resolve the upstream `AbortSignal` for an active proxy handler. Used
+   * by each `fetch()` call site to enforce explicit-Stop cancellation
+   * without changing every helper's signature. Returns `undefined` when
+   * `attachByokProxyMaterialization` wasn't called (e.g. tests, internal
+   * paths) — `fetch({ signal: undefined })` is equivalent to no signal.
+   */
+  function byokProxyAbortSignalFromRes(res: Response): AbortSignal | undefined {
+    return (res.locals as { byokAbort?: ByokProxyAbortRegistration }).byokAbort?.signal;
   }
 
   /**
@@ -716,6 +787,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   }
 
   const sendProxyUsageIfPresent = (
+    res: Response,
     sse: ReturnType<typeof createSseResponse>,
     inputTokens: number,
     outputTokens: number,
@@ -741,6 +813,36 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         ...(extras?.stop_reason ? { stop_reason: extras.stop_reason } : {}),
         ...(extras?.api_protocol ? { api_protocol: extras.api_protocol } : {}),
       });
+      // Daemon-side billing reconciliation (PR1 §3.6). Each proxy handler
+      // installs `res.locals.byokUsageStager` via attachByokProxyMaterialization
+      // at request entry, keyed by the assistant message id. Stage the
+      // latest usage snapshot per turn so a later terminal-message PUT
+      // can finalize Strategy-B billing even when the FE dropped the PUT
+      // after receiving the usage SSE frame.
+      const stager = (res.locals as { byokUsageStager?: ByokProxyUsageStager }).byokUsageStager;
+      if (stager) {
+        const payload: ByokProxyUsageStagePayload = {
+          inputTokens,
+          outputTokens,
+        };
+        if (model) payload.model = model;
+        if (extras?.cache_read_input_tokens != null && extras.cache_read_input_tokens > 0) {
+          payload.cacheReadInputTokens = extras.cache_read_input_tokens;
+        }
+        if (extras?.cache_creation_input_tokens != null && extras.cache_creation_input_tokens > 0) {
+          payload.cacheCreationInputTokens = extras.cache_creation_input_tokens;
+        }
+        if (extras?.stop_reason) payload.stopReason = extras.stop_reason;
+        if (extras?.api_protocol) payload.apiProtocol = extras.api_protocol;
+        try {
+          stager(payload);
+        } catch (err) {
+          console.warn(
+            '[byok-billing-stager] stage failed:',
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
     }
   };
 
@@ -772,7 +874,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   const runAnthropicChatStream = async (
     res: any,
-    opts: { url: string; headers: Record<string, string>; payload: any; logTag: string },
+    opts: {
+      url: string;
+      headers: Record<string, string>;
+      payload: any;
+      logTag: string;
+      signal?: AbortSignal;
+    },
   ) => {
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -809,6 +917,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         headers: { 'Content-Type': 'application/json', ...opts.headers },
         body: JSON.stringify(opts.payload),
         redirect: 'error',
+        ...(opts.signal ? { signal: opts.signal } : {}),
       });
 
       if (!response.ok) {
@@ -833,7 +942,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           // Emit accumulated usage BEFORE the error so the FE proxy client
           // (api-proxy.ts) records it for billing — api-proxy handles the
           // `usage` frame before flowing onError into the run lifecycle.
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
           sendProxyError(sse, message, { details: data });
           ended = true;
           return true;
@@ -860,7 +969,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (event === 'content_block_delta' && typeof data.delta?.text === 'string') {
           guard.sendDelta(data.delta.text);
           if (guard.contaminated) {
-            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+            sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
             sse.send('end', {});
             ended = true;
             return true;
@@ -868,7 +977,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         if (event === 'message_stop') {
           guard.flushThinkTag();
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
           sse.send('end', {});
           ended = true;
           return true;
@@ -877,7 +986,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
-        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
         sse.send('end', {});
       }
       sse.end();
@@ -886,7 +995,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // Network drop or dispatcher error mid-stream: same rationale as the
       // upstream-error branch above. If message_start already populated the
       // accumulators, the user was already charged for input_tokens.
-      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -918,7 +1027,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   const runGeminiChatStream = async (
     res: any,
-    opts: { url: string; headers: Record<string, string>; payload: any; model: string; logTag: string },
+    opts: {
+      url: string;
+      headers: Record<string, string>;
+      payload: any;
+      model: string;
+      logTag: string;
+      signal?: AbortSignal;
+    },
   ) => {
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -936,6 +1052,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         headers: { 'Content-Type': 'application/json', ...opts.headers },
         body: JSON.stringify(opts.payload),
         redirect: 'error',
+        ...(opts.signal ? { signal: opts.signal } : {}),
       });
 
       if (!response.ok) {
@@ -957,7 +1074,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
           sendProxyError(sse, `Gemini error: ${streamError}`, { details: data });
           ended = true;
           return true;
@@ -981,7 +1098,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (delta) {
           guard.sendDelta(delta);
           if (guard.contaminated) {
-            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
+            sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
             sse.send('end', {});
             ended = true;
             return true;
@@ -989,7 +1106,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         const blockMessage = extractGeminiBlockMessage(data);
         if (blockMessage) {
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
           sendProxyError(sse, blockMessage, { details: data });
           ended = true;
           return true;
@@ -998,13 +1115,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
-        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[${opts.logTag}] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, opts.model);
+      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1145,11 +1262,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
     if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
+    const anthropicAbort = byokProxyAbortSignalFromRes(res);
     return runAnthropicChatStream(res, {
       url,
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       payload: buildAnthropicChatPayload(model, systemPrompt, messages, maxTokens),
       logTag: 'proxy:anthropic',
+      ...(anthropicAbort ? { signal: anthropicAbort } : {}),
     });
   });
 
@@ -1214,6 +1333,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // runAnthropicChatStream above for the same rationale.
     let inputTokens = 0;
     let outputTokens = 0;
+    const upstreamAbortSignal = byokProxyAbortSignalFromRes(res);
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model });
@@ -1230,6 +1350,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         },
         body: JSON.stringify(payload),
         redirect: 'error',
+        ...(upstreamAbortSignal ? { signal: upstreamAbortSignal } : {}),
       });
 
       if (!response.ok) {
@@ -1250,7 +1371,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       await streamUpstreamSse(response, ({ payload, data }: any) => {
         if (payload === '[DONE]') {
           guard.flushThinkTag();
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
           return true;
@@ -1258,7 +1379,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
           sendProxyError(sse, `Provider error: ${streamError}`, { details: data });
           ended = true;
           return true;
@@ -1272,7 +1393,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (delta) { 
           guard.sendDelta(delta); 
           if (guard.contaminated) { 
-            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+            sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
             sse.send('end', {}); 
             ended = true; 
             return true; 
@@ -1282,13 +1403,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
-        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:openai] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1380,6 +1501,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // failure doesn't drop the input_tokens the user was already charged.
     let inputTokens = 0;
     let outputTokens = 0;
+    const upstreamAbortSignal = byokProxyAbortSignalFromRes(res);
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model });
@@ -1391,6 +1513,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           'api-key': apiKey,
         },
         redirect: 'error' as const,
+        ...(upstreamAbortSignal ? { signal: upstreamAbortSignal } : {}),
       };
       let response = await fetch(url, {
         ...requestInit,
@@ -1434,7 +1557,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       await streamUpstreamSse(response, ({ payload: ssePayload, data }: any) => {
         if (ssePayload === '[DONE]') {
           guard.flushThinkTag();
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
           return true;
@@ -1442,7 +1565,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
           sendProxyError(sse, `Azure error: ${streamError}`, { details: data });
           ended = true;
           return true;
@@ -1455,7 +1578,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const delta = extractOpenAIText(data);
         if (delta) { guard.sendDelta(delta); 
           if (guard.contaminated) { 
-            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+            sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
             sse.send('end', {}); 
             ended = true; 
             return true; 
@@ -1465,13 +1588,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
-        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:azure] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1508,12 +1631,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
     if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
+    const geminiAbort = byokProxyAbortSignalFromRes(res);
     return runGeminiChatStream(res, {
       url,
       headers: { 'x-goog-api-key': apiKey },
       payload: buildGeminiChatPayload(systemPrompt, messages, maxTokens),
       model,
       logTag: 'proxy:google',
+      ...(geminiAbort ? { signal: geminiAbort } : {}),
     });
   });
 
@@ -1562,6 +1687,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     // mid-stream are common — covering both paths keeps billing correct.
     let inputTokens = 0;
     let outputTokens = 0;
+    const upstreamAbortSignal = byokProxyAbortSignalFromRes(res);
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
       sse.send('start', { model });
@@ -1571,6 +1697,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(payload),
         redirect: 'error',
+        ...(upstreamAbortSignal ? { signal: upstreamAbortSignal } : {}),
       });
 
       if (!response.ok) {
@@ -1600,7 +1727,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         if (data.done) {
           guard.flushThinkTag();
-          sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
           sse.send('end', {});
           ended = true;
           return true;
@@ -1609,7 +1736,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (typeof content === 'string' && content) { 
           guard.sendDelta(content); 
           if (guard.contaminated) { 
-            sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+            sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
             sse.send('end', {}); 
             ended = true; 
             return true; 
@@ -1619,13 +1746,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       });
       if (!ended) {
         guard.flushThinkTag();
-        sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
         sse.send('end', {});
       }
       sse.end();
     } catch (err: any) {
       console.error(`[proxy:ollama] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(sse, inputTokens, outputTokens, model);
+      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
       sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
       sse.end();
     } finally {
@@ -1849,6 +1976,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         },
         body: JSON.stringify(payload),
         redirect: 'error',
+        ...(byokProxyAbortSignalFromRes(res)
+          ? { signal: byokProxyAbortSignalFromRes(res)! }
+          : {}),
       });
 
       if (!response.ok) {
@@ -1859,6 +1989,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // Flush prior-turn usage before the error so the ledger captures
         // whatever earlier turns in this loop already billed.
         sendProxyUsageIfPresent(
+          res,
           sse,
           turnUsage.inputTokens,
           turnUsage.outputTokens,
@@ -1955,6 +2086,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // this turn plus all prior turns in the loop, which is what the
         // user was billed for upstream.
         sendProxyUsageIfPresent(
+          res,
           sse,
           turnUsage.inputTokens,
           turnUsage.outputTokens,
@@ -2081,6 +2213,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(payload),
         redirect: 'error',
+        ...(byokProxyAbortSignalFromRes(res)
+          ? { signal: byokProxyAbortSignalFromRes(res)! }
+          : {}),
       });
       if (!response.ok) {
         const errorText = await response.text();
@@ -2091,6 +2226,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // surfacing the error — even though *this* turn was rejected with
         // zero billing, the earlier turns were charged upstream.
         sendProxyUsageIfPresent(
+          res,
           sse,
           anthTurnUsage.inputTokens,
           anthTurnUsage.outputTokens,
@@ -2161,6 +2297,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // on `event: error`. The accumulator already includes this turn
         // and every prior turn the user was billed for.
         sendProxyUsageIfPresent(
+          res,
           sse,
           anthTurnUsage.inputTokens,
           anthTurnUsage.outputTokens,
@@ -2210,6 +2347,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
             sendProxyUsageIfPresent(
+              res,
               sse,
               anthTurnUsage.inputTokens,
               anthTurnUsage.outputTokens,
@@ -2242,6 +2380,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           `[${opts.logTag}] anthropic tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
         );
         sendProxyUsageIfPresent(
+          res,
           sse,
           anthTurnUsage.inputTokens,
           anthTurnUsage.outputTokens,
@@ -2255,6 +2394,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // throws. Flush accumulated turn usage before the error frame so
         // api-proxy.ts records what the user was actually billed for.
         sendProxyUsageIfPresent(
+          res,
           sse,
           anthTurnUsage.inputTokens,
           anthTurnUsage.outputTokens,
@@ -2300,6 +2440,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(payload),
         redirect: 'error',
+        ...(byokProxyAbortSignalFromRes(res)
+          ? { signal: byokProxyAbortSignalFromRes(res)! }
+          : {}),
       });
       if (!response.ok) {
         const errorText = await response.text();
@@ -2309,6 +2452,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // Flush any usage prior turns accumulated before surfacing the
         // error — those turns already billed upstream.
         sendProxyUsageIfPresent(
+          res,
           sse,
           geminiTurnUsage.inputTokens,
           geminiTurnUsage.outputTokens,
@@ -2386,6 +2530,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // on `event: error`. Accumulator carries this turn + every prior
         // turn the user was billed for.
         sendProxyUsageIfPresent(
+          res,
           sse,
           geminiTurnUsage.inputTokens,
           geminiTurnUsage.outputTokens,
@@ -2424,6 +2569,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
             sendProxyUsageIfPresent(
+              res,
               sse,
               geminiTurnUsage.inputTokens,
               geminiTurnUsage.outputTokens,
@@ -2457,6 +2603,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           `[${opts.logTag}] gemini tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
         );
         sendProxyUsageIfPresent(
+          res,
           sse,
           geminiTurnUsage.inputTokens,
           geminiTurnUsage.outputTokens,
@@ -2470,6 +2617,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // throws. Emit accumulated usage before the error frame so
         // api-proxy.ts records what the user was billed for upstream.
         sendProxyUsageIfPresent(
+          res,
           sse,
           geminiTurnUsage.inputTokens,
           geminiTurnUsage.outputTokens,
@@ -2502,11 +2650,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           `[${opts.logTag}] ${req.method} anthropic ${anthropicUrl} model=${model} project=${projectId} tools=${hasTools ? 'on' : 'off'}`,
         );
         if (hasTools) return runAnthropicToolChat(res, anthropicUrl, anthropicHeaders);
+        const anthropicAbort = byokProxyAbortSignalFromRes(res);
         return runAnthropicChatStream(res, {
           url: anthropicUrl,
           headers: anthropicHeaders,
           payload: buildAnthropicChatPayload(model, systemPrompt, messages, maxTokens),
           logTag: opts.logTag,
+          ...(anthropicAbort ? { signal: anthropicAbort } : {}),
         });
       }
       if (family === 'gemini') {
@@ -2516,12 +2666,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           `[${opts.logTag}] ${req.method} gemini ${geminiUrl} model=${model} project=${projectId} tools=${hasTools ? 'on' : 'off'}`,
         );
         if (hasTools) return runGeminiToolChat(res, geminiUrl, geminiHeaders);
+        const geminiAbort = byokProxyAbortSignalFromRes(res);
         return runGeminiChatStream(res, {
           url: geminiUrl,
           headers: geminiHeaders,
           payload: buildGeminiChatPayload(systemPrompt, messages, maxTokens),
           model,
           logTag: opts.logTag,
+          ...(geminiAbort ? { signal: geminiAbort } : {}),
         });
       }
       // family === 'openai' → fall through to the OpenAI tool loop below.
@@ -2574,6 +2726,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         if (turn.kind === 'text_end') {
           sendProxyUsageIfPresent(
+            res,
             sse,
             turnUsage.inputTokens,
             turnUsage.outputTokens,
@@ -2620,6 +2773,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         `[${opts.logTag}] tool loop bounded at MAX_BYOK_TOOL_LOOPS=${MAX_BYOK_TOOL_LOOPS}`,
       );
       sendProxyUsageIfPresent(
+        res,
         sse,
         turnUsage.inputTokens,
         turnUsage.outputTokens,
@@ -2634,6 +2788,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // throw already consumed tokens — emit them before the error frame
       // so api-proxy.ts records the usage on its way to onError.
       sendProxyUsageIfPresent(
+        res,
         sse,
         turnUsage.inputTokens,
         turnUsage.outputTokens,

@@ -336,15 +336,28 @@ export async function importClaudeDesignZip(
 
 // ---------- templates ----------
 
+let listTemplatesInflight: Promise<ProjectTemplate[]> | null = null;
+
 export async function listTemplates(): Promise<ProjectTemplate[]> {
-  try {
-    const resp = await fetch('/api/templates');
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { templates: ProjectTemplate[] };
-    return json.templates ?? [];
-  } catch {
-    return [];
-  }
+  if (listTemplatesInflight) return listTemplatesInflight;
+  listTemplatesInflight = (async () => {
+    try {
+      const resp = await fetch('/api/templates');
+      if (!resp.ok) return [];
+      const json = (await resp.json()) as { templates: ProjectTemplate[] };
+      return json.templates ?? [];
+    } catch {
+      return [];
+    } finally {
+      listTemplatesInflight = null;
+    }
+  })();
+  return listTemplatesInflight;
+}
+
+/** @internal vitest only */
+export function resetListTemplatesInflightForTests(): void {
+  listTemplatesInflight = null;
 }
 
 export async function getTemplate(id: string): Promise<ProjectTemplate | null> {

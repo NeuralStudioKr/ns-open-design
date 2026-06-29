@@ -1,7 +1,13 @@
 import type { Express } from 'express';
 import type { RouteDeps } from '../server-context.js';
+import {
+  scheduleProjectStoragePersistAfterResponse,
+  type ProjectStorageAccessHooks,
+} from '../storage/lazy-project-materialization.js';
 
-export interface RegisterLiveArtifactRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'auth' | 'liveArtifacts' | 'projectStore'> {}
+export interface RegisterLiveArtifactRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'auth' | 'liveArtifacts' | 'projectStore'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerLiveArtifactRoutes(app: Express, ctx: RegisterLiveArtifactRoutesDeps) {
   const { db } = ctx;
@@ -10,6 +16,7 @@ export function registerLiveArtifactRoutes(app: Express, ctx: RegisterLiveArtifa
   const { authorizeToolRequest, requestProjectOverride, requestRunOverride } = ctx.auth;
   const { createLiveArtifact, listLiveArtifacts, updateLiveArtifact, refreshLiveArtifact, emitLiveArtifactEvent, emitLiveArtifactRefreshEvent, readLiveArtifactCode, setLiveArtifactCodeHeaders, ensureLiveArtifactPreview, setLiveArtifactPreviewHeaders, getLiveArtifact, listLiveArtifactRefreshLogEntries, deleteLiveArtifact } = ctx.liveArtifacts;
   const { updateProject } = ctx.projectStore;
+  const { projectStorageHooks } = ctx;
   app.get('/api/live-artifacts', async (req, res) => {
     try {
       const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
@@ -59,6 +66,7 @@ export function registerLiveArtifactRoutes(app: Express, ctx: RegisterLiveArtifa
         artifactId: req.params.artifactId,
       });
       setLiveArtifactPreviewHeaders(res);
+      scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, projectId);
       res.status(200).send(record.html);
     } catch (err: any) {
       sendLiveArtifactRouteError(res, err);
@@ -241,6 +249,7 @@ export function registerLiveArtifactRoutes(app: Express, ctx: RegisterLiveArtifa
         input: req.body ?? {},
       });
       emitLiveArtifactEvent({ projectId }, 'updated', record.artifact);
+      scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, projectId);
       res.json({ artifact: record.artifact });
     } catch (err: any) {
       sendLiveArtifactRouteError(res, err);
@@ -266,6 +275,7 @@ export function registerLiveArtifactRoutes(app: Express, ctx: RegisterLiveArtifa
       });
       updateProject(db, projectId, {});
       emitLiveArtifactEvent({ projectId }, 'deleted', existing.artifact);
+      scheduleProjectStoragePersistAfterResponse(projectStorageHooks, req, res, projectId);
       res.json({ ok: true });
     } catch (err: any) {
       sendLiveArtifactRouteError(res, err);

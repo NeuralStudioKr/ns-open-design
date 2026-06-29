@@ -22,7 +22,12 @@
 #     (`od_s3_remote_purged` + `$.failed > 0`)
 #   - log metric filter + alarm: design-api DB connection 5xx
 #     (`teamver_design_api_db_5xx`) — loop 138 RDS SSL incident detection
-#   - (optional) Litestream log group error filter — LITESTREAM_LOG_GROUP 설정 시
+#   - log metric filter + alarm: registry scratch sync failed (design-api)
+#     (`od_registry_scratch_sync_failed`)
+#   - log metric filter + alarm: scratch evict deferred unsynced
+#     (`od_scratch_evict_deferred_unsynced`)
+#   - log metric filter + alarm: daemon S3 storage init failed
+#     (`od_s3_storage_init_failed`)
 #   - EC2 cron/SSM: `verify_litestream_replica.sh` (S3 replica 객체 증적, P2-1)
 
 set -euo pipefail
@@ -267,6 +272,78 @@ declare -a LITESTREAM_ERROR_ALARM=(
   --treat-missing-data notBreaching
 )
 
+declare -a SCRATCH_EVICT_DEFERRED_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-scratch-evict-deferred-unsynced"
+  --filter-pattern '"od_scratch_evict_deferred_unsynced"'
+  --metric-transformations
+    "metricName=TeamverDesignScratchEvictDeferredUnsynced,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a SCRATCH_EVICT_DEFERRED_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-scratch-evict-deferred-unsynced"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignScratchEvictDeferredUnsynced"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
+declare -a S3_STORAGE_INIT_FAILED_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-s3-storage-init-failed"
+  --filter-pattern '"od_s3_storage_init_failed"'
+  --metric-transformations
+    "metricName=TeamverDesignS3StorageInitFailed,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a S3_STORAGE_INIT_FAILED_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-s3-storage-init-failed"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignS3StorageInitFailed"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
+declare -a REGISTRY_SCRATCH_SYNC_FAILED_FILTER=(
+  aws logs put-metric-filter
+  --region "$REGION"
+  --log-group-name "$DESIGN_API_LOG_GROUP"
+  --filter-name "teamver-design-${ENV_NAME}-registry-scratch-sync-failed"
+  --filter-pattern '"od_registry_scratch_sync_failed"'
+  --metric-transformations
+    "metricName=TeamverDesignRegistryScratchSyncFailed,metricNamespace=Teamver/Design,metricValue=1,defaultValue=0"
+)
+
+declare -a REGISTRY_SCRATCH_SYNC_FAILED_ALARM=(
+  aws cloudwatch put-metric-alarm
+  --region "$REGION"
+  --alarm-name "teamver-design-${ENV_NAME}-registry-scratch-sync-failed"
+  --namespace "Teamver/Design"
+  --metric-name "TeamverDesignRegistryScratchSyncFailed"
+  --statistic Sum
+  --period 300
+  --evaluation-periods 1
+  --threshold 1
+  --comparison-operator GreaterThanOrEqualToThreshold
+  --treat-missing-data notBreaching
+)
+
 if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   SYNC_UP_ALARM+=("${alarm_action_args[@]}")
   USAGE_ALARM+=("${alarm_action_args[@]}")
@@ -276,6 +353,9 @@ if [[ ${#alarm_action_args[@]} -gt 0 ]]; then
   REMOTE_PURGE_ALARM+=("${alarm_action_args[@]}")
   DESIGN_API_DB_ALARM+=("${alarm_action_args[@]}")
   LITESTREAM_ERROR_ALARM+=("${alarm_action_args[@]}")
+  SCRATCH_EVICT_DEFERRED_ALARM+=("${alarm_action_args[@]}")
+  S3_STORAGE_INIT_FAILED_ALARM+=("${alarm_action_args[@]}")
+  REGISTRY_SCRATCH_SYNC_FAILED_ALARM+=("${alarm_action_args[@]}")
 fi
 
 emit() {
@@ -314,6 +394,12 @@ run_or_emit "12) Log metric filter: design-api DB connection 5xx" "${DESIGN_API_
 run_or_emit "13) Alarm: design-api DB 5xx (any in 5 minutes)" "${DESIGN_API_DB_ALARM[@]}"
 run_or_emit "14) Log metric filter: Litestream errors (requires LITESTREAM_LOG_GROUP / awslogs)" "${LITESTREAM_ERROR_FILTER[@]}"
 run_or_emit "15) Alarm: Litestream error log (any in 5 minutes)" "${LITESTREAM_ERROR_ALARM[@]}"
+run_or_emit "16) Log metric filter: scratch evict deferred unsynced" "${SCRATCH_EVICT_DEFERRED_FILTER[@]}"
+run_or_emit "17) Alarm: scratch evict deferred unsynced (any in 5 minutes)" "${SCRATCH_EVICT_DEFERRED_ALARM[@]}"
+run_or_emit "18) Log metric filter: daemon S3 storage init failed" "${S3_STORAGE_INIT_FAILED_FILTER[@]}"
+run_or_emit "19) Alarm: S3 storage init failed (any in 5 minutes)" "${S3_STORAGE_INIT_FAILED_ALARM[@]}"
+run_or_emit "20) Log metric filter: registry scratch sync failed (design-api)" "${REGISTRY_SCRATCH_SYNC_FAILED_FILTER[@]}"
+run_or_emit "21) Alarm: registry scratch sync failed (any in 5 minutes)" "${REGISTRY_SCRATCH_SYNC_FAILED_ALARM[@]}"
 
 if [[ "$APPLY" -eq 0 ]]; then
   echo "# Litestream S3 replica (P2-1): EC2에서 주기적으로"

@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   chatMessageEventsToRunAnalyticsEvents,
+  createByokProxyUsageBillingStager,
+  peekStagedByokProxyUsageForTests,
   reportByokTeamverUsageAndBillingFromDaemon,
+  resetByokBillingStagingForTests,
   resetByokInFlightReportsForTests,
   shouldReportByokUsageFromMessage,
+  sweepExpiredByokBillingStagesForTests,
+  peekBillingOrphanAdminQueueForTests,
 } from '../src/teamver-byok-usage-bridge.js';
 
 describe('teamver-byok-usage-bridge', () => {
@@ -12,6 +17,7 @@ describe('teamver-byok-usage-bridge', () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     resetByokInFlightReportsForTests();
+    resetByokBillingStagingForTests();
   });
 
   it('shouldReportByokUsageFromMessage requires assistant terminal BYOK message', () => {
@@ -383,5 +389,193 @@ describe('teamver-byok-usage-bridge', () => {
 
     expect(ok).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('stages proxy usage SSE and finalizes billing on message PUT when events lack tokens', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+    vi.stubEnv('OD_BYOK_BILLING_STAGE_TTL_MS', '600000');
+
+    const req = {
+      headers: {
+        'x-teamver-user-id': 'user-1',
+        'x-teamver-workspace-id': 'ws-1',
+      },
+    } as import('express').Request;
+
+    const stager = createByokProxyUsageBillingStager(req, {
+      assistantMessageId: 'assistant-msg-staged',
+      projectId: 'od-1',
+    });
+    expect(stager).toBeDefined();
+    stager!({ inputTokens: 42, outputTokens: 7, model: 'claude-sonnet-4-5', apiProtocol: 'anthropic' });
+    expect(peekStagedByokProxyUsageForTests('assistant-msg-staged')?.inputTokens).toBe(42);
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: true,
+              usage_id: 'u-staged',
+              billing_status: 'committed',
+              credits_committed: true,
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-staged',
+        role: 'assistant',
+        runStatus: 'succeeded',
+        events: [],
+      },
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns: new Set<string>(),
+    });
+
+    expect(ok).toBe(true);
+    expect(peekStagedByokProxyUsageForTests('assistant-msg-staged')).toBeUndefined();
+    const finalizeInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const finalizeBody = JSON.parse(String(finalizeInit?.body ?? '{}')) as Record<string, unknown>;
+    expect(finalizeBody.input_tokens).toBe(42);
+    expect(finalizeBody.output_tokens).toBe(7);
+    expect(finalizeBody.token_count_source).toBe('proxy_sse_staged');
+  });
+
+  it('pre-seeds model from proxy body so failed runs before usage SSE still report model_name', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: true,
+              usage_id: 'u-failed',
+              billing_status: 'not_attempted',
+              credits_committed: false,
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const req = {
+      headers: {
+        'x-teamver-user-id': 'user-1',
+        'x-teamver-workspace-id': 'ws-1',
+      },
+    } as import('express').Request;
+
+    createByokProxyUsageBillingStager(req, {
+      assistantMessageId: 'assistant-msg-failed',
+      projectId: 'od-1',
+      model: 'claude-sonnet-4-5',
+    });
+
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-failed',
+        role: 'assistant',
+        runStatus: 'failed',
+        events: [],
+      },
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns: new Set<string>(),
+    });
+
+    expect(ok).toBe(true);
+    const usageCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith('/api/internal/usage/events'),
+    );
+    const finalizeBody = JSON.parse(String(usageCall?.[1]?.body ?? '{}')) as Record<string, unknown>;
+    expect(finalizeBody.model_name).toBe('claude-sonnet-4-5');
+    expect(finalizeBody.input_tokens).toBe(0);
+    expect(finalizeBody.output_tokens).toBe(0);
+    expect(finalizeBody.run_status).toBe('failed');
+  });
+
+  it('emits od_byok_billing_orphan_usage when staged usage TTL expires', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+    vi.stubEnv('OD_BYOK_BILLING_STAGE_TTL_MS', '1');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const req = {
+      headers: {
+        'x-teamver-user-id': 'user-1',
+        'x-teamver-workspace-id': 'ws-1',
+      },
+    } as import('express').Request;
+
+    const stager = createByokProxyUsageBillingStager(req, {
+      assistantMessageId: 'assistant-msg-orphan',
+      projectId: 'od-1',
+    });
+    stager!({ inputTokens: 5, outputTokens: 3 });
+
+    await new Promise((r) => setTimeout(r, 5));
+    sweepExpiredByokBillingStagesForTests();
+
+    const orphanLines = warnSpy.mock.calls
+      .map((call) => String(call[0] ?? ''))
+      .filter((line) => line.includes('od_byok_billing_orphan_usage'));
+    expect(orphanLines.length).toBe(1);
+    const parsed = JSON.parse(orphanLines[0]!);
+    expect(parsed.messageId).toBe('assistant-msg-orphan');
+
+    warnSpy.mockRestore();
+  });
+
+  it('queues TTL orphans for admin reconcile and emits reaper sweep marker', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+    vi.stubEnv('OD_BYOK_BILLING_STAGE_TTL_MS', '1');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const req = {
+      headers: {
+        'x-teamver-user-id': 'user-1',
+        'x-teamver-workspace-id': 'ws-1',
+      },
+    } as import('express').Request;
+
+    const stager = createByokProxyUsageBillingStager(req, {
+      assistantMessageId: 'assistant-msg-reaper',
+      projectId: 'od-1',
+    });
+    stager!({ inputTokens: 9, outputTokens: 4 });
+
+    await new Promise((r) => setTimeout(r, 5));
+    sweepExpiredByokBillingStagesForTests();
+
+    const queue = peekBillingOrphanAdminQueueForTests();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]?.messageId).toBe('assistant-msg-reaper');
+
+    const sweepLines = warnSpy.mock.calls
+      .map((call) => String(call[0] ?? ''))
+      .filter((line) => line.includes('od_byok_billing_reaper_sweep'));
+    expect(sweepLines.length).toBe(1);
+    const parsed = JSON.parse(sweepLines[0]!);
+    expect(parsed.swept).toBe(1);
+    expect(parsed.queueDepth).toBe(1);
+
+    warnSpy.mockRestore();
   });
 });

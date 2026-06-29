@@ -35,6 +35,11 @@ function headersInitToRecord(headers?: HeadersInit): Record<string, string> {
   return { ...headers };
 }
 
+export type TeamverDaemonFetchInit = RequestInit & {
+  /** When the URL is not `/api/projects/{uuid}/…` (BYOK proxy, `POST /api/runs`). */
+  teamverProjectId?: string;
+};
+
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
 export async function buildTeamverDaemonRequestHeaders(
   base: Record<string, string>,
@@ -55,12 +60,13 @@ export async function buildTeamverDaemonRequestHeaders(
 /** fetch wrapper — embed mode forwards active workspace so nginx/daemon access matches BFF registry. */
 export async function fetchTeamverDaemon(
   input: RequestInfo | URL,
-  init: RequestInit = {},
+  init: TeamverDaemonFetchInit = {},
 ): Promise<Response> {
-  const projectId = extractDaemonProjectId(input);
+  const { teamverProjectId, ...requestInit } = init;
+  const projectId = teamverProjectId?.trim() || extractDaemonProjectId(input);
   const headers = await buildTeamverDaemonRequestHeaders(
-    headersInitToRecord(init.headers),
+    headersInitToRecord(requestInit.headers),
     projectId ? { projectId } : undefined,
   );
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...requestInit, headers });
 }

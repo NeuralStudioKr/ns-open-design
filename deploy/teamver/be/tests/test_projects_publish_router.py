@@ -35,6 +35,13 @@ def _auth() -> AuthContext:
     return AuthContext(user_id="u1", workspace_id="ws1", raw_token="tok")
 
 
+@pytest.fixture(autouse=True)
+def _mock_publish_scratch_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = MagicMock()
+    client.sync_scratch_project = AsyncMock()
+    monkeypatch.setattr(projects_router, "OdDaemonClient", lambda: client)
+
+
 @pytest.mark.asyncio
 async def test_publish_router_returns_207_json_on_partial_success(monkeypatch: pytest.MonkeyPatch) -> None:
     row = _project_row()

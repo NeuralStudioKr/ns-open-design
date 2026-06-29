@@ -1,25 +1,10 @@
 import { useEffect, useRef } from 'react';
 
+import { fetchDaemonAppVersion, fetchDaemonAppVersionForPoll } from './daemonAppVersion';
 import { isTeamverEmbedMode } from './designApiBase';
 
 const VERSION_POLL_INTERVAL_MS = 60_000;
 const VERSION_AUTO_RELOAD_DELAY_MS = 5_000;
-
-type AppVersionResponse = {
-  version?: { version?: unknown } | null;
-};
-
-async function fetchCurrentAppVersion(): Promise<string | null> {
-  try {
-    const resp = await fetch('/api/version', { cache: 'no-store' });
-    if (!resp.ok) return null;
-    const json = (await resp.json()) as AppVersionResponse;
-    const next = json?.version?.version;
-    return typeof next === 'string' && next.trim() ? next.trim() : null;
-  } catch {
-    return null;
-  }
-}
 
 function emitReloadMarker(fromVersion: string, toVersion: string): void {
   try {
@@ -121,7 +106,9 @@ export function useTeamverAppVersionAutoReload(options?: {
       // listener will retry the moment focus returns.
       if (!isTabVisible()) return;
 
-      const current = await fetchCurrentAppVersion();
+      const current = baselineRef.current == null
+        ? await fetchDaemonAppVersion()
+        : await fetchDaemonAppVersionForPoll();
       if (cancelled || reloadScheduledRef.current || current == null) return;
 
       if (baselineRef.current == null) {
@@ -167,5 +154,6 @@ export function useTeamverAppVersionAutoReload(options?: {
 }
 
 export const __TEAMVER_AUTO_RELOAD_INTERNALS = {
-  fetchCurrentAppVersion,
+  fetchDaemonAppVersion,
+  fetchDaemonAppVersionForPoll,
 };

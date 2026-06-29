@@ -93,6 +93,10 @@ export function createChatRunService({
         typeof meta.teamverIdentity.workspaceId === 'string'
           ? meta.teamverIdentity
           : null,
+      teamverS3Prefix:
+        typeof meta.teamverS3Prefix === 'string' && meta.teamverS3Prefix.trim()
+          ? meta.teamverS3Prefix.trim()
+          : null,
     };
     runs.set(run.id, run);
     return run;

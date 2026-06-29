@@ -94,6 +94,14 @@ export function shouldFetchAppVersionAboutPanel(): boolean {
 }
 
 /**
+ * Community gallery HTML iframe probes (`GET …/preview`) on home boot.
+ * Embed defers to in-view / hover so boot does not fan out plugin previews.
+ */
+export function shouldEagerLoadCommunityPluginPreviews(): boolean {
+  return !isTeamverEmbedMode();
+}
+
+/**
  * Open Design first-run privacy banner (`PrivacyConsentModal`).
  * Teamver embed users accept Teamver terms at sign-up — OD usage-sharing
  * disclosure + github PRIVACY.md link must not appear.

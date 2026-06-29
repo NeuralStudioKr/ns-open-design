@@ -90,35 +90,9 @@ function isSameOriginApiCall(url: unknown): boolean {
   }
 }
 
-const APP_VERSION_PLACEHOLDER = '0.0.0';
-let runtimeAppVersion: string | null = null;
-let runtimeAppVersionPromise: Promise<string | null> | null = null;
+import { fetchDaemonAppVersion } from '../teamver/daemonAppVersion';
 
-// Shared single-flight fetch of the daemon-pinned version. Cached at module
-// scope so the hook, the capture paths, and repeated calls all settle on one
-// /api/version round-trip and the same resolved value.
-async function loadRuntimeAppVersion(): Promise<string | null> {
-  if (runtimeAppVersion) return runtimeAppVersion;
-  if (!runtimeAppVersionPromise) {
-    runtimeAppVersionPromise = (async () => {
-      try {
-        const res = await fetch('/api/version');
-        if (!res.ok) return null;
-        const body = (await res.json()) as { version?: { version?: string } };
-        const next = body?.version?.version;
-        if (!next) return null;
-        runtimeAppVersion = next;
-        return next;
-      } catch {
-        return null;
-      } finally {
-        // Allow a retry on the next call when the fetch yielded nothing.
-        if (!runtimeAppVersion) runtimeAppVersionPromise = null;
-      }
-    })();
-  }
-  return runtimeAppVersionPromise;
-}
+const APP_VERSION_PLACEHOLDER = '0.0.0';
 
 // Capture paths call this before emitting so an event never ships with the
 // placeholder once the real version is knowable. When the caller already has
@@ -129,7 +103,7 @@ async function loadRuntimeAppVersion(): Promise<string | null> {
 // with app_version='0.0.0'.
 export async function resolveAppVersionForCapture(current: string): Promise<string> {
   if (current && current !== APP_VERSION_PLACEHOLDER) return current;
-  return (await loadRuntimeAppVersion()) ?? current;
+  return (await fetchDaemonAppVersion()) ?? current;
 }
 
 // App version is read from a runtime endpoint rather than at build time so
@@ -144,7 +118,7 @@ export function useAppVersion(): string {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const next = await loadRuntimeAppVersion();
+      const next = await fetchDaemonAppVersion();
       if (!cancelled && next) setVersion(next);
     })();
     return () => {

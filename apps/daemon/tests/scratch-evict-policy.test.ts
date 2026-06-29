@@ -123,4 +123,29 @@ describe('safelyEvictScratchAfterRun', () => {
     expect(evict).not.toHaveBeenCalled();
     expect(infos.some((line) => line.includes('"metric":"od_scratch_evict_deferred"'))).toBe(true);
   });
+
+  it('skips evict for BYOK proxy runs when OD_SCRATCH_EVICT_AFTER_BYOK_TURN is unset', async () => {
+    process.env.OD_SCRATCH_EVICT_AFTER_RUN = '1';
+    delete process.env.OD_SCRATCH_EVICT_AFTER_BYOK_TURN;
+    const storage = await makeStorage();
+    await storage.writeFile('p-byok', 'index.html', Buffer.from('<p>warm</p>'));
+    const remote = storage.flatRemote();
+    const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
+    const infos: string[] = [];
+    vi.spyOn(console, 'info').mockImplementation((m: unknown) => {
+      if (typeof m === 'string') infos.push(m);
+    });
+
+    await safelyEvictScratchAfterRun({
+      storage,
+      projectId: 'p-byok',
+      remote,
+      runStartTimeMs: Date.now(),
+      syncResult: { uploaded: 1, skipped: 0, failed: 0 },
+      isByokProxyRun: true,
+    });
+
+    expect(evict).not.toHaveBeenCalled();
+    expect(infos.some((line) => line.includes('"metric":"od_scratch_evict_skipped_byok_turn"'))).toBe(true);
+  });
 });

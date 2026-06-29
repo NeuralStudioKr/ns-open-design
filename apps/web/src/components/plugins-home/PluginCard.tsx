@@ -19,6 +19,7 @@ import { useI18n } from '../../i18n';
 import type { PluginShareAction } from '../../state/projects';
 import { Icon } from '../Icon';
 import { TrustBadge } from '../TrustBadge';
+import { shouldEagerLoadCommunityPluginPreviews } from '../../teamver/embedDaemonFetchPolicy';
 import { PreviewSurface } from './cards/PreviewSurface';
 import { localizePluginDescription, localizePluginTitle } from './localization';
 import { inferPluginPreview } from './preview';
@@ -158,7 +159,7 @@ export function PluginCard({
             pluginId={record.id}
             pluginTitle={title}
             preview={preview}
-            eager
+            eager={shouldEagerLoadCommunityPluginPreviews()}
           />
         </div>
       </article>

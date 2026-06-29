@@ -102,6 +102,8 @@ function emitManagedApiKeyMissingMarker(req: Request): void {
  * code is matched on the FE inside ChatPane diagnostic copy.
  */
 export const PROXY_API_KEY_MISSING_ERROR_CODE = 'MANAGED_API_KEY_MISSING';
+/** 400-class managed-key failures (identity / unsupported daemon mode). */
+export const MANAGED_KEY_UNAVAILABLE = 'MANAGED_KEY_UNAVAILABLE';
 export const PROXY_API_KEY_MISSING_MESSAGE =
   'Server-managed BYOK key is not configured on this daemon. '
   + 'Ask the operator to set TEAMVER_OD_API_KEY in the daemon environment '
@@ -124,14 +126,14 @@ export function proxyApiKeyFailureToErrorCode(
   if (failure.reason === 'managed_identity_missing') {
     return {
       httpStatus: 400,
-      code: 'MANAGED_API_KEY_IDENTITY_REQUIRED',
+      code: MANAGED_KEY_UNAVAILABLE,
       message: 'managed API key requested but X-Teamver-* identity headers missing',
     };
   }
   if (failure.reason === 'managed_not_supported') {
     return {
       httpStatus: 400,
-      code: 'MANAGED_API_KEY_NOT_SUPPORTED',
+      code: MANAGED_KEY_UNAVAILABLE,
       message: 'managed API key requested but TEAMVER_DESIGN_API_URL is not configured',
     };
   }

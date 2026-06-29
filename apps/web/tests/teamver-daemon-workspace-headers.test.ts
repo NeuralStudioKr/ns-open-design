@@ -58,4 +58,34 @@ describe("buildTeamverDaemonRequestHeaders", () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it("fetchTeamverDaemon attaches s3 prefix for BYOK proxy via teamverProjectId", async () => {
+    designApiBase.isTeamverEmbedMode.mockReturnValue(true);
+    activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue("ws-1");
+    const { rememberTeamverProjectS3Prefix, clearAllTeamverProjectS3PrefixCache } = await import(
+      "../src/teamver/teamverProjectS3PrefixCache"
+    );
+    clearAllTeamverProjectS3PrefixCache();
+    const projectId = "9366bf8c-289c-45a0-8d7c-e2939ec7e4fa";
+    rememberTeamverProjectS3Prefix("ws-1", projectId, "design/ws1/proj/");
+
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchTeamverDaemon("/api/proxy/anthropic/stream", {
+      method: "POST",
+      teamverProjectId: projectId,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/proxy/anthropic/stream",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Teamver-S3-Prefix": "design/ws1/proj/",
+        }),
+      }),
+    );
+    vi.unstubAllGlobals();
+    clearAllTeamverProjectS3PrefixCache();
+  });
 });

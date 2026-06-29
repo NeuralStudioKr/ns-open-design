@@ -93,6 +93,33 @@ describe('MaterializingProjectStorage', () => {
     expect(local.toString('utf8')).toBe('<h1>remote</h1>');
   });
 
+  it('sync-down preserves remote mtime so unchanged files skip run-end sync-up', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-mtime-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-mtime-'));
+    const remoteDir = path.join(remoteRoot, 'p1');
+    await mkdir(remoteDir, { recursive: true });
+    const remoteFile = path.join(remoteDir, 'index.html');
+    await writeFile(remoteFile, '<h1>remote</h1>');
+    const oldMtimeMs = Date.now() - 3_600_000;
+    const { utimes } = await import('node:fs/promises');
+    await utimes(remoteFile, oldMtimeMs / 1000, oldMtimeMs / 1000);
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+
+    await storage.syncDown('p1', remote);
+    const runStart = Date.now();
+    const up = await storage.syncUp('p1', remote, runStart);
+    expect(up.uploaded).toBe(0);
+    expect(up.skipped).toBe(1);
+
+    const scratchMeta = await storage.statFile('p1', 'index.html');
+    expect(scratchMeta?.mtimeMs).toBeLessThan(runStart - 1000);
+  });
+
   it('sync-down retries transient remote list/read failures', async () => {
     const previousRetries = process.env.OD_S3_SYNC_DOWN_RETRIES;
     const previousRetryMs = process.env.OD_S3_SYNC_DOWN_RETRY_MS;

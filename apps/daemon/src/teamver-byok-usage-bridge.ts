@@ -1,10 +1,14 @@
+import type { Request } from 'express';
 import { TERMINAL_RUN_STATUSES } from './runs.js';
 import {
   scanRunEventsForUsageAnalytics,
   extractLastStopReasonFromRunEvents,
   type RunEventForAnalyticsObservability,
 } from './run-analytics-observability.js';
-import { teamverDesignApiBaseUrl } from './teamver-project-access.js';
+import {
+  readTeamverIdentityFromRequest,
+  teamverDesignApiBaseUrl,
+} from './teamver-project-access.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 
 type ChatMessageEvent = {
@@ -270,10 +274,196 @@ async function finalizeByokBillingFromDaemon(args: {
 
 const inFlightByokReports = new Set<string>();
 
+const DEFAULT_BYOK_BILLING_STAGE_TTL_MS = 10 * 60 * 1000;
+
+export type ByokProxyUsageStagePayload = {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  stopReason?: string;
+  apiProtocol?: string;
+  latencyMs?: number;
+};
+
+export type ByokProxyUsageStager = (usage: ByokProxyUsageStagePayload) => void;
+
+type StagedByokProxyUsage = ByokProxyUsageStagePayload & {
+  projectId: string;
+  identity: TeamverRequestIdentity;
+  ts: number;
+};
+
+const stagedByokProxyUsage = new Map<string, StagedByokProxyUsage>();
+let byokBillingStageReaper: ReturnType<typeof setInterval> | null = null;
+
+type BillingOrphanAdminRecord = {
+  messageId: string;
+  projectId: string;
+  workspaceId: string;
+  stagedAt: number;
+  queuedAt: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+const billingOrphanAdminQueue: BillingOrphanAdminRecord[] = [];
+const MAX_BILLING_ORPHAN_ADMIN_QUEUE = 200;
+
+function enqueueBillingOrphanAdminRecord(messageId: string, entry: StagedByokProxyUsage): void {
+  billingOrphanAdminQueue.push({
+    messageId,
+    projectId: entry.projectId,
+    workspaceId: entry.identity.workspaceId,
+    stagedAt: entry.ts,
+    queuedAt: Date.now(),
+    inputTokens: entry.inputTokens,
+    outputTokens: entry.outputTokens,
+  });
+  if (billingOrphanAdminQueue.length > MAX_BILLING_ORPHAN_ADMIN_QUEUE) {
+    billingOrphanAdminQueue.shift();
+  }
+}
+
+function byokBillingStageTtlMs(): number {
+  const parsed = Number(process.env.OD_BYOK_BILLING_STAGE_TTL_MS ?? '');
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.floor(parsed)
+    : DEFAULT_BYOK_BILLING_STAGE_TTL_MS;
+}
+
+function emitByokBillingOrphanUsageMarker(messageId: string, entry: StagedByokProxyUsage): void {
+  try {
+    console.warn(
+      JSON.stringify({
+        metric: 'od_byok_billing_orphan_usage',
+        messageId,
+        projectId: entry.projectId,
+        workspaceId: entry.identity.workspaceId,
+        ts: Date.now(),
+        stagedAt: entry.ts,
+        inputTokens: entry.inputTokens,
+        outputTokens: entry.outputTokens,
+      }),
+    );
+  } catch {
+    // best-effort observability
+  }
+}
+
+function sweepExpiredByokBillingStages(): void {
+  const ttl = byokBillingStageTtlMs();
+  const now = Date.now();
+  let swept = 0;
+  for (const [messageId, entry] of stagedByokProxyUsage) {
+    if (now - entry.ts > ttl) {
+      stagedByokProxyUsage.delete(messageId);
+      emitByokBillingOrphanUsageMarker(messageId, entry);
+      enqueueBillingOrphanAdminRecord(messageId, entry);
+      swept += 1;
+    }
+  }
+  if (swept > 0) {
+    console.warn(
+      JSON.stringify({
+        metric: 'od_byok_billing_reaper_sweep',
+        swept,
+        queueDepth: billingOrphanAdminQueue.length,
+        ts: now,
+      }),
+    );
+  }
+}
+
+function ensureByokBillingStageReaper(): void {
+  if (byokBillingStageReaper) return;
+  byokBillingStageReaper = setInterval(sweepExpiredByokBillingStages, 60_000);
+  byokBillingStageReaper.unref?.();
+}
+
+/** Daemon-side billing reconciliation (PR1 §3.6 Phase A). */
+export function createByokProxyUsageBillingStager(
+  req: Request,
+  proxyBody: Record<string, unknown> | null | undefined,
+): ByokProxyUsageStager | undefined {
+  const messageId =
+    typeof proxyBody?.assistantMessageId === 'string'
+      ? proxyBody.assistantMessageId.trim()
+      : '';
+  const projectId =
+    typeof proxyBody?.projectId === 'string' ? proxyBody.projectId.trim() : '';
+  const identity = readTeamverIdentityFromRequest(req);
+  if (!messageId || !projectId || !identity?.userId.trim() || !identity.workspaceId.trim()) {
+    return undefined;
+  }
+  if (!teamverDesignApiBaseUrl() || !teamverInternalApiKey()) {
+    return undefined;
+  }
+  const modelFromBody =
+    typeof proxyBody?.model === 'string' ? proxyBody.model.trim() : '';
+  // Seed intended model before any usage SSE — embed BYOK runs that fail
+  // during materialization (502 before upstream) still need a real
+  // model_name in ai_model_token_usages instead of `unknown`.
+  if (modelFromBody) {
+    ensureByokBillingStageReaper();
+    stagedByokProxyUsage.set(messageId, {
+      projectId,
+      identity,
+      inputTokens: 0,
+      outputTokens: 0,
+      model: modelFromBody,
+      ts: Date.now(),
+    });
+  }
+  return (usage) => {
+    ensureByokBillingStageReaper();
+    stagedByokProxyUsage.set(messageId, {
+      projectId,
+      identity,
+      ...usage,
+      ts: Date.now(),
+    });
+  };
+}
+
+function consumeStagedByokProxyUsage(messageId: string): StagedByokProxyUsage | undefined {
+  const entry = stagedByokProxyUsage.get(messageId);
+  if (!entry) return undefined;
+  stagedByokProxyUsage.delete(messageId);
+  return entry;
+}
+
 /** @internal vitest — reset concurrent guard between cases. */
 export function resetByokInFlightReportsForTests(): void {
   inFlightByokReports.clear();
 }
+
+/** @internal vitest — reset billing staging map + reaper between cases. */
+export function resetByokBillingStagingForTests(): void {
+  stagedByokProxyUsage.clear();
+  billingOrphanAdminQueue.length = 0;
+  if (byokBillingStageReaper) {
+    clearInterval(byokBillingStageReaper);
+    byokBillingStageReaper = null;
+  }
+}
+
+/** @internal vitest — inspect reaper admin queue depth. */
+export function peekBillingOrphanAdminQueueForTests(): readonly BillingOrphanAdminRecord[] {
+  return billingOrphanAdminQueue;
+}
+
+/** @internal vitest — inspect staged usage without consuming. */
+export function peekStagedByokProxyUsageForTests(messageId: string): StagedByokProxyUsage | undefined {
+  return stagedByokProxyUsage.get(messageId);
+}
+
+/** @internal vitest — force TTL sweep (orphan markers). */
+export function sweepExpiredByokBillingStagesForTests(): void {
+  sweepExpiredByokBillingStages();
+}
+
 
 /** Embed BYOK — usage ledger + Strategy B billing on terminal message PUT (§4.11). */
 export async function reportByokTeamverUsageAndBillingFromDaemon({
@@ -299,23 +489,25 @@ export async function reportByokTeamverUsageAndBillingFromDaemon({
 
   inFlightByokReports.add(dedupeKey);
   try {
+    const staged = consumeStagedByokProxyUsage(runId);
+
     const runEvents = chatMessageEventsToRunAnalyticsEvents(message.events);
     const usage = scanRunEventsForUsageAnalytics(runEvents, defaultByokModelName(), 0);
-    const modelName =
-      usage.agent_reported_model?.trim() || defaultByokModelName();
+    let modelName =
+      usage.agent_reported_model?.trim() || staged?.model?.trim() || defaultByokModelName();
     const runStatus = message.runStatus ?? '';
-    const tokenCountSource = usage.token_count_source ?? 'unknown';
-    const inputTokens = usage.input_tokens ?? 0;
-    const outputTokens = usage.output_tokens ?? 0;
-    const stopReason = extractLastStopReasonFromRunEvents(runEvents);
-    const latencyMs =
+    let tokenCountSource = usage.token_count_source ?? 'unknown';
+    let inputTokens = usage.input_tokens ?? 0;
+    let outputTokens = usage.output_tokens ?? 0;
+    let stopReason = extractLastStopReasonFromRunEvents(runEvents);
+    let latencyMs =
       typeof message.startedAt === 'number'
       && typeof message.endedAt === 'number'
       && message.endedAt >= message.startedAt
         ? Math.round(message.endedAt - message.startedAt)
         : null;
 
-    let resolvedApiProtocol = 'byok-proxy';
+    let resolvedApiProtocol = staged?.apiProtocol ?? 'byok-proxy';
     for (let i = runEvents.length - 1; i >= 0; i -= 1) {
       const ev = runEvents[i];
       if (ev?.event !== 'usage') continue;
@@ -327,10 +519,34 @@ export async function reportByokTeamverUsageAndBillingFromDaemon({
     }
 
     if (
-      inputTokens === 0
+      staged
+      && inputTokens === 0
       && outputTokens === 0
       && (usage.cache_read_input_tokens ?? 0) === 0
       && (usage.cache_creation_input_tokens ?? 0) === 0
+    ) {
+      inputTokens = staged.inputTokens;
+      outputTokens = staged.outputTokens;
+      tokenCountSource = 'proxy_sse_staged';
+      if (staged.stopReason && !stopReason) stopReason = staged.stopReason;
+      if (staged.latencyMs != null && latencyMs == null) latencyMs = staged.latencyMs;
+      if (staged.apiProtocol) resolvedApiProtocol = staged.apiProtocol;
+    }
+
+    const cacheReadInputTokens =
+      (usage.cache_read_input_tokens ?? 0) > 0
+        ? usage.cache_read_input_tokens
+        : staged?.cacheReadInputTokens;
+    const cacheCreationInputTokens =
+      (usage.cache_creation_input_tokens ?? 0) > 0
+        ? usage.cache_creation_input_tokens
+        : staged?.cacheCreationInputTokens;
+
+    if (
+      inputTokens === 0
+      && outputTokens === 0
+      && (cacheReadInputTokens ?? 0) === 0
+      && (cacheCreationInputTokens ?? 0) === 0
     ) {
       emitUsageZeroTokensMarker({
         workspaceId,
@@ -351,11 +567,11 @@ export async function reportByokTeamverUsageAndBillingFromDaemon({
       inputTokens,
       outputTokens,
       tokenCountSource,
-      ...(usage.cache_read_input_tokens != null
-        ? { cacheReadInputTokens: usage.cache_read_input_tokens }
+      ...(cacheReadInputTokens != null && cacheReadInputTokens > 0
+        ? { cacheReadInputTokens }
         : {}),
-      ...(usage.cache_creation_input_tokens != null
-        ? { cacheCreationInputTokens: usage.cache_creation_input_tokens }
+      ...(cacheCreationInputTokens != null && cacheCreationInputTokens > 0
+        ? { cacheCreationInputTokens }
         : {}),
       ...(usage.agent_reported_model?.trim()
         ? { providerReportedModel: usage.agent_reported_model.trim() }
@@ -387,8 +603,8 @@ export async function reportByokTeamverUsageAndBillingFromDaemon({
       billing_status: billing?.billingStatus ?? 'not_attempted',
       credits_committed: billing?.creditsCommitted ?? false,
       credits_amount_t: billing?.creditsAmountT ?? null,
-      cache_read_input_tokens: usage.cache_read_input_tokens ?? null,
-      cache_creation_input_tokens: usage.cache_creation_input_tokens ?? null,
+      cache_read_input_tokens: cacheReadInputTokens ?? null,
+      cache_creation_input_tokens: cacheCreationInputTokens ?? null,
       provider_reported_model: usage.agent_reported_model ?? null,
       api_protocol: resolvedApiProtocol,
       latency_ms: latencyMs,
