@@ -798,6 +798,25 @@ describe('NewProjectPanel working directory picker', () => {
 });
 
 describe('NewProjectPanel folder import feedback', () => {
+  it('omits Claude Design zip import when onImportClaudeDesign is not provided (embed)', () => {
+    const { container } = render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={templates}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /Import Claude Design ZIP/i }),
+    ).toBeNull();
+    expect(container.querySelector('input[accept*="zip"]')).toBeNull();
+  });
+
   it('shows an error when Claude Design zip import resolves as failed', async () => {
     const onImportClaudeDesign = vi.fn().mockResolvedValue({
       ok: false,

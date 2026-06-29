@@ -22,7 +22,11 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 - Design Files 패널 (daemon이 materialize한 프로젝트 트리)
 - 파일 업로드·드래그앤드롭 (프로젝트 내부로 ingest)
 - Drive publish / Open in Drive (Track A)
-- Figma URL import, template, Claude Design ZIP import (바이트 업로드 — 로컬 폴더 아님)
+- Figma URL import, template (바이트/URL 기반 — 로컬 폴더 아님)
+
+**embed에서 비노출 (슬라이드 MVP):**
+
+- New Project 모달 — Claude Design ZIP 가져오기 (`onImportClaudeDesign` 미전달, `App.tsx` `isTeamverEmbedMode()` 게이트)
 
 ---
 
@@ -39,6 +43,7 @@ Teamver Design(`design.teamver.com`)은 **브라우저 + design-api BFF + tenant
 | L-5 | `NewProjectPanel` | "Open folder" (`useOpenFolderImport`) | ✅ 동일 |
 | L-6 | `App.tsx` | `onImportFolder` / `onImportFolderResponse` 핸드오프 | ✅ embed 시 미전달 |
 | L-7 | `App.tsx` create | `userWorkingDir` / `replaceProjectWorkingDir` | ✅ embed 시 무시 |
+| L-8 | `NewProjectPanel` | "Claude Design ZIP 가져오기" | ✅ `App.tsx` embed 시 `onImportClaudeDesign` 미전달 |
 
 **브랜딩 플래그:** `hideLocalWorkspaceControls: true` (embed 기본)
 
