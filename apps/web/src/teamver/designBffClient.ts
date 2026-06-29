@@ -20,6 +20,10 @@ import {
   consumeTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
 } from "./teamverAuthReturn";
+import {
+  isOrphanTeamverJwtAuthFailure,
+  clearOrphanTeamverAuthCookies,
+} from "./teamverAuthOrphanJwt";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -74,17 +78,48 @@ const SESSION_PROBE_OPTIONS = {
   skipAuthRecovery: true,
 } as const;
 
-async function postAuthRefresh(url: string): Promise<{ ok: boolean; status: number }> {
+async function postAuthRefresh(
+  url: string,
+): Promise<{ ok: boolean; status: number; bodyText: string }> {
   try {
     const response = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
     });
-    return { ok: response.ok, status: response.status };
+    let bodyText = "";
+    try {
+      bodyText = typeof response.text === "function" ? await response.text() : "";
+    } catch {
+      bodyText = "";
+    }
+    return { ok: response.ok, status: response.status, bodyText };
   } catch {
-    return { ok: false, status: 0 };
+    return { ok: false, status: 0, bodyText: "" };
   }
+}
+
+/** One-shot orphan JWT recovery — logout + sign-in redirect. */
+let orphanJwtRecoveryStarted = false;
+
+/** @internal vitest */
+export function resetOrphanTeamverJwtRecoveryForTests(): void {
+  orphanJwtRecoveryStarted = false;
+}
+
+async function handleOrphanJwtRefreshFailure(
+  status: number,
+  bodyText: string,
+): Promise<boolean> {
+  if (!isOrphanTeamverJwtAuthFailure(status, bodyText)) return false;
+  authRefreshDeclinedForSession = true;
+  if (!orphanJwtRecoveryStarted) {
+    orphanJwtRecoveryStarted = true;
+    await clearOrphanTeamverAuthCookies();
+    prepareDesignAuthSessionReload();
+    redirectToTeamverLogin();
+  }
+  return true;
 }
 
 let authRefreshDeclinedForSession = false;
@@ -100,6 +135,7 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   unauthenticatedRefreshAttempted = false;
   authRecoveryRefreshActive = false;
   embedAuthRecoveryLoadUsed = false;
+  orphanJwtRecoveryStarted = false;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -158,6 +194,9 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     resetDesignAuthRefreshDeclined();
     return true;
   }
+  if (await handleOrphanJwtRefreshFailure(bffResult.status, bffResult.bodyText)) {
+    return false;
+  }
   if (bffResult.status === 400) {
     authRefreshDeclinedForSession = true;
     return false;
@@ -172,6 +211,9 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (mainResult.ok) {
     resetDesignAuthRefreshDeclined();
     return true;
+  }
+  if (await handleOrphanJwtRefreshFailure(mainResult.status, mainResult.bodyText)) {
+    return false;
   }
   if (mainResult.status === 400) {
     authRefreshDeclinedForSession = true;

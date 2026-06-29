@@ -64,10 +64,11 @@ describe("fetchDesignAuthSession", () => {
       return document.cookie.includes("teamver_access_token=")
         || document.cookie.includes("teamver_refresh_token=");
     });
-    const { resetDesignAuthRefreshDeclinedForTests, resetDesignAuthSessionCacheForTests } =
+    const { resetDesignAuthRefreshDeclinedForTests, resetDesignAuthSessionCacheForTests, resetOrphanTeamverJwtRecoveryForTests } =
       await import("../src/teamver/designBffClient");
     resetDesignAuthRefreshDeclinedForTests();
     resetDesignAuthSessionCacheForTests();
+    resetOrphanTeamverJwtRecoveryForTests();
   });
 
   beforeEach(() => {
@@ -261,6 +262,33 @@ describe("fetchDesignAuthSession", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(session?.authenticated).toBe(true);
+  });
+
+  it("redirects to sign-in when refresh returns orphan JWT user_not_found", async () => {
+    await forceBareAuthCookieHints();
+    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => '{"message":"error.user_not_found"}',
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const designApiBase = await import("../src/teamver/designApiBase");
+    const redirectSpy = vi.spyOn(designApiBase, "redirectToTeamverLogin").mockImplementation(() => {});
+
+    const { resetOrphanTeamverJwtRecoveryForTests } = await import("../src/teamver/designBffClient");
+    resetOrphanTeamverJwtRecoveryForTests();
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    await fetchDesignAuthSession();
+
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://stg-api.teamver.com/api/auth/logout",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
   });
 
   it("stops after BFF refresh 400 without calling Main BE when cookie hint exists", async () => {
