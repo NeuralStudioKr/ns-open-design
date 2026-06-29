@@ -25,7 +25,8 @@ function readFixedProtocol(): ApiProtocol | undefined {
 
 /**
  * Embed 모드에서 server-managed runtime↔LocalCLI 전환·onboarding 재진입으로 인한 설정 drift를 막는다.
- * apiKey는 runtime-config가 명시적으로 제공한 경우에만 사용한다 (브라우저 env/localStorage 키 재사용 금지).
+ * apiKey는 브라우저에 저장/전송하지 않는다. API-mode proxy 요청은
+ * useManagedApiKey=true만 보내고 daemon이 TEAMVER_OD_API_KEY를 주입한다.
  */
 export function isTeamverExecutionConfigLocked(): boolean {
   const branding = resolveTeamverBranding();
