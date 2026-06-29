@@ -93,7 +93,7 @@ class Settings(BaseModel):
     teamver_od_api_base_url: str = os.getenv(
         "TEAMVER_OD_API_BASE_URL", "https://api.anthropic.com"
     )
-    teamver_od_api_model: str = os.getenv("TEAMVER_OD_API_MODEL", "claude-sonnet-4-5")
+    teamver_od_api_model: str = os.getenv("TEAMVER_OD_API_MODEL", "claude-sonnet-4-6")
     teamver_od_api_key: str = os.getenv("TEAMVER_OD_API_KEY", "")
     teamver_od_anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
 

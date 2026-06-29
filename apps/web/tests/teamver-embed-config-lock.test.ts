@@ -22,7 +22,7 @@ describe("teamver embed execution config lock", () => {
     pinTeamverExecutionConfig({
       apiProtocol: "anthropic",
       baseUrl: "https://api.anthropic.com",
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-4-6",
       managedApiConfigured: true,
     });
 
@@ -43,7 +43,7 @@ describe("teamver embed execution config lock", () => {
 
     expect(locked.mode).toBe("api");
     expect(locked.agentId).toBeNull();
-    expect(locked.model).toBe("claude-sonnet-4-5");
+    expect(locked.model).toBe("claude-sonnet-4-6");
     expect(locked.apiKey).toBe("");
     expect(locked.apiKeyConfigured).toBe(true);
     expect(locked.apiProtocolConfigs).toEqual({});
@@ -53,7 +53,7 @@ describe("teamver embed execution config lock", () => {
     pinTeamverExecutionConfig({
       apiProtocol: "anthropic",
       baseUrl: "https://api.anthropic.com",
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-4-6",
       managedApiConfigured: true,
     });
 
@@ -68,7 +68,7 @@ describe("teamver embed execution config lock", () => {
     expect(locked.mode).toBe("api");
     expect(locked.agentId).toBeNull();
     expect(locked.apiKey).toBe("");
-    expect(locked.model).toBe("claude-sonnet-4-5");
+    expect(locked.model).toBe("claude-sonnet-4-6");
   });
 
   it("mergeTeamverRuntimeConfigIntoAppConfig pins and strips protocol configs", () => {
@@ -89,18 +89,18 @@ describe("teamver embed execution config lock", () => {
         apiKeyConfigured: true,
         apiProtocol: "anthropic",
         baseUrl: "https://api.anthropic.com",
-        model: "claude-sonnet-4-5",
+        model: "claude-sonnet-4-6",
       },
     );
 
     expect(merged.mode).toBe("api");
     expect(merged.apiKey).toBe("");
     expect(merged.apiKeyConfigured).toBe(true);
-    expect(merged.model).toBe("claude-sonnet-4-5");
+    expect(merged.model).toBe("claude-sonnet-4-6");
     expect(merged.apiProtocolConfigs).toEqual({});
 
     const locked = applyTeamverEmbedConfigLockIfNeeded(merged);
-    expect(locked.model).toBe("claude-sonnet-4-5");
+    expect(locked.model).toBe("claude-sonnet-4-6");
   });
 
   it("auto-acknowledges OD privacy and opts out of OD telemetry sharing", () => {
@@ -131,12 +131,12 @@ describe("teamver embed execution config lock", () => {
         apiKeyConfigured: true,
         apiProtocol: "anthropic",
         baseUrl: "https://api.anthropic.com",
-        model: "claude-sonnet-4-5",
+        model: "claude-sonnet-4-6",
       },
     );
 
     expect(merged.mode).toBe("api");
     expect(merged.apiKey).toBe("");
-    expect(merged.model).toBe("claude-sonnet-4-5");
+    expect(merged.model).toBe("claude-sonnet-4-6");
   });
 });

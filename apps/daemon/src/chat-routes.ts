@@ -576,6 +576,17 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     });
   };
 
+  const providerStreamErrorCode = (data: any, fallback = 'UPSTREAM_UNAVAILABLE') => {
+    const raw =
+      data?.error?.code
+      ?? data?.error?.type
+      ?? data?.code
+      ?? data?.type
+      ?? fallback;
+    if (typeof raw !== 'string' || !raw.trim()) return fallback;
+    return raw.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+  };
+
   const appendVersionedApiPath = (baseUrl: string, path: string) => {
     const url = new URL(baseUrl);
     // `URL.pathname` setter normalizes an empty string back to "/", so
@@ -943,7 +954,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           // (api-proxy.ts) records it for billing — api-proxy handles the
           // `usage` frame before flowing onError into the run lifecycle.
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
-          sendProxyError(sse, message, { details: data });
+          sendProxyError(sse, message, {
+            code: providerStreamErrorCode(data),
+            details: data,
+          });
           ended = true;
           return true;
         }

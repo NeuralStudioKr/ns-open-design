@@ -32,7 +32,7 @@ export function pinTeamverExecutionConfig(input: {
   pinned = {
     apiProtocol,
     baseUrl: (input.baseUrl?.trim() || "https://api.anthropic.com"),
-    model: (input.model?.trim() || "claude-sonnet-4-5"),
+    model: (input.model?.trim() || "claude-sonnet-4-6"),
     managedApiConfigured: input.managedApiConfigured === true,
   };
 }
