@@ -1,10 +1,53 @@
-import { describe, expect, it } from 'vitest';
-import { apiProtocolLabel, apiProtocolModelLabel } from '../../src/utils/apiProtocol';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+vi.mock('../../src/teamver/chatApiCredentials', () => ({
+  usesServerManagedChatApiKey: vi.fn(() => false),
+}));
+
+import { usesServerManagedChatApiKey } from '../../src/teamver/chatApiCredentials';
+import {
+  apiProtocolLabel,
+  apiProtocolModelLabel,
+  usesAnthropicProxy,
+} from '../../src/utils/apiProtocol';
 import {
   agentDisplayName,
   agentModelDisplayName,
   exactAgentDisplayName,
 } from '../../src/utils/agentLabels';
+
+const mockedManaged = vi.mocked(usesServerManagedChatApiKey);
+
+describe('usesAnthropicProxy', () => {
+  beforeEach(() => {
+    mockedManaged.mockReturnValue(false);
+  });
+
+  it('skips the daemon proxy for default Anthropic origin with browser BYOK', () => {
+    expect(
+      usesAnthropicProxy({
+        apiProtocol: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        model: 'claude-sonnet-4-6',
+        apiKey: 'sk-user',
+        apiKeyConfigured: true,
+      } as Parameters<typeof usesAnthropicProxy>[0]),
+    ).toBe(false);
+  });
+
+  it('routes server-managed embed through the daemon proxy on the default Anthropic origin', () => {
+    mockedManaged.mockReturnValue(true);
+    expect(
+      usesAnthropicProxy({
+        apiProtocol: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        model: 'claude-sonnet-4-6',
+        apiKey: '',
+        apiKeyConfigured: true,
+      } as Parameters<typeof usesAnthropicProxy>[0]),
+    ).toBe(true);
+  });
+});
 
 describe('api protocol labels', () => {
   it('labels the selected API protocol instead of assuming Anthropic', () => {

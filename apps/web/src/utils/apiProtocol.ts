@@ -1,4 +1,5 @@
 import { isOpenAICompatible } from '../providers/openai-compatible';
+import { usesServerManagedChatApiKey } from '../teamver/chatApiCredentials';
 import type { ApiProtocol, AppConfig } from '../types';
 
 const API_PROTOCOL_LABELS: Record<ApiProtocol, string> = {
@@ -52,6 +53,11 @@ export function usesAnthropicProxy(cfg: AppConfig): boolean {
   if (!cfg.apiProtocol && isOpenAICompatible(cfg.model, cfg.baseUrl)) {
     return false;
   }
+  // Teamver embed managed BYOK uses daemon `/api/proxy/anthropic/stream` even
+  // when baseUrl is the canonical Anthropic origin. The legacy heuristic below
+  // skips the proxy for api.anthropic.com so standalone OD can call the SDK
+  // directly with a browser BYOK key — but embed never ships that key.
+  if (usesServerManagedChatApiKey(cfg)) return true;
   return Boolean(cfg.baseUrl && cfg.baseUrl !== 'https://api.anthropic.com');
 }
 

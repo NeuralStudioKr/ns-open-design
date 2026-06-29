@@ -89,7 +89,11 @@ export async function streamMessage(
   }
 
   if (!cfg.apiKey?.trim()) {
-    handlers.onError(new Error('Missing API key — open Settings and paste one in.'));
+    const err = new Error('Missing API key — open Settings and paste one in.') as Error & {
+      code?: string;
+    };
+    err.code = 'API_KEY_REQUIRED';
+    handlers.onError(err);
     return;
   }
 
