@@ -111,7 +111,7 @@ interface Props {
     action: PluginShareAction,
     locale?: string,
   ) => Promise<PluginShareProjectOutcome>;
-  onImportClaudeDesign: (
+  onImportClaudeDesign?: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
@@ -393,7 +393,7 @@ export function EntryView({
       onThemeChange={onThemeChange}
       onCreateProject={onCreateProject}
       onCreatePluginShareProject={onCreatePluginShareProject}
-      onImportClaudeDesign={onImportClaudeDesign}
+      {...(onImportClaudeDesign ? { onImportClaudeDesign } : {})}
       {...(onImportFolder ? { onImportFolder } : {})}
       {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
       onOpenProject={onOpenProject}

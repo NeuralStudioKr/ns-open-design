@@ -346,7 +346,7 @@ interface Props {
     action: PluginShareAction,
     locale?: string,
   ) => Promise<PluginShareProjectOutcome>;
-  onImportClaudeDesign: (
+  onImportClaudeDesign?: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
@@ -955,7 +955,7 @@ export function EntryShell({
         connectorsLoading={connectorsLoading}
         loading={skillsLoading}
         onCreate={handleCreate}
-        onImportClaudeDesign={onImportClaudeDesign}
+        {...(onImportClaudeDesign ? { onImportClaudeDesign } : {})}
         {...(!hideLocalWorkspaceControls && onImportFolder ? { onImportFolder } : {})}
         {...(!hideLocalWorkspaceControls && onImportFolderResponse ? { onImportFolderResponse } : {})}
         onOpenConnectorsTab={() => {

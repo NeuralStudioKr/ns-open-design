@@ -41,12 +41,14 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(source).toContain("!hideLocalWorkspaceControls && folderImport.available");
   });
 
-  it("does not pass folder-import handlers through embed entry surfaces", () => {
+  it("does not pass folder-import or Claude ZIP import handlers through embed entry surfaces", () => {
     const appSource = readRepoFile("apps/web/src/App.tsx");
     const entryShell = readRepoFile("apps/web/src/components/EntryShell.tsx");
 
     expect(appSource).toContain("isTeamverEmbedMode()");
+    expect(appSource).toContain("onImportClaudeDesign: handleImportClaudeDesign");
     expect(appSource).toContain("onImportFolder: handleImportFolder");
+    expect(entryShell).toContain("onImportClaudeDesign ? { onImportClaudeDesign }");
     expect(entryShell).toContain("!hideLocalWorkspaceControls && onImportFolder");
     expect(entryShell).toContain("!hideLocalWorkspaceControls && onImportFolderResponse");
   });

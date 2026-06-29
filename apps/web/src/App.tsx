@@ -3096,10 +3096,10 @@ function AppInner() {
         promptTemplatesLoading={promptTemplatesLoading}
         onCreateProject={handleCreateProject}
         onCreatePluginShareProject={handleCreatePluginShareProject}
-        onImportClaudeDesign={handleImportClaudeDesign}
         {...(isTeamverEmbedMode()
           ? {}
           : {
+              onImportClaudeDesign: handleImportClaudeDesign,
               onImportFolder: handleImportFolder,
               onImportFolderResponse: handleImportFolderResponse,
             })}
