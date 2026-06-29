@@ -102,6 +102,24 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("활성 DESIGN.md");
   });
 
+  it("strips variant internal and pseudo-tool XML blocks from assistant prose", () => {
+    const input = [
+      "요청을 접수했습니다.",
+      "<tool_call_chunk>",
+      '{"name":"TodoWrite","arguments":{"todos":[{"content":"hidden"}]}}',
+      "</tool_call_chunk>",
+      "<reasoning_trace>private chain</reasoning_trace>",
+      "<slide_plan_internal>hidden outline</slide_plan_internal>",
+      "<todo_items>[{\"content\":\"hidden todo\"}]</todo_items>",
+      "슬라이드 초안을 준비하겠습니다.",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe("요청을 접수했습니다.\n\n슬라이드 초안을 준비하겠습니다.");
+    expect(out).not.toContain("<tool_call_chunk");
+    expect(out).not.toContain("private chain");
+    expect(out).not.toContain("hidden todo");
+  });
+
   it("strips markdown tool_call fences", () => {
     const input = [
       "Intro",
@@ -128,6 +146,13 @@ describe("agent-prose-sanitize SSOT", () => {
 
   it("strips trailing open todo XML while streaming", () => {
     const input = "진행하겠습니다.\n<todo>\n[{\"id\":\"1\",\"label\":\"작업\"";
+    const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
+    expect(hadOpenInternalMarkup).toBe(true);
+    expect(text).toBe("진행하겠습니다.");
+  });
+
+  it("strips trailing open variant internal XML while streaming", () => {
+    const input = "진행하겠습니다.\n<tool_call_chunk>\n{\"name\":\"TodoWrite\"";
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
     expect(hadOpenInternalMarkup).toBe(true);
     expect(text).toBe("진행하겠습니다.");

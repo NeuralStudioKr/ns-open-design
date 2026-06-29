@@ -11,17 +11,35 @@
 
 /** Pseudo-tool XML the model narrates when CLI tools are unavailable. Strip outer tags first. */
 const PSEUDO_TOOL_TAG_NAMES = [
+  "tool",
+  "tools",
+  "tool_calls",
+  "tool-results",
+  "tool_results",
+  "tool-use",
+  "tool_use",
   "function_calls",
   "invoke",
   "parameter",
+  "parameters",
+  "arguments",
+  "args",
   "function_results",
   "function_result",
+  "function",
   "todo",
+  "todos",
+  "todo_write",
+  "todo_update",
   "todo-list",
+  "todo_list",
+  "task_list",
   "tool-call",
   "tool_call",
   "tool_result",
   "function_call",
+  "result",
+  "results",
   "info",
 ] as const;
 
@@ -44,13 +62,18 @@ const INTERNAL_PLANNING_TAG_NAMES = [
   "workflow",
   "workflow_plan",
   "execution_plan",
+  "planning",
   "observation",
   "hidden",
   "private",
   "meta",
   "notes",
+  "note",
   "analysis",
   "thought",
+  "thoughts",
+  "draft",
+  "instructions",
 ] as const;
 
 export const LEAKED_AGENT_PROSE_TAG_NAMES = [
@@ -66,6 +89,16 @@ const CLOSED_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>[\s\S]*?<\
 const OPEN_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>/gi;
 const CLOSED_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const OPEN_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>/gi;
+const INTERNAL_MARKUP_NAME_PART_RE =
+  "(?:[a-z][a-z0-9_-]*[-_])?(?:thinking|thought|reasoning|analysis|scratchpad|reflection|todo|tool|function|operator|workflow|plan)[a-z0-9_-]*";
+const CLOSED_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
+  `<(${INTERNAL_MARKUP_NAME_PART_RE})\\b[^>]*>[\\s\\S]*?</\\1>`,
+  "gi",
+);
+const OPEN_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
+  `<(${INTERNAL_MARKUP_NAME_PART_RE})\\b[^>]*>`,
+  "gi",
+);
 
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
 
@@ -228,6 +261,7 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(CLOSED_MARKDOWN_TOOL_FENCE_RE, "");
   out = out.replace(CLOSED_OD_TAG_RE, "");
   out = stripClosedTagFamilies(out, INTERNAL_PLANNING_TAG_NAMES);
+  out = out.replace(CLOSED_INTERNAL_MARKUP_FAMILY_RE, "");
   out = out.replace(CLOSED_SUFFIX_OPERATOR_RE, "");
   out = out.replace(CLOSED_SUFFIX_ANALYSIS_RE, "");
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
@@ -281,6 +315,12 @@ export function stripTrailingOpenInternalMarkup(
     }
     text = next.text;
   }
+
+  const internalFamily = stripTrailingOpenDynamicTag(text, OPEN_INTERNAL_MARKUP_FAMILY_RE);
+  if (internalFamily.hadOpenInternalMarkup) {
+    return internalFamily;
+  }
+  text = internalFamily.text;
 
   const markdownFence = stripTrailingOpenMarkdownToolFence(text);
   if (markdownFence.hadOpenInternalMarkup) {
