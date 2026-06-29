@@ -276,6 +276,7 @@ import {
   describeStorageStartupError,
   s3StorageHealthNotReadyReason,
 } from './storage/project-storage-startup.js';
+import { resolveProjectStorageLayout } from './storage/project-storage-layout.js';
 import {
   createTeamverProjectAccessMiddleware,
   readTeamverIdentityFromRequest,
