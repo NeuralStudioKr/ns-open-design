@@ -1705,8 +1705,6 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       );
     }
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
-
     const effectiveBaseUrl = baseUrl || opts.defaultBaseUrl;
     const validated = await validateExternalApiBaseUrl(effectiveBaseUrl);
     if (validated.error) {
@@ -1717,6 +1715,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         validated.error,
       );
     }
+
+    await attachByokProxyMaterialization(req, res, proxyBody);
 
     // AIHubMix routes by model name to the native protocol wire (claude →
     // Anthropic /v1/messages, gemini/imagen → Gemini generateContent). That

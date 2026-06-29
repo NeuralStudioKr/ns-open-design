@@ -346,6 +346,7 @@ export function createProjectMaterializationRuntime(
             `[project-materialization] sync-up failed for ${projectId}:`,
             err instanceof Error ? err.message : err,
           );
+          markProjectSyncFailed(projectId);
           await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end_exception');
         }
       });

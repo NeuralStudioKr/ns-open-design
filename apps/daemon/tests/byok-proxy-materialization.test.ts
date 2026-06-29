@@ -22,6 +22,11 @@ function mockRes(): { res: Response; emitFinish: () => void; emitClose: () => vo
       listeners[event].push(fn);
       return this;
     },
+    once(event: string, fn: () => void) {
+      listeners[event] = listeners[event] ?? [];
+      listeners[event].push(fn);
+      return this;
+    },
   } as unknown as Response;
   return {
     res,
@@ -109,14 +114,14 @@ describe('byok-proxy-materialization', () => {
     expect(beforeSpy).not.toHaveBeenCalled();
   });
 
-  it('continues without finish hook when begin throws', async () => {
+  it('continues without finish hook when begin throws after rollback', async () => {
     const storage = new MaterializingProjectStorage(
       new LocalProjectStorage('/tmp/scratch'),
       new LocalProjectStorage('/tmp/remote'),
     );
     const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
     const runtime = createProjectMaterializationRuntime(layout, storage);
-    vi.spyOn(runtime, 'beforeChatRun').mockRejectedValue(new Error('sync-down failed'));
+    const beforeSpy = vi.spyOn(runtime, 'beforeChatRun').mockRejectedValue(new Error('sync-down failed'));
     const afterSpy = vi.spyOn(runtime, 'afterChatRun').mockResolvedValue();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const hooks = createByokProxyMaterializationHooks(runtime);
@@ -128,7 +133,10 @@ describe('byok-proxy-materialization', () => {
     emitFinish();
     await new Promise((r) => setImmediate(r));
 
-    expect(afterSpy).not.toHaveBeenCalled();
+    // Rollback during begin — not the response finish hook.
+    expect(beforeSpy).toHaveBeenCalledTimes(1);
+    expect(afterSpy).toHaveBeenCalledTimes(1);
+    expect(afterSpy.mock.calls[0]?.[0]?.projectId).toBe('p-byok');
     warnSpy.mockRestore();
   });
 });

@@ -81,7 +81,22 @@ export function createByokProxyMaterializationHooks(
       teamverIdentity: readTeamverIdentityFromRequest(req),
       teamverS3Prefix: readTeamverS3PrefixFromRequest(req) ?? null,
     };
-    await matRuntime.beforeChatRun(run);
+    try {
+      await matRuntime.beforeChatRun(run);
+    } catch (err) {
+      // beforeChatRun may have incremented activeProjectRuns before throwing
+      // (e.g. sync-down failure). Balance with afterChatRun so idle-evict and
+      // concurrent-run guards are not stuck for this projectId.
+      try {
+        await matRuntime.afterChatRun(run);
+      } catch (rollbackErr) {
+        console.warn(
+          '[byok-proxy-materialization] rollback after failed begin:',
+          rollbackErr instanceof Error ? rollbackErr.message : rollbackErr,
+        );
+      }
+      throw err;
+    }
     return { run };
   }
 
@@ -114,6 +129,7 @@ export function createByokProxyMaterializationHooks(
       if (finalized) return;
       finalized = true;
       void endByokProxyStream(session!).catch((err) => {
+        matRuntime.markProjectSyncFailed(session!.run.projectId);
         console.warn(
           '[byok-proxy-materialization] end failed:',
           err instanceof Error ? err.message : err,
@@ -129,8 +145,8 @@ export function createByokProxyMaterializationHooks(
       });
     };
 
-    res.on('finish', finalize);
-    res.on('close', finalize);
+    res.once('finish', finalize);
+    res.once('close', finalize);
   }
 
   return {
