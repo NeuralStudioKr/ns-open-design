@@ -2,7 +2,10 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { Request } from 'express';
 
 import {
+  proxyApiKeyFailureToErrorCode,
+  PROXY_API_KEY_MISSING_ERROR_CODE,
   resolveProxyStreamApiKey,
+  resolveProxyStreamApiKeyDetailed,
   resolveTeamverManagedApiKeyFromEnv,
 } from '../src/teamver-managed-api-key.js';
 
@@ -66,5 +69,22 @@ describe('resolveProxyStreamApiKey', () => {
   it('rejects managed key without teamver identity headers', () => {
     const key = resolveProxyStreamApiKey(mockReq(), { useManagedApiKey: true });
     expect(key).toBeNull();
+  });
+
+  it('resolveProxyStreamApiKeyDetailed surfaces managed_key_env_missing', () => {
+    delete process.env.TEAMVER_OD_API_KEY;
+    const result = resolveProxyStreamApiKeyDetailed(
+      mockReq({
+        'x-teamver-user-id': 'user-1',
+        'x-workspace-id': 'ws-1',
+      }),
+      { useManagedApiKey: true },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure).toEqual({ reason: 'managed_key_env_missing' });
+    const mapped = proxyApiKeyFailureToErrorCode(result.failure);
+    expect(mapped.code).toBe(PROXY_API_KEY_MISSING_ERROR_CODE);
+    expect(mapped.httpStatus).toBe(503);
   });
 });

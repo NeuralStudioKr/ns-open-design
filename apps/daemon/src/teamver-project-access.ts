@@ -44,6 +44,13 @@ export function teamverProjectAccessCheckUrl(projectId: string): string | null {
   return `${baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/access`;
 }
 
+/** Collection routes under `/api/projects/*` — not OD project ids. */
+const PROJECT_COLLECTION_ROUTE_SLUGS = new Set(['recent', 'cover-hints']);
+
+export function isTeamverProjectCollectionRouteSlug(projectId: string): boolean {
+  return PROJECT_COLLECTION_ROUTE_SLUGS.has(projectId.trim().toLowerCase());
+}
+
 function accessCacheKey(identity: TeamverRequestIdentity, projectId: string): string {
   return `${identity.userId}:${identity.workspaceId}:${projectId}`;
 }
@@ -79,6 +86,29 @@ export function readTeamverIdentityFromRequest(req: Request): TeamverRequestIden
 export function readTeamverS3PrefixFromRequest(req: Request): string | null {
   const prefix = firstHeaderValue(req.headers['x-teamver-s3-prefix']);
   return prefix || null;
+}
+
+/**
+ * True when the request presents a valid `Authorization: Bearer <OD_API_TOKEN>`
+ * — used to authorize trust on inbound headers (e.g. X-Teamver-S3-Prefix sent
+ * by the BE on its own internal compose-network sync-up calls). The bearer
+ * middleware (server.ts §3.K1) already rejects bad tokens at the edge for
+ * non-loopback callers; this helper exists so downstream code can ALSO branch
+ * on the same signal without re-implementing the check, and so the trust
+ * decision is documented in one place.
+ *
+ * Loopback callers (Electron / desktop UI) are intentionally NOT trusted here
+ * because their tenant context is the local user — they have no business
+ * sending X-Teamver-S3-Prefix. Hosted callers without a token are blocked at
+ * the edge so they will never reach this helper.
+ */
+export function isTrustedBackendCaller(req: Request): boolean {
+  const apiToken = (process.env.OD_API_TOKEN ?? '').trim();
+  if (!apiToken) return false;
+  const authorization = firstHeaderValue(req.headers.authorization);
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(authorization);
+  if (!match) return false;
+  return match[1] === apiToken;
 }
 
 export function teamverIdentityHeadersFromIdentity(
@@ -312,8 +342,15 @@ export async function verifyTeamverProjectAccess(
   }
 
   if (outcome.kind === 'granted') {
-    rememberAccess(identity, projectId, true, outcome.s3Prefix);
-    return { ok: true, s3Prefix: outcome.s3Prefix };
+    const s3Prefix = outcome.s3Prefix?.trim() || null;
+    // Do not cache grants without a tenant prefix — a 204 without
+    // X-Teamver-S3-Prefix would otherwise stick for 10s and every
+    // materialization retry would throw teamver_project_s3_prefix_required
+    // even after the registry row (and header) appeared.
+    if (s3Prefix) {
+      rememberAccess(identity, projectId, true, s3Prefix);
+    }
+    return { ok: true, s3Prefix };
   }
   if (outcome.kind === 'unauthorized') {
     return { ok: false, kind: 'unauthorized' };
@@ -356,11 +393,33 @@ export function createTeamverProjectAccessMiddleware(
   return async (req, res, next) => {
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
+    if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
     if (!teamverProjectAccessCheckUrl(projectId)) return next();
 
     const identity = readTeamverIdentityFromRequest(req);
     if (!identity) {
       return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver identity headers required');
+    }
+
+    // Trusted-caller fast path. BE → daemon over the compose network carries
+    // Bearer OD_API_TOKEN; the BE is authoritative for the project row it
+    // just created and has the row's s3_prefix already (it sends it in
+    // X-Teamver-S3-Prefix). Verifying access on these calls used to race the
+    // BE's own transaction commit and translate into 404 → registerLegacy →
+    // transient deny → 502 PROJECT_STORAGE_SYNC_FAILED for several seconds
+    // every deploy. Fire the access check in the background to keep the
+    // cache warm, but let the route proceed immediately so the BE-initiated
+    // sync-up completes.
+    if (isTrustedBackendCaller(req)) {
+      const registryHintForBackground = resolveRegistryProject
+        ? await resolveRegistryProject(projectId)
+        : null;
+      void verifyTeamverProjectAccess(
+        projectId,
+        identity,
+        registryHintForBackground ?? undefined,
+      ).catch(() => undefined);
+      return next();
     }
 
     const registryHint = resolveRegistryProject

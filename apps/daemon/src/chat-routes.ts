@@ -31,7 +31,10 @@ import {
   aihubmixOriginFromBase,
   classifyAIHubMixModel,
 } from './aihubmix.js';
-import { resolveProxyStreamApiKey } from './teamver-managed-api-key.js';
+import {
+  proxyApiKeyFailureToErrorCode,
+  resolveProxyStreamApiKeyDetailed,
+} from './teamver-managed-api-key.js';
 import { isSafeId as isSafeProjectId } from './projects.js';
 import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectionTest.js';
@@ -70,17 +73,46 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   const { sendApiError, createSseResponse } = ctx.http;
   const byokProxyMaterialization = ctx.byokProxyMaterialization ?? null;
 
+  /**
+   * Wire BYOK proxy stream materialization (sync-down at start, sync-up on
+   * res.finish/close). Returns `true` when the caller may proceed with the
+   * upstream stream. Returns `false` when begin failed and we already wrote
+   * a 502 to `res` (fail-fast mode) — callers MUST `return` immediately so
+   * they do not write conflicting headers or start the upstream LLM call.
+   * When materialization is disabled or no projectId is present, returns
+   * `true` (transparent passthrough preserves the legacy behaviour).
+   */
   async function attachByokProxyMaterialization(
     req: Request,
     res: Response,
     proxyBody: Record<string, unknown>,
-  ): Promise<void> {
-    if (!byokProxyMaterialization) return;
-    await byokProxyMaterialization.attachByokProxyStreamMaterialization(
+  ): Promise<boolean> {
+    if (!byokProxyMaterialization) return true;
+    const result = await byokProxyMaterialization.attachByokProxyStreamMaterialization(
       req,
       res,
       readProxyBodyProjectId(proxyBody),
     );
+    return result.ok;
+  }
+
+  /**
+   * Resolve the proxy stream apiKey OR send a specific error response and
+   * return null. Routes call this instead of the bare resolver so the FE
+   * receives a meaningful `error_code` (e.g. MANAGED_API_KEY_MISSING) rather
+   * than the generic BAD_REQUEST that surfaced as `error_code: n/a` in the
+   * chat error diagnostic copy.
+   */
+  function resolveProxyApiKeyOrSendError(
+    req: Request,
+    res: Response,
+    proxyBody: { apiKey?: unknown; useManagedApiKey?: unknown },
+  ): string | null {
+    const resolution = resolveProxyStreamApiKeyDetailed(req, proxyBody);
+    if (resolution.ok) return resolution.apiKey;
+    const { httpStatus, code, message } = proxyApiKeyFailureToErrorCode(resolution.failure);
+    sendApiError(res, httpStatus, code, message);
+    return null;
   }
 
   const { testProviderConnection, testAgentConnection, getAgentDef, isKnownModel, sanitizeCustomModel, listProviderModels } = ctx.agents;
@@ -1085,13 +1117,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, model, systemPrompt, messages, maxTokens } =
       proxyBody;
-    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
-    if (!baseUrl || !apiKey || !model) {
+    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    if (!apiKey) return;
+    if (!baseUrl || !model) {
       return sendApiError(
         res,
         400,
         'BAD_REQUEST',
-        'baseUrl, apiKey, and model are required',
+        'baseUrl and model are required',
       );
     }
 
@@ -1110,7 +1143,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       `[proxy:anthropic] ${req.method} ${validated.parsed!.hostname} model=${model}`,
     );
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
+    if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
     return runAnthropicChatStream(res, {
       url,
@@ -1126,13 +1159,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, model, systemPrompt, messages, maxTokens } =
       proxyBody;
-    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
-    if (!baseUrl || !apiKey || !model) {
+    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    if (!apiKey) return;
+    if (!baseUrl || !model) {
       return sendApiError(
         res,
         400,
         'BAD_REQUEST',
-        'baseUrl, apiKey, and model are required',
+        'baseUrl and model are required',
       );
     }
 
@@ -1171,7 +1205,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       stream_options: { include_usage: true },
     };
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
+    if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -1268,13 +1302,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, model, systemPrompt, messages, maxTokens, apiVersion } =
       proxyBody;
-    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
-    if (!baseUrl || !apiKey || !model) {
+    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    if (!apiKey) return;
+    if (!baseUrl || !model) {
       return sendApiError(
         res,
         400,
         'BAD_REQUEST',
-        'baseUrl, apiKey, and model are required',
+        'baseUrl and model are required',
       );
     }
 
@@ -1336,7 +1371,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       ...streamUsageOpts,
     };
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
+    if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -1449,14 +1484,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, model, systemPrompt, messages, maxTokens } = proxyBody;
-    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
-    if (!apiKey || !model) {
-      return sendApiError(
-        res,
-        400,
-        'BAD_REQUEST',
-        'apiKey and model are required',
-      );
+    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    if (!apiKey) return;
+    if (!model) {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'model is required');
     }
 
     const effectiveBaseUrl = baseUrl || 'https://generativelanguage.googleapis.com';
@@ -1475,7 +1506,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       `[proxy:google] ${req.method} ${validated.parsed!.hostname} model=${model}`,
     );
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
+    if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
     return runGeminiChatStream(res, {
       url,
@@ -1490,9 +1521,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, model, systemPrompt, messages, maxTokens } = proxyBody;
-    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
-    if (!apiKey || !model) {
-      return sendApiError(res, 400, 'BAD_REQUEST', 'apiKey and model are required');
+    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    if (!apiKey) return;
+    if (!model) {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'model is required');
     }
 
     const effectiveBaseUrl = baseUrl || 'https://ollama.com';
@@ -1520,7 +1552,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       payload.options = { num_predict: maxTokens };
     }
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
+    if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
     const sse = createSseResponse(res);
     let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
@@ -1682,14 +1714,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       byokSpeechModel,
       byokSpeechVoice,
     } = proxyBody;
-    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
-    if (!apiKey || !model) {
-      return sendApiError(
-        res,
-        400,
-        'BAD_REQUEST',
-        'apiKey and model are required',
-      );
+    const apiKey = resolveProxyApiKeyOrSendError(req, res, proxyBody);
+    if (!apiKey) return;
+    if (!model) {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'model is required');
     }
     // projectId is required because the BYOK generate_image tool writes
     // into the active project's folder; without one we'd have to fall
@@ -1716,7 +1744,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       );
     }
 
-    await attachByokProxyMaterialization(req, res, proxyBody);
+    if (!(await attachByokProxyMaterialization(req, res, proxyBody))) return;
 
     // AIHubMix routes by model name to the native protocol wire (claude →
     // Anthropic /v1/messages, gemini/imagen → Gemini generateContent). That

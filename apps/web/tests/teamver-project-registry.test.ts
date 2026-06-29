@@ -16,6 +16,10 @@ import {
   TeamverProjectRegistryError,
   unregisterTeamverProjectFromRegistryIfNeeded,
 } from '../src/teamver/projectRegistry';
+import {
+  readTeamverProjectS3Prefix,
+  clearAllTeamverProjectS3PrefixCache,
+} from '../src/teamver/teamverProjectS3PrefixCache';
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
 import { NetworkError } from '@teamver/app-sdk';
@@ -59,6 +63,7 @@ describe('Teamver project registry payload', () => {
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+    clearAllTeamverProjectS3PrefixCache();
   });
 
   it('maps OD project id and title to SDK camelCase payload', () => {
@@ -89,6 +94,7 @@ describe('Teamver project registry list', () => {
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+    clearAllTeamverProjectS3PrefixCache();
   });
 
   it('returns null outside Teamver embed mode', async () => {
@@ -191,7 +197,10 @@ describe('Teamver project registry register', () => {
 
   it('bootstraps workspace from session when local store is empty', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    const post = vi.fn(async () => undefined);
+    const post = vi.fn(async () => ({
+      odProjectId: 'p1',
+      s3Prefix: 'design/ws-boot/user_u1/proj_p1/',
+    }));
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: true,
       workspaces: [{ id: 'ws-boot', name: 'Boot WS', role: 'owner' }],
@@ -211,6 +220,9 @@ describe('Teamver project registry register', () => {
       '/projects',
       { odProjectId: 'p1', title: 'Demo' },
       expect.objectContaining({ workspaceId: 'ws-boot' }),
+    );
+    expect(readTeamverProjectS3Prefix('ws-boot', 'p1')).toBe(
+      'design/ws-boot/user_u1/proj_p1/',
     );
   });
 
@@ -235,7 +247,10 @@ describe('Teamver project registry register', () => {
     const post = vi
       .fn()
       .mockRejectedValueOnce(new NetworkError({ message: 'bad gateway', status: 502 }))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({
+        odProjectId: 'p1',
+        s3Prefix: 'design/ws1/user_u1/proj_p1/',
+      });
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
       http: { post },
@@ -258,7 +273,13 @@ describe('Teamver project registry register', () => {
     const get = vi.fn(async () => ({ projects: [] }));
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
-      http: { post: vi.fn(async () => undefined), get },
+      http: {
+        post: vi.fn(async () => ({
+          odProjectId: 'fresh-1',
+          s3Prefix: 'design/ws1/user_u1/proj_fresh-1/',
+        })),
+        get,
+      },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
     await registerTeamverProjectIfNeeded({ id: 'fresh-1', name: 'Fresh' }, { skipBootWait: true });
@@ -450,7 +471,10 @@ describe('Teamver project registry boot sync', () => {
   it('syncAllDaemonProjectsToRegistry does not wait on embed boot gate', async () => {
     vi.stubEnv('VITE_TEAMVER_LEGACY_REGISTRY_SYNC', '1');
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    const post = vi.fn(async () => undefined);
+    const post = vi.fn(async () => ({
+      odProjectId: 'od-boot-1',
+      s3Prefix: 'design/ws1/user_u1/proj_od-boot-1/',
+    }));
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: vi.fn(async () => 'ws1') },
       http: { post },
@@ -483,6 +507,7 @@ describe('Teamver project registry delete', () => {
   afterEach(() => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
+    clearAllTeamverProjectS3PrefixCache();
   });
 
   it('no-ops outside embed mode', async () => {

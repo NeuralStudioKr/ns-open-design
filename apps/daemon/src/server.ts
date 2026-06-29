@@ -6605,6 +6605,9 @@ export async function startServer({
     appConfig: appConfigDeps,
     validation: validationDeps,
     projectStorageHooks,
+    // Share the managed-run dedupe set so the BYOK terminal-message PUT
+    // hook does not double-report usage when both code paths race.
+    reportedRuns,
   });
   registerTerminalRoutes(app, {
     db,
@@ -6880,178 +6883,17 @@ export async function startServer({
     res.json({ ok: true });
   });
 
-  // ---- Messages -------------------------------------------------------------
-
-  app.get('/api/projects/:id/conversations/:cid/messages', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
-    if (!conv || conv.projectId !== req.params.id) {
-      return res.status(404).json({ error: 'conversation not found' });
-    }
-    res.json({ messages: listMessages(db, req.params.cid) });
-  });
-
-  app.put('/api/projects/:id/conversations/:cid/messages/:mid', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
-    if (!conv || conv.projectId !== req.params.id) {
-      return res.status(404).json({ error: 'conversation not found' });
-    }
-    const m = req.body || {};
-    if (m.id && m.id !== req.params.mid) {
-      return res.status(400).json({ error: 'id mismatch' });
-    }
-    const saved = upsertMessage(db, req.params.cid, {
-      ...m,
-      id: req.params.mid,
-    });
-    // Bump the parent project's updatedAt so the project list re-orders.
-    updateProject(db, req.params.id, {});
-    reportFinalizedMessage(saved, m, {
-      analyticsContext: readAnalyticsContext(req),
-      projectId: req.params.id,
-      conversationId: req.params.cid,
-    });
-    if (shouldReportByokUsageFromMessage(saved, m)) {
-      const identity = readTeamverIdentityFromRequest(req);
-      if (identity) {
-        void reportByokTeamverUsageAndBillingFromDaemon({
-          message: saved,
-          projectId: req.params.id,
-          identity,
-          reportedRuns,
-        });
-      } else {
-        console.warn(
-          JSON.stringify({
-            metric: 'teamver_usage_5xx',
-            stage: 'byok.identity_missing',
-            ts: Date.now(),
-            projectId: req.params.id,
-            messageId: saved.id,
-            runStatus: saved.runStatus ?? null,
-          }),
-        );
-      }
-      // BYOK chats bypass `POST /api/runs` → `afterChatRun`, so the daemon
-      // never gets a chance to flush run-end artifacts into S3. Mirror the
-      // managed-run sync-up hook here so terminal BYOK assistant message
-      // PUTs persist scratch → S3 tenant prefix before the next idle-evict
-      // sweep deletes the local copy (catastrophic data loss without this).
-      scheduleProjectStoragePersistAfterResponse(
-        projectStorageHooks,
-        req,
-        res,
-        req.params.id,
-      );
-    }
-    res.json({ message: saved });
-  });
-
-  // ---- Preview comments ----------------------------------------------------
-
-  app.get('/api/projects/:id/conversations/:cid/comments', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
-    if (!conv || conv.projectId !== req.params.id) {
-      return res.status(404).json({ error: 'conversation not found' });
-    }
-    res.json({
-      comments: listPreviewComments(db, req.params.id, req.params.cid),
-    });
-  });
-
-  app.post('/api/projects/:id/conversations/:cid/comments', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
-    if (!conv || conv.projectId !== req.params.id) {
-      return res.status(404).json({ error: 'conversation not found' });
-    }
-    try {
-      const comment = upsertPreviewComment(
-        db,
-        req.params.id,
-        req.params.cid,
-        req.body || {},
-      );
-      updateProject(db, req.params.id, {});
-      res.json({ comment });
-    } catch (err) {
-      res.status(400).json({ error: String(err?.message || err) });
-    }
-  });
-
-  app.patch(
-    '/api/projects/:id/conversations/:cid/comments/:commentId',
-    (req, res) => {
-      const conv = getConversation(db, req.params.cid);
-      if (!conv || conv.projectId !== req.params.id) {
-        return res.status(404).json({ error: 'conversation not found' });
-      }
-      try {
-        const comment = updatePreviewCommentStatus(
-          db,
-          req.params.id,
-          req.params.cid,
-          req.params.commentId,
-          req.body?.status,
-        );
-        if (!comment)
-          return res.status(404).json({ error: 'comment not found' });
-        updateProject(db, req.params.id, {});
-        res.json({ comment });
-      } catch (err) {
-        res.status(400).json({ error: String(err?.message || err) });
-      }
-    },
-  );
-
-  app.delete(
-    '/api/projects/:id/conversations/:cid/comments/:commentId',
-    (req, res) => {
-      const conv = getConversation(db, req.params.cid);
-      if (!conv || conv.projectId !== req.params.id) {
-        return res.status(404).json({ error: 'conversation not found' });
-      }
-      const ok = deletePreviewComment(
-        db,
-        req.params.id,
-        req.params.cid,
-        req.params.commentId,
-      );
-      if (!ok) return res.status(404).json({ error: 'comment not found' });
-      updateProject(db, req.params.id, {});
-      res.json({ ok: true });
-    },
-  );
-
-  // ---- Tabs -----------------------------------------------------------------
-
-  app.get('/api/projects/:id/tabs', (req, res) => {
-    if (!getProject(db, req.params.id)) {
-      return res.status(404).json({ error: 'project not found' });
-    }
-    res.json(listTabs(db, req.params.id));
-  });
-
-  app.put('/api/projects/:id/tabs', (req, res) => {
-    if (!getProject(db, req.params.id)) {
-      return res.status(404).json({ error: 'project not found' });
-    }
-    const { tabs = [], active = null, browserTabs = [] } = req.body || {};
-    if (!Array.isArray(tabs) || !tabs.every((t) => typeof t === 'string')) {
-      return res.status(400).json({ error: 'tabs must be string[]' });
-    }
-    if (!Array.isArray(browserTabs)) {
-      return res.status(400).json({ error: 'browserTabs must be an array' });
-    }
-    const result = setTabs(
-      db,
-      req.params.id,
-      {
-        tabs,
-        active: typeof active === 'string' ? active : null,
-        browserTabs,
-      },
-    );
-    res.json(result);
-  });
+  // ---- Conversations: messages / preview comments / tabs -------------------
+  // Authoritative copies of these handlers live in `project-routes.ts` and are
+  // registered via `registerProjectRoutes` above (earlier in the route chain).
+  // Express executes only the first matching handler that responds, so any
+  // verbatim copies that used to live here were silently dead. The BYOK
+  // billing/sync hook we attempt to attach on the terminal assistant-message
+  // PUT was suffering from exactly this: the inline copy that called
+  // `scheduleProjectStoragePersistAfterResponse` /
+  // `reportByokTeamverUsageAndBillingFromDaemon` never ran. The hooks are now
+  // wired into the `project-routes.ts` PUT handler via dependency injection
+  // (see `RegisterProjectRoutesDeps.projectStorageHooks` and `.reportedRuns`).
 
   // ---- Templates ----------------------------------------------------------
   // User-saved snapshots of a project's HTML files. Surfaced in the

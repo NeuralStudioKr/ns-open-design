@@ -114,7 +114,8 @@ describe('byok-proxy-materialization', () => {
     expect(beforeSpy).not.toHaveBeenCalled();
   });
 
-  it('continues without finish hook when begin throws after rollback', async () => {
+  it('continues without finish hook when begin throws after rollback (legacy mode)', async () => {
+    vi.stubEnv('OD_BYOK_PROXY_FAIL_ON_BEGIN', '0');
     const storage = new MaterializingProjectStorage(
       new LocalProjectStorage('/tmp/scratch'),
       new LocalProjectStorage('/tmp/remote'),
@@ -129,7 +130,8 @@ describe('byok-proxy-materialization', () => {
     const req = mockReq();
     const { res, emitFinish } = mockRes();
 
-    await hooks!.attachByokProxyStreamMaterialization(req, res, 'p-byok');
+    const result = await hooks!.attachByokProxyStreamMaterialization(req, res, 'p-byok');
+    expect(result).toEqual({ ok: true });
     emitFinish();
     await new Promise((r) => setImmediate(r));
 
@@ -138,5 +140,33 @@ describe('byok-proxy-materialization', () => {
     expect(afterSpy).toHaveBeenCalledTimes(1);
     expect(afterSpy.mock.calls[0]?.[0]?.projectId).toBe('p-byok');
     warnSpy.mockRestore();
+  });
+
+  it('fail-fast returns ok:false and writes 502 when begin throws (default)', async () => {
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    vi.spyOn(runtime, 'beforeChatRun').mockRejectedValue(new Error('sync-down failed'));
+    const afterSpy = vi.spyOn(runtime, 'afterChatRun').mockResolvedValue();
+    const hooks = createByokProxyMaterializationHooks(runtime);
+
+    const req = mockReq();
+    const status = vi.fn().mockReturnThis();
+    const json = vi.fn().mockReturnThis();
+    const res = {
+      headersSent: false,
+      status,
+      json,
+      once: vi.fn(),
+    } as unknown as Response;
+
+    const result = await hooks!.attachByokProxyStreamMaterialization(req, res, 'p-byok');
+    expect(result).toEqual({ ok: false });
+    expect(status).toHaveBeenCalledWith(502);
+    expect(json).toHaveBeenCalled();
+    expect(afterSpy).toHaveBeenCalledTimes(1);
   });
 });

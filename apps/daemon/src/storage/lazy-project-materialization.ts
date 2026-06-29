@@ -1,9 +1,9 @@
 import type { Request, RequestHandler, Response } from 'express';
 
-import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest } from '../teamver-project-access.js';
+import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest, clearTeamverProjectAccessCache, isTeamverProjectCollectionRouteSlug, isTrustedBackendCaller } from '../teamver-project-access.js';
 import type { ProjectMaterializationRuntime } from './project-materialization-runtime.js';
 import type { MaterializingProjectStorage } from './materializing-project-storage.js';
-import { resolveTeamverTenantRemoteStorage } from './teamver-project-storage-meta.js';
+import { resolveTeamverTenantRemoteStorage, TeamverTenantStorageResolutionError } from './teamver-project-storage-meta.js';
 import { isS3ProjectStorageLayout } from './project-storage-layout.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
 
@@ -125,24 +125,53 @@ export function createProjectStorageAccessHooks(
   async function resolveRemote(req: Request, projectId: string) {
     const identity = readTeamverIdentityFromRequest(req);
     const s3PrefixOverride = readTeamverS3PrefixFromRequest(req);
-    const resolved = await resolveTeamverTenantRemoteStorage(
-      projectId,
-      identity,
-      (objectPrefix) => storage.remoteForTenantPrefix(objectPrefix),
-      () => storage.flatRemote(),
-      s3PrefixOverride,
-    );
-    // Memoize the deterministic tenant remote so the idle-evict sweep can
-    // flush scratch → S3 without needing a request context (BYOK chats only
-    // hit lazy paths — they never carry a managed run that would otherwise
-    // populate the cache via beforeChatRun).
-    materializationRuntime.rememberProjectRemote(projectId, resolved.remote);
-    return resolved.remote;
+    const trustOverride = isTrustedBackendCaller(req);
+    try {
+      const resolved = await resolveTeamverTenantRemoteStorage(
+        projectId,
+        identity,
+        (objectPrefix) => storage.remoteForTenantPrefix(objectPrefix),
+        () => storage.flatRemote(),
+        s3PrefixOverride,
+        { trustOverride },
+      );
+      // Memoize the deterministic tenant remote so the idle-evict sweep can
+      // flush scratch → S3 without needing a request context (BYOK chats only
+      // hit lazy paths — they never carry a managed run that would otherwise
+      // populate the cache via beforeChatRun).
+      materializationRuntime.rememberProjectRemote(projectId, resolved.remote);
+      return resolved.remote;
+    } catch (err) {
+      if (
+        err instanceof TeamverTenantStorageResolutionError
+        && err.message === 'teamver_project_s3_prefix_required'
+      ) {
+        clearTeamverProjectAccessCache(projectId);
+      }
+      throw err;
+    }
   }
 
   async function ensureMaterialized(req: Request, projectId: string): Promise<void> {
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
+
+    // Active-run guard: a managed `POST /api/runs` or a BYOK proxy stream
+    // currently owns this project's scratch — its agent is mid-flight writing
+    // files. Re-running sync-down here would clobber those pending writes
+    // with the older S3 snapshot, and a run-end sync-up would then upload the
+    // partial overwrite. Defer entirely; the run-end / proxy-end hook will
+    // sync-up first and the next lazy GET past the active window will refresh.
+    if (materializationRuntime.getActiveRunCount(trimmedId) > 0) {
+      console.info(
+        JSON.stringify({
+          metric: 'od_s3_lazy_sync_down_skipped_active_run',
+          projectId: trimmedId,
+          activeRuns: materializationRuntime.getActiveRunCount(trimmedId),
+        }),
+      );
+      return;
+    }
 
     const ttl = lazySyncTtlMs();
     const now = Date.now();
@@ -219,6 +248,29 @@ export function createProjectStorageAccessHooks(
     if (!trimmedId) return;
 
     lastSyncAt.delete(trimmedId);
+
+    // Active-run guard: a managed run or BYOK proxy stream will sync-up the
+    // canonical scratch state on its run-end / stream-end hook. Issuing a
+    // racing sync-up here can PUT a partially-written intermediate state to
+    // S3 before the agent finishes, and confuses the run-touched mtime
+    // floor logic. Defer to the run-end hook — it always uploads a
+    // strictly newer (or equal) generation, with the floor applied. Strict
+    // callers (immediate publish/deploy) still proceed: they hold a higher
+    // contract than the run-end uploader.
+    if (
+      !options?.strict
+      && materializationRuntime.getActiveRunCount(trimmedId) > 0
+    ) {
+      console.info(
+        JSON.stringify({
+          metric: 'od_s3_lazy_sync_up_skipped_active_run',
+          projectId: trimmedId,
+          activeRuns: materializationRuntime.getActiveRunCount(trimmedId),
+        }),
+      );
+      return;
+    }
+
     const runPersist = async (): Promise<boolean> => {
       try {
         const remote = await resolveRemote(req, trimmedId);
@@ -375,6 +427,7 @@ export function createLazyProjectMaterializationMiddleware(
 
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
+    if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
 
     if (req.method === 'GET' || req.method === 'HEAD') {
       try {

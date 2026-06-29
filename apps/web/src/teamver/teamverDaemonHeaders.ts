@@ -1,5 +1,24 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
+import { readTeamverProjectS3Prefix } from "./teamverProjectS3PrefixCache";
+
+const DAEMON_PROJECT_ID_RE =
+  /\/api\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+function extractDaemonProjectId(input: RequestInfo | URL): string | undefined {
+  const raw =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? `${input.pathname}${input.search}`
+        : input.url;
+  try {
+    const path = /^https?:\/\//i.test(raw) ? new URL(raw).pathname : raw;
+    return DAEMON_PROJECT_ID_RE.exec(path)?.[1];
+  } catch {
+    return DAEMON_PROJECT_ID_RE.exec(raw)?.[1];
+  }
+}
 
 function headersInitToRecord(headers?: HeadersInit): Record<string, string> {
   if (!headers) return {};
@@ -19,11 +38,17 @@ function headersInitToRecord(headers?: HeadersInit): Record<string, string> {
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
 export async function buildTeamverDaemonRequestHeaders(
   base: Record<string, string>,
+  options?: { projectId?: string },
 ): Promise<Record<string, string>> {
   if (!isTeamverEmbedMode()) return base;
   const workspaceId = await readActiveTeamverWorkspaceId();
-  if (!workspaceId) return base;
-  return { ...base, "X-Workspace-Id": workspaceId };
+  const headers = workspaceId ? { ...base, "X-Workspace-Id": workspaceId } : { ...base };
+  const projectId = options?.projectId?.trim();
+  if (workspaceId && projectId) {
+    const s3Prefix = readTeamverProjectS3Prefix(workspaceId, projectId);
+    if (s3Prefix) headers["X-Teamver-S3-Prefix"] = s3Prefix;
+  }
+  return headers;
 }
 
 /** fetch wrapper — embed mode forwards active workspace so nginx/daemon access matches BFF registry. */
@@ -31,6 +56,10 @@ export async function fetchTeamverDaemon(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const headers = await buildTeamverDaemonRequestHeaders(headersInitToRecord(init.headers));
+  const projectId = extractDaemonProjectId(input);
+  const headers = await buildTeamverDaemonRequestHeaders(
+    headersInitToRecord(init.headers),
+    projectId ? { projectId } : undefined,
+  );
   return fetch(input, { ...init, headers });
 }

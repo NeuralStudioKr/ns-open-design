@@ -69,6 +69,7 @@ describe('Teamver project access gate', () => {
   async function withAccessServer(
     status: number,
     fn: (url: string, requests: AccessRequest[]) => Promise<void>,
+    options?: { s3Prefix?: string },
   ) {
     const requests: AccessRequest[] = [];
     const accessServer = createServer((req, res) => {
@@ -77,7 +78,12 @@ describe('Teamver project access gate', () => {
         userId: req.headers['x-teamver-user-id'] as string | undefined,
         workspaceId: req.headers['x-teamver-workspace-id'] as string | undefined,
       });
-      res.writeHead(status);
+      const prefix = options?.s3Prefix?.trim();
+      if (status === 204 && prefix) {
+        res.writeHead(204, { 'X-Teamver-S3-Prefix': prefix });
+      } else {
+        res.writeHead(status);
+      }
       res.end();
     });
     await new Promise<void>((resolve) => accessServer.listen(0, '127.0.0.1', resolve));
@@ -132,7 +138,9 @@ describe('Teamver project access gate', () => {
     const projectId = `teamver-access-cache-${Date.now()}`;
     await createProject(projectId);
 
-    await withAccessServer(204, async (url, requests) => {
+    await withAccessServer(
+      204,
+      async (url, requests) => {
       process.env.TEAMVER_DESIGN_API_URL = url;
       const headers = {
         'X-Teamver-User-Id': 'user-cache',
@@ -143,7 +151,9 @@ describe('Teamver project access gate', () => {
       const filesResponse = await fetch(`${baseUrl}/api/projects/${projectId}/files`, { headers });
       expect(filesResponse.status).toBe(200);
       expect(requests).toHaveLength(1);
-    });
+    },
+      { s3Prefix: `design/ws_workspace-cache/user_user-cache/proj_${projectId}/` },
+    );
   });
 
   it('requires Teamver identity headers when the gate is configured', async () => {
@@ -155,6 +165,21 @@ describe('Teamver project access gate', () => {
       const response = await fetch(`${baseUrl}/api/projects/${projectId}`);
       expect(response.status).toBe(401);
       expect(requests).toEqual([]);
+    });
+  });
+
+  it('GET /api/projects/recent bypasses the per-project access gate and returns an empty list', async () => {
+    await withAccessServer(204, async (url, requests) => {
+      process.env.TEAMVER_DESIGN_API_URL = url;
+      const headers = {
+        'X-Teamver-User-Id': 'user-recent',
+        'X-Teamver-Workspace-Id': 'workspace-recent',
+      };
+      const response = await fetch(`${baseUrl}/api/projects/recent?limit=6`, { headers });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { projects: unknown[] };
+      expect(Array.isArray(body.projects)).toBe(true);
+      expect(requests).toHaveLength(0);
     });
   });
 

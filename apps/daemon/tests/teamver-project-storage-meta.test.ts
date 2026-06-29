@@ -5,6 +5,7 @@ import {
   fetchTeamverProjectS3Prefix,
   resolveTeamverTenantRemoteStorage,
 } from '../src/storage/teamver-project-storage-meta.js';
+import { verifyTeamverProjectAccess } from '../src/teamver-project-access.js';
 import type { ProjectStorage } from '../src/storage/project-storage.js';
 
 type FetchMock = ReturnType<typeof vi.fn>;
@@ -32,6 +33,27 @@ describe('teamver-project-storage-meta', () => {
     clearTeamverProjectAccessCache();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  describe('verifyTeamverProjectAccess grant cache', () => {
+    it('does not cache 204 grants that omit the s3 prefix header', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue({
+        status: 204,
+        headers: noopHeaders({}),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(verifyTeamverProjectAccess('proj-1', identity)).resolves.toEqual({
+        ok: true,
+        s3Prefix: null,
+      });
+      await expect(verifyTeamverProjectAccess('proj-1', identity)).resolves.toEqual({
+        ok: true,
+        s3Prefix: null,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('fetchTeamverProjectS3Prefix', () => {
@@ -277,6 +299,29 @@ describe('teamver-project-storage-meta', () => {
       ).rejects.toThrow('teamver_project_s3_prefix_mismatch');
       expect(tenant).not.toHaveBeenCalled();
       expect(fallback).not.toHaveBeenCalled();
+    });
+
+    it('uses request override when access is granted but prefix header is missing', async () => {
+      vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+      const fetchMock: FetchMock = vi.fn().mockResolvedValue({
+        status: 204,
+        headers: noopHeaders({}),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const tenant = vi.fn((prefix: string) => fakeStorage(`tenant:${prefix}`));
+      const fallback = vi.fn(() => fakeStorage('fallback'));
+
+      const result = await resolveTeamverTenantRemoteStorage(
+        'proj-1',
+        identity,
+        tenant,
+        fallback,
+        'design/ws_hint/user_hint/proj_proj-1/',
+      );
+
+      expect(result.s3Prefix).toBe('design/ws_hint/user_hint/proj_proj-1/');
+      expect(tenant).toHaveBeenCalledWith('design/ws_hint/user_hint/proj_proj-1/');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

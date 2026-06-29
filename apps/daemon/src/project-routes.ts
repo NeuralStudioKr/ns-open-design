@@ -32,17 +32,30 @@ import {
   writeProjectManifest,
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
-import { isTeamverDesignManaged } from './teamver-project-access.js';
+import {
+  isTeamverDesignManaged,
+  readTeamverIdentityFromRequest,
+} from './teamver-project-access.js';
 import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
+import {
+  shouldReportByokUsageFromMessage,
+  reportByokTeamverUsageAndBillingFromDaemon,
+} from './teamver-byok-usage-bridge.js';
 import { resolveProjectCoverHint } from './project-cover-hints.js';
 
 const PROJECT_COVER_HINTS_BATCH_MAX = 12;
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
+  /**
+   * Set of run ids already reported via the managed-run analytics path. The
+   * BYOK terminal-message PUT handler shares this set so a single chat turn
+   * never double-reports usage when both pathways race (Strategy B, §4.11).
+   */
+  reportedRuns?: Set<string>;
 }
 
 function projectDetailResolvedDir(
@@ -1801,6 +1814,47 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       projectId: req.params.id,
       conversationId: req.params.cid,
     });
+    // Embed BYOK chats bypass `POST /api/runs` → `afterChatRun`, so the
+    // daemon never gets a chance to flush run-end artifacts into S3 nor to
+    // finalize Strategy-B billing through the managed-run path. Mirror both
+    // hooks here on the terminal assistant-message PUT so:
+    //   1) scratch → S3 sync-up happens before the next idle-evict sweep
+    //      (catastrophic data loss without this — docs-teamver/16 §5.5b).
+    //   2) BYOK usage events + billing finalize POST hit design-api, since
+    //      `mode=api` proxy streams never visit the managed run pipeline.
+    // The server-side proxy materialization hooks
+    // (`byok-proxy-materialization.ts`) act as a second safety net for sync,
+    // but billing finalize lives only here.
+    if (shouldReportByokUsageFromMessage(saved, m) && ctx.reportedRuns) {
+      const identity = readTeamverIdentityFromRequest(req);
+      if (identity) {
+        void reportByokTeamverUsageAndBillingFromDaemon({
+          message: saved,
+          projectId: req.params.id,
+          identity,
+          reportedRuns: ctx.reportedRuns,
+        });
+      } else {
+        console.warn(
+          JSON.stringify({
+            metric: 'teamver_usage_5xx',
+            stage: 'byok.identity_missing',
+            ts: Date.now(),
+            projectId: req.params.id,
+            messageId: saved.id,
+            runStatus: saved.runStatus ?? null,
+          }),
+        );
+      }
+      if (ctx.projectStorageHooks) {
+        scheduleProjectStoragePersistAfterResponse(
+          ctx.projectStorageHooks,
+          req,
+          res,
+          req.params.id,
+        );
+      }
+    }
     res.json({ message: saved });
   });
 

@@ -58,6 +58,13 @@ export type ProjectMaterializationRuntime = {
   getProjectRemote: (projectId: string) => ProjectStorage | undefined;
   /** Clear the sticky remote cache entry (call from project delete hooks). */
   forgetProjectRemote: (projectId: string) => void;
+  /**
+   * Number of overlapping materialized runs currently active for a project
+   * (managed `POST /api/runs` runs + BYOK proxy streams). Lazy sync-down and
+   * lazy sync-up callers MUST consult this and avoid clobbering an in-flight
+   * agent's scratch with stale S3 state — see docs-teamver/16 §3.
+   */
+  getActiveRunCount: (projectId: string) => number;
   /** Stops the optional scratch disk-usage interval timer (no-op when disabled). */
   dispose: () => void;
 };
@@ -127,9 +134,26 @@ export function createProjectMaterializationRuntime(
     return projectSyncFailed.has(projectId.trim());
   }
 
+  function getActiveRunCount(projectId: string): number {
+    return activeProjectRuns.get(projectId.trim()) ?? 0;
+  }
+
   function trackSyncFloor(projectId: string, startedAt: number): void {
     const floor = projectSyncFloorMs.get(projectId);
     projectSyncFloorMs.set(projectId, floor === undefined ? startedAt : Math.min(floor, startedAt));
+  }
+
+  /**
+   * Like `trackSyncFloor`, but reports whether this call installed the very
+   * first floor entry for the project (i.e. did not just lower an existing
+   * floor). Used by `beforeChatRun` rollback paths so we only delete the
+   * floor entry we actually installed — if it already existed, an earlier
+   * concurrent run still owns it and we must not drop it.
+   */
+  function trackSyncFloorAndReportChange(projectId: string, startedAt: number): boolean {
+    const hadFloor = projectSyncFloorMs.has(projectId);
+    trackSyncFloor(projectId, startedAt);
+    return !hadFloor;
   }
 
   async function withProjectLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
@@ -236,47 +260,91 @@ export function createProjectMaterializationRuntime(
       console.warn(
         `[project-materialization] concurrent run on ${projectId} — v1 allows one materialized run; skipping sync-down`,
       );
+      // Stage the bookkeeping mutations so a remote-resolve failure can
+      // unwind without leaking activeProjectRuns / floor entries (those
+      // would permanently mark the project as "active" and silently disable
+      // sync-down for future runs + idle evict).
       activeProjectRuns.set(projectId, active + 1);
       const now = Date.now();
       run.projectMaterializationStartedAt = now;
-      trackSyncFloor(projectId, now);
+      const floorChanged = trackSyncFloorAndReportChange(projectId, now);
       const cachedRemote = projectTenantRemote.get(projectId);
       if (cachedRemote) {
         run.teamverRemote = cachedRemote;
-      } else {
+        return;
+      }
+      try {
         const remote = await resolveRunRemote(run, projectId);
         projectTenantRemote.set(projectId, remote);
         rememberProjectRemote(projectId, remote);
+      } catch (err) {
+        // Roll back the bookkeeping we just installed so the project does
+        // not stay pinned-active when the caller fails the run.
+        activeProjectRuns.set(projectId, active);
+        if (floorChanged) projectSyncFloorMs.delete(projectId);
+        run.projectMaterializationStartedAt = 0;
+        throw err;
       }
       return;
     }
 
+    // First-active path: install counter+floor+remote tentatively, then
+    // sync-down inside the project lock. Any failure before we return must
+    // tear down everything we touched so a retry / failure handler doesn't
+    // see a stuck active run.
     activeProjectRuns.set(projectId, 1);
-    const remote = await resolveRunRemote(run, projectId);
+    let remote: ProjectStorage;
+    try {
+      remote = await resolveRunRemote(run, projectId);
+    } catch (err) {
+      activeProjectRuns.delete(projectId);
+      throw err;
+    }
     projectTenantRemote.set(projectId, remote);
     rememberProjectRemote(projectId, remote);
-    await withProjectLock(projectId, async () => {
-      const syncDownStarted = Date.now();
-      const result = await storage.syncDown(projectId, remote);
-      const prefixNote = run.teamverS3Prefix ? ` prefix=${run.teamverS3Prefix}` : '';
-      console.info(
-        `[project-materialization] sync-down ${projectId}: ${result.files} file(s)${prefixNote}`,
-      );
-      if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
-        console.info(
-          JSON.stringify({
-            metric: 'od_s3_sync_down',
-            projectId,
-            files: result.files,
-            durationMs: Date.now() - syncDownStarted,
-            runId: typeof run.id === 'string' ? run.id : undefined,
-          }),
-        );
-      }
-    });
     const startedAt = Date.now();
     run.projectMaterializationStartedAt = startedAt;
-    trackSyncFloor(projectId, startedAt);
+    const floorChanged = trackSyncFloorAndReportChange(projectId, startedAt);
+    try {
+      await withProjectLock(projectId, async () => {
+        const syncDownStarted = Date.now();
+        const result = await storage.syncDown(projectId, remote);
+        const prefixNote = run.teamverS3Prefix ? ` prefix=${run.teamverS3Prefix}` : '';
+        console.info(
+          `[project-materialization] sync-down ${projectId}: ${result.files} file(s)${prefixNote}`,
+        );
+        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_sync_down',
+              projectId,
+              files: result.files,
+              durationMs: Date.now() - syncDownStarted,
+              runId: typeof run.id === 'string' ? run.id : undefined,
+            }),
+          );
+        }
+      });
+    } catch (err) {
+      // sync-down failed (or the lock body threw). Undo everything so we
+      // don't leak a phantom active run that blocks idle-evict and pins
+      // the tenant remote map. The caller is expected to surface this as
+      // a run failure via `design.runs.fail`.
+      activeProjectRuns.delete(projectId);
+      projectTenantRemote.delete(projectId);
+      if (floorChanged) projectSyncFloorMs.delete(projectId);
+      run.projectMaterializationStartedAt = 0;
+      run.teamverRemote = null;
+      console.info(
+        JSON.stringify({
+          metric: 'od_s3_before_chat_run_rollback',
+          projectId,
+          runId: typeof run.id === 'string' ? run.id : undefined,
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      throw err;
+    }
   }
 
   async function afterChatRun(run: RunLike): Promise<void> {
@@ -566,6 +634,7 @@ export function createProjectMaterializationRuntime(
     rememberProjectRemote,
     getProjectRemote,
     forgetProjectRemote,
+    getActiveRunCount,
     dispose,
   };
 }

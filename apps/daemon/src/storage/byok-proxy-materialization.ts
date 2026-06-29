@@ -26,16 +26,39 @@ export type ByokProxyMaterializationHooks = {
     projectId: string,
   ) => Promise<ByokProxyMaterializationSession | null>;
   endByokProxyStream: (session: ByokProxyMaterializationSession) => Promise<void>;
+  /**
+   * Wire the materialization lifecycle (sync-down → upstream stream →
+   * sync-up) onto the proxy response. Returns:
+   *   `{ ok: true }`   — caller should proceed with the upstream stream.
+   *   `{ ok: false }`  — begin failed; the caller MUST stop and not stream.
+   *                       When fail-fast is enabled (default), this function
+   *                       also writes an HTTP 502 to `res` so callers can
+   *                       just `return` after seeing `ok: false`.
+   */
   attachByokProxyStreamMaterialization: (
     req: Request,
     res: Response,
     projectId: string | undefined | null,
-  ) => Promise<void>;
+  ) => Promise<{ ok: true } | { ok: false }>;
 };
 
 function byokProxyMaterializationEnabled(): boolean {
   const raw = (process.env.OD_BYOK_PROXY_MATERIALIZATION ?? '').trim();
   if (raw === '0') return false;
+  return true;
+}
+
+/**
+ * When begin (sync-down) fails for a BYOK proxy stream, should we 502 the
+ * request? Default ON so embed BYOK never streams tool writes into a scratch
+ * dir that has no path back to S3 (the historical silent-data-loss case
+ * documented in docs-teamver/29). Set `OD_BYOK_PROXY_FAIL_ON_BEGIN=0`
+ * (dev only) to fall back to the legacy "warn + stream without sync"
+ * behaviour.
+ */
+function byokProxyFailOnBeginEnabled(): boolean {
+  const raw = (process.env.OD_BYOK_PROXY_FAIL_ON_BEGIN ?? '').trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
   return true;
 }
 
@@ -108,21 +131,55 @@ export function createByokProxyMaterializationHooks(
     req: Request,
     res: Response,
     projectId: string | undefined | null,
-  ): Promise<void> {
+  ): Promise<{ ok: true } | { ok: false }> {
     const trimmedId = parseProxyProjectId(projectId);
-    if (!trimmedId) return;
+    if (!trimmedId) {
+      // No project context (e.g. standalone CLI BYOK without projectId).
+      // Nothing to sync; let the stream proceed.
+      return { ok: true };
+    }
 
     let session: ByokProxyMaterializationSession | null = null;
     try {
       session = await beginByokProxyStream(req, trimmedId);
     } catch (err) {
+      // Sync-down failed. The legacy behaviour was to silently warn and let
+      // the stream proceed without any hook, which produced the catastrophic
+      // data-loss path (`docs-teamver/29`): tool writes hit scratch, and
+      // because no finish hook is registered, they never sync up — until the
+      // idle-evict sweep wipes them. Fail-fast (default on) refuses the
+      // stream so the FE can show a real error rather than a silent loss.
+      const failFast = byokProxyFailOnBeginEnabled();
       console.warn(
-        '[byok-proxy-materialization] begin failed — proxy continues without sync-down:',
+        '[byok-proxy-materialization] begin failed:',
         err instanceof Error ? err.message : err,
+        failFast ? '— failing stream (fail-fast)' : '— proceeding without sync (legacy)',
       );
-      return;
+      console.info(
+        JSON.stringify({
+          metric: 'od_byok_proxy_begin_failed',
+          projectId: trimmedId,
+          failFast,
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      if (failFast) {
+        if (!res.headersSent) {
+          res.status(502).json({
+            error: 'project storage unavailable',
+            error_code: 'PROJECT_STORAGE_UNAVAILABLE',
+            details:
+              err instanceof Error ? err.message : 'sync-down failed before streaming',
+          });
+        }
+        return { ok: false };
+      }
+      // Legacy fallback: let the stream proceed without any sync hook so
+      // small/dev deployments do not regress. PR3 may revisit with a
+      // minimal "sync-on-close" pseudo-hook for tool writes.
+      return { ok: true };
     }
-    if (!session) return;
+    if (!session) return { ok: true };
 
     let finalized = false;
     const finalize = () => {
@@ -147,6 +204,7 @@ export function createByokProxyMaterializationHooks(
 
     res.once('finish', finalize);
     res.once('close', finalize);
+    return { ok: true };
   }
 
   return {

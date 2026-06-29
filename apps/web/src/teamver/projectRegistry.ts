@@ -10,6 +10,11 @@ import { readTeamverViteEnv } from "./teamverViteEnv";
 import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
+import {
+  clearTeamverProjectS3Prefix,
+  clearAllTeamverProjectS3PrefixCache,
+  rememberTeamverProjectS3Prefix,
+} from "./teamverProjectS3PrefixCache";
 
 async function waitForEmbedBootIfNeeded(): Promise<void> {
   if (!isTeamverEmbedMode()) return;
@@ -93,11 +98,13 @@ function invalidateFeAccessCache(projectId: string, workspaceId?: string): void 
   if (!trimmed) return;
   if (workspaceId?.trim()) {
     feAccessCache.delete(`${workspaceId.trim()}:${trimmed}`);
+    clearTeamverProjectS3Prefix(trimmed, workspaceId.trim());
     return;
   }
   for (const key of feAccessCache.keys()) {
     if (key.endsWith(`:${trimmed}`)) feAccessCache.delete(key);
   }
+  clearTeamverProjectS3Prefix(trimmed);
 }
 
 function primeFeAccessAllowed(projectId: string, workspaceId: string): void {
@@ -115,6 +122,7 @@ function invalidateRegisteredIdsCache(): void {
 export function invalidateTeamverProjectRegistryCaches(): void {
   feAccessCache.clear();
   invalidateRegisteredIdsCache();
+  clearAllTeamverProjectS3PrefixCache();
 }
 
 async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
@@ -166,6 +174,20 @@ export function buildTeamverProjectRegistryPayload(
   };
 }
 
+async function rememberRegistryS3Prefix(
+  projectId: string,
+  workspaceId: string,
+  registered?: TeamverRegisteredProject | null,
+): Promise<void> {
+  const direct = registered?.s3Prefix?.trim();
+  if (direct) {
+    rememberTeamverProjectS3Prefix(workspaceId, projectId, direct);
+    return;
+  }
+  const fetched = await fetchTeamverProject(projectId);
+  rememberTeamverProjectS3Prefix(workspaceId, projectId, fetched?.s3Prefix);
+}
+
 export async function registerTeamverProjectIfNeeded(
   project: Pick<Project, "id" | "name">,
   options?: { skipBootWait?: boolean; retryDelaysMs?: readonly number[] },
@@ -186,8 +208,8 @@ export async function registerTeamverProjectIfNeeded(
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     try {
-      await withDesignBffCookieAuthRecovery(() =>
-        client.http.post(
+      const registered = await withDesignBffCookieAuthRecovery(() =>
+        client.http.post<TeamverRegisteredProject>(
           "/projects",
           payload,
           {
@@ -198,11 +220,13 @@ export async function registerTeamverProjectIfNeeded(
       );
       invalidateRegisteredIdsCache();
       primeFeAccessAllowed(project.id, workspaceId);
+      await rememberRegistryS3Prefix(project.id, workspaceId, registered);
       return;
     } catch (err) {
       if (err instanceof NetworkError && err.status === 409) {
         invalidateRegisteredIdsCache();
         primeFeAccessAllowed(project.id, workspaceId);
+        await rememberRegistryS3Prefix(project.id, workspaceId);
         return;
       }
       const delayMs = retryDelaysMs[attempt];
