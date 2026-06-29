@@ -381,26 +381,10 @@ async def delete_project(
             workspace_id=workspace_id,
             s3_prefix=row.s3_prefix,
         )
-        try:
-            await client.sync_scratch_project(row.od_project_id, identity=identity)
-        except BadGatewayError:
-            logger.warning(
-                "registry delete: daemon scratch sync-up failed od_project_id=%s",
-                row.od_project_id,
-                exc_info=True,
-            )
-            logger.info(
-                '{"metric":"od_registry_scratch_sync_failed","od_project_id":"%s","stage":"delete"}',
-                row.od_project_id,
-            )
-            raise
-        except Exception as exc:
-            logger.warning(
-                "registry delete: daemon scratch sync-up failed od_project_id=%s",
-                row.od_project_id,
-                exc_info=True,
-            )
-            raise BadGatewayError("od_daemon_scratch_sync_up_failed") from exc
+        # Registry delete: RDS soft-delete + scratch evict only.
+        # Do NOT run scratch/sync-up here — syncUp(runStart=0) on an empty/evicted
+        # scratch deletes the entire tenant S3 prefix (orphan propagation).
+        # Remote retention/purge is controlled by daemon OD_S3_PURGE_ON_DELETE on evict.
 
         await design_project_crud.asoft_delete_by_od_id(
             db,

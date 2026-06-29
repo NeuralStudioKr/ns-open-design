@@ -29,7 +29,7 @@ def _auth() -> AuthContext:
 
 
 @pytest.mark.asyncio
-async def test_delete_project_syncs_then_evicts_daemon_scratch(
+async def test_delete_project_evicts_daemon_scratch_without_pre_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = _project_row()
@@ -54,42 +54,10 @@ async def test_delete_project_syncs_then_evicts_daemon_scratch(
     response = await projects_router.delete_project("od1", _auth(), db)
 
     assert response.status_code == 204
-    sync.assert_awaited_once()
-    assert sync.await_args.args[0] == "od1"
+    sync.assert_not_awaited()
     db.commit.assert_awaited_once()
     evict.assert_awaited_once()
     assert evict.await_args.args[0] == "od1"
-
-
-@pytest.mark.asyncio
-async def test_delete_project_raises_when_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    row = _project_row()
-    db = AsyncMock()
-    db.commit = AsyncMock()
-    evict = AsyncMock()
-
-    monkeypatch.setattr(
-        design_project_crud,
-        "aget_project_by_od_id",
-        AsyncMock(return_value=row),
-    )
-    monkeypatch.setattr(
-        design_project_crud,
-        "asoft_delete_by_od_id",
-        AsyncMock(return_value=row),
-    )
-
-    async def boom(*_args, **_kwargs):
-        raise BadGatewayError("od_daemon_scratch_sync_up_failed")
-
-    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", boom)
-    monkeypatch.setattr(projects_router.OdDaemonClient, "evict_scratch_project", evict)
-
-    with pytest.raises(BadGatewayError):
-        await projects_router.delete_project("od1", _auth(), db)
-
-    db.commit.assert_not_awaited()
-    evict.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -119,5 +87,5 @@ async def test_delete_project_raises_when_evict_fails(monkeypatch: pytest.Monkey
     with pytest.raises(BadGatewayError):
         await projects_router.delete_project("od1", _auth(), db)
 
-    sync.assert_awaited_once()
+    sync.assert_not_awaited()
     db.commit.assert_awaited_once()

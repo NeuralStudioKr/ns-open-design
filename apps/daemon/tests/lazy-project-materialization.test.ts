@@ -72,7 +72,7 @@ describe('createProjectStorageAccessHooks', () => {
     }
   });
 
-  it('bypasses the TTL and self-heals S3 after a previous sync-up failure', async () => {
+  it('bypasses the TTL and self-heals via sync-down then upload-only sync-up', async () => {
     const previousTtl = process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
     process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = '60000';
     const storage = new MaterializingProjectStorage(
@@ -82,7 +82,7 @@ describe('createProjectStorageAccessHooks', () => {
     const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
     const runtime = createProjectMaterializationRuntime(layout, storage);
     const hooks = createProjectStorageAccessHooks(runtime);
-    const syncDown = vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 0 });
+    const syncDown = vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 2 });
     const syncUp = vi.spyOn(storage, 'syncUp').mockResolvedValue({
       uploaded: 1,
       skipped: 0,
@@ -93,10 +93,11 @@ describe('createProjectStorageAccessHooks', () => {
     try {
       await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/files'), 'p1');
       runtime.markProjectSyncFailed('p1');
-      await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/preview-url'), 'p1');
+      await hooks!.ensureMaterialized(mockReq('GET', '/files'), 'p1');
 
       expect(syncDown).toHaveBeenCalledTimes(2);
       expect(syncUp).toHaveBeenCalledTimes(1);
+      expect(syncDown.mock.invocationCallOrder[0]).toBeLessThan(syncUp.mock.invocationCallOrder[0]!);
       expect(runtime.isProjectSyncFailed('p1')).toBe(false);
     } finally {
       if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
@@ -378,6 +379,27 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     res.emit('finish');
     await new Promise((r) => setTimeout(r, 0));
     expect(persist).toHaveBeenCalled();
+  });
+
+  it('materializes mounted relative paths (/files, /raw/…)', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+
+    for (const path of ['/files', '/raw/deck.html']) {
+      ensure.mockClear();
+      const next = vi.fn();
+      await middleware(mockReq('GET', path), mockRes(), next);
+      expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
+      expect(next).toHaveBeenCalled();
+    }
   });
 
   it('runs sync-down for raw artifact reads (preview iframe / fetchProjectFileText)', async () => {

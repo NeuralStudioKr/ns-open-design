@@ -239,15 +239,31 @@ design-api registry create가 내부적으로 `scratch/sync-up` 을 호출한다
 
 ### 5.6 프로젝트 **삭제** — 저장이 아님
 
-**트리거:** registry delete / evict API  
-**코드:** `onProjectRemoved`
+**트리거:** design-api `DELETE /api/v1/projects/{od_project_id}` → daemon `POST …/scratch/evict`  
+**코드:** `onProjectRemoved` (`lazy-project-materialization.ts`)
+
+| 단계 | 동작 |
+|------|------|
+| ① RDS | `status=deleted` (soft-delete) |
+| ② daemon | `scratch/evict` → scratch tree 제거 |
+| ③ S3 | `OD_S3_PURGE_ON_DELETE` 에 따라 purge 또는 **유지** |
 
 | `OD_S3_PURGE_ON_DELETE` | S3 tenant prefix | scratch |
 |-------------------------|------------------|---------|
 | default **on** (1/true) | **purge** (객체 DELETE) | evict |
-| `0` / false | 유지 | evict |
+| `0` / false | **유지** | evict |
 
-로그 마커: `od_s3_remote_purged`.
+> **금지 (2026-06-29 hotfix):** registry delete **전** `scratch/sync-up` 호출 금지.  
+> `syncUp(runStart=0)` + empty scratch 는 remote orphan delete 로 tenant prefix 전체를 지울 수 있음 —  
+> `OD_S3_PURGE_ON_DELETE=0` staging 정책과 충돌. 명시적 purge(`onProjectRemoved`)만 S3 delete.
+
+**syncUp full-sync orphan delete 정책** (`materializing-project-storage.ts`):
+
+- scratch **empty** → remote DELETE **never**
+- `OD_S3_PURGE_ON_DELETE=0` → remote DELETE **never** (upload only)
+- production purge=1 + scratch non-empty → scratch에 없는 remote만 DELETE (의도적 파일 삭제 반영)
+
+로그 마커: `od_s3_remote_purged` (explicit purge only).
 
 ---
 

@@ -66,22 +66,37 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isProjectMaterializationPath(pathname: string): boolean {
-  if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit)(\/|$)/.test(pathname)) {
+  // Middleware is mounted at /api/projects/:id — req.path is relative (/files, /raw/…).
+  const core = String(pathname ?? '');
+  if (/^\/(files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit)(\/|$)/.test(core)) {
     return true;
   }
-  // HTML/asset previews and fetchProjectFileText load via GET /raw/* — must sync-down
-  // from S3 before sendProjectFile reads scratch (otherwise ENOENT → 404).
-  if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(pathname)) {
+  if (/^\/raw(\/|$)/.test(core)) {
     return true;
   }
-  if (/^\/api\/projects\/[^/]+\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(pathname)) {
+  if (/^\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(core)) {
     return true;
   }
-  // Publish (design-api OdDaemonClient) reads manifest + inline artifacts from S3-backed projects.
-  if (/^\/api\/projects\/[^/]+\/export(\/|$)/.test(pathname)) {
+  if (/^\/export(\/|$)/.test(core)) {
     return true;
   }
-  if (/^\/api\/projects\/[^/]+\/archive(\/|$)/.test(pathname)) {
+  if (/^\/archive(\/|$)/.test(core)) {
+    return true;
+  }
+  // Unmounted absolute paths (unit tests, direct handlers).
+  if (/^\/api\/projects\/[^/]+\/(files|folders|search|preview-url|upload|media|finalize|deploy|design-system-package-audit)(\/|$)/.test(core)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(core)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(core)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/export(\/|$)/.test(core)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/archive(\/|$)/.test(core)) {
     return true;
   }
   return false;
@@ -143,7 +158,13 @@ export function createProjectStorageAccessHooks(
         try {
           await materializationRuntime.withProjectLock(trimmedId, async () => {
             const remote = await resolveRemote(req, trimmedId);
-            if (materializationRuntime.isProjectSyncFailed(trimmedId)) {
+            const syncingFailed = materializationRuntime.isProjectSyncFailed(trimmedId);
+            const down = await storage.syncDown(trimmedId, remote);
+            lastSyncAt.set(trimmedId, Date.now());
+            console.info(
+              `[project-materialization] lazy sync-down ${trimmedId}: ${down.files} file(s)`,
+            );
+            if (syncingFailed) {
               const heal = await storage.syncUp(trimmedId, remote, 0);
               console.info(
                 `[project-materialization] lazy self-heal sync-up ${trimmedId}: uploaded=${heal.uploaded} skipped=${heal.skipped} deleted=${heal.deleted} failed=${heal.failed}`,
@@ -153,11 +174,6 @@ export function createProjectStorageAccessHooks(
               }
               materializationRuntime.clearProjectSyncFailed(trimmedId);
             }
-            const result = await storage.syncDown(trimmedId, remote);
-            lastSyncAt.set(trimmedId, Date.now());
-            console.info(
-              `[project-materialization] lazy sync-down ${trimmedId}: ${result.files} file(s)`,
-            );
           });
           return;
         } catch (err) {

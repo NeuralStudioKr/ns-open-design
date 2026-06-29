@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MaterializingProjectStorage,
   resolveRemoteProjectStorage,
+  shouldPropagateScratchDeletionsToRemote,
 } from '../src/storage/materializing-project-storage.js';
 import { LocalProjectStorage, S3ProjectStorage, type ProjectStorage } from '../src/storage/project-storage.js';
 import { resolveProjectStorageLayout } from '../src/storage/project-storage-layout.js';
@@ -29,6 +30,34 @@ describe('resolveProjectStorageLayout', () => {
       scratchDir: '/data/scratch',
       projectsDir: '/data/scratch/projects',
     });
+  });
+});
+
+describe('shouldPropagateScratchDeletionsToRemote', () => {
+  it('returns false when scratch is empty', () => {
+    expect(shouldPropagateScratchDeletionsToRemote(0)).toBe(false);
+  });
+
+  it('returns false when OD_S3_PURGE_ON_DELETE=0 even with scratch files', () => {
+    const previous = process.env.OD_S3_PURGE_ON_DELETE;
+    process.env.OD_S3_PURGE_ON_DELETE = '0';
+    try {
+      expect(shouldPropagateScratchDeletionsToRemote(3)).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previous;
+    }
+  });
+
+  it('returns true when scratch has files and purge is enabled', () => {
+    const previous = process.env.OD_S3_PURGE_ON_DELETE;
+    process.env.OD_S3_PURGE_ON_DELETE = '1';
+    try {
+      expect(shouldPropagateScratchDeletionsToRemote(2)).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previous;
+    }
   });
 });
 
@@ -126,7 +155,9 @@ describe('MaterializingProjectStorage', () => {
     await expect(remoteStore.statFile('p1', 'old.txt')).resolves.toBeNull();
   });
 
-  it('sync-up with runStart=0 deletes remote files missing from scratch', async () => {
+  it('sync-up with runStart=0 deletes remote files missing from scratch when purge enabled', async () => {
+    const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
+    process.env.OD_S3_PURGE_ON_DELETE = '1';
     scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
     remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
 
@@ -140,12 +171,66 @@ describe('MaterializingProjectStorage', () => {
     await remoteStore.writeFile('p1', 'stale.txt', Buffer.from('stale'));
     await storage.writeFile('p1', 'keep.txt', Buffer.from('keep'));
 
+    try {
+      const up = await storage.syncUp('p1', remote, 0);
+      expect(up.uploaded).toBe(1);
+      expect(up.deleted).toBe(1);
+      expect(up.failed).toBe(0);
+      await expect(remoteStore.statFile('p1', 'keep.txt')).resolves.not.toBeNull();
+      await expect(remoteStore.statFile('p1', 'stale.txt')).resolves.toBeNull();
+    } finally {
+      if (previousPurge === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
+    }
+  });
+
+  it('sync-up with runStart=0 does not delete remote when scratch is empty', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    const remoteStore = new LocalProjectStorage(remoteRoot);
+
+    await remoteStore.writeFile('p1', 'only-remote.txt', Buffer.from('keep-me'));
+
     const up = await storage.syncUp('p1', remote, 0);
-    expect(up.uploaded).toBe(1);
-    expect(up.deleted).toBe(1);
+    expect(up.uploaded).toBe(0);
+    expect(up.deleted).toBe(0);
     expect(up.failed).toBe(0);
-    await expect(remoteStore.statFile('p1', 'keep.txt')).resolves.not.toBeNull();
-    await expect(remoteStore.statFile('p1', 'stale.txt')).resolves.toBeNull();
+    await expect(remoteStore.statFile('p1', 'only-remote.txt')).resolves.not.toBeNull();
+  });
+
+  it('sync-up with runStart=0 does not delete remote orphans when OD_S3_PURGE_ON_DELETE=0', async () => {
+    const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
+    process.env.OD_S3_PURGE_ON_DELETE = '0';
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    const remoteStore = new LocalProjectStorage(remoteRoot);
+
+    await remoteStore.writeFile('p1', 'stale.txt', Buffer.from('stale'));
+    await storage.writeFile('p1', 'keep.txt', Buffer.from('keep'));
+
+    try {
+      const up = await storage.syncUp('p1', remote, 0);
+      expect(up.uploaded).toBe(1);
+      expect(up.deleted).toBe(0);
+      expect(up.failed).toBe(0);
+      await expect(remoteStore.statFile('p1', 'keep.txt')).resolves.not.toBeNull();
+      await expect(remoteStore.statFile('p1', 'stale.txt')).resolves.not.toBeNull();
+    } finally {
+      if (previousPurge === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
+    }
   });
 });
 

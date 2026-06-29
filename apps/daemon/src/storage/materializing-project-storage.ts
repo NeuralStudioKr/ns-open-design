@@ -73,6 +73,19 @@ async function withSyncDownRetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Whether full sync-up (runStart=0) may DELETE remote objects missing from scratch.
+ * Empty scratch must never imply "delete entire remote SSOT" (redeploy / idle evict).
+ * When OD_S3_PURGE_ON_DELETE=0, remote deletes belong only to explicit purge on
+ * registry delete — not lazy sync-up / self-heal / pre-evict sync.
+ */
+export function shouldPropagateScratchDeletionsToRemote(scratchFileCount: number): boolean {
+  if (scratchFileCount === 0) return false;
+  const raw = (process.env.OD_S3_PURGE_ON_DELETE ?? '').trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+  return true;
+}
+
+/**
  * Hybrid storage: agent run cwd reads/writes scratch; S3 is SSOT.
  * Non-run routes keep using projects.ts on scratch after sync-down.
  */
@@ -162,9 +175,9 @@ export class MaterializingProjectStorage implements ProjectStorage {
       }
     }
 
-    // Full sync (non-run API writes / registry create) must propagate scratch
-    // deletions to remote SSOT — run-scoped sync only uploads touched files.
-    if (runStartTimeMs === 0) {
+    // Full sync (non-run API writes) may propagate scratch deletions to remote SSOT.
+    // Never when scratch is empty or OD_S3_PURGE_ON_DELETE=0 (staging retain policy).
+    if (runStartTimeMs === 0 && shouldPropagateScratchDeletionsToRemote(scratchFiles.length)) {
       const remoteFiles = await withSyncUpRetry(() => remote.listFiles(projectId));
       for (const remoteFile of remoteFiles) {
         if (scratchPaths.has(remoteFile.path)) continue;
@@ -181,6 +194,10 @@ export class MaterializingProjectStorage implements ProjectStorage {
           );
         }
       }
+    } else if (runStartTimeMs === 0 && scratchFiles.length === 0) {
+      console.info(
+        `[project-materialization] sync-up ${projectId}: skipped remote orphan delete (empty scratch)`,
+      );
     }
 
     return { uploaded, skipped, failed, deleted };
