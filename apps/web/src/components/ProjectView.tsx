@@ -177,7 +177,8 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { hasChatApiCredentials, usesServerManagedChatApiKey } from '../teamver/chatApiCredentials';
+import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
+import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
 import {
   formatProjectConversationCreateError,
   formatProjectConversationListError,
@@ -4025,7 +4026,7 @@ export function ProjectView({
           config.apiProtocol && hasChatApiCredentials(config)
             ? {
                 provider: config.apiProtocol,
-                ...(usesServerManagedChatApiKey(config)
+                ...(shouldUseManagedProxyApiKey(config)
                   ? { useManagedApiKey: true }
                   : { apiKey: config.apiKey }),
                 baseUrl: config.baseUrl,

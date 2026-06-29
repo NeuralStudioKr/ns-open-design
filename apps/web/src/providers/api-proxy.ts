@@ -11,6 +11,7 @@ import type { StreamHandlers } from './anthropic';
 import { parseSseFrame } from './sse';
 import { isAnthropicSupportedImagePath } from '../utils/apiProtocol';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   hasChatApiCredentials,
   usesServerManagedChatApiKey,
@@ -39,6 +40,15 @@ export interface ProxyContext {
   byokSpeechVoice?: string;
 }
 
+/** Embed never ships browser secrets — always request daemon-managed BYOK. */
+export function shouldUseManagedProxyApiKey(
+  cfg: Pick<AppConfig, 'apiKey' | 'apiKeyConfigured'>,
+): boolean {
+  if (cfg.apiKey?.trim()) return false;
+  if (isTeamverEmbedMode()) return true;
+  return usesServerManagedChatApiKey(cfg);
+}
+
 export async function streamProxyEndpoint(
   endpoint: string,
   cfg: AppConfig,
@@ -57,7 +67,7 @@ export async function streamProxyEndpoint(
     return;
   }
 
-  const managed = usesServerManagedChatApiKey(cfg);
+  const managed = shouldUseManagedProxyApiKey(cfg);
   let acc = '';
 
   try {

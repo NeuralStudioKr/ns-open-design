@@ -72,6 +72,22 @@ describe('resolveProxyStreamApiKey', () => {
     expect(key).toBeNull();
   });
 
+  it('infers managed key for authenticated embed proxy when useManagedApiKey is omitted', () => {
+    const key = resolveProxyStreamApiKey(
+      mockReq({
+        'x-teamver-user-id': 'user-1',
+        'x-workspace-id': 'ws-1',
+      }),
+      { apiKey: '' },
+    );
+    expect(key).toBe('sk-managed');
+  });
+
+  it('does not infer managed key without identity headers', () => {
+    const key = resolveProxyStreamApiKey(mockReq(), { apiKey: '' });
+    expect(key).toBeNull();
+  });
+
   it('resolveProxyStreamApiKeyDetailed surfaces managed_key_env_missing', () => {
     delete process.env.TEAMVER_OD_API_KEY;
     const result = resolveProxyStreamApiKeyDetailed(

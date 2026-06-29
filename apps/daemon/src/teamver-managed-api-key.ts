@@ -29,6 +29,20 @@ export type ProxyApiKeyResolution =
   | { ok: true; apiKey: string; source: 'client' | 'managed' }
   | { ok: false; failure: ProxyApiKeyResolutionFailure };
 
+function wantsManagedProxyKey(
+  req: Request,
+  body: { apiKey?: unknown; useManagedApiKey?: unknown },
+  clientKey: string,
+): boolean {
+  if (body.useManagedApiKey === true) return true;
+  if (clientKey) return false;
+  // Legacy / stale embed bundles sometimes omit `useManagedApiKey` while still
+  // posting an empty apiKey. Authenticated Teamver embed traffic always arrives
+  // with nginx-injected identity headers on /api/proxy/* — infer managed mode
+  // so a missed web rebuild does not strand runs on API_KEY_REQUIRED.
+  return Boolean(isTeamverDesignManaged() && readTeamverIdentityFromRequest(req));
+}
+
 /** Detailed resolver — preferred for new code so the route can emit a specific error. */
 export function resolveProxyStreamApiKeyDetailed(
   req: Request,
@@ -37,8 +51,11 @@ export function resolveProxyStreamApiKeyDetailed(
   const clientKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
   if (clientKey) return { ok: true, apiKey: clientKey, source: 'client' };
 
-  if (body.useManagedApiKey !== true) {
+  if (!wantsManagedProxyKey(req, body, clientKey)) {
     return { ok: false, failure: { reason: 'no_client_key_and_no_managed' } };
+  }
+  if (body.useManagedApiKey !== true) {
+    emitManagedProxyKeyInferredMarker(req);
   }
   if (!isTeamverDesignManaged()) {
     return { ok: false, failure: { reason: 'managed_not_supported' } };
@@ -74,6 +91,23 @@ export function resolveProxyStreamApiKey(
 function firstHeader(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] ?? '').trim();
   return String(value ?? '').trim();
+}
+
+function emitManagedProxyKeyInferredMarker(req: Request): void {
+  try {
+    console.info(
+      JSON.stringify({
+        metric: 'od_proxy_managed_key_inferred',
+        ts: Date.now(),
+        workspaceId: firstHeader(req.headers['x-teamver-workspace-id'])
+          || firstHeader(req.headers['x-workspace-id']) || null,
+        userId: firstHeader(req.headers['x-teamver-user-id']) || null,
+        route: typeof req.path === 'string' ? req.path : null,
+      }),
+    );
+  } catch {
+    // best-effort observability
+  }
 }
 
 function emitManagedApiKeyMissingMarker(req: Request): void {
