@@ -1,23 +1,21 @@
 import type { ApiProtocol } from "../../types";
 
 export type PinnedTeamverExecutionConfig = {
-  apiKey: string;
   apiProtocol: ApiProtocol;
   baseUrl: string;
   model: string;
+  managedApiConfigured: boolean;
 };
 
 let pinned: PinnedTeamverExecutionConfig | null = null;
 
-/** design-api `/runtime-config` — single source for embed managed BYOK. */
+/** design-api `/runtime-config` — protocol/model prefs only (key stays on server). */
 export function pinTeamverExecutionConfig(input: {
-  apiKey?: string | null;
   apiProtocol?: string | null;
   baseUrl?: string | null;
   model?: string | null;
+  managedApiConfigured?: boolean;
 }): void {
-  const apiKey = input.apiKey?.trim() ?? "";
-  if (!apiKey) return;
   const allowed: ApiProtocol[] = [
     "anthropic",
     "openai",
@@ -32,10 +30,10 @@ export function pinTeamverExecutionConfig(input: {
     ? (rawProtocol as ApiProtocol)
     : "anthropic";
   pinned = {
-    apiKey,
     apiProtocol,
     baseUrl: (input.baseUrl?.trim() || "https://api.anthropic.com"),
     model: (input.model?.trim() || "claude-sonnet-4-5"),
+    managedApiConfigured: input.managedApiConfigured === true,
   };
 }
 

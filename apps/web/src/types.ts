@@ -363,6 +363,8 @@ export interface PetConfig {
 export interface AppConfig {
   mode: ExecMode;
   apiKey: string;
+  /** Server-managed embed BYOK — key never stored in browser localStorage. */
+  apiKeyConfigured?: boolean;
   baseUrl: string;
   model: string;
   apiProtocol?: ApiProtocol;

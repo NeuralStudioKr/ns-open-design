@@ -19,7 +19,7 @@ _ALLOWED_PROTOCOLS = frozenset(
 
 
 def resolve_od_runtime_config_payload() -> dict[str, Any]:
-    """Return execution prefs for embed API mode. Key never leaves server when unset."""
+    """Return execution prefs for embed API mode. Secrets never leave the server."""
     api_key = (settings.teamver_od_api_key or settings.teamver_od_anthropic_api_key or "").strip()
     if not api_key:
         return {"configured": False}
@@ -33,8 +33,8 @@ def resolve_od_runtime_config_payload() -> dict[str, Any]:
 
     return {
         "configured": True,
+        "apiKeyConfigured": True,
         "apiProtocol": protocol,
         "baseUrl": base_url,
         "model": model,
-        "apiKey": api_key,
     }

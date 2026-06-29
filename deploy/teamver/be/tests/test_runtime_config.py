@@ -28,7 +28,8 @@ def test_runtime_config_from_teamver_od_api_key(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(settings, "teamver_od_api_key", "sk-teamver-managed")
     payload = od_runtime_config.resolve_od_runtime_config_payload()
     assert payload["configured"] is True
-    assert payload["apiKey"] == "sk-teamver-managed"
+    assert payload["apiKeyConfigured"] is True
+    assert "apiKey" not in payload
     assert payload["apiProtocol"] == "anthropic"
     assert payload["model"] == "claude-sonnet-4-5"
 
@@ -37,7 +38,8 @@ def test_runtime_config_falls_back_to_anthropic_env(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(settings, "teamver_od_anthropic_api_key", "sk-anthropic-fallback")
     payload = od_runtime_config.resolve_od_runtime_config_payload()
     assert payload["configured"] is True
-    assert payload["apiKey"] == "sk-anthropic-fallback"
+    assert payload["apiKeyConfigured"] is True
+    assert "apiKey" not in payload
 
 
 def test_runtime_config_invalid_protocol_defaults_to_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -45,3 +47,4 @@ def test_runtime_config_invalid_protocol_defaults_to_anthropic(monkeypatch: pyte
     monkeypatch.setattr(settings, "teamver_od_api_protocol", "not-a-provider")
     payload = od_runtime_config.resolve_od_runtime_config_payload()
     assert payload["apiProtocol"] == "anthropic"
+    assert "apiKey" not in payload

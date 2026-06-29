@@ -263,6 +263,7 @@ export function buildPersistedConfig(next: AppConfig, current: AppConfig): AppCo
     current.privacyDecisionAt != null && next.privacyDecisionAt == null;
   return {
     ...next,
+    apiKey: next.apiKeyConfigured ? '' : next.apiKey,
     onboardingCompleted: current.onboardingCompleted ? true : next.onboardingCompleted,
     ...(stalePrivacySnapshot
       ? {
@@ -713,6 +714,7 @@ function AppInner() {
   useEffect(() => {
     if (agentsLoading) return;
     const byokConfigured = (() => {
+      if (config.apiKeyConfigured && isTeamverEmbedMode()) return true;
       const protocols = config.apiProtocolConfigs;
       if (!protocols) return Boolean(config.apiKey?.trim());
       return Object.values(protocols).some(
@@ -2436,11 +2438,18 @@ function AppInner() {
         const signatureChanged = signature !== activeRunSignatureRef.current;
         if (signatureChanged || (!active && hadActive)) {
           activeRunSignatureRef.current = signature;
-          const request = beginProjectListRequest();
-          const result = await loadProjectListSafe();
-          if (!cancelled && result.ok) {
-            reconcileFetchedProjects(result.projects, request);
-            warmEmbedProjectListCaches(result.projects);
+          // Embed detail view: run completion already refreshes the finishing
+          // project via GET /api/projects/:id above. A full daemon list plus
+          // registry membership sync (GET /teamver-bff/projects) is redundant
+          // while the user stays on a project workspace.
+          const onProjectDetail = routeRef.current.kind === 'project';
+          if (!(isTeamverEmbedMode() && onProjectDetail)) {
+            const request = beginProjectListRequest();
+            const result = await loadProjectListSafe();
+            if (!cancelled && result.ok) {
+              reconcileFetchedProjects(result.projects, request);
+              warmEmbedProjectListCaches(result.projects);
+            }
           }
         }
       }

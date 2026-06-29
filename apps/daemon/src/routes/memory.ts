@@ -449,6 +449,7 @@ export function registerMemoryRoutes(app: Express, ctx: RegisterMemoryRoutesDeps
           chatProvider = {
             provider,
             apiKey: typeof chatConfig.apiKey === 'string' ? chatConfig.apiKey : '',
+            useManagedApiKey: chatConfig.useManagedApiKey === true,
             baseUrl: typeof chatConfig.baseUrl === 'string' ? chatConfig.baseUrl : '',
             apiVersion:
               typeof chatConfig.apiVersion === 'string' ? chatConfig.apiVersion : '',

@@ -71,6 +71,7 @@ import {
   spawnEnvForAgent,
 } from './agents.js';
 import { agentCliEnvForAgent, readAppConfig } from './app-config.js';
+import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
 import { createJsonEventStreamHandler } from './json-event-stream.js';
 
 const SYSTEM_PROMPT = `You are a memory extractor for a personal AI design assistant.
@@ -461,7 +462,12 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
   ) {
     const apiKey =
       typeof chatProvider.apiKey === 'string' ? chatProvider.apiKey.trim() : '';
-    if (apiKey) {
+    const managedKey =
+      chatProvider.useManagedApiKey === true
+        ? resolveTeamverManagedApiKeyFromEnv()
+        : '';
+    const resolvedKey = apiKey || managedKey;
+    if (resolvedKey) {
       const defaults = PROVIDER_DEFAULTS[chatProvider.provider];
       const baseUrl =
         (typeof chatProvider.baseUrl === 'string' && chatProvider.baseUrl.trim())
@@ -475,7 +481,7 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
             : '';
         return {
           kind: chatProvider.provider,
-          apiKey,
+          apiKey: resolvedKey,
           model: envOverrideModel || explicitModel || defaults.model,
           baseUrl,
           apiVersion:
@@ -484,7 +490,7 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
                   && chatProvider.apiVersion.trim())
                 || PROVIDER_DEFAULTS.azure.apiVersion
               : '',
-          credentialSource: 'chat-byok',
+          credentialSource: managedKey && !apiKey ? 'teamver-managed' : 'chat-byok',
         };
       }
     }

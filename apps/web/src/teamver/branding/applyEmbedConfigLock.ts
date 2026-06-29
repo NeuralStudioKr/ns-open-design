@@ -49,7 +49,8 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
     fixedBaseUrl ?? pinned?.baseUrl ?? config.baseUrl,
   );
   const model = fixedModel ?? pinned?.model ?? config.model;
-  const apiKey = pinned?.apiKey ?? config.apiKey;
+  const apiKeyConfigured = pinned?.managedApiConfigured || config.apiKeyConfigured;
+  const apiKey = apiKeyConfigured ? "" : config.apiKey;
 
   const next: AppConfig = {
     ...config,
@@ -62,6 +63,7 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
     baseUrl,
     model,
     apiKey,
+    apiKeyConfigured,
     // Per-protocol shadow copies let the picker drift; embed uses one server profile.
     apiProtocolConfigs: {},
   };
@@ -74,6 +76,7 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
     && next.baseUrl === config.baseUrl
     && next.model === config.model
     && next.apiKey === config.apiKey
+    && next.apiKeyConfigured === config.apiKeyConfigured
     && Object.keys(next.agentModels ?? {}).length === Object.keys(config.agentModels ?? {}).length
     && Object.keys(next.agentCliEnv ?? {}).length === Object.keys(config.agentCliEnv ?? {}).length
     && Object.keys(next.apiProtocolConfigs ?? {}).length

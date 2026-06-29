@@ -3994,10 +3994,12 @@ export function ProjectView({
         // re-syncs an *explicit* override when chat config drifts;
         // this snapshot covers the implicit "Same as chat" default.
         const byokChatProvider =
-          config.apiProtocol && config.apiKey
+          config.apiProtocol && (config.apiKey || config.apiKeyConfigured)
             ? {
                 provider: config.apiProtocol,
-                apiKey: config.apiKey,
+                ...(config.apiKey
+                  ? { apiKey: config.apiKey }
+                  : { useManagedApiKey: true }),
                 baseUrl: config.baseUrl,
                 apiVersion:
                   config.apiProtocol === 'azure'
@@ -5956,7 +5958,7 @@ export function ProjectView({
                 config.mode === 'api' &&
                 daemonLive &&
                 (
-                  !config.apiKey.trim() ||
+                  (!config.apiKey.trim() && !config.apiKeyConfigured) ||
                   !config.baseUrl.trim() ||
                   !config.model.trim()
                 )

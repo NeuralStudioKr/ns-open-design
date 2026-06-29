@@ -53,55 +53,59 @@ describe("reloadTeamverRuntimeConfigIntoAppConfig", () => {
     expect(mockedPin).not.toHaveBeenCalled();
   });
 
-  it("returns the same config reference when merged values match the previous config", async () => {
+  it("returns the same config reference when managed values match the previous config", async () => {
     mockedFetch.mockResolvedValue({
       configured: true,
-      apiKey: "k-prev",
+      apiKeyConfigured: true,
       apiProtocol: "anthropic",
       baseUrl: "https://api.example.com",
       model: "claude-prev",
     });
-    const prev = baseConfig();
+    const prev = baseConfig({
+      apiKey: "",
+      apiKeyConfigured: true,
+    });
     const next = await reloadTeamverRuntimeConfigIntoAppConfig(prev);
     expect(next).toBe(prev);
-    // pin is still invoked to keep the lock fresh, but config reference is reused
     expect(mockedPin).toHaveBeenCalledTimes(1);
   });
 
-  it("returns a new config when the runtime API key rotates", async () => {
+  it("never stores apiKey from runtime-config — server-managed only", async () => {
     mockedFetch.mockResolvedValue({
       configured: true,
-      apiKey: "k-rotated",
+      apiKeyConfigured: true,
       apiProtocol: "anthropic",
       baseUrl: "https://api.example.com",
-      model: "claude-prev",
+      model: "claude-next",
     });
     const prev = baseConfig();
     const next = await reloadTeamverRuntimeConfigIntoAppConfig(prev);
-    expect(next).not.toBe(prev);
-    expect(next.apiKey).toBe("k-rotated");
-    expect(next.mode).toBe("api");
-    expect(mockedPin).toHaveBeenCalledTimes(1);
+    expect(next.apiKey).toBe("");
+    expect(next.apiKeyConfigured).toBe(true);
+    expect(next.model).toBe("claude-next");
+    expect(mockedPin).toHaveBeenCalledWith(
+      expect.objectContaining({ managedApiConfigured: true }),
+    );
   });
 
   it("delegates to mergeTeamverRuntimeConfigIntoAppConfig for protocol normalization", async () => {
     mockedFetch.mockResolvedValue({
       configured: true,
-      apiKey: "k-rotated",
+      apiKeyConfigured: true,
       apiProtocol: "unknown-protocol",
     });
     const prev = baseConfig();
     const next = await reloadTeamverRuntimeConfigIntoAppConfig(prev);
-    // unknown protocol falls back to prev.apiProtocol (anthropic)
     expect(next.apiProtocol).toBe("anthropic");
-    expect(next.apiKey).toBe("k-rotated");
+    expect(next.apiKey).toBe("");
+    expect(next.apiKeyConfigured).toBe(true);
   });
 
-  it("mergeTeamverRuntimeConfigIntoAppConfig short-circuits when runtime config is empty key", () => {
+  it("mergeTeamverRuntimeConfigIntoAppConfig short-circuits when apiKeyConfigured is false", () => {
     const prev = baseConfig();
     const same = mergeTeamverRuntimeConfigIntoAppConfig(prev, {
       configured: true,
-      apiKey: "   ",
+      apiKeyConfigured: false,
     });
     expect(same).toBe(prev);
     expect(mockedPin).not.toHaveBeenCalled();

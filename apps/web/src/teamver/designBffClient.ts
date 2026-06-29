@@ -443,7 +443,7 @@ export type TeamverRuntimeConfigResponse = {
   apiProtocol?: string;
   baseUrl?: string;
   model?: string;
-  apiKey?: string;
+  apiKeyConfigured?: boolean;
 };
 
 export type TeamverWorkspacePermissions = {

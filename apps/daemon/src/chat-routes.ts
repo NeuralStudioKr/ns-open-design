@@ -31,6 +31,7 @@ import {
   aihubmixOriginFromBase,
   classifyAIHubMixModel,
 } from './aihubmix.js';
+import { resolveProxyStreamApiKey } from './teamver-managed-api-key.js';
 import { isSafeId as isSafeProjectId } from './projects.js';
 import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectionTest.js';
@@ -1061,8 +1062,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     /** @type {Partial<ProxyStreamRequest>} */
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
+    const { baseUrl, model, systemPrompt, messages, maxTokens } =
       proxyBody;
+    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
     if (!baseUrl || !apiKey || !model) {
       return sendApiError(
         res,
@@ -1099,8 +1101,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     /** @type {Partial<ProxyStreamRequest>} */
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
+    const { baseUrl, model, systemPrompt, messages, maxTokens } =
       proxyBody;
+    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
     if (!baseUrl || !apiKey || !model) {
       return sendApiError(
         res,
@@ -1238,8 +1241,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     /** @type {Partial<ProxyStreamRequest>} */
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens, apiVersion } =
+    const { baseUrl, model, systemPrompt, messages, maxTokens, apiVersion } =
       proxyBody;
+    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
     if (!baseUrl || !apiKey || !model) {
       return sendApiError(
         res,
@@ -1417,7 +1421,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     /** @type {Partial<ProxyStreamRequest>} */
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
+    const { baseUrl, model, systemPrompt, messages, maxTokens } = proxyBody;
+    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
     if (!apiKey || !model) {
       return sendApiError(
         res,
@@ -1455,7 +1460,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   app.post('/api/proxy/ollama/stream', async (req, res) => {
     const proxyBody = req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
+    const { baseUrl, model, systemPrompt, messages, maxTokens } = proxyBody;
+    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
     if (!apiKey || !model) {
       return sendApiError(res, 400, 'BAD_REQUEST', 'apiKey and model are required');
     }
@@ -1635,7 +1641,6 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const {
       baseUrl,
-      apiKey,
       model,
       systemPrompt,
       messages,
@@ -1646,6 +1651,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       byokSpeechModel,
       byokSpeechVoice,
     } = proxyBody;
+    const apiKey = resolveProxyStreamApiKey(req, proxyBody);
     if (!apiKey || !model) {
       return sendApiError(
         res,

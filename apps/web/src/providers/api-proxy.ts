@@ -10,6 +10,11 @@ import { projectFileUrl } from './registry';
 import type { StreamHandlers } from './anthropic';
 import { parseSseFrame } from './sse';
 import { isAnthropicSupportedImagePath } from '../utils/apiProtocol';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import {
+  hasChatApiCredentials,
+  usesServerManagedChatApiKey,
+} from '../teamver/chatApiCredentials';
 
 /**
  * Optional per-request context that some protocols thread into the
@@ -40,21 +45,22 @@ export async function streamProxyEndpoint(
   handlers: StreamHandlers,
   context?: ProxyContext,
 ): Promise<void> {
-  if (!cfg.apiKey) {
+  if (!hasChatApiCredentials(cfg)) {
     handlers.onError(new Error('Missing API key — open Settings and paste one in.'));
     return;
   }
 
+  const managed = usesServerManagedChatApiKey(cfg);
   let acc = '';
 
   try {
     const messages = await buildProxyMessages(endpoint, history, context);
-    const resp = await fetch(endpoint, {
+    const resp = await fetchTeamverDaemon(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         baseUrl: cfg.baseUrl,
-        apiKey: cfg.apiKey,
+        ...(managed ? { useManagedApiKey: true } : { apiKey: cfg.apiKey }),
         model: cfg.model,
         systemPrompt: system,
         messages,

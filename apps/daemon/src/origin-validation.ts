@@ -152,6 +152,53 @@ export function isAllowedBrowserOrigin(
   return isLoopbackOrPrivateLanHost(parsedOrigin.hostname);
 }
 
+/**
+ * Strict loopback check used by the secret-exposure gate. Excludes private
+ * LAN IPs (192.168/16, 10/8, 172.16/12, 169.254/16) — those are reachable by
+ * other devices on the same network and must NOT be trusted to view stored
+ * secrets. Only true loopback hostnames pass.
+ */
+export function isStrictLoopbackHostname(hostname: unknown): boolean {
+  const host = String(hostname || '').toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === '[::1]'
+  );
+}
+
+/**
+ * True when the request comes from a loopback browser origin (Electron / dev /
+ * desktop). Returns false when the browser is on a public origin (embed
+ * staging / production) even when `OD_ALLOWED_ORIGINS` allows the request,
+ * and false for private-LAN browsers reaching the daemon over the network —
+ * use this to gate responses that should NEVER expose stored secrets to a
+ * non-loopback browser, regardless of the allow-list.
+ */
+export function isBrowserOriginLoopback(
+  req: RequestWithOriginHeaders,
+): boolean {
+  const origin = headerValue(req.headers?.origin);
+  if (origin == null || origin === '') {
+    // Same-origin GETs from the user's own browser omit Origin per spec; we
+    // only consider this loopback when sec-fetch-site=same-origin AND the
+    // Host header itself is strictly loopback (no reverse proxy in front).
+    const fetchSite = headerValue(req.headers?.['sec-fetch-site']);
+    if (fetchSite !== 'same-origin') return false;
+    const host = parseHostHeader(headerValue(req.headers?.host));
+    return Boolean(host && isStrictLoopbackHostname(host.hostname));
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  return isStrictLoopbackHostname(parsed.hostname);
+}
+
 export function isLocalSameOrigin(
   req: RequestWithOriginHeaders,
   port: number | string | null | undefined,

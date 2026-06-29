@@ -141,7 +141,7 @@ describe('usageAttribution', () => {
   it('falls back to pinned runtime-config model when events omit model', () => {
     resetPinnedTeamverExecutionConfigForTests();
     pinTeamverExecutionConfig({
-      apiKey: 'managed-key',
+      managedApiConfigured: true,
       model: 'claude-sonnet-4-5',
     });
     expect(resolveTeamverUsageModelName([])).toBe('claude-sonnet-4-5');

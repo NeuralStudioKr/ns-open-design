@@ -228,9 +228,76 @@ function validateAgentModels(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-export function validateAgentCliEnv(raw: unknown): AgentCliEnvPrefs | undefined {
+/**
+ * Env keys inside `agentCliEnv` whose VALUES are sensitive and must never be
+ * exposed to a non-loopback browser. Includes provider API keys, OAuth bearer
+ * tokens, and any runtime key that carries auth. Path/binary overrides
+ * (CLAUDE_BIN, OPEN_DESIGN_AMR_PROFILE, etc.) stay visible because the
+ * Settings UI needs them to render the saved value back to the user.
+ *
+ * Keep in sync with `apps/web/src/state/config.ts#AGENT_CLI_SECRET_ENV_KEYS`
+ * so the browser-side persistence filter strips the same fields.
+ */
+const SECRET_AGENT_CLI_ENV_KEYS: ReadonlySet<string> = new Set([
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'OPENAI_API_KEY',
+  'CODEX_API_KEY',
+  'VELA_RUNTIME_KEY',
+]);
+
+// Sentinel returned to non-loopback browsers in place of the real secret.
+// Shape: `***` followed by 0–8 url-safe chars (the masked key's last4, or the
+// whole short key if it was < 4 chars). Matching is strict so we never
+// preserve a real user-typed key by mistake — real LLM keys are long and
+// don't fit inside this 11-char envelope.
+const MASKED_SECRET_PATTERN = /^\*{3}[A-Za-z0-9_-]{0,8}$/;
+
+export function isMaskedSecretValue(value: unknown): boolean {
+  return typeof value === 'string' && MASKED_SECRET_PATTERN.test(value);
+}
+
+function maskSecretEnvValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  // Take the last 4 chars (or the whole value when shorter) and strip any
+  // non-url-safe characters so the output always matches MASKED_SECRET_PATTERN
+  // and round-trips cleanly through isMaskedSecretValue on the PUT path.
+  const rawTail = trimmed.length >= 4 ? trimmed.slice(-4) : trimmed;
+  const tail = rawTail.replace(/[^A-Za-z0-9_-]/g, '');
+  return `***${tail}`;
+}
+
+/**
+ * Mask all secret-shaped values inside an `agentCliEnv` map so the result is
+ * safe to serialize over HTTP to a non-loopback browser. Path-only and
+ * profile-only env keys (CLAUDE_BIN, OPEN_DESIGN_AMR_PROFILE, …) pass through
+ * unchanged so the Settings UI can still display the saved configuration.
+ */
+export function maskAgentCliEnvSecrets(
+  prefs: AgentCliEnvPrefs | undefined,
+): AgentCliEnvPrefs | undefined {
+  if (!prefs) return prefs;
+  const masked: AgentCliEnvPrefs = Object.create(null);
+  for (const [agentId, env] of Object.entries(prefs)) {
+    if (!env) continue;
+    const next: Record<string, string> = Object.create(null);
+    for (const [k, v] of Object.entries(env)) {
+      if (typeof v !== 'string') continue;
+      next[k] = SECRET_AGENT_CLI_ENV_KEYS.has(k) ? maskSecretEnvValue(v) : v;
+    }
+    if (Object.keys(next).length > 0) masked[agentId] = next;
+  }
+  return Object.keys(masked).length > 0 ? masked : undefined;
+}
+
+export function validateAgentCliEnv(
+  raw: unknown,
+  options: { previous?: AgentCliEnvPrefs } = {},
+): AgentCliEnvPrefs | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const previous = options.previous ?? {};
   const result: AgentCliEnvPrefs = Object.create(null);
   for (const [agentId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (agentId === '__proto__' || agentId === 'constructor') continue;
@@ -238,12 +305,23 @@ export function validateAgentCliEnv(raw: unknown): AgentCliEnvPrefs | undefined 
     if (!allowed || typeof value !== 'object' || value === null || Array.isArray(value)) {
       continue;
     }
+    const priorEnv = previous[agentId] ?? {};
     const env: Record<string, string> = Object.create(null);
     for (const [envKey, envValue] of Object.entries(value as Record<string, unknown>)) {
       if (!allowed.has(envKey)) continue;
       if (typeof envValue !== 'string') continue;
       const trimmed = envValue.trim();
       if (!trimmed) continue;
+      // A non-loopback browser receives masked secret values (`***<tail>`)
+      // via GET /api/app-config and may echo them back on the next PUT. If
+      // the masked sentinel reaches this writer it would clobber the real
+      // stored key; preserve the prior value instead. Sentinel values
+      // submitted with no prior key drop out (treated as "no value").
+      if (SECRET_AGENT_CLI_ENV_KEYS.has(envKey) && isMaskedSecretValue(trimmed)) {
+        const previousValue = typeof priorEnv[envKey] === 'string' ? priorEnv[envKey] : '';
+        if (previousValue) env[envKey] = previousValue;
+        continue;
+      }
       env[envKey] = trimmed;
     }
     if (Object.keys(env).length > 0) result[agentId] = env;
@@ -332,6 +410,7 @@ function applyConfigValue(
   target: Record<string, unknown>,
   key: keyof AppConfigPrefs,
   value: unknown,
+  previous?: AppConfigPrefs,
 ): void {
   if (key === 'onboardingCompleted') {
     if (typeof value === 'boolean') target[key] = value;
@@ -350,7 +429,11 @@ function applyConfigValue(
     }
   }
   if (key === 'agentCliEnv') {
-    const validated = validateAgentCliEnv(value);
+    const previousAgentCliEnv = previous?.agentCliEnv;
+    const validated = validateAgentCliEnv(
+      value,
+      previousAgentCliEnv ? { previous: previousAgentCliEnv } : {},
+    );
     if (validated !== undefined) {
       target[key] = validated;
     } else {
@@ -447,11 +530,14 @@ function applyConfigValue(
   }
 }
 
-function filterAllowedKeys(obj: Record<string, unknown>): AppConfigPrefs {
+function filterAllowedKeys(
+  obj: Record<string, unknown>,
+  previous?: AppConfigPrefs,
+): AppConfigPrefs {
   const result: Record<string, unknown> = Object.create(null);
   for (const key of Object.keys(obj)) {
     if (ALLOWED_KEYS.has(key as keyof AppConfigPrefs)) {
-      applyConfigValue(result, key as keyof AppConfigPrefs, obj[key]);
+      applyConfigValue(result, key as keyof AppConfigPrefs, obj[key], previous);
     }
   }
   return result as AppConfigPrefs;
@@ -594,7 +680,7 @@ async function doWrite(
   const next: Record<string, unknown> = { ...existing };
   for (const key of Object.keys(partial)) {
     if (!ALLOWED_KEYS.has(key as keyof AppConfigPrefs)) continue;
-    applyConfigValue(next, key as keyof AppConfigPrefs, partial[key]);
+    applyConfigValue(next, key as keyof AppConfigPrefs, partial[key], existing);
   }
   const file = configFile(dataDir);
   await mkdir(path.dirname(file), { recursive: true });

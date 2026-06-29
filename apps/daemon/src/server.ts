@@ -393,7 +393,7 @@ import {
   readAllTokens,
   setToken,
 } from './mcp-tokens.js';
-import { agentCliEnvForAgent, readAppConfig, readPluginEnvKnobs, writeAppConfig } from './app-config.js';
+import { agentCliEnvForAgent, maskAgentCliEnvSecrets, readAppConfig, readPluginEnvKnobs, writeAppConfig } from './app-config.js';
 import { OrbitService, formatLocalProjectTimestamp, renderOrbitTemplateSystemPrompt } from './orbit.js';
 import { buildOrbitNoLiveArtifactSummary } from './orbit-agent-summary.js';
 import {
@@ -558,6 +558,7 @@ import {
   allowedBrowserPorts,
   configuredAllowedOrigins,
   isAllowedBrowserOrigin,
+  isBrowserOriginLoopback,
   isLocalSameOrigin,
 } from './origin-validation.js';
 
@@ -11033,13 +11034,28 @@ export async function startServer({
     }
   });
 
+  // /api/app-config returns ANTHROPIC_API_KEY / OPENAI_API_KEY / CODEX_API_KEY /
+  // VELA_RUNTIME_KEY values from agentCliEnv. On loopback (Electron / desktop)
+  // we ship them verbatim so Settings can render the saved value; on a
+  // non-loopback browser origin (embed staging / production share one daemon
+  // across users behind nginx) we mask each secret to `***<last4>` so the
+  // browser cannot ever read the stored creds back. Same policy applies to
+  // the PUT response — the writer also gets the masked view back.
+  function appConfigResponse(req, config) {
+    if (isBrowserOriginLoopback(req)) return config;
+    return {
+      ...config,
+      agentCliEnv: maskAgentCliEnvSecrets(config.agentCliEnv),
+    };
+  }
+
   app.get('/api/app-config', async (req, res) => {
     if (!isLocalSameOrigin(req, resolvedPort)) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     try {
       const config = await readAppConfig(RUNTIME_DATA_DIR);
-      res.json({ config });
+      res.json({ config: appConfigResponse(req, config) });
     } catch (err) {
       res
         .status(500)
@@ -11054,7 +11070,7 @@ export async function startServer({
     try {
       const config = await writeAppConfig(RUNTIME_DATA_DIR, req.body);
       orbitService.configure(config.orbit);
-      res.json({ config });
+      res.json({ config: appConfigResponse(req, config) });
     } catch (err) {
       res
         .status(500)

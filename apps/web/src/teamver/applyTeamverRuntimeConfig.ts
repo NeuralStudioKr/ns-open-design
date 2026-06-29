@@ -8,7 +8,8 @@ export type TeamverRuntimeConfig = {
   apiProtocol?: string;
   baseUrl?: string;
   model?: string;
-  apiKey?: string;
+  /** Server has a managed key — never accompanied by apiKey in the response. */
+  apiKeyConfigured?: boolean;
 };
 
 const ALLOWED_PROTOCOLS: readonly ApiProtocol[] = [
@@ -34,17 +35,17 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
   runtime: TeamverRuntimeConfig | null | undefined,
 ): AppConfig {
   if (!runtime?.configured) return config;
-  const apiKey = runtime.apiKey?.trim() ?? "";
-  if (!apiKey) return config;
+  if (!runtime.apiKeyConfigured) return config;
 
   const apiProtocol = normalizeProtocol(runtime.apiProtocol) ?? config.apiProtocol ?? "anthropic";
   const baseUrl = runtime.baseUrl?.trim() || config.baseUrl;
   const model = runtime.model?.trim() || config.model;
 
-  pinTeamverExecutionConfig({ apiKey, apiProtocol, baseUrl, model });
+  pinTeamverExecutionConfig({ apiProtocol, baseUrl, model, managedApiConfigured: true });
 
   if (
-    config.apiKey === apiKey
+    !config.apiKey?.trim()
+    && config.apiKeyConfigured
     && config.apiProtocol === apiProtocol
     && config.baseUrl === baseUrl
     && config.model === model
@@ -57,7 +58,8 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
   return {
     ...config,
     mode: "api",
-    apiKey,
+    apiKey: "",
+    apiKeyConfigured: true,
     apiProtocol,
     baseUrl,
     model,

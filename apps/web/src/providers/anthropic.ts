@@ -88,7 +88,7 @@ export async function streamMessage(
     return streamMessageAnthropicProxy(cfg, system, history, signal, handlers, context);
   }
 
-  if (!cfg.apiKey) {
+  if (!cfg.apiKey?.trim()) {
     handlers.onError(new Error('Missing API key — open Settings and paste one in.'));
     return;
   }

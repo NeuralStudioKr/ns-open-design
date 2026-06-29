@@ -25,7 +25,10 @@ export interface ProxyMessage {
 
 export interface ProxyStreamRequest {
   baseUrl: string;
-  apiKey: string;
+  /** Omitted when `useManagedApiKey` — daemon injects TEAMVER_OD_API_KEY server-side. */
+  apiKey?: string;
+  /** Authenticated embed only — resolve apiKey from server env (never expose to browser). */
+  useManagedApiKey?: boolean;
   model: string;
   systemPrompt?: string;
   messages: ProxyMessage[];
