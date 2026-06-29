@@ -32,6 +32,7 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
@@ -6497,7 +6498,7 @@ function HtmlViewer({
     try {
       const css = serializeInspectOverrides(inspectOverrides).trim();
       const next = applyInspectOverridesToSource(source, css);
-      const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
+      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: file.name, content: next }),

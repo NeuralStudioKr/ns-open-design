@@ -5,6 +5,7 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import type { Dict } from '../i18n/types';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { buildSrcdoc } from '../runtime/srcdoc';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind, ProjectFolder } from '../types';
 import {
@@ -734,7 +735,7 @@ export function DesignFilesPanel({
     const fileList = [...selected];
     if (fileList.length === 0) return;
     try {
-      const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/archive/batch`, {
+      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/archive/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files: fileList }),

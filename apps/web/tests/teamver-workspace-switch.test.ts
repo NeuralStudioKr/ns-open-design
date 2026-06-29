@@ -14,7 +14,7 @@ describe("embed workspace switch side effects", () => {
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 2800);
-    expect(block).toContain("loadProjectListSafe()");
+    expect(block).toContain("loadRecentProjectsForHome()");
     expect(block).toContain("setWorkingDirError(null)");
     expect(block.indexOf("setWorkingDirError(null)")).toBeGreaterThan(
       block.indexOf("reconcileFetchedProjects"),
@@ -33,7 +33,16 @@ describe("embed workspace switch side effects", () => {
     const headers = readSource("src/teamver/teamverDaemonHeaders.ts");
     expect(daemon).toContain("buildTeamverDaemonRequestHeaders");
     expect(headers).toContain("readActiveTeamverWorkspaceId");
+    expect(headers).toContain("fetchTeamverDaemon");
     expect(headers).toContain("X-Workspace-Id");
+  });
+
+  it("delegates embed BYOK usage+billing to daemon message PUT (§4.11)", () => {
+    const source = readSource("src/teamver/maybeReportTeamverUsageAfterSave.ts");
+    expect(source).toContain("daemon authoritative");
+    expect(source).toContain("reportByokTeamverUsageAndBillingFromDaemon");
+    expect(source).not.toContain("reportTeamverDesignUsage");
+    expect(source).not.toContain("finalizeTeamverByokBilling");
   });
 
   it("routes embed BFF workspace reads through activeTeamverWorkspace helper", () => {
@@ -42,13 +51,30 @@ describe("embed workspace switch side effects", () => {
       "src/teamver/importDriveAssets.ts",
       "src/teamver/listProjectOutputs.ts",
       "src/teamver/batchLatestPublishSummary.ts",
-      "src/teamver/maybeReportTeamverUsageAfterSave.ts",
       "src/teamver/components/TeamverPublishDriveMenuItem.tsx",
       "src/components/ChatComposer.tsx",
     ]) {
       const source = readSource(relativePath);
       expect(source).toMatch(/activeTeamverWorkspace|readActiveTeamverWorkspaceId|requireActiveTeamverWorkspaceId|resolveActiveTeamverWorkspaceId/);
       expect(source).not.toMatch(/workspaceStore\?\.get\(\)/);
+    }
+  });
+
+  it("forwards active workspace on daemon project CRUD in embed", () => {
+    const projects = readSource("src/state/projects.ts");
+    const registry = readSource("src/providers/registry.ts");
+    expect(projects).toContain("fetchTeamverDaemon");
+    expect(projects).not.toMatch(/await fetch\(`\/api\/projects/);
+    expect(registry).toContain("fetchTeamverDaemon");
+    expect(readSource("src/hooks/useProjectDetail.ts")).toContain("fetchTeamverDaemon");
+    for (const relativePath of [
+      "src/hooks/useDesignMdState.ts",
+      "src/hooks/useFinalizeProject.ts",
+      "src/components/FileViewer.tsx",
+      "src/components/GenUIInbox.tsx",
+    ]) {
+      expect(readSource(relativePath)).toContain("fetchTeamverDaemon");
+      expect(readSource(relativePath)).not.toMatch(/fetch\([`'"].*\/api\/projects/);
     }
   });
 

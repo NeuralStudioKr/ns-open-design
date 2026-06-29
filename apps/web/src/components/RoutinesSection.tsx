@@ -16,6 +16,7 @@ import { localizeRunFailureReason } from '../i18n/runErrors';
 import type { Dict } from '../i18n/types';
 import { useAnalytics } from '../analytics/provider';
 import { trackAutomationsClick } from '../analytics/events';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 
 // Shared translator signature: every sub-component in this file is module-scoped,
 // so `t` from `useT()` is threaded down as a prop rather than re-hooked.
@@ -490,7 +491,7 @@ export function RoutinesSection({ onClose }: RoutinesSectionProps) {
     try {
       const [rRes, pRes] = await Promise.all([
         fetch('/api/routines'),
-        fetch('/api/projects'),
+        fetchTeamverDaemon('/api/projects'),
       ]);
       if (!rRes.ok) throw new Error(`routines: ${rRes.status}`);
       const rJson = await rRes.json();

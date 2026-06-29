@@ -160,6 +160,7 @@ describe('Teamver project registry list', () => {
 
 describe('Teamver project registry register', () => {
   afterEach(() => {
+    resetTeamverProjectRegistryStateForTests();
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
   });
@@ -250,6 +251,20 @@ describe('Teamver project registry register', () => {
       { odProjectId: 'p1', title: 'Demo' },
       expect.objectContaining({ workspaceId: 'ws1' }),
     );
+  });
+
+  it('primes FE access cache after successful registry upsert so create→navigate does not wait on list', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const get = vi.fn(async () => ({ projects: [] }));
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { post: vi.fn(async () => undefined), get },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await registerTeamverProjectIfNeeded({ id: 'fresh-1', name: 'Fresh' }, { skipBootWait: true });
+
+    await expect(assertTeamverProjectAccessIfNeeded('fresh-1')).resolves.toBe(true);
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

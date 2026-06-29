@@ -7,6 +7,7 @@
 // POST /api/projects/:projectId/genui/:surfaceId/revoke.
 
 import { useCallback, useEffect, useState } from 'react';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 
 interface SurfaceRow {
   id: string;
@@ -109,14 +110,14 @@ export function GenUIInbox(props: Props) {
 }
 
 async function defaultFetchSurfaces(projectId: string): Promise<SurfaceRow[]> {
-  const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/genui`);
+  const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/genui`);
   if (!resp.ok) return [];
   const json = (await resp.json()) as { surfaces?: SurfaceRow[] };
   return json.surfaces ?? [];
 }
 
 async function defaultRevokeSurface(projectId: string, surfaceId: string): Promise<void> {
-  const resp = await fetch(
+  const resp = await fetchTeamverDaemon(
     `/api/projects/${encodeURIComponent(projectId)}/genui/${encodeURIComponent(surfaceId)}/revoke`,
     { method: 'POST' },
   );

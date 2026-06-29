@@ -13,6 +13,7 @@
 //     just the daemon's category label (#450 verification commitment).
 
 import { useCallback, useRef, useState } from 'react';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import type {
   ApiErrorCode,
   FinalizeAnthropicRequest,
@@ -100,7 +101,7 @@ export function useFinalizeProject(projectId: string): FinalizeProjectState {
           : 'anthropic';
 
       try {
-        const resp = await fetch(
+        const resp = await fetchTeamverDaemon(
           `/api/projects/${encodeURIComponent(projectId)}/finalize/${protocol}`,
           {
             method: 'POST',

@@ -8,6 +8,7 @@ import {
 import { isTeamverEmbedMode } from "./designApiBase";
 import { readTeamverViteEnv } from "./teamverViteEnv";
 import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
+import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
 
 async function waitForEmbedBootIfNeeded(): Promise<void> {
@@ -99,6 +100,13 @@ function invalidateFeAccessCache(projectId: string, workspaceId?: string): void 
   }
 }
 
+function primeFeAccessAllowed(projectId: string, workspaceId: string): void {
+  const trimmedId = projectId.trim();
+  const trimmedWorkspaceId = workspaceId.trim();
+  if (!trimmedId || !trimmedWorkspaceId) return;
+  feAccessCache.set(`${trimmedWorkspaceId}:${trimmedId}`, { allowed: true, at: Date.now() });
+}
+
 function invalidateRegisteredIdsCache(): void {
   registeredIdsCache = null;
 }
@@ -111,7 +119,7 @@ export function invalidateTeamverProjectRegistryCaches(): void {
 
 async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
   try {
-    const resp = await fetch("/api/projects");
+    const resp = await fetchTeamverDaemon("/api/projects");
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects?: Project[] };
     return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
@@ -189,12 +197,12 @@ export async function registerTeamverProjectIfNeeded(
         ),
       );
       invalidateRegisteredIdsCache();
-      invalidateFeAccessCache(project.id, workspaceId);
+      primeFeAccessAllowed(project.id, workspaceId);
       return;
     } catch (err) {
       if (err instanceof NetworkError && err.status === 409) {
         invalidateRegisteredIdsCache();
-        invalidateFeAccessCache(project.id, workspaceId);
+        primeFeAccessAllowed(project.id, workspaceId);
         return;
       }
       const delayMs = retryDelaysMs[attempt];

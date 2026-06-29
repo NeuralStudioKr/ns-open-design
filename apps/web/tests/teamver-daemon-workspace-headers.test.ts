@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildTeamverDaemonRequestHeaders } from "../src/teamver/teamverDaemonHeaders";
+import { buildTeamverDaemonRequestHeaders, fetchTeamverDaemon } from "../src/teamver/teamverDaemonHeaders";
 
 const designApiBase = vi.hoisted(() => ({
   isTeamverEmbedMode: vi.fn(() => false),
@@ -40,5 +40,22 @@ describe("buildTeamverDaemonRequestHeaders", () => {
     activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue(null);
     const headers = await buildTeamverDaemonRequestHeaders({ "X-OD-Client": "web" });
     expect(headers).not.toHaveProperty("X-Workspace-Id");
+  });
+
+  it("fetchTeamverDaemon forwards workspace header on project API calls", async () => {
+    designApiBase.isTeamverEmbedMode.mockReturnValue(true);
+    activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue("ws-prod");
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchTeamverDaemon("/api/projects/p1/files");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/p1/files",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-Workspace-Id": "ws-prod" }),
+      }),
+    );
+    vi.unstubAllGlobals();
   });
 });

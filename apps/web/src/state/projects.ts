@@ -42,6 +42,7 @@ import {
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import {
   HOME_RECENT_LIST_LIMIT,
   PROJECT_LIST_PAGE_SIZE,
@@ -63,11 +64,11 @@ async function normalizeProjectsResponse(projects: Project[]): Promise<Project[]
   );
 }
 
-async function fetchProjectsListWhenAuthenticated(url: string): Promise<Response | null> {
+async function fetchProjectsListWhenAuthenticated(url: string, init?: RequestInit): Promise<Response | null> {
   if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) {
     return null;
   }
-  return fetch(url);
+  return fetchTeamverDaemon(url, init);
 }
 
 async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'name'>): Promise<void> {
@@ -75,7 +76,7 @@ async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'n
     await registerTeamverProjectIfNeeded(project);
   } catch (err) {
     try {
-      await fetch(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE' });
+      await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'DELETE' });
     } catch {
       // The registry failure is the actionable error. Scratch cleanup remains
       // best-effort when the daemon is also unavailable.
@@ -157,7 +158,7 @@ export async function listProjects(): Promise<Project[]> {
 
 export async function getProject(id: string): Promise<Project | null> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`);
     if (!resp.ok) return null;
     const json = (await resp.json()) as { project: Project };
     return sanitizeProjectForEmbed(json.project);
@@ -192,7 +193,7 @@ export async function createProject(input: {
     // calling it directly throws — the surrounding try/catch then turns
     // the Create button into a silent no-op (issue #849).
     const id = randomUUID();
-    const resp = await fetch('/api/projects', {
+    const resp = await fetchTeamverDaemon('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, ...input, ...(metadata ? { metadata } : {}) }),
@@ -384,7 +385,7 @@ export async function patchProject(
     sanitized.metadata = stripLinkedDirsFromMetadata(sanitized.metadata);
   }
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sanitized),
@@ -399,7 +400,7 @@ export async function patchProject(
 
 export async function deleteProject(id: string): Promise<boolean> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
     return resp.ok;
@@ -414,7 +415,7 @@ export async function listConversations(
   projectId: string,
 ): Promise<Conversation[]> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations`,
     );
     if (!resp.ok) return [];
@@ -456,7 +457,7 @@ export async function createConversation(
     if (opts?.seedMessages && opts.seedMessages.length > 0) {
       body.seedMessages = opts.seedMessages;
     }
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations`,
       {
         method: 'POST',
@@ -478,7 +479,7 @@ export async function patchConversation(
   patch: Partial<Conversation>,
 ): Promise<Conversation | null> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}`,
       {
         method: 'PATCH',
@@ -499,7 +500,7 @@ export async function deleteConversation(
   conversationId: string,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}`,
       { method: 'DELETE' },
     );
@@ -516,7 +517,7 @@ export async function listMessages(
   conversationId: string,
 ): Promise<ChatMessage[]> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages`,
     );
     if (!resp.ok) return [];
@@ -548,7 +549,7 @@ export async function saveMessage(
         ? { ...message, telemetryFinalized: true }
         : message,
     );
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
       {
         method: 'PUT',
@@ -578,7 +579,7 @@ export async function createTerminal(
   init?: CreateTerminalRequest,
 ): Promise<TerminalSession | null> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/terminals`,
       {
         method: 'POST',
@@ -605,7 +606,7 @@ export async function sendTerminalStdin(
   data: string,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/terminals/${encodeURIComponent(terminalId)}/stdin`,
       {
         method: 'POST',
@@ -626,7 +627,7 @@ export async function resizeTerminal(
   rows: number,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/terminals/${encodeURIComponent(terminalId)}/resize`,
       {
         method: 'POST',
@@ -649,7 +650,7 @@ export async function killTerminal(
   options: { keepalive?: boolean } = {},
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/terminals/${encodeURIComponent(terminalId)}/kill`,
       {
         method: 'POST',
@@ -733,7 +734,7 @@ function newestTabsState(
 }
 
 async function persistTabsToDaemon(projectId: string, state: OpenTabsState): Promise<void> {
-  await fetch(`/api/projects/${encodeURIComponent(projectId)}/tabs`, {
+  await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/tabs`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state),
@@ -744,7 +745,7 @@ async function persistTabsToDaemon(projectId: string, state: OpenTabsState): Pro
 export async function loadTabs(projectId: string): Promise<OpenTabsState> {
   const cached = readCachedTabs(projectId);
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/tabs`,
     );
     if (!resp.ok) return cached ?? { tabs: [], active: null };
@@ -908,7 +909,7 @@ export async function installGeneratedPluginFolder(
 ): Promise<PluginInstallOutcome> {
   try {
     const request: ProjectPluginFolderInstallRequest = { path: relativePath };
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/plugins/install-folder`,
       {
         method: 'POST',
@@ -991,7 +992,7 @@ export async function startGeneratedPluginShareTask(
   relativePath: string,
   action: 'publish-github' | 'contribute-open-design',
 ): Promise<PluginShareTaskStart> {
-  const resp = await fetch(
+  const resp = await fetchTeamverDaemon(
     `/api/projects/${encodeURIComponent(projectId)}/plugins/share-tasks`,
     {
       method: 'POST',
@@ -1104,7 +1105,7 @@ async function postGeneratedPluginShareAction(
   action: 'publish-github' | 'contribute-open-design',
 ): Promise<PluginShareOutcome> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/plugins/${action}`,
       {
         method: 'POST',

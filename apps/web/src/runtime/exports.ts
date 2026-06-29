@@ -21,6 +21,7 @@ import {
   isOpenDesignHostAvailable,
   printHostPdf,
 } from '@open-design/host';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
@@ -737,7 +738,7 @@ export async function exportProjectAsPdf(opts: {
   title: string;
 }): Promise<ProjectPdfExportResult> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
       body: JSON.stringify({
         deck: opts.deck,
         fileName: opts.filePath,

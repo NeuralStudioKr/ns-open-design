@@ -68,6 +68,7 @@ import {
   openHostExternalUrl,
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 
 export const DEFAULT_DEPLOY_PROVIDER_ID = 'vercel-self';
 export const CLOUDFLARE_PAGES_PROVIDER_ID = 'cloudflare-pages';
@@ -608,7 +609,7 @@ export async function fetchProjectDesignSystemPackageAudit(
   projectId: string,
 ): Promise<DesignSystemPackageAudit | null> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/design-system-package-audit`,
       { cache: 'no-store' },
     );
@@ -1334,7 +1335,7 @@ export async function fetchProjectDeployments(
   projectId: string,
 ): Promise<WebDeploymentInfo[]> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/deployments`);
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/deployments`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as ProjectDeploymentsResponse;
     return (json.deployments ?? []) as WebDeploymentInfo[];
@@ -1354,7 +1355,7 @@ export async function deployProjectFile(
     providerId,
     ...(cloudflarePages ? { cloudflarePages } : {}),
   };
-  const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/deploy`, {
+  const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/deploy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1372,8 +1373,8 @@ export async function checkDeploymentLink(
   projectId: string,
   deploymentId: string,
 ): Promise<WebDeployProjectFileResponse> {
-  const resp = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/check-link`,
+  const     resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/check-link`,
     { method: 'POST' },
   );
   if (!resp.ok) {
@@ -1407,7 +1408,7 @@ export async function createSocialSharePayload(
 
 export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[]> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`);
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { files: ProjectFile[] };
     return json.files ?? [];
@@ -1418,7 +1419,7 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
 
 export async function fetchProjectFolders(projectId: string): Promise<ProjectFolder[]> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/folders`);
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/folders`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { folders?: ProjectFolder[] };
     return json.folders ?? [];
@@ -1432,7 +1433,7 @@ export async function createProjectFolder(
   name: string,
 ): Promise<ProjectFolder | null> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/folders`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/folders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -1450,7 +1451,7 @@ export async function deleteProjectFolder(
   folderPath: string,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/folders`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/folders`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: folderPath }),
@@ -1659,7 +1660,7 @@ export async function fetchProjectFilePreview(
   name: string,
 ): Promise<ProjectFilePreview | null> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(name)}/preview`,
     );
     if (!resp.ok) return null;
@@ -1684,7 +1685,7 @@ export async function fetchProjectFileText(
   if (options?.cache) init.cache = options.cache;
 
   try {
-    const resp = await fetch(requestUrl, init);
+    const resp = await fetchTeamverDaemon(requestUrl, init);
     if (!resp.ok) {
       console.warn('[fetchProjectFileText] failed:', {
         name,
@@ -1712,7 +1713,7 @@ export async function fetchPreviewComments(
   conversationId: string,
 ): Promise<PreviewComment[]> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments`,
     );
     if (!resp.ok) return [];
@@ -1729,7 +1730,7 @@ export async function upsertPreviewComment(
   input: PreviewCommentUpsertRequest,
 ): Promise<PreviewComment | null> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments`,
       {
         method: 'POST',
@@ -1752,7 +1753,7 @@ export async function patchPreviewCommentStatus(
   status: PreviewCommentStatus,
 ): Promise<PreviewComment | null> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments/${encodeURIComponent(commentId)}`,
       {
         method: 'PATCH',
@@ -1774,7 +1775,7 @@ export async function deletePreviewComment(
   commentId: string,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments/${encodeURIComponent(commentId)}`,
       { method: 'DELETE' },
     );
@@ -1805,7 +1806,7 @@ export async function writeProjectTextFileDetailed(
   options?: { artifactManifest?: ArtifactManifest },
 ): Promise<WriteProjectTextFileResult> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, content, artifactManifest: options?.artifactManifest }),
@@ -1832,7 +1833,7 @@ export async function writeProjectBase64File(
   base64: string,
 ): Promise<ProjectFile | null> {
   try {
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, content: base64, encoding: 'base64' }),
@@ -1854,7 +1855,7 @@ export async function uploadProjectFile(
     const form = new FormData();
     form.append('file', file);
     if (desiredName) form.append('name', desiredName);
-    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
       body: form,
     });
@@ -1907,8 +1908,8 @@ export async function uploadProjectFiles(
     for (const f of batch) form.append('files', f);
 
     try {
-      const resp = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/upload`,
+      const     resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/upload`,
         { method: 'POST', body: form },
       );
 
@@ -1985,7 +1986,7 @@ export async function deleteProjectFile(
   name: string,
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       projectRawUrl(projectId, name),
       { method: 'DELETE' },
     );
@@ -2000,7 +2001,7 @@ export async function renameProjectFile(
   from: string,
   to: string,
 ): Promise<RenameProjectFileResponse> {
-  const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files/rename`, {
+  const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files/rename`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to }),
@@ -2094,8 +2095,8 @@ export async function replaceProjectWorkingDir(
   if (desktopImportToken) {
     headers['x-od-desktop-import-token'] = desktopImportToken;
   }
-  const resp = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/working-dir`,
+  const     resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/working-dir`,
     {
       method: 'POST',
       headers,
@@ -2124,8 +2125,8 @@ export async function openProjectInEditor(
   projectId: string,
   editorId: import('@open-design/contracts').HostEditorId,
 ): Promise<import('@open-design/contracts').OpenProjectInEditorResponse> {
-  const resp = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/open-in`,
+  const     resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/open-in`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -23,6 +23,7 @@ import type { SkillSummary } from '../types';
 type TranslateFn = ReturnType<typeof useT>;
 import { useAnalytics } from '../analytics/provider';
 import { trackAutomationsClick, trackPageView } from '../analytics/events';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import {
   NewAutomationModal,
   describeScheduleSummary,
@@ -427,7 +428,7 @@ export function TasksView({ skills = [], designTemplates = [], connectors = [] }
         .catch(() => null);
       const [rRes, pRes, tJson, proposalJson] = await Promise.all([
         fetch('/api/routines'),
-        fetch('/api/projects'),
+        fetchTeamverDaemon('/api/projects'),
         templateRequest,
         proposalRequest,
       ]);
