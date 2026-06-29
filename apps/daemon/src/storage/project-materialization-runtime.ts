@@ -453,10 +453,7 @@ export function createProjectMaterializationRuntime(
               }),
             );
           }
-          if (result.failed > 0) {
-            markProjectSyncFailed(projectId);
-          }
-          await safelyEvictScratchAfterRun({
+          const evictResult = await safelyEvictScratchAfterRun({
             storage,
             projectId,
             remote,
@@ -465,7 +462,9 @@ export function createProjectMaterializationRuntime(
             isByokProxyRun:
               typeof run.id === 'string' && run.id.startsWith('byok-proxy-'),
           });
-          if (result.failed === 0) {
+          if (result.failed > 0 || evictResult.retainedScratchOnly) {
+            markProjectSyncFailed(projectId);
+          } else {
             clearProjectSyncFailed(projectId);
           }
           await emitScratchDiskUsageMarker(layout, run, projectId, 'run_end');

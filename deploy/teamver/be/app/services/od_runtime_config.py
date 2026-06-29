@@ -1,4 +1,4 @@
-"""Teamver-managed OD API execution config (server env → authenticated embed FE)."""
+"""Teamver-managed OD execution config (server env → authenticated embed FE)."""
 from __future__ import annotations
 
 from typing import Any
@@ -19,7 +19,7 @@ _ALLOWED_PROTOCOLS = frozenset(
 
 
 def resolve_od_runtime_config_payload() -> dict[str, Any]:
-    """Return execution prefs for embed API mode. Secrets never leave the server."""
+    """Return public execution prefs for embed mode. API keys never leave the server."""
     api_key = (settings.teamver_od_api_key or settings.teamver_od_anthropic_api_key or "").strip()
     if not api_key:
         return {"configured": False}

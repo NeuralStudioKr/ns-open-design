@@ -14,6 +14,19 @@ import { createProjectMaterializationRuntime } from '../src/storage/project-mate
 import { TenantScopedProjectStorage } from '../src/storage/tenant-scoped-project-storage.js';
 import { fetchTeamverProjectS3Prefix } from '../src/storage/teamver-project-storage-meta.js';
 
+async function waitForRemoteFile(
+  storage: LocalProjectStorage,
+  projectId: string,
+  filePath: string,
+): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
+    if (await storage.statFile(projectId, filePath)) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  expect(await storage.statFile(projectId, filePath)).not.toBeNull();
+}
+
 describe('resolveProjectStorageLayout', () => {
   it('defaults to local projects dir', () => {
     expect(resolveProjectStorageLayout({}, '/data')).toEqual({
@@ -349,8 +362,7 @@ describe('createProjectMaterializationRuntime', () => {
 
       expect(finish).toHaveBeenCalled();
       const remote = new LocalProjectStorage(remoteRoot);
-      const meta = await remote.statFile('p1', 'out.html');
-      expect(meta).not.toBeNull();
+      await waitForRemoteFile(remote, 'p1', 'out.html');
     } finally {
       await rm(scratchRoot, { recursive: true, force: true });
       await rm(remoteRoot, { recursive: true, force: true });
@@ -389,8 +401,8 @@ describe('createProjectMaterializationRuntime', () => {
       await new Promise((r) => setTimeout(r, 50));
 
       const remote = new LocalProjectStorage(remoteRoot);
-      expect(await remote.statFile('p1', 'run1.html')).not.toBeNull();
-      expect(await remote.statFile('p1', 'run2.html')).not.toBeNull();
+      await waitForRemoteFile(remote, 'p1', 'run1.html');
+      await waitForRemoteFile(remote, 'p1', 'run2.html');
       expect(run1Start).toBeLessThan(betweenRuns);
     } finally {
       await rm(scratchRoot, { recursive: true, force: true });
@@ -467,6 +479,7 @@ describe('createProjectMaterializationRuntime', () => {
         expect(marker, infos.join('\n')).toBeTruthy();
         expect(marker).toContain('"stage":"run_end_exception"');
         expect(marker).toContain('"projectId":"p-fail"');
+        expect(runtime.isProjectSyncFailed('p-fail')).toBe(true);
       } finally {
         infoSpy.mockRestore();
         warnSpy.mockRestore();
@@ -518,6 +531,7 @@ describe('createProjectMaterializationRuntime', () => {
         expect(marker).toContain('"stage":"run_end"');
         expect(marker).toContain('"failed":1');
         expect(marker).toContain('"uploaded":2');
+        expect(runtime.isProjectSyncFailed('p-partial')).toBe(true);
         expect(evict).not.toHaveBeenCalled();
       } finally {
         infoSpy.mockRestore();
@@ -528,6 +542,90 @@ describe('createProjectMaterializationRuntime', () => {
       else process.env.OD_SCRATCH_EVICT_AFTER_RUN = previousEvict;
       if (previousRetries === undefined) delete process.env.OD_S3_RUN_END_SYNC_UP_RETRIES;
       else process.env.OD_S3_RUN_END_SYNC_UP_RETRIES = previousRetries;
+      await rm(scratchRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps idle eviction blocked when scratch remains the only copy after run-end sync', async () => {
+    const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-scratch-only-'));
+    const previousEvict = process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+    process.env.OD_SCRATCH_EVICT_AFTER_RUN = '1';
+    try {
+      const fakeRemote = {
+        listFiles: async () => [],
+        readFile: async () => Buffer.alloc(0),
+        writeFile: async () => ({ path: '', size: 0, mtimeMs: 0 }),
+        deleteFile: async () => {},
+        statFile: async () => null,
+      };
+      const storage = new MaterializingProjectStorage(
+        new LocalProjectStorage(scratchRoot),
+        fakeRemote as any,
+      );
+      await storage.writeFile('p-scratch-only', 'index.html', Buffer.from('<h1>deck</h1>'));
+      vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 1, deleted: 0, failed: 0 });
+      const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
+      const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+      const runtime = createProjectMaterializationRuntime(layout, storage);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const run = { id: 'r-scratch-only', projectId: 'p-scratch-only', projectMaterializationStartedAt: Date.now() };
+        await runtime.beforeChatRun(run);
+        const finish = vi.fn();
+        runtime.wrapFinish(finish)(run, 'succeeded', 0, null);
+        await new Promise((r) => setTimeout(r, 20));
+
+        expect(runtime.isProjectSyncFailed('p-scratch-only')).toBe(true);
+        expect(evict).not.toHaveBeenCalled();
+      } finally {
+        warnSpy.mockRestore();
+      }
+    } finally {
+      if (previousEvict === undefined) delete process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+      else process.env.OD_SCRATCH_EVICT_AFTER_RUN = previousEvict;
+      await rm(scratchRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps idle eviction blocked even when after-run scratch eviction is disabled', async () => {
+    const scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-runtime-idle-guard-'));
+    const previousEvict = process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+    delete process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+    try {
+      const fakeRemote = {
+        listFiles: async () => [],
+        readFile: async () => Buffer.alloc(0),
+        writeFile: async () => ({ path: '', size: 0, mtimeMs: 0 }),
+        deleteFile: async () => {},
+        statFile: async () => null,
+      };
+      const storage = new MaterializingProjectStorage(
+        new LocalProjectStorage(scratchRoot),
+        fakeRemote as any,
+      );
+      await storage.writeFile('p-idle-guard', 'index.html', Buffer.from('<h1>deck</h1>'));
+      vi.spyOn(storage, 'syncUp').mockResolvedValue({ uploaded: 0, skipped: 1, deleted: 0, failed: 0 });
+      const evict = vi.spyOn(storage, 'evictScratchProject').mockResolvedValue(undefined);
+      const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+      const runtime = createProjectMaterializationRuntime(layout, storage);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const run = { id: 'r-idle-guard', projectId: 'p-idle-guard', projectMaterializationStartedAt: Date.now() };
+        await runtime.beforeChatRun(run);
+        const finish = vi.fn();
+        runtime.wrapFinish(finish)(run, 'succeeded', 0, null);
+        await new Promise((r) => setTimeout(r, 20));
+
+        expect(runtime.isProjectSyncFailed('p-idle-guard')).toBe(true);
+        expect(evict).not.toHaveBeenCalled();
+      } finally {
+        warnSpy.mockRestore();
+      }
+    } finally {
+      if (previousEvict === undefined) delete process.env.OD_SCRATCH_EVICT_AFTER_RUN;
+      else process.env.OD_SCRATCH_EVICT_AFTER_RUN = previousEvict;
       await rm(scratchRoot, { recursive: true, force: true });
     }
   });

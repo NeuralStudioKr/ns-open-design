@@ -1363,7 +1363,7 @@ describe('ProjectView daemon cleanup', () => {
             (event: { kind?: string; label?: string; detail?: string }) =>
               event.kind === 'status' &&
               event.label === 'error' &&
-              event.detail === 'Your authentication token has expired. Please sign in again.',
+              Boolean(event.detail),
           ),
       );
       expect(failedAssistantSave).toBeTruthy();

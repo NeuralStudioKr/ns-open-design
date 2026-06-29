@@ -24,8 +24,8 @@ function readFixedProtocol(): ApiProtocol | undefined {
 }
 
 /**
- * Embed 모드에서 BYOK↔LocalCLI 전환·onboarding 재진입으로 인한 설정 drift를 막는다.
- * apiKey는 daemon/localStorage merge 결과를 유지한다 (브라우저 env 주입 금지).
+ * Embed 모드에서 server-managed runtime↔LocalCLI 전환·onboarding 재진입으로 인한 설정 drift를 막는다.
+ * apiKey는 runtime-config가 명시적으로 제공한 경우에만 사용한다 (브라우저 env/localStorage 키 재사용 금지).
  */
 export function isTeamverExecutionConfigLocked(): boolean {
   const branding = resolveTeamverBranding();
@@ -50,7 +50,8 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
   );
   const model = fixedModel ?? pinned?.model ?? config.model;
   const apiKeyConfigured = pinned?.managedApiConfigured || config.apiKeyConfigured;
-  const apiKey = apiKeyConfigured ? "" : config.apiKey;
+  const apiKey = "";
+  const mode = "api";
 
   // Embed: skip OD first-run privacy modal — Teamver signup covers legal consent.
   // Persist an explicit OD telemetry opt-out (usage attribution goes via BFF).
@@ -58,7 +59,7 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
 
   const next: AppConfig = {
     ...config,
-    mode: "api",
+    mode,
     onboardingCompleted: true,
     agentId: null,
     agentModels: {},

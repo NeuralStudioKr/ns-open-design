@@ -18,19 +18,20 @@ describe("teamver embed execution config lock", () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
   });
 
-  it("pins runtime-config and clears per-protocol model shadows", () => {
+  it("pins managed runtime prefs and clears per-protocol model shadows without a browser key", () => {
     pinTeamverExecutionConfig({
-      apiKey: "sk-server",
       apiProtocol: "anthropic",
       baseUrl: "https://api.anthropic.com",
       model: "claude-sonnet-4-5",
+      managedApiConfigured: true,
     });
 
     const locked = applyTeamverEmbedConfigLockIfNeeded({
       ...DEFAULT_CONFIG,
-      mode: "daemon",
+      mode: "api",
       agentId: "claude",
       model: "gpt-4o",
+      apiKey: "sk-stale-local",
       apiProtocolConfigs: {
         anthropic: {
           apiKey: "sk-shadow",
@@ -43,8 +44,31 @@ describe("teamver embed execution config lock", () => {
     expect(locked.mode).toBe("api");
     expect(locked.agentId).toBeNull();
     expect(locked.model).toBe("claude-sonnet-4-5");
-    expect(locked.apiKey).toBe("sk-server");
+    expect(locked.apiKey).toBe("");
+    expect(locked.apiKeyConfigured).toBe(true);
     expect(locked.apiProtocolConfigs).toEqual({});
+  });
+
+  it("locks keyless managed runtime without reusing local apiKey", () => {
+    pinTeamverExecutionConfig({
+      apiProtocol: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+      managedApiConfigured: true,
+    });
+
+    const locked = applyTeamverEmbedConfigLockIfNeeded({
+      ...DEFAULT_CONFIG,
+      mode: "api",
+      apiKey: "sk-stale-local",
+      agentId: "claude",
+      model: "gpt-4o",
+    });
+
+    expect(locked.mode).toBe("api");
+    expect(locked.agentId).toBeNull();
+    expect(locked.apiKey).toBe("");
+    expect(locked.model).toBe("claude-sonnet-4-5");
   });
 
   it("mergeTeamverRuntimeConfigIntoAppConfig pins and strips protocol configs", () => {
@@ -62,7 +86,7 @@ describe("teamver embed execution config lock", () => {
       },
       {
         configured: true,
-        apiKey: "sk-managed",
+        apiKeyConfigured: true,
         apiProtocol: "anthropic",
         baseUrl: "https://api.anthropic.com",
         model: "claude-sonnet-4-5",
@@ -70,7 +94,8 @@ describe("teamver embed execution config lock", () => {
     );
 
     expect(merged.mode).toBe("api");
-    expect(merged.apiKey).toBe("sk-managed");
+    expect(merged.apiKey).toBe("");
+    expect(merged.apiKeyConfigured).toBe(true);
     expect(merged.model).toBe("claude-sonnet-4-5");
     expect(merged.apiProtocolConfigs).toEqual({});
 
@@ -91,5 +116,27 @@ describe("teamver embed execution config lock", () => {
     expect(locked.telemetry?.metrics).toBe(false);
     expect(locked.telemetry?.content).toBe(false);
     expect(locked.onboardingCompleted).toBe(true);
+  });
+
+  it("mergeTeamverRuntimeConfigIntoAppConfig supports keyless managed runtime", () => {
+    const merged = mergeTeamverRuntimeConfigIntoAppConfig(
+      {
+        ...DEFAULT_CONFIG,
+        mode: "api",
+        apiKey: "sk-stale-local",
+        agentId: "claude",
+      },
+      {
+        configured: true,
+        apiKeyConfigured: true,
+        apiProtocol: "anthropic",
+        baseUrl: "https://api.anthropic.com",
+        model: "claude-sonnet-4-5",
+      },
+    );
+
+    expect(merged.mode).toBe("api");
+    expect(merged.apiKey).toBe("");
+    expect(merged.model).toBe("claude-sonnet-4-5");
   });
 });

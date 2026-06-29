@@ -61,7 +61,7 @@
 | | **Main Teamver 채팅** (`ns-teamver-be`) | **Design embed** (`ns-open-design` daemon) |
 |--|----------------------------------------|---------------------------------------------|
 | 진입 | `POST /api/v2/chat` | FE → daemon `/api/proxy/{provider}/stream` |
-| LLM 설정 | Main BE 모델별 클라이언트 | `runtime-config` (protocol, baseUrl, model, apiKey) |
+| LLM 설정 | Main BE 모델별 클라이언트 | `runtime-config` (protocol, baseUrl, model, apiKeyConfigured; **apiKey 비반환**) |
 | 웹 참조 방식 | **벤더 native web search** (Responses API, Anthropic server tool, Gemini grounding) | (현재) **없음** · (계획) daemon **`web_fetch`** |
 | 사용자 스위치 | `ChatDTO.use_web_search` | (현재) 없음 |
 | 구현 위치 | `avang/gpt/aichat_v2.py`, `aichat_claude.py` 등 | `apps/daemon` BYOK tool loop |
@@ -92,7 +92,7 @@
 | BYOK `web_fetch` 도구 | ✅ 구현 (loop 184) | `byok-url-tools.ts` · `byok-tools.ts` · senseaudio/aihubmix proxy |
 | `executeOneTool` | ✅ 4-tool 화이트리스트 | `chat-routes.ts` — `web_fetch` 디스패치 |
 | BYOK 시스템 프롬프트 | ✅ `BYOK_TOOLS_OVERRIDE` | `byokToolNames` + `ProjectView` · contracts/daemon `system.ts` |
-| `runtime-config` web 플래그 | ❌ 없음 (선택) | `od_runtime_config.py` — apiKey/protocol/model만 |
+| `runtime-config` web 플래그 | ❌ 없음 (선택) | `od_runtime_config.py` — protocol/model/baseUrl + apiKeyConfigured만 공개, apiKey는 비반환 |
 | FE `WebFetchCard` UI | ✅ 호출 경로 연결 | tool event + 기존 `ToolCard` |
 | minimax-byok 레퍼런스 | ✅ 포크 설계·이식 완료 | doc 07·08 |
 
@@ -106,7 +106,7 @@
 
 **A:** URL 읽기의 **핵심은 daemon(백엔드) 패치**다. FE는 기존 tool 카드(`WebFetchCard`)로 대부분 커버 가능.
 
-- `runtime-config`는 today **LLM 접속 정보만** 넘긴다 (`apiProtocol`, `baseUrl`, `model`, `apiKey`).
+- `runtime-config`는 today **공개 가능한 LLM 실행 선호값만** 넘긴다 (`apiProtocol`, `baseUrl`, `model`, `apiKeyConfigured`). 실제 `apiKey`는 브라우저 Network 응답에 반환하지 않는다.
 - `enableWebFetch: true` 같은 플래그를 **나중에** 넣을 수는 있으나, **실행 코드 없이는 의미 없다**.
 - 순서: **daemon `web_fetch` 이식 → env/runtime으로 프로토콜·모델 맞춤 → (선택) API 게이트**.
 

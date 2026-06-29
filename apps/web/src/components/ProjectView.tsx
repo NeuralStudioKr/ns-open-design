@@ -3579,7 +3579,11 @@ export function ProjectView({
           onProjectsRefresh();
           return;
         }
-        persistAssistantSoon();
+        if (ev.kind === 'status' && ev.label === 'error') {
+          assistantPersist.persistNow();
+        } else {
+          persistAssistantSoon();
+        }
         // Track Write tool invocations so we can auto-open the destination
         // file the moment the agent finishes writing it. The file-creating
         // tools we care about: Write (new file), Edit (existing file —
@@ -3841,16 +3845,20 @@ export function ProjectView({
             !supersededRunsRef.current.has(controller);
           textBuffer.flush();
           releaseOwnTextBuffer();
+          let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
             if (runIsVisible()) setError(formatProjectRunErrorForUser(err));
-            updateAssistant((prev) => ({
-              ...appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode),
-              endedAt,
-              runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
-                ? 'failed'
-                : prev.runStatus,
-              resumable,
-            }));
+            updateAssistant((prev) => {
+              finalizedAssistant = {
+                ...appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode),
+                endedAt,
+                runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
+                  ? 'failed'
+                  : prev.runStatus,
+                resumable,
+              };
+              return finalizedAssistant;
+            });
             if (runCommentAttachments.length > 0) {
               void patchAttachedStatuses(runCommentAttachments, 'failed');
             }
@@ -3861,7 +3869,7 @@ export function ProjectView({
             cancelController,
           );
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
-          void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+          void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,
           });
           void refreshProjectFiles();

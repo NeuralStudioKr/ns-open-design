@@ -29,7 +29,7 @@ function normalizeProtocol(raw: string | undefined): ApiProtocol | undefined {
     : undefined;
 }
 
-/** Merge design-api runtime-config into local AppConfig (embed managed BYOK). */
+/** Merge design-api runtime-config into local AppConfig (embed managed runtime). */
 export function mergeTeamverRuntimeConfigIntoAppConfig(
   config: AppConfig,
   runtime: TeamverRuntimeConfig | null | undefined,
@@ -43,13 +43,15 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
 
   pinTeamverExecutionConfig({ apiProtocol, baseUrl, model, managedApiConfigured: true });
 
+  const mode = "api";
+
   if (
     !config.apiKey?.trim()
     && config.apiKeyConfigured
     && config.apiProtocol === apiProtocol
     && config.baseUrl === baseUrl
     && config.model === model
-    && config.mode === "api"
+    && config.mode === mode
     && Object.keys(config.apiProtocolConfigs ?? {}).length === 0
   ) {
     return config;
@@ -57,7 +59,7 @@ export function mergeTeamverRuntimeConfigIntoAppConfig(
 
   return {
     ...config,
-    mode: "api",
+    mode,
     apiKey: "",
     apiKeyConfigured: true,
     apiProtocol,

@@ -78,10 +78,12 @@ describe("reloadTeamverRuntimeConfigIntoAppConfig", () => {
       baseUrl: "https://api.example.com",
       model: "claude-next",
     });
-    const prev = baseConfig();
+    const prev = baseConfig({ mode: "api", apiKey: "k-stale-local", agentId: "claude" });
     const next = await reloadTeamverRuntimeConfigIntoAppConfig(prev);
+    expect(next).not.toBe(prev);
     expect(next.apiKey).toBe("");
     expect(next.apiKeyConfigured).toBe(true);
+    expect(next.mode).toBe("api");
     expect(next.model).toBe("claude-next");
     expect(mockedPin).toHaveBeenCalledWith(
       expect.objectContaining({ managedApiConfigured: true }),
@@ -99,15 +101,16 @@ describe("reloadTeamverRuntimeConfigIntoAppConfig", () => {
     expect(next.apiProtocol).toBe("anthropic");
     expect(next.apiKey).toBe("");
     expect(next.apiKeyConfigured).toBe(true);
+    expect(next.mode).toBe("api");
   });
 
   it("mergeTeamverRuntimeConfigIntoAppConfig short-circuits when apiKeyConfigured is false", () => {
     const prev = baseConfig();
-    const same = mergeTeamverRuntimeConfigIntoAppConfig(prev, {
+    const next = mergeTeamverRuntimeConfigIntoAppConfig(prev, {
       configured: true,
       apiKeyConfigured: false,
     });
-    expect(same).toBe(prev);
+    expect(next).toBe(prev);
     expect(mockedPin).not.toHaveBeenCalled();
   });
 });
