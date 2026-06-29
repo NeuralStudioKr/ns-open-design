@@ -589,7 +589,7 @@ describe('ProjectView daemon reattach restore', () => {
     });
   });
 
-  it('persists the last buffered delta immediately on pagehide instead of waiting for the 500ms debounce', async () => {
+  it('persists the last buffered delta immediately on pagehide instead of waiting for the streaming throttle', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
     listMessages.mockResolvedValue([
@@ -631,7 +631,7 @@ describe('ProjectView daemon reattach restore', () => {
     await waitFor(() => expect(reattachDaemonRun).toHaveBeenCalledTimes(1));
     expect(capturedOnDelta).not.toBeNull();
 
-    // Stream a delta. persistSoon would schedule a save in 500ms, but the
+    // Stream a delta. persistSoon would schedule a throttled save, but the
     // page is about to be torn down — anything not yet persisted is lost.
     capturedOnDelta!('last buffered chunk');
 

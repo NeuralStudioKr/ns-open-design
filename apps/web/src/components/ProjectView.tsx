@@ -131,6 +131,7 @@ import {
   type SaveMessageOptions,
   waitGeneratedPluginShareTask,
 } from '../state/projects';
+import { createMessagePersistScheduler } from '../state/messagePersistSchedule';
 import type { AppliedPluginSnapshot, ChatAnalyticsEntryFrom, ChatSessionMode, InstalledPluginRecord, WorkspaceContextItem } from '@open-design/contracts';
 import type {
   AgentEvent,
@@ -2789,21 +2790,15 @@ export function ProjectView({
           );
         }
 
-        let persistTimer: ReturnType<typeof setTimeout> | null = null;
+        const persistScheduler = createMessagePersistScheduler((options) => {
+          persistMessageById(message.id, options);
+        });
         const persistSoon = () => {
-          if (persistTimer) return;
-          persistTimer = setTimeout(() => {
-            persistTimer = null;
-            persistMessageById(message.id);
-          }, 500);
+          persistScheduler.persistSoon();
         };
         const persistNow = (options?: SaveMessageOptions) => {
-          if (persistTimer) {
-            clearTimeout(persistTimer);
-            persistTimer = null;
-          }
           textBuffer.flush();
-          persistMessageById(message.id, options);
+          persistScheduler.persistNow(options);
         };
         const parser = createArtifactParser();
         let parsedArtifact: Artifact | null = null;
@@ -3025,8 +3020,15 @@ export function ProjectView({
                 runStatus,
                 endedAt: isTerminalRunStatus(runStatus) ? prev.endedAt ?? Date.now() : prev.endedAt,
               }),
-              true,
+              false,
             );
+            if (isTerminalRunStatus(runStatus)) {
+              persistNow(
+                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+              );
+            } else {
+              persistSoon();
+            }
             if (runStatus === 'canceled') {
               textBuffer.cancel();
               unregisterTextBuffer();
@@ -3034,7 +3036,6 @@ export function ProjectView({
               reattachControllersRef.current.delete(runId);
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
-              persistNow({ telemetryFinalized: true });
             }
             if (isTerminalRunStatus(runStatus)) {
               scheduleConversationMessageRefresh(reattachConversationId);
@@ -3068,7 +3069,7 @@ export function ProjectView({
             textBuffer.flush();
             textBuffer.cancel();
             unregisterTextBuffer();
-            if (persistTimer) clearTimeout(persistTimer);
+            persistScheduler.cancel();
             reattachControllersRef.current.delete(runId);
             reattachCancelControllersRef.current.delete(runId);
             clearActiveRunRefs(reattachConversationId, controller, cancelController);
@@ -3521,20 +3522,14 @@ export function ProjectView({
           }),
         );
       };
-      let persistTimer: ReturnType<typeof setTimeout> | null = null;
+      const assistantPersist = createMessagePersistScheduler((options) => {
+        void saveMessage(project.id, runConversationId, latestAssistantMsg, options);
+      });
       const persistAssistantSoon = () => {
-        if (persistTimer) return;
-        persistTimer = setTimeout(() => {
-          persistTimer = null;
-          void saveMessage(project.id, runConversationId, latestAssistantMsg);
-        }, 500);
+        assistantPersist.persistSoon();
       };
       const persistAssistantNowKeepalive = () => {
-        if (persistTimer) {
-          clearTimeout(persistTimer);
-          persistTimer = null;
-        }
-        void saveMessage(project.id, runConversationId, latestAssistantMsg, { keepalive: true });
+        assistantPersist.persistNow({ keepalive: true });
       };
       const pushEvent = (ev: AgentEvent) => {
         textBuffer.flush();
@@ -3561,7 +3556,6 @@ export function ProjectView({
           onProjectsRefresh();
           return;
         }
-        persistAssistantSoon();
         persistAssistantSoon();
         // Track Write tool invocations so we can auto-open the destination
         // file the moment the agent finishes writing it. The file-creating
@@ -3947,12 +3941,13 @@ export function ProjectView({
                 endedAt: endedAt === undefined ? prev.endedAt : prev.endedAt ?? endedAt,
               }),
             );
-            void saveMessage(
-              project.id,
-              runConversationId,
-              latestAssistantMsg,
-              runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-            );
+            if (isTerminalRunStatus(runStatus)) {
+              assistantPersist.persistNow(
+                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+              );
+            } else {
+              assistantPersist.persistSoon();
+            }
             if (!runMayFinalize) return;
             updateConversationLatestRun(runStatus, endedAt);
             if (isTerminalRunStatus(runStatus)) {
@@ -6818,7 +6813,7 @@ export function createBufferedTextUpdates({
 
   function onPageHide() {
     flush();
-    // persistSoon's 500ms debounce never fires once the document tears
+    // persistSoon's throttle never fires once the document tears
     // down, so synchronously PUT with keepalive instead.
     flushAndPersistNow?.();
   }
