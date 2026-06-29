@@ -1,0 +1,171 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  chatMessageEventsToRunAnalyticsEvents,
+  reportByokTeamverUsageAndBillingFromDaemon,
+  shouldReportByokUsageFromMessage,
+} from '../src/teamver-byok-usage-bridge.js';
+
+describe('teamver-byok-usage-bridge', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('shouldReportByokUsageFromMessage requires assistant terminal BYOK message', () => {
+    expect(
+      shouldReportByokUsageFromMessage(
+        {
+          id: 'm1',
+          role: 'assistant',
+          runStatus: 'succeeded',
+          events: [],
+        },
+        { telemetryFinalized: true },
+      ),
+    ).toBe(true);
+    expect(
+      shouldReportByokUsageFromMessage(
+        { id: 'm2', role: 'assistant', runId: 'run-1', runStatus: 'succeeded' },
+        { telemetryFinalized: true },
+      ),
+    ).toBe(false);
+    expect(
+      shouldReportByokUsageFromMessage(
+        { id: 'm3', role: 'user', runStatus: 'succeeded' },
+        { telemetryFinalized: true },
+      ),
+    ).toBe(false);
+  });
+
+  it('maps chat message usage events to run analytics wire shape', () => {
+    expect(
+      chatMessageEventsToRunAnalyticsEvents([
+        {
+          kind: 'usage',
+          inputTokens: 10,
+          outputTokens: 5,
+          model: 'claude-sonnet-4-5',
+          apiProtocol: 'anthropic',
+        },
+      ]),
+    ).toEqual([
+      {
+        event: 'usage',
+        data: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: undefined,
+          cache_creation_input_tokens: undefined,
+          model: 'claude-sonnet-4-5',
+          stop_reason: undefined,
+          api_protocol: 'anthropic',
+          latency_ms: undefined,
+        },
+      },
+    ]);
+  });
+
+  it('posts billing finalize then usage for succeeded BYOK message', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+    vi.stubEnv('TEAMVER_OD_API_MODEL', 'claude-sonnet-4-5');
+
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      calls.push({ url, body });
+      if (url.endsWith('/api/internal/billing/finalize-byok-run')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              ok: true,
+              usage_id: 'u-byok',
+              billing_status: 'committed',
+              credits_committed: true,
+              credits_amount_t: 42,
+            }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => '' };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reportedRuns = new Set<string>();
+    const ok = await reportByokTeamverUsageAndBillingFromDaemon({
+      message: {
+        id: 'assistant-msg-1',
+        role: 'assistant',
+        runStatus: 'succeeded',
+        startedAt: 1_000,
+        endedAt: 2_500,
+        events: [
+          { kind: 'status', label: 'model', detail: 'claude-sonnet-4-5' },
+          { kind: 'usage', inputTokens: 100, outputTokens: 50, apiProtocol: 'anthropic' },
+        ],
+      },
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns,
+    });
+
+    expect(ok).toBe(true);
+    expect(calls.map((c) => c.url)).toEqual([
+      'http://design-api:16000/api/internal/billing/finalize-byok-run',
+      'http://design-api:16000/api/internal/usage/events',
+    ]);
+    expect(calls[0]?.body).toMatchObject({
+      workspace_id: 'ws-1',
+      run_id: 'assistant-msg-1',
+      run_status: 'succeeded',
+      input_tokens: 100,
+      output_tokens: 50,
+    });
+    expect(calls[1]?.body).toMatchObject({
+      user_id: 'user-1',
+      workspace_id: 'ws-1',
+      run_id: 'assistant-msg-1',
+      project_id: 'od-1',
+      registry_usage_id: 'u-byok',
+      billing_status: 'committed',
+      credits_committed: true,
+      credits_amount_t: 42,
+      api_protocol: 'anthropic',
+      latency_ms: 1500,
+    });
+    expect(reportedRuns.has('byok:assistant-msg-1')).toBe(true);
+  });
+
+  it('dedupes repeated finalize for the same message id', async () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 204, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reportedRuns = new Set<string>();
+    const message = {
+      id: 'assistant-msg-dedupe',
+      role: 'assistant' as const,
+      runStatus: 'failed' as const,
+      events: [{ kind: 'usage', inputTokens: 1, outputTokens: 1 }],
+    };
+
+    await reportByokTeamverUsageAndBillingFromDaemon({
+      message,
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns,
+    });
+    await reportByokTeamverUsageAndBillingFromDaemon({
+      message,
+      projectId: 'od-1',
+      identity: { userId: 'user-1', workspaceId: 'ws-1' },
+      reportedRuns,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

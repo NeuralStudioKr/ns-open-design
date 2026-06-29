@@ -294,6 +294,10 @@ import {
 } from './langfuse-bridge.js';
 import { reportTeamverUsageFromDaemon, finalizeTeamverUsageBillingFromDaemon } from './teamver-usage-bridge.js';
 import {
+  reportByokTeamverUsageAndBillingFromDaemon,
+  shouldReportByokUsageFromMessage,
+} from './teamver-byok-usage-bridge.js';
+import {
   commitTeamverBillingFromDaemon,
   refundTeamverBillingFromDaemon,
   reserveTeamverBillingFromDaemon,
@@ -6853,6 +6857,17 @@ export async function startServer({
       projectId: req.params.id,
       conversationId: req.params.cid,
     });
+    if (shouldReportByokUsageFromMessage(saved, m)) {
+      const identity = readTeamverIdentityFromRequest(req);
+      if (identity) {
+        void reportByokTeamverUsageAndBillingFromDaemon({
+          message: saved,
+          projectId: req.params.id,
+          identity,
+          reportedRuns,
+        });
+      }
+    }
     res.json({ message: saved });
   });
 

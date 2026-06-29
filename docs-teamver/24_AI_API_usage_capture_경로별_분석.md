@@ -272,6 +272,7 @@ CloudWatch metric filter 가 이미 `metric=teamver_usage_5xx` 를 알람 대상
 ## 7. 비-스코프 (별도 트랙)
 
 - BYOK billing reserve/commit/refund (U-G6) — token capture 가 선제 조건. 이번 loop 으로 capture 가 정상화된 뒤 별도 loop 에서 처리.
+- **U-G11** ✅ — daemon message PUT + M2M (`teamver-byok-usage-bridge.ts`). FE hook no-op — [11 §4.11](./11_Usage·Drive_Publish_보강.md).
 - Main BE Registry 변경 — 무관.
 - Anthropic SDK 자체 upgrade — 현재 버전(`@anthropic-ai/sdk`) 에서도 `MessageStream.finalMessage()` 의 `.usage` 가 노출되므로 불필요.
 

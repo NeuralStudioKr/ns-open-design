@@ -10,10 +10,12 @@ from app.routers import internal_billing
 from app.routers.internal_billing import (
     CommitBody,
     EstimateReserveBody,
+    FinalizeByokRunInternalBody,
     RefundBody,
     ReserveBody,
     commit_run,
     estimate_reserve,
+    finalize_byok_run_internal,
     refund_run,
     reserve_run,
 )
@@ -159,3 +161,41 @@ async def test_refund_endpoint_surfaces_failure(monkeypatch: pytest.MonkeyPatch)
     response = await refund_run(RefundBody(usage_id="u-1"), True)
     assert response.ok is False
     assert response.error == "refund_failed"
+
+
+@pytest.mark.asyncio
+async def test_finalize_byok_run_internal_delegates_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_finalize(**kwargs):
+        assert kwargs["workspace_id"] == "ws-1"
+        assert kwargs["run_id"] == "msg-1"
+        from app.services.byok_billing import ByokBillingResult
+
+        return ByokBillingResult(
+            ok=True,
+            usage_id="u-byok",
+            billing_status="committed",
+            credits_committed=True,
+            credits_amount_t=9,
+        )
+
+    monkeypatch.setattr(internal_billing, "finalize_byok_run_billing", fake_finalize)
+
+    response = await finalize_byok_run_internal(
+        FinalizeByokRunInternalBody(
+            workspace_id="ws-1",
+            run_id="msg-1",
+            run_status="succeeded",
+            model_name="claude-sonnet-4-5",
+            input_tokens=100,
+            output_tokens=50,
+            token_count_source="provider_usage",
+        ),
+        True,
+    )
+    assert response.ok is True
+    assert response.usage_id == "u-byok"
+    assert response.billing_status == "committed"
+    assert response.credits_committed is True
+    assert response.credits_amount_t == 9

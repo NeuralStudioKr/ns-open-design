@@ -513,9 +513,130 @@ def meter_design_run(
 | 경로 | usage ledger | Registry billing | 후속 |
 |------|--------------|------------------|------|
 | **daemon CLI** (embed) | ✅ scan + M2M / FE-first (race-safe, §2.4) | ✅ reserve@start (flat), commit/refund@end (직렬화, §4.8) | amount를 `credit_meter`로 교체 (§4.4) |
-| **embed BYOK** (`mode=api`) | ✅ FE `maybeReportTeamverUsageAfterSave` + **loop 430** `finalize-byok-run` (Strategy B meter→reserve→commit, `run_id=message.id`) | ✅ cookie-auth BFF `POST /api/v1/billing/finalize-byok-run` | — |
+| **embed BYOK** (`mode=api`) | ✅ daemon `reportByokTeamverUsageAndBillingFromDaemon` (message PUT, M2M) | ✅ `POST /api/internal/billing/finalize-byok-run` | **U-G11** ✅ — FE hook no-op, BFF deprecate 예정 (§4.11) |
 | **standalone OD** | — | skip (no `TEAMVER_DESIGN_API_URL`) | — |
 | **plain stdout agent** | `unknown` / 0 | flat reserve만 | usage 없으면 §4.5.1 정책 |
+
+---
+
+### 4.11 embed BYOK billing — FE 호출 vs daemon/BE (아키텍처 · 리스크 · 이전)
+
+> **한 줄:** loop 430은 **동작하는 임시 wiring**이지만, embed 기본(`mode=api`)에서 과금·usage ledger가 **브라우저 `saveMessage` hook**에 묶여 있어 **페이지 이탈·탭 종료** 시 누락·지연 위험이 있다. **권장 종착점은 daemon `PUT …/messages/:id` + design-api M2M** (CLI run과 동일 계열).
+
+#### 4.11.1 현재 구조 (loop 430)
+
+| 단계 | 주체 | API / 저장소 |
+|------|------|----------------|
+| 1. LLM 호출 | FE → daemon proxy 또는 브라우저 SDK | `/api/proxy/*/stream`, `anthropic.ts` 직접 SDK 등 |
+| 2. usage 수집 | FE `ProjectView` | `message.events`에 `kind:'usage'` push ([24](./24_AI_API_usage_capture_경로별_분석.md)) |
+| 3. 메시지 저장 | FE `saveMessage` | daemon `PUT /api/projects/…/messages/:id` (`telemetryFinalized`) |
+| 4. billing finalize | **FE** `maybeReportTeamverUsageAfterSave` | BFF `POST /api/v1/billing/finalize-byok-run` (cookie-auth) |
+| 5. usage ledger | **FE** `reportTeamverDesignUsage` | BFF `POST /api/v1/usage/events` |
+| 6. BE meter→commit | design-api `finalize_byok_run_billing` | Registry reserve → commit, ledger `committed` 멱등 |
+
+**run_id SSOT:** embed BYOK는 daemon `runId`가 없으므로 **`run_id = assistant message.id`** (UUID). CLI embed run은 **`run_id = daemon run.id`** — FE hook은 `message.runId`가 있으면 **즉시 return** (이중 과금 방지).
+
+**관련 코드**
+
+| 역할 | 경로 |
+|------|------|
+| FE hook | `apps/web/src/teamver/maybeReportTeamverUsageAfterSave.ts` |
+| FE billing client | `apps/web/src/teamver/teamverByokBilling.ts` |
+| FE save 트리거 | `apps/web/src/state/projects.ts` → `saveMessage` |
+| BE finalize SSOT | `deploy/teamver/be/app/services/byok_billing.py` |
+| BFF endpoint | `deploy/teamver/be/app/routers/billing_report.py` → `/billing/finalize-byok-run` |
+| CLI run 대비 | `apps/daemon/src/teamver-usage-bridge.ts` + `server.ts` finalize (M2M) |
+
+#### 4.11.2 왜 FE에서 호출하도록 만들었는가 (역사)
+
+loop 430(U-G6) 시점 제약:
+
+1. **토큰 실측값**이 provider SSE / SDK `finalMessage.usage`에서 FE `message.events`로만 모였고, BYOK embed에 **daemon run lifecycle(`reserve@start`)이 없었음**.
+2. **Strategy B** (post-run `meter → reserve → commit`)를 빠르게 붙이려면, 이미 있는 **`saveMessage` + cookie-auth BFF**가 가장 짧은 경로였음.
+3. BE `finalize_byok_run_billing()` 로직 자체는 **서버 SSOT** — FE는 thin client.
+
+즉 “과금 로직을 FE에 둔 것”이 아니라 **“과금 API를 브라우저가 호출하는 트리거”**만 FE에 있는 상태.
+
+#### 4.11.3 페이지 이탈 · 백그라운드 run — **맞는 지적 (Gap)**
+
+경로를 나눠야 한다.
+
+| 실행 모드 | 페이지 이탈 시 작업 | 과금 트리거 | 페이지 이탈 후 과금 |
+|-----------|---------------------|-------------|---------------------|
+| **daemon CLI run** (`mode=daemon`, `runId` 있음) | SSE consumer만 detach, **daemon run은 계속** ([05 §백그라운드](./05_OD_UI_재사용_빠른출시.md)) | **daemon** M2M `internal/usage/events` + billing | ✅ 서버가 처리 |
+| **embed BYOK** (`mode=api`, Teamver embed 기본 pin) | in-flight는 **브라우저 `fetch`/SDK stream** — `ProjectView` unmount 시 **abort로 proxy 요청 종료** | **FE** `maybeReportTeamverUsageAfterSave` | ⚠️ **취약** |
+
+embed BYOK에서 FE 과금 hook이 **문제가 되는 경우**:
+
+1. **탭 종료 / 크래시** — `telemetryFinalized` PUT 또는 BFF billing POST가 네트워크 완료 전에 끊기면 ledger·Registry commit 누락 가능.
+2. **BFF 호출만 실패** — `saveMessage` PUT은 성공했는데 `finalize-byok-run` / `usage/events`만 drop → 메시지는 SQLite에 있으나 `billing_status=not_attempted` 잔존 ([26 §1.1](./26_Usage·DB·S3_동작_점검.md)).
+3. **백그라운드 배너와의 혼동** — `App.tsx` run poll · `TeamverBackgroundRunsBanner`는 **`listProjectRuns()`(daemon run)** 기준. embed BYOK turn은 **`runId` 없음** → 배너에 “백그라운드 실행 중”으로 보이는 것과 BYOK in-flight는 **동일 개념이 아님**.
+
+**현재 완화(부분):**
+
+- `saveMessage`는 PUT 실패와 **usage/billing POST를 분리** (`void maybeReport…` — BYOK는 daemon fallback 없음).
+- `pagehide` / `keepalive` PUT으로 **마지막 텍스트 chunk**는 daemon SQLite에 남기기 쉬움.
+- BE `(workspace_id, run_id)` upsert + `committed` frozen — **재시도 시 이중 commit 방지**.
+
+**완화로 부족한 것:** billing 트리거가 여전히 **브라우저 JS 실행**에 의존. **“작업은 서버/데몬에서 끝났는데 과금만 FE가 안 불렀다”** 는 ops·매출 gap.
+
+#### 4.11.4 권장 종착: daemon-side finalize (BE 처리)
+
+**가능하며, embed BYOK에 맞는 hook은 proxy stream 종료가 아니라 message PUT이다.**
+
+```text
+FE saveMessage
+  → PUT /api/projects/:pid/conversations/:cid/messages/:mid  (telemetryFinalized, events, runStatus, runId 없음)
+  → daemon server.ts (신규 BYOK finalize hook)
+       1. readTeamverIdentityFromRequest (nginx X-Teamver-User-Id + X-Workspace-Id)
+       2. message.events → usage 추출 (FE `extractLatestUsageFromEvents`와 동치 adapter)
+       3. POST /api/internal/billing/finalize-byok-run  (신규 M2M, byok_billing 재사용)
+       4. POST /api/internal/usage/events
+  → FE maybeReportTeamverUsageAfterSave 제거 (feature flag 후)
+```
+
+**proxy `/api/proxy/*/stream` 종료 시점 finalize는 비권장**
+
+- assistant `message.id`를 stream 시점에 모름.
+- BYOK tool loop는 **한 turn에 stream 다회** — run 종료 ≠ stream `end`.
+- `runStatus`(실패/취소)는 FE lifecycle에 있음.
+
+**message PUT hook이 안전한 이유**
+
+- CLI run finalize(`shouldReportRunCompletedFromMessage`)와 **동일한 “persisted terminal message”** 트리거.
+- `keepalive` PUT 포함 — **탭이 닫혀도 daemon이 SQLite에 받은 뒤** server-side finalize 가능.
+- nginx가 주입한 identity + M2M key — **cookie BFF 불필요**.
+
+#### 4.11.5 이전 시 체크리스트 (문제 없이 가려면)
+
+| # | 항목 | 비고 |
+|---|------|------|
+| 1 | `POST /api/internal/billing/finalize-byok-run` | ✅ `finalize_byok_run_billing()` 재사용 |
+| 2 | daemon message events adapter | ✅ `chatMessageEventsToRunAnalyticsEvents` |
+| 3 | feature flag | FE hook off — BYOK no-op (daemon authoritative) |
+| 4 | design app disabled gate | FE snapshot 대신 BE/daemon workspace check |
+| 5 | 0-token 경로 | capture fix([24](./24_AI_API_usage_capture_경로별_분석.md))와 독립 — daemon 이전만으로 0-token 해결 안 됨 |
+| 6 | 관측 | `teamver_usage_5xx` stage를 daemon BYOK finalize로 통일 |
+
+**롤아웃 순서 (§4.9에 추가 예정)**
+
+```text
+[x] 9. internal M2M finalize-byok-run endpoint (byok_billing SSOT 재사용)
+[x] 10. daemon PUT message BYOK hook + unit tests
+[ ] 11. staging: FE billing off → ledger committed 일치 E2E
+[ ] 12. BFF /billing/finalize-byok-run deprecate (또는 admin-only)
+```
+
+#### 4.11.6 FAQ
+
+**Q. BE에서 알아서 하면 되는 거 아닌가?**  
+A. **맞다 — 종착은 BE+demon.** 다만 BYOK는 LLM 호출이 브라우zer/proxy에 있어 **“언제·몇 토큰·성공 여부”가 message row에 모인 뒤** BE가 meter해야 한다. 그 시점을 daemon PUT이 가장 정확히 잡는다.
+
+**Q. 페이지 이탈해도 백그라운드 실행인데 FE 과금이면 깨지지 않나?**  
+A. **daemon run**은 깨지지 않는다(이미 daemon billing). **embed BYOK(`mode=api`)** 는 in-flight가 브라우저에 묶여 있으나, **과금·usage는 daemon message PUT hook**이 authoritative — U-G11 구현 완료 (§4.11).
+
+**Q. BFF `finalize-byok-run`을 당장 지워도 되나?**  
+A. **아니오.** daemon hook이 authoritative이나, 레거시 클라이언트·staging E2E(§4.11.5 #11) 검증 전까지 BFF endpoint는 유지. deprecate는 후속.
 
 ---
 
@@ -569,6 +690,7 @@ void (async () => {
 [ ] 2. §4.4 전략 확정 (A/B/C) — PM·Main BE 합의
 [x] 3. daemon reserve: estimate-reserve endpoint + run-start lookup (loop 423 · Strategy A partial)
 [x] 4. embed BYOK billing (U-G6) — message.id run 키 + post-run reserve/commit (FE-only hook + BFF finalize, loop 430)
+[x] 4b. embed BYOK billing **daemon-side finalize** (U-G11) — message PUT hook + internal M2M, FE hook no-op (§4.11)
 [ ] 5. billing_status=not_metered / flat_fallback 관측 + CW 대시보드
 [ ] 6. staging E2E: reserve amount == metered (또는 cap) + commit + ledger row 일치
 [ ] 7. (선택) Main BE metered commit API — 전략 C
@@ -579,6 +701,7 @@ void (async () => {
 
 - `deploy/teamver/be/tests/test_credit_meter.py`
 - `apps/daemon/tests/teamver-billing-metered.test.ts` (reserve amount assert)
+- `apps/daemon/tests/teamver-byok-usage-bridge.test.ts` (BYOK message PUT finalize)
 - E2E: `run_staging_track_a_e2e.sh` U-6 확장 — `billing_status`, `registry_usage_id` non-null
 
 ---
@@ -981,7 +1104,7 @@ Browser
 |---|------|
 | ☐ | `credit_meter.py` + `DESIGN_MODEL_PRICES_JSON` |
 | ☐ | 전략 A/B/C 확정 |
-| ☐ | embed BYOK billing (U-G6) |
+| ☐ | embed BYOK billing (U-G6) — loop 430 FE hook ✅ · **daemon-side finalize (U-G11)** ✅ [11 §4.11](./11_Usage·Drive_Publish_보강.md) |
 | ☐ | staging E2E reserve/commit ledger 일치 |
 
 ---
@@ -990,6 +1113,8 @@ Browser
 
 | 일자 | 내용 |
 |------|------|
+| 2026-06-29 | **U-G11** embed BYOK billing daemon-side finalize — internal M2M endpoint, `teamver-byok-usage-bridge`, message PUT hook, FE no-op |
+| 2026-06-26 | **§4.11** embed BYOK billing FE vs daemon/BE — 페이지 이탈·백그라운드 run gap, daemon message PUT 이전 권장 (U-G11) |
 | 2026-06-23 | hosted runtime/billing fail-fast — staging/production `TEAMVER_INTERNAL_API_KEY` + `TEAMVER_OD_API_KEY` 필수, production `TEAMVER_REGISTRY_*` 필수, staging은 registry 미설정 시 `TEAMVER_BILLING_DISABLED=1` 명시 |
 | 2026-06-19 | Track A E2E S3 tenant object probe — D-5/D-6 전후 프로젝트 파일이 S3 tenant prefix 에 실제 존재하는지 `TEAMVER_S3_BUCKET` + `/access` prefix header + `aws s3 ls` 로 검증 가능 |
 | 2026-06-18 | Drive Publish 팀 드라이브 하위 폴더 선택 — shared drive folder-tree를 flatten해 팀 드라이브 내부 폴더도 `folderId/sharedDriveId` target으로 publish 가능. 남음: 검색형 브라우저 UX + staging E2E |
