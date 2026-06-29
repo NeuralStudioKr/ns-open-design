@@ -50,6 +50,7 @@ describe("project conversation error messages", () => {
       formatProjectArtifactRejectedError,
       formatProjectArtifactSaveFailedError,
       formatProjectArtifactStubWarning,
+      extractProjectRunErrorCode,
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
       formatProjectForkConversationError,
@@ -59,12 +60,23 @@ describe("project conversation error messages", () => {
     );
     expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장하지 못했습니다");
     expect(formatProjectArtifactStubWarning("deck.html", "stub")).toContain("플레이스홀더");
+    expect(
+      extractProjectRunErrorCode(new Error("proxy 502: PROJECT_STORAGE_UNAVAILABLE sync-down failed")),
+    ).toBe("PROJECT_STORAGE_UNAVAILABLE");
     expect(formatProjectRunErrorForUser(new Error("daemon exploded"))).toContain(
       "슬라이드 실행",
     );
     const sessionErr = new Error("session probe failed") as Error & { code?: string };
     sessionErr.code = "session_unreachable";
     expect(formatProjectRunErrorForUser(sessionErr)).toContain("Teamver 세션");
+    const unauthorizedErr = new Error("proxy 401: UNAUTHORIZED invalid key") as Error & {
+      code?: string;
+    };
+    unauthorizedErr.code = "UNAUTHORIZED";
+    expect(formatProjectRunErrorForUser(unauthorizedErr)).toContain("API 인증");
+    expect(
+      formatProjectRunErrorForUser(new Error("Missing API key — open Settings and paste one in.")),
+    ).toContain("서버 API 키");
     expect(
       formatProjectConversationErrorForUser(
         new Error("Network request failed"),

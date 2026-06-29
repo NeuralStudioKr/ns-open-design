@@ -50,7 +50,13 @@ export function applyTeamverEmbedConfigLockIfNeeded(config: AppConfig): AppConfi
     fixedBaseUrl ?? pinned?.baseUrl ?? config.baseUrl,
   );
   const model = fixedModel ?? pinned?.model ?? config.model;
-  const apiKeyConfigured = pinned?.managedApiConfigured || config.apiKeyConfigured;
+  // Embed with execution lock always uses server-managed BYOK — do not wait on
+  // runtime-config / pin before marking credentials ready. Without this, a
+  // boot race (or a failed runtime-config fetch) leaves apiKeyConfigured
+  // false and streamProxyEndpoint bails before POST /api/proxy/*/stream.
+  const apiKeyConfigured = branding.lockExecutionConfig
+    ? true
+    : Boolean(pinned?.managedApiConfigured || config.apiKeyConfigured);
   const apiKey = "";
   const mode = "api";
 

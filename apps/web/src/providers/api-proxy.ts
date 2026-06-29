@@ -49,7 +49,11 @@ export async function streamProxyEndpoint(
   context?: ProxyContext,
 ): Promise<void> {
   if (!hasChatApiCredentials(cfg)) {
-    handlers.onError(new Error('Missing API key — open Settings and paste one in.'));
+    const err = new Error('Missing API key — open Settings and paste one in.') as Error & {
+      code?: string;
+    };
+    err.code = 'API_KEY_REQUIRED';
+    handlers.onError(err);
     return;
   }
 

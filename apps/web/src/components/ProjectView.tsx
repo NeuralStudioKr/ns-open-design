@@ -185,6 +185,7 @@ import {
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
+  extractProjectRunErrorCode,
   formatProjectRunErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
@@ -2989,7 +2990,7 @@ export function ProjectView({
               onProjectsRefresh();
             },
             onError: (err) => {
-              const errorCode = (err as Error & { code?: string }).code;
+              const errorCode = extractProjectRunErrorCode(err);
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               // A superseded reattached run must not paint a global failure
               // banner or re-finalize its message over the replacement run.
@@ -3834,7 +3835,7 @@ export function ProjectView({
         },
         onError: (err: Error) => {
           const endedAt = Date.now();
-          const errorCode = (err as Error & { code?: string }).code;
+          const errorCode = extractProjectRunErrorCode(err);
           const resumable = (err as Error & { resumable?: boolean }).resumable === true;
           // A run superseded by a "send now" interrupt can still surface a
           // late disconnect error (e.g. a canceled stream that lost its

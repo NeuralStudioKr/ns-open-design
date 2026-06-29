@@ -69,6 +69,20 @@ describe("teamver embed execution config lock", () => {
     expect(locked.agentId).toBeNull();
     expect(locked.apiKey).toBe("");
     expect(locked.model).toBe("claude-sonnet-4-6");
+    expect(locked.apiKeyConfigured).toBe(true);
+  });
+
+  it("marks apiKeyConfigured before runtime-config pin arrives", () => {
+    const locked = applyTeamverEmbedConfigLockIfNeeded({
+      ...DEFAULT_CONFIG,
+      mode: "daemon",
+      apiKey: "",
+      apiKeyConfigured: false,
+    });
+
+    expect(locked.mode).toBe("api");
+    expect(locked.apiKeyConfigured).toBe(true);
+    expect(locked.apiKey).toBe("");
   });
 
   it("mergeTeamverRuntimeConfigIntoAppConfig pins and strips protocol configs", () => {

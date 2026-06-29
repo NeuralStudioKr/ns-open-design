@@ -1,0 +1,41 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+vi.mock("../src/teamver/designApiBase", () => ({
+  isTeamverEmbedMode: vi.fn(() => false),
+}));
+
+vi.mock("../src/teamver/branding/applyEmbedConfigLock", () => ({
+  isTeamverExecutionConfigLocked: vi.fn(() => false),
+}));
+
+import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
+import { isTeamverExecutionConfigLocked } from "../src/teamver/branding/applyEmbedConfigLock";
+import { hasChatApiCredentials } from "../src/teamver/chatApiCredentials";
+
+const mockedEmbedMode = vi.mocked(isTeamverEmbedMode);
+const mockedLock = vi.mocked(isTeamverExecutionConfigLocked);
+
+describe("hasChatApiCredentials", () => {
+  beforeEach(() => {
+    mockedEmbedMode.mockReset();
+    mockedLock.mockReset();
+  });
+
+  it("accepts a browser BYOK key in standalone mode", () => {
+    mockedEmbedMode.mockReturnValue(false);
+    expect(hasChatApiCredentials({ apiKey: "sk-test", apiKeyConfigured: false })).toBe(true);
+  });
+
+  it("accepts server-managed embed credentials when execution is locked", () => {
+    mockedEmbedMode.mockReturnValue(true);
+    mockedLock.mockReturnValue(true);
+    expect(hasChatApiCredentials({ apiKey: "", apiKeyConfigured: false })).toBe(true);
+  });
+
+  it("requires apiKeyConfigured in embed when execution is not locked", () => {
+    mockedEmbedMode.mockReturnValue(true);
+    mockedLock.mockReturnValue(false);
+    expect(hasChatApiCredentials({ apiKey: "", apiKeyConfigured: false })).toBe(false);
+    expect(hasChatApiCredentials({ apiKey: "", apiKeyConfigured: true })).toBe(true);
+  });
+});
