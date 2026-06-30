@@ -1,6 +1,6 @@
 import type { SigV4Credentials } from './aws-sigv4.js';
 
-const IMDS_BASE = 'http://169.254.169.254/latest/meta-data/iam/security-credentials/';
+const IMDS_CREDENTIALS_PREFIX = '/latest/meta-data/iam/security-credentials/';
 const IMDS_TOKEN_URL = 'http://169.254.169.254/latest/api/token';
 
 type ImdsRoleCredentials = {
@@ -56,10 +56,14 @@ export async function fetchEc2InstanceRoleCredentials(opts?: {
 }): Promise<SigV4Credentials | null> {
   const timeoutMs = opts?.timeoutMs ?? 1500;
   const token = await fetchImdsToken(timeoutMs);
-  const roleName = await fetchImdsText('/latest/meta-data/iam/security-credentials/', token, timeoutMs);
+  const roleName = await fetchImdsText(IMDS_CREDENTIALS_PREFIX, token, timeoutMs);
   if (!roleName) return null;
 
-  const raw = await fetchImdsText(`${IMDS_BASE}${encodeURIComponent(roleName)}`, token, timeoutMs);
+  const raw = await fetchImdsText(
+    `${IMDS_CREDENTIALS_PREFIX}${encodeURIComponent(roleName)}`,
+    token,
+    timeoutMs,
+  );
   if (!raw) return null;
 
   let parsed: ImdsRoleCredentials;
