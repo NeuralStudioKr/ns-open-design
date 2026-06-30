@@ -105,6 +105,7 @@ curl -si -X OPTIONS \
 | `apply_teamver_design_staging_nginx_conf.sh` | conf apply |
 | `teamver-design-od-bff.inc.conf` | same-origin design-api BFF (`/teamver-bff/*`) |
 | `teamver-design-plugin-preview.inc.conf` | plugin/skill preview sandbox — asset no-auth + CSP ([25](../../../docs-teamver/25_플러그인_preview_샌드박스_nginx_보강.md)) |
+| `teamver-design-od-public-static.inc.conf` | Next.js `/_next/*`·favicon — auth_request 제외 ([31 §8.2](../../../docs-teamver/31_Design_Staging_vs_Production_네트워크_TLS_DNS.md#82-chunkloaderror--_nextstaticchunksjs-auth_request-on-static)) |
 | `teamver-design-od-token.conf.example` | OD_API_TOKEN (서버 로컬) |
 
 **프로덕션 conf:** `design.teamver.com.http.conf` — staging VM 에 enable 하지 않음.
