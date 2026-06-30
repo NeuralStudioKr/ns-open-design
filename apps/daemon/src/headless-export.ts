@@ -30,6 +30,92 @@ const DECK_HEIGHT = 1080;
 // exports drift apart on the same deck.
 const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
+
+function deckSlideSelectorList(): string[] {
+  return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
+}
+
+/**
+ * Print CSS shared by headless PDF and browser Save-as-PDF fallback.
+ *
+ * Deck-framework decks keep slides as `position:absolute; inset:0` stacked in a
+ * 1920×1080 stage and hide inactive slides via
+ * `.slide:not(.active) { display: none !important }` (specificity 0,2,1).
+ * A naive `.slide { display:flex !important }` inside `@media print` loses
+ * that cascade battle, so only the active slide prints and page-break never
+ * fires — users see 1–2 squashed A4 pages instead of 12×1920×1080.
+ *
+ * This block mirrors packages/contracts `DECK_SKELETON_HTML` @media print
+ * rules and adds the higher-specificity `.slide:not(.active)` override plus
+ * horizontal-snap deck selectors.
+ */
+export function buildDeckPrintCss(): string {
+  const slides = deckSlideSelectorList().join(', ');
+  const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
+  const slidesLastChild = deckSlideSelectorList().map((sel) => `${sel}:last-child`).join(', ');
+  return `
+@media print {
+  @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
+  html, body {
+    width: ${DECK_WIDTH}px !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  body {
+    display: block !important;
+    scroll-snap-type: none !important;
+    transform: none !important;
+  }
+  .deck-shell {
+    position: static !important;
+    display: block !important;
+    inset: auto !important;
+    overflow: visible !important;
+    width: ${DECK_WIDTH}px !important;
+    height: auto !important;
+  }
+  .deck-stage, .stage {
+    width: ${DECK_WIDTH}px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+  }
+  ${slidesNotActive},
+  ${slides} {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: none !important;
+    position: relative !important;
+    inset: auto !important;
+    width: ${DECK_WIDTH}px !important;
+    height: ${DECK_HEIGHT}px !important;
+    min-height: ${DECK_HEIGHT}px !important;
+    max-height: ${DECK_HEIGHT}px !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    break-inside: avoid !important;
+    scroll-snap-align: none !important;
+    transform: none !important;
+    overflow: hidden !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  ${slidesLastChild} {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+  .deck-counter, .deck-hint, .deck-nav,
+  #deck-prev, #deck-next, #deck-cur, #deck-total,
+  [aria-label="Previous slide"], [aria-label="Next slide"] {
+    display: none !important;
+  }
+}`;
+}
 // Alpine's `chromium` package installs the real binary at /usr/bin/chromium
 // and ships /usr/bin/chromium-browser as a symlink. Some minimised images
 // drop the symlink to save space, so list both and let launchChromium try
@@ -49,15 +135,21 @@ export async function renderHeadlessPdf(options: HeadlessExportOptions): Promise
     const browser = await launchChromium();
     try {
       const page = await preparePage(browser, options);
+      if (options.input.deck) {
+        await prepareDeckForPrint(page);
+      }
       await applyPdfStyles(page, options.input.deck);
-      // Rely on CSS `@page { size: 1920px 1080px }` from applyPdfStyles via
-      // `preferCSSPageSize: true`. Passing width/height here would override
-      // the CSS @page rule and collapse multi-slide decks to a single page
-      // (Chromium ignores per-slide break-after when an explicit page size
-      // is supplied alongside `preferCSSPageSize`).
+      // Explicit per-page dimensions (not preferCSSPageSize) once every slide
+      // is a block-flow 1920×1080 page-break segment. preferCSSPageSize was
+      // falling back to A4 (841×595pt) in headless Chromium even with a
+      // matching @page rule; width/height here pins each printed page while
+      // page-break-after on slides drives the 12-page count.
       const pdf = await page.pdf({
         printBackground: true,
-        preferCSSPageSize: true,
+        preferCSSPageSize: false,
+        ...(options.input.deck
+          ? { width: `${DECK_WIDTH}px`, height: `${DECK_HEIGHT}px` }
+          : { width: '1440px' }),
         margin: { top: '0', right: '0', bottom: '0', left: '0' },
         timeout: EXPORT_TIMEOUT_MS,
       });
@@ -196,69 +288,23 @@ async function waitForPageSettled(page: Page): Promise<void> {
   `).catch(() => {});
 }
 
+async function prepareDeckForPrint(page: Page): Promise<void> {
+  // Print media + neutralise runtime fit() transforms before PDF layout.
+  await page.emulateMedia({ media: 'print' });
+  await page.evaluate(`
+    document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+      el.style.transform = 'none';
+    });
+  `).catch(() => {});
+}
+
 async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
-  // Mirrors apps/web/src/runtime/exports.ts DECK_PRINT_CSS so the headless
-  // and browser-print paths render decks the same way:
-  //   - horizontal-snap / flex track decks are flattened to block flow with
-  //     one page per slide (override the framework's display:flex /
-  //     overflow:hidden / scroll-snap rules).
-  //   - deck-framework `fit()` transform is neutralised so the 1920x1080
-  //     stage prints at native size instead of a scaled-down sliver.
-  //   - all preview chrome (counter, prev/next, nav, deck-stage hints) is
-  //     hidden so the PDF only contains the slide content.
-  //   - scrollbars are removed in both webkit and firefox-based renderers.
   await page.addStyleTag({
     content: `
       html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
       body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      ${deck ? `
-      @media print {
-        @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
-        html, body {
-          width: ${DECK_WIDTH}px !important;
-          height: auto !important;
-          overflow: visible !important;
-          background: #fff !important;
-        }
-        body {
-          display: block !important;
-          scroll-snap-type: none !important;
-          transform: none !important;
-        }
-        .deck-shell, .deck-stage, .stage {
-          transform: none !important;
-          width: ${DECK_WIDTH}px !important;
-          height: ${DECK_HEIGHT}px !important;
-          inset: auto !important;
-          position: relative !important;
-          place-content: flex-start !important;
-          overflow: visible !important;
-        }
-        ${DECK_SLIDE_SELECTOR} {
-          flex: none !important;
-          width: ${DECK_WIDTH}px !important;
-          height: ${DECK_HEIGHT}px !important;
-          min-height: ${DECK_HEIGHT}px !important;
-          max-height: ${DECK_HEIGHT}px !important;
-          page-break-after: always;
-          break-after: page;
-          scroll-snap-align: none !important;
-          transform: none !important;
-          position: relative !important;
-          overflow: hidden !important;
-        }
-        ${DECK_SLIDE_SELECTOR.split(',').map((sel) => `${sel.trim()}:last-child`).join(', ')} {
-          page-break-after: auto;
-          break-after: auto;
-        }
-        .deck-counter, .deck-hint, .deck-nav,
-        #deck-prev, #deck-next, #deck-cur, #deck-total,
-        [aria-label="Previous slide"], [aria-label="Next slide"] {
-          display: none !important;
-        }
-      }` : `
-      @page { margin: 0; }`}
+      ${deck ? buildDeckPrintCss() : `@page { margin: 0; }`}
     `,
   });
 }

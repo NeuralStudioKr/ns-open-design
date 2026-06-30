@@ -865,7 +865,7 @@ describe('sandboxed preview Blob exports', () => {
     const wrapper = await capturedBlob!.text();
     expect(wrapper).toContain('sandbox="allow-scripts allow-modals"');
     expect(wrapper).toContain('data-deck-print=&quot;injected&quot;');
-    expect(wrapper).toContain('page-break-after: always;');
+    expect(wrapper).toContain('page-break-after: always !important');
   });
 
   it('allows explicit trusted PDF opt-out without changing the secure default', async () => {

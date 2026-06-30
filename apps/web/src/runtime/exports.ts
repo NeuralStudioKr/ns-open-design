@@ -1227,10 +1227,11 @@ function injectParentPrintReadyCache(doc: string, nonce: string): string {
   return script + doc;
 }
 
-// Stitches every .slide into a vertical multi-page PDF: 1920×1080 per page,
-// no margins, scroll-snap and horizontal flex disabled. `!important` guards
-// override skill-specific styles that pin the deck to `display: flex` /
-// `overflow: hidden` for on-screen swiping.
+// Stitches every .slide into a vertical multi-page PDF: 1920×1080 per page.
+// Keep in sync with apps/daemon/src/headless-export.ts `buildDeckPrintCss`.
+// Critical: `.slide:not(.active)` override — deck-framework hides inactive
+// slides with specificity 0,2,1; without the :not(.active) print rule only
+// the active slide renders and page-break never produces 12 pages.
 const DECK_PRINT_CSS = `
 @media print {
   @page { size: 1920px 1080px; margin: 0; }
@@ -1245,21 +1246,65 @@ const DECK_PRINT_CSS = `
     scroll-snap-type: none !important;
     transform: none !important;
   }
-  .slide, [data-screen-label], section.slide, .deck-slide, .ppt-slide {
+  .deck-shell {
+    position: static !important;
+    display: block !important;
+    inset: auto !important;
+    overflow: visible !important;
+    width: 1920px !important;
+    height: auto !important;
+  }
+  .deck-stage, .stage {
+    width: 1920px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+  }
+  .slide:not(.active),
+  [data-slide]:not(.active),
+  [data-screen-label]:not(.active),
+  section.slide:not(.active),
+  .deck-slide:not(.active),
+  .ppt-slide:not(.active),
+  .slide,
+  [data-slide],
+  [data-screen-label],
+  section.slide,
+  .deck-slide,
+  .ppt-slide {
+    display: flex !important;
+    flex-direction: column !important;
     flex: none !important;
+    position: relative !important;
+    inset: auto !important;
     width: 1920px !important;
     height: 1080px !important;
     min-height: 1080px !important;
     max-height: 1080px !important;
-    page-break-after: always;
-    break-after: page;
+    page-break-after: always !important;
+    break-after: page !important;
+    break-inside: avoid !important;
     scroll-snap-align: none !important;
     transform: none !important;
-    position: relative !important;
     overflow: hidden !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
-  .slide:last-child, [data-screen-label]:last-child { page-break-after: auto; break-after: auto; }
+  .slide:last-child,
+  [data-slide]:last-child,
+  [data-screen-label]:last-child,
+  section.slide:last-child,
+  .deck-slide:last-child,
+  .ppt-slide:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
   .deck-counter, .deck-hint, .deck-nav,
+  #deck-prev, #deck-next, #deck-cur, #deck-total,
   [aria-label="Previous slide"], [aria-label="Next slide"] {
     display: none !important;
   }
