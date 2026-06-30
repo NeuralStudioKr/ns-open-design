@@ -13,6 +13,7 @@ import {
   exportProjectAsHtml,
   exportProjectImageBlob,
   exportProjectAsPdf,
+  exportProjectAsZip,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
   requestPreviewSnapshot,
@@ -508,6 +509,94 @@ describe('exportProjectAsHtml', () => {
 
     expect(capturedFilename).toBe('Fallback.html');
     expect(await capturedBlob!.text()).toContain('<main>fallback</main>');
+  });
+});
+
+describe('exportProjectAsZip', () => {
+  let capturedBlob: Blob | undefined;
+  let capturedFilename: string | undefined;
+
+  beforeEach(() => {
+    capturedBlob = undefined;
+    capturedFilename = undefined;
+    vi.stubGlobal('URL', {
+      createObjectURL: (blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:test';
+      },
+      revokeObjectURL: () => {},
+    });
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const anchor = { href: '', click: () => {} } as { href: string; download?: string; click: () => void };
+        Object.defineProperty(anchor, 'download', {
+          set(value: string) {
+            capturedFilename = value;
+          },
+          get() {
+            return capturedFilename ?? '';
+          },
+        });
+        return anchor;
+      },
+      body: { appendChild: () => {}, removeChild: () => {} },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('packs daemon-rendered inline HTML so ZIP download matches Drive HTML publish rendering', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      '<!doctype html><html><head><style>.slide{color:red}</style></head><body><section class="slide">inlined deck</section></body></html>',
+      { headers: { 'content-type': 'text/html' }, status: 200 },
+    )));
+
+    await exportProjectAsZip({
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<link rel="stylesheet" href="style.css"><section>raw fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/deck/index.html?inline=1', expect.objectContaining({
+      credentials: expect.any(String),
+    }));
+    expect(capturedFilename).toBe('Seed-Deck.zip');
+    const zipText = await capturedBlob!.text();
+    expect(zipText).toContain('Seed-Deck/index.html');
+    expect(zipText).toContain('inlined deck');
+    expect(zipText).toContain('.slide{color:red}');
+    expect(zipText).not.toContain('raw fallback');
+  });
+
+  it('falls back to the raw project archive when rendered inline HTML is unavailable', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const archiveBlob = new Blob(['raw archive'], { type: 'application/zip' });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
+        return new Response('missing', { status: 404 });
+      }
+      if (url === '/api/projects/proj-1/archive?root=deck') {
+        return new Response(archiveBlob, {
+          headers: { 'content-disposition': 'attachment; filename="deck.zip"' },
+          status: 200,
+        });
+      }
+      return new Response('unexpected', { status: 500 });
+    }));
+
+    await exportProjectAsZip({
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(capturedFilename).toBe('deck.zip');
+    expect(await capturedBlob!.text()).toBe('raw archive');
   });
 });
 

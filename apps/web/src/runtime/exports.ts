@@ -322,23 +322,27 @@ ${list(assetFiles)}
 
 export function exportAsZip(html: string, title: string): void {
   const doc = buildSrcdoc(html);
+  exportRenderedHtmlAsZip(doc, title, 'index.html');
+}
+
+function exportRenderedHtmlAsZip(html: string, title: string, entryFile: string): void {
   const slug = safeFilename(title, 'artifact');
   const blob = buildZip([
-    { path: `${slug}/index.html`, content: doc },
+    { path: `${slug}/${entryFile}`, content: html },
     {
       path: `${slug}/${DESIGN_HANDOFF_FILENAME}`,
       content: buildDesignHandoffContent({
         title: title || slug,
-        entryFile: 'index.html',
-        files: ['index.html'],
+        entryFile,
+        files: [entryFile],
       }),
     },
     {
       path: `${slug}/${DESIGN_MANIFEST_FILENAME}`,
       content: buildDesignManifestContent({
         title: title || slug,
-        entryFile: 'index.html',
-        files: ['index.html'],
+        entryFile,
+        files: [entryFile],
       }),
     },
   ]);
@@ -863,20 +867,27 @@ export function exportReactComponentAsZip(
   triggerDownload(blob, `${slug}.zip`);
 }
 
-// Project ZIP export — asks the daemon to bundle the on-disk project tree.
-// Used by FileViewer's share menu so the user gets the full uploaded
-// project (e.g. the `ui-design/` folder with its subdirs and assets) rather
-// than just a srcdoc snapshot of the rendered HTML. `filePath` is the
-// active file's project-relative path; if it lives inside a top-level
-// directory we scope the archive to that directory, otherwise we ask the
-// daemon for the whole project. Falls back to the in-memory single-file
-// ZIP on any failure so the action never silently no-ops.
+// Project ZIP export — use the daemon's rendered inline HTML first, matching
+// Teamver Drive publish's HTML source. This avoids the staging/web mismatch
+// where a raw project archive can contain HTML that still points at daemon,
+// auth-gated, or S3-backed preview URLs and then renders differently when
+// opened from a local ZIP. The raw project archive stays as a fallback so the
+// action still succeeds if the rendered export endpoint is unavailable.
 export async function exportProjectAsZip(opts: {
   projectId: string;
   filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
 }): Promise<void> {
+  try {
+    const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
+    if (!resp.ok) throw new Error(`inline rendered ZIP export unavailable (${resp.status})`);
+    exportRenderedHtmlAsZip(await resp.text(), opts.fallbackTitle, 'index.html');
+    return;
+  } catch (err) {
+    console.warn('[exportProjectAsZip] falling back to project archive:', err);
+  }
+
   const root = archiveRootFromFilePath(opts.filePath);
   const url = `/api/projects/${encodeURIComponent(opts.projectId)}/archive${
     root ? `?root=${encodeURIComponent(root)}` : ''
