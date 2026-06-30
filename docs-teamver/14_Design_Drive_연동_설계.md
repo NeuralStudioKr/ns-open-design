@@ -105,7 +105,8 @@ Main Mobile도 파일 상세 모달에서 동일 query 계약을 사용한다. i
 Drive 발행은 기존처럼 design-api → daemon export → Main Drive upload 흐름을 유지한다. 로컬 다운로드는 혼동을 줄이기 위해 Drive publish와 별개 메뉴명은 “다운로드”로 두되, 렌더링은 daemon 서버 경로를 우선한다.
 
 - PDF/이미지 다운로드: daemon headless export가 Vite dev entry shell 대신 `dist/index.html`을 우선 렌더한다.
-- HTML/ZIP 다운로드: daemon `/api/projects/:id/export/html|zip`이 Chromium으로 preview를 렌더한 정적 snapshot을 반환한다. stylesheet/img/background resource를 가능한 한 inline하고 scrollbar/deck nav/base/script를 제거한다.
+- HTML/ZIP 다운로드: daemon `/api/projects/:id/export/html|zip`이 Chromium으로 preview를 렌더한 정적 snapshot을 반환한다. deck은 모든 slide를 1920×1080 block flow로 펼쳐 전체 결과물을 보존하고, stylesheet/img/background/CSS `@import`/Vite `/assets/...` resource를 가능한 한 inline한다. scrollbar/deck nav/base/script는 제거한다.
+- 이미지 다운로드: PNG/JPEG는 캡처 전 font/image/background load를 기다리고, deck이면 요청 slide index를 강제 표시한 뒤 clip을 계산한다.
 - fallback: rendered export 실패 시에만 기존 inline/source/raw archive 경로를 사용한다.
 
 이 결정은 사용자가 “미리보기처럼 완성된 결과물”을 받는 것을 1차 목표로 한다. 다운로드 HTML은 정적 렌더 결과 보존용이며, 원본 앱 JS 인터랙션을 유지하는 개발용 archive가 필요하면 별도 raw archive/debug export로 분리한다.

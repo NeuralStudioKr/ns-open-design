@@ -181,8 +181,11 @@ export async function renderHeadlessImage(options: HeadlessExportOptions): Promi
     const browser = await launchChromium();
     try {
       const page = await preparePage(browser, options);
+      await waitForPrintableContent(page);
       await applyScreenshotStyles(page, options.input.deck, options.slideIndex);
       if (options.input.deck) {
+        await revealDeckSlideForScreenshot(page, options.slideIndex);
+        await waitForPrintableContent(page);
         const clip = await deckScreenshotClip(page, options.slideIndex);
         const image = await page.screenshot({
           type: normalizedImageFormat(options.imageFormat),
@@ -209,6 +212,9 @@ export async function renderHeadlessHtmlSnapshot(options: HeadlessExportOptions)
     try {
       const page = await preparePage(browser, options);
       await waitForPrintableContent(page);
+      if (options.input.deck) {
+        await revealAllDeckSlides(page);
+      }
       await applySnapshotStyles(page, options.input.deck);
       await inlineRenderedResources(page);
       return await page.content();
@@ -470,6 +476,61 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
   }
 }
 
+async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Promise<void> {
+  await page.evaluate(`(args) => {
+    const all = Array.from(document.querySelectorAll(args.selector));
+    const slides = all.length > 0 ? all : [document.body];
+    const index = Math.max(0, Math.min(args.index, slides.length - 1));
+    const target = slides[index];
+    const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+
+    set(document.documentElement, 'overflow', 'hidden');
+    set(document.documentElement, 'width', args.width + 'px');
+    set(document.documentElement, 'height', args.height + 'px');
+    set(document.body, 'overflow', 'hidden');
+    set(document.body, 'margin', '0');
+    set(document.body, 'width', args.width + 'px');
+    set(document.body, 'height', args.height + 'px');
+
+    document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+      set(el, 'position', 'relative');
+      set(el, 'display', 'block');
+      set(el, 'inset', 'auto');
+      set(el, 'overflow', 'hidden');
+      set(el, 'width', args.width + 'px');
+      set(el, 'height', args.height + 'px');
+      set(el, 'min-height', args.height + 'px');
+      set(el, 'transform', 'none');
+      set(el, 'box-shadow', 'none');
+    });
+
+    slides.forEach((el) => {
+      if (el !== target) {
+        set(el, 'display', 'none');
+        return;
+      }
+      set(el, 'display', 'flex');
+      set(el, 'flex-direction', 'column');
+      set(el, 'position', 'relative');
+      set(el, 'inset', 'auto');
+      set(el, 'width', args.width + 'px');
+      set(el, 'height', args.height + 'px');
+      set(el, 'min-height', args.height + 'px');
+      set(el, 'max-height', args.height + 'px');
+      set(el, 'visibility', 'visible');
+      set(el, 'opacity', '1');
+      set(el, 'overflow', 'hidden');
+      set(el, 'transform', 'none');
+    });
+    target?.scrollIntoView({ block: 'start', inline: 'start' });
+  }`, {
+    index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
+    selector: DECK_SLIDE_SELECTOR,
+    width: DECK_WIDTH,
+    height: DECK_HEIGHT,
+  }).catch(() => {});
+}
+
 async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
   await page.addStyleTag({
     content: `
@@ -500,14 +561,37 @@ async function inlineRenderedResources(page: Page): Promise<void> {
         try { return new URL(url, document.baseURI).href; } catch { return ''; }
       };
 
-      const inlineCssUrls = async (cssText, cssHref) => {
-        const matches = Array.from(cssText.matchAll(/url\\((['"]?)(.*?)\\1\\)/g));
+      const resolveCssHref = (rawUrl, cssHref) => {
+        if (/^\\/assets\\//.test(rawUrl)) {
+          const distIndex = cssHref.indexOf('/dist/');
+          if (distIndex >= 0) return cssHref.slice(0, distIndex + '/dist/'.length) + rawUrl.slice(1);
+        }
+        return new URL(rawUrl, cssHref).href;
+      };
+
+      const inlineCssUrls = async (cssText, cssHref, seen = new Set()) => {
+        if (seen.has(cssHref)) return cssText;
+        seen.add(cssHref);
+        const imports = Array.from(cssText.matchAll(/@import\\s+(?:url\\()?['"]?([^'")\\s;]+)['"]?\\)?\\s*;/g));
         let output = cssText;
+        await Promise.all(imports.map(async (match) => {
+          const rawUrl = match[1];
+          if (!rawUrl || /^data:/i.test(rawUrl)) return;
+          try {
+            const href = resolveCssHref(rawUrl, cssHref);
+            const resp = await fetch(href, { credentials: 'include' });
+            if (!resp.ok) return;
+            const imported = await inlineCssUrls(await resp.text(), href, seen);
+            output = output.split(match[0]).join(imported);
+          } catch {}
+        }));
+
+        const matches = Array.from(output.matchAll(/url\\((['"]?)(.*?)\\1\\)/g));
         await Promise.all(matches.map(async (match) => {
           const rawUrl = match[2];
           if (!rawUrl || /^data:/i.test(rawUrl) || /^#/.test(rawUrl)) return;
           try {
-            const href = new URL(rawUrl, cssHref).href;
+            const href = resolveCssHref(rawUrl, cssHref);
             const resp = await fetch(href, { credentials: 'include' });
             if (!resp.ok) return;
             output = output.split(match[0]).join('url("' + await blobToDataUrl(await resp.blob()) + '")');
