@@ -71,7 +71,7 @@ describe('boot fetch dedup', () => {
   });
 
   it('coalesces concurrent listProjectRuns calls', async () => {
-    vi.mocked(fetch).mockResolvedValue(
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(JSON.stringify({ runs: [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +81,8 @@ describe('boot fetch dedup', () => {
     const first = listProjectRuns();
     const second = listProjectRuns();
     await Promise.all([first, second]);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/runs');
   });
 
   it('coalesces concurrent listTemplates calls', async () => {

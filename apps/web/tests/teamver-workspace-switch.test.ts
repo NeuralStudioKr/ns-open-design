@@ -31,9 +31,12 @@ describe("embed workspace switch side effects", () => {
   it("forwards active workspace on daemon run create in embed", () => {
     const daemon = readSource("src/providers/daemon.ts");
     const headers = readSource("src/teamver/teamverDaemonHeaders.ts");
-    expect(daemon).toContain("buildTeamverDaemonRequestHeaders");
+    expect(daemon).toContain("fetchTeamverDaemon");
+    expect(daemon).toMatch(
+      /fetchTeamverDaemon\('\/api\/runs'[\s\S]*?teamverProjectId: projectId/,
+    );
     expect(headers).toContain("readActiveTeamverWorkspaceId");
-    expect(headers).toContain("fetchTeamverDaemon");
+    expect(headers).toContain("buildTeamverDaemonRequestHeaders");
     expect(headers).toContain("X-Workspace-Id");
   });
 
@@ -80,23 +83,25 @@ describe("embed workspace switch side effects", () => {
 
   it("forwards active workspace on daemon run list polling in embed", () => {
     const daemon = readSource("src/providers/daemon.ts");
+    const headers = readSource("src/teamver/teamverDaemonHeaders.ts");
+    expect(headers).toMatch(/isTeamverEmbedMode\(\) \? "include"/);
     expect(daemon).toMatch(
-      /export async function listProjectRuns[\s\S]*?buildTeamverDaemonRequestHeaders/,
+      /export async function listProjectRuns[\s\S]*?fetchTeamverDaemon\('\/api\/runs'/,
     );
     expect(daemon).toMatch(
-      /export async function listActiveChatRuns[\s\S]*?buildTeamverDaemonRequestHeaders/,
+      /export async function listActiveChatRuns[\s\S]*?fetchTeamverDaemon\(`\/api\/runs\?\$\{qs/,
     );
     expect(daemon).toMatch(
-      /export async function fetchChatRunStatus[\s\S]*?buildTeamverDaemonRequestHeaders/,
+      /export async function fetchChatRunStatus[\s\S]*?fetchTeamverDaemon\(`\/api\/runs/,
     );
     expect(daemon).toMatch(
-      /buildTeamverDaemonRequestHeaders[\s\S]*?\/api\/runs\/\$\{encodeURIComponent\(runId\)\}\/cancel/,
+      /fetchTeamverDaemon[\s\S]*?\/api\/runs\/\$\{encodeURIComponent\(runId\)\}\/cancel/,
     );
     expect(daemon).toMatch(
-      /buildTeamverDaemonRequestHeaders[\s\S]*?\/api\/runs\/\$\{encodeURIComponent\(runId\)\}\/events/,
+      /fetchTeamverDaemon[\s\S]*?\/api\/runs\/\$\{encodeURIComponent\(runId\)\}\/events/,
     );
     expect(daemon).toMatch(
-      /export async function reportChatRunFeedback[\s\S]*?buildTeamverDaemonRequestHeaders/,
+      /export async function reportChatRunFeedback[\s\S]*?fetchTeamverDaemon/,
     );
   });
 
@@ -108,10 +113,9 @@ describe("embed workspace switch side effects", () => {
     expect(block).toContain("setBackgroundRunSummaries([])");
     expect(block).toContain("setBackgroundRunNotice(null)");
     expect(block).toContain("resetEmbedRunTrackingRefs");
-    expect(block).toContain("filterRunsForEmbedKnownProjects");
-    expect(block).toContain("seedEmbedRunTrackingFromRuns");
+    expect(block).toContain("window.dispatchEvent(new Event(RUNS_CHANGED_EVENT))");
     expect(block.indexOf("resetEmbedRunTrackingRefs")).toBeLessThan(
-      block.indexOf("seedEmbedRunTrackingFromRuns"),
+      block.indexOf("window.dispatchEvent(new Event(RUNS_CHANGED_EVENT))"),
     );
   });
 

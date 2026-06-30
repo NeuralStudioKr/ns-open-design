@@ -53,8 +53,23 @@ describe("buildTeamverDaemonRequestHeaders", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/p1/files",
       expect.objectContaining({
+        credentials: "include",
         headers: expect.objectContaining({ "X-Workspace-Id": "ws-prod" }),
       }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("fetchTeamverDaemon uses same-origin credentials outside embed", async () => {
+    designApiBase.isTeamverEmbedMode.mockReturnValue(false);
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchTeamverDaemon("/api/runs");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs",
+      expect.objectContaining({ credentials: "same-origin" }),
     );
     vi.unstubAllGlobals();
   });

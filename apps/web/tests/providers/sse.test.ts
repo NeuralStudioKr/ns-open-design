@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
+  fetchTeamverDaemon: (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, init),
+}));
+
 import {
   buildDaemonTranscript,
   latestUserPromptFromHistory,

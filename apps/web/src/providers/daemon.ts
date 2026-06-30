@@ -30,7 +30,7 @@ import type {
   SseErrorPayload,
 } from '@open-design/contracts';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { buildTeamverDaemonRequestHeaders } from '../teamver/teamverDaemonHeaders';
+import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { stripInternalOpenDesignMarkup } from '../runtime/internalAgentMarkup';
 import type { StreamHandlers } from './anthropic';
 
@@ -624,18 +624,18 @@ export async function streamViaDaemon({
   const body = JSON.stringify(request);
 
   try {
-    const headers = await buildTeamverDaemonRequestHeaders({
-      'Content-Type': 'application/json',
-      // Tells the daemon which front-end carrier started the run so the
-      // telemetry trace can be tagged 'client:desktop' vs 'client:web'.
-      // The daemon falls back to a User-Agent sniff when this header is
-      // absent (e.g. third-party clients), so omitting it in tests is OK.
-      'X-OD-Client': detectClientType(),
-    }, projectId ? { projectId } : undefined);
-    const createResp = await fetch('/api/runs', {
+    const createResp = await fetchTeamverDaemon('/api/runs', {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        // Tells the daemon which front-end carrier started the run so the
+        // telemetry trace can be tagged 'client:desktop' vs 'client:web'.
+        // The daemon falls back to a User-Agent sniff when this header is
+        // absent (e.g. third-party clients), so omitting it in tests is OK.
+        'X-OD-Client': detectClientType(),
+      },
       body,
+      teamverProjectId: projectId,
     });
 
     if (!createResp.ok) {
@@ -688,8 +688,7 @@ export async function reattachDaemonRun(options: DaemonReattachOptions): Promise
 
 export async function fetchChatRunStatus(runId: string): Promise<ChatRunStatusResponse | null> {
   try {
-    const headers = await buildTeamverDaemonRequestHeaders({});
-    const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { headers });
+    const resp = await fetchTeamverDaemon(`/api/runs/${encodeURIComponent(runId)}`);
     if (!resp.ok) return null;
     return (await resp.json()) as ChatRunStatusResponse;
   } catch {
@@ -860,12 +859,9 @@ export async function reportChatRunFeedback(req: {
   customReason: string;
 }): Promise<void> {
   try {
-    const headers = await buildTeamverDaemonRequestHeaders({
-      'Content-Type': 'application/json',
-    });
-    await fetch(`/api/runs/${encodeURIComponent(req.runId)}/feedback`, {
+    await fetchTeamverDaemon(`/api/runs/${encodeURIComponent(req.runId)}/feedback`, {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
     });
   } catch {
@@ -879,8 +875,7 @@ export async function listActiveChatRuns(
 ): Promise<ChatRunStatusResponse[]> {
   try {
     const qs = new URLSearchParams({ projectId, conversationId, status: 'active' });
-    const headers = await buildTeamverDaemonRequestHeaders({});
-    const resp = await fetch(`/api/runs?${qs.toString()}`, { headers });
+    const resp = await fetchTeamverDaemon(`/api/runs?${qs.toString()}`);
     if (!resp.ok) return [];
     const body = (await resp.json()) as ChatRunListResponse;
     return body.runs ?? [];
@@ -900,8 +895,7 @@ export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
   if (listProjectRunsInflight) return listProjectRunsInflight;
   listProjectRunsInflight = (async () => {
     try {
-      const headers = await buildTeamverDaemonRequestHeaders({});
-      const resp = await fetch('/api/runs', { headers });
+      const resp = await fetchTeamverDaemon('/api/runs');
       if (!resp.ok) return [];
       const body = (await resp.json()) as ChatRunListResponse;
       return body.runs ?? [];
@@ -951,8 +945,9 @@ async function consumeDaemonRun({
     canceled = true;
     void (async () => {
       try {
-        const headers = await buildTeamverDaemonRequestHeaders({});
-        await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST', headers });
+        await fetchTeamverDaemon(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
+          method: 'POST',
+        });
       } catch {
         // Best-effort.
       }
@@ -970,10 +965,8 @@ async function consumeDaemonRun({
       const qs = lastEventId ? `?after=${encodeURIComponent(lastEventId)}` : '';
       let resp: Response;
       try {
-        const headers = await buildTeamverDaemonRequestHeaders({});
-        resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/events${qs}`, {
+        resp = await fetchTeamverDaemon(`/api/runs/${encodeURIComponent(runId)}/events${qs}`, {
           method: 'GET',
-          headers,
           signal,
         });
       } catch (err) {
