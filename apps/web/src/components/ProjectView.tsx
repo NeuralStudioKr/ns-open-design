@@ -2778,6 +2778,12 @@ export function ProjectView({
           true,
         );
 
+        if (!isActiveRunStatus(message.runStatus) && isTerminalRunStatus(status.status)) {
+          completedReattachRunsRef.current.add(runId);
+          scheduleConversationMessageRefresh(reattachConversationId);
+          continue;
+        }
+
         const needsFullReplay = isActiveRunStatus(status.status);
         const controller = new AbortController();
         const cancelController = new AbortController();

@@ -349,6 +349,53 @@ describe('ProjectView daemon reattach restore', () => {
     });
   });
 
+  it('finalizes a stale assistant row without opening an events stream when the daemon run is already terminal', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-stale-done',
+        role: 'assistant',
+        content: 'partial before route leave',
+        createdAt: startedAt,
+        startedAt,
+        runId: 'run-stale-done',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    fetchChatRunStatus.mockResolvedValue({
+      id: 'run-stale-done',
+      projectId: 'project-1',
+      conversationId: 'conv-1',
+      assistantMessageId: 'msg-stale-done',
+      agentId: 'agent-1',
+      status: 'succeeded',
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      exitCode: 0,
+      signal: null,
+    });
+
+    renderProjectView();
+
+    await waitFor(() => expect(fetchChatRunStatus).toHaveBeenCalledWith('run-stale-done'));
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
+    await waitFor(() => {
+      const saved = saveMessage.mock.calls
+        .map((call) => call[2] as ChatMessage)
+        .find((m) => m?.id === 'msg-stale-done' && m.runStatus === 'succeeded');
+      expect(saved).toBeTruthy();
+    });
+  });
+
   it('populates producedFiles on the persisted message after reattach completes', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
