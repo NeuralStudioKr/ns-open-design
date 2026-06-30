@@ -16,12 +16,24 @@ import {
   exportProjectAsZip,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
+  resolveExportDownloadTitle,
   requestPreviewSnapshot,
 } from '../../src/runtime/exports';
 
 function mockResponse(headers: Record<string, string>): Response {
   return { headers: new Headers(headers) } as Response;
 }
+
+describe('resolveExportDownloadTitle', () => {
+  it('prefers the project display name over the artifact slug', () => {
+    expect(resolveExportDownloadTitle('AI 도입 효과', 'ai-adoption-deck.html')).toBe('AI 도입 효과');
+  });
+
+  it('falls back to the file basename when the project name is missing or generic', () => {
+    expect(resolveExportDownloadTitle(undefined, 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
+    expect(resolveExportDownloadTitle('Design', 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
+  });
+});
 
 describe('archiveRootFromFilePath', () => {
   it('returns the top-level directory name when present', () => {
@@ -70,7 +82,7 @@ describe('archiveFilenameFrom', () => {
 
   it('falls back to the title slug when both header and root are absent', () => {
     const resp = mockResponse({});
-    expect(archiveFilenameFrom(resp, 'My Artifact', '')).toBe('My-Artifact.zip');
+    expect(archiveFilenameFrom(resp, 'My Artifact', '')).toBe('My Artifact.zip');
   });
 
   it('falls through to the slug when filename* is malformed', () => {
@@ -791,7 +803,7 @@ describe('exportAsMd', () => {
     // Critical: no transformation, no normalization, no trimming. Whatever
     // the Source view shows is what lands in the .md.
     expect(await capturedBlob!.text()).toBe(source);
-    expect(capturedFilename).toBe('TTC-Seed-Round-2026.md');
+    expect(capturedFilename).toBe('TTC — Seed Round · 2026.md');
   });
 
   it('falls back to "artifact.md" when the title is empty or unsafe', () => {
@@ -1264,13 +1276,13 @@ describe('exportAsImage', () => {
 
     expect(clickMock).toHaveBeenCalledOnce();
     expect(anchors).toHaveLength(1);
-    expect(anchors[0]!.download).toBe('My-Design.png');
+    expect(anchors[0]!.download).toBe('My Design.png');
   });
 
   it('sanitizes the title into a safe filename', () => {
     exportAsImage('data:image/png;base64,AA==', 'Hello <World> / Test!');
 
-    expect(anchors[0]!.download).toBe('Hello-World-Test.png');
+    expect(anchors[0]!.download).toBe('Hello World Test!.png');
   });
 
   it('does not download an empty image snapshot', () => {
@@ -1308,12 +1320,12 @@ describe('exportAsImage', () => {
 
     expect(showSaveFilePicker).toHaveBeenCalledOnce();
     expect(target?.method).toBe('download');
-    expect(target?.filename).toBe('My-Design.jpg');
+    expect(target?.filename).toBe('My Design.jpg');
 
     await target?.save(new Blob(['jpeg'], { type: 'image/jpeg' }));
 
     expect(clickMock).toHaveBeenCalledOnce();
-    expect(anchors[0]!.download).toBe('My-Design.jpg');
+    expect(anchors[0]!.download).toBe('My Design.jpg');
   });
 
   it('falls back to download when the native save picker reports a cross-realm SecurityError', async () => {
@@ -1327,7 +1339,7 @@ describe('exportAsImage', () => {
 
     expect(showSaveFilePicker).toHaveBeenCalledOnce();
     expect(target?.method).toBe('download');
-    expect(target?.filename).toBe('My-Design.webp');
+    expect(target?.filename).toBe('My Design.webp');
   });
 
   it('can skip the native save picker to avoid pre-creating empty files', async () => {
@@ -1338,6 +1350,6 @@ describe('exportAsImage', () => {
 
     expect(showSaveFilePicker).not.toHaveBeenCalled();
     expect(target?.method).toBe('download');
-    expect(target?.filename).toBe('My-Design.png');
+    expect(target?.filename).toBe('My Design.png');
   });
 });

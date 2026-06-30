@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildDeckPrintCss } from '../src/headless-export.js';
+import { buildDeckPrintCss, chromiumExecutableCandidates } from '../src/headless-export.js';
+
+describe('chromiumExecutableCandidates', () => {
+  it('prefers OD_EXPORT_CHROMIUM_PATH and includes common Linux paths', () => {
+    const previous = process.env.OD_EXPORT_CHROMIUM_PATH;
+    process.env.OD_EXPORT_CHROMIUM_PATH = '/custom/chromium';
+    try {
+      const candidates = chromiumExecutableCandidates();
+      expect(candidates[0]).toBe('/custom/chromium');
+      expect(candidates).toContain('/usr/bin/chromium');
+    } finally {
+      if (previous === undefined) delete process.env.OD_EXPORT_CHROMIUM_PATH;
+      else process.env.OD_EXPORT_CHROMIUM_PATH = previous;
+    }
+  });
+});
 
 describe('buildDeckPrintCss', () => {
   it('overrides inactive slides so every deck-framework slide prints', () => {

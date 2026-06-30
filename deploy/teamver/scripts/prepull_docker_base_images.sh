@@ -16,10 +16,12 @@ _get_env_kv() {
 
 # AWS ap-northeast-2 EC2 — ECR Public Gallery is usually faster than docker.io.
 NODE_IMAGE="${NODE_BASE_IMAGE:-$(_get_env_kv NODE_BASE_IMAGE)}"
+RUNTIME_IMAGE="${RUNTIME_BASE_IMAGE:-$(_get_env_kv RUNTIME_BASE_IMAGE)}"
 PYTHON_IMAGE="${PYTHON_BASE_IMAGE:-$(_get_env_kv PYTHON_BASE_IMAGE)}"
 OPEN_DESIGN_IMAGE="${OPEN_DESIGN_IMAGE:-$(_get_env_kv OPEN_DESIGN_IMAGE)}"
 
 NODE_IMAGE="${NODE_IMAGE:-public.ecr.aws/docker/library/node:24-alpine}"
+RUNTIME_IMAGE="${RUNTIME_IMAGE:-public.ecr.aws/docker/library/node:24-bookworm-slim}"
 PYTHON_IMAGE="${PYTHON_IMAGE:-public.ecr.aws/docker/library/python:3.12-slim}"
 
 PULL_ATTEMPTS="${DOCKER_PULL_ATTEMPTS:-5}"
@@ -45,6 +47,7 @@ pull_with_retry() {
 
 echo "==> Pre-pull Docker base images (timeout=${PULL_TIMEOUT}s, attempts=${PULL_ATTEMPTS})"
 pull_with_retry "$NODE_IMAGE"
+pull_with_retry "$RUNTIME_IMAGE"
 pull_with_retry "$PYTHON_IMAGE"
 
 if [[ -n "$OPEN_DESIGN_IMAGE" && "$OPEN_DESIGN_IMAGE" != *":staging-local"* && "$OPEN_DESIGN_IMAGE" != *"teamver-open-design"* ]]; then

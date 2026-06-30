@@ -6126,6 +6126,7 @@ export function ProjectView({
         <FileWorkspace
           projectId={project.id}
           projectKind={projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel) ?? 'prototype'}
+          projectDisplayName={project.name}
           rootDirName={designFilesRootLabel}
           reloading={false}
           resolvedDir={hideLocalWorkspaceControls ? null : projectDetail.resolvedDir}

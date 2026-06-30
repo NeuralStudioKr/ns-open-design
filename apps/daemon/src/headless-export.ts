@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 
 type Browser = any;
@@ -101,7 +103,7 @@ export function buildDeckPrintCss(): string {
     break-inside: avoid !important;
     scroll-snap-align: none !important;
     transform: none !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     visibility: visible !important;
     opacity: 1 !important;
   }
@@ -116,19 +118,24 @@ export function buildDeckPrintCss(): string {
   }
 }`;
 }
-// Alpine's `chromium` package installs the real binary at /usr/bin/chromium
-// and ships /usr/bin/chromium-browser as a symlink. Some minimised images
-// drop the symlink to save space, so list both and let launchChromium try
-// them in order. OD_EXPORT_CHROMIUM_PATH wins when set (production override).
-const CHROMIUM_CANDIDATES = [
-  process.env.OD_EXPORT_CHROMIUM_PATH,
-  '/usr/bin/chromium-browser',
-  '/usr/bin/chromium',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/google-chrome',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium',
-].filter(Boolean) as string[];
+// Alpine's `chromium` package installs the real binary at /usr/bin/chromium.
+// Debian bookworm ships `/usr/bin/chromium` as well. OD_EXPORT_CHROMIUM_PATH
+// wins when set (production override). Playwright's bundled browsers are glibc
+// only — never used in production containers (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
+export function chromiumExecutableCandidates(): string[] {
+  const ordered = [
+    process.env.OD_EXPORT_CHROMIUM_PATH,
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/lib/chromium/chromium',
+    '/usr/lib/chromium-browser/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return [...new Set(ordered)];
+}
 
 let queue: Promise<void> = Promise.resolve();
 
@@ -138,10 +145,15 @@ export async function renderHeadlessPdf(options: HeadlessExportOptions): Promise
     try {
       const page = await preparePage(browser, options);
       await waitForPrintableContent(page);
-      let deckSlideCount = 0;
       if (options.input.deck) {
-        deckSlideCount = await revealAllDeckSlides(page);
         await page.emulateMedia({ media: 'print' });
+      }
+      const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
+      if (options.input.deck && deckSlideCount === 0) {
+        console.warn('[headless-export] deck PDF: no slides matched selector', {
+          selector: DECK_SLIDE_SELECTOR,
+          title: options.input.title,
+        });
       }
       await applyPdfStyles(page, options.input.deck);
       const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
@@ -241,46 +253,51 @@ async function runExclusive<T>(work: () => Promise<T>): Promise<T> {
 async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
   const attempts: Array<{ executablePath?: string; error: string }> = [];
-  for (const executablePath of CHROMIUM_CANDIDATES) {
+  const launchArgs = [
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-setuid-sandbox',
+    '--no-sandbox',
+    '--font-render-hinting=medium',
+  ];
+  for (const executablePath of chromiumExecutableCandidates()) {
+    if (!fs.existsSync(executablePath)) {
+      attempts.push({ executablePath, error: 'executable not found' });
+      continue;
+    }
     try {
       return await chromium.launch({
         executablePath,
         headless: true,
-        args: [
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-setuid-sandbox',
-          '--no-sandbox',
-          '--font-render-hinting=medium',
-        ],
+        args: launchArgs,
         timeout: EXPORT_TIMEOUT_MS,
       });
     } catch (err) {
       attempts.push({ executablePath, error: String((err as any)?.message || err) });
     }
   }
-  try {
-    // Final fallback — let Playwright pick up a bundled Chromium / system
-    // default if one was installed via `npx playwright install`. Mostly
-    // relevant for local dev where OD_EXPORT_CHROMIUM_PATH isn't set and
-    // none of the Alpine/Debian package paths apply.
-    return await chromium.launch({
-      headless: true,
-      args: ['--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox'],
-      timeout: EXPORT_TIMEOUT_MS,
-    });
-  } catch (err) {
-    // Omit `executablePath` — with exactOptionalPropertyTypes an optional
-    // `string` property cannot be explicitly set to `undefined`.
-    attempts.push({ error: String((err as any)?.message || err) });
-    // Surface the full attempt log to stderr so operators can see which
-    // candidate paths exist on disk vs which actually failed to launch.
-    console.warn('[headless-export] chromium launch failed', { attempts });
-    const lastError = attempts.at(-1)?.error ?? String(err);
-    throw new Error(
-      `headless Chromium unavailable (tried ${attempts.length} path(s)): ${lastError}`,
-    );
+  const skipBundled =
+    process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === '1' || process.env.NODE_ENV === 'production';
+  if (!skipBundled) {
+    try {
+      return await chromium.launch({
+        headless: true,
+        args: ['--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox'],
+        timeout: EXPORT_TIMEOUT_MS,
+      });
+    } catch (err) {
+      attempts.push({ error: String((err as any)?.message || err) });
+    }
   }
+  console.warn('[headless-export] chromium launch failed', { attempts });
+  const summary = attempts
+    .map((entry) =>
+      entry.executablePath ? `${entry.executablePath}: ${entry.error}` : entry.error,
+    )
+    .join('; ');
+  throw new Error(
+    `headless Chromium unavailable (tried ${attempts.length} path(s)): ${summary}`,
+  );
 }
 
 async function dynamicImport(specifier: string): Promise<any> {
@@ -357,13 +374,22 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'max-height', args.height + 'px');
         set(el, 'visibility', 'visible');
         set(el, 'opacity', '1');
-        set(el, 'overflow', 'hidden');
-        set(el, 'scroll-snap-align', 'none');
+        set(el, 'overflow', 'visible');
         set(el, 'transform', 'none');
         set(el, 'page-break-after', index < slides.length - 1 ? 'always' : 'auto');
         set(el, 'break-after', index < slides.length - 1 ? 'page' : 'auto');
         set(el, 'break-inside', 'avoid');
+        el.querySelectorAll(':scope > *').forEach((child) => {
+          set(child, 'position', 'relative');
+          set(child, 'inset', 'auto');
+          set(child, 'transform', 'none');
+          set(child, 'height', 'auto');
+          set(child, 'min-height', '0');
+          set(child, 'max-height', 'none');
+        });
       });
+
+      document.documentElement.style.setProperty('--deck-scale', '1');
 
       document
         .querySelectorAll(
@@ -441,7 +467,7 @@ async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
       html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
       body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      ${deck ? '' : `@page { margin: 0; size: auto; }`}
+      ${deck ? buildDeckPrintCss() : '@page { margin: 0; size: auto; }'}
     `,
   });
 }

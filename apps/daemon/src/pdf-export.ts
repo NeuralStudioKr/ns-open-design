@@ -90,9 +90,15 @@ function encodePathSegments(value: string): string {
 }
 
 function safeFilename(name: string, fallback: string): string {
-  const slug = (name || fallback)
-    .replace(/[^\w.\-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return slug || fallback;
+  const trimmed = (name || fallback).trim();
+  if (!trimmed) return fallback;
+  const cleaned = trimmed
+    .replace(/[/\\?%*:|"<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .replace(/^[-\s]+|[-\s]+$/g, '')
+    .trim()
+    .slice(0, 120);
+  if (!cleaned || !/[\p{L}\p{N}]/u.test(cleaned)) return fallback;
+  return cleaned;
 }

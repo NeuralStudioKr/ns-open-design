@@ -1,5 +1,7 @@
 ARG NODE_IMAGE=docker.io/library/node:24-alpine
-ARG RUNTIME_IMAGE=docker.io/library/node:24-alpine
+# Runtime must be glibc (bookworm) — Playwright cannot use its bundled Chromium
+# on Alpine/musl, and distro Chromium + playwright-core is the supported path.
+ARG RUNTIME_IMAGE=docker.io/library/node:24-bookworm-slim
 
 FROM ${NODE_IMAGE} AS build
 
@@ -96,9 +98,16 @@ COPY plugins/_official ./plugins/_official
 
 FROM ${RUNTIME_IMAGE}
 
-RUN apk add --no-cache tini poppler-utils chromium nss freetype harfbuzz ca-certificates ttf-freefont && \
-    addgroup -S -g 1001 open-design && \
-    adduser -S -D -H -u 1001 -G open-design open-design
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tini \
+    poppler-utils \
+    chromium \
+    fonts-freefont-ttf \
+    fonts-noto-core \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -g 1001 open-design \
+    && useradd -u 1001 -g open-design -M -s /usr/sbin/nologin open-design
 
 WORKDIR /app
 COPY --from=build --chown=open-design:open-design /app/deploy/daemon ./apps/daemon
@@ -123,10 +132,11 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=192
 ENV OD_BIND_HOST=0.0.0.0
 ENV OD_PORT=7456
-ENV OD_EXPORT_CHROMIUM_PATH=/usr/bin/chromium-browser
+ENV OD_EXPORT_CHROMIUM_PATH=/usr/bin/chromium
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 EXPOSE 7456
 
 USER open-design
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "apps/daemon/dist/cli.js", "--no-open"]

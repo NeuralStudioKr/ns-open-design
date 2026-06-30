@@ -100,6 +100,8 @@ import type { ChatMessage } from '../types';
 interface Props {
   projectId: string;
   projectKind: TrackingProjectKind;
+  /** User-editable project display name — passed to export/download filenames. */
+  projectDisplayName?: string;
   // Basename of the project's chosen working directory (e.g. "openclaw").
   // Threaded to DesignFilesPanel as the breadcrumb root label. Undefined for
   // default-storage projects.
@@ -371,6 +373,7 @@ const DESIGN_SYSTEM_IMAGE_OR_FONT_EXTENSIONS = /\.(svg|png|jpe?g|gif|webp|avif|i
 export function FileWorkspace({
   projectId,
   projectKind,
+  projectDisplayName,
   rootDirName,
   reloading,
   resolvedDir,
@@ -2337,6 +2340,7 @@ export function FileWorkspace({
           <FileViewer
             projectId={projectId}
             projectKind={projectKind}
+            projectDisplayName={projectDisplayName}
             file={previewFile}
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}

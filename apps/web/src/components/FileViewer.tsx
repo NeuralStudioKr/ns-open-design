@@ -80,6 +80,7 @@ import {
   exportAsPdf,
   exportProjectImageBlob,
   exportProjectAsHtml,
+  resolveExportDownloadTitle,
   exportProjectAsPdf,
   exportProjectAsZip,
   copyImageDataUrlToClipboard,
@@ -949,6 +950,8 @@ function setPreviewViewportCached(key: string, viewport: PreviewViewportId) {
 interface Props {
   projectId: string;
   projectKind: TrackingProjectKind;
+  /** User-editable project display name (daemon `project.name`). Export filenames prefer this over artifact slugs. */
+  projectDisplayName?: string;
   file: ProjectFile;
   liveHtml?: string;
   filesRefreshKey?: number;
@@ -982,6 +985,7 @@ interface Props {
 export function FileViewer({
   projectId,
   projectKind,
+  projectDisplayName,
   file,
   liveHtml,
   filesRefreshKey = 0,
@@ -1027,6 +1031,7 @@ export function FileViewer({
       <HtmlViewer
         projectId={projectId}
         projectKind={projectKind}
+        projectDisplayName={projectDisplayName}
         file={file}
         liveHtml={liveHtml}
         filesRefreshKey={filesRefreshKey}
@@ -4443,6 +4448,7 @@ function DocumentPreviewViewer({
 function HtmlViewer({
   projectId,
   projectKind,
+  projectDisplayName,
   file,
   liveHtml,
   filesRefreshKey = 0,
@@ -4464,6 +4470,7 @@ function HtmlViewer({
 }: {
   projectId: string;
   projectKind: TrackingProjectKind;
+  projectDisplayName?: string;
   file: ProjectFile;
   liveHtml?: string;
   filesRefreshKey?: number;
@@ -7258,7 +7265,7 @@ function HtmlViewer({
   }
 
   const showPresent = source !== null;
-  const exportTitle = file.name.replace(/\.html?$/i, '') || file.name;
+  const exportTitle = resolveExportDownloadTitle(projectDisplayName, file.name);
   const artifactKind = file.artifactManifest?.kind ?? file.artifactKind ?? null;
   const rendererId = file.artifactManifest?.renderer ?? null;
   const isDeckArtifact = isDeck || artifactKind === 'deck' || rendererId === 'deck-html' || file.kind === 'presentation';

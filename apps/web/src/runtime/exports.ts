@@ -26,12 +26,29 @@ import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
 
+/** Prefer the user-visible project name over artifact/S3 slug filenames. */
+export function resolveExportDownloadTitle(
+  projectDisplayName: string | undefined,
+  fileName: string,
+): string {
+  const fromFile = (fileName.replace(/\.html?$/i, '') || fileName).trim();
+  const fromProject = (projectDisplayName ?? '').trim();
+  if (fromProject && fromProject.toLowerCase() !== 'design') return fromProject;
+  return fromFile || 'artifact';
+}
+
 function safeFilename(name: string, fallback: string): string {
-  const slug = (name || fallback)
-    .replace(/[^\w.\-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return slug || fallback;
+  const trimmed = (name || fallback).trim();
+  if (!trimmed) return fallback;
+  const cleaned = trimmed
+    .replace(/[/\\?%*:|"<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .replace(/^[-\s]+|[-\s]+$/g, '')
+    .trim()
+    .slice(0, 120);
+  if (!cleaned || !/[\p{L}\p{N}]/u.test(cleaned)) return fallback;
+  return cleaned;
 }
 
 function triggerHrefDownload(href: string, filename: string): void {
@@ -1138,7 +1155,10 @@ export async function exportAsPdf(
   // spoofing by untrusted scripts inside the exported artifact.
   const nonce = randomUUID();
   let doc = buildBlobSafeSrcdoc(html, opts);
-  if (opts?.deck) doc = injectDeckPrintStylesheet(doc);
+  if (opts?.deck) {
+    doc = injectDeckPrintStylesheet(doc);
+    doc = injectDeckPrintFlattenScript(doc);
+  }
   doc = injectPrintReadyHandshake(doc, nonce);
 
   // Desktop native PDF bridge — the main process runs a direct
@@ -1175,7 +1195,7 @@ export async function exportAsPdf(
     doc = buildSandboxedPreviewDocument(doc, title, { allowModals: true });
     doc = injectParentPrintReadyCache(doc, nonce);
   }
-  doc = injectPrintScript(doc, title);
+  doc = injectPrintScript(doc, title, { deck: opts?.deck === true });
 
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1207,12 +1227,24 @@ export async function exportAsPdf(
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function injectPrintScript(doc: string, title: string): string {
+function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }): string {
   const safeTitle = JSON.stringify(title || 'artifact');
+  const flattenCall = opts?.deck
+    ? 'try{if(typeof window.__odFlattenDeckForPrint==="function")window.__odFlattenDeckForPrint()}catch(e){}'
+    : '';
   // setTimeout gives stylesheets and images one tick to settle before the
   // print dialog measures the page; without it some print previews come
   // out blank in Chrome.
-  const script = `<script>try{document.title=${safeTitle}}catch(e){}window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print()}catch(e){}},300)})</script>`;
+  const script = `<script>try{document.title=${safeTitle}}catch(e){}window.addEventListener('load',function(){setTimeout(function(){${flattenCall}try{window.focus();window.print()}catch(e){}},300)})</script>`;
+  if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
+  if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
+  return doc + script;
+}
+
+function injectDeckPrintFlattenScript(doc: string): string {
+  const selector =
+    '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
+  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};function set(el,p,v){el.style.setProperty(p,v,'important')}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('.deck-shell,.deck-stage,#deck-stage,.stage').forEach(function(el){set(el,'position','static');set(el,'display','block');set(el,'inset','auto');set(el,'transform','none');set(el,'overflow','visible');set(el,'width','1920px');set(el,'height','auto')});set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){set(el,'display','flex');set(el,'flex-direction','column');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1')});document.querySelectorAll('.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,[aria-label="Previous slide"],[aria-label="Next slide"]').forEach(function(el){set(el,'display','none')})}})();</script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;
@@ -1322,7 +1354,7 @@ const DECK_PRINT_CSS = `
     break-inside: avoid !important;
     scroll-snap-align: none !important;
     transform: none !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     visibility: visible !important;
     opacity: 1 !important;
   }

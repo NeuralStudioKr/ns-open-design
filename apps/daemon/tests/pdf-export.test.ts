@@ -37,7 +37,7 @@ describe('buildDesktopPdfExportInput', () => {
     expect(input).toEqual({
       baseHref: 'http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/',
       deck: true,
-      defaultFilename: 'Seed-Deck.pdf',
+      defaultFilename: 'Seed Deck.pdf',
       html: '<!doctype html><section class="slide">One</section>',
       title: 'Seed Deck',
     });
@@ -117,7 +117,7 @@ describe('POST /api/projects/:id/export/pdf', () => {
         {
           baseHref: `${started.url}/api/projects/${encodeURIComponent(projectId)}/raw/deck/`,
           deck: true,
-          defaultFilename: 'Seed-Deck.pdf',
+          defaultFilename: 'Seed Deck.pdf',
           html: '<!doctype html><section class="slide">One</section>',
           title: 'Seed Deck',
         },
