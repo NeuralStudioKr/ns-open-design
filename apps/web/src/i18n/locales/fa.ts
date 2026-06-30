@@ -1943,6 +1943,7 @@ export const fa: Dict = {
   'designFiles.pageInfo': '{start}–{end} از {total}',
   'designFiles.sectionFolders': 'پوشه‌ها',
   'designFiles.sectionStylesheets': 'شیوه‌نامه‌ها',
+  'designFiles.sectionSupporting': 'فایل‌های پشتیبان',
   'designFiles.sectionDocuments': 'اسناد',
   'designFiles.kindStylesheet': 'شیوه‌نامه',
   'designFiles.modifiedExt': 'اصلاح‌شده {time} · {size} · {ext}',

@@ -1943,6 +1943,7 @@ export const pl: Dict = {
   'designFiles.pageInfo': '{start}–{end} z {total}',
   'designFiles.sectionFolders': 'Foldery',
   'designFiles.sectionStylesheets': 'Arkusze stylów',
+  'designFiles.sectionSupporting': 'Pliki pomocnicze',
   'designFiles.sectionDocuments': 'Dokumenty',
   'designFiles.kindStylesheet': 'Arkusz stylów',
   'designFiles.modifiedExt': 'Zmodyfikowano {time} · {size} · {ext}',

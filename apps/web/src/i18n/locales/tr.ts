@@ -1943,6 +1943,7 @@ export const tr: Dict = {
   'designFiles.pageInfo': '{start}–{end} / {total}',
   'designFiles.sectionFolders': 'Klasörler',
   'designFiles.sectionStylesheets': 'Stil sayfaları',
+  'designFiles.sectionSupporting': 'Destekleyici dosyalar',
   'designFiles.sectionDocuments': 'Belgeler',
   'designFiles.kindStylesheet': 'Stil sayfası',
   'designFiles.modifiedExt': 'Değiştirilme {time} · {size} · {ext}',

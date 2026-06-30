@@ -1943,6 +1943,7 @@ export const th: Dict = {
   'designFiles.pageInfo': '{start}–{end} รวม {total}',
   'designFiles.sectionFolders': 'โฟลเดอร์',
   'designFiles.sectionStylesheets': 'สไตล์ชีต',
+  'designFiles.sectionSupporting': 'ไฟล์สนับสนุน',
   'designFiles.sectionDocuments': 'เอกสาร',
   'designFiles.kindStylesheet': 'สไตล์ชีต',
   'designFiles.modifiedExt': 'แก้ไขเมื่อ {time} · {size} · {ext}',

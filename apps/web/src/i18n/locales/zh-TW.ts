@@ -1943,6 +1943,7 @@ export const zhTW: Dict = {
   'designFiles.pageInfo': '{start}–{end} / {total}',
   'designFiles.sectionFolders': '資料夾',
   'designFiles.sectionStylesheets': '樣式表',
+  'designFiles.sectionSupporting': '支援檔案',
   'designFiles.sectionDocuments': '文件',
   'designFiles.kindStylesheet': '樣式表',
   'designFiles.modifiedExt': '修改於 {time} · {size} · {ext}',

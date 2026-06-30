@@ -1943,6 +1943,7 @@ export const hu: Dict = {
   'designFiles.pageInfo': '{start}–{end} / {total}',
   'designFiles.sectionFolders': 'Mappák',
   'designFiles.sectionStylesheets': 'Stíluslapok',
+  'designFiles.sectionSupporting': 'Támogató fájlok',
   'designFiles.sectionDocuments': 'Dokumentumok',
   'designFiles.kindStylesheet': 'Stíluslap',
   'designFiles.modifiedExt': 'Módosítva: {time} · {size} · {ext}',

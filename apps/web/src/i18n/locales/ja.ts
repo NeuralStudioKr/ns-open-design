@@ -1943,6 +1943,7 @@ export const ja: Dict = {
   'designFiles.pageInfo': '{start}–{end} / {total}',
   'designFiles.sectionFolders': 'フォルダ',
   'designFiles.sectionStylesheets': 'スタイルシート',
+  'designFiles.sectionSupporting': 'サポートファイル',
   'designFiles.sectionDocuments': 'ドキュメント',
   'designFiles.kindStylesheet': 'スタイルシート',
   'designFiles.modifiedExt': '更新日時 {time} · {size} · {ext}',

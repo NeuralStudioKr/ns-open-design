@@ -1943,6 +1943,7 @@ export const zhCN: Dict = {
   'designFiles.pageInfo': '{start}–{end} / {total}',
   'designFiles.sectionFolders': '文件夹',
   'designFiles.sectionStylesheets': '样式表',
+  'designFiles.sectionSupporting': '支持文件',
   'designFiles.sectionDocuments': '文档',
   'designFiles.kindStylesheet': '样式表',
   'designFiles.modifiedExt': '修改于 {time} · {size} · {ext}',

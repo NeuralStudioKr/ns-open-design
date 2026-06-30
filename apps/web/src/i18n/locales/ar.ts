@@ -1943,6 +1943,7 @@ export const ar: Dict = {
   'designFiles.pageInfo': '{start}–{end} من {total}',
   'designFiles.sectionFolders': 'المجلدات',
   'designFiles.sectionStylesheets': 'أوراق الأنماط',
+  'designFiles.sectionSupporting': 'ملفات داعمة',
   'designFiles.sectionDocuments': 'المستندات',
   'designFiles.kindStylesheet': 'ورقة أنماط',
   'designFiles.modifiedExt': 'عُدّل {time} · {size} · {ext}',

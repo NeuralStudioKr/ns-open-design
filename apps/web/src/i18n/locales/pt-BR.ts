@@ -1943,6 +1943,7 @@ export const ptBR: Dict = {
   'designFiles.pageInfo': '{start}–{end} de {total}',
   'designFiles.sectionFolders': 'Pastas',
   'designFiles.sectionStylesheets': 'Folhas de estilo',
+  'designFiles.sectionSupporting': 'Arquivos de suporte',
   'designFiles.sectionDocuments': 'Documentos',
   'designFiles.kindStylesheet': 'Folha de estilo',
   'designFiles.modifiedExt': 'Modificado em {time} · {size} · {ext}',

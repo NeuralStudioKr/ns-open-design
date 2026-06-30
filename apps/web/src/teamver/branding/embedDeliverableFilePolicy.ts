@@ -58,23 +58,31 @@ export function filterEmbedDeliverableProducedFiles<T extends { name: string; pa
   return files.filter((file) => !isEmbedSupportingProjectFile(file));
 }
 
-export type DesignFileSection = readonly [string, readonly { name: string; path?: string; mtime: number }[]];
+export type DesignFileSectionFile = { name: string; path?: string; mtime: number };
+
+export type DesignFileSection<
+  T extends string = string,
+  F extends DesignFileSectionFile = DesignFileSectionFile,
+> = readonly [T, readonly F[]];
 
 /** Split grouped Design Files sections into deliverables vs collapsed supporting bucket. */
-export function partitionEmbedDesignFileSections(
-  sections: DesignFileSection[],
+export function partitionEmbedDesignFileSections<
+  T extends string,
+  F extends DesignFileSectionFile,
+>(
+  sections: readonly DesignFileSection<T, F>[],
   branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
 ): {
-  deliverableSections: DesignFileSection[];
-  supportingFiles: Array<{ name: string; path?: string; mtime: number }>;
+  deliverableSections: DesignFileSection<T, F>[];
+  supportingFiles: F[];
 } {
   if (!branding.slideOnlyMvp) {
-    return { deliverableSections: sections, supportingFiles: [] };
+    return { deliverableSections: [...sections], supportingFiles: [] };
   }
-  const deliverableSections: DesignFileSection[] = [];
-  const supportingFiles: Array<{ name: string; path?: string; mtime: number }> = [];
+  const deliverableSections: DesignFileSection<T, F>[] = [];
+  const supportingFiles: F[] = [];
   for (const [category, sectionFiles] of sections) {
-    const primary: typeof sectionFiles[number][] = [];
+    const primary: F[] = [];
     for (const file of sectionFiles) {
       if (isEmbedSupportingProjectFile(file)) supportingFiles.push(file);
       else primary.push(file);

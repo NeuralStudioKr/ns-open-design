@@ -1943,6 +1943,7 @@ export const uk: Dict = {
   'designFiles.pageInfo': '{start}–{end} із {total}',
   'designFiles.sectionFolders': 'Папки',
   'designFiles.sectionStylesheets': 'Таблиці стилів',
+  'designFiles.sectionSupporting': 'Допоміжні файли',
   'designFiles.sectionDocuments': 'Документи',
   'designFiles.kindStylesheet': 'Таблиця стилів',
   'designFiles.modifiedExt': 'Змінено {time} · {size} · {ext}',

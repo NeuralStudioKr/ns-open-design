@@ -1943,6 +1943,7 @@ export const ru: Dict = {
   'designFiles.pageInfo': '{start}–{end} из {total}',
   'designFiles.sectionFolders': 'Папки',
   'designFiles.sectionStylesheets': 'Таблицы стилей',
+  'designFiles.sectionSupporting': 'Вспомогательные файлы',
   'designFiles.sectionDocuments': 'Документы',
   'designFiles.kindStylesheet': 'Таблица стилей',
   'designFiles.modifiedExt': 'Изменено {time} · {size} · {ext}',
