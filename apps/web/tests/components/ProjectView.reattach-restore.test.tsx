@@ -296,6 +296,59 @@ describe('ProjectView daemon reattach restore', () => {
     ).toBe(false);
   });
 
+  it('reattaches when the persisted assistant row is stale but the daemon still has an active run', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-stale-active',
+        role: 'assistant',
+        content: 'partial before route leave',
+        createdAt: startedAt,
+        startedAt,
+        runId: 'run-stale-active',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([
+      {
+        id: 'run-stale-active',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        assistantMessageId: 'msg-stale-active',
+        agentId: 'agent-1',
+        status: 'running',
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+    ]);
+
+    reattachDaemonRun.mockImplementation(async () => new Promise<void>(() => {}));
+
+    renderProjectView();
+
+    await waitFor(() => expect(listActiveChatRuns).toHaveBeenCalledWith('project-1', 'conv-1'));
+    await waitFor(() => expect(reattachDaemonRun).toHaveBeenCalledTimes(1));
+    expect(fetchChatRunStatus).not.toHaveBeenCalled();
+    expect(reattachDaemonRun.mock.calls[0]?.[0]).toMatchObject({
+      runId: 'run-stale-active',
+      initialLastEventId: null,
+    });
+    await waitFor(() => {
+      const saved = saveMessage.mock.calls
+        .map((call) => call[2] as ChatMessage)
+        .find((m) => m?.id === 'msg-stale-active' && m.runStatus === 'running');
+      expect(saved).toBeTruthy();
+    });
+  });
+
   it('populates producedFiles on the persisted message after reattach completes', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);

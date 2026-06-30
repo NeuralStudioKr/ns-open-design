@@ -1235,7 +1235,7 @@ export function ProjectView({
   const conversationsRefreshTokenRef = useRef(0);
   const [creatingConversation, setCreatingConversation] = useState(false);
   const currentConversationHasActiveRun = useMemo(
-    () => messages.some((m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus)),
+    () => messages.some(isRecoverableDaemonRunMessage),
     [messages],
   );
   const currentConversationLoading = Boolean(
@@ -2697,13 +2697,11 @@ export function ProjectView({
     const reattachConversationId = activeConversationId;
 
     const attachRecoverableRuns = async () => {
-      const missingRunIdMessages = messages.filter((m) => {
-        if (m.role !== 'assistant' || m.runId) return false;
-        return isActiveRunStatus(m.runStatus);
-      });
-      const activeRuns = missingRunIdMessages.length > 0
-        ? await listActiveChatRuns(project.id, reattachConversationId)
-        : [];
+      const recoverableMessages = messages.filter(isRecoverableDaemonRunMessage);
+      if (recoverableMessages.length === 0) return;
+
+      const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
+      const missingRunIdMessages = recoverableMessages.filter((m) => !m.runId);
       const historicalRuns = missingRunIdMessages.length > 0
         ? (await listProjectRuns()).filter(
             (run) => run.projectId === project.id && run.conversationId === reattachConversationId,
@@ -2721,15 +2719,13 @@ export function ProjectView({
           .map((run) => [run.assistantMessageId!, run]),
       );
 
-      for (const message of messages) {
+      for (const message of recoverableMessages) {
         if (cancelled) return;
-        if (message.role !== 'assistant') continue;
-        const needsFullReplay = isActiveRunStatus(message.runStatus);
-        if (!needsFullReplay) continue;
+        const activeRun = activeByMessage.get(message.id) ?? null;
         const fallbackRun = !message.runId
           ? activeByMessage.get(message.id) ?? historicalByMessage.get(message.id) ?? null
           : null;
-        const runId = message.runId ?? fallbackRun?.id;
+        const runId = activeRun?.id ?? message.runId ?? fallbackRun?.id;
         // Self-heal phantom 'running' rows: when the message has no runId
         // and the daemon has no active run mapped to it, the original send
         // POST was lost (daemon restart mid-flight, the user navigated
@@ -2753,15 +2749,15 @@ export function ProjectView({
         if (reattachControllersRef.current.has(runId)) continue;
         if (completedReattachRunsRef.current.has(runId)) continue;
 
-        if (fallbackRun && !message.runId) {
+        if ((activeRun || fallbackRun) && !message.runId) {
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, runId, runStatus: fallbackRun.status }),
+            (prev) => ({ ...prev, runId, runStatus: (activeRun ?? fallbackRun)!.status }),
             true,
           );
         }
 
-        const status = fallbackRun ?? await fetchChatRunStatus(runId);
+        const status = activeRun ?? fallbackRun ?? await fetchChatRunStatus(runId);
         if (cancelled) return;
         if (!status) {
           updateMessageById(
@@ -2782,6 +2778,7 @@ export function ProjectView({
           true,
         );
 
+        const needsFullReplay = isActiveRunStatus(status.status);
         const controller = new AbortController();
         const cancelController = new AbortController();
         reattachControllersRef.current.set(runId, controller);
@@ -6621,6 +6618,14 @@ function isPhantomDaemonRunMessage(m: ChatMessage): boolean {
     isActiveRunStatus(m.runStatus) &&
     !m.runId
   );
+}
+
+function isRecoverableDaemonRunMessage(message: ChatMessage): boolean {
+  if (message.role !== 'assistant') return false;
+  if (isActiveRunStatus(message.runStatus)) return true;
+  if (!message.runId) return false;
+  if (isTerminalRunStatus(message.runStatus)) return false;
+  return message.endedAt === undefined;
 }
 
 function isStoppableAssistantMessage(message: ChatMessage): boolean {
