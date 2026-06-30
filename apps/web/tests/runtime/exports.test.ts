@@ -425,8 +425,11 @@ describe('exportProjectImageBlob', () => {
       title: 'Seed Deck',
     });
 
-    expect(result?.filename).toBe('Seed-Deck.png');
-    expect(result?.blob.type).toBe('image/png');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.filename).toBe('Seed-Deck.png');
+      expect(result.blob.type).toBe('image/png');
+    }
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/image', {
       body: JSON.stringify({
         deck: true,
@@ -439,6 +442,92 @@ describe('exportProjectImageBlob', () => {
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
+  });
+
+  it('extracts daemon ApiError envelopes on 500 EXPORT_FAILED so the reason is not [object Object]', async () => {
+    // The daemon serialises errors as the canonical envelope shape
+    // (`{ error: { code, message, ... } }`, see packages/contracts/errors.ts).
+    // Naive `String(body.error)` would stringify the object as
+    // `"[object Object]"` and leak that into the modal — this test pins the
+    // FE parser to the real shape so a regression there can't be hidden by
+    // a more forgiving mock.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        error: {
+          code: 'EXPORT_FAILED',
+          message: 'headless Chromium unavailable (tried 3 path(s)): spawn ENOENT',
+        },
+      }),
+      { headers: { 'content-type': 'application/json' }, status: 500 },
+    )));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'png',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('headless Chromium unavailable');
+      expect(result.reason).toContain('500');
+      // Critical: must NOT contain the stringified-object marker. If this
+      // assertion ever flips green for the wrong reason, the parser is
+      // serialising the envelope object as text.
+      expect(result.reason).not.toContain('[object Object]');
+    }
+  });
+
+  it('falls back to a status-only reason when the daemon body is unstructured / missing', async () => {
+    // Some upstream proxies (nginx, CDN) replace the JSON body on 5xx with
+    // an HTML or empty body. The FE parser must degrade gracefully to the
+    // status-line reason instead of throwing on the JSON parse.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      '<html><body>502 Bad Gateway</body></html>',
+      { headers: { 'content-type': 'text/html' }, status: 502 },
+    )));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'png',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('502');
+      expect(result.reason).not.toContain('[object Object]');
+    }
+  });
+
+  it('also handles legacy { error: "string" } compat responses', async () => {
+    // packages/contracts/src/errors.ts LegacyErrorResponse — older code
+    // paths still surface a bare string under `error`. Should be returned
+    // verbatim as the reason.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'legacy daemon failure mode' }),
+      { headers: { 'content-type': 'application/json' }, status: 500 },
+    )));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'png',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('legacy daemon failure mode');
+    }
   });
 });
 

@@ -7472,6 +7472,9 @@ function HtmlViewer({
     setImageExportPreparing(true);
     setImageExportError(null);
     setImageExportPreparedBlob(null);
+    // Captured when the daemon-side export fails so we can append it to the
+    // user-facing error if the in-iframe snapshot fallback also fails.
+    let serverFailureReason: string | null = null;
     try {
       if (format !== 'webp') {
         const serverImage = await exportProjectImageBlob({
@@ -7482,11 +7485,14 @@ function HtmlViewer({
           slideIndex: effectiveDeck ? slideState?.active : undefined,
           title: exportTitle,
         });
-        if (serverImage?.blob && serverImage.blob.size > 0) {
+        if (serverImage.ok && serverImage.blob.size > 0) {
           if (imageExportPrepareIdRef.current === prepareId) {
             setImageExportPreparedBlob({ format, blob: serverImage.blob });
           }
           return;
+        }
+        if (!serverImage.ok) {
+          serverFailureReason = serverImage.reason;
         }
       }
       let dataUrl = imageExportSnapshotDataUrlRef.current;
@@ -7504,7 +7510,11 @@ function HtmlViewer({
     } catch (err) {
       console.warn('[exportAsImage] failed to prepare snapshot:', err);
       if (imageExportPrepareIdRef.current === prepareId) {
-        setImageExportError(t('fileViewer.exportImageFailed'));
+        const baseMessage = t('fileViewer.exportImageFailed');
+        // Surface the daemon reason (e.g. "headless Chromium unavailable ...")
+        // so dev/staging can diagnose without digging into network panel logs.
+        const detail = serverFailureReason || (err instanceof Error ? err.message : null);
+        setImageExportError(detail ? `${baseMessage}\n(${detail})` : baseMessage);
       }
     } finally {
       if (imageExportPrepareIdRef.current === prepareId) {
@@ -9058,7 +9068,7 @@ function HtmlViewer({
                 </div>
               </fieldset>
               {imageExportError ? (
-                <p className="deploy-error" role="alert">{imageExportError}</p>
+                <p className="deploy-error" role="alert" style={{ whiteSpace: 'pre-line' }}>{imageExportError}</p>
               ) : null}
             </div>
             <div className="modal-foot">

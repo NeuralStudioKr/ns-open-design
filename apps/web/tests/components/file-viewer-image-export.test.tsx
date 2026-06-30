@@ -97,6 +97,11 @@ describe('FileViewer image export', () => {
       JSON.stringify({ url: '/api/projects/project-1/preview/workspace.html' }),
       { status: 200 },
     )));
+    // Default the daemon-side image export to a "not available" failure so
+    // tests that don't explicitly configure it fall through to the in-iframe
+    // snapshot bridge (which is what they're exercising). Individual tests
+    // override this when they need a successful or specific failure shape.
+    exportProjectImageBlobMock.mockResolvedValue({ ok: false, reason: 'mock: daemon export disabled' });
   });
 
   afterEach(() => {
@@ -317,7 +322,9 @@ describe('FileViewer image export', () => {
     await openImageExportDialog();
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toBe(
+      // The alert leads with the localized failure message and may append
+      // the daemon reason on a second line for dev/staging diagnostics.
+      expect(screen.getByRole('alert').textContent).toContain(
         "Image capture failed. Please try again or use your browser's screenshot tool.",
       );
     }, { timeout: 4000 });
@@ -344,7 +351,7 @@ describe('FileViewer image export', () => {
     await openImageExportDialog();
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toBe(
+      expect(screen.getByRole('alert').textContent).toContain(
         "Image capture failed. Please try again or use your browser's screenshot tool.",
       );
     }, { timeout: 4000 });
@@ -352,5 +359,31 @@ describe('FileViewer image export', () => {
     expect(imageDataUrlToBlobMock).toHaveBeenCalledWith('data:image/png;base64,ok', 'png');
     expect(prepareImageExportTargetMock).not.toHaveBeenCalled();
     expect(saveImageBlobMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the daemon failure reason in the modal alert for dev/staging diagnostics', async () => {
+    // The default beforeEach mock returns a failure reason that should be
+    // appended to the localized base message so operators can see the real
+    // cause (e.g. "headless Chromium unavailable …") without leaving the UI.
+    exportProjectImageBlobMock.mockResolvedValueOnce({
+      ok: false,
+      reason: 'daemon image export 500: headless Chromium unavailable',
+    });
+    requestPreviewSnapshotMock.mockResolvedValueOnce(null);
+
+    renderHtmlPreview();
+    await openImageExportDialog();
+
+    await waitFor(() => {
+      const text = screen.getByRole('alert').textContent || '';
+      expect(text).toContain(
+        "Image capture failed. Please try again or use your browser's screenshot tool.",
+      );
+      expect(text).toContain('headless Chromium unavailable');
+      // Defensive: a stringified envelope object must never leak into the
+      // user-facing alert. If exportProjectImageBlob's parser ever regresses
+      // this assertion catches the regression in the integration layer too.
+      expect(text).not.toContain('[object Object]');
+    }, { timeout: 4000 });
   });
 });

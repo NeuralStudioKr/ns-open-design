@@ -781,6 +781,50 @@ export async function exportProjectAsPdf(opts: {
   return 'fallback';
 }
 
+export type ProjectImageBlobResult =
+  | { ok: true; blob: Blob; filename: string }
+  | { ok: false; reason: string };
+
+/**
+ * Pull a human-readable reason out of a non-ok daemon JSON response.
+ *
+ * The daemon (and most teamver services) serialises errors as the
+ * `ApiErrorResponse` envelope: `{ error: { code, message, ... } }`. A few
+ * legacy / compat code paths instead return `{ error: 'string' }`,
+ * `{ code, error }`, or a bare `{ message }`. We probe each shape in
+ * order so the surfaced `reason` is always a string, never
+ * `[object Object]` (which is what a naive `String(body.error)` produces
+ * against the envelope form).
+ *
+ * Returns the empty string when no usable detail is found so callers can
+ * fall back to a status-only message without an extra null-check.
+ */
+async function readDaemonErrorReason(resp: Response): Promise<string> {
+  let body: unknown;
+  try {
+    body = await resp.json();
+  } catch {
+    return '';
+  }
+  if (!body || typeof body !== 'object') return '';
+  const record = body as Record<string, unknown>;
+  const error = record.error;
+  if (error && typeof error === 'object') {
+    const errRecord = error as Record<string, unknown>;
+    if (typeof errRecord.message === 'string' && errRecord.message.trim()) {
+      return errRecord.message.trim();
+    }
+    if (typeof errRecord.code === 'string' && errRecord.code.trim()) {
+      return errRecord.code.trim();
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (typeof record.message === 'string' && record.message.trim()) {
+    return record.message.trim();
+  }
+  return '';
+}
+
 export async function exportProjectImageBlob(opts: {
   deck: boolean;
   filePath: string;
@@ -788,7 +832,7 @@ export async function exportProjectImageBlob(opts: {
   projectId: string;
   slideIndex?: number;
   title: string;
-}): Promise<{ blob: Blob; filename: string } | null> {
+}): Promise<ProjectImageBlobResult> {
   const format = opts.format === 'jpeg' ? 'jpeg' : 'png';
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/image`, {
@@ -802,7 +846,21 @@ export async function exportProjectImageBlob(opts: {
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    if (!resp.ok) throw new Error(`daemon image export unavailable (${resp.status})`);
+    if (!resp.ok) {
+      // Daemon returns 500 EXPORT_FAILED with a structured ApiErrorResponse
+      // body (`{ error: { code, message, ... } }`, see
+      // packages/contracts/src/errors.ts). Some legacy code paths still
+      // return `{ error: 'string' }` or `{ message: 'string' }` so we probe
+      // multiple shapes before falling back to a status-only message. The
+      // resolved `detail` is surfaced in dev/staging toasts so operators
+      // can diagnose without opening the network panel.
+      const detail = await readDaemonErrorReason(resp);
+      throw new Error(
+        detail
+          ? `daemon image export ${resp.status}: ${detail}`
+          : `daemon image export unavailable (${resp.status})`,
+      );
+    }
     const contentType = (resp.headers.get('content-type') || '').toLowerCase();
     if (!contentType.startsWith('image/')) {
       throw new Error(`daemon image export returned ${contentType || 'unknown content-type'}`);
@@ -810,12 +868,14 @@ export async function exportProjectImageBlob(opts: {
     const blob = await resp.blob();
     if (blob.size <= 0) throw new Error('daemon image export returned an empty file');
     return {
+      ok: true,
       blob,
       filename: attachmentFilenameFrom(resp, opts.title, format === 'jpeg' ? 'jpg' : 'png'),
     };
   } catch (err) {
-    console.warn('[exportProjectImageBlob] falling back to preview snapshot:', err);
-    return null;
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn('[exportProjectImageBlob] falling back to preview snapshot:', reason);
+    return { ok: false, reason };
   }
 }
 

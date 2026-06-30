@@ -14,6 +14,26 @@ export interface HeadlessExportOptions {
 const EXPORT_TIMEOUT_MS = 30_000;
 const DECK_WIDTH = 1920;
 const DECK_HEIGHT = 1080;
+// Single source of truth for the deck-slide selector used by both the print
+// CSS (apply{Pdf,Screenshot}Styles) and the in-page JS that drives
+// scrollIntoView + per-slide screenshot clipping. Decks shipped from different
+// generators use different conventions:
+//   - `.slide`               — the classic open-design / handwritten convention.
+//   - `[data-slide]`         — legacy attribute marker (older agents).
+//   - `[data-screen-label]`  — current ProjectView / deck-framework marker.
+//   - `section.slide`        — narrowed `section` to avoid grabbing
+//                              `<section>` wrappers that aren't slides.
+//   - `.deck-slide` / `.ppt-slide` — agent-emitted variants used by some deck
+//                                    prompts.
+// All five must produce the same slide list whether the deck is being styled
+// for print or being measured for a per-slide PNG, otherwise PDF and image
+// exports drift apart on the same deck.
+const DECK_SLIDE_SELECTOR =
+  '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
+// Alpine's `chromium` package installs the real binary at /usr/bin/chromium
+// and ships /usr/bin/chromium-browser as a symlink. Some minimised images
+// drop the symlink to save space, so list both and let launchChromium try
+// them in order. OD_EXPORT_CHROMIUM_PATH wins when set (production override).
 const CHROMIUM_CANDIDATES = [
   process.env.OD_EXPORT_CHROMIUM_PATH,
   '/usr/bin/chromium-browser',
@@ -30,11 +50,14 @@ export async function renderHeadlessPdf(options: HeadlessExportOptions): Promise
     try {
       const page = await preparePage(browser, options);
       await applyPdfStyles(page, options.input.deck);
+      // Rely on CSS `@page { size: 1920px 1080px }` from applyPdfStyles via
+      // `preferCSSPageSize: true`. Passing width/height here would override
+      // the CSS @page rule and collapse multi-slide decks to a single page
+      // (Chromium ignores per-slide break-after when an explicit page size
+      // is supplied alongside `preferCSSPageSize`).
       const pdf = await page.pdf({
         printBackground: true,
         preferCSSPageSize: true,
-        width: options.input.deck ? `${DECK_WIDTH}px` : undefined,
-        height: options.input.deck ? `${DECK_HEIGHT}px` : undefined,
         margin: { top: '0', right: '0', bottom: '0', left: '0' },
         timeout: EXPORT_TIMEOUT_MS,
       });
@@ -88,7 +111,7 @@ async function runExclusive<T>(work: () => Promise<T>): Promise<T> {
 
 async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
-  let lastError: unknown = null;
+  const attempts: Array<{ executablePath?: string; error: string }> = [];
   for (const executablePath of CHROMIUM_CANDIDATES) {
     try {
       return await chromium.launch({
@@ -104,18 +127,26 @@ async function launchChromium(): Promise<Browser> {
         timeout: EXPORT_TIMEOUT_MS,
       });
     } catch (err) {
-      lastError = err;
+      attempts.push({ executablePath, error: String((err as any)?.message || err) });
     }
   }
   try {
+    // Final fallback — let Playwright pick up a bundled Chromium / system
+    // default if one was installed via `npx playwright install`. Mostly
+    // relevant for local dev where OD_EXPORT_CHROMIUM_PATH isn't set and
+    // none of the Alpine/Debian package paths apply.
     return await chromium.launch({
       headless: true,
       args: ['--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox'],
       timeout: EXPORT_TIMEOUT_MS,
     });
   } catch (err) {
+    attempts.push({ executablePath: undefined, error: String((err as any)?.message || err) });
+    // Surface the full attempt log to stderr so operators can see which
+    // candidate paths exist on disk vs which actually failed to launch.
+    console.warn('[headless-export] chromium launch failed', { attempts });
     throw new Error(
-      `headless Chromium unavailable: ${String((lastError as any)?.message || (err as any)?.message || err)}`,
+      `headless Chromium unavailable (tried ${attempts.length} path(s)): ${attempts[attempts.length - 1].error}`,
     );
   }
 }
@@ -134,8 +165,11 @@ async function preparePage(browser: Browser, options: HeadlessExportOptions): Pr
   });
   page.setDefaultTimeout(EXPORT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(EXPORT_TIMEOUT_MS);
+  // `load` (not `domcontentloaded`) ensures the deck framework's `fit()` /
+  // scripts and stylesheets have run before applyPdfStyles attaches the
+  // print overrides that need to defeat the runtime transform/scale.
   await page.setContent(withBaseHref(options.input.html, options.input.baseHref || ''), {
-    waitUntil: 'domcontentloaded',
+    waitUntil: 'load',
     timeout: EXPORT_TIMEOUT_MS,
   });
   await waitForPageSettled(page);
@@ -160,21 +194,66 @@ async function waitForPageSettled(page: Page): Promise<void> {
 }
 
 async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
+  // Mirrors apps/web/src/runtime/exports.ts DECK_PRINT_CSS so the headless
+  // and browser-print paths render decks the same way:
+  //   - horizontal-snap / flex track decks are flattened to block flow with
+  //     one page per slide (override the framework's display:flex /
+  //     overflow:hidden / scroll-snap rules).
+  //   - deck-framework `fit()` transform is neutralised so the 1920x1080
+  //     stage prints at native size instead of a scaled-down sliver.
+  //   - all preview chrome (counter, prev/next, nav, deck-stage hints) is
+  //     hidden so the PDF only contains the slide content.
+  //   - scrollbars are removed in both webkit and firefox-based renderers.
   await page.addStyleTag({
     content: `
       html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
       body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? `
-      @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
-      .slide, [data-slide], section {
-        break-after: page;
-        page-break-after: always;
-        overflow: hidden !important;
-      }
-      .slide:last-child, [data-slide]:last-child, section:last-child {
-        break-after: auto;
-        page-break-after: auto;
+      @media print {
+        @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
+        html, body {
+          width: ${DECK_WIDTH}px !important;
+          height: auto !important;
+          overflow: visible !important;
+          background: #fff !important;
+        }
+        body {
+          display: block !important;
+          scroll-snap-type: none !important;
+          transform: none !important;
+        }
+        .deck-shell, .deck-stage, .stage {
+          transform: none !important;
+          width: ${DECK_WIDTH}px !important;
+          height: ${DECK_HEIGHT}px !important;
+          inset: auto !important;
+          position: relative !important;
+          place-content: flex-start !important;
+          overflow: visible !important;
+        }
+        ${DECK_SLIDE_SELECTOR} {
+          flex: none !important;
+          width: ${DECK_WIDTH}px !important;
+          height: ${DECK_HEIGHT}px !important;
+          min-height: ${DECK_HEIGHT}px !important;
+          max-height: ${DECK_HEIGHT}px !important;
+          page-break-after: always;
+          break-after: page;
+          scroll-snap-align: none !important;
+          transform: none !important;
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        ${DECK_SLIDE_SELECTOR.split(',').map((sel) => `${sel.trim()}:last-child`).join(', ')} {
+          page-break-after: auto;
+          break-after: auto;
+        }
+        .deck-counter, .deck-hint, .deck-nav,
+        #deck-prev, #deck-next, #deck-cur, #deck-total,
+        [aria-label="Previous slide"], [aria-label="Next slide"] {
+          display: none !important;
+        }
       }` : `
       @page { margin: 0; }`}
     `,
@@ -188,25 +267,35 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? `
       html, body { width: ${DECK_WIDTH}px !important; min-height: ${DECK_HEIGHT}px !important; overflow: hidden !important; }
-      .slide, [data-slide], section { overflow: hidden !important; }` : ''}
+      ${DECK_SLIDE_SELECTOR} { overflow: hidden !important; }
+      .deck-counter, .deck-hint, .deck-nav,
+      #deck-prev, #deck-next, #deck-cur, #deck-total,
+      [aria-label="Previous slide"], [aria-label="Next slide"] {
+        display: none !important;
+      }` : ''}
     `,
   });
   if (deck) {
-    await page.evaluate(`(index) => {
-      const all = Array.from(document.querySelectorAll('.slide, [data-slide], section'));
+    // Selector must match DECK_SLIDE_SELECTOR so the slide picked here lines
+    // up with the slide that was style-targeted in applyScreenshotStyles.
+    await page.evaluate(`(args) => {
+      const all = Array.from(document.querySelectorAll(args.selector));
       const slides = all.length > 0 ? all : [document.body];
-      const target = slides[Math.max(0, Math.min(index, slides.length - 1))];
+      const target = slides[Math.max(0, Math.min(args.index, slides.length - 1))];
       target?.scrollIntoView({ block: 'start', inline: 'start' });
-    }`, Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0).catch(() => {});
+    }`, {
+      index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
+      selector: DECK_SLIDE_SELECTOR,
+    }).catch(() => {});
   }
 }
 
 async function deckScreenshotClip(page: Page, slideIndex?: number) {
   const fallback = { x: 0, y: 0, width: DECK_WIDTH, height: DECK_HEIGHT };
-  const box = await page.evaluate(`(index) => {
-    const all = Array.from(document.querySelectorAll('.slide, [data-slide], section'));
+  const box = await page.evaluate(`(args) => {
+    const all = Array.from(document.querySelectorAll(args.selector));
     const slides = all.length > 0 ? all : [document.body];
-    const target = slides[Math.max(0, Math.min(index, slides.length - 1))];
+    const target = slides[Math.max(0, Math.min(args.index, slides.length - 1))];
     if (!target) return null;
     const rect = target.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
@@ -216,7 +305,10 @@ async function deckScreenshotClip(page: Page, slideIndex?: number) {
       width: Math.max(1, rect.width),
       height: Math.max(1, rect.height),
     };
-  }`, Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0).catch(() => null);
+  }`, {
+    index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
+    selector: DECK_SLIDE_SELECTOR,
+  }).catch(() => null);
   if (!box) return fallback;
   return {
     x: Math.round(box.x),

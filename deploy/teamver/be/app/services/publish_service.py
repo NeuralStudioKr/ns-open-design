@@ -98,7 +98,22 @@ def _publish_filename(
     artifact_file: str | None,
     manifest_entry: str | None,
     suffix: str,
+    live_title: str | None = None,
 ) -> str:
+    # Filename priority (Drive publish):
+    #   1. `live_title` — daemon's current user-editable project name. This
+    #      reflects in-editor renames that never propagate to the registry
+    #      (registry.title is stamped at create time, e.g. "ai-adoption-deck").
+    #      Without this step a renamed deck would still publish as the slug.
+    #   2. `project.title` — registry-cached slug from import time. Falls back
+    #      here when the daemon lookup fails or returns nothing useful.
+    #   3. artifact / manifest basename, or the od_project_id, as last resorts.
+    #
+    # Anything that resolves to the literal string "design" is treated as
+    # missing so the legacy default doesn't beat a real artifact/entry name.
+    live = (live_title or "").strip()
+    if live and live.lower() != "design":
+        return _safe_filename(live, suffix=suffix)
     title = (project.title or "").strip()
     if title and title.lower() != "design":
         return _safe_filename(title, suffix=suffix)
@@ -242,6 +257,22 @@ async def publish_project(
     )
     manifest_entry = _entry_file_from_manifest(manifest)
 
+    # Best-effort: fetch the daemon's current project name so Drive filenames
+    # follow in-editor renames instead of the stale registry title. Failure
+    # here is non-fatal — _publish_filename will fall back to project.title.
+    live_title: str | None = None
+    try:
+        live_title = await daemon.get_project_name(
+            project.od_project_id,
+            identity=daemon_identity,
+        )
+    except Exception:
+        logger.warning(
+            "publish: daemon project name lookup failed od_project=%s",
+            project.od_project_id,
+            exc_info=True,
+        )
+
     outputs: list[PublishFormatResult] = []
     for fmt in normalized_formats:
         try:
@@ -260,6 +291,7 @@ async def publish_project(
                     artifact_file=artifact_file or path,
                     manifest_entry=manifest_entry,
                     suffix=".html",
+                    live_title=live_title,
                 )
                 source_path = path
                 entry_file = manifest_entry
@@ -275,6 +307,7 @@ async def publish_project(
                     artifact_file=artifact_file,
                     manifest_entry=manifest_entry,
                     suffix=".zip",
+                    live_title=live_title,
                 )
                 source_path = None
                 entry_file = manifest_entry

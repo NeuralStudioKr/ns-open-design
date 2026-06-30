@@ -568,13 +568,16 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       setAttachmentHeaders(res, 'application/pdf', input.defaultFilename);
       res.send(pdf);
     } catch (err: any) {
-      const status = err && err.code === 'ENOENT' ? 404 : 400;
-      sendApiError(
-        res,
-        status,
-        status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
-        String(err?.message || err),
-      );
+      const reason = String(err?.message || err);
+      if (err && err.code === 'ENOENT') {
+        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
+        return;
+      }
+      // Headless Chromium launch / render failures are infrastructure faults,
+      // not malformed requests. Log + return 5xx so the FE can show a real
+      // diagnostic instead of treating it as a user input error.
+      console.warn('[export/pdf] failed', { projectId: req.params.id, reason });
+      sendApiError(res, 500, 'EXPORT_FAILED', reason);
     }
   });
 
@@ -605,13 +608,13 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       setAttachmentHeaders(res, imageFormat === 'jpeg' ? 'image/jpeg' : 'image/png', `${base}.${extension}`);
       res.send(image);
     } catch (err: any) {
-      const status = err && err.code === 'ENOENT' ? 404 : 400;
-      sendApiError(
-        res,
-        status,
-        status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
-        String(err?.message || err),
-      );
+      const reason = String(err?.message || err);
+      if (err && err.code === 'ENOENT') {
+        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
+        return;
+      }
+      console.warn('[export/image] failed', { projectId: req.params.id, reason });
+      sendApiError(res, 500, 'EXPORT_FAILED', reason);
     }
   });
 

@@ -45,6 +45,21 @@ def _wire_drive_upload(teamver_client: MagicMock, *, asset_id: str = "AST-123") 
     return asset
 
 
+def _daemon_mock(*, live_name: str | None = None) -> AsyncMock:
+    """Build a daemon AsyncMock with `get_project_name` pinned.
+
+    publish_project now calls `daemon.get_project_name(...)` so the Drive
+    filename can follow in-editor renames. Without an explicit return_value
+    AsyncMock would auto-vend a MagicMock that leaks into `_publish_filename`
+    and corrupts the filename derivation. Tests that don't care about live
+    naming should pass `live_name=None` (the default) to preserve the legacy
+    `project.title` → artifact-basename fallback chain.
+    """
+    daemon = AsyncMock()
+    daemon.get_project_name = AsyncMock(return_value=live_name)
+    return daemon
+
+
 @pytest.mark.asyncio
 async def test_publish_project_requires_access_token():
     db = AsyncMock()
@@ -76,7 +91,7 @@ async def test_publish_project_rejects_unsupported_format():
             formats=["pdf"],
             artifact_file=None,
             folder_id=None,
-            od_daemon=AsyncMock(),
+            od_daemon=_daemon_mock(),
         )
 
 
@@ -87,7 +102,7 @@ async def test_publish_project_html_uploads_and_persists():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
 
@@ -139,7 +154,7 @@ async def test_publish_project_uploads_to_shared_drive_target():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
 
@@ -180,7 +195,7 @@ async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_
 
     project = _project()
     project.title = "design"
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {
         "entryFile": "exports/this-is-a-very-long-generated-slide-deck-name-that-should-not-become-an-overlong-drive-file.html",
     }
@@ -217,7 +232,7 @@ async def test_publish_project_partial_html_ok_zip_daemon_fail():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.side_effect = BadGatewayError("od_daemon_export_failed")
@@ -248,7 +263,7 @@ async def test_publish_project_partial_html_ok_zip_daemon_fail():
 async def test_publish_project_all_formats_fail_raises_bad_gateway():
     db = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.side_effect = BadGatewayError("od_daemon_export_failed")
     daemon.get_archive.side_effect = BadGatewayError("od_daemon_export_failed")
@@ -275,7 +290,7 @@ async def test_publish_project_partial_zip_upload_fail():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.return_value = b"zip-bytes"
@@ -354,7 +369,7 @@ async def test_publish_project_upload_request_phase_status_propagates():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.return_value = b"zip-bytes"
@@ -403,7 +418,7 @@ async def test_publish_project_presigned_put_status_propagates():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.return_value = b"zip-bytes"
@@ -441,7 +456,7 @@ async def test_publish_project_confirm_failure_uses_confirm_code():
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
-    daemon = AsyncMock()
+    daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
     daemon.get_export_inline.return_value = b"<html>ok</html>"
     daemon.get_archive.return_value = b"zip-bytes"
@@ -467,3 +482,135 @@ async def test_publish_project_confirm_failure_uses_confirm_code():
 
     zip_output = next(out for out in result.outputs if out.kind == "zip")
     assert zip_output.error_code == "drive.confirm_timeout"
+
+
+# ---------------------------------------------------------------------------
+# Publish filename: live daemon project name takes precedence over the stale
+# `project.title` cached in the design-api registry. See
+# `_publish_filename` in publish_service.py and the matching plan task
+# `drive-live-name`.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_publish_filename_prefers_live_daemon_name_over_stale_registry_title():
+    """The daemon is the source of truth for the user-facing project name.
+
+    Registry rows are stamped with a slug at create time (here:
+    "ai-adoption-deck"); when the user later renames the project in the
+    editor that change never reaches the registry. The Drive filename must
+    follow the live name ("Q4 마케팅 전략") so published files stay aligned
+    with what the user sees in the editor sidebar.
+    """
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    project = _project()
+    project.title = "ai-adoption-deck"  # stale registry slug
+
+    daemon = _daemon_mock(live_name="Q4 마케팅 전략")
+    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-LIVE")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=project,
+        formats=["html"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.outputs[0].filename == "Q4 마케팅 전략.html"
+    daemon.get_project_name.assert_awaited_once_with("od1", identity=ANY)
+    teamver_client.drive.create_upload_request.assert_awaited_once()
+    assert (
+        teamver_client.drive.create_upload_request.await_args.kwargs["filename"]
+        == "Q4 마케팅 전략.html"
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_filename_falls_back_to_registry_title_when_live_lookup_fails():
+    """A failed daemon lookup must not block publish or corrupt the filename.
+
+    If `get_project_name` raises (daemon down, transient 5xx, etc.) we keep
+    the existing behavior — `project.title` from the registry — instead of
+    bubbling the failure or falling all the way back to the od_project_id.
+    """
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_project_name.side_effect = BadGatewayError("od_daemon_export_failed")
+    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-FALLBACK")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),  # title="Landing Page"
+        formats=["html"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    # Stale-title fallback path: filename derived from project.title because
+    # the daemon couldn't provide a live name.
+    assert result.outputs[0].filename == "Landing Page.html"
+    daemon.get_project_name.assert_awaited_once_with("od1", identity=ANY)
+
+
+@pytest.mark.asyncio
+async def test_publish_filename_skips_live_name_when_it_resolves_to_design():
+    """The literal `"design"` is the legacy default everywhere in the stack.
+
+    If the daemon happens to return it (e.g. fresh project never renamed),
+    treat it as missing so the artifact / manifest basename fallback can
+    surface a meaningful filename instead of `design.html`.
+    """
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    project = _project()
+    project.title = "design"  # also generic — falls through to manifest basename
+
+    daemon = _daemon_mock(live_name="  design  ")  # whitespace + legacy default
+    daemon.get_export_manifest.return_value = {"entryFile": "decks/q4-roadmap.html"}
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-GENERIC")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=project,
+        formats=["html"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    filename = result.outputs[0].filename
+    assert filename is not None
+    assert filename.startswith("q4-roadmap")
+    assert filename.endswith(".html")
+    assert filename != "design.html"

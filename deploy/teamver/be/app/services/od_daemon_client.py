@@ -71,6 +71,46 @@ class OdDaemonClient:
             identity=identity,
         )
 
+    async def get_project_name(
+        self,
+        od_project_id: str,
+        *,
+        identity: OdDaemonIdentity,
+    ) -> str | None:
+        """Fetch the live project display name from the daemon.
+
+        The design-api registry caches a project ``title`` at creation time
+        (e.g. the slug used during import), but the daemon is the source of
+        truth for the user-editable name. Publish flows must prefer this
+        live value so Drive filenames reflect renames performed in the
+        editor instead of falling back to the registry-time slug.
+
+        Returns ``None`` on any failure (404, daemon down, malformed JSON,
+        empty/missing name) so publish itself is never blocked by a
+        best-effort name lookup.
+        """
+        try:
+            body = await self._request_json(
+                "GET",
+                f"/api/projects/{od_project_id}",
+                identity=identity,
+            )
+        except BadGatewayError:
+            logger.warning(
+                "[od-daemon] get_project_name failed project=%s",
+                od_project_id,
+                exc_info=True,
+            )
+            return None
+        project = body.get("project")
+        if not isinstance(project, dict):
+            return None
+        name = project.get("name")
+        if not isinstance(name, str):
+            return None
+        name = name.strip()
+        return name or None
+
     async def get_export_inline(
         self,
         od_project_id: str,
