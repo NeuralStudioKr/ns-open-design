@@ -203,6 +203,21 @@ export async function renderHeadlessImage(options: HeadlessExportOptions): Promi
   });
 }
 
+export async function renderHeadlessHtmlSnapshot(options: HeadlessExportOptions): Promise<string> {
+  return runExclusive(async () => {
+    const browser = await launchChromium();
+    try {
+      const page = await preparePage(browser, options);
+      await waitForPrintableContent(page);
+      await applySnapshotStyles(page, options.input.deck);
+      await inlineRenderedResources(page);
+      return await page.content();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+}
+
 async function runExclusive<T>(work: () => Promise<T>): Promise<T> {
   const previous = queue;
   let release!: () => void;
@@ -453,6 +468,107 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
       selector: DECK_SLIDE_SELECTOR,
     }).catch(() => {});
   }
+}
+
+async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
+  await page.addStyleTag({
+    content: `
+      html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
+      *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+      ${deck ? `
+      .deck-counter, .deck-hint, .deck-nav,
+      #deck-prev, #deck-next, #deck-cur, #deck-total,
+      [aria-label="Previous slide"], [aria-label="Next slide"] {
+        display: none !important;
+      }` : ''}
+    `,
+  });
+}
+
+async function inlineRenderedResources(page: Page): Promise<void> {
+  await page.evaluate(`
+    (async () => {
+      const blobToDataUrl = (blob) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+        });
+
+      const absolutize = (url) => {
+        try { return new URL(url, document.baseURI).href; } catch { return ''; }
+      };
+
+      const inlineCssUrls = async (cssText, cssHref) => {
+        const matches = Array.from(cssText.matchAll(/url\\((['"]?)(.*?)\\1\\)/g));
+        let output = cssText;
+        await Promise.all(matches.map(async (match) => {
+          const rawUrl = match[2];
+          if (!rawUrl || /^data:/i.test(rawUrl) || /^#/.test(rawUrl)) return;
+          try {
+            const href = new URL(rawUrl, cssHref).href;
+            const resp = await fetch(href, { credentials: 'include' });
+            if (!resp.ok) return;
+            output = output.split(match[0]).join('url("' + await blobToDataUrl(await resp.blob()) + '")');
+          } catch {}
+        }));
+        return output;
+      };
+
+      await Promise.all(Array.from(document.querySelectorAll('link[rel~="stylesheet"][href]')).map(async (link) => {
+        try {
+          const href = absolutize(link.getAttribute('href') || '');
+          if (!href) return;
+          const resp = await fetch(href, { credentials: 'include' });
+          if (!resp.ok) return;
+          const style = document.createElement('style');
+          style.setAttribute('data-od-rendered-inline', href);
+          style.textContent = await inlineCssUrls(await resp.text(), href);
+          link.replaceWith(style);
+        } catch {}
+      }));
+
+      await Promise.all(Array.from(document.images || []).map(async (img) => {
+        try {
+          const src = img.currentSrc || img.getAttribute('src') || '';
+          if (!src || /^data:/i.test(src)) return;
+          const href = absolutize(src);
+          if (!href) return;
+          const resp = await fetch(href, { credentials: 'include' });
+          if (!resp.ok) return;
+          img.setAttribute('src', await blobToDataUrl(await resp.blob()));
+          img.removeAttribute('srcset');
+        } catch {}
+      }));
+
+      const cssUrlValues = (value) => {
+        const urls = [];
+        if (!value || value === 'none') return urls;
+        value.replace(/url\\((['"]?)(.*?)\\1\\)/g, (_, _quote, rawUrl) => {
+          if (rawUrl && !/^data:/i.test(rawUrl)) urls.push(rawUrl);
+          return '';
+        });
+        return urls;
+      };
+
+      await Promise.all(Array.from(document.querySelectorAll('*')).map(async (el) => {
+        try {
+          const style = window.getComputedStyle(el);
+          const bg = cssUrlValues(style.backgroundImage)[0];
+          if (!bg) return;
+          const href = absolutize(bg);
+          if (!href) return;
+          const resp = await fetch(href, { credentials: 'include' });
+          if (!resp.ok) return;
+          el.style.backgroundImage = 'url("' + await blobToDataUrl(await resp.blob()) + '")';
+        } catch {}
+      }));
+
+      document.querySelectorAll('base').forEach((base) => base.remove());
+      document.querySelectorAll('script').forEach((script) => script.remove());
+    })()
+  `).catch(() => {});
 }
 
 async function deckScreenshotClip(page: Page, slideIndex?: number) {

@@ -55,7 +55,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 | folder browser (scope tab / breadcrumb / drill-down) | ✅ Phase 1-2b |
 | full Drive browser (최근 파일 / asset grid) | ✅ Phase 1-2c (loop 420) |
 | Main Drive 파일 → Design import handoff | ✅ `teamverDriveAsset*` query + 사전 선택 |
-| PDF / PPTX | ❌ Drive 발행은 Phase 4+ 유지. 로컬 다운로드 PDF/PNG/JPEG는 daemon headless export로 501 제거(2026-06-30). ZIP 다운로드의 `index.html`도 Drive HTML 발행과 같은 daemon inline export 산출물 우선 |
+| PDF / PPTX | ❌ Drive 발행은 Phase 4+ 유지. 로컬 다운로드 PDF/PNG/JPEG는 daemon headless export로 501 제거(2026-06-30). 로컬 HTML/ZIP도 daemon Chromium rendered snapshot route를 우선 사용해 preview와 같은 렌더 컨텍스트에서 산출 |
 
 ### 2.3 현재 한계
 
@@ -99,6 +99,16 @@ Main FE `getDesignDriveAssetLaunchUrl()` / `getDesignDriveAssetsLaunchUrl()`은 
 진입 표면은 Main Drive 파일 상세 모달과 우클릭 메뉴 두 곳이다. 실제 bytes 이동은 새 API가 아니라 기존 design-api `POST /api/v1/projects/{projectRef}/import-drive`를 사용한다.
 
 Main Mobile도 파일 상세 모달에서 동일 query 계약을 사용한다. import 성공 후 `ChatAttachment.source={type:"teamver-drive",assetId}`를 보존하며 composer 첨부 chip의 외부 링크로 원본 Main Drive asset 상세를 다시 열 수 있다.
+
+### 3.3.1 로컬 다운로드와 Drive 발행 렌더 컨텍스트
+
+Drive 발행은 기존처럼 design-api → daemon export → Main Drive upload 흐름을 유지한다. 로컬 다운로드는 혼동을 줄이기 위해 Drive publish와 별개 메뉴명은 “다운로드”로 두되, 렌더링은 daemon 서버 경로를 우선한다.
+
+- PDF/이미지 다운로드: daemon headless export가 Vite dev entry shell 대신 `dist/index.html`을 우선 렌더한다.
+- HTML/ZIP 다운로드: daemon `/api/projects/:id/export/html|zip`이 Chromium으로 preview를 렌더한 정적 snapshot을 반환한다. stylesheet/img/background resource를 가능한 한 inline하고 scrollbar/deck nav/base/script를 제거한다.
+- fallback: rendered export 실패 시에만 기존 inline/source/raw archive 경로를 사용한다.
+
+이 결정은 사용자가 “미리보기처럼 완성된 결과물”을 받는 것을 1차 목표로 한다. 다운로드 HTML은 정적 렌더 결과 보존용이며, 원본 앱 JS 인터랙션을 유지하는 개발용 archive가 필요하면 별도 raw archive/debug export로 분리한다.
 
 ### 3.4 구현 단계
 

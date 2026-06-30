@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import { PROJECT_EXPORT_MANIFEST_SCHEMA } from '@open-design/contracts';
 import nodePath from 'node:path';
+import JSZip from 'jszip';
 import type { RouteDeps } from './server-context.js';
 import {
   InlineAssetsLimitError,
@@ -13,6 +14,7 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
+  renderHeadlessHtmlSnapshot,
   renderHeadlessImage,
   renderHeadlessPdf,
   type HeadlessImageFormat,
@@ -614,6 +616,71 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return;
       }
       console.warn('[export/image] failed', { projectId: req.params.id, reason });
+      sendApiError(res, 500, 'EXPORT_FAILED', reason);
+    }
+  });
+
+  app.post('/api/projects/:id/export/html', async (req, res) => {
+    try {
+      const { fileName, title, deck } = req.body || {};
+      if (typeof fileName !== 'string' || fileName.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+      const input = await buildDesktopPdfExportInput({
+        daemonUrl: daemonUrlRef.current,
+        deck: deck === true,
+        fileName,
+        projectId: req.params.id,
+        projectsRoot: PROJECTS_DIR,
+        title: typeof title === 'string' ? title : undefined,
+      });
+      const html = await renderHeadlessHtmlSnapshot({ input });
+      const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      setAttachmentHeaders(res, 'text/html; charset=utf-8', `${base}.html`);
+      res.send(Buffer.from(html, 'utf8'));
+    } catch (err: any) {
+      const reason = String(err?.message || err);
+      if (err && err.code === 'ENOENT') {
+        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
+        return;
+      }
+      console.warn('[export/html] failed', { projectId: req.params.id, reason });
+      sendApiError(res, 500, 'EXPORT_FAILED', reason);
+    }
+  });
+
+  app.post('/api/projects/:id/export/zip', async (req, res) => {
+    try {
+      const { fileName, title, deck } = req.body || {};
+      if (typeof fileName !== 'string' || fileName.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+      const input = await buildDesktopPdfExportInput({
+        daemonUrl: daemonUrlRef.current,
+        deck: deck === true,
+        fileName,
+        projectId: req.params.id,
+        projectsRoot: PROJECTS_DIR,
+        title: typeof title === 'string' ? title : undefined,
+      });
+      const html = await renderHeadlessHtmlSnapshot({ input });
+      const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      const zip = new JSZip();
+      zip.file('index.html', html, { date: new Date(0), binary: false });
+      const buffer = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
+      setAttachmentHeaders(res, 'application/zip', `${base}.zip`);
+      res.send(buffer);
+    } catch (err: any) {
+      const reason = String(err?.message || err);
+      if (err && err.code === 'ENOENT') {
+        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
+        return;
+      }
+      console.warn('[export/zip] failed', { projectId: req.params.id, reason });
       sendApiError(res, 500, 'EXPORT_FAILED', reason);
     }
   });

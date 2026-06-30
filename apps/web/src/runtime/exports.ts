@@ -67,20 +67,34 @@ export function exportAsHtml(html: string, title: string): void {
 }
 
 export async function exportProjectAsHtml(opts: {
+  deck?: boolean;
   projectId: string;
   filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
 }): Promise<void> {
-  const url = projectExportInlineUrl(opts.projectId, opts.filePath);
   try {
-    const resp = await fetch(url);
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
+      body: JSON.stringify({
+        deck: opts.deck === true,
+        fileName: opts.filePath,
+        title: opts.fallbackTitle,
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
     if (!resp.ok) throw new Error(`html export request failed (${resp.status})`);
     const blob = await resp.blob();
-    triggerDownload(blob, `${safeFilename(opts.fallbackTitle, 'artifact')}.html`);
+    triggerDownload(blob, attachmentFilenameFrom(resp, opts.fallbackTitle, 'html'));
   } catch (err) {
-    console.warn('[exportProjectAsHtml] falling back to source HTML export:', err);
-    exportAsHtml(opts.fallbackHtml, opts.fallbackTitle);
+    console.warn('[exportProjectAsHtml] falling back to inline/source HTML export:', err);
+    try {
+      const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
+      if (!resp.ok) throw new Error(`inline HTML export unavailable (${resp.status})`);
+      triggerDownload(await resp.blob(), `${safeFilename(opts.fallbackTitle, 'artifact')}.html`);
+    } catch {
+      exportAsHtml(opts.fallbackHtml, opts.fallbackTitle);
+    }
   }
 }
 
@@ -934,15 +948,24 @@ export function exportReactComponentAsZip(
 // opened from a local ZIP. The raw project archive stays as a fallback so the
 // action still succeeds if the rendered export endpoint is unavailable.
 export async function exportProjectAsZip(opts: {
+  deck?: boolean;
   projectId: string;
   filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
 }): Promise<void> {
   try {
-    const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
-    if (!resp.ok) throw new Error(`inline rendered ZIP export unavailable (${resp.status})`);
-    exportRenderedHtmlAsZip(await resp.text(), opts.fallbackTitle, 'index.html');
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
+      body: JSON.stringify({
+        deck: opts.deck === true,
+        fileName: opts.filePath,
+        title: opts.fallbackTitle,
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    if (!resp.ok) throw new Error(`rendered ZIP export unavailable (${resp.status})`);
+    triggerDownload(await resp.blob(), attachmentFilenameFrom(resp, opts.fallbackTitle, 'zip'));
     return;
   } catch (err) {
     console.warn('[exportProjectAsZip] falling back to project archive:', err);

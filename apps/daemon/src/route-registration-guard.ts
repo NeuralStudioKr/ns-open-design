@@ -3,6 +3,8 @@ import type { Express } from 'express';
 const guardedRouteKeys = new Set([
   'POST /api/projects/:id/export/pdf',
   'POST /api/projects/:id/export/image',
+  'POST /api/projects/:id/export/html',
+  'POST /api/projects/:id/export/zip',
   'POST /api/projects/:id/media/generate',
 ]);
 

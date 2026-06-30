@@ -55,6 +55,31 @@ describe('buildDesktopPdfExportInput', () => {
     expect(input.title).toBe('index');
     expect(input.defaultFilename).toBe('index.pdf');
   });
+
+  it('uses Vite dist/index.html when the entry is a dev module shell', async () => {
+    await mkdir(path.join(projectsRoot, projectId, 'deck', 'dist', 'assets'), { recursive: true });
+    await writeFile(
+      path.join(projectsRoot, projectId, 'deck', 'index.html'),
+      '<!doctype html><script type="module" src="/src/main.tsx"></script>',
+    );
+    await writeFile(
+      path.join(projectsRoot, projectId, 'deck', 'dist', 'index.html'),
+      '<!doctype html><link rel="stylesheet" href="/assets/app.css"><div id="root">built</div>',
+    );
+
+    const input = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/index.html',
+      projectId,
+      projectsRoot,
+      title: 'Built Deck',
+    });
+
+    expect(input.baseHref).toBe('http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/dist/');
+    expect(input.html).toContain('href="assets/app.css"');
+    expect(input.html).toContain('built');
+  });
 });
 
 describe('POST /api/projects/:id/export/pdf', () => {

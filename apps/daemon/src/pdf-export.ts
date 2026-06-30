@@ -17,14 +17,53 @@ export async function buildDesktopPdfExportInput(
   options: BuildDesktopPdfExportInputOptions,
 ): Promise<DesktopExportPdfInput> {
   const file = await readProjectFile(options.projectsRoot, options.projectId, options.fileName);
+  const source = await resolveRenderableHtmlSource({
+    html: file.buffer.toString('utf8'),
+    fileName: options.fileName,
+    projectId: options.projectId,
+    projectsRoot: options.projectsRoot,
+  });
   const title = displayTitle(options.title, options.fileName);
   return {
-    baseHref: rawBaseHref(options.daemonUrl, options.projectId, options.fileName),
+    baseHref: rawBaseHref(options.daemonUrl, options.projectId, source.fileName),
     deck: options.deck === true,
     defaultFilename: `${safeFilename(title, 'artifact')}.pdf`,
-    html: file.buffer.toString('utf8'),
+    html: source.html,
     title,
   };
+}
+
+async function resolveRenderableHtmlSource(options: {
+  fileName: string;
+  html: string;
+  projectId: string;
+  projectsRoot: string;
+}): Promise<{ fileName: string; html: string }> {
+  if (!isViteDevHtmlEntry(options.html)) {
+    return { fileName: options.fileName, html: options.html };
+  }
+  const ownerDir = path.posix.dirname(options.fileName.replace(/^\/+/, ''));
+  const distFileName = ownerDir === '.' ? 'dist/index.html' : `${ownerDir}/dist/index.html`;
+  try {
+    const dist = await readProjectFile(options.projectsRoot, options.projectId, distFileName);
+    return {
+      fileName: distFileName,
+      html: rewriteViteDistRootAssetUrls(dist.buffer.toString('utf8')),
+    };
+  } catch {
+    return { fileName: options.fileName, html: options.html };
+  }
+}
+
+function isViteDevHtmlEntry(html: string): boolean {
+  return /<script\b[^>]*\btype\s*=\s*["']module["'][^>]*\bsrc\s*=\s*["']\/src\/[^"']+["'][^>]*>\s*<\/script>/i.test(html);
+}
+
+function rewriteViteDistRootAssetUrls(html: string): string {
+  return html.replace(
+    /\b(href|src)\s*=\s*(["'])\/assets\//gi,
+    (_match, attr: string, quote: string) => `${attr}=${quote}assets/`,
+  );
 }
 
 function displayTitle(title: string | undefined, fileName: string): string {

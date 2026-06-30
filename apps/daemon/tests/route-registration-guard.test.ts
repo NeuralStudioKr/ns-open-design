@@ -14,6 +14,12 @@ describe('route registration guard', () => {
     expect(guardedRouteKey('post', '/api/projects/:id/export/image')).toBe(
       'POST /api/projects/:id/export/image',
     );
+    expect(guardedRouteKey('post', '/api/projects/:id/export/html')).toBe(
+      'POST /api/projects/:id/export/html',
+    );
+    expect(guardedRouteKey('post', '/api/projects/:id/export/zip')).toBe(
+      'POST /api/projects/:id/export/zip',
+    );
     expect(guardedRouteKey('post', '/api/projects/:id/media/generate')).toBe(
       'POST /api/projects/:id/media/generate',
     );

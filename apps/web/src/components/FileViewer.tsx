@@ -8566,6 +8566,7 @@ function HtmlViewer({
                     onClick={() => {
                       setDownloadMenuOpen(false);
                       fireShareExport('zip', () => exportProjectAsZip({
+                        deck: effectiveDeck,
                         projectId,
                         filePath: file.name,
                         fallbackHtml: source ?? '',
@@ -8607,6 +8608,7 @@ function HtmlViewer({
                     onClick={() => {
                       setDownloadMenuOpen(false);
                       fireShareExport('html', () => exportProjectAsHtml({
+                        deck: effectiveDeck,
                         projectId,
                         filePath: file.name,
                         fallbackHtml: source ?? '',

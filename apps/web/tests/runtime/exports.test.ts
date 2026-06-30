@@ -567,22 +567,58 @@ describe('exportProjectAsHtml', () => {
     vi.restoreAllMocks();
   });
 
-  it('downloads daemon-inlined project HTML instead of the raw source body', async () => {
+  it('downloads daemon-rendered project HTML instead of the raw source body', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<!doctype html><p>inlined</p>', {
-      headers: { 'content-type': 'text/html' },
+      headers: {
+        'content-disposition': 'attachment; filename="Main-Page.html"',
+        'content-type': 'text/html',
+      },
       status: 200,
     })));
 
     await exportProjectAsHtml({
+      deck: true,
       projectId: 'proj 1',
       filePath: 'screens/main page.html',
       fallbackHtml: '<script type="module" src="/src/main.tsx"></script>',
       fallbackTitle: 'Main Page',
     });
 
-    expect(fetch).toHaveBeenCalledWith('/api/projects/proj%201/export/screens/main%20page.html?inline=1');
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj%201/export/html', {
+      body: JSON.stringify({
+        deck: true,
+        fileName: 'screens/main page.html',
+        title: 'Main Page',
+      }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
     expect(capturedFilename).toBe('Main-Page.html');
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>inlined</p>');
+  });
+
+  it('falls back to daemon inline HTML when rendered HTML export fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/html') {
+        return new Response('nope', { status: 500 });
+      }
+      return new Response('<!doctype html><p>inline fallback</p>', {
+      headers: { 'content-type': 'text/html' },
+      status: 200,
+      });
+    }));
+
+    await exportProjectAsHtml({
+      projectId: 'proj-1',
+      filePath: 'index.html',
+      fallbackHtml: '<main>fallback</main>',
+      fallbackTitle: 'Fallback',
+    });
+
+    expect(capturedFilename).toBe('Fallback.html');
+    expect(await capturedBlob!.text()).toContain('inline fallback');
   });
 
   it('falls back to the source HTML export when the daemon inline endpoint fails', async () => {
@@ -637,35 +673,42 @@ describe('exportProjectAsZip', () => {
     vi.restoreAllMocks();
   });
 
-  it('packs daemon-rendered inline HTML so ZIP download matches Drive HTML publish rendering', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      '<!doctype html><html><head><style>.slide{color:red}</style></head><body><section class="slide">inlined deck</section></body></html>',
-      { headers: { 'content-type': 'text/html' }, status: 200 },
-    )));
+  it('downloads daemon-rendered ZIP so ZIP download matches the preview renderer', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['rendered zip'], { type: 'application/zip' }), {
+      headers: {
+        'content-disposition': 'attachment; filename="Seed-Deck.zip"',
+        'content-type': 'application/zip',
+      },
+      status: 200,
+    })));
 
     await exportProjectAsZip({
+      deck: true,
       projectId: 'proj-1',
       filePath: 'deck/index.html',
       fallbackHtml: '<link rel="stylesheet" href="style.css"><section>raw fallback</section>',
       fallbackTitle: 'Seed Deck',
     });
 
-    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/deck/index.html?inline=1', expect.objectContaining({
-      credentials: expect.any(String),
-    }));
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/zip', {
+      body: JSON.stringify({
+        deck: true,
+        fileName: 'deck/index.html',
+        title: 'Seed Deck',
+      }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
     expect(capturedFilename).toBe('Seed-Deck.zip');
-    const zipText = await capturedBlob!.text();
-    expect(zipText).toContain('Seed-Deck/index.html');
-    expect(zipText).toContain('inlined deck');
-    expect(zipText).toContain('.slide{color:red}');
-    expect(zipText).not.toContain('raw fallback');
+    expect(await capturedBlob!.text()).toBe('rendered zip');
   });
 
   it('falls back to the raw project archive when rendered inline HTML is unavailable', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const archiveBlob = new Blob(['raw archive'], { type: 'application/zip' });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
+      if (url === '/api/projects/proj-1/export/zip') {
         return new Response('missing', { status: 404 });
       }
       if (url === '/api/projects/proj-1/archive?root=deck') {
