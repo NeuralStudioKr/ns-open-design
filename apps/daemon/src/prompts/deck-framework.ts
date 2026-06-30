@@ -192,6 +192,7 @@ export const DECK_SKELETON_HTML = `<!doctype html>
         box-shadow: none !important;
         position: static !important;
       }
+      .slide:not(.active),
       .slide {
         display: flex !important;
         position: relative !important;

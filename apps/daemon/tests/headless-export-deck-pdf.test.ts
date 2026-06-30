@@ -13,4 +13,9 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('position: static !important');
     expect(css).toContain('page-break-after: always !important');
   });
+
+  it('exports revealAllDeckSlides for runtime flattening', async () => {
+    const mod = await import('../src/headless-export.js');
+    expect(typeof mod.revealAllDeckSlides).toBe('function');
+  });
 });

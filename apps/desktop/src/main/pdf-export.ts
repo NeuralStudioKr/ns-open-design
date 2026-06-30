@@ -33,7 +33,10 @@ const DECK_PRINT_CSS = `
     scroll-snap-type: none !important;
     transform: none !important;
   }
+  .slide:not(.active),
   .slide, [data-screen-label], section.slide, .deck-slide, .ppt-slide {
+    display: flex !important;
+    flex-direction: column !important;
     flex: none !important;
     width: 1920px !important;
     height: 1080px !important;
