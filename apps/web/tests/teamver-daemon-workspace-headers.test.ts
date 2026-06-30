@@ -103,4 +103,27 @@ describe("buildTeamverDaemonRequestHeaders", () => {
     vi.unstubAllGlobals();
     clearAllTeamverProjectS3PrefixCache();
   });
+
+  it("fetchTeamverDaemon accepts null teamverProjectId (POST /api/runs without project)", async () => {
+    designApiBase.isTeamverEmbedMode.mockReturnValue(true);
+    activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue("ws-1");
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchTeamverDaemon("/api/runs", {
+      method: "POST",
+      teamverProjectId: null,
+      body: "{}",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs",
+      expect.objectContaining({
+        credentials: "include",
+        headers: expect.objectContaining({ "X-Workspace-Id": "ws-1" }),
+      }),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty("X-Teamver-S3-Prefix");
+    vi.unstubAllGlobals();
+  });
 });

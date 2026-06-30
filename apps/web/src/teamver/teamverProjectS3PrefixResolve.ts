@@ -27,7 +27,7 @@ export async function resolveTeamverProjectS3PrefixForDaemon(
   if (!pending) {
     pending = (async () => {
       try {
-        const { fetchTeamverProject } = await import("./projectRegistry.js");
+        const { fetchTeamverProject } = await import("./projectRegistry");
         const row = await fetchTeamverProject(id);
         const prefix = row?.s3Prefix?.trim();
         if (prefix) rememberTeamverProjectS3Prefix(ws, id, prefix);

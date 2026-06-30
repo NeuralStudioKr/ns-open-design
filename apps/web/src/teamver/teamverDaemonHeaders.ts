@@ -37,7 +37,7 @@ function headersInitToRecord(headers?: HeadersInit): Record<string, string> {
 
 export type TeamverDaemonFetchInit = RequestInit & {
   /** When the URL is not `/api/projects/{uuid}/…` (BYOK proxy, `POST /api/runs`). */
-  teamverProjectId?: string;
+  teamverProjectId?: string | null;
 };
 
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
