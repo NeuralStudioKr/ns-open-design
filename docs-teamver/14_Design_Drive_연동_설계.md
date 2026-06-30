@@ -55,7 +55,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 | folder browser (scope tab / breadcrumb / drill-down) | ✅ Phase 1-2b |
 | full Drive browser (최근 파일 / asset grid) | ✅ Phase 1-2c (loop 420) |
 | Main Drive 파일 → Design import handoff | ✅ `teamverDriveAsset*` query + 사전 선택 |
-| PDF / PPTX | ❌ Phase 4+ (daemon 501) |
+| PDF / PPTX | ❌ Drive 발행은 Phase 4+ 유지. 로컬 다운로드 PDF/PNG/JPEG는 daemon headless export로 501 제거(2026-06-30) |
 
 ### 2.3 현재 한계
 
