@@ -11,6 +11,7 @@ import {
   exportAsMd,
   exportAsPdf,
   exportProjectAsHtml,
+  exportProjectImageBlob,
   exportProjectAsPdf,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
@@ -200,8 +201,63 @@ describe('exportProjectAsPdf', () => {
   });
 
   it('uses the daemon desktop PDF export API before falling back to browser print', async () => {
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
+
+      const result = await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      expect(result).toBe('desktop');
+      expect(fallback).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/pdf', {
+        body: JSON.stringify({ deck: true, fileName: 'deck/index.html', title: 'Seed Deck' }),
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+    } finally {
+      restoreHost();
+    }
+  });
+
+  it('downloads daemon-rendered PDF blobs on web staging', async () => {
     const fallback = vi.fn();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
+    let capturedBlob: Blob | undefined;
+    let capturedFilename: string | undefined;
+    vi.stubGlobal('URL', {
+      createObjectURL: (blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:pdf';
+      },
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('document', {
+      body: {
+        appendChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+      createElement: vi.fn(() => ({
+        click: vi.fn(),
+        set download(value: string) {
+          capturedFilename = value;
+        },
+        set href(_value: string) {},
+      })),
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['%PDF'], { type: 'application/pdf' }), {
+      headers: {
+        'content-disposition': 'attachment; filename="Seed-Deck.pdf"',
+        'content-type': 'application/pdf',
+      },
+      status: 200,
+    })));
 
     const result = await exportProjectAsPdf({
       deck: true,
@@ -213,48 +269,54 @@ describe('exportProjectAsPdf', () => {
 
     expect(result).toBe('desktop');
     expect(fallback).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/pdf', {
-      body: JSON.stringify({ deck: true, fileName: 'deck/index.html', title: 'Seed Deck' }),
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    });
+    expect(capturedBlob?.type).toBe('application/pdf');
+    expect(capturedFilename).toBe('Seed-Deck.pdf');
   });
 
   it('treats a canceled desktop PDF save dialog as a silent no-op', async () => {
-    const fallback = vi.fn();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, canceled: true }), { status: 200 })));
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, canceled: true }), { status: 200 })));
 
-    const result = await exportProjectAsPdf({
-      deck: true,
-      fallbackPdf: fallback,
-      filePath: 'deck/index.html',
-      projectId: 'proj-1',
-      title: 'Seed Deck',
-    });
+      const result = await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
 
-    expect(result).toBe('cancelled');
-    expect(fallback).not.toHaveBeenCalled();
+      expect(result).toBe('cancelled');
+      expect(fallback).not.toHaveBeenCalled();
+    } finally {
+      restoreHost();
+    }
   });
 
   it('falls back to browser print when the desktop PDF export API is unavailable', async () => {
-    const fallback = vi.fn();
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'unavailable' } }), { status: 501 })));
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'unavailable' } }), { status: 501 })));
 
-    const result = await exportProjectAsPdf({
-      deck: false,
-      fallbackPdf: fallback,
-      filePath: 'index.html',
-      projectId: 'proj-1',
-      title: 'Landing',
-    });
+      const result = await exportProjectAsPdf({
+        deck: false,
+        fallbackPdf: fallback,
+        filePath: 'index.html',
+        projectId: 'proj-1',
+        title: 'Landing',
+      });
 
-    expect(result).toBe('fallback');
-    expect(fallback).toHaveBeenCalledTimes(1);
+      expect(result).toBe('fallback');
+      expect(fallback).toHaveBeenCalledTimes(1);
+    } finally {
+      restoreHost();
+    }
   });
 
-  it('uses daemon-inlined HTML for the browser print fallback before raw source fallback', async () => {
+  it('uses inline browser print after daemon PDF export fails on web', async () => {
     const fallback = vi.fn();
     const open = vi.fn(() => ({
       location: { href: '' },
@@ -264,7 +326,7 @@ describe('exportProjectAsPdf', () => {
     vi.stubGlobal('window', {
       open,
       location: {
-        hostname: 'localhost',
+        hostname: 'stg-design.teamver.com',
         origin: 'https://stg-design.teamver.com',
         href: 'https://stg-design.teamver.com/',
       },
@@ -278,9 +340,6 @@ describe('exportProjectAsPdf', () => {
       revokeObjectURL: vi.fn(),
     });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url === '/api/projects/proj-1/export/pdf') {
-        return new Response(JSON.stringify({ error: { message: 'unavailable' } }), { status: 501 });
-      }
       if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
         return new Response('<main class="slide">inlined deck</main>', { status: 200 });
       }
@@ -296,10 +355,89 @@ describe('exportProjectAsPdf', () => {
     });
 
     expect(result).toBe('fallback');
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/pdf', expect.objectContaining({
+      method: 'POST',
+    }));
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/deck/index.html?inline=1', expect.objectContaining({
       credentials: 'include',
     }));
     expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('uses host print after desktop PDF API fails on desktop', async () => {
+    const printSpy = vi.fn(async () => ({ ok: true }));
+    const restoreHost = installMockOpenDesignHost({ host: { pdf: { print: printSpy } } });
+    try {
+      const fallback = vi.fn();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        if (url === '/api/projects/proj-1/export/pdf') {
+          return new Response(JSON.stringify({ error: { message: 'unavailable' } }), { status: 501 });
+        }
+        if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
+          return new Response('<main class="slide">inlined deck</main>', { status: 200 });
+        }
+        return new Response('missing', { status: 404 });
+      }));
+
+      const result = await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      expect(result).toBe('fallback');
+      expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/deck/index.html?inline=1', expect.objectContaining({
+        credentials: 'same-origin',
+      }));
+      expect(printSpy).toHaveBeenCalledOnce();
+      expect(fallback).not.toHaveBeenCalled();
+    } finally {
+      restoreHost();
+    }
+  });
+});
+
+describe('exportProjectImageBlob', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('returns daemon-rendered image blobs with attachment filenames', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['png'], { type: 'image/png' }), {
+      headers: {
+        'content-disposition': 'attachment; filename="Seed-Deck.png"',
+        'content-type': 'image/png',
+      },
+      status: 200,
+    })));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'png',
+      projectId: 'proj-1',
+      slideIndex: 2,
+      title: 'Seed Deck',
+    });
+
+    expect(result?.filename).toBe('Seed-Deck.png');
+    expect(result?.blob.type).toBe('image/png');
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/image', {
+      body: JSON.stringify({
+        deck: true,
+        fileName: 'deck/index.html',
+        format: 'png',
+        slideIndex: 2,
+        title: 'Seed Deck',
+      }),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
   });
 });
 

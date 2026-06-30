@@ -190,6 +190,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | Drive import 모달 browse 502 | design-api `teamver_drive_unreachable` | `curl -sf https://stg-design-api.teamver.com/api/healthz/deps` → `checks.main_be` |
 | `/api/v1/auth/session` 502 | bootstrap Main BE down | design-api 로그 `[drive_proxy]` 또는 bootstrap 502 |
 | embed `/api/runs` 500 | nginx `auth_request` session-check 실패 (Main BE) | design-api/daemon 로그 없음 — Main BE·nginx 먼저 |
+| embed `GET /api/runs` → **302** `stg.teamver.com/auth/signin` (BFF session 은 200) | FE plain `fetch` 가 세션 쿠키 미전달 → nginx `auth_request` 실패. BFF `/teamver-bff/auth/session` 은 auth_request **없음** | **FE fix** `36f51072a`: `fetchTeamverDaemon` embed `credentials: include` + `/api/runs` 경로 통일. **배포 후:** Network `GET /api/runs` → 200 `{"runs":[]}`. [00 §2026-06-30 runs 302](./00_구현_내역_누적.md) |
 | D-B1 E2E fail 502 | 동일 | EC2: `bash deploy/teamver/scripts/check_sidecar_deps.sh --staging` |
 
 **복구 순서:** Main BE health → `check_main_be_design_wiring.sh --staging --live` → design-api redeploy 불필요 시 nginx만 재적용.

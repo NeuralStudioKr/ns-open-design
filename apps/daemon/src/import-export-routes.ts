@@ -12,9 +12,23 @@ import { sandboxImportedProjectRootUnavailableReason } from './sandbox-mode.js';
 import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
+import {
+  renderHeadlessImage,
+  renderHeadlessPdf,
+  type HeadlessImageFormat,
+} from './headless-export.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
+
+function setAttachmentHeaders(res: { setHeader(name: string, value: string): void }, contentType: string, filename: string): void {
+  const safeName = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '_') || 'artifact';
+  res.setHeader('Content-Type', contentType);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+  );
 }
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
@@ -532,14 +546,6 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
   });
 
   app.post('/api/projects/:id/export/pdf', async (req, res) => {
-    if (typeof desktopPdfExporter !== 'function') {
-      return sendApiError(
-        res,
-        501,
-        'UPSTREAM_UNAVAILABLE',
-        'desktop PDF export is only available in the desktop runtime',
-      );
-    }
     try {
       const { fileName, title, deck } = req.body || {};
       if (typeof fileName !== 'string' || fileName.length === 0) {
@@ -553,8 +559,51 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
       });
-      const result = await desktopPdfExporter(input);
-      res.json(result);
+      if (typeof desktopPdfExporter === 'function') {
+        const result = await desktopPdfExporter(input);
+        res.json(result);
+        return;
+      }
+      const pdf = await renderHeadlessPdf({ input });
+      setAttachmentHeaders(res, 'application/pdf', input.defaultFilename);
+      res.send(pdf);
+    } catch (err: any) {
+      const status = err && err.code === 'ENOENT' ? 404 : 400;
+      sendApiError(
+        res,
+        status,
+        status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
+        String(err?.message || err),
+      );
+    }
+  });
+
+  app.post('/api/projects/:id/export/image', async (req, res) => {
+    try {
+      const { fileName, title, deck, format, slideIndex } = req.body || {};
+      if (typeof fileName !== 'string' || fileName.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+      const imageFormat: HeadlessImageFormat =
+        format === 'jpeg' || format === 'jpg' ? 'jpeg' : 'png';
+      const input = await buildDesktopPdfExportInput({
+        daemonUrl: daemonUrlRef.current,
+        deck: deck === true,
+        fileName,
+        projectId: req.params.id,
+        projectsRoot: PROJECTS_DIR,
+        title: typeof title === 'string' ? title : undefined,
+      });
+      const imageOptions = {
+        input,
+        imageFormat,
+        ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
+      };
+      const image = await renderHeadlessImage(imageOptions);
+      const extension = imageFormat === 'jpeg' ? 'jpg' : 'png';
+      const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      setAttachmentHeaders(res, imageFormat === 'jpeg' ? 'image/jpeg' : 'image/png', `${base}.${extension}`);
+      res.send(image);
     } catch (err: any) {
       const status = err && err.code === 'ENOENT' ? 404 : 400;
       sendApiError(

@@ -137,6 +137,18 @@ shouldFetchAppVersionAboutPanel()      // About 중복 version skip
 스트리밍 중 daemon `PUT …/messages/:id` 빈도 — `VITE_MESSAGE_PERSIST_THROTTLE_MS=5000` (embed 기본).  
 → [27 메시지 Persist PUT](./27_메시지_Persist_PUT_아키텍처.md)
 
+### 3.7 daemon poll 인증 — `credentials: include` (2026-06-30)
+
+**배경:** boot·idle poll 의 `GET /api/runs` 가 sporadic **302 → Main signin** 으로 떨어지던 케이스. BFF `auth/session` 은 200 인데 daemon poll 만 실패할 수 있음 (nginx `auth_request` 경로 차이).
+
+| 변경 | 파일 | 내용 |
+|------|------|------|
+| embed cookie SSO | `teamverDaemonHeaders.ts` | `fetchTeamverDaemon` — embed 시 `credentials: "include"` |
+| `/api/runs` 통일 | `providers/daemon.ts` | list/status/events/cancel/feedback/POST → `fetchTeamverDaemon` only |
+
+**상태:** 코드 `36f51072a` ✅ · **staging web 재배포·Network 검증 ☐**  
+**SSOT:** [28 §5b](./28_embed_숨김_UI_API_점검.md#5b-daemon-api-인증--fetchteamverdaemon) · [00 §runs 302](./00_구현_내역_누적.md)
+
 ---
 
 ## 4. Before / After (embed `/` only)
@@ -227,6 +239,7 @@ apps/web/src/components/useGithubStars.ts
 apps/web/src/components/EntrySettingsMenu.tsx
 apps/web/src/components/FileViewer.tsx
 apps/web/src/providers/daemon.ts
+apps/web/src/teamver/teamverDaemonHeaders.ts
 apps/web/src/state/projects.ts
 apps/web/src/state/messagePersistSchedule.ts
 apps/web/src/teamver/designBffClient.ts
@@ -245,4 +258,5 @@ deploy/teamver/.env.production.example
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-30 | §3.7 `fetchTeamverDaemon` credentials · `/api/runs` 302 fix (배포 검증 대기) |
 | 2026-06-29 | 초版 — hidden unmount, embedDaemonFetchPolicy, dedup, daemon access/SPA cache |

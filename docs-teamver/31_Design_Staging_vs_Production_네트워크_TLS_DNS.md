@@ -344,6 +344,24 @@ curl -sS -o /dev/null -w "%{http_code}\n" \
 
 **즉시 (브라우저):** 하드 리프레시(Cmd+Shift+R) 또는 시크릿 창에서 `teamver.com` 로그인 후 `design.teamver.com` 재접속.
 
+### 8.3 embed `GET /api/runs` → 302 signin (BFF session 은 200)
+
+**증상:** DevTools 에서 `GET …/api/runs` 만 **302** → `stg.teamver.com/auth/signin`. `GET /teamver-bff/auth/session` 은 **200**.
+
+**원인:** `location /api/` 는 `auth_request` 적용. BFF 경로는 미적용. FE 가 plain `fetch` 로 poll 하면 **세션 쿠키 미전달** 가능.
+
+**해결 (FE, `36f51072a`):** `fetchTeamverDaemon` embed `credentials: include` · `daemon.ts` `/api/runs` 전 경로 통일.
+
+**검증 (배포 후):**
+
+```bash
+# 로그인 쿠키 jar 있을 때 200 + JSON (302 아님)
+curl -sS -b cookies.txt -o /dev/null -w "%{http_code}\n" \
+  https://stg-design.teamver.com/api/runs
+```
+
+**후속 (선택):** nginx `/api/*` 실패 시 401 JSON — [28 §5b](./28_embed_숨김_UI_API_점검.md#5b-daemon-api-인증--fetchteamverdaemon).
+
 ---
 
 ## 9. 검증 명령 (복붙)
@@ -403,5 +421,6 @@ A. Host header로 nginx가 :7456 vs :16000 분기. ALB 2개 필요 없음. ACM S
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-30 | §8.2 public-static inc · §8.3 embed GET `/api/runs` 302 triage |
 | 2026-06-30 | §8.1 — prod `GET /` 500 (auth_request SNI·GCP api.teamver.com) |
 | 2026-06-29 | 초版 — staging/prod 네트워크·TLS·DNS·역할 분담 SSOT (NXDOMAIN 사례 반영) |

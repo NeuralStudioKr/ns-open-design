@@ -75,6 +75,24 @@ embed는 `lockExecutionConfig` → `mode=api`, `agentId=null`. 아래는 **CLI/A
 
 ---
 
+## 5b. daemon API 인증 — `fetchTeamverDaemon`
+
+embed 에서 daemon `/api/*` 는 nginx **`auth_request` → Main BE session-check** 를 탄다. BFF (`/teamver-bff/*`) 와 달리 실패 시 **302 signin** 이 될 수 있다.
+
+| 경로 | nginx auth | FE wrapper | credentials (embed) |
+|------|------------|------------|---------------------|
+| `/teamver-bff/auth/session` | ❌ | `designBffClient` | `include` |
+| `/api/runs` (poll·events·cancel) | ✅ | `fetchTeamverDaemon` | **`include`** (`36f51072a`) |
+| `/api/projects/*` 등 | ✅ | `fetchTeamverDaemon` | `include` + `X-Workspace-Id` |
+
+**코드 SSOT:** `apps/web/src/teamver/teamverDaemonHeaders.ts` · `apps/web/src/providers/daemon.ts`
+
+**배포·검증 대기:** staging web 재배포 후 Network 에서 `GET /api/runs` 가 signin 302 없이 **200** 인지 확인. [00 §2026-06-30 runs 302](./00_구현_내역_누적.md)
+
+**2순위 (미구현):** nginx `/api/*` 도 BFF 처럼 401 JSON — background poll 이 HTML redirect 를 받지 않도록.
+
+---
+
 ## 6. embed에서 **유지**하는 daemon API (대표)
 
 | API | 이유 |
@@ -86,10 +104,15 @@ embed는 `lockExecutionConfig` → `mode=api`, `agentId=null`. 아래는 **CLI/A
 | `GET /api/plugins` | deck 플러그인 칩 (marketplaces 아님) |
 | runtime-config BFF | managed BYOK |
 | `GET /api/version` | analytics 버전 태그 (경량) |
+| `GET /api/runs` | background poll (BYOK 에서 보통 `[]`) — **cookie SSO** (`fetchTeamverDaemon`) |
 
 ---
 
 ## 7. 체크리스트 (staging Network — `/` only)
+
+embed 로그인 후 **정상 (있어야 함):**
+
+- [ ] `GET /api/runs` → **200** `{"runs":[]}` (302 signin 없음 — web `36f51072a` 배포 후)
 
 embed 로그인 후 **없어야 함**:
 
@@ -112,5 +135,6 @@ embed 로그인 후 **없어야 함**:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-30 | §5b `fetchTeamverDaemon` embed credentials · `/api/runs` 302 triage · 배포 검증 대기 |
 | 2026-06-29 | Hidden tab unmount + boot policy 확장 + runs coalesce |
 | 2026-06-29 | `embedDaemonFetchPolicy` · Discord/GitHub/social-share · agents/AMR/media/prompt-templates boot gate |

@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectFile } from '../../src/types';
 
 const {
   captureHostIframeSnapshotMock,
   downloadImageDataUrlMock,
+  exportProjectImageBlobMock,
   imageDataUrlToBlobMock,
   prepareImageExportTargetMock,
   requestPreviewSnapshotMock,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   captureHostIframeSnapshotMock: vi.fn(),
   downloadImageDataUrlMock: vi.fn(),
+  exportProjectImageBlobMock: vi.fn(),
   imageDataUrlToBlobMock: vi.fn(),
   prepareImageExportTargetMock: vi.fn(),
   requestPreviewSnapshotMock: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('../../src/runtime/exports', async () => {
     ...actual,
     captureHostIframeSnapshot: captureHostIframeSnapshotMock,
     downloadImageDataUrl: downloadImageDataUrlMock,
+    exportProjectImageBlob: exportProjectImageBlobMock,
     imageDataUrlToBlob: imageDataUrlToBlobMock,
     prepareImageExportTarget: prepareImageExportTargetMock,
     requestPreviewSnapshot: requestPreviewSnapshotMock,
@@ -89,8 +92,16 @@ async function waitForSaveButton() {
 }
 
 describe('FileViewer image export', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ url: '/api/projects/project-1/preview/workspace.html' }),
+      { status: 200 },
+    )));
+  });
+
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.resetAllMocks();
   });
 

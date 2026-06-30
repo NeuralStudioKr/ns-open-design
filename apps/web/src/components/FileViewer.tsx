@@ -33,6 +33,10 @@ import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublis
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import {
+  projectScopedPreviewUrl,
+  resolveTeamverProjectPreviewPrefix,
+} from '../teamver/teamverProjectPreviewScope';
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
@@ -74,6 +78,7 @@ import {
   exportAsJsx,
   exportAsMd,
   exportAsPdf,
+  exportProjectImageBlob,
   exportProjectAsHtml,
   exportProjectAsPdf,
   exportProjectAsZip,
@@ -5293,9 +5298,27 @@ function HtmlViewer({
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
   }) && !manualEditRequiresSrcDoc;
+  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void resolveTeamverProjectPreviewPrefix(projectId, file.name).then((prefix) => {
+      if (!cancelled) setEmbedPreviewPrefix(prefix);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, file.name]);
+  const projectPreviewAssetUrl = useCallback(
+    (filePath: string) => (
+      embedPreviewPrefix
+        ? projectScopedPreviewUrl(embedPreviewPrefix, filePath)
+        : projectRawUrl(projectId, filePath)
+    ),
+    [embedPreviewPrefix, projectId],
+  );
   const basePreviewSrcUrl = useMemo(
-    () => `${projectRawUrl(projectId, file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}&odPreviewBridge=scroll&odPreviewBridge=selection&odPreviewBridge=snapshot`,
-    [projectId, file.name, file.mtime, reloadKey],
+    () => `${projectPreviewAssetUrl(file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}&odPreviewBridge=scroll&odPreviewBridge=selection&odPreviewBridge=snapshot`,
+    [projectPreviewAssetUrl, file.name, file.mtime, reloadKey],
   );
   const [previewSrcUrl, setPreviewSrcUrl] = useState(basePreviewSrcUrl);
   const activePreviewSrcUrl = (
@@ -5341,7 +5364,7 @@ function HtmlViewer({
   const srcDoc = useMemo(
     () => (previewSource ? buildSrcdoc(previewSource, {
       deck: effectiveDeck,
-      baseHref: projectRawUrl(projectId, baseDirFor(file.name)),
+      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
       selectionBridge: true,
       editBridge: manualEditRequiresSrcDoc,
@@ -6665,7 +6688,7 @@ function HtmlViewer({
     if (!source) return;
     openSandboxedPreviewInNewTab(source, exportTitle, {
       deck: effectiveDeck,
-      baseHref: projectRawUrl(projectId, baseDirFor(file.name)),
+      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
     });
   }
@@ -7450,6 +7473,22 @@ function HtmlViewer({
     setImageExportError(null);
     setImageExportPreparedBlob(null);
     try {
+      if (format !== 'webp') {
+        const serverImage = await exportProjectImageBlob({
+          deck: effectiveDeck,
+          filePath: file.name,
+          format,
+          projectId,
+          slideIndex: effectiveDeck ? slideState?.active : undefined,
+          title: exportTitle,
+        });
+        if (serverImage?.blob && serverImage.blob.size > 0) {
+          if (imageExportPrepareIdRef.current === prepareId) {
+            setImageExportPreparedBlob({ format, blob: serverImage.blob });
+          }
+          return;
+        }
+      }
       let dataUrl = imageExportSnapshotDataUrlRef.current;
       if (!dataUrl) {
         const snap = await captureExportImageSnapshot();
@@ -7472,7 +7511,7 @@ function HtmlViewer({
         setImageExportPreparing(false);
       }
     }
-  }, [captureExportImageSnapshot, t]);
+  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, projectId, slideState?.active, t]);
 
   const openImageExportModal = async () => {
     flushSync(() => {

@@ -750,22 +750,68 @@ export async function exportProjectAsPdf(opts: {
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    if (!resp.ok) throw new Error(`desktop PDF export unavailable (${resp.status})`);
+    if (!resp.ok) throw new Error(`daemon PDF export unavailable (${resp.status})`);
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/pdf')) {
+      const blob = await resp.blob();
+      if (blob.size <= 0) throw new Error('daemon PDF export returned an empty file');
+      triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pdf'));
+      return 'desktop';
+    }
     const body = await resp.json().catch(() => ({}));
     if (body?.canceled === true) return 'cancelled';
-    if (body && body.ok === false) throw new Error(body.error || 'desktop PDF export failed');
+    if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
     return 'desktop';
   } catch (err) {
     console.warn('[exportProjectAsPdf] falling back to browser print:', err);
-    try {
-      const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
-      if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
-      await exportAsPdf(await resp.text(), opts.title, { deck: opts.deck });
-    } catch (fallbackErr) {
-      console.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
-      opts.fallbackPdf();
+  }
+
+  try {
+    const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
+    if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
+    await exportAsPdf(await resp.text(), opts.title, { deck: opts.deck });
+  } catch (fallbackErr) {
+    console.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
+    opts.fallbackPdf();
+  }
+  return 'fallback';
+}
+
+export async function exportProjectImageBlob(opts: {
+  deck: boolean;
+  filePath: string;
+  format: ImageExportFormat;
+  projectId: string;
+  slideIndex?: number;
+  title: string;
+}): Promise<{ blob: Blob; filename: string } | null> {
+  const format = opts.format === 'jpeg' ? 'jpeg' : 'png';
+  try {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/image`, {
+      body: JSON.stringify({
+        deck: opts.deck,
+        fileName: opts.filePath,
+        format,
+        slideIndex: Number.isFinite(opts.slideIndex) ? opts.slideIndex : undefined,
+        title: opts.title,
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    if (!resp.ok) throw new Error(`daemon image export unavailable (${resp.status})`);
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.startsWith('image/')) {
+      throw new Error(`daemon image export returned ${contentType || 'unknown content-type'}`);
     }
-    return 'fallback';
+    const blob = await resp.blob();
+    if (blob.size <= 0) throw new Error('daemon image export returned an empty file');
+    return {
+      blob,
+      filename: attachmentFilenameFrom(resp, opts.title, format === 'jpeg' ? 'jpg' : 'png'),
+    };
+  } catch (err) {
+    console.warn('[exportProjectImageBlob] falling back to preview snapshot:', err);
+    return null;
   }
 }
 
@@ -874,6 +920,21 @@ export function archiveFilenameFrom(resp: Response, fallbackTitle: string, root:
   if (plain && plain[1]) return plain[1];
   const slug = safeFilename(root || fallbackTitle, 'project');
   return `${slug}.zip`;
+}
+
+function attachmentFilenameFrom(resp: Response, fallbackTitle: string, extension: string): string {
+  const header = resp.headers.get('content-disposition') || '';
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star && star[1]) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      // fall through to the legacy filename= or local fallback
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header);
+  if (plain && plain[1]) return plain[1];
+  return `${safeFilename(fallbackTitle, 'artifact')}.${extension}`;
 }
 
 function escapeHtmlAttribute(value: string): string {
