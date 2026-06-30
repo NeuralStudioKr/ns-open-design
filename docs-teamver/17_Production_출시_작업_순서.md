@@ -1,7 +1,7 @@
 # Design Production 출시 — 작업 순서 SSOT
 
 **목적:** Production 공개 오픈까지 **해야 할 일을 순서대로** 고정한다.  
-**선행 문서:** [09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [DEPLOY-AWS.md](../deploy/teamver/docs/DEPLOY-AWS.md) · [GCP_DNS_AND_ACM.md](../../../ns-teamver-devops/terraform/services/teamver-design/docs/GCP_DNS_AND_ACM.md)
+**선행 문서:** [31 Staging vs Production 네트워크·TLS·DNS](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md) · [09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md) · [07 VM 배포·인프라](./07_VM_배포_인프라.md) · [DEPLOY-AWS.md](../deploy/teamver/docs/DEPLOY-AWS.md) · [GCP_DNS_AND_ACM.md](../../../ns-teamver-devops/terraform/services/teamver-design/docs/GCP_DNS_AND_ACM.md)
 
 **범례:** `[ ]` 미완 · `[x]` 완료(증적 있음) · `[~]` 부분 · **담당** = 작업 위치
 

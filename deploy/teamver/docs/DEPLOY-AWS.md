@@ -4,6 +4,7 @@
 TLS는 **AWS ALB (ACM)**, EC2는 **HTTP :80** 백엔드만 (Page/Mail 패턴).
 
 **Design 인프라 SSOT:** [docs-teamver/07_VM_배포_인프라.md](../../../docs-teamver/07_VM_배포_인프라.md)  
+**Staging vs Production (왜 다르게 구현했는지 — 네트워크·TLS·DNS·로드밸런싱):** [docs-teamver/31_Design_Staging_vs_Production_네트워크_TLS_DNS.md](../../../docs-teamver/31_Design_Staging_vs_Production_네트워크_TLS_DNS.md)  
 **Terraform:** `ns-teamver-devops/terraform/services/teamver-design/` — prod apply 후 이 문서 진행.  
 **GCP DNS + ACM (수동, apply 전 필수):** [`GCP_DNS_AND_ACM.md`](../../../../ns-teamver-devops/terraform/services/teamver-design/docs/GCP_DNS_AND_ACM.md)
 
