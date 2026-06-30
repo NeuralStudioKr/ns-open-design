@@ -17,6 +17,9 @@ cd "$DEPLOY_ROOT"
 # shellcheck source=scripts/lib/design_compose.sh
 source "$SCRIPT_DIR/lib/design_compose.sh"
 
+# shellcheck source=lib/od_data_host_perms.sh
+source "$SCRIPT_DIR/lib/od_data_host_perms.sh"
+
 ENV_FILE=""
 DRY_RUN=true
 APPLY=false
@@ -102,7 +105,7 @@ copy_legacy_volume() {
   fi
 
   run sudo rsync -a "$src/" "${OD_DATA_HOST_PATH}/"
-  run sudo chown -R ubuntu:ubuntu "$OD_DATA_HOST_PATH"
+  run sudo OD_DATA_HOST_PATH="$OD_DATA_HOST_PATH" bash "$SCRIPT_DIR/fix_od_data_permissions.sh"
   echo "✓ migrated legacy volume → $OD_DATA_HOST_PATH"
 }
 

@@ -11,6 +11,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/od_data_host_perms.sh
+source "$SCRIPT_DIR/lib/od_data_host_perms.sh"
 DEPLOY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 OD_DATA_HOST_PATH="${OD_DATA_HOST_PATH:-/opt/teamver-design/od-data}"
@@ -24,7 +27,7 @@ usage() {
 Usage: $0 [--dry-run | --apply | --boot]
 
   --dry-run   Print device, fstab, mount plan (default)
-  --apply     mkfs (if needed), fstab, mount, chown ubuntu
+  --apply     mkfs (if needed), fstab, mount, chown container uid 1001
   --boot      Idempotent mount for systemd (no mkfs unless OD_DATA_BOOT_FORMAT=1)
 
 Env:
@@ -121,7 +124,7 @@ ensure_mount() {
   fi
 
   if [[ "$DRY_RUN" != true ]]; then
-    chown ubuntu:ubuntu "$OD_DATA_HOST_PATH"
+    fix_od_data_host_permissions "$OD_DATA_HOST_PATH"
     df -h "$OD_DATA_HOST_PATH"
   fi
 }
