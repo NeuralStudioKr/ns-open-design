@@ -319,6 +319,7 @@ describe('exportProjectAsPdf', () => {
 
   it('uses inline browser print after daemon PDF export fails on web', async () => {
     const fallback = vi.fn();
+    let capturedBlob: Blob | undefined;
     const open = vi.fn(() => ({
       location: { href: '' },
       opener: null,
@@ -337,7 +338,10 @@ describe('exportProjectAsPdf', () => {
       baseURI: 'https://stg-design.teamver.com/',
     });
     vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:pdf'),
+      createObjectURL: vi.fn((blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:pdf';
+      }),
       revokeObjectURL: vi.fn(),
     });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -363,6 +367,11 @@ describe('exportProjectAsPdf', () => {
       credentials: 'include',
     }));
     expect(open).toHaveBeenCalledOnce();
+    expect(capturedBlob).toBeDefined();
+    const printedDoc = await capturedBlob!.text();
+    expect(printedDoc).not.toContain('sandbox="allow-scripts allow-modals"');
+    expect(printedDoc).toContain('data-deck-print="injected"');
+    expect(printedDoc).toContain('<main class="slide">inlined deck</main>');
   });
 
   it('uses host print after desktop PDF API fails on desktop', async () => {
@@ -898,17 +907,17 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).not.toContain('<script>window.parent.document.body.innerHTML="owned"</script>');
   });
 
-  it('preserves deck print handling inside sandboxed PDF exports', async () => {
+  it('prints deck PDF fallbacks as a top-level document so slide CSS controls the page', async () => {
     await exportAsPdf('<section class="slide">One</section>', 'Deck PDF', { deck: true });
 
     expect(openCalls).toEqual([['', '_blank']]);
-    expect(mockWin.opener).toBeNull();
     expect(mockWin.location.href).toBe('blob:test');
     expect(capturedBlob).toBeDefined();
-    const wrapper = await capturedBlob!.text();
-    expect(wrapper).toContain('sandbox="allow-scripts allow-modals"');
-    expect(wrapper).toContain('data-deck-print=&quot;injected&quot;');
-    expect(wrapper).toContain('page-break-after: always !important');
+    const doc = await capturedBlob!.text();
+    expect(doc).not.toContain('sandbox="allow-scripts allow-modals"');
+    expect(doc).not.toContain('<iframe');
+    expect(doc).toContain('data-deck-print="injected"');
+    expect(doc).toContain('page-break-after: always !important');
   });
 
   it('allows explicit trusted PDF opt-out without changing the secure default', async () => {

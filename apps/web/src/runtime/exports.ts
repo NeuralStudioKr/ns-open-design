@@ -787,7 +787,15 @@ export async function exportProjectAsPdf(opts: {
   try {
     const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
     if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
-    await exportAsPdf(await resp.text(), opts.title, { deck: opts.deck });
+    await exportAsPdf(await resp.text(), opts.title, {
+      deck: opts.deck,
+      // Browser print measures the top-level document, not the sandboxed
+      // iframe content. Printing deck exports through the wrapper produces
+      // scrollbars, browser headers, and often a blank second page. The daemon
+      // rendered PDF remains the normal path; this trusted fallback is only
+      // used after that route fails.
+      sandboxedPreview: !opts.deck,
+    });
   } catch (fallbackErr) {
     console.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
     opts.fallbackPdf();
@@ -1162,7 +1170,8 @@ export async function exportAsPdf(
   // Browser fallback: wrap with allow-modals so the injected script can
   // call window.print(), then inject the self-printing script and open a
   // popup.
-  if (sandboxedPreview) {
+  const browserSandboxedPreview = sandboxedPreview && !opts?.deck;
+  if (browserSandboxedPreview) {
     doc = buildSandboxedPreviewDocument(doc, title, { allowModals: true });
     doc = injectParentPrintReadyCache(doc, nonce);
   }
