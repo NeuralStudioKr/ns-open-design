@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_FORMATS = {"html", "zip"}
 _FILENAME_UNSAFE_RE = re.compile(r"[^\w.\- ]+")
+_MAX_PUBLISH_FILENAME_CHARS = 80
 _CLIENT_ERROR_CODES = frozenset(
     {
         "artifact_file_required",
@@ -77,7 +78,32 @@ class PublishResult:
 def _safe_filename(title: str | None, *, suffix: str) -> str:
     base = (title or "design").strip() or "design"
     cleaned = _FILENAME_UNSAFE_RE.sub("_", base).strip("._ ") or "design"
-    return f"{cleaned}{suffix}"
+    max_base_len = max(1, _MAX_PUBLISH_FILENAME_CHARS - len(suffix))
+    return f"{cleaned[:max_base_len].rstrip('._ ')}{suffix}"
+
+
+def _basename_without_extension(path: str | None) -> str:
+    cleaned = (path or "").strip().replace("\\", "/")
+    if not cleaned:
+        return ""
+    name = cleaned.rsplit("/", 1)[-1].strip()
+    if "." in name:
+        name = name.rsplit(".", 1)[0]
+    return name.strip()
+
+
+def _publish_filename(
+    project: DesignProject,
+    *,
+    artifact_file: str | None,
+    manifest_entry: str | None,
+    suffix: str,
+) -> str:
+    title = (project.title or "").strip()
+    if title and title.lower() != "design":
+        return _safe_filename(title, suffix=suffix)
+    source_name = _basename_without_extension(artifact_file) or _basename_without_extension(manifest_entry)
+    return _safe_filename(source_name or title or project.od_project_id, suffix=suffix)
 
 
 def _entry_file_from_manifest(manifest: dict) -> str | None:
@@ -229,7 +255,12 @@ async def publish_project(
                     identity=daemon_identity,
                 )
                 mime_type = "text/html"
-                filename = _safe_filename(project.title, suffix=".html")
+                filename = _publish_filename(
+                    project,
+                    artifact_file=artifact_file or path,
+                    manifest_entry=manifest_entry,
+                    suffix=".html",
+                )
                 source_path = path
                 entry_file = manifest_entry
                 artifact = artifact_file or path
@@ -239,7 +270,12 @@ async def publish_project(
                     identity=daemon_identity,
                 )
                 mime_type = "application/zip"
-                filename = _safe_filename(project.title, suffix=".zip")
+                filename = _publish_filename(
+                    project,
+                    artifact_file=artifact_file,
+                    manifest_entry=manifest_entry,
+                    suffix=".zip",
+                )
                 source_path = None
                 entry_file = manifest_entry
                 artifact = artifact_file

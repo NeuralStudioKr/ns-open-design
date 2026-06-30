@@ -51,6 +51,15 @@ function triggerDownload(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+function projectExportInlineUrl(projectId: string, filePath: string): string {
+  const segments = filePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `/api/projects/${encodeURIComponent(projectId)}/export/${segments}?inline=1`;
+}
+
 export function exportAsHtml(html: string, title: string): void {
   const doc = buildSrcdoc(html);
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
@@ -63,12 +72,7 @@ export async function exportProjectAsHtml(opts: {
   fallbackHtml: string;
   fallbackTitle: string;
 }): Promise<void> {
-  const segments = opts.filePath
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  const url = `/api/projects/${encodeURIComponent(opts.projectId)}/export/${segments}?inline=1`;
+  const url = projectExportInlineUrl(opts.projectId, opts.filePath);
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`html export request failed (${resp.status})`);
@@ -603,9 +607,8 @@ function downloadImageExportTarget(filename: string): ImageExportTarget {
 }
 
 export function downloadImageDataUrl(dataUrl: string, filename: string): void {
-  // Validate the snapshot without converting the actual download path to a blob URL.
-  dataUrlToBlob(dataUrl);
-  triggerHrefDownload(dataUrl, filename);
+  const blob = dataUrlToBlob(dataUrl);
+  triggerDownload(blob, filename);
 }
 
 function isDomExceptionNamed(err: unknown, names: ReadonlySet<string>): boolean {
@@ -754,7 +757,14 @@ export async function exportProjectAsPdf(opts: {
     return 'desktop';
   } catch (err) {
     console.warn('[exportProjectAsPdf] falling back to browser print:', err);
-    opts.fallbackPdf();
+    try {
+      const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
+      if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
+      await exportAsPdf(await resp.text(), opts.title, { deck: opts.deck });
+    } catch (fallbackErr) {
+      console.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
+      opts.fallbackPdf();
+    }
     return 'fallback';
   }
 }

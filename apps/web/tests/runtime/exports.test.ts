@@ -215,6 +215,7 @@ describe('exportProjectAsPdf', () => {
     expect(fallback).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/pdf', {
       body: JSON.stringify({ deck: true, fileName: 'deck/index.html', title: 'Seed Deck' }),
+      credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
@@ -251,6 +252,54 @@ describe('exportProjectAsPdf', () => {
 
     expect(result).toBe('fallback');
     expect(fallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses daemon-inlined HTML for the browser print fallback before raw source fallback', async () => {
+    const fallback = vi.fn();
+    const open = vi.fn(() => ({
+      location: { href: '' },
+      opener: null,
+    }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'localhost',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', {
+      baseURI: 'https://stg-design.teamver.com/',
+    });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:pdf'),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/pdf') {
+        return new Response(JSON.stringify({ error: { message: 'unavailable' } }), { status: 501 });
+      }
+      if (url === '/api/projects/proj-1/export/deck/index.html?inline=1') {
+        return new Response('<main class="slide">inlined deck</main>', { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    }));
+
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+
+    expect(result).toBe('fallback');
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/deck/index.html?inline=1', expect.objectContaining({
+      credentials: 'include',
+    }));
+    expect(open).toHaveBeenCalledOnce();
   });
 });
 
@@ -863,14 +912,14 @@ describe('exportAsImage', () => {
     expect(anchors).toHaveLength(0);
   });
 
-  it('downloads a validated image data URL without creating a blob URL', () => {
+  it('downloads a validated image data URL through a blob URL', () => {
     const dataUrl = 'data:image/png;base64,AA==';
 
     downloadImageDataUrl(dataUrl, 'workspace.png');
 
     expect(clickMock).toHaveBeenCalledOnce();
-    expect(createObjectURLMock).not.toHaveBeenCalled();
-    expect(anchors[0]!.href).toBe(dataUrl);
+    expect(createObjectURLMock).toHaveBeenCalledOnce();
+    expect(anchors[0]!.href).toBe('blob:mock-url');
     expect(anchors[0]!.download).toBe('workspace.png');
   });
 

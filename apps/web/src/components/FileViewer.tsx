@@ -7387,11 +7387,21 @@ function HtmlViewer({
     }
     if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
       await waitForIframeLoadOrTimeout(srcDocIframe);
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
     }
     const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
     try {
       await waitForAnimationFrame();
-      return requestPreviewSnapshotWithRetry(srcDocIframe);
+      const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe);
+      if (srcDocSnapshot) return srcDocSnapshot;
+      if (useUrlLoadPreview && activateSrcDocSnapshotTransport(srcDocIframe)) {
+        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
+        await waitForAnimationFrame();
+        await waitForAnimationFrame();
+        return requestPreviewSnapshotWithRetry(srcDocIframe);
+      }
+      return null;
     } finally {
       restoreVisibility();
     }

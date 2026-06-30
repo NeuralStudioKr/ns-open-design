@@ -172,6 +172,45 @@ async def test_publish_project_uploads_to_shared_drive_target():
 
 
 @pytest.mark.asyncio
+async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_caps_length():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    project = _project()
+    project.title = "design"
+    daemon = AsyncMock()
+    daemon.get_export_manifest.return_value = {
+        "entryFile": "exports/this-is-a-very-long-generated-slide-deck-name-that-should-not-become-an-overlong-drive-file.html",
+    }
+    daemon.get_export_inline.return_value = b"<html>ok</html>"
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-FILENAME")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=project,
+        formats=["html"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    filename = result.outputs[0].filename
+    assert filename is not None
+    assert filename.endswith(".html")
+    assert filename != "design.html"
+    assert len(filename) <= 80
+    assert filename.startswith("this-is-a-very-long-generated-slide-deck-name")
+    teamver_client.drive.create_upload_request.assert_awaited_once()
+    assert teamver_client.drive.create_upload_request.await_args.kwargs["filename"] == filename
+
+
+@pytest.mark.asyncio
 async def test_publish_project_partial_html_ok_zip_daemon_fail():
     db = AsyncMock()
     db.add = MagicMock()
