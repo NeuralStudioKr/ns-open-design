@@ -336,6 +336,18 @@ if [[ "${OD_PROJECT_STORAGE:-local}" == "s3" ]]; then
       warn "OD_SCRATCH_DISK_METRICS!=1 — scratch 디스크 사용량 마커 비활성"
     fi
   fi
+  if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
+    od_host="${OD_DATA_HOST_PATH:-}"
+    if [[ -z "$od_host" ]]; then
+      fail "OD_DATA_HOST_PATH 미설정 — hosted 는 /opt/teamver-design/od-data bind mount 필수 (Docker named volume 은 root EBS 를 채움). example: OD_DATA_HOST_PATH=/opt/teamver-design/od-data"
+    elif [[ ! -d "$od_host" ]]; then
+      fail "OD_DATA_HOST_PATH=$od_host 디렉터리 없음 — sudo bash scripts/migrate_od_data_ebs.sh --apply --staging|--production"
+    elif command -v mountpoint >/dev/null 2>&1 && ! mountpoint -q "$od_host"; then
+      fail "OD_DATA_HOST_PATH=$od_host 가 마운트되지 않음 — od-data EBS 미부착. sudo bash scripts/migrate_od_data_ebs.sh --apply"
+    else
+      warn "OD_DATA_HOST_PATH=$od_host — scratch·app.sqlite 가 od-data EBS 에 bind mount 됨"
+    fi
+  fi
   purge_raw="$(printf '%s' "${OD_S3_PURGE_ON_DELETE:-}" | tr '[:upper:]' '[:lower:]' | xargs)"
   if [[ "$REQUIRE_S3_STORAGE" == true ]]; then
     if [[ -z "$purge_raw" ]]; then

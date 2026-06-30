@@ -63,7 +63,8 @@ services:
     ports:
       - "127.0.0.1:${OD_PORT:-7456}:7456"
     volumes:
-      - teamver_od_data:/app/.od
+      # Hosted EC2: bind OD_DATA_HOST_PATH (/opt/teamver-design/od-data) — NOT Docker named volume on root.
+      - ${OD_DATA_HOST_PATH:-./.od-data-local}:/app/.od
     read_only: true
     tmpfs:
       - /tmp
@@ -106,7 +107,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${OD_S3_SECRET_ACCESS_KEY:-}
     volumes:
       # RW required — Litestream creates _litestream_seq in app.sqlite (readonly → sync error).
-      - teamver_od_data:/data
+      - ${OD_DATA_HOST_PATH:-./.od-data-local}:/data
       - ./litestream.yml:/etc/litestream.yml:ro
 
   design-db:
@@ -211,6 +212,5 @@ services:
       MINIO_BUCKET: ${OD_S3_BUCKET:-teamver-design-local}
 
 volumes:
-  teamver_od_data:
   teamver_minio_data:
   design_pg_data:

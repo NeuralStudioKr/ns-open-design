@@ -71,6 +71,11 @@ if grep -q 'teamver_od_data:/data:ro' "$ROOT/docker-compose.yml"; then
   exit 1
 fi
 
+if ! grep -q 'OD_DATA_HOST_PATH' "$ROOT/docker-compose.yml"; then
+  echo "❌ docker-compose.yml must bind OD_DATA_HOST_PATH for hosted od-data EBS"
+  exit 1
+fi
+
 if grep -E '^[[:space:]]+env_file:' "$ROOT/docker-compose.yml" | grep -qv '^[[:space:]]*#'; then
   echo "❌ base docker-compose.yml must not set teamver-design-api env_file (use override)"
   exit 1
