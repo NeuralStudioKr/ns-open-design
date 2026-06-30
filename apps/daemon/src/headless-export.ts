@@ -141,12 +141,15 @@ async function launchChromium(): Promise<Browser> {
       timeout: EXPORT_TIMEOUT_MS,
     });
   } catch (err) {
-    attempts.push({ executablePath: undefined, error: String((err as any)?.message || err) });
+    // Omit `executablePath` — with exactOptionalPropertyTypes an optional
+    // `string` property cannot be explicitly set to `undefined`.
+    attempts.push({ error: String((err as any)?.message || err) });
     // Surface the full attempt log to stderr so operators can see which
     // candidate paths exist on disk vs which actually failed to launch.
     console.warn('[headless-export] chromium launch failed', { attempts });
+    const lastError = attempts.at(-1)?.error ?? String(err);
     throw new Error(
-      `headless Chromium unavailable (tried ${attempts.length} path(s)): ${attempts[attempts.length - 1].error}`,
+      `headless Chromium unavailable (tried ${attempts.length} path(s)): ${lastError}`,
     );
   }
 }
