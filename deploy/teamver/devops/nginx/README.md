@@ -17,7 +17,8 @@ TLS 종료·리버스 프록시는 Nginx. Main BE(`stg-api.teamver.com`)는 **�
 | `stg-design.teamver.com` | OD web + daemon | `7456` |
 | `stg-design-api.teamver.com` | teamver-design-api | `16000` |
 
-Main BE: `stg-api.teamver.com` — `auth_request`·bootstrap (별도 VM).
+Main BE: `stg-api.teamver.com` — Apps JWT exchange·bootstrap M2M (별도 VM).  
+**인증 (2026-07):** embed HTML `location /` 는 **auth_request 없음** (Mail 동형 cold start). daemon `/api/*`·design-api 보호 라우트는 **BFF session-probe** (`/_teamver_bff_session` → design-api `/api/v1/auth/session-probe`).
 
 ---
 
@@ -42,7 +43,8 @@ done
 ```bash
 cd ns-open-design/deploy/teamver
 cp .env.staging.example .env.staging
-# OD_API_TOKEN, TEAMVER_JWT_SECRET, TEAMVER_INTERNAL_API_KEY, POSTGRES_PASSWD
+# OD_API_TOKEN, TEAMVER_JWKS_URL, DESIGN_BFF_SESSION_SECRET, TEAMVER_INTERNAL_API_KEY, POSTGRES_PASSWD
+# staging/prod: TEAMVER_JWT_SECRET(HS256) 금지 — validate_deploy_env.sh
 chmod +x scripts/run_docker.sh
 bash scripts/run_docker.sh --staging
 ```
@@ -78,7 +80,10 @@ sudo bash ./apply_teamver_design_staging_nginx_conf.sh ./stg-design.teamver.com.
 for h in stg-design.teamver.com stg-design-api.teamver.com; do
   printf '%-32s %s\n' "$h" "$(curl -sS -o /dev/null -w '%{http_code}' "https://$h/_nginx/health")"
 done
-curl -sSI https://stg-design.teamver.com/   # 미인증 → 302 stg.teamver.com/login
+curl -sSI https://stg-design.teamver.com/   # 미인증 → 200 SPA (FE cold start → Main sign-in)
+curl -sS https://stg-design-api.teamver.com/api/v1/design/auth/config | head -c 200
+# 기대: {"app_id":"teamver-design",...}
+curl -sSI https://stg-design.teamver.com/api/runs   # 미인증 BFF → 401 JSON (302 signin 아님)
 
 # plugin asset (sandbox subresource — no session cookie; docs-teamver/25)
 curl -sSI "https://stg-design.teamver.com/api/plugins/example-html-ppt-zhangzara-creative-mode/asset/assets/deck-stage.js" | head -15
@@ -103,7 +108,10 @@ curl -si -X OPTIONS \
 | `stg-design.teamver.com.https.conf` | 443 TLS |
 | `issue_stg_design_teamver_cert.sh` | SAN 2 인증서 |
 | `apply_teamver_design_staging_nginx_conf.sh` | conf apply |
-| `teamver-design-od-bff.inc.conf` | same-origin design-api BFF (`/teamver-bff/*`) |
+| `teamver-design-od-bff.inc.conf` | same-origin design-api BFF (`/teamver-bff/*`) + `/_teamver_bff_session` probe |
+| `teamver-design-api-bff-session.inc.conf` | design-api host용 BFF session-probe (protected routes) |
+| `teamver-design-api-public-auth.inc.conf` | cold start 공개: config/exchange/session/refresh |
+| `teamver-design-api-protected-routes.inc.conf` | usage/bootstrap/projects/drive — BFF auth_request |
 | `teamver-design-plugin-preview.inc.conf` | plugin/skill preview sandbox — asset no-auth + CSP ([25](../../../docs-teamver/25_플러그인_preview_샌드박스_nginx_보강.md)) |
 | `teamver-design-od-public-static.inc.conf` | Next.js `/_next/*`·favicon — auth_request 제외 ([31 §8.2](../../../docs-teamver/31_Design_Staging_vs_Production_네트워크_TLS_DNS.md#82-chunkloaderror--_nextstaticchunksjs-auth_request-on-static)) |
 | `teamver-design-od-preview-scope.inc.conf` | sandbox iframe 서브리소스 `/api/projects/:id/preview/:scope/*` — auth_request 제외, OD bearer만 |

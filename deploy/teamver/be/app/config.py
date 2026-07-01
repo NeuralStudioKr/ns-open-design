@@ -35,6 +35,19 @@ class Settings(BaseModel):
     teamver_api_base_url: str = os.getenv("TEAMVER_API_BASE_URL", "http://localhost:8001")
     teamver_jwt_secret: str = os.getenv("TEAMVER_JWT_SECRET", "")
     teamver_jwt_algorithm: str = os.getenv("TEAMVER_JWT_ALGORITHM", "HS256")
+    teamver_jwt_issuer: str = os.getenv("TEAMVER_JWT_ISSUER", "")
+    teamver_jwks_url: str = os.getenv("TEAMVER_JWKS_URL", "")
+    teamver_jwt_audience: str = os.getenv("TEAMVER_JWT_AUDIENCE", "teamver-design")
+    teamver_jwks_cache_ttl_sec: int = int(os.getenv("TEAMVER_JWKS_CACHE_TTL_SEC", "900"))
+    teamver_main_login_url: str = os.getenv("TEAMVER_MAIN_LOGIN_URL", "")
+    teamver_bff_session_enabled: bool = Field(
+        default_factory=lambda: _env_bool("TEAMVER_BFF_SESSION_ENABLED", default=True)
+    )
+    design_bff_session_secret: str = os.getenv("DESIGN_BFF_SESSION_SECRET", "")
+    design_public_origin: str = os.getenv("DESIGN_PUBLIC_ORIGIN", "")
+    teamver_bootstrap_cache_stale_grace_seconds: float = float(
+        os.getenv("TEAMVER_BOOTSTRAP_CACHE_STALE_GRACE_SECONDS", "300")
+    )
     teamver_auth_cookie_name: str = os.getenv("TEAMVER_AUTH_COOKIE_NAME", "teamver_access_token")
     teamver_auth_cookie_domain: str = os.getenv("TEAMVER_AUTH_COOKIE_DOMAIN", "")
     teamver_auth_cookie_secure: bool = Field(
@@ -132,6 +145,18 @@ class Settings(BaseModel):
             raise ValueError(f"local auth fallback is forbidden in {deploy_env}")
         if not self.teamver_internal_api_key.strip():
             raise ValueError(f"TEAMVER_INTERNAL_API_KEY is required in {deploy_env}")
+        if self.teamver_jwt_secret.strip():
+            raise ValueError(f"TEAMVER_JWT_SECRET is forbidden in {deploy_env} — use JWKS RS256")
+        if not (self.teamver_jwks_url or "").strip():
+            raise ValueError(f"TEAMVER_JWKS_URL is required in {deploy_env}")
+        if not (self.teamver_jwt_issuer or "").strip():
+            raise ValueError(f"TEAMVER_JWT_ISSUER is required in {deploy_env}")
+        if not (self.teamver_jwt_audience or "").strip():
+            raise ValueError(f"TEAMVER_JWT_AUDIENCE is required in {deploy_env}")
+        if self.teamver_bff_session_enabled and not self.design_bff_session_secret.strip():
+            raise ValueError(f"DESIGN_BFF_SESSION_SECRET is required in {deploy_env}")
+        if not (self.teamver_main_login_url or "").strip():
+            raise ValueError(f"TEAMVER_MAIN_LOGIN_URL is required in {deploy_env}")
         if not self.teamver_od_api_key.strip():
             raise ValueError(f"TEAMVER_OD_API_KEY is required in {deploy_env}")
         registry_configured = all(

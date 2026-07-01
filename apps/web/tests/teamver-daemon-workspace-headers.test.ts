@@ -74,6 +74,32 @@ describe("buildTeamverDaemonRequestHeaders", () => {
     vi.unstubAllGlobals();
   });
 
+  it("dedupes simultaneous daemon GET requests with the same URL and headers", async () => {
+    designApiBase.isTeamverEmbedMode.mockReturnValue(true);
+    activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue("ws-prod");
+    let resolveFetch!: (value: Response) => void;
+    const fetchMock = vi.fn(
+      () => new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = fetchTeamverDaemon("/api/projects/p1/files");
+    const second = fetchTeamverDaemon("/api/projects/p1/files");
+    await Promise.resolve();
+    resolveFetch(new Response(JSON.stringify({ files: [] }), {
+      headers: { "content-type": "application/json" },
+    }));
+
+    const [firstResp, secondResp] = await Promise.all([first, second]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await firstResp.json()).toEqual({ files: [] });
+    expect(await secondResp.json()).toEqual({ files: [] });
+    vi.unstubAllGlobals();
+  });
+
   it("fetchTeamverDaemon attaches s3 prefix for BYOK proxy via teamverProjectId", async () => {
     designApiBase.isTeamverEmbedMode.mockReturnValue(true);
     activeWorkspace.readActiveTeamverWorkspaceId.mockResolvedValue("ws-1");

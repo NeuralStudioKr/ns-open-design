@@ -100,6 +100,7 @@ async def test_auth_session_does_not_clear_cookie_on_generic_auth_error(
 ) -> None:
     from app.routers import auth as auth_router
 
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: False)
     monkeypatch.setattr(settings, "teamver_auth_cookie_name", "teamver_access_token")
     monkeypatch.setattr(
         auth_router,
@@ -108,14 +109,12 @@ async def test_auth_session_does_not_clear_cookie_on_generic_auth_error(
     )
     exc = AuthenticationError("error.token.notvalid")
     exc.status_code = 401
-    monkeypatch.setattr(auth_router, "fetch_bootstrap", AsyncMock(side_effect=exc))
+    monkeypatch.setattr(auth_router, "sdk_fetch_bootstrap", AsyncMock(side_effect=exc))
 
-    result = await auth_router.get_auth_session(
-        _request_with_cookie_header("teamver_access_token=expired-jwt"),
-    )
-
-    assert result["authenticated"] is False
-    assert not hasattr(result, "headers")
+    with pytest.raises(Exception):
+        await auth_router.get_auth_session(
+            _request_with_cookie_header("teamver_access_token=expired-jwt"),
+        )
 
 
 @pytest.mark.asyncio
@@ -124,6 +123,7 @@ async def test_auth_session_clears_cookie_on_orphan_bootstrap_error(
 ) -> None:
     from app.routers import auth as auth_router
 
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: False)
     monkeypatch.setattr(settings, "teamver_auth_cookie_name", "teamver_access_token")
     monkeypatch.setattr(settings, "teamver_auth_cookie_domain", ".teamver.com")
     monkeypatch.setattr(settings, "deploy_env", "staging")
@@ -134,19 +134,13 @@ async def test_auth_session_clears_cookie_on_orphan_bootstrap_error(
     )
     monkeypatch.setattr(
         auth_router,
-        "fetch_bootstrap",
+        "sdk_fetch_bootstrap",
         AsyncMock(
             side_effect=_orphan_auth_error(),
         ),
     )
 
-    response = await auth_router.get_auth_session(
-        _request_with_cookie_header("teamver_access_token=orphan-jwt"),
-    )
-
-    assert response.status_code == 200
-    body = response.body.decode()
-    assert '"authenticated":false' in body.replace(" ", "")
-    set_cookie = response.headers.get("set-cookie") or ""
-    assert "teamver_access_token=" in set_cookie
-    assert "max-age=0" in set_cookie.lower()
+    with pytest.raises(Exception):
+        await auth_router.get_auth_session(
+            _request_with_cookie_header("teamver_access_token=orphan-jwt"),
+        )

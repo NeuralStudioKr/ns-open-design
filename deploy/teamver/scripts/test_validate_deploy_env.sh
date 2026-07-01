@@ -15,9 +15,15 @@ trap 'rm -f "$TMP_ENV"' EXIT
 cat > "$TMP_ENV" <<'EOF'
 ENV=staging
 OD_API_TOKEN=test-token
-TEAMVER_JWT_SECRET=test-jwt-secret
 TEAMVER_INTERNAL_API_KEY=test-internal-key
 TEAMVER_API_BASE_URL=https://stg-api.teamver.com
+TEAMVER_JWKS_URL=https://stg-api.teamver.com/.well-known/jwks.json
+TEAMVER_JWT_ISSUER=https://stg-api.teamver.com
+TEAMVER_JWT_AUDIENCE=teamver-design
+DESIGN_BFF_SESSION_SECRET=test-bff-secret
+DESIGN_PUBLIC_ORIGIN=https://stg-design.teamver.com
+TEAMVER_MAIN_LOGIN_URL=https://stg.teamver.com/auth/signin
+TEAMVER_BFF_SESSION_ENABLED=true
 POSTGRES_HOST=teamver-design-staging-postgres.example.rds.amazonaws.com
 POSTGRES_PORT=5432
 POSTGRES_DB=teamver_design_staging
@@ -60,7 +66,7 @@ require_nonempty() {
 }
 
 require_nonempty OD_API_TOKEN
-require_nonempty TEAMVER_JWT_SECRET
+require_nonempty TEAMVER_JWKS_URL
 require_nonempty OD_S3_BUCKET
 require_nonempty TEAMVER_DESIGN_API_URL
 

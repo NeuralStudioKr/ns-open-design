@@ -13,13 +13,15 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 ## 구조
 
 ```text
-[Main FE] → design.teamver.com (OD UI)
-              ↕ Cookie SSO
-[design-api.teamver.com] → teamver-design-api (이 레포 deploy/teamver/be)
+[Main FE] → sign-in?app_id=teamver-design → /auth/callback?code=
+              ↓ exchange (M2M)
+[design-api] → HttpOnly BFF session (Starlette) — Apps JWT는 브라우저 미노출
+              ↓ JWKS RS256 · bootstrap relay
+[stg-design.teamver.com] OD embed SPA — credentials:include → /teamver-bff/*
+              ↓ session-probe identity headers
+[open-design-daemon :7456] /api/*
               ↓
-[api.teamver.com] Main BE — bootstrap / billing / session-check
-              ↓
-[open-design-daemon :7456]
+[api.teamver.com] Main BE — Apps auth exchange/refresh · bootstrap
 ```
 
 | 경로 | 내용 |
@@ -35,7 +37,14 @@ Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Tea
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/api/v1/auth/session` | Cookie/Bearer SSO |
+| GET | `/api/v1/design/auth/config` | Cold start — `app_id`, `main_login_url`, `bff_session_enabled` |
+| POST | `/api/v1/design/auth/exchange` | Main one-time `code` → BFF session (JWT body 미반환) |
+| GET | `/api/v1/auth/session` | BFF session → bootstrap view; invalid → **401** |
+| GET | `/api/v1/auth/session-probe` | nginx `auth_request` — 204 + `X-Teamver-*` 또는 401 |
+| POST | `/api/v1/auth/start` | `{ login_url }` cold start hint |
+| POST | `/api/v1/auth/logout` | BFF session clear (Apps-only) |
+| POST | `/api/v1/auth/workspace` | BFF workspace persist |
+| POST | `/api/v1/auth/refresh` | BFF silent refresh (Main `/api/apps/auth/refresh` M2M) |
 | GET | `/api/v1/bootstrap` | Main BE bootstrap relay |
 | GET | `/api/v1/runtime-config` | Embed managed API mode (server env → authenticated FE) |
 | GET | `/api/v1/projects` | Project registry list (owner-scoped) |
@@ -97,7 +106,8 @@ pnpm install
 
 cd deploy/teamver
 cp .env.staging.example .env.staging
-# OD_API_TOKEN, TEAMVER_JWT_SECRET, TEAMVER_INTERNAL_API_KEY 등
+# OD_API_TOKEN, TEAMVER_JWKS_URL, DESIGN_BFF_SESSION_SECRET, TEAMVER_INTERNAL_API_KEY 등
+# hosted staging/prod: TEAMVER_JWT_SECRET(HS256) 설정 금지
 bash deploy.sh --staging
 # 또는: bash scripts/run_docker.sh --staging  (deploy.sh 위임)
 ```
@@ -110,11 +120,34 @@ bash deploy.sh --staging
 
 ---
 
-## SSO (Docs Plan B)
+## SSO — Apps JWT + BFF (15_8 · Mail pilot 동형)
 
-1. Main FE → Design (Cookie refresh)
-2. nginx `auth_request` → `api.teamver.com/api/auth/session-check`
-3. OD web → design-api BFF — **`@teamver/app-sdk`** (`apps/web/src/teamver/designBffClient.ts`)
+**hosted (staging/prod):**
+
+1. FE boot → `GET /teamver-bff/design/auth/config`
+2. 미인증 → Main `signin?app_id=teamver-design&redirect_url=…/auth/callback`
+3. Main → `/auth/callback?code=` → `POST /teamver-bff/design/auth/exchange` (design-api M2M → Main `/api/apps/auth/exchange`)
+4. design-api → Starlette **HttpOnly BFF session**; FE는 `/teamver-bff/*` 만 `credentials: include`
+5. daemon `/api/*` → nginx `/_teamver_bff_session` → design-api session-probe → `X-Teamver-User-Id` / `X-Teamver-Workspace-Id`
+
+**로컬 dev (`TEAMVER_BOOTSTRAP_ENABLED=false`):** Plan B returnTo sign-in + HS256 `TEAMVER_JWT_SECRET` fallback 유지.
+
+**Main BE 선행:** `app_id=teamver-design`, bootstrap `app_key=design`, JWT `aud=teamver-design`, `TEAMVER_INTERNAL_API_KEY` 정렬.
+
+상세: [10 §3 Apps BFF](../../../docs-teamver/10_세션·OD패치_보강.md) · Mail [12-mail-jwt](../../../ns-teamver-mail/docs/12-mail-jwt-main-be-operators-quick-guide.md)
+
+---
+
+## SSO (legacy Plan B — 참고)
+
+<details>
+<summary>이전 Cookie SSO (Plan B) — 로컬 dev 전용 fallback</summary>
+
+1. Main FE → Design (shared `.teamver.com` cookie)
+2. nginx `auth_request` → Main BE `session-check` (daemon 경로 — **BFF 전환 후 BFF probe로 교체**)
+3. OD web → design-api BFF — `@teamver/app-sdk` (`designBffClient.ts`)
+
+</details>
 
 ---
 
@@ -154,7 +187,8 @@ TEAMVER_OD_API_MODEL=claude-sonnet-4-5
 
 ## Project registry · S3 (daemon, staging/prod)
 
-nginx `auth_request` 후 OD `/api/` 프록시에 `X-Teamver-User-Id`, `X-Teamver-Workspace-Id` 전달 → daemon access gate + tenant S3 prefix.
+nginx BFF session-probe 후 OD `/api/` 프록시에 `X-Teamver-User-Id`, `X-Teamver-Workspace-Id` 전달 → daemon access gate + tenant S3 prefix.  
+(2026-07: probe는 Main `session-check`가 아닌 design-api `GET /api/v1/auth/session-probe`.)
 
 | 레이어 | 역할 |
 |--------|------|
@@ -222,7 +256,7 @@ bash scripts/run_docker.sh --staging --rds
 bash scripts/run_post_deploy_track_a.sh --staging --rds --status-probe
 ```
 
-`validate_deploy_env.sh`는 `OD_API_TOKEN`, `TEAMVER_JWT_SECRET`, `TEAMVER_INTERNAL_API_KEY`, RDS, S3 bucket 등 필수 키를 검사한다. `run_docker.sh`가 기본으로 호출한다 (`--skip-validate`로 생략 가능).
+`validate_deploy_env.sh`는 `OD_API_TOKEN`, `TEAMVER_JWKS_URL`, `TEAMVER_JWT_ISSUER`, `TEAMVER_JWT_AUDIENCE`, `DESIGN_BFF_SESSION_SECRET`, `TEAMVER_INTERNAL_API_KEY`, RDS, S3 bucket 등 필수 키를 검사한다. staging/prod에서 `TEAMVER_JWT_SECRET`(HS256) 설정 시 **실패**. `run_docker.sh`가 기본으로 호출한다 (`--skip-validate`로 생략 가능).
 
 ---
 
@@ -250,7 +284,7 @@ bash scripts/smoke_design.sh --staging
 | FE AI Apps Design 메뉴 | ✓ |
 | design-api BE (auth/bootstrap/usage) | ✓ (import·204 fix) |
 | OD web session 배너 + embed | ✓ (usage hook ✅ · [10](../../../docs-teamver/10_세션·OD패치_보강.md) · [11 §3](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)) |
-| **세션·인증 (10 §3 Phase S)** | ✅ 코드 · smoke ✅ · staging browser E2E ☐ |
+| **세션·인증 (10 §3 Phase S)** | ✅ Apps JWT BFF 코드 · unit ✅ · staging cold start E2E ☐ |
 | **OD embed 브랜딩 (10 §4 Phase P)** | ✅ 코드 · Playwright P-7 ✅ · staging browser ☐ |
 | **Usage Phase 1 (11 §3)** | ✅ FE hook·멱등·M2M·smoke · staging E2E ☐ |
 | Staging/Prod 실배포 검증 | ☐ ops |
@@ -290,6 +324,7 @@ bash scripts/smoke_design.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-01 | **Apps JWT + BFF cold start** — Mail pilot 동형; JWKS·exchange·session-probe; Plan B → localhost dev only |
 | 2026-06-16 | registry access·S3 materialize·daemon env 연동 문서 |
 | 2026-06-15 | **10·11 연동 보강** — 세션·Usage·Drive checklist |
 | 2026-06-15 | **09 저장소·격리 출시 게이트** — Track A checklist |

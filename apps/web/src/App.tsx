@@ -57,8 +57,11 @@ import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
   shouldFetchAppVersionAboutPanel,
+  shouldFetchEntryCatalogsOnBoot,
+  shouldFetchHomeProjectsOnBoot,
   shouldFetchMediaProviderConfig,
   shouldFetchPromptTemplateCatalog,
+  shouldPostDaemonActiveContext,
   shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
@@ -791,6 +794,7 @@ function AppInner() {
     config.privacyDecisionAt == null &&
     config.onboardingCompleted === true;
   useEffect(() => {
+    if (!shouldPostDaemonActiveContext()) return;
     const body = activeProjectId
       ? { projectId: activeProjectId, fileName: activeFileName }
       : { active: false };
@@ -891,6 +895,9 @@ function AppInner() {
     let cancelled = false;
     const agentStreamAbort = new AbortController();
     (async () => {
+      const bootRouteKind = routeRef.current.kind;
+      const fetchEntryCatalogs = shouldFetchEntryCatalogsOnBoot(bootRouteKind);
+      const fetchHomeProjects = shouldFetchHomeProjectsOnBoot(bootRouteKind);
       const alive = await daemonIsLive();
       if (cancelled) return;
       setDaemonLive(alive);
@@ -961,48 +968,62 @@ function AppInner() {
       const maybeClearLoading = () => {
         if (functionalReady && templatesReady) setSkillsLoading(false);
       };
-      void fetchSkills().then((list) => {
-        if (cancelled) return;
-        setSkills(list);
-        functionalReady = true;
-        maybeClearLoading();
-      });
+      if (fetchEntryCatalogs) {
+        void fetchSkills().then((list) => {
+          if (cancelled) return;
+          setSkills(list);
+          functionalReady = true;
+          maybeClearLoading();
+        });
 
-      void fetchDesignTemplatesForCurrentBranding().then((list) => {
-        if (cancelled) return;
-        setDesignTemplates(list);
-        templatesReady = true;
-        maybeClearLoading();
-      });
+        void fetchDesignTemplatesForCurrentBranding().then((list) => {
+          if (cancelled) return;
+          setDesignTemplates(list);
+          templatesReady = true;
+          maybeClearLoading();
+        });
 
-      void fetchDesignSystems().then((list) => {
-        if (cancelled) return;
-        setDesignSystems(list);
+        void fetchDesignSystems().then((list) => {
+          if (cancelled) return;
+          setDesignSystems(list);
+          setDsLoading(false);
+        });
+      } else {
+        setSkills([]);
+        setDesignTemplates([]);
+        setDesignSystems([]);
+        setSkillsLoading(false);
         setDsLoading(false);
-      });
+      }
 
       const request = beginProjectListRequest();
-      void (async () => {
-        if (isTeamverEmbedMode()) {
-          await waitForTeamverEmbedBoot();
-        }
-        if (cancelled) return;
-        const result = await loadRecentProjectsForHome();
-        if (cancelled) return;
-        if (!result.ok) {
-          setWorkingDirError(result.errorMessage);
-        } else {
-          setWorkingDirError(null);
-          reconcileFetchedProjects(result.projects, request);
-          warmEmbedProjectListCaches(result.projects);
-        }
+      if (fetchHomeProjects) {
+        void (async () => {
+          if (isTeamverEmbedMode()) {
+            await waitForTeamverEmbedBoot();
+          }
+          if (cancelled) return;
+          const result = await loadRecentProjectsForHome();
+          if (cancelled) return;
+          if (!result.ok) {
+            setWorkingDirError(result.errorMessage);
+          } else {
+            setWorkingDirError(null);
+            reconcileFetchedProjects(result.projects, request);
+            warmEmbedProjectListCaches(result.projects);
+          }
+          setProjectsLoading(false);
+        })();
+      } else {
         setProjectsLoading(false);
-      })();
+      }
 
-      void listTemplates().then((list) => {
-        if (cancelled) return;
-        setTemplates(list);
-      });
+      if (fetchEntryCatalogs) {
+        void listTemplates().then((list) => {
+          if (cancelled) return;
+          setTemplates(list);
+        });
+      }
 
       if (shouldFetchPromptTemplateCatalog()) {
         void fetchPromptTemplates().then((list) => {
@@ -2511,7 +2532,11 @@ function AppInner() {
       }
     };
 
-    runRunsPoll();
+    if (isTeamverEmbedMode() && routeRef.current.kind === 'project') {
+      scheduleNextRunsPoll();
+    } else {
+      runRunsPoll();
+    }
     window.addEventListener(RUNS_CHANGED_EVENT, handleRunsChanged);
     document.addEventListener('visibilitychange', handleRunsVisibilityChange);
     return () => {

@@ -13,12 +13,13 @@
  * 2. completeTeamverEmbedBoot → App syncEmbedWorkspaceId
  * 3. useTeamverEmbed hydrates banner from cached session
  *
- * ## Sign-in return path (stg-design → stg.teamver.com → returnTo)
+ * ## Cold start / sign-in return (stg-design → Main sign-in → /auth/callback?code=)
  *
- * 1. Sign-in click → markTeamverAuthReturnPending + in-memory decline reset
- * 2. Full page load → shouldForceEmbedAuthRecoveryOnLoad() → force session probe +
- *    resetRefreshState + Main BE refresh fallback for HttpOnly-only bare attempts
- * 3. Session authenticated → sync workspace → embedWorkspaceId set
+ * 1. Unauthenticated boot → redirectToDesignLogin (app_id=teamver-design)
+ * 2. Main FE → /auth/callback?code= → POST design/auth/exchange → BFF HttpOnly session
+ * 3. Auth return load → shouldForceEmbedAuthRecoveryOnLoad() → force session probe +
+ *    resetRefreshState (BFF silent refresh only — no Main BE cookie proxy)
+ * 4. Session authenticated → sync workspace → embedWorkspaceId set
  *
  * ## Recovery MAY reset refresh-decline (see designBffClient.resetDesignAuthRefreshState)
  *

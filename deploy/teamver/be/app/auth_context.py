@@ -1,4 +1,4 @@
-"""Common-JWT 인증 컨텍스트 — Slide BFF ``auth.py`` 동형 (SDK 쿠키·Bearer 추출 병행)."""
+"""Auth context — BFF session, JWKS Apps JWT, proxy headers, local dev fallback."""
 from __future__ import annotations
 
 import logging
@@ -8,6 +8,9 @@ import jwt
 from fastapi import Header, Request
 from pydantic import BaseModel
 
+from .auth.bff_session import bff_enabled
+from .auth.bff_tokens import ensure_bff_session
+from .auth.teamver_jwt import resolve_teamver_jwt, user_id_from_payload
 from .config import settings
 from .errors import BadRequestError, ForbiddenError, UnauthorizedError
 from .teamver_sdk import auth_source_for_request, extract_request_access_token
@@ -33,7 +36,7 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     return authorization.strip() or None
 
 
-def _decode_token(token: str) -> dict[str, Any]:
+def _decode_hs256_token(token: str) -> dict[str, Any]:
     if not settings.teamver_jwt_secret:
         raise UnauthorizedError("jwt_secret_not_configured")
     try:
@@ -52,9 +55,13 @@ def _resolve_workspace_id(
     *,
     header_value: Optional[str],
     token_org_id: Optional[str],
+    bff_workspace_id: Optional[str],
     fallback: str,
 ) -> Optional[str]:
     raw = (header_value or "").strip()
+    if raw:
+        return raw
+    raw = (bff_workspace_id or "").strip()
     if raw:
         return raw
     raw = (token_org_id or "").strip()
@@ -76,6 +83,7 @@ def _dev_auth_context(
         workspace_id=_resolve_workspace_id(
             header_value=x_workspace_id,
             token_org_id=settings.dev_workspace_id,
+            bff_workspace_id=None,
             fallback=settings.dev_workspace_id,
         ),
         raw_token=None,
@@ -100,6 +108,7 @@ def _proxy_header_auth_context(
     workspace_id = _resolve_workspace_id(
         header_value=x_workspace_id,
         token_org_id=x_teamver_workspace_id,
+        bff_workspace_id=None,
         fallback="",
     )
     return AuthContext(
@@ -113,48 +122,63 @@ def _proxy_header_auth_context(
     )
 
 
-def require_auth(
+async def _auth_from_bff_session(
     request: Request,
-    authorization: Annotated[Optional[str], Header(alias="Authorization")] = None,
-    x_workspace_id: Annotated[
-        Optional[str], Header(alias="X-Workspace-Id")
-    ] = None,
-    x_teamver_user_id: Annotated[
-        Optional[str], Header(alias="X-Teamver-User-Id")
-    ] = None,
-    x_teamver_workspace_id: Annotated[
-        Optional[str], Header(alias="X-Teamver-Workspace-Id")
-    ] = None,
-) -> AuthContext:
-    token = extract_request_access_token(request) or _extract_bearer(authorization)
-
-    proxy_ctx = _proxy_header_auth_context(
-        x_teamver_user_id=x_teamver_user_id,
-        x_teamver_workspace_id=x_teamver_workspace_id,
-        x_workspace_id=x_workspace_id,
+    *,
+    x_workspace_id: Optional[str],
+) -> Optional[AuthContext]:
+    if not bff_enabled():
+        return None
+    session = await ensure_bff_session(request)
+    if session is None:
+        return None
+    return AuthContext(
+        user_id=session.user_id,
+        email=None,
+        organization_id_from_token=session.workspace_id,
+        workspace_id=_resolve_workspace_id(
+            header_value=x_workspace_id,
+            token_org_id=None,
+            bff_workspace_id=session.workspace_id,
+            fallback="",
+        ),
+        raw_token=session.access_token,
+        auth_source="bff",
+        is_dev_fallback=False,
     )
-    if proxy_ctx is not None:
-        if token:
-            return proxy_ctx.model_copy(
-                update={
-                    "raw_token": token,
-                    "auth_source": auth_source_for_request(request) or proxy_ctx.auth_source,
-                }
-            )
-        return proxy_ctx
 
-    if token is None:
-        if settings.auth_disabled or settings.allow_no_jwt_local_mode:
-            logger.debug(
-                "[auth] local context without JWT (auth_disabled=%s allow_no_jwt_local_mode=%s)",
-                settings.auth_disabled,
-                settings.allow_no_jwt_local_mode,
-            )
-            return _dev_auth_context(x_workspace_id=x_workspace_id)
-        raise UnauthorizedError("missing_authorization_header")
 
-    payload = _decode_token(token)
-    user_id = str(payload.get("user_id") or payload.get("sub") or "").strip()
+def _auth_from_jwt_token(
+    request: Request,
+    token: str,
+    *,
+    x_workspace_id: Optional[str],
+) -> AuthContext:
+    jwt_ctx = resolve_teamver_jwt(
+        authorization=f"Bearer {token}" if token else None,
+        cookie_token=None,
+    )
+    if jwt_ctx.authenticated and jwt_ctx.user_id:
+        return AuthContext(
+            user_id=jwt_ctx.user_id,
+            email=None,
+            organization_id_from_token=None,
+            workspace_id=_resolve_workspace_id(
+                header_value=x_workspace_id,
+                token_org_id=None,
+                bff_workspace_id=None,
+                fallback=settings.dev_workspace_id if settings.auth_disabled else "",
+            ),
+            raw_token=jwt_ctx.bearer_token,
+            auth_source=jwt_ctx.auth_source or auth_source_for_request(request),
+            is_dev_fallback=False,
+        )
+
+    if not settings.teamver_jwt_secret.strip():
+        raise UnauthorizedError("invalid_token")
+
+    payload = _decode_hs256_token(token)
+    user_id = user_id_from_payload(payload)
     if not user_id:
         raise UnauthorizedError("invalid_token_payload")
     email = payload.get("email")
@@ -167,12 +191,61 @@ def require_auth(
         workspace_id=_resolve_workspace_id(
             header_value=x_workspace_id,
             token_org_id=str(org_id) if isinstance(org_id, str) else None,
+            bff_workspace_id=None,
             fallback=settings.dev_workspace_id if settings.auth_disabled else "",
         ),
         raw_token=token,
         auth_source=auth_source_for_request(request),
         is_dev_fallback=False,
     )
+
+
+async def require_auth(
+    request: Request,
+    authorization: Annotated[Optional[str], Header(alias="Authorization")] = None,
+    x_workspace_id: Annotated[
+        Optional[str], Header(alias="X-Workspace-Id")
+    ] = None,
+    x_teamver_user_id: Annotated[
+        Optional[str], Header(alias="X-Teamver-User-Id")
+    ] = None,
+    x_teamver_workspace_id: Annotated[
+        Optional[str], Header(alias="X-Teamver-Workspace-Id")
+    ] = None,
+) -> AuthContext:
+    proxy_ctx = _proxy_header_auth_context(
+        x_teamver_user_id=x_teamver_user_id,
+        x_teamver_workspace_id=x_teamver_workspace_id,
+        x_workspace_id=x_workspace_id,
+    )
+    if proxy_ctx is not None:
+        token = extract_request_access_token(request) or _extract_bearer(authorization)
+        if token:
+            return proxy_ctx.model_copy(
+                update={
+                    "raw_token": token,
+                    "auth_source": auth_source_for_request(request) or proxy_ctx.auth_source,
+                }
+            )
+        return proxy_ctx
+
+    bff_ctx = await _auth_from_bff_session(request, x_workspace_id=x_workspace_id)
+    if bff_ctx is not None:
+        return bff_ctx
+
+    token = extract_request_access_token(request) or _extract_bearer(authorization)
+
+    if token is None:
+        if settings.auth_disabled or settings.allow_no_jwt_local_mode:
+            logger.debug(
+                "[auth] local context without JWT (auth_disabled=%s allow_no_jwt_local_mode=%s)",
+                settings.auth_disabled,
+                settings.allow_no_jwt_local_mode,
+            )
+            return _dev_auth_context(x_workspace_id=x_workspace_id)
+        raise UnauthorizedError("missing_authorization_header")
+
+    return _auth_from_jwt_token(request, token, x_workspace_id=x_workspace_id)
 
 
 def require_workspace_context(ctx: AuthContext) -> str:

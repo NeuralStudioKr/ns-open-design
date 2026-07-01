@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .cors import build_fastapi_cors_kwargs
@@ -13,6 +14,7 @@ from .db.connection import async_engine
 from .db.schema_bootstrap import ensure_postgres_schema
 from .exception_handlers import register_exception_handlers
 from .routers.auth import router as auth_router
+from .routers.design_auth import router as design_auth_router
 from .routers.bootstrap import router as bootstrap_router
 from .routers.drive import router as drive_router
 from .routers.health import router as health_router
@@ -44,6 +46,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 register_exception_handlers(app)
+_bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret or "dev-bff-session-secret").strip()
+app.add_middleware(SessionMiddleware, secret_key=_bff_secret, same_site="lax")
 app.add_middleware(OriginGuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -55,6 +59,7 @@ app.add_middleware(
 
 app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(auth_router)
+app.include_router(design_auth_router)
 app.include_router(bootstrap_router)
 app.include_router(drive_router)
 app.include_router(runtime_config_router)

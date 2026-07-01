@@ -13,11 +13,14 @@ import {
   shouldEagerLoadCommunityPluginPreviews,
   shouldFetchAutomationTaskApis,
   shouldFetchConnectorCatalog,
+  shouldFetchEntryCatalogsOnBoot,
+  shouldFetchHomeProjectsOnBoot,
   shouldFetchMarketingCommunityApis,
   shouldFetchMediaProviderConfig,
   shouldFetchPromptTemplateCatalog,
   shouldFetchRecentLinkedDirs,
   shouldMountPluginRegistryView,
+  shouldPostDaemonActiveContext,
   shouldShowOpenDesignPrivacyConsent,
   shouldSubscribeMemoryEvents,
 } from '../../src/teamver/embedDaemonFetchPolicy';
@@ -40,6 +43,9 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchPromptTemplateCatalog()).toBe(true);
     expect(shouldFetchMediaProviderConfig()).toBe(true);
     expect(shouldFetchAppVersionAboutPanel()).toBe(true);
+    expect(shouldPostDaemonActiveContext()).toBe(true);
+    expect(shouldFetchEntryCatalogsOnBoot('project')).toBe(true);
+    expect(shouldFetchHomeProjectsOnBoot('project')).toBe(true);
     expect(shouldEagerLoadCommunityPluginPreviews()).toBe(true);
     expect(shouldShowOpenDesignPrivacyConsent()).toBe(true);
   });
@@ -58,6 +64,11 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchPromptTemplateCatalog()).toBe(false);
     expect(shouldFetchMediaProviderConfig()).toBe(false);
     expect(shouldFetchAppVersionAboutPanel()).toBe(false);
+    expect(shouldPostDaemonActiveContext()).toBe(false);
+    expect(shouldFetchEntryCatalogsOnBoot('project')).toBe(false);
+    expect(shouldFetchHomeProjectsOnBoot('project')).toBe(false);
+    expect(shouldFetchEntryCatalogsOnBoot('home')).toBe(true);
+    expect(shouldFetchHomeProjectsOnBoot('home')).toBe(true);
     expect(shouldEagerLoadCommunityPluginPreviews()).toBe(false);
     expect(shouldShowOpenDesignPrivacyConsent()).toBe(false);
   });

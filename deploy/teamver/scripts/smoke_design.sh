@@ -313,13 +313,22 @@ else
   fail=$((fail + 1))
 fi
 
+config_code="$(curl_status "${API_BASE}/api/v1/design/auth/config")"
+if [[ "$config_code" == "200" ]]; then
+  echo "✓ design-api /api/v1/design/auth/config → 200"
+  pass=$((pass + 1))
+else
+  echo "✗ design-api /api/v1/design/auth/config → $config_code (expected 200)"
+  fail=$((fail + 1))
+fi
+
 refresh_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
   -X POST \
   -H "Accept: application/json" \
   "${API_BASE}/api/v1/auth/refresh")"
-if [[ "$refresh_code" == "502" ]]; then
-  echo "✗ design-api POST /api/v1/auth/refresh → 502 (Main BE unreachable)"
-  fail=$((fail + 1))
+if [[ "$refresh_code" == "401" || "$refresh_code" == "410" ]]; then
+  echo "✓ design-api POST /api/v1/auth/refresh → $refresh_code (BFF — no session)"
+  pass=$((pass + 1))
 elif [[ "$refresh_code" == "404" ]]; then
   echo "✗ design-api POST /api/v1/auth/refresh → 404 (route missing)"
   fail=$((fail + 1))
@@ -335,7 +344,7 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
     -H "Cookie: ${TEAMVER_COOKIE}" \
     "${API_BASE}/api/v1/auth/refresh")"
   if [[ "$refresh_authed" == "200" || "$refresh_authed" == "401" ]]; then
-    echo "✓ design-api POST /api/v1/auth/refresh (cookie) → $refresh_authed"
+    echo "✓ design-api POST /api/v1/auth/refresh (BFF cookie) → $refresh_authed"
     pass=$((pass + 1))
   else
     echo "✗ design-api POST /api/v1/auth/refresh (cookie) → $refresh_authed (expected 200/401)"

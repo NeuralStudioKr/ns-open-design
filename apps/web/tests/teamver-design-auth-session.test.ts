@@ -64,11 +64,10 @@ describe("fetchDesignAuthSession", () => {
       return document.cookie.includes("teamver_access_token=")
         || document.cookie.includes("teamver_refresh_token=");
     });
-    const { resetDesignAuthRefreshDeclinedForTests, resetDesignAuthSessionCacheForTests, resetOrphanTeamverJwtRecoveryForTests } =
+    const { resetDesignAuthRefreshDeclinedForTests, resetDesignAuthSessionCacheForTests } =
       await import("../src/teamver/designBffClient");
     resetDesignAuthRefreshDeclinedForTests();
     resetDesignAuthSessionCacheForTests();
-    resetOrphanTeamverJwtRecoveryForTests();
   });
 
   beforeEach(() => {
@@ -162,38 +161,6 @@ describe("fetchDesignAuthSession", () => {
     expect(getMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to Main BE refresh when same-origin BFF refresh fails", async () => {
-    document.cookie = "teamver_access_token=stale";
-    getMock
-      .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
-      .mockResolvedValueOnce({
-        authenticated: true,
-        user: { userId: "user-1" },
-        workspaces: [],
-      });
-
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 502 })
-      .mockResolvedValueOnce({ ok: true, status: 200 });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
-    const session = await fetchDesignAuthSession();
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "/teamver-bff/auth/refresh",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "https://stg-api.teamver.com/api/auth/refresh",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(session?.authenticated).toBe(true);
-  });
-
   it("does not retry refresh after bare BFF 400 on a second session probe", async () => {
     await forceBareAuthCookieHints();
     getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
@@ -229,70 +196,7 @@ describe("fetchDesignAuthSession", () => {
     expect(session?.authenticated).toBe(false);
   });
 
-  it("falls back to Main BE refresh on bare HttpOnly attempt during auth-return recovery", async () => {
-    await forceBareAuthCookieHints();
-    const { markTeamverAuthReturnPending } = await import("../src/teamver/teamverAuthReturn");
-    markTeamverAuthReturnPending();
-
-    getMock
-      .mockResolvedValueOnce({ authenticated: false, workspaces: [] })
-      .mockResolvedValueOnce({
-        authenticated: true,
-        user: { userId: "user-1" },
-        workspaces: [],
-      });
-
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 502 })
-      .mockResolvedValueOnce({ ok: true, status: 200 });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
-    const session = await fetchDesignAuthSession({ resetRefreshState: true });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "/teamver-bff/auth/refresh",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "https://stg-api.teamver.com/api/auth/refresh",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(session?.authenticated).toBe(true);
-  });
-
-  it("redirects to sign-in when refresh returns orphan JWT user_not_found", async () => {
-    await forceBareAuthCookieHints();
-    getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
-
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 400,
-      text: async () => '{"message":"error.user_not_found"}',
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const designApiBase = await import("../src/teamver/designApiBase");
-    const redirectSpy = vi.spyOn(designApiBase, "redirectToTeamverLogin").mockImplementation(() => {});
-
-    const { resetOrphanTeamverJwtRecoveryForTests } = await import("../src/teamver/designBffClient");
-    resetOrphanTeamverJwtRecoveryForTests();
-
-    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
-    await fetchDesignAuthSession();
-
-    expect(redirectSpy).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://stg-api.teamver.com/api/auth/logout",
-      expect.objectContaining({ method: "POST", credentials: "include" }),
-    );
-  });
-
-  it("stops after BFF refresh 400 without calling Main BE when cookie hint exists", async () => {
-    document.cookie = "teamver_access_token=stale";
+  it("stops after BFF refresh 400 without extra Main BE calls when cookie hint exists", async () => {
     getMock.mockResolvedValue({ authenticated: false, workspaces: [] });
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });

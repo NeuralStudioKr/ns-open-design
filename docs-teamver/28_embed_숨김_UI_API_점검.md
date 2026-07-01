@@ -77,7 +77,7 @@ embed는 `lockExecutionConfig` → `mode=api`, `agentId=null`. 아래는 **CLI/A
 
 ## 5b. daemon API 인증 — `fetchTeamverDaemon`
 
-embed 에서 daemon `/api/*` 는 nginx **`auth_request` → Main BE session-check** 를 탄다. BFF (`/teamver-bff/*`) 와 달리 실패 시 **302 signin** 이 될 수 있다.
+embed 에서 daemon `/api/*` 는 nginx **`/_teamver_bff_session` → design-api session-probe** 를 탄다 (2026-07). BFF (`/teamver-bff/*`) 와 동일한 BFF session cookie 기준이나, 실패 시 daemon poll 은 **401 JSON** (과거 Main session-check 302 signin 과 다름).
 
 | 경로 | nginx auth | FE wrapper | credentials (embed) |
 |------|------------|------------|---------------------|

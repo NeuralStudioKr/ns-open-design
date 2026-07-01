@@ -1,6 +1,8 @@
 /** Teamver embed build-time env (Next static export / Turbopack). */
 interface ImportMetaEnv {
   readonly VITE_TEAMVER_EMBED?: string;
+  readonly VITE_TEAMVER_BOOTSTRAP_ENABLED?: string;
+  readonly VITE_TEAMVER_MAIN_LOGIN_URL?: string;
   readonly VITE_TEAMVER_API_PROTOCOL?: string;
   readonly VITE_TEAMVER_API_MODEL?: string;
   readonly VITE_TEAMVER_API_BASE_URL?: string;

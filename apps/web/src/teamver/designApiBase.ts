@@ -1,9 +1,11 @@
 /**
- * Teamver design-api origin — Cookie SSO (Plan B).
+ * Teamver design-api origin — Apps JWT BFF (15_8) on hosted; Plan B returnTo on localhost dev.
  * Hostname-based default; override with VITE_TEAMVER_DESIGN_API_URL at build time.
  */
 import { isTeamverViteDev, readTeamverViteEnv } from "./teamverViteEnv";
 import { markTeamverAuthReturnPending } from "./teamverAuthReturn";
+
+export const TEAMVER_DESIGN_APP_ID = "teamver-design";
 
 export function isTeamverEmbedMode(): boolean {
   const flag = readTeamverViteEnv("VITE_TEAMVER_EMBED")?.toLowerCase();
@@ -34,7 +36,50 @@ export function resolveTeamverLoginReturnTo(): string | null {
   return window.location.href;
 }
 
+export function isBootstrapAuthMode(): boolean {
+  const fromEnv = readTeamverViteEnv("VITE_TEAMVER_BOOTSTRAP_ENABLED")?.toLowerCase();
+  if (fromEnv === "1" || fromEnv === "true" || fromEnv === "yes") return true;
+  if (fromEnv === "0" || fromEnv === "false" || fromEnv === "no") return false;
+  if (typeof window === "undefined") return true;
+  const host = window.location.hostname.toLowerCase();
+  return host.endsWith(".teamver.com") || host === "teamver.com";
+}
+
+export function getMainLoginBaseUrl(): string {
+  const fromEnv = readTeamverViteEnv("VITE_TEAMVER_MAIN_LOGIN_URL");
+  if (fromEnv?.trim()) return fromEnv.trim().replace(/\/+$/, "");
+  return `${resolveTeamverMainOrigin()}${TEAMVER_AUTH_SIGNIN_PATH}`;
+}
+
+export function buildAuthCallbackRedirectUrl(callbackPath = "/auth/callback"): string {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "https://design.teamver.com";
+  const path = callbackPath.startsWith("/") ? callbackPath : `/${callbackPath}`;
+  const combined = `${origin}${path}`;
+  return combined.replace(/\/+$/, "") || `${origin}/auth/callback`;
+}
+
+export function buildDesignColdStartLoginUrl(options?: {
+  workspaceId?: string | null;
+  callbackPath?: string;
+  mainLoginUrl?: string | null;
+}): string {
+  const callbackPath = options?.callbackPath ?? "/auth/callback";
+  const redirectUrl = buildAuthCallbackRedirectUrl(callbackPath);
+  const base = (options?.mainLoginUrl || "").trim() || getMainLoginBaseUrl();
+  const params = new URLSearchParams({
+    app_id: TEAMVER_DESIGN_APP_ID,
+    redirect_url: redirectUrl,
+  });
+  const ws = options?.workspaceId?.trim();
+  if (ws) params.set("workspace_id", ws);
+  return `${base}?${params.toString()}`;
+}
+
 export function resolveTeamverLoginUrl(returnTo?: string | null): string {
+  if (isBootstrapAuthMode()) {
+    return buildDesignColdStartLoginUrl();
+  }
   const origin =
     typeof window === "undefined"
       ? "https://teamver.com"

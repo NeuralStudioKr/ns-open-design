@@ -1,5 +1,7 @@
 import type { LocalStorageWorkspaceStore } from "@teamver/app-sdk";
 import { getDesignBffClient } from "./designBffClient";
+import { isBootstrapAuthMode } from "./designApiBase";
+import { postDesignAuthWorkspace } from "./designAuthClient";
 import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
 import { bumpTeamverWorkspaceStoreRevision } from "./teamverWorkspaceStoreRevision";
 
@@ -9,6 +11,14 @@ export async function setActiveTeamverWorkspace(
 ): Promise<void> {
   const trimmed = workspaceId.trim();
   if (!trimmed) return;
+
+  if (isBootstrapAuthMode()) {
+    try {
+      await postDesignAuthWorkspace(trimmed);
+    } catch {
+      // local store still updated — server session may catch up on next boot
+    }
+  }
 
   const client = getDesignBffClient();
   const store = client?.workspaceStore as LocalStorageWorkspaceStore | null | undefined;

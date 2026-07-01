@@ -47,8 +47,15 @@ def test_proxy_header_auth_context_prefers_explicit_workspace_header(monkeypatch
     assert ctx.workspace_id == "ws-explicit"
 
 
-def test_require_auth_merges_cookie_token_into_proxy_context(monkeypatch):
+import pytest
+
+from app import auth_context
+
+
+@pytest.mark.asyncio
+async def test_require_auth_merges_cookie_token_into_proxy_context(monkeypatch):
     monkeypatch.setattr(auth_context.settings, "trust_teamver_proxy_headers", True)
+    monkeypatch.setattr(auth_context, "bff_enabled", lambda: False)
     monkeypatch.setattr(
         auth_context,
         "extract_request_access_token",
@@ -61,7 +68,7 @@ def test_require_auth_merges_cookie_token_into_proxy_context(monkeypatch):
     )
 
     request = object()
-    ctx = auth_context.require_auth(
+    ctx = await auth_context.require_auth(
         request=request,
         authorization=None,
         x_workspace_id=None,

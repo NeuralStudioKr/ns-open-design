@@ -54,13 +54,14 @@
 | 기능 | 구현 | 비고 |
 |------|------|------|
 | Cookie-only BFF | `designBffClient.ts` — `withCredentials`, `tokenStore: null` | same-origin `/teamver-bff` |
+| Cold start | `designAuthFlow.ts`, `/auth/callback` | `app_id=teamver-design` |
 | Session probe | `fetchDesignAuthSession` | 5s cache, in-flight dedup |
-| Cookie refresh | `refreshDesignAuthCookie` | BFF → Main BE fallback |
+| Cookie refresh | `refreshDesignAuthCookie` | BFF `/auth/refresh` only |
 | 401 recovery | `withDesignBffCookieAuthRecovery` | publish/import/usage 공통 |
-| Workspace store | `setActiveTeamverWorkspace`, localStorage keys | `teamver_design_active_workspace_id` |
-| Embed session hook | `useTeamverEmbed` | pageshow refresh, 401 → login. 일반 focus/visibility 재검증은 **5분** throttle |
-| BE session relay | `deploy/teamver/be/routers/auth.py` | Set-Cookie refresh |
-| nginx auth_request | `design.teamver.com*.conf` | session-check → user/workspace inject |
+| Workspace store | `setActiveTeamverWorkspace`, `POST /auth/workspace` | BFF session + localStorage |
+| Embed session hook | `useTeamverEmbed` | cold start redirect, pageshow refresh |
+| BE session | `routers/auth.py`, `routers/design_auth.py` | BFF session · JWKS |
+| nginx daemon `/api/` | `/_teamver_bff_session` | session-probe → identity headers |
 
 **근거 테스트:** `teamver-design-auth-session.test.ts`, `teamver-workspace-switcher.test.tsx`, `teamver-sync-workspace.test.ts`, `teamver-workspace-switch.test.ts`.
 

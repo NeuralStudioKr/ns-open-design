@@ -11,7 +11,8 @@ import {
   resetDesignAuthRefreshState,
   type DesignAuthSessionUser,
 } from "./designBffClient";
-import { isTeamverEmbedMode, redirectToTeamverLogin } from "./designApiBase";
+import { isTeamverEmbedMode, isBootstrapAuthMode, redirectToTeamverLogin } from "./designApiBase";
+import { redirectToDesignLogin } from "./designAuthFlow";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
@@ -162,6 +163,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (!session.authenticated) {
         await clearTeamverEmbedSessionState();
         lastCookieHintRef.current = readAuthCookieHint();
+        if (isBootstrapAuthMode()) {
+          void redirectToDesignLogin({ returnTo: window.location.pathname + window.location.search });
+        }
         setState({
           ...INITIAL,
           loading: false,

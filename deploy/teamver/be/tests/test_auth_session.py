@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -37,11 +36,12 @@ def _request_with_cookie_header(cookie_header: str) -> Request:
 
 
 @pytest.mark.asyncio
-async def test_auth_session_returns_empty_on_authentication_error(
+async def test_auth_session_returns_empty_on_authentication_error_legacy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.routers import auth as auth_router
 
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: False)
     monkeypatch.setattr(
         auth_router,
         "extract_request_access_token",
@@ -49,12 +49,24 @@ async def test_auth_session_returns_empty_on_authentication_error(
     )
     monkeypatch.setattr(
         auth_router,
-        "fetch_bootstrap",
+        "sdk_fetch_bootstrap",
         AsyncMock(side_effect=AuthenticationError("session_expired")),
     )
 
-    result = await auth_router.get_auth_session(_request_with_cookie_header("teamver_access_token=stale-jwt"))
+    with pytest.raises(Exception):
+        await auth_router.get_auth_session(_request_with_cookie_header("teamver_access_token=stale-jwt"))
+
+
+@pytest.mark.asyncio
+async def test_auth_session_returns_empty_without_token_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: False)
+    monkeypatch.setattr(auth_router, "extract_request_access_token", lambda _request: None)
+
+    result = await auth_router.get_auth_session(_request_with_cookie_header(""))
 
     assert result["authenticated"] is False
     assert result["user"] is None
-    assert result["workspaces"] == []

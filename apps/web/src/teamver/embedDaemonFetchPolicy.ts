@@ -93,6 +93,27 @@ export function shouldFetchAppVersionAboutPanel(): boolean {
   return !isTeamverEmbedMode();
 }
 
+/** MCP/local-agent active context (`POST /api/active`) — unused in Teamver embed. */
+export function shouldPostDaemonActiveContext(): boolean {
+  return !isTeamverEmbedMode();
+}
+
+/**
+ * Entry catalogs (skills/design-templates/design-systems/templates) are only
+ * needed for home/settings surfaces. A direct project-file deep link should
+ * not fan out every catalog before the selected artifact can render.
+ */
+export function shouldFetchEntryCatalogsOnBoot(routeKind: string): boolean {
+  if (!isTeamverEmbedMode()) return true;
+  return routeKind === 'home' || routeKind === 'design-system-create' || routeKind === 'design-system-detail';
+}
+
+/** Home recent rail (`GET /api/projects/recent`) — defer on project-file deep links. */
+export function shouldFetchHomeProjectsOnBoot(routeKind: string): boolean {
+  if (!isTeamverEmbedMode()) return true;
+  return routeKind === 'home';
+}
+
 /**
  * Community gallery HTML iframe probes (`GET …/preview`) on home boot.
  * Embed defers to in-view / hover so boot does not fan out plugin previews.

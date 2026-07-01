@@ -76,7 +76,10 @@ unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
   POSTGRES_HOST POSTGRES_PASSWD POSTGRES_DB POSTGRES_USER \
   TEAMVER_REGISTRY_APP_ID TEAMVER_REGISTRY_KEY_ID TEAMVER_REGISTRY_ACCESS_KEY \
   LITESTREAM_BUCKET LITESTREAM_REGION TEAMVER_DRIVE_PUBLISH_FOLDER_ID \
-  TRUST_TEAMVER_PROXY_HEADERS TEAMVER_BILLING_DISABLED
+  TRUST_TEAMVER_PROXY_HEADERS TEAMVER_BILLING_DISABLED \
+  TEAMVER_JWKS_URL TEAMVER_JWT_ISSUER TEAMVER_JWT_AUDIENCE \
+  DESIGN_BFF_SESSION_SECRET TEAMVER_MAIN_LOGIN_URL DESIGN_PUBLIC_ORIGIN \
+  TEAMVER_BFF_SESSION_ENABLED
 
 # shellcheck disable=SC1090
 set -a
@@ -105,13 +108,35 @@ require_nonempty() {
 }
 
 require_nonempty OD_API_TOKEN
-require_nonempty TEAMVER_JWT_SECRET
 require_nonempty TEAMVER_INTERNAL_API_KEY
 require_nonempty TEAMVER_API_BASE_URL
 require_nonempty POSTGRES_HOST
 require_nonempty POSTGRES_PASSWD
 require_nonempty POSTGRES_DB
 require_nonempty POSTGRES_USER
+
+# Apps JWT BFF (15_8) — staging/production use JWKS RS256, not HS256 TEAMVER_JWT_SECRET
+case "$ENV_FILE" in
+  .env.staging|.env.production)
+    require_nonempty TEAMVER_JWKS_URL
+    require_nonempty TEAMVER_JWT_ISSUER
+    require_nonempty TEAMVER_JWT_AUDIENCE
+    require_nonempty DESIGN_BFF_SESSION_SECRET
+    require_nonempty TEAMVER_MAIN_LOGIN_URL
+    require_nonempty DESIGN_PUBLIC_ORIGIN
+    if [[ -n "${TEAMVER_JWT_SECRET:-}" ]]; then
+      fail "TEAMVER_JWT_SECRET 설정됨 — $ENV_FILE 는 JWKS RS256 only (HS256 금지)"
+    fi
+    if [[ "${TEAMVER_BFF_SESSION_ENABLED:-true}" != "true" && "${TEAMVER_BFF_SESSION_ENABLED:-1}" != "1" ]]; then
+      warn "TEAMVER_BFF_SESSION_ENABLED!=true — Mail BFF cold start 비활성"
+    fi
+    ;;
+  *)
+    if [[ -z "${TEAMVER_JWT_SECRET:-}" && -z "${TEAMVER_JWKS_URL:-}" ]]; then
+      warn "TEAMVER_JWT_SECRET·TEAMVER_JWKS_URL 모두 없음 — 로컬 dev open mode 또는 JWKS 설정 필요"
+    fi
+    ;;
+esac
 
 node_base="${NODE_BASE_IMAGE:-}"
 if [[ "$node_base" == *alpine* ]]; then

@@ -40,6 +40,29 @@ export type TeamverDaemonFetchInit = RequestInit & {
   teamverProjectId?: string | null;
 };
 
+const daemonGetInflight = new Map<string, Promise<Response>>();
+
+function daemonGetInflightKey(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  headers: Record<string, string>,
+): string | null {
+  const method = (init.method || "GET").toUpperCase();
+  if (method !== "GET") return null;
+  if (init.signal) return null;
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url;
+  const headerKey = Object.keys(headers)
+    .sort()
+    .map((key) => `${key}:${headers[key]}`)
+    .join("\n");
+  return `${url}\n${headerKey}`;
+}
+
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
 export async function buildTeamverDaemonRequestHeaders(
   base: Record<string, string>,
@@ -74,5 +97,16 @@ export async function fetchTeamverDaemon(
   // include avoids sporadic 302 signin on background polls like GET /api/runs.
   const credentials =
     requestInit.credentials ?? (isTeamverEmbedMode() ? "include" : "same-origin");
-  return fetch(input, { ...requestInit, headers, credentials });
+  const dedupeKey = daemonGetInflightKey(input, requestInit, headers);
+  if (!dedupeKey) return fetch(input, { ...requestInit, headers, credentials });
+  const existing = daemonGetInflight.get(dedupeKey);
+  if (existing) return existing.then((resp) => resp.clone());
+  const promise = fetch(input, { ...requestInit, headers, credentials });
+  daemonGetInflight.set(dedupeKey, promise);
+  try {
+    const resp = await promise;
+    return resp.clone();
+  } finally {
+    daemonGetInflight.delete(dedupeKey);
+  }
 }

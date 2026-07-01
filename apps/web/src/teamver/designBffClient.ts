@@ -7,10 +7,10 @@ import {
 } from "@teamver/app-sdk";
 import {
   isTeamverEmbedMode,
+  isBootstrapAuthMode,
   resolveTeamverDesignApiBase,
   resolveTeamverDesignApiCrossOriginFallback,
   resolveDesignBffRefreshUrl,
-  resolveTeamverMainApiBaseUrl,
   redirectToTeamverLogin,
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
@@ -20,10 +20,6 @@ import {
   consumeTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
 } from "./teamverAuthReturn";
-import {
-  isOrphanTeamverJwtAuthFailure,
-  clearOrphanTeamverAuthCookies,
-} from "./teamverAuthOrphanJwt";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -99,32 +95,9 @@ async function postAuthRefresh(
   }
 }
 
-/** One-shot orphan JWT recovery — logout + sign-in redirect. */
-let orphanJwtRecoveryStarted = false;
-
-/** @internal vitest */
-export function resetOrphanTeamverJwtRecoveryForTests(): void {
-  orphanJwtRecoveryStarted = false;
-}
-
-async function handleOrphanJwtRefreshFailure(
-  status: number,
-  bodyText: string,
-): Promise<boolean> {
-  if (!isOrphanTeamverJwtAuthFailure(status, bodyText)) return false;
-  authRefreshDeclinedForSession = true;
-  if (!orphanJwtRecoveryStarted) {
-    orphanJwtRecoveryStarted = true;
-    await clearOrphanTeamverAuthCookies();
-    prepareDesignAuthSessionReload();
-    redirectToTeamverLogin();
-  }
-  return true;
-}
-
 let authRefreshDeclinedForSession = false;
 let unauthenticatedRefreshAttempted = false;
-/** Allows Main BE refresh fallback on HttpOnly-only attempts (sign-in return). */
+/** Allows BFF refresh retry on sign-in return. */
 let authRecoveryRefreshActive = false;
 /** One-shot load recovery — pending flag / referrer must not stick across probes. */
 let embedAuthRecoveryLoadUsed = false;
@@ -135,7 +108,6 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   unauthenticatedRefreshAttempted = false;
   authRecoveryRefreshActive = false;
   embedAuthRecoveryLoadUsed = false;
-  orphanJwtRecoveryStarted = false;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -160,6 +132,9 @@ function resetDesignAuthRefreshDeclined(): void {
 
 function shouldAttemptCookieRefresh(): boolean {
   if (authRefreshDeclinedForSession) return false;
+  if (isBootstrapAuthMode()) {
+    return !unauthenticatedRefreshAttempted || authRecoveryRefreshActive;
+  }
   if (hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()) return true;
   return !unauthenticatedRefreshAttempted;
 }
@@ -179,12 +154,14 @@ export async function withDesignBffCookieAuthRecovery<T>(
   }
 }
 
-/** Cookie-only SSO: refresh may relay Set-Cookie without JSON access_token (tokenStore is null). */
+/** BFF silent refresh via design-api (Apps JWT stored server-side). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (!shouldAttemptCookieRefresh()) return false;
 
   const isBareAttempt =
-    !hasProbableTeamverAuthCookie() && !isTeamverEmbedSessionAuthenticated();
+    !isTeamverEmbedSessionAuthenticated() &&
+    !isBootstrapAuthMode() &&
+    !hasProbableTeamverAuthCookie();
   if (isBareAttempt) {
     unauthenticatedRefreshAttempted = true;
   }
@@ -194,28 +171,7 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     resetDesignAuthRefreshDeclined();
     return true;
   }
-  if (await handleOrphanJwtRefreshFailure(bffResult.status, bffResult.bodyText)) {
-    return false;
-  }
-  if (bffResult.status === 400) {
-    authRefreshDeclinedForSession = true;
-    return false;
-  }
-  // HttpOnly-only — skip Main BE unless sign-in return recovery is active.
-  if (isBareAttempt && !authRecoveryRefreshActive) {
-    return false;
-  }
-
-  const mainRefresh = `${resolveTeamverMainApiBaseUrl().replace(/\/+$/, "")}/api/auth/refresh`;
-  const mainResult = await postAuthRefresh(mainRefresh);
-  if (mainResult.ok) {
-    resetDesignAuthRefreshDeclined();
-    return true;
-  }
-  if (await handleOrphanJwtRefreshFailure(mainResult.status, mainResult.bodyText)) {
-    return false;
-  }
-  if (mainResult.status === 400) {
+  if (bffResult.status === 400 || bffResult.status === 401) {
     authRefreshDeclinedForSession = true;
   }
   return false;
