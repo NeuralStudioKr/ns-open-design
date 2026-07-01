@@ -23,7 +23,8 @@ describe("embed in-project run success publish flow (loop 403)", () => {
     expect(projectView).not.toContain("maybeOneClickPublishToDrive");
     expect(fileViewer).toContain("setDownloadMenuOpen(true)");
     expect(fileViewer).toContain("focusTargetSelectNonce={drivePublishFocusNonce}");
-    expect(fileViewer).toContain("TeamverPublishDriveMenuItem");
+    expect(fileViewer).toContain("TeamverPublishDriveModal");
+    expect(fileViewer).toContain("setDrivePublishModalOpen(true)");
   });
 });
 

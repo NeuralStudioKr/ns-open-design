@@ -7327,6 +7327,7 @@ function HtmlViewer({
     markExportReadyNudgeSeen(projectId, file.name);
     setDeployMenuOpen(false);
     setDownloadMenuOpen(false);
+    setDrivePublishInitialFormat(null);
     setDrivePublishModalOpen(true);
     setDrivePublishFocusNonce(nonce);
   }, [shareRequest?.nonce, canShare, projectId, file.name]);
@@ -7577,6 +7578,22 @@ function HtmlViewer({
     setImageExportFormat(format);
     void prepareImageExportBlob(format);
   };
+
+  // Re-capture when the user flips slides while the export modal stays open.
+  useEffect(() => {
+    if (!imageExportModalOpen || !effectiveDeck) return;
+    const slideIndex = slideState?.active ?? null;
+    if (imageExportSlideRef.current === slideIndex) return;
+    imageExportSlideRef.current = slideIndex;
+    imageExportSnapshotDataUrlRef.current = null;
+    void prepareImageExportBlob(imageExportFormat);
+  }, [
+    effectiveDeck,
+    imageExportFormat,
+    imageExportModalOpen,
+    prepareImageExportBlob,
+    slideState?.active,
+  ]);
 
   async function handleImageExportSave() {
     const prepared = imageExportPreparedBlob;

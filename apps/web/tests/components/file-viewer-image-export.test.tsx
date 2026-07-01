@@ -22,6 +22,18 @@ const {
   saveImageBlobMock: vi.fn(),
 }));
 
+vi.mock('../../src/teamver/designApiBase', async () => {
+  const actual = await vi.importActual<typeof import('../../src/teamver/designApiBase')>(
+    '../../src/teamver/designApiBase',
+  );
+  return {
+    ...actual,
+    // jsdom runs on localhost which isTeamverEmbedMode treats as embed —
+    // avoid preview-url fetches that need absolute daemon URLs in Node fetch.
+    isTeamverEmbedMode: vi.fn(() => false),
+  };
+});
+
 vi.mock('../../src/runtime/exports', async () => {
   const actual = await vi.importActual<typeof import('../../src/runtime/exports')>(
     '../../src/runtime/exports',

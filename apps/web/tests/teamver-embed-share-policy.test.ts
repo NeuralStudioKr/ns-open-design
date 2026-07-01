@@ -48,8 +48,10 @@ describe('Teamver embed external share-surface gating (loop 171)', () => {
     // embed mode.
     expect(fileViewer).toContain('{showExternalShareMenu || canDownload ? (');
     expect(fileViewer).toContain('{showExternalShareMenu ? (');
-    // Drive Publish menu item stays — local-only download menu is unaffected.
-    expect(fileViewer).toContain('TeamverPublishDriveMenuItem');
+    // Drive publish stays in the embed download menu (modal shortcuts) — local
+    // export options are unaffected by hideExternalShareSurfaces.
+    expect(fileViewer).toContain('TeamverExportMenu');
+    expect(fileViewer).toContain('TeamverPublishDriveModal');
     expect(fileViewer).toContain("from '../teamver/embedUiLabels'");
     expect(fileViewer).toContain("aria-label={embedUiLabel('View mode', '보기 모드')}");
     expect(fileViewer).toContain('aria-label={t(\'fileViewer.download\')}');

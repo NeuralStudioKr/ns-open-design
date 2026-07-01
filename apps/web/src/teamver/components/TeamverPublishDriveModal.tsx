@@ -17,7 +17,7 @@ export function TeamverPublishDriveModal({
   ...panelProps
 }: Props) {
   const backdropMouseDownRef = useRef(false);
-  const messaging = drivePublishMessaging(false);
+  const messaging = drivePublishMessaging();
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;

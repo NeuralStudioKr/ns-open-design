@@ -10,6 +10,11 @@ vi.mock("../src/teamver/designApiBase", () => ({
   resolveTeamverMainOrigin: vi.fn(() => "https://stg.teamver.com"),
 }));
 
+vi.mock("../src/teamver/activeTeamverWorkspace", () => ({
+  readActiveTeamverWorkspaceId: vi.fn(async () => "ws-1"),
+  requireActiveTeamverWorkspaceId: vi.fn(async () => "ws-1"),
+}));
+
 vi.mock("../src/teamver/designBffClient", () => ({
   fetchTeamverWorkspacePermissions: vi.fn(async () => null),
   getDesignBffClient: vi.fn(() => ({
@@ -30,6 +35,7 @@ import {
   formatPublishErrorMessage,
   formatTeamverDesignErrorMessage,
   parsePublishFailureFromError,
+  pickReadyPublishOutputs,
   publishTeamverDesignToDrive,
   resolvePublishErrorCode,
 } from "../src/teamver/publishToDrive";
@@ -152,7 +158,7 @@ describe("publishTeamverDesignToDrive", () => {
     );
   });
 
-  it("returns ready outputs only on 207 partial", async () => {
+  it("marks partial when some formats fail and others succeed", async () => {
     postMock.mockResolvedValue({
       projectId: "DPRJ-1",
       outputs: [
@@ -180,8 +186,10 @@ describe("publishTeamverDesignToDrive", () => {
     });
 
     expect(result.partial).toBe(true);
-    expect(result.outputs).toHaveLength(1);
-    expect(result.outputs[0]?.driveAssetId).toBe("AST-2");
+    expect(result.outputs).toHaveLength(2);
+    const ready = pickReadyPublishOutputs(result.outputs);
+    expect(ready).toHaveLength(1);
+    expect(ready[0]?.driveAssetId).toBe("AST-2");
   });
 
   it("throws per-format error code from 502 response body", async () => {
