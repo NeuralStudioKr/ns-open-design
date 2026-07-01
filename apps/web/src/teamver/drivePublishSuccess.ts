@@ -34,7 +34,8 @@ export function buildDrivePublishToastContent(
         href,
       };
     })
-    .filter((link): link is { label: string; href: string } => link != null);
+    .filter((link): link is { label: string; href: string } => link != null)
+    .filter((link, index, links) => links.findIndex((item) => item.href === link.href) === index);
 
   let message = "Teamver 드라이브에 올렸습니다";
   if (partial) {

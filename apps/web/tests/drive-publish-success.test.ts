@@ -29,4 +29,16 @@ describe("buildDrivePublishToastContent", () => {
     expect(toast.detailLinks).toHaveLength(1);
     expect(toast.alternateFormat).toBe("html");
   });
+
+  it("dedupes detail links that share the same drive asset href", () => {
+    const toast = buildDrivePublishToastContent(
+      [
+        output({ kind: "pdf", driveAssetId: "AST-1" }),
+        output({ kind: "html", driveAssetId: "AST-1" }),
+      ],
+      false,
+      "pdf",
+    );
+    expect(toast.detailLinks).toHaveLength(1);
+  });
 });

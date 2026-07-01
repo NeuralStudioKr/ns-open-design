@@ -42,6 +42,7 @@ describe('Teamver embed export + Drive publish UI', () => {
     expect(panel).toContain('resolveInitialPublishFormat');
     expect(panel).toContain('writeLastPublishFormat');
     expect(panel).toContain('deck: true');
+    expect(panel).toMatch(/ready\.length > 0[\s\S]*?clearPdfExportBlocked/);
     const exportMenu = readSource('src/teamver/components/TeamverExportMenu.tsx');
     expect(exportMenu).not.toContain('share-menu-item-subtitle');
     const modal = readSource('src/teamver/components/TeamverPublishDriveModal.tsx');
@@ -69,6 +70,7 @@ describe('Teamver embed export + Drive publish UI', () => {
 
   it('supports partial publish toasts with follow-up actions', () => {
     const fileViewer = readSource('src/components/FileViewer.tsx');
+    expect(fileViewer).toContain('imageExportSnapshotDataUrlRef.current = null');
     expect(fileViewer).toContain('buildDrivePublishToastContent');
     expect(fileViewer).toContain('canOfferAlternateDrivePublishFormat');
     expect(fileViewer).toContain('detailLinks');

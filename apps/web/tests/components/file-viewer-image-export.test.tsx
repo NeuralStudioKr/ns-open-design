@@ -398,4 +398,46 @@ describe('FileViewer image export', () => {
       expect(text).not.toContain('[object Object]');
     }, { timeout: 4000 });
   });
+
+  it('uses the prepared blob when daemon export succeeds after snapshot fallback', async () => {
+    const fallbackBlob = new Blob(['fallback'], { type: 'image/png' });
+    const serverBlob = new Blob(['server-png'], { type: 'image/png' });
+    exportProjectImageBlobMock
+      .mockResolvedValueOnce({ ok: false, reason: 'mock: daemon export disabled' })
+      .mockResolvedValueOnce({ ok: true, blob: serverBlob, filename: 'workspace.jpg' })
+      .mockResolvedValueOnce({ ok: true, blob: serverBlob, filename: 'workspace.png' });
+    requestPreviewSnapshotMock.mockResolvedValue({
+      dataUrl: 'data:image/png;base64,stale',
+      w: 800,
+      h: 600,
+    });
+    imageDataUrlToBlobMock.mockResolvedValue(fallbackBlob);
+    prepareImageExportTargetMock.mockResolvedValue({
+      filename: 'workspace.png',
+      method: 'download',
+      save: saveImageBlobMock,
+    });
+
+    renderHtmlPreview();
+    await openImageExportDialog();
+    await waitForSaveButton();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'JPEG' }));
+    await waitFor(() => {
+      expect(exportProjectImageBlobMock).toHaveBeenCalledTimes(2);
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'PNG' }));
+    await waitFor(() => {
+      expect(exportProjectImageBlobMock).toHaveBeenCalledTimes(3);
+    });
+    await waitForSaveButton();
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(downloadImageDataUrlMock).not.toHaveBeenCalled();
+      expect(saveImageBlobMock).toHaveBeenCalledWith(serverBlob);
+    });
+  });
 });

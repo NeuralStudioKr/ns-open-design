@@ -274,17 +274,17 @@ export function TeamverPublishDrivePanel({
         deck: true,
         ...(exportTitle?.trim() ? { title: exportTitle.trim() } : {}),
       });
-      if (selectedFormat === "pdf") clearPdfExportBlocked(projectId);
-      writeLastPublishTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
-      writeLastPublishFormat(workspaceId, projectId, selectedFormat);
-      if (selectedTarget) pushRecentPublishTarget(workspaceId, selectedTarget);
-      setRecentTargets(readRecentPublishTargets(workspaceId));
-      setHistoryRefreshKey((current) => current + 1);
-      clearLatestPublishSummaryCache(projectId);
-      notifyTeamverPublishOutputsChanged(projectId);
-      void prefetchLatestPublishSummaries([projectId]);
       const ready = pickReadyPublishOutputs(result.outputs);
       if (ready.length > 0) {
+        if (selectedFormat === "pdf") clearPdfExportBlocked(projectId);
+        writeLastPublishTargetId(workspaceId, projectId, selectedTarget?.id ?? null);
+        writeLastPublishFormat(workspaceId, projectId, selectedFormat);
+        if (selectedTarget) pushRecentPublishTarget(workspaceId, selectedTarget);
+        setRecentTargets(readRecentPublishTargets(workspaceId));
+        setHistoryRefreshKey((current) => current + 1);
+        clearLatestPublishSummaryCache(projectId);
+        notifyTeamverPublishOutputsChanged(projectId);
+        void prefetchLatestPublishSummaries([projectId]);
         onClose();
         onSuccess?.({
           partial: result.partial,

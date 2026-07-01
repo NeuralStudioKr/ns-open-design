@@ -4560,6 +4560,13 @@ function HtmlViewer({
       );
     };
     const toastFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image', 'markdown']);
+    const showExportFailureToast = (err: unknown) => {
+      if (!toastFormats.has(format)) return;
+      const message = err instanceof Error && err.message.trim()
+        ? err.message.trim()
+        : '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.';
+      setExportToast({ message, tone: 'error' });
+    };
     try {
       const out = fn();
       if (out && typeof (out as Promise<unknown>).then === 'function') {
@@ -4572,7 +4579,10 @@ function HtmlViewer({
             finish('success');
             if (toastFormats.has(format)) setExportToast({ message: t('fileViewer.exportStarted'), tone: 'default' });
           },
-          (err) => finish('failed', err instanceof Error ? err.name : 'UNKNOWN'),
+          (err) => {
+            finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+            showExportFailureToast(err);
+          },
         );
       } else {
         if (out === 'cancelled') {
@@ -4584,6 +4594,7 @@ function HtmlViewer({
       }
     } catch (err) {
       finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+      showExportFailureToast(err);
     }
   };
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
@@ -7525,6 +7536,7 @@ function HtmlViewer({
         title: exportTitle,
       });
       if (serverImage.ok && serverImage.blob.size > 0) {
+        imageExportSnapshotDataUrlRef.current = null;
         if (imageExportPrepareIdRef.current === prepareId) {
           setImageExportPreparedBlob({ format, blob: serverImage.blob });
         }
@@ -7613,6 +7625,7 @@ function HtmlViewer({
       } else {
         await target.save(prepared.blob);
       }
+      imageExportPrepareIdRef.current += 1;
       setImageExportModalOpen(false);
       setImageExportSavedToast({
         message: target.method === 'picker'
@@ -8577,20 +8590,22 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-                    exportPdf={() => exportProjectAsPdf({
-                      deck: effectiveDeck,
-                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
-                      filePath: file.name,
-                      projectId,
-                      title: exportTitle,
-                    })}
-                    exportZip={() => exportProjectAsZip({
-                      deck: effectiveDeck,
-                      projectId,
-                      filePath: file.name,
-                      fallbackHtml: source ?? '',
-                      fallbackTitle: exportTitle,
-                    })}
+	                    exportPdf={() => exportProjectAsPdf({
+	                      deck: effectiveDeck,
+	                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
+	                      filePath: file.name,
+	                      projectId,
+	                      requireRenderedExport: isTeamverEmbedMode(),
+	                      title: exportTitle,
+	                    })}
+	                    exportZip={() => exportProjectAsZip({
+	                      deck: effectiveDeck,
+	                      projectId,
+	                      filePath: file.name,
+	                      fallbackHtml: source ?? '',
+	                      fallbackTitle: exportTitle,
+	                      requireRenderedExport: isTeamverEmbedMode(),
+	                    })}
                     exportMarkdown={() => exportAsMd(source ?? '', exportTitle)}
                   />
                 </div>
@@ -9037,7 +9052,12 @@ function HtmlViewer({
               <button
                 type="button"
                 className="viewer-action primary"
-                disabled={imageExportBusy || imageExportPreparing || !imageExportPreparedBlob}
+                disabled={
+                  imageExportBusy
+                  || imageExportPreparing
+                  || !imageExportPreparedBlob
+                  || imageExportPreparedBlob.format !== imageExportFormat
+                }
                 onClick={() => {
                   void handleImageExportSave();
                 }}
