@@ -44,3 +44,11 @@ export function clearPdfExportBlocked(projectId: string): void {
   if (!blocked.delete(id)) return;
   writeBlockedProjects(blocked);
 }
+
+/** Hide follow-up toast actions when PDF export is blocked for this project. */
+export function canOfferAlternateDrivePublishFormat(
+  alternateFormat: "html" | "pdf",
+  projectId: string,
+): boolean {
+  return !(alternateFormat === "pdf" && isPdfExportBlocked(projectId));
+}

@@ -70,9 +70,11 @@ describe('Teamver embed export + Drive publish UI', () => {
   it('supports partial publish toasts with follow-up actions', () => {
     const fileViewer = readSource('src/components/FileViewer.tsx');
     expect(fileViewer).toContain('buildDrivePublishToastContent');
+    expect(fileViewer).toContain('canOfferAlternateDrivePublishFormat');
     expect(fileViewer).toContain('detailLinks');
     expect(fileViewer).toContain('로도 올리기');
     expect(fileViewer).toContain('initialFormat');
+    expect(fileViewer).toContain('setDrivePublishFocusNonce(null)');
   });
 
   it('keeps the format type union in publishToDrive', () => {

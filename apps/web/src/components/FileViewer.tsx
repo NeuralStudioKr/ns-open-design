@@ -42,6 +42,7 @@ import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink'
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
 import { buildDrivePublishToastContent } from '../teamver/drivePublishSuccess';
+import { canOfferAlternateDrivePublishFormat } from '../teamver/drivePublishFormatHealth';
 import type { DrivePublishFormat } from '../teamver/drivePublishMessaging';
 import type { Dict, Locale } from '../i18n/types';
 import {
@@ -8977,7 +8978,18 @@ function HtmlViewer({
             <div className="modal-head">
               <div className="kicker">IMAGE</div>
               <h2 id={imageExportTitleId}>{t('fileViewer.exportImage')}</h2>
-              <p className="subtitle">{t('fileViewer.exportImageModalSubtitle')}</p>
+              <p className="subtitle">
+                {t('fileViewer.exportImageModalSubtitle')}
+                {effectiveDeck ? (
+                  <>
+                    {' '}
+                    {embedUiLabel(
+                      'Slide decks save only the slide you are viewing.',
+                      '슬라이드 덱은 보고 있는 슬라이드 한 장만 저장됩니다.',
+                    )}
+                  </>
+                ) : null}
+              </p>
             </div>
             <div className="deploy-form image-export-form">
               <fieldset className="image-export-format-field" disabled={imageExportBusy}>
@@ -9014,6 +9026,8 @@ function HtmlViewer({
                 className="ghost-link button-like"
                 disabled={imageExportBusy}
                 onClick={() => {
+                  imageExportPrepareIdRef.current += 1;
+                  setImageExportPreparing(false);
                   setImageExportModalOpen(false);
                   setImageExportError(null);
                 }}
@@ -9045,6 +9059,7 @@ function HtmlViewer({
         onClose={() => {
           setDrivePublishModalOpen(false);
           setDrivePublishInitialFormat(null);
+          setDrivePublishFocusNonce(null);
         }}
         onSuccess={(meta) => {
           const toast = buildDrivePublishToastContent(
@@ -9053,11 +9068,14 @@ function HtmlViewer({
             meta.selectedFormat,
           );
           const alternateLabel = toast.alternateFormat === 'pdf' ? 'PDF' : 'HTML';
-          drivePublishFollowUpRef.current = () => openDrivePublishModal(toast.alternateFormat);
+          const offerAlternate = canOfferAlternateDrivePublishFormat(toast.alternateFormat, projectId);
+          drivePublishFollowUpRef.current = offerAlternate
+            ? () => openDrivePublishModal(toast.alternateFormat)
+            : null;
           setDeploySavedToast({
             message: toast.message,
             detailLinks: toast.detailLinks.length > 0 ? toast.detailLinks : undefined,
-            actionLabel: `${alternateLabel}로도 올리기`,
+            actionLabel: offerAlternate ? `${alternateLabel}로도 올리기` : undefined,
           });
         }}
         onError={(err) => setDeploySavedToast({
