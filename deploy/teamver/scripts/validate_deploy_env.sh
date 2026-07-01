@@ -113,6 +113,11 @@ require_nonempty POSTGRES_PASSWD
 require_nonempty POSTGRES_DB
 require_nonempty POSTGRES_USER
 
+node_base="${NODE_BASE_IMAGE:-}"
+if [[ "$node_base" == *alpine* ]]; then
+  fail "NODE_BASE_IMAGE=$node_base — Alpine(musl) build는 bookworm runtime에서 better-sqlite3/node-pty가 libc.musl 오류로 기동 실패. NODE_BASE_IMAGE=node:24-bookworm-slim 으로 변경하세요"
+fi
+
 if [[ "$USE_RDS" == true ]]; then
   if [[ "${POSTGRES_HOST:-}" == "design-db" ]]; then
     fail "POSTGRES_HOST=design-db — --rds 모드에서는 RDS endpoint 필요"

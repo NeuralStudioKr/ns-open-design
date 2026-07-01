@@ -11,7 +11,7 @@ services:
       context: ../..
       dockerfile: deploy/Dockerfile
       args:
-        NODE_IMAGE: ${NODE_BASE_IMAGE:-public.ecr.aws/docker/library/node:24-alpine}
+        NODE_IMAGE: ${NODE_BASE_IMAGE:-public.ecr.aws/docker/library/node:24-bookworm-slim}
         RUNTIME_IMAGE: ${RUNTIME_BASE_IMAGE:-public.ecr.aws/docker/library/node:24-bookworm-slim}
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
