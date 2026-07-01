@@ -917,8 +917,12 @@ export async function exportProjectImageBlob(opts: {
       );
     }
     const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-    if (!contentType.startsWith('image/')) {
-      throw new Error(`daemon image export returned ${contentType || 'unknown content-type'}`);
+    const expectedContentType =
+      format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+    if (!contentType.startsWith(expectedContentType)) {
+      throw new Error(
+        `daemon image export returned ${contentType || 'unknown content-type'} for ${format}`,
+      );
     }
     const blob = await resp.blob();
     if (blob.size <= 0) throw new Error('daemon image export returned an empty file');

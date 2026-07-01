@@ -46,7 +46,7 @@ Teamver Design embed의 **파일 IO를 Teamver Drive로 통합**하는 설계 SS
 
 | 기능 | 상태 |
 |------|------|
-| HTML / ZIP publish | ✅ |
+| HTML / PDF publish | ✅ |
 | 개인 Drive root (folder_id null) | ✅ |
 | 워크스페이스 기본 publish folder (`TEAMVER_DRIVE_PUBLISH_FOLDER_ID`) | ✅ |
 | Personal / 공유 Drive 1차 picker | ✅ `drivePublishTargets.ts` |
@@ -105,8 +105,9 @@ Main Mobile도 파일 상세 모달에서 동일 query 계약을 사용한다. i
 Drive 발행은 기존처럼 design-api → daemon export → Main Drive upload 흐름을 유지한다. 로컬 다운로드는 혼동을 줄이기 위해 Drive publish와 별개 메뉴명은 “다운로드”로 두되, 렌더링은 daemon 서버 경로를 우선한다.
 
 - PDF/이미지 다운로드: daemon headless export가 Vite dev entry shell 대신 `dist/index.html`을 우선 렌더한다.
-- HTML/ZIP 다운로드: daemon `/api/projects/:id/export/html|zip`이 Chromium으로 preview를 렌더한 정적 snapshot을 반환한다. deck은 모든 slide를 1920×1080 block flow로 펼쳐 전체 결과물을 보존하고, stylesheet/img/background/CSS `@import`/Vite `/assets/...` resource를 가능한 한 inline한다. scrollbar/deck nav/base/script는 제거한다.
+- HTML/ZIP 다운로드: daemon `/api/projects/:id/export/html|zip`이 Chromium으로 preview를 렌더한 정적 snapshot을 반환한다. deck은 모든 slide를 1920×1080 block flow로 펼쳐 전체 결과물을 보존하고, stylesheet/img/background/CSS `@import`/Vite `/assets/...` resource를 가능한 한 inline한다. scrollbar/deck nav/base/script는 제거한다. ZIP은 로컬 다운로드 전용이며, Drive 발행 포맷은 HTML/PDF로 제한한다.
 - 이미지 다운로드: PNG/JPEG/WebP는 캡처 전 font/image/background load를 기다리고, deck이면 요청 slide index를 강제 표시한 뒤 clip을 계산한다. daemon headless export는 2x device scale로 캡처해 글씨 antialiasing 품질을 보강하고, JPEG/WebP는 흰 배경 + high quality 설정을 고정한다.
+- 이미지 MIME 검증: FE는 요청한 PNG/JPEG/WebP와 daemon 응답 `Content-Type`이 일치할 때만 다운로드 blob으로 인정한다. 포맷 불일치 응답은 실패로 처리해 확장자와 실제 파일 내용이 어긋난 산출물이 저장되지 않도록 한다.
 - fallback: 일반 OD standalone은 기존 inline/source/raw archive/snapshot fallback을 유지한다. **Teamver embed 다운로드는 PDF/HTML/ZIP/PNG/JPEG/WebP 모두 rendered export 실패 시 fallback으로 깨진 파일을 내려받지 않고 실패 toast/alert를 띄운다.** 이는 Drive publish와 같은 daemon-rendered 결과만 사용자 다운로드로 허용하기 위한 정책이다.
 
 이 결정은 사용자가 “미리보기처럼 완성된 결과물”을 받는 것을 1차 목표로 한다. 다운로드 HTML은 정적 렌더 결과 보존용이며, 원본 앱 JS 인터랙션을 유지하는 개발용 archive가 필요하면 별도 raw archive/debug export로 분리한다.

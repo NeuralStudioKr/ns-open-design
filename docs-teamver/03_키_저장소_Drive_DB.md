@@ -171,7 +171,7 @@ OD는 **“아티팩트 = 프로젝트 워크스페이스 안의 파일”** 모
 
 ## 4. Teamver Drive·자체 DB 연동 검토 (상세)
 
-> **Drive Publish v1 (HTML+ZIP), `design_outputs` DDL, `/publish` API 계약의 SSOT는 [11 Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md) §6 입니다.**  
+> **Drive Publish v1 (HTML+PDF), `design_outputs` DDL, `/publish` API 계약의 SSOT는 [11 Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md) §6 입니다.**
 > 본 §4는 배경·데이터 경계 요약만 유지합니다.
 
 전제: [01_통합_아키텍처](./01_통합_아키텍처.md) — **open-design fork 대량 수정 비권장**, **teamver-design-app wrapper**가 Teamver SDK 사용.

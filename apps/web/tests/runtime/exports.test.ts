@@ -512,6 +512,32 @@ describe('exportProjectImageBlob', () => {
     }));
   });
 
+  it('rejects daemon image blobs when the mime type does not match the requested format', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['png'], { type: 'image/png' }), {
+      headers: {
+        'content-disposition': 'attachment; filename="Seed-Deck.jpg"',
+        'content-type': 'image/png',
+      },
+      status: 200,
+    })));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'jpeg',
+      projectId: 'proj-1',
+      slideIndex: 0,
+      title: 'Seed Deck',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('image/png');
+      expect(result.reason).toContain('jpeg');
+    }
+  });
+
   it('extracts daemon ApiError envelopes on 500 EXPORT_FAILED so the reason is not [object Object]', async () => {
     // The daemon serialises errors as the canonical envelope shape
     // (`{ error: { code, message, ... } }`, see packages/contracts/errors.ts).

@@ -26,7 +26,7 @@
 | U5 | Main BE design M2M | slides/meetings/startup만 | `app=design` by-model | **P0** | ✅ |
 | U6 | Registry billing | reserve/commit **골격** (flat `TEAMVER_BILLING_RESERVE_AMOUNT`) | 실측 토큰 → 크레딧(T) 환산 후 reserve/commit | **P0** | 🟡 골격 ✅ · metered ☐ — **§4** |
 | U7 | usage 5xx 알람 | 없음 | CW `teamver_usage_5xx` log metric + alarm | **P1** | ✅ |
-| D1 | Drive Publish | `POST /projects/{id}/publish` ✅ | HTML/ZIP publish + history | **G7** | ✅ |
+| D1 | Drive Publish | `POST /projects/{id}/publish` ✅ | HTML/PDF publish + history | **G7** | ✅ |
 | D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
 | D3 | export formats v1 | daemon HTML/PDF ready, ZIP publish blocked | HTML + PDF only | **G7** | ✅ |
 | D4 | Drive auth | user JWT → SDK presigned 3-step ✅ | design-api가 user token 위임 | **G7** | ✅ |

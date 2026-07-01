@@ -21,7 +21,7 @@
 | **프로젝트 파일** (HTML, assets, export 산출물 등) | **S3** (`design/…/proj_…/`) | ✅ | scratch → **sync-up** (아래 §4) |
 | **프로젝트 registry** (workspace/user, `s3_prefix`, title, status) | **RDS** `design_projects` | ❌ | design-api가 Postgres에 즉시 commit (S3 sync 성공 후 — §4.3) |
 | **Publish/Output 메타** (`design_outputs`, usage) | **RDS** | ❌ | design-api |
-| **Drive에 올린 HTML/ZIP** | **Main BE Drive** (별도 S3) | ❌ (Design project-data 버킷 아님) | Publish API |
+| **Drive에 올린 HTML/PDF** | **Main BE Drive** (별도 S3) | ❌ (Design project-data 버킷 아님) | Publish API |
 | **daemon `app.sqlite`** (채팅·로컬 OD 메타) | EC2 EBS volume | △ Litestream 켜면 `litestream/*` | Litestream **연속 복제** (§5) |
 | **수동 SQLite 백업** | S3 `sqlite-backups/` (선택) | △ | `backup_sqlite_to_s3.sh` **수동 실행** |
 
