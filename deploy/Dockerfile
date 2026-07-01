@@ -60,9 +60,7 @@ RUN pnpm --filter @open-design/contracts build && \
       /root/.local/share/pnpm/store \
       /app/deploy/daemon/node_modules/.cache \
       /app/deploy/daemon/node_modules/@types \
-      /app/deploy/daemon/node_modules/.pnpm/@types+* \
-      /app/deploy/daemon/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/deps \
-      /app/deploy/daemon/node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/src && \
+      /app/deploy/daemon/node_modules/.pnpm/@types+* && \
     find /app/deploy/daemon/node_modules -type d \( \
       -name test -o \
       -name tests -o \
@@ -96,6 +94,22 @@ COPY prompt-templates ./prompt-templates
 COPY assets ./assets
 COPY plugins/_official ./plugins/_official
 
+# Alpine build stage compiles native addons against musl. Runtime is bookworm
+# (glibc) for Chromium — recompile daemon native deps before the final image.
+FROM ${RUNTIME_IMAGE} AS daemon-native
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /app/deploy/daemon ./apps/daemon
+RUN cd apps/daemon && npm rebuild better-sqlite3 node-pty --build-from-source && \
+    rm -rf node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/deps \
+           node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/src \
+           node_modules/.pnpm/node-pty@*/node_modules/node-pty/deps \
+           node_modules/.pnpm/node-pty@*/node_modules/node-pty/src 2>/dev/null || true
+
 FROM ${RUNTIME_IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -110,7 +124,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd -u 1001 -g open-design -M -s /usr/sbin/nologin open-design
 
 WORKDIR /app
-COPY --from=build --chown=open-design:open-design /app/deploy/daemon ./apps/daemon
+COPY --from=daemon-native --chown=open-design:open-design /app/apps/daemon ./apps/daemon
 COPY --from=build --chown=open-design:open-design /app/apps/web/out ./apps/web/out
 COPY --from=build --chown=open-design:open-design /app/skills ./skills
 COPY --from=build --chown=open-design:open-design /app/design-systems ./design-systems
