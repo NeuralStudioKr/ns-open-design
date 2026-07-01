@@ -6,9 +6,9 @@ import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 /**
  * Teamver embed is slide-only: Drive publish sends deck PDF and/or inline HTML.
- * ZIP/PPTX remain local 보내기 paths.
+ * ZIP/PPTX remain local 다운로드 paths.
  */
-export type TeamverPublishDriveFormat = "html" | "zip" | "pdf";
+export type TeamverPublishDriveFormat = "html" | "pdf";
 
 export type TeamverPublishDriveParams = {
   projectId: string;

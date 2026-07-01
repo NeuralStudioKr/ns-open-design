@@ -41,7 +41,6 @@ import {
   pickReadyPublishOutputs,
   publishTeamverDesignToDrive,
   formatPublishErrorCodeForUser,
-  type TeamverPublishDriveFormat,
   type TeamverPublishDriveOutput,
 } from "../publishToDrive";
 import { clearLatestPublishSummaryCache, prefetchLatestPublishSummaries } from "../latestPublishSummary";
@@ -74,10 +73,6 @@ export type TeamverPublishDrivePanelProps = {
 };
 
 type LastTargetRestore = "none" | "restored" | "missing";
-
-function toDrivePublishFormat(format: TeamverPublishDriveFormat): DrivePublishFormat {
-  return format === "html" ? "html" : "pdf";
-}
 
 export function TeamverPublishDrivePanel({
   projectId,
@@ -268,7 +263,7 @@ export function TeamverPublishDrivePanel({
       const result = await publishTeamverDesignToDrive({
         projectId,
         artifactFile,
-        formats: [toDrivePublishFormat(selectedFormat)],
+        formats: [selectedFormat],
         folderId: selectedTarget?.folderId ?? null,
         sharedDriveId: selectedTarget?.sharedDriveId ?? null,
         deck: true,

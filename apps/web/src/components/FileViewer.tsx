@@ -7525,7 +7525,8 @@ function HtmlViewer({
       imageExportSlideRef.current = slideIndex ?? null;
     }
     // Captured when the daemon-side export fails so we can append it to the
-    // user-facing error if the in-iframe snapshot fallback also fails.
+    // user-facing error. Teamver embed requires daemon-rendered image exports;
+    // standalone OD can still fall back to the in-iframe snapshot bridge.
     let serverFailureReason: string | null = null;
     try {
       const serverImage = await exportProjectImageBlob({
@@ -7545,6 +7546,9 @@ function HtmlViewer({
       }
       if (!serverImage.ok) {
         serverFailureReason = serverImage.reason;
+        if (isTeamverEmbedMode()) {
+          throw new Error(serverFailureReason);
+        }
       }
       let dataUrl = imageExportSnapshotDataUrlRef.current;
       if (!dataUrl) {

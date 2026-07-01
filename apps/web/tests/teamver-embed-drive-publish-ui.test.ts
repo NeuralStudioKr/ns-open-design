@@ -82,6 +82,7 @@ describe('Teamver embed export + Drive publish UI', () => {
   it('keeps the format type union in publishToDrive', () => {
     const publish = readSource('src/teamver/publishToDrive.ts');
     expect(publish).toContain('TeamverPublishDriveFormat');
-    expect(publish).toContain('"html" | "zip" | "pdf"');
+    expect(publish).toContain('"html" | "pdf"');
+    expect(publish).not.toContain('"zip" | "pdf"');
   });
 });

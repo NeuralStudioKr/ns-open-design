@@ -9,6 +9,7 @@ const {
   downloadImageDataUrlMock,
   exportProjectImageBlobMock,
   imageDataUrlToBlobMock,
+  isTeamverEmbedModeMock,
   prepareImageExportTargetMock,
   requestPreviewSnapshotMock,
   saveImageBlobMock,
@@ -17,6 +18,7 @@ const {
   downloadImageDataUrlMock: vi.fn(),
   exportProjectImageBlobMock: vi.fn(),
   imageDataUrlToBlobMock: vi.fn(),
+  isTeamverEmbedModeMock: vi.fn(() => false),
   prepareImageExportTargetMock: vi.fn(),
   requestPreviewSnapshotMock: vi.fn(),
   saveImageBlobMock: vi.fn(),
@@ -30,7 +32,7 @@ vi.mock('../../src/teamver/designApiBase', async () => {
     ...actual,
     // jsdom runs on localhost which isTeamverEmbedMode treats as embed —
     // avoid preview-url fetches that need absolute daemon URLs in Node fetch.
-    isTeamverEmbedMode: vi.fn(() => false),
+    isTeamverEmbedMode: isTeamverEmbedModeMock,
   };
 });
 
@@ -90,9 +92,9 @@ function renderHtmlPreview() {
 }
 
 async function openImageExportDialog() {
-  fireEvent.click(screen.getByRole('button', { name: /download/i }));
-  fireEvent.click(screen.getByRole('menuitem', { name: /export as image/i }));
-  expect(await screen.findByRole('dialog', { name: /export as image/i })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /download|보내기/i }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /export as image|이미지로 다운로드/i }));
+  expect(await screen.findByRole('dialog', { name: /export as image|이미지로 다운로드/i })).toBeTruthy();
 }
 
 async function waitForSaveButton() {
@@ -114,6 +116,7 @@ describe('FileViewer image export', () => {
     // snapshot bridge (which is what they're exercising). Individual tests
     // override this when they need a successful or specific failure shape.
     exportProjectImageBlobMock.mockResolvedValue({ ok: false, reason: 'mock: daemon export disabled' });
+    isTeamverEmbedModeMock.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -439,5 +442,29 @@ describe('FileViewer image export', () => {
       expect(downloadImageDataUrlMock).not.toHaveBeenCalled();
       expect(saveImageBlobMock).toHaveBeenCalledWith(serverBlob);
     });
+  });
+
+  it('does not fall back to iframe snapshots for Teamver embed image downloads', async () => {
+    isTeamverEmbedModeMock.mockReturnValue(true);
+    exportProjectImageBlobMock.mockResolvedValueOnce({
+      ok: false,
+      reason: 'daemon image export 500: headless Chromium unavailable',
+    });
+    requestPreviewSnapshotMock.mockResolvedValueOnce({
+      dataUrl: 'data:image/png;base64,should-not-use',
+      w: 800,
+      h: 600,
+    });
+
+    renderHtmlPreview();
+    await openImageExportDialog();
+
+    await waitFor(() => {
+      const text = screen.getByRole('alert').textContent || '';
+      expect(text).toContain('headless Chromium unavailable');
+    }, { timeout: 4000 });
+    expect(requestPreviewSnapshotMock).not.toHaveBeenCalled();
+    expect(imageDataUrlToBlobMock).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

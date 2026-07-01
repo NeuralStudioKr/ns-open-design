@@ -169,12 +169,12 @@ describe("publishTeamverDesignToDrive", () => {
         },
         {
           id: "DOUT-2",
-          kind: "zip",
+          kind: "pdf",
           driveAssetId: "AST-2",
-          filename: "Landing.zip",
+          filename: "Landing.pdf",
           publishStatus: "ready",
           sizeBytes: 200,
-          mimeType: "application/zip",
+          mimeType: "application/pdf",
         },
       ],
     });
@@ -182,7 +182,7 @@ describe("publishTeamverDesignToDrive", () => {
     const result = await publishTeamverDesignToDrive({
       projectId: "od-1",
       artifactFile: "deck/index.html",
-      formats: ["html", "zip"],
+      formats: ["html", "pdf"],
     });
 
     expect(result.partial).toBe(true);
@@ -223,7 +223,7 @@ describe("parsePublishFailureFromError", () => {
       status: 502,
       responseBody: {
         projectId: "DPRJ-9",
-        outputs: [{ kind: "zip", publishStatus: "failed", errorCode: "drive_upload_failed" }],
+        outputs: [{ kind: "pdf", publishStatus: "failed", errorCode: "drive_upload_failed" }],
       },
     });
     const parsed = parsePublishFailureFromError(err);
