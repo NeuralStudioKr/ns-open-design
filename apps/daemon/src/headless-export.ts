@@ -137,6 +137,52 @@ export function chromiumExecutableCandidates(): string[] {
   return [...new Set(ordered)];
 }
 
+/** Writable dirs for distro Chromium inside read-only / no-home containers. */
+export function chromiumRuntimePaths(): { configHome: string; cacheHome: string; crashDir: string } {
+  const configHome = process.env.XDG_CONFIG_HOME?.trim() || '/tmp/.chromium';
+  const cacheHome = process.env.XDG_CACHE_HOME?.trim() || configHome;
+  return {
+    configHome,
+    cacheHome,
+    crashDir: `${configHome}/chromium/Crashpad`,
+  };
+}
+
+export function chromiumRuntimeEnv(): NodeJS.ProcessEnv {
+  const { configHome, cacheHome } = chromiumRuntimePaths();
+  return {
+    ...process.env,
+    HOME: process.env.HOME?.trim() || configHome,
+    XDG_CONFIG_HOME: configHome,
+    XDG_CACHE_HOME: cacheHome,
+  };
+}
+
+export function chromiumLaunchArgs(): string[] {
+  const { crashDir } = chromiumRuntimePaths();
+  return [
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-setuid-sandbox',
+    '--no-sandbox',
+    '--font-render-hinting=medium',
+    '--disable-crash-reporter',
+    '--disable-breakpad',
+    `--crash-dumps-dir=${crashDir}`,
+  ];
+}
+
+export function ensureChromiumRuntimeDirs(): void {
+  const { configHome, cacheHome, crashDir } = chromiumRuntimePaths();
+  for (const dir of [configHome, cacheHome, crashDir]) {
+    try {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    } catch {
+      // Best-effort — launch will surface a clearer error if still not writable.
+    }
+  }
+}
+
 let queue: Promise<void> = Promise.resolve();
 
 export async function renderHeadlessPdf(options: HeadlessExportOptions): Promise<Buffer> {
@@ -252,14 +298,10 @@ async function runExclusive<T>(work: () => Promise<T>): Promise<T> {
 
 async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
+  ensureChromiumRuntimeDirs();
   const attempts: Array<{ executablePath?: string; error: string }> = [];
-  const launchArgs = [
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--disable-setuid-sandbox',
-    '--no-sandbox',
-    '--font-render-hinting=medium',
-  ];
+  const launchArgs = chromiumLaunchArgs();
+  const launchEnv = chromiumRuntimeEnv();
   for (const executablePath of chromiumExecutableCandidates()) {
     if (!fs.existsSync(executablePath)) {
       attempts.push({ executablePath, error: 'executable not found' });
@@ -270,6 +312,7 @@ async function launchChromium(): Promise<Browser> {
         executablePath,
         headless: true,
         args: launchArgs,
+        env: launchEnv,
         timeout: EXPORT_TIMEOUT_MS,
       });
     } catch (err) {
@@ -282,7 +325,8 @@ async function launchChromium(): Promise<Browser> {
     try {
       return await chromium.launch({
         headless: true,
-        args: ['--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox'],
+        args: launchArgs,
+        env: launchEnv,
         timeout: EXPORT_TIMEOUT_MS,
       });
     } catch (err) {

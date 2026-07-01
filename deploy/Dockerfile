@@ -138,6 +138,11 @@ ENV OD_BIND_HOST=0.0.0.0
 ENV OD_PORT=7456
 ENV OD_EXPORT_CHROMIUM_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+# Distro Chromium crashpad needs writable XDG dirs. The runtime container is
+# read-only except /tmp (tmpfs); open-design has no home (-M useradd).
+ENV HOME=/tmp
+ENV XDG_CONFIG_HOME=/tmp/.chromium
+ENV XDG_CACHE_HOME=/tmp/.chromium
 
 EXPOSE 7456
 
