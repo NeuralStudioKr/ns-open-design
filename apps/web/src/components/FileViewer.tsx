@@ -5028,6 +5028,7 @@ function HtmlViewer({
   const [imageExportSavedToast, setImageExportSavedToast] = useState<{ message: string; details: string } | null>(null);
   const [imageExportPreparedBlob, setImageExportPreparedBlob] = useState<{ format: ImageExportFormat; blob: Blob } | null>(null);
   const imageExportSnapshotDataUrlRef = useRef<string | null>(null);
+  const imageExportSlideRef = useRef<number | null>(null);
   const imageExportPrepareIdRef = useRef(0);
   const screenshotInFlightRef = useRef(false);
   const [exportToast, setExportToast] = useState<
@@ -7383,6 +7384,13 @@ function HtmlViewer({
     setDownloadMenuOpen(false);
     setDeployMenuOpen((v) => !v);
   };
+  const ensureDeckSlideSyncedForSnapshot = useCallback(async (iframe: HTMLIFrameElement | null) => {
+    if (!effectiveDeck || !iframe) return;
+    syncCachedSlideStateToIframe(iframe);
+    await waitForAnimationFrame();
+    await waitForAnimationFrame();
+  }, [effectiveDeck, previewStateKey]);
+
   const captureExportImageSnapshot = useCallback(async () => {
     // The host compositor grabs on-screen pixels, so any transient hover chrome
     // over the preview leaks into the capture. The screenshot control's own
@@ -7398,12 +7406,14 @@ function HtmlViewer({
     // the in-iframe SVG-foreignObject bridge does. Works for both srcDoc and
     // URL-load previews. Falls through to the bridge on pure web (no host).
     const visibleIframe = iframeRef.current ?? srcDocPreviewIframeRef.current;
+    await ensureDeckSlideSyncedForSnapshot(visibleIframe);
     const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
     if (hostSnapshot) return hostSnapshot;
 
     if (!useUrlLoadPreview) {
       const activeIframe = srcDocPreviewIframeRef.current ?? iframeRef.current;
       if (!activeIframe) return null;
+      await ensureDeckSlideSyncedForSnapshot(activeIframe);
       await waitForIframeLoadOrTimeout(activeIframe, 250);
       await waitForAnimationFrame();
       return requestPreviewSnapshotWithRetry(activeIframe);
@@ -7411,6 +7421,7 @@ function HtmlViewer({
 
     const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
     if (urlIframe) {
+      await ensureDeckSlideSyncedForSnapshot(urlIframe);
       await waitForIframeLoadOrTimeout(urlIframe, 250);
       await waitForAnimationFrame();
       const urlSnapshot = await requestPreviewSnapshotWithRetry(urlIframe);
@@ -7421,6 +7432,7 @@ function HtmlViewer({
     if (!srcDocIframe) {
       const activeIframe = iframeRef.current;
       if (!activeIframe) return null;
+      await ensureDeckSlideSyncedForSnapshot(activeIframe);
       return requestPreviewSnapshotWithRetry(activeIframe);
     }
 
@@ -7434,6 +7446,7 @@ function HtmlViewer({
     }
     const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
     try {
+      await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
       await waitForAnimationFrame();
       const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe);
       if (srcDocSnapshot) return srcDocSnapshot;
@@ -7449,6 +7462,7 @@ function HtmlViewer({
     }
   }, [
     activateSrcDocSnapshotTransport,
+    ensureDeckSlideSyncedForSnapshot,
     srcDocShellReady,
     useLazySrcDocTransport,
     useUrlLoadPreview,
@@ -7491,6 +7505,11 @@ function HtmlViewer({
     setImageExportPreparing(true);
     setImageExportError(null);
     setImageExportPreparedBlob(null);
+    const slideIndex = effectiveDeck ? slideState?.active : undefined;
+    if (effectiveDeck && imageExportSlideRef.current !== (slideIndex ?? null)) {
+      imageExportSnapshotDataUrlRef.current = null;
+      imageExportSlideRef.current = slideIndex ?? null;
+    }
     // Captured when the daemon-side export fails so we can append it to the
     // user-facing error if the in-iframe snapshot fallback also fails.
     let serverFailureReason: string | null = null;
@@ -7547,6 +7566,7 @@ function HtmlViewer({
     setImageExportError(null);
     setImageExportPreparedBlob(null);
     imageExportSnapshotDataUrlRef.current = null;
+    imageExportSlideRef.current = effectiveDeck ? slideState?.active ?? null : null;
     await waitForAnimationFrame();
     await waitForAnimationFrame();
     setImageExportModalOpen(true);

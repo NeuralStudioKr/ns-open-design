@@ -87,4 +87,9 @@ describe('buildDeckPrintCss', () => {
     const mod = await import('../src/headless-export.js');
     expect(typeof mod.revealAllDeckSlides).toBe('function');
   });
+
+  it('pins deck screenshot clips to the 1920×1080 slide frame', async () => {
+    const { deckScreenshotClipRect } = await import('../src/headless-export.js');
+    expect(deckScreenshotClipRect()).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+  });
 });

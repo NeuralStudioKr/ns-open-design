@@ -745,6 +745,8 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
   return { x: 0, y: 0, width: DECK_WIDTH, height: DECK_HEIGHT };
 }
 
+export { deckScreenshotClip as deckScreenshotClipRect };
+
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
   let doc = withBaseHref(input.html, input.baseHref || '');
   doc = injectTitle(doc, input.title);

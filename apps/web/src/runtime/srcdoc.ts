@@ -260,12 +260,20 @@ function injectSnapshotBridge(doc: string): string {
   function prepareDeckSnapshotFrame(){
     var stage = document.getElementById('deck-stage') || document.querySelector('.deck-stage');
     if (!stage) return null;
+    var selector = '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
     try {
       stage.style.setProperty('transform', 'none', 'important');
       document.querySelectorAll('.deck-shell').forEach(function(shell){
         shell.style.setProperty('padding', '0', 'important');
       });
       document.documentElement.style.setProperty('--deck-scale', '1');
+      document.querySelectorAll(selector).forEach(function(slide){
+        if (slide.classList.contains('active')) {
+          slide.style.setProperty('display', 'flex', 'important');
+        } else {
+          slide.style.setProperty('display', 'none', 'important');
+        }
+      });
     } catch (_) {}
     return { w: 1920, h: 1080, docW: 1920, docH: 1080, scrollX: 0, scrollY: 0 };
   }

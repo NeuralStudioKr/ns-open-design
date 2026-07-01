@@ -706,7 +706,8 @@ export async function imageDataUrlToBlob(
     ctx.fillRect(0, 0, width, height);
   }
   ctx.drawImage(img, 0, 0, width, height);
-  return canvasToBlob(canvas, spec.mime, format === 'jpeg' ? 0.92 : undefined);
+  const quality = format === 'jpeg' || format === 'webp' ? 0.92 : undefined;
+  return canvasToBlob(canvas, spec.mime, quality);
 }
 
 export async function prepareImageExportTarget(
