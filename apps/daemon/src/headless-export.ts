@@ -162,6 +162,7 @@ export function chromiumLaunchArgs(): string[] {
     '--font-render-hinting=medium',
     '--disable-crash-reporter',
     '--disable-breakpad',
+    '--no-crashpad',
     `--crash-dumps-dir=${crashDir}`,
   ];
 }

@@ -210,6 +210,31 @@ try{const j=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify({
   else
     note "app-config mode!=api (Local CLI 또는 미설정)"
   fi
+
+  # Headless PDF/image export — crashpad fix requires image >= 88c9aab93
+  export_probe="$(docker exec "$CONTAINER" node --input-type=module -e "
+import { chromiumLaunchArgs, chromiumRuntimeEnv, ensureChromiumRuntimeDirs } from './apps/daemon/dist/headless-export.js';
+ensureChromiumRuntimeDirs();
+const args = chromiumLaunchArgs();
+const env = chromiumRuntimeEnv();
+const required = ['--disable-crash-reporter', '--no-crashpad'];
+const missing = required.filter((f) => !args.includes(f));
+if (missing.length) { console.log('MISSING_ARGS:' + missing.join(',')); process.exit(3); }
+if (!args.some((a) => a.startsWith('--crash-dumps-dir='))) { console.log('MISSING_CRASH_DIR'); process.exit(4); }
+if (env.XDG_CONFIG_HOME !== '/tmp/.chromium') { console.log('XDG=' + env.XDG_CONFIG_HOME); process.exit(5); }
+console.log('OK');
+" 2>&1 || true)"
+  if [[ "$export_probe" == "OK" ]]; then
+    ok "Chromium export runtime (crashpad dirs + launch flags)"
+  elif [[ "$export_probe" == MISSING_ARGS:* ]]; then
+    bad "Chromium export: old daemon image (${export_probe#MISSING_ARGS:}) — redeploy open-design-daemon (>= 88c9aab93)"
+  elif [[ "$export_probe" == "MISSING_CRASH_DIR" ]]; then
+    bad "Chromium export: missing --crash-dumps-dir — redeploy open-design-daemon"
+  elif [[ "$export_probe" == XDG=* ]]; then
+    bad "Chromium export: XDG_CONFIG_HOME=${export_probe#XDG=} (expected /tmp/.chromium) — check compose env"
+  else
+    note "Chromium export probe skipped or failed: ${export_probe:-unknown}"
+  fi
 else
   note "container $SERVICE not running — skip env/app-config checks"
 fi

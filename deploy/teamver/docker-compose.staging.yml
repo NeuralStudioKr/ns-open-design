@@ -12,6 +12,10 @@ services:
       OD_SCRATCH_DISK_METRICS: "1"
       OD_SCRATCH_DISK_THRESHOLD_MB: ${OD_SCRATCH_DISK_THRESHOLD_MB:-2048}
       OD_SCRATCH_DISK_METRIC_INTERVAL_MS: ${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-300000}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.chromium
+      XDG_CACHE_HOME: /tmp/.chromium
+      OD_EXPORT_CHROMIUM_PATH: /usr/bin/chromium
 
   teamver-design-api:
     env_file:

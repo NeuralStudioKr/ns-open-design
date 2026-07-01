@@ -56,6 +56,7 @@ describe('chromiumRuntimePaths', () => {
       const args = chromiumLaunchArgs();
       expect(args).toContain('--disable-crash-reporter');
       expect(args.some((arg) => arg.startsWith('--crash-dumps-dir='))).toBe(true);
+      expect(args).toContain('--no-crashpad');
       const env = chromiumRuntimeEnv();
       expect(env.XDG_CONFIG_HOME).toBe(dir);
       expect(env.XDG_CACHE_HOME).toBe(dir);

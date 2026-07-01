@@ -28,6 +28,10 @@ services:
       OD_PROJECT_STORAGE: local
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.chromium
+      XDG_CACHE_HOME: /tmp/.chromium
+      OD_EXPORT_CHROMIUM_PATH: /usr/bin/chromium
     ports:
       - "127.0.0.1:7457:7457"
     volumes:
