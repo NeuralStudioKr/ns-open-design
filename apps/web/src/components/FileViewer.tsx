@@ -7495,24 +7495,22 @@ function HtmlViewer({
     // user-facing error if the in-iframe snapshot fallback also fails.
     let serverFailureReason: string | null = null;
     try {
-      if (format !== 'webp') {
-        const serverImage = await exportProjectImageBlob({
-          deck: effectiveDeck,
-          filePath: file.name,
-          format,
-          projectId,
-          slideIndex: effectiveDeck ? slideState?.active : undefined,
-          title: exportTitle,
-        });
-        if (serverImage.ok && serverImage.blob.size > 0) {
-          if (imageExportPrepareIdRef.current === prepareId) {
-            setImageExportPreparedBlob({ format, blob: serverImage.blob });
-          }
-          return;
+      const serverImage = await exportProjectImageBlob({
+        deck: effectiveDeck,
+        filePath: file.name,
+        format,
+        projectId,
+        slideIndex: effectiveDeck ? slideState?.active : undefined,
+        title: exportTitle,
+      });
+      if (serverImage.ok && serverImage.blob.size > 0) {
+        if (imageExportPrepareIdRef.current === prepareId) {
+          setImageExportPreparedBlob({ format, blob: serverImage.blob });
         }
-        if (!serverImage.ok) {
-          serverFailureReason = serverImage.reason;
-        }
+        return;
+      }
+      if (!serverImage.ok) {
+        serverFailureReason = serverImage.reason;
       }
       let dataUrl = imageExportSnapshotDataUrlRef.current;
       if (!dataUrl) {

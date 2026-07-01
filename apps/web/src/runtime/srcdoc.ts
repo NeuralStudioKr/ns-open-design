@@ -223,8 +223,7 @@ function injectSnapshotBridge(doc: string): string {
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '')
-        .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
+        .replace(/@import[^;]+;/gi, '');
     }
   }
   function pruneHiddenSnapshotNodes(originalRoot, cloneRoot){
@@ -247,13 +246,28 @@ function injectSnapshotBridge(doc: string): string {
   }
   function waitForImages(){
     var imgs = Array.prototype.slice.call(document.images || []);
-    return Promise.all(imgs.map(function(img){
+    var fontsReady = (document.fonts && document.fonts.ready)
+      ? document.fonts.ready.catch(function(){})
+      : Promise.resolve();
+    return Promise.all([fontsReady].concat(imgs.map(function(img){
       if (img.complete) return Promise.resolve();
       return new Promise(function(resolve){
         img.addEventListener('load', resolve, { once: true });
         img.addEventListener('error', resolve, { once: true });
       });
-    }));
+    })));
+  }
+  function prepareDeckSnapshotFrame(){
+    var stage = document.getElementById('deck-stage') || document.querySelector('.deck-stage');
+    if (!stage) return null;
+    try {
+      stage.style.setProperty('transform', 'none', 'important');
+      document.querySelectorAll('.deck-shell').forEach(function(shell){
+        shell.style.setProperty('padding', '0', 'important');
+      });
+      document.documentElement.style.setProperty('--deck-scale', '1');
+    } catch (_) {}
+    return { w: 1920, h: 1080, docW: 1920, docH: 1080, scrollX: 0, scrollY: 0 };
   }
   function scrollOffset(){
     var doc = document.documentElement;
@@ -294,17 +308,18 @@ function injectSnapshotBridge(doc: string): string {
     } catch (_) { return false; }
   }
   function renderSnapshot(id){
-    var w = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
-    var h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    var deckFrame = prepareDeckSnapshotFrame();
+    var w = deckFrame ? deckFrame.w : Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    var h = deckFrame ? deckFrame.h : Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
     var dpr = window.devicePixelRatio || 1;
     var bgColor = snapshotBackgroundColor();
-    var docW = Math.max(w, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
-    var docH = Math.max(h, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
+    var docW = deckFrame ? deckFrame.docW : Math.max(w, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
+    var docH = deckFrame ? deckFrame.docH : Math.max(h, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
     var clone = document.documentElement.cloneNode(true);
     clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
     inlineSnapshotStyles(document.documentElement, clone);
     pruneHiddenSnapshotNodes(document.documentElement, clone);
-    var scroll = scrollOffset();
+    var scroll = deckFrame ? { x: deckFrame.scrollX, y: deckFrame.scrollY } : scrollOffset();
     var cloneBody = clone.querySelector('body');
     var rootStyle = clone.getAttribute('style') || '';
     var bodyStyle = cloneBody ? cloneBody.getAttribute('style') || '' : '';

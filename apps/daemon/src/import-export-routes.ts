@@ -590,7 +590,11 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const imageFormat: HeadlessImageFormat =
-        format === 'jpeg' || format === 'jpg' ? 'jpeg' : 'png';
+        format === 'jpeg' || format === 'jpg'
+          ? 'jpeg'
+          : format === 'webp'
+            ? 'webp'
+            : 'png';
       const input = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -605,9 +609,16 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
       };
       const image = await renderHeadlessImage(imageOptions);
-      const extension = imageFormat === 'jpeg' ? 'jpg' : 'png';
+      const extension =
+        imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
       const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      setAttachmentHeaders(res, imageFormat === 'jpeg' ? 'image/jpeg' : 'image/png', `${base}.${extension}`);
+      const mime =
+        imageFormat === 'jpeg'
+          ? 'image/jpeg'
+          : imageFormat === 'webp'
+            ? 'image/webp'
+            : 'image/png';
+      setAttachmentHeaders(res, mime, `${base}.${extension}`);
       res.send(image);
     } catch (err: any) {
       const reason = String(err?.message || err);

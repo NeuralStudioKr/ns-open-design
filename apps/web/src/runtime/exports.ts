@@ -872,7 +872,8 @@ export async function exportProjectImageBlob(opts: {
   slideIndex?: number;
   title: string;
 }): Promise<ProjectImageBlobResult> {
-  const format = opts.format === 'jpeg' ? 'jpeg' : 'png';
+  const format =
+    opts.format === 'jpeg' ? 'jpeg' : opts.format === 'webp' ? 'webp' : 'png';
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/image`, {
       body: JSON.stringify({
@@ -909,7 +910,11 @@ export async function exportProjectImageBlob(opts: {
     return {
       ok: true,
       blob,
-      filename: attachmentFilenameFrom(resp, opts.title, format === 'jpeg' ? 'jpg' : 'png'),
+      filename: attachmentFilenameFrom(
+        resp,
+        opts.title,
+        format === 'jpeg' ? 'jpg' : format === 'webp' ? 'webp' : 'png',
+      ),
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

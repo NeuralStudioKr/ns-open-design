@@ -235,11 +235,16 @@ export async function renderHeadlessImage(options: HeadlessExportOptions): Promi
     try {
       const page = await preparePage(browser, options);
       await waitForPrintableContent(page);
+      if (options.input.deck) {
+        await resetDeckScreenshotLayout(page);
+      }
+      await inlineRenderedResources(page);
+      await waitForPrintableContent(page);
       await applyScreenshotStyles(page, options.input.deck, options.slideIndex);
       if (options.input.deck) {
         await revealDeckSlideForScreenshot(page, options.slideIndex);
         await waitForPrintableContent(page);
-        const clip = await deckScreenshotClip(page, options.slideIndex);
+        const clip = deckScreenshotClip();
         const image = await page.screenshot({
           type: normalizedImageFormat(options.imageFormat),
           clip,
@@ -718,32 +723,26 @@ async function inlineRenderedResources(page: Page): Promise<void> {
   `).catch(() => {});
 }
 
-async function deckScreenshotClip(page: Page, slideIndex?: number) {
-  const fallback = { x: 0, y: 0, width: DECK_WIDTH, height: DECK_HEIGHT };
-  const box = await page.evaluate(`(args) => {
-    const all = Array.from(document.querySelectorAll(args.selector));
-    const slides = all.length > 0 ? all : [document.body];
-    const target = slides[Math.max(0, Math.min(args.index, slides.length - 1))];
-    if (!target) return null;
-    const rect = target.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    return {
-      x: Math.max(0, rect.left + window.scrollX),
-      y: Math.max(0, rect.top + window.scrollY),
-      width: Math.max(1, rect.width),
-      height: Math.max(1, rect.height),
-    };
-  }`, {
-    index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
-    selector: DECK_SLIDE_SELECTOR,
-  }).catch(() => null);
-  if (!box) return fallback;
-  return {
-    x: Math.round(box.x),
-    y: Math.round(box.y),
-    width: Math.round(Math.min(Math.max(box.width, 1), DECK_WIDTH * 2)),
-    height: Math.round(Math.min(Math.max(box.height, 1), DECK_HEIGHT * 2)),
-  };
+async function resetDeckScreenshotLayout(page: Page): Promise<void> {
+  await page.evaluate(`(args) => {
+    const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+    document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+      set(el, 'transform', 'none');
+      set(el, 'box-shadow', 'none');
+    });
+    set(document.documentElement, 'width', args.width + 'px');
+    set(document.documentElement, 'height', args.height + 'px');
+    set(document.body, 'width', args.width + 'px');
+    set(document.body, 'height', args.height + 'px');
+    set(document.body, 'margin', '0');
+    document.documentElement.style.setProperty('--deck-scale', '1');
+  }`, { width: DECK_WIDTH, height: DECK_HEIGHT }).catch(() => {});
+}
+
+function deckScreenshotClip(): { x: number; y: number; width: number; height: number } {
+  // Pin the slide frame — getBoundingClientRect drifts when deck fit() scaled
+  // the stage in the preview viewport, producing cropped or letterboxed PNGs.
+  return { x: 0, y: 0, width: DECK_WIDTH, height: DECK_HEIGHT };
 }
 
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
@@ -782,8 +781,10 @@ function withBaseHref(html: string, baseHref: string): string {
   return `<!doctype html><html><head>${baseTag}</head><body>${html}</body></html>`;
 }
 
-function normalizedImageFormat(format: HeadlessImageFormat | undefined): 'png' | 'jpeg' {
-  return format === 'jpeg' ? 'jpeg' : 'png';
+function normalizedImageFormat(format: HeadlessImageFormat | undefined): 'png' | 'jpeg' | 'webp' {
+  if (format === 'jpeg') return 'jpeg';
+  if (format === 'webp') return 'webp';
+  return 'png';
 }
 
 function escapeHtmlAttribute(value: string): string {

@@ -111,6 +111,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-freefont-ttf \
     fonts-noto-core \
+    fonts-noto-cjk \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -g 1001 open-design \

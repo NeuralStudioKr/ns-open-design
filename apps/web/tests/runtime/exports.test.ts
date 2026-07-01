@@ -465,6 +465,36 @@ describe('exportProjectImageBlob', () => {
     });
   });
 
+  it('requests webp from the daemon when format is webp', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['webp'], { type: 'image/webp' }), {
+      headers: {
+        'content-disposition': 'attachment; filename="Seed-Deck.webp"',
+        'content-type': 'image/webp',
+      },
+      status: 200,
+    })));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'webp',
+      projectId: 'proj-1',
+      slideIndex: 0,
+      title: 'Seed Deck',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/image', expect.objectContaining({
+      body: JSON.stringify({
+        deck: true,
+        fileName: 'deck/index.html',
+        format: 'webp',
+        slideIndex: 0,
+        title: 'Seed Deck',
+      }),
+    }));
+  });
+
   it('extracts daemon ApiError envelopes on 500 EXPORT_FAILED so the reason is not [object Object]', async () => {
     // The daemon serialises errors as the canonical envelope shape
     // (`{ error: { code, message, ... } }`, see packages/contracts/errors.ts).
