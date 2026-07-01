@@ -16,6 +16,9 @@ export interface HeadlessExportOptions {
 const EXPORT_TIMEOUT_MS = 30_000;
 const DECK_WIDTH = 1920;
 const DECK_HEIGHT = 1080;
+// Image downloads are user-facing deliverables, not thumbnail previews. Capture
+// at 2x device scale so text antialiasing survives PNG/JPEG/WebP encoding.
+const IMAGE_DEVICE_SCALE_FACTOR = 2;
 // Single source of truth for the deck-slide selector used by both the print
 // CSS (apply{Pdf,Screenshot}Styles) and the in-page JS that drives
 // scrollIntoView + per-slide screenshot clipping. Decks shipped from different
@@ -233,7 +236,9 @@ export async function renderHeadlessImage(options: HeadlessExportOptions): Promi
   return runExclusive(async () => {
     const browser = await launchChromium();
     try {
-      const page = await preparePage(browser, options);
+      const page = await preparePage(browser, options, {
+        deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
+      });
       await waitForPrintableContent(page);
       if (options.input.deck) {
         await resetDeckScreenshotLayout(page);
@@ -246,14 +251,14 @@ export async function renderHeadlessImage(options: HeadlessExportOptions): Promi
         await waitForPrintableContent(page);
         const clip = deckScreenshotClip();
         const image = await page.screenshot({
-          type: normalizedImageFormat(options.imageFormat),
+          ...imageScreenshotOptions(options.imageFormat),
           clip,
           timeout: EXPORT_TIMEOUT_MS,
         });
         return Buffer.from(image);
       }
       const image = await page.screenshot({
-        type: normalizedImageFormat(options.imageFormat),
+        ...imageScreenshotOptions(options.imageFormat),
         fullPage: true,
         timeout: EXPORT_TIMEOUT_MS,
       });
@@ -348,13 +353,17 @@ async function dynamicImport(specifier: string): Promise<any> {
   return Function('specifier', 'return import(specifier)')(specifier);
 }
 
-async function preparePage(browser: Browser, options: HeadlessExportOptions): Promise<Page> {
+async function preparePage(
+  browser: Browser,
+  options: HeadlessExportOptions,
+  pageOptions: { deviceScaleFactor?: number } = {},
+): Promise<Page> {
   const page = await browser.newPage({
     viewport: {
       width: options.input.deck ? DECK_WIDTH : 1440,
       height: options.input.deck ? DECK_HEIGHT : 1200,
     },
-    deviceScaleFactor: 1,
+    deviceScaleFactor: pageOptions.deviceScaleFactor ?? 1,
   });
   page.setDefaultTimeout(EXPORT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(EXPORT_TIMEOUT_MS);
@@ -787,6 +796,17 @@ function normalizedImageFormat(format: HeadlessImageFormat | undefined): 'png' |
   if (format === 'jpeg') return 'jpeg';
   if (format === 'webp') return 'webp';
   return 'png';
+}
+
+export function imageScreenshotOptions(format: HeadlessImageFormat | undefined): Record<string, unknown> {
+  const type = normalizedImageFormat(format);
+  return {
+    type,
+    // PNG can preserve transparent artifacts. JPEG/WebP cannot, so force the
+    // white stage background we already inject in applyScreenshotStyles.
+    omitBackground: type === 'png',
+    ...(type === 'jpeg' || type === 'webp' ? { quality: 96 } : {}),
+  };
 }
 
 function escapeHtmlAttribute(value: string): string {

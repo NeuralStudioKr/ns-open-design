@@ -9,6 +9,7 @@ import {
   chromiumRuntimeEnv,
   chromiumRuntimePaths,
   ensureChromiumRuntimeDirs,
+  imageScreenshotOptions,
 } from '../src/headless-export.js';
 
 describe('chromiumExecutableCandidates', () => {
@@ -91,5 +92,30 @@ describe('buildDeckPrintCss', () => {
   it('pins deck screenshot clips to the 1920×1080 slide frame', async () => {
     const { deckScreenshotClipRect } = await import('../src/headless-export.js');
     expect(deckScreenshotClipRect()).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+  });
+});
+
+describe('imageScreenshotOptions', () => {
+  it('keeps PNG lossless and transparent-capable', () => {
+    expect(imageScreenshotOptions('png')).toEqual({
+      type: 'png',
+      omitBackground: true,
+    });
+  });
+
+  it('uses high-quality opaque JPEG output for text-heavy decks', () => {
+    expect(imageScreenshotOptions('jpeg')).toEqual({
+      type: 'jpeg',
+      omitBackground: false,
+      quality: 96,
+    });
+  });
+
+  it('uses high-quality opaque WebP output for text-heavy decks', () => {
+    expect(imageScreenshotOptions('webp')).toEqual({
+      type: 'webp',
+      omitBackground: false,
+      quality: 96,
+    });
   });
 });
