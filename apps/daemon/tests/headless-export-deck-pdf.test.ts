@@ -74,10 +74,11 @@ describe('buildDeckPrintCss', () => {
     const css = buildDeckPrintCss();
     expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('display: flex !important');
-    expect(css).toContain('.deck-stage');
-    expect(css).toContain('height: auto !important');
+    expect(css).toContain('display: contents !important');
     expect(css).toContain('.deck-shell');
-    expect(css).toContain('position: static !important');
+    expect(css).toContain('.deck-stage');
+    expect(css).not.toMatch(/\.deck-stage[^}]*height:\s*auto/);
+    expect(css).toContain('page-break-before: avoid !important');
     expect(css).toContain('page-break-after: always !important');
   });
 

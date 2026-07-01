@@ -1244,7 +1244,7 @@ function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }
 function injectDeckPrintFlattenScript(doc: string): string {
   const selector =
     '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
-  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};function set(el,p,v){el.style.setProperty(p,v,'important')}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('.deck-shell,.deck-stage,#deck-stage,.stage').forEach(function(el){set(el,'position','static');set(el,'display','block');set(el,'inset','auto');set(el,'transform','none');set(el,'overflow','visible');set(el,'width','1920px');set(el,'height','auto')});set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){set(el,'display','flex');set(el,'flex-direction','column');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1')});document.querySelectorAll('.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,[aria-label="Previous slide"],[aria-label="Next slide"]').forEach(function(el){set(el,'display','none')})}})();</script>`;
+  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};function set(el,p,v){el.style.setProperty(p,v,'important')}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('.deck-shell,.deck-stage,#deck-stage,.stage').forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){set(el,'display','flex');set(el,'flex-direction','column');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll('.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,[aria-label="Previous slide"],[aria-label="Next slide"]').forEach(function(el){set(el,'display','none')})}})();</script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;
@@ -1310,23 +1310,9 @@ const DECK_PRINT_CSS = `
     scroll-snap-type: none !important;
     transform: none !important;
   }
-  .deck-shell {
-    position: static !important;
-    display: block !important;
-    inset: auto !important;
-    overflow: visible !important;
-    width: 1920px !important;
-    height: auto !important;
-  }
+  .deck-shell,
   .deck-stage, .stage {
-    width: 1920px !important;
-    height: auto !important;
-    min-height: 0 !important;
-    transform: none !important;
-    box-shadow: none !important;
-    position: static !important;
-    inset: auto !important;
-    overflow: visible !important;
+    display: contents !important;
   }
   .slide:not(.active),
   [data-slide]:not(.active),
@@ -1366,6 +1352,15 @@ const DECK_PRINT_CSS = `
   .ppt-slide:last-child {
     page-break-after: auto !important;
     break-after: auto !important;
+  }
+  .slide:first-child,
+  [data-slide]:first-child,
+  [data-screen-label]:first-child,
+  section.slide:first-child,
+  .deck-slide:first-child,
+  .ppt-slide:first-child {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
   }
   .deck-counter, .deck-hint, .deck-nav,
   #deck-prev, #deck-next, #deck-cur, #deck-total,

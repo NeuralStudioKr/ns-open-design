@@ -69,23 +69,13 @@ export function buildDeckPrintCss(): string {
     scroll-snap-type: none !important;
     transform: none !important;
   }
-  .deck-shell {
-    position: static !important;
-    display: block !important;
-    inset: auto !important;
-    overflow: visible !important;
-    width: ${DECK_WIDTH}px !important;
-    height: auto !important;
-  }
+  /* Wrappers must not generate a box — a static 1920×1080 .deck-stage with
+     absolutely positioned slides produces an empty first printed page before
+     slide content flows (title fragments leak onto page 1, real slides start
+     on page 2). display:contents hoists slides directly into body flow. */
+  .deck-shell,
   .deck-stage, .stage {
-    width: ${DECK_WIDTH}px !important;
-    height: auto !important;
-    min-height: 0 !important;
-    transform: none !important;
-    box-shadow: none !important;
-    position: static !important;
-    inset: auto !important;
-    overflow: visible !important;
+    display: contents !important;
   }
   ${slidesNotActive},
   ${slides} {
@@ -110,6 +100,10 @@ export function buildDeckPrintCss(): string {
   ${slidesLastChild} {
     page-break-after: auto !important;
     break-after: auto !important;
+  }
+  ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
   }
   .deck-counter, .deck-hint, .deck-nav,
   #deck-prev, #deck-next, #deck-cur, #deck-total,
@@ -385,13 +379,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
 
       document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
-        set(el, 'position', 'static');
-        set(el, 'display', 'block');
-        set(el, 'inset', 'auto');
-        set(el, 'overflow', 'visible');
-        set(el, 'width', args.width + 'px');
-        set(el, 'height', 'auto');
-        set(el, 'min-height', '0');
+        set(el, 'display', 'contents');
         set(el, 'transform', 'none');
         set(el, 'box-shadow', 'none');
       });
@@ -423,6 +411,10 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'page-break-after', index < slides.length - 1 ? 'always' : 'auto');
         set(el, 'break-after', index < slides.length - 1 ? 'page' : 'auto');
         set(el, 'break-inside', 'avoid');
+        if (index === 0) {
+          set(el, 'page-break-before', 'avoid');
+          set(el, 'break-before', 'avoid');
+        }
         el.querySelectorAll(':scope > *').forEach((child) => {
           set(child, 'position', 'relative');
           set(child, 'inset', 'auto');

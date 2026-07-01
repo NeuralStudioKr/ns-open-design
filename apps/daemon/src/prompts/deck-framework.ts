@@ -181,16 +181,12 @@ export const DECK_SKELETON_HTML = `<!doctype html>
         background: #fff !important;
       }
       .deck-shell {
-        position: static !important;
-        display: block !important;
-        inset: auto !important;
+        display: contents !important;
       }
       .deck-stage {
-        width: 1920px !important;
-        height: auto !important;
+        display: contents !important;
         transform: none !important;
         box-shadow: none !important;
-        position: static !important;
       }
       .slide:not(.active),
       .slide {
@@ -203,6 +199,7 @@ export const DECK_SKELETON_HTML = `<!doctype html>
         break-after: page;
       }
       .slide:last-child { page-break-after: auto; break-after: auto; }
+      .slide:first-child { page-break-before: avoid; break-before: avoid; }
       .deck-counter, .deck-hint { display: none !important; }
     }
   </style>
