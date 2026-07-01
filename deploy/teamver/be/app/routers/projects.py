@@ -498,6 +498,8 @@ async def publish_project_to_drive(
         artifact_file=body.artifact_file,
         folder_id=body.folder_id,
         shared_drive_id=body.shared_drive_id,
+        deck=body.deck,
+        export_title=body.title,
     )
     await db.commit()
     payload = PublishProjectResponse(

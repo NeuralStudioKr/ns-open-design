@@ -20,6 +20,8 @@ services:
         no_proxy: ${no_proxy:-}
         NO_PROXY: ${NO_PROXY:-}
         VITE_MESSAGE_PERSIST_THROTTLE_MS: ${VITE_MESSAGE_PERSIST_THROTTLE_MS:-5000}
+        VITE_TEAMVER_MAIN_LOGIN_URL: ${VITE_TEAMVER_MAIN_LOGIN_URL:-https://stg.teamver.com/auth/signin}
+        VITE_TEAMVER_SITE_URL: ${VITE_TEAMVER_SITE_URL:-https://design.teamver.com}
     restart: unless-stopped
     environment:
       NODE_ENV: production

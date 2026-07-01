@@ -21,6 +21,8 @@ class PublishProjectBody(BaseModel):
         default=None,
         validation_alias=AliasChoices("shared_drive_id", "sharedDriveId"),
     )
+    deck: bool | None = Field(default=None)
+    title: str | None = Field(default=None)
 
 
 class DesignOutputResponse(BaseModel):

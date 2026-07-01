@@ -21,6 +21,8 @@ export interface ToastProps {
   details?: string | null;
   /** When set with `details`, renders the details line as an external link. */
   detailsHref?: string | null;
+  /** Multiple external links rendered beneath the message (e.g. partial publish). */
+  detailLinks?: Array<{ label: string; href: string }>;
   // Optional code/preformatted body. When present the toast pins
   // itself open (no auto-dismiss) so the user has time to manually
   // copy the content. Used for the clipboard-failure recovery path
@@ -57,7 +59,7 @@ const TONE_ICON: Record<NonNullable<ToastProps['tone']>, 'check' | 'close' | 'sp
   loading: 'spinner',
 };
 
-export function Toast({ message, details, detailsHref, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom', actionLabel, onAction }: ToastProps) {
+export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom', actionLabel, onAction }: ToastProps) {
   // When code is present the toast is a manual-action surface; never
   // auto-dismiss it out from under the user mid-copy.
   const effectiveTtl = code ? 0 : ttlMs;
@@ -100,7 +102,21 @@ export function Toast({ message, details, detailsHref, code, ttlMs = DEFAULT_TTL
         ) : null}
         <div className="od-toast-message">{message}</div>
       </div>
-      {details ? (
+      {detailLinks && detailLinks.length > 0 ? (
+        <div className="od-toast-detail-links">
+          {detailLinks.map((link) => (
+            <a
+              key={`${link.href}-${link.label}`}
+              href={link.href}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {details && !(detailLinks && detailLinks.length > 0) ? (
         <div className="od-toast-details">
           {detailsHref ? (
             <a href={detailsHref} target="_blank" rel="noreferrer noopener">

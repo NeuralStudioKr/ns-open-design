@@ -5,12 +5,10 @@ import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 /**
- * loop 173 — Wire format selection through publishToDrive. Keeping the union
- * narrow (vs. `string`) lets the UI surface a single source of truth for
- * supported formats. PDF is deliberately absent: see
- * `TeamverPublishDriveMenuItem` for the backend constraint.
+ * Teamver embed is slide-only: Drive publish sends deck PDF and/or inline HTML.
+ * ZIP/PPTX remain local 보내기 paths.
  */
-export type TeamverPublishDriveFormat = "html" | "zip";
+export type TeamverPublishDriveFormat = "html" | "zip" | "pdf";
 
 export type TeamverPublishDriveParams = {
   projectId: string;
@@ -18,6 +16,8 @@ export type TeamverPublishDriveParams = {
   artifactFile?: string;
   folderId?: string | null;
   sharedDriveId?: string | null;
+  deck?: boolean;
+  title?: string;
 };
 
 export type TeamverPublishDriveOutput = {
@@ -101,8 +101,8 @@ export function buildPublishResultFromResponse(
   const ready = pickReadyPublishOutputs(outputs);
   return {
     projectId: response.projectId ?? fallbackProjectId,
-    outputs: ready.length > 0 ? ready : outputs,
-    partial: outputs.some((output) => output.publishStatus === "failed"),
+    outputs,
+    partial: outputs.some((output) => output.publishStatus === "failed") && ready.length > 0,
   };
 }
 
@@ -211,6 +211,8 @@ export async function publishTeamverDesignToDrive(
     artifactFile: params.artifactFile,
     folderId: params.folderId ?? resolveDefaultPublishFolderId(),
     sharedDriveId: params.sharedDriveId ?? resolveDefaultPublishSharedDriveId(),
+    ...(params.deck === true ? { deck: true } : {}),
+    ...(params.title?.trim() ? { title: params.title.trim() } : {}),
   };
 
   try {

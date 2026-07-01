@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FORMATS = {"html", "zip"}
+SUPPORTED_FORMATS = {"html", "pdf"}
 _FILENAME_UNSAFE_RE = re.compile(r"[^\w.\- ]+")
 _MAX_PUBLISH_FILENAME_CHARS = 80
 _CLIENT_ERROR_CODES = frozenset(
@@ -135,6 +136,72 @@ def _entry_file_from_manifest(manifest: dict) -> str | None:
     return None
 
 
+def _artifact_record_from_manifest(
+    manifest: dict,
+    artifact_file: str | None,
+) -> dict | None:
+    path = (artifact_file or "").strip()
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list):
+        return None
+    for item in artifacts:
+        if not isinstance(item, dict):
+            continue
+        file_path = item.get("file")
+        if not isinstance(file_path, str) or not file_path.strip():
+            continue
+        if path and file_path.strip() == path:
+            return item
+    entry = _entry_file_from_manifest(manifest)
+    if not entry:
+        return None
+    if path and path != entry:
+        return None
+    for item in artifacts:
+        if isinstance(item, dict) and item.get("file") == entry:
+            return item
+    return None
+
+
+def _is_deck_artifact_manifest(manifest: dict, artifact_file: str | None) -> bool:
+    record = _artifact_record_from_manifest(manifest, artifact_file)
+    if record:
+        kind = record.get("kind")
+        if isinstance(kind, str) and kind.strip():
+            normalized = kind.strip().lower()
+            if normalized == "deck":
+                return True
+            renderer = record.get("renderer")
+            if isinstance(renderer, str) and renderer.strip().lower() == "deck-html":
+                return True
+            return False
+    path = (artifact_file or _entry_file_from_manifest(manifest) or "").strip().lower()
+    segments = [segment for segment in path.replace("\\", "/").lower().split("/") if segment]
+    if any(segment in ("deck", "decks", "slides", "pitch") for segment in segments):
+        return True
+    basename = segments[-1] if segments else ""
+    return any(token in basename for token in ("slides", "pitch"))
+
+
+def _allowed_publish_formats(*, is_deck: bool) -> frozenset[str]:
+    # Slide-only embed: Drive publish lets users pick PDF (sharing) and/or inline HTML.
+    del is_deck
+    return frozenset({"html", "pdf"})
+
+
+def _validate_publish_formats(
+    formats: list[str],
+    *,
+    is_deck: bool,
+) -> None:
+    allowed = _allowed_publish_formats(is_deck=is_deck)
+    disallowed = [fmt for fmt in formats if fmt not in allowed]
+    if disallowed:
+        raise BadRequestError(
+            f"publish_format_policy_violation:{','.join(disallowed)}",
+        )
+
+
 def _failed_output(kind: str, *, error_code: str) -> PublishFormatResult:
     return PublishFormatResult(
         kind=kind,
@@ -226,6 +293,8 @@ async def publish_project(
     folder_id: str | None,
     shared_drive_id: str | None = None,
     od_daemon: OdDaemonClient | None = None,
+    deck: bool | None = None,
+    export_title: str | None = None,
 ) -> PublishResult:
     if not access_token:
         raise UnauthorizedError("missing_access_token")
@@ -256,6 +325,8 @@ async def publish_project(
         identity=daemon_identity,
     )
     manifest_entry = _entry_file_from_manifest(manifest)
+    is_deck_artifact = _is_deck_artifact_manifest(manifest, artifact_file)
+    _validate_publish_formats(normalized_formats, is_deck=is_deck_artifact)
 
     # Best-effort: fetch the daemon's current project name so Drive filenames
     # follow in-editor renames instead of the stale registry title. Failure
@@ -273,8 +344,9 @@ async def publish_project(
             exc_info=True,
         )
 
-    outputs: list[PublishFormatResult] = []
-    for fmt in normalized_formats:
+    db_lock = asyncio.Lock()
+
+    async def _publish_single_format(fmt: str) -> PublishFormatResult:
         try:
             if fmt == "html":
                 path = (artifact_file or manifest_entry or "").strip()
@@ -297,27 +369,32 @@ async def publish_project(
                 entry_file = manifest_entry
                 artifact = artifact_file or path
             elif fmt == "zip":
-                content = await daemon.get_archive(
+                raise BadRequestError("publish_format_not_allowed:zip")
+            elif fmt == "pdf":
+                path = (artifact_file or manifest_entry or "").strip()
+                if not path:
+                    raise BadRequestError("artifact_file_required")
+                content = await daemon.get_export_pdf(
                     project.od_project_id,
+                    path,
                     identity=daemon_identity,
+                    deck=is_deck_artifact,
+                    title=export_title,
                 )
-                mime_type = "application/zip"
+                mime_type = "application/pdf"
                 filename = _publish_filename(
                     project,
-                    artifact_file=artifact_file,
+                    artifact_file=artifact_file or path,
                     manifest_entry=manifest_entry,
-                    suffix=".zip",
+                    suffix=".pdf",
                     live_title=live_title,
                 )
-                source_path = None
+                source_path = path
                 entry_file = manifest_entry
-                artifact = artifact_file
+                artifact = artifact_file or path
             else:
-                continue
+                return _failed_output(fmt, error_code=f"unsupported_formats:{fmt}")
 
-            # loop 177 — Phase-tagged Drive upload so each failure surfaces a
-            # distinct error_code and a structured warning log for staging
-            # debugging. Phase order: upload_request → presigned_put → confirm.
             phase = "upload_request"
             try:
                 try:
@@ -377,31 +454,37 @@ async def publish_project(
                     fmt,
                     getattr(failure.cause, "status_code", None),
                 )
-                outputs.append(_failed_output(fmt, error_code=failure.error_code))
-                continue
+                return _failed_output(fmt, error_code=failure.error_code)
 
-            row = await design_output_crud.acreate_output(
-                db,
-                project_id=project.id,
-                workspace_id=project.workspace_id,
-                owner_user_id=project.owner_user_id,
-                od_project_id=project.od_project_id,
-                drive_asset_id=asset.asset_id,
-                drive_folder_id=resolved_folder_id,
-                drive_shared_drive_id=resolved_shared_drive_id,
-                kind=fmt,
-                mime_type=mime_type,
-                filename=filename,
-                size_bytes=len(content),
-                source_path=source_path,
-                manifest_entry_file=entry_file,
-                artifact_file=artifact,
-            )
-            outputs.append(_ready_output(row))
+            async with db_lock:
+                row = await design_output_crud.acreate_output(
+                    db,
+                    project_id=project.id,
+                    workspace_id=project.workspace_id,
+                    owner_user_id=project.owner_user_id,
+                    od_project_id=project.od_project_id,
+                    drive_asset_id=asset.asset_id,
+                    drive_folder_id=resolved_folder_id,
+                    drive_shared_drive_id=resolved_shared_drive_id,
+                    kind=fmt,
+                    mime_type=mime_type,
+                    filename=filename,
+                    size_bytes=len(content),
+                    source_path=source_path,
+                    manifest_entry_file=entry_file,
+                    artifact_file=artifact,
+                )
+            return _ready_output(row)
         except BadRequestError as exc:
-            outputs.append(_failed_output(fmt, error_code=exc.message))
+            return _failed_output(fmt, error_code=exc.message)
         except BadGatewayError as exc:
-            outputs.append(_failed_output(fmt, error_code=exc.message))
+            return _failed_output(fmt, error_code=exc.message)
+
+    outputs = list(
+        await asyncio.gather(
+            *(_publish_single_format(fmt) for fmt in normalized_formats),
+        ),
+    )
 
     result = PublishResult(project_id=project.id, outputs=outputs)
     _raise_if_all_failed(result)

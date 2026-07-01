@@ -157,7 +157,66 @@ describe("TeamverPublishDriveMenuItem", () => {
     }
   });
 
-  it("browses searchable Drive targets and publishes HTML to the selected team folder", async () => {
+  it("publishes slide decks as PDF to Drive", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        exportTitle="Q4 Deck"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith({
+        projectId: "od-1",
+        artifactFile: "deck/index.html",
+        formats: ["pdf"],
+        folderId: null,
+        sharedDriveId: null,
+        deck: true,
+        title: "Q4 Deck",
+      });
+    });
+  });
+
+  it("publishes slide decks as HTML when only HTML is selected", async () => {
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        exportTitle="Q4 Deck"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(listTargetsMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("teamver-drive-format-option-html"));
+    fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
+
+    await waitFor(() => {
+      expect(publishMock).toHaveBeenCalledWith({
+        projectId: "od-1",
+        artifactFile: "deck/index.html",
+        formats: ["html"],
+        folderId: null,
+        sharedDriveId: null,
+        deck: true,
+        title: "Q4 Deck",
+      });
+    });
+  });
+
+  it("browses searchable Drive targets and publishes PDF to the selected team folder", async () => {
     searchTargetsMock.mockResolvedValueOnce([
       {
         id: "shared:SD-1:FLD-EXPORTS",
@@ -206,23 +265,28 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(screen.queryByTestId("teamver-drive-picker-modal")).toBeNull();
     });
 
-    // loop 174 — Drive publish is now HTML-only (ZIP dropped from the UI;
-    // PDF deferred to a BE-rendered track).
+    // Default format is PDF; folder selection persists after a successful publish.
     fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
 
     await waitFor(() => {
       expect(publishMock).toHaveBeenCalledWith({
         projectId: "od-1",
         artifactFile: "deck/index.html",
-        formats: ["html"],
+        formats: ["pdf"],
         folderId: "FLD-EXPORTS",
         sharedDriveId: "SD-1",
+        deck: true,
       });
     });
     expect(onCloseMenu).toHaveBeenCalledTimes(1);
     expect(onSuccess).toHaveBeenCalledWith(
-      expect.objectContaining({ driveAssetId: "AST-1" }),
-      { partial: false },
+      expect.objectContaining({
+        partial: false,
+        selectedFormat: "pdf",
+        outputs: expect.arrayContaining([
+          expect.objectContaining({ driveAssetId: "AST-1" }),
+        ]),
+      }),
     );
     // loop 174 — successful publish persists the chosen target so subsequent
     // publishes default to the same folder.
@@ -268,9 +332,10 @@ describe("TeamverPublishDriveMenuItem", () => {
       expect(publishMock).toHaveBeenCalledWith({
         projectId: "od-1",
         artifactFile: "deck/index.html",
-        formats: ["html"],
+        formats: ["pdf"],
         folderId: "FLD-REMOTE",
         sharedDriveId: "SD-2",
+        deck: true,
       });
     });
   });
@@ -388,7 +453,8 @@ describe("TeamverPublishDriveMenuItem", () => {
     // The newest publish must carry the highest version number.
     const row0 = await screen.findByTestId("teamver-drive-history-row-0");
     expect(within(row0).getByTestId("teamver-drive-history-version-0").textContent).toBe("v2");
-    const row1 = screen.getByTestId("teamver-drive-history-row-1");
+    fireEvent.click(screen.getByTestId("teamver-drive-history-toggle"));
+    const row1 = await screen.findByTestId("teamver-drive-history-row-1");
     expect(within(row1).getByTestId("teamver-drive-history-version-1").textContent).toBe("v1");
     expect(
       (screen.getByTestId("teamver-drive-history-open-0") as HTMLAnchorElement).href,

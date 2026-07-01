@@ -202,6 +202,19 @@
   opacity: 0.85;
   font-weight: 400;
 }
+.od-toast-detail-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.od-toast-detail-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .od-toast-action {
   margin-top: 7px;
   padding: 4px 9px;

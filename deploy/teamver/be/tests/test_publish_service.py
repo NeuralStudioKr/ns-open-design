@@ -18,6 +18,16 @@ from app.errors import BadGatewayError, BadRequestError, UnauthorizedError
 from app.services.publish_service import publish_project
 
 
+HTML_PAGE_MANIFEST = {
+    "entryFile": "pages/landing.html",
+    "artifacts": [{"file": "pages/landing.html", "kind": "html"}],
+}
+DECK_MANIFEST = {
+    "entryFile": "deck/index.html",
+    "artifacts": [{"file": "deck/index.html", "kind": "deck", "renderer": "deck-html"}],
+}
+
+
 def _project() -> DesignProject:
     row = DesignProject(
         id="DPRJ-TEST",
@@ -88,7 +98,7 @@ async def test_publish_project_rejects_unsupported_format():
             teamver_client=client,
             access_token="token",
             project=_project(),
-            formats=["pdf"],
+            formats=["pptx"],
             artifact_file=None,
             folder_id=None,
             od_daemon=_daemon_mock(),
@@ -96,15 +106,62 @@ async def test_publish_project_rejects_unsupported_format():
 
 
 @pytest.mark.asyncio
-async def test_publish_project_html_uploads_and_persists():
+async def test_publish_project_slide_pdf_uploads_and_persists():
     db = AsyncMock()
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-PDF")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file="deck/index.html",
+        folder_id=None,
+        deck=True,
+        export_title="Q4 Deck",
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 201
+    assert result.outputs[0].kind == "pdf"
+    assert result.outputs[0].publish_status == "ready"
+    assert result.outputs[0].filename == "Landing Page.pdf"
+    assert result.outputs[0].mime_type == "application/pdf"
+    daemon.get_export_pdf.assert_awaited_once_with(
+        "od1",
+        "deck/index.html",
+        identity=ANY,
+        deck=True,
+        title="Q4 Deck",
+    )
+    teamver_client.drive.create_upload_request.assert_awaited_once()
+    assert (
+        teamver_client.drive.create_upload_request.await_args.kwargs["content_type"]
+        == "application/pdf"
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_pdf_uploads_via_manifest_entry():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    pdf_bytes = b"%PDF-1.4 test"
+    daemon.get_export_pdf.return_value = pdf_bytes
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-123")
@@ -114,32 +171,39 @@ async def test_publish_project_html_uploads_and_persists():
         teamver_client=teamver_client,
         access_token="token",
         project=_project(),
-        formats=["html"],
+        formats=["pdf"],
         artifact_file=None,
         folder_id=None,
+        deck=True,
         od_daemon=daemon,
     )
 
     assert result.project_id == "DPRJ-TEST"
     assert result.http_status == 201
     assert len(result.outputs) == 1
-    assert result.outputs[0].kind == "html"
+    assert result.outputs[0].kind == "pdf"
     assert result.outputs[0].publish_status == "ready"
     assert result.outputs[0].drive_asset_id == "AST-123"
     daemon.get_export_manifest.assert_awaited_once_with("od1", identity=ANY)
-    daemon.get_export_inline.assert_awaited_once_with("od1", "deck/index.html", identity=ANY)
+    daemon.get_export_pdf.assert_awaited_once_with(
+        "od1",
+        "deck/index.html",
+        identity=ANY,
+        deck=True,
+        title=None,
+    )
     teamver_client.drive.create_upload_request.assert_awaited_once_with(
         access_token="token",
-        filename="Landing Page.html",
-        file_size=len(b"<html>ok</html>"),
-        content_type="text/html",
+        filename="Landing Page.pdf",
+        file_size=len(pdf_bytes),
+        content_type="application/pdf",
         folder_id=None,
         shared_drive_id=None,
     )
     teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
         "https://s3.example.com/upload/AST-123",
-        content=b"<html>ok</html>",
-        content_type="text/html",
+        content=pdf_bytes,
+        content_type="application/pdf",
     )
     teamver_client.drive.confirm_upload.assert_awaited_once_with(
         access_token="token",
@@ -155,8 +219,9 @@ async def test_publish_project_uploads_to_shared_drive_target():
     db.refresh = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    pdf_bytes = b"%PDF-1.4 test"
+    daemon.get_export_pdf.return_value = pdf_bytes
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-SHARED")
@@ -166,10 +231,11 @@ async def test_publish_project_uploads_to_shared_drive_target():
         teamver_client=teamver_client,
         access_token="token",
         project=_project(),
-        formats=["html"],
+        formats=["pdf"],
         artifact_file=None,
         folder_id="FLD-TEAM",
         shared_drive_id="SD-TEAM",
+        deck=True,
         od_daemon=daemon,
     )
 
@@ -178,9 +244,9 @@ async def test_publish_project_uploads_to_shared_drive_target():
     assert result.outputs[0].drive_shared_drive_id == "SD-TEAM"
     teamver_client.drive.create_upload_request.assert_awaited_once_with(
         access_token="token",
-        filename="Landing Page.html",
-        file_size=len(b"<html>ok</html>"),
-        content_type="text/html",
+        filename="Landing Page.pdf",
+        file_size=len(pdf_bytes),
+        content_type="application/pdf",
         folder_id="FLD-TEAM",
         shared_drive_id="SD-TEAM",
     )
@@ -198,8 +264,12 @@ async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = {
         "entryFile": "exports/this-is-a-very-long-generated-slide-deck-name-that-should-not-become-an-overlong-drive-file.html",
+        "artifacts": [{
+            "file": "exports/this-is-a-very-long-generated-slide-deck-name-that-should-not-become-an-overlong-drive-file.html",
+            "kind": "html",
+        }],
     }
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-FILENAME")
@@ -209,7 +279,7 @@ async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_
         teamver_client=teamver_client,
         access_token="token",
         project=project,
-        formats=["html"],
+        formats=["pdf"],
         artifact_file=None,
         folder_id=None,
         od_daemon=daemon,
@@ -217,8 +287,8 @@ async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_
 
     filename = result.outputs[0].filename
     assert filename is not None
-    assert filename.endswith(".html")
-    assert filename != "design.html"
+    assert filename.endswith(".pdf")
+    assert filename != "design.pdf"
     assert len(filename) <= 80
     assert filename.startswith("this-is-a-very-long-generated-slide-deck-name")
     teamver_client.drive.create_upload_request.assert_awaited_once()
@@ -226,37 +296,58 @@ async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_
 
 
 @pytest.mark.asyncio
-async def test_publish_project_partial_html_ok_zip_daemon_fail():
+async def test_publish_project_rejects_zip_format():
+    db = AsyncMock()
+    client = MagicMock()
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+
+    with pytest.raises(BadRequestError, match="unsupported_formats:zip"):
+        await publish_project(
+            db,
+            teamver_client=client,
+            access_token="token",
+            project=_project(),
+            formats=["zip"],
+            artifact_file="pages/landing.html",
+            folder_id=None,
+            od_daemon=daemon,
+        )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_accepts_html_for_slides():
     db = AsyncMock()
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
-    daemon.get_archive.side_effect = BadGatewayError("od_daemon_export_failed")
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_inline.return_value = b"<html>deck</html>"
 
     teamver_client = MagicMock()
-    _wire_drive_upload(teamver_client, asset_id="AST-123")
+    _wire_drive_upload(teamver_client, asset_id="AST-HTML")
 
     result = await publish_project(
         db,
         teamver_client=teamver_client,
         access_token="token",
         project=_project(),
-        formats=["html", "zip"],
-        artifact_file=None,
+        formats=["html"],
+        artifact_file="deck/index.html",
         folder_id=None,
         od_daemon=daemon,
     )
 
-    assert result.http_status == 207
-    assert result.outputs[0].publish_status == "ready"
+    assert result.http_status == 201
     assert result.outputs[0].kind == "html"
-    assert result.outputs[1].publish_status == "failed"
-    assert result.outputs[1].kind == "zip"
-    assert result.outputs[1].error_code == "od_daemon_export_failed"
+    assert result.outputs[0].publish_status == "ready"
+    daemon.get_export_inline.assert_awaited_once_with(
+        "od1",
+        "deck/index.html",
+        identity=ANY,
+    )
 
 
 @pytest.mark.asyncio
@@ -264,9 +355,8 @@ async def test_publish_project_all_formats_fail_raises_bad_gateway():
     db = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.side_effect = BadGatewayError("od_daemon_export_failed")
-    daemon.get_archive.side_effect = BadGatewayError("od_daemon_export_failed")
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.side_effect = BadGatewayError("od_daemon_export_failed")
 
     teamver_client = MagicMock()
 
@@ -276,87 +366,11 @@ async def test_publish_project_all_formats_fail_raises_bad_gateway():
             teamver_client=teamver_client,
             access_token="token",
             project=_project(),
-            formats=["html", "zip"],
+            formats=["pdf"],
             artifact_file=None,
             folder_id=None,
             od_daemon=daemon,
         )
-
-
-@pytest.mark.asyncio
-async def test_publish_project_partial_zip_upload_fail():
-    db = AsyncMock()
-    db.add = MagicMock()
-    db.flush = AsyncMock()
-    db.refresh = AsyncMock()
-
-    daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
-    daemon.get_archive.return_value = b"zip-bytes"
-
-    upload_exc = TeamverAPIError("drive upload failed")
-    upload_exc.code = "drive_upload_failed"
-    upload_exc.status_code = 502
-
-    teamver_client = MagicMock()
-    ticket_html = MagicMock()
-    ticket_html.asset_id = "AST-HTML"
-    ticket_html.presigned_url = "https://s3.example.com/upload/AST-HTML"
-    ticket_zip = MagicMock()
-    ticket_zip.asset_id = "AST-ZIP"
-    ticket_zip.presigned_url = "https://s3.example.com/upload/AST-ZIP"
-    asset_html = MagicMock()
-    asset_html.asset_id = "AST-HTML"
-    teamver_client.drive.create_upload_request = AsyncMock(
-        side_effect=[ticket_html, ticket_zip],
-    )
-    teamver_client.drive._put_presigned_bytes = AsyncMock()
-    teamver_client.drive.confirm_upload = AsyncMock(
-        side_effect=[asset_html, upload_exc],
-    )
-
-    result = await publish_project(
-        db,
-        teamver_client=teamver_client,
-        access_token="token",
-        project=_project(),
-        formats=["html", "zip"],
-        artifact_file=None,
-        folder_id=None,
-        od_daemon=daemon,
-    )
-
-    assert result.http_status == 207
-    assert result.outputs[0].publish_status == "ready"
-    assert result.outputs[1].publish_status == "failed"
-    assert result.outputs[1].error_code == "drive_upload_failed"
-
-
-def _wire_two_format_drive(
-    teamver_client: MagicMock,
-    *,
-    html_ticket_asset: str = "AST-HTML",
-    zip_ticket_asset: str = "AST-ZIP",
-):
-    """Helper for loop 177 partial-failure tests — html succeeds, zip fails at
-    a configurable phase. Returns (mocks, html_asset) so each test can wire its
-    own zip-phase exception."""
-    ticket_html = MagicMock()
-    ticket_html.asset_id = html_ticket_asset
-    ticket_html.presigned_url = f"https://s3.example.com/upload/{html_ticket_asset}"
-    ticket_zip = MagicMock()
-    ticket_zip.asset_id = zip_ticket_asset
-    ticket_zip.presigned_url = f"https://s3.example.com/upload/{zip_ticket_asset}"
-    asset_html = MagicMock()
-    asset_html.asset_id = html_ticket_asset
-    create_mock = AsyncMock(side_effect=[ticket_html, ticket_zip])
-    put_mock = AsyncMock()
-    confirm_mock = AsyncMock(return_value=asset_html)
-    teamver_client.drive.create_upload_request = create_mock
-    teamver_client.drive._put_presigned_bytes = put_mock
-    teamver_client.drive.confirm_upload = confirm_mock
-    return create_mock, put_mock, confirm_mock
 
 
 @pytest.mark.asyncio
@@ -370,45 +384,31 @@ async def test_publish_project_upload_request_phase_status_propagates():
     db.refresh = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
-    daemon.get_archive.return_value = b"zip-bytes"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
-    ticket_html = MagicMock()
-    ticket_html.asset_id = "AST-HTML"
-    ticket_html.presigned_url = "https://s3.example.com/upload/AST-HTML"
-    asset_html = MagicMock()
-    asset_html.asset_id = "AST-HTML"
     upload_request_exc = TeamverAPIError("drive upload request rejected")
     upload_request_exc.code = None
     upload_request_exc.status_code = 403
-    create_mock = AsyncMock(side_effect=[ticket_html, upload_request_exc])
-    put_mock = AsyncMock()
-    confirm_mock = AsyncMock(return_value=asset_html)
-    teamver_client.drive.create_upload_request = create_mock
-    teamver_client.drive._put_presigned_bytes = put_mock
-    teamver_client.drive.confirm_upload = confirm_mock
+    teamver_client.drive.create_upload_request = AsyncMock(side_effect=upload_request_exc)
+    teamver_client.drive._put_presigned_bytes = AsyncMock()
+    teamver_client.drive.confirm_upload = AsyncMock()
 
-    result = await publish_project(
-        db,
-        teamver_client=teamver_client,
-        access_token="token",
-        project=_project(),
-        formats=["html", "zip"],
-        artifact_file=None,
-        folder_id=None,
-        od_daemon=daemon,
-    )
+    with pytest.raises(BadGatewayError, match="publish_all_failed"):
+        await publish_project(
+            db,
+            teamver_client=teamver_client,
+            access_token="token",
+            project=_project(),
+            formats=["pdf"],
+            artifact_file=None,
+            folder_id=None,
+            od_daemon=daemon,
+        )
 
-    assert result.http_status == 207
-    assert result.outputs[0].publish_status == "ready"
-    zip_output = next(out for out in result.outputs if out.kind == "zip")
-    assert zip_output.publish_status == "failed"
-    assert zip_output.error_code == "drive_upload_failed_403"
-    # The presigned PUT must NEVER fire when the upload-request phase fails.
-    assert put_mock.await_count == 1, "PUT should only run for the html (succeeding) format"
-    assert confirm_mock.await_count == 1, "Confirm should only run for the html (succeeding) format"
+    teamver_client.drive._put_presigned_bytes.assert_not_awaited()
+    teamver_client.drive.confirm_upload.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -419,34 +419,32 @@ async def test_publish_project_presigned_put_status_propagates():
     db.refresh = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
-    daemon.get_archive.return_value = b"zip-bytes"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
-    create_mock, put_mock, confirm_mock = _wire_two_format_drive(teamver_client)
+    ticket_html = MagicMock()
+    ticket_html.asset_id = "AST-HTML"
+    ticket_html.presigned_url = "https://s3.example.com/upload/AST-HTML"
+    teamver_client.drive.create_upload_request = AsyncMock(return_value=ticket_html)
     presigned_exc = DriveUploadError("S3 PUT failed with status 502")
     presigned_exc.status_code = 502
-    # html PUT ok; zip PUT 502.
-    put_mock.side_effect = [None, presigned_exc]
+    teamver_client.drive._put_presigned_bytes = AsyncMock(side_effect=presigned_exc)
+    teamver_client.drive.confirm_upload = AsyncMock()
 
-    result = await publish_project(
-        db,
-        teamver_client=teamver_client,
-        access_token="token",
-        project=_project(),
-        formats=["html", "zip"],
-        artifact_file=None,
-        folder_id=None,
-        od_daemon=daemon,
-    )
+    with pytest.raises(BadGatewayError, match="publish_all_failed"):
+        await publish_project(
+            db,
+            teamver_client=teamver_client,
+            access_token="token",
+            project=_project(),
+            formats=["pdf"],
+            artifact_file=None,
+            folder_id=None,
+            od_daemon=daemon,
+        )
 
-    assert result.http_status == 207
-    zip_output = next(out for out in result.outputs if out.kind == "zip")
-    assert zip_output.error_code == "drive_presigned_put_failed_502"
-    # Confirm must NEVER fire on a failed PUT — that would hand the user a
-    # falsely-finalised asset row.
-    assert confirm_mock.await_count == 1, "Confirm runs only for html"
+    teamver_client.drive.confirm_upload.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -457,31 +455,33 @@ async def test_publish_project_confirm_failure_uses_confirm_code():
     db.refresh = AsyncMock()
 
     daemon = _daemon_mock()
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
-    daemon.get_archive.return_value = b"zip-bytes"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
-    _create, _put, confirm_mock = _wire_two_format_drive(teamver_client)
+    ticket_html = MagicMock()
+    ticket_html.asset_id = "AST-HTML"
+    ticket_html.presigned_url = "https://s3.example.com/upload/AST-HTML"
+    asset_html = MagicMock()
+    asset_html.asset_id = "AST-HTML"
+    teamver_client.drive.create_upload_request = AsyncMock(return_value=ticket_html)
+    teamver_client.drive._put_presigned_bytes = AsyncMock()
     confirm_exc = DriveConfirmError("drive confirm failed")
     confirm_exc.status_code = 504
     confirm_exc.code = "drive.confirm_timeout"
-    # html confirm ok; zip confirm raises.
-    confirm_mock.side_effect = [confirm_mock.return_value, confirm_exc]
+    teamver_client.drive.confirm_upload = AsyncMock(side_effect=confirm_exc)
 
-    result = await publish_project(
-        db,
-        teamver_client=teamver_client,
-        access_token="token",
-        project=_project(),
-        formats=["html", "zip"],
-        artifact_file=None,
-        folder_id=None,
-        od_daemon=daemon,
-    )
-
-    zip_output = next(out for out in result.outputs if out.kind == "zip")
-    assert zip_output.error_code == "drive.confirm_timeout"
+    with pytest.raises(BadGatewayError, match="publish_all_failed"):
+        await publish_project(
+            db,
+            teamver_client=teamver_client,
+            access_token="token",
+            project=_project(),
+            formats=["pdf"],
+            artifact_file=None,
+            folder_id=None,
+            od_daemon=daemon,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -511,8 +511,8 @@ async def test_publish_filename_prefers_live_daemon_name_over_stale_registry_tit
     project.title = "ai-adoption-deck"  # stale registry slug
 
     daemon = _daemon_mock(live_name="Q4 마케팅 전략")
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-LIVE")
@@ -522,18 +522,18 @@ async def test_publish_filename_prefers_live_daemon_name_over_stale_registry_tit
         teamver_client=teamver_client,
         access_token="token",
         project=project,
-        formats=["html"],
+        formats=["pdf"],
         artifact_file=None,
         folder_id=None,
         od_daemon=daemon,
     )
 
-    assert result.outputs[0].filename == "Q4 마케팅 전략.html"
+    assert result.outputs[0].filename == "Q4 마케팅 전략.pdf"
     daemon.get_project_name.assert_awaited_once_with("od1", identity=ANY)
     teamver_client.drive.create_upload_request.assert_awaited_once()
     assert (
         teamver_client.drive.create_upload_request.await_args.kwargs["filename"]
-        == "Q4 마케팅 전략.html"
+        == "Q4 마케팅 전략.pdf"
     )
 
 
@@ -552,8 +552,8 @@ async def test_publish_filename_falls_back_to_registry_title_when_live_lookup_fa
 
     daemon = _daemon_mock()
     daemon.get_project_name.side_effect = BadGatewayError("od_daemon_export_failed")
-    daemon.get_export_manifest.return_value = {"entryFile": "deck/index.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-FALLBACK")
@@ -563,7 +563,7 @@ async def test_publish_filename_falls_back_to_registry_title_when_live_lookup_fa
         teamver_client=teamver_client,
         access_token="token",
         project=_project(),  # title="Landing Page"
-        formats=["html"],
+        formats=["pdf"],
         artifact_file=None,
         folder_id=None,
         od_daemon=daemon,
@@ -571,7 +571,7 @@ async def test_publish_filename_falls_back_to_registry_title_when_live_lookup_fa
 
     # Stale-title fallback path: filename derived from project.title because
     # the daemon couldn't provide a live name.
-    assert result.outputs[0].filename == "Landing Page.html"
+    assert result.outputs[0].filename == "Landing Page.pdf"
     daemon.get_project_name.assert_awaited_once_with("od1", identity=ANY)
 
 
@@ -592,8 +592,11 @@ async def test_publish_filename_skips_live_name_when_it_resolves_to_design():
     project.title = "design"  # also generic — falls through to manifest basename
 
     daemon = _daemon_mock(live_name="  design  ")  # whitespace + legacy default
-    daemon.get_export_manifest.return_value = {"entryFile": "decks/q4-roadmap.html"}
-    daemon.get_export_inline.return_value = b"<html>ok</html>"
+    daemon.get_export_manifest.return_value = {
+        "entryFile": "decks/q4-roadmap.html",
+        "artifacts": [{"file": "decks/q4-roadmap.html", "kind": "html"}],
+    }
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-GENERIC")
@@ -603,7 +606,7 @@ async def test_publish_filename_skips_live_name_when_it_resolves_to_design():
         teamver_client=teamver_client,
         access_token="token",
         project=project,
-        formats=["html"],
+        formats=["pdf"],
         artifact_file=None,
         folder_id=None,
         od_daemon=daemon,
@@ -612,5 +615,5 @@ async def test_publish_filename_skips_live_name_when_it_resolves_to_design():
     filename = result.outputs[0].filename
     assert filename is not None
     assert filename.startswith("q4-roadmap")
-    assert filename.endswith(".html")
-    assert filename != "design.html"
+    assert filename.endswith(".pdf")
+    assert filename != "design.pdf"

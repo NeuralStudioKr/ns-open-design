@@ -16,6 +16,8 @@ type Props = {
    * without a page refresh.
    */
   refreshKey: number;
+  /** When true, only the latest row is shown until expanded. */
+  defaultCollapsed?: boolean;
   onError?: (err: unknown) => void;
 };
 
@@ -91,10 +93,16 @@ function readyOutputs(outputs: TeamverPublishDriveOutput[]): TeamverPublishDrive
  * the oldest visible row is `v1`. Operators don't have to memorise a
  * timestamp to talk about "v3 vs v2".
  */
-export function TeamverDrivePublishHistory({ projectId, refreshKey, onError }: Props) {
+export function TeamverDrivePublishHistory({
+  projectId,
+  refreshKey,
+  defaultCollapsed = false,
+  onError,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TeamverProjectOutputsResult | null>(null);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   const fetchHistory = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -116,18 +124,30 @@ export function TeamverDrivePublishHistory({ projectId, refreshKey, onError }: P
   }, [fetchHistory, refreshKey]);
 
   const ready = readyOutputs(result?.outputs ?? []);
-  const visible = ready.slice(0, VISIBLE_ROW_LIMIT);
+  const visibleLimit = collapsed ? 1 : VISIBLE_ROW_LIMIT;
+  const visible = ready.slice(0, visibleLimit);
   const remaining = Math.max(0, ready.length - visible.length);
+  const canToggle = ready.length > 1 || (collapsed && ready.length > 0);
 
   return (
     <div
-      className="teamver-drive-history"
+      className={`teamver-drive-history${collapsed ? " teamver-drive-history--collapsed" : ""}`}
       role="group"
       aria-label="Teamver 드라이브 발행 이력"
       data-testid="teamver-drive-history"
     >
       <div className="teamver-drive-history__header">
         <span className="teamver-drive-history__title">Drive 발행 이력</span>
+        {canToggle ? (
+          <button
+            type="button"
+            className="teamver-drive-history__toggle"
+            data-testid="teamver-drive-history-toggle"
+            onClick={() => setCollapsed((current) => !current)}
+          >
+            {collapsed ? "펼치기" : "접기"}
+          </button>
+        ) : null}
         <button
           type="button"
           className="teamver-drive-history__refresh"
@@ -221,7 +241,7 @@ export function TeamverDrivePublishHistory({ projectId, refreshKey, onError }: P
           })}
         </ul>
       )}
-      {remaining > 0 ? (
+      {remaining > 0 && !collapsed ? (
         <p
           className="teamver-drive-history__more"
           data-testid="teamver-drive-history-more"

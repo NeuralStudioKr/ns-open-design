@@ -8,154 +8,76 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(webRoot, relativePath), 'utf8');
 }
 
-/**
- * loop 173 + 174 — Static pin for the Teamver Drive Publish menu UI:
- *
- *   1. `Open in Teamver Drive` menu item stays retired (loop 173 — component
- *      + tests gone, no remaining import from FileViewer). Drive deep link
- *      is reachable via the publish success toast and the new history list.
- *   2. Korean copy in the share-menu Drive row is locked: button label,
- *      destination label, picker action, progress state.
- *   3. Drive publish is HTML-only (loop 174). The publish helper sends a
- *      static `["html"]` array — ZIP/PDF are intentionally absent from the
- *      surface.
- *   4. The native `<select>` is replaced by a headless `TeamverDriveTargetSelect`
- *      listbox so the dropdown matches the embed theme (no OS chrome).
- *   5. `TeamverDrivePublishHistory` is mounted at the top of the publish
- *      menu and refetches after every publish — operators can see which
- *      version is currently in Drive without leaving the embed.
- *   6. The publish helper remembers the last destination keyed by
- *      `workspace.project` in localStorage so the next publish defaults to
- *      it.
- *
- * We scan source rather than mount because mounting the FileViewer pulls in
- * the full editor stack — the textual pin runs in ~ms on every CI build and
- * is faithful to the regression we want to fence.
- */
-describe('Teamver embed Drive publish UI (loop 173 + 174)', () => {
-  it('removes the standalone "Open in Teamver Drive" menu item (loop 173)', () => {
+describe('Teamver embed export + Drive publish UI', () => {
+  it('removes the standalone Open in Teamver Drive menu item (loop 173)', () => {
     expect(
       existsSync(resolve(webRoot, 'src/teamver/components/TeamverOpenDrivePublishMenuItem.tsx')),
     ).toBe(false);
-    expect(
-      existsSync(resolve(webRoot, 'tests/teamver-open-drive-publish-menu-item.test.tsx')),
-    ).toBe(false);
-
     const fileViewer = readSource('src/components/FileViewer.tsx');
     expect(fileViewer).not.toContain('TeamverOpenDrivePublishMenuItem');
-    // Korean success toast still surfaces a Drive jump-link so the standalone
-    // menu item is not needed.
     expect(fileViewer).toContain('TEAMVER_DRIVE_ASSET_LINK_LABEL');
   });
 
-  it('locks the Korean copy on the Drive publish row (loop 173)', () => {
-    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(menuItem).toContain('저장 위치');
-    expect(menuItem).toContain('찾아보기');
-    expect(menuItem).toContain('Teamver 드라이브로 HTML 발행');
-    expect(menuItem).toContain('선택한 팀 드라이브로 HTML 발행');
-    expect(menuItem).toContain('발행 중…');
-    // Error hints route through formatPublishErrorCodeForUser (loop 334+).
-    expect(menuItem).toContain('formatPublishErrorCodeForUser');
-    const publishErrors = readSource('src/teamver/publishToDrive.ts');
-    expect(publishErrors).toContain('Teamver 작업공간 연결 중입니다 — 기본 위치로 발행됩니다.');
-    expect(publishErrors).toContain(
-      'Drive 폴더 목록을 불러오지 못했습니다 — 찾아보기 또는 다시 시도하세요.',
-    );
+  it('labels embed export as 보내기 and routes Drive publish through a modal', () => {
+    const fileViewer = readSource('src/components/FileViewer.tsx');
+    expect(fileViewer).toContain("embedUiLabel('Export', '보내기')");
+    expect(fileViewer).toContain('TeamverExportMenu');
+    expect(fileViewer).toContain('TeamverPublishDriveModal');
+    const exportMenu = readSource('src/teamver/components/TeamverExportMenu.tsx');
+    expect(exportMenu).toContain('teamver-open-publish-drive-modal-pdf');
+    expect(exportMenu).toContain('teamver-open-publish-drive-modal-html');
+    expect(fileViewer).not.toContain("fireShareExport('html'");
+    expect(fileViewer).not.toContain('exportProjectAsHtml');
   });
 
-  it('pins HTML-only Drive publish (loop 174)', () => {
-    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(menuItem).toContain('PUBLISH_FORMATS');
-    expect(menuItem).toMatch(/PUBLISH_FORMATS[^=]*=\s*\["html"\]/);
-    // Regression fence: the previous loop-173 contract sent `["html", "zip"]`
-    // when both chips were ticked. Both surface artefacts (selectedFormats
-    // state + the multi-format literal) must stay gone.
-    expect(menuItem).not.toContain('selectedFormats');
-    expect(menuItem).not.toMatch(/formats:\s*\["html",\s*"zip"\]/);
-    expect(menuItem).not.toMatch(/toggleFormat/);
-    // The single-line hint takes the chip block's place — without it
-    // operators don't know PDF/ZIP exist as a local download path.
-    expect(menuItem).toContain('PDF/ZIP 추출은 다운로드 메뉴에서 로컬 저장하세요');
+  it('uses slide-only Drive publish with segmented PDF/HTML choice', () => {
+    const messaging = readSource('src/teamver/drivePublishMessaging.ts');
+    expect(messaging).toContain('DRIVE_PUBLISH_FORMAT_OPTIONS');
+    expect(messaging).toContain('PDF · 팀 공유');
+    expect(messaging).toContain('HTML · Drive 미리보기');
+    const panel = readSource('src/teamver/components/TeamverPublishDrivePanel.tsx');
+    expect(panel).toContain('selectedFormat');
+    expect(panel).toContain('teamver-drive-format-segment');
+    expect(panel).toContain('teamver-drive-format-option-');
+    expect(panel).toContain('resolveInitialPublishFormat');
+    expect(panel).toContain('writeLastPublishFormat');
+    expect(panel).toContain('deck: true');
+    const exportMenu = readSource('src/teamver/components/TeamverExportMenu.tsx');
+    expect(exportMenu).not.toContain('share-menu-item-subtitle');
+    const modal = readSource('src/teamver/components/TeamverPublishDriveModal.tsx');
+    expect(modal).toContain('modalSubtitle');
   });
 
-  it('replaces the native <select> with the headless TeamverDriveTargetSelect (loop 173)', () => {
-    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(menuItem).toContain('TeamverDriveTargetSelect');
-    expect(menuItem).not.toMatch(/<select\b/);
-
-    const select = readSource('src/teamver/components/TeamverDriveTargetSelect.tsx');
-    // Stable test hooks + ARIA wiring required for keyboard/SR users.
-    expect(select).toContain('data-testid="teamver-drive-target-select"');
-    expect(select).toContain('data-testid="teamver-drive-target-popover"');
-    expect(select).toContain('aria-haspopup="listbox"');
-    expect(select).toContain('role="listbox"');
-    expect(select).toContain('role="option"');
+  it('locks Korean copy on the Drive publish flow', () => {
+    const messaging = readSource('src/teamver/drivePublishMessaging.ts');
+    expect(messaging).toContain('PDF로 드라이브에 올리기');
+    expect(messaging).toContain('HTML로 드라이브에 올리기');
+    const panel = readSource('src/teamver/components/TeamverPublishDrivePanel.tsx');
+    expect(panel).toContain('저장 위치');
+    expect(panel).toContain('찾아보기');
+    expect(panel).toContain('형식');
+    expect(panel).toContain('formatPublishErrorCodeForUser');
   });
 
-  it('mounts TeamverDrivePublishHistory and refreshes after every publish (loop 174)', () => {
-    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(menuItem).toContain('TeamverDrivePublishHistory');
-    expect(menuItem).toContain('historyRefreshKey');
-    expect(menuItem).toContain('setHistoryRefreshKey');
-
+  it('collapses publish history by default in the modal panel', () => {
+    const panel = readSource('src/teamver/components/TeamverPublishDrivePanel.tsx');
+    expect(panel).toContain('TeamverDrivePublishHistory');
+    expect(panel).toContain('defaultCollapsed');
     const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
-    expect(history).toContain('listTeamverProjectOutputs');
-    expect(history).toContain('data-testid="teamver-drive-history"');
-    // Korean copy keys we care about
-    expect(history).toContain('Drive 발행 이력');
-    expect(history).toContain('TEAMVER_DRIVE_ASSET_LINK_LABEL');
-    expect(history).toContain('아직 Teamver 드라이브에 발행한 적이 없습니다');
-    // Version label format is `v{N}` driven off the DESC-sorted ready list.
-    expect(history).toContain('ready.length - index');
-    expect(history).toContain('VISIBLE_ROW_LIMIT');
+    expect(history).toContain('teamver-drive-history-toggle');
   });
 
-  it('persists the last publish destination per workspace+project (loop 174)', () => {
-    const lastTarget = readSource('src/teamver/drivePublishLastTarget.ts');
-    const menuItem = readSource('src/teamver/components/TeamverPublishDriveMenuItem.tsx');
-    expect(lastTarget).toContain('lastPublishTargetStorageKey');
-    expect(lastTarget).toContain('teamver.drive.lastPublishTarget.');
-    expect(lastTarget).toContain('readLastPublishTargetId');
-    expect(lastTarget).toContain('writeLastPublishTargetId');
-    expect(menuItem).toContain('readLastPublishTargetId');
-    expect(menuItem).toContain('resolvePublishTargetById');
-    expect(menuItem).toContain('readRecentPublishTargets');
-    expect(menuItem).toContain('data-testid="teamver-drive-post-run-hint"');
-    expect(menuItem).toContain('setPickerOpen(false)');
+  it('supports partial publish toasts with follow-up actions', () => {
+    const fileViewer = readSource('src/components/FileViewer.tsx');
+    expect(fileViewer).toContain('buildDrivePublishToastContent');
+    expect(fileViewer).toContain('detailLinks');
+    expect(fileViewer).toContain('로도 올리기');
+    expect(fileViewer).toContain('initialFormat');
   });
 
-  it('loads Drive home recent folder grid in the publish picker (loop 359 · S-2)', () => {
-    const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
-    expect(picker).toContain('browseTeamverDriveImportPage');
-    expect(picker).toContain('enterFolder');
-    expect(picker).toContain('data-testid="teamver-drive-picker-load-more"');
-    expect(picker).toContain('listTeamverDrivePublishHomeRecentTargets');
-    expect(picker).toContain('data-testid="teamver-drive-picker-home-recent"');
-    expect(picker).toContain('Drive 홈 최근');
-
-    const homeRecent = readSource('src/teamver/drivePublishHomeRecent.ts');
-    expect(homeRecent).toContain('/api/v2/drive/home/recent');
-    expect(homeRecent).toContain('assets,shared_with_me');
-  });
-
-  it('shows recent asset grid + browse thumbnails in publish picker (loop 420 · Phase 1-2c)', () => {
-    const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
-    expect(picker).toContain('displayedRecentAssetRows');
-    expect(picker).toContain('setRecentAssetRows([])');
-    expect(picker).toContain('fetchTeamverDriveImportThumbnails');
-    expect(picker).toContain('data-testid="teamver-drive-picker-recent-assets"');
-    expect(picker).toContain('data-testid={`teamver-drive-picker-asset-${row.assetId}`}');
-    expect(picker).toContain('teamver-drive-import-grid');
-
-    const recentAssets = readSource('src/teamver/drivePublishRecentAssets.ts');
-    expect(recentAssets).toContain('if (sharedDriveId) continue');
-    expect(recentAssets).toContain('/api/v2/drive/home/recent');
-  });
-
-  it('keeps the format type union narrow in publishToDrive (loop 173)', () => {
+  it('keeps the format type union in publishToDrive', () => {
     const publish = readSource('src/teamver/publishToDrive.ts');
     expect(publish).toContain('TeamverPublishDriveFormat');
-    expect(publish).toContain('"html" | "zip"');
+    expect(publish).toContain('"html" | "zip" | "pdf"');
   });
 });

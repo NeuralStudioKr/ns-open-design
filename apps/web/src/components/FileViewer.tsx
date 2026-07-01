@@ -29,7 +29,8 @@ import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/rendere
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
-import { TeamverPublishDriveMenuItem } from '../teamver/components/TeamverPublishDriveMenuItem';
+import { TeamverExportMenu } from '../teamver/components/TeamverExportMenu';
+import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
@@ -40,6 +41,8 @@ import {
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
+import { buildDrivePublishToastContent } from '../teamver/drivePublishSuccess';
+import type { DrivePublishFormat } from '../teamver/drivePublishMessaging';
 import type { Dict, Locale } from '../i18n/types';
 import {
   fetchLiveArtifact,
@@ -79,7 +82,6 @@ import {
   exportAsMd,
   exportAsPdf,
   exportProjectImageBlob,
-  exportProjectAsHtml,
   resolveExportDownloadTitle,
   exportProjectAsPdf,
   exportProjectAsZip,
@@ -5011,9 +5013,12 @@ function HtmlViewer({
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
   const [deploySavedToast, setDeploySavedToast] = useState<{
     message: string;
-    details: string;
+    details?: string;
     detailsHref?: string | null;
+    detailLinks?: Array<{ label: string; href: string }>;
+    actionLabel?: string;
   } | null>(null);
+  const drivePublishFollowUpRef = useRef<(() => void) | null>(null);
   const [deployActionToast, setDeployActionToast] = useState<string | null>(null);
   const [imageExportModalOpen, setImageExportModalOpen] = useState(false);
   const [imageExportFormat, setImageExportFormat] = useState<ImageExportFormat>('png');
@@ -7305,6 +7310,12 @@ function HtmlViewer({
   // consume each nonce once.
   const consumedShareNonceRef = useRef<number | null>(null);
   const [drivePublishFocusNonce, setDrivePublishFocusNonce] = useState<number | null>(null);
+  const [drivePublishModalOpen, setDrivePublishModalOpen] = useState(false);
+  const [drivePublishInitialFormat, setDrivePublishInitialFormat] = useState<DrivePublishFormat | null>(null);
+  const openDrivePublishModal = useCallback((format?: DrivePublishFormat) => {
+    setDrivePublishInitialFormat(format ?? null);
+    setDrivePublishModalOpen(true);
+  }, []);
   useEffect(() => {
     const nonce = shareRequest?.nonce;
     if (nonce == null) return;
@@ -7314,7 +7325,8 @@ function HtmlViewer({
     setExportReadyNudge(false);
     markExportReadyNudgeSeen(projectId, file.name);
     setDeployMenuOpen(false);
-    setDownloadMenuOpen(true);
+    setDownloadMenuOpen(false);
+    setDrivePublishModalOpen(true);
     setDrivePublishFocusNonce(nonce);
   }, [shareRequest?.nonce, canShare, projectId, file.name]);
 
@@ -8502,168 +8514,49 @@ function HtmlViewer({
                     }
                     aria-haspopup="menu"
                     aria-expanded={downloadMenuOpen}
-                    aria-label={t('fileViewer.download')}
+                    aria-label={isTeamverEmbedMode() ? embedUiLabel('Export', '보내기') : t('fileViewer.download')}
                     onClick={openDownloadMenu}
                   >
-                    <span>{t('fileViewer.download')}</span>
+                    <span>{isTeamverEmbedMode() ? embedUiLabel('Export', '보내기') : t('fileViewer.download')}</span>
                   </button>
                   {downloadMenuOpen ? (
                     <div
                       className="share-menu-popover"
                       role="menu"
-                      aria-label={embedUiLabel('Download and export options', '다운로드 및 내보내기')}
+                      aria-label={isTeamverEmbedMode() ? embedUiLabel('Export options', '보내기 옵션') : embedUiLabel('Download and export options', '다운로드 및보내기')}
                     >
-                  <button
-                    type="button"
-                    className="share-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setDownloadMenuOpen(false);
-                      fireShareExport('pdf', () => exportProjectAsPdf({
-                        deck: effectiveDeck,
-                        fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
-                        filePath: file.name,
-                        projectId,
-                        title: exportTitle,
-                      }));
-                    }}
-                  >
-                    <span className="share-menu-icon"><RemixIcon name="file-line" size={15} /></span>
-                    <span>{t('fileViewer.exportPdf')}</span>
-                  </button>
-                  {showPptxExport ? (
-                    <button
-                      type="button"
-                      className="share-menu-item"
-                      role="menuitem"
-                      disabled={!canPptx}
-                      title={
-                        onExportAsPptx
-                          ? streaming
-                            ? t('fileViewer.exportPptxBusy')
-                            : t('fileViewer.exportPptxHint')
-                          : t('fileViewer.exportPptxNa')
-                      }
-                      onClick={() => {
-                        setDownloadMenuOpen(false);
-                        fireShareExport('pptx', () => {
-                          if (onExportAsPptx) onExportAsPptx(file.name);
-                        });
-                      }}
-                    >
-                      <span className="share-menu-icon"><RemixIcon name="file-ppt-line" size={15} /></span>
-                      <span>{t('fileViewer.exportPptx')}</span>
-                    </button>
-                  ) : null}
-                  {showImageExport ? (
-                    <button
-                      type="button"
-                      className="share-menu-item"
-                      role="menuitem"
-                      onClick={openImageExportModal}
-                    >
-                      <span className="share-menu-icon"><RemixIcon name="image-line" size={15} /></span>
-                      <span>{t('fileViewer.exportImage')}</span>
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="share-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setDownloadMenuOpen(false);
-                      fireShareExport('zip', () => exportProjectAsZip({
-                        deck: effectiveDeck,
-                        projectId,
-                        filePath: file.name,
-                        fallbackHtml: source ?? '',
-                        fallbackTitle: exportTitle,
-                      }));
-                    }}
-                  >
-                    <span className="share-menu-icon"><RemixIcon name="file-zip-line" size={15} /></span>
-                    <span>{t('fileViewer.exportZip')}</span>
-                  </button>
-                  <TeamverPublishDriveMenuItem
-                    projectId={projectId}
-                    artifactFile={file.name}
-                    focusTargetSelectNonce={drivePublishFocusNonce}
+                  <TeamverExportMenu
+                    t={t}
+                    fileName={file.name}
+                    showPptxExport={showPptxExport}
+                    canPptx={canPptx}
+                    onExportAsPptx={onExportAsPptx}
+                    streaming={streaming}
+                    showImageExport={showImageExport}
+                    showMarkdownExport={showMarkdownExport}
+                    savingTemplate={savingTemplate}
+                    templateNote={templateNote}
                     onCloseMenu={() => setDownloadMenuOpen(false)}
-                    onSuccess={(output, meta) => {
-                      const driveUrl = output.driveAssetId
-                        ? resolveTeamverDriveAssetUrl(output.driveAssetId)
-                        : `${resolveTeamverMainOrigin()}/drive`;
-                      setDeploySavedToast({
-                        message: meta?.partial
-                          ? 'Teamver 드라이브로 일부만 발행되었습니다'
-                          : 'Teamver 드라이브로 발행했습니다',
-                        details: output.driveAssetId
-                          ? TEAMVER_DRIVE_ASSET_LINK_LABEL
-                          : `${output.filename} — 드라이브 열기`,
-                        detailsHref: driveUrl,
-                      });
-                    }}
-                    onError={(err) => setDeploySavedToast({
-                      message: 'Teamver 드라이브 발행에 실패했습니다',
-                      details: formatTeamverDesignErrorMessage(err),
+                    onOpenDrivePublish={openDrivePublishModal}
+                    onOpenImageExport={openImageExportModal}
+                    onOpenSaveAsTemplate={openSaveAsTemplateModal}
+                    fireShareExport={fireShareExport}
+                    exportPdf={() => exportProjectAsPdf({
+                      deck: effectiveDeck,
+                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
+                      filePath: file.name,
+                      projectId,
+                      title: exportTitle,
                     })}
+                    exportZip={() => exportProjectAsZip({
+                      deck: effectiveDeck,
+                      projectId,
+                      filePath: file.name,
+                      fallbackHtml: source ?? '',
+                      fallbackTitle: exportTitle,
+                    })}
+                    exportMarkdown={() => exportAsMd(source ?? '', exportTitle)}
                   />
-                  <button
-                    type="button"
-                    className="share-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setDownloadMenuOpen(false);
-                      fireShareExport('html', () => exportProjectAsHtml({
-                        deck: effectiveDeck,
-                        projectId,
-                        filePath: file.name,
-                        fallbackHtml: source ?? '',
-                        fallbackTitle: exportTitle,
-                      }));
-                    }}
-                  >
-                    <span className="share-menu-icon"><RemixIcon name="file-code-line" size={15} /></span>
-                    <span>{t('fileViewer.exportHtml')}</span>
-                  </button>
-                  {showMarkdownExport ? (
-                    <button
-                      type="button"
-                      className="share-menu-item"
-                      role="menuitem"
-                      onClick={() => {
-                        setDownloadMenuOpen(false);
-                        fireShareExport('markdown', () => exportAsMd(source ?? '', exportTitle));
-                      }}
-                    >
-                      <span className="share-menu-icon"><RemixIcon name="file-line" size={15} /></span>
-                      <span>{t('fileViewer.exportMd')}</span>
-                    </button>
-                  ) : null}
-                  <div className="share-menu-divider" />
-                  <div className="share-menu-section-label" role="presentation">
-                    {t('fileViewer.shareMenuSave')}
-                  </div>
-                  <button
-                    type="button"
-                    className="share-menu-item"
-                    role="menuitem"
-                    disabled={savingTemplate}
-                    onClick={() => {
-                      fireShareExport('template', () => {
-                        openSaveAsTemplateModal();
-                      });
-                    }}
-                  >
-                    <span className="share-menu-icon"><RemixIcon name="file-copy-line" size={15} /></span>
-                    <span>
-                      {savingTemplate
-                        ? t('fileViewer.savingTemplate')
-                        : templateNote
-                          ? templateNote
-                          : t('fileViewer.saveAsTemplate')}
-                    </span>
-                  </button>
                 </div>
                 ) : null}
               </div>
@@ -9107,6 +9000,36 @@ function HtmlViewer({
         </div>,
         document.body,
       ) : null}
+      <TeamverPublishDriveModal
+        open={drivePublishModalOpen && isTeamverEmbedMode()}
+        projectId={projectId}
+        artifactFile={file.name}
+        exportTitle={exportTitle}
+        initialFormat={drivePublishInitialFormat}
+        focusTargetSelectNonce={drivePublishFocusNonce}
+        onClose={() => {
+          setDrivePublishModalOpen(false);
+          setDrivePublishInitialFormat(null);
+        }}
+        onSuccess={(meta) => {
+          const toast = buildDrivePublishToastContent(
+            meta.outputs,
+            meta.partial,
+            meta.selectedFormat,
+          );
+          const alternateLabel = toast.alternateFormat === 'pdf' ? 'PDF' : 'HTML';
+          drivePublishFollowUpRef.current = () => openDrivePublishModal(toast.alternateFormat);
+          setDeploySavedToast({
+            message: toast.message,
+            detailLinks: toast.detailLinks.length > 0 ? toast.detailLinks : undefined,
+            actionLabel: `${alternateLabel}로도 올리기`,
+          });
+        }}
+        onError={(err) => setDeploySavedToast({
+          message: 'Teamver 드라이브에 올리지 못했습니다',
+          details: formatTeamverDesignErrorMessage(err),
+        })}
+      />
       {templateModalOpen && typeof document !== 'undefined' ? createPortal(
         <div className="modal-backdrop viewer-modal-backdrop" role="presentation">
           <div className="modal deploy-modal" role="dialog" aria-modal="true">
@@ -9499,10 +9422,18 @@ function HtmlViewer({
           message={deploySavedToast.message}
           details={deploySavedToast.details}
           detailsHref={deploySavedToast.detailsHref}
+          detailLinks={deploySavedToast.detailLinks}
           tone="success"
           placement="top"
           ttlMs={3600}
-          onDismiss={() => setDeploySavedToast(null)}
+          actionLabel={deploySavedToast.actionLabel}
+          onAction={() => {
+            drivePublishFollowUpRef.current?.();
+          }}
+          onDismiss={() => {
+            drivePublishFollowUpRef.current = null;
+            setDeploySavedToast(null);
+          }}
         />
       ) : null}
       {deployActionToast && typeof document !== 'undefined' ? createPortal(
