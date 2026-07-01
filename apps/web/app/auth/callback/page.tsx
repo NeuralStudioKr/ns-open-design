@@ -7,15 +7,15 @@ import {
   consumeAuthReturnTo,
   exchangeAuthCodeForDesignSession,
   storeAuthReturnTo,
-} from '../../src/teamver/designAuthFlow';
+} from '@/src/teamver/designAuthFlow';
 import {
+  fetchDesignAuthSession,
   invalidateDesignAuthSessionCache,
   prepareDesignAuthSessionReload,
-} from '../../src/teamver/designBffClient';
-import { setTeamverEmbedSessionAuthenticated } from '../../src/teamver/teamverEmbedSession';
-import { syncTeamverWorkspaceFromSession } from '../../src/teamver/syncTeamverWorkspace';
-import { fetchDesignAuthSession } from '../../src/teamver/designBffClient';
-import { postDesignAuthWorkspace } from '../../src/teamver/designAuthClient';
+} from '@/src/teamver/designBffClient';
+import { postDesignAuthWorkspace } from '@/src/teamver/designAuthClient';
+import { setTeamverEmbedSessionAuthenticated } from '@/src/teamver/teamverEmbedSession';
+import { syncTeamverWorkspaceFromSession } from '@/src/teamver/syncTeamverWorkspace';
 
 function AuthCallbackInner() {
   const router = useRouter();
