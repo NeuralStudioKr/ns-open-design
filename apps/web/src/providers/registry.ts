@@ -1473,18 +1473,37 @@ export async function deleteProjectFolder(
   }
 }
 
+const liveArtifactsInflight = new Map<string, Promise<LiveArtifactSummary[]>>();
+
+/** @internal vitest */
+export function resetFetchLiveArtifactsInflightForTests(): void {
+  liveArtifactsInflight.clear();
+}
+
 export async function fetchLiveArtifacts(projectId: string): Promise<LiveArtifactSummary[]> {
-  try {
-    const resp = await fetch(`/api/live-artifacts?projectId=${encodeURIComponent(projectId)}`);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as {
-      artifacts?: LiveArtifactSummary[];
-      liveArtifacts?: LiveArtifactSummary[];
-    };
-    return json.liveArtifacts ?? json.artifacts ?? [];
-  } catch {
-    return [];
-  }
+  const key = projectId.trim();
+  if (!key) return [];
+  const pending = liveArtifactsInflight.get(key);
+  if (pending) return pending;
+
+  const run = (async (): Promise<LiveArtifactSummary[]> => {
+    try {
+      const resp = await fetch(`/api/live-artifacts?projectId=${encodeURIComponent(key)}`);
+      if (!resp.ok) return [];
+      const json = (await resp.json()) as {
+        artifacts?: LiveArtifactSummary[];
+        liveArtifacts?: LiveArtifactSummary[];
+      };
+      return json.liveArtifacts ?? json.artifacts ?? [];
+    } catch {
+      return [];
+    } finally {
+      liveArtifactsInflight.delete(key);
+    }
+  })();
+
+  liveArtifactsInflight.set(key, run);
+  return run;
 }
 
 export async function fetchLiveArtifact(

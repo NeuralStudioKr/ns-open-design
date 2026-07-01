@@ -31,6 +31,10 @@ import {
   resetFetchDaemonConfigInflightForTests,
 } from '../../src/state/config';
 import {
+  fetchLiveArtifacts,
+  resetFetchLiveArtifactsInflightForTests,
+} from '../../src/providers/registry';
+import {
   listProjectRuns,
   resetListProjectRunsInflightForTests,
 } from '../../src/providers/daemon';
@@ -42,6 +46,7 @@ describe('boot fetch dedup', () => {
     resetListTemplatesInflightForTests();
     resetFetchDaemonConfigInflightForTests();
     resetDaemonAppVersionCacheForTests();
+    resetFetchLiveArtifactsInflightForTests();
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -125,5 +130,21 @@ describe('boot fetch dedup', () => {
     const second = fetchDaemonAppVersion();
     await Promise.all([first, second]);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces concurrent fetchLiveArtifacts calls for the same project', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ liveArtifacts: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const first = fetchLiveArtifacts('project-1');
+    const second = fetchLiveArtifacts('project-1');
+    await Promise.all([first, second]);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('/api/live-artifacts?projectId=project-1');
   });
 });
