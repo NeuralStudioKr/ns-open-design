@@ -87,7 +87,9 @@ describe("buildTeamverDaemonRequestHeaders", () => {
 
     const first = fetchTeamverDaemon("/api/projects/p1/files");
     const second = fetchTeamverDaemon("/api/projects/p1/files");
-    await Promise.resolve();
+    for (let i = 0; i < 10 && fetchMock.mock.calls.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     resolveFetch(new Response(JSON.stringify({ files: [] }), {
       headers: { "content-type": "application/json" },
     }));
