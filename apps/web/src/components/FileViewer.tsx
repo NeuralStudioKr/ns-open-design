@@ -29,7 +29,7 @@ import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/rendere
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
-import { TeamverExportMenu } from '../teamver/components/TeamverExportMenu';
+import { TeamverExportMenu, type ShareExportFormat } from '../teamver/components/TeamverExportMenu';
 import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
@@ -4510,18 +4510,7 @@ function HtmlViewer({
   // / .catch. The same request_id threads both events so PostHog can
   // stitch click → result via $insert_id correlation.
   const fireShareExport = (
-    format:
-      | 'pdf'
-      | 'pptx'
-      | 'zip'
-      | 'html'
-      | 'image'
-      | 'markdown'
-      | 'template'
-      | 'share_link'
-      | 'share_page'
-      | 'vercel'
-      | 'cloudflare_pages',
+    format: ShareExportFormat,
     fn: () => Promise<unknown> | unknown,
   ) => {
     const requestId = analytics.newRequestId();

@@ -8,6 +8,25 @@ import type { DrivePublishFormat } from "../drivePublishMessaging";
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
+/** Analytics + FileViewer share/export menu format ids — keep in sync with fireShareExport. */
+export type ShareExportFormat =
+  | 'pdf'
+  | 'pptx'
+  | 'zip'
+  | 'html'
+  | 'image'
+  | 'markdown'
+  | 'template'
+  | 'share_link'
+  | 'share_page'
+  | 'vercel'
+  | 'cloudflare_pages';
+
+export type ShareExportHandler = (
+  format: ShareExportFormat,
+  action: () => void | Promise<unknown>,
+) => void;
+
 export type TeamverExportMenuProps = {
   t: TranslateFn;
   fileName: string;
@@ -23,10 +42,10 @@ export type TeamverExportMenuProps = {
   onOpenDrivePublish: (format?: DrivePublishFormat) => void;
   onOpenImageExport: () => void;
   onOpenSaveAsTemplate: () => void;
-  fireShareExport: (format: string, action: () => void | Promise<void>) => void;
-  exportPdf: () => void | Promise<void>;
-  exportHtml: () => void | Promise<void>;
-  exportZip: () => void | Promise<void>;
+  fireShareExport: ShareExportHandler;
+  exportPdf: () => void | Promise<unknown>;
+  exportHtml: () => void | Promise<unknown>;
+  exportZip: () => void | Promise<unknown>;
   exportMarkdown: () => void;
 };
 
