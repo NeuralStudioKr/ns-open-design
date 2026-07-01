@@ -286,6 +286,23 @@ describe('exportProjectAsPdf', () => {
     expect(capturedFilename).toBe('Seed-Deck.pdf');
   });
 
+  it('does not fall back to browser print when rendered PDF export is required', async () => {
+    const fallback = vi.fn();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 501 })));
+
+    await expect(exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      projectId: 'proj-1',
+      requireRenderedExport: true,
+      title: 'Seed Deck',
+    })).rejects.toThrow('daemon PDF export unavailable');
+
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
   it('treats a canceled desktop PDF save dialog as a silent no-op', async () => {
     const restoreHost = installMockOpenDesignHost();
     try {
@@ -686,6 +703,21 @@ describe('exportProjectAsHtml', () => {
     expect(capturedFilename).toBe('Fallback.html');
     expect(await capturedBlob!.text()).toContain('<main>fallback</main>');
   });
+
+  it('does not fall back to source HTML when rendered export is required', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })));
+
+    await expect(exportProjectAsHtml({
+      projectId: 'proj-1',
+      filePath: 'index.html',
+      fallbackHtml: '<main>fallback</main>',
+      fallbackTitle: 'Fallback',
+      requireRenderedExport: true,
+    })).rejects.toThrow('렌더링된 HTML 다운로드');
+
+    expect(capturedBlob).toBeUndefined();
+  });
 });
 
 describe('exportProjectAsZip', () => {
@@ -780,6 +812,21 @@ describe('exportProjectAsZip', () => {
 
     expect(capturedFilename).toBe('deck.zip');
     expect(await capturedBlob!.text()).toBe('raw archive');
+  });
+
+  it('does not fall back to raw archives when rendered ZIP export is required', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 404 })));
+
+    await expect(exportProjectAsZip({
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+      requireRenderedExport: true,
+    })).rejects.toThrow('렌더링된 ZIP 다운로드');
+
+    expect(capturedBlob).toBeUndefined();
   });
 });
 

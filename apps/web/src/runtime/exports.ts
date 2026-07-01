@@ -89,6 +89,7 @@ export async function exportProjectAsHtml(opts: {
   filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
+  requireRenderedExport?: boolean;
 }): Promise<void> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
@@ -104,6 +105,10 @@ export async function exportProjectAsHtml(opts: {
     const blob = await resp.blob();
     triggerDownload(blob, attachmentFilenameFrom(resp, opts.fallbackTitle, 'html'));
   } catch (err) {
+    if (opts.requireRenderedExport) {
+      console.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
+      throw new Error('렌더링된 HTML 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    }
     console.warn('[exportProjectAsHtml] falling back to inline/source HTML export:', err);
     try {
       const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
@@ -774,8 +779,10 @@ export async function exportProjectAsPdf(opts: {
   fallbackPdf: () => void;
   filePath: string;
   projectId: string;
+  requireRenderedExport?: boolean;
   title: string;
 }): Promise<ProjectPdfExportResult> {
+  let daemonErr: unknown = null;
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
       body: JSON.stringify({
@@ -799,7 +806,14 @@ export async function exportProjectAsPdf(opts: {
     if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
     return 'desktop';
   } catch (err) {
+    daemonErr = err;
     console.warn('[exportProjectAsPdf] falling back to browser print:', err);
+  }
+
+  if (opts.requireRenderedExport) {
+    throw daemonErr instanceof Error
+      ? daemonErr
+      : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
   }
 
   try {
@@ -984,6 +998,7 @@ export async function exportProjectAsZip(opts: {
   filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
+  requireRenderedExport?: boolean;
 }): Promise<void> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
@@ -999,6 +1014,10 @@ export async function exportProjectAsZip(opts: {
     triggerDownload(await resp.blob(), attachmentFilenameFrom(resp, opts.fallbackTitle, 'zip'));
     return;
   } catch (err) {
+    if (opts.requireRenderedExport) {
+      console.warn('[exportProjectAsZip] rendered ZIP export failed:', err);
+      throw new Error('렌더링된 ZIP 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    }
     console.warn('[exportProjectAsZip] falling back to project archive:', err);
   }
 

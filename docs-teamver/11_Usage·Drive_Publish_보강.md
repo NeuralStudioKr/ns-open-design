@@ -10,7 +10,7 @@
 
 ## 한 줄 결론
 
-> **Usage Phase 1은 FE-first(saveMessage 종료 hook)로 wiring하고, Drive Publish v1은 HTML+ZIP만 지원한다.**  
+> **Usage Phase 1은 FE-first(saveMessage 종료 hook)로 wiring하고, Drive Publish v1은 HTML+PDF만 지원한다.**  
 > Registry reserve/commit **골격**은 daemon run-path에 연결됨(Phase 2a). **실측 토큰 → 크레딧(T) 환산·정확 차감**은 미구현 — 후속 SSOT는 **§4**. production은 registry credentials가 없으면 기동/배포를 차단하고, staging은 `TEAMVER_BILLING_DISABLED=1`을 명시한 경우만 임시 비활성을 허용한다.
 
 ---
@@ -28,7 +28,7 @@
 | U7 | usage 5xx 알람 | 없음 | CW `teamver_usage_5xx` log metric + alarm | **P1** | ✅ |
 | D1 | Drive Publish | `POST /projects/{id}/publish` ✅ | HTML/ZIP publish + history | **G7** | ✅ |
 | D2 | design_outputs DDL | `design_projects` FK + Drive ids ✅ | `drive_shared_drive_id` 포함 | **G7** | ✅ |
-| D3 | export formats v1 | daemon HTML/ZIP ready, PDF 501 | HTML + ZIP only | **G7** | ✅ |
+| D3 | export formats v1 | daemon HTML/PDF ready, ZIP publish blocked | HTML + PDF only | **G7** | ✅ |
 | D4 | Drive auth | user JWT → SDK presigned 3-step ✅ | design-api가 user token 위임 | **G7** | ✅ |
 | D5 | Drive target UX | personal/team folder select 1차 ✅ | searchable Drive browser | **G7** | 🟡 |
 
@@ -135,9 +135,9 @@ class UsageEventBody(BaseModel):
 |------|------|
 | design-api drive/publish 코드 | **0건** |
 | daemon export (HTML inline) | `import-export-routes.ts` L572–713 ✅ |
-| daemon export (ZIP archive) | `import-export-routes.ts` L413–474 ✅ |
+| daemon export (ZIP archive) | `import-export-routes.ts` ✅ — 로컬 다운로드 전용, Drive publish 금지 |
 | daemon export (manifest) | `import-export-routes.ts` L487–509 ✅ |
-| daemon PDF | **501** hosted (`server.ts` L4742) |
+| daemon PDF | headless PDF export ✅ — Drive publish PDF + 로컬 다운로드 |
 | PPTX HTTP export | **없음** |
 | SDK `upload_bytes_to_personal_drive` | Python `drive.py` L85–106, TS `drive.ts` L239–299 ✅ |
 | Main BE Drive | user JWT only (`router/drive.py` L1877–1916) |

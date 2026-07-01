@@ -84,6 +84,7 @@ import {
   exportAsPdf,
   exportProjectImageBlob,
   resolveExportDownloadTitle,
+  exportProjectAsHtml,
   exportProjectAsPdf,
   exportProjectAsZip,
   copyImageDataUrlToClipboard,
@@ -8597,6 +8598,14 @@ function HtmlViewer({
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
+	                    })}
+	                    exportHtml={() => exportProjectAsHtml({
+	                      deck: effectiveDeck,
+	                      projectId,
+	                      filePath: file.name,
+	                      fallbackHtml: source ?? '',
+	                      fallbackTitle: exportTitle,
+	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
 	                      deck: effectiveDeck,

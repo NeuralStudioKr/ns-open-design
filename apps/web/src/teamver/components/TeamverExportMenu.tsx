@@ -25,6 +25,7 @@ export type TeamverExportMenuProps = {
   onOpenSaveAsTemplate: () => void;
   fireShareExport: (format: string, action: () => void | Promise<void>) => void;
   exportPdf: () => void | Promise<void>;
+  exportHtml: () => void | Promise<void>;
   exportZip: () => void | Promise<void>;
   exportMarkdown: () => void;
 };
@@ -46,6 +47,7 @@ export function TeamverExportMenu({
   onOpenSaveAsTemplate,
   fireShareExport,
   exportPdf,
+  exportHtml,
   exportZip,
   exportMarkdown,
 }: TeamverExportMenuProps) {
@@ -106,6 +108,18 @@ export function TeamverExportMenu({
           <span>{t("fileViewer.exportImage")}</span>
         </button>
       ) : null}
+      <button
+        type="button"
+        className="share-menu-item"
+        role="menuitem"
+        onClick={() => {
+          onCloseMenu();
+          fireShareExport("html", () => exportHtml());
+        }}
+      >
+        <span className="share-menu-icon"><RemixIcon name="file-code-line" size={15} /></span>
+        <span>{t("fileViewer.exportHtml")}</span>
+      </button>
       <button
         type="button"
         className="share-menu-item"

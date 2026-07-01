@@ -26,8 +26,8 @@ describe('Teamver embed export + Drive publish UI', () => {
     const exportMenu = readSource('src/teamver/components/TeamverExportMenu.tsx');
     expect(exportMenu).toContain('teamver-open-publish-drive-modal-pdf');
     expect(exportMenu).toContain('teamver-open-publish-drive-modal-html');
-    expect(fileViewer).not.toContain("fireShareExport('html'");
-    expect(fileViewer).not.toContain('exportProjectAsHtml');
+    expect(fileViewer).toContain('exportProjectAsHtml');
+    expect(fileViewer).toContain('requireRenderedExport: isTeamverEmbedMode()');
   });
 
   it('uses slide-only Drive publish with segmented PDF/HTML choice', () => {
