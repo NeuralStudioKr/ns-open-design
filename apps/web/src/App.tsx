@@ -109,6 +109,7 @@ import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
 import {
   mergeProjectIntoList,
+  readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
 import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
@@ -1383,9 +1384,9 @@ function AppInner() {
   }, []);
 
   const refreshProjectsSurface = useCallback(async () => {
-    const currentRoute = routeRef.current;
-    if (shouldDeferEmbedProjectListRefresh(currentRoute)) {
-      await refreshEmbedProjectMetadata(currentRoute.projectId);
+    const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
+    if (detailRoute) {
+      await refreshEmbedProjectMetadata(detailRoute.projectId);
       return;
     }
     await refreshProjects();
@@ -1602,8 +1603,9 @@ function AppInner() {
         return;
       }
       void (async () => {
-        if (shouldDeferEmbedProjectListRefresh(routeRef.current)) {
-          await refreshEmbedProjectMetadata(routeRef.current.projectId);
+        const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
+        if (detailRoute) {
+          await refreshEmbedProjectMetadata(detailRoute.projectId);
           void reloadTeamverRuntimeConfig({ force: true });
           return;
         }
@@ -2807,8 +2809,9 @@ function AppInner() {
         warmEmbedProjectListCaches([project]);
         return;
       }
-      if (shouldDeferEmbedProjectListRefresh(route)) {
-        if (!pendingLocalProjectIdsRef.current.has(route.projectId)) {
+      const detailRoute = readEmbedProjectDetailRoute(route);
+      if (detailRoute) {
+        if (!pendingLocalProjectIdsRef.current.has(detailRoute.projectId)) {
           if (isTeamverEmbedMode()) {
             setWorkingDirError(formatTeamverProjectNotFoundMessage());
           }

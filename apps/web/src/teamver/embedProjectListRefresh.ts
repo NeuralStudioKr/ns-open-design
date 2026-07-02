@@ -2,9 +2,16 @@ import type { Project } from "../types";
 import type { Route } from "../router";
 import { isTeamverEmbedMode } from "./designApiBase";
 
+export type EmbedProjectDetailRoute = Extract<Route, { kind: "project" }>;
+
 /** Embed project workspace — skip daemon list + registry membership sync. */
 export function shouldDeferEmbedProjectListRefresh(route: Route): boolean {
-  return isTeamverEmbedMode() && route.kind === "project";
+  return readEmbedProjectDetailRoute(route) != null;
+}
+
+export function readEmbedProjectDetailRoute(route: Route): EmbedProjectDetailRoute | null {
+  if (!isTeamverEmbedMode() || route.kind !== "project") return null;
+  return route;
 }
 
 export function mergeProjectIntoList(projects: Project[], project: Project): Project[] {

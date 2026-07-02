@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as designApiBase from "../src/teamver/designApiBase";
 import {
   mergeProjectIntoList,
+  readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from "../src/teamver/embedProjectListRefresh";
 
@@ -41,6 +42,22 @@ describe("embedProjectListRefresh", () => {
     expect(
       shouldDeferEmbedProjectListRefresh({ kind: "home", view: "home" }),
     ).toBe(false);
+  });
+
+  it("reads the active embed project route id", () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    expect(
+      readEmbedProjectDetailRoute({
+        kind: "project",
+        projectId: "p1",
+        fileName: null,
+      }),
+    ).toEqual({
+      kind: "project",
+      projectId: "p1",
+      fileName: null,
+    });
+    expect(readEmbedProjectDetailRoute({ kind: "home", view: "home" })).toBeNull();
   });
 
   it("merges a refreshed project row into the local list", () => {

@@ -157,11 +157,12 @@ describe("embed workspace switch side effects", () => {
     expect(app).toContain("refreshProjectsSurface");
     expect(app).toContain("shouldDeferEmbedProjectListRefresh");
     expect(app).toContain("onProjectsRefresh={refreshProjectsSurface}");
+    expect(app).toContain("readEmbedProjectDetailRoute");
     expect(app).toMatch(
-      /shouldDeferEmbedProjectListRefresh\(routeRef\.current\)[\s\S]*?refreshEmbedProjectMetadata/,
+      /readEmbedProjectDetailRoute\(routeRef\.current\)[\s\S]*?refreshEmbedProjectMetadata/,
     );
     expect(app).toMatch(
-      /shouldDeferEmbedProjectListRefresh\(route\)[\s\S]*?loadProjectListSafe/,
+      /readEmbedProjectDetailRoute\(route\)[\s\S]*?loadProjectListSafe/,
     );
   });
 });
