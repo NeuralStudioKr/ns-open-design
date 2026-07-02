@@ -161,6 +161,7 @@ import {
   showCompletionNotification,
 } from '../utils/notifications';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { TeamverAboutOpenSourceSection } from '../teamver/components/TeamverAboutOpenSourceSection';
 import type { TeamverEmbedSettingsSection } from '../teamver/branding/config';
 
 export type SettingsSection =
@@ -2808,7 +2809,10 @@ export function SettingsDialog({
     // 'library' is opened via EntryShell route — SettingsDialog doesn't
     // render it but SettingsSection must accept the token (see type def).
     library: { title: '', subtitle: '' },
-    about: { title: t('settings.about'), subtitle: t('settings.aboutHint') },
+    about: {
+      title: t('settings.about'),
+      subtitle: teamverEmbed ? t('teamver.about.panelHint') : t('settings.aboutHint'),
+    },
   };
   const activeHeader = sectionHeader[activeSection];
   const installedAgents = agents.filter((a) => a.available);
@@ -4682,7 +4686,8 @@ export function SettingsDialog({
 
           {activeSection === 'about' ? (
             <section className="settings-section">
-              {appVersionInfo ? (
+              {teamverEmbed ? <TeamverAboutOpenSourceSection /> : null}
+              {!teamverEmbed && appVersionInfo ? (
                 <dl className="settings-about-list">
                   <div className="settings-about-version-row">
                     <div className="settings-about-version-left">
@@ -4719,16 +4724,19 @@ export function SettingsDialog({
                     <dd>{appVersionInfo.arch}</dd>
                   </div>
                 </dl>
-              ) : (
+              ) : null}
+              {!teamverEmbed && !appVersionInfo ? (
                 <div className="empty-card">{t('settings.versionUnavailable')}</div>
-              )}
-              <div className="settings-about-diagnostics">
-                <div className="settings-about-diagnostics-text">
-                  <h4>{t('diagnostics.exportTitle')}</h4>
-                  <p className="hint">{t('diagnostics.exportHint')}</p>
+              ) : null}
+              {!teamverEmbed ? (
+                <div className="settings-about-diagnostics">
+                  <div className="settings-about-diagnostics-text">
+                    <h4>{t('diagnostics.exportTitle')}</h4>
+                    <p className="hint">{t('diagnostics.exportHint')}</p>
+                  </div>
+                  <ExportDiagnosticsRow />
                 </div>
-                <ExportDiagnosticsRow />
-              </div>
+              ) : null}
             </section>
           ) : null}
           {aboutToast ? (

@@ -420,7 +420,31 @@ export function EntrySettingsMenu({
               {t('homeHero.details')}
             </span>
           </button>
-          ) : null}
+          ) : (
+          <button
+            type="button"
+            className="entry-settings-menu__item entry-settings-menu__item--primary"
+            data-testid="entry-settings-open-about"
+            role="menuitem"
+            onClick={() => {
+              trackSettingsPopoverClick(analytics.track, {
+                page_name: pageName,
+                area: 'settings_popover',
+                element: 'open_about',
+              });
+              setOpen(false);
+              onOpenSettings('about');
+            }}
+          >
+            <span className="entry-settings-menu__item-icon" aria-hidden>
+              <Icon name="info" size={14} />
+            </span>
+            <span>{t('settings.about')}</span>
+            <span className="entry-settings-menu__item-meta">
+              {t('teamver.about.panelHint')}
+            </span>
+          </button>
+          )}
         </div>
       ) : null}
     </div>

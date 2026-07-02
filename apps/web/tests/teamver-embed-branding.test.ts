@@ -44,7 +44,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideUsefulTips).toBe(true);
     expect(branding.hideHandoffButton).toBe(true);
     expect(branding.hideAssistantModelLabels).toBe(true);
-    expect(branding.hideAssistantThinkingDetails).toBe(false);
+    expect(branding.hideAssistantThinkingDetails).toBe(true);
     expect(branding.lockExecutionConfig).toBe(true);
     expect(branding.hideLocalWorkspaceControls).toBe(true);
     expect(branding.hideWorkspaceTabsBar).toBe(true);
@@ -57,7 +57,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hidePluginRegistry).toBe(true);
     expect(branding.hideExternalShareSurfaces).toBe(true);
     expect(branding.allowedSettingsSections).toEqual(
-      new Set(['language', 'appearance', 'designTemplates']),
+      new Set(['language', 'appearance', 'designTemplates', 'about']),
     );
   });
 

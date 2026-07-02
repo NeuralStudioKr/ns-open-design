@@ -12,6 +12,7 @@ export const TEAMVER_EMBED_SETTINGS_SECTIONS = [
   "language",
   "appearance",
   "designTemplates",
+  "about",
 ] as const;
 
 export type TeamverEmbedSettingsSection = (typeof TEAMVER_EMBED_SETTINGS_SECTIONS)[number];

@@ -370,6 +370,86 @@
   margin: 0;
   font-size: 12px;
 }
+.settings-about-open-source {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-about-open-source-header h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-about-open-source-header .hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.settings-about-open-source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-about-open-source-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+.settings-about-open-source-item-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.settings-about-open-source-item-head strong {
+  font-size: 13px;
+}
+.settings-about-open-source-source-link {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.settings-about-open-source-source-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.settings-about-open-source-meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-about-open-source-meta > div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+.settings-about-open-source-meta dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settings-about-open-source-meta dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.settings-about-open-source-meta a {
+  color: inherit;
+}
+.settings-about-open-source-meta a:hover {
+  text-decoration: underline;
+}
 .diagnostics-export-row {
   display: flex;
   flex-direction: column;
