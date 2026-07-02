@@ -7291,7 +7291,7 @@ function HtmlViewer({
   const canPptx = canShare && isDeckArtifact && Boolean(onExportAsPptx) && !streaming;
   const showPptxExport = canShare && isDeckArtifact;
   const showMarkdownExport = source !== null && isMarkdownArtifact;
-  const showImageExport = canShare;
+  const showImageExport = canShare && !isTeamverEmbedMode();
   const showExternalShareMenu = canShare && !hideExternalShareSurfaces;
 
   useEffect(() => {

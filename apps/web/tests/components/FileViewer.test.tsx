@@ -49,6 +49,7 @@ import { I18nProvider } from '../../src/i18n';
 import type { Dict } from '../../src/i18n/types';
 import { emptyManualEditStyles } from '../../src/edit-mode/types';
 import { readExpandedIndexCss } from '../helpers/read-expanded-css';
+import * as designApiBase from '../../src/teamver/designApiBase';
 
 const TEST_SNAPSHOT_DATA_URL = 'data:image/png;base64,c25hcHNob3Q=';
 
@@ -857,7 +858,8 @@ describe('FileViewer SVG artifacts', () => {
     expect(reloadedFrame.getAttribute('data-od-render-mode')).toBe('srcdoc');
   });
 
-  it('offers image export for URL-loaded HTML previews', () => {
+  it('offers image export for URL-loaded HTML previews outside embed', () => {
+    vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(false);
     const file = baseFile({
       name: 'workspace.html',
       path: 'workspace.html',

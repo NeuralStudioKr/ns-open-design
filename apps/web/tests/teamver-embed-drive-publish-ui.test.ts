@@ -23,6 +23,7 @@ describe('Teamver embed export + Drive publish UI', () => {
     expect(fileViewer).toContain("embedUiLabel('Export', '보내기')");
     expect(fileViewer).toContain('TeamverExportMenu');
     expect(fileViewer).toContain('TeamverPublishDriveModal');
+    expect(fileViewer).toContain('const showImageExport = canShare && !isTeamverEmbedMode()');
     const exportMenu = readSource('src/teamver/components/TeamverExportMenu.tsx');
     expect(exportMenu).toContain('teamver-open-publish-drive-modal-pdf');
     expect(exportMenu).toContain('teamver-open-publish-drive-modal-html');

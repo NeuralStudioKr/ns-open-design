@@ -444,27 +444,13 @@ describe('FileViewer image export', () => {
     });
   });
 
-  it('does not fall back to iframe snapshots for Teamver embed image downloads', async () => {
+  it('hides image export from the download menu in Teamver embed', async () => {
     isTeamverEmbedModeMock.mockReturnValue(true);
-    exportProjectImageBlobMock.mockResolvedValueOnce({
-      ok: false,
-      reason: 'daemon image export 500: headless Chromium unavailable',
-    });
-    requestPreviewSnapshotMock.mockResolvedValueOnce({
-      dataUrl: 'data:image/png;base64,should-not-use',
-      w: 800,
-      h: 600,
-    });
 
     renderHtmlPreview();
-    await openImageExportDialog();
+    fireEvent.click(screen.getByRole('button', { name: /download|보내기/i }));
 
-    await waitFor(() => {
-      const text = screen.getByRole('alert').textContent || '';
-      expect(text).toContain('headless Chromium unavailable');
-    }, { timeout: 4000 });
-    expect(requestPreviewSnapshotMock).not.toHaveBeenCalled();
-    expect(imageDataUrlToBlobMock).not.toHaveBeenCalled();
-    expect((screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('menuitem', { name: /export as image|이미지로 다운로드/i })).toBeNull();
+    expect(exportProjectImageBlobMock).not.toHaveBeenCalled();
   });
 });
