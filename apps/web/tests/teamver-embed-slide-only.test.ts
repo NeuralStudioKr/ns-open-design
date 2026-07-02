@@ -12,7 +12,10 @@ import {
   visibleDesignToolboxActions,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
 import { chipsForGroup } from '../src/components/home-hero/chips';
-import { DESIGN_TOOLBOX_ACTIONS } from '../src/runtime/design-toolbox';
+import {
+  DESIGN_TOOLBOX_ACTIONS,
+  isOpenDesignBrandedToolboxResource,
+} from '../src/runtime/design-toolbox';
 
 const webRoot = resolve(import.meta.dirname, '..');
 
@@ -63,6 +66,12 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('video-gen')).toBe(true);
     expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('motion')).toBe(true);
     expect(TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS.has('motion-polish')).toBe(true);
+  });
+
+  it('detects Open Design branded toolbox resources for embed filtering', () => {
+    expect(isOpenDesignBrandedToolboxResource(['Open Design 랜딩 덱'])).toBe(true);
+    expect(isOpenDesignBrandedToolboxResource(['nexu-io/open-design'])).toBe(true);
+    expect(isOpenDesignBrandedToolboxResource(['Html Ppt Hermes Cyber Terminal'])).toBe(false);
   });
 
   it('forces home free-form submit metadata.kind to deck in slide-only embed (loop 388)', () => {
