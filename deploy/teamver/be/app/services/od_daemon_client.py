@@ -26,6 +26,20 @@ class OdDaemonIdentity:
     s3_prefix: str | None = None
 
 
+@dataclass(frozen=True)
+class OdExportTicket:
+    download_url: str
+    filename: str
+    mime: str
+    size_bytes: int
+
+
+class OdDaemonPresignedPutError(BadGatewayError):
+    def __init__(self, status_code: int) -> None:
+        super().__init__("drive_presigned_put_failed")
+        self.status_code = status_code
+
+
 class OdDaemonClient:
     def __init__(
         self,
@@ -127,6 +141,30 @@ class OdDaemonClient:
             identity=identity,
         )
 
+    async def request_export_html_ticket(
+        self,
+        od_project_id: str,
+        artifact_path: str,
+        *,
+        identity: OdDaemonIdentity,
+        deck: bool = False,
+        title: str | None = None,
+    ) -> OdExportTicket:
+        payload: dict[str, object] = {
+            "fileName": artifact_path.strip(),
+            "deck": deck,
+            "delivery": "ticket",
+        }
+        if title and title.strip():
+            payload["title"] = title.strip()
+        return await self._request_export_ticket(
+            od_project_id,
+            "/export/html",
+            payload=payload,
+            accept="application/json",
+            identity=identity,
+        )
+
     async def get_export_pdf(
         self,
         od_project_id: str,
@@ -160,6 +198,68 @@ class OdDaemonClient:
             )
             raise BadGatewayError("od_daemon_export_failed")
         return response.content
+
+    async def request_export_pdf_ticket(
+        self,
+        od_project_id: str,
+        artifact_path: str,
+        *,
+        identity: OdDaemonIdentity,
+        deck: bool = False,
+        title: str | None = None,
+    ) -> OdExportTicket:
+        payload: dict[str, object] = {
+            "fileName": artifact_path.strip(),
+            "deck": deck,
+            "delivery": "ticket",
+        }
+        if title and title.strip():
+            payload["title"] = title.strip()
+        return await self._request_export_ticket(
+            od_project_id,
+            "/export/pdf",
+            payload=payload,
+            accept="application/json",
+            identity=identity,
+        )
+
+    async def stream_export_ticket_to_presigned_put(
+        self,
+        ticket: OdExportTicket,
+        *,
+        presigned_url: str,
+        content_type: str,
+        identity: OdDaemonIdentity,
+    ) -> None:
+        download_url = self._absolute_url(ticket.download_url)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as download_client:
+            async with download_client.stream(
+                "GET",
+                download_url,
+                headers=self._headers(accept=ticket.mime, identity=identity),
+            ) as download_response:
+                if download_response.status_code >= 400:
+                    logger.warning(
+                        "[od-daemon] export ticket download failed status=%s url=%s",
+                        download_response.status_code,
+                        ticket.download_url,
+                    )
+                    raise BadGatewayError("od_daemon_export_ticket_download_failed")
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as upload_client:
+                    upload_response = await upload_client.put(
+                        presigned_url,
+                        content=download_response.aiter_bytes(),
+                        headers={
+                            "content-type": content_type,
+                            "content-length": str(ticket.size_bytes),
+                        },
+                    )
+        if upload_response.status_code >= 400:
+            logger.warning(
+                "[drive] presigned PUT stream failed status=%s",
+                upload_response.status_code,
+            )
+            raise OdDaemonPresignedPutError(upload_response.status_code)
 
     async def get_archive(
         self,
@@ -282,6 +382,66 @@ class OdDaemonClient:
         if not isinstance(body, dict):
             raise BadGatewayError("od_daemon_invalid_json")
         return body
+
+    async def _request_export_ticket(
+        self,
+        od_project_id: str,
+        suffix: str,
+        *,
+        payload: dict[str, object],
+        accept: str,
+        identity: OdDaemonIdentity,
+    ) -> OdExportTicket:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/projects/{od_project_id}{suffix}",
+                headers={
+                    **self._headers(accept=accept, identity=identity),
+                    "content-type": "application/json",
+                },
+                json=payload,
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                "[od-daemon] POST %s failed project=%s status=%s body=%s",
+                suffix,
+                od_project_id,
+                response.status_code,
+                (response.text or "")[:300],
+            )
+            raise BadGatewayError("od_daemon_export_failed")
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise BadGatewayError("od_daemon_invalid_json") from exc
+        if not isinstance(body, dict) or body.get("delivery") != "ticket":
+            raise BadGatewayError("od_daemon_invalid_export_ticket")
+        download_url = body.get("downloadUrl")
+        filename = body.get("filename")
+        mime = body.get("mime")
+        size = body.get("bytes", body.get("sizeBytes"))
+        if not isinstance(download_url, str) or not download_url:
+            raise BadGatewayError("od_daemon_invalid_export_ticket")
+        if not isinstance(filename, str) or not filename:
+            raise BadGatewayError("od_daemon_invalid_export_ticket")
+        if not isinstance(mime, str) or not mime:
+            raise BadGatewayError("od_daemon_invalid_export_ticket")
+        if not isinstance(size, int) or size < 0:
+            raise BadGatewayError("od_daemon_invalid_export_ticket")
+        return OdExportTicket(
+            download_url=download_url,
+            filename=filename,
+            mime=mime,
+            size_bytes=size,
+        )
+
+    def _absolute_url(self, path_or_url: str) -> str:
+        value = path_or_url.strip()
+        if value.startswith("http://") or value.startswith("https://"):
+            return value
+        if not value.startswith("/"):
+            value = "/" + value
+        return f"{self.base_url}{value}"
 
     async def _request_bytes(
         self,

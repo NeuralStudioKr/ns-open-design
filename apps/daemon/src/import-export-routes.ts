@@ -67,6 +67,7 @@ async function respondExportPayload(
     sourceFilePath?: string;
     filename: string;
     mime: string;
+    bytes: number;
     ticket: boolean;
   },
 ): Promise<void> {
@@ -76,6 +77,7 @@ async function respondExportPayload(
       ...(options.sourceFilePath
         ? { sourceFilePath: options.sourceFilePath }
         : { body: options.body! }),
+      bytes: options.bytes,
       filename: options.filename,
       mime: options.mime,
     });
@@ -84,6 +86,8 @@ async function respondExportPayload(
       downloadUrl: entry.url,
       filename: entry.filename,
       mime: entry.mime,
+      bytes: entry.bytes,
+      sizeBytes: entry.bytes,
       expiresAt: new Date(entry.expiresAt).toISOString(),
     });
     return;
@@ -113,12 +117,14 @@ function outcomeAsRespondPayload(
   sourceFilePath?: string;
   filename: string;
   mime: string;
+  bytes: number;
 } {
   return {
     ...(outcome.filePath ? { sourceFilePath: outcome.filePath } : {}),
     ...(outcome.body !== undefined ? { body: outcome.body } : {}),
     filename: outcome.filename,
     mime: outcome.mime,
+    bytes: outcome.bytes,
   };
 }
 

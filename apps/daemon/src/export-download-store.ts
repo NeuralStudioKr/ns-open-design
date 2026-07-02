@@ -8,6 +8,7 @@ export type StoredExportDownload = {
   url: string;
   filename: string;
   mime: string;
+  bytes: number;
   expiresAt: number;
   filePath: string;
 };
@@ -49,6 +50,7 @@ export async function storeExportDownload(options: {
    * directory. The file lifecycle stays with its owner.
    */
   sourceFilePath?: string;
+  bytes?: number;
   /** Body is required when `sourceFilePath` is absent. */
   body?: Buffer | string;
   filename: string;
@@ -61,10 +63,15 @@ export async function storeExportDownload(options: {
 
   let filePath: string;
   let ownsFile: boolean;
+  let bytes: number;
 
   if (options.sourceFilePath) {
     filePath = options.sourceFilePath;
     ownsFile = false;
+    bytes =
+      Number.isFinite(options.bytes) && options.bytes !== undefined && options.bytes >= 0
+        ? Math.floor(options.bytes)
+        : (await fs.stat(filePath)).size;
     purgeExpiredDownloads();
   } else {
     if (!options.body) {
@@ -75,6 +82,7 @@ export async function storeExportDownload(options: {
     filePath = path.join(exportDownloadDir, `${token}-${filename}`);
     const body =
       typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body;
+    bytes = body.byteLength;
     await fs.writeFile(filePath, body);
     ownsFile = true;
   }
@@ -84,6 +92,7 @@ export async function storeExportDownload(options: {
     url,
     filename,
     mime: options.mime,
+    bytes,
     expiresAt,
     filePath,
     projectId: options.projectId,

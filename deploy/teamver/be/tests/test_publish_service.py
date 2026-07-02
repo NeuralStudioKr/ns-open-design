@@ -15,6 +15,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.db.models import DesignProject
 from app.errors import BadGatewayError, BadRequestError, UnauthorizedError
+from app.services.od_daemon_client import OdExportTicket
 from app.services.publish_service import publish_project
 
 
@@ -55,6 +56,20 @@ def _wire_drive_upload(teamver_client: MagicMock, *, asset_id: str = "AST-123") 
     return asset
 
 
+def _export_ticket(
+    *,
+    filename: str = "Landing Page.pdf",
+    mime: str = "application/pdf",
+    size_bytes: int = 13,
+) -> OdExportTicket:
+    return OdExportTicket(
+        download_url="/api/projects/od1/export/downloads/ticket-token",
+        filename=filename,
+        mime=mime,
+        size_bytes=size_bytes,
+    )
+
+
 def _daemon_mock(*, live_name: str | None = None) -> AsyncMock:
     """Build a daemon AsyncMock with `get_project_name` pinned.
 
@@ -67,6 +82,7 @@ def _daemon_mock(*, live_name: str | None = None) -> AsyncMock:
     """
     daemon = AsyncMock()
     daemon.get_project_name = AsyncMock(return_value=live_name)
+    daemon.stream_export_ticket_to_presigned_put = AsyncMock()
     return daemon
 
 
@@ -114,7 +130,8 @@ async def test_publish_project_slide_pdf_uploads_and_persists():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    export_ticket = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
+    daemon.request_export_pdf_ticket.return_value = export_ticket
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-PDF")
@@ -137,7 +154,7 @@ async def test_publish_project_slide_pdf_uploads_and_persists():
     assert result.outputs[0].publish_status == "ready"
     assert result.outputs[0].filename == "Landing Page.pdf"
     assert result.outputs[0].mime_type == "application/pdf"
-    daemon.get_export_pdf.assert_awaited_once_with(
+    daemon.request_export_pdf_ticket.assert_awaited_once_with(
         "od1",
         "deck/index.html",
         identity=ANY,
@@ -161,7 +178,8 @@ async def test_publish_project_pdf_uploads_via_manifest_entry():
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
     pdf_bytes = b"%PDF-1.4 test"
-    daemon.get_export_pdf.return_value = pdf_bytes
+    export_ticket = _export_ticket(size_bytes=len(pdf_bytes))
+    daemon.request_export_pdf_ticket.return_value = export_ticket
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-123")
@@ -185,7 +203,7 @@ async def test_publish_project_pdf_uploads_via_manifest_entry():
     assert result.outputs[0].publish_status == "ready"
     assert result.outputs[0].drive_asset_id == "AST-123"
     daemon.get_export_manifest.assert_awaited_once_with("od1", identity=ANY)
-    daemon.get_export_pdf.assert_awaited_once_with(
+    daemon.request_export_pdf_ticket.assert_awaited_once_with(
         "od1",
         "deck/index.html",
         identity=ANY,
@@ -201,10 +219,11 @@ async def test_publish_project_pdf_uploads_via_manifest_entry():
         shared_drive_id=None,
         kind="ai_generated",
     )
-    teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
-        "https://s3.example.com/upload/AST-123",
-        content=pdf_bytes,
+    daemon.stream_export_ticket_to_presigned_put.assert_awaited_once_with(
+        export_ticket,
+        presigned_url="https://s3.example.com/upload/AST-123",
         content_type="application/pdf",
+        identity=ANY,
     )
     teamver_client.drive.confirm_upload.assert_awaited_once_with(
         access_token="token",
@@ -222,7 +241,7 @@ async def test_publish_project_uploads_to_shared_drive_target():
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
     pdf_bytes = b"%PDF-1.4 test"
-    daemon.get_export_pdf.return_value = pdf_bytes
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(pdf_bytes))
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-SHARED")
@@ -271,7 +290,7 @@ async def test_publish_project_uses_artifact_filename_when_title_is_generic_and_
             "kind": "html",
         }],
     }
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-FILENAME")
@@ -326,7 +345,12 @@ async def test_publish_project_accepts_html_for_slides():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_inline.return_value = b"<html>deck</html>"
+    export_ticket = _export_ticket(
+        filename="Landing Page.html",
+        mime="text/html",
+        size_bytes=len(b"<html>deck</html>"),
+    )
+    daemon.request_export_html_ticket.return_value = export_ticket
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-HTML")
@@ -345,9 +369,17 @@ async def test_publish_project_accepts_html_for_slides():
     assert result.http_status == 201
     assert result.outputs[0].kind == "html"
     assert result.outputs[0].publish_status == "ready"
-    daemon.get_export_inline.assert_awaited_once_with(
+    daemon.request_export_html_ticket.assert_awaited_once_with(
         "od1",
         "deck/index.html",
+        identity=ANY,
+        deck=True,
+        title=None,
+    )
+    daemon.stream_export_ticket_to_presigned_put.assert_awaited_once_with(
+        export_ticket,
+        presigned_url="https://s3.example.com/upload/AST-HTML",
+        content_type="text/html",
         identity=ANY,
     )
 
@@ -358,7 +390,7 @@ async def test_publish_project_all_formats_fail_raises_bad_gateway():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.side_effect = BadGatewayError("od_daemon_export_failed")
+    daemon.request_export_pdf_ticket.side_effect = BadGatewayError("od_daemon_export_failed")
 
     teamver_client = MagicMock()
 
@@ -387,7 +419,7 @@ async def test_publish_project_upload_request_phase_status_propagates():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     upload_request_exc = TeamverAPIError("drive upload request rejected")
@@ -409,7 +441,7 @@ async def test_publish_project_upload_request_phase_status_propagates():
             od_daemon=daemon,
         )
 
-    teamver_client.drive._put_presigned_bytes.assert_not_awaited()
+    daemon.stream_export_ticket_to_presigned_put.assert_not_awaited()
     teamver_client.drive.confirm_upload.assert_not_awaited()
 
 
@@ -422,7 +454,7 @@ async def test_publish_project_presigned_put_status_propagates():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     ticket_html = MagicMock()
@@ -431,7 +463,7 @@ async def test_publish_project_presigned_put_status_propagates():
     teamver_client.drive.create_upload_request = AsyncMock(return_value=ticket_html)
     presigned_exc = DriveUploadError("S3 PUT failed with status 502")
     presigned_exc.status_code = 502
-    teamver_client.drive._put_presigned_bytes = AsyncMock(side_effect=presigned_exc)
+    daemon.stream_export_ticket_to_presigned_put.side_effect = presigned_exc
     teamver_client.drive.confirm_upload = AsyncMock()
 
     with pytest.raises(BadGatewayError, match="publish_all_failed"):
@@ -458,7 +490,7 @@ async def test_publish_project_confirm_failure_uses_confirm_code():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     ticket_html = MagicMock()
@@ -467,7 +499,6 @@ async def test_publish_project_confirm_failure_uses_confirm_code():
     asset_html = MagicMock()
     asset_html.asset_id = "AST-HTML"
     teamver_client.drive.create_upload_request = AsyncMock(return_value=ticket_html)
-    teamver_client.drive._put_presigned_bytes = AsyncMock()
     confirm_exc = DriveConfirmError("drive confirm failed")
     confirm_exc.status_code = 504
     confirm_exc.code = "drive.confirm_timeout"
@@ -514,7 +545,7 @@ async def test_publish_filename_prefers_live_daemon_name_over_stale_registry_tit
 
     daemon = _daemon_mock(live_name="Q4 마케팅 전략")
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-LIVE")
@@ -555,7 +586,7 @@ async def test_publish_filename_falls_back_to_registry_title_when_live_lookup_fa
     daemon = _daemon_mock()
     daemon.get_project_name.side_effect = BadGatewayError("od_daemon_export_failed")
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-FALLBACK")
@@ -598,7 +629,7 @@ async def test_publish_filename_skips_live_name_when_it_resolves_to_design():
         "entryFile": "decks/q4-roadmap.html",
         "artifacts": [{"file": "decks/q4-roadmap.html", "kind": "html"}],
     }
-    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-GENERIC")

@@ -34,6 +34,7 @@ describe('GET /api/projects/:id/export/downloads/:token', () => {
         filename: 'Seed Deck.pdf',
         mime: 'application/pdf',
       });
+      expect(stored.bytes).toBe(Buffer.byteLength('%PDF-ticket-test'));
 
       const response = await fetch(`${started.url}${stored.url}`);
       expect(response.status).toBe(200);

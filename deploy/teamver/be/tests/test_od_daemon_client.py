@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
+from app.services.od_daemon_client import OdDaemonClient, OdDaemonIdentity, OdExportTicket
 
 
 def test_daemon_client_headers_keep_od_token_with_teamver_identity() -> None:
@@ -111,3 +111,107 @@ async def test_daemon_client_upload_project_file_path_streams_file_handle(
     assert file_tuple[1].name == str(source)
     assert file_tuple[1].closed is True
     assert file_tuple[2] == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = MagicMock()
+    response.status_code = 201
+    response.json.return_value = {
+        "delivery": "ticket",
+        "downloadUrl": "/api/projects/od1/export/downloads/ticket",
+        "filename": "Deck.pdf",
+        "mime": "application/pdf",
+        "bytes": 1234,
+    }
+
+    http = AsyncMock()
+    http.post = AsyncMock(return_value=response)
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: http)
+
+    ticket = await OdDaemonClient(
+        base_url="http://daemon.test",
+        api_token="od-secret-token",
+    ).request_export_pdf_ticket(
+        "od1",
+        "deck/index.html",
+        identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+        deck=True,
+        title="Deck",
+    )
+
+    assert ticket.download_url == "/api/projects/od1/export/downloads/ticket"
+    assert ticket.filename == "Deck.pdf"
+    assert ticket.mime == "application/pdf"
+    assert ticket.size_bytes == 1234
+    http.post.assert_awaited_once()
+    assert http.post.await_args.args[0] == "http://daemon.test/api/projects/od1/export/pdf"
+    assert http.post.await_args.kwargs["json"] == {
+        "fileName": "deck/index.html",
+        "deck": True,
+        "delivery": "ticket",
+        "title": "Deck",
+    }
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_streams_export_ticket_to_presigned_put(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _DownloadResponse:
+        status_code = 200
+
+        async def __aenter__(self) -> "_DownloadResponse":
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def aiter_bytes(self):
+            yield b"pdf-"
+            yield b"bytes"
+
+    download_client = MagicMock()
+    download_client.stream = MagicMock(return_value=_DownloadResponse())
+    download_client.__aenter__ = AsyncMock(return_value=download_client)
+    download_client.__aexit__ = AsyncMock(return_value=False)
+
+    upload_response = MagicMock()
+    upload_response.status_code = 200
+    upload_client = MagicMock()
+    upload_client.put = AsyncMock(return_value=upload_response)
+    upload_client.__aenter__ = AsyncMock(return_value=upload_client)
+    upload_client.__aexit__ = AsyncMock(return_value=False)
+
+    clients = iter([download_client, upload_client])
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: next(clients))
+
+    client = OdDaemonClient(base_url="http://daemon.test", api_token="od-secret-token")
+
+    await client.stream_export_ticket_to_presigned_put(
+        OdExportTicket(
+            download_url="/api/projects/od1/export/downloads/ticket",
+            filename="Deck.pdf",
+            mime="application/pdf",
+            size_bytes=9,
+        ),
+        presigned_url="https://s3.example.com/upload",
+        content_type="application/pdf",
+        identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+    )
+
+    download_client.stream.assert_called_once()
+    assert download_client.stream.call_args.args[:2] == (
+        "GET",
+        "http://daemon.test/api/projects/od1/export/downloads/ticket",
+    )
+    upload_client.put.assert_awaited_once()
+    assert upload_client.put.await_args.args[0] == "https://s3.example.com/upload"
+    assert upload_client.put.await_args.kwargs["headers"] == {
+        "content-type": "application/pdf",
+        "content-length": "9",
+    }

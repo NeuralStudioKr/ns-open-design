@@ -17,7 +17,12 @@ from ..db.crud import design_output_crud
 from ..db.models import DesignOutput, DesignProject
 from ..config import settings
 from ..errors import BadGatewayError, BadRequestError, UnauthorizedError
-from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
+from ..services.od_daemon_client import (
+    OdDaemonClient,
+    OdDaemonIdentity,
+    OdDaemonPresignedPutError,
+    OdExportTicket,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +275,22 @@ async def _drive_presigned_put(
     await method(presigned_url, content=content, content_type=content_type)
 
 
+async def _drive_presigned_put_export_ticket(
+    daemon: OdDaemonClient,
+    ticket: OdExportTicket,
+    *,
+    identity: OdDaemonIdentity,
+    presigned_url: str,
+    content_type: str,
+) -> None:
+    await daemon.stream_export_ticket_to_presigned_put(
+        ticket,
+        presigned_url=presigned_url,
+        content_type=content_type,
+        identity=identity,
+    )
+
+
 def _raise_if_all_failed(result: PublishResult) -> None:
     if result.http_status != 502:
         return
@@ -352,10 +373,12 @@ async def publish_project(
                 path = (artifact_file or manifest_entry or "").strip()
                 if not path:
                     raise BadRequestError("artifact_file_required")
-                content = await daemon.get_export_inline(
+                export_ticket = await daemon.request_export_html_ticket(
                     project.od_project_id,
                     path,
                     identity=daemon_identity,
+                    deck=is_deck_artifact,
+                    title=export_title,
                 )
                 mime_type = "text/html"
                 filename = _publish_filename(
@@ -365,6 +388,7 @@ async def publish_project(
                     suffix=".html",
                     live_title=live_title,
                 )
+                size_bytes = export_ticket.size_bytes
                 source_path = path
                 entry_file = manifest_entry
                 artifact = artifact_file or path
@@ -374,7 +398,7 @@ async def publish_project(
                 path = (artifact_file or manifest_entry or "").strip()
                 if not path:
                     raise BadRequestError("artifact_file_required")
-                content = await daemon.get_export_pdf(
+                export_ticket = await daemon.request_export_pdf_ticket(
                     project.od_project_id,
                     path,
                     identity=daemon_identity,
@@ -389,6 +413,7 @@ async def publish_project(
                     suffix=".pdf",
                     live_title=live_title,
                 )
+                size_bytes = export_ticket.size_bytes
                 source_path = path
                 entry_file = manifest_entry
                 artifact = artifact_file or path
@@ -401,7 +426,7 @@ async def publish_project(
                     ticket = await teamver_client.drive.create_upload_request(
                         access_token=access_token,
                         filename=filename,
-                        file_size=len(content),
+                        file_size=size_bytes,
                         content_type=mime_type,
                         folder_id=resolved_folder_id,
                         shared_drive_id=resolved_shared_drive_id,
@@ -415,13 +440,14 @@ async def publish_project(
 
                 phase = "presigned_put"
                 try:
-                    await _drive_presigned_put(
-                        teamver_client,
+                    await _drive_presigned_put_export_ticket(
+                        daemon,
+                        export_ticket,
+                        identity=daemon_identity,
                         presigned_url=ticket.presigned_url,
-                        content=content,
                         content_type=mime_type,
                     )
-                except DriveUploadError as exc:
+                except (DriveUploadError, OdDaemonPresignedPutError) as exc:
                     status = getattr(exc, "status_code", None)
                     error_code = (
                         f"drive_presigned_put_failed_{int(status)}"
@@ -470,7 +496,7 @@ async def publish_project(
                     kind=fmt,
                     mime_type=mime_type,
                     filename=filename,
-                    size_bytes=len(content),
+                    size_bytes=size_bytes,
                     source_path=source_path,
                     manifest_entry_file=entry_file,
                     artifact_file=artifact,

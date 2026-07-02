@@ -437,7 +437,7 @@ Worker (daemon sidecar or queue consumer):
 
 **성공 기준:** FE heap spike 제거; 동시 2 export 시 3번째만 대기; p95 export duration 가시화.
 
-### Sprint 2 — Phase 1a (2~3주) — 🟢 코드 구현 완료 (§20.1~§20.3 · 배포 대기)
+### Sprint 2 — Phase 1a/1d (2~3주) — 🟢 코드 구현 완료 (§20.1~§20.4 · 배포 대기)
 
 | # | 작업 | 상태 |
 |---|------|------|
@@ -447,14 +447,14 @@ Worker (daemon sidecar or queue consumer):
 | 1.4 | daemon local cache hit → filePath stream (ticket + direct) — `LocalFileExportCacheStore` + sweep | ✅ `export-cache-local.ts` + `respondExportPayload` |
 | 1.5 | route 통합 (PDF/HTML/ZIP/image) + `runCachedExport` chain | ✅ `import-export-routes.ts` + `export-cache-runtime.ts` |
 | 1.6 | metrics 확장 (`cache=miss|hit-memo|hit-local`, `cacheKey`, `cacheAgeMs`) | ✅ `export-runtime.ts` |
-| 1.d | Publish stream (§20.4) — design-api RAM 이중화 제거 | ⏳ **다음 라운드** (Teamver Python SDK `_put_presigned_bytes` 확장 필요) |
+| 1.d | Publish stream (§20.4) — design-api RAM 이중화 제거 | ✅ PDF/HTML Drive publish가 daemon export ticket + presigned PUT stream 사용 (`od_daemon_client.py`, `publish_service.py`) |
 
 ### Sprint 3 — Phase 1b + 2 (3~4주)
 
 | # | 작업 | 상태 |
 |---|------|------|
 | 2.1 | presigned GET 발급 API (session-gated) | ⏳ |
-| 2.2 | publish_service: cache hit 시 Chromium skip (daemon → S3 key 반환) | ⏳ |
+| 2.2 | publish_service: cache hit 시 Chromium skip (daemon ticket/local cache reuse) | ✅ single-node EBS cache 기준 / S3 object 반환은 1c 이후 |
 | 2.3 | FE Download + Publish 공통 cache benefit E2E | ⏳ |
 
 ### Backlog — Phase 3
@@ -854,15 +854,14 @@ design-api publish_service:
   peak RAM per publish = pdf_bytes + Drive PUT buffer ≈ 2× pdf_bytes
 ```
 
-**After (proposed):**
+**After (implemented, 2026-07-02):**
 
 ```text
 design-api publish_service:
   POST /api/projects/{od_id}/export/pdf { fileName, deck, title, delivery: "ticket" }
-    ← 201 { downloadUrl: "/api/projects/{od_id}/export/downloads/{token}" }
+    ← 201 { downloadUrl: "/api/projects/{od_id}/export/downloads/{token}", bytes }
   httpx.AsyncClient.stream("GET", <daemon>+downloadUrl) as response:
-      async for chunk in response.aiter_bytes(64KB):
-          await drive_stream.send(chunk)          # presigned PUT streaming
+      httpx PUT presigned_url content=response.aiter_bytes()
   peak RAM per publish = 1× chunk (~64KB)
 ```
 
@@ -870,15 +869,14 @@ design-api publish_service:
 
 | 파일 | 변경 |
 |------|------|
-| `deploy/teamver/be/app/services/od_daemon_client.py` | `get_export_pdf(..., stream=False)` 그대로 두고 **새 메서드** `stream_export_download(od_project_id, ticket_url) -> AsyncIterator[bytes]` 추가 |
-| `deploy/teamver/be/app/services/od_daemon_client.py` | `request_export_pdf_ticket(od_project_id, ...) -> ExportTicket` 추가 (POST with `delivery: "ticket"` → parse response) |
-| `deploy/teamver/be/app/services/publish_service.py` | pdf 경로에서 `content = await daemon.get_export_pdf(...)` 대신 `ticket = await daemon.request_export_pdf_ticket(...); async for chunk in daemon.stream_export_download(...):` |
-| `deploy/teamver/be/app/services/drive_upload.py` (또는 유사) | presigned PUT을 chunk streaming으로 (`httpx.AsyncClient.build_request` + `data=async_iterator`) — Drive Resumable Upload 여부 확인 필요 |
+| `apps/daemon/src/import-export-routes.ts` / `export-download-store.ts` | ticket 응답에 `bytes`/`sizeBytes` 포함. cache-owned file ticket은 파일 복사 없이 같은 path를 참조 |
+| `deploy/teamver/be/app/services/od_daemon_client.py` | `request_export_pdf_ticket`, `request_export_html_ticket`, `stream_export_ticket_to_presigned_put` 추가 |
+| `deploy/teamver/be/app/services/publish_service.py` | PDF/HTML publish 모두 bytes download 대신 ticket → Drive presigned PUT stream 사용. upload request의 `file_size`는 ticket `bytes` 사용 |
 
 **HTML publish도 동일 패턴** (`get_export_inline` → ticket) — HTML은 크기가 작아서 (< 5MB) chunk 없이도 되지만 계약 일관성.
 
 **리스크:**
-- Drive presigned PUT이 streaming body를 받는지 확인 필요 (현재는 `Body=bytes`). Google Drive는 resumable upload 지원, S3는 chunked encoding 미지원 (multipart 필요) — publish 대상 storage에 따라 fallback 필요.
+- Drive presigned PUT이 `Content-Length`가 명시된 async stream body를 staging S3에서 정상 수용하는지 실증 필요. chunked encoding은 피하기 위해 daemon ticket `bytes`를 `content-length`로 전달한다.
 - ticket TTL(300s) 안에 stream이 끝나야 함 — 큰 deck PDF (수십 MB) 도 문제 없음.
 
 **병행 최적화:**
@@ -952,6 +950,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-02 | §20.4 Publish stream 1차 구현 — daemon export ticket에 bytes 포함, design-api PDF/HTML Drive publish를 ticket download stream → presigned PUT으로 전환, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 20 passed |
 | 2026-07-02 | §20.1~§20.3 코드 구현 완료 — cacheKey SSOT, memo/local 캐시, route 통합, ticket sourceFilePath 지원, 49 tests pass (미배포) |
 | 2026-07-02 | §19 Phase 1 재검토 (single-node·EBS 우선) + §20 Sprint 2 세부 설계 (memo + local + publish stream) |
 | 2026-07-02 | §11·§17 Phase 0 완료 항목 체크 (코드) |
