@@ -44,7 +44,6 @@ import {
 } from "./workspaceUtils";
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
-import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
 import {
   resolveEmbedFocusSessionOptions,
@@ -146,7 +145,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
     const force = options?.force ?? false;
     const resetRefreshState = options?.resetRefreshState ?? false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    // Routine tab-focus refresh should not blank the session bar — only the
+    // initial boot and explicit auth recovery need the loading affordance.
+    setState((prev) => ({
+      ...prev,
+      loading: prev.authenticated && !resetRefreshState ? prev.loading : true,
+      error: null,
+    }));
     try {
       // App boot runs the first session probe + registry sync — avoid racing refresh/clear.
       if (!force && !isTeamverEmbedBootComplete()) {
@@ -196,12 +201,17 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         : null;
       if (activeWorkspaceId && activeWorkspace) {
         snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
-        // App embedWorkspaceId gate listens for workspace events — always notify after
-        // auth recovery even when localStorage already held the same workspace id.
-        dispatchTeamverWorkspaceChanged(activeWorkspaceId);
+        // Workspace-changed dispatch lives in syncTeamverWorkspaceFromSession when
+        // the stored id actually changes. Do not re-dispatch on every focus
+        // session refresh — App treats it as a full workspace switch (project
+        // list wipe + registry sync) and reads as a page reload.
       }
-      // Registry sync runs on App boot — skip duplicate work on initial banner hydrate.
-      if (force && session.authenticated && activeWorkspaceId) {
+      // Registry sync after explicit auth recovery only — not routine tab focus.
+      if (
+        resetRefreshState
+        && session.authenticated
+        && activeWorkspaceId
+      ) {
         try {
           await syncAllDaemonProjectsToRegistry();
         } catch (err) {

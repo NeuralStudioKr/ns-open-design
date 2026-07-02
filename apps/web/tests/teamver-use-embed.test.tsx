@@ -132,7 +132,7 @@ describe("useTeamverEmbed", () => {
     expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).toHaveBeenCalledWith("WS-2");
   });
 
-  it("notifies App workspace gate after auth hydrate even when store already had the id", async () => {
+  it("does not re-dispatch workspace-changed on focus refresh when store already had the id", async () => {
     const store = {
       get: vi.fn(async () => "WS-1"),
       set: vi.fn(async () => undefined),
@@ -151,8 +151,9 @@ describe("useTeamverEmbed", () => {
     renderHook(() => useTeamverEmbed(true));
 
     await waitFor(() => {
-      expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).toHaveBeenCalledWith("WS-1");
+      expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalled();
     });
+    expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).not.toHaveBeenCalled();
     expect(store.set).not.toHaveBeenCalled();
   });
 

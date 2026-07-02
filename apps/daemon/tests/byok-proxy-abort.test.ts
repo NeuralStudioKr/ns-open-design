@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import {
   registerByokProxyStream,
   abortByokProxyStream,
+  listActiveByokProxyStreams,
   registerByokProxyAbortRoute,
   resetByokProxyStreamRegistryForTests,
   activeByokProxyStreamCountForTests,
@@ -272,5 +273,30 @@ describe('/api/proxy/abort tenant scoping', () => {
       body: JSON.stringify({}),
     });
     expect(resp.status).toBe(400);
+  });
+
+  it('lists active proxy streams for a project', () => {
+    const { res } = mockRes();
+    const { streamId } = registerByokProxyStream(mockReq(), res, {
+      workspaceId: 'ws-1',
+      projectId: 'project-1',
+    });
+    const streams = listActiveByokProxyStreams({ projectId: 'project-1' });
+    expect(streams).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ streamId, projectId: 'project-1' }),
+      ]),
+    );
+  });
+
+  it('GET /api/proxy/active returns empty without workspace identity', async () => {
+    registerByokProxyStream(
+      { headers: {} } as unknown as Request,
+      mockResForRegistry(),
+      { workspaceId: 'ws-tenant-a', projectId: 'p-1' },
+    );
+    const resp = await fetch(`${baseUrl}/api/proxy/active?projectId=p-1`);
+    expect(resp.status).toBe(200);
+    expect(((await resp.json()) as { streams: unknown[] }).streams).toEqual([]);
   });
 });

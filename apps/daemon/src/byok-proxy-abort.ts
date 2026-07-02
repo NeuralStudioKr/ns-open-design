@@ -168,6 +168,38 @@ export function activeByokProxyStreamCountForTests(): number {
   return activeProxyStreams.size;
 }
 
+export type ActiveByokProxyStreamSummary = {
+  streamId: string;
+  workspaceId?: string;
+  projectId?: string;
+  registeredAt: number;
+};
+
+/**
+ * List in-flight BYOK proxy streams for embed background recovery. The FE
+ * uses this after page re-entry to decide whether a detached API-mode turn
+ * is still draining on the daemon.
+ */
+export function listActiveByokProxyStreams(options?: {
+  workspaceId?: string | null;
+  projectId?: string | null;
+}): ActiveByokProxyStreamSummary[] {
+  const workspaceId = options?.workspaceId?.trim() ?? '';
+  const projectId = options?.projectId?.trim() ?? '';
+  const out: ActiveByokProxyStreamSummary[] = [];
+  for (const [streamId, entry] of activeProxyStreams.entries()) {
+    if (workspaceId && entry.workspaceId !== workspaceId) continue;
+    if (projectId && entry.projectId !== projectId) continue;
+    out.push({
+      streamId,
+      ...(entry.workspaceId ? { workspaceId: entry.workspaceId } : {}),
+      ...(entry.projectId ? { projectId: entry.projectId } : {}),
+      registeredAt: entry.registeredAt,
+    });
+  }
+  return out;
+}
+
 /** @internal vitest — reset the registry between cases. */
 export function resetByokProxyStreamRegistryForTests(): void {
   for (const { controller } of activeProxyStreams.values()) {
@@ -207,6 +239,21 @@ export function neverAbortedSignal(): AbortSignal {
  * `X-Stream-Id` response header, so the tenant check is belt-and-braces.
  */
 export function registerByokProxyAbortRoute(app: Express): void {
+  app.get('/api/proxy/active', (req, res) => {
+    const identity = readTeamverIdentityFromRequest(req);
+    if (!identity?.workspaceId?.trim()) {
+      res.json({ streams: [] });
+      return;
+    }
+    const projectId =
+      typeof req.query.projectId === 'string' ? req.query.projectId.trim() : '';
+    const streams = listActiveByokProxyStreams({
+      workspaceId: identity?.workspaceId ?? null,
+      projectId: projectId || null,
+    });
+    res.json({ streams });
+  });
+
   app.post('/api/proxy/abort', (req, res) => {
     const streamId =
       typeof req.body?.streamId === 'string' ? req.body.streamId.trim() : '';

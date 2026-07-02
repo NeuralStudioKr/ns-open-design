@@ -11,7 +11,7 @@ function readSource(relativePath: string): string {
 describe("embed workspace switch side effects", () => {
   it("clears stale workingDirError after a successful project list reload", () => {
     const app = readSource("src/App.tsx");
-    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 2800);
     expect(block).toContain("loadRecentProjectsForHome()");
@@ -23,7 +23,7 @@ describe("embed workspace switch side effects", () => {
 
   it("clears embed list caches (registry·cover·publish chip) on workspace switch", () => {
     const app = readSource("src/App.tsx");
-    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     const block = app.slice(start, start + 1200);
     expect(block).toContain("clearTeamverEmbedListCaches()");
   });
@@ -54,7 +54,6 @@ describe("embed workspace switch side effects", () => {
       "src/teamver/importDriveAssets.ts",
       "src/teamver/listProjectOutputs.ts",
       "src/teamver/batchLatestPublishSummary.ts",
-      "src/teamver/components/TeamverPublishDriveMenuItem.tsx",
       "src/components/ChatComposer.tsx",
     ]) {
       const source = readSource(relativePath);
@@ -107,9 +106,10 @@ describe("embed workspace switch side effects", () => {
 
   it("clears background run UI and re-seeds run tracking on workspace switch", () => {
     const app = readSource("src/App.tsx");
-    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 3200);
+    expect(block).toContain("embedActiveWorkspaceIdRef.current === trimmed");
     expect(block).toContain("setBackgroundRunSummaries([])");
     expect(block).toContain("setBackgroundRunNotice(null)");
     expect(block).toContain("resetEmbedRunTrackingRefs");

@@ -105,6 +105,8 @@ import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBa
 import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
+import { mergeByokBackgroundRunSummaries, syntheticByokRunsForTaskCenter } from './teamver/backgroundChatRecovery';
+import { subscribeTeamverBackgroundChat } from './teamver/teamverBackgroundChatEvents';
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
@@ -514,6 +516,10 @@ function AppInner() {
   const activeRunIdsRef = useRef<Set<string>>(new Set());
   const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
   const sessionActiveRunProjectIdsRef = useRef<Set<string>>(new Set());
+  const byokBackgroundChatsRef = useRef<
+    Map<string, { conversationId: string; assistantMessageId: string }>
+  >(new Map());
+  const embedActiveWorkspaceIdRef = useRef<string | null>(null);
   const projectsRef = useRef<Project[]>(projects);
   const wasActiveRunRef = useRef(false);
   const activeRunSignatureRef = useRef("");
@@ -1443,8 +1449,7 @@ function AppInner() {
     };
     void syncWorkspace();
     const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
-      const trimmed = workspaceId.trim();
-      setEmbedWorkspaceId(trimmed || null);
+      setEmbedWorkspaceId(workspaceId.trim() || null);
     });
     const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
@@ -1503,6 +1508,45 @@ function AppInner() {
     );
   }, [activeRouteProjectIdForToast]);
 
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverBackgroundChat(({ projectId, conversationId, assistantMessageId, active }) => {
+      if (active) {
+        byokBackgroundChatsRef.current.set(projectId, { conversationId, assistantMessageId });
+        sessionActiveRunProjectIdsRef.current.add(projectId);
+      } else {
+        byokBackgroundChatsRef.current.delete(projectId);
+        sessionActiveRunProjectIdsRef.current.delete(projectId);
+      }
+      const byokRuns = syntheticByokRunsForTaskCenter(byokBackgroundChatsRef.current);
+      const currentProjects = projectsRef.current;
+      const projectsById = new Map(currentProjects.map((project) => [project.id, project.name]));
+      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
+      });
+      const mergedRuns = [...byokRuns];
+      if (configRef.current.pet?.enabled) {
+        setPetTaskCenter(buildPetTaskCenter(currentProjects, mergedRuns, allowMissingProjectIds));
+      }
+      const daemonSummaries = buildActiveRunSummaries(
+        currentProjects,
+        mergedRuns,
+        allowMissingProjectIds,
+      );
+      const activeSummaries = mergeByokBackgroundRunSummaries(
+        daemonSummaries,
+        byokBackgroundChatsRef.current,
+        projectsById,
+      );
+      setBackgroundRunSummaries((prev) =>
+        activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
+      );
+      wasActiveRunRef.current = activeSummaries.length > 0;
+    });
+  }, []);
+
   // Embed: leave project workspace when Design app becomes disabled mid-session.
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -1519,13 +1563,18 @@ function AppInner() {
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    return subscribeTeamverWorkspaceChanged(() => {
+    return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
       if (!isTeamverEmbedBootComplete()) return;
+      const trimmed = workspaceId.trim();
+      if (!trimmed) return;
+      if (embedActiveWorkspaceIdRef.current === trimmed) return;
+      embedActiveWorkspaceIdRef.current = trimmed;
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
       setBackgroundRunSummaries([]);
       setBackgroundRunNotice(null);
+      byokBackgroundChatsRef.current.clear();
       resetEmbedRunTrackingRefs({
         activeRunIds: activeRunIdsRef,
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
@@ -2387,6 +2436,10 @@ function AppInner() {
       const trackedRuns = knownProjectIds
         ? filterRunsForEmbedKnownProjects(runs, knownProjectIds)
         : runs;
+      const byokRuns = isTeamverEmbedMode()
+        ? syntheticByokRunsForTaskCenter(byokBackgroundChatsRef.current)
+        : [];
+      const allTrackedRuns = [...trackedRuns, ...byokRuns];
       const previousActiveRunIds = activeRunIdsRef.current;
       const nextActiveRunIds = new Set<string>();
       for (const run of trackedRuns) {
@@ -2490,23 +2543,32 @@ function AppInner() {
         }
       }
 
-      const center = buildPetTaskCenter(currentProjects, runs);
+      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
+      });
+
+      const center = buildPetTaskCenter(currentProjects, allTrackedRuns, allowMissingProjectIds);
       if (config.pet?.enabled) {
         setPetTaskCenter(center);
       } else {
         setPetTaskCenter({ running: [], queued: [], recent: [] });
       }
 
-      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
-        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
-        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
-        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
-      });
-      const activeSummaries = buildActiveRunSummaries(
+      const projectNamesById = new Map(currentProjects.map((project) => [project.id, project.name]));
+      const daemonSummaries = buildActiveRunSummaries(
         currentProjects,
-        isTeamverEmbedMode() ? trackedRuns : runs,
+        isTeamverEmbedMode() ? allTrackedRuns : runs,
         allowMissingProjectIds,
       );
+      const activeSummaries = isTeamverEmbedMode()
+        ? mergeByokBackgroundRunSummaries(
+            daemonSummaries,
+            byokBackgroundChatsRef.current,
+            projectNamesById,
+          )
+        : daemonSummaries;
       if (isTeamverEmbedMode()) {
         setBackgroundRunSummaries((prev) =>
           activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
