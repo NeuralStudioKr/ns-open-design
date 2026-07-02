@@ -28,6 +28,11 @@ import {
   storeExportDownload,
   wantsTicketDelivery,
 } from './export-download-store.js';
+import {
+  exportCacheDescriptor,
+  runCachedExport,
+  type ExportCacheOutcome,
+} from './export-cache-runtime.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -43,10 +48,23 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
 }
 
 async function respondExportPayload(
-  res: { status(code: number): { json(body: unknown): void }; send(body: Buffer): void; setHeader(name: string, value: string): void },
+  res: {
+    status(code: number): { json(body: unknown): void };
+    send(body: Buffer): void;
+    setHeader(name: string, value: string): void;
+    headersSent: boolean;
+    on(event: 'error' | 'close', cb: (err?: unknown) => void): unknown;
+  },
   options: {
     projectId: string;
-    body: Buffer | string;
+    /** Present on cache miss OR memo hit — full bytes in RAM. */
+    body?: Buffer | string;
+    /**
+     * Present on local/S3 cache hit. Stream directly to the client without
+     * copying the file into RAM. Ticket-delivery keeps the same file
+     * (ownsFile=false) so the cache retains eviction ownership.
+     */
+    sourceFilePath?: string;
     filename: string;
     mime: string;
     ticket: boolean;
@@ -55,7 +73,9 @@ async function respondExportPayload(
   if (options.ticket) {
     const entry = await storeExportDownload({
       projectId: options.projectId,
-      body: options.body,
+      ...(options.sourceFilePath
+        ? { sourceFilePath: options.sourceFilePath }
+        : { body: options.body! }),
       filename: options.filename,
       mime: options.mime,
     });
@@ -69,7 +89,37 @@ async function respondExportPayload(
     return;
   }
   setAttachmentHeaders(res, options.mime, options.filename);
-  res.send(typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body);
+  if (options.sourceFilePath) {
+    await new Promise<void>((resolve, reject) => {
+      const stream = fs.createReadStream(options.sourceFilePath!);
+      stream.on('error', reject);
+      // `res` implements Writable — cast to unknown to avoid pulling in
+      // express types at this layer.
+      stream.pipe(res as unknown as NodeJS.WritableStream);
+      stream.on('end', () => resolve());
+      // If the client closed the connection first, resolve so the caller's
+      // try/finally can proceed. The stream will emit 'close' cleanly.
+      (res as unknown as NodeJS.EventEmitter).on('close', () => resolve());
+    });
+    return;
+  }
+  res.send(typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body!);
+}
+
+function outcomeAsRespondPayload(
+  outcome: ExportCacheOutcome,
+): {
+  body?: Buffer | string;
+  sourceFilePath?: string;
+  filename: string;
+  mime: string;
+} {
+  return {
+    ...(outcome.filePath ? { sourceFilePath: outcome.filePath } : {}),
+    ...(outcome.body !== undefined ? { body: outcome.body } : {}),
+    filename: outcome.filename,
+    mime: outcome.mime,
+  };
 }
 
 function handleExportRouteError(
@@ -650,7 +700,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
-      const input = await buildDesktopPdfExportInput({
+      const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
         fileName,
@@ -659,18 +709,34 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
       });
       if (typeof desktopPdfExporter === 'function') {
-        const result = await desktopPdfExporter(input);
+        const result = await desktopPdfExporter(built.input);
         res.json(result);
         return;
       }
-      const pdf = await renderHeadlessPdf({ input }, { projectId: req.params.id });
-      await respondExportPayload(res, {
-        projectId: req.params.id,
-        body: pdf,
-        filename: input.defaultFilename,
-        mime: 'application/pdf',
-        ticket,
-      });
+      const outcome = await runCachedExport(
+        { format: 'pdf', deck: deck === true, projectId: req.params.id },
+        exportCacheDescriptor({
+          projectId: req.params.id,
+          sourceRelPath: built.source.relPath,
+          sourceMtimeMs: built.source.mtimeMs,
+          format: 'pdf',
+          deck: deck === true,
+          filename: built.input.defaultFilename,
+          mime: 'application/pdf',
+        }),
+        async () => {
+          const pdf = await renderHeadlessPdf(
+            { input: built.input },
+            { projectId: req.params.id },
+          );
+          return {
+            body: pdf,
+            filename: built.input.defaultFilename,
+            mime: 'application/pdf',
+          };
+        },
+      );
+      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/pdf', req.params.id, err);
     }
@@ -689,7 +755,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           : format === 'webp'
             ? 'webp'
             : 'png';
-      const input = await buildDesktopPdfExportInput({
+      const cacheFormat: 'png' | 'jpeg' | 'webp' = imageFormat;
+      const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
         fileName,
@@ -697,28 +764,38 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
       });
-      const imageOptions = {
-        input,
-        imageFormat,
-        ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
-      };
-      const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
       const extension =
         imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
-      const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const mime =
         imageFormat === 'jpeg'
           ? 'image/jpeg'
           : imageFormat === 'webp'
             ? 'image/webp'
             : 'image/png';
-      await respondExportPayload(res, {
-        projectId: req.params.id,
-        body: image,
-        filename: `${base}.${extension}`,
-        mime,
-        ticket,
-      });
+      const outcome = await runCachedExport(
+        { format: 'image', deck: deck === true, projectId: req.params.id },
+        exportCacheDescriptor({
+          projectId: req.params.id,
+          sourceRelPath: built.source.relPath,
+          sourceMtimeMs: built.source.mtimeMs,
+          format: cacheFormat,
+          deck: deck === true,
+          ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
+          filename: `${base}.${extension}`,
+          mime,
+        }),
+        async () => {
+          const imageOptions = {
+            input: built.input,
+            imageFormat,
+            ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
+          };
+          const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
+          return { body: image, filename: `${base}.${extension}`, mime };
+        },
+      );
+      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/image', req.params.id, err);
     }
@@ -731,7 +808,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
-      const input = await buildDesktopPdfExportInput({
+      const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
         fileName,
@@ -739,15 +816,31 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
       });
-      const html = await renderHeadlessHtmlSnapshot({ input }, { projectId: req.params.id });
-      const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      await respondExportPayload(res, {
-        projectId: req.params.id,
-        body: html,
-        filename: `${base}.html`,
-        mime: 'text/html; charset=utf-8',
-        ticket,
-      });
+      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      const outcome = await runCachedExport(
+        { format: 'html', deck: deck === true, projectId: req.params.id },
+        exportCacheDescriptor({
+          projectId: req.params.id,
+          sourceRelPath: built.source.relPath,
+          sourceMtimeMs: built.source.mtimeMs,
+          format: 'html',
+          deck: deck === true,
+          filename: `${base}.html`,
+          mime: 'text/html; charset=utf-8',
+        }),
+        async () => {
+          const html = await renderHeadlessHtmlSnapshot(
+            { input: built.input },
+            { projectId: req.params.id },
+          );
+          return {
+            body: html,
+            filename: `${base}.html`,
+            mime: 'text/html; charset=utf-8',
+          };
+        },
+      );
+      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/html', req.params.id, err);
     }
@@ -760,7 +853,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
-      const input = await buildDesktopPdfExportInput({
+      const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
         fileName,
@@ -768,22 +861,34 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
       });
-      const html = await renderHeadlessHtmlSnapshot({ input }, { projectId: req.params.id });
-      const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      const zip = new JSZip();
-      zip.file('index.html', html, { date: new Date(0), binary: false });
-      const buffer = await zip.generateAsync({
-        type: 'nodebuffer',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 },
-      });
-      await respondExportPayload(res, {
-        projectId: req.params.id,
-        body: buffer,
-        filename: `${base}.zip`,
-        mime: 'application/zip',
-        ticket,
-      });
+      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      const outcome = await runCachedExport(
+        { format: 'zip', deck: deck === true, projectId: req.params.id },
+        exportCacheDescriptor({
+          projectId: req.params.id,
+          sourceRelPath: built.source.relPath,
+          sourceMtimeMs: built.source.mtimeMs,
+          format: 'zip',
+          deck: deck === true,
+          filename: `${base}.zip`,
+          mime: 'application/zip',
+        }),
+        async () => {
+          const html = await renderHeadlessHtmlSnapshot(
+            { input: built.input },
+            { projectId: req.params.id, format: 'zip' },
+          );
+          const zip = new JSZip();
+          zip.file('index.html', html, { date: new Date(0), binary: false });
+          const buffer = await zip.generateAsync({
+            type: 'nodebuffer',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 6 },
+          });
+          return { body: buffer, filename: `${base}.zip`, mime: 'application/zip' };
+        },
+      );
+      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/zip', req.params.id, err);
     }

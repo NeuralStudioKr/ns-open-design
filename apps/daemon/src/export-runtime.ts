@@ -13,6 +13,10 @@ export type ExportJobMeta = {
   format: 'pdf' | 'html' | 'zip' | 'image';
   deck: boolean;
   projectId?: string;
+  // Populated by the cache runtime wrapper; runHeadlessExportJob defaults to
+  // 'miss' when the caller invokes render directly. See docs-teamver/34 §20.8.
+  cache?: 'miss' | 'hit-memo' | 'hit-local' | 'hit-s3' | 'disabled';
+  cacheKey?: string;
 };
 
 export type ExportJobMetrics = ExportJobMeta & {
@@ -22,6 +26,7 @@ export type ExportJobMetrics = ExportJobMeta & {
   bytes?: number;
   ok: boolean;
   error?: string;
+  cacheAgeMs?: number;
 };
 
 function parseEnvInt(name: string, fallback: number, min: number, max: number): number {
@@ -209,6 +214,9 @@ export function logExportMetrics(metrics: ExportJobMetrics): void {
     chromiumAcquireMs: metrics.chromiumAcquireMs,
     bytes: metrics.bytes,
     error: metrics.error,
+    cache: metrics.cache,
+    cacheKey: metrics.cacheKey,
+    cacheAgeMs: metrics.cacheAgeMs,
     concurrentMax: exportMaxConcurrent(),
     poolSize: exportBrowserPoolSize(),
   };
@@ -242,6 +250,7 @@ export async function runHeadlessExportJob<T>(
           : undefined;
     logExportMetrics({
       ...meta,
+      cache: meta.cache ?? 'miss',
       queueWaitMs,
       durationMs: Date.now() - exportStart,
       chromiumAcquireMs,
@@ -252,6 +261,7 @@ export async function runHeadlessExportJob<T>(
   } catch (err) {
     logExportMetrics({
       ...meta,
+      cache: meta.cache ?? 'miss',
       queueWaitMs,
       durationMs: Date.now() - exportStart,
       chromiumAcquireMs,

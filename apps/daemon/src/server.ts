@@ -367,6 +367,7 @@ import { lintArtifact, renderFindingsForAgent } from './lint-artifact.js';
 import { loadCraftSections } from './craft.js';
 import { skillCwdAliasSegment, stageActiveSkill } from './cwd-aliases.js';
 import { buildDesktopPdfExportInput } from './pdf-export.js';
+import { registerLocalExportCache } from './export-cache-runtime.js';
 import { generateMedia } from './media.js';
 import { listElevenLabsVoiceOptions } from './elevenlabs-voices.js';
 import { searchResearch, ResearchError } from './research/index.js';
@@ -1696,6 +1697,12 @@ migrateLegacyDataDirSync({
   legacyDir: process.env.OD_LEGACY_DATA_DIR,
   dataDir: RUNTIME_DATA_DIR,
 });
+const EXPORT_CACHE_DIR = (() => {
+  const override = (process.env.OD_EXPORT_CACHE_DIR ?? '').trim();
+  return override.length > 0 ? override : path.join(RUNTIME_DATA_DIR, '.od-export-cache');
+})();
+registerLocalExportCache(EXPORT_CACHE_DIR);
+
 const ARTIFACTS_DIR = path.join(RUNTIME_DATA_DIR, 'artifacts');
 // Critique Theater artifacts intentionally live outside the static
 // `/artifacts` tree. The per-run artifact endpoint is the sanctioned

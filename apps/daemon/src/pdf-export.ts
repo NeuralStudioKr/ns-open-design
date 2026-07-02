@@ -13,34 +13,64 @@ export interface BuildDesktopPdfExportInputOptions {
   title?: string;
 }
 
+/**
+ * `source` carries the file the daemon actually renders (Vite dist fallback
+ * resolved) plus its stat mtime. The daemon's export cache key uses these
+ * values so a source edit invalidates the cached artifact automatically —
+ * see docs-teamver/34 §20.1.
+ *
+ * Wrapper shape keeps `input` sidecar-proto compatible: `DesktopExportPdfInput`
+ * is normalized with `assertKnownKeys`, so we MUST NOT leak `source.*` onto
+ * the input object handed to the desktop process.
+ */
+export type BuiltDesktopPdfExport = {
+  input: DesktopExportPdfInput;
+  source: {
+    relPath: string;
+    mtimeMs: number;
+  };
+};
+
 export async function buildDesktopPdfExportInput(
   options: BuildDesktopPdfExportInputOptions,
-): Promise<DesktopExportPdfInput> {
+): Promise<BuiltDesktopPdfExport> {
   const file = await readProjectFile(options.projectsRoot, options.projectId, options.fileName);
   const source = await resolveRenderableHtmlSource({
     html: file.buffer.toString('utf8'),
     fileName: options.fileName,
+    fileMtimeMs: file.mtime,
     projectId: options.projectId,
     projectsRoot: options.projectsRoot,
   });
   const title = displayTitle(options.title, options.fileName);
   return {
-    baseHref: rawBaseHref(options.daemonUrl, options.projectId, source.fileName),
-    deck: options.deck === true,
-    defaultFilename: `${safeFilename(title, 'artifact')}.pdf`,
-    html: source.html,
-    title,
+    input: {
+      baseHref: rawBaseHref(options.daemonUrl, options.projectId, source.fileName),
+      deck: options.deck === true,
+      defaultFilename: `${safeFilename(title, 'artifact')}.pdf`,
+      html: source.html,
+      title,
+    },
+    source: {
+      relPath: source.fileName,
+      mtimeMs: source.mtimeMs,
+    },
   };
 }
 
 async function resolveRenderableHtmlSource(options: {
   fileName: string;
   html: string;
+  fileMtimeMs: number;
   projectId: string;
   projectsRoot: string;
-}): Promise<{ fileName: string; html: string }> {
+}): Promise<{ fileName: string; html: string; mtimeMs: number }> {
   if (!isViteDevHtmlEntry(options.html)) {
-    return { fileName: options.fileName, html: options.html };
+    return {
+      fileName: options.fileName,
+      html: options.html,
+      mtimeMs: options.fileMtimeMs,
+    };
   }
   const ownerDir = path.posix.dirname(options.fileName.replace(/^\/+/, ''));
   const distFileName = ownerDir === '.' ? 'dist/index.html' : `${ownerDir}/dist/index.html`;
@@ -49,9 +79,14 @@ async function resolveRenderableHtmlSource(options: {
     return {
       fileName: distFileName,
       html: rewriteViteDistRootAssetUrls(dist.buffer.toString('utf8')),
+      mtimeMs: dist.mtime,
     };
   } catch {
-    return { fileName: options.fileName, html: options.html };
+    return {
+      fileName: options.fileName,
+      html: options.html,
+      mtimeMs: options.fileMtimeMs,
+    };
   }
 }
 

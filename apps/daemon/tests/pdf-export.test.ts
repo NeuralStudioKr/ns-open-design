@@ -25,7 +25,7 @@ describe('buildDesktopPdfExportInput', () => {
   });
 
   it('reads the project file and derives a raw-route baseHref from the file directory', async () => {
-    const input = await buildDesktopPdfExportInput({
+    const built = await buildDesktopPdfExportInput({
       daemonUrl: 'http://127.0.0.1:7456',
       deck: true,
       fileName: 'deck/index.html',
@@ -34,17 +34,19 @@ describe('buildDesktopPdfExportInput', () => {
       title: 'Seed Deck',
     });
 
-    expect(input).toEqual({
+    expect(built.input).toEqual({
       baseHref: 'http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/',
       deck: true,
       defaultFilename: 'Seed Deck.pdf',
       html: '<!doctype html><section class="slide">One</section>',
       title: 'Seed Deck',
     });
+    expect(built.source.relPath).toBe('deck/index.html');
+    expect(built.source.mtimeMs).toBeGreaterThan(0);
   });
 
   it('falls back to the file basename when the caller omits a title', async () => {
-    const input = await buildDesktopPdfExportInput({
+    const built = await buildDesktopPdfExportInput({
       daemonUrl: 'http://127.0.0.1:7456',
       deck: false,
       fileName: 'deck/index.html',
@@ -52,8 +54,8 @@ describe('buildDesktopPdfExportInput', () => {
       projectsRoot,
     });
 
-    expect(input.title).toBe('index');
-    expect(input.defaultFilename).toBe('index.pdf');
+    expect(built.input.title).toBe('index');
+    expect(built.input.defaultFilename).toBe('index.pdf');
   });
 
   it('uses Vite dist/index.html when the entry is a dev module shell', async () => {
@@ -67,7 +69,7 @@ describe('buildDesktopPdfExportInput', () => {
       '<!doctype html><link rel="stylesheet" href="/assets/app.css"><div id="root">built</div>',
     );
 
-    const input = await buildDesktopPdfExportInput({
+    const built = await buildDesktopPdfExportInput({
       daemonUrl: 'http://127.0.0.1:7456',
       deck: true,
       fileName: 'deck/index.html',
@@ -76,9 +78,13 @@ describe('buildDesktopPdfExportInput', () => {
       title: 'Built Deck',
     });
 
-    expect(input.baseHref).toBe('http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/dist/');
-    expect(input.html).toContain('href="assets/app.css"');
-    expect(input.html).toContain('built');
+    expect(built.input.baseHref).toBe(
+      'http://127.0.0.1:7456/api/projects/proj-pdf-test/raw/deck/dist/',
+    );
+    expect(built.input.html).toContain('href="assets/app.css"');
+    expect(built.input.html).toContain('built');
+    // Cache key SSOT: mtime tracks the dist file, not the dev shell (§20.1).
+    expect(built.source.relPath).toBe('deck/dist/index.html');
   });
 });
 

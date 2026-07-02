@@ -14,6 +14,10 @@ export type StoredExportDownload = {
 
 type ExportDownloadEntry = StoredExportDownload & {
   projectId: string;
+  // `ownsFile: false` means the ticket points at a file managed by the
+  // export cache (§20.5). `completeExportDownload` MUST NOT unlink such
+  // files — the cache owns eviction.
+  ownsFile: boolean;
 };
 
 const exportDownloadDir = path.join(
@@ -39,22 +43,42 @@ function safeFilename(name: string): string {
 
 export async function storeExportDownload(options: {
   projectId: string;
-  body: Buffer | string;
+  /**
+   * When provided, the ticket references an existing file (typically an
+   * export-cache-owned path) and does NOT copy bytes into the ticket
+   * directory. The file lifecycle stays with its owner.
+   */
+  sourceFilePath?: string;
+  /** Body is required when `sourceFilePath` is absent. */
+  body?: Buffer | string;
   filename: string;
   mime: string;
 }): Promise<StoredExportDownload> {
-  await fs.mkdir(exportDownloadDir, { recursive: true });
-  purgeExpiredDownloads();
-
   const token = crypto.randomBytes(16).toString('hex');
   const filename = safeFilename(options.filename);
-  const filePath = path.join(exportDownloadDir, `${token}-${filename}`);
-  const body =
-    typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body;
-  await fs.writeFile(filePath, body);
-
   const expiresAt = Date.now() + ticketTtlMs();
   const url = `/api/projects/${encodeURIComponent(options.projectId)}/export/downloads/${token}`;
+
+  let filePath: string;
+  let ownsFile: boolean;
+
+  if (options.sourceFilePath) {
+    filePath = options.sourceFilePath;
+    ownsFile = false;
+    purgeExpiredDownloads();
+  } else {
+    if (!options.body) {
+      throw new Error('storeExportDownload requires either body or sourceFilePath');
+    }
+    await fs.mkdir(exportDownloadDir, { recursive: true });
+    purgeExpiredDownloads();
+    filePath = path.join(exportDownloadDir, `${token}-${filename}`);
+    const body =
+      typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body;
+    await fs.writeFile(filePath, body);
+    ownsFile = true;
+  }
+
   const entry: ExportDownloadEntry = {
     token,
     url,
@@ -63,6 +87,7 @@ export async function storeExportDownload(options: {
     expiresAt,
     filePath,
     projectId: options.projectId,
+    ownsFile,
   };
   downloads.set(token, entry);
   return entry;
@@ -121,7 +146,9 @@ export async function removeExportDownload(token: string): Promise<void> {
   const entry = downloads.get(token);
   downloads.delete(token);
   if (!entry) return;
-  await fs.unlink(entry.filePath).catch(() => {});
+  if (entry.ownsFile) {
+    await fs.unlink(entry.filePath).catch(() => {});
+  }
 }
 
 export function wantsTicketDelivery(body: unknown): boolean {
