@@ -1093,7 +1093,8 @@ export interface SettingsPopoverClickProps {
     | 'share_channel'
     | 'join_discord'
     | 'follow_x'
-    | 'open_settings';
+    | 'open_settings'
+    | 'open_about';
   // element=language_select → snake_cased locale (e.g. en, zh_cn, pt_br);
   // element=appearance → system | light | dark.
   value?: string;
