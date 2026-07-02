@@ -21,13 +21,13 @@ export type DrivePublishFormatOption = {
 export const DRIVE_PUBLISH_FORMAT_OPTIONS: readonly DrivePublishFormatOption[] = [
   {
     value: "pdf",
-    label: "PDF · 팀 공유",
+    label: "PDF",
     description: "공유 드라이브·채널·DM에 올리기 좋습니다.",
   },
   {
     value: "html",
-    label: "HTML · Drive 미리보기",
-    description: "Drive에서 바로 열어볼 수 있으며 AI 대화 컨텍스트로도 활용할 수 있습니다.",
+    label: "HTML",
+    description: "Drive에서 바로 열어보고 AI 대화에도 활용할 수 있습니다.",
   },
 ] as const;
 
@@ -37,8 +37,8 @@ export function drivePublishMessaging(): DrivePublishMessaging {
   return {
     menuTitlePdf: "PDF로 드라이브에 올리기",
     menuTitleHtml: "HTML로 드라이브에 올리기",
-    modalTitle: "슬라이드를 드라이브에 올리기",
-    modalSubtitle: "형식을 고른 뒤 저장 위치를 확인하고 올려 주세요.",
+    modalTitle: "드라이브에 올리기",
+    modalSubtitle: "형식과 저장 위치를 선택해 주세요.",
   };
 }
 

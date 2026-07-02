@@ -963,11 +963,15 @@
   line-height: 1.4;
 }
 .teamver-drive-format-benefit {
-  margin: 0;
-  padding: 0 10px 4px;
+  margin: 6px 16px 0;
+  padding: 10px 12px;
   color: var(--text);
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-sm, 8px);
 }
 .teamver-drive-publish-modal {
   width: min(520px, calc(100vw - 32px));

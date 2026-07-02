@@ -424,7 +424,7 @@ export function TeamverPublishDrivePanel({
         </div>
       </div>
       {formatHint ? (
-        <p className="teamver-drive-format-note" data-testid="teamver-drive-format-hint">
+        <p className="teamver-drive-format-benefit" data-testid="teamver-drive-format-hint">
           {formatHint}
         </p>
       ) : null}

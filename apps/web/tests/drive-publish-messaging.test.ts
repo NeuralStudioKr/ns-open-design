@@ -16,7 +16,7 @@ describe("drivePublishMessaging", () => {
     const copy = drivePublishMessaging();
     expect(copy.menuTitlePdf).toContain("PDF");
     expect(copy.menuTitleHtml).toContain("HTML");
-    expect(copy.modalSubtitle).toContain("형식");
+    expect(copy.modalSubtitle).toContain("저장 위치");
   });
 
   it("uses phase-aware publish labels", () => {

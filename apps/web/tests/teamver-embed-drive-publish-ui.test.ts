@@ -33,11 +33,11 @@ describe('Teamver embed export + Drive publish UI', () => {
   it('uses slide-only Drive publish with segmented PDF/HTML choice', () => {
     const messaging = readSource('src/teamver/drivePublishMessaging.ts');
     expect(messaging).toContain('DRIVE_PUBLISH_FORMAT_OPTIONS');
-    expect(messaging).toContain('PDF · 팀 공유');
-    expect(messaging).toContain('HTML · Drive 미리보기');
+    expect(messaging).toContain('label: "PDF"');
+    expect(messaging).toContain('label: "HTML"');
     const panel = readSource('src/teamver/components/TeamverPublishDrivePanel.tsx');
     expect(panel).toContain('selectedFormat');
-    expect(panel).toContain('teamver-drive-format-segment');
+    expect(panel).toContain('teamver-drive-format-benefit');
     expect(panel).toContain('teamver-drive-format-option-');
     expect(panel).toContain('resolveInitialPublishFormat');
     expect(panel).toContain('writeLastPublishFormat');
