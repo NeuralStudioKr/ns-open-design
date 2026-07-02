@@ -1,5 +1,5 @@
 import { Icon } from "../../components/Icon";
-import { TEAMVER_OPEN_SOURCE_NOTICES } from "../branding/openSourceNotices";
+import { TEAMVER_PRIMARY_OPEN_SOURCE_NOTICE } from "../branding/openSourceNotices";
 import { useTeamverT } from "../branding/useTeamverT";
 
 type Props = {
@@ -9,7 +9,7 @@ type Props = {
 /** Compact Apache/MIT attribution inside the embed settings popover. */
 export function TeamverSettingsOpenSourcePopoverSection({ onOpenAbout }: Props) {
   const t = useTeamverT();
-  const primary = TEAMVER_OPEN_SOURCE_NOTICES[0];
+  const primary = TEAMVER_PRIMARY_OPEN_SOURCE_NOTICE;
 
   return (
     <>

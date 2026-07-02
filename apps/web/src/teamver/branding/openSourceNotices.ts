@@ -32,3 +32,7 @@ export const TEAMVER_OPEN_SOURCE_NOTICES: readonly TeamverOpenSourceNotice[] = [
     licenseUrl: "https://opensource.org/licenses/MIT",
   },
 ] as const;
+
+/** First notice shown in compact settings popover attribution. */
+export const TEAMVER_PRIMARY_OPEN_SOURCE_NOTICE: TeamverOpenSourceNotice =
+  TEAMVER_OPEN_SOURCE_NOTICES[0]!;
