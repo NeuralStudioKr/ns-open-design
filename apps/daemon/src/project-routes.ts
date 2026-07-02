@@ -1855,7 +1855,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         );
       }
     }
-    res.json({ message: saved });
+    res.json({ ok: true, id: saved.id });
   });
 
   // ---- Preview comments ----------------------------------------------------

@@ -18,6 +18,7 @@ describe("DesignsTab kanban lazy cover thumb", () => {
     expect(designsTab).toContain("TeamverLatestPublishChip");
     expect(designsTab).not.toContain("TeamverProjectPreviewChip");
     expect(drawerCss).toContain(".design-kanban-card-thumb");
+    expect(drawerCss).toContain(".design-card-embed-chips");
     expect(drawerCss).toContain(".design-kanban-card-embed-chips");
   });
 

@@ -22,11 +22,15 @@ export async function saveMessage(
   conversationId: string,
   message: E2eChatMessage,
 ): Promise<E2eChatMessage> {
-  return await requestJson<E2eChatMessage>(
+  const result = await requestJson<{ ok?: boolean; id?: string } | E2eChatMessage>(
     baseUrl,
     `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
     { body: message, method: 'PUT' },
   );
+  if (result && typeof result === 'object' && 'ok' in result && result.ok === true) {
+    return message;
+  }
+  return result as E2eChatMessage;
 }
 
 export async function listMessages(

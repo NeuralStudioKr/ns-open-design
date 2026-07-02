@@ -537,6 +537,14 @@
 .design-card-meta .ds {
   color: var(--accent);
 }
+.design-card-embed-chips,
+.design-kanban-card-embed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
 .design-card-status {
   font-weight: 500;
 }
@@ -1070,14 +1078,6 @@
 }
 .design-kanban-card-thumb .project-thumb-glyph {
   font-size: 22px;
-}
-
-.design-kanban-card-embed-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
 }
 
 /* Honor user motion preferences for the new hover transform / transitions

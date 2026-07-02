@@ -424,7 +424,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
-  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle } =
+  const { hideAssistantModelLabels, slideOnlyMvp, title: brandTitle } =
     useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
@@ -453,16 +453,13 @@ function AssistantMessageImpl({
         suppressDuplicateQuestionForms(rawBlocks),
       ),
     );
-    const visible = hideAssistantThinkingDetails
-      ? sanitized.filter((block) => block.kind !== "thinking")
-      : sanitized;
-    return placeConversationTodoCard(visible, {
+    const visible = placeConversationTodoCard(sanitized, {
       show: showConversationTodoCard,
       input: conversationTodoInput,
     });
+    return visible;
   }, [
     events,
-    hideAssistantThinkingDetails,
     liveCodeBlocks,
     showConversationTodoCard,
     conversationTodoInput,
@@ -2193,7 +2190,12 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming?: boolean 
       : t("assistant.thought");
   return (
     <div className="thinking-block">
-      <button className="thinking-toggle" onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className="thinking-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
         <span className={`thinking-status${isThinking ? ' op-status-running' : open ? ' thinking-status-active' : ''}`} aria-hidden>
           {isThinking
             ? <Icon name="spinner" size={14} />

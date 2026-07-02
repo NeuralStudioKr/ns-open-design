@@ -817,12 +817,6 @@ export function DesignsTab({
 											>
 												{publishedDesignSystem ? t("designs.status.published") : statusLabel(status, t)}
 											</span>
-											{teamverEmbed && !designSystemProject ? (
-												<>
-													{" · "}
-													<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
-												</>
-											) : null}
 										</span>
 										{sub === "recent" || sub === "yours" ? (
 											<span className="design-card-meta-time">
@@ -830,6 +824,11 @@ export function DesignsTab({
 											</span>
 										) : null}
 									</div>
+									{teamverEmbed && !designSystemProject ? (
+										<div className="design-card-embed-chips">
+											<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
+										</div>
+									) : null}
 								</div>
 							</div>
 						);

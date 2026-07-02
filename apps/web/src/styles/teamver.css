@@ -598,8 +598,9 @@
 }
 
 .teamver-latest-publish-chip-anchor {
-  display: inline;
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
 }
 
 .teamver-latest-publish-chip {

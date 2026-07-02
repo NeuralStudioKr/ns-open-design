@@ -1,9 +1,9 @@
-/** Static paths under `apps/web/public/teamver/` — sourced from ns-teamver-fe-v2 / ns-teamver-slide. */
+/** Static paths under `apps/web/public/teamver/`. */
 export const TEAMVER_BRAND_ASSETS = {
-  /** Full wordmark — light surfaces (fe-v2 `Logo.svg`). */
-  logoLight: "/teamver/Logo.svg",
-  /** Full wordmark — dark surfaces (fe-v2 `Logo-dark.svg`). */
-  logoDark: "/teamver/Logo-dark.svg",
+  /** Full wordmark — light theme (light background). */
+  logoLight: "/teamver/teamver-design-light.png",
+  /** Full wordmark — dark theme (dark background). */
+  logoDark: "/teamver/teamver-design-dark.png",
   /** Compact rail mark (slide `Logo-icon.svg`). */
   navMark: "/teamver/Logo-icon.svg",
   /** fe-v2 favicon assets are not vendored; compact mark works in tab + apple-touch. */

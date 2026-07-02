@@ -17,6 +17,7 @@ describe('BYOK terminal message PUT hooks', () => {
     expect(handler).toContain('reportByokTeamverUsageAndBillingFromDaemon');
     expect(handler).toContain('scheduleProjectStoragePersistAfterResponse');
     expect(handler).toContain('ctx.projectStorageHooks');
+    expect(handler).toContain("res.json({ ok: true, id: saved.id })");
   });
 
   it('does not register duplicate inline message PUT handlers in server.ts', () => {

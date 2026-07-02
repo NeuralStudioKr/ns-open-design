@@ -173,22 +173,25 @@ export function RecentProjectsStrip({
                   )}
                 </div>
                 <div className="recent-projects__card-name">{project.name}</div>
-                <div className="recent-projects__card-time">
-                  <span
-                    className={`recent-projects__card-status recent-projects__card-status-${publishedDesignSystem ? 'published' : status}`}
-                  >
-                    {isActive ? (
-                      <span className="recent-projects__card-status-dot" aria-hidden />
-                    ) : null}
-                    {publishedDesignSystem ? t('designs.status.published') : statusLabel(status, t)}
-                  </span>
-                  <span className="recent-projects__card-sep" aria-hidden>·</span>
-                  {relativeTime(project.updatedAt, t)}
+                <div className="recent-projects__card-footer">
+                  <div className="recent-projects__card-time">
+                    <span
+                      className={`recent-projects__card-status recent-projects__card-status-${publishedDesignSystem ? 'published' : status}`}
+                    >
+                      {isActive ? (
+                        <span className="recent-projects__card-status-dot" aria-hidden />
+                      ) : null}
+                      {publishedDesignSystem ? t('designs.status.published') : statusLabel(status, t)}
+                    </span>
+                    <span className="recent-projects__card-sep" aria-hidden>·</span>
+                    <span className="recent-projects__card-updated">
+                      {relativeTime(project.updatedAt, t)}
+                    </span>
+                  </div>
                   {isTeamverEmbedMode() && !designSystemProject ? (
-                    <>
-                      <span className="recent-projects__card-sep" aria-hidden>·</span>
+                    <div className="recent-projects__card-drive">
                       <TeamverLatestPublishChip projectId={project.id} />
-                    </>
+                    </div>
                   ) : null}
                 </div>
               </div>

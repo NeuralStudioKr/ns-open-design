@@ -44,7 +44,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideUsefulTips).toBe(true);
     expect(branding.hideHandoffButton).toBe(true);
     expect(branding.hideAssistantModelLabels).toBe(true);
-    expect(branding.hideAssistantThinkingDetails).toBe(true);
+    expect(branding.hideAssistantThinkingDetails).toBe(false);
     expect(branding.lockExecutionConfig).toBe(true);
     expect(branding.hideLocalWorkspaceControls).toBe(true);
     expect(branding.hideWorkspaceTabsBar).toBe(true);
