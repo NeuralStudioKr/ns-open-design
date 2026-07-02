@@ -150,6 +150,13 @@ export function skillMatchesQuery(
     .includes(q);
 }
 
+export function isOpenDesignBrandedToolboxResource(values: string[]): boolean {
+  return values.some((value) => {
+    const text = value.toLowerCase();
+    return text.includes('open design') || text.includes('open-design');
+  });
+}
+
 export function findDesignToolboxSkill(
   action: DesignToolboxAction,
   skills: SkillSummary[],

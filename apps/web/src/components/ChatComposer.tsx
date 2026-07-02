@@ -95,6 +95,7 @@ import {
   designToolboxActionTitle,
   findDesignToolboxSkill,
   getDesignToolboxAction,
+  isOpenDesignBrandedToolboxResource,
   skillMatchesQuery,
   type DesignToolboxAction,
   type DesignToolboxActionId,
@@ -4104,10 +4105,14 @@ function buildDesignToolboxResources({
   t,
 }: DesignToolboxResourceIndex & { locale: Locale; t: TranslateFn }): DesignToolboxResource[] {
   const resources: DesignToolboxResource[] = [];
+  const teamverEmbed = isTeamverEmbedMode();
 
   for (const skill of skills) {
     const title = localizeSkillName(locale, skill);
     const subtitle = localizeSkillDescription(locale, skill);
+    if (teamverEmbed && isOpenDesignBrandedToolboxResource([skill.id, skill.name, title, subtitle])) {
+      continue;
+    }
     resources.push({
       key: `skill:${skill.id}`,
       kind: 'skill',
@@ -4132,12 +4137,28 @@ function buildDesignToolboxResources({
   }
 
   for (const plugin of plugins) {
+    const title = localizePluginTitle(locale, plugin);
     const subtitle = localizePluginDescription(locale, plugin) || plugin.id;
+    if (
+      teamverEmbed &&
+      isOpenDesignBrandedToolboxResource([
+        plugin.id,
+        plugin.title,
+        title,
+        plugin.source,
+        subtitle,
+        plugin.manifest?.name ?? '',
+        plugin.manifest?.description ?? '',
+        ...(plugin.manifest?.tags ?? []),
+      ])
+    ) {
+      continue;
+    }
     resources.push({
       key: `plugin:${plugin.id}`,
       kind: 'plugin',
       id: plugin.id,
-      title: localizePluginTitle(locale, plugin),
+      title,
       subtitle,
       badge: plugin.manifest?.od?.kind ?? 'plugin',
       icon: 'sparkles',
