@@ -74,6 +74,22 @@ describe('DesignSystemPicker', () => {
     expect(await screen.findByTestId('project-ds-picker-preview-frame')).toBeTruthy();
   });
 
+  it('requests design systems lazily when the project route skipped catalog boot', async () => {
+    const onRequestDesignSystems = vi.fn();
+    renderPicker({
+      designSystems: [],
+      loading: false,
+      onRequestDesignSystems,
+      selectedId: null,
+    });
+
+    fireEvent.click(screen.getByTestId('project-ds-picker-trigger'));
+
+    await waitFor(() => {
+      expect(onRequestDesignSystems).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('updates the preview target on hover and opens the fullscreen preview', async () => {
     renderPicker();
 

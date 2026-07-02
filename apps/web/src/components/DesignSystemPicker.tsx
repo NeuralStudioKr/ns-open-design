@@ -37,6 +37,8 @@ interface Props {
   selectedId: string | null;
   loading?: boolean;
   onChange: (id: string | null) => void;
+  /** Lazy-load catalog when route boot intentionally skipped design-system fetches. */
+  onRequestDesignSystems?: () => Promise<void> | void;
   /** Trigger pill styling only; the popover is identical. Defaults to 'project'. */
   variant?: 'project' | 'footer';
   /** Footer variant: visually-hidden label for the trigger button. */
@@ -48,6 +50,7 @@ export function DesignSystemPicker({
   selectedId,
   loading,
   onChange,
+  onRequestDesignSystems,
   variant = 'project',
   label,
 }: Props) {
@@ -66,6 +69,7 @@ export function DesignSystemPicker({
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
+  const requestedDesignSystemsRef = useRef(false);
 
   const selected = useMemo(
     () => designSystems.find((d) => d.id === selectedId) ?? null,
@@ -74,6 +78,15 @@ export function DesignSystemPicker({
 
   useEffect(() => {
     if (!open) return;
+    if (
+      designSystems.length === 0 &&
+      !loading &&
+      onRequestDesignSystems &&
+      !requestedDesignSystemsRef.current
+    ) {
+      requestedDesignSystemsRef.current = true;
+      void onRequestDesignSystems();
+    }
     function onPointer(e: MouseEvent) {
       if (fullscreenPreview) return;
       const target = e.target as Node;
@@ -91,7 +104,7 @@ export function DesignSystemPicker({
       document.removeEventListener('mousedown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
-  }, [fullscreenPreview, open]);
+  }, [designSystems.length, fullscreenPreview, loading, onRequestDesignSystems, open]);
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return undefined;
