@@ -25,9 +25,20 @@ describe("drivePublishMessaging", () => {
     expect(publishLabelForFormat("html", false, "idle")).toContain("HTML");
   });
 
-  it("describes each format with a hint", () => {
-    expect(formatHintForSelection("pdf")).toContain("공유");
-    expect(formatHintForSelection("html")).toContain("AI");
+  it("describes each format with plain-language example and benefit", () => {
+    const pdf = formatHintForSelection("pdf");
+    expect(pdf).toContain("예:");
+    expect(pdf).toContain("바로 열 수");
+    expect(pdf).toContain("페이지 한 장");
+    expect(pdf).not.toMatch(/설치|동료|됩니다/);
+
+    const html = formatHintForSelection("html");
+    expect(html).toContain("예:");
+    expect(html).toContain("AI");
+    expect(html).toContain("넘기며");
+    expect(html).toContain("알려 주고");
+    expect(html).toContain("이야기할 수");
+    expect(html).not.toMatch(/덱|맥락|원본|브라우저|발표|지금 화면|이어서|좋습니다/);
   });
 });
 

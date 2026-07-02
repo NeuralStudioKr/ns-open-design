@@ -12,22 +12,30 @@ export type DrivePublishMessaging = {
   modalSubtitle: string;
 };
 
+export type DrivePublishFormatBenefit = {
+  example: string;
+  benefit: string;
+};
+
 export type DrivePublishFormatOption = {
   value: DrivePublishFormat;
   label: string;
-  description: string;
+  example: string;
+  benefit: string;
 };
 
 export const DRIVE_PUBLISH_FORMAT_OPTIONS: readonly DrivePublishFormatOption[] = [
   {
     value: "pdf",
     label: "PDF",
-    description: "공유 드라이브·채널·DM에 올리기 좋습니다.",
+    example: "채팅·메일로 보낼 때",
+    benefit: "바로 열 수 있습니다. 한 장이 페이지 한 장입니다.",
   },
   {
     value: "html",
     label: "HTML",
-    description: "Drive에서 바로 열어보고 AI 대화에도 활용할 수 있습니다.",
+    example: "다시 볼 때, AI와 이야기할 때",
+    benefit: "슬라이드를 넘기며 볼 수 있습니다. AI에게 알려 주고 이야기할 수 있습니다.",
   },
 ] as const;
 
@@ -55,9 +63,17 @@ export function publishLabelForFormat(
   return sharedDrive ? "선택한 위치에 HTML 올리기" : "드라이브에 HTML 올리기";
 }
 
-export function formatHintForSelection(format: DrivePublishFormat): string {
+export function formatBenefitForSelection(format: DrivePublishFormat): DrivePublishFormatBenefit | null {
   const option = DRIVE_PUBLISH_FORMAT_OPTIONS.find((item) => item.value === format);
-  return option?.description ?? "";
+  if (!option) return null;
+  return { example: option.example, benefit: option.benefit };
+}
+
+/** Flat string for tests and legacy call sites. */
+export function formatHintForSelection(format: DrivePublishFormat): string {
+  const benefit = formatBenefitForSelection(format);
+  if (!benefit) return "";
+  return `예: ${benefit.example} — ${benefit.benefit}`;
 }
 
 export function alternateDrivePublishFormat(format: DrivePublishFormat): DrivePublishFormat {

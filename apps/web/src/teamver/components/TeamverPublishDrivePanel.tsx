@@ -29,7 +29,7 @@ import {
 } from "../drivePublishRecentTargets";
 import {
   DRIVE_PUBLISH_FORMAT_OPTIONS,
-  formatHintForSelection,
+  formatBenefitForSelection,
   publishLabelForFormat,
   type DrivePublishFormat,
   type PublishBusyPhase,
@@ -365,7 +365,7 @@ export function TeamverPublishDrivePanel({
     Boolean(selectedTarget?.sharedDriveId),
     publishPhase,
   );
-  const formatHint = formatHintForSelection(selectedFormat);
+  const formatBenefit = formatBenefitForSelection(selectedFormat);
 
   return (
     <div className="teamver-drive-publish-panel" data-testid="teamver-publish-drive-panel">
@@ -423,10 +423,13 @@ export function TeamverPublishDrivePanel({
           })}
         </div>
       </div>
-      {formatHint ? (
-        <p className="teamver-drive-format-benefit" data-testid="teamver-drive-format-hint">
-          {formatHint}
-        </p>
+      {formatBenefit ? (
+        <div className="teamver-drive-format-benefit" data-testid="teamver-drive-format-hint">
+          <span className="teamver-drive-format-benefit__example">
+            예: {formatBenefit.example}
+          </span>
+          <span className="teamver-drive-format-benefit__detail">{formatBenefit.benefit}</span>
+        </div>
       ) : null}
       {postRunHintText ? (
         <p
