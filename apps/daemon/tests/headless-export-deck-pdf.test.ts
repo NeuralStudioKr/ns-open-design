@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildDeckFlattenCssRules,
   buildDeckPrintCss,
+  buildDeckScreenExportCss,
   chromiumExecutableCandidates,
   chromiumLaunchArgs,
   chromiumRuntimeEnv,
@@ -74,6 +76,7 @@ describe('chromiumRuntimePaths', () => {
 describe('buildDeckPrintCss', () => {
   it('overrides inactive slides so every deck-framework slide prints', () => {
     const css = buildDeckPrintCss();
+    expect(css).toContain('@media print');
     expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('display: flex !important');
     expect(css).toContain('display: contents !important');
@@ -82,6 +85,16 @@ describe('buildDeckPrintCss', () => {
     expect(css).not.toMatch(/\.deck-stage[^}]*height:\s*auto/);
     expect(css).toContain('page-break-before: avoid !important');
     expect(css).toContain('page-break-after: always !important');
+  });
+
+  it('buildDeckScreenExportCss exposes flatten rules without @media print', () => {
+    const screenCss = buildDeckScreenExportCss();
+    const flattenRules = buildDeckFlattenCssRules();
+    expect(screenCss).toBe(flattenRules);
+    expect(screenCss).not.toContain('@media print');
+    expect(screenCss).toContain('.slide:not(.active)');
+    expect(screenCss).toContain('display: flex !important');
+    expect(screenCss).toContain('transform: none !important');
   });
 
   it('exports revealAllDeckSlides for runtime flattening', async () => {

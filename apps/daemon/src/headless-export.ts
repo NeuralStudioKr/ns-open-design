@@ -54,13 +54,11 @@ function deckSlideSelectorList(): string[] {
  * rules and adds the higher-specificity `.slide:not(.active)` override plus
  * horizontal-snap deck selectors.
  */
-export function buildDeckPrintCss(): string {
+export function buildDeckFlattenCssRules(): string {
   const slides = deckSlideSelectorList().join(', ');
   const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
   const slidesLastChild = deckSlideSelectorList().map((sel) => `${sel}:last-child`).join(', ');
   return `
-@media print {
-  @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
   html, body {
     width: ${DECK_WIDTH}px !important;
     height: auto !important;
@@ -79,6 +77,7 @@ export function buildDeckPrintCss(): string {
   .deck-shell,
   .deck-stage, .stage {
     display: contents !important;
+    transform: none !important;
   }
   ${slidesNotActive},
   ${slides} {
@@ -112,7 +111,19 @@ export function buildDeckPrintCss(): string {
   #deck-prev, #deck-next, #deck-cur, #deck-total,
   [aria-label="Previous slide"], [aria-label="Next slide"] {
     display: none !important;
-  }
+  }`;
+}
+
+/** Screen-visible flatten rules for standalone HTML deck downloads. */
+export function buildDeckScreenExportCss(): string {
+  return buildDeckFlattenCssRules();
+}
+
+export function buildDeckPrintCss(): string {
+  return `
+@media print {
+  @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
+  ${buildDeckFlattenCssRules()}
 }`;
 }
 // Alpine's `chromium` package installs the real binary at /usr/bin/chromium.
@@ -276,9 +287,17 @@ export async function renderHeadlessHtmlSnapshot(options: HeadlessExportOptions)
       const page = await preparePage(browser, options);
       await waitForPrintableContent(page);
       if (options.input.deck) {
-        await revealAllDeckSlides(page);
+        const deckSlideCount = await revealAllDeckSlides(page);
+        if (deckSlideCount === 0) {
+          console.warn('[headless-export] deck HTML: no slides matched selector', {
+            selector: DECK_SLIDE_SELECTOR,
+            title: options.input.title,
+          });
+        }
+        await applyHtmlDeckExportStyles(page);
+      } else {
+        await applySnapshotStyles(page, false);
       }
-      await applySnapshotStyles(page, options.input.deck);
       await inlineRenderedResources(page);
       return await page.content();
     } finally {
@@ -387,7 +406,7 @@ async function preparePage(
  */
 export async function revealAllDeckSlides(page: Page): Promise<number> {
   const count = await page.evaluate(
-    `((args) => {
+    `(args) => {
       const slides = Array.from(document.querySelectorAll(args.selector));
       if (slides.length === 0) return 0;
 
@@ -410,6 +429,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       set(document.body, 'height', 'auto');
 
       slides.forEach((el, index) => {
+        el.classList.add('active');
         set(el, 'display', 'flex');
         set(el, 'flex-direction', 'column');
         set(el, 'flex', 'none');
@@ -449,7 +469,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         .forEach((el) => set(el, 'display', 'none'));
 
       return slides.length;
-    })`,
+    }`,
     {
       selector: DECK_SLIDE_SELECTOR,
       width: DECK_WIDTH,
@@ -619,6 +639,16 @@ async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
       [aria-label="Previous slide"], [aria-label="Next slide"] {
         display: none !important;
       }` : ''}
+    `,
+  });
+}
+
+async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `
+      html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
+      *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+      ${buildDeckScreenExportCss()}
     `,
   });
 }
