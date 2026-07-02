@@ -5,8 +5,13 @@ import dynamic from 'next/dynamic';
 import { installErrorHandlers } from '../../src/analytics/error-tracking';
 import { installWebObservability } from '../../src/observability/install';
 import { resolveLoadingShellLabel } from '../../src/teamver/branding/loadingShellLabel';
+import { scrubCosmeticLaunchParamsFromBrowserUrl } from '../../src/teamver/teamverEmbedAuthNavigation';
 
 const LOADING_SHELL_LABEL = resolveLoadingShellLabel();
+
+if (typeof window !== 'undefined') {
+  scrubCosmeticLaunchParamsFromBrowserUrl();
+}
 
 // Install browser exception handlers at module-load time, before any other
 // client code can throw. The hooks buffer events until AnalyticsProvider

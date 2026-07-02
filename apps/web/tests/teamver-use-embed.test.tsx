@@ -17,7 +17,17 @@ vi.mock("../src/teamver/designApiBase", () => ({
   buildDesignColdStartLoginUrl: vi.fn(() => "https://teamver.com/auth/signin?app_id=teamver-design"),
   resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/signin"),
   redirectToTeamverLogin: vi.fn(),
+  markTeamverLoginRedirectAttempt: vi.fn(() => true),
+  prepareTeamverLoginNavigation: vi.fn(),
 }));
+
+vi.mock("../src/teamver/teamverEmbedAuthNavigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/teamver/teamverEmbedAuthNavigation")>();
+  return {
+    ...actual,
+    shouldDeferEmbedLoginRedirect: vi.fn(() => false),
+  };
+});
 
 vi.mock("../src/teamver/teamverEmbedBoot", () => ({
   waitForTeamverEmbedBoot: vi.fn(async () => undefined),

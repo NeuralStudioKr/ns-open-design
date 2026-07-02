@@ -109,17 +109,23 @@ export function prepareTeamverLoginNavigation(): void {
   markTeamverAuthReturnPending();
 }
 
-export function redirectToTeamverLogin(returnTo?: string | null): void {
-  if (typeof window === "undefined") return;
-
+/** Dedupe rapid full-page login hops that read as flicker/errors in embed. */
+export function markTeamverLoginRedirectAttempt(): boolean {
+  if (typeof window === "undefined") return false;
   const now = Date.now();
   try {
     const last = Number(sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY) ?? "0");
-    if (last > 0 && now - last < LOGIN_REDIRECT_COOLDOWN_MS) return;
+    if (last > 0 && now - last < LOGIN_REDIRECT_COOLDOWN_MS) return false;
     sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, String(now));
   } catch {
     // sessionStorage blocked — still attempt one redirect
   }
+  return true;
+}
+
+export function redirectToTeamverLogin(returnTo?: string | null): void {
+  if (typeof window === "undefined") return;
+  if (!markTeamverLoginRedirectAttempt()) return;
 
   window.location.replace(resolveTeamverLoginUrl(returnTo));
 }

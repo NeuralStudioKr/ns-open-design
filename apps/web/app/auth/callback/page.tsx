@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   buildAuthCallbackRedirectUrl,
   consumeAuthReturnTo,
@@ -16,21 +16,27 @@ import {
 import { postDesignAuthWorkspace } from '@/src/teamver/designAuthClient';
 import { setTeamverEmbedSessionAuthenticated } from '@/src/teamver/teamverEmbedSession';
 import { syncTeamverWorkspaceFromSession } from '@/src/teamver/syncTeamverWorkspace';
+import {
+  finishEmbedAuthNavigation,
+  normalizeEmbedAuthReturnDestination,
+  scrubCosmeticLaunchParamsFromBrowserUrl,
+} from '@/src/teamver/teamverEmbedAuthNavigation';
 
 function AuthCallbackInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const exchangeStartedRef = useRef(false);
 
   useEffect(() => {
+    scrubCosmeticLaunchParamsFromBrowserUrl();
+
     const returnToParam = searchParams.get('return_to');
     if (returnToParam?.startsWith('/')) storeAuthReturnTo(returnToParam);
     const returnTo = consumeAuthReturnTo('/');
 
     const code = searchParams.get('code');
     if (!code) {
-      router.replace(returnTo.startsWith('/') ? returnTo : '/');
+      finishEmbedAuthNavigation(returnTo);
       return;
     }
 
@@ -56,13 +62,14 @@ function AuthCallbackInner() {
           setTeamverEmbedSessionAuthenticated(true);
           await syncTeamverWorkspaceFromSession(session);
         }
-        window.history.replaceState({}, '', '/auth/callback');
-        router.replace(returnTo.startsWith('/') ? returnTo : '/');
+        finishEmbedAuthNavigation(
+          normalizeEmbedAuthReturnDestination(returnTo),
+        );
       } catch {
         setMessage('로그인 연결에 실패했습니다. Teamver에서 다시 로그인해 주세요.');
       }
     })();
-  }, [router, searchParams]);
+  }, [searchParams]);
 
   if (message) {
     return (

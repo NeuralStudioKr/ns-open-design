@@ -77,6 +77,7 @@ import {
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
+import { consumeEmbedLaunchPrefs } from './teamver/teamverEmbedAuthNavigation';
 import {
   clampTeamverEmbedRoute,
   teamverEmbedRouteChanged,
@@ -448,6 +449,20 @@ function AppInner() {
     }
   }, []);
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
+  const launchPrefsAppliedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!isTeamverEmbedMode() || launchPrefsAppliedRef.current) return;
+    const prefs = consumeEmbedLaunchPrefs();
+    if (!prefs.theme) return;
+    launchPrefsAppliedRef.current = true;
+    setConfig((current) => {
+      if (current.theme === prefs.theme) return current;
+      const next = { ...current, theme: prefs.theme! };
+      saveConfig(next);
+      return next;
+    });
+  }, []);
   const configRef = useRef(config);
   configRef.current = config;
   const latestPersistedConfigRef = useRef(config);
