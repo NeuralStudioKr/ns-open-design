@@ -5,26 +5,37 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RecentProjectsStrip } from '../../src/components/RecentProjectsStrip';
 import type { Project } from '../../src/types';
+import type { ProjectCoverFile } from '../../src/teamver/projectPreviewFile';
+import { clearProjectDeckCoverCacheForTests } from '../../src/teamver/components/ProjectCardHtmlCover';
 
 vi.mock('../../src/providers/registry', () => ({
-  fetchProjectFiles: vi.fn(async (projectId: string) => {
-    if (projectId === 'project-ds') {
-      return [{ name: 'logo.svg', path: 'assets/logo.svg', kind: 'image', mtime: 3 }];
-    }
-    if (projectId === 'project-html') {
-      return [{ name: 'index.html', kind: 'html', mtime: 2 }];
-    }
-    if (projectId === 'project-deck') {
-      return [{ name: 'index.html', kind: 'html', mtime: 2 }];
-    }
-    return [];
-  }),
   projectFileUrl: (projectId: string, fileName: string) =>
-    `/api/projects/${projectId}/files/${fileName}`,
+    `/api/projects/${projectId}/raw/${fileName}`,
+}));
+
+vi.mock('../../src/teamver/prefetchHomeProjectCovers', () => ({
+  prefetchHomeProjectCovers: vi.fn(async (projects: Project[]) => {
+    const out: Record<string, ProjectCoverFile | null> = {};
+    for (const p of projects) {
+      if (p.id === 'project-ds') {
+        out[p.id] = { kind: 'logo', name: 'assets/logo.svg', version: 3 };
+      } else if (p.id === 'project-html') {
+        out[p.id] = { kind: 'html', name: 'index.html', version: 2 };
+      } else if (p.id === 'project-deck') {
+        out[p.id] = {
+          kind: 'html',
+          name: p.metadata?.entryFile ?? 'index.html',
+          version: 2,
+        };
+      }
+    }
+    return out;
+  }),
 }));
 
 afterEach(() => {
   cleanup();
+  clearProjectDeckCoverCacheForTests();
   vi.unstubAllGlobals();
 });
 
@@ -79,11 +90,7 @@ describe('RecentProjectsStrip', () => {
   });
 
   it('renders deck project covers without deck navigation controls', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        text: async () => `
+    const deckHtml = `
           <!doctype html>
           <html>
             <head><title>Deck</title></head>
@@ -94,7 +101,16 @@ describe('RecentProjectsStrip', () => {
               <nav class="page-flip-controls" aria-label="Pagination">01 / 10</nav>
             </body>
           </html>
-        `,
+        `;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        clone: () => ({
+          ok: true,
+          text: async () => deckHtml,
+        }),
+        text: async () => deckHtml,
       })),
     );
 
@@ -124,13 +140,13 @@ describe('RecentProjectsStrip', () => {
     await waitFor(() => {
       const deckIframe = deckCard?.querySelector('iframe') as HTMLIFrameElement | null;
       expect(deckIframe?.getAttribute('srcdoc')).toContain('First slide');
-      expect(deckIframe?.getAttribute('srcdoc')).toContain('od-recent-deck-real-preview');
+      expect(deckIframe?.getAttribute('srcdoc')).toContain('od-deck-card-preview');
       expect(deckIframe?.getAttribute('srcdoc')).toContain('.page-flip-controls');
       expect(deckIframe?.getAttribute('srcdoc')).toContain('[aria-label="Pagination"]');
       expect(deckIframe?.getAttribute('srcdoc')).not.toContain('<script');
       expect(deckIframe?.getAttribute('src')).toBeNull();
       expect(htmlCard?.querySelector('iframe')?.getAttribute('src')).toBe(
-        '/api/projects/project-html/files/index.html',
+        '/api/projects/project-html/raw/index.html?v=2',
       );
     });
   });

@@ -4,6 +4,8 @@ import type { Project, ProjectFile } from "../types";
 export type ProjectCoverFile = {
   kind: "html" | "image" | "video" | "logo";
   name: string;
+  /** File mtime ms from cover-hints — appended as `?v=` on card media URLs. */
+  version?: number;
 };
 
 export function findDesignSystemLogoFile(files: ProjectFile[]): ProjectFile | null {

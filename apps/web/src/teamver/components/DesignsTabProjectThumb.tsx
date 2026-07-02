@@ -1,7 +1,8 @@
-import { useEffect } from "react";
 import type { Project } from "../../types";
+import { useEffect } from "react";
 import { useLazyProjectCover } from "../useLazyProjectCover";
 import type { ProjectCoverFile } from "../projectPreviewFile";
+import { ProjectCardHtmlCover } from "./ProjectCardHtmlCover";
 
 type Props = {
   project: Project;
@@ -46,13 +47,9 @@ export function DesignsTabProjectThumb({
       ) : cover.kind === "video" && cover.src ? (
         <video className="thumb-media" src={cover.src} muted preload="metadata" playsInline />
       ) : cover.kind === "html" && cover.src ? (
-        <iframe
-          className="thumb-iframe"
+        <ProjectCardHtmlCover
           src={cover.src}
-          title=""
-          loading="lazy"
-          sandbox="allow-scripts"
-          tabIndex={-1}
+          deckCoverOnly={project.metadata?.kind === "deck"}
         />
       ) : (
         <span className="project-thumb-glyph">{cover.initial}</span>

@@ -287,6 +287,8 @@ export interface ProjectCoverHint {
   entryFile?: string | null;
   coverKind?: ProjectCoverHintKind | null;
   coverPath?: string | null;
+  /** Cover file mtime (ms, rounded) — FE appends `?v=` for cache bust / revalidation. */
+  coverVersion?: number | null;
 }
 
 export interface ProjectCoverHintsRequest {

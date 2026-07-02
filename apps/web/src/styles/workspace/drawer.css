@@ -778,6 +778,32 @@
   background: var(--bg-panel);
   pointer-events: none;
 }
+.project-thumb-deck-frame,
+.project-thumb-deck-iframe,
+.project-thumb-deck-loading {
+  position: absolute;
+  inset: 0;
+}
+.project-thumb-deck-frame {
+  overflow: hidden;
+  background: #fff;
+}
+.project-thumb-deck-iframe {
+  width: 1280px;
+  height: 720px;
+  border: 0;
+  pointer-events: none;
+  transform: scale(var(--project-deck-scale, 1));
+  transform-origin: 0 0;
+}
+.project-thumb-deck-loading {
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.52) 50%, transparent 70%) 0 0 / 200% 100%,
+    var(--bg-subtle);
+  animation: recent-projects-shimmer 1.4s ease-in-out infinite;
+}
 .project-thumb-image,
 .project-thumb-video,
 .project-thumb-html,

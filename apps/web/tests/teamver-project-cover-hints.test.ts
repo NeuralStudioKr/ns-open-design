@@ -1,19 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const buildHeadersMock = vi.fn(async (base: Record<string, string>) => ({
-  ...base,
-  "X-Workspace-Id": "ws-cover",
-}));
+const fetchDaemonMock = vi.fn(
+  async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const headers = {
+      ...Object.fromEntries(new Headers(init.headers)),
+      "X-Workspace-Id": "ws-cover",
+    };
+    return fetch(input, { ...init, headers });
+  },
+);
 
 vi.mock("../src/teamver/teamverDaemonHeaders", () => ({
-  buildTeamverDaemonRequestHeaders: (...args: unknown[]) => buildHeadersMock(...args),
+  fetchTeamverDaemon: (...args: unknown[]) => fetchDaemonMock(...args),
 }));
 
 import { fetchProjectCoverHints } from "../src/teamver/projectCoverHints";
 
 describe("fetchProjectCoverHints (loop 400)", () => {
   beforeEach(() => {
-    buildHeadersMock.mockClear();
+    fetchDaemonMock.mockClear();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -26,7 +31,13 @@ describe("fetchProjectCoverHints (loop 400)", () => {
   it("forwards embed active workspace on cover-hints batch POST", async () => {
     await fetchProjectCoverHints(["p1", "p2"]);
 
-    expect(buildHeadersMock).toHaveBeenCalledWith({ "content-type": "application/json" });
+    expect(fetchDaemonMock).toHaveBeenCalledWith(
+      "/api/projects/cover-hints",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "content-type": "application/json" }),
+      }),
+    );
     const fetchMock = vi.mocked(globalThis.fetch);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/cover-hints",

@@ -4,13 +4,17 @@ import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
 import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
 
 export function projectCoverFileFromHint(hint: ProjectCoverHint): ProjectCoverFile | null {
+  const version =
+    typeof hint.coverVersion === "number" && Number.isFinite(hint.coverVersion)
+      ? hint.coverVersion
+      : undefined;
   if (hint.coverPath && hint.coverKind) {
-    return { kind: hint.coverKind, name: hint.coverPath };
+    return { kind: hint.coverKind, name: hint.coverPath, version };
   }
   if (hint.entryFile) {
     const kind = hint.coverKind ?? (/\.html?$/i.test(hint.entryFile) ? "html" : "image");
     if (kind === "html" || kind === "image" || kind === "video" || kind === "logo") {
-      return { kind, name: hint.entryFile };
+      return { kind, name: hint.entryFile, version };
     }
   }
   return null;

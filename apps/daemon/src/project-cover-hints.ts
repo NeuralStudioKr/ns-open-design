@@ -6,7 +6,30 @@ export type ResolvedProjectCoverHint = {
   entryFile?: string;
   coverKind?: "html" | "image" | "video" | "logo";
   coverPath?: string;
+  coverVersion?: number;
 };
+
+async function coverVersionForPath(
+  projectDir: string,
+  coverPath: string,
+): Promise<number | undefined> {
+  try {
+    const st = await stat(path.join(projectDir, coverPath));
+    return Math.round(st.mtimeMs);
+  } catch {
+    return undefined;
+  }
+}
+
+async function withCoverVersion(
+  projectDir: string,
+  hint: ResolvedProjectCoverHint,
+): Promise<ResolvedProjectCoverHint> {
+  const coverPath = hint.coverPath ?? hint.entryFile;
+  if (!coverPath) return hint;
+  const coverVersion = await coverVersionForPath(projectDir, coverPath);
+  return coverVersion === undefined ? hint : { ...hint, coverVersion };
+}
 
 function coverHintFromEntry(
   entryFile: string,
@@ -46,10 +69,6 @@ export async function resolveProjectCoverHint(
     entryFile?: unknown;
     kind?: unknown;
   };
-  if (typeof metadata.entryFile === "string" && metadata.entryFile.trim()) {
-    return coverHintFromEntry(metadata.entryFile.trim(), metadata.kind);
-  }
-
   const projectDir = resolveProjectDir(projectsRoot, projectId, project.metadata);
   try {
     await stat(projectDir);
@@ -57,14 +76,19 @@ export async function resolveProjectCoverHint(
     return null;
   }
 
+  if (typeof metadata.entryFile === "string" && metadata.entryFile.trim()) {
+    const hint = coverHintFromEntry(metadata.entryFile.trim(), metadata.kind);
+    return withCoverVersion(projectDir, hint);
+  }
+
   const entryFile = await detectEntryFile(projectDir);
   if (entryFile) {
-    return { entryFile, coverKind: "html", coverPath: entryFile };
+    return withCoverVersion(projectDir, { entryFile, coverKind: "html", coverPath: entryFile });
   }
 
   const logoPath = await detectLogoCoverPath(projectDir);
   if (logoPath) {
-    return { coverKind: "logo", coverPath: logoPath };
+    return withCoverVersion(projectDir, { coverKind: "logo", coverPath: logoPath });
   }
 
   return null;

@@ -1161,6 +1161,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
           entryFile: resolved?.entryFile ?? null,
           coverKind: resolved?.coverKind ?? null,
           coverPath: resolved?.coverPath ?? null,
+          coverVersion: resolved?.coverVersion ?? null,
         });
       }
       /** @type {import('@open-design/contracts').ProjectCoverHintsResponse} */
@@ -2153,6 +2154,36 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     res.setHeader('Content-Security-Policy', projectPreviewCsp);
   }
 
+  function projectFileEtag(meta: { mtime: number; size: number }): string {
+    return `"od-${Math.round(meta.mtime)}-${meta.size}"`;
+  }
+
+  function applyProjectRawCacheHeaders(res: Response, mime: string): void {
+    if (/^text\/html/i.test(mime)) {
+      res.setHeader('Cache-Control', 'private, no-cache');
+      return;
+    }
+    if (/^image\//i.test(mime) || /^video\//i.test(mime) || /^audio\//i.test(mime)) {
+      res.setHeader('Cache-Control', 'private, max-age=300');
+    }
+  }
+
+  function respondNotModifiedIfMatched(
+    req: any,
+    res: Response,
+    meta: { mtime: number; size: number; mime: string },
+  ): boolean {
+    const etag = projectFileEtag(meta);
+    res.setHeader('ETag', etag);
+    applyProjectRawCacheHeaders(res, meta.mime);
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (typeof ifNoneMatch === 'string' && ifNoneMatch === etag) {
+      res.status(304).end();
+      return true;
+    }
+    return false;
+  }
+
   async function sendProjectFile(
     req: any,
     res: Response,
@@ -2169,6 +2200,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       metadata,
     );
     beforeSend?.(meta.mime);
+    if (respondNotModifiedIfMatched(req, res, meta)) return;
 
     if (meta.mime.startsWith('video/') || meta.mime.startsWith('audio/')) {
       res.setHeader('Accept-Ranges', 'bytes');

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
-import { projectFileUrl } from "../providers/registry";
 import type { Project } from "../types";
 import type { ProjectCoverFile } from "./projectPreviewFile";
+import { projectCoverMediaUrl } from "./projectCoverMediaUrl";
 
 export type ProjectCardCover = {
   kind: "image" | "video" | "html" | "logo" | "fallback";
@@ -29,7 +29,7 @@ export function buildProjectCardCover(
   if (override) {
     return {
       kind: override.kind,
-      src: projectFileUrl(project.id, override.name),
+      src: projectCoverMediaUrl(project.id, override.name, coverVersion(override, project)),
       style,
       initial,
     };
@@ -38,11 +38,15 @@ export function buildProjectCardCover(
   const meta = project.metadata;
   const entry = meta?.entryFile;
   if (entry) {
-    const src = projectFileUrl(project.id, entry);
+    const src = projectCoverMediaUrl(project.id, entry, project.updatedAt);
     if (meta?.kind === "image") return { kind: "image", src, style, initial };
     if (meta?.kind === "video") return { kind: "video", src, style, initial };
     if (/\.html?$/i.test(entry)) return { kind: "html", src, style, initial };
   }
 
   return { kind: "fallback", style, initial };
+}
+
+function coverVersion(override: ProjectCoverFile, project: Project): number | undefined {
+  return override.version ?? project.updatedAt;
 }
