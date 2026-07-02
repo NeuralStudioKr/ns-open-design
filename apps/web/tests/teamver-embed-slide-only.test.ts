@@ -69,8 +69,9 @@ describe('Teamver embed slide-only MVP policy', () => {
   });
 
   it('detects Open Design branded toolbox resources for embed filtering', () => {
-    expect(isOpenDesignBrandedToolboxResource(['Open Design 랜딩 덱'])).toBe(true);
-    expect(isOpenDesignBrandedToolboxResource(['nexu-io/open-design'])).toBe(true);
+    expect(isOpenDesignBrandedToolboxResource(['Open Design 랜딩 덱'], 'example-open-design-landing-deck')).toBe(true);
+    expect(isOpenDesignBrandedToolboxResource(['github:nexu-io/open-design@main/plugins/_official/examples/deck'])).toBe(false);
+    expect(isOpenDesignBrandedToolboxResource(['Open-Slide 1920 캔버스 덱'], 'example-deck-open-slide-canvas')).toBe(false);
     expect(isOpenDesignBrandedToolboxResource(['Html Ppt Hermes Cyber Terminal'])).toBe(false);
   });
 

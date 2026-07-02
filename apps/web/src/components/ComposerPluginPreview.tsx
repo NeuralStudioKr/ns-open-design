@@ -14,6 +14,12 @@
 import { useMemo } from 'react';
 import type { InstalledPluginRecord } from '@open-design/contracts';
 import { useT } from '../i18n';
+import type { Locale } from '../i18n/types';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import {
+  teamverToolboxPluginDescription,
+  teamverToolboxPluginTitle,
+} from '../teamver/branding/toolboxCatalogDisplay';
 import { PreviewSurface } from './plugins-home/cards/PreviewSurface';
 import { extractCategories } from './plugins-home/facets';
 import {
@@ -71,9 +77,17 @@ export function ComposerPluginPreview({
   locale: string;
 }) {
   const t = useT();
-  const preview = useMemo(() => inferPluginPreview(record), [record]);
-  const title = localizePluginTitle(locale, record);
-  const description = localizePluginDescription(locale, record);
+  const teamverEmbed = isTeamverEmbedMode();
+  const preview = useMemo(
+    () => inferPluginPreview(record, { preferBaked: true }),
+    [record],
+  );
+  const title = teamverEmbed
+    ? teamverToolboxPluginTitle(locale as Locale, record)
+    : localizePluginTitle(locale, record);
+  const description = teamverEmbed
+    ? teamverToolboxPluginDescription(locale as Locale, record)
+    : localizePluginDescription(locale, record);
   const kindLabel = useMemo(() => {
     const facet = pluginKindLabel(extractCategories(record)[0], t);
     if (facet) return facet;
@@ -104,6 +118,7 @@ export function ComposerPluginPreview({
           pluginTitle={title}
           preview={preview}
           eager
+          instantMount
         />
       </div>
     </div>

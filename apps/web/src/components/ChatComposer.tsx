@@ -43,6 +43,14 @@ import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import {
+  shouldHideTeamverToolboxPlugin,
+  shouldHideTeamverToolboxSkill,
+  teamverToolboxPluginDescription,
+  teamverToolboxPluginTitle,
+  teamverToolboxSkillDescription,
+  teamverToolboxSkillTitle,
+} from '../teamver/branding/toolboxCatalogDisplay';
+import {
   isTeamverEmbedDriveImportAllowed,
   isTeamverEmbedDesignSurfaceEnabled,
   subscribeTeamverDesignAccessChanged,
@@ -95,7 +103,6 @@ import {
   designToolboxActionTitle,
   findDesignToolboxSkill,
   getDesignToolboxAction,
-  isOpenDesignBrandedToolboxResource,
   skillMatchesQuery,
   type DesignToolboxAction,
   type DesignToolboxActionId,
@@ -4108,11 +4115,15 @@ function buildDesignToolboxResources({
   const teamverEmbed = isTeamverEmbedMode();
 
   for (const skill of skills) {
-    const title = localizeSkillName(locale, skill);
-    const subtitle = localizeSkillDescription(locale, skill);
-    if (teamverEmbed && isOpenDesignBrandedToolboxResource([skill.id, skill.name, title, subtitle])) {
+    if (teamverEmbed && shouldHideTeamverToolboxSkill(skill, locale)) {
       continue;
     }
+    const title = teamverEmbed
+      ? teamverToolboxSkillTitle(locale, skill)
+      : localizeSkillName(locale, skill);
+    const subtitle = teamverEmbed
+      ? teamverToolboxSkillDescription(locale, skill)
+      : localizeSkillDescription(locale, skill);
     resources.push({
       key: `skill:${skill.id}`,
       kind: 'skill',
@@ -4137,23 +4148,15 @@ function buildDesignToolboxResources({
   }
 
   for (const plugin of plugins) {
-    const title = localizePluginTitle(locale, plugin);
-    const subtitle = localizePluginDescription(locale, plugin) || plugin.id;
-    if (
-      teamverEmbed &&
-      isOpenDesignBrandedToolboxResource([
-        plugin.id,
-        plugin.title,
-        title,
-        plugin.source,
-        subtitle,
-        plugin.manifest?.name ?? '',
-        plugin.manifest?.description ?? '',
-        ...(plugin.manifest?.tags ?? []),
-      ])
-    ) {
+    if (teamverEmbed && shouldHideTeamverToolboxPlugin(plugin, locale)) {
       continue;
     }
+    const title = teamverEmbed
+      ? teamverToolboxPluginTitle(locale, plugin)
+      : localizePluginTitle(locale, plugin);
+    const subtitle = teamverEmbed
+      ? teamverToolboxPluginDescription(locale, plugin) || plugin.id
+      : localizePluginDescription(locale, plugin) || plugin.id;
     resources.push({
       key: `plugin:${plugin.id}`,
       kind: 'plugin',

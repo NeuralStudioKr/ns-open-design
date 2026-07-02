@@ -27,9 +27,16 @@ interface Props {
   // their poster instead of all spinning up decodes + clip downloads at once.
   inView: boolean;
   visible?: boolean;
+  instantMount?: boolean;
 }
 
-export function MediaSurface({ preview, pluginTitle, inView, visible = inView }: Props) {
+export function MediaSurface({
+  preview,
+  pluginTitle,
+  inView,
+  visible = inView,
+  instantMount = false,
+}: Props) {
   const [hovering, setHovering] = useState(false);
   // Track per-URL poster load failure so a 404 / decode error / dead
   // host swaps in the typographic fallback instead of leaving the
@@ -164,7 +171,7 @@ export function MediaSurface({ preview, pluginTitle, inView, visible = inView }:
           className="plugins-home__media-img"
           src={preview.poster}
           alt={`${pluginTitle} preview`}
-          loading="lazy"
+          loading={instantMount ? 'eager' : 'lazy'}
           decoding="async"
           referrerPolicy="no-referrer"
           onError={() => setPosterLoadFailed(true)}
