@@ -986,6 +986,40 @@ interface Props {
   slideNavRequest?: { slideIndex: number; nonce: number } | null;
 }
 
+type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
+
+function exportInProgressToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
+  switch (format) {
+    case 'pdf':
+      return t('fileViewer.exportPdfInProgress');
+    case 'html':
+      return t('fileViewer.exportHtmlInProgress');
+    case 'zip':
+      return t('fileViewer.exportZipInProgress');
+    default:
+      return t('fileViewer.exportInProgress');
+  }
+}
+
+function exportSuccessToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
+  switch (format) {
+    case 'pdf':
+      return t('fileViewer.exportPdfCompleted');
+    case 'html':
+      return t('fileViewer.exportHtmlCompleted');
+    case 'zip':
+      return t('fileViewer.exportZipCompleted');
+    case 'markdown':
+      return t('fileViewer.exportMarkdownCompleted');
+    case 'pptx':
+      return t('fileViewer.exportPptxRequested');
+    case 'image':
+      return t('fileViewer.exportImageSaved');
+    default:
+      return t('fileViewer.exportCompleted');
+  }
+}
+
 export function FileViewer({
   projectId,
   projectKind,
@@ -4550,8 +4584,7 @@ function HtmlViewer({
       );
     };
     const toastFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image', 'markdown']);
-    const exportInProgressMessage =
-      format === 'pdf' ? t('fileViewer.exportPdfInProgress') : t('fileViewer.exportInProgress');
+    const exportInProgressMessage = exportInProgressToastMessage(format, t);
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
       const message = err instanceof Error && err.message.trim()
@@ -4573,7 +4606,7 @@ function HtmlViewer({
               return;
             }
             finish('success');
-            if (toastFormats.has(format)) setExportToast({ message: t('fileViewer.exportStarted'), tone: 'default' });
+            if (toastFormats.has(format)) setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
           },
           (err) => {
             finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
@@ -4587,7 +4620,7 @@ function HtmlViewer({
           return;
         }
         finish('success');
-        if (toastFormats.has(format)) setExportToast({ message: t('fileViewer.exportStarted'), tone: 'default' });
+        if (toastFormats.has(format)) setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
       }
     } catch (err) {
       finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
