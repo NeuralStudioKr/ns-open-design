@@ -35,6 +35,7 @@ const DECK_PRINT_CSS = `
     scroll-snap-type: none !important;
     transform: none !important;
   }
+  .deck,
   .deck-shell,
   .deck-stage, .stage, #deck-stage {
     display: contents !important;

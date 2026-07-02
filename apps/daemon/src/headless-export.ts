@@ -83,6 +83,7 @@ export function buildDeckFlattenCssRules(): string {
      absolutely positioned slides produces an empty first printed page before
      slide content flows (title fragments leak onto page 1, real slides start
      on page 2). display:contents hoists slides directly into body flow. */
+  .deck,
   .deck-shell,
   .deck-stage, .stage {
     display: contents !important;
@@ -218,6 +219,7 @@ export async function renderHeadlessPdf(
         await waitForPrintableContent(page);
         if (options.input.deck) {
           await page.emulateMedia({ media: 'print' });
+          await stripLeakedViewportFromPage(page);
         }
         const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
         if (options.input.deck && deckSlideCount === 0) {
@@ -313,6 +315,7 @@ export async function renderHeadlessHtmlSnapshot(
       try {
         await waitForPrintableContent(page);
         if (options.input.deck) {
+          await stripLeakedViewportFromPage(page);
           const deckSlideCount = await revealAllDeckSlides(page);
           if (deckSlideCount === 0) {
             console.warn('[headless-export] deck HTML: no slides matched selector', {
@@ -421,6 +424,38 @@ async function preparePage(
   return page;
 }
 
+/** Remove truncated viewport meta tails that survived string repair into the DOM. */
+async function stripLeakedViewportFromPage(page: Page): Promise<void> {
+  await evaluateInPage(
+    page,
+    `
+      const leak = /^\\s*device-width\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
+      const slideSelectors = args.selector.split(',').map((sel) => sel.trim());
+      const isInsideSlide = (node) => {
+        let el = node.parentElement;
+        while (el) {
+          if (slideSelectors.some((sel) => el.matches(sel))) return true;
+          el = el.parentElement;
+        }
+        return false;
+      };
+      const walk = (root) => {
+        for (const node of Array.from(root.childNodes)) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent || '';
+            if (leak.test(text) && !isInsideSlide(node)) node.remove();
+            continue;
+          }
+          if (node.nodeType === Node.ELEMENT_NODE) walk(node);
+        }
+      };
+      if (document.head) walk(document.head);
+      if (document.body) walk(document.body);
+    `,
+    { selector: DECK_SLIDE_SELECTOR },
+  ).catch(() => {});
+}
+
 /**
  * Force every deck slide visible and stack them in block flow with explicit
  * page breaks. Inline `!important` styles beat deck-framework's
@@ -443,7 +478,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         '#0a0c10';
       const shellBg = rootStyle.getPropertyValue('--shell').trim() || slideBg;
 
-      document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+      document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
         set(el, 'display', 'contents');
         set(el, 'transform', 'none');
         set(el, 'box-shadow', 'none');
@@ -646,7 +681,7 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     set(document.body, 'width', args.width + 'px');
     set(document.body, 'height', args.height + 'px');
 
-    document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+    document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
       set(el, 'position', 'relative');
       set(el, 'display', 'block');
       set(el, 'inset', 'auto');
@@ -835,7 +870,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     page,
     `
     const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
-    document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+    document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
       set(el, 'transform', 'none');
       set(el, 'box-shadow', 'none');
     });

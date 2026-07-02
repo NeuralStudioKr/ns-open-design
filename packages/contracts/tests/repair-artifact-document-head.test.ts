@@ -35,4 +35,22 @@ device-width, initial-scale=1" />
     expect(out).toContain('<div class="slide">A</div>');
     expect(out).toContain('<meta name="viewport"');
   });
+
+  it("strips viewport fragments leaked inside a deck wrapper", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body><div class="deck">
+device-width, initial-scale=1" >
+<section class="slide">A</section></div></body></html>`;
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).not.toMatch(/<div class="deck">\s*device-width/i);
+    expect(out).toContain('<section class="slide">A</section>');
+    expect(out).toContain('<meta name="viewport"');
+  });
+
+  it("preserves valid viewport meta while stripping leaked tails", () => {
+    const html =
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>T</title></head><body><div class="deck">device-width, initial-scale=1" /><section class="slide">A</section></div></body></html>';
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain('content="width=device-width, initial-scale=1"');
+    expect(out).not.toMatch(/<div class="deck">\s*device-width/i);
+  });
 });

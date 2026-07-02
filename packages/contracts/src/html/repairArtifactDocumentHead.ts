@@ -11,9 +11,15 @@ const HEAD_VIEWPORT_FRAGMENT_RE =
 const BODY_VIEWPORT_FRAGMENT_RE =
   /(<body[^>]*>)\s*device-width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/gi;
 
+// Truncated viewport tails can leak into deck wrappers, not only after <body>.
+// Avoid matching valid `content="width=device-width, initial-scale=…"` metas.
+const LEAKED_VIEWPORT_TAIL_RE =
+  /(?<!width=)device-width\s*,\s*initial-scale=[\d.]+"?\s*\/?>\s*/gi;
+
 function stripLeakedViewportFragments(doc: string): string {
   let out = doc.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
   out = out.replace(BODY_VIEWPORT_FRAGMENT_RE, "$1");
+  out = out.replace(LEAKED_VIEWPORT_TAIL_RE, "");
   return out;
 }
 

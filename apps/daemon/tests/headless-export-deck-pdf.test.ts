@@ -81,6 +81,7 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('display: flex !important');
     expect(css).toContain('display: contents !important');
+    expect(css).toContain('.deck');
     expect(css).toContain('.deck-shell');
     expect(css).toContain('.deck-stage');
     expect(css).not.toMatch(/\.deck-stage[^}]*height:\s*auto/);
