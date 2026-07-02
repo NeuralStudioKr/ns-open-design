@@ -20,6 +20,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
+import { repairArtifactDocumentHead } from '@open-design/contracts';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -38,10 +39,11 @@ export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const head = html.trimStart().slice(0, 64).toLowerCase();
+  const repaired = repairArtifactDocumentHead(html);
+  const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith("<!doctype") || head.startsWith("<html");
   const wrapped = isFullDoc
-    ? html
+    ? repaired
     : `<!doctype html>
 <html>
   <head>

@@ -121,13 +121,13 @@ describe('Teamver project registry list', () => {
     ).resolves.toEqual([{ id: 'p1' }, { id: 'p3' }]);
   });
 
-  it('throws when registry list is unavailable', async () => {
+  it('returns unfiltered projects when registry list is unavailable', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
 
     await expect(
       filterProjectsByTeamverRegistryIfNeeded([{ id: 'p1' }]),
-    ).rejects.toMatchObject({ code: 'teamver_project_registry_list_failed' });
+    ).resolves.toEqual([{ id: 'p1' }]);
   });
 
   it('retries registry list once after cookie auth recovery on 401', async () => {

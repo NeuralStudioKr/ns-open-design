@@ -13,6 +13,13 @@ const deckHtml = `<!doctype html>
 </html>`;
 
 describe('buildSrcdoc', () => {
+  it('repairs corrupted viewport meta fragments in full documents', () => {
+    const corrupt = `<!doctype html><html><head>device-width, initial-scale=1" /><title>T</title></head><body><div class="slide">A</div></body></html>`;
+    const doc = buildSrcdoc(corrupt, { deck: true });
+    expect(doc).not.toMatch(/<head>\s*device-width/i);
+    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+  });
+
   it('injects an initial slide index for deck previews', () => {
     const doc = buildSrcdoc(deckHtml, { deck: true, initialSlideIndex: 2 });
 

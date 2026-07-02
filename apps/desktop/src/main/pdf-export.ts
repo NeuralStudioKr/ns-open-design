@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
+import { repairArtifactDocumentHead } from "@open-design/contracts";
 import { BrowserWindow, dialog } from "electron";
 import type { DesktopExportPdfInput, DesktopExportPdfResult } from "@open-design/sidecar-proto";
 
@@ -26,15 +27,26 @@ const DECK_PRINT_CSS = `
     width: 1920px !important;
     height: auto !important;
     overflow: visible !important;
-    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body {
     display: block !important;
     scroll-snap-type: none !important;
     transform: none !important;
   }
+  .deck-shell,
+  .deck-stage, .stage, #deck-stage {
+    display: contents !important;
+    transform: none !important;
+  }
   .slide:not(.active),
-  .slide, [data-screen-label], section.slide, .deck-slide, .ppt-slide {
+  [data-slide]:not(.active),
+  [data-screen-label]:not(.active),
+  section.slide:not(.active),
+  .deck-slide:not(.active),
+  .ppt-slide:not(.active),
+  .slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide {
     display: flex !important;
     flex-direction: column !important;
     flex: none !important;
@@ -245,7 +257,7 @@ function printToPdfOptions(pageSize: PageSize): PrintToPdfOptions {
 }
 
 function buildPrintableDocument(input: DesktopExportPdfInput): string {
-  const source = injectBaseHref(input.html, input.baseHref);
+  const source = repairArtifactDocumentHead(injectBaseHref(input.html, input.baseHref));
   const withTitle = injectTitle(source, input.title);
   return input.deck ? injectPrintStylesheet(withTitle, DECK_PRINT_CSS) : withTitle;
 }

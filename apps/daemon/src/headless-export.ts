@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
+import { repairArtifactDocumentHead } from '@open-design/contracts';
 
 type Browser = any;
 type Page = any;
@@ -63,7 +64,8 @@ export function buildDeckFlattenCssRules(): string {
     width: ${DECK_WIDTH}px !important;
     height: auto !important;
     overflow: visible !important;
-    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body {
     display: block !important;
@@ -102,6 +104,10 @@ export function buildDeckFlattenCssRules(): string {
   ${slidesLastChild} {
     page-break-after: auto !important;
     break-after: auto !important;
+  }
+  ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
   }
   ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
     page-break-before: avoid !important;
@@ -388,7 +394,7 @@ async function preparePage(
   page.setDefaultNavigationTimeout(EXPORT_TIMEOUT_MS);
   const html = options.input.deck
     ? buildPrintableHtml(options.input)
-    : withBaseHref(options.input.html, options.input.baseHref || '');
+    : repairArtifactDocumentHead(withBaseHref(options.input.html, options.input.baseHref || ''));
   // `load` (not `domcontentloaded`) ensures the deck framework's `fit()` /
   // scripts and stylesheets have run before we flatten slides for print.
   await page.setContent(html, {
@@ -535,8 +541,13 @@ async function waitForPrintableContent(page: Page): Promise<void> {
 async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
   await page.addStyleTag({
     content: `
-      html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
-      body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      html, body {
+        margin: 0 !important;
+        scrollbar-width: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        ${deck ? '' : 'background: #fff !important;'}
+      }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? buildDeckPrintCss() : '@page { margin: 0; size: auto; }'}
     `,
@@ -546,7 +557,11 @@ async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
 async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: number): Promise<void> {
   await page.addStyleTag({
     content: `
-      html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
+      html, body {
+        margin: 0 !important;
+        scrollbar-width: none !important;
+        ${deck ? '-webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;' : 'background: #fff !important;'}
+      }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? `
       html, body { width: ${DECK_WIDTH}px !important; min-height: ${DECK_HEIGHT}px !important; overflow: hidden !important; }
@@ -631,7 +646,11 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
 async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
   await page.addStyleTag({
     content: `
-      html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
+      html, body {
+        margin: 0 !important;
+        scrollbar-width: none !important;
+        ${deck ? '-webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;' : 'background: #fff !important;'}
+      }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? `
       .deck-counter, .deck-hint, .deck-nav,
@@ -646,7 +665,12 @@ async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
 async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
   await page.addStyleTag({
     content: `
-      html, body { margin: 0 !important; background: #fff !important; scrollbar-width: none !important; }
+      html, body {
+        margin: 0 !important;
+        scrollbar-width: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${buildDeckScreenExportCss()}
     `,
@@ -787,7 +811,7 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
 export { deckScreenshotClip as deckScreenshotClipRect };
 
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
-  let doc = withBaseHref(input.html, input.baseHref || '');
+  let doc = repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || ''));
   doc = injectTitle(doc, input.title);
   return injectPrintStylesheet(doc, buildDeckPrintCss());
 }

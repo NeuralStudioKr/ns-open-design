@@ -151,4 +151,17 @@ describe("embed workspace switch side effects", () => {
     const block = app.slice(start, start + 400);
     expect(block).toContain("setWorkingDirError(null)");
   });
+
+  it("defers project list refresh on embed detail surfaces", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain("refreshProjectsSurface");
+    expect(app).toContain("shouldDeferEmbedProjectListRefresh");
+    expect(app).toContain("onProjectsRefresh={refreshProjectsSurface}");
+    expect(app).toMatch(
+      /shouldDeferEmbedProjectListRefresh\(routeRef\.current\)[\s\S]*?refreshEmbedProjectMetadata/,
+    );
+    expect(app).toMatch(
+      /shouldDeferEmbedProjectListRefresh\(route\)[\s\S]*?loadProjectListSafe/,
+    );
+  });
 });

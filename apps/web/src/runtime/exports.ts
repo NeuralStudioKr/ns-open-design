@@ -1332,7 +1332,8 @@ const DECK_PRINT_CSS = `
     width: 1920px !important;
     height: auto !important;
     overflow: visible !important;
-    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body {
     display: block !important;
@@ -1342,6 +1343,7 @@ const DECK_PRINT_CSS = `
   .deck-shell,
   .deck-stage, .stage {
     display: contents !important;
+    transform: none !important;
   }
   .slide:not(.active),
   [data-slide]:not(.active),

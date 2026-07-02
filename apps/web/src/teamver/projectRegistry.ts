@@ -362,7 +362,8 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
   if (!isTeamverEmbedMode()) return projects;
   const registeredIds = await listTeamverRegisteredProjectIds();
   if (registeredIds === null) {
-    throw new TeamverProjectRegistryError("teamver_project_registry_list_failed");
+    console.warn("[teamver] project registry list unavailable — showing daemon projects");
+    return projects;
   }
   return projects.filter((project) => registeredIds.has(project.id));
 }

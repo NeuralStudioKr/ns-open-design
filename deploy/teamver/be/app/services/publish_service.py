@@ -405,6 +405,7 @@ async def publish_project(
                         content_type=mime_type,
                         folder_id=resolved_folder_id,
                         shared_drive_id=resolved_shared_drive_id,
+                        kind="ai_generated",
                     )
                 except (DriveUploadError, TeamverAPIError) as exc:
                     error_code = _teamver_upload_error_code(exc)

@@ -107,6 +107,10 @@ import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate'
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
+import {
+  mergeProjectIntoList,
+  shouldDeferEmbedProjectListRefresh,
+} from './teamver/embedProjectListRefresh';
 import { prefetchLatestPublishSummaries } from './teamver/latestPublishSummary';
 import {
   patchEmbedBackgroundRunSummaryForProject,
@@ -1364,6 +1368,29 @@ function AppInner() {
     warmEmbedProjectListCaches(result.projects);
   }, [applyProjectsPageResult, beginProjectListRequest, reconcileFetchedProjects]);
 
+  const refreshEmbedProjectMetadata = useCallback(async (projectId: string) => {
+    const trimmedId = projectId.trim();
+    if (!trimmedId) return;
+    try {
+      const project = await getProject(trimmedId);
+      if (!project) return;
+      setProjects((current) => mergeProjectIntoList(current, project));
+      warmEmbedProjectListCaches([project]);
+      setWorkingDirError(null);
+    } catch {
+      // Detail view keeps working from daemon state; list/registry sync is optional.
+    }
+  }, []);
+
+  const refreshProjectsSurface = useCallback(async () => {
+    const currentRoute = routeRef.current;
+    if (shouldDeferEmbedProjectListRefresh(currentRoute)) {
+      await refreshEmbedProjectMetadata(currentRoute.projectId);
+      return;
+    }
+    await refreshProjects();
+  }, [refreshEmbedProjectMetadata, refreshProjects]);
+
   useEffect(() => {
     if (route.kind !== 'home' || route.view !== 'projects') return;
     void ensureProjectsListPageLoaded();
@@ -1575,13 +1602,18 @@ function AppInner() {
         return;
       }
       void (async () => {
+        if (shouldDeferEmbedProjectListRefresh(routeRef.current)) {
+          await refreshEmbedProjectMetadata(routeRef.current.projectId);
+          void reloadTeamverRuntimeConfig({ force: true });
+          return;
+        }
         setProjectsLoading(true);
         await refreshProjects();
         void reloadTeamverRuntimeConfig({ force: true });
         setProjectsLoading(false);
       })();
     });
-  }, [refreshProjects, reloadTeamverRuntimeConfig]);
+  }, [refreshEmbedProjectMetadata, refreshProjects, reloadTeamverRuntimeConfig]);
 
   const refreshDesignSystems = useCallback(async () => {
     const list = await fetchDesignSystems();
@@ -2775,6 +2807,15 @@ function AppInner() {
         warmEmbedProjectListCaches([project]);
         return;
       }
+      if (shouldDeferEmbedProjectListRefresh(route)) {
+        if (!pendingLocalProjectIdsRef.current.has(route.projectId)) {
+          if (isTeamverEmbedMode()) {
+            setWorkingDirError(formatTeamverProjectNotFoundMessage());
+          }
+          navigate({ kind: 'home', view: 'home' }, { replace: true });
+        }
+        return;
+      }
       const request = beginProjectListRequest();
       const result = await loadProjectListSafe();
       if (cancelled) return;
@@ -3039,7 +3080,7 @@ function AppInner() {
         }}
         onSetDefault={handleChangeDefaultDesignSystem}
         onSystemsRefresh={refreshDesignSystems}
-        onProjectsRefresh={refreshProjects}
+        onProjectsRefresh={refreshProjectsSurface}
         initialRevisionJob={pendingDesignSystemRevisionJobs[route.designSystemId] ?? null}
         onInitialRevisionJobConsumed={(jobId) =>
           handleDesignSystemRevisionJobConsumed(route.designSystemId, jobId)
@@ -3077,7 +3118,7 @@ function AppInner() {
         onClearPendingPrompt={handleClearPendingPrompt}
         onTouchProject={handleTouchProject}
         onProjectChange={handleProjectChange}
-        onProjectsRefresh={refreshProjects}
+        onProjectsRefresh={refreshProjectsSurface}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
         onDesignSystemsRefresh={refreshDesignSystems}
         embedSubmitDisabled={embedInteractionDisabled}
@@ -3221,7 +3262,7 @@ function AppInner() {
           daemonMediaProvidersFetchState={daemonMediaProvidersFetchState}
           mediaProvidersNotice={mediaProvidersNotice}
           onReloadMediaProviders={reloadMediaProvidersFromDaemon}
-          onProjectsRefresh={refreshProjects}
+          onProjectsRefresh={refreshProjectsSurface}
           onSkillsChanged={handleSkillsChanged}
           onDesignSystemsChanged={handleDesignSystemsChanged}
           onDesignSystemImportRebuildJob={handleDesignSystemImportRebuildJob}

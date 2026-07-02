@@ -94,7 +94,8 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).not.toContain('@media print');
     expect(screenCss).toContain('.slide:not(.active)');
     expect(screenCss).toContain('display: flex !important');
-    expect(screenCss).toContain('transform: none !important');
+    expect(screenCss).not.toContain('background: #fff !important');
+    expect(screenCss).toContain('print-color-adjust: exact');
   });
 
   it('exports revealAllDeckSlides for runtime flattening', async () => {

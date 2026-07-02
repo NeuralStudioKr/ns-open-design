@@ -199,6 +199,7 @@ async def test_publish_project_pdf_uploads_via_manifest_entry():
         content_type="application/pdf",
         folder_id=None,
         shared_drive_id=None,
+        kind="ai_generated",
     )
     teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
         "https://s3.example.com/upload/AST-123",
@@ -249,6 +250,7 @@ async def test_publish_project_uploads_to_shared_drive_target():
         content_type="application/pdf",
         folder_id="FLD-TEAM",
         shared_drive_id="SD-TEAM",
+        kind="ai_generated",
     )
 
 
