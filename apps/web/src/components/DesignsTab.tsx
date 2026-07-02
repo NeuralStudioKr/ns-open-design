@@ -826,7 +826,7 @@ export function DesignsTab({
 									</div>
 									{teamverEmbed && !designSystemProject ? (
 										<div className="design-card-embed-chips">
-											<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
+											<TeamverLatestPublishChip projectId={p.id} />
 										</div>
 									) : null}
 								</div>
@@ -925,7 +925,7 @@ export function DesignsTab({
 													</div>
 													{teamverEmbed && !designSystemProject ? (
 														<div className="design-kanban-card-embed-chips">
-															<TeamverLatestPublishChip projectId={p.id} deferUntilVisible />
+															<TeamverLatestPublishChip projectId={p.id} />
 														</div>
 													) : null}
 												</div>

@@ -29,6 +29,16 @@ function kindLabel(kind: string): string {
   return KIND_LABELS[kind.toLowerCase()] ?? kind.toUpperCase();
 }
 
+const VIEWPORT_ROOT_MARGIN_PX = 120;
+
+function isNearViewport(node: Element): boolean {
+  const rect = node.getBoundingClientRect();
+  return (
+    rect.bottom >= -VIEWPORT_ROOT_MARGIN_PX &&
+    rect.top <= window.innerHeight + VIEWPORT_ROOT_MARGIN_PX
+  );
+}
+
 /** Embed project cards — latest Drive publish deep link (vN). */
 export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false }: Props) {
   const t = useTeamverT();
@@ -51,7 +61,8 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
   useEffect(() => {
     if (!deferUntilVisible) return;
     const node = anchorRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") {
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined" || isNearViewport(node)) {
       setVisible(true);
       return;
     }
@@ -61,7 +72,7 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
         setVisible(true);
         observer.disconnect();
       },
-      { rootMargin: "120px" },
+      { rootMargin: `${VIEWPORT_ROOT_MARGIN_PX}px` },
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -114,11 +125,23 @@ export function TeamverLatestPublishChip({ projectId, deferUntilVisible = false 
   }
 
   if (!visible) {
-    return <span ref={anchorRef} className="teamver-latest-publish-chip-anchor" aria-hidden />;
+    return (
+      <span
+        ref={anchorRef}
+        className="teamver-latest-publish-chip-anchor teamver-latest-publish-chip-anchor--observe"
+        aria-hidden
+      />
+    );
   }
 
   if (!summary) {
-    return <span ref={anchorRef} className="teamver-latest-publish-chip-anchor" aria-hidden />;
+    return (
+      <span
+        ref={anchorRef}
+        className="teamver-latest-publish-chip-anchor teamver-latest-publish-chip-anchor--observe"
+        aria-hidden
+      />
+    );
   }
 
   return (

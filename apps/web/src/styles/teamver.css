@@ -603,6 +603,12 @@
   max-width: 100%;
 }
 
+.teamver-latest-publish-chip-anchor--observe {
+  display: block;
+  width: 100%;
+  min-height: 1px;
+}
+
 .teamver-latest-publish-chip {
   display: inline-flex;
   align-items: center;

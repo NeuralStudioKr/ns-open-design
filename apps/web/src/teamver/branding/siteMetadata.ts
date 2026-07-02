@@ -8,11 +8,10 @@ export const TEAMVER_DEFAULT_BRAND_TITLE = "Teamver Design";
 export const TEAMVER_DEFAULT_BRAND_SUBTITLE = "AI Design Studio";
 export const TEAMVER_DEFAULT_OG_TITLE = `${TEAMVER_OG_SERVICE_NAME} | AI Design`;
 export const TEAMVER_DEFAULT_OG_DESCRIPTION =
-  "Turn ideas into slide drafts quickly with AI.";
+  "팀을 위한 AI 기반 협업 워크스페이스. 아이디어를 AI로 슬라이드·문서 초안까지 빠르게.";
 export const TEAMVER_DEFAULT_HERO_SUBTITLE = TEAMVER_DEFAULT_OG_DESCRIPTION;
 export const TEAMVER_DEFAULT_SITE_URL = "https://design.teamver.com";
-export const TEAMVER_DEFAULT_OG_IMAGE_URL =
-  "https://teamver.com/images/teamver_og_img_v0.png";
+export const TEAMVER_DEFAULT_OG_IMAGE_PATH = TEAMVER_BRAND_ASSETS.ogImage;
 
 export type TeamverSiteMetadata = {
   title: string;
@@ -37,7 +36,9 @@ export function resolveTeamverSiteUrl(): string {
 }
 
 export function resolveTeamverOgImageUrl(): string {
-  return readTeamverViteEnv("VITE_TEAMVER_OG_IMAGE_URL") || TEAMVER_DEFAULT_OG_IMAGE_URL;
+  const override = readTeamverViteEnv("VITE_TEAMVER_OG_IMAGE_URL");
+  if (override?.trim()) return override.trim();
+  return new URL(TEAMVER_DEFAULT_OG_IMAGE_PATH, resolveTeamverSiteUrl()).href;
 }
 
 export function resolveTeamverSiteMetadataValues(): TeamverSiteMetadata {
@@ -73,7 +74,7 @@ export function buildTeamverRootMetadata(): Metadata {
           url: meta.ogImageUrl,
           width: 1200,
           height: 630,
-          alt: "teamver AI Design preview",
+          alt: "teamver Design preview",
         },
       ],
     },

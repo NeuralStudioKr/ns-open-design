@@ -50,7 +50,7 @@ ENV VITE_TEAMVER_MAIN_LOGIN_URL=${VITE_TEAMVER_MAIN_LOGIN_URL}
 ENV VITE_TEAMVER_BRAND_TITLE="Teamver Design"
 ENV VITE_TEAMVER_BRAND_SUBTITLE="AI Design Studio"
 ARG VITE_TEAMVER_SITE_URL=https://design.teamver.com
-ARG VITE_TEAMVER_OG_IMAGE_URL=https://teamver.com/images/teamver_og_img_v0.png
+ARG VITE_TEAMVER_OG_IMAGE_URL=https://design.teamver.com/teamver/teamver-design-opengraph.png
 ENV VITE_TEAMVER_SITE_URL=${VITE_TEAMVER_SITE_URL}
 ENV VITE_TEAMVER_OG_IMAGE_URL=${VITE_TEAMVER_OG_IMAGE_URL}
 # BYOK streaming — daemon message PUT throttle (ms). Override via deploy .env (rebuild required).

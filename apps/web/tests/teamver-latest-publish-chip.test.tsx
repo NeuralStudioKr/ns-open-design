@@ -89,6 +89,18 @@ describe('TeamverLatestPublishChip', () => {
       filename: 'Deck.html',
     });
 
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 5000,
+      bottom: 5020,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 20,
+      x: 0,
+      y: 5000,
+      toJSON: () => ({}),
+    } as DOMRect);
+
     render(<TeamverLatestPublishChip projectId="p-defer" deferUntilVisible />);
     expect(fetchSummaryMock).not.toHaveBeenCalled();
 
@@ -96,5 +108,34 @@ describe('TeamverLatestPublishChip', () => {
 
     await screen.findByTestId('teamver-publish-chip-p-defer');
     expect(fetchSummaryMock).toHaveBeenCalledWith('p-defer');
+    rectSpy.mockRestore();
+  });
+
+  it('loads immediately when deferUntilVisible and the card is already in viewport', async () => {
+    fetchSummaryMock.mockResolvedValue({
+      projectId: 'p-visible',
+      version: 2,
+      kind: 'pdf',
+      driveUrl: 'https://drive.example/a/2',
+      filename: 'Deck.pdf',
+    });
+
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 40,
+      bottom: 80,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 40,
+      x: 0,
+      y: 40,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    render(<TeamverLatestPublishChip projectId="p-visible" deferUntilVisible />);
+
+    await screen.findByTestId('teamver-publish-chip-p-visible');
+    expect(fetchSummaryMock).toHaveBeenCalledWith('p-visible');
+    rectSpy.mockRestore();
   });
 });

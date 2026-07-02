@@ -9,4 +9,6 @@ export const TEAMVER_BRAND_ASSETS = {
   /** fe-v2 favicon assets are not vendored; compact mark works in tab + apple-touch. */
   favicon: "/teamver/Logo-icon.svg",
   favicon32: "/teamver/Logo-icon.svg",
+  /** Open Graph / Twitter card (1200×630). */
+  ogImage: "/teamver/teamver-design-opengraph.png",
 } as const;
