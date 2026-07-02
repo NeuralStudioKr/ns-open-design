@@ -31,6 +31,12 @@
   justify-content: center;
   color: var(--text-muted);
   font-size: 13px;
+  margin-bottom: 4px;
+}
+.home-hero__brand-logo img {
+  height: clamp(88px, 14vw, 128px) !important;
+  width: auto !important;
+  max-width: min(520px, 94vw);
 }
 .home-hero__brand-mark {
   position: absolute;
@@ -2264,6 +2270,10 @@
 }
 
 @media (max-width: 900px) {
+  .home-hero__brand-logo img {
+    height: clamp(72px, 22vw, 96px) !important;
+    max-width: min(420px, 92vw);
+  }
   .home-hero__title {
     font-size: 24px;
   }

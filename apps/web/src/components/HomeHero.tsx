@@ -990,7 +990,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     <section className="home-hero" data-testid="home-hero">
       <div className="home-hero__brand" aria-hidden>
         {teamverEmbed ? (
-          <TeamverLogo variant="wordmark" height={48} />
+          <TeamverLogo variant="wordmark" className="home-hero__brand-logo" height={112} />
         ) : (
           <>
             <span className="home-hero__brand-mark">
