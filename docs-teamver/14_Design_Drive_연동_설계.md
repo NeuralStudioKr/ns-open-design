@@ -102,6 +102,9 @@ Main Mobile도 파일 상세 모달에서 동일 query 계약을 사용한다. i
 
 ### 3.3.1 로컬 다운로드와 Drive 발행 렌더 컨텍스트
 
+> **아키텍처 SSOT:** FE→daemon→scratch 경로·S3 presigned 미사용 여부는 [33_프로젝트_다운로드_Export_아키텍처](./33_프로젝트_다운로드_Export_아키텍처.md) 참고.  
+> **export 부하·개선 로드맵:** [34_Export_성능_개선_로드맵](./34_Export_성능_개선_로드맵.md).
+
 Drive 발행은 기존처럼 design-api → daemon export → Main Drive upload 흐름을 유지한다. 로컬 다운로드는 혼동을 줄이기 위해 Drive publish와 별개 메뉴명은 “다운로드”로 두되, 렌더링은 daemon 서버 경로를 우선한다.
 
 - PDF/이미지 다운로드: daemon headless export가 Vite dev entry shell 대신 `dist/index.html`을 우선 렌더한다.

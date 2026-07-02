@@ -4,6 +4,7 @@
 **문서 SSOT:** [`docs-teamver/README.md`](../../../docs-teamver/README.md) · **구현 누적:** [`00_구현_내역_누적.md`](../../../docs-teamver/00_구현_내역_누적.md)  
 **Prod 출시 게이트:** [`09_Design_저장소_격리_출시게이트.md`](../../../docs-teamver/09_Design_저장소_격리_출시게이트.md)  
 **연동 보강:** [`10_세션·OD패치_보강.md`](../../../docs-teamver/10_세션·OD패치_보강.md) · [`11_Usage·Drive_Publish_보강.md`](../../../docs-teamver/11_Usage·Drive_Publish_보강.md)  
+**Auth 공통 패키지 (platform):** [`ns-teamver-platform/docs/10_Apps_Auth_공통_패턴_패키지화_및_마이그레이션_가이드.md`](../../../../ns-teamver-platform/docs/10_Apps_Auth_공통_패턴_패키지화_및_마이그레이션_가이드.md)  
 **설계 참고:** [`docs-teamver/06_Docs슬라이드형_연동.md`](../../../docs-teamver/06_Docs슬라이드형_연동.md)
 
 Main BE는 **별도 VM** (`api.teamver.com`). OD UI는 `design.teamver.com`, Teamver SSO·bootstrap·usage는 **`teamver-design-api`** 가 담당한다 (Docs/Slides 동형).

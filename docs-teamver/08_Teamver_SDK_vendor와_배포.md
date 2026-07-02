@@ -4,6 +4,8 @@
 
 **관련:** [05 OD UI 재사용](./05_OD_UI_재사용_빠른출시.md) · [07 EC2·배포·인프라](./07_VM_배포_인프라.md) · [06 Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)
 
+**Auth 공통화 (platform SSOT):** [`ns-teamver-platform/docs/10_Apps_Auth_공통_패턴_패키지화_및_마이그레이션_가이드.md`](../../ns-teamver-platform/docs/10_Apps_Auth_공통_패턴_패키지화_및_마이그레이션_가이드.md) — JWT/BFF·workspace·vendor 확장 playbook
+
 **코드:** `vendor/teamver/` · `scripts/sync-teamver-vendor.sh` · `deploy/teamver/deploy.sh`
 
 ---
@@ -42,6 +44,8 @@ pnpm install / docker build  ← tarball·wheel 을 “패키지처럼” instal
         ↓
 Next build / Python image    ← 런타임에는 번들·wheel만 남음
 ```
+
+**로드맵 (auth 패키지):** `teamver-apps-auth` wheel · `@teamver/apps-auth-client` tgz 를 vendor에 추가하면 Design BE `app/auth/*` in-repo 복제를 제거할 수 있다. 절차는 platform **§9·§10** 참고. (2026-07: app-sdk만 sync)
 
 `apps/web/package.json`:
 

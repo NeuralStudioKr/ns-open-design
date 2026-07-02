@@ -30,6 +30,8 @@
 | **[29 BYOK api mode vs runs](./29_BYOK_api_mode_vs_runs_아키텍처.md)** | **왜 POST /api/runs 없음 · S3 sync-up gap · GET vs POST · 근본 fix 옵션 · 부하 FAQ** |
 | **[31 Staging vs Production 네트워크·TLS·DNS](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md)** | **왜 staging/prod가 다른지 · GCP/ALB/nginx 역할 · DNS·인증서·로드밸런싱 SSOT** |
 | **[32 프로젝트 썸네일·cover 로딩](./32_프로젝트_썸네일_커버_로딩_개선.md)** | **동적 registry 미리보기 SSOT · CDN/캐시 정책 · Phase 0~2 로드맵** |
+| **[33 프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)** | **FE→daemon 경로 · scratch/sync-down · S3 presigned 미사용 · Export vs Drive** |
+| **[34 Export 성능 개선](./34_Export_성능_개선_로드맵.md)** | **export 부하 분석 · Chromium/캐시/presigned/async · Phase 0~3 로드맵** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -57,12 +59,14 @@
 | 30 | **[embed home boot API 최적화](./30_embed_home_boot_API_최적화.md)** |
 | 31 | **[Staging vs Production 네트워크·TLS·DNS](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md)** |
 | 32 | **[프로젝트 썸네일·cover 로딩](./32_프로젝트_썸네일_커버_로딩_개선.md)** |
+| 33 | **[프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)** |
+| 34 | **[Export 성능 개선](./34_Export_성능_개선_로드맵.md)** |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
 | 06 | **[Docs/Slides형 연동](./06_Docs슬라이드형_연동.md)** |
 | 07 | **[EC2·배포·인프라](./07_VM_배포_인프라.md)** |
-| 08 | **[Teamver SDK vendor · 배포](./08_Teamver_SDK_vendor와_배포.md)** |
+| 08 | **[Teamver SDK vendor · 배포](./08_Teamver_SDK_vendor와_배포.md)** · auth 공통화: [platform §10](../../ns-teamver-platform/docs/10_Apps_Auth_공통_패턴_패키지화_및_마이그레이션_가이드.md) |
 | 04 | [구현 우선순위](./04_구현_우선순위.md) |
 | 01 | [통합 아키텍처](./01_통합_아키텍처.md) |
 | 02 | [design-app ↔ daemon](./02_design-app_daemon_연동.md) |
