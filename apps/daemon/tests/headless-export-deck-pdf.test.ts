@@ -4,12 +4,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildDeckFlattenCssRules,
+  buildDeckGuizangPrintFallbackCss,
   buildDeckPrintCss,
   buildDeckScreenExportCss,
   chromiumExecutableCandidates,
   chromiumLaunchArgs,
   chromiumRuntimeEnv,
   chromiumRuntimePaths,
+  DECK_CHROME_HIDE_SELECTOR,
+  DECK_WRAPPER_SELECTOR,
   ensureChromiumRuntimeDirs,
   imageScreenshotOptions,
   patchArtifactDeckPrintBackground,
@@ -84,6 +87,9 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('.deck');
     expect(css).toContain('.deck-shell');
     expect(css).toContain('.deck-stage');
+    expect(css).toContain('#deck');
+    expect(css).toContain('#nav');
+    expect(css).toContain('canvas.bg');
     expect(css).not.toMatch(/\.deck-stage[^}]*height:\s*auto/);
     expect(css).toContain('page-break-before: avoid !important');
     expect(css).toContain('page-break-after: always !important');
@@ -100,6 +106,19 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).toContain('background: var(--shell');
     expect(screenCss).not.toContain('background: #fff !important');
     expect(screenCss).toContain('print-color-adjust: exact');
+  });
+
+  it('exports shared deck wrapper and chrome hide selectors', () => {
+    expect(DECK_WRAPPER_SELECTOR).toContain('#deck');
+    expect(DECK_CHROME_HIDE_SELECTOR).toContain('#nav');
+    expect(DECK_CHROME_HIDE_SELECTOR).toContain('canvas.bg');
+  });
+
+  it('strengthens guizang ::before overlays for print', () => {
+    const css = buildDeckGuizangPrintFallbackCss();
+    expect(css).toContain('.slide.hero.dark::before');
+    expect(css).toContain('rgba(var(--ink-rgb), .88)');
+    expect(css).toContain('backdrop-filter: none');
   });
 
   it('patches artifact @media print white backgrounds to deck CSS variables', () => {

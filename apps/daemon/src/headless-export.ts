@@ -43,6 +43,14 @@ const IMAGE_DEVICE_SCALE_FACTOR = 2;
 const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
 
+/** Horizontal carousel / stage wrappers that must not generate a print box. */
+export const DECK_WRAPPER_SELECTOR =
+  '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';
+
+/** Navigation, hints, and non-slide chrome hidden during deck PDF export. */
+export const DECK_CHROME_HIDE_SELECTOR =
+  '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
 }
@@ -82,10 +90,9 @@ export function buildDeckFlattenCssRules(): string {
   /* Wrappers must not generate a box — a static 1920×1080 .deck-stage with
      absolutely positioned slides produces an empty first printed page before
      slide content flows (title fragments leak onto page 1, real slides start
-     on page 2). display:contents hoists slides directly into body flow. */
-  .deck,
-  .deck-shell,
-  .deck-stage, .stage {
+     on page 2). display:contents hoists slides directly into body flow.
+     guizang-ppt uses #deck (10000vw horizontal flex) — same failure mode. */
+  ${DECK_WRAPPER_SELECTOR.split(',').map((sel) => sel.trim()).join(',\n  ')} {
     display: contents !important;
     transform: none !important;
   }
@@ -118,14 +125,33 @@ export function buildDeckFlattenCssRules(): string {
     page-break-before: avoid !important;
     break-before: avoid !important;
   }
-  ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
-    page-break-before: avoid !important;
-    break-before: avoid !important;
-  }
-  .deck-counter, .deck-hint, .deck-nav,
-  #deck-prev, #deck-next, #deck-cur, #deck-total,
-  [aria-label="Previous slide"], [aria-label="Next slide"] {
+  ${DECK_CHROME_HIDE_SELECTOR} {
     display: none !important;
+  }
+  ${buildDeckGuizangPrintFallbackCss()}`;
+}
+
+/** guizang-ppt relies on WebGL canvases + low-opacity ::before overlays. */
+export function buildDeckGuizangPrintFallbackCss(): string {
+  return `
+  canvas.bg, #nav, #hint, #overview {
+    display: none !important;
+  }
+  .slide.light::before {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(var(--paper-rgb), .95) !important;
+  }
+  .slide.dark::before {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(var(--ink-rgb), .92) !important;
+  }
+  .slide.hero.light::before {
+    background: rgba(var(--paper-rgb), .92) !important;
+  }
+  .slide.hero.dark::before {
+    background: rgba(var(--ink-rgb), .88) !important;
   }`;
 }
 
@@ -472,13 +498,48 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
 
       const rootStyle = window.getComputedStyle(document.documentElement);
-      const slideBg =
+      const resolveShellBackground = () =>
+        rootStyle.getPropertyValue('--shell').trim() ||
         rootStyle.getPropertyValue('--bg').trim() ||
+        rootStyle.getPropertyValue('--ink').trim() ||
         rootStyle.getPropertyValue('background-color').trim() ||
         '#0a0c10';
-      const shellBg = rootStyle.getPropertyValue('--shell').trim() || slideBg;
+      const resolveSlidePrintBackground = (el) => {
+        if (el.classList.contains('light')) {
+          return rootStyle.getPropertyValue('--paper').trim() || '#f1efea';
+        }
+        if (el.classList.contains('dark')) {
+          return rootStyle.getPropertyValue('--ink').trim() || '#0a0a0b';
+        }
+        const computed = window.getComputedStyle(el);
+        const bg = computed.backgroundColor;
+        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+        return resolveShellBackground();
+      };
 
-      document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+      document.querySelectorAll('canvas.bg').forEach((canvas) => {
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          if (!dataUrl || dataUrl === 'data:,') return;
+          const img = document.createElement('img');
+          img.setAttribute('data-od-rasterized-bg', canvas.id || 'bg');
+          img.src = dataUrl;
+          set(img, 'position', 'fixed');
+          set(img, 'inset', '0');
+          set(img, 'width', '100%');
+          set(img, 'height', '100%');
+          set(img, 'z-index', '0');
+          set(img, 'pointer-events', 'none');
+          set(img, 'object-fit', 'cover');
+          const opacity = window.getComputedStyle(canvas).opacity;
+          if (opacity) set(img, 'opacity', opacity);
+          canvas.replaceWith(img);
+        } catch (_) {}
+      });
+
+      const shellBg = resolveShellBackground();
+
+      document.querySelectorAll(args.wrapperSelector).forEach((el) => {
         set(el, 'display', 'contents');
         set(el, 'transform', 'none');
         set(el, 'box-shadow', 'none');
@@ -509,7 +570,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'height', args.height + 'px');
         set(el, 'min-height', args.height + 'px');
         set(el, 'max-height', args.height + 'px');
-        set(el, 'background', slideBg);
+        set(el, 'background', resolveSlidePrintBackground(el));
         set(el, 'visibility', 'visible');
         set(el, 'opacity', '1');
         set(el, 'overflow', 'hidden');
@@ -537,15 +598,15 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       document.documentElement.style.setProperty('--deck-scale', '1');
 
       document
-        .querySelectorAll(
-          '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, [aria-label="Previous slide"], [aria-label="Next slide"]',
-        )
+        .querySelectorAll(args.chromeHideSelector)
         .forEach((el) => set(el, 'display', 'none'));
 
       return slides.length;
     `,
     {
       selector: DECK_SLIDE_SELECTOR,
+      wrapperSelector: DECK_WRAPPER_SELECTOR,
+      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
       width: DECK_WIDTH,
       height: DECK_HEIGHT,
     },
@@ -637,9 +698,7 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
       ${deck ? `
       html, body { width: ${DECK_WIDTH}px !important; min-height: ${DECK_HEIGHT}px !important; overflow: hidden !important; }
       ${DECK_SLIDE_SELECTOR} { overflow: hidden !important; }
-      .deck-counter, .deck-hint, .deck-nav,
-      #deck-prev, #deck-next, #deck-cur, #deck-total,
-      [aria-label="Previous slide"], [aria-label="Next slide"] {
+      ${DECK_CHROME_HIDE_SELECTOR} {
         display: none !important;
       }` : ''}
     `,
@@ -681,7 +740,7 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     set(document.body, 'width', args.width + 'px');
     set(document.body, 'height', args.height + 'px');
 
-    document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+    document.querySelectorAll(args.wrapperSelector).forEach((el) => {
       set(el, 'position', 'relative');
       set(el, 'display', 'block');
       set(el, 'inset', 'auto');
@@ -716,6 +775,7 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     {
       index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
       selector: DECK_SLIDE_SELECTOR,
+      wrapperSelector: DECK_WRAPPER_SELECTOR,
       width: DECK_WIDTH,
       height: DECK_HEIGHT,
     },
@@ -732,9 +792,7 @@ async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? `
-      .deck-counter, .deck-hint, .deck-nav,
-      #deck-prev, #deck-next, #deck-cur, #deck-total,
-      [aria-label="Previous slide"], [aria-label="Next slide"] {
+      ${DECK_CHROME_HIDE_SELECTOR} {
         display: none !important;
       }` : ''}
     `,
@@ -870,7 +928,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     page,
     `
     const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
-    document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+    document.querySelectorAll(args.wrapperSelector).forEach((el) => {
       set(el, 'transform', 'none');
       set(el, 'box-shadow', 'none');
     });
@@ -881,7 +939,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     set(document.body, 'margin', '0');
     document.documentElement.style.setProperty('--deck-scale', '1');
   `,
-    { width: DECK_WIDTH, height: DECK_HEIGHT },
+    { width: DECK_WIDTH, height: DECK_HEIGHT, wrapperSelector: DECK_WRAPPER_SELECTOR },
   ).catch(() => {});
 }
 
