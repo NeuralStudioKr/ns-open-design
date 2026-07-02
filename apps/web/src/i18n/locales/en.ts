@@ -2655,7 +2655,7 @@ export const en: Dict = {
   'teamver.canvasSlideLaunch.confirm': 'Create slides',
   'teamver.canvasSlideLaunch.cancel': 'Cancel',
   'teamver.canvasSlideLaunch.working': 'Starting…',
-  'teamver.about.panelHint': 'Licenses and version info',
+  'teamver.about.panelHint': 'About',
   'teamver.about.openSourceTitle': 'Open source software',
   'teamver.about.openSourceIntro': 'Teamver Design includes the following open source components.',
   'teamver.about.basedOn': 'Includes software based on Open Design, modified for Teamver.',

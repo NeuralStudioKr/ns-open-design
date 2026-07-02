@@ -30,3 +30,7 @@ POST /teamver-bff/auth/refresh -> 401 Unauthorized
 ## 운영 확인
 
 staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진입에서 `POST /teamver-bff/auth/refresh`가 발생하지 않는지 확인한다. 로그인 복귀나 세션 재시도 버튼 클릭 시에만 refresh 호출이 발생해야 한다.
+
+## 2026-07-02 추가 확인
+
+프로젝트 상세 진입 중 보이는 CORS 에러 중 일부는 `/teamver-bff/auth/refresh` 자체가 아니라 daemon `/api/version`, `/api/runs`가 nginx auth_request에서 Main signin 302를 반환하고 브라우저 fetch가 cross-origin redirect를 따라가며 발생했다. 해당 경로는 `fetchTeamverDaemon`으로 통일하고 redirect를 manual 처리해 signin CORS preflight로 확산되지 않도록 보강했다.

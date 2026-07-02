@@ -10,12 +10,13 @@ Teamver embed still exposed Open Design-specific wording in project detail surfa
 ## Changes
 
 - Hide design-toolbox skill/plugin resources whose title, id, source, or description contains `Open Design` / `open-design` in Teamver embed.
-- Keep the settings popover compact: show only a `라이선스 및 버전 정보` entry point.
+- Apply the hide rule from the active Teamver branding context, not only from hostname/env embed detection. This prevents project detail flyouts from leaking OD catalog rows when the route is branded but `isTeamverEmbedMode()` is not enough.
+- Keep the settings popover compact: show only a short `정보` / `About` entry point.
 - Keep detailed Apache/MIT notices in Settings -> About so attribution requirements remain available.
 
 ## Verification
 
-- `apps/web`: `pnpm exec vitest run tests/teamver-embed-slide-only.test.ts tests/teamver/teamver-about-open-source.test.tsx` -> 15 passed.
+- `apps/web`: `pnpm exec vitest run tests/teamver/toolbox-catalog-display.test.ts tests/teamver-embed-slide-only.test.ts tests/teamver/teamver-about-open-source.test.tsx` -> 18 passed.
 
 ## Staging Check
 

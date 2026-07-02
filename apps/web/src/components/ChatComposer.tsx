@@ -2644,6 +2644,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   activeMcpServerIds={stagedMcpServers.map((server) => server.id)}
                   activeConnectorIds={stagedConnectors.map((connector) => connector.id)}
                   activeFilePaths={staged.map((item) => item.path)}
+                  teamverBranded={branding.enabled}
                   onOpened={() => trackDesignToolbox({ element: 'design_toolbox_open' })}
                   onPickAction={(action) => {
                     trackDesignToolbox({
@@ -2700,6 +2701,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     activeMcpServerIds={stagedMcpServers.map((server) => server.id)}
                     activeConnectorIds={stagedConnectors.map((connector) => connector.id)}
                     activeFilePaths={staged.map((item) => item.path)}
+                    teamverBranded={branding.enabled}
                     onOpened={() => trackDesignToolbox({ element: 'design_toolbox_open' })}
                     onPickAction={(action) => {
                       trackDesignToolbox({
@@ -3721,6 +3723,7 @@ function DesignToolboxPanel({
   onPickSkill,
   onPickResource,
   onOpened,
+  teamverBranded = false,
 }: {
   actions: DesignToolboxAction[];
   skills: SkillSummary[];
@@ -3738,6 +3741,7 @@ function DesignToolboxPanel({
   onPickSkill: (skill: SkillSummary) => void;
   onPickResource: (resource: DesignToolboxResource) => void;
   onOpened?: () => void;
+  teamverBranded?: boolean;
 }) {
   const { locale, t } = useI18n();
   const [query, setQuery] = useState('');
@@ -3761,8 +3765,9 @@ function DesignToolboxPanel({
         projectFiles,
         locale,
         t,
+        teamverBranded,
       }),
-    [connectors, locale, mcpServers, mcpTemplates, plugins, projectFiles, skills, t],
+    [connectors, locale, mcpServers, mcpTemplates, plugins, projectFiles, skills, t, teamverBranded],
   );
   const visibleActions = useMemo(
     () =>
@@ -4110,9 +4115,14 @@ function buildDesignToolboxResources({
   projectFiles,
   locale,
   t,
-}: DesignToolboxResourceIndex & { locale: Locale; t: TranslateFn }): DesignToolboxResource[] {
+  teamverBranded,
+}: DesignToolboxResourceIndex & {
+  locale: Locale;
+  t: TranslateFn;
+  teamverBranded?: boolean;
+}): DesignToolboxResource[] {
   const resources: DesignToolboxResource[] = [];
-  const teamverEmbed = isTeamverEmbedMode();
+  const teamverEmbed = teamverBranded || isTeamverEmbedMode();
 
   for (const skill of skills) {
     if (teamverEmbed && shouldHideTeamverToolboxSkill(skill, locale)) {

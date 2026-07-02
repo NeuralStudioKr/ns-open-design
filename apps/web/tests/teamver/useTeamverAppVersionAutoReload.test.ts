@@ -6,7 +6,12 @@ vi.mock('../../src/teamver/designApiBase', () => ({
   isTeamverEmbedMode: vi.fn(() => true),
 }));
 
+vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
+  fetchTeamverDaemon: vi.fn((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)),
+}));
+
 import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
+import { resetDaemonAppVersionCacheForTests } from '../../src/teamver/daemonAppVersion';
 import { useTeamverAppVersionAutoReload } from '../../src/teamver/useTeamverAppVersionAutoReload';
 
 type VersionPayload = { version: { version: string } };
@@ -30,6 +35,7 @@ describe('useTeamverAppVersionAutoReload', () => {
   });
 
   afterEach(() => {
+    resetDaemonAppVersionCacheForTests();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();

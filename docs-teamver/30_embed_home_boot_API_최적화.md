@@ -258,5 +258,6 @@ deploy/teamver/.env.production.example
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-02 | `/api/version` auto-reload poll도 `fetchTeamverDaemon` 경유로 통일하고 embed daemon `/api/*` fetch 기본값을 `credentials: include` + `redirect: manual`로 고정. 인증 쿠키가 없거나 nginx auth_request가 302 signin을 반환해도 브라우저가 `stg.teamver.com/auth/signin` CORS preflight를 따라가지 않으므로 콘솔 CORS 에러로 번지지 않고 호출자는 `!resp.ok`로 조용히 무시/재시도한다. 운영 확인: project detail 진입 시 `/api/version`, `/api/runs`가 200/401/302 manual 응답으로 처리되고 cross-origin signin fetch가 발생하지 않아야 한다. |
 | 2026-06-30 | §3.7 `fetchTeamverDaemon` credentials · `/api/runs` 302 fix (배포 검증 대기) |
 | 2026-06-29 | 초版 — hidden unmount, embedDaemonFetchPolicy, dedup, daemon access/SPA cache |

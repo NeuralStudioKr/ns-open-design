@@ -2655,7 +2655,7 @@ export const ko: Dict = {
   'teamver.canvasSlideLaunch.confirm': '슬라이드 만들기',
   'teamver.canvasSlideLaunch.cancel': '취소',
   'teamver.canvasSlideLaunch.working': '시작 중…',
-  'teamver.about.panelHint': '라이선스 및 버전 정보',
+  'teamver.about.panelHint': '정보',
   'teamver.about.openSourceTitle': '오픈소스 소프트웨어',
   'teamver.about.openSourceIntro': 'Teamver Design은 다음 오픈소스 구성요소를 포함합니다.',
   'teamver.about.basedOn': 'Open Design 기반 소프트웨어를 Teamver용으로 수정·통합했습니다.',

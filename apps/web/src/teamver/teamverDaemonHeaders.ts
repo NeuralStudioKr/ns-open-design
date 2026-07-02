@@ -40,6 +40,22 @@ export type TeamverDaemonFetchInit = RequestInit & {
   teamverProjectId?: string | null;
 };
 
+function isLikelyDaemonApiRequest(input: RequestInfo | URL): boolean {
+  const raw =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? `${input.pathname}${input.search}`
+        : input.url;
+  try {
+    const url = /^https?:\/\//i.test(raw) ? new URL(raw) : null;
+    const path = url ? url.pathname : raw;
+    return path.startsWith("/api/");
+  } catch {
+    return raw.startsWith("/api/");
+  }
+}
+
 const daemonGetInflight = new Map<string, Promise<Response>>();
 
 function daemonGetInflightKey(
@@ -97,11 +113,14 @@ export async function fetchTeamverDaemon(
   // include avoids sporadic 302 signin on background polls like GET /api/runs.
   const credentials =
     requestInit.credentials ?? (isTeamverEmbedMode() ? "include" : "same-origin");
+  const redirect =
+    requestInit.redirect ?? (isTeamverEmbedMode() && isLikelyDaemonApiRequest(input) ? "manual" : undefined);
+  const nextInit = { ...requestInit, headers, credentials, ...(redirect ? { redirect } : {}) };
   const dedupeKey = daemonGetInflightKey(input, requestInit, headers);
-  if (!dedupeKey) return fetch(input, { ...requestInit, headers, credentials });
+  if (!dedupeKey) return fetch(input, nextInit);
   const existing = daemonGetInflight.get(dedupeKey);
   if (existing) return existing.then((resp) => resp.clone());
-  const promise = fetch(input, { ...requestInit, headers, credentials });
+  const promise = fetch(input, nextInit);
   daemonGetInflight.set(dedupeKey, promise);
   try {
     const resp = await promise;
