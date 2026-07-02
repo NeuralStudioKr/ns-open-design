@@ -133,7 +133,7 @@ function resetDesignAuthRefreshDeclined(): void {
 function shouldAttemptCookieRefresh(): boolean {
   if (authRefreshDeclinedForSession) return false;
   if (isBootstrapAuthMode()) {
-    return !unauthenticatedRefreshAttempted || authRecoveryRefreshActive;
+    return authRecoveryRefreshActive || isTeamverEmbedSessionAuthenticated();
   }
   if (hasProbableTeamverAuthCookie() || isTeamverEmbedSessionAuthenticated()) return true;
   return !unauthenticatedRefreshAttempted;

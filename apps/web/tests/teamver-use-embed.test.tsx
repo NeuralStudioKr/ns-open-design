@@ -13,6 +13,8 @@ import { NetworkError } from "@teamver/app-sdk";
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
+  isBootstrapAuthMode: vi.fn(() => true),
+  buildDesignColdStartLoginUrl: vi.fn(() => "https://teamver.com/auth/signin?app_id=teamver-design"),
   resolveTeamverLoginUrl: vi.fn(() => "https://teamver.com/auth/signin"),
   redirectToTeamverLogin: vi.fn(),
 }));
@@ -57,6 +59,7 @@ describe("useTeamverEmbed", () => {
   beforeEach(() => {
     cleanup();
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designApiBase.isBootstrapAuthMode).mockReturnValue(true);
     vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
     vi.mocked(designBffClient.fetchDesignAuthSession).mockReset();
     vi.mocked(designBffClient.getDesignBffClient).mockReset();

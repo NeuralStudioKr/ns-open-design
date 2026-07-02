@@ -1,0 +1,32 @@
+# BFF Auth Refresh 401 정리
+
+## 증상
+
+Teamver embed 프로젝트 상세 페이지 진입 중 DevTools Network에 다음 요청이 보일 수 있었다.
+
+```text
+POST /teamver-bff/auth/refresh -> 401 Unauthorized
+```
+
+## 원인
+
+현재 hosted Design은 Apps JWT + design-api BFF HttpOnly session을 사용한다. BFF 세션이 없으면 `/teamver-bff/auth/session`은 `authenticated:false` 또는 401 계열로 판단되고, `/teamver-bff/auth/refresh`는 세션이 없기 때문에 401을 반환하는 것이 정상이다.
+
+문제는 FE가 이 상태를 일반 프로젝트 상세 진입에서도 “refresh를 한 번 시도해 볼 수 있는 상태”로 오판한 점이다. 이는 과거 Plan B cookie SSO 시절의 `authenticated:false -> refresh once` 회복 로직이 Apps JWT bootstrap 모드에도 남아 있었기 때문이다.
+
+## 수정
+
+- bootstrap auth mode에서는 bare `authenticated:false`만으로 `/teamver-bff/auth/refresh`를 호출하지 않는다.
+- refresh는 다음 경우에만 허용한다.
+  - 명시적 인증 회복 경로: 로그인 복귀, 배너의 세션 재시도처럼 `resetRefreshState`가 지정된 경우
+  - 이미 embed BFF 세션이 인증된 상태였는데 세션 probe가 401로 만료된 경우
+- legacy visible cookie hint(`teamver_access_token`)만으로는 hosted bootstrap 모드에서 refresh를 호출하지 않는다.
+
+## 검증
+
+- `apps/web`: `pnpm exec vitest run tests/teamver-design-auth-session.test.ts` -> 13 passed.
+- `apps/web`: `pnpm exec vitest run tests/teamver-use-embed.test.tsx tests/teamver-design-auth-session.test.ts` -> 24 passed.
+
+## 운영 확인
+
+staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진입에서 `POST /teamver-bff/auth/refresh`가 발생하지 않는지 확인한다. 로그인 복귀나 세션 재시도 버튼 클릭 시에만 refresh 호출이 발생해야 한다.
