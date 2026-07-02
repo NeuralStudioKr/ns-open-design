@@ -2138,6 +2138,8 @@ export const zhTW: Dict = {
   'fileViewer.exportJsx': '匯出為 JSX',
   'fileViewer.exportReactHtml': '匯出預覽 HTML',
   'fileViewer.exportStarted': '已開始匯出',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': '儲存為範本…',
   'fileViewer.savingTemplate': '正在儲存範本…',
   'fileViewer.savedTemplate': '已儲存為「{name}」',

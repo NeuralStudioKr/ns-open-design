@@ -60,6 +60,75 @@ function triggerHrefDownload(href: string, filename: string): void {
   document.body.removeChild(a);
 }
 
+type ExportTicketResponse = {
+  delivery: 'ticket';
+  downloadUrl: string;
+  filename: string;
+  mime?: string;
+  expiresAt?: string;
+};
+
+export class ExportQueueFullError extends Error {
+  readonly code = 'EXPORT_QUEUE_FULL';
+
+  constructor(message = '내보내기 요청이 많아 잠시 대기 중입니다. 15초 후 다시 시도해 주세요.') {
+    super(message);
+    this.name = 'ExportQueueFullError';
+  }
+}
+
+export function isExportQueueFullError(err: unknown): err is ExportQueueFullError {
+  return err instanceof ExportQueueFullError;
+}
+
+async function readExportTicketResponse(resp: Response): Promise<ExportTicketResponse> {
+  const body = (await resp.json()) as Partial<ExportTicketResponse>;
+  if (body.delivery !== 'ticket' || typeof body.downloadUrl !== 'string' || !body.downloadUrl) {
+    throw new Error('export ticket response missing downloadUrl');
+  }
+  return {
+    delivery: 'ticket',
+    downloadUrl: body.downloadUrl,
+    filename: typeof body.filename === 'string' && body.filename.trim()
+      ? body.filename
+      : 'export',
+    mime: typeof body.mime === 'string' ? body.mime : undefined,
+    expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : undefined,
+  };
+}
+
+async function triggerExportTicketDownload(resp: Response, fallbackTitle: string, extension: string): Promise<void> {
+  const ticket = await readExportTicketResponse(resp);
+  triggerHrefDownload(ticket.downloadUrl, ticket.filename || `${safeFilename(fallbackTitle, 'artifact')}.${extension}`);
+}
+
+async function throwIfDaemonExportFailed(resp: Response, context: string): Promise<void> {
+  if (resp.ok || resp.status === 201) return;
+  const { message, code } = await readDaemonApiError(resp);
+  if (
+    resp.status === 503
+    && (code === 'EXPORT_QUEUE_FULL' || message.toLowerCase().includes('queue full'))
+  ) {
+    throw new ExportQueueFullError();
+  }
+  throw new Error(
+    message ? `${context} ${resp.status}: ${message}` : `${context} unavailable (${resp.status})`,
+  );
+}
+
+async function consumeDaemonExportDownload(
+  resp: Response,
+  fallbackTitle: string,
+  extension: string,
+): Promise<void> {
+  await throwIfDaemonExportFailed(resp, 'export request');
+  if (resp.status === 201) {
+    await triggerExportTicketDownload(resp, fallbackTitle, extension);
+    return;
+  }
+  triggerDownload(await resp.blob(), attachmentFilenameFrom(resp, fallbackTitle, extension));
+}
+
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   triggerHrefDownload(url, filename);
@@ -95,15 +164,17 @@ export async function exportProjectAsHtml(opts: {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
       body: JSON.stringify({
         deck: opts.deck === true,
+        delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.fallbackTitle,
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    if (!resp.ok) throw new Error(`html export request failed (${resp.status})`);
-    const blob = await resp.blob();
-    triggerDownload(blob, attachmentFilenameFrom(resp, opts.fallbackTitle, 'html'));
+    if (!resp.ok && resp.status !== 201) {
+      await throwIfDaemonExportFailed(resp, 'html export request');
+    }
+    await consumeDaemonExportDownload(resp, opts.fallbackTitle, 'html');
   } catch (err) {
     if (opts.requireRenderedExport) {
       console.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
@@ -787,14 +858,21 @@ export async function exportProjectAsPdf(opts: {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
       body: JSON.stringify({
         deck: opts.deck,
+        delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.title,
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    if (!resp.ok) throw new Error(`daemon PDF export unavailable (${resp.status})`);
+    if (!resp.ok && resp.status !== 201) {
+      await throwIfDaemonExportFailed(resp, 'daemon PDF export');
+    }
     const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    if (resp.status === 201) {
+      await triggerExportTicketDownload(resp, opts.title, 'pdf');
+      return 'desktop';
+    }
     if (contentType.includes('application/pdf')) {
       const blob = await resp.blob();
       if (blob.size <= 0) throw new Error('daemon PDF export returned an empty file');
@@ -806,6 +884,7 @@ export async function exportProjectAsPdf(opts: {
     if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
     return 'desktop';
   } catch (err) {
+    if (isExportQueueFullError(err)) throw err;
     daemonErr = err;
     console.warn('[exportProjectAsPdf] falling back to browser print:', err);
   }
@@ -853,30 +932,40 @@ export type ProjectImageBlobResult =
  * Returns the empty string when no usable detail is found so callers can
  * fall back to a status-only message without an extra null-check.
  */
-async function readDaemonErrorReason(resp: Response): Promise<string> {
+async function readDaemonApiError(resp: Response): Promise<{ message: string; code: string }> {
   let body: unknown;
   try {
     body = await resp.json();
   } catch {
-    return '';
+    return { message: '', code: '' };
   }
-  if (!body || typeof body !== 'object') return '';
+  if (!body || typeof body !== 'object') return { message: '', code: '' };
   const record = body as Record<string, unknown>;
   const error = record.error;
   if (error && typeof error === 'object') {
     const errRecord = error as Record<string, unknown>;
-    if (typeof errRecord.message === 'string' && errRecord.message.trim()) {
-      return errRecord.message.trim();
-    }
-    if (typeof errRecord.code === 'string' && errRecord.code.trim()) {
-      return errRecord.code.trim();
-    }
+    const message =
+      typeof errRecord.message === 'string' && errRecord.message.trim()
+        ? errRecord.message.trim()
+        : '';
+    const code =
+      typeof errRecord.code === 'string' && errRecord.code.trim()
+        ? errRecord.code.trim()
+        : '';
+    return { message: message || code, code };
   }
-  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (typeof error === 'string' && error.trim()) {
+    return { message: error.trim(), code: '' };
+  }
   if (typeof record.message === 'string' && record.message.trim()) {
-    return record.message.trim();
+    return { message: record.message.trim(), code: '' };
   }
-  return '';
+  return { message: '', code: '' };
+}
+
+async function readDaemonErrorReason(resp: Response): Promise<string> {
+  const { message } = await readDaemonApiError(resp);
+  return message;
 }
 
 export async function exportProjectImageBlob(opts: {
@@ -893,6 +982,7 @@ export async function exportProjectImageBlob(opts: {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/image`, {
       body: JSON.stringify({
         deck: opts.deck,
+        delivery: 'ticket',
         fileName: opts.filePath,
         format,
         slideIndex: Number.isFinite(opts.slideIndex) ? opts.slideIndex : undefined,
@@ -901,20 +991,34 @@ export async function exportProjectImageBlob(opts: {
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
+    if (resp.status === 201) {
+      const ticket = await readExportTicketResponse(resp);
+      const downloadResp = await fetchTeamverDaemon(ticket.downloadUrl);
+      if (!downloadResp.ok) {
+        throw new Error(`daemon image export download failed (${downloadResp.status})`);
+      }
+      const contentType = (downloadResp.headers.get('content-type') || '').toLowerCase();
+      const expectedContentType =
+        format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+      if (!contentType.startsWith(expectedContentType)) {
+        throw new Error(
+          `daemon image export returned ${contentType || 'unknown content-type'} for ${format}`,
+        );
+      }
+      const blob = await downloadResp.blob();
+      if (blob.size <= 0) throw new Error('daemon image export returned an empty file');
+      return {
+        ok: true,
+        blob,
+        filename: ticket.filename || attachmentFilenameFrom(
+          downloadResp,
+          opts.title,
+          format === 'jpeg' ? 'jpg' : format === 'webp' ? 'webp' : 'png',
+        ),
+      };
+    }
     if (!resp.ok) {
-      // Daemon returns 500 EXPORT_FAILED with a structured ApiErrorResponse
-      // body (`{ error: { code, message, ... } }`, see
-      // packages/contracts/src/errors.ts). Some legacy code paths still
-      // return `{ error: 'string' }` or `{ message: 'string' }` so we probe
-      // multiple shapes before falling back to a status-only message. The
-      // resolved `detail` is surfaced in dev/staging toasts so operators
-      // can diagnose without opening the network panel.
-      const detail = await readDaemonErrorReason(resp);
-      throw new Error(
-        detail
-          ? `daemon image export ${resp.status}: ${detail}`
-          : `daemon image export unavailable (${resp.status})`,
-      );
+      await throwIfDaemonExportFailed(resp, 'daemon image export');
     }
     const contentType = (resp.headers.get('content-type') || '').toLowerCase();
     const expectedContentType =
@@ -1008,14 +1112,17 @@ export async function exportProjectAsZip(opts: {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
       body: JSON.stringify({
         deck: opts.deck === true,
+        delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.fallbackTitle,
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     });
-    if (!resp.ok) throw new Error(`rendered ZIP export unavailable (${resp.status})`);
-    triggerDownload(await resp.blob(), attachmentFilenameFrom(resp, opts.fallbackTitle, 'zip'));
+    if (!resp.ok && resp.status !== 201) {
+      await throwIfDaemonExportFailed(resp, 'rendered ZIP export');
+    }
+    await consumeDaemonExportDownload(resp, opts.fallbackTitle, 'zip');
     return;
   } catch (err) {
     if (opts.requireRenderedExport) {
@@ -1332,6 +1439,7 @@ const DECK_PRINT_CSS = `
     width: 1920px !important;
     height: auto !important;
     overflow: visible !important;
+    background: var(--shell, var(--bg, #ffffff)) !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -1366,12 +1474,13 @@ const DECK_PRINT_CSS = `
     height: 1080px !important;
     min-height: 1080px !important;
     max-height: 1080px !important;
+    background: var(--bg, var(--shell, #ffffff)) !important;
+    overflow: hidden !important;
     page-break-after: always !important;
     break-after: page !important;
     break-inside: avoid !important;
     scroll-snap-align: none !important;
     transform: none !important;
-    overflow: visible !important;
     visibility: visible !important;
     opacity: 1 !important;
   }

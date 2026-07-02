@@ -5,6 +5,7 @@ import {
   defaultScenarioPluginIdForProjectMetadata,
   type ChatSessionMode,
   type PluginManifest,
+  repairArtifactDocumentHead,
 } from '@open-design/contracts';
 import { createProjectArtifactFile } from './artifact-create.js';
 import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
@@ -2262,6 +2263,11 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     return filePath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
   }
 
+  function maybeRepairServedHtml(file: { mime: string; buffer: Buffer }, html: string): string {
+    if (!/^text\/html(?:;|$)/i.test(file.mime)) return html;
+    return repairArtifactDocumentHead(html);
+  }
+
   async function maybeResolveVitePreviewHtml({
     file,
     projectId,
@@ -2489,14 +2495,18 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         relPath,
         project.metadata,
         () => setProjectPreviewHeaders(res),
-        async (file) => maybeResolveVitePreviewHtml({
-          file,
-          projectId: project.id,
-          relPath,
-          metadata: project.metadata,
-          projectsRoot: PROJECTS_DIR,
-          readProjectFile,
-        }),
+        async (file) => {
+          let transformed = await maybeResolveVitePreviewHtml({
+            file,
+            projectId: project.id,
+            relPath,
+            metadata: project.metadata,
+            projectsRoot: PROJECTS_DIR,
+            readProjectFile,
+          });
+          const html = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
+          return maybeRepairServedHtml(file, html);
+        },
       );
     } catch (err: any) {
       const status = err && err.code === 'ENOENT' ? 404 : 400;
@@ -2570,7 +2580,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             }
             transformed = html;
           }
-          return transformed;
+          const servedHtml = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
+          return maybeRepairServedHtml(file, servedHtml);
         },
       );
     } catch (err: any) {

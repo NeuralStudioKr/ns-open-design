@@ -2138,6 +2138,8 @@ export const id: Dict = {
   'fileViewer.exportJsx': 'Ekspor JSX',
   'fileViewer.exportReactHtml': 'Ekspor React HTML',
   'fileViewer.exportStarted': 'Export started',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': 'Simpan sebagai templat',
   'fileViewer.savingTemplate': 'Menyimpan templat...',
   'fileViewer.savedTemplate': 'Disimpan sebagai "{name}"',

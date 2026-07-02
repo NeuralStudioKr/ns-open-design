@@ -12,6 +12,7 @@ import {
   chromiumRuntimePaths,
   ensureChromiumRuntimeDirs,
   imageScreenshotOptions,
+  patchArtifactDeckPrintBackground,
 } from '../src/headless-export.js';
 
 describe('chromiumExecutableCandidates', () => {
@@ -94,8 +95,17 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).not.toContain('@media print');
     expect(screenCss).toContain('.slide:not(.active)');
     expect(screenCss).toContain('display: flex !important');
+    expect(screenCss).toContain('background: var(--bg');
+    expect(screenCss).toContain('background: var(--shell');
     expect(screenCss).not.toContain('background: #fff !important');
     expect(screenCss).toContain('print-color-adjust: exact');
+  });
+
+  it('patches artifact @media print white backgrounds to deck CSS variables', () => {
+    const input = `@media print { html, body { background: #fff !important; } }`;
+    const out = patchArtifactDeckPrintBackground(input);
+    expect(out).toContain('background: var(--shell, var(--bg, #fff)) !important');
+    expect(out).not.toContain('background: #fff !important');
   });
 
   it('exports revealAllDeckSlides for runtime flattening', async () => {

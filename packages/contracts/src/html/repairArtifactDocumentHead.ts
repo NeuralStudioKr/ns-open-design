@@ -8,10 +8,22 @@ const CORRUPTED_HEAD_VIEWPORT_RE =
 const HEAD_VIEWPORT_FRAGMENT_RE =
   /^\s*device-width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/im;
 
-export function repairArtifactDocumentHead(html: string): string {
-  if (!html || !/<head/i.test(html)) return html;
+const BODY_VIEWPORT_FRAGMENT_RE =
+  /(<body[^>]*>)\s*device-width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/gi;
 
-  let doc = html.replace(
+function stripLeakedViewportFragments(doc: string): string {
+  let out = doc.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
+  out = out.replace(BODY_VIEWPORT_FRAGMENT_RE, "$1");
+  return out;
+}
+
+export function repairArtifactDocumentHead(html: string): string {
+  if (!html) return html;
+
+  let doc = stripLeakedViewportFragments(html);
+  if (!/<head/i.test(doc)) return doc;
+
+  doc = doc.replace(
     CORRUPTED_HEAD_VIEWPORT_RE,
     '<head$1>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=$2" />',
   );
@@ -27,5 +39,5 @@ export function repairArtifactDocumentHead(html: string): string {
     return `<head${attrs}>${headInner}</head>`;
   });
 
-  return doc;
+  return stripLeakedViewportFragments(doc);
 }

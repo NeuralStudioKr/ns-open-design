@@ -2138,6 +2138,8 @@ export const ko: Dict = {
   'fileViewer.exportJsx': 'JSX로 내보내기',
   'fileViewer.exportReactHtml': '미리보기를 HTML로 내보내기',
   'fileViewer.exportStarted': '다운로드를 시작했습니다',
+  'fileViewer.exportInProgress': '다운로드 준비 중…',
+  'fileViewer.exportPdfInProgress': 'PDF 생성 중…',
   'fileViewer.saveAsTemplate': '템플릿으로 저장…',
   'fileViewer.savingTemplate': '템플릿 저장 중…',
   'fileViewer.savedTemplate': '"{name}"(으)로 저장됨',

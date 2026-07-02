@@ -3,6 +3,12 @@ import fs from 'node:fs';
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import { repairArtifactDocumentHead } from '@open-design/contracts';
 
+import {
+  bindExportBrowserLauncher,
+  runHeadlessExportJob,
+  type ExportJobMeta,
+} from './export-runtime.js';
+
 type Browser = any;
 type Page = any;
 
@@ -64,6 +70,7 @@ export function buildDeckFlattenCssRules(): string {
     width: ${DECK_WIDTH}px !important;
     height: auto !important;
     overflow: visible !important;
+    background: var(--shell, var(--bg, #ffffff)) !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -92,12 +99,13 @@ export function buildDeckFlattenCssRules(): string {
     height: ${DECK_HEIGHT}px !important;
     min-height: ${DECK_HEIGHT}px !important;
     max-height: ${DECK_HEIGHT}px !important;
+    background: var(--bg, var(--shell, #ffffff)) !important;
+    overflow: hidden !important;
     page-break-after: always !important;
     break-after: page !important;
     break-inside: avoid !important;
     scroll-snap-align: none !important;
     transform: none !important;
-    overflow: visible !important;
     visibility: visible !important;
     opacity: 1 !important;
   }
@@ -198,31 +206,34 @@ export function ensureChromiumRuntimeDirs(): void {
   }
 }
 
-let queue: Promise<void> = Promise.resolve();
-
-export async function renderHeadlessPdf(options: HeadlessExportOptions): Promise<Buffer> {
-  return runExclusive(async () => {
-    const browser = await launchChromium();
-    try {
+export async function renderHeadlessPdf(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<Buffer> {
+  return runHeadlessExportJob(
+    { format: 'pdf', deck: options.input.deck === true, ...meta },
+    async (browser) => {
       const page = await preparePage(browser, options);
-      await waitForPrintableContent(page);
-      if (options.input.deck) {
-        await page.emulateMedia({ media: 'print' });
+      try {
+        await waitForPrintableContent(page);
+        if (options.input.deck) {
+          await page.emulateMedia({ media: 'print' });
+        }
+        const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
+        if (options.input.deck && deckSlideCount === 0) {
+          console.warn('[headless-export] deck PDF: no slides matched selector', {
+            selector: DECK_SLIDE_SELECTOR,
+            title: options.input.title,
+          });
+        }
+        await applyPdfStyles(page, options.input.deck);
+        const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
+        return Buffer.from(pdf);
+      } finally {
+        await page.close().catch(() => {});
       }
-      const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
-      if (options.input.deck && deckSlideCount === 0) {
-        console.warn('[headless-export] deck PDF: no slides matched selector', {
-          selector: DECK_SLIDE_SELECTOR,
-          title: options.input.title,
-        });
-      }
-      await applyPdfStyles(page, options.input.deck);
-      const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close().catch(() => {});
-    }
-  });
+    },
+  );
 }
 
 function deckPdfOptions(deck: boolean, _slideCount: number) {
@@ -249,81 +260,77 @@ function deckPdfOptions(deck: boolean, _slideCount: number) {
   };
 }
 
-export async function renderHeadlessImage(options: HeadlessExportOptions): Promise<Buffer> {
-  return runExclusive(async () => {
-    const browser = await launchChromium();
-    try {
+export async function renderHeadlessImage(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<Buffer> {
+  return runHeadlessExportJob(
+    { format: 'image', deck: options.input.deck === true, ...meta },
+    async (browser) => {
       const page = await preparePage(browser, options, {
         deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
       });
-      await waitForPrintableContent(page);
-      if (options.input.deck) {
-        await resetDeckScreenshotLayout(page);
-      }
-      await inlineRenderedResources(page);
-      await waitForPrintableContent(page);
-      await applyScreenshotStyles(page, options.input.deck, options.slideIndex);
-      if (options.input.deck) {
-        await revealDeckSlideForScreenshot(page, options.slideIndex);
+      try {
         await waitForPrintableContent(page);
-        const clip = deckScreenshotClip();
+        if (options.input.deck) {
+          await resetDeckScreenshotLayout(page);
+        }
+        await inlineRenderedResources(page);
+        await waitForPrintableContent(page);
+        await applyScreenshotStyles(page, options.input.deck, options.slideIndex);
+        if (options.input.deck) {
+          await revealDeckSlideForScreenshot(page, options.slideIndex);
+          await waitForPrintableContent(page);
+          const clip = deckScreenshotClip();
+          const image = await page.screenshot({
+            ...imageScreenshotOptions(options.imageFormat),
+            clip,
+            timeout: EXPORT_TIMEOUT_MS,
+          });
+          return Buffer.from(image);
+        }
         const image = await page.screenshot({
           ...imageScreenshotOptions(options.imageFormat),
-          clip,
+          fullPage: true,
           timeout: EXPORT_TIMEOUT_MS,
         });
         return Buffer.from(image);
+      } finally {
+        await page.close().catch(() => {});
       }
-      const image = await page.screenshot({
-        ...imageScreenshotOptions(options.imageFormat),
-        fullPage: true,
-        timeout: EXPORT_TIMEOUT_MS,
-      });
-      return Buffer.from(image);
-    } finally {
-      await browser.close().catch(() => {});
-    }
-  });
+    },
+  );
 }
 
-export async function renderHeadlessHtmlSnapshot(options: HeadlessExportOptions): Promise<string> {
-  return runExclusive(async () => {
-    const browser = await launchChromium();
-    try {
+export async function renderHeadlessHtmlSnapshot(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<string> {
+  return runHeadlessExportJob(
+    { format: 'html', deck: options.input.deck === true, ...meta },
+    async (browser) => {
       const page = await preparePage(browser, options);
-      await waitForPrintableContent(page);
-      if (options.input.deck) {
-        const deckSlideCount = await revealAllDeckSlides(page);
-        if (deckSlideCount === 0) {
-          console.warn('[headless-export] deck HTML: no slides matched selector', {
-            selector: DECK_SLIDE_SELECTOR,
-            title: options.input.title,
-          });
+      try {
+        await waitForPrintableContent(page);
+        if (options.input.deck) {
+          const deckSlideCount = await revealAllDeckSlides(page);
+          if (deckSlideCount === 0) {
+            console.warn('[headless-export] deck HTML: no slides matched selector', {
+              selector: DECK_SLIDE_SELECTOR,
+              title: options.input.title,
+            });
+          }
+          await applyHtmlDeckExportStyles(page);
+        } else {
+          await applySnapshotStyles(page, false);
         }
-        await applyHtmlDeckExportStyles(page);
-      } else {
-        await applySnapshotStyles(page, false);
+        await inlineRenderedResources(page);
+        return await page.content();
+      } finally {
+        await page.close().catch(() => {});
       }
-      await inlineRenderedResources(page);
-      return await page.content();
-    } finally {
-      await browser.close().catch(() => {});
-    }
-  });
-}
-
-async function runExclusive<T>(work: () => Promise<T>): Promise<T> {
-  const previous = queue;
-  let release!: () => void;
-  queue = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous.catch(() => {});
-  try {
-    return await work();
-  } finally {
-    release();
-  }
+    },
+  );
 }
 
 async function launchChromium(): Promise<Browser> {
@@ -378,6 +385,16 @@ async function dynamicImport(specifier: string): Promise<any> {
   return Function('specifier', 'return import(specifier)')(specifier);
 }
 
+/** Playwright evaluates string expressions; pass only the function body. */
+async function evaluateInPage<T>(
+  page: Page,
+  fnBody: string,
+  args: Record<string, unknown>,
+): Promise<T> {
+  const argJson = JSON.stringify(args);
+  return page.evaluate(`(function(args){${fnBody}})(${argJson})`);
+}
+
 async function preparePage(
   browser: Browser,
   options: HeadlessExportOptions,
@@ -411,12 +428,20 @@ async function preparePage(
  * order or @media print specificity battles.
  */
 export async function revealAllDeckSlides(page: Page): Promise<number> {
-  const count = await page.evaluate(
-    `(args) => {
+  const count = await evaluateInPage<number>(
+    page,
+    `
       const slides = Array.from(document.querySelectorAll(args.selector));
       if (slides.length === 0) return 0;
 
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+
+      const rootStyle = window.getComputedStyle(document.documentElement);
+      const slideBg =
+        rootStyle.getPropertyValue('--bg').trim() ||
+        rootStyle.getPropertyValue('background-color').trim() ||
+        '#0a0c10';
+      const shellBg = rootStyle.getPropertyValue('--shell').trim() || slideBg;
 
       document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
         set(el, 'display', 'contents');
@@ -426,13 +451,17 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       set(document.documentElement, 'overflow', 'visible');
       set(document.documentElement, 'width', args.width + 'px');
-      set(document.documentElement, 'height', 'auto');
+      set(document.documentElement, 'background', shellBg);
       set(document.body, 'overflow', 'visible');
       set(document.body, 'display', 'block');
       set(document.body, 'scroll-snap-type', 'none');
       set(document.body, 'transform', 'none');
       set(document.body, 'width', args.width + 'px');
-      set(document.body, 'height', 'auto');
+      set(document.body, 'background', shellBg);
+      const totalHeight = slides.length * args.height;
+      set(document.documentElement, 'height', totalHeight + 'px');
+      set(document.body, 'height', totalHeight + 'px');
+      set(document.body, 'margin', '0');
 
       slides.forEach((el, index) => {
         el.classList.add('active');
@@ -445,9 +474,10 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'height', args.height + 'px');
         set(el, 'min-height', args.height + 'px');
         set(el, 'max-height', args.height + 'px');
+        set(el, 'background', slideBg);
         set(el, 'visibility', 'visible');
         set(el, 'opacity', '1');
-        set(el, 'overflow', 'visible');
+        set(el, 'overflow', 'hidden');
         set(el, 'transform', 'none');
         set(el, 'page-break-after', index < slides.length - 1 ? 'always' : 'auto');
         set(el, 'break-after', index < slides.length - 1 ? 'page' : 'auto');
@@ -456,7 +486,10 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
           set(el, 'page-break-before', 'avoid');
           set(el, 'break-before', 'avoid');
         }
-        el.querySelectorAll(':scope > *').forEach((child) => {
+        Array.from(el.children).forEach((child) => {
+          const computed = window.getComputedStyle(child);
+          if (computed.position === 'absolute' || computed.position === 'fixed') return;
+          if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return;
           set(child, 'position', 'relative');
           set(child, 'inset', 'auto');
           set(child, 'transform', 'none');
@@ -475,13 +508,16 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         .forEach((el) => set(el, 'display', 'none'));
 
       return slides.length;
-    }`,
+    `,
     {
       selector: DECK_SLIDE_SELECTOR,
       width: DECK_WIDTH,
       height: DECK_HEIGHT,
     },
-  ).catch(() => 0);
+  ).catch((err: unknown) => {
+    console.warn('[headless-export] revealAllDeckSlides failed', err);
+    return 0;
+  });
   return typeof count === 'number' && Number.isFinite(count) ? count : 0;
 }
 
@@ -546,7 +582,7 @@ async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
         scrollbar-width: none !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        ${deck ? '' : 'background: #fff !important;'}
+        ${deck ? 'background: var(--shell, var(--bg, #ffffff)) !important;' : 'background: #fff !important;'}
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? buildDeckPrintCss() : '@page { margin: 0; size: auto; }'}
@@ -576,20 +612,26 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
   if (deck) {
     // Selector must match DECK_SLIDE_SELECTOR so the slide picked here lines
     // up with the slide that was style-targeted in applyScreenshotStyles.
-    await page.evaluate(`(args) => {
+    await evaluateInPage(
+      page,
+      `
       const all = Array.from(document.querySelectorAll(args.selector));
       const slides = all.length > 0 ? all : [document.body];
       const target = slides[Math.max(0, Math.min(args.index, slides.length - 1))];
       target?.scrollIntoView({ block: 'start', inline: 'start' });
-    }`, {
-      index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
-      selector: DECK_SLIDE_SELECTOR,
-    }).catch(() => {});
+    `,
+      {
+        index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
+        selector: DECK_SLIDE_SELECTOR,
+      },
+    ).catch(() => {});
   }
 }
 
 async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Promise<void> {
-  await page.evaluate(`(args) => {
+  await evaluateInPage(
+    page,
+    `
     const all = Array.from(document.querySelectorAll(args.selector));
     const slides = all.length > 0 ? all : [document.body];
     const index = Math.max(0, Math.min(args.index, slides.length - 1));
@@ -635,12 +677,14 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
       set(el, 'transform', 'none');
     });
     target?.scrollIntoView({ block: 'start', inline: 'start' });
-  }`, {
-    index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
-    selector: DECK_SLIDE_SELECTOR,
-    width: DECK_WIDTH,
-    height: DECK_HEIGHT,
-  }).catch(() => {});
+  `,
+    {
+      index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
+      selector: DECK_SLIDE_SELECTOR,
+      width: DECK_WIDTH,
+      height: DECK_HEIGHT,
+    },
+  ).catch(() => {});
 }
 
 async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
@@ -787,7 +831,9 @@ async function inlineRenderedResources(page: Page): Promise<void> {
 }
 
 async function resetDeckScreenshotLayout(page: Page): Promise<void> {
-  await page.evaluate(`(args) => {
+  await evaluateInPage(
+    page,
+    `
     const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
     document.querySelectorAll('.deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
       set(el, 'transform', 'none');
@@ -799,7 +845,9 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     set(document.body, 'height', args.height + 'px');
     set(document.body, 'margin', '0');
     document.documentElement.style.setProperty('--deck-scale', '1');
-  }`, { width: DECK_WIDTH, height: DECK_HEIGHT }).catch(() => {});
+  `,
+    { width: DECK_WIDTH, height: DECK_HEIGHT },
+  ).catch(() => {});
 }
 
 function deckScreenshotClip(): { x: number; y: number; width: number; height: number } {
@@ -811,9 +859,19 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
 export { deckScreenshotClip as deckScreenshotClipRect };
 
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
-  let doc = repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || ''));
+  let doc = patchArtifactDeckPrintBackground(
+    repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
+  );
   doc = injectTitle(doc, input.title);
   return injectPrintStylesheet(doc, buildDeckPrintCss());
+}
+
+/** Undo agent/framework print rules that force a white page behind slides. */
+export function patchArtifactDeckPrintBackground(doc: string): string {
+  return doc.replace(
+    /(@media\s+print[\s\S]*?html\s*,\s*body\s*\{[^}]*?)background\s*:\s*#fff\s*!important/gi,
+    '$1background: var(--shell, var(--bg, #fff)) !important',
+  );
 }
 
 function injectTitle(doc: string, title: string): string {
@@ -870,3 +928,5 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+
+bindExportBrowserLauncher(() => launchChromium());

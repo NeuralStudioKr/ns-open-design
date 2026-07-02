@@ -2138,6 +2138,8 @@ export const ar: Dict = {
   'fileViewer.exportJsx': 'تصدير كـ JSX',
   'fileViewer.exportReactHtml': 'تصدير المعاينة كـ HTML',
   'fileViewer.exportStarted': 'بدأ التصدير',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': 'حفظ كقالب...',
   'fileViewer.savingTemplate': 'جاري حفظ القالب...',
   'fileViewer.savedTemplate': 'تم الحفظ باسم "{name}"',

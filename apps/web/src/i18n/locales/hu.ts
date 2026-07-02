@@ -2138,6 +2138,8 @@ export const hu: Dict = {
   'fileViewer.exportJsx': 'Exportálás JSX-ként',
   'fileViewer.exportReactHtml': 'Előnézet exportálása HTML-ként',
   'fileViewer.exportStarted': 'Az exportálás elindult',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': 'Mentés sablonként…',
   'fileViewer.savingTemplate': 'Sablon mentése…',
   'fileViewer.savedTemplate': 'Mentve „{name}" néven',

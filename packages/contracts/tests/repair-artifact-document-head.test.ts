@@ -25,4 +25,14 @@ describe("repairArtifactDocumentHead", () => {
     const twice = repairArtifactDocumentHead(once);
     expect(twice).toBe(once);
   });
+
+  it("strips viewport fragments leaked into body after a corrupted head", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+device-width, initial-scale=1" />
+<div class="slide">A</div></body></html>`;
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).not.toMatch(/<body>\s*[\n\r]*\s*device-width/i);
+    expect(out).toContain('<div class="slide">A</div>');
+    expect(out).toContain('<meta name="viewport"');
+  });
 });

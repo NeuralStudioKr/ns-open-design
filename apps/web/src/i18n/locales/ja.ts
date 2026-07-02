@@ -2138,6 +2138,8 @@ export const ja: Dict = {
   'fileViewer.exportJsx': 'JSX としてエクスポート',
   'fileViewer.exportReactHtml': 'プレビューを HTML としてエクスポート',
   'fileViewer.exportStarted': 'エクスポートを開始しました',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': 'テンプレートとして保存…',
   'fileViewer.savingTemplate': 'テンプレートを保存中…',
   'fileViewer.savedTemplate': '"{name}" として保存しました',

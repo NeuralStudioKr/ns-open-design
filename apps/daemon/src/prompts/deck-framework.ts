@@ -178,7 +178,7 @@ export const DECK_SKELETON_HTML = `<!doctype html>
         width: 1920px !important;
         height: auto !important;
         overflow: visible !important;
-        background: #fff !important;
+        background: var(--shell, var(--bg, #fff)) !important;
       }
       .deck-shell {
         display: contents !important;

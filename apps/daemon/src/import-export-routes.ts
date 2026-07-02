@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import { PROJECT_EXPORT_MANIFEST_SCHEMA } from '@open-design/contracts';
+import fs from 'node:fs';
 import nodePath from 'node:path';
 import JSZip from 'jszip';
 import type { RouteDeps } from './server-context.js';
@@ -19,6 +20,14 @@ import {
   renderHeadlessPdf,
   type HeadlessImageFormat,
 } from './headless-export.js';
+import { ExportQueueFullError } from './export-runtime.js';
+import {
+  claimExportDownload,
+  completeExportDownload,
+  releaseExportDownloadClaim,
+  storeExportDownload,
+  wantsTicketDelivery,
+} from './export-download-store.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -31,6 +40,62 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
     'Content-Disposition',
     `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
   );
+}
+
+async function respondExportPayload(
+  res: { status(code: number): { json(body: unknown): void }; send(body: Buffer): void; setHeader(name: string, value: string): void },
+  options: {
+    projectId: string;
+    body: Buffer | string;
+    filename: string;
+    mime: string;
+    ticket: boolean;
+  },
+): Promise<void> {
+  if (options.ticket) {
+    const entry = await storeExportDownload({
+      projectId: options.projectId,
+      body: options.body,
+      filename: options.filename,
+      mime: options.mime,
+    });
+    res.status(201).json({
+      delivery: 'ticket',
+      downloadUrl: entry.url,
+      filename: entry.filename,
+      mime: entry.mime,
+      expiresAt: new Date(entry.expiresAt).toISOString(),
+    });
+    return;
+  }
+  setAttachmentHeaders(res, options.mime, options.filename);
+  res.send(typeof options.body === 'string' ? Buffer.from(options.body, 'utf8') : options.body);
+}
+
+function handleExportRouteError(
+  res: { setHeader(name: string, value: string): void },
+  sendApiError: (
+    res: { setHeader(name: string, value: string): void },
+    status: number,
+    code: string,
+    message: string,
+  ) => void,
+  routeLabel: string,
+  projectId: string,
+  err: unknown,
+): void {
+  if (err instanceof ExportQueueFullError) {
+    res.setHeader('Retry-After', '15');
+    sendApiError(res, 503, err.code, err.message);
+    return;
+  }
+  const reason = String((err as Error)?.message || err);
+  if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'ENOENT') {
+    sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
+    return;
+  }
+  console.warn(`[${routeLabel}] failed`, { projectId, reason });
+  sendApiError(res, 500, 'EXPORT_FAILED', reason);
 }
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
@@ -547,12 +612,44 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     }
   });
 
+  app.get('/api/projects/:id/export/downloads/:token', async (req, res) => {
+    try {
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const entry = claimExportDownload(req.params.id, req.params.token);
+      if (!entry) {
+        return sendApiError(res, 404, 'EXPORT_DOWNLOAD_NOT_FOUND', 'export download not found or expired');
+      }
+      setAttachmentHeaders(res, entry.mime, entry.filename);
+      const stream = fs.createReadStream(entry.filePath);
+      let finished = false;
+      stream.on('error', () => {
+        releaseExportDownloadClaim(req.params.token);
+        if (!res.headersSent) {
+          sendApiError(res, 500, 'EXPORT_FAILED', 'export download stream failed');
+        }
+      });
+      stream.on('end', () => {
+        finished = true;
+        void completeExportDownload(req.params.token);
+      });
+      res.on('close', () => {
+        if (!finished) releaseExportDownloadClaim(req.params.token);
+      });
+      stream.pipe(res);
+    } catch (err: unknown) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as Error)?.message || err));
+    }
+  });
+
   app.post('/api/projects/:id/export/pdf', async (req, res) => {
     try {
       const { fileName, title, deck } = req.body || {};
       if (typeof fileName !== 'string' || fileName.length === 0) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
+      const ticket = wantsTicketDelivery(req.body);
       const input = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -566,20 +663,16 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         res.json(result);
         return;
       }
-      const pdf = await renderHeadlessPdf({ input });
-      setAttachmentHeaders(res, 'application/pdf', input.defaultFilename);
-      res.send(pdf);
-    } catch (err: any) {
-      const reason = String(err?.message || err);
-      if (err && err.code === 'ENOENT') {
-        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
-        return;
-      }
-      // Headless Chromium launch / render failures are infrastructure faults,
-      // not malformed requests. Log + return 5xx so the FE can show a real
-      // diagnostic instead of treating it as a user input error.
-      console.warn('[export/pdf] failed', { projectId: req.params.id, reason });
-      sendApiError(res, 500, 'EXPORT_FAILED', reason);
+      const pdf = await renderHeadlessPdf({ input }, { projectId: req.params.id });
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        body: pdf,
+        filename: input.defaultFilename,
+        mime: 'application/pdf',
+        ticket,
+      });
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/pdf', req.params.id, err);
     }
   });
 
@@ -589,6 +682,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (typeof fileName !== 'string' || fileName.length === 0) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
+      const ticket = wantsTicketDelivery(req.body);
       const imageFormat: HeadlessImageFormat =
         format === 'jpeg' || format === 'jpg'
           ? 'jpeg'
@@ -608,7 +702,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         imageFormat,
         ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
       };
-      const image = await renderHeadlessImage(imageOptions);
+      const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
       const extension =
         imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
       const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
@@ -618,16 +712,15 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           : imageFormat === 'webp'
             ? 'image/webp'
             : 'image/png';
-      setAttachmentHeaders(res, mime, `${base}.${extension}`);
-      res.send(image);
-    } catch (err: any) {
-      const reason = String(err?.message || err);
-      if (err && err.code === 'ENOENT') {
-        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
-        return;
-      }
-      console.warn('[export/image] failed', { projectId: req.params.id, reason });
-      sendApiError(res, 500, 'EXPORT_FAILED', reason);
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        body: image,
+        filename: `${base}.${extension}`,
+        mime,
+        ticket,
+      });
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/image', req.params.id, err);
     }
   });
 
@@ -637,6 +730,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (typeof fileName !== 'string' || fileName.length === 0) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
+      const ticket = wantsTicketDelivery(req.body);
       const input = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -645,18 +739,17 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
       });
-      const html = await renderHeadlessHtmlSnapshot({ input });
+      const html = await renderHeadlessHtmlSnapshot({ input }, { projectId: req.params.id });
       const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
-      setAttachmentHeaders(res, 'text/html; charset=utf-8', `${base}.html`);
-      res.send(Buffer.from(html, 'utf8'));
-    } catch (err: any) {
-      const reason = String(err?.message || err);
-      if (err && err.code === 'ENOENT') {
-        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
-        return;
-      }
-      console.warn('[export/html] failed', { projectId: req.params.id, reason });
-      sendApiError(res, 500, 'EXPORT_FAILED', reason);
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        body: html,
+        filename: `${base}.html`,
+        mime: 'text/html; charset=utf-8',
+        ticket,
+      });
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/html', req.params.id, err);
     }
   });
 
@@ -666,6 +759,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (typeof fileName !== 'string' || fileName.length === 0) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
+      const ticket = wantsTicketDelivery(req.body);
       const input = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -674,7 +768,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
       });
-      const html = await renderHeadlessHtmlSnapshot({ input });
+      const html = await renderHeadlessHtmlSnapshot({ input }, { projectId: req.params.id });
       const base = input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const zip = new JSZip();
       zip.file('index.html', html, { date: new Date(0), binary: false });
@@ -683,16 +777,15 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         compression: 'DEFLATE',
         compressionOptions: { level: 6 },
       });
-      setAttachmentHeaders(res, 'application/zip', `${base}.zip`);
-      res.send(buffer);
-    } catch (err: any) {
-      const reason = String(err?.message || err);
-      if (err && err.code === 'ENOENT') {
-        sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
-        return;
-      }
-      console.warn('[export/zip] failed', { projectId: req.params.id, reason });
-      sendApiError(res, 500, 'EXPORT_FAILED', reason);
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        body: buffer,
+        filename: `${base}.zip`,
+        mime: 'application/zip',
+        ticket,
+      });
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/zip', req.params.id, err);
     }
   });
 

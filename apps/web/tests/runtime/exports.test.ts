@@ -10,6 +10,7 @@ import {
   exportAsImage,
   exportAsMd,
   exportAsPdf,
+  ExportQueueFullError,
   exportProjectAsHtml,
   exportProjectImageBlob,
   exportProjectAsPdf,
@@ -230,7 +231,7 @@ describe('exportProjectAsPdf', () => {
       expect(result).toBe('desktop');
       expect(fallback).not.toHaveBeenCalled();
       expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/pdf', {
-        body: JSON.stringify({ deck: true, fileName: 'deck/index.html', title: 'Seed Deck' }),
+        body: JSON.stringify({ deck: true, delivery: 'ticket', fileName: 'deck/index.html', title: 'Seed Deck' }),
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -471,6 +472,7 @@ describe('exportProjectImageBlob', () => {
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/image', {
       body: JSON.stringify({
         deck: true,
+        delivery: 'ticket',
         fileName: 'deck/index.html',
         format: 'png',
         slideIndex: 2,
@@ -504,6 +506,7 @@ describe('exportProjectImageBlob', () => {
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/image', expect.objectContaining({
       body: JSON.stringify({
         deck: true,
+        delivery: 'ticket',
         fileName: 'deck/index.html',
         format: 'webp',
         slideIndex: 0,
@@ -623,6 +626,32 @@ describe('exportProjectImageBlob', () => {
       expect(result.reason).toContain('legacy daemon failure mode');
     }
   });
+
+  it('surfaces export queue full as a retryable user message', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        error: {
+          code: 'EXPORT_QUEUE_FULL',
+          message: 'export queue full — retry shortly',
+        },
+      }),
+      { headers: { 'content-type': 'application/json', 'retry-after': '15' }, status: 503 },
+    )));
+
+    const result = await exportProjectImageBlob({
+      deck: true,
+      filePath: 'deck/index.html',
+      format: 'png',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('15초');
+    }
+  });
 });
 
 describe('exportProjectAsHtml', () => {
@@ -681,6 +710,7 @@ describe('exportProjectAsHtml', () => {
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj%201/export/html', {
       body: JSON.stringify({
         deck: true,
+        delivery: 'ticket',
         fileName: 'screens/main page.html',
         title: 'Main Page',
       }),
@@ -802,6 +832,7 @@ describe('exportProjectAsZip', () => {
     expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/zip', {
       body: JSON.stringify({
         deck: true,
+        delivery: 'ticket',
         fileName: 'deck/index.html',
         title: 'Seed Deck',
       }),

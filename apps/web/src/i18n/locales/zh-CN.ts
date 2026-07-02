@@ -2138,6 +2138,8 @@ export const zhCN: Dict = {
   'fileViewer.exportJsx': '导出为 JSX',
   'fileViewer.exportReactHtml': '导出预览 HTML',
   'fileViewer.exportStarted': '已开始导出',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': '保存为模板…',
   'fileViewer.savingTemplate': '正在保存模板…',
   'fileViewer.savedTemplate': '已保存为「{name}」',

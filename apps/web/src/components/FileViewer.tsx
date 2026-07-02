@@ -4550,6 +4550,8 @@ function HtmlViewer({
       );
     };
     const toastFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image', 'markdown']);
+    const exportInProgressMessage =
+      format === 'pdf' ? t('fileViewer.exportPdfInProgress') : t('fileViewer.exportInProgress');
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
       const message = err instanceof Error && err.message.trim()
@@ -4558,12 +4560,16 @@ function HtmlViewer({
       setExportToast({ message, tone: 'error' });
     };
     try {
+      if (toastFormats.has(format)) {
+        setExportToast({ message: exportInProgressMessage, tone: 'loading' });
+      }
       const out = fn();
       if (out && typeof (out as Promise<unknown>).then === 'function') {
         (out as Promise<unknown>).then(
           (result) => {
             if (result === 'cancelled') {
               finish('cancelled');
+              if (toastFormats.has(format)) setExportToast(null);
               return;
             }
             finish('success');
@@ -4577,6 +4583,7 @@ function HtmlViewer({
       } else {
         if (out === 'cancelled') {
           finish('cancelled');
+          if (toastFormats.has(format)) setExportToast(null);
           return;
         }
         finish('success');

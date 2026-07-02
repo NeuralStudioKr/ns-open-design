@@ -2138,6 +2138,8 @@ export const ru: Dict = {
   'fileViewer.exportJsx': 'Экспорт как JSX',
   'fileViewer.exportReactHtml': 'Экспорт предпросмотра как HTML',
   'fileViewer.exportStarted': 'Экспорт начат',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': 'Сохранить как шаблон…',
   'fileViewer.savingTemplate': 'Сохранение шаблона…',
   'fileViewer.savedTemplate': 'Сохранено как «{name}»',

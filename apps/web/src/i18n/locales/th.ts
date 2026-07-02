@@ -2138,6 +2138,8 @@ export const th: Dict = {
   'fileViewer.exportJsx': 'นำโค้ดในรูปแบบ React JSX ออก',
   'fileViewer.exportReactHtml': 'แยกโหลดมาแค่โครง HTML เท่านั้น',
   'fileViewer.exportStarted': 'เริ่มการส่งออกแล้ว',
+  'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.saveAsTemplate': 'จัดเก็บในหมวดเทมเพลต…',
   'fileViewer.savingTemplate': 'ระบบคอยเซฟแม่แบบให้…',
   'fileViewer.savedTemplate': 'ได้สร้างเทมเพลตใหม่ชื่อ "{name}"',

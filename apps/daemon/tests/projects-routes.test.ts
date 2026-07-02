@@ -413,6 +413,37 @@ describe('GET /api/projects/:id resolvedDir', () => {
     expect(rawResp.headers.get('access-control-allow-origin')).toBe('*');
     expect(await rawResp.text()).toContain('<h1>nested ok</h1>');
   });
+
+  it('repairs corrupted viewport meta when serving HTML through the raw route', async () => {
+    const projectId = `proj-raw-repair-${Date.now()}`;
+    const createResp = await fetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        name: 'Raw repair fixture',
+        skillId: null,
+        designSystemId: null,
+      }),
+    });
+    expect(createResp.status).toBe(200);
+
+    const corrupt = `<!doctype html><html><head>device-width, initial-scale=1" /><title>T</title></head><body><h1>deck</h1></body></html>`;
+    const writeResp = await fetch(`${baseUrl}/api/projects/${projectId}/files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'ai-terminal-deck.html', content: corrupt }),
+    });
+    expect(writeResp.status).toBe(200);
+
+    const rawResp = await fetch(`${baseUrl}/api/projects/${projectId}/raw/ai-terminal-deck.html`);
+    expect(rawResp.status).toBe(200);
+    const served = await rawResp.text();
+    expect(served).not.toMatch(/<head>\s*device-width/i);
+    expect(served).toContain('content="width=device-width, initial-scale=1"');
+    expect(served).toContain('<h1>deck</h1>');
+  });
+
   it('rejects non-boolean skipDiscoveryBrief on POST /api/projects', async () => {
     const projectId = `proj-skip-discovery-bad-${Date.now()}`;
     const resp = await fetch(`${baseUrl}/api/projects`, {
