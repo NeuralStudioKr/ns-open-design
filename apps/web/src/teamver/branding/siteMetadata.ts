@@ -8,7 +8,7 @@ export const TEAMVER_DEFAULT_BRAND_TITLE = "Teamver Design";
 export const TEAMVER_DEFAULT_BRAND_SUBTITLE = "AI Design Studio";
 export const TEAMVER_DEFAULT_OG_TITLE = `${TEAMVER_OG_SERVICE_NAME} | AI Design`;
 export const TEAMVER_DEFAULT_OG_DESCRIPTION =
-  "Create visual designs and layouts with AI from your workspace context.";
+  "Turn ideas into slide drafts quickly with AI.";
 export const TEAMVER_DEFAULT_HERO_SUBTITLE = TEAMVER_DEFAULT_OG_DESCRIPTION;
 export const TEAMVER_DEFAULT_SITE_URL = "https://design.teamver.com";
 export const TEAMVER_DEFAULT_OG_IMAGE_URL =

@@ -29,6 +29,7 @@ import { formatDiscordPresenceCount, useDiscordPresence } from './useDiscordPres
 import { Icon } from './Icon';
 import { SocialShareGrid } from './SocialShareGrid';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { TeamverSettingsOpenSourcePopoverSection } from '../teamver/components/TeamverSettingsOpenSourcePopoverSection';
 
 const DISCORD_URL = 'https://discord.gg/mHAjSMV6gz';
 const X_URL = 'https://x.com/nexudotio';
@@ -421,12 +422,8 @@ export function EntrySettingsMenu({
             </span>
           </button>
           ) : (
-          <button
-            type="button"
-            className="entry-settings-menu__item entry-settings-menu__item--primary"
-            data-testid="entry-settings-open-about"
-            role="menuitem"
-            onClick={() => {
+          <TeamverSettingsOpenSourcePopoverSection
+            onOpenAbout={() => {
               trackSettingsPopoverClick(analytics.track, {
                 page_name: pageName,
                 area: 'settings_popover',
@@ -435,15 +432,7 @@ export function EntrySettingsMenu({
               setOpen(false);
               onOpenSettings('about');
             }}
-          >
-            <span className="entry-settings-menu__item-icon" aria-hidden>
-              <Icon name="info" size={14} />
-            </span>
-            <span>{t('settings.about')}</span>
-            <span className="entry-settings-menu__item-meta">
-              {t('teamver.about.panelHint')}
-            </span>
-          </button>
+          />
           )}
         </div>
       ) : null}

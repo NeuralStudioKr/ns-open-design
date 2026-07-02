@@ -2651,6 +2651,8 @@ export const fr: Dict = {
   'teamver.about.basedOn': 'Includes software based on Open Design, modified for Teamver.',
   'teamver.about.copyright': 'Copyright',
   'teamver.about.license': 'License',
+  'teamver.about.viewAllLicenses': 'View all open source licenses',
+  'teamver.homeHero.subtitle': 'Turn ideas into slide drafts quickly with AI.',
   'settings.skillsNew': 'Nouveau Skill',
   'settings.skillsEmpty': 'Sélectionnez un Skill à gauche, ou créez-en un.',
   'settings.skillsEdit': 'Modifier',

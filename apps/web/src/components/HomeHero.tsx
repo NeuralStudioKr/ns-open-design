@@ -1000,9 +1000,15 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
           </>
         )}
       </div>
-      <h1 className="home-hero__title">{teamverT('homeHero.title')}</h1>
+      {teamverEmbed ? (
+        <h1 className="sr-only">{brandLabel}</h1>
+      ) : (
+        <h1 className="home-hero__title">{teamverT('homeHero.title')}</h1>
+      )}
       <p className="home-hero__subtitle">
-        {teamverT('homeHero.subtitlePrefix')}
+        {teamverEmbed
+          ? teamverT('teamver.homeHero.subtitle')
+          : teamverT('homeHero.subtitlePrefix')}
       </p>
 
       <div

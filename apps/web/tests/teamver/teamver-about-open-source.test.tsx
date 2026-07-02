@@ -101,6 +101,8 @@ describe("Teamver Settings about open source", () => {
     );
 
     fireEvent.click(screen.getByTestId("entry-settings-menu-trigger"));
+    expect(screen.getByTestId("entry-settings-open-source")).toBeTruthy();
+    expect(screen.getByText("Apache License 2.0")).toBeTruthy();
     fireEvent.click(screen.getByTestId("entry-settings-open-about"));
 
     expect(onOpenSettings).toHaveBeenCalledWith("about");

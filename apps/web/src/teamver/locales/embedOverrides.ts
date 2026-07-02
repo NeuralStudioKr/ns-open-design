@@ -34,9 +34,7 @@ export function teamverEmbedOverrides(
   if (hero?.title?.trim()) {
     overrides["homeHero.title"] = hero.title.trim();
   }
-  if (hero?.subtitle?.trim()) {
-    overrides["homeHero.subtitlePrefix"] = hero.subtitle.trim();
-  }
+  // Hero subtitle is localized via `teamver.homeHero.subtitle` in embed HomeHero.
   // Project edit surface — strip OD product name from composer placeholders.
   overrides["chat.activeFilePlaceholder"] = "슬라이드 {file} 변경 요청…";
   overrides["chat.startTitle"] = "슬라이드 작업 시작";

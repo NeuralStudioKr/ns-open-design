@@ -2651,6 +2651,8 @@ export const ko: Dict = {
   'teamver.about.basedOn': 'Open Design 기반 소프트웨어를 Teamver용으로 수정·통합했습니다.',
   'teamver.about.copyright': '저작권',
   'teamver.about.license': '라이선스',
+  'teamver.about.viewAllLicenses': '오픈소스 라이선스 전체 보기',
+  'teamver.homeHero.subtitle': '아이디어를 AI와 함께 슬라이드 초안으로 빠르게 만듭니다.',
   'settings.skillsNew': '새 스킬',
   'settings.skillsEmpty': '왼쪽에서 스킬을 선택하거나 새로 만드세요.',
   'settings.skillsEdit': '편집',

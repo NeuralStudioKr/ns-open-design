@@ -463,6 +463,8 @@ export interface Dict {
   'teamver.about.basedOn': string;
   'teamver.about.copyright': string;
   'teamver.about.license': string;
+  'teamver.about.viewAllLicenses': string;
+  'teamver.homeHero.subtitle': string;
   'settings.skillsHint': string;
   'settings.skillsNew': string;
   'settings.skillsEmpty': string;

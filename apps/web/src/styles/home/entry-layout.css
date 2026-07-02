@@ -1094,6 +1094,20 @@
   background: var(--bg-subtle);
   border-color: var(--border-soft);
 }
+.entry-settings-open-source__summary {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.entry-settings-open-source__summary a {
+  color: var(--text);
+  text-decoration: none;
+}
+.entry-settings-open-source__summary a:hover {
+  text-decoration: underline;
+}
 
 [dir='rtl'] .entry-settings-menu__popover {
   right: auto;
