@@ -153,6 +153,20 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(text).toBe("진행하겠습니다.");
   });
 
+  it("strips orphan pseudo-tool close tags left after chunked streaming sanitization", () => {
+    const input = [
+      "진행하겠습니다.",
+      "</invoke>",
+      "</tools>",
+      "</tool_call_chunk>",
+      "슬라이드 초안을 준비합니다.",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe("진행하겠습니다.\n\n슬라이드 초안을 준비합니다.");
+    expect(out).not.toContain("</invoke>");
+    expect(out).not.toContain("</tools>");
+  });
+
   it("strips trailing open variant internal XML while streaming", () => {
     const input = "진행하겠습니다.\n<tool_call_chunk>\n{\"name\":\"TodoWrite\"";
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);

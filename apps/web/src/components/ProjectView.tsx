@@ -246,7 +246,7 @@ import { buildContinueInCliToast } from '../lib/build-continue-in-cli-toast';
 import { buildClipboardPrompt } from '../lib/build-clipboard-prompt';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { effectiveMaxTokens } from '../state/maxTokens';
-import { BYOK_CHAT_TOOL_NAMES } from '../state/apiProtocols';
+import { byokChatToolNamesForProtocol } from '../state/apiProtocols';
 import { effectiveAgentModelChoice } from './agentModelSelection';
 import { mediaExecutionPolicyForProjectMetadata } from '../media/execution-policy';
 import { mediaModelProviderId } from '../media/models';
@@ -2455,7 +2455,10 @@ export function ProjectView({
       audioVoiceOptions,
       audioVoiceOptionsError: audioVoiceOptionsLookupError,
       streamFormat: config.mode === 'api' ? 'plain' : undefined,
-      byokToolNames: config.mode === 'api' ? BYOK_CHAT_TOOL_NAMES : undefined,
+      byokToolNames:
+        config.mode === 'api'
+          ? byokChatToolNamesForProtocol(config.apiProtocol)
+          : undefined,
       sessionMode: sessionModeOverride,
       locale,
       userInstructions: config.customInstructions,
@@ -2468,6 +2471,7 @@ export function ProjectView({
     designTemplates,
     designSystems,
     config.mode,
+    config.apiProtocol,
     config.customInstructions,
     activeSessionMode,
     locale,
@@ -7300,6 +7304,9 @@ export function createBufferedTextUpdates({
 }) {
   let pendingContentDelta = '';
   let pendingTextEventDelta = '';
+  let rawContentForSanitize: string | null = null;
+  let rawTextEventForSanitize = '';
+  let sanitizedTextEventSent = '';
   let flushFrame: number | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
@@ -7338,15 +7345,26 @@ export function createBufferedTextUpdates({
       let sanitizedTextEventDelta = '';
       updateMessage((prev) => {
         const prevContent = prev.content ?? '';
+        if (contentDelta && rawContentForSanitize === null) {
+          rawContentForSanitize = prevContent;
+        }
+        if (contentDelta) {
+          rawContentForSanitize = `${rawContentForSanitize ?? prevContent}${contentDelta}`;
+        }
         const nextContent = contentDelta
-          ? stripLeakedPseudoToolXml(prevContent + contentDelta)
+          ? stripLeakedPseudoToolXml(rawContentForSanitize ?? prevContent)
           : prevContent;
         sanitizedContentDelta = nextContent.startsWith(prevContent)
           ? nextContent.slice(prevContent.length)
           : '';
-        sanitizedTextEventDelta = textEventDelta
-          ? stripLeakedPseudoToolXml(textEventDelta)
-          : '';
+        if (textEventDelta) {
+          rawTextEventForSanitize += textEventDelta;
+          const nextTextEvent = stripLeakedPseudoToolXml(rawTextEventForSanitize);
+          sanitizedTextEventDelta = nextTextEvent.startsWith(sanitizedTextEventSent)
+            ? nextTextEvent.slice(sanitizedTextEventSent.length)
+            : nextTextEvent;
+          sanitizedTextEventSent = nextTextEvent;
+        }
         return {
           ...prev,
           content: nextContent,

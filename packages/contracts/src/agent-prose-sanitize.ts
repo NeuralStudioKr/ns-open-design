@@ -115,6 +115,10 @@ const OPEN_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
   `<(${INTERNAL_MARKUP_NAME_PART_RE})\\b[^>]*>`,
   "gi",
 );
+const ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
+  `</(${INTERNAL_MARKUP_NAME_PART_RE})\\s*>`,
+  "gi",
+);
 
 const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
 const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
@@ -205,6 +209,7 @@ const BARE_TOOL_JSON_OPEN_RE = new RegExp(
 
 const closedTagRes = new Map<string, RegExp>();
 const openTagRes = new Map<string, RegExp>();
+const orphanCloseTagRes = new Map<string, RegExp>();
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -227,6 +232,15 @@ function openTagRe(tagName: string): RegExp {
   if (!re) {
     re = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>`, "i");
     openTagRes.set(tagName, re);
+  }
+  return re;
+}
+
+function orphanCloseTagRe(tagName: string): RegExp {
+  let re = orphanCloseTagRes.get(tagName);
+  if (!re) {
+    re = new RegExp(`</${escapeRegExp(tagName)}\\s*>`, "gi");
+    orphanCloseTagRes.set(tagName, re);
   }
   return re;
 }
@@ -329,6 +343,16 @@ function stripClosedTagFamilies(input: string, tagNames: readonly string[]): str
   return out;
 }
 
+function stripOrphanCloseTagFamilies(input: string, tagNames: readonly string[]): string {
+  let out = input;
+  for (const tagName of tagNames) {
+    const re = orphanCloseTagRe(tagName);
+    re.lastIndex = 0;
+    out = out.replace(re, "");
+  }
+  return out;
+}
+
 /** Single-pass sanitizer for known leaked agent / pseudo-tool markup in assistant prose. */
 export function sanitizeLeakedAgentProse(input: string): string {
   if (!input) return input;
@@ -345,6 +369,8 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
+  out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
+  out = out.replace(ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE, "");
   const bareTail = out.match(new RegExp(`${BARE_TOOL_JSON_OPEN_RE.source}[\\s\\S]*$`));
   if (bareTail?.index !== undefined) {
     out = out.slice(0, bareTail.index).trimEnd();

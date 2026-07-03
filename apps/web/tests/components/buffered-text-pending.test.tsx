@@ -72,4 +72,46 @@ describe('createBufferedTextUpdates pending text accounting', () => {
 
     buf.cancel();
   });
+
+  it('keeps hidden pseudo-tool bodies suppressed when flush splits the open and close tags', () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+
+    let msg = {
+      content: 'Intro',
+      events: [],
+    } as unknown as ChatMessage;
+    const contentDeltas: string[] = [];
+    const buf = createBufferedTextUpdates({
+      updateMessage: (u) => {
+        msg = u(msg);
+      },
+      persistSoon: () => {},
+      onContentDelta: (delta) => contentDeltas.push(delta),
+    });
+
+    buf.appendContent('\n<tools><invoke name="TodoWrite">hidden');
+    buf.appendTextEvent('Plan\n<invoke name="Write">secret');
+    buf.flush();
+
+    expect(msg.content).toBe('Intro');
+    expect(msg.events).toEqual([{ kind: 'text', text: 'Plan' }]);
+    expect(contentDeltas).toEqual([]);
+
+    buf.appendContent('</invoke></tools>\nVisible');
+    buf.appendTextEvent('</invoke>\nDone');
+    buf.flush();
+
+    expect(msg.content).toBe('Intro\n\nVisible');
+    expect(msg.content).not.toContain('hidden');
+    expect(msg.content).not.toContain('</invoke>');
+    expect(msg.events).toEqual([
+      { kind: 'text', text: 'Plan' },
+      { kind: 'text', text: '\n\nDone' },
+    ]);
+    expect(JSON.stringify(msg.events)).not.toContain('secret');
+    expect(contentDeltas).toEqual(['\n\nVisible']);
+
+    buf.cancel();
+  });
 });
