@@ -82,7 +82,13 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
-    mem_limit: ${OD_MEM_LIMIT:-512m}
+    # BYOK streaming + headless export (Chromium ×BROWSER_POOL_SIZE) share
+    # this container, so the 512m compose fallback was too tight for even
+    # a single deck export (Chromium alone routinely peaks over 300MB per
+    # instance). Raise the fallback to 1g so a local dev without env files
+    # does not OOM immediately; staging / production override via
+    # `OD_MEM_LIMIT` in `.env.staging` / `.env.production` (1536m / 4g).
+    mem_limit: ${OD_MEM_LIMIT:-1g}
     pids_limit: 256
     healthcheck:
       test:
