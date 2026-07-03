@@ -648,6 +648,32 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     expect(persist).not.toHaveBeenCalled();
   });
 
+  it('soft-continues GET /files when scratch already has project bytes', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    vi.spyOn(hooks!, 'ensureMaterialized').mockRejectedValue(
+      new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'),
+    );
+    const scratchHasProjectFiles = vi.fn(async () => true);
+    const sendApiError = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError, {
+      scratchHasProjectFiles,
+    });
+
+    const next = vi.fn();
+    await middleware(mockReq('GET', '/api/projects/p1/files'), mockRes(), next);
+
+    expect(scratchHasProjectFiles).toHaveBeenCalledWith('p1');
+    expect(sendApiError).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
+  });
+
   it('still 502s export routes when scratch is empty and tenant resolution fails', async () => {
     const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
     const storage = new MaterializingProjectStorage(
