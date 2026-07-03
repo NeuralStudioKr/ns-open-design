@@ -16,6 +16,7 @@ import {
   ensureChromiumRuntimeDirs,
   imageScreenshotOptions,
   patchArtifactDeckPrintBackground,
+  resolveExportTimeoutMs,
 } from '../src/headless-export.js';
 
 describe('chromiumExecutableCandidates', () => {
@@ -73,6 +74,50 @@ describe('chromiumRuntimePaths', () => {
       else process.env.XDG_CONFIG_HOME = prevConfig;
       if (prevCache === undefined) delete process.env.XDG_CACHE_HOME;
       else process.env.XDG_CACHE_HOME = prevCache;
+    }
+  });
+});
+
+describe('resolveExportTimeoutMs', () => {
+  const previous = process.env.OD_EXPORT_TIMEOUT_MS;
+  const restore = () => {
+    if (previous === undefined) delete process.env.OD_EXPORT_TIMEOUT_MS;
+    else process.env.OD_EXPORT_TIMEOUT_MS = previous;
+  };
+
+  it('defaults to 30s when the env var is unset', () => {
+    delete process.env.OD_EXPORT_TIMEOUT_MS;
+    try {
+      expect(resolveExportTimeoutMs()).toBe(30_000);
+    } finally {
+      restore();
+    }
+  });
+
+  it('honors a valid env override', () => {
+    process.env.OD_EXPORT_TIMEOUT_MS = '90000';
+    try {
+      expect(resolveExportTimeoutMs()).toBe(90_000);
+    } finally {
+      restore();
+    }
+  });
+
+  it('clamps below the 1s floor to guard against typos', () => {
+    process.env.OD_EXPORT_TIMEOUT_MS = '10';
+    try {
+      expect(resolveExportTimeoutMs()).toBe(1_000);
+    } finally {
+      restore();
+    }
+  });
+
+  it('falls back to the default for non-numeric overrides', () => {
+    process.env.OD_EXPORT_TIMEOUT_MS = 'not-a-number';
+    try {
+      expect(resolveExportTimeoutMs()).toBe(30_000);
+    } finally {
+      restore();
     }
   });
 });

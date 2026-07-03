@@ -852,15 +852,28 @@ export async function exportProjectAsPdf(opts: {
   projectId: string;
   requireRenderedExport?: boolean;
   title: string;
+  /**
+   * When true, bypass the daemon export cache and force a fresh render.
+   * Wire this up to a Shift+click (or "새로 생성" menu affordance) so a
+   * user who suspects a stale cached artifact (e.g. a template-fix has
+   * shipped but the cache has an older render) can force a re-render
+   * without waiting on cache version bumps. Default cache behavior is
+   * unchanged.
+   */
+  fresh?: boolean;
 }): Promise<ProjectPdfExportResult> {
   let daemonErr: unknown = null;
   try {
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
+    const url = opts.fresh
+      ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
+      : `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`;
+    const resp = await fetchTeamverDaemon(url, {
       body: JSON.stringify({
         deck: opts.deck,
         delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.title,
+        ...(opts.fresh ? { fresh: true } : {}),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',

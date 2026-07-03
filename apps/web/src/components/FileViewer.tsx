@@ -8624,10 +8624,11 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-	                    exportPdf={() => exportProjectAsPdf({
+	                    exportPdf={(options) => exportProjectAsPdf({
 	                      deck: effectiveDeck,
 	                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
 	                      filePath: file.name,
+	                      fresh: options?.fresh,
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,

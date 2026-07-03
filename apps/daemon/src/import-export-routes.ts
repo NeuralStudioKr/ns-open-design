@@ -47,6 +47,29 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
   );
 }
 
+/**
+ * Accept the "cache bypass" toggle from either a query string (`?fresh=1`)
+ * or a body flag (`{"fresh":true}`). Templates that ship a new render
+ * pipeline (e.g. Guizang WebGL rasterize fix) can otherwise be pinned to
+ * a bad cached artifact until the cache-version env bump reaches prod.
+ */
+function wantsFreshExport(req: {
+  query?: Record<string, unknown>;
+  body?: Record<string, unknown> | undefined;
+}): boolean {
+  const qs = req.query;
+  if (qs && typeof qs === 'object') {
+    const raw = qs['fresh'];
+    if (raw === '1' || raw === 'true' || raw === true) return true;
+  }
+  const body = req.body;
+  if (body && typeof body === 'object') {
+    const raw = (body as Record<string, unknown>)['fresh'];
+    if (raw === true || raw === '1' || raw === 'true') return true;
+  }
+  return false;
+}
+
 async function respondExportPayload(
   res: {
     status(code: number): { json(body: unknown): void };
@@ -735,6 +758,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             mime: 'application/pdf',
           };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
@@ -794,6 +818,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
           return { body: image, filename: `${base}.${extension}`, mime };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
@@ -839,6 +864,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             mime: 'text/html; charset=utf-8',
           };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
@@ -887,6 +913,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           });
           return { body: buffer, filename: `${base}.zip`, mime: 'application/zip' };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {

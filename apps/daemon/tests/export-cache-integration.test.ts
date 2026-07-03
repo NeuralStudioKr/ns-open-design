@@ -89,6 +89,56 @@ describe('runCachedExport (memo only)', () => {
     expect(second.body.toString('utf8')).toBe('<html>fresh</html>');
   });
 
+  it('fresh=true bypasses the memo cache and re-renders', async () => {
+    let renderCount = 0;
+    const render = vi.fn(async () => {
+      renderCount += 1;
+      return {
+        body: Buffer.from(`<html>v${renderCount}</html>`),
+        filename: 'artifact.html',
+        mime: 'text/html; charset=utf-8',
+      };
+    });
+
+    const first = await runCachedExport(
+      { format: 'html', deck: false, projectId: 'proj-a' },
+      baseDescriptor(),
+      render,
+    );
+    expect(first.cache).toBe('miss');
+    expect(first.body.toString('utf8')).toBe('<html>v1</html>');
+
+    // Normal follow-up hits the cache.
+    const cached = await runCachedExport(
+      { format: 'html', deck: false, projectId: 'proj-a' },
+      baseDescriptor(),
+      render,
+    );
+    expect(cached.cache).toBe('hit-memo');
+    expect(render).toHaveBeenCalledTimes(1);
+
+    // fresh=true forces a re-render and refreshes the cache.
+    const forced = await runCachedExport(
+      { format: 'html', deck: false, projectId: 'proj-a' },
+      baseDescriptor(),
+      render,
+      { fresh: true },
+    );
+    expect(forced.cache).toBe('miss');
+    expect(forced.body.toString('utf8')).toBe('<html>v2</html>');
+    expect(render).toHaveBeenCalledTimes(2);
+
+    // Next non-fresh call sees the new bytes.
+    const afterForced = await runCachedExport(
+      { format: 'html', deck: false, projectId: 'proj-a' },
+      baseDescriptor(),
+      render,
+    );
+    expect(afterForced.cache).toBe('hit-memo');
+    expect(afterForced.body.toString('utf8')).toBe('<html>v2</html>');
+    expect(render).toHaveBeenCalledTimes(2);
+  });
+
   it('separates cache entries by format (HTML vs PDF vs ZIP) for the same source', async () => {
     const render = vi.fn(async () => ({
       body: Buffer.from('payload'),

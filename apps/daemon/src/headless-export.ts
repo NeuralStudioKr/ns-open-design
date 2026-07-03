@@ -20,7 +20,22 @@ export interface HeadlessExportOptions {
   slideIndex?: number;
 }
 
-const EXPORT_TIMEOUT_MS = 30_000;
+/**
+ * Chromium load + evaluate + PDF/screenshot timeout for a single export.
+ * Tunable via `OD_EXPORT_TIMEOUT_MS` so ops can dial it up for large
+ * decks (Guizang variants routinely take 15–25s) without a code push.
+ * The lower bound (1s) guards against footgun typos that would make
+ * every export instantly abort.
+ */
+export function resolveExportTimeoutMs(): number {
+  const raw = process.env.OD_EXPORT_TIMEOUT_MS;
+  if (!raw) return 30_000;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return 30_000;
+  return Math.max(1_000, parsed);
+}
+
+const EXPORT_TIMEOUT_MS = resolveExportTimeoutMs();
 const DECK_WIDTH = 1920;
 const DECK_HEIGHT = 1080;
 // Image downloads are user-facing deliverables, not thumbnail previews. Capture
@@ -489,11 +504,19 @@ async function stripLeakedViewportFromPage(page: Page): Promise<void> {
  * order or @media print specificity battles.
  */
 export async function revealAllDeckSlides(page: Page): Promise<number> {
-  const count = await evaluateInPage<number>(
+  const result = await evaluateInPage<{
+    count: number;
+    canvasBgAttempted: number;
+    canvasBgRasterized: number;
+    canvasBgFailed: number;
+    canvasBgFailReasons: string[];
+  }>(
     page,
     `
       const slides = Array.from(document.querySelectorAll(args.selector));
-      if (slides.length === 0) return 0;
+      if (slides.length === 0) {
+        return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
+      }
 
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
 
@@ -517,10 +540,19 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         return resolveShellBackground();
       };
 
+      let canvasBgAttempted = 0;
+      let canvasBgRasterized = 0;
+      let canvasBgFailed = 0;
+      const canvasBgFailReasons = [];
       document.querySelectorAll('canvas.bg').forEach((canvas) => {
+        canvasBgAttempted += 1;
         try {
           const dataUrl = canvas.toDataURL('image/png');
-          if (!dataUrl || dataUrl === 'data:,') return;
+          if (!dataUrl || dataUrl === 'data:,') {
+            canvasBgFailed += 1;
+            canvasBgFailReasons.push('empty-data-url');
+            return;
+          }
           const img = document.createElement('img');
           img.setAttribute('data-od-rasterized-bg', canvas.id || 'bg');
           img.src = dataUrl;
@@ -534,7 +566,15 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
           const opacity = window.getComputedStyle(canvas).opacity;
           if (opacity) set(img, 'opacity', opacity);
           canvas.replaceWith(img);
-        } catch (_) {}
+          canvasBgRasterized += 1;
+        } catch (err) {
+          canvasBgFailed += 1;
+          // toDataURL on a WebGL canvas without preserveDrawingBuffer,
+          // or a tainted canvas, is the common failure mode. Keep the
+          // reason short but distinctive so daemon logs can group.
+          const reason = err && err.name ? err.name : String(err || 'unknown').slice(0, 64);
+          canvasBgFailReasons.push(reason);
+        }
       });
 
       const shellBg = resolveShellBackground();
@@ -601,7 +641,13 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         .querySelectorAll(args.chromeHideSelector)
         .forEach((el) => set(el, 'display', 'none'));
 
-      return slides.length;
+      return {
+        count: slides.length,
+        canvasBgAttempted,
+        canvasBgRasterized,
+        canvasBgFailed,
+        canvasBgFailReasons,
+      };
     `,
     {
       selector: DECK_SLIDE_SELECTOR,
@@ -612,9 +658,25 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
     },
   ).catch((err: unknown) => {
     console.warn('[headless-export] revealAllDeckSlides failed', err);
-    return 0;
+    return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
   });
-  return typeof count === 'number' && Number.isFinite(count) ? count : 0;
+  if (result.canvasBgFailed > 0) {
+    // Currently the primary failure mode is WebGL contexts that were not
+    // created with preserveDrawingBuffer:true — the resulting toDataURL
+    // returns an empty buffer, which then falls back to the CSS/shell
+    // background color. Emitting the summary here lets ops correlate
+    // "blank first page" bug reports with template regressions.
+    console.warn(
+      JSON.stringify({
+        metric: 'od_export_canvas_bg_rasterize',
+        attempted: result.canvasBgAttempted,
+        rasterized: result.canvasBgRasterized,
+        failed: result.canvasBgFailed,
+        reasons: Array.from(new Set(result.canvasBgFailReasons)).slice(0, 4),
+      }),
+    );
+  }
+  return Number.isFinite(result.count) ? result.count : 0;
 }
 
 async function waitForPrintableContent(page: Page): Promise<void> {
