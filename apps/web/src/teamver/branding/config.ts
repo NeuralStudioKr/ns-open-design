@@ -46,8 +46,8 @@ export type TeamverBrandingConfig = {
   /** Chat assistant role header — hide provider/model labels. */
   hideAssistantModelLabels: boolean;
   /**
-   * Reserved embed policy flag — thinking blocks render collapsed by default for
-   * all surfaces; embed no longer strips them (see AssistantMessage).
+   * Embed demo policy — hide thinking/tool blocks entirely instead of showing
+   * collapse UI that flickers during streaming.
    */
   hideAssistantThinkingDetails: boolean;
   /** Force API (BYOK) mode and skip onboarding — prevents CLI/BYOK drift. */
@@ -140,7 +140,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideUsefulTips: true,
         hideHandoffButton: true,
         hideAssistantModelLabels: true,
-        hideAssistantThinkingDetails: false,
+        hideAssistantThinkingDetails: true,
         lockExecutionConfig: true,
         hideLocalWorkspaceControls: true,
         hideWorkspaceTabsBar: true,

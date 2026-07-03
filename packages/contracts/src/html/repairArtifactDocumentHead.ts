@@ -16,10 +16,20 @@ const BODY_VIEWPORT_FRAGMENT_RE =
 const LEAKED_VIEWPORT_TAIL_RE =
   /(?<!width=)device-width\s*,\s*initial-scale=[\d.]+"?\s*\/?>\s*/gi;
 
+/** Raw CSS variable lines leaked into body when `<style>` opens late during streaming. */
+const LEAKED_CSS_TOKEN_BLOCK_RE =
+  /(?:^|>)\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\s*:[^<]{0,400}\}\s*/gim;
+
+/** Truncated deck-framework script bodies that render as visible text. */
+const LEAKED_DECK_SCRIPT_SNIPPET_RE =
+  /(?:^|>)\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,1200}?onKey\(e\)\s*\{[\s\S]{0,200}?/gim;
+
 function stripLeakedViewportFragments(doc: string): string {
   let out = doc.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
   out = out.replace(BODY_VIEWPORT_FRAGMENT_RE, "$1");
   out = out.replace(LEAKED_VIEWPORT_TAIL_RE, "");
+  out = out.replace(LEAKED_CSS_TOKEN_BLOCK_RE, (match) => (match.startsWith(">") ? ">" : ""));
+  out = out.replace(LEAKED_DECK_SCRIPT_SNIPPET_RE, (match) => (match.startsWith(">") ? ">" : ""));
   return out;
 }
 

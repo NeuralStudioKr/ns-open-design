@@ -5,6 +5,7 @@ import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './
 import {
   buildSocialSharePayload,
   OPEN_DESIGN_GITHUB_REPO_URL,
+  isArtifactHtmlStableForPreview,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -4708,6 +4709,9 @@ function HtmlViewer({
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
   const [source, setSource] = useState<string | null>(liveHtml ?? null);
+  const lastStablePreviewSourceRef = useRef<string | null>(
+    liveHtml && isArtifactHtmlStableForPreview(liveHtml) ? liveHtml : null,
+  );
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5242,10 +5246,23 @@ function HtmlViewer({
 
   useEffect(() => {
     const sourceFileKey = `${projectId}\0${file.name}\0${liveHtml === undefined ? 'raw' : 'live'}`;
+    const acceptCandidate = (candidate: string | null): string | null => {
+      if (candidate == null) return null;
+      if (!streaming || isArtifactHtmlStableForPreview(candidate)) {
+        if (isArtifactHtmlStableForPreview(candidate)) {
+          lastStablePreviewSourceRef.current = candidate;
+        }
+        return candidate;
+      }
+      return lastStablePreviewSourceRef.current;
+    };
     if (liveHtml !== undefined) {
       sourceFileKeyRef.current = sourceFileKey;
-      setSource(liveHtml);
-      sourceRef.current = liveHtml;
+      const accepted = acceptCandidate(liveHtml);
+      if (accepted != null) {
+        setSource(accepted);
+        sourceRef.current = accepted;
+      }
       return;
     }
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
@@ -5270,13 +5287,15 @@ function HtmlViewer({
       // transient null mid-burst would blank source → srcDoc empty →
       // shell stays on prior frame. Keep the last good text instead.
       if (text == null) return;
-      setSource(text);
-      sourceRef.current = text;
+      const accepted = acceptCandidate(text);
+      if (accepted == null) return;
+      setSource(accepted);
+      sourceRef.current = accepted;
     });
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.name, file.mtime, liveHtml, reloadKey, filesRefreshKey]);
+  }, [projectId, file.name, file.mtime, liveHtml, reloadKey, filesRefreshKey, streaming]);
 
   useEffect(() => {
     let cancelled = false;
@@ -7933,6 +7952,12 @@ function HtmlViewer({
   };
   const boardAvailable = mode === 'preview' && source !== null;
   const showPreviewToolbarControls = mode === 'preview';
+  const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
+  const showStreamingPreviewVeil = Boolean(
+    streaming
+    && liveHtml?.trim()
+    && !isArtifactHtmlStableForPreview(liveHtml),
+  );
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
     localCommentSideDockActive ? 'comment-preview-layer-with-side-dock' : '',
@@ -8243,7 +8268,7 @@ function HtmlViewer({
               </button>
             ))}
           </div>
-          {showPreviewToolbarControls ? (
+          {showPreviewViewportControls ? (
             <>
               <span className="viewer-divider" aria-hidden />
               <PreviewViewportControls
@@ -8694,6 +8719,11 @@ function HtmlViewer({
                     onToolbarClick={fireDrawToolbarClick}
                   >
                     <div className="artifact-preview-transport-stack">
+                      {showStreamingPreviewVeil ? (
+                        <div className="artifact-preview-streaming-veil" aria-hidden>
+                          {t('fileViewer.loading')}
+                        </div>
+                      ) : null}
                       {OD_PREVIEW_KEEP_ALIVE ? (
                         <PooledIframe
                           ref={urlPreviewIframeRef}

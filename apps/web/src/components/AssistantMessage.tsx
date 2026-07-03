@@ -424,7 +424,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
-  const { hideAssistantModelLabels, slideOnlyMvp, title: brandTitle } =
+  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle } =
     useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
@@ -457,12 +457,20 @@ function AssistantMessageImpl({
       show: showConversationTodoCard,
       input: conversationTodoInput,
     });
+    if (hideAssistantThinkingDetails) {
+      return visible.filter((block) =>
+        block.kind !== "thinking"
+        && block.kind !== "tool-group"
+        && block.kind !== "live-tool",
+      );
+    }
     return visible;
   }, [
     events,
     liveCodeBlocks,
     showConversationTodoCard,
     conversationTodoInput,
+    hideAssistantThinkingDetails,
   ]);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
   const produced = message.producedFiles ?? [];

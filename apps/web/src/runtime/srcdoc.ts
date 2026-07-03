@@ -57,7 +57,8 @@ export function buildSrcdoc(
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
   const withShim = injectSandboxShim(withBase);
   const withFocusGuard = options.previewFocusGuard ? injectPreviewFocusGuard(withShim) : withShim;
-  const withDeck = options.deck ? injectDeckBridge(withFocusGuard, options.initialSlideIndex) : withFocusGuard;
+  const withArtifactGuard = options.previewFocusGuard ? injectPreviewArtifactGuard(withFocusGuard) : withFocusGuard;
+  const withDeck = options.deck ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex) : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
   // to either the comment popover (annotate) or the inspect panel
@@ -846,6 +847,78 @@ function injectPreviewFocusGuard(doc: string): string {
   if (/<body[^>]*>/i.test(doc))
     return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
   return script + doc;
+}
+
+function injectPreviewArtifactGuard(doc: string): string {
+  const style = `<style data-od-preview-artifact-guard>
+.deck-counter,
+.deck-hint,
+.deck-controls,
+.deck-page-controls,
+.deck-pager,
+.deck-progress,
+.deck-nav,
+.deck-navigation,
+#deck-prev,
+#deck-next,
+#deck-cur,
+#deck-total,
+[data-deck-controls],
+[data-page-controls] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+</style>`;
+  const script = `<script data-od-preview-artifact-guard>(function(){
+  var viewportLeak = /^\\s*device-width\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
+  var cssLeak = /^\\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\\s*:/i;
+  var scriptLeak = /^\\s*\\(function\\s*\\(\\)\\s*\\{\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)/i;
+  var boxLeak = /^\\s*\\{\\s*box-sizing\\s*:\\s*border-box/i;
+  function isLeakedText(text){
+    var trimmed = (text || '').trim();
+    if (!trimmed) return false;
+    if (viewportLeak.test(trimmed)) return true;
+    if (cssLeak.test(trimmed)) return true;
+    if (scriptLeak.test(trimmed)) return true;
+    if (boxLeak.test(trimmed)) return true;
+    if (trimmed.indexOf('document.getElementById(\\'deck-stage\\')') >= 0) return true;
+    if (trimmed.indexOf('document.getElementById("deck-stage")') >= 0) return true;
+    return false;
+  }
+  function stripLeakedText(root){
+    if (!root) return;
+    for (var i = root.childNodes.length - 1; i >= 0; i--) {
+      var node = root.childNodes[i];
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (isLeakedText(node.textContent)) node.remove();
+        continue;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        var tag = node.tagName ? node.tagName.toLowerCase() : '';
+        if (tag === 'script' || tag === 'style' || tag === 'noscript') continue;
+        stripLeakedText(node);
+      }
+    }
+  }
+  function run(){
+    stripLeakedText(document.head);
+    stripLeakedText(document.body);
+  }
+  run();
+  try {
+    var obs = new MutationObserver(function(){ run(); });
+    obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  } catch (_) {}
+})();</script>`;
+  const withStyle = /<head[^>]*>/i.test(doc)
+    ? doc.replace(/<head[^>]*>/i, (m) => `${m}${style}`)
+    : (/<body[^>]*>/i.test(doc) ? doc.replace(/<body[^>]*>/i, (m) => `${m}${style}`) : style + doc);
+  if (/<head[^>]*>/i.test(withStyle))
+    return withStyle.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(withStyle))
+    return withStyle.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + withStyle;
 }
 
 // Selection bridge: shared substrate for Comment mode and Inspect mode.
