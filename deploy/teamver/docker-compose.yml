@@ -232,11 +232,18 @@ services:
         condition: service_healthy
         required: false
     # Multi-worker uvicorn 에서 워커 하나가 event-loop hang 이면 docker
-    # restart 로 회복 가능해야 한다. wget 은 python:slim 에 기본 없음 →
-    # Python one-liner (표준 라이브러리 urllib) 사용. /api/healthz 는 DB
-    # schema 체크까지 하지만 3s timeout 안에서 대부분 통과. schema 결손
-    # 은 첫 부팅 lifespan 에서 잡히므로 여기선 응답 자체가 안 오는 경우만
-    # unhealthy 로 분류하기 위해 status_code 200~499 를 통과로 취급.
+    # restart 로 회복 가능해야 한다. wget/curl 은 python:slim 에 기본
+    # 없음 → Python one-liner (표준 라이브러리 urllib) 사용.
+    #
+    # /api/healthz 는 lifespan 스키마 체크까지 도는데, 정상 시엔 200
+    # payload {"status":"ok"} 를 리턴한다. urlopen 은 4xx/5xx 응답에서
+    # HTTPError 를, 연결 자체 실패엔 URLError 를 raise 하므로 python
+    # 프로세스는 자동으로 non-zero exit → docker 가 unhealthy 로 분류.
+    # ``sys.exit(0 if r.status < 500 else 1)`` 은 방어적으로만 남긴 것이며
+    # 실제로는 예외 경로에서 이미 걸러진다.
+    #
+    # 3s timeout — 3워커 uvicorn 이 정상이면 healthz p99 < 200ms. 3s 여유
+    # 는 lifespan warmup 이 늦게 끝나는 재기동 직후를 커버.
     healthcheck:
       test:
         [

@@ -85,32 +85,39 @@ async_engine = create_async_engine(
 async_session_maker = async_sessionmaker(expire_on_commit=False, bind=async_engine)
 
 
+def _pool_field(pool: Any, method_name: str) -> int:
+    """Call a SQLAlchemy pool accessor with per-field failure isolation.
+
+    NullPool / StaticPool 은 checkedout / overflow 같은 QueuePool 전용
+    accessor 를 정의하지 않을 수 있다. 전체 stats dict 를 -1 로 무효화
+    하기보다는 field 단위로 -1 을 반환해 나머지 관측치는 보존한다.
+    """
+    accessor = getattr(pool, method_name, None)
+    if not callable(accessor):
+        return -1
+    try:
+        return int(accessor())
+    except Exception:  # pragma: no cover — defensive; never surface as health
+        return -1
+
+
 def get_pool_stats() -> dict[str, int | str]:
     """Non-secret pool observability for /api/healthz/deps.
 
     Uses SQLAlchemy pool ``status()`` accessors. Values are per-worker
     (uvicorn workers 는 별도 프로세스 → 별도 pool). CloudWatch 에서
-    burst 를 감지하려면 워커별로 aggregation 필요.
+    burst 를 감지하려면 워커별로 aggregation 필요. Field 별 예외 격리로
+    비정상 pool 어댑터에서도 부분 관측치 보존.
     """
     pool = async_engine.pool
-    try:
-        return {
-            "size": int(getattr(pool, "size", lambda: 0)()),
-            "checked_out": int(getattr(pool, "checkedout", lambda: 0)()),
-            "checked_in": int(getattr(pool, "checkedin", lambda: 0)()),
-            "overflow": int(getattr(pool, "overflow", lambda: 0)()),
-            "configured_size": _POOL_SIZE,
-            "configured_max_overflow": _MAX_OVERFLOW,
-        }
-    except Exception:  # pragma: no cover — never surface pool errors as health
-        return {
-            "size": -1,
-            "checked_out": -1,
-            "checked_in": -1,
-            "overflow": -1,
-            "configured_size": _POOL_SIZE,
-            "configured_max_overflow": _MAX_OVERFLOW,
-        }
+    return {
+        "size": _pool_field(pool, "size"),
+        "checked_out": _pool_field(pool, "checkedout"),
+        "checked_in": _pool_field(pool, "checkedin"),
+        "overflow": _pool_field(pool, "overflow"),
+        "configured_size": _POOL_SIZE,
+        "configured_max_overflow": _MAX_OVERFLOW,
+    }
 
 
 async def get_async_session() -> AsyncIterator[AsyncSession]:
