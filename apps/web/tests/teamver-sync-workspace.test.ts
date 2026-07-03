@@ -130,4 +130,62 @@ describe("syncTeamverWorkspaceFromSession", () => {
     expect(active).toBe("WS-old");
     expect(storeSetMock).not.toHaveBeenCalled();
   });
+
+  it("preserveStoredWorkspace pins the stored id when the workspace is disabled but still listed", async () => {
+    storeGetMock.mockResolvedValue("WS-current");
+    const events: string[] = [];
+    window.addEventListener(TEAMVER_WORKSPACE_CHANGED_EVENT, (event) => {
+      events.push(
+        (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId ?? "",
+      );
+    });
+
+    // Design app disabled on the currently-active workspace — a naive resync
+    // would fall through to the account default and reroute the entire embed.
+    const active = await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-other",
+        workspaces: [
+          { id: "WS-current", name: "Current", role: "owner", appEnabled: false },
+          { id: "WS-other", name: "Other", role: "owner", appEnabled: true },
+        ],
+      },
+      [
+        { id: "WS-current", name: "Current", role: "owner", appEnabled: false },
+        { id: "WS-other", name: "Other", role: "owner", appEnabled: true },
+      ],
+      { preserveStoredWorkspace: true },
+    );
+
+    expect(active).toBe("WS-current");
+    expect(storeSetMock).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it("preserveStoredWorkspace still reconciles when the stored workspace is revoked entirely", async () => {
+    storeGetMock.mockResolvedValue("WS-revoked");
+    const events: string[] = [];
+    window.addEventListener(TEAMVER_WORKSPACE_CHANGED_EVENT, (event) => {
+      events.push(
+        (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId ?? "",
+      );
+    });
+
+    const active = await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-current",
+        workspaces: [{ id: "WS-current", name: "Current", role: "owner" }],
+      },
+      [{ id: "WS-current", name: "Current", role: "owner" }],
+      { preserveStoredWorkspace: true },
+    );
+
+    expect(active).toBe("WS-current");
+    expect(storeSetMock).toHaveBeenCalledWith("WS-current");
+    expect(events).toContain("WS-current");
+  });
 });

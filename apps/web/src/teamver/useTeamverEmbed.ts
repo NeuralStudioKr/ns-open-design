@@ -192,7 +192,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       const workspaces = normalizeWorkspaceList(session.workspaces);
       const userId = readUserId(session.user);
-      const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session, workspaces);
+      const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session, workspaces, {
+        // Only boot and explicit auth recovery may reconcile the stored
+        // workspace onto a new one. Routine focus/idle refresh keeps the
+        // active workspace pinned so the App does not treat the session
+        // touch as a workspace switch and bounce the user to home.
+        preserveStoredWorkspace: !resetRefreshState && isTeamverEmbedBootComplete(),
+      });
       const activeWorkspace =
         workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null;
       const designAppEnabled = activeWorkspace ? isWorkspaceAppEnabled(activeWorkspace) : true;

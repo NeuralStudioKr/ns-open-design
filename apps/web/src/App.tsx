@@ -1556,6 +1556,10 @@ function AppInner() {
       setBackgroundRunSummaries([]);
       const current = routeRef.current;
       if (current.kind !== 'project') return;
+      console.info('[teamver] home-nav: design app disabled mid-session', {
+        projectId: current.projectId,
+        reason: detail.appDisabledReason ?? null,
+      });
       setWorkingDirError(formatTeamverDesignDisabledMessage(detail.appDisabledReason));
       navigate({ kind: 'home', view: 'home' }, { replace: true });
     });
@@ -1608,6 +1612,10 @@ function AppInner() {
         window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
         const current = routeRef.current;
         if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
+          console.info('[teamver] home-nav: workspace switch — project not in new list', {
+            projectId: current.kind === 'project' ? current.projectId : null,
+            workspaceId: trimmed,
+          });
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
           navigate({ kind: 'home', view: 'home' }, { replace: true });
         }
@@ -2289,6 +2297,10 @@ function AppInner() {
         await registerTeamverProjectIfNeeded(project);
       } catch (err) {
         if (err instanceof TeamverProjectRegistryError) {
+          console.info('[teamver] home-nav: project registry error on import', {
+            projectId: result.projectId,
+            code: err.code,
+          });
           setWorkingDirError(formatTeamverProjectRegistryErrorMessage(err.code));
           navigate({ kind: 'home', view: 'home' }, { replace: true });
           return;
@@ -2359,6 +2371,9 @@ function AppInner() {
     let cancelled = false;
     void assertTeamverProjectAccessIfNeeded(activeProjectRouteId).then((allowed) => {
       if (cancelled || allowed) return;
+      console.info('[teamver] home-nav: project access denied on route mount', {
+        projectId: activeProjectRouteId,
+      });
       if (isTeamverEmbedMode()) {
         setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
       }
@@ -2889,6 +2904,9 @@ function AppInner() {
       const detailRoute = readEmbedProjectDetailRoute(route);
       if (detailRoute) {
         if (!pendingLocalProjectIdsRef.current.has(detailRoute.projectId)) {
+          console.info('[teamver] home-nav: deep-linked project not found (detail route)', {
+            projectId: detailRoute.projectId,
+          });
           if (isTeamverEmbedMode()) {
             setWorkingDirError(formatTeamverProjectNotFoundMessage());
           }
@@ -2916,6 +2934,9 @@ function AppInner() {
       const knownLocalProject =
         staleRequest && pendingLocalProjectIdsRef.current.has(route.projectId);
       if (!fetchedProject && !knownLocalProject) {
+        console.info('[teamver] home-nav: deep-linked project missing after list refresh', {
+          projectId: route.projectId,
+        });
         if (isTeamverEmbedMode()) {
           setWorkingDirError(formatTeamverProjectNotFoundMessage());
         }
