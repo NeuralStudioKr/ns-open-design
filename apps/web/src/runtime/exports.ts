@@ -164,14 +164,21 @@ const TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS = [0, 400, 900, 1500] as const;
  * warms the daemon-side cache. Returns `null` when embed mode is off (native
  * OD) or when the prefix cannot be determined within the poll window; the
  * caller must still send the request (the daemon will resolve on its own).
+ *
+ * `opts.quick=true` skips the polling delays entirely and just consults
+ * cache / issues one registry read. Callers that already spent a full
+ * poll window (e.g. between PDF export retries) use this to avoid stacking
+ * multi-second warm-ups on top of the retry backoff.
  */
 export async function waitForTeamverProjectStoragePrefix(
   projectId: string,
+  opts: { quick?: boolean } = {},
 ): Promise<string | null> {
   if (!isTeamverEmbedMode()) return null;
   const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) return null;
-  for (const wait of TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS) {
+  const steps = opts.quick ? [0] : TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS;
+  for (const wait of steps) {
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     try {
       const prefix = await resolveTeamverProjectS3PrefixForDaemon(workspaceId, projectId);
@@ -993,8 +1000,10 @@ export async function exportProjectAsPdf(opts: {
         await new Promise((resolve) => setTimeout(resolve, delay));
         // Refresh the prefix cache between retries — the design-api row may
         // have been committed in the meantime and the cached prefix would
-        // let the daemon skip its own /access round-trip.
-        await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+        // let the daemon skip its own /access round-trip. Use the quick path
+        // (no additional polling window) so retries stay within the delay
+        // budget declared in TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.
+        await waitForTeamverProjectStoragePrefix(opts.projectId, { quick: true }).catch(() => null);
       }
       try {
         return await performPdfExportRequest(opts);

@@ -6662,9 +6662,16 @@ export async function startServer({
         scratchStorage
           ? {
               scratchHasProjectFiles: async (projectId: string) => {
+                // Only used on export/archive routes when tenant resolve
+                // fails — do the cheapest possible existence probe: a single
+                // non-recursive readdir on `<scratch>/<projectId>`. Recursive
+                // `listFiles` would walk every asset on large decks.
+                const trimmed = projectId.trim();
+                if (!trimmed) return false;
+                const projectDir = path.join(scratchStorage.projectsRoot, trimmed);
                 try {
-                  const files = await scratchStorage.listFiles(projectId);
-                  return files.length > 0;
+                  const entries = await fs.promises.readdir(projectDir);
+                  return entries.length > 0;
                 } catch {
                   return false;
                 }
