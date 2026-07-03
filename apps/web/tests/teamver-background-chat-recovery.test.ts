@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  conversationAwaitingQuestionFormAnswer,
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
   isInFlightAssistantMessage,
@@ -15,6 +16,53 @@ import {
 import type { ChatMessage } from "../src/types";
 
 describe("backgroundChatRecovery", () => {
+  it("treats a complete unanswered question form as user-input idle, not recovery", () => {
+    const formBody = `<question-form id="qf-1">\n${JSON.stringify({
+      id: "qf-1",
+      title: "Pick one",
+      questions: [{ id: "taskType", label: "Task", type: "single", options: [{ value: "deck", label: "Deck" }] }],
+    })}\n</question-form>`;
+    const messages: ChatMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: formBody,
+        createdAt: 1,
+        startedAt: 1,
+      },
+    ];
+    expect(conversationAwaitingQuestionFormAnswer(messages)).toBe(true);
+    expect(conversationHasRecoverableBackgroundChat(messages, "api")).toBe(true);
+    expect(
+      conversationHasRecoverableBackgroundChat(messages, "api")
+      && !conversationAwaitingQuestionFormAnswer(messages),
+    ).toBe(false);
+  });
+
+  it("stops treating question-form turns as awaiting input after answers arrive", () => {
+    const formBody = `<question-form id="qf-1">\n${JSON.stringify({
+      id: "qf-1",
+      title: "Pick one",
+      questions: [{ id: "taskType", label: "Task", type: "single", options: [{ value: "deck", label: "Deck" }] }],
+    })}\n</question-form>`;
+    const messages: ChatMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: formBody,
+        createdAt: 1,
+        startedAt: 1,
+      },
+      {
+        id: "u1",
+        role: "user",
+        content: "[form answers — qf-1]\n- Task: Deck",
+        createdAt: 2,
+      },
+    ];
+    expect(conversationAwaitingQuestionFormAnswer(messages)).toBe(false);
+  });
+
   it("detects API-mode in-flight assistant rows by startedAt", () => {
     const message: ChatMessage = {
       id: "a1",

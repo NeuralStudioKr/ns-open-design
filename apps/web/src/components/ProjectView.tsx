@@ -198,6 +198,7 @@ import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace'
 import { dispatchTeamverBackgroundChat } from '../teamver/teamverBackgroundChatEvents';
 import {
   BYOK_BACKGROUND_RECOVERY_POLL_MS,
+  conversationAwaitingQuestionFormAnswer,
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
   isRecoverableDaemonRunMessage,
@@ -210,6 +211,7 @@ import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecove
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
+import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -1320,16 +1322,6 @@ export function ProjectView({
       && failedMessagesConversationId !== activeConversationId,
   );
   const currentConversationStreaming = streaming && streamingConversationId === activeConversationId;
-  const currentConversationBusy = currentConversationLoading
-    || currentConversationStreaming
-    || currentConversationHasActiveRun;
-  const currentConversationAwaitingActiveRunAttach =
-    currentConversationHasActiveRun && !currentConversationStreaming;
-  const currentConversationSendDisabled = currentConversationLoading
-    || failedMessagesConversationId === activeConversationId
-    || currentConversationAwaitingActiveRunAttach
-    || embedSubmitDisabled;
-  const currentConversationActionDisabled = currentConversationBusy || currentConversationSendDisabled;
   const currentConversationQueueDisabled = currentConversationLoading
     || failedMessagesConversationId === activeConversationId;
 
@@ -1387,6 +1379,23 @@ export function ProjectView({
   // Submission is gated separately by the panel via `submitDisabled`/generating.
   const questionFormActive =
     (!!questionForm || questionsGenerating) && questionFormSubmittedAnswers === undefined;
+  const awaitingQuestionFormAnswer = useMemo(
+    () => conversationAwaitingQuestionFormAnswer(messages),
+    [messages],
+  );
+  const currentConversationAwaitingActiveRunAttach =
+    currentConversationHasActiveRun
+    && !currentConversationStreaming
+    && !awaitingQuestionFormAnswer;
+  const currentConversationBusy = currentConversationLoading
+    || currentConversationStreaming
+    || currentConversationAwaitingActiveRunAttach;
+  const currentConversationSendDisabled = currentConversationLoading
+    || failedMessagesConversationId === activeConversationId
+    || currentConversationAwaitingActiveRunAttach
+    || embedSubmitDisabled;
+  const currentConversationActionDisabled =
+    currentConversationSendDisabled || currentConversationStreaming;
   // Mirror `questionFormActive`'s unanswered gate: once the user answers, the
   // Questions tab closes, so the auto-focus nonce must not treat an answered
   // form as a freshly appeared one.
@@ -3355,6 +3364,10 @@ export function ProjectView({
   useEffect(() => {
     if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
     const initialInflightMessages = findInFlightAssistantMessages(messages);
+    if (initialInflightMessages.length === 0) return;
+    // Question-form turns idle on the server while waiting for answers — not a
+    // background recovery scenario. Keep composer/form submit enabled.
+    if (conversationAwaitingQuestionFormAnswer(messages)) return;
     // A live local stream already owns this conversation — do not compete.
     if (streaming && abortRef.current) return;
 
@@ -5712,7 +5725,6 @@ export function ProjectView({
       activeConversationId,
       audioVoiceOptionsError,
       conversationLoadError,
-      currentConversationActionDisabled,
 	      currentConversationQueuedItems,
 	      currentConversationSendDisabled,
 	      currentConversationLoading,
@@ -7322,15 +7334,29 @@ export function createBufferedTextUpdates({
     pendingContentDelta = '';
     pendingTextEventDelta = '';
     try {
-      updateMessage((prev) => ({
-        ...prev,
-        content: prev.content + contentDelta,
-        events: textEventDelta
-          ? [...(prev.events ?? []), { kind: 'text', text: textEventDelta }]
-          : prev.events,
-      }));
+      let sanitizedContentDelta = '';
+      let sanitizedTextEventDelta = '';
+      updateMessage((prev) => {
+        const prevContent = prev.content ?? '';
+        const nextContent = contentDelta
+          ? stripLeakedPseudoToolXml(prevContent + contentDelta)
+          : prevContent;
+        sanitizedContentDelta = nextContent.startsWith(prevContent)
+          ? nextContent.slice(prevContent.length)
+          : '';
+        sanitizedTextEventDelta = textEventDelta
+          ? stripLeakedPseudoToolXml(textEventDelta)
+          : '';
+        return {
+          ...prev,
+          content: nextContent,
+          events: sanitizedTextEventDelta
+            ? [...(prev.events ?? []), { kind: 'text', text: sanitizedTextEventDelta }]
+            : prev.events,
+        };
+      });
       persistSoon();
-      if (contentDelta) onContentDelta?.(contentDelta);
+      if (sanitizedContentDelta) onContentDelta?.(sanitizedContentDelta);
     } finally {
       flushing = false;
     }

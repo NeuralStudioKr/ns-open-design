@@ -1,4 +1,8 @@
 import type { ChatRunStatusResponse } from "@open-design/contracts";
+import {
+  findFirstQuestionForm,
+  hasUnterminatedQuestionForm,
+} from "../artifacts/question-form";
 import type { ChatMessage } from "../types";
 
 export function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
@@ -89,6 +93,43 @@ export function conversationHasRecoverableBackgroundChat(
     return messages.some(isRecoverableDaemonRunMessage);
   }
   return findInFlightAssistantMessages(messages).length > 0;
+}
+
+function findLatestAssistantMessage(
+  messages: readonly ChatMessage[],
+): ChatMessage | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role === "assistant") return message;
+  }
+  return null;
+}
+
+/**
+ * True when the latest assistant turn finished a question form and is waiting
+ * for the user to submit answers. The upstream proxy/run is idle by design —
+ * composer and form submit must stay enabled (this is not a re-entry attach).
+ */
+export function conversationAwaitingQuestionFormAnswer(
+  messages: readonly ChatMessage[],
+): boolean {
+  const assistant = findLatestAssistantMessage(messages);
+  if (!assistant) return false;
+  const content = assistant.content ?? "";
+  const parsed = findFirstQuestionForm(content);
+  if (!parsed?.form) return false;
+  if (hasUnterminatedQuestionForm(content)) return false;
+  const form = parsed.form;
+  const assistantIndex = messages.findIndex((message) => message.id === assistant.id);
+  if (assistantIndex < 0) return true;
+  for (let i = assistantIndex + 1; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (message?.role !== "user") continue;
+    if ((message.content ?? "").includes(`[form answers — ${form.id}]`)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Poll interval while a background BYOK turn may still be draining on the daemon. */
