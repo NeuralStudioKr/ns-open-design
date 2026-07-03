@@ -11,8 +11,11 @@ import {
   resetDesignAuthRefreshState,
   type DesignAuthSessionUser,
 } from "./designBffClient";
-import { isTeamverEmbedMode, isBootstrapAuthMode, redirectToTeamverLogin } from "./designApiBase";
-import { redirectToDesignLogin } from "./designAuthFlow";
+import { isTeamverEmbedMode, isBootstrapAuthMode } from "./designApiBase";
+import {
+  redirectToDesignLogin,
+  redirectToTeamverLoginPreservingRoute,
+} from "./designAuthFlow";
 import {
   resolveEmbedAuthReturnPath,
   shouldDeferEmbedLoginRedirect,
@@ -116,6 +119,21 @@ function readAuthCookieHint(): boolean {
 const FOCUS_SESSION_REFRESH_MS = 500;
 /** Routine focus/visibility session re-probes — cookie hint / bfcache restore bypass this. */
 const FOCUS_SESSION_REFRESH_MIN_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * Exponential backoff for `session_unreachable` (network / BFF outage).
+ * Only fires while the tab is visible so a background tab does not
+ * hammer the BFF forever. 5s → 15s → 60s → 60s… — long enough that a
+ * transient BFF blip resolves on the first retry, short enough that a
+ * user coming back to the tab does not have to hit refresh manually.
+ */
+const SESSION_UNREACHABLE_BACKOFF_MS: readonly number[] = [5_000, 15_000, 60_000];
+
+function pickSessionUnreachableDelayMs(attempt: number): number {
+  const clamped = Math.max(0, attempt);
+  const index = Math.min(clamped, SESSION_UNREACHABLE_BACKOFF_MS.length - 1);
+  return SESSION_UNREACHABLE_BACKOFF_MS[index] ?? 60_000;
+}
 
 export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   const [state, setState] = useState(INITIAL);
@@ -244,7 +262,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
         prepareDesignAuthSessionReload();
-        redirectToTeamverLogin();
+        redirectToTeamverLoginPreservingRoute({
+          returnTo:
+            typeof window !== "undefined"
+              ? resolveEmbedAuthReturnPath(
+                  window.location.pathname,
+                  window.location.search,
+                )
+              : null,
+        });
         return;
       }
       if (hadEmbedSession() || stateRef.current.authenticated) {
@@ -378,6 +404,60 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
     });
   }, [enabled, refresh]);
+
+  // C1: auto-backoff retry for `session_unreachable`. A single BFF hiccup
+  // used to leave the embed banner stuck until the user changed tabs,
+  // pressed refresh, or waited for the 5-minute focus refresh window.
+  // We now retry with 5s → 15s → 60s while the tab is visible, resetting
+  // the counter on any non-unreachable state. Hidden tabs skip the timer
+  // and pick up on the next visibilityStatechange.
+  const sessionUnreachableAttemptRef = useRef(0);
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    if (state.error !== "session_unreachable") {
+      sessionUnreachableAttemptRef.current = 0;
+      return;
+    }
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleRetry = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const attempt = sessionUnreachableAttemptRef.current;
+      const delay = pickSessionUnreachableDelayMs(attempt);
+      sessionUnreachableAttemptRef.current = attempt + 1;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (cancelled) return;
+        void refresh({ force: true });
+      }, delay);
+    };
+
+    scheduleRetry();
+
+    const onVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.visibilityState !== "visible") return;
+      // Tab returned to foreground during backoff — attempt immediately
+      // rather than waiting out the timer to feel responsive.
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      void refresh({ force: true });
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [enabled, refresh, state.error]);
 
   return {
     ...state,

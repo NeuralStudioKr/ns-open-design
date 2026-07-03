@@ -11,9 +11,14 @@ import {
   resolveTeamverDesignApiBase,
   resolveTeamverDesignApiCrossOriginFallback,
   resolveDesignBffRefreshUrl,
-  redirectToTeamverLogin,
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
+import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
+import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import {
+  clearOrphanTeamverAuthCookies,
+  isOrphanTeamverJwtAuthFailure,
+} from "./teamverAuthOrphanJwt";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
@@ -61,7 +66,15 @@ export function getDesignBffClient(): TeamverClient | null {
       withCredentials: true,
       onAuthExpired: () => {
         prepareDesignAuthSessionReload();
-        redirectToTeamverLogin();
+        redirectToTeamverLoginPreservingRoute({
+          returnTo:
+            typeof window !== "undefined"
+              ? resolveEmbedAuthReturnPath(
+                  window.location.pathname,
+                  window.location.search,
+                )
+              : null,
+        });
       },
     });
   }
@@ -173,6 +186,20 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
   }
   if (bffResult.status === 400 || bffResult.status === 401) {
     authRefreshDeclinedForSession = true;
+    // C2 hookup: if the failure body signals an orphan JWT (valid
+    // signature but the Main BE no longer knows the user — typical on
+    // staging after a DB reset or a prod cookie bleed), best-effort
+    // logout on the Main BE so the `.teamver.com` HttpOnly cookie is
+    // cleared. Otherwise the browser retains a permanently-invalid
+    // cookie and the user is stuck in a refresh-loop until they clear
+    // cookies manually. Fire-and-forget: never block the refresh path.
+    if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
+      console.info(
+        '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
+        { status: bffResult.status },
+      );
+      void clearOrphanTeamverAuthCookies();
+    }
   }
   return false;
 }

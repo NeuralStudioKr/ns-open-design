@@ -123,6 +123,16 @@ export function markTeamverLoginRedirectAttempt(): boolean {
   return true;
 }
 
+/**
+ * Session-expired login redirect. `returnTo` is a same-origin embed path
+ * that should be restored after login. The caller is responsible for
+ * persisting it via `storeAuthReturnTo` (from `./designAuthFlow`) before
+ * calling this — we deliberately keep this module leaf-level to avoid
+ * pulling the auth-flow module into every 401 caller. See
+ * `redirectToTeamverLoginPreservingRoute` in `./designAuthFlow` for the
+ * canonical "401 catch → login" entry that handles both persistence and
+ * the bootstrap/legacy redirect split.
+ */
 export function redirectToTeamverLogin(returnTo?: string | null): void {
   if (typeof window === "undefined") return;
   if (!markTeamverLoginRedirectAttempt()) return;
