@@ -284,6 +284,10 @@ export function registerByokProxyAbortRoute(app: Express): void {
       res.status(400).json({ error: 'streamId required' });
       return;
     }
+    const requestedConversationId =
+      typeof req.body?.conversationId === 'string'
+        ? req.body.conversationId.trim()
+        : '';
     const entry = activeProxyStreams.get(streamId);
     if (!entry) {
       res.json({ aborted: false });
@@ -306,6 +310,28 @@ export function registerByokProxyAbortRoute(app: Express): void {
         res.json({ aborted: false });
         return;
       }
+    }
+    // Defense-in-depth: if the caller supplied a conversationId (new FE
+    // Stop flow) and the entry has one, they must match. This prevents
+    // a compromised/legacy caller from aborting a *different* conversation
+    // within the same workspace after obtaining a stale stream list — the
+    // primary guard is the FE conversation filter, this closes the race
+    // where the daemon list is fetched before a conversation switch.
+    if (
+      requestedConversationId
+      && entry.conversationId
+      && requestedConversationId !== entry.conversationId
+    ) {
+      console.warn(
+        JSON.stringify({
+          metric: 'od_byok_proxy_abort_conversation_mismatch',
+          streamId,
+          expected: entry.conversationId,
+          got: requestedConversationId,
+        }),
+      );
+      res.json({ aborted: false });
+      return;
     }
     const aborted = abortByokProxyStream(streamId);
     res.json({ aborted });

@@ -323,4 +323,103 @@ describe('/api/proxy/abort tenant scoping', () => {
     expect(resp.status).toBe(200);
     expect(((await resp.json()) as { streams: unknown[] }).streams).toEqual([]);
   });
+
+  it('exposes conversationId on GET /api/proxy/active for FE scoped Stop filtering', async () => {
+    registerByokProxyStream(
+      { headers: {} } as unknown as Request,
+      mockResForRegistry(),
+      {
+        workspaceId: 'ws-tenant-a',
+        projectId: 'p-1',
+        conversationId: 'conv-42',
+      },
+    );
+    const resp = await fetch(`${baseUrl}/api/proxy/active?projectId=p-1`, {
+      headers: {
+        'X-Workspace-Id': 'ws-tenant-a',
+        'X-Teamver-User-Id': 'u-1',
+      },
+    });
+    const body = (await resp.json()) as {
+      streams: Array<{ conversationId?: string }>;
+    };
+    expect(body.streams).toHaveLength(1);
+    expect(body.streams[0]?.conversationId).toBe('conv-42');
+  });
+
+  it('refuses to abort when the caller conversationId does not match the entry', async () => {
+    const { streamId, signal } = registerByokProxyStream(
+      { headers: {} } as unknown as Request,
+      mockResForRegistry(),
+      {
+        workspaceId: 'ws-tenant-a',
+        projectId: 'p-1',
+        conversationId: 'conv-A',
+      },
+    );
+    const resp = await fetch(`${baseUrl}/api/proxy/abort`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Workspace-Id': 'ws-tenant-a',
+        'X-Teamver-User-Id': 'u-1',
+      },
+      body: JSON.stringify({ streamId, conversationId: 'conv-B' }),
+    });
+    const body = (await resp.json()) as { aborted: boolean };
+    expect(resp.status).toBe(200);
+    expect(body.aborted).toBe(false);
+    expect(signal.aborted).toBe(false);
+    expect(activeByokProxyStreamCountForTests()).toBe(1);
+  });
+
+  it('aborts when workspaceId AND conversationId both match', async () => {
+    const { streamId, signal } = registerByokProxyStream(
+      { headers: {} } as unknown as Request,
+      mockResForRegistry(),
+      {
+        workspaceId: 'ws-tenant-a',
+        projectId: 'p-1',
+        conversationId: 'conv-A',
+      },
+    );
+    const resp = await fetch(`${baseUrl}/api/proxy/abort`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Workspace-Id': 'ws-tenant-a',
+        'X-Teamver-User-Id': 'u-1',
+      },
+      body: JSON.stringify({ streamId, conversationId: 'conv-A' }),
+    });
+    const body = (await resp.json()) as { aborted: boolean };
+    expect(resp.status).toBe(200);
+    expect(body.aborted).toBe(true);
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('accepts abort without conversationId in body (backwards compatible)', async () => {
+    const { streamId, signal } = registerByokProxyStream(
+      { headers: {} } as unknown as Request,
+      mockResForRegistry(),
+      {
+        workspaceId: 'ws-tenant-a',
+        projectId: 'p-1',
+        conversationId: 'conv-A',
+      },
+    );
+    const resp = await fetch(`${baseUrl}/api/proxy/abort`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Workspace-Id': 'ws-tenant-a',
+        'X-Teamver-User-Id': 'u-1',
+      },
+      body: JSON.stringify({ streamId }),
+    });
+    const body = (await resp.json()) as { aborted: boolean };
+    expect(resp.status).toBe(200);
+    expect(body.aborted).toBe(true);
+    expect(signal.aborted).toBe(true);
+  });
 });
