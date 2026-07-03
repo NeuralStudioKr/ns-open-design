@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from ..config import settings
+from ..db.connection import get_pool_stats
 from ..db.schema_bootstrap import _table_exists
 
 logger = logging.getLogger(__name__)
@@ -151,8 +152,18 @@ async def collect_dependency_status() -> dict[str, Any]:
         status = "degraded"
     elif od_storage == "degraded" and daemon == "ok":
         status = "degraded"
+    # DB pool stats — burst 감지용 관측 필드. status 판정에는 개입 안 함
+    # (pool 이 가득 차도 pool_pre_ping 이 대기 후 처리; 실제 문제는 db check
+    # 자체가 실패로 잡음). CloudWatch metric filter 에서 checked_out 대비
+    # configured_size + max_overflow 비율을 뽑으면 워커별 pool 압박 확인 가능.
+    try:
+        pool = get_pool_stats()
+    except Exception:
+        logger.exception("deps check: pool stats collection failed")
+        pool = {"error": "unavailable"}
     return {
         "status": status,
         "checks": checks,
         "config": collect_config_summary(),
+        "pool": pool,
     }

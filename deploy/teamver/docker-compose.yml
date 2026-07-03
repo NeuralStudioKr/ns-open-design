@@ -192,6 +192,12 @@ services:
       UVICORN_WORKERS: ${UVICORN_WORKERS:-3}
       UVICORN_LIMIT_CONCURRENCY: ${UVICORN_LIMIT_CONCURRENCY:-200}
       UVICORN_TIMEOUT_KEEP_ALIVE: ${UVICORN_TIMEOUT_KEEP_ALIVE:-30}
+      # SQLAlchemy async pool 튜닝 — 코드 default 10/10/1800/30. RDS
+      # max_connections 잔여치 변경 시 재빌드 없이 조정 (connection.py).
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-}
+      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-}
+      DB_POOL_RECYCLE_SEC: ${DB_POOL_RECYCLE_SEC:-}
+      DB_POOL_TIMEOUT_SEC: ${DB_POOL_TIMEOUT_SEC:-}
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-teamver_design}
@@ -220,6 +226,24 @@ services:
       design-db:
         condition: service_healthy
         required: false
+    # Multi-worker uvicorn 에서 워커 하나가 event-loop hang 이면 docker
+    # restart 로 회복 가능해야 한다. wget 은 python:slim 에 기본 없음 →
+    # Python one-liner (표준 라이브러리 urllib) 사용. /api/healthz 는 DB
+    # schema 체크까지 하지만 3s timeout 안에서 대부분 통과. schema 결손
+    # 은 첫 부팅 lifespan 에서 잡히므로 여기선 응답 자체가 안 오는 경우만
+    # unhealthy 로 분류하기 위해 status_code 200~499 를 통과로 취급.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3); sys.exit(0 if r.status < 500 else 1)"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # Local S3-compat dev (P1-9) — docker compose --profile minio up -d
   minio:

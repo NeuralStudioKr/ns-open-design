@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import ssl
 from typing import Any, AsyncIterator
 
@@ -7,6 +8,17 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from ..config import settings
+
+
+def _pos_int_env(name: str, default: int, minimum: int = 0) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= minimum else default
 
 
 def _build_async_url() -> URL:
@@ -53,16 +65,52 @@ def _connect_args() -> dict[str, Any]:
 # pool_recycle 은 RDS idle timeout (t3 계열 ~5–10min) 전에 재사용 커넥션을
 # 강제 리사이클해 stale connection 요청 지연을 방지.
 # pool_pre_ping=True: 재기동/네트워크 hiccup 방어 (요청당 +1ms).
+#
+# 모든 값이 env override 지원 — RDS 클래스 변경/부하 스파이크 대응에 재빌드
+# 없이 조정. 상용 SSOT 는 .env.production.
+_POOL_SIZE = _pos_int_env("DB_POOL_SIZE", default=10, minimum=1)
+_MAX_OVERFLOW = _pos_int_env("DB_POOL_MAX_OVERFLOW", default=10, minimum=0)
+_POOL_RECYCLE = _pos_int_env("DB_POOL_RECYCLE_SEC", default=1800, minimum=60)
+_POOL_TIMEOUT = _pos_int_env("DB_POOL_TIMEOUT_SEC", default=30, minimum=1)
+
 async_engine = create_async_engine(
     _build_async_url(),
     connect_args=_connect_args(),
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=10,
-    pool_recycle=1800,
-    pool_timeout=30,
+    pool_size=_POOL_SIZE,
+    max_overflow=_MAX_OVERFLOW,
+    pool_recycle=_POOL_RECYCLE,
+    pool_timeout=_POOL_TIMEOUT,
 )
 async_session_maker = async_sessionmaker(expire_on_commit=False, bind=async_engine)
+
+
+def get_pool_stats() -> dict[str, int | str]:
+    """Non-secret pool observability for /api/healthz/deps.
+
+    Uses SQLAlchemy pool ``status()`` accessors. Values are per-worker
+    (uvicorn workers 는 별도 프로세스 → 별도 pool). CloudWatch 에서
+    burst 를 감지하려면 워커별로 aggregation 필요.
+    """
+    pool = async_engine.pool
+    try:
+        return {
+            "size": int(getattr(pool, "size", lambda: 0)()),
+            "checked_out": int(getattr(pool, "checkedout", lambda: 0)()),
+            "checked_in": int(getattr(pool, "checkedin", lambda: 0)()),
+            "overflow": int(getattr(pool, "overflow", lambda: 0)()),
+            "configured_size": _POOL_SIZE,
+            "configured_max_overflow": _MAX_OVERFLOW,
+        }
+    except Exception:  # pragma: no cover — never surface pool errors as health
+        return {
+            "size": -1,
+            "checked_out": -1,
+            "checked_in": -1,
+            "overflow": -1,
+            "configured_size": _POOL_SIZE,
+            "configured_max_overflow": _MAX_OVERFLOW,
+        }
 
 
 async def get_async_session() -> AsyncIterator[AsyncSession]:
