@@ -27,6 +27,26 @@ describe('buildSrcdoc', () => {
     expect(doc).toContain('content="width=device-width, initial-scale=1"');
   });
 
+  it('preserves deck fit() scripts through buildSrcdoc repair and restores mangled bodies', () => {
+    const intact = `<!doctype html><html><body><div id="deck-stage"><section class="slide active">A</section></div><script>
+(function () {
+  var stage = document.getElementById('deck-stage');
+  function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }
+  fit();
+})();</script></body></html>`;
+    const intactDoc = buildSrcdoc(intact, { deck: true, previewFocusGuard: true });
+    expect(intactDoc).toContain("document.getElementById('deck-stage')");
+    expect(intactDoc).toContain('function fit()');
+
+    const mangled = `<!doctype html><html><body><div id="deck-stage"></div><script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }
+  fit();
+})();</script></body></html>`;
+    const repairedDoc = buildSrcdoc(mangled, { deck: true, previewFocusGuard: true });
+    expect(repairedDoc).toMatch(/var stage = document\.getElementById\(['"]deck-stage['"]\)/);
+  });
+
   it('injects an initial slide index for deck previews', () => {
     const doc = buildSrcdoc(deckHtml, { deck: true, initialSlideIndex: 2 });
 

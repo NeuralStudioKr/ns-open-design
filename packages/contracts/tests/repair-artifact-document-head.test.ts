@@ -74,6 +74,18 @@ device-width, initial-scale=1" >
     expect(out).toContain("stage.style.transform");
   });
 
+  it("restores mangled deck-framework scripts during head repair", () => {
+    const mangled = `<!doctype html><html><head><title>Deck</title></head><body><script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }
+  fit();
+})();</script></body></html>`;
+    const out = repairArtifactDocumentHead(mangled);
+    expect(out).toMatch(
+      /<script>\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/,
+    );
+  });
+
   it("preserves deck CSS inside head style tags while stripping body leaks", () => {
     const html = `<!doctype html><html><head><style>
 / ── Per-deck styles ── /

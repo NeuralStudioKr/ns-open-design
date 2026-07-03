@@ -84,6 +84,10 @@ function stripPreviewTextLeakMatches(text: string, re: RegExp): string {
 /** Closed `<script>` / `<style>` blocks — leak regexes must not scan inside these. */
 const CLOSED_BODY_SCRIPT_OR_STYLE_RE = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
 
+/** Opening of a deck-framework script body after the leak stripper removed the IIFE prefix. */
+const MANGLED_DECK_FRAMEWORK_SCRIPT_OPEN_RE =
+  /(<script\b[^>]*>)(\s*)var slides = Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);/gi;
+
 function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
   let out = text;
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_STYLE_TEXT_RE);
@@ -95,6 +99,39 @@ function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
   out = out.replace(ARTIFACT_VIEWPORT_TEXT_LEAK_RE, "");
   return out;
+}
+
+function stripUnprotectedBodyTail(tail: string): string {
+  const unclosedMatch = tail.match(/<(script|style)\b[^>]*>[\s\S]*$/i);
+  if (!unclosedMatch || unclosedMatch.index === undefined) {
+    return stripLeakedPreviewTextFromUnprotectedHtml(tail);
+  }
+  const splitAt = unclosedMatch.index;
+  return stripLeakedPreviewTextFromUnprotectedHtml(tail.slice(0, splitAt)) + tail.slice(splitAt);
+}
+
+/**
+ * Restore deck-framework navigation scripts that were persisted after the leak
+ * stripper removed the IIFE prefix (`(function(){ var stage = …`) from inside
+ * a closed `<script>` tag. Idempotent on intact framework scripts.
+ */
+export function repairMangledDeckFrameworkScript(html: string): string {
+  MANGLED_DECK_FRAMEWORK_SCRIPT_OPEN_RE.lastIndex = 0;
+  return html.replace(
+    MANGLED_DECK_FRAMEWORK_SCRIPT_OPEN_RE,
+    (match, open: string, ws: string, offset: number, whole: string) => {
+      const scriptEnd = whole.indexOf("</script>", offset);
+      if (scriptEnd < 0) return match;
+      const inner = whole.slice(offset + open.length, scriptEnd);
+      if (/^\s*\(function\s*\(\)/.test(inner)) return match;
+      if (!/function\s+fit\s*\(\)/.test(inner) || !/stage\.style\.transform/.test(inner)) {
+        return match;
+      }
+      return `${open}${ws}(function () {
+      var stage = document.getElementById('deck-stage');
+      var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));`;
+    },
+  );
 }
 
 /**
@@ -116,7 +153,7 @@ export function stripBodyInnerPreviewTextLeaks(bodyInner: string): string {
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < bodyInner.length) {
-    out += stripLeakedPreviewTextFromUnprotectedHtml(bodyInner.slice(lastIndex));
+    out += stripUnprotectedBodyTail(bodyInner.slice(lastIndex));
   }
   return out;
 }
