@@ -198,6 +198,11 @@ services:
       DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-}
       DB_POOL_RECYCLE_SEC: ${DB_POOL_RECYCLE_SEC:-}
       DB_POOL_TIMEOUT_SEC: ${DB_POOL_TIMEOUT_SEC:-}
+      # Slow-request 관측 — 코드 default 1000ms. CloudWatch metric filter
+      # 는 warn 라인의 duration_ms 필드로 p95 산정. 트래픽 급증 시 노이즈
+      # 컷하고 싶으면 이 값을 올린다.
+      SLOW_REQUEST_THRESHOLD_MS: ${SLOW_REQUEST_THRESHOLD_MS:-}
+      SLOW_REQUEST_HEADER_ENABLED: ${SLOW_REQUEST_HEADER_ENABLED:-}
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-teamver_design}

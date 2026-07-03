@@ -26,6 +26,7 @@ from .routers.internal_billing import router as internal_billing_router
 from .routers.usage_report import router as usage_report_router
 from .routers.billing_report import router as billing_report_router
 from .middleware.csrf import OriginGuardMiddleware
+from .middleware.slow_request import SlowRequestMiddleware
 from .teamver_sdk import teamver_client_lifespan
 
 logging.basicConfig(level=logging.INFO)
@@ -47,8 +48,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 register_exception_handlers(app)
 _bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret or "dev-bff-session-secret").strip()
+# Middleware stack (Starlette wraps in REVERSE add order — innermost added
+# first). CORS 는 최외곽에서 preflight 를 처리해야 하고, slow-request 는
+# 그 안쪽 — 실제 endpoint 처리 시간에 CORS 오버헤드는 무의미하므로 CORS
+# 외곽으로 두어 최종 유저 latency 를 반영한다.
 app.add_middleware(SessionMiddleware, secret_key=_bff_secret, same_site="lax")
 app.add_middleware(OriginGuardMiddleware)
+app.add_middleware(SlowRequestMiddleware)
 app.add_middleware(
     CORSMiddleware,
     **build_fastapi_cors_kwargs(
