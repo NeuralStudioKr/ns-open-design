@@ -53,4 +53,32 @@ device-width, initial-scale=1" >
     expect(out).toContain('content="width=device-width, initial-scale=1"');
     expect(out).not.toMatch(/<div class="deck">\s*device-width/i);
   });
+
+  it("repairs and strips the shorter -width viewport suffix leak", () => {
+    const corrupt = `<!doctype html><html><head>-width, initial-scale=1" />
+  <title>Deck</title></head><body><div class="deck">-width, initial-scale=1" /><section class="slide">A</section></div></body></html>`;
+    const out = repairArtifactDocumentHead(corrupt);
+    expect(out).not.toMatch(/<head[^>]*>[\s\S]*?>\s*-width\s*,\s*initial-scale/i);
+    expect(out).not.toMatch(/<div class="deck">\s*-width/i);
+    expect(out).toContain('content="width=device-width, initial-scale=1"');
+    expect(out).toContain('<section class="slide">A</section>');
+  });
+
+  it("preserves deck CSS inside head style tags while stripping body leaks", () => {
+    const html = `<!doctype html><html><head><style>
+/ ── Per-deck styles ── /
+@import url('https://fonts.googleapis.com/css2');
+:root { --bg: #FAFAFA; --accent: #2F6FEB; }
+.s-cover { background: #0D1117; }
+.slide-inner { flex: 1 1 auto; }
+</style><title>Deck</title></head><body>
+-width, initial-scale=1" />
+<section class="slide active s-cover">A</section></body></html>`;
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain("--bg: #FAFAFA");
+    expect(out).toContain(".s-cover { background: #0D1117; }");
+    expect(out).toContain("@import url('https://fonts.googleapis.com/css2')");
+    expect(out).not.toMatch(/<body>\s*-width/i);
+    expect(out).toContain('<section class="slide active s-cover">A</section>');
+  });
 });

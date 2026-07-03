@@ -20,6 +20,13 @@ describe('buildSrcdoc', () => {
     expect(doc).toContain('content="width=device-width, initial-scale=1"');
   });
 
+  it('repairs the shorter -width viewport suffix leak in preview srcdoc', () => {
+    const corrupt = `<!doctype html><html><head><title>T</title></head><body>-width, initial-scale=1" /><div class="slide">A</div></body></html>`;
+    const doc = buildSrcdoc(corrupt, { deck: true, previewFocusGuard: true });
+    expect(doc).not.toMatch(/<body[^>]*>[\s\S]*?>\s*-width\s*,\s*initial-scale/i);
+    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+  });
+
   it('injects an initial slide index for deck previews', () => {
     const doc = buildSrcdoc(deckHtml, { deck: true, initialSlideIndex: 2 });
 

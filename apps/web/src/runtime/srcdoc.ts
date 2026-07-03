@@ -871,7 +871,7 @@ function injectPreviewArtifactGuard(doc: string): string {
 }
 </style>`;
   const script = `<script data-od-preview-artifact-guard>(function(){
-  var viewportLeak = /^\\s*device-width\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
+  var viewportLeak = /^\\s*(?:device-width|-width)\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
   var cssLeak = /^\\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\\s*:/i;
   var scriptLeak = /^\\s*\\(function\\s*\\(\\)\\s*\\{\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)/i;
   var boxLeak = /^\\s*\\{\\s*box-sizing\\s*:\\s*border-box/i;

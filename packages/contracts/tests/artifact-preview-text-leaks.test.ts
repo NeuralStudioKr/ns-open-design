@@ -57,4 +57,29 @@ describe("artifactPreviewTextLeaks", () => {
     expect(isArtifactHtmlStableForPreview(LEAKED_DECK_BODY)).toBe(false);
     expect(isArtifactHtmlStableForPreview(LEAKED_DECK_SCRIPT)).toBe(false);
   });
+
+  it("blocks preview stability while truncated viewport meta leaks remain", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+-width, initial-scale=1" />
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+  });
+
+  it("does not strip deck CSS from head style tags", () => {
+    const html = `<!doctype html><html><head><style>
+/ ── Per-deck styles ── /
+@import url('https://fonts.googleapis.com/css2');
+:root { --bg: #FAFAFA; --accent: #2F6FEB; }
+.s-cover { background: var(--navy); }
+.slide-inner { flex: 1 1 auto; }
+</style></head><body><section class="slide active s-cover">A</section></body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(html);
+    expect(out).toContain("--bg: #FAFAFA");
+    expect(out).toContain(".s-cover { background: var(--navy); }");
+    expect(out).toContain("@import url('https://fonts.googleapis.com/css2')");
+    expect(hasArtifactPreviewBodyTextLeaks(html)).toBe(false);
+    expect(isArtifactHtmlStableForPreview(html)).toBe(true);
+  });
 });
