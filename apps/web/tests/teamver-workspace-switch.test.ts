@@ -144,6 +144,21 @@ describe("embed workspace switch side effects", () => {
     );
   });
 
+  it("ProjectView preserves queued chat sends across session expiry (P2 A3)", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    // Skip the import line and land on the actual `return subscribe...` call.
+    const start = projectView.indexOf(
+      "return subscribeTeamverEmbedSessionChanged(",
+    );
+    expect(start).toBeGreaterThan(0);
+    const block = projectView.slice(start, start + 1500);
+    // The handler must NOT wipe the queue silently — previously this line
+    // was `commitQueuedChatSends([])` which lost user prompts on expiry.
+    expect(block).not.toMatch(/commitQueuedChatSends\(\[\]\)/);
+    // Observability marker documents the queue was preserved.
+    expect(block).toContain("chat-queue: preserved across session expiry");
+  });
+
   it("clears stale workingDirError after refreshProjects succeeds", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");

@@ -1235,6 +1235,12 @@ export function ProjectView({
     const restored = loadQueuedChatSends(project.id);
     queuedChatSendsRef.current = restored;
     setQueuedChatSends(restored);
+    if (restored.length > 0) {
+      console.info(
+        '[teamver] chat-queue: restored on project mount',
+        { projectId: project.id, count: restored.length },
+      );
+    }
   }, [project.id]);
   // Monotonic token bumped on every `conversation-created` refresh dispatch.
   // Two rapid events (e.g. concurrent routine runs against the same reused
@@ -3337,6 +3343,17 @@ export function ProjectView({
       cancelled = true;
       clearPollTimer();
       apiBackgroundRecoveryRef.current = false;
+      // Only clear the banner when the pending banner still belongs to
+      // *this* recovery run. If a concurrent conversation-switch cleanup
+      // already cleared it and a NEW recovery pass took ownership (very
+      // unlikely, but the effect can rerun on inFlightAssistantSignature),
+      // leaving another conversation's banner alone avoids clobbering.
+      if (
+        apiRecoveryBannerRef.current
+        && apiRecoveryBannerRef.current.conversationId === recoveryConversationId
+      ) {
+        clearApiBackgroundRecoveryBanner();
+      }
     };
   }, [
     config.mode,
@@ -3376,9 +3393,21 @@ export function ProjectView({
       setError(null);
       setConversationLoadError(null);
       detachLocalRunStreamConsumers();
-      commitQueuedChatSends([]);
+      // Preserve queued sends across a session-expiry round-trip. Users
+      // frequently line up several prompts, and quietly wiping them here
+      // was silent data loss. Queue is already persisted in localStorage,
+      // so the login redirect + ProjectView re-mount will restore it via
+      // `loadQueuedChatSends(project.id)` and the auto-start effect will
+      // resume dispatch. Log preservation for observability.
+      const preservedCount = queuedChatSendsRef.current.length;
+      if (preservedCount > 0) {
+        console.info(
+          '[teamver] chat-queue: preserved across session expiry',
+          { projectId: project.id, count: preservedCount },
+        );
+      }
     });
-  }, [commitQueuedChatSends, detachLocalRunStreamConsumers]);
+  }, [detachLocalRunStreamConsumers, project.id]);
 
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
     const next = [...queuedChatSendsRef.current, item];
@@ -4457,8 +4486,22 @@ export function ProjectView({
     cancelSendTextBuffer(true);
     cancelReattachTextBuffers(true);
     if (config.mode === 'api' && (apiBackgroundRecoveryRef.current || !abortRef.current)) {
+      // Only abort BYOK proxy streams that belong to the currently active
+      // conversation. The daemon already tenant-scopes by workspace, but
+      // without this filter Stop in conversation A would cancel a
+      // background run in conversation B (same project, same workspace),
+      // breaking the multi-conversation background-run policy.
+      // Streams missing a conversationId (legacy or race) are skipped —
+      // they'll drain naturally per the "page exit → background" policy.
+      const conversationForStop = activeConversationId;
       void listActiveByokProxyStreams(project.id).then((streams) => {
-        for (const stream of streams) requestProxyAbort(stream.streamId);
+        for (const stream of streams) {
+          if (!conversationForStop) continue;
+          if (stream.conversationId !== conversationForStop) continue;
+          requestProxyAbort(stream.streamId, {
+            conversationId: conversationForStop,
+          });
+        }
       });
     }
     // BYOK proxy cancellation policy (PR1 §3.5): the explicit Stop
@@ -4490,7 +4533,7 @@ export function ProjectView({
       for (const message of finalized) persistMessage(message, { telemetryFinalized: true });
       return next;
     });
-  }, [cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, persistMessage, project.id]);
+  }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, persistMessage, project.id]);
 
   // Flip the deck preview to the slide a queued send's marked element lives on
   // the moment that send starts processing. No-op for plain prompts or marks
@@ -5201,6 +5244,11 @@ export function ProjectView({
     ) {
       return;
     }
+    // Any recovery banner belonging to the outgoing conversation is
+    // scoped to that conversationId; clear it here so `byokBackgroundChatsRef`
+    // in App.tsx (single-key-per-projectId) does not carry a stale "active"
+    // flag into the new conversation.
+    clearApiBackgroundRecoveryBanner();
     creatingConversationRef.current = true;
     setCreatingConversation(true);
     setConversationLoadError(null);
@@ -5240,10 +5288,16 @@ export function ProjectView({
       creatingConversationRef.current = false;
       setCreatingConversation(false);
     }
-  }, [project.id, activeConversationId, messages.length, navigate, openTabsState.active]);
+  }, [clearApiBackgroundRecoveryBanner, project.id, activeConversationId, messages.length, navigate, openTabsState.active]);
 
   const handleSelectConversation = useCallback((id: string) => {
     if (id === activeConversationId && failedMessagesConversationId !== id) return;
+    // The recovery banner is keyed by conversationId inside
+    // `apiRecoveryBannerRef`, but the Task Center / PetOverlay listen to
+    // per-projectId events. Dropping the banner for the outgoing
+    // conversation here prevents a persistent "still running" indicator on
+    // the OD host after the user pivots to a different chat.
+    clearApiBackgroundRecoveryBanner();
     setMessages([]);
     setPreviewComments([]);
     setAttachedComments([]);
@@ -5272,7 +5326,7 @@ export function ProjectView({
       { replace: true },
     );
     setMessageLoadRetryNonce((nonce) => nonce + 1);
-  }, [activeConversationId, failedMessagesConversationId, project.id, openTabsState.active]);
+  }, [clearApiBackgroundRecoveryBanner, activeConversationId, failedMessagesConversationId, project.id, openTabsState.active]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
@@ -5346,6 +5400,9 @@ export function ProjectView({
   const handleForkFromMessage = useCallback(
     async (assistantMessage: ChatMessage) => {
       if (!activeConversationId || forkingMessageId) return;
+      // Forking creates a new conversation — the recovery banner tied to
+      // the source conversation must not leak into the fork.
+      clearApiBackgroundRecoveryBanner();
       setForkingMessageId(assistantMessage.id);
       setConversationLoadError(null);
       try {
@@ -5407,6 +5464,7 @@ export function ProjectView({
       activeConversationId,
       activeConversation?.title,
       activeSessionMode,
+      clearApiBackgroundRecoveryBanner,
       forkingMessageId,
       messages,
       navigate,

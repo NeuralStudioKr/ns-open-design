@@ -569,6 +569,56 @@ export interface SaveMessageOptions {
   keepalive?: boolean;
 }
 
+/**
+ * Browsers cap the aggregate body size of all in-flight `keepalive`
+ * fetches to 64 KiB (per the Fetch spec, enforced by Chromium/Firefox).
+ * Once exceeded the browser silently rejects the request with
+ * `TypeError: Failed to fetch`. We size our threshold slightly under
+ * that cap to leave headroom for request headers (Cookie, X-Workspace-Id,
+ * X-Teamver-User-Id, Content-Type, ...) that count against the same
+ * budget in some UAs.
+ */
+const KEEPALIVE_PAYLOAD_MAX_BYTES = 56 * 1024;
+
+/**
+ * Byte length of a UTF-8 encoded JSON payload. Prefer `TextEncoder` over
+ * `body.length` because JSON.stringify returns UCS-2 code units, not
+ * bytes — a payload of "just barely under 32K chars" can be 60K bytes.
+ */
+function byteLengthUtf8(value: string): number {
+  if (typeof TextEncoder === 'undefined') {
+    // Node fallback for tests — approximate via Buffer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return typeof Buffer !== 'undefined' ? (Buffer as any).byteLength(value, 'utf8') : value.length;
+  }
+  return new TextEncoder().encode(value).byteLength;
+}
+
+/**
+ * Return a shallow-projected `ChatMessage` that drops heavy optional
+ * fields (`events`, `producedFiles`, `toolInput`, `renderedHtml`) so the
+ * keepalive PUT stays under the 64 KiB cap on pagehide paths. The daemon
+ * already has a running record of tool events from SSE and will
+ * reconcile the missing enrichment on the next full save.
+ */
+function projectKeepaliveEssentials(message: ChatMessage): ChatMessage {
+  const {
+    events: _events,
+    producedFiles: _producedFiles,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } = message as unknown as Record<string, any>;
+  const trimmed: ChatMessage = { ...message };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (trimmed as unknown as Record<string, any>).events;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (trimmed as unknown as Record<string, any>).producedFiles;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (trimmed as unknown as Record<string, any>).toolInput;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (trimmed as unknown as Record<string, any>).renderedHtml;
+  return trimmed;
+}
+
 export async function saveMessage(
   projectId: string,
   conversationId: string,
@@ -581,19 +631,71 @@ export async function saveMessage(
         ? { ...message, telemetryFinalized: true }
         : message,
     );
+    let body = JSON.stringify(savedMessage);
+    let truncated = false;
+    if (options.keepalive) {
+      const originalSize = byteLengthUtf8(body);
+      if (originalSize > KEEPALIVE_PAYLOAD_MAX_BYTES) {
+        const essentials = projectKeepaliveEssentials(savedMessage);
+        const trimmedBody = JSON.stringify(essentials);
+        const trimmedSize = byteLengthUtf8(trimmedBody);
+        console.warn(
+          '[teamver] chat-save: keepalive payload exceeded 56KiB cap; retrying with essential fields only',
+          {
+            projectId,
+            conversationId,
+            messageId: message.id,
+            originalBytes: originalSize,
+            trimmedBytes: trimmedSize,
+            withinCap: trimmedSize <= KEEPALIVE_PAYLOAD_MAX_BYTES,
+          },
+        );
+        if (trimmedSize <= KEEPALIVE_PAYLOAD_MAX_BYTES) {
+          body = trimmedBody;
+          truncated = true;
+        } else {
+          // Even the essentials-only projection blew the cap (huge
+          // content field). Abandon the keepalive send and log — the
+          // next visible session refresh triggers a full PUT via the
+          // finalization effect in ProjectView.
+          console.warn(
+            '[teamver] chat-save: essentials-only projection still over cap; skipping keepalive PUT',
+            { projectId, conversationId, messageId: message.id },
+          );
+          return;
+        }
+      }
+    }
     const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(savedMessage),
+        body,
         ...(options.keepalive ? { keepalive: true } : {}),
       },
     );
+    if (!resp.ok && options.keepalive) {
+      console.warn('[teamver] chat-save: keepalive PUT non-ok', {
+        projectId,
+        conversationId,
+        messageId: message.id,
+        status: resp.status,
+        truncated,
+      });
+    }
     // Usage reporting is decoupled from message PUT success — BYOK embed has
     // no daemon fallback, so a failed save must not drop the ledger row.
     void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
-  } catch {
+  } catch (err) {
+    if (options.keepalive) {
+      console.warn('[teamver] chat-save: keepalive PUT threw', {
+        projectId,
+        conversationId,
+        messageId: message.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     // best-effort persistence — UI keeps the message in-memory either way
   }
 }
