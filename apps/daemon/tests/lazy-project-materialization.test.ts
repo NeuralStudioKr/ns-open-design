@@ -7,6 +7,7 @@ import {
   createLazyProjectMaterializationMiddleware,
   createProjectStorageAccessHooks,
 } from '../src/storage/lazy-project-materialization.js';
+import { TeamverTenantStorageResolutionError } from '../src/storage/teamver-project-storage-meta.js';
 import { MaterializingProjectStorage } from '../src/storage/materializing-project-storage.js';
 import { LocalProjectStorage } from '../src/storage/project-storage.js';
 import { createProjectMaterializationRuntime } from '../src/storage/project-materialization-runtime.js';
@@ -319,8 +320,11 @@ describe('createLazyProjectMaterializationMiddleware', () => {
       new URL('../src/server.ts', import.meta.url),
       'utf8',
     );
+    // The middleware call was widened to accept an optional scratch check
+    // (see docs-teamver/34 §PDF export soft-fallback) so we match the
+    // registration path rather than the exact argument list.
     const middlewareIndex = source.indexOf(
-      "app.use(\n      '/api/projects/:id',\n      createLazyProjectMaterializationMiddleware(projectStorageHooks",
+      "app.use(\n      '/api/projects/:id',\n      createLazyProjectMaterializationMiddleware(",
     );
     const projectRoutesIndex = source.indexOf('registerProjectRoutes(app');
     expect(middlewareIndex).toBeGreaterThanOrEqual(0);
@@ -496,6 +500,99 @@ describe('createLazyProjectMaterializationMiddleware', () => {
       expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
       expect(next).toHaveBeenCalled();
     }
+  });
+
+  it('falls back to scratch for export routes when tenant S3 prefix is transiently unresolved', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi
+      .spyOn(hooks!, 'ensureMaterialized')
+      .mockRejectedValue(new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'));
+    const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockResolvedValue(undefined);
+    const sendApiError = vi.fn();
+    const scratchHasProjectFiles = vi.fn().mockResolvedValue(true);
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError, {
+      scratchHasProjectFiles,
+    });
+
+    const next = vi.fn();
+    const res = mockRes();
+    await middleware(mockReq('POST', '/api/projects/p1/export/pdf'), res, next);
+
+    expect(ensure).toHaveBeenCalledWith(expect.anything(), 'p1');
+    expect(scratchHasProjectFiles).toHaveBeenCalledWith('p1');
+    expect(sendApiError).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
+    // Export routes never persist scratch back to remote — that must remain
+    // the responsibility of the run-end / proxy-end hook.
+    res.emit('finish');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('still 502s export routes when scratch is empty and tenant resolution fails', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    vi.spyOn(hooks!, 'ensureMaterialized').mockRejectedValue(
+      new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'),
+    );
+    const sendApiError = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError, {
+      scratchHasProjectFiles: async () => false,
+    });
+
+    const next = vi.fn();
+    await middleware(mockReq('POST', '/api/projects/p1/export/pdf'), mockRes(), next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(sendApiError).toHaveBeenCalledWith(
+      expect.anything(),
+      502,
+      'UPSTREAM_UNAVAILABLE',
+      expect.stringContaining('teamver_project_s3_prefix_required'),
+    );
+  });
+
+  it('does not soft-fallback file-mutating routes even if scratch has files', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    vi.spyOn(hooks!, 'ensureMaterialized').mockRejectedValue(
+      new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'),
+    );
+    const sendApiError = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError, {
+      scratchHasProjectFiles: async () => true,
+    });
+
+    const next = vi.fn();
+    // /files POST is a mutating write — must not soft-fallback.
+    await middleware(mockReq('POST', '/api/projects/p1/files'), mockRes(), next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(sendApiError).toHaveBeenCalledWith(
+      expect.anything(),
+      502,
+      'UPSTREAM_UNAVAILABLE',
+      expect.stringContaining('teamver_project_s3_prefix_required'),
+    );
   });
 
   it('schedules persistAfterMutation for plugin install/publish and finalize/deploy POSTs', async () => {

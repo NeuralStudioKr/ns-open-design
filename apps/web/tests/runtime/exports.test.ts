@@ -15,6 +15,7 @@ import {
   exportProjectImageBlob,
   exportProjectAsPdf,
   exportProjectAsZip,
+  isTeamverProjectStoragePrefixRequiredError,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
   resolveExportDownloadTitle,
@@ -402,6 +403,85 @@ describe('exportProjectAsPdf', () => {
     expect(printedDoc).not.toContain('sandbox="allow-scripts allow-modals"');
     expect(printedDoc).toContain('data-deck-print="injected"');
     expect(printedDoc).toContain('<main class="slide">inlined deck</main>');
+  });
+
+  it('retries when the daemon reports teamver_project_s3_prefix_required and eventually succeeds', async () => {
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      let call = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          call += 1;
+          if (call === 1) {
+            return new Response(
+              JSON.stringify({
+                error: {
+                  code: 'UPSTREAM_UNAVAILABLE',
+                  message: 'teamver_project_s3_prefix_required',
+                },
+              }),
+              { status: 502, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }),
+      );
+
+      const result = await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      expect(result).toBe('desktop');
+      expect(fallback).not.toHaveBeenCalled();
+      // First request 502 → prefix cache warm → retry → 200.
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      restoreHost();
+    }
+  });
+
+  it('exposes teamver_project_s3_prefix_required via the typed guard when required', async () => {
+    const fallback = vi.fn();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'UPSTREAM_UNAVAILABLE',
+              message: 'teamver_project_s3_prefix_required',
+            },
+          }),
+          { status: 502, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        requireRenderedExport: true,
+        title: 'Seed Deck',
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(isTeamverProjectStoragePrefixRequiredError(caught)).toBe(true);
+    expect(fallback).not.toHaveBeenCalled();
   });
 
   it('uses host print after desktop PDF API fails on desktop', async () => {

@@ -952,6 +952,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-03 | **PDF export `teamver_project_s3_prefix_required` 502 해소** — FE prefetch(`waitForTeamverProjectStoragePrefix`) + 최대 3회 자동 재시도, daemon `/export/*`·`/archive` 라우트에서 scratch-only soft-fallback (`od_s3_export_scratch_only_fallback` metric). 회귀 테스트 5 case 추가 |
 | 2026-07-02 | §20.1~§20.3 코드 구현 완료 — cacheKey SSOT, memo/local 캐시, route 통합, ticket sourceFilePath 지원, 49 tests pass (미배포) |
 | 2026-07-02 | §19 Phase 1 재검토 (single-node·EBS 우선) + §20 Sprint 2 세부 설계 (memo + local + publish stream) |
 | 2026-07-02 | §11·§17 Phase 0 완료 항목 체크 (코드) |

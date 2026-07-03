@@ -106,6 +106,31 @@ function isMutatingMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
 }
 
+/**
+ * Export/archive routes are semantically read-only even though POST is used
+ * (they never mutate the project — they just render existing scratch bytes
+ * into a downloadable artifact). When tenant-storage resolution fails on
+ * one of these routes and the agent has already written the target file to
+ * local scratch (BYOK preview path — the user just saw the slides), we
+ * prefer serving the export from scratch over blocking with a 502. This
+ * matches the "scratch is the mutable working copy, S3 is SSOT" contract:
+ * the S3 round-trip is only needed to REFRESH scratch for downstream reads,
+ * so if scratch is already fresh a transient design-api `/access` denial
+ * must not gate the export.
+ *
+ * The list here mirrors {@link isProjectMaterializationPath} but only for
+ * routes where a scratch-only fallback is safe (never sync-up, never
+ * mutating writes).
+ */
+function isProjectExportOrArchivePath(pathname: string): boolean {
+  const core = String(pathname ?? '');
+  if (/^\/export(\/|$)/.test(core)) return true;
+  if (/^\/archive(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/export(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/archive(\/|$)/.test(core)) return true;
+  return false;
+}
+
 export function createProjectStorageAccessHooks(
   runtime: ProjectMaterializationRuntime | null,
 ): ProjectStorageAccessHooks | null {
@@ -447,7 +472,18 @@ export function scheduleProjectStoragePersistAfterResponse(
 export function createLazyProjectMaterializationMiddleware(
   hooks: ProjectStorageAccessHooks | null,
   sendApiError: (...args: unknown[]) => unknown,
+  options?: {
+    /**
+     * When the tenant S3 prefix cannot be resolved (design-api `/access`
+     * transient deny, `X-Teamver-S3-Prefix` header missing) AND the target
+     * project already has files on local scratch, the export/archive routes
+     * can safely serve those bytes. Injected by the caller so tests can stub
+     * the check; defaults to inspecting the local scratch storage directly.
+     */
+    scratchHasProjectFiles?: (projectId: string) => Promise<boolean>;
+  },
 ): RequestHandler {
+  const scratchHasProjectFilesForRequest = options?.scratchHasProjectFiles;
   return async (req, res, next) => {
     if (!hooks || !isProjectMaterializationPath(req.path)) return next();
 
@@ -455,16 +491,47 @@ export function createLazyProjectMaterializationMiddleware(
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
     if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
 
+    const handleError = async (err: unknown): Promise<boolean> => {
+      // Export/archive routes are read-only for the project — if scratch
+      // already holds the target files (BYOK preview path), fall back to
+      // scratch instead of surfacing a misleading 502 to the FE. This
+      // unblocks PDF/HTML/ZIP export while design-api `/access` self-heals.
+      const message = err instanceof Error ? err.message : 'project storage sync failed';
+      const canSoftFallback =
+        isProjectExportOrArchivePath(req.path)
+        && err instanceof TeamverTenantStorageResolutionError
+        && err.message === 'teamver_project_s3_prefix_required';
+      if (canSoftFallback) {
+        let hasScratch = false;
+        try {
+          hasScratch = scratchHasProjectFilesForRequest
+            ? await scratchHasProjectFilesForRequest(projectId)
+            : false;
+        } catch {
+          hasScratch = false;
+        }
+        if (hasScratch) {
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_export_scratch_only_fallback',
+              projectId,
+              path: req.path,
+              reason: 'teamver_project_s3_prefix_required',
+            }),
+          );
+          return true;
+        }
+      }
+      sendApiError(res, 502, 'UPSTREAM_UNAVAILABLE', message);
+      return false;
+    };
+
     if (req.method === 'GET' || req.method === 'HEAD') {
       try {
         await hooks.ensureMaterialized(req, projectId);
       } catch (err) {
-        return sendApiError(
-          res,
-          502,
-          'UPSTREAM_UNAVAILABLE',
-          err instanceof Error ? err.message : 'project storage sync failed',
-        );
+        const softContinue = await handleError(err);
+        if (!softContinue) return;
       }
       return next();
     }
@@ -473,15 +540,13 @@ export function createLazyProjectMaterializationMiddleware(
       try {
         await hooks.ensureMaterialized(req, projectId);
       } catch (err) {
-        return sendApiError(
-          res,
-          502,
-          'UPSTREAM_UNAVAILABLE',
-          err instanceof Error ? err.message : 'project storage sync failed',
-        );
+        const softContinue = await handleError(err);
+        if (!softContinue) return;
       }
       res.on('finish', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) return;
+        // Export/archive requests never mutate project state — skip sync-up.
+        if (isProjectExportOrArchivePath(req.path)) return;
         void hooks.persistAfterMutation(req, projectId);
       });
     }

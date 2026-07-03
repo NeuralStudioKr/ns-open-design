@@ -6653,9 +6653,25 @@ export async function startServer({
     }),
   );
   if (projectStorageHooks) {
+    const scratchStorage = materializingProjectStorage?.scratch;
     app.use(
       '/api/projects/:id',
-      createLazyProjectMaterializationMiddleware(projectStorageHooks, httpDeps.sendApiError),
+      createLazyProjectMaterializationMiddleware(
+        projectStorageHooks,
+        httpDeps.sendApiError,
+        scratchStorage
+          ? {
+              scratchHasProjectFiles: async (projectId: string) => {
+                try {
+                  const files = await scratchStorage.listFiles(projectId);
+                  return files.length > 0;
+                } catch {
+                  return false;
+                }
+              },
+            }
+          : undefined,
+      ),
     );
   }
   registerProjectRoutes(app, {

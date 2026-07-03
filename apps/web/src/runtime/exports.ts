@@ -22,6 +22,9 @@ import {
   printHostPdf,
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
+import { resolveTeamverProjectS3PrefixForDaemon } from '../teamver/teamverProjectS3PrefixResolve';
 import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
@@ -117,9 +120,67 @@ async function throwIfDaemonExportFailed(resp: Response, context: string): Promi
   ) {
     throw new ExportQueueFullError();
   }
+  if (
+    resp.status === 502
+    && (code === 'UPSTREAM_UNAVAILABLE' || code === 'PROJECT_STORAGE_SYNC_FAILED')
+    && message.includes('teamver_project_s3_prefix_required')
+  ) {
+    throw new TeamverProjectStoragePrefixRequiredError(
+      message ? `${context} ${resp.status}: ${message}` : `${context} unavailable (${resp.status})`,
+    );
+  }
   throw new Error(
     message ? `${context} ${resp.status}: ${message}` : `${context} unavailable (${resp.status})`,
   );
+}
+
+/**
+ * Thrown when the daemon reports `teamver_project_s3_prefix_required` for an
+ * export. This is a transient design-api `/access` race — the project row is
+ * being registered in parallel to the FE issuing the export. Callers should
+ * warm the S3-prefix cache (via `waitForTeamverProjectStoragePrefix`) and
+ * retry once or twice before falling back to the browser print path.
+ */
+export class TeamverProjectStoragePrefixRequiredError extends Error {
+  readonly code = 'TEAMVER_PROJECT_S3_PREFIX_REQUIRED';
+
+  constructor(message = 'Teamver 프로젝트 저장소가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.') {
+    super(message);
+    this.name = 'TeamverProjectStoragePrefixRequiredError';
+  }
+}
+
+export function isTeamverProjectStoragePrefixRequiredError(
+  err: unknown,
+): err is TeamverProjectStoragePrefixRequiredError {
+  return err instanceof TeamverProjectStoragePrefixRequiredError;
+}
+
+const TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS = [0, 400, 900, 1500] as const;
+
+/**
+ * Best-effort — resolves the workspace tenant S3 prefix so the next daemon
+ * request carries `X-Teamver-S3-Prefix` even before design-api /access
+ * warms the daemon-side cache. Returns `null` when embed mode is off (native
+ * OD) or when the prefix cannot be determined within the poll window; the
+ * caller must still send the request (the daemon will resolve on its own).
+ */
+export async function waitForTeamverProjectStoragePrefix(
+  projectId: string,
+): Promise<string | null> {
+  if (!isTeamverEmbedMode()) return null;
+  const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
+  if (!workspaceId) return null;
+  for (const wait of TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS) {
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    try {
+      const prefix = await resolveTeamverProjectS3PrefixForDaemon(workspaceId, projectId);
+      if (prefix) return prefix;
+    } catch {
+      // Registry can transiently fail during workspace switch — keep polling.
+    }
+  }
+  return null;
 }
 
 async function consumeDaemonExportDownload(
@@ -851,6 +912,56 @@ export function exportAsImage(dataUrl: string, title: string): void {
 
 export type ProjectPdfExportResult = 'desktop' | 'fallback' | 'cancelled';
 
+/**
+ * Retry cadence for `teamver_project_s3_prefix_required` 502 during PDF
+ * export. The design-api `/access` transient-deny cache is 1.5s (see
+ * `apps/daemon/src/teamver-project-access.ts`), so these delays give it two
+ * clean windows to expire while keeping the overall UX under ~3s. Once these
+ * are exhausted the caller falls back to browser print via `fallbackPdf`.
+ */
+const TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
+
+async function performPdfExportRequest(opts: {
+  projectId: string;
+  deck: boolean;
+  filePath: string;
+  title: string;
+  fresh?: boolean;
+}): Promise<ProjectPdfExportResult> {
+  const url = opts.fresh
+    ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
+    : `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`;
+  const resp = await fetchTeamverDaemon(url, {
+    body: JSON.stringify({
+      deck: opts.deck,
+      delivery: 'ticket',
+      fileName: opts.filePath,
+      title: opts.title,
+      ...(opts.fresh ? { fresh: true } : {}),
+    }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+  if (!resp.ok && resp.status !== 201) {
+    await throwIfDaemonExportFailed(resp, 'daemon PDF export');
+  }
+  const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+  if (resp.status === 201) {
+    await triggerExportTicketDownload(resp, opts.title, 'pdf');
+    return 'desktop';
+  }
+  if (contentType.includes('application/pdf')) {
+    const blob = await resp.blob();
+    if (blob.size <= 0) throw new Error('daemon PDF export returned an empty file');
+    triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pdf'));
+    return 'desktop';
+  }
+  const body = await resp.json().catch(() => ({}));
+  if (body?.canceled === true) return 'cancelled';
+  if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
+  return 'desktop';
+}
+
 export async function exportProjectAsPdf(opts: {
   deck: boolean;
   fallbackPdf: () => void;
@@ -868,40 +979,42 @@ export async function exportProjectAsPdf(opts: {
    */
   fresh?: boolean;
 }): Promise<ProjectPdfExportResult> {
+  // Warm the tenant S3-prefix cache so the very first daemon request already
+  // carries `X-Teamver-S3-Prefix`. Without this the `/access` gate must race
+  // against a possibly-stale design-api row and 502s are the visible symptom
+  // (`teamver_project_s3_prefix_required`).
+  await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+
   let daemonErr: unknown = null;
   try {
-    const url = opts.fresh
-      ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
-      : `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`;
-    const resp = await fetchTeamverDaemon(url, {
-      body: JSON.stringify({
-        deck: opts.deck,
-        delivery: 'ticket',
-        fileName: opts.filePath,
-        title: opts.title,
-        ...(opts.fresh ? { fresh: true } : {}),
-      }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    });
-    if (!resp.ok && resp.status !== 201) {
-      await throwIfDaemonExportFailed(resp, 'daemon PDF export');
+    for (let attempt = 0; attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delay = TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS[attempt] ?? 0;
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        // Refresh the prefix cache between retries — the design-api row may
+        // have been committed in the meantime and the cached prefix would
+        // let the daemon skip its own /access round-trip.
+        await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+      }
+      try {
+        return await performPdfExportRequest(opts);
+      } catch (err) {
+        if (isExportQueueFullError(err)) throw err;
+        if (
+          isTeamverProjectStoragePrefixRequiredError(err)
+          && attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length - 1
+        ) {
+          console.info(
+            '[exportProjectAsPdf] retrying after teamver_project_s3_prefix_required (attempt %d)',
+            attempt + 1,
+          );
+          continue;
+        }
+        throw err;
+      }
     }
-    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-    if (resp.status === 201) {
-      await triggerExportTicketDownload(resp, opts.title, 'pdf');
-      return 'desktop';
-    }
-    if (contentType.includes('application/pdf')) {
-      const blob = await resp.blob();
-      if (blob.size <= 0) throw new Error('daemon PDF export returned an empty file');
-      triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pdf'));
-      return 'desktop';
-    }
-    const body = await resp.json().catch(() => ({}));
-    if (body?.canceled === true) return 'cancelled';
-    if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
-    return 'desktop';
+    // Loop always returns or throws; this satisfies TS narrowing.
+    throw new Error('daemon PDF export retry exhausted');
   } catch (err) {
     if (isExportQueueFullError(err)) throw err;
     daemonErr = err;
