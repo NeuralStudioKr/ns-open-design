@@ -22,16 +22,20 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
   const client = getDesignBffClient();
   if (!client) return null;
 
+  const storeId = (await client.workspaceStore?.get())?.trim() || null;
+
   let session;
   try {
     session = await fetchDesignAuthSession();
   } catch {
-    return null;
+    // Session probe can fail while nginx auth_request still accepts the
+    // Main BE cookie. Keep routing daemon calls with the persisted workspace
+    // so preview/file reads do not lose X-Workspace-Id mid-run.
+    return storeId;
   }
-  if (!session?.authenticated) return null;
+  if (!session?.authenticated) return storeId;
 
   const workspaces = normalizeWorkspaceList(session.workspaces);
-  const storeId = (await client.workspaceStore?.get())?.trim() || null;
 
   if (storeId && workspaces.some((workspace) => workspace.id === storeId)) {
     return storeId;

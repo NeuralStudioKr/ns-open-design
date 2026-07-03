@@ -131,6 +131,21 @@ function isProjectExportOrArchivePath(pathname: string): boolean {
   return false;
 }
 
+/**
+ * Read-only project routes that may serve from local scratch when tenant S3
+ * prefix resolution fails but the agent already wrote bytes during this run
+ * (BYOK preview path). Includes listing/raw reads — not only export/archive.
+ */
+function isProjectScratchReadFallbackPath(pathname: string): boolean {
+  const core = String(pathname ?? '');
+  if (isProjectExportOrArchivePath(core)) return true;
+  if (/^\/files(\/|$)/.test(core)) return true;
+  if (/^\/raw(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/files(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(core)) return true;
+  return false;
+}
+
 export function createProjectStorageAccessHooks(
   runtime: ProjectMaterializationRuntime | null,
 ): ProjectStorageAccessHooks | null {
@@ -498,7 +513,8 @@ export function createLazyProjectMaterializationMiddleware(
       // unblocks PDF/HTML/ZIP export while design-api `/access` self-heals.
       const message = err instanceof Error ? err.message : 'project storage sync failed';
       const canSoftFallback =
-        isProjectExportOrArchivePath(req.path)
+        (req.method === 'GET' || req.method === 'HEAD' || isProjectExportOrArchivePath(req.path))
+        && isProjectScratchReadFallbackPath(req.path)
         && err instanceof TeamverTenantStorageResolutionError
         && err.message === 'teamver_project_s3_prefix_required';
       if (canSoftFallback) {
