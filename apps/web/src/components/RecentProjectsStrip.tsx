@@ -23,9 +23,16 @@ import { buildProjectCardCover } from '../teamver/projectCardCover';
 import { prefetchHomeProjectCovers } from '../teamver/prefetchHomeProjectCovers';
 import { homePublishChipPrefetchIds } from '../teamver/embedPublishChipProjects';
 import { prefetchLatestPublishSummaries } from '../teamver/latestPublishSummary';
+import type { PetTaskSummary } from './pet/PetOverlay';
+import {
+  buildActiveRunStatusByProjectId,
+  resolveRecentProjectDisplayStatus,
+} from '../teamver/recentProjectDisplayStatus';
 
 interface Props {
   projects: Project[];
+  /** Live active runs from `/api/runs` — overrides stale registry status on cards. */
+  activeRunSummaries?: PetTaskSummary[];
   /** Used only to show a "Published" status for design-system projects whose
    *  backing system is published (independent of the project's run status). */
   designSystems?: DesignSystemSummary[];
@@ -41,12 +48,17 @@ const EMPTY_DESIGN_SYSTEMS: DesignSystemSummary[] = [];
 
 export function RecentProjectsStrip({
   projects,
+  activeRunSummaries = [],
   designSystems = EMPTY_DESIGN_SYSTEMS,
   onOpen,
   onViewAll,
   limit = 6,
 }: Props) {
   const t = useT();
+  const activeRunStatusByProjectId = useMemo(
+    () => buildActiveRunStatusByProjectId(activeRunSummaries),
+    [activeRunSummaries],
+  );
   const recent = useMemo(
     () => [...projects]
       .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -115,7 +127,11 @@ export function RecentProjectsStrip({
           const coverOverride = coverByProject[project.id] ?? null;
           const cover = buildProjectCardCover(project, coverOverride);
           const designSystemProject = isDesignSystemProject(project);
-          const status: ProjectDisplayStatus = project.status?.value ?? 'not_started';
+          const status: ProjectDisplayStatus = resolveRecentProjectDisplayStatus(
+            project.id,
+            project.status?.value,
+            activeRunStatusByProjectId,
+          );
           const publishedDesignSystem = isPublishedDesignSystemProject(project, designSystems);
           const isActive =
             !publishedDesignSystem &&

@@ -853,6 +853,7 @@ export function EntryShell({
                 connectors={connectors}
                 promptTemplates={promptTemplates}
                 embedSubmitDisabled={embedSubmitDisabled}
+                backgroundRunSummaries={backgroundRunSummaries}
               />
             </div>
             <div data-testid="entry-view-projects" data-active={view === 'projects' ? 'true' : 'false'} {...inactiveViewProps(view === 'projects')}>

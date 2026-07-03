@@ -289,6 +289,12 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   }
   if (!server.runStatus && local.runStatus) {
     merged.runStatus = local.runStatus;
+  } else if (
+    local.runStatus
+    && isActiveRunStatus(local.runStatus)
+    && (!server.runStatus || !isActiveRunStatus(server.runStatus))
+  ) {
+    merged.runStatus = local.runStatus;
   }
   return merged;
 }
@@ -2857,7 +2863,7 @@ export function ProjectView({
           true,
         );
 
-        if (!isActiveRunStatus(message.runStatus) && isTerminalRunStatus(status.status)) {
+        if (!isActiveRunStatus(status.status) && isTerminalRunStatus(status.status)) {
           completedReattachRunsRef.current.add(runId);
           scheduleConversationMessageRefresh(reattachConversationId);
           continue;
