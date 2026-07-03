@@ -451,6 +451,7 @@ function AssistantMessageImpl({
     const sanitized = stripEmptyProseBlocks(
       stripInternalMarkupFromProseBlocks(
         suppressDuplicateQuestionForms(rawBlocks),
+        streaming,
       ),
     );
     const visible = placeConversationTodoCard(sanitized, {
@@ -461,7 +462,9 @@ function AssistantMessageImpl({
       return visible.filter((block) =>
         block.kind !== "thinking"
         && block.kind !== "tool-group"
-        && block.kind !== "live-tool",
+        && block.kind !== "live-tool"
+        && block.kind !== "status"
+        && block.kind !== "plugin-candidate",
       );
     }
     return visible;
@@ -471,6 +474,7 @@ function AssistantMessageImpl({
     showConversationTodoCard,
     conversationTodoInput,
     hideAssistantThinkingDetails,
+    streaming,
   ]);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
   const produced = message.producedFiles ?? [];
@@ -621,7 +625,9 @@ function AssistantMessageImpl({
   // files) the footer shimmers "Preparing…"; the moment content lands it
   // flips to "Working". The elapsed clock stays anchored to the persisted run
   // start so switching project tabs or remounting the message cannot restart it.
-  const hasContent = blocks.some((b) => b.kind !== "status") || fileOps.length > 0;
+  const hasContent =
+    blocks.some((b) => b.kind !== "status")
+    || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0);
   const preparing = streaming && !hasContent;
 
   // Index of the trailing text block — the streaming caret rides the end of
@@ -641,7 +647,7 @@ function AssistantMessageImpl({
         <span className="role-name">{roleName}</span>
       </div>
       <div className="assistant-flow">
-        {fileOps.length > 0 ? (
+        {fileOps.length > 0 && !(hideAssistantThinkingDetails && streaming) ? (
           <FileOpsSummary
             entries={fileOps}
             streaming={streaming}
@@ -2039,14 +2045,13 @@ function ProseBlock({
           />
         );
       })}
-      {live ? (
+      {live && !hideAssistantThinkingDetails ? (
         <StreamingCodeCard
           titleLabel={t("tool.write")}
           metaLabel={live.title || live.identifier || undefined}
           code={live.content}
           hideCodeBody={
-            hideAssistantThinkingDetails
-            || slideOnlyMvp
+            slideOnlyMvp
             || shouldMinimizeEmbedLiveToolCode(
               { slideOnlyMvp },
               live.title || live.identifier || "index.html",
@@ -2705,12 +2710,12 @@ function placeConversationTodoCard(
   });
 }
 
-function stripInternalMarkupFromProseBlocks(blocks: Block[]): Block[] {
+function stripInternalMarkupFromProseBlocks(blocks: Block[], streaming = false): Block[] {
   return blocks.map((block) => {
     if (block.kind !== "text" && block.kind !== "thinking") return block;
     return {
       ...block,
-      text: sanitizeAssistantProseForDisplay(block.text),
+      text: sanitizeAssistantProseForDisplay(block.text, { streaming }),
     };
   });
 }

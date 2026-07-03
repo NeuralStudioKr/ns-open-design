@@ -6,6 +6,7 @@ import {
   buildSocialSharePayload,
   OPEN_DESIGN_GITHUB_REPO_URL,
   isArtifactHtmlStableForPreview,
+  repairArtifactDocumentHead,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -4710,10 +4711,16 @@ function HtmlViewer({
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
   const [source, setSource] = useState<string | null>(() => {
     if (liveHtml == null) return null;
-    return isArtifactHtmlStableForPreview(liveHtml) ? liveHtml : null;
+    const repaired = repairArtifactDocumentHead(liveHtml);
+    return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
   });
   const lastStablePreviewSourceRef = useRef<string | null>(
-    liveHtml && isArtifactHtmlStableForPreview(liveHtml) ? liveHtml : null,
+    liveHtml
+      ? (() => {
+        const repaired = repairArtifactDocumentHead(liveHtml);
+        return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+      })()
+      : null,
   );
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
@@ -5251,11 +5258,15 @@ function HtmlViewer({
     const sourceFileKey = `${projectId}\0${file.name}\0${liveHtml === undefined ? 'raw' : 'live'}`;
     const acceptCandidate = (candidate: string | null): string | null => {
       if (candidate == null) return null;
-      if (!streaming || isArtifactHtmlStableForPreview(candidate)) {
-        if (isArtifactHtmlStableForPreview(candidate)) {
-          lastStablePreviewSourceRef.current = candidate;
-        }
-        return candidate;
+      const repaired = repairArtifactDocumentHead(candidate);
+      const stable = isArtifactHtmlStableForPreview(repaired);
+      if (!streaming) {
+        if (stable) lastStablePreviewSourceRef.current = repaired;
+        return repaired;
+      }
+      if (stable) {
+        lastStablePreviewSourceRef.current = repaired;
+        return repaired;
       }
       return lastStablePreviewSourceRef.current;
     };
@@ -7959,7 +7970,7 @@ function HtmlViewer({
   const showStreamingPreviewVeil = Boolean(
     streaming
     && liveHtml?.trim()
-    && !isArtifactHtmlStableForPreview(liveHtml),
+    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
   const commentPreviewLayoutClass = [
     'comment-preview-layer',

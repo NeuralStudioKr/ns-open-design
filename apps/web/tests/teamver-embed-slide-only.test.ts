@@ -168,6 +168,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(assistant).toContain("shouldMinimizeEmbedLiveToolCode");
     expect(assistant).toContain("filterEmbedDeliverableProducedFiles");
     expect(assistant).toContain("hideCodeBody");
+    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
     expect(designFiles).toContain("partitionEmbedDesignFileSections");
     expect(designFiles).toContain("designFiles.sectionSupporting");
     expect(autoOpen).toContain("shouldDeclineEmbedAutoOpen");

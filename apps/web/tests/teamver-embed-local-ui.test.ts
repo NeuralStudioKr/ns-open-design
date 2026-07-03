@@ -23,8 +23,12 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(source).toContain("hideAssistantThinkingDetails: true");
     expect(assistant).toContain("hideAssistantThinkingDetails");
     expect(assistant).toMatch(
-      /hideAssistantThinkingDetails[\s\S]{0,200}block\.kind !== "thinking"/,
+      /hideAssistantThinkingDetails[\s\S]{0,280}block\.kind !== "thinking"/,
     );
+    expect(assistant).toContain('block.kind !== "status"');
+    expect(assistant).toContain('block.kind !== "plugin-candidate"');
+    expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
+    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
   });
 
   it("hides Home and project composer working directory pickers", () => {
