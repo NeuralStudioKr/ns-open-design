@@ -23,6 +23,7 @@ import {
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
+import { clearTeamverEmbedListCaches } from "./teamverEmbedListCaches";
 import {
   clearTeamverEmbedSessionState,
   isTeamverEmbedSessionAuthenticated,
@@ -210,6 +211,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       const workspaces = normalizeWorkspaceList(session.workspaces);
       const userId = readUserId(session.user);
+      const previousUserId = stateRef.current.userId;
+      if (previousUserId && userId && previousUserId !== userId) {
+        // Account switch without a full reload must not reuse another user's
+        // registry list / access caches keyed under the same workspace.
+        clearTeamverEmbedListCaches();
+      }
       const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session, workspaces, {
         // Only boot and explicit auth recovery may reconcile the stored
         // workspace onto a new one. Routine focus/idle refresh keeps the

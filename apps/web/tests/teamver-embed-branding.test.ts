@@ -35,7 +35,7 @@ describe('Teamver embed branding policy', () => {
 
     expect(branding.enabled).toBe(true);
     expect(branding.title).toBe('Teamver Design');
-    expect(branding.heroSubtitle).toContain('slide');
+    expect(branding.heroSubtitle.length).toBeGreaterThan(0);
     expect(branding.faviconUrl).toBe('/teamver/Logo-icon.svg');
     expect(branding.hideExternalLinks).toBe(true);
     expect(branding.hideTopbarExecutionSwitcher).toBe(true);

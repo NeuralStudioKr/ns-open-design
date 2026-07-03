@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const resolveActiveTeamverWorkspaceIdMock = vi.hoisted(() =>
+  vi.fn(async (): Promise<string | null> => 'ws1'),
+);
+
 import {
   assertTeamverProjectAccessIfNeeded,
   buildTeamverProjectRegistryPayload,
@@ -28,6 +32,28 @@ vi.mock('../src/teamver/designApiBase', () => ({
   isTeamverEmbedMode: vi.fn(() => false),
 }));
 
+vi.mock('../src/teamver/activeTeamverWorkspace', () => ({
+  resolveActiveTeamverWorkspaceId: (...args: unknown[]) =>
+    resolveActiveTeamverWorkspaceIdMock(...args),
+  resolveActiveTeamverWorkspaceIdForEmbed: (...args: unknown[]) =>
+    resolveActiveTeamverWorkspaceIdMock(...args),
+  requireActiveTeamverWorkspaceId: async () => {
+    const workspaceId = await resolveActiveTeamverWorkspaceIdMock();
+    if (!workspaceId) throw new Error('teamver_workspace_required');
+    return workspaceId;
+  },
+  readActiveTeamverWorkspaceId: (...args: unknown[]) =>
+    resolveActiveTeamverWorkspaceIdMock(...args),
+}));
+
+vi.mock('../src/teamver/teamverEmbedBoot', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/teamver/teamverEmbedBoot')>();
+  return {
+    ...actual,
+    waitForTeamverEmbedBoot: vi.fn(async () => undefined),
+  };
+});
+
 vi.mock('../src/teamver/syncTeamverWorkspace', () => ({
   syncTeamverWorkspaceFromSession: vi.fn(async (session) => {
     const workspaces = session?.workspaces ?? [];
@@ -37,19 +63,29 @@ vi.mock('../src/teamver/syncTeamverWorkspace', () => ({
 }));
 
 vi.mock('../src/teamver/designBffClient', () => ({
+  TEAMVER_BFF_REQUEST_OPTIONS: {
+    skipAuthHeader: true,
+    skipAuthRecovery: true,
+  },
   getDesignBffClient: vi.fn(() => null),
   fetchDesignAuthSession: vi.fn(async () => ({
     authenticated: true,
+    user: { userId: 'user_u1' },
     defaultWorkspaceId: 'ws1',
     workspaces: [{ id: 'ws1', name: 'Workspace 1', role: 'owner' }],
   })),
   readCachedDesignAuthSessionMeta: vi.fn(() => ({ fetchedAt: 1_000 })),
   withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
+  invalidateDesignAuthSessionCache: vi.fn(),
 }));
 
 beforeEach(() => {
+  resetTeamverProjectRegistryStateForTests();
+  resolveActiveTeamverWorkspaceIdMock.mockResolvedValue('ws1');
+  designBffClient.invalidateDesignAuthSessionCache();
   vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
     authenticated: true,
+    user: { userId: 'user_u1' },
     defaultWorkspaceId: 'ws1',
     workspaces: [{ id: 'ws1', name: 'Workspace 1', role: 'owner' }],
   });
@@ -121,13 +157,13 @@ describe('Teamver project registry list', () => {
     ).resolves.toEqual([{ id: 'p1' }, { id: 'p3' }]);
   });
 
-  it('returns unfiltered projects when registry list is unavailable', async () => {
+  it('throws when registry list is unavailable instead of showing daemon projects', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
 
     await expect(
       filterProjectsByTeamverRegistryIfNeeded([{ id: 'p1' }]),
-    ).resolves.toEqual([{ id: 'p1' }]);
+    ).rejects.toThrow('teamver_project_registry_list_failed');
   });
 
   it('retries registry list once after cookie auth recovery on 401', async () => {
@@ -223,8 +259,10 @@ describe('Teamver project registry register', () => {
     }));
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: true,
+      user: { userId: 'user_boot' },
       workspaces: [{ id: 'ws-boot', name: 'Boot WS', role: 'owner' }],
     });
+    resolveActiveTeamverWorkspaceIdMock.mockResolvedValue('ws-boot');
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: {
         get: vi.fn(async () => null),
@@ -615,7 +653,7 @@ describe('Teamver project registry delete', () => {
     await unregisterTeamverProjectFromRegistryIfNeeded('p-del');
     expect(del).toHaveBeenCalledWith('/projects/p-del', {
       workspaceId: 'ws1',
-      skipAuthHeader: true,
+      ...designBffClient.TEAMVER_BFF_REQUEST_OPTIONS,
     });
   });
 });

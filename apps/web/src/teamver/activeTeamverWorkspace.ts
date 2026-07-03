@@ -4,7 +4,7 @@ import {
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
-import { normalizeWorkspaceList } from "./workspaceUtils";
+import { normalizeWorkspaceList, readWorkspaceId } from "./workspaceUtils";
 
 /**
  * Active workspace for embed BFF/Drive/usage calls.
@@ -33,11 +33,11 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
     // so preview/file reads do not lose X-Workspace-Id mid-run.
     return storeId;
   }
-  if (!session?.authenticated) return storeId;
+  if (!session?.authenticated) return null;
 
   const workspaces = normalizeWorkspaceList(session.workspaces);
 
-  if (storeId && workspaces.some((workspace) => workspace.id === storeId)) {
+  if (storeId && workspaces.some((workspace) => readWorkspaceId(workspace) === storeId)) {
     return storeId;
   }
 
