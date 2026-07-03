@@ -1,16 +1,52 @@
 import type { Request, RequestHandler } from 'express';
 
 const DEFAULT_TIMEOUT_MS = 2500;
-const ACCESS_GRANT_CACHE_TTL_MS = 10_000;
+// Grant TTL — 30s SSOT (docs-teamver/34 §운영 튜닝). 사용자가 프로젝트 하나에서
+// 연속 여러 요청(load → thumbnail → export)을 낼 때, design-api 왕복 회수를
+// 크게 줄인다. 상용 환경에서 프로젝트 접근권한 회수는 초 단위가 아닌 세션/
+// admin 변경 이벤트 단위라 30s 지연은 실질적 위험이 아니다. 400s 이상은 회수
+// 반영 지연 UX 이슈가 있으므로 상한 60s 권장.
+// Override: TEAMVER_PROJECT_ACCESS_GRANT_TTL_MS
+const DEFAULT_ACCESS_GRANT_CACHE_TTL_MS = 30_000;
 // Permanent denials (403 / forbidden) are sticky for 5s — admin revoked
 // access, no point hammering design-api every request from a tight loop.
-const ACCESS_DENY_PERMANENT_CACHE_TTL_MS = 5_000;
+// Override: TEAMVER_PROJECT_ACCESS_DENY_PERMANENT_TTL_MS
+const DEFAULT_ACCESS_DENY_PERMANENT_CACHE_TTL_MS = 5_000;
 // Transient denials (404 / not-yet-registered) get a much shorter TTL because
 // the FE is very likely to register the project in design-api within the next
 // few hundred ms. A 5s sticky deny here used to translate every materialization
 // retry inside the window into a teamver_project_s3_prefix_required 502 even
 // after the row appeared.
-const ACCESS_DENY_TRANSIENT_CACHE_TTL_MS = 1_500;
+// Override: TEAMVER_PROJECT_ACCESS_DENY_TRANSIENT_TTL_MS
+const DEFAULT_ACCESS_DENY_TRANSIENT_CACHE_TTL_MS = 1_500;
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = (process.env[name] ?? '').trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function accessGrantCacheTtlMs(): number {
+  return readPositiveIntEnv(
+    'TEAMVER_PROJECT_ACCESS_GRANT_TTL_MS',
+    DEFAULT_ACCESS_GRANT_CACHE_TTL_MS,
+  );
+}
+
+function accessDenyPermanentCacheTtlMs(): number {
+  return readPositiveIntEnv(
+    'TEAMVER_PROJECT_ACCESS_DENY_PERMANENT_TTL_MS',
+    DEFAULT_ACCESS_DENY_PERMANENT_CACHE_TTL_MS,
+  );
+}
+
+function accessDenyTransientCacheTtlMs(): number {
+  return readPositiveIntEnv(
+    'TEAMVER_PROJECT_ACCESS_DENY_TRANSIENT_TTL_MS',
+    DEFAULT_ACCESS_DENY_TRANSIENT_CACHE_TTL_MS,
+  );
+}
 
 export type TeamverRequestIdentity = {
   userId: string;
@@ -172,11 +208,11 @@ function rememberAccess(
 ): void {
   let ttl: number;
   if (allowed) {
-    ttl = ACCESS_GRANT_CACHE_TTL_MS;
+    ttl = accessGrantCacheTtlMs();
   } else if (options?.denyKind === 'transient') {
-    ttl = ACCESS_DENY_TRANSIENT_CACHE_TTL_MS;
+    ttl = accessDenyTransientCacheTtlMs();
   } else {
-    ttl = ACCESS_DENY_PERMANENT_CACHE_TTL_MS;
+    ttl = accessDenyPermanentCacheTtlMs();
   }
   accessCache.set(accessCacheKey(identity, projectId), {
     allowed,
