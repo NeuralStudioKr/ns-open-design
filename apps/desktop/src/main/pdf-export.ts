@@ -48,8 +48,7 @@ const DECK_PRINT_CSS = `
   .deck-slide:not(.active),
   .ppt-slide:not(.active),
   .slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide {
-    display: flex !important;
-    flex-direction: column !important;
+    display: block !important;
     flex: none !important;
     width: 1920px !important;
     height: 1080px !important;

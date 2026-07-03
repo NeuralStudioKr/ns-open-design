@@ -127,8 +127,8 @@ describe('buildDeckPrintCss', () => {
     const css = buildDeckPrintCss();
     expect(css).toContain('@media print');
     expect(css).toContain('.slide:not(.active)');
-    expect(css).toContain('display: flex !important');
-    expect(css).toContain('display: contents !important');
+    expect(css).toContain('display: block !important');
+    expect(css).not.toContain('flex-direction: column !important');
     expect(css).toContain('.deck');
     expect(css).toContain('.deck-shell');
     expect(css).toContain('.deck-stage');
@@ -146,7 +146,8 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).toBe(flattenRules);
     expect(screenCss).not.toContain('@media print');
     expect(screenCss).toContain('.slide:not(.active)');
-    expect(screenCss).toContain('display: flex !important');
+    expect(screenCss).toContain('display: block !important');
+    expect(screenCss).not.toContain('flex-direction: column !important');
     expect(screenCss).toContain('background: var(--bg');
     expect(screenCss).toContain('background: var(--shell');
     expect(screenCss).not.toContain('background: #fff !important');

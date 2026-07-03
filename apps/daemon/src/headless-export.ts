@@ -113,8 +113,9 @@ export function buildDeckFlattenCssRules(): string {
   }
   ${slidesNotActive},
   ${slides} {
-    display: flex !important;
-    flex-direction: column !important;
+    /* Flex direction is chosen per-slide in revealAllDeckSlides — forcing
+       column here stacks left/right split panels vertically in PDF export. */
+    display: block !important;
     flex: none !important;
     position: relative !important;
     inset: auto !important;
@@ -173,6 +174,71 @@ export function buildDeckGuizangPrintFallbackCss(): string {
 /** Screen-visible flatten rules for standalone HTML deck downloads. */
 export function buildDeckScreenExportCss(): string {
   return buildDeckFlattenCssRules();
+}
+
+/** Browser-side helpers for deck PDF flatten — keep split slides horizontal. */
+export function buildDeckSlideExportLayoutHelperJs(): string {
+  return `
+      function isChromeChild(child) {
+        if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return true;
+        const pos = window.getComputedStyle(child).position;
+        return pos === 'absolute' || pos === 'fixed';
+      }
+      function contentChildren(el) {
+        return Array.from(el.children).filter((child) => !isChromeChild(child));
+      }
+      function applySlideExportLayout(el) {
+        const children = contentChildren(el);
+        const computed = window.getComputedStyle(el);
+        const gridCols = computed.gridTemplateColumns;
+        const gridColCount =
+          gridCols && gridCols !== 'none'
+            ? gridCols.split(' ').filter((col) => col && col !== 'none').length
+            : 0;
+        if (gridColCount >= 2) {
+          set(el, 'display', 'grid');
+          set(el, 'grid-template-columns', gridCols);
+          set(el, 'grid-template-rows', computed.gridTemplateRows !== 'none' ? computed.gridTemplateRows : '1fr');
+          set(el, 'align-items', 'stretch');
+          set(el, 'justify-items', 'stretch');
+        } else if (
+          children.length >= 2
+          && (computed.flexDirection === 'row' || computed.flexDirection === 'row-reverse')
+        ) {
+          set(el, 'display', 'flex');
+          set(el, 'flex-direction', computed.flexDirection);
+          set(el, 'align-items', 'stretch');
+        } else if (children.length === 2) {
+          set(el, 'display', 'flex');
+          set(el, 'flex-direction', 'row');
+          set(el, 'align-items', 'stretch');
+        } else {
+          set(el, 'display', 'flex');
+          set(el, 'flex-direction', 'column');
+        }
+        const layoutDisplay = window.getComputedStyle(el).display;
+        const layoutDir = window.getComputedStyle(el).flexDirection;
+        children.forEach((child) => {
+          if (window.getComputedStyle(child).position === 'absolute'
+            || window.getComputedStyle(child).position === 'fixed') return;
+          set(child, 'position', 'relative');
+          set(child, 'inset', 'auto');
+          set(child, 'transform', 'none');
+          set(child, 'min-height', '0');
+          set(child, 'min-width', '0');
+          if (layoutDisplay === 'grid' || layoutDir === 'row' || layoutDir === 'row-reverse') {
+            set(child, 'flex', '1 1 0');
+            set(child, 'height', '100%');
+            set(child, 'max-height', '100%');
+          } else {
+            set(child, 'flex', '1 1 auto');
+            set(child, 'width', '100%');
+            set(child, 'height', '100%');
+            set(child, 'max-height', '100%');
+          }
+        });
+      }
+  `;
 }
 
 export function buildDeckPrintCss(): string {
@@ -599,10 +665,11 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       set(document.body, 'height', totalHeight + 'px');
       set(document.body, 'margin', '0');
 
+      ${buildDeckSlideExportLayoutHelperJs()}
+
       slides.forEach((el, index) => {
         el.classList.add('active');
-        set(el, 'display', 'flex');
-        set(el, 'flex-direction', 'column');
+        applySlideExportLayout(el);
         set(el, 'flex', 'none');
         set(el, 'position', 'relative');
         set(el, 'inset', 'auto');
@@ -622,17 +689,6 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
           set(el, 'page-break-before', 'avoid');
           set(el, 'break-before', 'avoid');
         }
-        Array.from(el.children).forEach((child) => {
-          const computed = window.getComputedStyle(child);
-          if (computed.position === 'absolute' || computed.position === 'fixed') return;
-          if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return;
-          set(child, 'position', 'relative');
-          set(child, 'inset', 'auto');
-          set(child, 'transform', 'none');
-          set(child, 'height', 'auto');
-          set(child, 'min-height', '0');
-          set(child, 'max-height', 'none');
-        });
       });
 
       document.documentElement.style.setProperty('--deck-scale', '1');

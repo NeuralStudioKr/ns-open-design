@@ -1393,7 +1393,7 @@ function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }
 function injectDeckPrintFlattenScript(doc: string): string {
   const selector =
     '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
-  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP='.deck,.deck-shell,.deck-stage,#deck-stage,#deck,.stage';var CHROME='.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,#nav,#hint,canvas.bg,#overview,[aria-label="Previous slide"],[aria-label="Next slide"]';function set(el,p,v){el.style.setProperty(p,v,'important')}function resolveShellBg(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveSlideBg(el){var rs=getComputedStyle(document.documentElement);if(el.classList.contains('light'))return rs.getPropertyValue('--paper').trim()||'#f1efea';if(el.classList.contains('dark'))return rs.getPropertyValue('--ink').trim()||'#0a0a0b';var bg=getComputedStyle(el).backgroundColor;if(bg&&bg!=='rgba(0, 0, 0, 0)'&&bg!=='transparent')return bg;return resolveShellBg()}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});document.querySelectorAll(WRAP).forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var shellBg=resolveShellBg();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background',shellBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background',shellBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){set(el,'display','flex');set(el,'flex-direction','column');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'background',resolveSlideBg(el));set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')})}})();</script>`;
+  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP='.deck,.deck-shell,.deck-stage,#deck-stage,#deck,.stage';var CHROME='.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,#nav,#hint,canvas.bg,#overview,[aria-label="Previous slide"],[aria-label="Next slide"]';function set(el,p,v){el.style.setProperty(p,v,'important')}${DECK_SLIDE_EXPORT_LAYOUT_HELPER_JS}function resolveShellBg(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveSlideBg(el){var rs=getComputedStyle(document.documentElement);if(el.classList.contains('light'))return rs.getPropertyValue('--paper').trim()||'#f1efea';if(el.classList.contains('dark'))return rs.getPropertyValue('--ink').trim()||'#0a0a0b';var bg=getComputedStyle(el).backgroundColor;if(bg&&bg!=='rgba(0, 0, 0, 0)'&&bg!=='transparent')return bg;return resolveShellBg()}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});document.querySelectorAll(WRAP).forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var shellBg=resolveShellBg();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background',shellBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background',shellBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){el.classList.add('active');applySlideExportLayout(el);set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'background',resolveSlideBg(el));set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')})}})();</script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;
@@ -1445,6 +1445,68 @@ function injectParentPrintReadyCache(doc: string, nonce: string): string {
 // Critical: `.slide:not(.active)` override — deck-framework hides inactive
 // slides with specificity 0,2,1; without the :not(.active) print rule only
 // the active slide renders and page-break never produces 12 pages.
+// Flex direction is applied per-slide in revealAllDeckSlides / print flatten JS.
+const DECK_SLIDE_EXPORT_LAYOUT_HELPER_JS = `
+      function isChromeChild(child) {
+        if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return true;
+        var pos = window.getComputedStyle(child).position;
+        return pos === 'absolute' || pos === 'fixed';
+      }
+      function contentChildren(el) {
+        return Array.from(el.children).filter(function(child) { return !isChromeChild(child); });
+      }
+      function applySlideExportLayout(el) {
+        var children = contentChildren(el);
+        var computed = window.getComputedStyle(el);
+        var gridCols = computed.gridTemplateColumns;
+        var gridColCount = gridCols && gridCols !== 'none'
+          ? gridCols.split(' ').filter(function(col) { return col && col !== 'none'; }).length
+          : 0;
+        if (gridColCount >= 2) {
+          set(el, 'display', 'grid');
+          set(el, 'grid-template-columns', gridCols);
+          set(el, 'grid-template-rows', computed.gridTemplateRows !== 'none' ? computed.gridTemplateRows : '1fr');
+          set(el, 'align-items', 'stretch');
+          set(el, 'justify-items', 'stretch');
+        } else if (
+          children.length >= 2
+          && (computed.flexDirection === 'row' || computed.flexDirection === 'row-reverse')
+        ) {
+          set(el, 'display', 'flex');
+          set(el, 'flex-direction', computed.flexDirection);
+          set(el, 'align-items', 'stretch');
+        } else if (children.length === 2) {
+          set(el, 'display', 'flex');
+          set(el, 'flex-direction', 'row');
+          set(el, 'align-items', 'stretch');
+        } else {
+          set(el, 'display', 'flex');
+          set(el, 'flex-direction', 'column');
+        }
+        var layoutDisplay = window.getComputedStyle(el).display;
+        var layoutDir = window.getComputedStyle(el).flexDirection;
+        children.forEach(function(child) {
+          if (window.getComputedStyle(child).position === 'absolute'
+            || window.getComputedStyle(child).position === 'fixed') return;
+          set(child, 'position', 'relative');
+          set(child, 'inset', 'auto');
+          set(child, 'transform', 'none');
+          set(child, 'min-height', '0');
+          set(child, 'min-width', '0');
+          if (layoutDisplay === 'grid' || layoutDir === 'row' || layoutDir === 'row-reverse') {
+            set(child, 'flex', '1 1 0');
+            set(child, 'height', '100%');
+            set(child, 'max-height', '100%');
+          } else {
+            set(child, 'flex', '1 1 auto');
+            set(child, 'width', '100%');
+            set(child, 'height', '100%');
+            set(child, 'max-height', '100%');
+          }
+        });
+      }
+`;
+
 const DECK_PRINT_CSS = `
 @media print {
   @page { size: 1920px 1080px; margin: 0; }
@@ -1481,8 +1543,7 @@ const DECK_PRINT_CSS = `
   section.slide,
   .deck-slide,
   .ppt-slide {
-    display: flex !important;
-    flex-direction: column !important;
+    display: block !important;
     flex: none !important;
     position: relative !important;
     inset: auto !important;
