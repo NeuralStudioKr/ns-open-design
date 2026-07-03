@@ -14,11 +14,22 @@ export function markTeamverAuthReturnPending(): void {
   }
 }
 
-export function peekTeamverAuthReturnPending(): boolean {
+/**
+ * Read the pending auth-return flag. `options.consume=true` also clears
+ * the flag (idempotent for the "once per page load" recovery paths).
+ * The named exports below are thin wrappers so historical call sites
+ * keep their intent-revealing names while sharing a single storage
+ * read/expiry/parse implementation.
+ */
+export function readTeamverAuthReturnPending(options?: {
+  consume?: boolean;
+}): boolean {
   if (typeof window === "undefined") return false;
+  const shouldConsume = Boolean(options?.consume);
   try {
     const raw = sessionStorage.getItem(TEAMVER_AUTH_RETURN_PENDING_KEY);
     if (!raw) return false;
+    if (shouldConsume) sessionStorage.removeItem(TEAMVER_AUTH_RETURN_PENDING_KEY);
     const at = Number(raw);
     return Number.isFinite(at) && Date.now() - at < AUTH_RETURN_MAX_AGE_MS;
   } catch {
@@ -26,18 +37,13 @@ export function peekTeamverAuthReturnPending(): boolean {
   }
 }
 
+export function peekTeamverAuthReturnPending(): boolean {
+  return readTeamverAuthReturnPending({ consume: false });
+}
+
 /** Read and clear the pending flag — call once per full page load. */
 export function consumeTeamverAuthReturnPending(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const raw = sessionStorage.getItem(TEAMVER_AUTH_RETURN_PENDING_KEY);
-    if (!raw) return false;
-    sessionStorage.removeItem(TEAMVER_AUTH_RETURN_PENDING_KEY);
-    const at = Number(raw);
-    return Number.isFinite(at) && Date.now() - at < AUTH_RETURN_MAX_AGE_MS;
-  } catch {
-    return false;
-  }
+  return readTeamverAuthReturnPending({ consume: true });
 }
 
 function isTeamverAuthReferrer(referrer: string): boolean {
