@@ -758,6 +758,28 @@
 .project-thumb::after {
   display: none;
 }
+/*
+ * Project thumb aspect lock: iframe covers below render at a fixed
+ * 1280x720 desktop size and are scaled to fit via a Math.min() ratio
+ * (see DesignsTabProjectThumb + ProjectCardHtmlCover), so if the card
+ * thumb slot ends up wider than 16:9 the scale collapses on the short
+ * axis and the frame's white background bleeds through on the long axis
+ * — the pillarbox seen in project list cards. Home's card thumb already
+ * has `aspect-ratio: 16 / 9` (styles/home/recent-projects.css) which is
+ * why the home preview fills exactly; mirror that here for the project
+ * grid so both surfaces render identically.
+ *
+ * Only apply to `.project-thumb` (attached by DesignsTabProjectThumb) —
+ * leaves featured/tutorial cards, live-artifact thumbs, and the loading
+ * skeleton on their original flex layout to avoid unrelated visual
+ * regressions.
+ */
+.design-card-thumb.project-thumb {
+  flex: none;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+}
 .design-card-thumb .thumb-media {
   position: absolute;
   inset: 0;

@@ -2140,6 +2140,13 @@ button.filter-pill:hover:not(:disabled) .filter-pill-count,
 .design-card-skeleton .design-card-thumb::before,
 .design-card-skeleton .design-card-thumb::after { display: none; }
 .design-card-skeleton .design-card-thumb {
+  /* Match the real project-thumb aspect (see drawer.css §.design-card-thumb
+     .project-thumb) so hydrated cards do not shift when the shimmer swaps
+     out for a rendered cover. */
+  flex: none;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  width: 100%;
   background-image: linear-gradient(
     90deg,
     var(--bg-subtle) 0%,
