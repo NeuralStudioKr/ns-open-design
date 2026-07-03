@@ -228,7 +228,7 @@ export async function resolveRemoteProjectStorage(opts: {
 
   const credentialProvider = createS3CredentialProvider({
     env,
-    fetchFn: opts.fetchFn,
+    ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
   });
   // Warm IMDS once at startup so misconfiguration fails fast; provider
   // refreshes before Expiration on subsequent signed requests.

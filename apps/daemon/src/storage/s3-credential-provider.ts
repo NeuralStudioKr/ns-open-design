@@ -40,7 +40,7 @@ export function createS3CredentialProvider(opts?: {
   const loadFromImds = async (): Promise<SigV4Credentials> => {
     const imds = await fetchEc2InstanceRoleCredentials({
       timeoutMs: 3_000,
-      fetchFn: opts?.fetchFn,
+      ...(opts?.fetchFn ? { fetchFn: opts.fetchFn } : {}),
     });
     if (!imds) {
       throw new Error('EC2 instance profile credentials unavailable');
