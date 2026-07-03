@@ -81,11 +81,15 @@ export function getDesignBffClient(): TeamverClient | null {
   return cachedClient;
 }
 
-const SESSION_PROBE_OPTIONS = {
+export const TEAMVER_BFF_REQUEST_OPTIONS = {
   skipAuthHeader: true,
-  // Session probe — avoid SDK refresh + onAuthExpired before embed handles 401.
+  // Design embed handles cookie refresh explicitly via refreshDesignAuthCookie().
+  // Keep SDK auto-recovery off so ordinary BFF 401s do not spam
+  // /teamver-bff/auth/refresh or redirect before the embed auth layer decides.
   skipAuthRecovery: true,
 } as const;
+
+const SESSION_PROBE_OPTIONS = TEAMVER_BFF_REQUEST_OPTIONS;
 
 async function postAuthRefresh(
   url: string,
@@ -443,7 +447,7 @@ export async function fetchTeamverRuntimeConfig(
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
       const value = await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       });
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;
@@ -485,7 +489,7 @@ export async function fetchTeamverWorkspacePermissions(
       `/permissions/${encodeURIComponent(trimmed)}`,
       {
         workspaceId: trimmed,
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
   } catch {

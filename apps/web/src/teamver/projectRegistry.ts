@@ -2,6 +2,7 @@ import { NetworkError } from "@teamver/app-sdk";
 import type { Project } from "../types";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
@@ -227,7 +228,7 @@ export async function registerTeamverProjectIfNeeded(
           payload,
           {
             workspaceId,
-            skipAuthHeader: true,
+            ...TEAMVER_BFF_REQUEST_OPTIONS,
           },
         ),
       );
@@ -332,7 +333,7 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
         "/projects",
         {
           workspaceId,
-          skipAuthHeader: true,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
         },
       ),
     );
@@ -390,7 +391,7 @@ export async function fetchTeamverProject(
       `/projects/${encodeURIComponent(trimmedRef)}`,
       {
         workspaceId: workspaceId.trim(),
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
   } catch (err) {
@@ -500,7 +501,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
       `/projects/${encodeURIComponent(trimmedId)}`,
       {
         workspaceId: workspaceId.trim(),
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
     invalidateRegisteredIdsCache();

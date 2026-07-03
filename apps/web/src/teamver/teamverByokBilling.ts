@@ -1,5 +1,9 @@
 import { NetworkError } from "@teamver/app-sdk";
-import { getDesignBffClient, withDesignBffCookieAuthRecovery } from "./designBffClient";
+import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 
 export type ByokBillingFinalizeInput = {
   workspaceId: string;
@@ -111,7 +115,7 @@ async function postFinalizeByokRun(
     },
     {
       workspaceId: input.workspaceId,
-      skipAuthHeader: true,
+      ...TEAMVER_BFF_REQUEST_OPTIONS,
     },
   );
   return normalizeByokBillingResponse(response);
