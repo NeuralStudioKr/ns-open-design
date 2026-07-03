@@ -109,7 +109,8 @@ describe("embed workspace switch side effects", () => {
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 3200);
-    expect(block).toContain("embedActiveWorkspaceIdRef.current === trimmed");
+    expect(block).toContain("shouldSkipWorkspaceSwitchSideEffects");
+    expect(block).toContain("capturePreWorkspaceSwitchProjectGuards");
     expect(block).toContain("setBackgroundRunSummaries([])");
     expect(block).toContain("setBackgroundRunNotice(null)");
     expect(block).toContain("resetEmbedRunTrackingRefs");

@@ -104,6 +104,11 @@ import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
+import {
+  capturePreWorkspaceSwitchProjectGuards,
+  isPreWorkspaceSwitchTrustedProject,
+  shouldSkipWorkspaceSwitchSideEffects,
+} from './teamver/workspaceSwitchGuards';
 import { isTeamverSessionTrustedProject } from './teamver/sessionTrustedProjects';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { mergeByokBackgroundRunSummaries, syntheticByokRunsForTaskCenter } from './teamver/backgroundChatRecovery';
@@ -1585,7 +1590,15 @@ function AppInner() {
       if (!isTeamverEmbedBootComplete()) return;
       const trimmed = workspaceId.trim();
       if (!trimmed) return;
-      if (embedActiveWorkspaceIdRef.current === trimmed) return;
+      if (shouldSkipWorkspaceSwitchSideEffects(embedActiveWorkspaceIdRef.current, trimmed)) {
+        embedActiveWorkspaceIdRef.current = trimmed;
+        return;
+      }
+      const preSwitchProjectGuards = capturePreWorkspaceSwitchProjectGuards({
+        route: routeRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+      });
       embedActiveWorkspaceIdRef.current = trimmed;
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
@@ -1628,7 +1641,8 @@ function AppInner() {
         if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
           const currentProjectId = current.kind === 'project' ? current.projectId : null;
           const allowed = currentProjectId
-            ? isSessionTrustedEmbedProject(currentProjectId) ||
+            ? isPreWorkspaceSwitchTrustedProject(currentProjectId, preSwitchProjectGuards) ||
+              isSessionTrustedEmbedProject(currentProjectId) ||
               await assertTeamverProjectAccessIfNeeded(currentProjectId)
             : false;
           if (allowed) {
@@ -2402,8 +2416,15 @@ function AppInner() {
   useEffect(() => {
     if (!activeProjectRouteId) return;
     if (isSessionTrustedEmbedProject(activeProjectRouteId)) return;
+    if (projects.some((project) => project.id === activeProjectRouteId)) return;
     let cancelled = false;
-    void assertTeamverProjectAccessIfNeeded(activeProjectRouteId).then((allowed) => {
+    void (async () => {
+      let allowed = await assertTeamverProjectAccessIfNeeded(activeProjectRouteId);
+      if (!allowed) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        if (cancelled) return;
+        allowed = await assertTeamverProjectAccessIfNeeded(activeProjectRouteId);
+      }
       if (cancelled || allowed) return;
       console.info('[teamver] home-nav: project access denied on route mount', {
         projectId: activeProjectRouteId,
@@ -2412,11 +2433,11 @@ function AppInner() {
         setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
       }
       navigate({ kind: 'home', view: 'home' }, { replace: true });
-    });
+    })();
     return () => {
       cancelled = true;
     };
-  }, [activeProjectRouteId, isSessionTrustedEmbedProject]);
+  }, [activeProjectRouteId, isSessionTrustedEmbedProject, projects]);
 
   const handleOpenProject = useCallback(
     (id: string, options?: { fileName?: string | null; conversationId?: string | null }) => {

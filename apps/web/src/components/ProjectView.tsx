@@ -193,6 +193,7 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
+import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { dispatchTeamverBackgroundChat } from '../teamver/teamverBackgroundChatEvents';
 import {
@@ -3517,7 +3518,10 @@ export function ProjectView({
     return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
       const trimmed = workspaceId.trim();
       if (!trimmed) return;
-      if (embedActiveWorkspaceIdRef.current === trimmed) return;
+      if (shouldSkipWorkspaceSwitchSideEffects(embedActiveWorkspaceIdRef.current, trimmed)) {
+        embedActiveWorkspaceIdRef.current = trimmed;
+        return;
+      }
       embedActiveWorkspaceIdRef.current = trimmed;
       setError(null);
       setConversationLoadError(null);
