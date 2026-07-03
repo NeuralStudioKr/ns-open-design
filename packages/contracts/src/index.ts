@@ -45,5 +45,6 @@ export * from './critique.js';
 export * from './plugins/index.js';
 export * from './agent-prose-sanitize.js';
 export * from './html/repairArtifactDocumentHead.js';
+export * from './html/deckPdfExport.js';
 export * from './analytics/events.js';
 export * from './analytics/public-params.js';

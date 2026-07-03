@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import {
+  repairArtifactDocumentHead,
+  patchArtifactDeckPrintCss,
+  buildDeckSlideExportLayoutHelperJs,
+  buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
+  buildDeckGuizangPrintFallbackCss as buildSharedDeckGuizangPrintFallbackCss,
+  buildDeckPrintCss as buildSharedDeckPrintCss,
+} from '@open-design/contracts';
 
 import {
   bindExportBrowserLauncher,
@@ -85,90 +92,12 @@ function deckSlideSelectorList(): string[] {
  * horizontal-snap deck selectors.
  */
 export function buildDeckFlattenCssRules(): string {
-  const slides = deckSlideSelectorList().join(', ');
-  const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
-  const slidesLastChild = deckSlideSelectorList().map((sel) => `${sel}:last-child`).join(', ');
-  return `
-  html, body {
-    width: ${DECK_WIDTH}px !important;
-    height: auto !important;
-    overflow: visible !important;
-    background: var(--shell, var(--bg, #ffffff)) !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  body {
-    display: block !important;
-    scroll-snap-type: none !important;
-    transform: none !important;
-  }
-  /* Wrappers must not generate a box — a static 1920×1080 .deck-stage with
-     absolutely positioned slides produces an empty first printed page before
-     slide content flows (title fragments leak onto page 1, real slides start
-     on page 2). display:contents hoists slides directly into body flow.
-     guizang-ppt uses #deck (10000vw horizontal flex) — same failure mode. */
-  ${DECK_WRAPPER_SELECTOR.split(',').map((sel) => sel.trim()).join(',\n  ')} {
-    display: contents !important;
-    transform: none !important;
-  }
-  ${slidesNotActive},
-  ${slides} {
-    /* Flex direction is chosen per-slide in revealAllDeckSlides — forcing
-       column here stacks left/right split panels vertically in PDF export. */
-    display: block !important;
-    flex: none !important;
-    position: relative !important;
-    inset: auto !important;
-    width: ${DECK_WIDTH}px !important;
-    height: ${DECK_HEIGHT}px !important;
-    min-height: ${DECK_HEIGHT}px !important;
-    max-height: ${DECK_HEIGHT}px !important;
-    background: var(--bg, var(--shell, #ffffff)) !important;
-    overflow: hidden !important;
-    page-break-after: always !important;
-    break-after: page !important;
-    break-inside: avoid !important;
-    scroll-snap-align: none !important;
-    transform: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-  }
-  ${slidesLastChild} {
-    page-break-after: auto !important;
-    break-after: auto !important;
-  }
-  ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
-    page-break-before: avoid !important;
-    break-before: avoid !important;
-  }
-  ${DECK_CHROME_HIDE_SELECTOR} {
-    display: none !important;
-  }
-  ${buildDeckGuizangPrintFallbackCss()}`;
+  return `${buildSharedDeckFlattenCssRules()}${buildDeckGuizangPrintFallbackCss()}`;
 }
 
 /** guizang-ppt relies on WebGL canvases + low-opacity ::before overlays. */
 export function buildDeckGuizangPrintFallbackCss(): string {
-  return `
-  canvas.bg, #nav, #hint, #overview {
-    display: none !important;
-  }
-  .slide.light::before {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(var(--paper-rgb), .95) !important;
-  }
-  .slide.dark::before {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(var(--ink-rgb), .92) !important;
-  }
-  .slide.hero.light::before {
-    background: rgba(var(--paper-rgb), .92) !important;
-  }
-  .slide.hero.dark::before {
-    background: rgba(var(--ink-rgb), .88) !important;
-  }`;
+  return buildSharedDeckGuizangPrintFallbackCss();
 }
 
 /** Screen-visible flatten rules for standalone HTML deck downloads. */
@@ -176,77 +105,10 @@ export function buildDeckScreenExportCss(): string {
   return buildDeckFlattenCssRules();
 }
 
-/** Browser-side helpers for deck PDF flatten — keep split slides horizontal. */
-export function buildDeckSlideExportLayoutHelperJs(): string {
-  return `
-      function isChromeChild(child) {
-        if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return true;
-        const pos = window.getComputedStyle(child).position;
-        return pos === 'absolute' || pos === 'fixed';
-      }
-      function contentChildren(el) {
-        return Array.from(el.children).filter((child) => !isChromeChild(child));
-      }
-      function applySlideExportLayout(el) {
-        const children = contentChildren(el);
-        const computed = window.getComputedStyle(el);
-        const gridCols = computed.gridTemplateColumns;
-        const gridColCount =
-          gridCols && gridCols !== 'none'
-            ? gridCols.split(' ').filter((col) => col && col !== 'none').length
-            : 0;
-        if (gridColCount >= 2) {
-          set(el, 'display', 'grid');
-          set(el, 'grid-template-columns', gridCols);
-          set(el, 'grid-template-rows', computed.gridTemplateRows !== 'none' ? computed.gridTemplateRows : '1fr');
-          set(el, 'align-items', 'stretch');
-          set(el, 'justify-items', 'stretch');
-        } else if (
-          children.length >= 2
-          && (computed.flexDirection === 'row' || computed.flexDirection === 'row-reverse')
-        ) {
-          set(el, 'display', 'flex');
-          set(el, 'flex-direction', computed.flexDirection);
-          set(el, 'align-items', 'stretch');
-        } else if (children.length === 2) {
-          set(el, 'display', 'flex');
-          set(el, 'flex-direction', 'row');
-          set(el, 'align-items', 'stretch');
-        } else {
-          set(el, 'display', 'flex');
-          set(el, 'flex-direction', 'column');
-        }
-        const layoutDisplay = window.getComputedStyle(el).display;
-        const layoutDir = window.getComputedStyle(el).flexDirection;
-        children.forEach((child) => {
-          if (window.getComputedStyle(child).position === 'absolute'
-            || window.getComputedStyle(child).position === 'fixed') return;
-          set(child, 'position', 'relative');
-          set(child, 'inset', 'auto');
-          set(child, 'transform', 'none');
-          set(child, 'min-height', '0');
-          set(child, 'min-width', '0');
-          if (layoutDisplay === 'grid' || layoutDir === 'row' || layoutDir === 'row-reverse') {
-            set(child, 'flex', '1 1 0');
-            set(child, 'height', '100%');
-            set(child, 'max-height', '100%');
-          } else {
-            set(child, 'flex', '1 1 auto');
-            set(child, 'width', '100%');
-            set(child, 'height', '100%');
-            set(child, 'max-height', '100%');
-          }
-        });
-      }
-  `;
-}
+export { buildDeckSlideExportLayoutHelperJs } from '@open-design/contracts';
 
 export function buildDeckPrintCss(): string {
-  return `
-@media print {
-  @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
-  ${buildDeckFlattenCssRules()}
-}`;
+  return buildSharedDeckPrintCss();
 }
 // Alpine's `chromium` package installs the real binary at /usr/bin/chromium.
 // Debian bookworm ships `/usr/bin/chromium` as well. OD_EXPORT_CHROMIUM_PATH
@@ -593,18 +455,8 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         rootStyle.getPropertyValue('--ink').trim() ||
         rootStyle.getPropertyValue('background-color').trim() ||
         '#0a0c10';
-      const resolveSlidePrintBackground = (el) => {
-        if (el.classList.contains('light')) {
-          return rootStyle.getPropertyValue('--paper').trim() || '#f1efea';
-        }
-        if (el.classList.contains('dark')) {
-          return rootStyle.getPropertyValue('--ink').trim() || '#0a0a0b';
-        }
-        const computed = window.getComputedStyle(el);
-        const bg = computed.backgroundColor;
-        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
-        return resolveShellBackground();
-      };
+
+      ${buildDeckSlideExportLayoutHelperJs()}
 
       let canvasBgAttempted = 0;
       let canvasBgRasterized = 0;
@@ -1070,19 +922,16 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
 export { deckScreenshotClip as deckScreenshotClipRect };
 
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
-  let doc = patchArtifactDeckPrintBackground(
+  let doc = patchArtifactDeckPrintCss(
     repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
   );
   doc = injectTitle(doc, input.title);
   return injectPrintStylesheet(doc, buildDeckPrintCss());
 }
 
-/** Undo agent/framework print rules that force a white page behind slides. */
+/** @deprecated Use patchArtifactDeckPrintCss from @open-design/contracts */
 export function patchArtifactDeckPrintBackground(doc: string): string {
-  return doc.replace(
-    /(@media\s+print[\s\S]*?html\s*,\s*body\s*\{[^}]*?)background\s*:\s*#fff\s*!important/gi,
-    '$1background: var(--shell, var(--bg, #fff)) !important',
-  );
+  return patchArtifactDeckPrintCss(doc);
 }
 
 function injectTitle(doc: string, title: string): string {

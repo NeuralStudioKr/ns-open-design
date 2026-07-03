@@ -22,6 +22,12 @@ import {
   printHostPdf,
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import {
+  injectDeckFlattenScript,
+  patchArtifactDeckPrintCss,
+  repairArtifactDocumentHead,
+  buildDeckPrintCss,
+} from '@open-design/contracts';
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
@@ -1303,10 +1309,10 @@ export async function exportAsPdf(
   // Generate a per-export nonce so the print-ready handshake is resistant to
   // spoofing by untrusted scripts inside the exported artifact.
   const nonce = randomUUID();
-  let doc = buildBlobSafeSrcdoc(html, opts);
+  let doc = buildBlobSafeSrcdoc(repairArtifactDocumentHead(patchArtifactDeckPrintCss(html)), opts);
   if (opts?.deck) {
     doc = injectDeckPrintStylesheet(doc);
-    doc = injectDeckPrintFlattenScript(doc);
+    doc = injectDeckFlattenScript(doc);
   }
   doc = injectPrintReadyHandshake(doc, nonce);
 
@@ -1390,15 +1396,6 @@ function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }
   return doc + script;
 }
 
-function injectDeckPrintFlattenScript(doc: string): string {
-  const selector =
-    '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
-  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP='.deck,.deck-shell,.deck-stage,#deck-stage,#deck,.stage';var CHROME='.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,#nav,#hint,canvas.bg,#overview,[aria-label="Previous slide"],[aria-label="Next slide"]';function set(el,p,v){el.style.setProperty(p,v,'important')}${DECK_SLIDE_EXPORT_LAYOUT_HELPER_JS}function resolveShellBg(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveSlideBg(el){var rs=getComputedStyle(document.documentElement);if(el.classList.contains('light'))return rs.getPropertyValue('--paper').trim()||'#f1efea';if(el.classList.contains('dark'))return rs.getPropertyValue('--ink').trim()||'#0a0a0b';var bg=getComputedStyle(el).backgroundColor;if(bg&&bg!=='rgba(0, 0, 0, 0)'&&bg!=='transparent')return bg;return resolveShellBg()}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});document.querySelectorAll(WRAP).forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var shellBg=resolveShellBg();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background',shellBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background',shellBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){el.classList.add('active');applySlideExportLayout(el);set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'background',resolveSlideBg(el));set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')})}})();</script>`;
-  if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
-  if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
-  return doc + script;
-}
-
 function injectPrintReadyHandshake(doc: string, nonce: string): string {
   // Wait for fonts, the window load event (which covers initial images), and
   // any images that are still loading after load fires (dynamically added or
@@ -1421,7 +1418,7 @@ function injectPrintReadyHandshake(doc: string, nonce: string): string {
   // The nonce is a per-export random UUID that verifies the readiness signal
   // came from our injected handshake, not a spoofed message from untrusted
   // artifact code.
-  const script = `<script data-od-print-ready>(function(){function waitForImages(){var imgs=Array.from(document.images).filter(function(img){return !img.complete});return Promise.all(imgs.map(function(img){return new Promise(function(r){img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});if(img.complete)r()})}))}function cssUrlValues(value){var urls=[];if(!value||value==='none')return urls;value.replace(/url\\((['"]?)(.*?)\\1\\)/g,function(_,q,rawUrl){if(rawUrl&&!/^data:/i.test(rawUrl))urls.push(rawUrl);return''});return urls}function waitForCssBackgroundImages(){var urls=new Set();Array.from(document.querySelectorAll('*')).forEach(function(el){var style=window.getComputedStyle(el);cssUrlValues(style.backgroundImage).forEach(function(url){urls.add(url)});cssUrlValues(style.borderImageSource).forEach(function(url){urls.add(url)});cssUrlValues(style.listStyleImage).forEach(function(url){urls.add(url)})});return Promise.all(Array.from(urls).map(function(url){return new Promise(function(r){var img=new Image();img.onload=r;img.onerror=r;img.src=url})}))}function nextFrame(){return new Promise(function(r){requestAnimationFrame(function(){r(true)})})}Promise.all([document.fonts&&document.fonts.ready?document.fonts.ready.catch(function(){}):Promise.resolve(),new Promise(function(r){if(document.readyState==='complete')r();else window.addEventListener('load',r,{once:true})})]).then(function(){return Promise.all([waitForImages(),waitForCssBackgroundImages()])}).then(nextFrame).then(nextFrame).then(function(){var de=document.documentElement;var b=document.body||de;var w=Math.max(de.scrollWidth,b.scrollWidth,de.offsetWidth,b.offsetWidth);var h=Math.max(de.scrollHeight,b.scrollHeight,de.offsetHeight,b.offsetHeight);window.parent.postMessage({type:'OD_PRINT_READY',nonce:'${nonce}',width:w,height:h},'*')})})();<\/script>`;
+  const script = `<script data-od-print-ready>(function(){function waitForImages(){var imgs=Array.from(document.images).filter(function(img){return !img.complete});return Promise.all(imgs.map(function(img){return new Promise(function(r){img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});if(img.complete)r()})}))}function cssUrlValues(value){var urls=[];if(!value||value==='none')return urls;value.replace(/url\\((['"]?)(.*?)\\1\\)/g,function(_,q,rawUrl){if(rawUrl&&!/^data:/i.test(rawUrl))urls.push(rawUrl);return''});return urls}function waitForCssBackgroundImages(){var urls=new Set();Array.from(document.querySelectorAll('*')).forEach(function(el){var style=window.getComputedStyle(el);cssUrlValues(style.backgroundImage).forEach(function(url){urls.add(url)});cssUrlValues(style.borderImageSource).forEach(function(url){urls.add(url)});cssUrlValues(style.listStyleImage).forEach(function(url){urls.add(url)})});return Promise.all(Array.from(urls).map(function(url){return new Promise(function(r){var img=new Image();img.onload=r;img.onerror=r;img.src=url})}))}function nextFrame(){return new Promise(function(r){requestAnimationFrame(function(){r(true)})})}Promise.all([document.fonts&&document.fonts.ready?document.fonts.ready.catch(function(){}):Promise.resolve(),new Promise(function(r){if(document.readyState==='complete')r();else window.addEventListener('load',r,{once:true})})]).then(function(){return Promise.all([waitForImages(),waitForCssBackgroundImages()])}).then(nextFrame).then(nextFrame).then(function(){try{if(typeof window.__odFlattenDeckForPrint==='function')window.__odFlattenDeckForPrint()}catch(e){}return nextFrame()}).then(nextFrame).then(function(){var de=document.documentElement;var b=document.body||de;var w=Math.max(de.scrollWidth,b.scrollWidth,de.offsetWidth,b.offsetWidth);var h=Math.max(de.scrollHeight,b.scrollHeight,de.offsetHeight,b.offsetHeight);window.parent.postMessage({type:'OD_PRINT_READY',nonce:'${nonce}',width:w,height:h},'*')})})();<\/script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;
@@ -1440,172 +1437,9 @@ function injectParentPrintReadyCache(doc: string, nonce: string): string {
   return script + doc;
 }
 
-// Stitches every .slide into a vertical multi-page PDF: 1920×1080 per page.
-// Keep in sync with apps/daemon/src/headless-export.ts `buildDeckPrintCss`.
-// Critical: `.slide:not(.active)` override — deck-framework hides inactive
-// slides with specificity 0,2,1; without the :not(.active) print rule only
-// the active slide renders and page-break never produces 12 pages.
-// Flex direction is applied per-slide in revealAllDeckSlides / print flatten JS.
-const DECK_SLIDE_EXPORT_LAYOUT_HELPER_JS = `
-      function isChromeChild(child) {
-        if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return true;
-        var pos = window.getComputedStyle(child).position;
-        return pos === 'absolute' || pos === 'fixed';
-      }
-      function contentChildren(el) {
-        return Array.from(el.children).filter(function(child) { return !isChromeChild(child); });
-      }
-      function applySlideExportLayout(el) {
-        var children = contentChildren(el);
-        var computed = window.getComputedStyle(el);
-        var gridCols = computed.gridTemplateColumns;
-        var gridColCount = gridCols && gridCols !== 'none'
-          ? gridCols.split(' ').filter(function(col) { return col && col !== 'none'; }).length
-          : 0;
-        if (gridColCount >= 2) {
-          set(el, 'display', 'grid');
-          set(el, 'grid-template-columns', gridCols);
-          set(el, 'grid-template-rows', computed.gridTemplateRows !== 'none' ? computed.gridTemplateRows : '1fr');
-          set(el, 'align-items', 'stretch');
-          set(el, 'justify-items', 'stretch');
-        } else if (
-          children.length >= 2
-          && (computed.flexDirection === 'row' || computed.flexDirection === 'row-reverse')
-        ) {
-          set(el, 'display', 'flex');
-          set(el, 'flex-direction', computed.flexDirection);
-          set(el, 'align-items', 'stretch');
-        } else if (children.length === 2) {
-          set(el, 'display', 'flex');
-          set(el, 'flex-direction', 'row');
-          set(el, 'align-items', 'stretch');
-        } else {
-          set(el, 'display', 'flex');
-          set(el, 'flex-direction', 'column');
-        }
-        var layoutDisplay = window.getComputedStyle(el).display;
-        var layoutDir = window.getComputedStyle(el).flexDirection;
-        children.forEach(function(child) {
-          if (window.getComputedStyle(child).position === 'absolute'
-            || window.getComputedStyle(child).position === 'fixed') return;
-          set(child, 'position', 'relative');
-          set(child, 'inset', 'auto');
-          set(child, 'transform', 'none');
-          set(child, 'min-height', '0');
-          set(child, 'min-width', '0');
-          if (layoutDisplay === 'grid' || layoutDir === 'row' || layoutDir === 'row-reverse') {
-            set(child, 'flex', '1 1 0');
-            set(child, 'height', '100%');
-            set(child, 'max-height', '100%');
-          } else {
-            set(child, 'flex', '1 1 auto');
-            set(child, 'width', '100%');
-            set(child, 'height', '100%');
-            set(child, 'max-height', '100%');
-          }
-        });
-      }
-`;
-
-const DECK_PRINT_CSS = `
-@media print {
-  @page { size: 1920px 1080px; margin: 0; }
-  html, body {
-    width: 1920px !important;
-    height: auto !important;
-    overflow: visible !important;
-    background: var(--shell, var(--bg, #ffffff)) !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  body {
-    display: block !important;
-    scroll-snap-type: none !important;
-    transform: none !important;
-  }
-  .deck,
-  .deck-shell,
-  .deck-stage, .stage,
-  #deck-stage,
-  #deck {
-    display: contents !important;
-    transform: none !important;
-  }
-  .slide:not(.active),
-  [data-slide]:not(.active),
-  [data-screen-label]:not(.active),
-  section.slide:not(.active),
-  .deck-slide:not(.active),
-  .ppt-slide:not(.active),
-  .slide,
-  [data-slide],
-  [data-screen-label],
-  section.slide,
-  .deck-slide,
-  .ppt-slide {
-    display: block !important;
-    flex: none !important;
-    position: relative !important;
-    inset: auto !important;
-    width: 1920px !important;
-    height: 1080px !important;
-    min-height: 1080px !important;
-    max-height: 1080px !important;
-    background: var(--bg, var(--shell, #ffffff)) !important;
-    overflow: hidden !important;
-    page-break-after: always !important;
-    break-after: page !important;
-    break-inside: avoid !important;
-    scroll-snap-align: none !important;
-    transform: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-  }
-  .slide:last-child,
-  [data-slide]:last-child,
-  [data-screen-label]:last-child,
-  section.slide:last-child,
-  .deck-slide:last-child,
-  .ppt-slide:last-child {
-    page-break-after: auto !important;
-    break-after: auto !important;
-  }
-  .slide:first-child,
-  [data-slide]:first-child,
-  [data-screen-label]:first-child,
-  section.slide:first-child,
-  .deck-slide:first-child,
-  .ppt-slide:first-child {
-    page-break-before: avoid !important;
-    break-before: avoid !important;
-  }
-  .deck-counter, .deck-hint, .deck-nav,
-  #deck-prev, #deck-next, #deck-cur, #deck-total,
-  #nav, #hint, canvas.bg, #overview,
-  [aria-label="Previous slide"], [aria-label="Next slide"] {
-    display: none !important;
-  }
-  .slide.light::before {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(var(--paper-rgb), .95) !important;
-  }
-  .slide.dark::before {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(var(--ink-rgb), .92) !important;
-  }
-  .slide.hero.light::before {
-    background: rgba(var(--paper-rgb), .92) !important;
-  }
-  .slide.hero.dark::before {
-    background: rgba(var(--ink-rgb), .88) !important;
-  }
-}
-`;
-
+// Deck print CSS lives in @open-design/contracts `buildDeckPrintCss`.
 function injectDeckPrintStylesheet(doc: string): string {
-  const tag = `<style data-deck-print="injected">${DECK_PRINT_CSS}</style>`;
+  const tag = `<style data-deck-print="injected">${buildDeckPrintCss()}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);
   if (/<head[^>]*>/i.test(doc)) return doc.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
   return tag + doc;
