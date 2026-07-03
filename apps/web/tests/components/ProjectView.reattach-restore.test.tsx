@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectView,
   computeProducedFiles,
@@ -260,6 +260,10 @@ describe('ProjectView daemon reattach restore', () => {
     window.sessionStorage.clear();
   });
 
+  beforeEach(() => {
+    listActiveChatRuns.mockResolvedValue([]);
+  });
+
   it('does not replay a terminal succeeded row just because produced files are missing', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
@@ -285,7 +289,7 @@ describe('ProjectView daemon reattach restore', () => {
 
     await waitFor(() => expect(listMessages).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(fetchProjectFiles).toHaveBeenCalled());
-    expect(listActiveChatRuns).not.toHaveBeenCalled();
+    await waitFor(() => expect(listActiveChatRuns).toHaveBeenCalledWith('project-1', 'conv-1'));
     expect(listProjectRuns).not.toHaveBeenCalled();
     expect(fetchChatRunStatus).not.toHaveBeenCalled();
     expect(reattachDaemonRun).not.toHaveBeenCalled();
@@ -341,6 +345,12 @@ describe('ProjectView daemon reattach restore', () => {
       runId: 'run-stale-active',
       initialLastEventId: null,
     });
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-stale-active' && msg.content === '';
+      }),
+    ).toBe(false);
     await waitFor(() => {
       const saved = saveMessage.mock.calls
         .map((call) => call[2] as ChatMessage)
@@ -489,10 +499,10 @@ describe('ProjectView daemon reattach restore', () => {
     getTemplate.mockResolvedValue(null);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-late',
-      status: 'succeeded',
+      status: 'running',
       createdAt: startedAt,
       updatedAt: startedAt,
-      exitCode: 0,
+      exitCode: null,
       signal: null,
     });
     listActiveChatRuns.mockResolvedValue([]);
@@ -543,10 +553,10 @@ describe('ProjectView daemon reattach restore', () => {
     getTemplate.mockResolvedValue(null);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-fail',
-      status: 'failed',
+      status: 'running',
       createdAt: startedAt,
       updatedAt: startedAt,
-      exitCode: 1,
+      exitCode: null,
       signal: null,
     });
     listActiveChatRuns.mockResolvedValue([]);
@@ -661,11 +671,11 @@ describe('ProjectView daemon reattach restore', () => {
     getTemplate.mockResolvedValue(null);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-cancel',
-      status: 'canceled',
+      status: 'running',
       createdAt: startedAt,
       updatedAt: startedAt,
       exitCode: null,
-      signal: 'SIGTERM',
+      signal: null,
     });
     listActiveChatRuns.mockResolvedValue([]);
 
@@ -687,6 +697,59 @@ describe('ProjectView daemon reattach restore', () => {
         .at(-1);
       expect(finalSave?.runStatus).toBe('canceled');
     });
+  });
+
+  it('resumes from lastRunEventId instead of wiping content when checkpoint exists', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-checkpoint',
+        role: 'assistant',
+        content: 'saved before leave',
+        createdAt: startedAt,
+        startedAt,
+        runId: 'run-checkpoint',
+        runStatus: 'running',
+        lastRunEventId: 'evt-99',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([
+      {
+        id: 'run-checkpoint',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        assistantMessageId: 'msg-checkpoint',
+        agentId: 'agent-1',
+        status: 'running',
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+    ]);
+
+    reattachDaemonRun.mockImplementation(async () => new Promise<void>(() => {}));
+
+    renderProjectView();
+
+    await waitFor(() => expect(reattachDaemonRun).toHaveBeenCalledTimes(1));
+    expect(reattachDaemonRun.mock.calls[0]?.[0]).toMatchObject({
+      runId: 'run-checkpoint',
+      initialLastEventId: 'evt-99',
+    });
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-checkpoint' && msg.content === '';
+      }),
+    ).toBe(false);
   });
 
   it('persists the last buffered delta immediately on pagehide instead of waiting for the streaming throttle', async () => {

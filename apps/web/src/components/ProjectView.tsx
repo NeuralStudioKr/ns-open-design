@@ -200,7 +200,10 @@ import {
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
   isRecoverableDaemonRunMessage,
+  shouldFullReplayReattachedRun,
+  type RunRecoveryBannerPhase,
 } from '../teamver/backgroundChatRecovery';
+import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecoveryBanner';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
@@ -1002,6 +1005,13 @@ export function ProjectView({
   const [attachedComments, setAttachedComments] = useState<PreviewComment[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
+  const [runRecoveryBanner, setRunRecoveryBanner] = useState<{
+    conversationId: string;
+    phase: RunRecoveryBannerPhase;
+    savedChars: number;
+    runStatus: 'queued' | 'running';
+  } | null>(null);
+  const [reattachNonce, setReattachNonce] = useState(0);
   // Safety net: drop any live tool-input partials whose tool never produced a
   // full `tool_use` (run errored/canceled mid-call) once streaming settles.
   useEffect(() => {
@@ -1666,7 +1676,6 @@ export function ProjectView({
     reattachTextBuffersRef.current.clear();
   }, []);
 
-  /** Detach browser-side run streams without POST /cancel — run continues as background. */
   const clearApiBackgroundRecoveryBanner = useCallback(() => {
     const tracked = apiRecoveryBannerRef.current;
     if (!tracked) return;
@@ -1679,6 +1688,9 @@ export function ProjectView({
       });
     }
     apiRecoveryBannerRef.current = null;
+    setRunRecoveryBanner((prev) =>
+      prev?.conversationId === tracked.conversationId ? null : prev,
+    );
   }, [project.id]);
 
   /** Detach browser-side run streams without POST /cancel — run continues as background. */
@@ -1699,6 +1711,7 @@ export function ProjectView({
     reattachControllersRef.current.clear();
     reattachCancelControllersRef.current.clear();
     clearApiBackgroundRecoveryBanner();
+    setRunRecoveryBanner(null);
     apiBackgroundRecoveryRef.current = false;
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
@@ -2745,36 +2758,60 @@ export function ProjectView({
   );
 
   useEffect(() => {
+    setRunRecoveryBanner(null);
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const wasHiddenRef = { current: false };
+    const bumpReattach = () => {
+      if (document.visibilityState !== 'visible' || !wasHiddenRef.current) return;
+      setReattachNonce((value) => value + 1);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        wasHiddenRef.current = true;
+        return;
+      }
+      bumpReattach();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', bumpReattach);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', bumpReattach);
+    };
+  }, []);
+
+  useEffect(() => {
     if (config.mode !== 'daemon' || !daemonLive || !activeConversationId || streaming) return;
     let cancelled = false;
     const reattachConversationId = activeConversationId;
 
     const attachRecoverableRuns = async () => {
-      const mightNeedReattach = messages.some(
-        (message) =>
-          message.role === 'assistant'
-          && (
-            isRecoverableDaemonRunMessage(message)
-            || (
-              Boolean(message.runId)
-              && !isTerminalRunStatus(message.runStatus)
-            )
-          ),
-      );
-      if (!mightNeedReattach) return;
+      const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
+      let messagesSnapshot = messages;
+      if ((activeRuns?.length ?? 0) > 0) {
+        try {
+          const serverMessages = await listMessages(project.id, reattachConversationId);
+          if (cancelled) return;
+          messagesSnapshot = mergeServerMessagesIntoConversation(messages, serverMessages);
+          setMessages(messagesSnapshot);
+        } catch {
+          // Best-effort — reattach still uses in-memory rows.
+        }
+      }
 
       const recoverableById = new Map<string, ChatMessage>();
-      for (const message of messages) {
+      for (const message of messagesSnapshot) {
         if (isRecoverableDaemonRunMessage(message)) {
           recoverableById.set(message.id, message);
         }
       }
-
-      const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
       for (const run of activeRuns ?? []) {
         const assistantMessageId = run.assistantMessageId?.trim();
         if (!assistantMessageId) continue;
-        const message = messages.find((item) => item.id === assistantMessageId);
+        const message = messagesSnapshot.find((item) => item.id === assistantMessageId);
         if (message?.role === 'assistant') recoverableById.set(message.id, message);
       }
       const recoverableMessages = [...recoverableById.values()];
@@ -2869,7 +2906,17 @@ export function ProjectView({
           continue;
         }
 
-        const needsFullReplay = isActiveRunStatus(status.status);
+        const needsFullReplay =
+          isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message);
+        const savedChars = (message.content ?? '').trim().length;
+        if (isTeamverEmbedMode() && isActiveRunStatus(status.status)) {
+          setRunRecoveryBanner({
+            conversationId: reattachConversationId,
+            phase: status.status === 'queued' ? 'queued' : 'connecting',
+            savedChars,
+            runStatus: status.status === 'queued' ? 'queued' : 'running',
+          });
+        }
         const controller = new AbortController();
         const cancelController = new AbortController();
         reattachControllersRef.current.set(runId, controller);
@@ -2967,6 +3014,18 @@ export function ProjectView({
           handlers: {
             onDelta: (delta) => {
               replayedContent += delta;
+              if (isTeamverEmbedMode()) {
+                const nextChars = replayedContent.trim().length;
+                setRunRecoveryBanner((prev) => {
+                  if (!prev || prev.conversationId !== reattachConversationId) return prev;
+                  return {
+                    ...prev,
+                    phase: 'live',
+                    runStatus: 'running',
+                    savedChars: Math.max(prev.savedChars, nextChars),
+                  };
+                });
+              }
               textBuffer.appendContent(delta);
             },
             onAgentEvent: (ev) => {
@@ -2990,6 +3049,9 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
               if (!runMayFinalize) return;
+              setRunRecoveryBanner((prev) =>
+                prev?.conversationId === reattachConversationId ? null : prev,
+              );
               for (const ev of parser.flush()) {
                 if (ev.type === 'artifact:end') {
                   parsedArtifact = parsedArtifact
@@ -3107,6 +3169,9 @@ export function ProjectView({
               reattachControllersRef.current.delete(runId);
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
+              setRunRecoveryBanner((prev) =>
+                prev?.conversationId === reattachConversationId ? null : prev,
+              );
               persistNow({ telemetryFinalized: true });
             },
           },
@@ -3137,6 +3202,9 @@ export function ProjectView({
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
             }
             if (isTerminalRunStatus(runStatus)) {
+              setRunRecoveryBanner((prev) =>
+                prev?.conversationId === reattachConversationId ? null : prev,
+              );
               scheduleConversationMessageRefresh(reattachConversationId);
             }
           },
@@ -3161,6 +3229,9 @@ export function ProjectView({
                 (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
                 true,
                 { telemetryFinalized: true },
+              );
+              setRunRecoveryBanner((prev) =>
+                prev?.conversationId === reattachConversationId ? null : prev,
               );
             }
           })
@@ -3200,6 +3271,7 @@ export function ProjectView({
     requestOpenFile,
     onProjectsRefresh,
     scheduleConversationMessageRefresh,
+    reattachNonce,
   ]);
 
   // Embed BYOK (`mode=api`) has no daemon run row — after page detach the
@@ -3222,7 +3294,7 @@ export function ProjectView({
       assistantMessageIds: [...trackedAssistantIds],
     };
 
-    const activateRecoveryUi = () => {
+    const activateRecoveryUi = (messagesSnapshot: readonly ChatMessage[] = messages) => {
       if (trackedAssistantIds.size === 0) return;
       apiRecoveryBannerRef.current = {
         conversationId: recoveryConversationId,
@@ -3230,6 +3302,21 @@ export function ProjectView({
       };
       apiBackgroundRecoveryRef.current = true;
       markStreamingConversation(recoveryConversationId);
+      if (isTeamverEmbedMode()) {
+        const inflight = findInFlightAssistantMessages(messagesSnapshot).filter((message) =>
+          trackedAssistantIds.has(message.id),
+        );
+        const savedChars = Math.max(
+          0,
+          ...inflight.map((message) => (message.content ?? '').trim().length),
+        );
+        setRunRecoveryBanner({
+          conversationId: recoveryConversationId,
+          phase: savedChars > 0 ? 'live' : 'connecting',
+          savedChars,
+          runStatus: 'running',
+        });
+      }
       for (const assistantMessageId of trackedAssistantIds) {
         if (activatedAssistantIds.has(assistantMessageId)) continue;
         activatedAssistantIds.add(assistantMessageId);
@@ -3297,11 +3384,12 @@ export function ProjectView({
       activateRecoveryUi();
 
       let stillInflight = false;
+      let mergedMessages: ChatMessage[] = messages;
       try {
         const serverMessages = await listMessages(project.id, recoveryConversationId);
         if (cancelled) return;
         setMessages((current) => {
-          const merged = mergeServerMessagesIntoConversation(current, serverMessages).map((message) => {
+          mergedMessages = mergeServerMessagesIntoConversation(current, serverMessages).map((message) => {
             if (
               trackedAssistantIds.has(message.id)
               && message.role === 'assistant'
@@ -3312,13 +3400,16 @@ export function ProjectView({
             }
             return message;
           });
-          stillInflight = findInFlightAssistantMessages(merged).length > 0;
-          return merged;
+          stillInflight = findInFlightAssistantMessages(mergedMessages).length > 0;
+          return mergedMessages;
         });
       } catch {
         // Fall through — proxy-active check still gates recovery exit.
       }
       if (cancelled) return;
+      if (stillInflight) {
+        activateRecoveryUi(mergedMessages);
+      }
       await refreshProjectFiles();
       if (cancelled) return;
 
@@ -3375,6 +3466,7 @@ export function ProjectView({
     clearStreamingMarker,
     scheduleConversationMessageRefresh,
     clearApiBackgroundRecoveryBanner,
+    reattachNonce,
   ]);
 
   const commitQueuedChatSends = useCallback((next: QueuedChatSend[]) => {
@@ -6284,7 +6376,17 @@ export function ProjectView({
               aria-label="Comments"
             />
           ) : activeConversationId || conversationLoadError ? (
-            <ChatPane
+            <>
+              {isTeamverEmbedMode()
+                && runRecoveryBanner
+                && runRecoveryBanner.conversationId === activeConversationId ? (
+                <TeamverRunRecoveryBanner
+                  phase={runRecoveryBanner.phase}
+                  savedChars={runRecoveryBanner.savedChars}
+                  runStatus={runRecoveryBanner.runStatus}
+                />
+              ) : null}
+              <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.
               key={`${project.id}:${activeConversationId ?? 'conversation-unavailable'}:${chatSeed?.id ?? 'ready'}`}
@@ -6445,6 +6547,7 @@ export function ProjectView({
                 />
               )}
             />
+            </>
           ) : (
             <div className="pane" data-testid="chat-pane-loading">
               <CenteredLoader />

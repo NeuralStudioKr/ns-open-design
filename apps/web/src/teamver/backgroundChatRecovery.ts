@@ -39,6 +39,19 @@ export function isRecoverableDaemonRunMessage(message: ChatMessage): boolean {
   return message.endedAt === undefined;
 }
 
+/**
+ * Full SSE replay wipes visible assistant content. Only use it when there is
+ * no persisted checkpoint to resume from after a page-leave reattach.
+ */
+export function shouldFullReplayReattachedRun(message: ChatMessage): boolean {
+  if (message.lastRunEventId?.trim()) return false;
+  if ((message.content ?? "").trim().length > 0) return false;
+  if ((message.events?.length ?? 0) > 0) return false;
+  return true;
+}
+
+export type RunRecoveryBannerPhase = "connecting" | "live" | "queued";
+
 export function isRecoverableBackgroundChatMessage(
   message: ChatMessage,
   mode: "daemon" | "api",

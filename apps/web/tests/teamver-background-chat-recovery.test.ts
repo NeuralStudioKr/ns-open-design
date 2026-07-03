@@ -6,6 +6,7 @@ import {
   isRecoverableBackgroundChatMessage,
   isRecoverableDaemonRunMessage,
   mergeByokBackgroundRunSummaries,
+  shouldFullReplayReattachedRun,
   syntheticByokRunsForTaskCenter,
 } from "../src/teamver/backgroundChatRecovery";
 import type { ChatMessage } from "../src/types";
@@ -57,6 +58,40 @@ describe("backgroundChatRecovery", () => {
     };
     expect(isRecoverableDaemonRunMessage(message)).toBe(true);
     expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(true);
+  });
+
+  it("skips full replay when a checkpoint or saved content exists", () => {
+    expect(
+      shouldFullReplayReattachedRun({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        createdAt: 1,
+        runId: "run-1",
+        runStatus: "running",
+      }),
+    ).toBe(true);
+    expect(
+      shouldFullReplayReattachedRun({
+        id: "a2",
+        role: "assistant",
+        content: "partial output",
+        createdAt: 1,
+        runId: "run-1",
+        runStatus: "running",
+      }),
+    ).toBe(false);
+    expect(
+      shouldFullReplayReattachedRun({
+        id: "a3",
+        role: "assistant",
+        content: "",
+        createdAt: 1,
+        runId: "run-1",
+        runStatus: "running",
+        lastRunEventId: "evt-42",
+      }),
+    ).toBe(false);
   });
 
   it("merges BYOK active projects into daemon summaries", () => {
