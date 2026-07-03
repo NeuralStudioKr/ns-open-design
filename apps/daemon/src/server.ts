@@ -8306,7 +8306,7 @@ export async function startServer({
     pickCandidates: (plugin: any) => Promise<string[]> | string[],
   ): Promise<void> {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      const plugin = getInstalledPluginForRoute(req.params.id);
       if (!plugin) {
         res.status(404).json({ error: 'plugin not found' });
         return;
@@ -8434,6 +8434,39 @@ export async function startServer({
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
+  }
+
+  function normalizedPluginRouteId(rawId: unknown): string {
+    const id = String(rawId ?? '').trim();
+    if (!id.includes('/')) return id;
+    const segments = id.split('/').filter(Boolean);
+    return segments[segments.length - 1] ?? id;
+  }
+
+  function getInstalledPluginForRoute(rawId: unknown): any | null {
+    const id = String(rawId ?? '').trim();
+    if (!id) return null;
+    const direct = getInstalledPlugin(db, id);
+    if (direct) return direct;
+
+    const normalized = normalizedPluginRouteId(id);
+    if (normalized && normalized !== id) {
+      const byNormalizedId = getInstalledPlugin(db, normalized);
+      if (byNormalizedId) return byNormalizedId;
+    }
+
+    try {
+      const row = db.prepare(
+        `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,
+      ).get(id) as { id?: unknown } | undefined;
+      if (row && typeof row.id === 'string') {
+        return getInstalledPlugin(db, row.id);
+      }
+    } catch {
+      // Old dev databases may not have marketplace provenance columns.
+    }
+
+    return null;
   }
 
   function iframeOnlyHtmlShellTarget(html: string): string | null {
@@ -8772,7 +8805,7 @@ export async function startServer({
 
   app.get('/api/plugins/:id/asset/*splat', async (req, res) => {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      const plugin = getInstalledPluginForRoute(req.params.id);
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       const splatParam = req.params.splat;
       const relpath = Array.isArray(splatParam) ? splatParam.join('/') : String(splatParam ?? '');

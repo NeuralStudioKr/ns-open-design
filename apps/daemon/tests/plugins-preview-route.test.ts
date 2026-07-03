@@ -78,6 +78,10 @@ beforeEach(async () => {
     '<!DOCTYPE html><title>wrapped</title><img src="./hero.png"><p>wrapped body</p>',
   );
   await writeFile(
+    path.join(folder, 'examples', 'wrapped', 'hero.png'),
+    'not really a png',
+  );
+  await writeFile(
     path.join(folder, 'open-design.json'),
     JSON.stringify({
       $schema: 'https://open-design.ai/schemas/plugin.v1.json',
@@ -183,6 +187,14 @@ describe('GET /api/plugins/:id/preview', () => {
     expect(body).toContain('/api/asset-cache?url=https%3A%2F%2Fcdn.example.com%2Fhero.png');
   });
 
+  it('accepts marketplace-namespaced ids for bundled community previews', async () => {
+    const routeId = encodeURIComponent(`open-design/${PLUGIN_ID}`);
+    const resp = await fetch(`${baseUrl}/api/plugins/${routeId}/preview`);
+    expect(resp.status).toBe(200);
+    const body = await resp.text();
+    expect(body).toContain('preview body');
+  });
+
   it('returns 404 when the plugin id is unknown', async () => {
     const resp = await fetch(`${baseUrl}/api/plugins/does-not-exist/preview`);
     expect(resp.status).toBe(404);
@@ -213,6 +225,21 @@ describe('GET /api/plugins/:id/example/:name', () => {
     expect(body).toContain(
       `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/asset/examples/wrapped/hero.png`,
     );
+  });
+
+  it('serves rewritten assets when the preview used a marketplace-namespaced id', async () => {
+    const routeId = encodeURIComponent(`open-design/${PLUGIN_ID}`);
+    const resp = await fetch(`${baseUrl}/api/plugins/${routeId}/example/wrapped`);
+    expect(resp.status).toBe(200);
+    const body = await resp.text();
+    expect(body).toContain(
+      `/api/plugins/${routeId}/asset/examples/wrapped/hero.png`,
+    );
+
+    const assetResp = await fetch(
+      `${baseUrl}/api/plugins/${routeId}/asset/examples/wrapped/hero.png`,
+    );
+    expect(assetResp.status).toBe(200);
   });
 
   it('rejects traversal segments with 400', async () => {

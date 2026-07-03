@@ -332,6 +332,21 @@ describe('fetchPluginPreviewHtml', () => {
       fetchPluginPreviewHtml('example-live-artifact'),
     ).resolves.toEqual({ html: '<html><body>preview</body></html>' });
   });
+
+  it('normalizes marketplace-namespaced ids before fetching previews', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('<html><body>preview</body></html>', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchPluginPreviewHtml('open-design/example-html-ppt-zhangzara-creative-mode'),
+    ).resolves.toEqual({ html: '<html><body>preview</body></html>' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/plugins/example-html-ppt-zhangzara-creative-mode/preview',
+    );
+  });
 });
 
 describe('fetchPluginExampleHtml', () => {
@@ -363,6 +378,21 @@ describe('fetchPluginExampleHtml', () => {
     await expect(
       fetchPluginExampleHtml('example-live-artifact', 'index'),
     ).resolves.toEqual({ error: 'HTTP 500' });
+  });
+
+  it('normalizes marketplace-namespaced ids before fetching examples', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('<html><body>example</body></html>', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchPluginExampleHtml('open-design/example-live-artifact', 'index'),
+    ).resolves.toEqual({ html: '<html><body>example</body></html>' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/plugins/example-live-artifact/example/index',
+    );
   });
 });
 

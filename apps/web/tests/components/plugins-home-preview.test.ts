@@ -13,6 +13,7 @@ import { inferPluginPreview } from '../../src/components/plugins-home/preview';
 
 interface MakeArgs {
   id: string;
+  manifestName?: string;
   title?: string;
   tags?: string[];
   mode?: string;
@@ -31,7 +32,7 @@ function make(args: MakeArgs): InstalledPluginRecord {
     trust: 'bundled',
     capabilitiesGranted: [],
     manifest: {
-      name: args.id,
+      name: args.manifestName ?? args.id,
       version: '0.1.0',
       title: args.title ?? args.id,
       ...(args.tags ? { tags: args.tags } : {}),
@@ -112,6 +113,19 @@ describe('inferPluginPreview', () => {
     if (out.kind !== 'html') return;
     expect(out.src).toBe('/api/plugins/ex/preview');
     expect(out.label).toBe('example.html');
+  });
+
+  it('uses the manifest plugin name for marketplace-namespaced records', () => {
+    const out = inferPluginPreview(
+      make({
+        id: 'open-design/example-html-ppt-zhangzara-creative-mode',
+        manifestName: 'example-html-ppt-zhangzara-creative-mode',
+        preview: { type: 'html', entry: './example.html' },
+      }),
+    );
+    expect(out.kind).toBe('html');
+    if (out.kind !== 'html') return;
+    expect(out.src).toBe('/api/plugins/example-html-ppt-zhangzara-creative-mode/preview');
   });
 
   it('falls back to the first exampleOutputs entry when no preview block is set', () => {
