@@ -28,6 +28,7 @@ describe('fetchEc2InstanceRoleCredentials', () => {
             AccessKeyId: 'ASIA_TEST',
             SecretAccessKey: 'secret',
             Token: 'session-token',
+            Expiration: '2030-01-01T00:00:00Z',
           }),
           { status: 200 },
         );
@@ -42,6 +43,7 @@ describe('fetchEc2InstanceRoleCredentials', () => {
       accessKeyId: 'ASIA_TEST',
       secretAccessKey: 'secret',
       sessionToken: 'session-token',
+      expiresAtMs: Date.parse('2030-01-01T00:00:00Z'),
     });
 
     expect(
