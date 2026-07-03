@@ -45,6 +45,7 @@ import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import {
   HOME_RECENT_LIST_LIMIT,
   PROJECT_LIST_PAGE_SIZE,
@@ -87,12 +88,24 @@ async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'n
   }
 }
 
-const listRecentProjectsInflight = new Map<number, Promise<Project[]>>();
+const listRecentProjectsInflight = new Map<string, Promise<Project[]>>();
+
+async function resolveListRecentProjectsInflightKey(limit: number): Promise<string | null> {
+  if (!isTeamverEmbedMode()) return `standalone:${limit}`;
+  try {
+    const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
+    if (!workspaceId) return null;
+    return `embed:${workspaceId}:${limit}`;
+  } catch {
+    return null;
+  }
+}
 
 export async function listRecentProjects(
   limit = HOME_RECENT_LIST_LIMIT,
 ): Promise<Project[]> {
-  const inflight = listRecentProjectsInflight.get(limit);
+  const inflightKey = await resolveListRecentProjectsInflightKey(limit);
+  const inflight = inflightKey ? listRecentProjectsInflight.get(inflightKey) : null;
   if (inflight) return inflight;
 
   const run = (async (): Promise<Project[]> => {
@@ -110,11 +123,11 @@ export async function listRecentProjects(
       }
       return [];
     } finally {
-      listRecentProjectsInflight.delete(limit);
+      if (inflightKey) listRecentProjectsInflight.delete(inflightKey);
     }
   })();
 
-  listRecentProjectsInflight.set(limit, run);
+  if (inflightKey) listRecentProjectsInflight.set(inflightKey, run);
   return run;
 }
 

@@ -271,6 +271,7 @@ function clearStaleAmrModelChoiceOnProfileChange(
 type ProjectListRequest = {
   generation: number;
   mutationVersion: number;
+  workspaceId: string | null;
 };
 
 export async function persistComposioConfigChange(
@@ -645,6 +646,7 @@ function AppInner() {
     return {
       generation: projectListRequestGenerationRef.current,
       mutationVersion: projectListMutationVersionRef.current,
+      workspaceId: isTeamverEmbedMode() ? embedActiveWorkspaceIdRef.current : null,
     };
   }, []);
 
@@ -666,6 +668,18 @@ function AppInner() {
   }, []);
 
   const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+    if (
+      isTeamverEmbedMode()
+      && request.workspaceId
+      && embedActiveWorkspaceIdRef.current
+      && request.workspaceId !== embedActiveWorkspaceIdRef.current
+    ) {
+      console.info('[teamver] project list response ignored after workspace changed', {
+        requestWorkspaceId: request.workspaceId,
+        activeWorkspaceId: embedActiveWorkspaceIdRef.current,
+      });
+      return false;
+    }
     const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     const fetchedIds = new Set(list.map((project) => project.id));

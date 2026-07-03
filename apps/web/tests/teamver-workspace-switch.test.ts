@@ -28,6 +28,13 @@ describe("embed workspace switch side effects", () => {
     expect(block).toContain("clearTeamverEmbedListCaches()");
   });
 
+  it("ignores stale project-list responses from a previous workspace", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain("workspaceId: isTeamverEmbedMode() ? embedActiveWorkspaceIdRef.current : null");
+    expect(app).toContain("request.workspaceId !== embedActiveWorkspaceIdRef.current");
+    expect(app).toContain("project list response ignored after workspace changed");
+  });
+
   it("forwards active workspace on daemon run create in embed", () => {
     const daemon = readSource("src/providers/daemon.ts");
     const headers = readSource("src/teamver/teamverDaemonHeaders.ts");
