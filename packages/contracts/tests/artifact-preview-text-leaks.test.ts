@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasArtifactPreviewBodyTextLeaks,
+  repairMangledDeckFrameworkScript,
   stripArtifactPreviewBodyTextLeaks,
 } from "../src/html/artifactPreviewTextLeaks.js";
 import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
@@ -75,6 +76,40 @@ describe("artifactPreviewTextLeaks", () => {
       /<script>\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/,
     );
     expect(out).toContain("stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')'");
+  });
+
+  it("preserves deck CSS inside closed body style tags", () => {
+    const html = `<!doctype html><html><head><title>Deck</title></head><body><style>
+.s-cover { background: var(--navy); }
+.eyebrow { color: var(--accent); }
+</style><div id="deck-stage"><section class="slide active s-cover">A</section></div></body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(html);
+    expect(out).toContain(".s-cover { background: var(--navy); }");
+    expect(out).toContain(".eyebrow { color: var(--accent); }");
+  });
+
+  it("does not strip inside an unclosed trailing script while streaming", () => {
+    const streaming = `<!doctype html><html><body><script>
+(function () {
+  var stage = document.getElementById('deck-stage');
+  function fit() { stage.style.transform = 'scale(1)'; }`;
+    const out = stripArtifactPreviewBodyTextLeaks(streaming);
+    expect(out).toContain("(function () {");
+    expect(out).toContain("document.getElementById('deck-stage')");
+  });
+
+  it("restores persisted deck-framework scripts missing the IIFE prefix", () => {
+    const mangled = `<!doctype html><html><body><div id="deck-stage"></div><script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }
+  fit();
+})();</script></body></html>`;
+    const out = repairMangledDeckFrameworkScript(mangled);
+    expect(out).toMatch(
+      /<script>\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/,
+    );
+    const once = repairMangledDeckFrameworkScript(out);
+    expect(once).toBe(out);
   });
 
   it("preserves full deck theme CSS through repair + strip pipeline", () => {

@@ -1,5 +1,6 @@
 import {
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE,
+  repairMangledDeckFrameworkScript,
   stripArtifactPreviewBodyTextLeaks,
 } from "./artifactPreviewTextLeaks.js";
 
@@ -27,7 +28,7 @@ export function repairArtifactDocumentHead(html: string): string {
 
   let doc = stripLeakedViewportFragments(html);
   doc = stripArtifactPreviewBodyTextLeaks(doc);
-  if (!/<head/i.test(doc)) return doc;
+  if (!/<head/i.test(doc)) return repairMangledDeckFrameworkScript(doc);
 
   doc = doc.replace(
     CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE,
@@ -48,5 +49,6 @@ export function repairArtifactDocumentHead(html: string): string {
   });
 
   doc = stripLeakedViewportFragments(doc);
-  return stripArtifactPreviewBodyTextLeaks(doc);
+  doc = stripArtifactPreviewBodyTextLeaks(doc);
+  return repairMangledDeckFrameworkScript(doc);
 }
