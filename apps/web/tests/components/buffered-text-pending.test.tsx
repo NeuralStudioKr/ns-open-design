@@ -40,4 +40,36 @@ describe('createBufferedTextUpdates pending text accounting', () => {
 
     buf.cancel();
   });
+
+  it('sanitizes leaked pseudo-tool XML after streaming chunks are reassembled', () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+
+    let msg = {
+      content: 'Intro',
+      events: [],
+    } as unknown as ChatMessage;
+    const contentDeltas: string[] = [];
+    const buf = createBufferedTextUpdates({
+      updateMessage: (u) => {
+        msg = u(msg);
+      },
+      persistSoon: () => {},
+      onContentDelta: (delta) => contentDeltas.push(delta),
+    });
+
+    buf.appendContent('\n<too');
+    buf.appendContent('ls><invoke name="TodoWrite">hidden</invoke></tools>\nVisible');
+    buf.appendTextEvent('Plan\n<inv');
+    buf.appendTextEvent('oke name="Write">hidden</invoke>\nDone');
+    buf.flush();
+
+    expect(msg.content).toBe('Intro\n\nVisible');
+    expect(msg.content).not.toContain('<tools');
+    expect(msg.content).not.toContain('<invoke');
+    expect(msg.events).toEqual([{ kind: 'text', text: 'Plan\n\nDone' }]);
+    expect(contentDeltas).toEqual(['\n\nVisible']);
+
+    buf.cancel();
+  });
 });
