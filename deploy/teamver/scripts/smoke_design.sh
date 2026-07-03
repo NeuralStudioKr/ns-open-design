@@ -280,9 +280,19 @@ storage_probe_headers=()
 if [[ -n "${DESIGN_DAEMON_LOCAL_URL:-}" && -n "${OD_API_TOKEN:-}" ]]; then
   storage_probe_headers=(-H "Authorization: Bearer ${OD_API_TOKEN}")
 fi
-storage_probe_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${storage_probe_headers[@]}" "${STORAGE_PROBE_BASE}/api/health/storage")"
+storage_probe_curl=(curl -s -o /dev/null -w '%{http_code}' --max-time 15)
+if ((${#storage_probe_headers[@]})); then
+  storage_probe_curl+=("${storage_probe_headers[@]}")
+fi
+storage_probe_curl+=("${STORAGE_PROBE_BASE}/api/health/storage")
+storage_probe_code="$("${storage_probe_curl[@]}")"
 if [[ "$storage_probe_code" == "200" || "$storage_probe_code" == "503" || "$storage_probe_code" == "504" ]]; then
-  storage_probe_json="$(curl -s --max-time 8 "${storage_probe_headers[@]}" "${STORAGE_PROBE_BASE}/api/health/storage" 2>/dev/null || echo "")"
+  storage_probe_json_curl=(curl -s --max-time 8)
+  if ((${#storage_probe_headers[@]})); then
+    storage_probe_json_curl+=("${storage_probe_headers[@]}")
+  fi
+  storage_probe_json_curl+=("${STORAGE_PROBE_BASE}/api/health/storage")
+  storage_probe_json="$("${storage_probe_json_curl[@]}" 2>/dev/null || echo "")"
   storage_mode="$(echo "$storage_probe_json" | sed -n 's/.*"mode":"\([^"]*\)".*/\1/p' | head -1)"
   storage_ok="$(echo "$storage_probe_json" | sed -n 's/.*"ok":\(true\|false\).*/\1/p' | head -1)"
   if [[ "$storage_ok" == "true" ]]; then
