@@ -35,6 +35,12 @@ services:
       TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
       TEAMVER_INTERNAL_API_KEY: ${TEAMVER_INTERNAL_API_KEY:-}
       TEAMVER_PROJECT_ACCESS_TIMEOUT_MS: ${TEAMVER_PROJECT_ACCESS_TIMEOUT_MS:-2500}
+      # daemon project-access cache TTL. 30s grant + 5s permanent deny + 1.5s
+      # transient deny 가 상용 SSOT (teamver-project-access.ts). 미설정 시
+      # code default 사용. 튜닝 이유는 docs-teamver/34 §운영 튜닝 참고.
+      TEAMVER_PROJECT_ACCESS_GRANT_TTL_MS: ${TEAMVER_PROJECT_ACCESS_GRANT_TTL_MS:-}
+      TEAMVER_PROJECT_ACCESS_DENY_PERMANENT_TTL_MS: ${TEAMVER_PROJECT_ACCESS_DENY_PERMANENT_TTL_MS:-}
+      TEAMVER_PROJECT_ACCESS_DENY_TRANSIENT_TTL_MS: ${TEAMVER_PROJECT_ACCESS_DENY_TRANSIENT_TTL_MS:-}
       # Project storage (09 — default local; s3 + MaterializingProjectStorage when OD_PROJECT_STORAGE=s3)
       OD_PROJECT_STORAGE: ${OD_PROJECT_STORAGE:-local}
       OD_S3_BUCKET: ${OD_S3_BUCKET:-}
@@ -63,6 +69,22 @@ services:
       OD_EXPORT_BROWSER_POOL_SIZE: ${OD_EXPORT_BROWSER_POOL_SIZE:-2}
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
+      # Export artifact cache (Phase 1a — docs-teamver/34 §20). code default ON.
+      # 0/false/off/no 로만 명시적 disable. memo (RAM LRU) + local (EBS
+      # od-data/.od-export-cache) 2-tier. cache 키에 entryFile mtime 포함이라
+      # 프로젝트 수정 시 자동 miss. staging/production 공통 ON.
+      OD_EXPORT_CACHE_ENABLED: ${OD_EXPORT_CACHE_ENABLED:-1}
+      OD_EXPORT_CACHE_VERSION: ${OD_EXPORT_CACHE_VERSION:-}
+      OD_EXPORT_CACHE_MEMO_ENABLED: ${OD_EXPORT_CACHE_MEMO_ENABLED:-}
+      OD_EXPORT_CACHE_MEMO_TTL_SEC: ${OD_EXPORT_CACHE_MEMO_TTL_SEC:-}
+      OD_EXPORT_CACHE_MEMO_MAX_ENTRIES: ${OD_EXPORT_CACHE_MEMO_MAX_ENTRIES:-}
+      OD_EXPORT_CACHE_MEMO_MAX_ENTRY_BYTES: ${OD_EXPORT_CACHE_MEMO_MAX_ENTRY_BYTES:-}
+      OD_EXPORT_CACHE_MEMO_MAX_TOTAL_BYTES: ${OD_EXPORT_CACHE_MEMO_MAX_TOTAL_BYTES:-}
+      OD_EXPORT_CACHE_LOCAL_ENABLED: ${OD_EXPORT_CACHE_LOCAL_ENABLED:-}
+      OD_EXPORT_CACHE_LOCAL_MAX_TOTAL_BYTES: ${OD_EXPORT_CACHE_LOCAL_MAX_TOTAL_BYTES:-}
+      OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC: ${OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC:-}
+      OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC: ${OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC:-}
+      OD_EXPORT_CACHE_DIR: ${OD_EXPORT_CACHE_DIR:-}
       TEAMVER_BILLING_DISABLED: ${TEAMVER_BILLING_DISABLED:-}
       TEAMVER_BILLING_TIMEOUT_MS: ${TEAMVER_BILLING_TIMEOUT_MS:-}
       TEAMVER_BILLING_RESERVE_AMOUNT: ${TEAMVER_BILLING_RESERVE_AMOUNT:-}
@@ -165,6 +187,11 @@ services:
     # env_file: staging/production override compose 에서 .env.staging|.env.production 직접 지정.
     # CLI: docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging
     environment:
+      # uvicorn 튜닝 — Dockerfile default 3/200/30, .env 로 재빌드 없이 override.
+      # 상용 튜닝 SSOT: production=3 (t3.xlarge 4vCPU) / staging=2 (t3.large 2vCPU).
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-3}
+      UVICORN_LIMIT_CONCURRENCY: ${UVICORN_LIMIT_CONCURRENCY:-200}
+      UVICORN_TIMEOUT_KEEP_ALIVE: ${UVICORN_TIMEOUT_KEEP_ALIVE:-30}
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-teamver_design}
