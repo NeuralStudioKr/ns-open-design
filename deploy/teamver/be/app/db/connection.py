@@ -47,10 +47,20 @@ def _connect_args() -> dict[str, Any]:
     return {"ssl": _unverified_ssl_context()}
 
 
+# Multi-worker uvicorn 환경에서 각 워커가 독립 pool 을 가진다. RDS
+# ``max_connections`` 초과를 피하기 위해 워커수 × (pool_size+max_overflow)
+# 가 RDS 여유치 이내여야 한다 (t3.xlarge 상용 3 워커 × 20 = 60 curve).
+# pool_recycle 은 RDS idle timeout (t3 계열 ~5–10min) 전에 재사용 커넥션을
+# 강제 리사이클해 stale connection 요청 지연을 방지.
+# pool_pre_ping=True: 재기동/네트워크 hiccup 방어 (요청당 +1ms).
 async_engine = create_async_engine(
     _build_async_url(),
     connect_args=_connect_args(),
     pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=10,
+    pool_recycle=1800,
+    pool_timeout=30,
 )
 async_session_maker = async_sessionmaker(expire_on_commit=False, bind=async_engine)
 
