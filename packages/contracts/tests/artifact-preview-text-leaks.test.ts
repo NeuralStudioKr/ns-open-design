@@ -5,6 +5,7 @@ import {
   stripArtifactPreviewBodyTextLeaks,
 } from "../src/html/artifactPreviewTextLeaks.js";
 import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
+import { repairArtifactDocumentHead } from "../src/html/repairArtifactDocumentHead.js";
 
 const LEAKED_DECK_BODY = `<!doctype html><html><head><title>Deck</title></head><body>
 / ── Per-deck styles ── /
@@ -67,19 +68,21 @@ describe("artifactPreviewTextLeaks", () => {
     expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
   });
 
-  it("does not strip deck CSS from head style tags", () => {
+  it("preserves full deck theme CSS through repair + strip pipeline", () => {
     const html = `<!doctype html><html><head><style>
 / ── Per-deck styles ── /
-@import url('https://fonts.googleapis.com/css2');
-:root { --bg: #FAFAFA; --accent: #2F6FEB; }
-.s-cover { background: var(--navy); }
-.slide-inner { flex: 1 1 auto; }
-</style></head><body><section class="slide active s-cover">A</section></body></html>`;
-    const out = stripArtifactPreviewBodyTextLeaks(html);
-    expect(out).toContain("--bg: #FAFAFA");
-    expect(out).toContain(".s-cover { background: var(--navy); }");
-    expect(out).toContain("@import url('https://fonts.googleapis.com/css2')");
-    expect(hasArtifactPreviewBodyTextLeaks(html)).toBe(false);
-    expect(isArtifactHtmlStableForPreview(html)).toBe(true);
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+:root { --bg: #FAFAFA; --accent: #2F6FEB; --navy: #0D1117; }
+.s-cover { background: var(--navy); color: #fff; }
+.slide-inner { flex: 1 1 auto; padding: 80px 120px; }
+.eyebrow { font-size: 13px; color: var(--accent); }
+</style><title>Deck</title></head><body><div id="deck-stage"><section class="slide active s-cover"><p class="eyebrow">AI 도입 효과</p><h1>기업 AI 도입의 실질적 효과</h1></section></div></body></html>`;
+    const repaired = repairArtifactDocumentHead(html);
+    expect(repaired).toContain("--bg: #FAFAFA");
+    expect(repaired).toContain(".s-cover { background: var(--navy)");
+    expect(repaired).toContain("@import url('https://fonts.googleapis.com/css2");
+    expect(repaired).toContain("AI 도입 효과");
+    expect(hasArtifactPreviewBodyTextLeaks(repaired)).toBe(false);
+    expect(isArtifactHtmlStableForPreview(repaired)).toBe(true);
   });
 });

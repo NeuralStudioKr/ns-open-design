@@ -226,7 +226,8 @@ function injectSnapshotBridge(doc: string): string {
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '');
+        .replace(/@import[^;]+;/gi, '')
+        .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
     }
   }
   function pruneHiddenSnapshotNodes(originalRoot, cloneRoot){
