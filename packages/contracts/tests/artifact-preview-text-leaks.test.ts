@@ -6,6 +6,7 @@ import {
 } from "../src/html/artifactPreviewTextLeaks.js";
 import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
 import { repairArtifactDocumentHead } from "../src/html/repairArtifactDocumentHead.js";
+import { DECK_SKELETON_HTML } from "../src/prompts/deck-framework.js";
 
 const LEAKED_DECK_BODY = `<!doctype html><html><head><title>Deck</title></head><body>
 / ── Per-deck styles ── /
@@ -66,6 +67,14 @@ describe("artifactPreviewTextLeaks", () => {
 </body></html>`;
     expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
     expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+  });
+
+  it("preserves deck-framework fit() script inside closed body script tags", () => {
+    const out = stripArtifactPreviewBodyTextLeaks(DECK_SKELETON_HTML);
+    expect(out).toMatch(
+      /<script>\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/,
+    );
+    expect(out).toContain("stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')'");
   });
 
   it("preserves full deck theme CSS through repair + strip pipeline", () => {

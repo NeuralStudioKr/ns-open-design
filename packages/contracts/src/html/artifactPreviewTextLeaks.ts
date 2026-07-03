@@ -81,9 +81,11 @@ function stripPreviewTextLeakMatches(text: string, re: RegExp): string {
   return text.replace(re, (match) => (match.startsWith(">") ? ">" : ""));
 }
 
-/** Apply leak-stripping regexes to body inner HTML only — never `<head><style>`. */
-export function stripBodyInnerPreviewTextLeaks(bodyInner: string): string {
-  let out = bodyInner;
+/** Closed `<script>` / `<style>` blocks — leak regexes must not scan inside these. */
+const CLOSED_BODY_SCRIPT_OR_STYLE_RE = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
+
+function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
+  let out = text;
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_STYLE_TEXT_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_CSS_SECTION_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_CSS_RULE_BLOCK_RE);
@@ -92,6 +94,30 @@ export function stripBodyInnerPreviewTextLeaks(bodyInner: string): string {
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_SCRIPT_SNIPPET_RE);
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
   out = out.replace(ARTIFACT_VIEWPORT_TEXT_LEAK_RE, "");
+  return out;
+}
+
+/**
+ * Apply leak-stripping regexes to body inner HTML only — never `<head><style>`,
+ * and never inside closed `<script>` / `<style>` tags in the body. The leak
+ * patterns use `(?m)^` so they would otherwise mutilate deck-framework `fit()`
+ * scripts that legitimately live in `<script>` blocks.
+ */
+export function stripBodyInnerPreviewTextLeaks(bodyInner: string): string {
+  CLOSED_BODY_SCRIPT_OR_STYLE_RE.lastIndex = 0;
+  let out = "";
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CLOSED_BODY_SCRIPT_OR_STYLE_RE.exec(bodyInner)) !== null) {
+    if (match.index > lastIndex) {
+      out += stripLeakedPreviewTextFromUnprotectedHtml(bodyInner.slice(lastIndex, match.index));
+    }
+    out += match[0];
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < bodyInner.length) {
+    out += stripLeakedPreviewTextFromUnprotectedHtml(bodyInner.slice(lastIndex));
+  }
   return out;
 }
 

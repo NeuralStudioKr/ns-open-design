@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { repairArtifactDocumentHead } from "../src/html/repairArtifactDocumentHead.js";
+import { DECK_SKELETON_HTML } from "../src/prompts/deck-framework.js";
 
 const HERMES_CORRUPT = `<!doctype html>
 <html lang="ko">
@@ -62,6 +63,15 @@ device-width, initial-scale=1" >
     expect(out).not.toMatch(/<div class="deck">\s*-width/i);
     expect(out).toContain('content="width=device-width, initial-scale=1"');
     expect(out).toContain('<section class="slide">A</section>');
+  });
+
+  it("preserves deck-framework navigation script through the full repair pipeline", () => {
+    const out = repairArtifactDocumentHead(DECK_SKELETON_HTML);
+    expect(out).toMatch(
+      /<script>\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/,
+    );
+    expect(out).toContain("function fit()");
+    expect(out).toContain("stage.style.transform");
   });
 
   it("preserves deck CSS inside head style tags while stripping body leaks", () => {
