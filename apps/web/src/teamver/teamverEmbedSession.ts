@@ -21,11 +21,13 @@ function ensureCrossTabRelayInstalled(): void {
   if (crossTabRelayUnsubscribe) return;
   crossTabRelayUnsubscribe = subscribeTeamverEmbedBroadcast((message) => {
     if (message.kind !== "embed-session-changed") return;
-    // Mirror the peer tab's authenticated state locally so the module
-    // gate (`isTeamverEmbedSessionAuthenticated`) matches without
-    // waiting for a fresh session probe. Downstream subscribers then
-    // fire off the local CustomEvent path.
-    const nextAuthenticated = Boolean(message.authenticated);
+    // Cross-tab login sync only. When a peer tab completes sign-in we
+    // mirror `authenticated=true` so other tabs unlock without waiting
+    // for focus refresh. Do NOT mirror peer `false` — a transient BFF
+    // probe failure or cold boot in tab B must not detach BYOK streams /
+    // wipe workspace state in tab A where the user is mid-run.
+    if (!message.authenticated) return;
+    const nextAuthenticated = true;
     const changed = embedSessionAuthenticated !== nextAuthenticated;
     embedSessionAuthenticated = nextAuthenticated;
     if (changed) {

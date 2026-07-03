@@ -193,6 +193,7 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { dispatchTeamverBackgroundChat } from '../teamver/teamverBackgroundChatEvents';
 import {
   BYOK_BACKGROUND_RECOVERY_POLL_MS,
@@ -3376,9 +3377,23 @@ export function ProjectView({
     saveQueuedChatSends(project.id, next);
   }, [project.id]);
 
+  // Only tear down in-flight BYOK streams when the active workspace actually
+  // changes. Cross-tab BroadcastChannel relay (B2) can re-emit the same
+  // workspaceId; without this guard we detached streams mid-run (e.g. during
+  // the onboarding question-form) even though the user never switched workspace.
+  const embedActiveWorkspaceIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    return subscribeTeamverWorkspaceChanged(() => {
+    let cancelled = false;
+    void readActiveTeamverWorkspaceId().then((id) => {
+      if (cancelled) return;
+      embedActiveWorkspaceIdRef.current = id?.trim() || null;
+    });
+    return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
+      const trimmed = workspaceId.trim();
+      if (!trimmed) return;
+      if (embedActiveWorkspaceIdRef.current === trimmed) return;
+      embedActiveWorkspaceIdRef.current = trimmed;
       setError(null);
       setConversationLoadError(null);
       detachLocalRunStreamConsumers();

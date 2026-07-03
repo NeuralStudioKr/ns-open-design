@@ -142,7 +142,7 @@ describe("multi-tab embed broadcast", () => {
     expect(seen).toEqual(["WS-store"]);
   });
 
-  it("session-changed peers propagate to local subscribers", () => {
+  it("session-changed peers propagate login (true) but ignore peer logout (false)", () => {
     let onMessage: ((ev: MessageEvent) => void) | null = null;
     class FakeChannel {
       addEventListener(event: string, cb: (ev: MessageEvent) => void) {
@@ -160,10 +160,11 @@ describe("multi-tab embed broadcast", () => {
       seen.push(authenticated);
     });
 
-    // Prime local `embedSessionAuthenticated` to `true` so the peer's `false`
-    // is a state change and fires the CustomEvent.
+    // Local login still fires.
     setTeamverEmbedSessionAuthenticated(true);
+    expect(seen).toEqual([true]);
 
+    // Peer logout must NOT detach streams in this tab — ignore.
     onMessage!(
       new MessageEvent("message", {
         data: {
@@ -174,7 +175,21 @@ describe("multi-tab embed broadcast", () => {
         },
       }),
     );
+    expect(seen).toEqual([true]);
 
-    expect(seen).toEqual([true, false]);
+    // Peer login still syncs when this tab was logged out locally.
+    setTeamverEmbedSessionAuthenticated(false);
+    seen.length = 0;
+    onMessage!(
+      new MessageEvent("message", {
+        data: {
+          kind: "embed-session-changed",
+          authenticated: true,
+          sourceId: "other-tab-2",
+          postedAt: 1,
+        },
+      }),
+    );
+    expect(seen).toEqual([true]);
   });
 });
