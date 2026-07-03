@@ -875,6 +875,9 @@ function injectPreviewArtifactGuard(doc: string): string {
   var cssLeak = /^\\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\\s*:/i;
   var scriptLeak = /^\\s*\\(function\\s*\\(\\)\\s*\\{\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)/i;
   var boxLeak = /^\\s*\\{\\s*box-sizing\\s*:\\s*border-box/i;
+  var importLeak = /@import\\s+url\\s*\\(/i;
+  var deckSectionLeak = /\\/\\s*──\\s*(?:Per-deck|Shared layout|Cover slide|Section divider|Standard content|Tool grid|Process timeline|PR guide)/i;
+  var deckClassLeak = /\\.(?:slide-inner|slide-main|slide-footer|s-cover|s-section|s-content|tool-grid|tool-card|proc-step|eyebrow)\\b/i;
   function isLeakedText(text){
     var trimmed = (text || '').trim();
     if (!trimmed) return false;
@@ -882,8 +885,13 @@ function injectPreviewArtifactGuard(doc: string): string {
     if (cssLeak.test(trimmed)) return true;
     if (scriptLeak.test(trimmed)) return true;
     if (boxLeak.test(trimmed)) return true;
+    if (importLeak.test(trimmed)) return true;
+    if (deckSectionLeak.test(trimmed)) return true;
+    if (deckClassLeak.test(trimmed)) return true;
     if (trimmed.indexOf('document.getElementById(\\'deck-stage\\')') >= 0) return true;
     if (trimmed.indexOf('document.getElementById("deck-stage")') >= 0) return true;
+    if (trimmed.indexOf("document.getElementById('deck-prev')") >= 0) return true;
+    if (trimmed.indexOf('document.getElementById("deck-prev")') >= 0) return true;
     return false;
   }
   function stripLeakedText(root){

@@ -4708,7 +4708,10 @@ function HtmlViewer({
     });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
-  const [source, setSource] = useState<string | null>(liveHtml ?? null);
+  const [source, setSource] = useState<string | null>(() => {
+    if (liveHtml == null) return null;
+    return isArtifactHtmlStableForPreview(liveHtml) ? liveHtml : null;
+  });
   const lastStablePreviewSourceRef = useRef<string | null>(
     liveHtml && isArtifactHtmlStableForPreview(liveHtml) ? liveHtml : null,
   );
@@ -8718,7 +8721,12 @@ function HtmlViewer({
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}
                   >
-                    <div className="artifact-preview-transport-stack">
+                    <div
+                      className={[
+                        'artifact-preview-transport-stack',
+                        showStreamingPreviewVeil ? 'is-streaming-unstable' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
                       {showStreamingPreviewVeil ? (
                         <div className="artifact-preview-streaming-veil" aria-hidden>
                           {t('fileViewer.loading')}

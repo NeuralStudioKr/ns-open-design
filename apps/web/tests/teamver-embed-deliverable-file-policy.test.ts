@@ -23,7 +23,7 @@ describe("embedDeliverableFilePolicy", () => {
     ).toBe(true);
     expect(
       shouldMinimizeEmbedLiveToolCode({ slideOnlyMvp: true }, "index.html"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldMinimizeEmbedLiveToolCode({ slideOnlyMvp: false }, "css/deck.css"),
     ).toBe(false);

@@ -1,3 +1,5 @@
+import { hasArtifactPreviewBodyTextLeaks } from "./artifactPreviewTextLeaks.js";
+
 /**
  * Heuristic gate for live HTML preview updates during agent streaming.
  * Partial documents often render leaked CSS/JS as visible body text until the
@@ -8,7 +10,8 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
   if (!trimmed) return false;
 
   const lower = trimmed.toLowerCase();
-  if (!lower.includes("</html>")) return false;
+  if (!lower.includes("</body>") || !lower.includes("</html>")) return false;
+  if (hasArtifactPreviewBodyTextLeaks(trimmed)) return false;
 
   const styleOpens = (trimmed.match(/<style\b/gi) ?? []).length;
   const styleCloses = (trimmed.match(/<\/style>/gi) ?? []).length;

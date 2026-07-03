@@ -918,6 +918,10 @@
   visibility: hidden;
   pointer-events: none;
 }
+.artifact-preview-transport-stack.is-streaming-unstable iframe {
+  visibility: hidden;
+  pointer-events: none;
+}
 .artifact-preview-streaming-veil {
   position: absolute;
   inset: 0;

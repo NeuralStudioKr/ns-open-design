@@ -25,4 +25,13 @@ describe("isArtifactHtmlStableForPreview", () => {
     const html = `<!doctype html><html><head><style>:root { --bg: #0D1117; }</style></head><body><section class="slide active">A</section><script>(function(){})();</script></body></html>`;
     expect(isArtifactHtmlStableForPreview(html)).toBe(true);
   });
+
+  it("rejects complete documents with deck CSS/JS leaked as body text", () => {
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+@import url('https://fonts.googleapis.com/css2');
+.slide-inner { flex: 1; }
+<section class="slide">A</section></body></html>`),
+    ).toBe(false);
+  });
 });

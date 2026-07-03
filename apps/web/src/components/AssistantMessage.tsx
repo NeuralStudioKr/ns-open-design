@@ -1933,7 +1933,7 @@ function ProseBlock({
   onRequestOpenFile?: (name: string) => void;
 }) {
   const t = useT();
-  const { slideOnlyMvp, enabled: teamverEmbedEnabled } = useTeamverBranding();
+  const { slideOnlyMvp, hideAssistantThinkingDetails, enabled: teamverEmbedEnabled } = useTeamverBranding();
   const cleaned = useMemo(() => {
     const stripped = stripAllClosedArtifacts(text);
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
@@ -2044,10 +2044,14 @@ function ProseBlock({
           titleLabel={t("tool.write")}
           metaLabel={live.title || live.identifier || undefined}
           code={live.content}
-          hideCodeBody={shouldMinimizeEmbedLiveToolCode(
-            { slideOnlyMvp },
-            live.title || live.identifier || "",
-          )}
+          hideCodeBody={
+            hideAssistantThinkingDetails
+            || slideOnlyMvp
+            || shouldMinimizeEmbedLiveToolCode(
+              { slideOnlyMvp },
+              live.title || live.identifier || "index.html",
+            )
+          }
         />
       ) : null}
       {hadOpenForm ? <QuestionsBanner onOpen={onOpenQuestions} /> : null}

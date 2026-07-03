@@ -1,20 +1,21 @@
+import { stripArtifactPreviewBodyTextLeaks } from "./artifactPreviewTextLeaks.js";
+
 /**
- * Repair common agent-emitted `<head>` corruption where a truncated viewport
- * meta tag becomes visible body text (e.g. `<head>device-width, initial-scale=1" />`).
+ * Truncated viewport meta tails agents stream as visible text. Matches
+ * `device-width, …`, the shorter `-width, …` suffix, and bare `width, …`
+ * fragments — but not valid `content="width=device-width, …"` attributes.
  */
-const CORRUPTED_HEAD_VIEWPORT_RE =
-  /<head(\s[^>]*)?>\s*device-width\s*,\s*initial-scale=([\d.]+)\s*"?\s*\/?>/gi;
+export const ARTIFACT_VIEWPORT_TEXT_LEAK_RE =
+  /(?<![\w=])(?:device-)?-?width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>/gi;
+
+const CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE =
+  /<head(\s[^>]*)?>\s*((?:device-)?-?width)\s*,\s*initial-scale=([\d.]+)\s*"?\s*\/?>/gi;
 
 const HEAD_VIEWPORT_FRAGMENT_RE =
-  /^\s*device-width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/im;
+  /^\s*(?:device-)?-?width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/im;
 
 const BODY_VIEWPORT_FRAGMENT_RE =
-  /(<body[^>]*>)\s*device-width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/gi;
-
-// Truncated viewport tails can leak into deck wrappers, not only after <body>.
-// Avoid matching valid `content="width=device-width, initial-scale=…"` metas.
-const LEAKED_VIEWPORT_TAIL_RE =
-  /(?<!width=)device-width\s*,\s*initial-scale=[\d.]+"?\s*\/?>\s*/gi;
+  /(<body[^>]*>)\s*(?:device-)?-?width\s*,\s*initial-scale=[^<\n]+"?\s*\/?>\s*/gi;
 
 /** Raw CSS variable lines leaked into body when `<style>` opens late during streaming. */
 const LEAKED_CSS_TOKEN_BLOCK_RE =
@@ -27,7 +28,7 @@ const LEAKED_DECK_SCRIPT_SNIPPET_RE =
 function stripLeakedViewportFragments(doc: string): string {
   let out = doc.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
   out = out.replace(BODY_VIEWPORT_FRAGMENT_RE, "$1");
-  out = out.replace(LEAKED_VIEWPORT_TAIL_RE, "");
+  out = out.replace(ARTIFACT_VIEWPORT_TEXT_LEAK_RE, "");
   out = out.replace(LEAKED_CSS_TOKEN_BLOCK_RE, (match) => (match.startsWith(">") ? ">" : ""));
   out = out.replace(LEAKED_DECK_SCRIPT_SNIPPET_RE, (match) => (match.startsWith(">") ? ">" : ""));
   return out;
@@ -36,12 +37,12 @@ function stripLeakedViewportFragments(doc: string): string {
 export function repairArtifactDocumentHead(html: string): string {
   if (!html) return html;
 
-  let doc = stripLeakedViewportFragments(html);
+  let doc = stripArtifactPreviewBodyTextLeaks(stripLeakedViewportFragments(html));
   if (!/<head/i.test(doc)) return doc;
 
   doc = doc.replace(
-    CORRUPTED_HEAD_VIEWPORT_RE,
-    '<head$1>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=$2" />',
+    CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE,
+    '<head$1>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=$3" />',
   );
 
   doc = doc.replace(/<head([^>]*)>([\s\S]*?)<\/head>/i, (_match, attrs, inner) => {
