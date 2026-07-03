@@ -265,6 +265,118 @@ describe('createProjectStorageAccessHooks', () => {
     }
   });
 
+  it('does not retry lazy sync-down when tenant storage resolution is denied', async () => {
+    // teamver_project_s3_prefix_required 는 데이터 상태 문제 (design-api
+    // /access 가 403/404 반환) 이므로 재시도로 회복 안 됨. 재시도 loop
+    // 이 이 케이스를 통과시키면 로그 노이즈 + CPU 낭비 + design-api
+    // 부하만 커진다.
+    const previousRetries = process.env.OD_S3_MATERIALIZE_RETRIES;
+    const previousRetryMs = process.env.OD_S3_MATERIALIZE_RETRY_MS;
+    process.env.OD_S3_MATERIALIZE_RETRIES = '3';
+    process.env.OD_S3_MATERIALIZE_RETRY_MS = '0';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    const syncDown = vi
+      .spyOn(storage, 'syncDown')
+      .mockRejectedValue(new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await expect(
+        hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/files'), 'p1'),
+      ).rejects.toBeInstanceOf(TeamverTenantStorageResolutionError);
+      // Exactly one call — the deny must short-circuit the retry loop.
+      expect(syncDown).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      if (previousRetries === undefined) delete process.env.OD_S3_MATERIALIZE_RETRIES;
+      else process.env.OD_S3_MATERIALIZE_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_MATERIALIZE_RETRY_MS;
+      else process.env.OD_S3_MATERIALIZE_RETRY_MS = previousRetryMs;
+    }
+  });
+
+  it('does not retry background sync-up when tenant storage resolution is denied', async () => {
+    // Non-strict persistAfterMutation used to swallow the throw inside
+    // runPersist and return false, so the outer retry loop kept spinning
+    // the deny through every configured attempt. Regression fixture for
+    // the "lazy sync-up failed → retrying background sync-up 1/2 → …"
+    // loop in staging logs.
+    const previousRetries = process.env.OD_S3_BACKGROUND_PERSIST_RETRIES;
+    const previousRetryMs = process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS;
+    process.env.OD_S3_BACKGROUND_PERSIST_RETRIES = '2';
+    process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS = '0';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    const syncUp = vi
+      .spyOn(storage, 'syncUp')
+      .mockRejectedValue(new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await expect(
+        hooks!.persistAfterMutation(mockReq('POST', '/api/projects/p1/files'), 'p1'),
+      ).resolves.toBeUndefined();
+      // Denied → one attempt only, no retry even though max is 2.
+      expect(syncUp).toHaveBeenCalledTimes(1);
+      expect(runtime.isProjectSyncFailed('p1')).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      if (previousRetries === undefined) delete process.env.OD_S3_BACKGROUND_PERSIST_RETRIES;
+      else process.env.OD_S3_BACKGROUND_PERSIST_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS;
+      else process.env.OD_S3_BACKGROUND_PERSIST_RETRY_MS = previousRetryMs;
+    }
+  });
+
+  it('does not retry strict sync-up when tenant storage resolution is denied', async () => {
+    // Strict path must still throw (callers depend on the error to surface
+    // to the user) but must not burn its full retry budget on a deny.
+    const previousRetries = process.env.OD_S3_STRICT_PERSIST_RETRIES;
+    const previousRetryMs = process.env.OD_S3_STRICT_PERSIST_RETRY_MS;
+    process.env.OD_S3_STRICT_PERSIST_RETRIES = '3';
+    process.env.OD_S3_STRICT_PERSIST_RETRY_MS = '0';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const syncUp = vi
+      .spyOn(storage, 'syncUp')
+      .mockRejectedValue(new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await expect(
+        hooks!.persistAfterMutation(
+          mockReq('POST', '/api/projects/p1/scratch/sync-up'),
+          'p1',
+          { strict: true },
+        ),
+      ).rejects.toBeInstanceOf(TeamverTenantStorageResolutionError);
+      expect(syncUp).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      if (previousRetries === undefined) delete process.env.OD_S3_STRICT_PERSIST_RETRIES;
+      else process.env.OD_S3_STRICT_PERSIST_RETRIES = previousRetries;
+      if (previousRetryMs === undefined) delete process.env.OD_S3_STRICT_PERSIST_RETRY_MS;
+      else process.env.OD_S3_STRICT_PERSIST_RETRY_MS = previousRetryMs;
+    }
+  });
+
   it('onProjectRemoved purges remote then evicts scratch (default purge on)', async () => {
     const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
     delete process.env.OD_S3_PURGE_ON_DELETE;
@@ -534,32 +646,6 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     res.emit('finish');
     await new Promise((r) => setTimeout(r, 0));
     expect(persist).not.toHaveBeenCalled();
-  });
-
-  it('soft-continues GET /files when scratch already has project bytes', async () => {
-    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
-    const storage = new MaterializingProjectStorage(
-      new LocalProjectStorage('/tmp/scratch'),
-      new LocalProjectStorage('/tmp/remote'),
-    );
-    const hooks = createProjectStorageAccessHooks(
-      createProjectMaterializationRuntime(layout, storage),
-    );
-    vi.spyOn(hooks!, 'ensureMaterialized').mockRejectedValue(
-      new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'),
-    );
-    const scratchHasProjectFiles = vi.fn(async () => true);
-    const sendApiError = vi.fn();
-    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError, {
-      scratchHasProjectFiles,
-    });
-
-    const next = vi.fn();
-    await middleware(mockReq('GET', '/api/projects/p1/files'), mockRes(), next);
-
-    expect(scratchHasProjectFiles).toHaveBeenCalledWith('p1');
-    expect(sendApiError).not.toHaveBeenCalled();
-    expect(next).toHaveBeenCalled();
   });
 
   it('still 502s export routes when scratch is empty and tenant resolution fails', async () => {

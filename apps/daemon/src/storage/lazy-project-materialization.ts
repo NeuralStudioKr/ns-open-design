@@ -65,6 +65,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * ``teamver_project_s3_prefix_required`` (and its ``_mismatch`` sibling)
+ * mean design-api answered ``denied`` for this user + project pair —
+ * workspace mismatch, project deleted/moved, or the row is not registered
+ * yet. None of those are transient, and the deny is already cached for
+ * 5s (permanent) or 1.5s (transient) inside teamver-project-access.
+ * Retrying inside the same request just burns CPU + log volume while
+ * hammering design-api. Detect the marker and bail out of the retry
+ * loop; the outer error still surfaces to the caller so the FE can
+ * translate it into an access banner via
+ * formatProjectArtifactSaveFailedError.
+ */
+function isNonRetriableAccessError(err: unknown): boolean {
+  if (err instanceof TeamverTenantStorageResolutionError) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return (
+    msg.includes('teamver_project_s3_prefix_required')
+    || msg.includes('teamver_project_s3_prefix_mismatch')
+    || msg.includes('teamver_project_identity_required')
+  );
+}
+
 function isProjectMaterializationPath(pathname: string): boolean {
   // Middleware is mounted at /api/projects/:id — req.path is relative (/files, /raw/…).
   const core = String(pathname ?? '');
@@ -128,21 +150,6 @@ function isProjectExportOrArchivePath(pathname: string): boolean {
   if (/^\/archive(\/|$)/.test(core)) return true;
   if (/^\/api\/projects\/[^/]+\/export(\/|$)/.test(core)) return true;
   if (/^\/api\/projects\/[^/]+\/archive(\/|$)/.test(core)) return true;
-  return false;
-}
-
-/**
- * Read-only project routes that may serve from local scratch when tenant S3
- * prefix resolution fails but the agent already wrote bytes during this run
- * (BYOK preview path). Includes listing/raw reads — not only export/archive.
- */
-function isProjectScratchReadFallbackPath(pathname: string): boolean {
-  const core = String(pathname ?? '');
-  if (isProjectExportOrArchivePath(core)) return true;
-  if (/^\/files(\/|$)/.test(core)) return true;
-  if (/^\/raw(\/|$)/.test(core)) return true;
-  if (/^\/api\/projects\/[^/]+\/files(\/|$)/.test(core)) return true;
-  if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(core)) return true;
   return false;
 }
 
@@ -276,6 +283,21 @@ export function createProjectStorageAccessHooks(
         } catch (err) {
           lastErr = err;
           if (attempt >= maxAttempts) break;
+          if (isNonRetriableAccessError(err)) {
+            // Deny is a data-state problem — do not retry inside this
+            // request. Emit a discrete marker so ops can distinguish
+            // "denied, gave up" from "transient, exhausted retries" in
+            // CloudWatch.
+            if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+              console.info(JSON.stringify({
+                metric: 'od_s3_lazy_sync_down_denied',
+                projectId: trimmedId,
+                attempt,
+                reason: err instanceof Error ? err.message : String(err),
+              }));
+            }
+            break;
+          }
           console.warn(
             `[project-materialization] retrying lazy sync-down for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
             err instanceof Error ? err.message : err,
@@ -369,7 +391,11 @@ export function createProjectStorageAccessHooks(
           `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
           err instanceof Error ? err.message : err,
         );
-        if (options?.strict) throw err;
+        // Non-retriable access errors must always propagate so the outer
+        // retry loop can bail out. Non-strict callers otherwise swallow
+        // the error (return false) and the loop would spin the deny
+        // through every configured attempt.
+        if (options?.strict || isNonRetriableAccessError(err)) throw err;
         return false;
       }
     };
@@ -397,6 +423,19 @@ export function createProjectStorageAccessHooks(
       } catch (err) {
         lastErr = err;
         if (!options?.strict || attempt >= maxAttempts) break;
+        if (isNonRetriableAccessError(err)) {
+          // Same rationale as the sync-down loop above — deny is a data-
+          // state problem, not a transient upstream hiccup.
+          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+            console.info(JSON.stringify({
+              metric: 'od_s3_strict_persist_denied',
+              projectId: trimmedId,
+              attempt,
+              reason: err instanceof Error ? err.message : String(err),
+            }));
+          }
+          break;
+        }
         console.warn(
           `[project-materialization] retrying strict sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
           err instanceof Error ? err.message : err,
@@ -513,8 +552,7 @@ export function createLazyProjectMaterializationMiddleware(
       // unblocks PDF/HTML/ZIP export while design-api `/access` self-heals.
       const message = err instanceof Error ? err.message : 'project storage sync failed';
       const canSoftFallback =
-        (req.method === 'GET' || req.method === 'HEAD' || isProjectExportOrArchivePath(req.path))
-        && isProjectScratchReadFallbackPath(req.path)
+        isProjectExportOrArchivePath(req.path)
         && err instanceof TeamverTenantStorageResolutionError
         && err.message === 'teamver_project_s3_prefix_required';
       if (canSoftFallback) {
