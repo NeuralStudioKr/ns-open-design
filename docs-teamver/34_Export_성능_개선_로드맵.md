@@ -447,7 +447,7 @@ Worker (daemon sidecar or queue consumer):
 | 1.4 | daemon local cache hit → filePath stream (ticket + direct) — `LocalFileExportCacheStore` + sweep | ✅ `export-cache-local.ts` + `respondExportPayload` |
 | 1.5 | route 통합 (PDF/HTML/ZIP/image) + `runCachedExport` chain | ✅ `import-export-routes.ts` + `export-cache-runtime.ts` |
 | 1.6 | metrics 확장 (`cache=miss|hit-memo|hit-local`, `cacheKey`, `cacheAgeMs`) | ✅ `export-runtime.ts` |
-| 1.d | Publish stream (§20.4) — design-api RAM 이중화 제거 | ✅ PDF/HTML Drive publish가 daemon export ticket + presigned PUT stream 사용 (`od_daemon_client.py`, `publish_service.py`) |
+| 1.d | Publish stream (§20.4) — design-api RAM 이중화 제거 | ✅ PDF/HTML Drive publish가 daemon export ticket + presigned PUT stream 사용 + 64MB bytes fallback safety net (`od_daemon_client.py`, `publish_service.py`) |
 
 ### Sprint 3 — Phase 1b + 2 (3~4주)
 
@@ -871,12 +871,13 @@ design-api publish_service:
 |------|------|
 | `apps/daemon/src/import-export-routes.ts` / `export-download-store.ts` | ticket 응답에 `bytes`/`sizeBytes` 포함. cache-owned file ticket은 파일 복사 없이 같은 path를 참조 |
 | `deploy/teamver/be/app/services/od_daemon_client.py` | `request_export_pdf_ticket`, `request_export_html_ticket`, `stream_export_ticket_to_presigned_put` 추가 |
-| `deploy/teamver/be/app/services/publish_service.py` | PDF/HTML publish 모두 bytes download 대신 ticket → Drive presigned PUT stream 사용. upload request의 `file_size`는 ticket `bytes` 사용 |
+| `deploy/teamver/be/app/services/publish_service.py` | PDF/HTML publish 모두 bytes download 대신 ticket → Drive presigned PUT stream 사용. upload request의 `file_size`는 ticket `bytes` 사용. 스트림 PUT 거부 시 `TEAMVER_DRIVE_PUBLISH_STREAM_FALLBACK_MAX_BYTES` 이하만 legacy bytes PUT 1회 재시도 |
 
 **HTML publish도 동일 패턴** (`get_export_inline` → ticket) — HTML은 크기가 작아서 (< 5MB) chunk 없이도 되지만 계약 일관성.
 
 **리스크:**
 - Drive presigned PUT이 `Content-Length`가 명시된 async stream body를 staging S3에서 정상 수용하는지 실증 필요. chunked encoding은 피하기 위해 daemon ticket `bytes`를 `content-length`로 전달한다.
+- 실증 전 배포 안전장치: endpoint가 stream body를 거부하면 64MB 이하(`TEAMVER_DRIVE_PUBLISH_STREAM_FALLBACK_MAX_BYTES`, 0이면 disable)에서만 기존 bytes PUT으로 1회 fallback한다. 대형 deck은 fallback하지 않아 design-api RAM 폭증을 막는다.
 - ticket TTL(300s) 안에 stream이 끝나야 함 — 큰 deck PDF (수십 MB) 도 문제 없음.
 
 **병행 최적화:**
@@ -950,6 +951,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-03 | §20.4 Publish stream 배포 안전장치 추가 — presigned stream PUT 실패 시 64MB 이하 legacy bytes PUT fallback, staging/production env 예시 추가, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 21 passed |
 | 2026-07-02 | §20.4 Publish stream 1차 구현 — daemon export ticket에 bytes 포함, design-api PDF/HTML Drive publish를 ticket download stream → presigned PUT으로 전환, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 20 passed |
 | 2026-07-02 | §20.1~§20.3 코드 구현 완료 — cacheKey SSOT, memo/local 캐시, route 통합, ticket sourceFilePath 지원, 49 tests pass (미배포) |
 | 2026-07-02 | §19 Phase 1 재검토 (single-node·EBS 우선) + §20 Sprint 2 세부 설계 (memo + local + publish stream) |

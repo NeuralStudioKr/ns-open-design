@@ -15,7 +15,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.db.models import DesignProject
 from app.errors import BadGatewayError, BadRequestError, UnauthorizedError
-from app.services.od_daemon_client import OdExportTicket
+from app.services.od_daemon_client import OdDaemonPresignedPutError, OdExportTicket
 from app.services.publish_service import publish_project
 
 
@@ -479,6 +479,53 @@ async def test_publish_project_presigned_put_status_propagates():
         )
 
     teamver_client.drive.confirm_upload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_publish_project_stream_put_failure_falls_back_to_bytes_put():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    pdf_bytes = b"%PDF-1.4 fallback"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(pdf_bytes))
+    daemon.stream_export_ticket_to_presigned_put.side_effect = OdDaemonPresignedPutError(411)
+    daemon.get_export_pdf.return_value = pdf_bytes
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-FALLBACK-PUT")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 201
+    daemon.get_export_pdf.assert_awaited_once_with(
+        "od1",
+        "deck/index.html",
+        identity=ANY,
+        deck=True,
+        title=None,
+    )
+    teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
+        "https://s3.example.com/upload/AST-FALLBACK-PUT",
+        content=pdf_bytes,
+        content_type="application/pdf",
+    )
+    teamver_client.drive.confirm_upload.assert_awaited_once_with(
+        access_token="token",
+        asset_id="AST-FALLBACK-PUT",
+    )
 
 
 @pytest.mark.asyncio

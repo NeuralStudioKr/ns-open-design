@@ -124,6 +124,14 @@ class Settings(BaseModel):
     od_project_storage: str = os.getenv("OD_PROJECT_STORAGE", "local")
     # Optional default Drive folder for publish (workspace folder id).
     teamver_drive_publish_folder_id: str = os.getenv("TEAMVER_DRIVE_PUBLISH_FOLDER_ID", "")
+    # Safety net for Drive presigned endpoints that reject async streaming PUT.
+    # Normal path stays streamed; fallback is used only after a stream PUT failure.
+    teamver_drive_publish_stream_fallback_max_bytes: int = Field(
+        default_factory=lambda: _env_nonneg_int(
+            "TEAMVER_DRIVE_PUBLISH_STREAM_FALLBACK_MAX_BYTES",
+            default=67_108_864,
+        )
+    )
 
     postgres_host: str = os.getenv("POSTGRES_HOST", "design-db")
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))

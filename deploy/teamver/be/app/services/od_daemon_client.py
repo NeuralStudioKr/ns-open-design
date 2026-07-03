@@ -141,6 +141,29 @@ class OdDaemonClient:
             identity=identity,
         )
 
+    async def get_export_html(
+        self,
+        od_project_id: str,
+        artifact_path: str,
+        *,
+        identity: OdDaemonIdentity,
+        deck: bool = False,
+        title: str | None = None,
+    ) -> bytes:
+        payload: dict[str, object] = {
+            "fileName": artifact_path.strip(),
+            "deck": deck,
+        }
+        if title and title.strip():
+            payload["title"] = title.strip()
+        return await self._request_export_bytes(
+            od_project_id,
+            "/export/html",
+            payload=payload,
+            accept="text/html,*/*",
+            identity=identity,
+        )
+
     async def request_export_html_ticket(
         self,
         od_project_id: str,
@@ -180,24 +203,13 @@ class OdDaemonClient:
         }
         if title and title.strip():
             payload["title"] = title.strip()
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(
-                f"{self.base_url}/api/projects/{od_project_id}/export/pdf",
-                headers={
-                    **self._headers(accept="application/pdf,*/*", identity=identity),
-                    "content-type": "application/json",
-                },
-                json=payload,
-            )
-        if response.status_code >= 400:
-            logger.warning(
-                "[od-daemon] POST /export/pdf failed project=%s status=%s body=%s",
-                od_project_id,
-                response.status_code,
-                (response.text or "")[:300],
-            )
-            raise BadGatewayError("od_daemon_export_failed")
-        return response.content
+        return await self._request_export_bytes(
+            od_project_id,
+            "/export/pdf",
+            payload=payload,
+            accept="application/pdf,*/*",
+            identity=identity,
+        )
 
     async def request_export_pdf_ticket(
         self,
@@ -434,6 +446,35 @@ class OdDaemonClient:
             mime=mime,
             size_bytes=size,
         )
+
+    async def _request_export_bytes(
+        self,
+        od_project_id: str,
+        suffix: str,
+        *,
+        payload: dict[str, object],
+        accept: str,
+        identity: OdDaemonIdentity,
+    ) -> bytes:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/api/projects/{od_project_id}{suffix}",
+                headers={
+                    **self._headers(accept=accept, identity=identity),
+                    "content-type": "application/json",
+                },
+                json=payload,
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                "[od-daemon] POST %s failed project=%s status=%s body=%s",
+                suffix,
+                od_project_id,
+                response.status_code,
+                (response.text or "")[:300],
+            )
+            raise BadGatewayError("od_daemon_export_failed")
+        return response.content
 
     def _absolute_url(self, path_or_url: str) -> str:
         value = path_or_url.strip()

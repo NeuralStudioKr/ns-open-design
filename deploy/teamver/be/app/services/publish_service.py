@@ -291,6 +291,40 @@ async def _drive_presigned_put_export_ticket(
     )
 
 
+def _can_fallback_to_bytes_put(size_bytes: int) -> bool:
+    limit = settings.teamver_drive_publish_stream_fallback_max_bytes
+    return limit > 0 and 0 <= size_bytes <= limit
+
+
+async def _fetch_export_bytes_for_publish_fallback(
+    daemon: OdDaemonClient,
+    *,
+    fmt: str,
+    project: DesignProject,
+    path: str,
+    identity: OdDaemonIdentity,
+    deck: bool,
+    title: str | None,
+) -> bytes:
+    if fmt == "html":
+        return await daemon.get_export_html(
+            project.od_project_id,
+            path,
+            identity=identity,
+            deck=deck,
+            title=title,
+        )
+    if fmt == "pdf":
+        return await daemon.get_export_pdf(
+            project.od_project_id,
+            path,
+            identity=identity,
+            deck=deck,
+            title=title,
+        )
+    raise BadRequestError(f"unsupported_formats:{fmt}")
+
+
 def _raise_if_all_failed(result: PublishResult) -> None:
     if result.http_status != 502:
         return
@@ -447,7 +481,64 @@ async def publish_project(
                         presigned_url=ticket.presigned_url,
                         content_type=mime_type,
                     )
-                except (DriveUploadError, OdDaemonPresignedPutError) as exc:
+                except OdDaemonPresignedPutError as exc:
+                    if _can_fallback_to_bytes_put(size_bytes):
+                        logger.warning(
+                            "publish stream PUT failed; retrying bytes PUT "
+                            "project=%s od_project=%s format=%s status=%s bytes=%s",
+                            project.id,
+                            project.od_project_id,
+                            fmt,
+                            getattr(exc, "status_code", None),
+                            size_bytes,
+                        )
+                        try:
+                            fallback_content = await _fetch_export_bytes_for_publish_fallback(
+                                daemon,
+                                fmt=fmt,
+                                project=project,
+                                path=path,
+                                identity=daemon_identity,
+                                deck=is_deck_artifact,
+                                title=export_title,
+                            )
+                            await _drive_presigned_put(
+                                teamver_client,
+                                presigned_url=ticket.presigned_url,
+                                content=fallback_content,
+                                content_type=mime_type,
+                            )
+                        except DriveUploadError as fallback_exc:
+                            status = getattr(fallback_exc, "status_code", None)
+                            error_code = (
+                                f"drive_presigned_put_failed_{int(status)}"
+                                if status
+                                else _teamver_upload_error_code(fallback_exc)
+                            )
+                            raise _PublishUploadFailure(
+                                error_code,
+                                phase,
+                                fallback_exc,
+                            ) from fallback_exc
+                    else:
+                        logger.warning(
+                            "publish stream PUT failed and bytes fallback is disabled/too large "
+                            "project=%s od_project=%s format=%s status=%s bytes=%s max=%s",
+                            project.id,
+                            project.od_project_id,
+                            fmt,
+                            getattr(exc, "status_code", None),
+                            size_bytes,
+                            settings.teamver_drive_publish_stream_fallback_max_bytes,
+                        )
+                        status = getattr(exc, "status_code", None)
+                        error_code = (
+                            f"drive_presigned_put_failed_{int(status)}"
+                            if status
+                            else _teamver_upload_error_code(exc)
+                        )
+                        raise _PublishUploadFailure(error_code, phase, exc) from exc
+                except DriveUploadError as exc:
                     status = getattr(exc, "status_code", None)
                     error_code = (
                         f"drive_presigned_put_failed_{int(status)}"
