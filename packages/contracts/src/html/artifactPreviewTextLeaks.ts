@@ -98,7 +98,10 @@ export function stripBodyInnerPreviewTextLeaks(bodyInner: string): string {
 export function stripArtifactPreviewBodyTextLeaks(html: string): string {
   const bodyMatch = html.match(/(<body[^>]*>)([\s\S]*?)(<\/body>)/i);
   if (!bodyMatch) return html;
-  const [, open, inner, close] = bodyMatch;
+  const open = bodyMatch[1];
+  const inner = bodyMatch[2];
+  const close = bodyMatch[3];
+  if (open === undefined || inner === undefined || close === undefined) return html;
   const cleaned = stripBodyInnerPreviewTextLeaks(inner);
   if (cleaned === inner) return html;
   return html.replace(bodyMatch[0], `${open}${cleaned}${close}`);
