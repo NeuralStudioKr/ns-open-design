@@ -55,7 +55,7 @@ import {
   projectRawUrl,
   uploadProjectFiles,
   upsertPreviewComment,
-  writeProjectTextFile,
+  writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
@@ -2093,10 +2093,14 @@ export function ProjectView({
                 designSystemId: project.designSystemId,
               },
             });
-      const file = await writeProjectTextFile(project.id, fileName, artifactToPersist.html, {
-        artifactManifest: manifest ?? undefined,
-      });
-      if (file) {
+      const result = await writeProjectTextFileDetailed(
+        project.id,
+        fileName,
+        artifactToPersist.html,
+        { artifactManifest: manifest ?? undefined },
+      );
+      if (result.ok) {
+        const file = result.file;
         setFilesRefresh((n) => n + 1);
         // Surface the daemon's stub-guard warning when it fires in `warn`
         // mode (the default). Without this the warning would land in the
@@ -2112,15 +2116,21 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
       } else {
-        // writeProjectTextFile collapses all failure paths (non-OK HTTP
-        // responses, network errors, and stub-guard 422s) to null — the
-        // helper's return contract would need to be widened to distinguish
-        // them, which is out of scope here.  Show a generic banner so the
-        // failure is observable rather than silent; the daemon logs carry
-        // the structured details for any specific error type.
+        // Surface an error banner keyed on the actual failure — access
+        // denied vs project-not-found vs upstream vs network — instead of
+        // a generic "check the daemon logs" message. The structured
+        // status/code from writeProjectTextFileDetailed is what makes
+        // per-cause messaging possible; the raw daemon marker still lives
+        // in the error object for ops via the diagnostic copy button.
         // Clear the saved-artifact ref so the user can retry.
         savedArtifactRef.current = '';
-        setError(formatProjectArtifactSaveFailedError(fileName));
+        setError(
+          formatProjectArtifactSaveFailedError(fileName, {
+            status: result.status,
+            code: result.code,
+            message: result.message,
+          }),
+        );
       }
     },
     [project.id, project.designSystemId, project.skillId, requestOpenFile],

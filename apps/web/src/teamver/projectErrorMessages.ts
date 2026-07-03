@@ -31,10 +31,105 @@ export function formatProjectArtifactRejectedError(name: string, reason: string)
     : `Refused to save artifact "${label}": ${reason}`;
 }
 
-export function formatProjectArtifactSaveFailedError(fileName: string): string {
-  return isTeamverEmbedMode()
-    ? `슬라이드 파일 "${fileName}"을(를) 저장하지 못했습니다. daemon 로그를 확인하세요.`
-    : `Couldn't save artifact "${fileName}". The write failed — check the daemon logs for details.`;
+/**
+ * User-facing artifact save-failed banner. Never mentions "daemon" /
+ * "logs" / other developer-only concepts to end users — those cues stay
+ * in the underlying error object for ops (accessible via the error
+ * diagnostics copy button in ChatPane).
+ *
+ * ``detail`` 을 받아 원인 code / HTTP status 를 유저 관점 메시지로
+ * 매핑한다. 로그의 실 원인 `teamver_project_s3_prefix_required` 는
+ * design-api /access 가 403/404 를 준 결과 (workspace/owner 불일치,
+ * project 삭제/이관, 미등록) 이므로 여기선 "접근 권한 / 프로젝트 없음"
+ * 방향으로 유저가 다음 행동을 결정할 수 있게 안내한다.
+ */
+export interface ProjectArtifactSaveErrorDetail {
+  status?: number;
+  code?: string;
+  message?: string;
+}
+
+const ACCESS_ERROR_CODES = new Set([
+  'FORBIDDEN',
+  'PROJECT_OWNER_MISMATCH',
+  'WORKSPACE_MISMATCH',
+  // teamver_project_s3_prefix_required 는 daemon 이 design-api /access
+  // 응답을 denied 로 받았을 때 붙이는 마커 문자열이라 code 자리에 그대로
+  // 노출될 수 있다.
+  'teamver_project_s3_prefix_required',
+  'teamver_project_s3_prefix_mismatch',
+]);
+
+const NOT_FOUND_ERROR_CODES = new Set([
+  'PROJECT_NOT_FOUND',
+  'NOT_FOUND',
+]);
+
+const UNAUTHORIZED_ERROR_CODES = new Set([
+  'UNAUTHORIZED',
+  'AUTH_REQUIRED',
+]);
+
+const UPSTREAM_ERROR_CODES = new Set([
+  'UPSTREAM_UNAVAILABLE',
+  'INTERNAL_ERROR',
+]);
+
+export function formatProjectArtifactSaveFailedError(
+  fileName: string,
+  detail?: ProjectArtifactSaveErrorDetail,
+): string {
+  const embed = isTeamverEmbedMode();
+  const code = (detail?.code || '').trim();
+  const status = detail?.status;
+  const rawMessage = (detail?.message || '').toLowerCase();
+
+  if (ACCESS_ERROR_CODES.has(code) || status === 403) {
+    return embed
+      ? '이 슬라이드 프로젝트에 접근 권한이 없어 저장에 실패했습니다. 워크스페이스가 올바른지 확인하거나 관리자에게 문의하세요.'
+      : "You don't have permission to save into this project. Check your workspace or contact an admin.";
+  }
+
+  if (NOT_FOUND_ERROR_CODES.has(code) || status === 404) {
+    return embed
+      ? '이 슬라이드 프로젝트를 찾을 수 없어 저장에 실패했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.'
+      : 'This slide project could not be found. Refresh the page and try again.';
+  }
+
+  if (UNAUTHORIZED_ERROR_CODES.has(code) || status === 401) {
+    return embed
+      ? '로그인 세션이 만료되어 저장에 실패했습니다. 다시 로그인한 뒤 시도하세요.'
+      : 'Your session expired while saving. Sign in again to continue.';
+  }
+
+  if (code === 'RATE_LIMITED' || status === 429) {
+    return embed
+      ? '요청이 너무 많아 저장에 실패했습니다. 잠시 후 다시 시도하세요.'
+      : 'Too many requests — please wait a moment and try again.';
+  }
+
+  if (
+    UPSTREAM_ERROR_CODES.has(code)
+    || status === 502
+    || status === 503
+    || status === 504
+  ) {
+    return embed
+      ? '저장소 연결이 일시적으로 불안정합니다. 잠시 후 다시 시도하세요.'
+      : 'The storage service is temporarily unavailable — please retry shortly.';
+  }
+
+  // No status → typically a network failure captured by the fetch wrapper
+  // (writeProjectTextFileDetailed returns message='Network error…').
+  if (!status && rawMessage.includes('network')) {
+    return embed
+      ? '네트워크 연결 문제로 저장에 실패했습니다. 연결 상태를 확인하고 다시 시도하세요.'
+      : 'Network connection was lost while saving. Check your connection and retry.';
+  }
+
+  return embed
+    ? `슬라이드 파일 "${fileName}" 저장에 실패했습니다. 잠시 후 다시 시도하세요.`
+    : `Failed to save "${fileName}". Please try again shortly.`;
 }
 
 export function formatProjectArtifactStubWarning(fileName: string, message: string): string {
