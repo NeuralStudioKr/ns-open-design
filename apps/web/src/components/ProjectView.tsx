@@ -61,6 +61,7 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
+  repairArtifactDocumentHead,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -2070,6 +2071,8 @@ export function ProjectView({
       if (savedArtifactRef.current === fileName) return;
       savedArtifactRef.current = fileName;
       const title = art.title || art.identifier || fileName;
+      const htmlBody =
+        ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
       const metadata = {
         identifier: art.identifier,
         artifactType: art.artifactType,
@@ -2096,7 +2099,7 @@ export function ProjectView({
       const result = await writeProjectTextFileDetailed(
         project.id,
         fileName,
-        artifactToPersist.html,
+        htmlBody,
         { artifactManifest: manifest ?? undefined },
       );
       if (result.ok) {

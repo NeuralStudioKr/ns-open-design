@@ -47,5 +47,6 @@ export function repairArtifactDocumentHead(html: string): string {
     return `<head${attrs}>${headInner}</head>`;
   });
 
-  return stripLeakedViewportFragments(doc);
+  doc = stripLeakedViewportFragments(doc);
+  return stripArtifactPreviewBodyTextLeaks(doc);
 }
