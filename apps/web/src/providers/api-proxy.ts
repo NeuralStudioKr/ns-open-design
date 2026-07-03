@@ -32,6 +32,7 @@ import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
  */
 export interface ProxyContext {
   projectId?: string;
+  conversationId?: string;
   /** Embed BYOK — ties proxy usage SSE to the assistant message row for daemon-side billing staging. */
   assistantMessageId?: string;
   byokImageModel?: string;
@@ -85,6 +86,7 @@ export async function streamProxyEndpoint(
         maxTokens: effectiveMaxTokens(cfg),
         apiVersion: cfg.apiVersion,
         ...(context?.projectId ? { projectId: context.projectId } : {}),
+        ...(context?.conversationId ? { conversationId: context.conversationId } : {}),
         ...(context?.assistantMessageId
           ? { assistantMessageId: context.assistantMessageId }
           : {}),

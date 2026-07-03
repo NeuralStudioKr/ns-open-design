@@ -1,5 +1,5 @@
 import express, { type Express } from 'express';
-import http, { type AddressInfo } from 'node:http';
+import http from 'node:http';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import type { Request, Response } from 'express';
 
@@ -21,6 +21,7 @@ type MockRes = {
   headers: Record<string, string>;
   emitFinish: () => void;
   emitClose: () => void;
+  emitEnd: () => void;
   headersSent: { value: boolean };
 };
 
@@ -40,6 +41,9 @@ function mockRes(): MockRes {
       listeners[event].push(fn);
       return this;
     },
+    end() {
+      return this;
+    },
   } as unknown as Response;
   return {
     res,
@@ -50,6 +54,9 @@ function mockRes(): MockRes {
     },
     emitClose: () => {
       for (const fn of listeners.close ?? []) fn();
+    },
+    emitEnd: () => {
+      res.end();
     },
   };
 }
@@ -114,17 +121,19 @@ describe('byok-proxy-abort', () => {
     }
   });
 
-  it('after grace window, res.close cleanup drops the entry without aborting it', () => {
+  it('after page-close, keeps the entry for background recovery until upstream end', () => {
     vi.useFakeTimers();
     try {
-      const { res, emitClose } = mockRes();
+      const { res, emitClose, emitEnd } = mockRes();
       const { streamId, signal } = registerByokProxyStream(mockReq(), res);
       emitClose();
       vi.advanceTimersByTime(10_000);
-      // Entry removed by the grace timer; the signal was NEVER aborted —
-      // pagehide policy requires the upstream stream to drain naturally.
-      expect(activeByokProxyStreamCountForTests()).toBe(0);
+      // Entry remains listable after browser page exit so a re-entered page
+      // can restore "still working" UI while the daemon drains upstream.
+      expect(activeByokProxyStreamCountForTests()).toBe(1);
       expect(signal.aborted).toBe(false);
+      emitEnd();
+      expect(activeByokProxyStreamCountForTests()).toBe(0);
       expect(abortByokProxyStream(streamId)).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -178,11 +187,19 @@ describe('/api/proxy/abort tenant scoping', () => {
     const app: Express = express();
     app.use(express.json({ limit: '1mb' }));
     registerByokProxyAbortRoute(app);
-    await new Promise<void>((resolve) => {
-      server = app.listen(0, '127.0.0.1', () => resolve());
+    await new Promise<void>((resolve, reject) => {
+      server = http.createServer(app);
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        if (!address || typeof address === 'string') {
+          reject(new Error('test server did not bind to a TCP port'));
+          return;
+        }
+        baseUrl = `http://127.0.0.1:${address.port}`;
+        resolve();
+      });
     });
-    const address = server.address() as AddressInfo;
-    baseUrl = `http://127.0.0.1:${address.port}`;
   });
 
   afterEach(async () => {
@@ -280,11 +297,18 @@ describe('/api/proxy/abort tenant scoping', () => {
     const { streamId } = registerByokProxyStream(mockReq(), res, {
       workspaceId: 'ws-1',
       projectId: 'project-1',
+      conversationId: 'conversation-1',
+      assistantMessageId: 'assistant-1',
     });
     const streams = listActiveByokProxyStreams({ projectId: 'project-1' });
     expect(streams).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ streamId, projectId: 'project-1' }),
+        expect.objectContaining({
+          streamId,
+          projectId: 'project-1',
+          conversationId: 'conversation-1',
+          assistantMessageId: 'assistant-1',
+        }),
       ]),
     );
   });

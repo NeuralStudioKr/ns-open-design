@@ -44,7 +44,7 @@ export function isRecoverableBackgroundChatMessage(
   mode: "daemon" | "api",
 ): boolean {
   if (mode === "daemon") return isRecoverableDaemonRunMessage(message);
-  return false;
+  return isInFlightAssistantMessage(message);
 }
 
 export function conversationHasRecoverableBackgroundChat(

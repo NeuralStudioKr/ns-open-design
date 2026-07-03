@@ -4,6 +4,8 @@ export type ActiveByokProxyStreamSummary = {
   streamId: string;
   workspaceId?: string;
   projectId?: string;
+  conversationId?: string;
+  assistantMessageId?: string;
   registeredAt: number;
 };
 

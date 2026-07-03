@@ -3194,14 +3194,7 @@ export function ProjectView({
   // restore Stop/streaming UI until the turn settles or proxy streams end.
   useEffect(() => {
     if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
-    const inflightMessages = findInFlightAssistantMessages(messages);
-    if (inflightMessages.length === 0) {
-      if (apiRecoveryBannerRef.current) {
-        clearApiBackgroundRecoveryBanner();
-      }
-      apiBackgroundRecoveryRef.current = false;
-      return;
-    }
+    const initialInflightMessages = findInFlightAssistantMessages(messages);
     // A live local stream already owns this conversation — do not compete.
     if (streaming && abortRef.current) return;
 
@@ -3209,21 +3202,43 @@ export function ProjectView({
     let pollTimer: number | null = null;
     let idlePollsWithoutProxy = 0;
     const recoveryConversationId = activeConversationId;
-    const trackedInflightIds = inflightMessages.map((message) => message.id);
+    const trackedAssistantIds = new Set(initialInflightMessages.map((message) => message.id));
+    const activatedAssistantIds = new Set<string>();
     apiRecoveryBannerRef.current = {
       conversationId: recoveryConversationId,
-      assistantMessageIds: trackedInflightIds,
+      assistantMessageIds: [...trackedAssistantIds],
     };
-    apiBackgroundRecoveryRef.current = true;
-    markStreamingConversation(recoveryConversationId);
-    for (const message of inflightMessages) {
+
+    const activateRecoveryUi = () => {
+      if (trackedAssistantIds.size === 0) return;
+      apiRecoveryBannerRef.current = {
+        conversationId: recoveryConversationId,
+        assistantMessageIds: [...trackedAssistantIds],
+      };
+      apiBackgroundRecoveryRef.current = true;
+      markStreamingConversation(recoveryConversationId);
+      for (const assistantMessageId of trackedAssistantIds) {
+        if (activatedAssistantIds.has(assistantMessageId)) continue;
+        activatedAssistantIds.add(assistantMessageId);
+        dispatchTeamverBackgroundChat({
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          assistantMessageId,
+          active: true,
+        });
+      }
+    };
+
+    for (const message of initialInflightMessages) {
       dispatchTeamverBackgroundChat({
         projectId: project.id,
         conversationId: recoveryConversationId,
         assistantMessageId: message.id,
         active: true,
       });
+      activatedAssistantIds.add(message.id);
     }
+    activateRecoveryUi();
 
     const clearPollTimer = () => {
       if (pollTimer !== null) {
@@ -3256,12 +3271,34 @@ export function ProjectView({
 
     const pollRecovery = async () => {
       if (cancelled) return;
+      const activeStreams = await listActiveByokProxyStreams(project.id);
+      if (cancelled) return;
+      const matchingActiveStreams = activeStreams.filter((stream) => {
+        const streamConversationId = stream.conversationId?.trim();
+        return !streamConversationId || streamConversationId === recoveryConversationId;
+      });
+      for (const stream of matchingActiveStreams) {
+        const assistantMessageId = stream.assistantMessageId?.trim();
+        if (assistantMessageId) trackedAssistantIds.add(assistantMessageId);
+      }
+      activateRecoveryUi();
+
       let stillInflight = false;
       try {
         const serverMessages = await listMessages(project.id, recoveryConversationId);
         if (cancelled) return;
         setMessages((current) => {
-          const merged = mergeServerMessagesIntoConversation(current, serverMessages);
+          const merged = mergeServerMessagesIntoConversation(current, serverMessages).map((message) => {
+            if (
+              trackedAssistantIds.has(message.id)
+              && message.role === 'assistant'
+              && message.endedAt === undefined
+              && message.startedAt === undefined
+            ) {
+              return { ...message, startedAt: message.createdAt || Date.now() };
+            }
+            return message;
+          });
           stillInflight = findInFlightAssistantMessages(merged).length > 0;
           return merged;
         });
@@ -3271,10 +3308,12 @@ export function ProjectView({
       if (cancelled) return;
       await refreshProjectFiles();
       if (cancelled) return;
-      const activeStreams = await listActiveByokProxyStreams(project.id);
-      if (cancelled) return;
 
-      const proxyStillActive = activeStreams.length > 0;
+      const proxyStillActive = matchingActiveStreams.length > 0;
+      if (trackedAssistantIds.size === 0 && !proxyStillActive) {
+        finishRecovery();
+        return;
+      }
       if (!proxyStillActive && stillInflight) {
         idlePollsWithoutProxy += 1;
         if (idlePollsWithoutProxy >= 3) {
@@ -4341,6 +4380,7 @@ export function ProjectView({
           onError: handlers.onError,
         }, {
           projectId: project.id,
+          conversationId: runConversationId,
           // Daemon-side billing reconciliation (PR1 §3.6): the proxy stages
           // usage SSE frames keyed by this id so the terminal message PUT
           // can finalize Strategy-B billing even if the FE drops the PUT

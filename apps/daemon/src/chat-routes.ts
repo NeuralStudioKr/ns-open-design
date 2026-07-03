@@ -151,6 +151,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const abort = registerByokProxyStream(req, res, {
       workspaceId: identity?.workspaceId ?? null,
       projectId: readProxyBodyProjectId(proxyBody) ?? null,
+      conversationId: readProxyBodyString(proxyBody, 'conversationId'),
+      assistantMessageId: readProxyBodyString(proxyBody, 'assistantMessageId'),
     });
     (res.locals as { byokAbort?: ByokProxyAbortRegistration }).byokAbort = abort;
     return true;
@@ -165,6 +167,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
    */
   function byokProxyAbortSignalFromRes(res: Response): AbortSignal | undefined {
     return (res.locals as { byokAbort?: ByokProxyAbortRegistration }).byokAbort?.signal;
+  }
+
+  function readProxyBodyString(
+    proxyBody: Record<string, unknown>,
+    key: string,
+  ): string | null {
+    const value = proxyBody[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
   }
 
   /**

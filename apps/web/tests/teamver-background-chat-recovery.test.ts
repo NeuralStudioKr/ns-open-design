@@ -22,7 +22,7 @@ describe("backgroundChatRecovery", () => {
     expect(isInFlightAssistantMessage(message)).toBe(true);
     expect(findInFlightAssistantMessages([message])).toEqual([message]);
     expect(conversationHasRecoverableBackgroundChat([message], "api")).toBe(true);
-    expect(isRecoverableBackgroundChatMessage(message, "api")).toBe(false);
+    expect(isRecoverableBackgroundChatMessage(message, "api")).toBe(true);
     expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(false);
   });
 
