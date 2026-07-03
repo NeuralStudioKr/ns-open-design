@@ -79,9 +79,28 @@ class SlowRequestMiddleware(BaseHTTPMiddleware):
             else _bool_env("SLOW_REQUEST_HEADER_ENABLED", default=True)
         )
         self._silenced_prefixes = tuple(silenced_prefixes)
+        # PID is stable per uvicorn worker (fork happens before middleware
+        # __init__), so cache once instead of syscall per request. Not
+        # expensive but shows up on cheap /api/healthz storms.
+        self._pid = os.getpid()
 
     def _is_silenced(self, path: str) -> bool:
         return any(path.startswith(prefix) for prefix in self._silenced_prefixes)
+
+    @staticmethod
+    def _resolve_route_template(request: Request, fallback_path: str) -> str:
+        """Prefer the FastAPI route template (``/api/projects/{project_id}``)
+        over the raw path so CloudWatch metric filters can group per-route
+        without UUID cardinality blow-up. ``request.scope['route']`` is set
+        by Starlette's routing layer *before* the endpoint runs, so this is
+        already populated by the time BaseHTTPMiddleware regains control
+        after ``call_next``. For unmatched paths (404) we fall back to raw.
+        """
+        route = request.scope.get("route")
+        template = getattr(route, "path", None)
+        if isinstance(template, str) and template:
+            return template
+        return fallback_path
 
     async def dispatch(self, request: Request, call_next):
         start = time.perf_counter()
@@ -103,13 +122,19 @@ class SlowRequestMiddleware(BaseHTTPMiddleware):
             if duration_ms >= self._threshold_ms and not self._is_silenced(path):
                 # Field-based log format so CloudWatch metric filters can
                 # match on ``slow_request`` and extract ``duration_ms`` /
-                # ``status`` without regex fragility.
+                # ``status`` / ``route`` without regex fragility. ``route``
+                # is the templated form (project_id substituted with
+                # ``{project_id}``) so per-route aggregation stays bounded;
+                # ``path`` is the raw form to still identify a specific bad
+                # project when needed.
+                route = self._resolve_route_template(request, path)
                 logger.warning(
-                    "slow_request path=%s method=%s status=%s duration_ms=%d worker=%d threshold_ms=%d",
+                    "slow_request route=%s path=%s method=%s status=%s duration_ms=%d worker=%d threshold_ms=%d",
+                    route,
                     path,
                     method,
                     status_code,
                     duration_ms,
-                    os.getpid(),
+                    self._pid,
                     self._threshold_ms,
                 )

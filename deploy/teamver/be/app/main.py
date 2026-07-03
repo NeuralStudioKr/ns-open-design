@@ -48,10 +48,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 register_exception_handlers(app)
 _bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret or "dev-bff-session-secret").strip()
-# Middleware stack (Starlette wraps in REVERSE add order — innermost added
-# first). CORS 는 최외곽에서 preflight 를 처리해야 하고, slow-request 는
-# 그 안쪽 — 실제 endpoint 처리 시간에 CORS 오버헤드는 무의미하므로 CORS
-# 외곽으로 두어 최종 유저 latency 를 반영한다.
+# Starlette wraps middlewares in REVERSE add order — the LAST add_middleware
+# call becomes the OUTERMOST layer. Effective execution order for this stack:
+#   request  → CORS → SlowRequest → OriginGuard → Session → endpoint
+#   response ← CORS ← SlowRequest ← OriginGuard ← Session ← endpoint
+# Consequences:
+#  * CORS preflight (OPTIONS) short-circuits BEFORE SlowRequest → preflight
+#    time is intentionally NOT counted toward p95.
+#  * SlowRequest wraps OriginGuard + Session + endpoint → real user-facing
+#    latency (origin rejects, session cookie work, endpoint) is fully
+#    captured. This is what we want CloudWatch metric filters to score.
 app.add_middleware(SessionMiddleware, secret_key=_bff_secret, same_site="lax")
 app.add_middleware(OriginGuardMiddleware)
 app.add_middleware(SlowRequestMiddleware)

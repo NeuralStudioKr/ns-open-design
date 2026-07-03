@@ -27,6 +27,13 @@ def _build_app(**mw_kwargs) -> FastAPI:
         time.sleep(0.02)  # 20ms > 5ms threshold below
         return {"ok": "1"}
 
+    @app.get("/api/projects/{project_id}/thumbnail")
+    async def _project_thumbnail(project_id: str) -> dict[str, str]:
+        import time
+
+        time.sleep(0.02)
+        return {"ok": project_id}
+
     @app.get("/api/healthz")
     async def _health() -> dict[str, str]:
         import time
@@ -96,3 +103,54 @@ def test_env_override_reads_threshold(monkeypatch: pytest.MonkeyPatch, caplog: p
     matches = [rec for rec in caplog.records if rec.name == "teamver_design_api.slow_request"]
     assert matches, "env override should activate slow_request warn"
     assert "threshold_ms=1" in matches[0].getMessage()
+
+
+def test_slow_request_logs_route_template(caplog: pytest.LogCaptureFixture) -> None:
+    """CloudWatch metric filter 는 raw path (UUID 포함) 대신 route template
+    으로 그룹핑해야 카디널리티 폭발을 막을 수 있다.
+    """
+    caplog.set_level(logging.WARNING, logger="teamver_design_api.slow_request")
+    client = TestClient(_build_app(threshold_ms=5))
+    response = client.get("/api/projects/proj-abc-123/thumbnail")
+    assert response.status_code == 200
+    matches = [rec for rec in caplog.records if rec.name == "teamver_design_api.slow_request"]
+    assert matches
+    msg = matches[0].getMessage()
+    assert "route=/api/projects/{project_id}/thumbnail" in msg
+    # Raw path is still emitted for pinpoint debugging.
+    assert "path=/api/projects/proj-abc-123/thumbnail" in msg
+
+
+def test_slow_request_route_falls_back_to_path_for_unmatched(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """404 처럼 route 매칭이 안 된 경우엔 raw path 를 route 값으로 fallback.
+
+    Starlette 는 나중에 add 한 middleware 를 outermost 로 wrap 하므로,
+    ``_delay`` 를 먼저 ``@app.middleware("http")`` 로 등록한 뒤 그 위에
+    SlowRequestMiddleware 를 add 해야 sleep 시간이 SlowRequest 안쪽에서
+    소진되어 threshold 를 넘긴다.
+    """
+    caplog.set_level(logging.WARNING, logger="teamver_design_api.slow_request")
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _delay(request, call_next):
+        import time
+
+        time.sleep(0.02)
+        return await call_next(request)
+
+    app.add_middleware(SlowRequestMiddleware, threshold_ms=5)
+
+    client = TestClient(app)
+    response = client.get("/api/does-not-exist")
+    assert response.status_code == 404
+    matches = [rec for rec in caplog.records if rec.name == "teamver_design_api.slow_request"]
+    assert matches
+    msg = matches[0].getMessage()
+    # Route falls back to raw path (they coincide here — the guarantee is
+    # simply that no crash / empty label appears).
+    assert "route=/api/does-not-exist" in msg
+    assert "path=/api/does-not-exist" in msg
