@@ -272,6 +272,14 @@ export function mergeSavedPreviewComment(current: PreviewComment[], saved: Previ
   return current.map((comment, index) => (index === existingIndex ? saved : comment));
 }
 
+function messageHasInFlightRunFields(local: ChatMessage): boolean {
+  if (isActiveRunStatus(local.runStatus)) return true;
+  if (local.endedAt !== undefined) return false;
+  if (local.startedAt !== undefined) return true;
+  if (local.runId && !isTerminalRunStatus(local.runStatus)) return true;
+  return false;
+}
+
 function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): ChatMessage {
   if (!local) return server;
   const merged: ChatMessage = { ...server };
@@ -298,6 +306,24 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
     && (!server.runStatus || !isActiveRunStatus(server.runStatus))
   ) {
     merged.runStatus = local.runStatus;
+  }
+  if (!merged.runId && local.runId) {
+    merged.runId = local.runId;
+  }
+  // During an in-flight turn the daemon persist throttle can lag behind the
+  // live SSE buffer. Reattach recovery must not replace a streamed
+  // `<question-form>` (or any partial assistant text) with a stale server row.
+  if (messageHasInFlightRunFields(local) && !isTerminalRunStatus(server.runStatus)) {
+    const localContent = local.content ?? '';
+    const serverContent = server.content ?? '';
+    if (localContent.length > serverContent.length) {
+      merged.content = localContent;
+    }
+    const localEventCount = local.events?.length ?? 0;
+    const serverEventCount = server.events?.length ?? 0;
+    if (localEventCount > serverEventCount && local.events) {
+      merged.events = local.events;
+    }
   }
   return merged;
 }
@@ -1334,7 +1360,8 @@ export function ProjectView({
     return undefined;
   }, [questionForm, lastAssistantIndex, messages]);
   const questionsGenerating =
-    currentConversationStreaming && hasUnterminatedQuestionForm(lastAssistantContent);
+    (currentConversationStreaming || currentConversationHasActiveRun)
+    && hasUnterminatedQuestionForm(lastAssistantContent);
   // While the form is still streaming, parse it tolerantly so the Questions tab
   // can show a frame (title) immediately and fill questions in as they arrive.
   const questionFormPreview = useMemo(
