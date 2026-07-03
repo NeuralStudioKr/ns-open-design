@@ -92,6 +92,17 @@
   flex: 0 1 auto;
 }
 
+.chat-inset-banner {
+  flex: 0 0 auto;
+  padding: 0 var(--chat-composer-inline-inset, 12px);
+  background: var(--bg-panel);
+  min-width: 0;
+}
+
+.chat-inset-banner .teamver-run-recovery {
+  margin: 0 0 0.5rem;
+}
+
 /* Right-aligned session-history trigger. Collapses the former
    name + history + new-session controls into one icon button; clicking
    it opens the history popover (which contains the "new session" entry

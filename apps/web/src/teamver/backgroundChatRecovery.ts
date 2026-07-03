@@ -120,3 +120,52 @@ export function syntheticByokRunsForTaskCenter(
     updatedAt: now,
   }));
 }
+
+type ByokProxyStreamLike = {
+  conversationId?: string | null;
+  assistantMessageId?: string | null;
+};
+
+/** Whether the daemon still has an upstream BYOK proxy stream for this chat turn. */
+export function isByokProxyStreamActiveForChat(
+  streams: readonly ByokProxyStreamLike[],
+  active: ByokBackgroundChatActive,
+): boolean {
+  return streams.some((stream) => {
+    const assistantMessageId = stream.assistantMessageId?.trim();
+    if (!assistantMessageId || assistantMessageId !== active.assistantMessageId) {
+      return false;
+    }
+    const conversationId = stream.conversationId?.trim();
+    return !conversationId || conversationId === active.conversationId;
+  });
+}
+
+/**
+ * Drop stale BYOK background-run chips after the proxy drains. Mirrors the
+ * three idle polls ProjectView uses before ending in-project API recovery.
+ */
+export function reconcileByokBackgroundChatsAfterPoll(
+  byokActive: Map<string, ByokBackgroundChatActive>,
+  idlePollCounts: Map<string, number>,
+  streamsByProjectId: ReadonlyMap<string, readonly ByokProxyStreamLike[]>,
+  idleThreshold = 3,
+): string[] {
+  const removed: string[] = [];
+  for (const [projectId, active] of [...byokActive.entries()]) {
+    const streams = streamsByProjectId.get(projectId) ?? [];
+    if (isByokProxyStreamActiveForChat(streams, active)) {
+      idlePollCounts.delete(projectId);
+      continue;
+    }
+    const nextIdle = (idlePollCounts.get(projectId) ?? 0) + 1;
+    if (nextIdle >= idleThreshold) {
+      byokActive.delete(projectId);
+      idlePollCounts.delete(projectId);
+      removed.push(projectId);
+      continue;
+    }
+    idlePollCounts.set(projectId, nextIdle);
+  }
+  return removed;
+}

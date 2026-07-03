@@ -9,7 +9,6 @@ import {
 import * as designApiBase from '../src/teamver/designApiBase';
 import * as designBffClient from '../src/teamver/designBffClient';
 import { syncTeamverWorkspaceFromSession } from '../src/teamver/syncTeamverWorkspace';
-import { bumpTeamverWorkspaceStoreRevision } from '../src/teamver/teamverWorkspaceStoreRevision';
 
 const storeGetMock = vi.fn(async () => null as string | null);
 
@@ -43,6 +42,7 @@ describe('activeTeamverWorkspace', () => {
     storeGetMock.mockReset();
     storeGetMock.mockResolvedValue(null);
     localStorage.clear();
+    vi.mocked(syncTeamverWorkspaceFromSession).mockClear();
   });
 
   it('returns null outside embed mode for readActiveTeamverWorkspaceId', async () => {
@@ -61,56 +61,46 @@ describe('activeTeamverWorkspace', () => {
 
     await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-session');
     await expect(readActiveTeamverWorkspaceId()).resolves.toBe('ws-session');
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalled();
   });
 
-  it('reconciles stale store when session default is newer (parent switch)', async () => {
+  it('keeps the embed store when it still exists on the session list', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    storeGetMock.mockResolvedValue('ws-old');
-    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
-      authenticated: true,
-      defaultWorkspaceId: 'ws-new',
-      workspaces: [
-        { id: 'ws-old', name: 'Old', role: 'owner' },
-        { id: 'ws-new', name: 'New', role: 'owner' },
-      ],
-    });
-    vi.mocked(designBffClient.readCachedDesignAuthSessionMeta).mockReturnValue({
-      fetchedAt: 2_000,
-      defaultWorkspaceId: 'ws-new',
-    });
-    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
-      workspaceStore: { get: storeGetMock },
-    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
-
-    await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-new');
-    expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultWorkspaceId: 'ws-new' }),
-      expect.any(Array),
-      { preferredIdOverride: 'ws-new' },
-    );
-  });
-
-  it('keeps embed picker store when revision is newer than session snapshot', async () => {
-    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
-    storeGetMock.mockResolvedValue('ws-picked');
+    storeGetMock.mockResolvedValue('ws-active');
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: true,
       defaultWorkspaceId: 'ws-default',
       workspaces: [
-        { id: 'ws-picked', name: 'Picked', role: 'owner' },
+        { id: 'ws-active', name: 'Active', role: 'owner' },
         { id: 'ws-default', name: 'Default', role: 'owner' },
       ],
     });
     vi.mocked(designBffClient.readCachedDesignAuthSessionMeta).mockReturnValue({
-      fetchedAt: 1_000,
+      fetchedAt: 9_999,
       defaultWorkspaceId: 'ws-default',
     });
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
       workspaceStore: { get: storeGetMock },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
-    bumpTeamverWorkspaceStoreRevision();
 
-    await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-picked');
+    await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-active');
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).not.toHaveBeenCalled();
+  });
+
+  it('reconciles through session sync when the stored workspace was revoked', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    storeGetMock.mockResolvedValue('ws-revoked');
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: true,
+      defaultWorkspaceId: 'ws-current',
+      workspaces: [{ id: 'ws-current', name: 'Current', role: 'owner' }],
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: storeGetMock },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-current');
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalled();
   });
 
   it('throws teamver_workspace_required when unresolved', async () => {

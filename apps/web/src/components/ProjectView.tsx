@@ -2944,6 +2944,12 @@ export function ProjectView({
             savedChars,
             runStatus: status.status === 'queued' ? 'queued' : 'running',
           });
+          dispatchTeamverBackgroundChat({
+            projectId: project.id,
+            conversationId: reattachConversationId,
+            assistantMessageId: message.id,
+            active: true,
+          });
         }
         const controller = new AbortController();
         const cancelController = new AbortController();
@@ -3080,6 +3086,12 @@ export function ProjectView({
               setRunRecoveryBanner((prev) =>
                 prev?.conversationId === reattachConversationId ? null : prev,
               );
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: false,
+              });
               for (const ev of parser.flush()) {
                 if (ev.type === 'artifact:end') {
                   parsedArtifact = parsedArtifact
@@ -3200,6 +3212,12 @@ export function ProjectView({
               setRunRecoveryBanner((prev) =>
                 prev?.conversationId === reattachConversationId ? null : prev,
               );
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: false,
+              });
               persistNow({ telemetryFinalized: true });
             },
           },
@@ -3233,6 +3251,12 @@ export function ProjectView({
               setRunRecoveryBanner((prev) =>
                 prev?.conversationId === reattachConversationId ? null : prev,
               );
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: false,
+              });
               scheduleConversationMessageRefresh(reattachConversationId);
             }
           },
@@ -3261,6 +3285,12 @@ export function ProjectView({
               setRunRecoveryBanner((prev) =>
                 prev?.conversationId === reattachConversationId ? null : prev,
               );
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: false,
+              });
             }
           })
           .finally(() => {
@@ -3469,17 +3499,9 @@ export function ProjectView({
       cancelled = true;
       clearPollTimer();
       apiBackgroundRecoveryRef.current = false;
-      // Only clear the banner when the pending banner still belongs to
-      // *this* recovery run. If a concurrent conversation-switch cleanup
-      // already cleared it and a NEW recovery pass took ownership (very
-      // unlikely, but the effect can rerun on inFlightAssistantSignature),
-      // leaving another conversation's banner alone avoids clobbering.
-      if (
-        apiRecoveryBannerRef.current
-        && apiRecoveryBannerRef.current.conversationId === recoveryConversationId
-      ) {
-        clearApiBackgroundRecoveryBanner();
-      }
+      // Keep App-level background-run tracking when this route unmounts — the
+      // upstream proxy/daemon run may still be draining while the user is on
+      // home. finishRecovery() and explicit run completion clear active:false.
     };
   }, [
     config.mode,
@@ -6407,16 +6429,6 @@ export function ProjectView({
               aria-label="Comments"
             />
           ) : activeConversationId || conversationLoadError ? (
-            <>
-              {isTeamverEmbedMode()
-                && runRecoveryBanner
-                && runRecoveryBanner.conversationId === activeConversationId ? (
-                <TeamverRunRecoveryBanner
-                  phase={runRecoveryBanner.phase}
-                  savedChars={runRecoveryBanner.savedChars}
-                  runStatus={runRecoveryBanner.runStatus}
-                />
-              ) : null}
               <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.
@@ -6539,6 +6551,17 @@ export function ProjectView({
                 setProjectActionsToast({ message, details: null });
               }}
               embedSlideDesignSystemFallbackId={embedSlideDesignSystemFallbackId}
+              chatInsetBanner={
+                isTeamverEmbedMode()
+                && runRecoveryBanner
+                && runRecoveryBanner.conversationId === activeConversationId ? (
+                  <TeamverRunRecoveryBanner
+                    phase={runRecoveryBanner.phase}
+                    savedChars={runRecoveryBanner.savedChars}
+                    runStatus={runRecoveryBanner.runStatus}
+                  />
+                ) : null
+              }
               onBack={isTeamverEmbedMode() ? undefined : onBack}
               backLabel={isTeamverEmbedMode() ? undefined : t('project.backToProjects')}
               composerFooterAccessory={
@@ -6578,7 +6601,6 @@ export function ProjectView({
                 />
               )}
             />
-            </>
           ) : (
             <div className="pane" data-testid="chat-pane-loading">
               <CenteredLoader />

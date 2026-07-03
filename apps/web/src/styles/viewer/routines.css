@@ -942,10 +942,6 @@
 .app .split-chat-slot {
   padding: 0;
 }
-.app .split-chat-slot > .teamver-run-recovery {
-  flex-shrink: 0;
-  margin: 0.65rem 0.75rem 0;
-}
 .app .split-chat-slot > .pane {
   border: none;
   border-radius: 0;

@@ -6,6 +6,7 @@ import {
   isRecoverableBackgroundChatMessage,
   isRecoverableDaemonRunMessage,
   mergeByokBackgroundRunSummaries,
+  reconcileByokBackgroundChatsAfterPoll,
   shouldFullReplayReattachedRun,
   syntheticByokRunsForTaskCenter,
 } from "../src/teamver/backgroundChatRecovery";
@@ -129,5 +130,40 @@ describe("backgroundChatRecovery", () => {
     expect(runs[0]?.projectId).toBe("p1");
     expect(runs[0]?.conversationId).toBe("c1");
     expect(runs[0]?.status).toBe("running");
+  });
+
+  it("keeps BYOK background tracking until proxy streams drain", () => {
+    const byokActive = new Map([
+      ["p1", { conversationId: "c1", assistantMessageId: "a1" }],
+    ]);
+    const idlePollCounts = new Map<string, number>();
+    const streamsByProject = new Map([
+      ["p1", [{ conversationId: "c1", assistantMessageId: "a1" }]],
+    ]);
+    expect(
+      reconcileByokBackgroundChatsAfterPoll(byokActive, idlePollCounts, streamsByProject),
+    ).toEqual([]);
+    expect(byokActive.size).toBe(1);
+    expect(idlePollCounts.size).toBe(0);
+  });
+
+  it("drops stale BYOK background tracking after idle proxy polls", () => {
+    const byokActive = new Map([
+      ["p1", { conversationId: "c1", assistantMessageId: "a1" }],
+    ]);
+    const idlePollCounts = new Map<string, number>();
+    const streamsByProject = new Map<string, readonly { conversationId?: string; assistantMessageId?: string }[]>([
+      ["p1", []],
+    ]);
+    expect(
+      reconcileByokBackgroundChatsAfterPoll(byokActive, idlePollCounts, streamsByProject, 3),
+    ).toEqual([]);
+    expect(
+      reconcileByokBackgroundChatsAfterPoll(byokActive, idlePollCounts, streamsByProject, 3),
+    ).toEqual([]);
+    expect(
+      reconcileByokBackgroundChatsAfterPoll(byokActive, idlePollCounts, streamsByProject, 3),
+    ).toEqual(["p1"]);
+    expect(byokActive.size).toBe(0);
   });
 });

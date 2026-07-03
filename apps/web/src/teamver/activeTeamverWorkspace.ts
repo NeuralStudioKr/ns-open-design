@@ -1,30 +1,22 @@
 import {
   fetchDesignAuthSession,
   getDesignBffClient,
-  readCachedDesignAuthSessionMeta,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
-import { readTeamverWorkspaceStoreRevisionMs } from "./teamverWorkspaceStoreRevision";
 import { normalizeWorkspaceList } from "./workspaceUtils";
-
-function shouldReconcileStoreWithSession(args: {
-  storeId: string;
-  sessionDefault: string | null;
-  sessionFetchedAt: number;
-  storeRevisionMs: number;
-}): boolean {
-  const { storeId, sessionDefault, sessionFetchedAt, storeRevisionMs } = args;
-  if (!sessionDefault || sessionDefault === storeId) return false;
-  // Embed workspace picker wrote the store after the session snapshot — trust the pick.
-  if (storeRevisionMs >= sessionFetchedAt) return false;
-  return true;
-}
 
 /**
  * Active workspace for embed BFF/Drive/usage calls.
- * Reconciles localStorage with session default when the parent app switched
- * workspaces before the embed store caught up (A-G3 / loop 425).
+ *
+ * Trust the embed-local store whenever it still exists on the session list.
+ * Do not reconcile to `session.defaultWorkspaceId` on routine reads — that
+ * account default often differs from the workspace the user is actively
+ * working in and was firing `workspace-changed` mid-project (e.g. during the
+ * first-turn question form), wiping the list and bouncing to home.
+ *
+ * Explicit workspace picks and parent-app switches go through
+ * `setActiveTeamverWorkspace` / `syncTeamverWorkspaceFromSession` dispatch paths.
  */
 export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> {
   const client = getDesignBffClient();
@@ -40,27 +32,12 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
 
   const workspaces = normalizeWorkspaceList(session.workspaces);
   const storeId = (await client.workspaceStore?.get())?.trim() || null;
-  const sessionDefault = (session.defaultWorkspaceId ?? "").trim() || null;
-  const sessionMeta = readCachedDesignAuthSessionMeta();
-  const sessionFetchedAt = sessionMeta?.fetchedAt ?? Date.now();
-  const storeRevisionMs = readTeamverWorkspaceStoreRevisionMs();
 
-  if (
-    storeId &&
-    workspaces.some((workspace) => workspace.id === storeId) &&
-    !shouldReconcileStoreWithSession({
-      storeId,
-      sessionDefault,
-      sessionFetchedAt,
-      storeRevisionMs,
-    })
-  ) {
+  if (storeId && workspaces.some((workspace) => workspace.id === storeId)) {
     return storeId;
   }
 
-  return (await syncTeamverWorkspaceFromSession(session, workspaces, {
-    preferredIdOverride: sessionDefault,
-  }))?.trim() || null;
+  return (await syncTeamverWorkspaceFromSession(session, workspaces))?.trim() || null;
 }
 
 export async function resolveActiveTeamverWorkspaceIdForEmbed(): Promise<string | null> {

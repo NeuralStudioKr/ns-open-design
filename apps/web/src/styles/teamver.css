@@ -636,6 +636,7 @@
   font-size: 0.74rem;
   color: var(--text-muted);
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .teamver-latest-publish-chip-anchor {
