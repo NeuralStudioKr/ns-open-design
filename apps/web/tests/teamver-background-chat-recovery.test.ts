@@ -7,7 +7,9 @@ import {
   isRecoverableDaemonRunMessage,
   mergeByokBackgroundRunSummaries,
   reconcileByokBackgroundChatsAfterPoll,
+  resolveRunRecoveryBannerPhase,
   shouldFullReplayReattachedRun,
+  shouldShowRunRecoveryBannerInChat,
   syntheticByokRunsForTaskCenter,
 } from "../src/teamver/backgroundChatRecovery";
 import type { ChatMessage } from "../src/types";
@@ -165,5 +167,36 @@ describe("backgroundChatRecovery", () => {
       reconcileByokBackgroundChatsAfterPoll(byokActive, idlePollCounts, streamsByProject, 3),
     ).toEqual(["p1"]);
     expect(byokActive.size).toBe(0);
+  });
+
+  it("marks reattached running turns as live so the UI does not look stuck", () => {
+    expect(resolveRunRecoveryBannerPhase("queued", 0)).toBe("queued");
+    expect(resolveRunRecoveryBannerPhase("running", 0)).toBe("live");
+    expect(resolveRunRecoveryBannerPhase("running", 12)).toBe("live");
+  });
+
+  it("only shows the run recovery banner for the active non-streaming chat", () => {
+    const banner = { conversationId: "c1" };
+    expect(
+      shouldShowRunRecoveryBannerInChat({
+        banner,
+        activeConversationId: "c1",
+        conversationStreaming: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowRunRecoveryBannerInChat({
+        banner,
+        activeConversationId: "c1",
+        conversationStreaming: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowRunRecoveryBannerInChat({
+        banner,
+        activeConversationId: "c2",
+        conversationStreaming: false,
+      }),
+    ).toBe(false);
   });
 });

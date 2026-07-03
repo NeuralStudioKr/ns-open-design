@@ -52,6 +52,27 @@ export function shouldFullReplayReattachedRun(message: ChatMessage): boolean {
 
 export type RunRecoveryBannerPhase = "connecting" | "live" | "queued";
 
+/** Once SSE reattach is armed, prefer "live" — idle server-side runs have no deltas. */
+export function resolveRunRecoveryBannerPhase(
+  runStatus: "queued" | "running",
+  _savedChars = 0,
+): RunRecoveryBannerPhase {
+  if (runStatus === "queued") return "queued";
+  return "live";
+}
+
+/** Hide the inset banner when the chat stream already surfaces preparing/working UI. */
+export function shouldShowRunRecoveryBannerInChat(options: {
+  banner: { conversationId: string } | null;
+  activeConversationId: string | null;
+  conversationStreaming: boolean;
+}): boolean {
+  if (!options.banner || !options.activeConversationId) return false;
+  if (options.banner.conversationId !== options.activeConversationId) return false;
+  if (options.conversationStreaming) return false;
+  return true;
+}
+
 export function isRecoverableBackgroundChatMessage(
   message: ChatMessage,
   mode: "daemon" | "api",

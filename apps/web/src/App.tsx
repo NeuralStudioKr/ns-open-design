@@ -2532,20 +2532,31 @@ function AppInner() {
           string,
           Awaited<ReturnType<typeof listActiveByokProxyStreams>>
         >();
+        let streamPollFailed = false;
         await Promise.all(
           [...byokBackgroundChatsRef.current.keys()].map(async (projectId) => {
-            const streams = await listActiveByokProxyStreams(projectId);
-            streamsByProjectId.set(projectId, streams);
+            try {
+              const streams = await listActiveByokProxyStreams(projectId);
+              streamsByProjectId.set(projectId, streams);
+            } catch (err) {
+              streamPollFailed = true;
+              console.warn("[teamver] byok background stream poll failed", {
+                projectId,
+                error: err,
+              });
+            }
           }),
         );
         if (cancelled) return;
-        const removed = reconcileByokBackgroundChatsAfterPoll(
-          byokBackgroundChatsRef.current,
-          byokProxyIdlePollsRef.current,
-          streamsByProjectId,
-        );
-        for (const projectId of removed) {
-          sessionActiveRunProjectIdsRef.current.delete(projectId);
+        if (!streamPollFailed) {
+          const removed = reconcileByokBackgroundChatsAfterPoll(
+            byokBackgroundChatsRef.current,
+            byokProxyIdlePollsRef.current,
+            streamsByProjectId,
+          );
+          for (const projectId of removed) {
+            sessionActiveRunProjectIdsRef.current.delete(projectId);
+          }
         }
       }
       const byokRuns = isTeamverEmbedMode()
@@ -2729,16 +2740,20 @@ function AppInner() {
         return;
       }
       runsPollInFlight = true;
-      void refresh().finally(() => {
-        runsPollInFlight = false;
-        if (cancelled) return;
-        if (runsPollPending) {
-          runsPollPending = false;
-          runRunsPoll();
-          return;
-        }
-        scheduleNextRunsPoll();
-      });
+      void refresh()
+        .catch((err) => {
+          console.warn("[teamver] runs poll failed", err);
+        })
+        .finally(() => {
+          runsPollInFlight = false;
+          if (cancelled) return;
+          if (runsPollPending) {
+            runsPollPending = false;
+            runRunsPoll();
+            return;
+          }
+          scheduleNextRunsPoll();
+        });
     }
 
     const handleRunsChanged = () => {

@@ -201,7 +201,9 @@ import {
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
   isRecoverableDaemonRunMessage,
+  resolveRunRecoveryBannerPhase,
   shouldFullReplayReattachedRun,
+  shouldShowRunRecoveryBannerInChat,
   type RunRecoveryBannerPhase,
 } from '../teamver/backgroundChatRecovery';
 import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecoveryBanner';
@@ -1038,6 +1040,10 @@ export function ProjectView({
     savedChars: number;
     runStatus: 'queued' | 'running';
   } | null>(null);
+  const runRecoveryBannerTrackRef = useRef<{
+    conversationId: string;
+    assistantMessageId: string;
+  } | null>(null);
   const [reattachNonce, setReattachNonce] = useState(0);
   // Safety net: drop any live tool-input partials whose tool never produced a
   // full `tool_use` (run errored/canceled mid-call) once streaming settles.
@@ -1704,6 +1710,38 @@ export function ProjectView({
     reattachTextBuffersRef.current.clear();
   }, []);
 
+  const clearRunRecoveryBannerState = useCallback((conversationId?: string | null) => {
+    const tracked = runRecoveryBannerTrackRef.current;
+    const trackedAssistantId = tracked?.assistantMessageId ?? null;
+    const trackedConversationId = conversationId ?? tracked?.conversationId ?? activeConversationId;
+    if (trackedAssistantId && trackedConversationId) {
+      dispatchTeamverBackgroundChat({
+        projectId: project.id,
+        conversationId: trackedConversationId,
+        assistantMessageId: trackedAssistantId,
+        active: false,
+      });
+    }
+    runRecoveryBannerTrackRef.current = null;
+    setRunRecoveryBanner(null);
+  }, [activeConversationId, project.id]);
+
+  const finalizeRunRecoveryBannerForMessage = useCallback((
+    conversationId: string,
+    assistantMessageId: string,
+  ) => {
+    if (runRecoveryBannerTrackRef.current?.assistantMessageId === assistantMessageId) {
+      clearRunRecoveryBannerState(conversationId);
+      return;
+    }
+    dispatchTeamverBackgroundChat({
+      projectId: project.id,
+      conversationId,
+      assistantMessageId,
+      active: false,
+    });
+  }, [clearRunRecoveryBannerState, project.id]);
+
   const clearApiBackgroundRecoveryBanner = useCallback(() => {
     const tracked = apiRecoveryBannerRef.current;
     if (!tracked) return;
@@ -1716,10 +1754,8 @@ export function ProjectView({
       });
     }
     apiRecoveryBannerRef.current = null;
-    setRunRecoveryBanner((prev) =>
-      prev?.conversationId === tracked.conversationId ? null : prev,
-    );
-  }, [project.id]);
+    clearRunRecoveryBannerState(tracked.conversationId);
+  }, [clearRunRecoveryBannerState, project.id]);
 
   /** Detach browser-side run streams without POST /cancel — run continues as background. */
   const detachLocalRunStreamConsumers = useCallback(() => {
@@ -1739,12 +1775,12 @@ export function ProjectView({
     reattachControllersRef.current.clear();
     reattachCancelControllersRef.current.clear();
     clearApiBackgroundRecoveryBanner();
-    setRunRecoveryBanner(null);
+    clearRunRecoveryBannerState();
     apiBackgroundRecoveryRef.current = false;
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
     setStreaming(false);
-  }, [cancelReattachTextBuffers, cancelSendTextBuffer, clearApiBackgroundRecoveryBanner]);
+  }, [cancelReattachTextBuffers, cancelSendTextBuffer, clearApiBackgroundRecoveryBanner, clearRunRecoveryBannerState]);
 
   const notifyCompletedRun = useCallback((last: ChatMessage) => {
     // Round 7 (mrcfps @ useDesignMdState.ts:131): a chat turn just
@@ -2786,8 +2822,8 @@ export function ProjectView({
   );
 
   useEffect(() => {
-    setRunRecoveryBanner(null);
-  }, [activeConversationId]);
+    clearRunRecoveryBannerState();
+  }, [activeConversationId, clearRunRecoveryBannerState]);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -2844,6 +2880,8 @@ export function ProjectView({
       }
       const recoverableMessages = [...recoverableById.values()];
       if (recoverableMessages.length === 0) return;
+
+      const latestInFlightAssistant = findInFlightAssistantMessages(messagesSnapshot)[0] ?? null;
 
       const missingRunIdMessages = recoverableMessages.filter((m) => !m.runId);
       const historicalRuns = missingRunIdMessages.length > 0
@@ -2937,10 +2975,21 @@ export function ProjectView({
         const needsFullReplay =
           isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message);
         const savedChars = (message.content ?? '').trim().length;
-        if (isTeamverEmbedMode() && isActiveRunStatus(status.status)) {
+        if (
+          isTeamverEmbedMode()
+          && isActiveRunStatus(status.status)
+          && message.id === latestInFlightAssistant?.id
+        ) {
+          runRecoveryBannerTrackRef.current = {
+            conversationId: reattachConversationId,
+            assistantMessageId: message.id,
+          };
           setRunRecoveryBanner({
             conversationId: reattachConversationId,
-            phase: status.status === 'queued' ? 'queued' : 'connecting',
+            phase: resolveRunRecoveryBannerPhase(
+              status.status === 'queued' ? 'queued' : 'running',
+              savedChars,
+            ),
             savedChars,
             runStatus: status.status === 'queued' ? 'queued' : 'running',
           });
@@ -3083,15 +3132,7 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
               if (!runMayFinalize) return;
-              setRunRecoveryBanner((prev) =>
-                prev?.conversationId === reattachConversationId ? null : prev,
-              );
-              dispatchTeamverBackgroundChat({
-                projectId: project.id,
-                conversationId: reattachConversationId,
-                assistantMessageId: message.id,
-                active: false,
-              });
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
               for (const ev of parser.flush()) {
                 if (ev.type === 'artifact:end') {
                   parsedArtifact = parsedArtifact
@@ -3209,15 +3250,7 @@ export function ProjectView({
               reattachControllersRef.current.delete(runId);
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
-              setRunRecoveryBanner((prev) =>
-                prev?.conversationId === reattachConversationId ? null : prev,
-              );
-              dispatchTeamverBackgroundChat({
-                projectId: project.id,
-                conversationId: reattachConversationId,
-                assistantMessageId: message.id,
-                active: false,
-              });
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
               persistNow({ telemetryFinalized: true });
             },
           },
@@ -3248,15 +3281,7 @@ export function ProjectView({
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
             }
             if (isTerminalRunStatus(runStatus)) {
-              setRunRecoveryBanner((prev) =>
-                prev?.conversationId === reattachConversationId ? null : prev,
-              );
-              dispatchTeamverBackgroundChat({
-                projectId: project.id,
-                conversationId: reattachConversationId,
-                assistantMessageId: message.id,
-                active: false,
-              });
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
               scheduleConversationMessageRefresh(reattachConversationId);
             }
           },
@@ -3282,15 +3307,7 @@ export function ProjectView({
                 true,
                 { telemetryFinalized: true },
               );
-              setRunRecoveryBanner((prev) =>
-                prev?.conversationId === reattachConversationId ? null : prev,
-              );
-              dispatchTeamverBackgroundChat({
-                projectId: project.id,
-                conversationId: reattachConversationId,
-                assistantMessageId: message.id,
-                active: false,
-              });
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
             }
           })
           .finally(() => {
@@ -3370,10 +3387,16 @@ export function ProjectView({
         );
         setRunRecoveryBanner({
           conversationId: recoveryConversationId,
-          phase: savedChars > 0 ? 'live' : 'connecting',
+          phase: resolveRunRecoveryBannerPhase('running', savedChars),
           savedChars,
           runStatus: 'running',
         });
+        runRecoveryBannerTrackRef.current = inflight[0]
+          ? {
+              conversationId: recoveryConversationId,
+              assistantMessageId: inflight[0].id,
+            }
+          : null;
       }
       for (const assistantMessageId of trackedAssistantIds) {
         if (activatedAssistantIds.has(assistantMessageId)) continue;
@@ -3744,6 +3767,7 @@ export function ProjectView({
       }
       setChatSeed(null);
       const runConversationId = activeConversationId;
+      clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
       const userMsg: ChatMessage = retryTarget?.userMsg ?? {
@@ -6553,12 +6577,15 @@ export function ProjectView({
               embedSlideDesignSystemFallbackId={embedSlideDesignSystemFallbackId}
               chatInsetBanner={
                 isTeamverEmbedMode()
-                && runRecoveryBanner
-                && runRecoveryBanner.conversationId === activeConversationId ? (
+                && shouldShowRunRecoveryBannerInChat({
+                  banner: runRecoveryBanner,
+                  activeConversationId,
+                  conversationStreaming: currentConversationStreaming,
+                }) ? (
                   <TeamverRunRecoveryBanner
-                    phase={runRecoveryBanner.phase}
-                    savedChars={runRecoveryBanner.savedChars}
-                    runStatus={runRecoveryBanner.runStatus}
+                    phase={runRecoveryBanner!.phase}
+                    savedChars={runRecoveryBanner!.savedChars}
+                    runStatus={runRecoveryBanner!.runStatus}
                   />
                 ) : null
               }
