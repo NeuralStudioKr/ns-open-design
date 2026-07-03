@@ -411,6 +411,16 @@ async function isProjectRegisteredInWorkspace(
   return registeredIds.has(projectId);
 }
 
+function isDirectRegistryProjectHit(
+  projectId: string,
+  project: TeamverRegisteredProject | null,
+): project is TeamverRegisteredProject {
+  if (!project) return false;
+  const odProjectId = readRegistryOdProjectId(project);
+  if (odProjectId) return odProjectId === projectId;
+  return Boolean(project.s3Prefix?.trim());
+}
+
 /** Embed: registry membership gate — daemon middleware owns `/access` + S3 prefix. */
 export async function assertTeamverProjectAccessIfNeeded(
   projectId: string,
@@ -451,6 +461,19 @@ export async function assertTeamverProjectAccessIfNeeded(
       feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
       return false;
     }
+  }
+
+  // The list endpoint can be briefly stale/partial during auth refresh,
+  // workspace switch, or registry write propagation. Before showing the
+  // destructive "not accessible in this workspace" UX, confirm against the
+  // single-project registry endpoint. This endpoint is the authoritative
+  // membership check for deep-linked/detail routes and also refreshes the
+  // S3 prefix cache when it succeeds.
+  const direct = await fetchTeamverProject(trimmedId);
+  if (isDirectRegistryProjectHit(trimmedId, direct)) {
+    primeFeAccessAllowed(trimmedId, workspaceId);
+    await rememberRegistryS3Prefix(trimmedId, workspaceId, direct);
+    return true;
   }
 
   feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });

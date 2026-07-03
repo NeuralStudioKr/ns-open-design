@@ -1445,7 +1445,10 @@ function AppInner() {
       await waitForTeamverEmbedBoot();
       if (cancelled) return;
       const id = (await readActiveTeamverWorkspaceId())?.trim() || null;
-      if (!cancelled) setEmbedWorkspaceId(id);
+      if (!cancelled) {
+        embedActiveWorkspaceIdRef.current = id;
+        setEmbedWorkspaceId(id);
+      }
     };
     void syncWorkspace();
     const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
@@ -1612,8 +1615,19 @@ function AppInner() {
         window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
         const current = routeRef.current;
         if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
+          const currentProjectId = current.kind === 'project' ? current.projectId : null;
+          const allowed = currentProjectId
+            ? await assertTeamverProjectAccessIfNeeded(currentProjectId)
+            : false;
+          if (allowed) {
+            console.info('[teamver] workspace switch — project missing from list but access confirmed', {
+              projectId: currentProjectId,
+              workspaceId: trimmed,
+            });
+            return;
+          }
           console.info('[teamver] home-nav: workspace switch — project not in new list', {
-            projectId: current.kind === 'project' ? current.projectId : null,
+            projectId: currentProjectId,
             workspaceId: trimmed,
           });
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());

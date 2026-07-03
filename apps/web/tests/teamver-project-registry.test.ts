@@ -503,6 +503,35 @@ describe('Teamver project registry access', () => {
     await expect(assertTeamverProjectAccessIfNeeded('p1-deny')).resolves.toBe(false);
   });
 
+  it('allows access when the registry list is stale but direct project lookup succeeds', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const get = vi.fn(async (path: string) => {
+      if (path === '/projects') return { projects: [] };
+      if (path === '/projects/p1-direct') {
+        return {
+          odProjectId: 'p1-direct',
+          s3Prefix: 'design/ws1/user_u1/proj_p1-direct/',
+        };
+      }
+      return null;
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get, post: vi.fn() },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
+
+    await expect(assertTeamverProjectAccessIfNeeded('p1-direct')).resolves.toBe(true);
+    expect(get).toHaveBeenCalledWith('/projects', expect.objectContaining({ workspaceId: 'ws1' }));
+    expect(get).toHaveBeenCalledWith(
+      '/projects/p1-direct',
+      expect.objectContaining({ workspaceId: 'ws1' }),
+    );
+    expect(readTeamverProjectS3Prefix('ws1', 'p1-direct')).toBe(
+      'design/ws1/user_u1/proj_p1-direct/',
+    );
+  });
+
   it('returns false when registry list is unavailable (fail-closed)', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
