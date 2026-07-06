@@ -2168,7 +2168,9 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
-    if (!data || data.type !== 'od:slide') return;
+    if (!data) return;
+    if (data.type === 'od:deck-nudge-fit') { nudgeResize(); return; }
+    if (data.type !== 'od:slide') return;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
   });
