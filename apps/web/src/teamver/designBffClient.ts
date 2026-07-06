@@ -333,6 +333,21 @@ export type FetchDesignAuthSessionOptions = {
 let inFlightSession: Promise<DesignAuthSession | null> | null = null;
 let cachedSession: { value: DesignAuthSession | null; at: number } | null = null;
 const SESSION_CACHE_MS = 60_000;
+/** Grace window for returning last-known-good session after transient probe failures. */
+const STALE_SESSION_GRACE_MS = 15 * 60_000;
+
+function peekAuthenticatedSessionCache(maxAgeMs: number): DesignAuthSession | null {
+  if (!cachedSession?.value?.authenticated) return null;
+  if (Date.now() - cachedSession.at > maxAgeMs) return null;
+  return cachedSession.value;
+}
+
+function isTransientSessionProbeError(err: unknown): boolean {
+  if (!(err instanceof NetworkError)) return true;
+  const status = err.status ?? 0;
+  if (status === 401 || status === 403) return false;
+  return status === 0 || status >= 500 || status === 502 || status === 503 || status === 504;
+}
 
 /** @internal vitest */
 export function resetDesignAuthSessionCacheForTests(): void {
@@ -434,13 +449,21 @@ export async function fetchDesignAuthSession(
   }
 
   const run = async (): Promise<DesignAuthSession | null> => {
-    const value = await loadDesignAuthSessionOnce();
-    if (value?.authenticated) {
-      cachedSession = { value, at: Date.now() };
-    } else {
-      cachedSession = null;
+    try {
+      const value = await loadDesignAuthSessionOnce();
+      if (value?.authenticated) {
+        cachedSession = { value, at: Date.now() };
+      } else {
+        cachedSession = null;
+      }
+      return value;
+    } catch (err) {
+      const stale = peekAuthenticatedSessionCache(STALE_SESSION_GRACE_MS);
+      if (stale && isTransientSessionProbeError(err)) {
+        return stale;
+      }
+      throw err;
     }
-    return value;
   };
 
   inFlightSession = run().finally(() => {

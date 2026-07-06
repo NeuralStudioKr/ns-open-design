@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { installErrorHandlers } from '../../src/analytics/error-tracking';
 import { installWebObservability } from '../../src/observability/install';
 import { resolveLoadingShellLabel } from '../../src/teamver/branding/loadingShellLabel';
+import { isTeamverEmbedBuild } from '../../src/teamver/branding/siteMetadata';
 import { scrubCosmeticLaunchParamsFromBrowserUrl } from '../../src/teamver/teamverEmbedAuthNavigation';
 
 const LOADING_SHELL_LABEL = resolveLoadingShellLabel();
@@ -32,7 +33,17 @@ installWebObservability();
 // shell HTML the daemon can serve as the SPA fallback.
 const App = dynamic(() => import('../../src/App').then((m) => m.App), {
   ssr: false,
-  loading: () => <div className="od-loading-shell">{LOADING_SHELL_LABEL}</div>,
+  loading: () => (
+    <div
+      className={
+        isTeamverEmbedBuild()
+          ? 'od-loading-shell od-loading-shell--overlay'
+          : 'od-loading-shell'
+      }
+    >
+      {LOADING_SHELL_LABEL}
+    </div>
+  ),
 });
 
 export function ClientApp() {

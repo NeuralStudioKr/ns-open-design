@@ -35,6 +35,9 @@ export function teamverEmbedOverrides(
     "teamver.embed.sessionLoading": bootstrapLoading,
     // Entry/project spinners during the first paint use the same copy.
     "common.loading": bootstrapLoading,
+    "app.welcomeLoading": bootstrapLoading,
+    "entry.loadingWorkspace": bootstrapLoading,
+    "routines.loading": bootstrapLoading,
   };
   if (subtitle?.trim()) {
     overrides["app.brandSubtitle"] = subtitle.trim();

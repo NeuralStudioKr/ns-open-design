@@ -6809,7 +6809,7 @@ export function ProjectView({
             />
           ) : (
             <div className="pane" data-testid="chat-pane-loading">
-              <CenteredLoader />
+              <CenteredLoader label={t('common.loading')} />
             </div>
           )}
         </div>

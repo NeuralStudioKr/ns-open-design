@@ -264,6 +264,31 @@ describe("useTeamverEmbed", () => {
     expect(teamverEmbedSession.setTeamverEmbedSessionAuthenticated).not.toHaveBeenCalledWith(false);
   });
 
+  it("hides session_unreachable during silent routine focus refresh failures", async () => {
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      })
+      .mockResolvedValueOnce(null);
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ force: false, silent: true });
+    });
+
+    expect(result.current.authenticated).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   it("auto-retries session_unreachable with a 5s backoff while the tab is visible", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -368,7 +393,7 @@ describe("useTeamverEmbed", () => {
     });
   });
 
-  it("visibility/focus refresh busts session cache without resetting sticky refresh-decline", async () => {
+  it("visibility/focus refresh probes session without busting cache or sticky refresh-decline", async () => {
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: false,
       workspaces: [],
@@ -391,11 +416,11 @@ describe("useTeamverEmbed", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    expect(designBffClient.invalidateDesignAuthSessionCache).toHaveBeenCalledTimes(1);
+    expect(designBffClient.invalidateDesignAuthSessionCache).not.toHaveBeenCalled();
     expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
     expect(designBffClient.resetDesignAuthBareRefreshAttempt).not.toHaveBeenCalled();
     expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
-      force: true,
+      force: false,
       resetRefreshState: false,
     });
     expect(designBffClient.fetchDesignAuthSession).not.toHaveBeenCalledWith(

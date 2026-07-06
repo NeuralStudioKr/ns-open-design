@@ -99,6 +99,14 @@ export function shouldPostDaemonActiveContext(): boolean {
 }
 
 /**
+ * Global daemon run list (`GET /api/runs`) — embed BYOK uses per-project stream
+ * polls instead. Skipping avoids nginx auth_request 302s to Main sign-in while idle.
+ */
+export function shouldPollDaemonRuns(): boolean {
+  return !isTeamverEmbedMode();
+}
+
+/**
  * Entry catalogs (skills/design-templates/design-systems/templates) are only
  * needed for home/settings surfaces. A direct project-file deep link should
  * not fan out every catalog before the selected artifact can render.

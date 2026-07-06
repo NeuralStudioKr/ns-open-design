@@ -4,7 +4,6 @@ import { NetworkError } from "@teamver/app-sdk";
 import {
   fetchDesignAuthSession,
   getDesignBffClient,
-  invalidateDesignAuthSessionCache,
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
   resetDesignAuthBareRefreshAttempt,
@@ -282,6 +281,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       const session = await fetchDesignAuthSession({ force, resetRefreshState });
       if (!session) {
+        if (
+          silent
+          && (hadEmbedSession() || stateRef.current.authenticated)
+        ) {
+          setState((prev) => ({ ...prev, loading: false }));
+          return;
+        }
         if (hadEmbedSession() || stateRef.current.authenticated) {
           setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
           return;
@@ -303,6 +309,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
             cookieHint,
           })
         ) {
+          if (silent && hadPriorAuthenticatedUi) {
+            setState((prev) => ({ ...prev, loading: false }));
+            return;
+          }
           setState((prev) => ({
             ...prev,
             loading: false,
@@ -389,6 +399,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         return;
       }
       if (hadEmbedSession() || stateRef.current.authenticated) {
+        if (silent) {
+          setState((prev) => ({ ...prev, loading: false }));
+          return;
+        }
         setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
         return;
       }
@@ -427,7 +441,6 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     lastFocusSessionRefreshAtRef.current = now;
     focusRefreshTimerRef.current = setTimeout(() => {
       focusRefreshTimerRef.current = null;
-      invalidateDesignAuthSessionCache();
       void refresh(resolveEmbedFocusSessionOptions(focusSignals));
     }, FOCUS_SESSION_REFRESH_MS);
   }, [refresh]);
@@ -454,6 +467,14 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
   useEffect(() => {
     const boot = peekEmbedBootstrapSession();
+    if (boot?.session.authenticated) {
+      if (!stateRef.current.authenticated) {
+        setState(applySessionToEmbedState(boot.session, boot.activeWorkspaceId));
+      }
+      if (isTeamverEmbedBootComplete()) {
+        return;
+      }
+    }
     void refresh({ silent: boot?.session.authenticated === true });
   }, [refresh]);
 

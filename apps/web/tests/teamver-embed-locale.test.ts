@@ -35,6 +35,9 @@ describe("teamver embed locale", () => {
     expect(overrides["chat.startTitle"]).toBe("슬라이드 작업 시작");
     expect(overrides["fileViewer.loading"]).toBe("슬라이드 미리보기 불러오는 중…");
     expect(overrides["common.loading"]).toBe("Teamver Design 불러오는 중…");
+    expect(overrides["app.welcomeLoading"]).toBe("Teamver Design 불러오는 중…");
+    expect(overrides["entry.loadingWorkspace"]).toBe("Teamver Design 불러오는 중…");
+    expect(overrides["routines.loading"]).toBe("Teamver Design 불러오는 중…");
     expect(overrides["teamver.embed.sessionLoading"]).toBe("Teamver Design 불러오는 중…");
     const resolved = resolveTeamverEmbedTranslation(
       "Open Design",

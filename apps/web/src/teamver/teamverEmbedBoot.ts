@@ -1,4 +1,5 @@
 import { isTeamverEmbedMode } from "./designApiBase";
+import { completeTeamverEmbedInitialUi } from "./teamverEmbedInitialUi";
 
 let bootDone = !isTeamverEmbedMode();
 let resolveBoot: (() => void) | null = null;
@@ -12,12 +13,13 @@ function createBootPromise(): Promise<void> {
 
 let bootPromise = createBootPromise();
 
-/** Called once after embed session + workspace + registry sync on App boot. */
+/** Called once after embed session + workspace seed on App boot. */
 export function completeTeamverEmbedBoot(): void {
   if (bootDone) return;
   bootDone = true;
   resolveBoot?.();
   resolveBoot = null;
+  completeTeamverEmbedInitialUi();
 }
 
 /** Embed registry gates must not run before workspace id is seeded from session. */

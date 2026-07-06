@@ -16,6 +16,7 @@ import {
 import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
 import { EmbedBootstrapGate } from './components/EmbedBootstrapGate';
+import { CenteredLoader } from './components/Loading';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -62,10 +63,12 @@ import {
   shouldFetchHomeProjectsOnBoot,
   shouldFetchMediaProviderConfig,
   shouldFetchPromptTemplateCatalog,
+  shouldPollDaemonRuns,
   shouldPostDaemonActiveContext,
   shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
+import { resolveLoadingShellLabel } from './teamver/branding/loadingShellLabel';
 import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
@@ -600,17 +603,8 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) {
       completeTeamverEmbedInitialUi();
-      return;
     }
-    if (!isTeamverEmbedBootComplete()) return;
-    if (route.kind === 'project') {
-      completeTeamverEmbedInitialUi();
-      return;
-    }
-    if (!projectsLoading) {
-      completeTeamverEmbedInitialUi();
-    }
-  }, [route.kind, projectsLoading]);
+  }, []);
 
   const analytics = useAnalytics();
 
@@ -1152,15 +1146,14 @@ function AppInner() {
               return fetchDesignAuthSession(bootSessionOptions)
                 .then(async (session) => {
                   let activeWorkspaceId: string | null = null;
+                  const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
                   try {
                     if (session?.authenticated) {
                       setTeamverEmbedSessionAuthenticated(true);
                       activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
-                      try {
-                        await syncAllDaemonProjectsToRegistry();
-                      } catch (err) {
+                      void syncAllDaemonProjectsToRegistry().catch((err) => {
                         console.warn("[teamver] embed boot registry sync failed", err);
-                      }
+                      });
                     } else {
                       await clearTeamverEmbedSessionState();
                     }
@@ -1168,9 +1161,37 @@ function AppInner() {
                       session: session ?? { authenticated: false },
                       activeWorkspaceId,
                     });
-                    return await fetchTeamverRuntimeConfig();
+                    const prefetchProject =
+                      detailRoute && session?.authenticated
+                        ? (async () => {
+                            try {
+                              await ensureTeamverProjectRegisteredById(detailRoute.projectId);
+                              const project = await getProject(detailRoute.projectId);
+                              if (!project || cancelled) return;
+                              setProjects((current) => {
+                                const existingIndex = current.findIndex(
+                                  (candidate) => candidate.id === project.id,
+                                );
+                                if (existingIndex < 0) return [...current, project];
+                                return current.map((candidate) =>
+                                  candidate.id === project.id ? project : candidate,
+                                );
+                              });
+                              warmEmbedProjectListCaches([project]);
+                            } catch (err) {
+                              console.warn("[teamver] embed boot project prefetch failed", err);
+                            }
+                          })()
+                        : Promise.resolve();
+                    const [teamverRuntimeConfig] = await Promise.all([
+                      fetchTeamverRuntimeConfig(),
+                      prefetchProject,
+                    ]);
+                    return teamverRuntimeConfig;
                   } finally {
-                    completeTeamverEmbedBoot();
+                    if (!cancelled) {
+                      completeTeamverEmbedBoot();
+                    }
                   }
                 })
                 .catch((err) => {
@@ -1179,7 +1200,9 @@ function AppInner() {
                     session: { authenticated: false },
                     activeWorkspaceId: null,
                   });
-                  completeTeamverEmbedBoot();
+                  if (!cancelled) {
+                    completeTeamverEmbedBoot();
+                  }
                   return null;
                 });
             })()
@@ -2584,7 +2607,7 @@ function AppInner() {
     }
 
     const refresh = async () => {
-      const runs = await listProjectRuns();
+      const runs = shouldPollDaemonRuns() ? await listProjectRuns() : [];
       if (cancelled) return;
 
       const currentProjects = projectsRef.current;
@@ -3425,6 +3448,12 @@ function AppInner() {
         embedSubmitDisabled={embedInteractionDisabled}
         onEmbedSubmitBlocked={notifyEmbedSubmitBlocked}
       />
+    );
+  } else if (isTeamverEmbedMode() && route.kind === 'project' && !activeProject) {
+    appMain = (
+      <div className="embed-route-loading" data-testid="embed-project-route-loading">
+        <CenteredLoader label={resolveLoadingShellLabel()} />
+      </div>
     );
   } else {
     appMain = (

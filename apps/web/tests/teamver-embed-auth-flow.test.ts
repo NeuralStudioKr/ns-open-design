@@ -52,10 +52,10 @@ describe("teamverEmbedAuthFlow", () => {
         pageshowPersisted: false,
         authReturnNavigation: false,
       }),
-    ).toEqual({ force: true, resetRefreshState: false });
+    ).toEqual({ force: false, resetRefreshState: false, silent: true });
   });
 
-  it("resets refresh decline on auth return and bfcache restore", () => {
+  it("forces a silent probe on bfcache restore without resetting refresh decline", () => {
     const signals = {
       cookieHintAppeared: false,
       pageshowPersisted: true,
@@ -65,8 +65,11 @@ describe("teamverEmbedAuthFlow", () => {
     expect(resolveEmbedFocusSessionOptions(signals)).toEqual({
       force: true,
       resetRefreshState: false,
+      silent: true,
     });
+  });
 
+  it("resets refresh decline on auth return with visible recovery", () => {
     const authReturn = {
       cookieHintAppeared: false,
       pageshowPersisted: false,
@@ -76,6 +79,7 @@ describe("teamverEmbedAuthFlow", () => {
     expect(resolveEmbedFocusSessionOptions(authReturn)).toEqual({
       force: true,
       resetRefreshState: true,
+      silent: false,
     });
   });
 
