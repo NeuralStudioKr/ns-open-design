@@ -4611,6 +4611,10 @@ function HtmlViewer({
           setExportToast({
             message: t('fileViewer.exportPdfBrowserPrintFallback'),
             tone: 'default',
+            // Extended lifetime: the copy asks users to interact with
+            // the browser print dialog, so the toast must outlive the
+            // ~2.2s success flash and remain visible until they read it.
+            ttlMs: 9000,
           });
           return;
         }
@@ -5105,8 +5109,18 @@ function HtmlViewer({
   const imageExportSlideRef = useRef<number | null>(null);
   const imageExportPrepareIdRef = useRef(0);
   const screenshotInFlightRef = useRef(false);
+  // Optional `ttlMs` lets specific toasts override the default 2.2s
+  // flash — used by the browser-print PDF fallback where the copy asks
+  // the user to interact with the print dialog before it vanishes.
+  // Comparing on message text was fragile across locale changes so the
+  // duration is now attached to the state itself (SSOT: single source
+  // of truth for how long the toast lives).
   const [exportToast, setExportToast] = useState<
-    { message: string; tone: 'default' | 'success' | 'error' | 'loading' } | null
+    {
+      message: string;
+      tone: 'default' | 'success' | 'error' | 'loading';
+      ttlMs?: number;
+    } | null
   >(null);
   const [shareLinkFeedback, setShareLinkFeedback] = useState<'copied' | 'failed' | null>(null);
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
@@ -8943,11 +8957,8 @@ function HtmlViewer({
                       // regular 2.2s success flash because the copy asks
                       // users to interact with the print dialog.
                       ttlMs={
-                        exportToast.tone === 'loading'
-                          ? 8000
-                          : exportToast.message === t('fileViewer.exportPdfBrowserPrintFallback')
-                            ? 9000
-                            : 2200
+                        exportToast.ttlMs
+                          ?? (exportToast.tone === 'loading' ? 8000 : 2200)
                       }
                       placement="top"
                       onDismiss={() => setExportToast(null)}
