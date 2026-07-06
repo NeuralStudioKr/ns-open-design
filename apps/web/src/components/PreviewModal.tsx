@@ -512,7 +512,7 @@ export function PreviewModal({
 
   useEffect(() => {
     if (!activeDeck || !activeHtml) return;
-    return scheduleDeckPreviewFitNudges(previewIframeRef.current, scale);
+    return scheduleDeckPreviewFitNudges(previewIframeRef.current, scale, { layoutFit: true });
   }, [activeDeck, activeHtml, activeId, scale, srcDoc, stageSize.w, stageSize.h]);
 
   function openInNewTab() {
@@ -1090,7 +1090,7 @@ export function PreviewModal({
                   srcDoc={srcDoc}
                   onLoad={(event) => {
                     if (!activeDeck) return;
-                    scheduleDeckPreviewFitNudges(event.currentTarget, scale);
+                    scheduleDeckPreviewFitNudges(event.currentTarget, scale, { layoutFit: true });
                   }}
                 />
               </div>

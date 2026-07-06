@@ -2468,9 +2468,24 @@ function AppInner() {
       projectId: string,
       extras: { fileName?: string | null; conversationId?: string | null } = {},
     ) => {
-      const allowed =
-        isSessionTrustedEmbedProject(projectId) ||
-        await assertTeamverProjectAccessIfNeeded(projectId);
+      if (isSessionTrustedEmbedProject(projectId)) {
+        navigate({
+          kind: 'project',
+          projectId,
+          fileName: extras.fileName ?? null,
+          ...(extras.conversationId !== undefined
+            ? { conversationId: extras.conversationId }
+            : {}),
+        });
+        return;
+      }
+
+      const visibleOnList = projects.some((project) => project.id === projectId);
+      let allowed = await assertTeamverProjectAccessIfNeeded(projectId);
+      if (!allowed && visibleOnList) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        allowed = await assertTeamverProjectAccessIfNeeded(projectId);
+      }
       if (!allowed) {
         if (isTeamverEmbedMode()) {
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
@@ -2486,7 +2501,7 @@ function AppInner() {
           : {}),
       });
     },
-    [isSessionTrustedEmbedProject],
+    [isSessionTrustedEmbedProject, projects],
   );
 
   const activeProjectRouteId = route.kind === 'project' ? route.projectId : null;

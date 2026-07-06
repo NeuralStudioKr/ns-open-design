@@ -72,7 +72,8 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain("data.type === 'od:deck-host-viewport'");
     expect(out).toContain('runFrameworkDeckFit');
     expect(out).toContain('reconcileFrameworkDeckFitSoon');
-    expect(out).toContain('iw > hw * 1.08');
+    expect(out).toContain('hostViewport.layoutFit');
+    expect(out).toContain('User-zoom preview shells');
   });
 
   it('keeps injecting the place-content fix for legacy / non-framework decks', () => {

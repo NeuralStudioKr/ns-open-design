@@ -584,6 +584,58 @@ describe('Teamver project registry access', () => {
 
     await expect(assertTeamverProjectAccessIfNeeded('p1-transient')).resolves.toBe(false);
   });
+
+  it('does not stick transient access denials across separate checks', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    let directCalls = 0;
+    const get = vi.fn(async (path: string) => {
+      if (path === '/projects') return { projects: [] };
+      directCalls += 1;
+      if (directCalls <= 3) {
+        throw new NetworkError({ message: 'upstream', status: 502 });
+      }
+      return {
+        odProjectId: 'idle-1',
+        s3Prefix: 'design/ws1/user_u1/proj_idle-1/',
+      };
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get, post: vi.fn() },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
+
+    await expect(assertTeamverProjectAccessIfNeeded('idle-1')).resolves.toBe(false);
+    await expect(assertTeamverProjectAccessIfNeeded('idle-1')).resolves.toBe(true);
+    expect(get).toHaveBeenCalledWith(
+      '/projects/idle-1',
+      expect.objectContaining({ workspaceId: 'ws1' }),
+    );
+  });
+
+  it('recovers project access within a single check after transient registry errors', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    let directCalls = 0;
+    const get = vi.fn(async (path: string) => {
+      if (path === '/projects') return { projects: [] };
+      directCalls += 1;
+      if (directCalls === 1) {
+        throw new NetworkError({ message: 'upstream', status: 502 });
+      }
+      return {
+        odProjectId: 'idle-retry',
+        s3Prefix: 'design/ws1/user_u1/proj_idle-retry/',
+      };
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { get, post: vi.fn() },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ projects: [] })));
+
+    await expect(assertTeamverProjectAccessIfNeeded('idle-retry')).resolves.toBe(true);
+    expect(directCalls).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe('Teamver project registry boot sync', () => {

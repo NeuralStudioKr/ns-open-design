@@ -85,6 +85,9 @@ const FE_ACCESS_CACHE_MS = 30_000;
 const REGISTRY_LIST_CACHE_MS = 15_000;
 const SYNC_ALL_MIN_INTERVAL_MS = 60_000;
 const REGISTRY_CREATE_RETRY_DELAYS_MS = [500, 1_500] as const;
+const PROJECT_ACCESS_RETRY_DELAYS_MS = [0, 400, 800] as const;
+
+type ProjectAccessCheckResult = "allowed" | "denied" | "transient";
 
 function legacyRegistryMigrationEnabled(): boolean {
   return readTeamverViteEnv("VITE_TEAMVER_LEGACY_REGISTRY_SYNC") === "1";
@@ -432,33 +435,48 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
 export async function fetchTeamverProject(
   projectRef: string,
 ): Promise<TeamverRegisteredProject | null> {
-  if (!isTeamverEmbedMode()) return null;
+  const outcome = await fetchTeamverProjectAccessOutcome(projectRef);
+  return outcome.status === "found" ? outcome.project : null;
+}
+
+type TeamverProjectAccessOutcome =
+  | { status: "found"; project: TeamverRegisteredProject }
+  | { status: "denied" }
+  | { status: "unavailable" };
+
+async function fetchTeamverProjectAccessOutcome(
+  projectRef: string,
+): Promise<TeamverProjectAccessOutcome> {
+  if (!isTeamverEmbedMode()) return { status: "unavailable" };
   await waitForEmbedBootIfNeeded();
 
   const trimmedRef = projectRef.trim();
-  if (!trimmedRef) return null;
-  if (isTeamverProjectCollectionRouteSlug(trimmedRef)) return null;
+  if (!trimmedRef) return { status: "denied" };
+  if (isTeamverProjectCollectionRouteSlug(trimmedRef)) return { status: "denied" };
 
   const client = getDesignBffClient();
-  if (!client) return null;
+  if (!client) return { status: "unavailable" };
 
   try {
-    const workspaceId = await resolveActiveTeamverWorkspaceId();
-    if (!workspaceId?.trim()) return null;
+    const workspaceId = await resolveWorkspaceIdForProjectAccess();
+    if (!workspaceId?.trim()) return { status: "unavailable" };
 
-    return await client.http.get<TeamverRegisteredProject>(
-      `/projects/${encodeURIComponent(trimmedRef)}`,
-      {
-        workspaceId: workspaceId.trim(),
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
+    const project = await withDesignBffCookieAuthRecovery(() =>
+      client.http.get<TeamverRegisteredProject>(
+        `/projects/${encodeURIComponent(trimmedRef)}`,
+        {
+          workspaceId: workspaceId.trim(),
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
     );
+    return { status: "found", project };
   } catch (err) {
     if (err instanceof NetworkError && (err.status === 403 || err.status === 404)) {
-      return null;
+      return { status: "denied" };
     }
     console.warn("[teamver] project fetch failed", err);
-    return null;
+    return { status: "unavailable" };
   }
 }
 
@@ -481,6 +499,58 @@ function isDirectRegistryProjectHit(
   return Boolean(project.s3Prefix?.trim());
 }
 
+async function resolveWorkspaceIdForProjectAccess(): Promise<string | null> {
+  const fromSession = (await resolveActiveTeamverWorkspaceId())?.trim();
+  if (fromSession) return fromSession;
+  const client = getDesignBffClient();
+  return (await client?.workspaceStore?.get())?.trim() || null;
+}
+
+async function checkTeamverProjectAccessOnce(
+  trimmedId: string,
+  workspaceId: string,
+  cacheKey: string | null,
+): Promise<ProjectAccessCheckResult> {
+  if (cacheKey) {
+    const cached = feAccessCache.get(cacheKey);
+    if (cached?.allowed && Date.now() - cached.at < FE_ACCESS_CACHE_MS) {
+      return "allowed";
+    }
+  }
+
+  let allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
+  if (allowed === true) {
+    if (cacheKey) feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
+    return "allowed";
+  }
+
+  if (legacyRegistryMigrationEnabled()) {
+    await ensureTeamverProjectRegisteredById(trimmedId);
+    allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
+    if (allowed === true) {
+      if (cacheKey) feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
+      return "allowed";
+    }
+  }
+
+  // The list endpoint can be briefly stale/partial during auth refresh,
+  // workspace switch, or registry write propagation. Before showing the
+  // destructive "not accessible in this workspace" UX, confirm against the
+  // single-project registry endpoint. This endpoint is the authoritative
+  // membership check for deep-linked/detail routes and also refreshes the
+  // S3 prefix cache when it succeeds.
+  const direct = await fetchTeamverProjectAccessOutcome(trimmedId);
+  if (direct.status === "found" && isDirectRegistryProjectHit(trimmedId, direct.project)) {
+    const userId = await resolveRegistryUserId();
+    if (userId) primeFeAccessAllowed(trimmedId, workspaceId, userId);
+    await rememberRegistryS3Prefix(trimmedId, workspaceId, direct.project);
+    return "allowed";
+  }
+  if (direct.status === "denied") return "denied";
+  if (allowed === false) return "transient";
+  return "transient";
+}
+
 /** Embed: registry membership gate — daemon middleware owns `/access` + S3 prefix. */
 export async function assertTeamverProjectAccessIfNeeded(
   projectId: string,
@@ -495,53 +565,25 @@ export async function assertTeamverProjectAccessIfNeeded(
   const client = getDesignBffClient();
   if (!client) return false;
 
-  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
+  const workspaceId = (await resolveWorkspaceIdForProjectAccess())?.trim();
   if (!workspaceId) return false;
 
   const userId = await resolveRegistryUserId();
   const cacheKey = userId
     ? feAccessCacheKey(workspaceId, trimmedId, userId)
     : null;
-  if (cacheKey) {
-    const cached = feAccessCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < FE_ACCESS_CACHE_MS) {
-      return cached.allowed;
+
+  for (let attempt = 0; attempt < PROJECT_ACCESS_RETRY_DELAYS_MS.length; attempt += 1) {
+    const delayMs = PROJECT_ACCESS_RETRY_DELAYS_MS[attempt] ?? 0;
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    const result = await checkTeamverProjectAccessOnce(trimmedId, workspaceId, cacheKey);
+    if (result !== "transient") {
+      return result === "allowed";
     }
   }
 
-  let allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
-  if (allowed === true) {
-    if (cacheKey) feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
-    return true;
-  }
-
-  if (legacyRegistryMigrationEnabled()) {
-    await ensureTeamverProjectRegisteredById(trimmedId);
-    allowed = await isProjectRegisteredInWorkspace(trimmedId, workspaceId);
-    if (allowed === true) {
-      if (cacheKey) feAccessCache.set(cacheKey, { allowed: true, at: Date.now() });
-      return true;
-    }
-    if (allowed === false) {
-      if (cacheKey) feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
-      return false;
-    }
-  }
-
-  // The list endpoint can be briefly stale/partial during auth refresh,
-  // workspace switch, or registry write propagation. Before showing the
-  // destructive "not accessible in this workspace" UX, confirm against the
-  // single-project registry endpoint. This endpoint is the authoritative
-  // membership check for deep-linked/detail routes and also refreshes the
-  // S3 prefix cache when it succeeds.
-  const direct = await fetchTeamverProject(trimmedId);
-  if (isDirectRegistryProjectHit(trimmedId, direct)) {
-    if (userId) primeFeAccessAllowed(trimmedId, workspaceId, userId);
-    await rememberRegistryS3Prefix(trimmedId, workspaceId, direct);
-    return true;
-  }
-
-  if (cacheKey) feAccessCache.set(cacheKey, { allowed: false, at: Date.now() });
   return false;
 }
 

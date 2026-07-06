@@ -24,7 +24,7 @@ describe('deckPreviewFit', () => {
     nudgeDeckPreviewFit(target);
     expect(postMessage).toHaveBeenNthCalledWith(
       1,
-      { type: 'od:deck-host-viewport', width: 640, height: 480, scale: 1 },
+      { type: 'od:deck-host-viewport', width: 640, height: 480, scale: 1, layoutFit: false },
       '*',
     );
     expect(postMessage).toHaveBeenNthCalledWith(2, { type: 'od:deck-nudge-fit' }, '*');
@@ -55,16 +55,15 @@ describe('deckPreviewFit', () => {
     expect(postMessage).toHaveBeenCalledTimes(4);
   });
 
-  it('forwards shell scale so mobile/tablet deck fit uses layout width', () => {
+  it('forwards layoutFit for auto-fit modal scalers', () => {
     const postMessage = vi.fn();
     const target = {
       contentWindow: { postMessage } as unknown as Window,
       getBoundingClientRect: () => ({ width: 175, height: 312 } as DOMRect),
     };
-    nudgeDeckPreviewFit(target, 0.45);
-    expect(postMessage).toHaveBeenNthCalledWith(
-      1,
-      { type: 'od:deck-host-viewport', width: 175, height: 312, scale: 0.45 },
+    postDeckHostViewportToIframe(target, 0.45, { layoutFit: true });
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: 'od:deck-host-viewport', width: 175, height: 312, scale: 0.45, layoutFit: true },
       '*',
     );
   });

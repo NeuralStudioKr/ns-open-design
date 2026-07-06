@@ -33,7 +33,9 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
     // so preview/file reads do not lose X-Workspace-Id mid-run.
     return storeId;
   }
-  if (!session?.authenticated) return null;
+  // Session JSON can briefly read unauthenticated during idle refresh while the
+  // persisted workspace and BFF cookies are still valid — same rationale as catch.
+  if (!session?.authenticated) return storeId;
 
   const workspaces = normalizeWorkspaceList(session.workspaces);
 

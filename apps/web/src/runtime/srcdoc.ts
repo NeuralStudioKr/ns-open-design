@@ -1774,7 +1774,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var didRestoreInitialSlide = initialSlideIndex <= 0;
-  var hostViewport = { w: 0, h: 0, scale: 1 };
+  var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   function frameworkDeckStage() {
     return document.getElementById('deck-stage');
   }
@@ -1784,16 +1784,14 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     var hw = Math.max(0, hostViewport.w || 0);
     var hh = Math.max(0, hostViewport.h || 0);
     var scale = hostViewport.scale > 0 ? hostViewport.scale : 1;
-    // When the host wraps us in transform:scale(z), layout width is visual/z.
-    // Reconstruct layout width from the visual box so fit() matches the
-    // framework's nested-transform contract.
-    if (hw > 0 && hh > 0 && scale > 0 && scale < 0.999) {
-      return { w: hw / scale, h: hh / scale };
-    }
-    // At 100% host zoom, trust the host visual box only when innerWidth
-    // looks inflated (bad meta viewport), not when layout legitimately
-    // exceeds the on-screen box because the host omitted shell scale.
-    if (hw > 0 && hh > 0 && scale >= 0.999 && iw > hw * 1.08) {
+    // User-zoom preview shells (FileViewer toolbar) pass scale as zoom and
+    // apply it via transform:scale(). Fit to the visual box so 75%/125% differ.
+    // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
+    // reconstruct layout width so the deck still fills the iframe interior.
+    if (hw > 0 && hh > 0) {
+      if (hostViewport.layoutFit && scale > 0 && scale < 0.999) {
+        return { w: hw / scale, h: hh / scale };
+      }
       return { w: hw, h: hh };
     }
     return { w: iw || hw, h: ih || hh };
@@ -2199,6 +2197,8 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
       if (Number.isFinite(w) && w > 0) hostViewport.w = w;
       if (Number.isFinite(h) && h > 0) hostViewport.h = h;
       if (Number.isFinite(scale) && scale > 0) hostViewport.scale = scale;
+      if (data.layoutFit === true) hostViewport.layoutFit = true;
+      else if (data.layoutFit === false) hostViewport.layoutFit = false;
       nudgeDeckFit();
       return;
     }

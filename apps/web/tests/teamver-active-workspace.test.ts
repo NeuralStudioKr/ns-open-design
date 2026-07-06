@@ -103,6 +103,21 @@ describe('activeTeamverWorkspace', () => {
     expect(vi.mocked(syncTeamverWorkspaceFromSession)).toHaveBeenCalled();
   });
 
+  it('returns the persisted workspace when session briefly reads unauthenticated', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    storeGetMock.mockResolvedValue('ws-persisted');
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: storeGetMock },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-persisted');
+    expect(vi.mocked(syncTeamverWorkspaceFromSession)).not.toHaveBeenCalled();
+  });
+
   it('throws teamver_workspace_required when unresolved', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
