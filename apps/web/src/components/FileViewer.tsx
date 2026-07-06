@@ -104,6 +104,7 @@ import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
 import { buildLazySrcdocTransport, buildSrcdoc, canActivateSrcDocTransport } from '../runtime/srcdoc';
+import { scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import {
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
@@ -5695,6 +5696,21 @@ function HtmlViewer({
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
 
   useEffect(() => {
+    if (!effectiveDeck || mode !== 'preview') return;
+    return scheduleDeckPreviewFitNudges(iframeRef.current);
+  }, [
+    effectiveDeck,
+    mode,
+    zoom,
+    previewBodySize?.width,
+    previewBodySize?.height,
+    srcDoc,
+    previewStateKey,
+    useUrlLoadPreview,
+    srcDocTransportResetKey,
+  ]);
+
+  useEffect(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage({
@@ -8767,6 +8783,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame);
                           }}
                         />
                       ) : (
@@ -8792,6 +8809,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame);
                           }}
                         />
                       )}
@@ -8853,6 +8871,7 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
+                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame);
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
                       />

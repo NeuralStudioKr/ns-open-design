@@ -15,6 +15,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("repairArtifactDocumentHead(candidate)");
     expect(source).toContain("isArtifactHtmlStableForPreview(repaired)");
     expect(source).toContain("repairArtifactDocumentHead(liveHtml)");
+    expect(source).toContain("scheduleDeckPreviewFitNudges");
     expect(source).toContain("artifact-preview-streaming-veil");
     expect(source).toContain("is-streaming-unstable");
   });

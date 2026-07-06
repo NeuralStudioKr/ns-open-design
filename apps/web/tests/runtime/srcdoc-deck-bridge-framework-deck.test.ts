@@ -68,6 +68,7 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     // fit() handles centering, but the host-side counter / keyboard
     // bridge still needs the slide-state postMessage channel.
     expect(out).toMatch(/<script[^>]*data-od-deck-bridge/);
+    expect(out).toContain("data.type === 'od:deck-nudge-fit'");
   });
 
   it('keeps injecting the place-content fix for legacy / non-framework decks', () => {
