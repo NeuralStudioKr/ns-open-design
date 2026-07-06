@@ -233,6 +233,13 @@ export async function exportProjectAsHtml(opts: {
   fallbackHtml: string;
   fallbackTitle: string;
   requireRenderedExport?: boolean;
+  /**
+   * Live artifact HTML to render directly on the daemon side. When
+   * provided, the daemon skips the scratch + tenant S3 prefix lookup
+   * entirely — the same hardening as {@link exportProjectAsPdf}.  Falls
+   * through to `fallbackHtml` if the daemon export still fails.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
@@ -241,6 +248,7 @@ export async function exportProjectAsHtml(opts: {
         delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.fallbackTitle,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -928,12 +936,27 @@ export type ProjectPdfExportResult = 'desktop' | 'fallback' | 'cancelled';
  */
 const TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
 
+/**
+ * Optional caller-provided artifact HTML.  When present the daemon renders
+ * it directly and skips reading from scratch → the export path no longer
+ * depends on `teamver_project_s3_prefix_required` resolution on
+ * `design-api /access`.  Empty / all-whitespace bodies are ignored so
+ * callers that do not have a live snapshot ready still hit the file-based
+ * path exactly as before.
+ */
+function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, string> {
+  if (typeof htmlSnapshot !== 'string') return {};
+  if (htmlSnapshot.trim().length === 0) return {};
+  return { html: htmlSnapshot };
+}
+
 async function performPdfExportRequest(opts: {
   projectId: string;
   deck: boolean;
   filePath: string;
   title: string;
   fresh?: boolean;
+  htmlSnapshot?: string | null;
 }): Promise<ProjectPdfExportResult> {
   const url = opts.fresh
     ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
@@ -945,6 +968,7 @@ async function performPdfExportRequest(opts: {
       fileName: opts.filePath,
       title: opts.title,
       ...(opts.fresh ? { fresh: true } : {}),
+      ...inlineExportHtmlPayload(opts.htmlSnapshot),
     }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -985,12 +1009,26 @@ export async function exportProjectAsPdf(opts: {
    * unchanged.
    */
   fresh?: boolean;
+  /**
+   * Live artifact HTML the FE already holds in memory (repaired + stable).
+   * When present the daemon renders this body directly and skips reading
+   * from scratch, which makes the export path resilient to
+   * `teamver_project_s3_prefix_required` (transient design-api `/access`
+   * denies, missing `X-Teamver-S3-Prefix` header, freshly-evicted scratch).
+   * Falsy values still trigger the pre-existing file-based flow so any
+   * caller that does not have a snapshot ready keeps working.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<ProjectPdfExportResult> {
   // Warm the tenant S3-prefix cache so the very first daemon request already
   // carries `X-Teamver-S3-Prefix`. Without this the `/access` gate must race
   // against a possibly-stale design-api row and 502s are the visible symptom
-  // (`teamver_project_s3_prefix_required`).
-  await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+  // (`teamver_project_s3_prefix_required`). Inline-HTML exports bypass the
+  // scratch/prefix dependency entirely, so we only pay the warmup cost when
+  // no snapshot was provided.
+  if (!opts.htmlSnapshot || !opts.htmlSnapshot.trim()) {
+    await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+  }
 
   let daemonErr: unknown = null;
   try {
@@ -1000,10 +1038,12 @@ export async function exportProjectAsPdf(opts: {
         await new Promise((resolve) => setTimeout(resolve, delay));
         // Refresh the prefix cache between retries — the design-api row may
         // have been committed in the meantime and the cached prefix would
-        // let the daemon skip its own /access round-trip. Use the quick path
-        // (no additional polling window) so retries stay within the delay
-        // budget declared in TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.
-        await waitForTeamverProjectStoragePrefix(opts.projectId, { quick: true }).catch(() => null);
+        // let the daemon skip its own /access round-trip. Skip when we have
+        // an inline HTML snapshot (daemon does not need the prefix at all
+        // and the warmup adds latency for nothing).
+        if (!opts.htmlSnapshot || !opts.htmlSnapshot.trim()) {
+          await waitForTeamverProjectStoragePrefix(opts.projectId, { quick: true }).catch(() => null);
+        }
       }
       try {
         return await performPdfExportRequest(opts);
@@ -1036,10 +1076,23 @@ export async function exportProjectAsPdf(opts: {
       : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
   }
 
+  // In-memory snapshot path: skip the inline daemon URL (which shares the
+  // same tenant-storage middleware as the primary export) and drive
+  // browser print directly from the FE-held HTML.  This keeps the fallback
+  // functional even when the daemon is unreachable / access is denied.
+  const inlineHtmlFallback =
+    typeof opts.htmlSnapshot === 'string' && opts.htmlSnapshot.trim().length > 0
+      ? opts.htmlSnapshot
+      : null;
+
   try {
-    const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
-    if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
-    await exportAsPdf(await resp.text(), opts.title, {
+    let renderedHtml = inlineHtmlFallback;
+    if (!renderedHtml) {
+      const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
+      if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
+      renderedHtml = await resp.text();
+    }
+    await exportAsPdf(renderedHtml, opts.title, {
       deck: opts.deck,
       // Browser print measures the top-level document, not the sandboxed
       // iframe content. Printing deck exports through the wrapper produces
@@ -1116,6 +1169,12 @@ export async function exportProjectImageBlob(opts: {
   projectId: string;
   slideIndex?: number;
   title: string;
+  /**
+   * Optional live artifact HTML snapshot. Same semantics as
+   * {@link exportProjectAsPdf}: when provided the daemon renders the
+   * body directly and skips the tenant-storage lookup.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<ProjectImageBlobResult> {
   const format =
     opts.format === 'jpeg' ? 'jpeg' : opts.format === 'webp' ? 'webp' : 'png';
@@ -1128,6 +1187,7 @@ export async function exportProjectImageBlob(opts: {
         format,
         slideIndex: Number.isFinite(opts.slideIndex) ? opts.slideIndex : undefined,
         title: opts.title,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1248,6 +1308,13 @@ export async function exportProjectAsZip(opts: {
   fallbackHtml: string;
   fallbackTitle: string;
   requireRenderedExport?: boolean;
+  /**
+   * Optional live artifact HTML snapshot. Same semantics as
+   * {@link exportProjectAsPdf} — the daemon renders the ZIP body from this
+   * HTML so the ZIP export succeeds even when tenant-storage resolution
+   * would deny.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
@@ -1256,6 +1323,7 @@ export async function exportProjectAsZip(opts: {
         delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.fallbackTitle,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',

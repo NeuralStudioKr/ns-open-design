@@ -538,6 +538,29 @@ export function scheduleProjectStoragePersistAfterResponse(
   });
 }
 
+/**
+ * Detect whether an export request body carries an inline HTML snapshot.
+ *
+ * The FE ships the current in-memory artifact HTML alongside PDF/HTML/ZIP/
+ * image export requests so the daemon can render it directly without
+ * reading from local scratch or resolving the tenant S3 prefix. When this
+ * flag is set the export path is fully self-contained: the middleware must
+ * unconditionally soft-continue on a `teamver_project_s3_prefix_required`
+ * so a transient `design-api /access` deny cannot gate the download.
+ *
+ * Kept intentionally permissive — any non-empty string in `req.body.html`
+ * counts, and empty / missing bodies fall back to the pre-existing scratch
+ * fallback flow. Duplicated with `import-export-routes.ts` on purpose so
+ * middleware ordering (which runs before route handlers) does not create
+ * a circular import.
+ */
+function exportRequestHasInlineHtml(req: Request): boolean {
+  const body = (req as { body?: unknown }).body;
+  if (!body || typeof body !== 'object') return false;
+  const raw = (body as Record<string, unknown>)['html'];
+  return typeof raw === 'string' && raw.trim().length > 0;
+}
+
 export function createLazyProjectMaterializationMiddleware(
   hooks: ProjectStorageAccessHooks | null,
   sendApiError: (...args: unknown[]) => unknown,
@@ -566,11 +589,32 @@ export function createLazyProjectMaterializationMiddleware(
       // scratch instead of surfacing a misleading 502 to the FE. This
       // unblocks PDF/HTML/ZIP export while design-api `/access` self-heals.
       const message = err instanceof Error ? err.message : 'project storage sync failed';
+      const isPrefixDeny =
+        err instanceof TeamverTenantStorageResolutionError
+        && err.message === 'teamver_project_s3_prefix_required';
+
+      // Inline-HTML export path: the daemon can render from body bytes
+      // without touching scratch or S3, so a prefix deny MUST NOT surface
+      // as a 502. This is the primary hardening against the recurring
+      // `daemon PDF export 502: teamver_project_s3_prefix_required` in
+      // BYOK + fresh-scratch scenarios (post-deploy, idle-evict, cache
+      // miss on the BFF prefix registry, etc.).
+      if (isPrefixDeny && isProjectExportOrArchivePath(req.path) && exportRequestHasInlineHtml(req)) {
+        console.info(
+          JSON.stringify({
+            metric: 'od_s3_export_inline_html_bypass',
+            projectId,
+            path: req.path,
+            reason: 'teamver_project_s3_prefix_required',
+          }),
+        );
+        return true;
+      }
+
       const canSoftFallback =
         (req.method === 'GET' || req.method === 'HEAD' || isProjectExportOrArchivePath(req.path))
         && isProjectScratchReadFallbackPath(req.path)
-        && err instanceof TeamverTenantStorageResolutionError
-        && err.message === 'teamver_project_s3_prefix_required';
+        && isPrefixDeny;
       if (canSoftFallback) {
         let hasScratch = false;
         try {

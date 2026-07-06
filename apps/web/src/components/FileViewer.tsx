@@ -7611,6 +7611,7 @@ function HtmlViewer({
         deck: effectiveDeck,
         filePath: file.name,
         format,
+        htmlSnapshot: source ?? null,
         projectId,
         slideIndex: effectiveDeck ? slideState?.active : undefined,
         title: exportTitle,
@@ -8684,6 +8685,7 @@ function HtmlViewer({
 	                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
 	                      filePath: file.name,
 	                      fresh: options?.fresh,
+	                      htmlSnapshot: source ?? null,
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
@@ -8694,6 +8696,7 @@ function HtmlViewer({
 	                      filePath: file.name,
 	                      fallbackHtml: source ?? '',
 	                      fallbackTitle: exportTitle,
+	                      htmlSnapshot: source ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
@@ -8702,6 +8705,7 @@ function HtmlViewer({
 	                      filePath: file.name,
 	                      fallbackHtml: source ?? '',
 	                      fallbackTitle: exportTitle,
+	                      htmlSnapshot: source ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
                     exportMarkdown={() => exportAsMd(source ?? '', exportTitle)}

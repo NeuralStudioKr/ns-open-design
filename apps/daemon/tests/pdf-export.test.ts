@@ -58,6 +58,60 @@ describe('buildDesktopPdfExportInput', () => {
     expect(built.input.defaultFilename).toBe('index.pdf');
   });
 
+  it('renders inlineHtml directly and never touches scratch (S3-prefix-free export path)', async () => {
+    const built = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/index.html',
+      // A projectsRoot that does not exist proves inline mode skips the disk read.
+      projectsRoot: '/dev/null/does-not-exist',
+      projectId: 'unknown-project',
+      title: 'Snapshot Deck',
+      inlineHtml: '<!doctype html><section class="slide">Snapshot</section>',
+    });
+
+    expect(built.input.html).toBe('<!doctype html><section class="slide">Snapshot</section>');
+    expect(built.input.deck).toBe(true);
+    expect(built.input.defaultFilename).toBe('Snapshot Deck.pdf');
+    expect(built.source.relPath).toBe('deck/index.html');
+    // Same body → deterministic cache-key mtime so identical inline exports dedupe.
+    expect(built.source.mtimeMs).toBeGreaterThan(0);
+    const rerun = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/index.html',
+      projectsRoot: '/dev/null/does-not-exist',
+      projectId: 'unknown-project',
+      title: 'Snapshot Deck',
+      inlineHtml: '<!doctype html><section class="slide">Snapshot</section>',
+    });
+    expect(rerun.source.mtimeMs).toBe(built.source.mtimeMs);
+    const different = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/index.html',
+      projectsRoot: '/dev/null/does-not-exist',
+      projectId: 'unknown-project',
+      title: 'Snapshot Deck',
+      inlineHtml: '<!doctype html><section class="slide">Different</section>',
+    });
+    expect(different.source.mtimeMs).not.toBe(built.source.mtimeMs);
+  });
+
+  it('treats an all-whitespace inlineHtml as absent and reads the file instead', async () => {
+    const built = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: false,
+      fileName: 'deck/index.html',
+      projectId,
+      projectsRoot,
+      inlineHtml: '   \n\t  ',
+    });
+
+    expect(built.input.html).toBe('<!doctype html><section class="slide">One</section>');
+    expect(built.source.mtimeMs).toBeGreaterThan(0);
+  });
+
   it('uses Vite dist/index.html when the entry is a dev module shell', async () => {
     await mkdir(path.join(projectsRoot, projectId, 'deck', 'dist', 'assets'), { recursive: true });
     await writeFile(

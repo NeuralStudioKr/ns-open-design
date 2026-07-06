@@ -13,12 +13,18 @@ import { LocalProjectStorage } from '../src/storage/project-storage.js';
 import { createProjectMaterializationRuntime } from '../src/storage/project-materialization-runtime.js';
 import { resolveProjectStorageLayout } from '../src/storage/project-storage-layout.js';
 
-function mockReq(method: string, path: string, projectId = 'p1'): Request {
+function mockReq(
+  method: string,
+  path: string,
+  projectId = 'p1',
+  body?: Record<string, unknown>,
+): Request {
   return {
     method,
     path,
     params: { id: projectId },
     headers: {},
+    body: body ?? {},
   } as unknown as Request;
 }
 
@@ -672,6 +678,37 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     expect(scratchHasProjectFiles).toHaveBeenCalledWith('p1');
     expect(sendApiError).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalled();
+  });
+
+  it('soft-continues export routes when the request body carries inline HTML, even with empty scratch', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    vi.spyOn(hooks!, 'ensureMaterialized').mockRejectedValue(
+      new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'),
+    );
+    const scratchHasProjectFiles = vi.fn(async () => false);
+    const sendApiError = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError, {
+      scratchHasProjectFiles,
+    });
+
+    const next = vi.fn();
+    const req = mockReq('POST', '/api/projects/p1/export/pdf', 'p1', {
+      fileName: 'deck/index.html',
+      html: '<!doctype html><section class="slide">Snapshot</section>',
+    });
+    await middleware(req, mockRes(), next);
+
+    // Inline-HTML path bypasses scratch inspection entirely.
+    expect(scratchHasProjectFiles).not.toHaveBeenCalled();
+    expect(sendApiError).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
   });
 
   it('still 502s export routes when scratch is empty and tenant resolution fails', async () => {
