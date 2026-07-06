@@ -439,10 +439,21 @@ export async function renderHeadlessHtmlSnapshot(
   );
 }
 
+// Detail collected for each failed launch attempt. `executablePath` is
+// intentionally `string | undefined` (not `?:`) because tsconfig's
+// `exactOptionalPropertyTypes` forbids assigning `undefined` to an
+// optional property; the bundled-fallback path pushes without an
+// explicit path so we must be able to store `undefined`.
+type LaunchAttempt = {
+  executablePath: string | undefined;
+  error: string;
+  retryable: boolean;
+};
+
 async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
   ensureChromiumRuntimeDirs();
-  const attempts: Array<{ executablePath?: string; error: string; retryable?: boolean }> = [];
+  const attempts: LaunchAttempt[] = [];
   const baseArgs = chromiumLaunchArgs();
   const launchEnv = chromiumRuntimeEnv();
   const candidates = chromiumExecutableCandidates();
@@ -513,7 +524,11 @@ async function launchChromium(): Promise<Browser> {
 
   for (const executablePath of candidates) {
     if (!fs.existsSync(executablePath)) {
-      attempts.push({ executablePath, error: 'executable not found' });
+      attempts.push({
+        executablePath,
+        error: 'executable not found',
+        retryable: false,
+      });
       continue;
     }
     const browser = await attemptCandidate(executablePath);
@@ -565,7 +580,7 @@ async function tryRuntimeChromiumInstallAndLaunch(
   chromium: any,
   baseArgs: string[],
   launchEnv: NodeJS.ProcessEnv,
-  attempts: Array<{ executablePath?: string; error: string; retryable?: boolean }>,
+  attempts: LaunchAttempt[],
 ): Promise<Browser | null> {
   if (process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL === '1') return null;
   if (!runtimeChromiumInstallPromise) {
@@ -576,14 +591,18 @@ async function tryRuntimeChromiumInstallAndLaunch(
     installedPath = await runtimeChromiumInstallPromise;
   } catch (err) {
     attempts.push({
+      executablePath: undefined,
       error: `(runtime-install) ${String((err as any)?.message || err)}`,
+      retryable: false,
     });
     runtimeChromiumInstallPromise = null;
     return null;
   }
   if (!installedPath) {
     attempts.push({
+      executablePath: undefined,
       error: '(runtime-install) no chromium binary produced',
+      retryable: false,
     });
     return null;
   }
@@ -600,6 +619,7 @@ async function tryRuntimeChromiumInstallAndLaunch(
     attempts.push({
       executablePath: installedPath,
       error: `(runtime-install-launch) ${String((err as any)?.message || err)}`,
+      retryable: false,
     });
     return null;
   }
