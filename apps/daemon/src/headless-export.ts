@@ -281,6 +281,24 @@ function isTransientChromiumLaunchError(reason: string): boolean {
   );
 }
 
+/**
+ * Chromium ≥ M120 refuses to initialize V8 in `--single-process` mode
+ * (see `chrome/browser/net/system_network_context_manager.cc:979 —
+ * "Cannot use V8 Proxy resolver in single process mode."`) and dies with
+ * `signal=SIGTRAP`. When the launch failure log carries either signal,
+ * silently strip `--single-process` and try the same executable again so
+ * a stale `OD_CHROMIUM_SINGLE_PROCESS=1` env var (leftover from an old
+ * compose file) can't take the whole export path down.
+ */
+function shouldRetryWithoutSingleProcess(reason: string, args: readonly string[]): boolean {
+  if (!args.includes('--single-process')) return false;
+  return (
+    /Cannot use V8 Proxy resolver in single process mode/i.test(reason)
+    || /SIGTRAP/i.test(reason)
+    || /Target page, context or browser has been closed/i.test(reason)
+  );
+}
+
 export function ensureChromiumRuntimeDirs(): void {
   const { configHome, cacheHome, crashDir } = chromiumRuntimePaths();
   for (const dir of [configHome, cacheHome, crashDir]) {
@@ -425,29 +443,72 @@ async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
   ensureChromiumRuntimeDirs();
   const attempts: Array<{ executablePath?: string; error: string; retryable?: boolean }> = [];
-  const launchArgs = chromiumLaunchArgs();
+  const baseArgs = chromiumLaunchArgs();
   const launchEnv = chromiumRuntimeEnv();
   const candidates = chromiumExecutableCandidates();
 
-  const tryLaunch = async (executablePath: string, isRetry: boolean): Promise<Browser | null> => {
+  const tryLaunch = async (
+    executablePath: string | undefined,
+    args: string[],
+    label: string,
+  ): Promise<Browser | null> => {
     try {
-      return await chromium.launch({
-        executablePath,
+      const opts: Record<string, unknown> = {
         headless: true,
-        args: launchArgs,
+        args,
         env: launchEnv,
         timeout: EXPORT_TIMEOUT_MS,
-      });
+      };
+      if (executablePath) opts.executablePath = executablePath;
+      return await chromium.launch(opts);
     } catch (err) {
       const message = String((err as any)?.message || err);
-      const retryable = isTransientChromiumLaunchError(message);
       attempts.push({
         executablePath,
-        error: isRetry ? `(retry) ${message}` : message,
-        retryable,
+        error: label ? `(${label}) ${message}` : message,
+        retryable: isTransientChromiumLaunchError(message),
       });
       return null;
     }
+  };
+
+  /**
+   * Attempt strategy per candidate:
+   *   1. Try with the launcher's default args (may include
+   *      `--single-process` if env forces it on).
+   *   2. If the failure text matches
+   *      `shouldRetryWithoutSingleProcess`, drop `--single-process` and
+   *      retry the same executable — this is the classic Debian
+   *      bookworm + M120 SIGTRAP path, and dropping the flag fixes it
+   *      99% of the time.
+   *   3. If still failing and the error is transient, wait 250ms and
+   *      retry the reduced args once more (covers `/tmp` warm-up races).
+   */
+  const attemptCandidate = async (executablePath: string): Promise<Browser | null> => {
+    const first = await tryLaunch(executablePath, baseArgs, '');
+    if (first) return first;
+    const firstErr = attempts[attempts.length - 1]?.error ?? '';
+
+    let reducedArgs: string[] | null = null;
+    if (shouldRetryWithoutSingleProcess(firstErr, baseArgs)) {
+      reducedArgs = baseArgs.filter((arg) => arg !== '--single-process');
+      const dropSingle = await tryLaunch(executablePath, reducedArgs, 'no-single-process');
+      if (dropSingle) {
+        console.warn('[headless-export] recovered by dropping --single-process', {
+          executablePath,
+        });
+        return dropSingle;
+      }
+    }
+
+    const lastErr = attempts[attempts.length - 1];
+    if (lastErr?.retryable) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const backoffArgs = reducedArgs ?? baseArgs;
+      const backoff = await tryLaunch(executablePath, backoffArgs, 'retry');
+      if (backoff) return backoff;
+    }
+    return null;
   };
 
   for (const executablePath of candidates) {
@@ -455,33 +516,25 @@ async function launchChromium(): Promise<Browser> {
       attempts.push({ executablePath, error: 'executable not found' });
       continue;
     }
-    const first = await tryLaunch(executablePath, false);
-    if (first) return first;
-    const last = attempts[attempts.length - 1];
-    if (last?.retryable) {
-      // brief backoff — Chromium sometimes leaves stale /tmp state that
-      // resolves on the second launch. 250ms keeps total budget under a
-      // second across all candidates.
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const second = await tryLaunch(executablePath, true);
-      if (second) return second;
-    }
+    const browser = await attemptCandidate(executablePath);
+    if (browser) return browser;
   }
 
   const skipBundled =
     process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === '1' || process.env.NODE_ENV === 'production';
   if (!skipBundled) {
-    try {
-      return await chromium.launch({
-        headless: true,
-        args: launchArgs,
-        env: launchEnv,
-        timeout: EXPORT_TIMEOUT_MS,
-      });
-    } catch (err) {
-      attempts.push({ error: String((err as any)?.message || err) });
-    }
+    const bundled = await tryLaunch(undefined, baseArgs, 'bundled');
+    if (bundled) return bundled;
   }
+
+  // Last-ditch: install Playwright Chromium into a writable tmpfs path
+  // (`/tmp/playwright-browsers`) on the fly and retry. This is deliberately
+  // slow (~120MB download) but keeps PDF export working even when the
+  // baked image lost its `/ms-playwright` payload — a scenario we've seen
+  // when Docker build caching skipped the install layer.
+  const rescued = await tryRuntimeChromiumInstallAndLaunch(chromium, baseArgs, launchEnv, attempts);
+  if (rescued) return rescued;
+
   console.warn('[headless-export] chromium launch failed', { attempts });
   // Keep the summary short: dump the full Playwright call log to daemon
   // logs (above) but only expose the concise "<path>: <reason>" line to
@@ -495,6 +548,145 @@ async function launchChromium(): Promise<Browser> {
   throw new Error(
     `headless Chromium unavailable (tried ${attempts.length} path(s)): ${summary}`,
   );
+}
+
+/**
+ * Fallback that installs Playwright Chromium at runtime into a writable
+ * tmpfs location. Triggered only when every baked-in candidate has
+ * failed. We cache the result so a burst of concurrent exports does not
+ * fan out into many install processes.
+ *
+ * Disabled entirely by setting `OD_DISABLE_RUNTIME_CHROMIUM_INSTALL=1`
+ * (some deployments prefer to hard-fail rather than pay the download
+ * cost on the request path).
+ */
+let runtimeChromiumInstallPromise: Promise<string | null> | null = null;
+async function tryRuntimeChromiumInstallAndLaunch(
+  chromium: any,
+  baseArgs: string[],
+  launchEnv: NodeJS.ProcessEnv,
+  attempts: Array<{ executablePath?: string; error: string; retryable?: boolean }>,
+): Promise<Browser | null> {
+  if (process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL === '1') return null;
+  if (!runtimeChromiumInstallPromise) {
+    runtimeChromiumInstallPromise = installPlaywrightChromiumToTmpfs();
+  }
+  let installedPath: string | null = null;
+  try {
+    installedPath = await runtimeChromiumInstallPromise;
+  } catch (err) {
+    attempts.push({
+      error: `(runtime-install) ${String((err as any)?.message || err)}`,
+    });
+    runtimeChromiumInstallPromise = null;
+    return null;
+  }
+  if (!installedPath) {
+    attempts.push({
+      error: '(runtime-install) no chromium binary produced',
+    });
+    return null;
+  }
+  const reducedArgs = baseArgs.filter((arg) => arg !== '--single-process');
+  try {
+    return await chromium.launch({
+      executablePath: installedPath,
+      headless: true,
+      args: reducedArgs,
+      env: launchEnv,
+      timeout: EXPORT_TIMEOUT_MS,
+    });
+  } catch (err) {
+    attempts.push({
+      executablePath: installedPath,
+      error: `(runtime-install-launch) ${String((err as any)?.message || err)}`,
+    });
+    return null;
+  }
+}
+
+async function installPlaywrightChromiumToTmpfs(): Promise<string | null> {
+  const target = process.env.OD_RUNTIME_CHROMIUM_DIR?.trim() || '/tmp/playwright-browsers';
+  try {
+    fs.mkdirSync(target, { recursive: true, mode: 0o755 });
+  } catch (err) {
+    console.warn('[headless-export] runtime-install: mkdir failed', {
+      target,
+      error: String((err as any)?.message || err),
+    });
+    return null;
+  }
+
+  // If a previous boot already dropped a chromium here, reuse it.
+  const existing = findChromiumBinaryUnder(target);
+  if (existing) {
+    console.warn('[headless-export] runtime-install: reusing cached binary', {
+      path: existing,
+    });
+    return existing;
+  }
+
+  const spec = process.env.OD_RUNTIME_CHROMIUM_SPEC?.trim() || 'playwright-core@1.60.0';
+  console.warn('[headless-export] runtime-install: fetching chromium', { target, spec });
+  const { spawn } = await import('node:child_process');
+  const child = spawn(
+    'npx',
+    ['--yes', spec, 'install', 'chromium'],
+    {
+      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: target },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  const stderrChunks: Buffer[] = [];
+  child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+  const status: number | null = await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {}
+      resolve(null);
+    }, 180_000);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
+  if (status !== 0) {
+    console.warn('[headless-export] runtime-install: npx exited non-zero', {
+      status,
+      stderr: Buffer.concat(stderrChunks).toString('utf8').slice(0, 500),
+    });
+    return null;
+  }
+  return findChromiumBinaryUnder(target);
+}
+
+function findChromiumBinaryUnder(root: string): string | null {
+  try {
+    const dirs = fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+      .reverse();
+    for (const dir of dirs) {
+      if (dir.startsWith('chromium-')) {
+        const candidate = path.join(root, dir, 'chrome-linux', 'chrome');
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+    for (const dir of dirs) {
+      if (dir.startsWith('chromium_headless_shell-')) {
+        const candidate = path.join(root, dir, 'chrome-linux', 'headless_shell');
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+  } catch {}
+  return null;
 }
 
 function firstLineOf(message: string): string {
@@ -1111,4 +1303,35 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Log which chromium binaries the launcher can see at boot so ops can
+ * catch a broken image (missing Playwright download, wrong compose
+ * env) before the first user PDF export fails. Emits one structured
+ * line per candidate — grep for `od_chromium_boot` in daemon logs.
+ */
+export function logChromiumAvailabilityAtBoot(): void {
+  const candidates = chromiumExecutableCandidates();
+  const summary = candidates.map((executablePath) => ({
+    executablePath,
+    exists: fs.existsSync(executablePath),
+  }));
+  const anyAvailable = summary.some((entry) => entry.exists);
+  const level = anyAvailable ? 'info' : 'error';
+  const payload = {
+    marker: 'od_chromium_boot',
+    playwrightBrowsersPath: process.env.PLAYWRIGHT_BROWSERS_PATH || null,
+    odExportChromiumPath: process.env.OD_EXPORT_CHROMIUM_PATH || null,
+    odChromiumSingleProcess: process.env.OD_CHROMIUM_SINGLE_PROCESS === '1',
+    launchArgsIncludeSingleProcess: chromiumLaunchArgs().includes('--single-process'),
+    candidates: summary,
+    anyAvailable,
+  };
+  if (level === 'error') {
+    console.error('[headless-export] boot: no chromium binaries found', payload);
+  } else {
+    console.info('[headless-export] boot: chromium ready', payload);
+  }
+}
+
 bindExportBrowserLauncher(() => launchChromium());
+logChromiumAvailabilityAtBoot();

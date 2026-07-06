@@ -17,6 +17,7 @@ import {
   ensureChromiumRuntimeDirs,
   imageScreenshotOptions,
   isHeadlessChromiumUnavailableError,
+  logChromiumAvailabilityAtBoot,
   patchArtifactDeckPrintBackground,
   resolveExportTimeoutMs,
   resolvePlaywrightChromiumExecutable,
@@ -174,6 +175,40 @@ describe('chromiumRuntimePaths', () => {
     } finally {
       if (prev === undefined) delete process.env.OD_CHROMIUM_SINGLE_PROCESS;
       else process.env.OD_CHROMIUM_SINGLE_PROCESS = prev;
+    }
+  });
+});
+
+describe('logChromiumAvailabilityAtBoot', () => {
+  it('emits an od_chromium_boot marker even when no binary exists', () => {
+    const prevRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const prevOverride = process.env.OD_EXPORT_CHROMIUM_PATH;
+    process.env.PLAYWRIGHT_BROWSERS_PATH = `/tmp/od-boot-empty-${process.pid}`;
+    delete process.env.OD_EXPORT_CHROMIUM_PATH;
+    const errCalls: unknown[][] = [];
+    const infoCalls: unknown[][] = [];
+    const prevErr = console.error;
+    const prevInfo = console.info;
+    console.error = (...args: unknown[]) => {
+      errCalls.push(args);
+    };
+    console.info = (...args: unknown[]) => {
+      infoCalls.push(args);
+    };
+    try {
+      logChromiumAvailabilityAtBoot();
+      const allCalls = [...errCalls, ...infoCalls];
+      // At least one boot log line must be emitted with the structured
+      // marker so ops greps like `od_chromium_boot` are stable.
+      const flat = JSON.stringify(allCalls);
+      expect(flat).toContain('od_chromium_boot');
+    } finally {
+      console.error = prevErr;
+      console.info = prevInfo;
+      if (prevRoot === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
+      if (prevOverride === undefined) delete process.env.OD_EXPORT_CHROMIUM_PATH;
+      else process.env.OD_EXPORT_CHROMIUM_PATH = prevOverride;
     }
   });
 });

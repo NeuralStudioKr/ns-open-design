@@ -149,7 +149,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # something if the full build regresses on the current base image.
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     npx --yes playwright-core@1.60.0 install chromium \
-    && chown -R open-design:open-design /ms-playwright
+    && chown -R open-design:open-design /ms-playwright \
+    # Hard-fail the build if the install layer silently produced no binary
+    # (network hiccups against playwright.download.prss.microsoft.com have
+    # bitten us before — the RUN exited 0 but `/ms-playwright` was empty).
+    # We accept either the full chromium build or the headless_shell.
+    && ( \
+      ls /ms-playwright/chromium-*/chrome-linux/chrome >/dev/null 2>&1 \
+      || ls /ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell >/dev/null 2>&1 \
+    ) || ( \
+      echo "FATAL: Playwright chromium install produced no binary under /ms-playwright" >&2; \
+      ls -la /ms-playwright || true; \
+      exit 1 \
+    )
 
 WORKDIR /app
 COPY --from=build --chown=open-design:open-design /app/deploy/daemon ./apps/daemon
