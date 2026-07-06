@@ -15,6 +15,7 @@ import {
 } from '@open-design/contracts/analytics';
 import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
+import { EmbedBootstrapGate } from './components/EmbedBootstrapGate';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -102,7 +103,8 @@ import {
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
-import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
+import { loadProjectListPage, loadProjectListSafe } from './teamver/loadProjectList';
+import { seedEmbedBootstrapSession } from './teamver/embedBootstrapSession';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import {
   capturePreWorkspaceSwitchProjectGuards,
@@ -568,6 +570,7 @@ function AppInner() {
   const [projectsHasMore, setProjectsHasMore] = useState(false);
   const [projectsLoadingMore, setProjectsLoadingMore] = useState(false);
   const [projectsPageLoading, setProjectsPageLoading] = useState(false);
+  const [projectsRefreshing, setProjectsRefreshing] = useState(false);
   const projectsLoadingRef = useRef(projectsLoading);
   const projectsPageLoadedRef = useRef(false);
   const projectsNextCursorRef = useRef<string | null>(null);
@@ -1058,17 +1061,25 @@ function AppInner() {
 
       const request = beginProjectListRequest();
       if (fetchHomeProjects) {
+        // Mark the page as loaded synchronously so the `/projects` route
+        // effect (`ensureProjectsListPageLoaded`) does not fire a duplicate
+        // paginated fetch when boot lands on that route. Any failure below
+        // resets the flag so a subsequent `/projects` visit can retry.
+        projectsPageLoadedRef.current = true;
         void (async () => {
           if (isTeamverEmbedMode()) {
             await waitForTeamverEmbedBoot();
           }
           if (cancelled) return;
-          const result = await loadRecentProjectsForHome();
+          const result = await loadProjectListPage();
           if (cancelled) return;
           if (!result.ok) {
+            projectsPageLoadedRef.current = false;
             setWorkingDirError(result.errorMessage);
           } else {
             setWorkingDirError(null);
+            projectsNextCursorRef.current = result.nextCursor;
+            setProjectsHasMore(result.hasMore);
             reconcileFetchedProjects(result.projects, request);
             warmEmbedProjectListCaches(result.projects);
           }
@@ -1116,24 +1127,44 @@ function AppInner() {
         isTeamverEmbedMode()
           ? (() => {
               const bootSessionOptions = resolveEmbedBootSessionOptions();
-              return fetchDesignAuthSession(bootSessionOptions).then(async (session) => {
-                try {
-                  if (session?.authenticated) {
-                    setTeamverEmbedSessionAuthenticated(true);
-                    await syncTeamverWorkspaceFromSession(session);
-                    try {
-                      await syncAllDaemonProjectsToRegistry();
-                    } catch (err) {
-                      console.warn("[teamver] embed boot registry sync failed", err);
+              // Split into two `.then/.catch` legs so a rejected session
+              // fetch still marks embed boot as complete — otherwise the
+              // `EmbedBootstrapGate` (and any `waitForTeamverEmbedBoot`
+              // callers) would hang on the loading shell forever after a
+              // transient BFF outage on first paint.
+              return fetchDesignAuthSession(bootSessionOptions)
+                .then(async (session) => {
+                  let activeWorkspaceId: string | null = null;
+                  try {
+                    if (session?.authenticated) {
+                      setTeamverEmbedSessionAuthenticated(true);
+                      activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+                      try {
+                        await syncAllDaemonProjectsToRegistry();
+                      } catch (err) {
+                        console.warn("[teamver] embed boot registry sync failed", err);
+                      }
+                    } else {
+                      await clearTeamverEmbedSessionState();
                     }
-                  } else {
-                    await clearTeamverEmbedSessionState();
+                    seedEmbedBootstrapSession({
+                      session: session ?? { authenticated: false },
+                      activeWorkspaceId,
+                    });
+                    return await fetchTeamverRuntimeConfig();
+                  } finally {
+                    completeTeamverEmbedBoot();
                   }
-                  return await fetchTeamverRuntimeConfig();
-                } finally {
+                })
+                .catch((err) => {
+                  console.warn("[teamver] embed boot session probe failed", err);
+                  seedEmbedBootstrapSession({
+                    session: { authenticated: false },
+                    activeWorkspaceId: null,
+                  });
                   completeTeamverEmbedBoot();
-                }
-              });
+                  return null;
+                });
             })()
           : Promise.resolve(null),
       ]).then(([
@@ -1404,25 +1435,18 @@ function AppInner() {
 
   const refreshProjects = useCallback(async () => {
     const request = beginProjectListRequest();
-    if (projectsPageLoadedRef.current) {
-      const result = await loadProjectListPage();
-      if (!result.ok) {
-        setWorkingDirError(result.errorMessage);
-        return;
-      }
-      setWorkingDirError(null);
-      applyProjectsPageResult(result, request, 'replace');
-      return;
-    }
-    const result = await loadRecentProjectsForHome();
+    const result = await loadProjectListPage();
     if (!result.ok) {
+      // Retain the previous list on transient failure so the surface does
+      // not flash empty. Reset the ref so the next `/projects` visit retries.
+      projectsPageLoadedRef.current = false;
       setWorkingDirError(result.errorMessage);
       return;
     }
     setWorkingDirError(null);
-    reconcileFetchedProjects(result.projects, request);
-    warmEmbedProjectListCaches(result.projects);
-  }, [applyProjectsPageResult, beginProjectListRequest, reconcileFetchedProjects]);
+    projectsPageLoadedRef.current = true;
+    applyProjectsPageResult(result, request, 'replace');
+  }, [applyProjectsPageResult, beginProjectListRequest]);
 
   const refreshEmbedProjectMetadata = useCallback(async (projectId: string) => {
     const trimmedId = projectId.trim();
@@ -1645,19 +1669,19 @@ function AppInner() {
           }
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
-          setProjectsLoading(true);
-          setProjects([]);
-          projectsPageLoadedRef.current = false;
+          setProjectsRefreshing(true);
           projectsNextCursorRef.current = null;
           setProjectsHasMore(false);
-          const result = await loadRecentProjectsForHome();
+          const result = await loadProjectListPage();
           if (!result.ok) {
+            // Failure keeps the projects tab flagged as un-loaded so a
+            // subsequent `/projects` visit retries via ensureProjectsListPageLoaded.
+            projectsPageLoadedRef.current = false;
             setWorkingDirError(result.errorMessage);
-            setProjectsLoading(false);
             return;
           }
-          reconcileFetchedProjects(result.projects, request);
-          setProjectsLoading(false);
+          projectsPageLoadedRef.current = true;
+          applyProjectsPageResult(result, request, 'replace');
           setWorkingDirError(null);
           warmEmbedProjectListCaches(result.projects);
           window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
@@ -1684,15 +1708,16 @@ function AppInner() {
             navigate({ kind: 'home', view: 'home' }, { replace: true });
           }
         } finally {
+          setProjectsRefreshing(false);
           workspaceSwitchReconcilingRef.current = false;
           preWorkspaceSwitchTrustedProjectsRef.current = new Set();
         }
       })();
     });
   }, [
+    applyProjectsPageResult,
     beginProjectListRequest,
     isSessionTrustedEmbedProject,
-    reconcileFetchedProjects,
     reloadTeamverRuntimeConfig,
   ]);
 
@@ -1719,8 +1744,10 @@ function AppInner() {
         pendingLocalProjectIdsRef.current.clear();
         locallyDeletedProjectIdsRef.current.clear();
         clearTeamverEmbedListCaches();
+        projectsPageLoadedRef.current = false;
         setProjects([]);
         setProjectsLoading(false);
+        setProjectsRefreshing(false);
         setBackgroundRunSummaries([]);
         setBackgroundRunNotice(null);
         resetEmbedRunTrackingRefs({
@@ -1754,10 +1781,15 @@ function AppInner() {
           void reloadTeamverRuntimeConfig({ force: true });
           return;
         }
-        setProjectsLoading(true);
+        if (projectsRef.current.length > 0) {
+          setProjectsRefreshing(true);
+        } else {
+          setProjectsLoading(true);
+        }
         await refreshProjects();
         void reloadTeamverRuntimeConfig({ force: true });
         setProjectsLoading(false);
+        setProjectsRefreshing(false);
       })();
     });
   }, [refreshEmbedProjectMetadata, refreshProjects, reloadTeamverRuntimeConfig]);
@@ -3393,6 +3425,7 @@ function AppInner() {
         designSystemsLoading={dsLoading}
         projectsLoading={projectsLoading}
         projectsPageLoading={projectsPageLoading}
+        projectsRefreshing={projectsRefreshing}
         projectsHasMore={projectsHasMore}
         projectsLoadingMore={projectsLoadingMore}
         onLoadMoreProjects={loadMoreProjects}
@@ -3432,28 +3465,30 @@ function AppInner() {
     hideWorkspaceTabsBar && isTeamverEmbedMode() && route.kind === 'project';
   return (
     <>
-      <div
-        className={`workspace-shell workspace-shell--${clientType}${
-          hideWorkspaceTabsBar ? ' workspace-shell--no-tabs' : ''
-        }${showTeamverWorkspaceEscape ? ' workspace-shell--embed-escape' : ''}`}
-        data-client-type={clientType}
-      >
-        {hideWorkspaceTabsBar ? null : (
-          <WorkspaceTabsBar
-            route={route}
-            projects={projects}
-            onboardingCompleted={config.onboardingCompleted === true}
-          />
-        )}
-        {showTeamverWorkspaceEscape ? (
-          <TeamverWorkspaceEscapeBar
-            onDesignHome={() => navigate({ kind: 'home', view: 'home' })}
-          />
-        ) : null}
-        <div className="workspace-shell__body">
-          {appMain}
+      <EmbedBootstrapGate>
+        <div
+          className={`workspace-shell workspace-shell--${clientType}${
+            hideWorkspaceTabsBar ? ' workspace-shell--no-tabs' : ''
+          }${showTeamverWorkspaceEscape ? ' workspace-shell--embed-escape' : ''}`}
+          data-client-type={clientType}
+        >
+          {hideWorkspaceTabsBar ? null : (
+            <WorkspaceTabsBar
+              route={route}
+              projects={projects}
+              onboardingCompleted={config.onboardingCompleted === true}
+            />
+          )}
+          {showTeamverWorkspaceEscape ? (
+            <TeamverWorkspaceEscapeBar
+              onDesignHome={() => navigate({ kind: 'home', view: 'home' })}
+            />
+          ) : null}
+          <div className="workspace-shell__body">
+            {appMain}
+          </div>
         </div>
-      </div>
+      </EmbedBootstrapGate>
       {clientType === 'desktop' ? null : (
         <PetOverlay
           pet={config.pet?.enabled ? config.pet : undefined}

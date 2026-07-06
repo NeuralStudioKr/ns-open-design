@@ -14,11 +14,11 @@ describe("embed workspace switch side effects", () => {
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 2800);
-    expect(block).toContain("loadRecentProjectsForHome()");
+    expect(block).toContain("loadProjectListPage()");
     expect(block).toContain("setWorkingDirError(null)");
-    expect(block.indexOf("setWorkingDirError(null)")).toBeGreaterThan(
-      block.indexOf("reconcileFetchedProjects"),
-    );
+    expect(block).toContain("applyProjectsPageResult");
+    expect(block).toContain("setProjectsRefreshing(true)");
+    expect(block).not.toContain("setProjects([])");
   });
 
   it("clears embed list caches (registry·cover·publish chip) on workspace switch", () => {
@@ -171,7 +171,7 @@ describe("embed workspace switch side effects", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");
     expect(start).toBeGreaterThan(0);
-    const block = app.slice(start, start + 400);
+    const block = app.slice(start, start + 800);
     expect(block).toContain("setWorkingDirError(null)");
   });
 

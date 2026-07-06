@@ -14,6 +14,8 @@ import {
   prepareDesignAuthSessionReload,
 } from '@/src/teamver/designBffClient';
 import { postDesignAuthWorkspace } from '@/src/teamver/designAuthClient';
+import { resolveEmbedBootstrapLoadingLabel } from '@/src/teamver/branding/loadingShellLabel';
+import { seedEmbedBootstrapSession } from '@/src/teamver/embedBootstrapSession';
 import { setTeamverEmbedSessionAuthenticated } from '@/src/teamver/teamverEmbedSession';
 import { syncTeamverWorkspaceFromSession } from '@/src/teamver/syncTeamverWorkspace';
 import {
@@ -21,6 +23,8 @@ import {
   normalizeEmbedAuthReturnDestination,
   scrubCosmeticLaunchParamsFromBrowserUrl,
 } from '@/src/teamver/teamverEmbedAuthNavigation';
+
+const BOOTSTRAP_LOADING_LABEL = resolveEmbedBootstrapLoadingLabel();
 
 function AuthCallbackInner() {
   const searchParams = useSearchParams();
@@ -60,7 +64,12 @@ function AuthCallbackInner() {
         const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
         if (session?.authenticated) {
           setTeamverEmbedSessionAuthenticated(true);
-          await syncTeamverWorkspaceFromSession(session);
+          const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+          // finishEmbedAuthNavigation replaces the page below, so this snapshot
+          // is a defensive seed for any future SPA navigation path — the fresh
+          // module instance on the destination page cannot see it. The main
+          // App boot re-seeds this snapshot before `EmbedBootstrapGate` clears.
+          seedEmbedBootstrapSession({ session, activeWorkspaceId });
         }
         finishEmbedAuthNavigation(
           normalizeEmbedAuthReturnDestination(returnTo),
@@ -79,12 +88,12 @@ function AuthCallbackInner() {
     );
   }
 
-  return <div className="od-loading-shell" data-testid="design-auth-callback-loading">로그인 연결 중…</div>;
+  return <div className="od-loading-shell" data-testid="design-auth-callback-loading">{BOOTSTRAP_LOADING_LABEL}</div>;
 }
 
 export default function DesignAuthCallbackPage() {
   return (
-    <Suspense fallback={<div className="od-loading-shell">로그인 연결 중…</div>}>
+    <Suspense fallback={<div className="od-loading-shell">{BOOTSTRAP_LOADING_LABEL}</div>}>
       <AuthCallbackInner />
     </Suspense>
   );

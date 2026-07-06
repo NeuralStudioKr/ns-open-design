@@ -299,6 +299,7 @@ interface Props {
   designSystemsLoading?: boolean;
   projectsLoading?: boolean;
   projectsPageLoading?: boolean;
+  projectsRefreshing?: boolean;
   projectsHasMore?: boolean;
   projectsLoadingMore?: boolean;
   onLoadMoreProjects?: () => void;
@@ -434,6 +435,7 @@ export function EntryShell({
   designSystemsLoading = false,
   projectsLoading = false,
   projectsPageLoading = false,
+  projectsRefreshing = false,
   projectsHasMore = false,
   projectsLoadingMore = false,
   onLoadMoreProjects,
@@ -857,10 +859,15 @@ export function EntryShell({
               />
             </div>
             <div data-testid="entry-view-projects" data-active={view === 'projects' ? 'true' : 'false'} {...inactiveViewProps(view === 'projects')}>
-              {projectsLoading || projectsPageLoading || skillsLoading || designSystemsLoading ? (
+              {(projectsLoading || projectsPageLoading) && projects.length === 0 ? (
                 <CenteredLoader label={t('common.loading')} />
               ) : (
-                <div className="entry-section">
+                <div
+                  className={[
+                    'entry-section',
+                    projectsRefreshing ? 'entry-section--stale-refresh' : '',
+                  ].filter(Boolean).join(' ')}
+                >
                   <header className="entry-section__head">
                     <h1 className="entry-section__title">{t('entry.navProjects')}</h1>
                   </header>

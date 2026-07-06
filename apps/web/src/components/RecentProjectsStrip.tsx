@@ -50,6 +50,7 @@ export function RecentProjectsStrip({
   projects,
   activeRunSummaries = [],
   designSystems = EMPTY_DESIGN_SYSTEMS,
+  loading = false,
   onOpen,
   onViewAll,
   limit = 6,
@@ -101,9 +102,32 @@ export function RecentProjectsStrip({
 
   // First-run home shouldn't reserve space for an empty "Recent
   // projects" rail — the dashed empty box just adds visual noise
-  // above the plugin gallery. We also skip rendering during the
-  // load window so the section doesn't pop in and then collapse;
-  // the prompt hero is enough chrome on its own.
+  // above the plugin gallery. While loading, show a compact skeleton
+  // instead of popping in after the fetch settles.
+  if (loading && recent.length === 0) {
+    return (
+      <section
+        className="recent-projects recent-projects--loading"
+        data-testid="recent-projects-skeleton"
+        aria-busy="true"
+        aria-label={t('recentProjects.title')}
+      >
+        <header className="recent-projects__head">
+          <h2 className="recent-projects__title">{t('recentProjects.title')}</h2>
+        </header>
+        <div className="recent-projects__row">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div
+              key={index}
+              className="recent-projects__card recent-projects__card--skeleton"
+              aria-hidden
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   if (recent.length === 0) {
     return null;
   }

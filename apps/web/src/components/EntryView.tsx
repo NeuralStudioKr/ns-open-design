@@ -91,6 +91,7 @@ interface Props {
   designSystemsLoading?: boolean;
   projectsLoading?: boolean;
   projectsPageLoading?: boolean;
+  projectsRefreshing?: boolean;
   projectsHasMore?: boolean;
   projectsLoadingMore?: boolean;
   onLoadMoreProjects?: () => void;
@@ -255,6 +256,7 @@ export function EntryView({
   designSystemsLoading = false,
   projectsLoading = false,
   projectsPageLoading = false,
+  projectsRefreshing = false,
   projectsHasMore = false,
   projectsLoadingMore = false,
   onLoadMoreProjects,
@@ -374,6 +376,7 @@ export function EntryView({
       designSystemsLoading={designSystemsLoading}
       projectsLoading={projectsLoading}
       projectsPageLoading={projectsPageLoading}
+      projectsRefreshing={projectsRefreshing}
       projectsHasMore={projectsHasMore}
       projectsLoadingMore={projectsLoadingMore}
       onLoadMoreProjects={onLoadMoreProjects}

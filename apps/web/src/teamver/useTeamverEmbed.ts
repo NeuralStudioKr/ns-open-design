@@ -9,6 +9,7 @@ import {
   prepareDesignAuthSessionReload,
   resetDesignAuthBareRefreshAttempt,
   resetDesignAuthRefreshState,
+  type DesignAuthSession,
   type DesignAuthSessionUser,
 } from "./designBffClient";
 import { isTeamverEmbedMode, isBootstrapAuthMode } from "./designApiBase";
@@ -53,6 +54,10 @@ import {
   resolveEmbedFocusSessionOptions,
   shouldResetEmbedRefreshDeclineOnFocus,
 } from "./teamverEmbedAuthFlow";
+import {
+  peekEmbedBootstrapSession,
+  type EmbedBootstrapSessionSnapshot,
+} from "./embedBootstrapSession";
 
 export type TeamverEmbedState = {
   loading: boolean;
@@ -136,10 +141,99 @@ function pickSessionUnreachableDelayMs(attempt: number): number {
   return SESSION_UNREACHABLE_BACKOFF_MS[index] ?? 60_000;
 }
 
+function buildEmbedStateFromBootSnapshot(
+  boot: EmbedBootstrapSessionSnapshot,
+): Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> {
+  const session = boot.session;
+  const workspaces = normalizeWorkspaceList(session.workspaces);
+  const activeWorkspace =
+    workspaces.find((workspace) => readWorkspaceId(workspace) === boot.activeWorkspaceId) ?? null;
+  return {
+    loading: false,
+    authenticated: true,
+    userLabel: readUserLabel(session.user),
+    userId: readUserId(session.user),
+    userImageUrl: readUserImageUrl(session.user),
+    activeWorkspaceId: boot.activeWorkspaceId,
+    activeWorkspaceLabel: activeWorkspace ? readWorkspaceLabel(activeWorkspace) : null,
+    designAppEnabled: activeWorkspace ? isWorkspaceAppEnabled(activeWorkspace) : true,
+    designDisabledReason: activeWorkspace ? readAppDisabledReason(activeWorkspace) : null,
+    workspaces,
+    error: null,
+  };
+}
+
+function resolveInitialEmbedState(
+  enabled: boolean,
+): Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> {
+  if (!enabled || !isTeamverEmbedMode()) return INITIAL;
+  const boot = peekEmbedBootstrapSession();
+  if (boot?.session.authenticated) {
+    return buildEmbedStateFromBootSnapshot(boot);
+  }
+  if (!isTeamverEmbedBootComplete()) {
+    return { ...INITIAL, loading: true };
+  }
+  return INITIAL;
+}
+
+function applySessionToEmbedState(
+  session: DesignAuthSession,
+  activeWorkspaceId: string | null,
+): Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> {
+  const workspaces = normalizeWorkspaceList(session.workspaces);
+  const activeWorkspace =
+    workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null;
+  const userId = readUserId(session.user);
+  return {
+    loading: false,
+    authenticated: true,
+    userLabel: readUserLabel(session.user),
+    userId,
+    userImageUrl: readUserImageUrl(session.user),
+    activeWorkspaceId,
+    activeWorkspaceLabel: activeWorkspace ? readWorkspaceLabel(activeWorkspace) : null,
+    designAppEnabled: activeWorkspace ? isWorkspaceAppEnabled(activeWorkspace) : true,
+    designDisabledReason: activeWorkspace ? readAppDisabledReason(activeWorkspace) : null,
+    workspaces,
+    error: null,
+  };
+}
+
 export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
-  const [state, setState] = useState(INITIAL);
+  const [state, setState] = useState(() => resolveInitialEmbedState(enabled));
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // Hydrate from the App-boot session snapshot as soon as boot completes.
+  // The `refresh()` effect below fetches the session again (cache-hit path),
+  // but that resolves one microtask later than `EmbedBootstrapGate.setReady`.
+  // Applying the snapshot in the same tick that boot completes means the
+  // first render after the gate opens shows the authenticated banner
+  // instead of a "session loading" flicker.
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    if (stateRef.current.authenticated) return;
+    if (isTeamverEmbedBootComplete()) {
+      const boot = peekEmbedBootstrapSession();
+      if (boot?.session.authenticated) {
+        setState(applySessionToEmbedState(boot.session, boot.activeWorkspaceId));
+      }
+      return;
+    }
+    let cancelled = false;
+    void waitForTeamverEmbedBoot().then(() => {
+      if (cancelled) return;
+      if (stateRef.current.authenticated) return;
+      const boot = peekEmbedBootstrapSession();
+      if (boot?.session.authenticated) {
+        setState(applySessionToEmbedState(boot.session, boot.activeWorkspaceId));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
 
   // Track visible cookie / embed-session hint so focus can detect cross-tab login.
   const lastCookieHintRef = useRef<boolean>(
@@ -164,11 +258,16 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
     const force = options?.force ?? false;
     const resetRefreshState = options?.resetRefreshState ?? false;
+    const bootSnapshot = peekEmbedBootstrapSession();
+    const bootHydrated = bootSnapshot?.session.authenticated === true;
     // Routine tab-focus refresh should not blank the session bar — only the
     // initial boot and explicit auth recovery need the loading affordance.
     setState((prev) => ({
       ...prev,
-      loading: prev.authenticated && !resetRefreshState ? prev.loading : true,
+      loading:
+        (prev.authenticated || bootHydrated) && !resetRefreshState && !force
+          ? prev.loading
+          : true,
       error: null,
     }));
     try {
@@ -224,14 +323,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         // touch as a workspace switch and bounce the user to home.
         preserveStoredWorkspace: !resetRefreshState && isTeamverEmbedBootComplete(),
       });
-      const activeWorkspace =
-        workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null;
-      const designAppEnabled = activeWorkspace ? isWorkspaceAppEnabled(activeWorkspace) : true;
-      const designDisabledReason = activeWorkspace
-        ? readAppDisabledReason(activeWorkspace)
-        : null;
-      if (activeWorkspaceId && activeWorkspace) {
-        snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
+      if (activeWorkspaceId) {
+        const activeWorkspace =
+          workspaces.find((workspace) => readWorkspaceId(workspace) === activeWorkspaceId) ?? null;
+        if (activeWorkspace) {
+          snapshotFromWorkspace(activeWorkspaceId, activeWorkspace);
+        }
         // Workspace-changed dispatch lives in syncTeamverWorkspaceFromSession when
         // the stored id actually changes. Do not re-dispatch on every focus
         // session refresh — App treats it as a full workspace switch (project
@@ -251,17 +348,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       setState({
-        loading: false,
-        authenticated: true,
-        userLabel: readUserLabel(session.user),
-        userId,
-        userImageUrl: readUserImageUrl(session.user),
-        activeWorkspaceId,
-        activeWorkspaceLabel: activeWorkspace ? readWorkspaceLabel(activeWorkspace) : null,
-        designAppEnabled,
-        designDisabledReason,
-        workspaces,
-        error: null,
+        ...applySessionToEmbedState(session, activeWorkspaceId),
       });
     } catch (err) {
       if (isSessionExpiredError(err)) {

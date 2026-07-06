@@ -19,3 +19,8 @@ export function resolveLoadingShellLabel(): string {
     readTeamverViteEnv("VITE_TEAMVER_BRAND_TITLE") || TEAMVER_DEFAULT_BRAND_TITLE;
   return `${brandTitle} 불러오는 중…`;
 }
+
+/** Unified bootstrap copy for shell, session banner, and auth callback. */
+export function resolveEmbedBootstrapLoadingLabel(): string {
+  return resolveLoadingShellLabel();
+}

@@ -1,4 +1,5 @@
 import type { Dict } from "../../i18n/types";
+import { resolveEmbedBootstrapLoadingLabel } from "../branding/loadingShellLabel";
 
 const OPEN_DESIGN_BRAND_RE = /Open Design/g;
 
@@ -24,9 +25,15 @@ export function teamverEmbedOverrides(
   subtitle?: string,
   hero?: { title?: string; subtitle?: string },
 ): Partial<Dict> {
+  const bootstrapLoading = resolveEmbedBootstrapLoadingLabel();
   const overrides: Partial<Dict> = {
     "app.brand": title,
     "app.brandPill": "",
+    // Session banner reuses the pre-mount shell copy so the bootstrap
+    // sequence reads as a single loading state instead of two distinct
+    // "Loading…" then "Checking session…" messages. `common.loading` is
+    // still the neutral spinner copy elsewhere.
+    "teamver.embed.sessionLoading": bootstrapLoading,
   };
   if (subtitle?.trim()) {
     overrides["app.brandSubtitle"] = subtitle.trim();
