@@ -59,14 +59,17 @@ services:
       OD_SCRATCH_DISK_METRICS: ${OD_SCRATCH_DISK_METRICS:-}
       OD_SCRATCH_DISK_THRESHOLD_MB: ${OD_SCRATCH_DISK_THRESHOLD_MB:-}
       OD_SCRATCH_DISK_METRIC_INTERVAL_MS: ${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-}
-      # Headless export (PDF/image) — Chromium crashpad needs writable XDG dirs
-      # in read-only containers (root FS is ro; /tmp is tmpfs).
+      # Headless export (PDF/image) — Playwright-managed chromium.
+      # crashpad needs writable XDG dirs in read-only containers (root
+      # FS is ro; /tmp is tmpfs). `PLAYWRIGHT_BROWSERS_PATH` matches
+      # deploy/Dockerfile so the daemon finds the bundled Chromium.
+      # `OD_EXPORT_CHROMIUM_PATH` and `OD_CHROMIUM_SINGLE_PROCESS` are
+      # NOT set: Playwright-managed chromium is preferred by the
+      # launcher and `--single-process` caused SIGTRAPs on M120+.
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp/.chromium
       XDG_CACHE_HOME: /tmp/.chromium
-      OD_EXPORT_CHROMIUM_PATH: /usr/bin/chromium
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-      OD_CHROMIUM_SINGLE_PROCESS: "1"
       OD_EXPORT_MAX_CONCURRENT: ${OD_EXPORT_MAX_CONCURRENT:-4}
       OD_EXPORT_BROWSER_POOL_SIZE: ${OD_EXPORT_BROWSER_POOL_SIZE:-2}
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}

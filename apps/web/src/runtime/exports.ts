@@ -121,6 +121,16 @@ async function throwIfDaemonExportFailed(resp: Response, context: string): Promi
     throw new ExportQueueFullError();
   }
   if (
+    resp.status === 503
+    && (code === 'HEADLESS_CHROMIUM_UNAVAILABLE'
+      || message.toLowerCase().includes('headless chromium unavailable'))
+  ) {
+    // Preserve the structured code in the thrown message so the caller's
+    // `isHeadlessChromiumUnavailableExportError` classifier can route
+    // this to the browser-print fallback without regex sniffing.
+    throw new Error(`${context} 503: HEADLESS_CHROMIUM_UNAVAILABLE`);
+  }
+  if (
     resp.status === 502
     && (code === 'UPSTREAM_UNAVAILABLE' || code === 'PROJECT_STORAGE_SYNC_FAILED')
     && message.includes('teamver_project_s3_prefix_required')
@@ -152,7 +162,13 @@ export class TeamverProjectStoragePrefixRequiredError extends Error {
 
 function isHeadlessChromiumUnavailableExportError(err: unknown): boolean {
   const reason = err instanceof Error ? err.message : String(err ?? '');
-  return /headless Chromium unavailable/i.test(reason);
+  // Match both the daemon's structured code (503 HEADLESS_CHROMIUM_UNAVAILABLE)
+  // and the legacy "headless Chromium unavailable (tried N paths)" string that
+  // still surfaces from older builds until the deploy image rolls forward.
+  return (
+    /HEADLESS_CHROMIUM_UNAVAILABLE/.test(reason)
+    || /headless Chromium unavailable/i.test(reason)
+  );
 }
 
 export function isTeamverProjectStoragePrefixRequiredError(

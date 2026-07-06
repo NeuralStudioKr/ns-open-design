@@ -354,6 +354,54 @@ describe('exportProjectAsPdf', () => {
     expect(fallback).not.toHaveBeenCalled();
   });
 
+  it('falls back to browser print when the daemon returns the HEADLESS_CHROMIUM_UNAVAILABLE structured code', async () => {
+    // Once the fixed image rolls forward, the daemon emits a 503 with a
+    // dedicated error code instead of the legacy "tried N paths" string.
+    // The FE must trigger the browser-print fallback for both shapes.
+    const fallback = vi.fn();
+    const open = vi.fn(() => ({
+      location: { href: '' },
+      opener: null,
+    }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:pdf'),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({
+        error: {
+          code: 'HEADLESS_CHROMIUM_UNAVAILABLE',
+          message: 'headless Chromium unavailable — falling back to browser print',
+        },
+      }), { status: 503 }),
+    ));
+
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      requireRenderedExport: true,
+      title: 'Seed Deck',
+    });
+
+    expect(result).toBe('fallback');
+    expect(open).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
   it('treats a canceled desktop PDF save dialog as a silent no-op', async () => {
     const restoreHost = installMockOpenDesignHost();
     try {

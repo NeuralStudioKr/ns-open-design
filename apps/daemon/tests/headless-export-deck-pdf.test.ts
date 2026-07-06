@@ -16,9 +16,11 @@ import {
   DECK_WRAPPER_SELECTOR,
   ensureChromiumRuntimeDirs,
   imageScreenshotOptions,
+  isHeadlessChromiumUnavailableError,
   patchArtifactDeckPrintBackground,
   resolveExportTimeoutMs,
   resolvePlaywrightChromiumExecutable,
+  resolvePlaywrightChromiumExecutables,
 } from '../src/headless-export.js';
 
 describe('chromiumExecutableCandidates', () => {
@@ -55,6 +57,55 @@ describe('chromiumExecutableCandidates', () => {
       else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
     }
   });
+
+  it('also surfaces Playwright chromium_headless_shell as a fallback candidate', () => {
+    const root = `/tmp/od-pw-shell-${process.pid}`;
+    const chromePath = path.join(root, 'chromium-1200', 'chrome-linux', 'chrome');
+    const shellPath = path.join(
+      root,
+      'chromium_headless_shell-1200',
+      'chrome-linux',
+      'headless_shell',
+    );
+    const prevRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    fs.mkdirSync(path.dirname(chromePath), { recursive: true });
+    fs.writeFileSync(chromePath, '');
+    fs.mkdirSync(path.dirname(shellPath), { recursive: true });
+    fs.writeFileSync(shellPath, '');
+    process.env.PLAYWRIGHT_BROWSERS_PATH = root;
+    try {
+      const executables = resolvePlaywrightChromiumExecutables();
+      expect(executables).toContain(chromePath);
+      expect(executables).toContain(shellPath);
+      const candidates = chromiumExecutableCandidates();
+      expect(candidates.indexOf(chromePath)).toBeLessThan(candidates.indexOf(shellPath));
+      expect(candidates.indexOf(shellPath)).toBeLessThan(candidates.indexOf('/usr/bin/chromium'));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      if (prevRoot === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
+    }
+  });
+});
+
+describe('isHeadlessChromiumUnavailableError', () => {
+  it('detects the daemon summary message', () => {
+    expect(
+      isHeadlessChromiumUnavailableError(
+        new Error('headless Chromium unavailable (tried 8 path(s)): /usr/bin/chromium: SIGTRAP'),
+      ),
+    ).toBe(true);
+  });
+
+  it('detects the HEADLESS_CHROMIUM_UNAVAILABLE structured code from the FE side', () => {
+    expect(isHeadlessChromiumUnavailableError('HEADLESS_CHROMIUM_UNAVAILABLE')).toBe(true);
+  });
+
+  it('rejects unrelated errors', () => {
+    expect(isHeadlessChromiumUnavailableError(new Error('teamver_project_s3_prefix_required'))).toBe(
+      false,
+    );
+  });
 });
 
 describe('chromiumRuntimePaths', () => {
@@ -80,9 +131,11 @@ describe('chromiumRuntimePaths', () => {
     const prevConfig = process.env.XDG_CONFIG_HOME;
     const prevCache = process.env.XDG_CACHE_HOME;
     const prevDbus = process.env.DBUS_SESSION_BUS_ADDRESS;
+    const prevSingle = process.env.OD_CHROMIUM_SINGLE_PROCESS;
     process.env.XDG_CONFIG_HOME = dir;
     process.env.XDG_CACHE_HOME = dir;
     delete process.env.DBUS_SESSION_BUS_ADDRESS;
+    delete process.env.OD_CHROMIUM_SINGLE_PROCESS;
     try {
       ensureChromiumRuntimeDirs();
       expect(chromiumRuntimePaths().crashDir).toContain(dir);
@@ -93,6 +146,9 @@ describe('chromiumRuntimePaths', () => {
       expect(args.some((arg) => arg.startsWith('--crash-dumps-dir='))).toBe(true);
       expect(args).toContain('--no-zygote');
       expect(args).toContain('--no-crashpad');
+      // --single-process must not be added by default: M120+ Chromium
+      // SIGTRAPs on startup with that flag in tmpfs-only containers.
+      expect(args).not.toContain('--single-process');
       const env = chromiumRuntimeEnv();
       expect(env.DBUS_SESSION_BUS_ADDRESS).toBe('disabled:');
       expect(env.XDG_CONFIG_HOME).toBe(dir);
@@ -105,6 +161,19 @@ describe('chromiumRuntimePaths', () => {
       else process.env.XDG_CACHE_HOME = prevCache;
       if (prevDbus === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS;
       else process.env.DBUS_SESSION_BUS_ADDRESS = prevDbus;
+      if (prevSingle === undefined) delete process.env.OD_CHROMIUM_SINGLE_PROCESS;
+      else process.env.OD_CHROMIUM_SINGLE_PROCESS = prevSingle;
+    }
+  });
+
+  it('adds --single-process only when OD_CHROMIUM_SINGLE_PROCESS=1 is set', () => {
+    const prev = process.env.OD_CHROMIUM_SINGLE_PROCESS;
+    process.env.OD_CHROMIUM_SINGLE_PROCESS = '1';
+    try {
+      expect(chromiumLaunchArgs()).toContain('--single-process');
+    } finally {
+      if (prev === undefined) delete process.env.OD_CHROMIUM_SINGLE_PROCESS;
+      else process.env.OD_CHROMIUM_SINGLE_PROCESS = prev;
     }
   });
 });

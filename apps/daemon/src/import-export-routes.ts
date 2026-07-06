@@ -189,6 +189,20 @@ function handleExportRouteError(
     sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
     return;
   }
+  // Distinct code for the "no working Chromium binary" case lets the FE
+  // trigger the browser-print fallback without regex-sniffing the
+  // message. Also collapse the Playwright call log to a compact reason
+  // so the toast/HUD is readable.
+  if (isHeadlessChromiumUnavailableExportError(err)) {
+    console.warn(`[${routeLabel}] chromium unavailable`, { projectId, reason });
+    sendApiError(
+      res,
+      503,
+      'HEADLESS_CHROMIUM_UNAVAILABLE',
+      'headless Chromium unavailable — falling back to browser print',
+    );
+    return;
+  }
   console.warn(`[${routeLabel}] failed`, { projectId, reason });
   sendApiError(res, 500, 'EXPORT_FAILED', reason);
 }

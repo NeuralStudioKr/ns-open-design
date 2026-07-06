@@ -108,17 +108,45 @@ FROM ${RUNTIME_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     poppler-utils \
-    chromium \
     fonts-freefont-ttf \
     fonts-noto-core \
     fonts-noto-cjk \
     ca-certificates \
+    # Playwright chromium runtime deps (Debian bookworm SSOT). We install
+    # these explicitly rather than relying on the distro `chromium`
+    # package because that package's own bundled binary SIGTRAPs on
+    # launch inside minimal containers (issue observed in staging: pid
+    # exits with signal=SIGTRAP even with --no-sandbox / --no-zygote).
+    # List cross-checked against `npx playwright install-deps chromium
+    # --dry-run` on debian:12 and Playwright docs
+    # https://playwright.dev/docs/browsers#install-system-dependencies.
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -g 1001 open-design \
     && useradd -u 1001 -g open-design -M -s /usr/sbin/nologin open-design
 
-# Distro Chromium can SIGTRAP in minimal containers; ship Playwright's build as
-# the primary headless export binary (see resolvePlaywrightChromiumExecutable).
+# Playwright-managed Chromium is the ONLY supported headless export
+# binary on hosted images. `install chromium` downloads BOTH the full
+# Chromium build (chromium-<rev>/chrome-linux/chrome, ~170MB) AND the
+# headless_shell variant (chromium_headless_shell-<rev>/…, ~90MB). The
+# launcher (see resolvePlaywrightChromiumExecutables) prefers the full
+# build and falls back to the shell so the container still exports
+# something if the full build regresses on the current base image.
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     npx --yes playwright-core@1.60.0 install chromium \
     && chown -R open-design:open-design /ms-playwright
@@ -146,12 +174,19 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=192
 ENV OD_BIND_HOST=0.0.0.0
 ENV OD_PORT=7456
-ENV OD_EXPORT_CHROMIUM_PATH=/usr/bin/chromium
+# Playwright is the ONLY installed browser. We intentionally do NOT set
+# OD_EXPORT_CHROMIUM_PATH; the daemon resolves the Playwright-managed
+# chromium first (see resolvePlaywrightChromiumExecutables) and falls
+# back to distro paths only if that resolution fails.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV OD_CHROMIUM_SINGLE_PROCESS=1
-# Distro Chromium crashpad needs writable XDG dirs. The runtime container is
-# read-only except /tmp (tmpfs); open-design has no home (-M useradd).
+# `--single-process` was previously enabled here but Chromium ≥ M120
+# SIGTRAPs on startup with that flag in tmpfs-only containers. Keep the
+# knob available (opt-in via env) but leave multi-process as the
+# default; the pool cap already bounds RSS well under `mem_limit`.
+# Playwright chromium crashpad needs writable XDG dirs. The runtime
+# container is read-only except /tmp (tmpfs); open-design has no home
+# directory (-M useradd).
 ENV HOME=/tmp
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium

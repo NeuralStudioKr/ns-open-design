@@ -120,36 +120,80 @@ export function buildDeckPrintCss(): string {
 // containers even with --no-sandbox / --no-zygote.
 export function isHeadlessChromiumUnavailableError(err: unknown): boolean {
   const reason = String((err as Error)?.message || err);
-  return /headless Chromium unavailable/i.test(reason);
+  // Match both the classic prose ("headless Chromium unavailable (tried
+  // …)") and the structured code we send back over HTTP so callers on
+  // either side of the daemon boundary can classify the failure.
+  return (
+    /headless Chromium unavailable/i.test(reason)
+    || /HEADLESS_CHROMIUM_UNAVAILABLE/.test(reason)
+  );
 }
 
 /** @deprecated alias — import-export routes export name */
 export const isHeadlessChromiumUnavailableExportError = isHeadlessChromiumUnavailableError;
 
-export function resolvePlaywrightChromiumExecutable(): string | null {
+/**
+ * Enumerate every Playwright-bundled Chromium binary in
+ * `$PLAYWRIGHT_BROWSERS_PATH` (or the default `~/.cache/ms-playwright`).
+ *
+ * Playwright ships two flavors:
+ *   - `chromium-<rev>/chrome-linux/chrome` — full Chromium build.
+ *   - `chromium_headless_shell-<rev>/chrome-linux/headless_shell` — the
+ *     smaller headless-only shell used by `install --only-shell`.
+ * Both are surfaced so the launcher can fall back to whichever the
+ * runtime image actually contains. Newer revisions come first so we
+ * prefer the currently-supported ABI when multiple installs coexist.
+ */
+export function resolvePlaywrightChromiumExecutables(): string[] {
   const root =
     process.env.PLAYWRIGHT_BROWSERS_PATH?.trim()
     || path.join(process.env.HOME?.trim() || '/tmp', '.cache', 'ms-playwright');
-  try {
-    const entries = fs.readdirSync(root, { withFileTypes: true });
-    const chromiumDirs = entries
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith('chromium-'))
-      .map((entry) => entry.name)
-      .sort()
-      .reverse();
-    for (const dirName of chromiumDirs) {
-      const candidate = path.join(root, dirName, 'chrome-linux', 'chrome');
-      if (fs.existsSync(candidate)) return candidate;
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const push = (candidate: string) => {
+    if (fs.existsSync(candidate) && !seen.has(candidate)) {
+      seen.add(candidate);
+      found.push(candidate);
     }
-  } catch {
-    // Best-effort — launch loop surfaces a clearer error if nothing matches.
+  };
+  const listDirs = (prefix: string): string[] => {
+    try {
+      return fs
+        .readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+        .map((entry) => entry.name)
+        .sort()
+        .reverse();
+    } catch {
+      return [];
+    }
+  };
+
+  // Full chromium first (executablePath 'chrome') because launch-time
+  // Playwright APIs (page.pdf, page.screenshot) are validated only
+  // against the full build. The headless_shell fallback is best-effort
+  // in case the full build failed to install.
+  for (const dirName of listDirs('chromium-')) {
+    push(path.join(root, dirName, 'chrome-linux', 'chrome'));
   }
-  return null;
+  for (const dirName of listDirs('chromium_headless_shell-')) {
+    push(path.join(root, dirName, 'chrome-linux', 'headless_shell'));
+  }
+  return found;
+}
+
+/** @deprecated Kept for existing tests / callers; returns the top pick. */
+export function resolvePlaywrightChromiumExecutable(): string | null {
+  return resolvePlaywrightChromiumExecutables()[0] ?? null;
 }
 
 export function chromiumExecutableCandidates(): string[] {
   const ordered = [
-    resolvePlaywrightChromiumExecutable(),
+    // Playwright-managed browsers come first: they ship the exact
+    // libnss3/libnspr4 ABI the launcher was built against and do not
+    // depend on Debian's distro chromium package (which SIGTRAPs in
+    // minimal containers even with --no-sandbox / --no-zygote).
+    ...resolvePlaywrightChromiumExecutables(),
     process.env.OD_EXPORT_CHROMIUM_PATH,
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
@@ -187,6 +231,11 @@ export function chromiumRuntimeEnv(): NodeJS.ProcessEnv {
 
 export function chromiumLaunchArgs(): string[] {
   const { crashDir } = chromiumRuntimePaths();
+  // Order matters: `--headless=new` is safe on full Chromium but the
+  // Playwright headless_shell binary already runs headless-only, so
+  // passing the flag there is a no-op. `--no-sandbox` +
+  // `--disable-setuid-sandbox` are needed because the runtime container
+  // does not grant CAP_SYS_ADMIN (no user namespaces).
   const args = [
     '--headless=new',
     '--disable-dev-shm-usage',
@@ -202,10 +251,34 @@ export function chromiumLaunchArgs(): string[] {
     '--disable-software-rasterizer',
     `--crash-dumps-dir=${crashDir}`,
   ];
-  if (process.env.NODE_ENV === 'production' || process.env.OD_CHROMIUM_SINGLE_PROCESS === '1') {
+  // `--single-process` was previously enabled in production to sidestep
+  // sandboxing on read-only containers, but headless Chromium ≥ M120 can
+  // SIGTRAP inside its own IPC layer when run with a single process (the
+  // renderer trips on GPU-thread init even with --disable-gpu). Default
+  // off; keep OD_CHROMIUM_SINGLE_PROCESS=1 as an opt-in escape hatch for
+  // hosts where the multi-process launch is definitively worse.
+  if (process.env.OD_CHROMIUM_SINGLE_PROCESS === '1') {
     args.push('--single-process');
   }
   return args;
+}
+
+/**
+ * Chromium launcher errors that are worth retrying once. The distro
+ * Chromium in Debian bookworm occasionally SIGTRAPs on the first launch
+ * inside a fresh container tmpfs (Playwright reports
+ * `process did exit: exitCode=null, signal=SIGTRAP`), then succeeds on
+ * the second try — the first launch appears to warm up
+ * `/tmp/.chromium/*` and subsequent runs no longer trip. Timeouts and
+ * connection resets also fall into this bucket.
+ */
+function isTransientChromiumLaunchError(reason: string): boolean {
+  return (
+    /SIGTRAP/i.test(reason)
+    || /Timeout .* exceeded/i.test(reason)
+    || /Target page, context or browser has been closed/i.test(reason)
+    || /ECONNREFUSED|ECONNRESET|EPIPE/i.test(reason)
+  );
 }
 
 export function ensureChromiumRuntimeDirs(): void {
@@ -351,14 +424,12 @@ export async function renderHeadlessHtmlSnapshot(
 async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
   ensureChromiumRuntimeDirs();
-  const attempts: Array<{ executablePath?: string; error: string }> = [];
+  const attempts: Array<{ executablePath?: string; error: string; retryable?: boolean }> = [];
   const launchArgs = chromiumLaunchArgs();
   const launchEnv = chromiumRuntimeEnv();
-  for (const executablePath of chromiumExecutableCandidates()) {
-    if (!fs.existsSync(executablePath)) {
-      attempts.push({ executablePath, error: 'executable not found' });
-      continue;
-    }
+  const candidates = chromiumExecutableCandidates();
+
+  const tryLaunch = async (executablePath: string, isRetry: boolean): Promise<Browser | null> => {
     try {
       return await chromium.launch({
         executablePath,
@@ -368,9 +439,35 @@ async function launchChromium(): Promise<Browser> {
         timeout: EXPORT_TIMEOUT_MS,
       });
     } catch (err) {
-      attempts.push({ executablePath, error: String((err as any)?.message || err) });
+      const message = String((err as any)?.message || err);
+      const retryable = isTransientChromiumLaunchError(message);
+      attempts.push({
+        executablePath,
+        error: isRetry ? `(retry) ${message}` : message,
+        retryable,
+      });
+      return null;
+    }
+  };
+
+  for (const executablePath of candidates) {
+    if (!fs.existsSync(executablePath)) {
+      attempts.push({ executablePath, error: 'executable not found' });
+      continue;
+    }
+    const first = await tryLaunch(executablePath, false);
+    if (first) return first;
+    const last = attempts[attempts.length - 1];
+    if (last?.retryable) {
+      // brief backoff — Chromium sometimes leaves stale /tmp state that
+      // resolves on the second launch. 250ms keeps total budget under a
+      // second across all candidates.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const second = await tryLaunch(executablePath, true);
+      if (second) return second;
     }
   }
+
   const skipBundled =
     process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === '1' || process.env.NODE_ENV === 'production';
   if (!skipBundled) {
@@ -386,14 +483,23 @@ async function launchChromium(): Promise<Browser> {
     }
   }
   console.warn('[headless-export] chromium launch failed', { attempts });
+  // Keep the summary short: dump the full Playwright call log to daemon
+  // logs (above) but only expose the concise "<path>: <reason>" line to
+  // the FE so users do not see kilobytes of stack traces.
   const summary = attempts
-    .map((entry) =>
-      entry.executablePath ? `${entry.executablePath}: ${entry.error}` : entry.error,
-    )
+    .map((entry) => {
+      const reason = firstLineOf(entry.error) || 'unknown launch failure';
+      return entry.executablePath ? `${entry.executablePath}: ${reason}` : reason;
+    })
     .join('; ');
   throw new Error(
     `headless Chromium unavailable (tried ${attempts.length} path(s)): ${summary}`,
   );
+}
+
+function firstLineOf(message: string): string {
+  const idx = message.indexOf('\n');
+  return idx === -1 ? message.trim() : message.slice(0, idx).trim();
 }
 
 async function dynamicImport(specifier: string): Promise<any> {
