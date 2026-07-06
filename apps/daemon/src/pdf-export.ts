@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
+import { repairArtifactDocumentHead } from '@open-design/contracts';
 
 import { readProjectFile } from './projects.js';
 
@@ -46,11 +47,12 @@ export async function buildDesktopPdfExportInput(
 ): Promise<BuiltDesktopPdfExport> {
   const inline = typeof options.inlineHtml === 'string' ? options.inlineHtml : '';
   const useInline = inline.trim().length > 0;
+  const normalizedInline = useInline ? repairArtifactDocumentHead(inline) : '';
   const source = useInline
     ? await resolveRenderableHtmlSource({
-        html: inline,
+        html: normalizedInline,
         fileName: options.fileName,
-        fileMtimeMs: inlineHtmlPseudoMtime(inline),
+        fileMtimeMs: inlineHtmlPseudoMtime(normalizedInline),
         projectId: options.projectId,
         projectsRoot: options.projectsRoot,
         allowVersionedDistLookup: false,

@@ -47,6 +47,35 @@ device-width, initial-scale=1" >
     expect(out).toContain('<meta name="viewport"');
   });
 
+  it("repairs viewport=width=device-width corruption immediately after <head>", () => {
+    const corrupt = `<!doctype html><html><head>viewport=width=device-width, initial-scale=1" />
+  <title>Deck</title></head><body><section class="slide">A</section></body></html>`;
+    const out = repairArtifactDocumentHead(corrupt);
+    expect(out).not.toMatch(/<head[^>]*>\s*viewport=/i);
+    expect(out).toContain('content="width=device-width, initial-scale=1"');
+    expect(out).toContain('<section class="slide">A</section>');
+  });
+
+  it("strips viewport/meta fragments leaked inside a slide section", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+<section class="slide active">
+viewport=width=device-width, initial-scale=1" />
+<h1>Title</h1></section></body></html>`;
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).not.toMatch(/viewport=width=device-width/i);
+    expect(out).toContain('<h1>Title</h1>');
+  });
+
+  it("strips name=viewport attribute fragments leaked into body", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+name="viewport" content="width=device-width, initial-scale=1" />
+<div class="slide">A</div></body></html>`;
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).not.toMatch(/<body>[\s\S]*name="viewport"/i);
+    expect(out).toContain('<div class="slide">A</div>');
+    expect(out).toContain('<meta name="viewport"');
+  });
+
   it("preserves valid viewport meta while stripping leaked tails", () => {
     const html =
       '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>T</title></head><body><div class="deck">device-width, initial-scale=1" /><section class="slide">A</section></div></body></html>';

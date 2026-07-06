@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import {
   repairArtifactDocumentHead,
+  ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE,
   patchArtifactDeckPrintCss,
   buildDeckSlideExportLayoutHelperJs,
   buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
@@ -188,8 +189,8 @@ export async function renderHeadlessPdf(
         await waitForPrintableContent(page);
         if (options.input.deck) {
           await page.emulateMedia({ media: 'print' });
-          await stripLeakedViewportFromPage(page);
         }
+        await stripLeakedArtifactTextFromPage(page);
         const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
         if (options.input.deck && deckSlideCount === 0) {
           console.warn('[headless-export] deck PDF: no slides matched selector', {
@@ -283,8 +284,8 @@ export async function renderHeadlessHtmlSnapshot(
       const page = await preparePage(browser, options);
       try {
         await waitForPrintableContent(page);
+        await stripLeakedArtifactTextFromPage(page);
         if (options.input.deck) {
-          await stripLeakedViewportFromPage(page);
           const deckSlideCount = await revealAllDeckSlides(page);
           if (deckSlideCount === 0) {
             console.warn('[headless-export] deck HTML: no slides matched selector', {
@@ -393,26 +394,17 @@ async function preparePage(
   return page;
 }
 
-/** Remove truncated viewport meta tails that survived string repair into the DOM. */
-async function stripLeakedViewportFromPage(page: Page): Promise<void> {
+/** Remove truncated viewport / meta tails that survived string repair into the DOM. */
+async function stripLeakedArtifactTextFromPage(page: Page): Promise<void> {
   await evaluateInPage(
     page,
     `
-      const leak = /^\\s*device-width\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
-      const slideSelectors = args.selector.split(',').map((sel) => sel.trim());
-      const isInsideSlide = (node) => {
-        let el = node.parentElement;
-        while (el) {
-          if (slideSelectors.some((sel) => el.matches(sel))) return true;
-          el = el.parentElement;
-        }
-        return false;
-      };
+      const leak = new RegExp(${JSON.stringify(ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE)}, 'i');
       const walk = (root) => {
         for (const node of Array.from(root.childNodes)) {
           if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent || '';
-            if (leak.test(text) && !isInsideSlide(node)) node.remove();
+            if (leak.test(text)) node.remove();
             continue;
           }
           if (node.nodeType === Node.ELEMENT_NODE) walk(node);
@@ -421,7 +413,7 @@ async function stripLeakedViewportFromPage(page: Page): Promise<void> {
       if (document.head) walk(document.head);
       if (document.body) walk(document.body);
     `,
-    { selector: DECK_SLIDE_SELECTOR },
+    {},
   ).catch(() => {});
 }
 

@@ -61,6 +61,17 @@ describe("artifactPreviewTextLeaks", () => {
     expect(isArtifactHtmlStableForPreview(LEAKED_DECK_SCRIPT)).toBe(false);
   });
 
+  it("detects viewport=width=device-width text leaks", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+viewport=width=device-width, initial-scale=1" />
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/viewport=width=device-width/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
   it("blocks preview stability while truncated viewport meta leaks remain", () => {
     const leaked = `<!doctype html><html><head><title>T</title></head><body>
 -width, initial-scale=1" />

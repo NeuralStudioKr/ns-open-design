@@ -1,10 +1,34 @@
 /**
- * Truncated viewport meta tails agents stream as visible text. Matches
- * `device-width, …` and the shorter `-width, …` suffix — but not the
- * `device-width` substring inside valid `content="width=device-width, …"`.
+ * Truncated viewport / meta tails agents stream as visible text.
+ *
+ * Covers:
+ *   - `device-width, initial-scale=1" />` (Hermes-class corruption)
+ *   - `-width, initial-scale=1" />` (shorter suffix)
+ *   - `viewport=width=device-width, initial-scale=1" />` (prefixed variant)
+ *   - `name="viewport" content="width=device-width, …" />` (meta attrs without `<meta`)
+ *
+ * The lookbehind rejects matches inside valid `content="width=device-width, …"`
+ * attribute values on real `<meta name="viewport">` tags.
  */
 export const ARTIFACT_VIEWPORT_TEXT_LEAK_RE =
-  /(?<![\w=])(?:device-width|-width)\s*,\s*initial-scale=[^<\n]+"?\s*\/?>/gi;
+  /(?<![\w="/])(?:viewport\s*=\s*width\s*=\s*device-width|(?:device-width|-width))\s*,\s*initial-scale=[^<\n]+"?\s*\/?>/gi;
+
+/** Meta viewport attribute fragment leaked without the opening `<meta` tag. */
+export const ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE =
+  /(?:^|>)\s*name\s*=\s*["']viewport["']\s+content\s*=\s*["'][^"']*["']\s*\/?>\s*/gim;
+
+/** Full `<meta name="viewport" …>` appearing as raw body text (never valid slide content). */
+export const ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE =
+  /<meta\s+[^>]*\bname\s*=\s*["']viewport["'][^>]*\/?>/gi;
+
+/**
+ * Source string for a DOM `RegExp` that tests a single text node's content.
+ * Keep in sync with the string-level patterns above — used by preview iframe
+ * guards and headless Chromium export cleanup.
+ */
+export const ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE =
+  '^\\s*(?:viewport\\s*=\\s*width\\s*=\\s*device-width|(?:device-width|-width))\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$'
+  + '|^\\s*name\\s*=\\s*["\']viewport["\']\\s+content\\s*=\\s*["\'][^"\']*["\']\\s*\\/?>\\s*$';
 
 /** Remove closed style/script blocks so body scans ignore legitimate CSS/JS. */
 export function stripClosedStyleAndScriptBlocks(html: string): string {
@@ -23,7 +47,14 @@ function previewLeakScanSurface(html: string): string {
 export function hasArtifactViewportMetaTextLeak(html: string): boolean {
   const scan = stripClosedStyleAndScriptBlocks(html);
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
-  return ARTIFACT_VIEWPORT_TEXT_LEAK_RE.test(scan);
+  if (ARTIFACT_VIEWPORT_TEXT_LEAK_RE.test(scan)) return true;
+  const bodyMatch = scan.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyScan = bodyMatch?.[1] ?? "";
+  if (!bodyScan) return false;
+  ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE.lastIndex = 0;
+  if (ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE.test(bodyScan)) return true;
+  ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE.lastIndex = 0;
+  return ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE.test(bodyScan);
 }
 
 /**
@@ -96,6 +127,10 @@ function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_SCRIPT_SNIPPET_BODY_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_CSS_TOKEN_BLOCK_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_SCRIPT_SNIPPET_RE);
+  ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE.lastIndex = 0;
+  out = out.replace(ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE, (match) => (match.startsWith(">") ? ">" : ""));
+  ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE.lastIndex = 0;
+  out = out.replace(ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE, "");
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
   out = out.replace(ARTIFACT_VIEWPORT_TEXT_LEAK_RE, "");
   return out;

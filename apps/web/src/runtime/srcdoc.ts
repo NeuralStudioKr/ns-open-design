@@ -20,7 +20,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import { ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE, repairArtifactDocumentHead } from '@open-design/contracts';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -57,7 +57,9 @@ export function buildSrcdoc(
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
   const withShim = injectSandboxShim(withBase);
   const withFocusGuard = options.previewFocusGuard ? injectPreviewFocusGuard(withShim) : withShim;
-  const withArtifactGuard = options.previewFocusGuard ? injectPreviewArtifactGuard(withFocusGuard) : withFocusGuard;
+  // Artifact text-leak guard always runs in preview — viewport/CSS/JS fragments
+  // agents stream as visible prose must be stripped even when focus-guard is off.
+  const withArtifactGuard = injectPreviewArtifactGuard(withFocusGuard);
   const withDeck = options.deck ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex) : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
@@ -872,7 +874,7 @@ function injectPreviewArtifactGuard(doc: string): string {
 }
 </style>`;
   const script = `<script data-od-preview-artifact-guard>(function(){
-  var viewportLeak = /^\\s*(?:device-width|-width)\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
+  var viewportLeak = new RegExp(${JSON.stringify(ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE)}, 'i');
   var cssLeak = /^\\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\\s*:/i;
   var scriptLeak = /^\\s*\\(function\\s*\\(\\)\\s*\\{\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)/i;
   var boxLeak = /^\\s*\\{\\s*box-sizing\\s*:\\s*border-box/i;

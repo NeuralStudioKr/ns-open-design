@@ -946,8 +946,9 @@ const TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
  */
 function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, string> {
   if (typeof htmlSnapshot !== 'string') return {};
-  if (htmlSnapshot.trim().length === 0) return {};
-  return { html: htmlSnapshot };
+  const trimmed = htmlSnapshot.trim();
+  if (trimmed.length === 0) return {};
+  return { html: repairArtifactDocumentHead(htmlSnapshot) };
 }
 
 async function performPdfExportRequest(opts: {
