@@ -136,4 +136,42 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
       text: "슬라이드 초안을 반영했습니다.",
     });
   });
+
+  it("strips leaked deck navigation script from persisted assistant messages", () => {
+    const message: ChatMessage = {
+      id: "m-deck-script",
+      role: "assistant",
+      content: [
+        "(function () {",
+        "var stage = document.getElementById('deck-stage');",
+        "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));",
+        "function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }",
+        "function paint() { slides.forEach(function (el, i) { el.classList.toggle('active', i === 0); }); }",
+        "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+        "fit();",
+        "paint();",
+        "focusDeck();",
+        "})좋아요! 뉴럴스튜디오 온보딩 PPT를 만들겠습니다.",
+      ].join("\n"),
+      events: [
+        {
+          kind: "text",
+          text: [
+            "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));",
+            "function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }",
+            "function paint() { slides.forEach(function (el, i) { el.classList.toggle('active', i === 0); }); }",
+            "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+            "fit();",
+            "paint();",
+            "focusDeck();",
+            "})완료했습니다.",
+          ].join("\n"),
+        },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("좋아요! 뉴럴스튜디오 온보딩 PPT를 만들겠습니다.");
+    expect(sanitized.content).not.toContain("deck-stage");
+    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "완료했습니다." });
+  });
 });

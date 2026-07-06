@@ -202,6 +202,15 @@ const FAKE_FILE_READ_NARRATION_RE = /\[(?:读取|Reading|reading)\s+[^\]]{1,240}
 const AGENT_RUNTIME_STATUS_LINE_RE =
   /^\s*(?:TodoWrite called with \d+ tasks|Marking task \d+ as (?:in_progress|completed|pending|cancelled|stopped)|Running tool: \w+|Tool (?:completed|failed): \w+)\s*$/gim;
 
+const LEAKED_DECK_NAV_SCRIPT_RE =
+  /(?:^|\n)\s*(?:\(\s*)?function\s*\(\)\s*\{[\s\S]{0,2000}?document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,20000}?fit\(\);\s*paint\(\);\s*focusDeck\(\);\s*\}\s*\)\s*;?/gi;
+
+const LEAKED_DECK_NAV_SCRIPT_BODY_RE =
+  /(?:^|\n)\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,20000}?fit\(\);\s*paint\(\);\s*focusDeck\(\);\s*\}\s*\)\s*;?/gi;
+
+const LEAKED_DECK_NAV_SCRIPT_TAIL_RE =
+  /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);[\s\S]{0,20000}?fit\(\);\s*paint\(\);\s*focusDeck\(\);\s*\}\s*\)\s*;?/gi;
+
 const BARE_TOOL_JSON_OPEN_RE = new RegExp(
   `\\{"name"\\s*:\\s*"(?:${KNOWN_TOOL_JSON_NAMES})"\\s*,\\s*"arguments"\\s*:`,
   "g",
@@ -369,6 +378,9 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_BODY_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_TAIL_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
   out = out.replace(ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE, "");
   const bareTail = out.match(new RegExp(`${BARE_TOOL_JSON_OPEN_RE.source}[\\s\\S]*$`));
