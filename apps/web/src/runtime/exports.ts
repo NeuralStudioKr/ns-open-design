@@ -1608,10 +1608,42 @@ export async function exportAsPdf(
     }
   }
 
+  // Paint a friendly intermediate document in the popup BEFORE we navigate
+  // to the blob URL. Without this the browser tab shows a blank page with
+  // the raw `blob:https://…/<uuid>` string in the address/tab label for
+  // 100–400 ms, which users report as suspicious. The intermediate doc
+  // sets a real title, matches the app background, and shows a small
+  // "Preparing PDF…" line so the popup never appears empty.
+  try {
+    const safeTitle = String(title || 'Document');
+    win.document.open();
+    win.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtmlText(safeTitle)}</title>` +
+      `<style>html,body{margin:0;background:#f7f7f8;color:#374151;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}` +
+      `.od-print-hint{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;text-align:center}` +
+      `.od-print-hint span{opacity:.75}</style></head>` +
+      `<body><div class="od-print-hint"><span>Preparing PDF… please use your browser's print dialog to save.</span></div></body></html>`,
+    );
+    win.document.close();
+  } catch {
+    // Cross-origin or write-restricted environments (some embed hosts)
+    // fall through to the direct navigation below. Losing the splash is
+    // fine — the printable blob still loads.
+  }
+
   // Navigate the verified window to the generated Blob URL then release
   // the Blob URL after the tab has had time to start loading it.
   win.location.href = url;
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }): string {
