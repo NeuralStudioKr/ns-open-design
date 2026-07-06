@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -17,11 +18,14 @@ import {
   imageScreenshotOptions,
   patchArtifactDeckPrintBackground,
   resolveExportTimeoutMs,
+  resolvePlaywrightChromiumExecutable,
 } from '../src/headless-export.js';
 
 describe('chromiumExecutableCandidates', () => {
-  it('prefers OD_EXPORT_CHROMIUM_PATH and includes common Linux paths', () => {
+  it('includes OD_EXPORT_CHROMIUM_PATH and common Linux paths', () => {
     const previous = process.env.OD_EXPORT_CHROMIUM_PATH;
+    const previousPlaywright = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    delete process.env.PLAYWRIGHT_BROWSERS_PATH;
     process.env.OD_EXPORT_CHROMIUM_PATH = '/custom/chromium';
     try {
       const candidates = chromiumExecutableCandidates();
@@ -30,6 +34,25 @@ describe('chromiumExecutableCandidates', () => {
     } finally {
       if (previous === undefined) delete process.env.OD_EXPORT_CHROMIUM_PATH;
       else process.env.OD_EXPORT_CHROMIUM_PATH = previous;
+      if (previousPlaywright === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = previousPlaywright;
+    }
+  });
+
+  it('prefers Playwright chromium when PLAYWRIGHT_BROWSERS_PATH is populated', () => {
+    const root = `/tmp/od-pw-chromium-${process.pid}`;
+    const chromePath = path.join(root, 'chromium-1200', 'chrome-linux', 'chrome');
+    const prevRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    fs.mkdirSync(path.dirname(chromePath), { recursive: true });
+    fs.writeFileSync(chromePath, '');
+    process.env.PLAYWRIGHT_BROWSERS_PATH = root;
+    try {
+      expect(resolvePlaywrightChromiumExecutable()).toBe(chromePath);
+      expect(chromiumExecutableCandidates()[0]).toBe(chromePath);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      if (prevRoot === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
     }
   });
 });
@@ -64,6 +87,7 @@ describe('chromiumRuntimePaths', () => {
       ensureChromiumRuntimeDirs();
       expect(chromiumRuntimePaths().crashDir).toContain(dir);
       const args = chromiumLaunchArgs();
+      expect(args).toContain('--headless=new');
       expect(args).toContain('--disable-crash-reporter');
       expect(args).toContain('--disable-crashpad');
       expect(args.some((arg) => arg.startsWith('--crash-dumps-dir='))).toBe(true);

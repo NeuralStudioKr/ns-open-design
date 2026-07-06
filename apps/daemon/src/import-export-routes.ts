@@ -16,6 +16,7 @@ import type { ProjectStorageAccessHooks } from './storage/lazy-project-materiali
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
   buildDeckScreenExportCss,
+  isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessImage,
   renderHeadlessPdf,
@@ -218,10 +219,7 @@ ${buildDeckScreenExportCss()}
   return injectExportSnippetIntoHead(input.html, style);
 }
 
-export function isHeadlessChromiumUnavailableExportError(err: unknown): boolean {
-  const reason = String((err as Error)?.message || err);
-  return /headless Chromium unavailable/i.test(reason);
-}
+export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
   const { db } = ctx;

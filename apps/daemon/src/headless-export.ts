@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import {
@@ -113,10 +114,42 @@ export function buildDeckPrintCss(): string {
 }
 // Alpine's `chromium` package installs the real binary at /usr/bin/chromium.
 // Debian bookworm ships `/usr/bin/chromium` as well. OD_EXPORT_CHROMIUM_PATH
-// wins when set (production override). Playwright's bundled browsers are glibc
-// only — never used in production containers (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
+// wins when set (production override). Playwright's bundled browser (when
+// PLAYWRIGHT_BROWSERS_PATH is populated in the runtime image) is preferred
+// over distro Chromium — bookworm `/usr/bin/chromium` can SIGTRAP in minimal
+// containers even with --no-sandbox / --no-zygote.
+export function isHeadlessChromiumUnavailableError(err: unknown): boolean {
+  const reason = String((err as Error)?.message || err);
+  return /headless Chromium unavailable/i.test(reason);
+}
+
+/** @deprecated alias — import-export routes export name */
+export const isHeadlessChromiumUnavailableExportError = isHeadlessChromiumUnavailableError;
+
+export function resolvePlaywrightChromiumExecutable(): string | null {
+  const root =
+    process.env.PLAYWRIGHT_BROWSERS_PATH?.trim()
+    || path.join(process.env.HOME?.trim() || '/tmp', '.cache', 'ms-playwright');
+  try {
+    const entries = fs.readdirSync(root, { withFileTypes: true });
+    const chromiumDirs = entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('chromium-'))
+      .map((entry) => entry.name)
+      .sort()
+      .reverse();
+    for (const dirName of chromiumDirs) {
+      const candidate = path.join(root, dirName, 'chrome-linux', 'chrome');
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // Best-effort — launch loop surfaces a clearer error if nothing matches.
+  }
+  return null;
+}
+
 export function chromiumExecutableCandidates(): string[] {
   const ordered = [
+    resolvePlaywrightChromiumExecutable(),
     process.env.OD_EXPORT_CHROMIUM_PATH,
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
@@ -154,7 +187,8 @@ export function chromiumRuntimeEnv(): NodeJS.ProcessEnv {
 
 export function chromiumLaunchArgs(): string[] {
   const { crashDir } = chromiumRuntimePaths();
-  return [
+  const args = [
+    '--headless=new',
     '--disable-dev-shm-usage',
     '--disable-gpu',
     '--disable-setuid-sandbox',
@@ -165,8 +199,13 @@ export function chromiumLaunchArgs(): string[] {
     '--disable-crashpad',
     '--no-zygote',
     '--no-crashpad',
+    '--disable-software-rasterizer',
     `--crash-dumps-dir=${crashDir}`,
   ];
+  if (process.env.NODE_ENV === 'production' || process.env.OD_CHROMIUM_SINGLE_PROCESS === '1') {
+    args.push('--single-process');
+  }
+  return args;
 }
 
 export function ensureChromiumRuntimeDirs(): void {

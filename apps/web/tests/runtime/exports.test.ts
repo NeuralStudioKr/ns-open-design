@@ -291,7 +291,11 @@ describe('exportProjectAsPdf', () => {
   it('does not fall back to browser print when rendered PDF export is required', async () => {
     const fallback = vi.fn();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 501 })));
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'tenant storage sync failed' } }), {
+        status: 502,
+      }),
+    ));
 
     await expect(exportProjectAsPdf({
       deck: true,
@@ -300,8 +304,53 @@ describe('exportProjectAsPdf', () => {
       projectId: 'proj-1',
       requireRenderedExport: true,
       title: 'Seed Deck',
-    })).rejects.toThrow('daemon PDF export unavailable');
+    })).rejects.toThrow('tenant storage sync failed');
 
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to browser print in embed when daemon Chromium is unavailable', async () => {
+    const fallback = vi.fn();
+    const open = vi.fn(() => ({
+      location: { href: '' },
+      opener: null,
+    }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:pdf'),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({
+        error: {
+          code: 'EXPORT_FAILED',
+          message: 'headless Chromium unavailable (tried 2 path(s)): signal=SIGTRAP',
+        },
+      }), { status: 500 }),
+    ));
+
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      requireRenderedExport: true,
+      title: 'Seed Deck',
+    });
+
+    expect(result).toBe('fallback');
+    expect(open).toHaveBeenCalledOnce();
     expect(fallback).not.toHaveBeenCalled();
   });
 

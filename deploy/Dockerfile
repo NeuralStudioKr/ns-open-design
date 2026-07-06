@@ -117,6 +117,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && groupadd -g 1001 open-design \
     && useradd -u 1001 -g open-design -M -s /usr/sbin/nologin open-design
 
+# Distro Chromium can SIGTRAP in minimal containers; ship Playwright's build as
+# the primary headless export binary (see resolvePlaywrightChromiumExecutable).
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    npx --yes playwright-core@1.60.0 install chromium \
+    && chown -R open-design:open-design /ms-playwright
+
 WORKDIR /app
 COPY --from=build --chown=open-design:open-design /app/deploy/daemon ./apps/daemon
 COPY --from=build --chown=open-design:open-design /app/apps/web/out ./apps/web/out
@@ -142,6 +148,8 @@ ENV OD_BIND_HOST=0.0.0.0
 ENV OD_PORT=7456
 ENV OD_EXPORT_CHROMIUM_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV OD_CHROMIUM_SINGLE_PROCESS=1
 # Distro Chromium crashpad needs writable XDG dirs. The runtime container is
 # read-only except /tmp (tmpfs); open-design has no home (-M useradd).
 ENV HOME=/tmp

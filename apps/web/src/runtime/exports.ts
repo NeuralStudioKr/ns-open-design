@@ -150,6 +150,11 @@ export class TeamverProjectStoragePrefixRequiredError extends Error {
   }
 }
 
+function isHeadlessChromiumUnavailableExportError(err: unknown): boolean {
+  const reason = err instanceof Error ? err.message : String(err ?? '');
+  return /headless Chromium unavailable/i.test(reason);
+}
+
 export function isTeamverProjectStoragePrefixRequiredError(
   err: unknown,
 ): err is TeamverProjectStoragePrefixRequiredError {
@@ -1081,9 +1086,16 @@ export async function exportProjectAsPdf(opts: {
   }
 
   if (opts.requireRenderedExport) {
-    throw daemonErr instanceof Error
-      ? daemonErr
-      : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    const chromiumUnavailable = isHeadlessChromiumUnavailableExportError(daemonErr);
+    if (!chromiumUnavailable) {
+      throw daemonErr instanceof Error
+        ? daemonErr
+        : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    }
+    console.warn(
+      '[exportProjectAsPdf] daemon Chromium unavailable — using browser print fallback in embed',
+      daemonErr,
+    );
   }
 
   // In-memory snapshot path: skip the inline daemon URL (which shares the
