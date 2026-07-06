@@ -282,13 +282,17 @@ export function mergeSavedPreviewComment(current: PreviewComment[], saved: Previ
   return current.map((comment, index) => (index === existingIndex ? saved : comment));
 }
 
-function shouldRetryMissingDaemonRunLookup(message: ChatMessage, now = Date.now()): boolean {
-  if (message.runId) return false;
+function shouldRetryRecentDaemonRunLookup(message: ChatMessage, now = Date.now()): boolean {
   if (message.role !== 'assistant') return false;
   if (message.endedAt !== undefined) return false;
   const startedAt = message.startedAt ?? message.createdAt;
   if (!startedAt) return true;
   return now - startedAt < DAEMON_REATTACH_MISSING_RUN_GRACE_MS;
+}
+
+function shouldRetryMissingDaemonRunLookup(message: ChatMessage, now = Date.now()): boolean {
+  if (message.runId) return false;
+  return shouldRetryRecentDaemonRunLookup(message, now);
 }
 
 function messageHasInFlightRunFields(local: ChatMessage): boolean {
@@ -3048,6 +3052,32 @@ export function ProjectView({
         const status = activeRun ?? fallbackRun ?? await fetchChatRunStatus(runId);
         if (cancelled) return;
         if (!status) {
+          if (shouldRetryRecentDaemonRunLookup(message)) {
+            if (isTeamverEmbedMode() && message.id === latestInFlightAssistant?.id) {
+              runRecoveryBannerTrackRef.current = {
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+              };
+              setRunRecoveryBanner({
+                conversationId: reattachConversationId,
+                phase: 'connecting',
+                savedChars: (message.content ?? '').trim().length,
+                runStatus: 'running',
+              });
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: true,
+              });
+            }
+            const retryTimer = window.setTimeout(() => {
+              missingRunLookupRetryTimersRef.current.delete(retryTimer);
+              if (!cancelled) setReattachNonce((value) => value + 1);
+            }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
+            missingRunLookupRetryTimersRef.current.add(retryTimer);
+            continue;
+          }
           updateMessageById(
             message.id,
             (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
@@ -3618,7 +3648,18 @@ export function ProjectView({
       if (stillInflight) {
         activateRecoveryUi(mergedMessages);
       }
-      const nextFiles = await refreshProjectFiles();
+      let nextFiles: Awaited<ReturnType<typeof refreshProjectFiles>>;
+      try {
+        nextFiles = await refreshProjectFiles();
+      } catch (err) {
+        console.warn('[teamver] api background recovery file refresh failed', {
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          error: err,
+        });
+        scheduleNextPoll();
+        return;
+      }
       if (cancelled) return;
       autoOpenRecoveredHtmlOutput(mergedMessages, trackedAssistantIds, nextFiles);
 

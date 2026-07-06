@@ -413,6 +413,43 @@ describe('ProjectView daemon reattach restore', () => {
     ).toBe(false);
   });
 
+  it('keeps a recent persisted run pending when run status lookup is still catching up', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-status-gap',
+        role: 'assistant',
+        content: 'partial output',
+        createdAt: startedAt,
+        startedAt,
+        runId: 'run-status-gap',
+        runStatus: 'running',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    fetchChatRunStatus.mockResolvedValue(null);
+
+    renderProjectView();
+
+    await waitFor(() => expect(fetchChatRunStatus).toHaveBeenCalledWith('run-status-gap'));
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-status-gap' && msg.runStatus === 'failed';
+      }),
+    ).toBe(false);
+  });
+
   it('finalizes a stale assistant row without opening an events stream when the daemon run is already terminal', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
