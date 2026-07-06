@@ -1244,7 +1244,7 @@ export function ProjectView({
   const reattachTextBuffersRef = useRef<Set<BufferedTextUpdates>>(new Set());
   const reattachControllersRef = useRef<Map<string, AbortController>>(new Map());
   const reattachCancelControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const missingRunLookupRetryTimersRef = useRef<Set<number>>(new Set());
+  const missingRunLookupRetryTimersRef = useRef<Map<string, number>>(new Map());
   const apiBackgroundRecoveryRef = useRef(false);
   const apiRecoveryBannerRef = useRef<{
     conversationId: string;
@@ -1721,7 +1721,7 @@ export function ProjectView({
       }
       reattachControllersRef.current.clear();
       reattachCancelControllersRef.current.clear();
-      for (const timer of missingRunLookupRetryTimersRef.current) {
+      for (const timer of missingRunLookupRetryTimersRef.current.values()) {
         window.clearTimeout(timer);
       }
       missingRunLookupRetryTimersRef.current.clear();
@@ -2930,6 +2930,16 @@ export function ProjectView({
     let cancelled = false;
     const reattachConversationId = activeConversationId;
 
+    const scheduleReattachRetry = (messageId: string, runId: string | null) => {
+      const key = `${reattachConversationId}:${messageId}:${runId ?? 'missing-run'}`;
+      if (missingRunLookupRetryTimersRef.current.has(key)) return;
+      const retryTimer = window.setTimeout(() => {
+        missingRunLookupRetryTimersRef.current.delete(key);
+        if (!cancelled) setReattachNonce((value) => value + 1);
+      }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
+      missingRunLookupRetryTimersRef.current.set(key, retryTimer);
+    };
+
     const attachRecoverableRuns = async () => {
       const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
       let messagesSnapshot = messages;
@@ -3013,11 +3023,7 @@ export function ProjectView({
                 active: true,
               });
             }
-            const retryTimer = window.setTimeout(() => {
-              missingRunLookupRetryTimersRef.current.delete(retryTimer);
-              if (!cancelled) setReattachNonce((value) => value + 1);
-            }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
-            missingRunLookupRetryTimersRef.current.add(retryTimer);
+            scheduleReattachRetry(message.id, null);
             continue;
           }
           updateMessageById(
@@ -3071,11 +3077,7 @@ export function ProjectView({
                 active: true,
               });
             }
-            const retryTimer = window.setTimeout(() => {
-              missingRunLookupRetryTimersRef.current.delete(retryTimer);
-              if (!cancelled) setReattachNonce((value) => value + 1);
-            }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
-            missingRunLookupRetryTimersRef.current.add(retryTimer);
+            scheduleReattachRetry(message.id, runId);
             continue;
           }
           updateMessageById(
@@ -4854,15 +4856,23 @@ export function ProjectView({
       // Streams missing a conversationId (legacy or race) are skipped —
       // they'll drain naturally per the "page exit → background" policy.
       const conversationForStop = activeConversationId;
-      void listActiveByokProxyStreams(project.id).then((streams) => {
-        for (const stream of streams) {
-          if (!conversationForStop) continue;
-          if (stream.conversationId !== conversationForStop) continue;
-          requestProxyAbort(stream.streamId, {
+      void listActiveByokProxyStreams(project.id)
+        .then((streams) => {
+          for (const stream of streams) {
+            if (!conversationForStop) continue;
+            if (stream.conversationId !== conversationForStop) continue;
+            requestProxyAbort(stream.streamId, {
+              conversationId: conversationForStop,
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('[teamver] explicit proxy stop active stream lookup failed', {
+            projectId: project.id,
             conversationId: conversationForStop,
+            error: err,
           });
-        }
-      });
+        });
     }
     // BYOK proxy cancellation policy (PR1 §3.5): the explicit Stop
     // button is the ONLY abort path that should propagate to the
