@@ -236,7 +236,8 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<!doctype html>");
   });
 
-  it("strips leaked deck navigation script prose while preserving the final answer", () => {
+  it("strips leaked deck navigation script prose while preserving trailing user prose", () => {
+    const visibleProse = "요청하신 덱 초안을 바로 만들겠습니다.";
     const input = [
       "(function () {",
       "var stage = document.getElementById('deck-stage');",
@@ -261,30 +262,69 @@ describe("agent-prose-sanitize SSOT", () => {
       "fit();",
       "paint();",
       "focusDeck();",
-      "})좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.",
+      `})${visibleProse}`,
     ].join("\n");
     const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
-    expect(out).toBe("");
+    expect(out).toBe(visibleProse);
     expect(out).not.toContain("document.getElementById");
     expect(out).not.toContain("deck-stage");
   });
 
-  it("strips deck generation preamble and numbered slide planning prose from history", () => {
+  it("strips deck-prev-first navigation script while preserving slide planning prose", () => {
+    const visibleProse = [
+      "요청하신 8장짜리 덱을 바로 만들겠습니다.",
+      "",
+      "**슬라이드 구성 계획:**",
+      "1. 표지",
+      "2. 소개",
+    ].join("\n");
     const input = [
-      "좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.",
-      "",
-      "**슬라이드 구성 계획:**1. Cover — 뉴럴스튜디오 온보딩 표지",
-      "2. 회사 소개 & 미션3. 조직 & 팀 문화",
-      "4. 커뮤니케이션 채널 & 협업 문화",
-      "5. 툴 스택",
-      "6. 업무 프로세스 (스프린트 사이클)",
-      "7. 코드 & PR 가이드",
-      "8. Closing — Day 1 체크리스트",
-      "",
-      "Neutral Modern 디자인 시스템 기반 (딥 네이비 + 코발트 #2F6FEB), Inter 폰트, 테크 톤으로 작성합니다.",
+      "(function () { var prev = document.getElementById('deck-prev');",
+      "var next = document.getElementById('deck-next');",
+      "var cur = document.getElementById('deck-cur');",
+      "var total = document.getElementById('deck-total'); var STORE = 'deck:idx:' + (location.pathname || '/');",
+      "var idx = 0;",
+      "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));",
+      "function fit() {",
+      "var sw = window.innerWidth;",
+      "var sh = window.innerHeight;",
+      "var pad = 32;",
+      "var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "}",
+      "function paint() {",
+      "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+      "}",
+      "function go(i) { idx = i; paint(); }",
+      "function onKey(e) { if (e.key === 'ArrowRight') go(idx + 1); }",
+      "window.addEventListener('keydown', onKey, true);",
+      "document.addEventListener('keydown', onKey, true);",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+      "})",
+      visibleProse,
     ].join("\n");
 
-    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe(visibleProse);
+    expect(out).not.toContain("document.getElementById");
+    expect(out).not.toContain("deck-prev");
+    expect(out).not.toContain("deck:idx:");
+  });
+
+  it("leaves deck plan prose unchanged when no script leak is present", () => {
+    const input = [
+      "요청하신 8장짜리 덱을 바로 만들겠습니다.",
+      "",
+      "**슬라이드 구성 계획:**",
+      "1. 표지",
+      "2. 소개",
+      "3. 마무리",
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe(input);
   });
 
   it("strips partial deck navigation script while streaming before the closing IIFE arrives", () => {
