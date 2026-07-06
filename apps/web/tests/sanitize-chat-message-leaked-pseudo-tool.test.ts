@@ -176,6 +176,31 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "완료했습니다." });
   });
 
+  it("strips mangled deck-framework body leak (no deck-* ids, no proper close) from persisted content and events", () => {
+    const leaked = [
+      "(function () {location.pathname || '/');",
+      "var idx = 0; = Math.min((sw - pad) / 1920, (sh - pad) / 1080);",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "document.addEventListener('mousedown', focusDeck);",
+      "window.addEventListener('resize', fit);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "m-deck-mangled",
+      role: "assistant",
+      content: leaked,
+      events: [{ kind: "text", text: leaked }],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("");
+    expect(sanitized.content).not.toContain("stage.style.transform");
+    expect(sanitized.content).not.toContain("focusDeck");
+    expect(sanitized.events ?? []).toEqual([]);
+  });
+
   it("does not mutate persisted deck plan prose that contains no script leak", () => {
     const planText = [
       "요청하신 8장짜리 덱을 바로 만들겠습니다.",

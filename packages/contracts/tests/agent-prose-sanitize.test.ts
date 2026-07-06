@@ -351,6 +351,88 @@ describe("agent-prose-sanitize SSOT", () => {
     }
   });
 
+  it("strips mangled deck-framework body (dropped var declarations, no deck-* ids)", () => {
+    const leaked = [
+      "(function () {location.pathname || '/');",
+      "var idx = 0; = Math.min((sw - pad) / 1920, (sh - pad) / 1080);",
+      "if (!isFinite(s) || s <= 0) s = 1;",
+      "var tx = (sw - 1920 * s) / 2;",
+      "var ty = (sh - 1080 * s) / 2;",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "}",
+      "",
+      "function pad2(n) { return (n < 10 ? '0' : '') + n; }",
+      "function paint() {",
+      "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+      "if (cur) cur.textContent = pad2(idx + 1);",
+      "if (total) total.textContent = pad2(slides.length);",
+      "if (prev) prev.toggleAttribute('disabled', idx <= 0);",
+      "if (next) next.toggleAttribute('disabled', idx >= slides.length - 1);",
+      "}",
+      "function go(i) {",
+      "idx = Math.max(0, Math.min(slides.length - 1, i));",
+      "paint();",
+      "try { localStorage.setItem(STORE, String(idx)); } catch (_) {}",
+      "}",
+      "function onKey(e) {",
+      "var t = e.target;",
+      "if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;",
+      "if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(idx + 1); }",
+      "else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(idx - 1); }",
+      "else if (e.key === 'Home') { e.preventDefault(); go(0); }",
+      "else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }",
+      "}",
+      "window.addEventListener('keydown', onKey, true);",
+      "document.addEventListener('keydown', onKey, true);",
+      "if (prev) prev.addEventListener('click', function () { go(idx - 1); });",
+      "if (next) next.addEventListener('click', function () { go(idx + 1); });",
+      "",
+      "document.body.setAttribute('tabindex', '-1');",
+      "document.body.style.outline = 'none';",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "document.addEventListener('mousedown', focusDeck);",
+      "window.addEventListener('load', focusDeck);",
+      "",
+      "try {",
+      "var saved = parseInt(localStorage.getItem(STORE) || '0', 10);",
+      "if (!isNaN(saved) && saved >= 0 && saved < slides.length) idx = saved;",
+      "} catch (_) {}",
+      "",
+      "window.addEventListener('resize', fit);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+    ].join("\n");
+
+    for (const streaming of [false, true] as const) {
+      const out = sanitizeAssistantProseForDisplay(leaked, { streaming });
+      expect(out, `streaming=${streaming}`).toBe("");
+      expect(out).not.toContain("stage.style.transform");
+      expect(out).not.toContain("focusDeck");
+      expect(out).not.toContain("localStorage");
+      expect(out).not.toContain("addEventListener");
+    }
+  });
+
+  it("keeps trailing user prose after a mangled deck-framework body closes with `})();`", () => {
+    const visibleProse = "요청하신 덱을 이어서 다듬겠습니다.";
+    const input = [
+      "(function () {location.pathname || '/');",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "document.addEventListener('mousedown', focusDeck);",
+      "window.addEventListener('resize', fit);",
+      "fit(); paint(); focusDeck();",
+      "})();",
+      "",
+      visibleProse,
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe(visibleProse);
+    expect(out).not.toContain("stage.style.transform");
+    expect(out).not.toContain("focusDeck");
+  });
+
   it("strips trailing open read/edit/artifact in history but preserves open artifact while streaming", () => {
     const streamingArtifact =
       'Working…\n<artifact identifier="deck" type="text/html" title="Deck">\n<!doctype html>';
