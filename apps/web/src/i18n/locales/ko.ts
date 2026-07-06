@@ -2144,6 +2144,7 @@ export const ko: Dict = {
   'fileViewer.exportZipInProgress': 'ZIP 생성 중…',
   'fileViewer.exportCompleted': '다운로드가 완료되었습니다',
   'fileViewer.exportPdfCompleted': 'PDF 다운로드가 완료되었습니다',
+  'fileViewer.exportPdfBrowserPrintFallback': '서버 PDF 렌더가 지연되어 브라우저 인쇄 창을 열었어요. 대상에서 “PDF로 저장”을 선택해 파일을 받아 주세요.',
   'fileViewer.exportHtmlCompleted': 'HTML 다운로드가 완료되었습니다',
   'fileViewer.exportZipCompleted': 'ZIP 다운로드가 완료되었습니다',
   'fileViewer.exportMarkdownCompleted': 'Markdown 다운로드가 완료되었습니다',

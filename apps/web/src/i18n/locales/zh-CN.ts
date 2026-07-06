@@ -2144,6 +2144,7 @@ export const zhCN: Dict = {
   'fileViewer.exportZipInProgress': 'Generating ZIP…',
   'fileViewer.exportCompleted': 'Download complete',
   'fileViewer.exportPdfCompleted': 'PDF download complete',
+  'fileViewer.exportPdfBrowserPrintFallback': '服务端 PDF 渲染延迟。请在浏览器打印对话框中选择“另存为 PDF”以下载文件。',
   'fileViewer.exportHtmlCompleted': 'HTML download complete',
   'fileViewer.exportZipCompleted': 'ZIP download complete',
   'fileViewer.exportMarkdownCompleted': 'Markdown download complete',

@@ -2144,6 +2144,7 @@ export const ja: Dict = {
   'fileViewer.exportZipInProgress': 'Generating ZIP…',
   'fileViewer.exportCompleted': 'Download complete',
   'fileViewer.exportPdfCompleted': 'PDF download complete',
+  'fileViewer.exportPdfBrowserPrintFallback': 'サーバーの PDF レンダリングが遅延しています。ブラウザーの印刷ダイアログで「PDF として保存」を選び、ファイルを保存してください。',
   'fileViewer.exportHtmlCompleted': 'HTML download complete',
   'fileViewer.exportZipCompleted': 'ZIP download complete',
   'fileViewer.exportMarkdownCompleted': 'Markdown download complete',

@@ -2762,6 +2762,7 @@ export interface Dict {
   'fileViewer.exportZipInProgress': string;
   'fileViewer.exportCompleted': string;
   'fileViewer.exportPdfCompleted': string;
+  'fileViewer.exportPdfBrowserPrintFallback': string;
   'fileViewer.exportHtmlCompleted': string;
   'fileViewer.exportZipCompleted': string;
   'fileViewer.exportMarkdownCompleted': string;

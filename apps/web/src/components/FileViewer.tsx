@@ -4599,6 +4599,23 @@ function HtmlViewer({
       if (toastFormats.has(format)) {
         setExportToast({ message: exportInProgressMessage, tone: 'loading' });
       }
+      const showResultToast = (result: unknown) => {
+        if (!toastFormats.has(format)) return;
+        // PDF's `'fallback'` result means the daemon export failed and
+        // the browser print dialog was opened instead. Users won't
+        // receive an automatic file download in that case, so the
+        // success-y "PDF 다운로드 완료" copy is misleading — surface a
+        // dedicated notice that tells them to pick "Save as PDF" in
+        // their browser's print dialog.
+        if (format === 'pdf' && result === 'fallback') {
+          setExportToast({
+            message: t('fileViewer.exportPdfBrowserPrintFallback'),
+            tone: 'default',
+          });
+          return;
+        }
+        setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
+      };
       const out = fn();
       if (out && typeof (out as Promise<unknown>).then === 'function') {
         (out as Promise<unknown>).then(
@@ -4609,7 +4626,7 @@ function HtmlViewer({
               return;
             }
             finish('success');
-            if (toastFormats.has(format)) setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
+            showResultToast(result);
           },
           (err) => {
             finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
@@ -4623,7 +4640,7 @@ function HtmlViewer({
           return;
         }
         finish('success');
-        if (toastFormats.has(format)) setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
+        showResultToast(out);
       }
     } catch (err) {
       finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
@@ -8921,7 +8938,17 @@ function HtmlViewer({
                       message={exportToast.message}
                       tone={exportToast.tone}
                       role={exportToast.tone === 'error' ? 'alert' : 'status'}
-                      ttlMs={exportToast.tone === 'loading' ? 8000 : 2200}
+                      // `loading` shows for the whole export (up to 8s);
+                      // the browser-print fallback needs longer than the
+                      // regular 2.2s success flash because the copy asks
+                      // users to interact with the print dialog.
+                      ttlMs={
+                        exportToast.tone === 'loading'
+                          ? 8000
+                          : exportToast.message === t('fileViewer.exportPdfBrowserPrintFallback')
+                            ? 9000
+                            : 2200
+                      }
                       placement="top"
                       onDismiss={() => setExportToast(null)}
                     />,

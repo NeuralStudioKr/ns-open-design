@@ -22,6 +22,11 @@ services:
         VITE_MESSAGE_PERSIST_THROTTLE_MS: ${VITE_MESSAGE_PERSIST_THROTTLE_MS:-5000}
         VITE_TEAMVER_MAIN_LOGIN_URL: ${VITE_TEAMVER_MAIN_LOGIN_URL:-https://stg.teamver.com/auth/signin}
         VITE_TEAMVER_SITE_URL: ${VITE_TEAMVER_SITE_URL:-https://design.teamver.com}
+        # Cache-busts the Playwright chromium install RUN layer. deploy.sh
+        # sets this to the current git SHA so every deploy rebuilds the
+        # download step, preventing stale/broken /ms-playwright payloads
+        # from surviving across deploys without --no-cache.
+        PLAYWRIGHT_INSTALL_TOKEN: ${PLAYWRIGHT_INSTALL_TOKEN:-default}
     restart: unless-stopped
     environment:
       NODE_ENV: production

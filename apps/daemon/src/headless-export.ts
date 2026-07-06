@@ -1333,5 +1333,72 @@ export function logChromiumAvailabilityAtBoot(): void {
   }
 }
 
+/**
+ * Actively probe headless Chromium at daemon startup. Runs
+ * `launchChromium()` (with the same self-healing / retry pipeline the
+ * export routes use) and immediately closes the browser. Emits a
+ * structured `od_chromium_warmup` log so ops can verify PDF export is
+ * functional the moment the container comes up, instead of discovering
+ * a broken image only when a user clicks "PDF 다운로드".
+ *
+ * Optional strict mode (`OD_CHROMIUM_BOOT_WARMUP=strict`) exits the
+ * process with a non-zero code so the orchestrator restarts the pod;
+ * default behaviour keeps the daemon alive so unrelated features (chat,
+ * BYOK, project sync) still work while ops investigates.
+ *
+ * Disable entirely with `OD_CHROMIUM_BOOT_WARMUP=off` (useful for unit
+ * tests and CI environments where Chromium isn't available).
+ */
+export async function warmupHeadlessChromiumAtBoot(): Promise<void> {
+  const mode = (process.env.OD_CHROMIUM_BOOT_WARMUP || '').trim().toLowerCase();
+  if (mode === 'off' || mode === '0' || mode === 'false') return;
+  const strict = mode === 'strict';
+  const startedAt = Date.now();
+  let browser: Awaited<ReturnType<typeof launchChromium>> | null = null;
+  try {
+    browser = await launchChromium();
+    const elapsedMs = Date.now() - startedAt;
+    console.info('[headless-export] boot: chromium warm-up ok', {
+      marker: 'od_chromium_warmup',
+      elapsedMs,
+    });
+  } catch (err) {
+    const elapsedMs = Date.now() - startedAt;
+    const reason = err instanceof Error ? err.message : String(err ?? '');
+    console.error('[headless-export] boot: chromium warm-up FAILED', {
+      marker: 'od_chromium_warmup',
+      elapsedMs,
+      strict,
+      // First line only — the full attempts array is already dumped by
+      // launchChromium() above. Keep this payload greppable.
+      reason: firstLineOf(reason),
+    });
+    if (strict) {
+      console.error(
+        '[headless-export] OD_CHROMIUM_BOOT_WARMUP=strict — exiting so orchestrator restarts the container',
+      );
+      // Prefer process.exit over throwing so the failure is not swallowed
+      // by a downstream .catch() that only logs. Exit code 78 (EX_CONFIG,
+      // BSD sysexits) signals a configuration/environmental failure to
+      // supervisors that inspect codes.
+      process.exit(78);
+    }
+    return;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        // Best-effort: an already-dying browser is fine, we care about
+        // the launch signal, not the teardown path.
+      }
+    }
+  }
+}
+
 bindExportBrowserLauncher(() => launchChromium());
 logChromiumAvailabilityAtBoot();
+// Fire-and-forget: the warm-up promise must not block module import.
+// It's harmless to have export routes handle an in-flight warm-up
+// because launchChromium is called per-export anyway.
+void warmupHeadlessChromiumAtBoot();

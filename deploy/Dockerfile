@@ -147,7 +147,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # launcher (see resolvePlaywrightChromiumExecutables) prefers the full
 # build and falls back to the shell so the container still exports
 # something if the full build regresses on the current base image.
+#
+# PLAYWRIGHT_INSTALL_TOKEN cache-busts THIS layer only. deploy.sh
+# passes the current git SHA so every deploy rebuilds the install RUN
+# even without --no-cache, ensuring the container never inherits a
+# stale/partial /ms-playwright directory from a previous cached layer.
+ARG PLAYWRIGHT_INSTALL_TOKEN=default
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_INSTALL_TOKEN=$PLAYWRIGHT_INSTALL_TOKEN \
     npx --yes playwright-core@1.60.0 install chromium \
     && chown -R open-design:open-design /ms-playwright \
     # Hard-fail the build if the install layer silently produced no binary

@@ -45,6 +45,15 @@ if (!globalState[TEST_DATA_DIR_SYMBOL]) {
 // so tests can never read or overwrite the developer's real repo `.od` data.
 process.env.OD_DATA_DIR = globalState[TEST_DATA_DIR_SYMBOL];
 
+// Disable the boot-time headless Chromium warm-up during tests. Vitest
+// workers do not always have Playwright / distro chromium available and
+// we do not want to spawn a real browser on every headless-export
+// module import (would slow the suite and can hang in sandboxed CI).
+// Individual warm-up unit tests opt back in by unsetting this locally.
+if (!process.env.OD_CHROMIUM_BOOT_WARMUP) {
+  process.env.OD_CHROMIUM_BOOT_WARMUP = 'off';
+}
+
 // Publish/share endpoints shell out through OD_NODE_BIN + OD_BIN (dist/cli.js).
 // Build the CLI artifact once per vitest process so package tests do not depend
 // on a prior manual `pnpm --filter @open-design/daemon build`.

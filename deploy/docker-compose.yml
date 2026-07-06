@@ -7,6 +7,11 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        # Cache-busts the Playwright chromium install RUN layer. Set to
+        # the current git SHA at deploy time so /ms-playwright is always
+        # rebuilt fresh; see deploy/Dockerfile PLAYWRIGHT_INSTALL_TOKEN.
+        PLAYWRIGHT_INSTALL_TOKEN: ${PLAYWRIGHT_INSTALL_TOKEN:-default}
     restart: always
     environment:
       NODE_ENV: production
@@ -17,6 +22,15 @@ services:
       OD_WEB_PORT: ${OPEN_DESIGN_PORT:-7456}
       OD_API_TOKEN: ${OD_API_TOKEN:?Please run 'openssl rand -hex 32' to generate one, and set it in your .env file.}
       OD_CODEX_SANDBOX: ${OD_CODEX_SANDBOX:-}
+      # Headless export (PDF/image) — Playwright-managed chromium runs
+      # under crashpad, which requires writable XDG dirs in read-only
+      # containers (root FS is ro; /tmp is tmpfs).
+      # PLAYWRIGHT_BROWSERS_PATH matches deploy/Dockerfile so the daemon
+      # picks the bundled build ahead of any distro fallback.
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.chromium
+      XDG_CACHE_HOME: /tmp/.chromium
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     ports:
       - "127.0.0.1:${OPEN_DESIGN_PORT:-7456}:7456"
     volumes:
@@ -26,7 +40,10 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
-    mem_limit: ${OPEN_DESIGN_MEM_LIMIT:-384m}
+    # Chromium pool (default 3 workers) plus the Node daemon does not fit
+    # in 384 MiB. Bookworm chromium alone tops ~250 MiB RSS at startup so
+    # anything under ~1 GiB routinely OOM-kills the pool during exports.
+    mem_limit: ${OPEN_DESIGN_MEM_LIMIT:-1g}
     pids_limit: 256
     healthcheck:
       test:

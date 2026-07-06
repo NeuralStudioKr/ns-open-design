@@ -2144,6 +2144,7 @@ export const th: Dict = {
   'fileViewer.exportZipInProgress': 'Generating ZIP…',
   'fileViewer.exportCompleted': 'Download complete',
   'fileViewer.exportPdfCompleted': 'PDF download complete',
+  'fileViewer.exportPdfBrowserPrintFallback': 'Server PDF rendering is delayed. In the browser print dialog, choose "Save as PDF" to download the file.',
   'fileViewer.exportHtmlCompleted': 'HTML download complete',
   'fileViewer.exportZipCompleted': 'ZIP download complete',
   'fileViewer.exportMarkdownCompleted': 'Markdown download complete',
