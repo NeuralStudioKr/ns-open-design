@@ -72,3 +72,22 @@ export function resolveEmbedFocusSessionOptions(
     resetRefreshState: signals.authReturnNavigation,
   };
 }
+
+/**
+ * Focus/idle refresh can briefly read `authenticated: false` while HttpOnly
+ * cookies and the persisted workspace are still valid. Wiping embed session
+ * state in that window clears the workspace store, registry caches, and the
+ * project list — the root cause of idle "access denied" / empty-list glips.
+ *
+ * Definitive logout: cold boot, explicit auth recovery (`resetRefreshState`),
+ * or no prior session and no cookie hint.
+ */
+export function shouldClearEmbedSessionOnUnauthenticated(input: {
+  resetRefreshState: boolean;
+  hadPriorAuthenticatedUi: boolean;
+  cookieHint: boolean;
+}): boolean {
+  if (input.resetRefreshState) return true;
+  if (input.hadPriorAuthenticatedUi || input.cookieHint) return false;
+  return true;
+}

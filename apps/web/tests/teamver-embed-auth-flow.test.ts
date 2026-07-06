@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   resolveEmbedBootSessionOptions,
   resolveEmbedFocusSessionOptions,
+  shouldClearEmbedSessionOnUnauthenticated,
   shouldResetEmbedRefreshDeclineOnFocus,
 } from "../src/teamver/teamverEmbedAuthFlow";
 import { TEAMVER_AUTH_RETURN_PENDING_KEY } from "../src/teamver/teamverAuthReturn";
@@ -76,5 +77,35 @@ describe("teamverEmbedAuthFlow", () => {
       force: true,
       resetRefreshState: true,
     });
+  });
+
+  it("keeps embed session on transient unauthenticated focus refresh", () => {
+    expect(
+      shouldClearEmbedSessionOnUnauthenticated({
+        resetRefreshState: false,
+        hadPriorAuthenticatedUi: true,
+        cookieHint: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("clears embed session on explicit auth recovery that stays unauthenticated", () => {
+    expect(
+      shouldClearEmbedSessionOnUnauthenticated({
+        resetRefreshState: true,
+        hadPriorAuthenticatedUi: true,
+        cookieHint: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("clears embed session on cold boot without prior session", () => {
+    expect(
+      shouldClearEmbedSessionOnUnauthenticated({
+        resetRefreshState: false,
+        hadPriorAuthenticatedUi: false,
+        cookieHint: false,
+      }),
+    ).toBe(true);
   });
 });

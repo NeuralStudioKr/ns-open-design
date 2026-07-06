@@ -52,6 +52,7 @@ import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
 import {
   resolveEmbedFocusSessionOptions,
+  shouldClearEmbedSessionOnUnauthenticated,
   shouldResetEmbedRefreshDeclineOnFocus,
 } from "./teamverEmbedAuthFlow";
 import {
@@ -291,8 +292,25 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       if (!session.authenticated) {
-        await clearTeamverEmbedSessionState();
         lastCookieHintRef.current = readAuthCookieHint();
+        const hadPriorAuthenticatedUi =
+          stateRef.current.authenticated || hadEmbedSession();
+        const cookieHint = hasProbableTeamverAuthCookie();
+        if (
+          !shouldClearEmbedSessionOnUnauthenticated({
+            resetRefreshState,
+            hadPriorAuthenticatedUi,
+            cookieHint,
+          })
+        ) {
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: "session_unreachable",
+          }));
+          return;
+        }
+        await clearTeamverEmbedSessionState();
         if (isBootstrapAuthMode() && !shouldDeferEmbedLoginRedirect()) {
           void redirectToDesignLogin({
             returnTo: resolveEmbedAuthReturnPath(

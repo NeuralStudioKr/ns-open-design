@@ -234,6 +234,36 @@ describe("useTeamverEmbed", () => {
     expect(teamverEmbedSession.clearTeamverEmbedSessionState).not.toHaveBeenCalled();
   });
 
+  it("keeps authenticated UI when a focus refresh briefly reads unauthenticated", async () => {
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      })
+      .mockResolvedValueOnce({
+        authenticated: false,
+        workspaces: [],
+      });
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ force: true });
+    });
+
+    expect(result.current.authenticated).toBe(true);
+    expect(result.current.error).toBe("session_unreachable");
+    expect(teamverEmbedSession.clearTeamverEmbedSessionState).not.toHaveBeenCalled();
+    expect(teamverEmbedSession.setTeamverEmbedSessionAuthenticated).not.toHaveBeenCalledWith(false);
+  });
+
   it("auto-retries session_unreachable with a 5s backoff while the tab is visible", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
