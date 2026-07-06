@@ -273,10 +273,22 @@ type ProjectChatSendMeta = ChatSendMeta & {
   entryFrom?: ChatAnalyticsEntryFrom;
 };
 
+const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
+const DAEMON_REATTACH_MISSING_RUN_RETRY_MS = 2_000;
+
 export function mergeSavedPreviewComment(current: PreviewComment[], saved: PreviewComment): PreviewComment[] {
   const existingIndex = current.findIndex((comment) => comment.id === saved.id);
   if (existingIndex < 0) return [...current, saved];
   return current.map((comment, index) => (index === existingIndex ? saved : comment));
+}
+
+function shouldRetryMissingDaemonRunLookup(message: ChatMessage, now = Date.now()): boolean {
+  if (message.runId) return false;
+  if (message.role !== 'assistant') return false;
+  if (message.endedAt !== undefined) return false;
+  const startedAt = message.startedAt ?? message.createdAt;
+  if (!startedAt) return true;
+  return now - startedAt < DAEMON_REATTACH_MISSING_RUN_GRACE_MS;
 }
 
 function messageHasInFlightRunFields(local: ChatMessage): boolean {
@@ -1228,6 +1240,7 @@ export function ProjectView({
   const reattachTextBuffersRef = useRef<Set<BufferedTextUpdates>>(new Set());
   const reattachControllersRef = useRef<Map<string, AbortController>>(new Map());
   const reattachCancelControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const missingRunLookupRetryTimersRef = useRef<Set<number>>(new Set());
   const apiBackgroundRecoveryRef = useRef(false);
   const apiRecoveryBannerRef = useRef<{
     conversationId: string;
@@ -1704,6 +1717,10 @@ export function ProjectView({
       }
       reattachControllersRef.current.clear();
       reattachCancelControllersRef.current.clear();
+      for (const timer of missingRunLookupRetryTimersRef.current) {
+        window.clearTimeout(timer);
+      }
+      missingRunLookupRetryTimersRef.current.clear();
     };
   }, [project.id, activeConversationId]);
 
@@ -2973,6 +2990,32 @@ export function ProjectView({
         // output — Working 24m+" UI the user reported. Mark it failed so
         // the composer is interactive again and the user can re-send.
         if (!runId) {
+          if (shouldRetryMissingDaemonRunLookup(message)) {
+            if (isTeamverEmbedMode() && message.id === latestInFlightAssistant?.id) {
+              runRecoveryBannerTrackRef.current = {
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+              };
+              setRunRecoveryBanner({
+                conversationId: reattachConversationId,
+                phase: 'connecting',
+                savedChars: (message.content ?? '').trim().length,
+                runStatus: 'running',
+              });
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: true,
+              });
+            }
+            const retryTimer = window.setTimeout(() => {
+              missingRunLookupRetryTimersRef.current.delete(retryTimer);
+              if (!cancelled) setReattachNonce((value) => value + 1);
+            }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
+            missingRunLookupRetryTimersRef.current.add(retryTimer);
+            continue;
+          }
           updateMessageById(
             message.id,
             (prev) => ({
@@ -3513,7 +3556,18 @@ export function ProjectView({
 
     const pollRecovery = async () => {
       if (cancelled) return;
-      const activeStreams = await listActiveByokProxyStreams(project.id);
+      let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
+      try {
+        activeStreams = await listActiveByokProxyStreams(project.id);
+      } catch (err) {
+        console.warn('[teamver] api background recovery stream poll failed', {
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          error: err,
+        });
+        scheduleNextPoll();
+        return;
+      }
       if (cancelled) return;
       const matchingActiveStreams = activeStreams.filter((stream) => {
         const streamConversationId = stream.conversationId?.trim();

@@ -376,6 +376,43 @@ describe('ProjectView daemon reattach restore', () => {
     });
   });
 
+  it('keeps a recent assistant row running while daemon run lookup is still catching up', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-recent-no-run',
+        role: 'assistant',
+        content: 'starting...',
+        createdAt: startedAt,
+        startedAt,
+        runStatus: 'running',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    listProjectRuns.mockResolvedValue([]);
+
+    renderProjectView();
+
+    await waitFor(() => expect(listProjectRuns).toHaveBeenCalled());
+    expect(fetchChatRunStatus).not.toHaveBeenCalled();
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-recent-no-run' && msg.runStatus === 'failed';
+      }),
+    ).toBe(false);
+  });
+
   it('finalizes a stale assistant row without opening an events stream when the daemon run is already terminal', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
