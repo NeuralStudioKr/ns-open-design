@@ -23,6 +23,7 @@ const getTemplate = vi.fn();
 const fetchChatRunStatus = vi.fn();
 const listActiveChatRuns = vi.fn();
 const listProjectRuns = vi.fn();
+const listActiveByokProxyStreams = vi.fn();
 const reattachDaemonRun = vi.fn();
 const streamViaDaemon = vi.fn();
 const saveMessage = vi.fn();
@@ -30,6 +31,7 @@ const createConversation = vi.fn();
 const patchConversation = vi.fn();
 const patchProject = vi.fn();
 const saveTabs = vi.fn();
+const fileWorkspaceProps = vi.fn();
 
 vi.mock('../../src/i18n', () => ({
   // ProjectView calls useI18n() (for locale/t); mock it like the other
@@ -52,6 +54,10 @@ vi.mock('../../src/providers/daemon', () => ({
   listProjectRuns: (...args: unknown[]) => listProjectRuns(...args),
   reattachDaemonRun: (...args: unknown[]) => reattachDaemonRun(...args),
   streamViaDaemon: (...args: unknown[]) => streamViaDaemon(...args),
+}));
+
+vi.mock('../../src/providers/byokProxyActive', () => ({
+  listActiveByokProxyStreams: (...args: unknown[]) => listActiveByokProxyStreams(...args),
 }));
 
 vi.mock('../../src/providers/registry', () => ({
@@ -77,9 +83,11 @@ vi.mock('../../src/router', () => ({
 }));
 
 vi.mock('../../src/state/projects', () => ({
+  cacheTabsLocally: (_projectId: string, state: unknown) => state,
   createConversation: (...args: unknown[]) => createConversation(...args),
   deleteConversation: vi.fn(),
   getTemplate: (...args: unknown[]) => getTemplate(...args),
+  persistTabsToDaemonNow: vi.fn(),
   listConversations: (...args: unknown[]) => listConversations(...args),
   listMessages: (...args: unknown[]) => listMessages(...args),
   loadTabs: (...args: unknown[]) => loadTabs(...args),
@@ -102,14 +110,18 @@ vi.mock('../../src/components/ChatPane', () => ({
 }));
 
 vi.mock('../../src/components/FileWorkspace', () => ({
-  FileWorkspace: () => null,
+  FileWorkspace: (props: unknown) => {
+    fileWorkspaceProps(props);
+    return null;
+  },
 }));
 
 vi.mock('../../src/components/Loading', () => ({
   CenteredLoader: () => null,
 }));
 
-function renderProjectView() {
+function renderProjectView(options: { mode?: 'daemon' | 'api' } = {}) {
+  const mode = options.mode ?? 'daemon';
   return render(
     <ProjectView
       project={
@@ -118,7 +130,11 @@ function renderProjectView() {
       routeFileName={null}
       config={
         {
-          mode: 'daemon',
+          mode,
+          apiKey: 'test-key',
+          baseUrl: 'https://api.anthropic.com',
+          model: 'claude-test',
+          apiProtocol: 'anthropic',
           agentId: 'agent-1',
           notifications: undefined,
           agentModels: {},
@@ -262,6 +278,7 @@ describe('ProjectView daemon reattach restore', () => {
 
   beforeEach(() => {
     listActiveChatRuns.mockResolvedValue([]);
+    listActiveByokProxyStreams.mockResolvedValue([]);
   });
 
   it('does not replay a terminal succeeded row just because produced files are missing', async () => {
@@ -472,6 +489,61 @@ describe('ProjectView daemon reattach restore', () => {
         .at(-1);
       expect(lastWithProduced?.producedFiles?.map((f) => f.name)).toEqual(['new.pptx']);
       expect(lastWithProduced?.runStatus).toBe('succeeded');
+    });
+  });
+
+  it('auto-opens recovered HTML output after API background recovery completes', async () => {
+    const startedAt = Date.now();
+    const runningMessage: ChatMessage = {
+      id: 'msg-byok',
+      role: 'assistant',
+      content: 'Working...',
+      createdAt: startedAt,
+      startedAt,
+      preTurnFileNames: ['brief.md'],
+    };
+    const completedMessage: ChatMessage = {
+      ...runningMessage,
+      content: 'Done',
+      endedAt: startedAt + 1_000,
+      producedFiles: [
+        {
+          name: 'deck.html',
+          path: 'deck.html',
+          size: 100,
+          mtime: startedAt + 1_000,
+          kind: 'html',
+          mime: 'text/html',
+        } as never,
+      ],
+    };
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages
+      .mockResolvedValueOnce([runningMessage])
+      .mockResolvedValueOnce([completedMessage]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles
+      .mockResolvedValueOnce([
+        { name: 'brief.md', path: 'brief.md', size: 1, mtime: startedAt, kind: 'text' },
+      ])
+      .mockResolvedValue([
+        { name: 'brief.md', path: 'brief.md', size: 1, mtime: startedAt, kind: 'text' },
+        { name: 'deck.html', path: 'deck.html', size: 100, mtime: startedAt + 1_000, kind: 'html' },
+      ]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveByokProxyStreams.mockResolvedValue([]);
+
+    renderProjectView({ mode: 'api' });
+
+    await waitFor(() => {
+      const lastProps = fileWorkspaceProps.mock.calls.at(-1)?.[0] as
+        | { openRequest?: { name: string } | null }
+        | undefined;
+      expect(lastProps?.openRequest?.name).toBe('deck.html');
     });
   });
 
