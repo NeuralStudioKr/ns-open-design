@@ -233,12 +233,12 @@ Node heap + daemon baseline **~300–500MB** 추가.
 | 환경 | EC2 (권장) | `OD_MEM_LIMIT` (권장) | `OD_EXPORT_MAX_CONCURRENT` | `OD_EXPORT_BROWSER_POOL_SIZE` |
 |------|------------|------------------------|----------------------------|-------------------------------|
 | **Staging** | `t3.large` 8GiB | `1536m`~`2g` ([.env.staging.example](../deploy/teamver/.env.staging.example)) | **3~4** | **2** |
-| **Production (상용 오픈)** | `t3.xlarge` 16GiB ([07 §3.2](./07_VM_배포_인프라.md)) | **`4g`~`6g`** (example `2g`는 deck 동시 다수 시 빡빡 — §17) | **6~8** | **3** |
-| **Production (피크 대비)** | `t3.xlarge`+ 또는 export worker 분리 | `6g`~`8g` | **8~10** | **3~4** |
+| **Production (상용 오픈)** | `t3.2xlarge` 32GiB ([07 §3.2](./07_VM_배포_인프라.md)) | **`6g`~`8g`** | **6~8** | **3** |
+| **Production (피크 대비)** | `t3.2xlarge`+ 또는 export worker 분리 | `8g`~`10g` | **8~10** | **3~4** |
 
 **vCPU 가이드:** concurrent 1슬롯 ≈ **0.5~1 vCPU** (PDF/deck).  
 `t3.large`(2 vCPU)에서 concurrent **4** = CPU saturated 가능 → queue wait은 RAM보다 CPU에서 먼저 올 수 있음.  
-`t3.xlarge`(4 vCPU) + concurrent **6~8**이 상용 1호기 **단일 daemon** 현실적 상한.
+`t3.2xlarge`(8 vCPU) + concurrent **6~8**이 상용 1호기 **단일 daemon** 현실적 상한. design-api **`UVICORN_WORKERS=5`** ([07 §4](./07_VM_배포_인프라.md)).
 
 **동시 사용자 ≠ concurrent:** export는 **수동·저빈도**이지만 오픈 직후 “팀이 동시에 PDF 받기” 이벤트는 있다.  
 10명이 동시 클릭 시 concurrent=2면 8명이 **앞 4 job × ~20–40s** 대기 → 체감 장애. concurrent=6이면 4명만 대기.
@@ -515,8 +515,10 @@ Worker (daemon sidecar or queue consumer):
 
 | ENV | Staging | Production (상용) | 의미 |
 |-----|---------|-------------------|------|
-| `OD_MEM_LIMIT` | `1536m`~`2g` | **`4g`~`6g`** | daemon cgroup — Chromium 전제 |
-| `NODE_OPTIONS` | `--max-old-space-size=1024` | **`--max-old-space-size=3072`** | Node heap (MEM_LIMIT의 ~50–60%) |
+| `UVICORN_WORKERS` | **`2`** | **`5`** | design-api process count ([07 §4](./07_VM_배포_인프라.md)) |
+| `DB_POOL_SIZE` / `MAX_OVERFLOW` | `10`/`10` | **`8`/`8`** | worker당 SQLAlchemy pool (5×16=80 conn) |
+| `OD_MEM_LIMIT` | `1536m`~`2g` | **`6g`~`8g`** | daemon cgroup — Chromium 전제 |
+| `NODE_OPTIONS` | `--max-old-space-size=1024` | **`--max-old-space-size=4096`** | Node heap (MEM_LIMIT의 ~50%) |
 | `OD_EXPORT_MAX_CONCURRENT` | **`4`** | **`6`** (피크 **`8`**) | 동시 headless render 슬롯 |
 | `OD_EXPORT_BROWSER_POOL_SIZE` | **`2`** | **`3`** | warm browser 수 (≤ concurrent) |
 | `OD_EXPORT_QUEUE_MAX` | **`32`** | **`64`** | 초과 시 503 + retry-after (OOM 방지) |
@@ -584,7 +586,7 @@ embed/Drive 품질 SSOT가 **headless flatten snapshot**이다. Vite dist·deck 
 
 | # | 항목 | priority | 상태 |
 |---|------|----------|------|
-| 1 | `OD_MEM_LIMIT` production **≥4g** (example `2g`에서 상향) | **P0** | ✅ `.env.production` + example 4g 반영 |
+| 1 | `OD_MEM_LIMIT` production **≥8g** (`t3.2xlarge` SSOT) | **P0** | ✅ `.env.production` + example 8g 반영 |
 | 2 | `OD_EXPORT_*` pool + semaphore **코드 구현** | **P0** | ✅ Phase 0 |
 | 3 | staging concurrent **4** / prod **6** 로드 테스트 (3~5명 동시 PDF) | **P0** | ⏳ 배포 후 |
 | 4 | export metrics (`queue_wait_ms`, OOM restart) CloudWatch | P0 | ⏳ 배포 후 대시보드 |
@@ -628,7 +630,7 @@ Phase 0로 해결된 것:
 | E | Publish가 daemon export bytes를 design-api RAM에 통째로 (§2.4) | 1회 + RAM 이중 | Publish용 stream/redirect |
 
 **scale 가정 (오픈 2주 내):**
-- daemon 인스턴스 **1대** (§13.1 t3.xlarge single-node).
+- daemon 인스턴스 **1대** (§13.1 t3.2xlarge single-node).
 - export peak ≈ **팀 단위 동시 3~10명** — cache hit rate는 **B/C/D 시나리오 실제 발생 빈도**에 좌우.
 - multi-instance는 **오픈 후 성능 리뷰 이후**에나 트리거될 이슈.
 

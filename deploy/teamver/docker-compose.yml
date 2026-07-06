@@ -188,7 +188,7 @@ services:
     # CLI: docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging
     environment:
       # uvicorn 튜닝 — Dockerfile default 3/200/30, .env 로 재빌드 없이 override.
-      # 상용 튜닝 SSOT: production=3 (t3.xlarge 4vCPU) / staging=2 (t3.large 2vCPU).
+      # 상용 SSOT: production=5 (t3.2xlarge 8vCPU) / staging=2 (t3.large 2vCPU).
       UVICORN_WORKERS: ${UVICORN_WORKERS:-3}
       UVICORN_LIMIT_CONCURRENCY: ${UVICORN_LIMIT_CONCURRENCY:-200}
       UVICORN_TIMEOUT_KEEP_ALIVE: ${UVICORN_TIMEOUT_KEEP_ALIVE:-30}
