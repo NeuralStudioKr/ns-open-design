@@ -217,6 +217,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | ☐ | run 진행 중 Home/다른 프로젝트로 이탈 | daemon run은 계속 (Network `/api/runs` active) |
 | ☐ | 동일 프로젝트 재진입 | composer **Stop** + streaming UI 복원, Send만 보이지 않음 |
 | ☐ | BYOK/API 모드에서 상세 이탈 후 재진입 | `/api/proxy/active?projectId=...` 가 `conversationId`/`assistantMessageId` 를 반환하고, FE가 메시지/파일 polling을 재개 |
+| ☐ | BYOK/API run 완료까지 대기 | 새로고침 없이 assistant 메시지/produced file chip이 갱신되고, 생성된 HTML이 preview 탭에 자동 오픈 |
 
 #### C. Post-run publish UX (S-9 · loop 410–411)
 

@@ -4982,7 +4982,11 @@ export async function startServer({
 
   const app = express();
   installRouteRegistrationGuard(app);
-  app.use(express.json({ limit: '4mb' }));
+  // 4 MB is too tight for the export/*, files POST (multi-file writes),
+  // and inline-HTML export bodies — a single deck HTML with inlined
+  // base64 images routinely exceeds 4 MB. Bump to 24 MB so the inline
+  // export path stays viable end-to-end.
+  app.use(express.json({ limit: '24mb' }));
   const projectPreviewScopes = createProjectPreviewScopeRegistry();
 
   // Plan §3.K1 — bearer-token middleware.

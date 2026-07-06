@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
@@ -11,6 +12,15 @@ export interface BuildDesktopPdfExportInputOptions {
   projectId: string;
   projectsRoot: string;
   title?: string;
+  /**
+   * FE-provided artifact HTML. When present the daemon renders this body
+   * directly and skips reading from local scratch — the export path no longer
+   * depends on tenant S3 prefix resolution or scratch materialization state,
+   * so a transient `teamver_project_s3_prefix_required` on `/access` cannot
+   * gate PDF/HTML/ZIP/image downloads. Cache key uses the content hash
+   * instead of file mtime so identical inline bodies still deduplicate.
+   */
+  inlineHtml?: string;
 }
 
 /**
@@ -34,14 +44,32 @@ export type BuiltDesktopPdfExport = {
 export async function buildDesktopPdfExportInput(
   options: BuildDesktopPdfExportInputOptions,
 ): Promise<BuiltDesktopPdfExport> {
-  const file = await readProjectFile(options.projectsRoot, options.projectId, options.fileName);
-  const source = await resolveRenderableHtmlSource({
-    html: file.buffer.toString('utf8'),
-    fileName: options.fileName,
-    fileMtimeMs: file.mtime,
-    projectId: options.projectId,
-    projectsRoot: options.projectsRoot,
-  });
+  const inline = typeof options.inlineHtml === 'string' ? options.inlineHtml : '';
+  const useInline = inline.trim().length > 0;
+  const source = useInline
+    ? await resolveRenderableHtmlSource({
+        html: inline,
+        fileName: options.fileName,
+        fileMtimeMs: inlineHtmlPseudoMtime(inline),
+        projectId: options.projectId,
+        projectsRoot: options.projectsRoot,
+        allowVersionedDistLookup: false,
+      })
+    : await (async () => {
+        const file = await readProjectFile(
+          options.projectsRoot,
+          options.projectId,
+          options.fileName,
+        );
+        return resolveRenderableHtmlSource({
+          html: file.buffer.toString('utf8'),
+          fileName: options.fileName,
+          fileMtimeMs: file.mtime,
+          projectId: options.projectId,
+          projectsRoot: options.projectsRoot,
+          allowVersionedDistLookup: true,
+        });
+      })();
   const title = displayTitle(options.title, options.fileName);
   return {
     input: {
@@ -58,14 +86,36 @@ export async function buildDesktopPdfExportInput(
   };
 }
 
+/**
+ * Deterministic ≤48-bit integer derived from the inline HTML — feeds the
+ * cache-key `mtimeMs` slot so identical FE bodies hit the same cache entry
+ * while different bodies invalidate it.
+ *
+ * 48 bits stays well under `Number.MAX_SAFE_INTEGER` (2^53 - 1), so the
+ * value round-trips through `String(Math.floor(...))` in
+ * `computeExportCacheKey` without IEEE-754 rounding.  Collision odds at
+ * this width are negligible for realistic export volumes and the SHA-256
+ * distribution is uniform, so different bodies still map to different
+ * cache entries with overwhelming probability.
+ */
+function inlineHtmlPseudoMtime(html: string): number {
+  return crypto.createHash('sha256').update(html).digest().readUIntBE(0, 6);
+}
+
 async function resolveRenderableHtmlSource(options: {
   fileName: string;
   html: string;
   fileMtimeMs: number;
   projectId: string;
   projectsRoot: string;
+  /**
+   * Inline HTML paths must not shell out to scratch/S3 for a `dist/index.html`
+   * fallback — that reintroduces the tenant resolution the inline path is
+   * meant to bypass. Only enable when reading from disk in the first place.
+   */
+  allowVersionedDistLookup: boolean;
 }): Promise<{ fileName: string; html: string; mtimeMs: number }> {
-  if (!isViteDevHtmlEntry(options.html)) {
+  if (!isViteDevHtmlEntry(options.html) || !options.allowVersionedDistLookup) {
     return {
       fileName: options.fileName,
       html: options.html,

@@ -236,6 +236,63 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<!doctype html>");
   });
 
+  it("strips leaked deck navigation script prose while preserving the final answer", () => {
+    const input = [
+      "(function () {",
+      "var stage = document.getElementById('deck-stage');",
+      "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide')); var prev = document.getElementById('deck-prev');",
+      "var next = document.getElementById('deck-next');",
+      "var cur = document.getElementById('deck-cur');",
+      "var total = document.getElementById('deck-total'); var STORE = 'deck:idx:' + (location.pathname || '/');",
+      "var idx = 0; function fit() {",
+      "var sw = window.innerWidth;",
+      "var sh = window.innerHeight;",
+      "stage.style.transform = 'translate(0px,0px) scale(1)';",
+      "}",
+      "function paint() {",
+      "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+      "}",
+      "function go(i) { idx = i; paint(); }",
+      "function onKey(e) { if (e.key === 'ArrowRight') go(idx + 1); }",
+      "window.addEventListener('keydown', onKey, true);",
+      "document.addEventListener('keydown', onKey, true);",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "window.addEventListener('load', focusDeck);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+      "})좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toBe("좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.");
+    expect(out).not.toContain("document.getElementById");
+    expect(out).not.toContain("deck-stage");
+  });
+
+  it("strips partial deck navigation script while streaming before the closing IIFE arrives", () => {
+    const cases = [
+      [
+        "좋아요, 만들겠습니다.\n(function () {\nvar stage = document.getElementById('deck-stage');\nvar slides =",
+        "좋아요, 만들겠습니다.",
+      ],
+      [
+        "진행 중입니다.\nvar slides = Array.prototype.slice.call(document.querySelectorAll('.slide')); var prev = document.getElementById('deck-prev');\nfunction fit() {",
+        "진행 중입니다.",
+      ],
+      [
+        "초안을 준비합니다.\nfunction fit() {\nvar sw = window.innerWidth;\nstage.style.transform = 'translate(0px,0px) scale(1)';",
+        "초안을 준비합니다.",
+      ],
+    ] as const;
+    for (const [input, expected] of cases) {
+      const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+      expect(out).toBe(expected);
+      expect(out).not.toContain("deck-stage");
+      expect(out).not.toContain("querySelectorAll");
+      expect(out).not.toContain("stage.style.transform");
+    }
+  });
+
   it("strips trailing open read/edit/artifact in history but preserves open artifact while streaming", () => {
     const streamingArtifact =
       'Working…\n<artifact identifier="deck" type="text/html" title="Deck">\n<!doctype html>';

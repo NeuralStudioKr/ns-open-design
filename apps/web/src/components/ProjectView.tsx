@@ -202,6 +202,7 @@ import {
   conversationAwaitingQuestionFormAnswer,
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
+  isInFlightAssistantMessage,
   isRecoverableDaemonRunMessage,
   resolveRunRecoveryBannerPhase,
   shouldFullReplayReattachedRun,
@@ -2611,6 +2612,36 @@ export function ProjectView({
     [refreshConversationMessagesFromServer],
   );
 
+  const autoOpenRecoveredHtmlOutput = useCallback((
+    messagesSnapshot: readonly ChatMessage[],
+    assistantMessageIds: ReadonlySet<string>,
+    filesSnapshot: readonly ProjectFile[],
+  ) => {
+    for (const assistantMessageId of assistantMessageIds) {
+      if (htmlAutoOpenClaimedRef.current.has(assistantMessageId)) continue;
+      const message = messagesSnapshot.find((item) => item.id === assistantMessageId);
+      if (!message || message.role !== 'assistant' || isInFlightAssistantMessage(message)) continue;
+      const produced = message.producedFiles?.length
+        ? message.producedFiles
+        : computeProducedFiles(message.preTurnFileNames, filesSnapshot) ?? [];
+      const htmlToOpen = selectAutoOpenProducedHtml(produced);
+      if (!htmlToOpen) continue;
+      htmlAutoOpenClaimedRef.current.add(assistantMessageId);
+      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
+      requestOpenFile(htmlToOpen);
+      if (!message.producedFiles?.length && produced.length > 0) {
+        updateMessageById(
+          assistantMessageId,
+          (prev) => ({ ...prev, producedFiles: produced }),
+          true,
+          { telemetryFinalized: true },
+        );
+      }
+      return true;
+    }
+    return false;
+  }, [project.id, requestOpenFile, updateMessageById]);
+
   const markStreamingConversation = useCallback((conversationId: string) => {
     streamingConversationIdRef.current = conversationId;
     setStreaming(true);
@@ -3499,8 +3530,21 @@ export function ProjectView({
       try {
         const serverMessages = await listMessages(project.id, recoveryConversationId);
         if (cancelled) return;
+        const recoveredMessages = mergeServerMessagesIntoConversation(messages, serverMessages).map((message) => {
+          if (
+            trackedAssistantIds.has(message.id)
+            && message.role === 'assistant'
+            && message.endedAt === undefined
+            && message.startedAt === undefined
+          ) {
+            return { ...message, startedAt: message.createdAt || Date.now() };
+          }
+          return message;
+        });
+        mergedMessages = recoveredMessages;
+        stillInflight = findInFlightAssistantMessages(recoveredMessages).length > 0;
         setMessages((current) => {
-          mergedMessages = mergeServerMessagesIntoConversation(current, serverMessages).map((message) => {
+          const nextMessages = mergeServerMessagesIntoConversation(current, serverMessages).map((message) => {
             if (
               trackedAssistantIds.has(message.id)
               && message.role === 'assistant'
@@ -3511,8 +3555,7 @@ export function ProjectView({
             }
             return message;
           });
-          stillInflight = findInFlightAssistantMessages(mergedMessages).length > 0;
-          return mergedMessages;
+          return nextMessages;
         });
       } catch {
         // Fall through — proxy-active check still gates recovery exit.
@@ -3521,8 +3564,9 @@ export function ProjectView({
       if (stillInflight) {
         activateRecoveryUi(mergedMessages);
       }
-      await refreshProjectFiles();
+      const nextFiles = await refreshProjectFiles();
       if (cancelled) return;
+      autoOpenRecoveredHtmlOutput(mergedMessages, trackedAssistantIds, nextFiles);
 
       const proxyStillActive = matchingActiveStreams.length > 0;
       if (trackedAssistantIds.size === 0 && !proxyStillActive) {
@@ -3565,6 +3609,7 @@ export function ProjectView({
     project.id,
     markStreamingConversation,
     refreshProjectFiles,
+    autoOpenRecoveredHtmlOutput,
     clearCurrentRunStreamingMarker,
     clearStreamingMarker,
     scheduleConversationMessageRefresh,

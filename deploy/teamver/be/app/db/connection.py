@@ -61,7 +61,7 @@ def _connect_args() -> dict[str, Any]:
 
 # Multi-worker uvicorn 환경에서 각 워커가 독립 pool 을 가진다. RDS
 # ``max_connections`` 초과를 피하기 위해 워커수 × (pool_size+max_overflow)
-# 가 RDS 여유치 이내여야 한다 (t3.xlarge 상용 3 워커 × 20 = 60 curve).
+# 가 RDS 여유치 이내여야 한다 (t3.2xlarge 상용 5 워커 × 16 = 80 curve).
 # pool_recycle 은 RDS idle timeout (t3 계열 ~5–10min) 전에 재사용 커넥션을
 # 강제 리사이클해 stale connection 요청 지연을 방지.
 # pool_pre_ping=True: 재기동/네트워크 hiccup 방어 (요청당 +1ms).

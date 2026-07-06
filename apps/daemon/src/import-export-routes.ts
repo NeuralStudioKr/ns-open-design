@@ -53,6 +53,26 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
  * pipeline (e.g. Guizang WebGL rasterize fix) can otherwise be pinned to
  * a bad cached artifact until the cache-version env bump reaches prod.
  */
+/**
+ * Extract the FE-provided artifact HTML from an export request body.
+ *
+ * When the FE ships its current in-memory HTML snapshot alongside the export
+ * request, the daemon renders it directly and skips reading from local
+ * scratch (see `buildDesktopPdfExportInput`). This makes PDF/HTML/ZIP/image
+ * exports resilient to `teamver_project_s3_prefix_required` — a transient
+ * `design-api /access` failure or an evicted-scratch state no longer blocks
+ * the download. The middleware also uses this signal to unconditionally
+ * soft-continue on `/export/*` and `/archive*` routes.
+ */
+export function readInlineHtmlFromBody(
+  body: Record<string, unknown> | undefined | null,
+): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = (body as Record<string, unknown>)['html'];
+  if (typeof raw !== 'string') return null;
+  return raw.trim().length > 0 ? raw : null;
+}
+
 function wantsFreshExport(req: {
   query?: Record<string, unknown>;
   body?: Record<string, unknown> | undefined;
@@ -723,6 +743,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -730,6 +751,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       if (typeof desktopPdfExporter === 'function') {
         const result = await desktopPdfExporter(built.input);
@@ -780,6 +802,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             ? 'webp'
             : 'png';
       const cacheFormat: 'png' | 'jpeg' | 'webp' = imageFormat;
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -787,6 +810,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       const extension =
         imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
@@ -833,6 +857,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -840,6 +865,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
@@ -879,6 +905,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -886,6 +913,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
