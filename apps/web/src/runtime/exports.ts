@@ -1030,6 +1030,9 @@ export async function exportProjectAsPdf(opts: {
     await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
   }
 
+  const hasSnapshot =
+    typeof opts.htmlSnapshot === 'string' && opts.htmlSnapshot.trim().length > 0;
+
   let daemonErr: unknown = null;
   try {
     for (let attempt = 0; attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -1041,7 +1044,7 @@ export async function exportProjectAsPdf(opts: {
         // let the daemon skip its own /access round-trip. Skip when we have
         // an inline HTML snapshot (daemon does not need the prefix at all
         // and the warmup adds latency for nothing).
-        if (!opts.htmlSnapshot || !opts.htmlSnapshot.trim()) {
+        if (!hasSnapshot) {
           await waitForTeamverProjectStoragePrefix(opts.projectId, { quick: true }).catch(() => null);
         }
       }
@@ -1049,8 +1052,14 @@ export async function exportProjectAsPdf(opts: {
         return await performPdfExportRequest(opts);
       } catch (err) {
         if (isExportQueueFullError(err)) throw err;
+        // Inline-HTML export is idempotent w.r.t. tenant-storage — retrying
+        // with the same body against a daemon that just returned the prefix
+        // deny cannot succeed. Bail early to reach the browser-print
+        // fallback (or a clean `requireRenderedExport` failure) without
+        // spending the full ~2.4s retry budget.
         if (
-          isTeamverProjectStoragePrefixRequiredError(err)
+          !hasSnapshot
+          && isTeamverProjectStoragePrefixRequiredError(err)
           && attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length - 1
         ) {
           console.info(

@@ -87,15 +87,19 @@ export async function buildDesktopPdfExportInput(
 }
 
 /**
- * Deterministic 53-bit integer derived from the inline HTML — feeds the
+ * Deterministic ≤48-bit integer derived from the inline HTML — feeds the
  * cache-key `mtimeMs` slot so identical FE bodies hit the same cache entry
  * while different bodies invalidate it.
+ *
+ * 48 bits stays well under `Number.MAX_SAFE_INTEGER` (2^53 - 1), so the
+ * value round-trips through `String(Math.floor(...))` in
+ * `computeExportCacheKey` without IEEE-754 rounding.  Collision odds at
+ * this width are negligible for realistic export volumes and the SHA-256
+ * distribution is uniform, so different bodies still map to different
+ * cache entries with overwhelming probability.
  */
 function inlineHtmlPseudoMtime(html: string): number {
-  const digest = crypto.createHash('sha256').update(html).digest();
-  const hi = digest.readUInt32BE(0);
-  const lo = digest.readUInt32BE(4);
-  return hi * 0x1_00_00_00 + (lo >>> 8);
+  return crypto.createHash('sha256').update(html).digest().readUIntBE(0, 6);
 }
 
 async function resolveRenderableHtmlSource(options: {

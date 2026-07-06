@@ -440,6 +440,58 @@ describe('exportProjectAsPdf', () => {
     }
   });
 
+  it('does not retry on teamver_project_s3_prefix_required when htmlSnapshot is present', async () => {
+    const fallback = vi.fn();
+    let capturedBlob: Blob | undefined;
+    const open = vi.fn(() => ({ location: { href: '' }, opener: null }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn((blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:pdf';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 'UPSTREAM_UNAVAILABLE', message: 'teamver_project_s3_prefix_required' },
+        }),
+        { status: 502, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const started = Date.now();
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+    const elapsed = Date.now() - started;
+
+    expect(result).toBe('fallback');
+    // Single daemon POST — no retry sleeps consume the 2.4s budget.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(elapsed).toBeLessThan(500);
+    // Browser-print fallback drove from the snapshot, not from a fresh fetch.
+    expect(capturedBlob).toBeDefined();
+  });
+
   it('drives browser print fallback directly from htmlSnapshot without hitting inline URL', async () => {
     const fallback = vi.fn();
     let capturedBlob: Blob | undefined;
