@@ -65,10 +65,11 @@ function parseDesignTemplateModeFilter(raw: unknown): Set<string> | null {
   return modes.size > 0 ? modes : null;
 }
 
-function parseCatalogLimit(raw: unknown, fallback: number, max: number): number {
+function parseCatalogLimit(raw: unknown, max: number): number | null {
+  if (raw == null) return null;
   const value = Array.isArray(raw) ? raw[0] : raw;
   const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.min(Math.floor(parsed), max);
 }
 
@@ -231,13 +232,13 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     try {
       const modeFilter = parseDesignTemplateModeFilter(req.query.mode);
       const q = parseCatalogQuery(req.query.q ?? req.query.query ?? req.query.search);
-      const limit = parseCatalogLimit(req.query.limit, 100, 200);
+      const limit = parseCatalogLimit(req.query.limit, 200);
       const offset = parseCatalogOffset(req.query.offset);
       const templates = (await listAllDesignTemplates()).filter((template) => {
         if (modeFilter && !modeFilter.has(template.mode)) return false;
         return designTemplateMatchesQuery(template as unknown as Record<string, unknown>, q);
       });
-      const page = templates.slice(offset, offset + limit);
+      const page = limit === null ? templates.slice(offset) : templates.slice(offset, offset + limit);
       res.json({
         designTemplates: page.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,
@@ -246,7 +247,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
         total: templates.length,
         limit,
         offset,
-        nextOffset: offset + page.length < templates.length ? offset + page.length : null,
+        nextOffset: limit !== null && offset + page.length < templates.length ? offset + page.length : null,
       });
     } catch (err: any) {
       res.status(500).json({ error: String(err) });

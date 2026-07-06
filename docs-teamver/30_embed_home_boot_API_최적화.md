@@ -169,6 +169,7 @@ shouldFetchAppVersionAboutPanel()      // About 중복 version skip
 
 - `/api/plugins`는 `q|query|search`, `limit`, `offset`을 지원한다. Teamver embed slide-only 기본 호출은 `mode=deck&limit=48`로 축소했다.
 - `/api/design-templates`도 같은 `q/limit/offset` 계약을 지원한다. 기존 `{ designTemplates }` 응답은 유지하고 `total/limit/offset/nextOffset` 메타만 추가했다.
+- `limit`을 명시하지 않은 기존 호출은 전체 목록을 반환한다. 즉 standalone/관리 화면은 기존 계약을 유지하고, embed 최적화 표면만 명시적으로 페이지 크기를 요청한다.
 - 다음 단계는 Home/Composer toolbox 검색 입력을 서버 `q`에 연결하고, `nextOffset` 기반 더보기 UI를 붙일지 결정하는 것이다.
 
 ---

@@ -7623,10 +7623,11 @@ export async function startServer({
     }
   });
 
-  function parseCatalogListNumber(raw, fallback, max) {
+  function parseCatalogListLimit(raw, max) {
+    if (raw == null) return null;
     const value = Array.isArray(raw) ? raw[0] : raw;
     const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
     return Math.min(Math.floor(parsed), max);
   }
 
@@ -7653,18 +7654,18 @@ export async function startServer({
         parsePluginCatalogModeFilter(req.query.mode)
         ?? readDefaultPluginCatalogModeFromEnv();
       const q = parseCatalogListQuery(req.query.q ?? req.query.query ?? req.query.search);
-      const limit = parseCatalogListNumber(req.query.limit, 100, 200);
+      const limit = parseCatalogListLimit(req.query.limit, 200);
       const offset = parseCatalogListOffset(req.query.offset);
       plugins = q
         ? searchInstalledPlugins({ plugins, query: q, mode: modeFilter ?? undefined }).entries.map((entry) => entry.plugin)
         : filterInstalledPluginsByCatalogMode(plugins, modeFilter);
-      const page = plugins.slice(offset, offset + limit);
+      const page = limit === null ? plugins.slice(offset) : plugins.slice(offset, offset + limit);
       res.json({
         plugins: page,
         total: plugins.length,
         limit,
         offset,
-        nextOffset: offset + page.length < plugins.length ? offset + page.length : null,
+        nextOffset: limit !== null && offset + page.length < plugins.length ? offset + page.length : null,
       });
     } catch (err) {
       res.status(500).json({ error: String(err) });
