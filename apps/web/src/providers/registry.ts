@@ -237,6 +237,9 @@ export async function fetchSkills(options?: { slideOnly?: boolean }): Promise<Sk
 // specs/current/skills-and-design-templates.md.
 export async function fetchDesignTemplates(options?: {
   mode?: SkillSummary["mode"] | readonly SkillSummary["mode"][];
+  query?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<SkillSummary[]> {
   try {
     const modes = Array.isArray(options?.mode)
@@ -244,9 +247,16 @@ export async function fetchDesignTemplates(options?: {
       : options?.mode
         ? [options.mode]
         : [];
-    const query = modes.length > 0
-      ? `?mode=${encodeURIComponent(modes.join(","))}`
-      : "";
+    const params = new URLSearchParams();
+    if (modes.length > 0) params.set("mode", modes.join(","));
+    if (options?.query?.trim()) params.set("q", options.query.trim());
+    if (typeof options?.limit === "number" && Number.isFinite(options.limit) && options.limit > 0) {
+      params.set("limit", String(Math.floor(options.limit)));
+    }
+    if (typeof options?.offset === "number" && Number.isFinite(options.offset) && options.offset > 0) {
+      params.set("offset", String(Math.floor(options.offset)));
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
     const resp = await fetch(`/api/design-templates${query}`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { designTemplates: SkillSummary[] };

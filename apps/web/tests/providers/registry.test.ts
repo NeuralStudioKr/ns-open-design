@@ -185,6 +185,24 @@ describe('fetchDesignTemplates', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/design-templates?mode=deck');
   });
+
+  it('passes design-template search and pagination to the daemon', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ designTemplates: [] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchDesignTemplates({
+      mode: 'deck',
+      query: 'terminal deck',
+      limit: 24,
+      offset: 48,
+    })).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/design-templates?mode=deck&q=terminal+deck&limit=24&offset=48',
+    );
+  });
 });
 
 describe('writeProjectTextFileDetailed', () => {

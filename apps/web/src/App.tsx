@@ -506,7 +506,7 @@ function AppInner() {
   // EntryView Templates tab. See specs/current/skills-and-design-templates.md.
   const [designTemplates, setDesignTemplates] = useState<SkillSummary[]>([]);
   const fetchDesignTemplatesForCurrentBranding = useCallback(
-    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck' } : undefined),
+    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined),
     [slideOnlyMvp],
   );
   const [designSystems, setDesignSystems] = useState<DesignSystemSummary[]>([]);

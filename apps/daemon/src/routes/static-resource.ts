@@ -65,6 +65,40 @@ function parseDesignTemplateModeFilter(raw: unknown): Set<string> | null {
   return modes.size > 0 ? modes : null;
 }
 
+function parseCatalogLimit(raw: unknown, fallback: number, max: number): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
+function parseCatalogOffset(raw: unknown): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
+}
+
+function parseCatalogQuery(raw: unknown): string {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function designTemplateMatchesQuery(template: Record<string, unknown>, query: string): boolean {
+  if (!query) return true;
+  const fields = [
+    template.id,
+    template.name,
+    template.description,
+    template.category,
+    template.scenario,
+    template.mode,
+  ];
+  return fields.some((field) =>
+    typeof field === 'string' && field.toLowerCase().includes(query),
+  );
+}
+
 export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticResourceRoutesDeps) {
   const {
     RUNTIME_DATA_DIR,
@@ -196,15 +230,23 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   app.get('/api/design-templates', async (req, res) => {
     try {
       const modeFilter = parseDesignTemplateModeFilter(req.query.mode);
+      const q = parseCatalogQuery(req.query.q ?? req.query.query ?? req.query.search);
+      const limit = parseCatalogLimit(req.query.limit, 100, 200);
+      const offset = parseCatalogOffset(req.query.offset);
       const templates = (await listAllDesignTemplates()).filter((template) => {
-        if (!modeFilter) return true;
-        return modeFilter.has(template.mode);
+        if (modeFilter && !modeFilter.has(template.mode)) return false;
+        return designTemplateMatchesQuery(template as unknown as Record<string, unknown>, q);
       });
+      const page = templates.slice(offset, offset + limit);
       res.json({
-        designTemplates: templates.map(({ body, dir: _dir, ...rest }) => ({
+        designTemplates: page.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,
           hasBody: typeof body === 'string' && body.length > 0,
         })),
+        total: templates.length,
+        limit,
+        offset,
+        nextOffset: offset + page.length < templates.length ? offset + page.length : null,
       });
     } catch (err: any) {
       res.status(500).json({ error: String(err) });

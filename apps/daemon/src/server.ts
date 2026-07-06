@@ -192,6 +192,7 @@ import {
   filterInstalledPluginsByCatalogMode,
   parsePluginCatalogModeFilter,
   readDefaultPluginCatalogModeFromEnv,
+  searchInstalledPlugins,
 } from './plugins/index.js';
 import {
   marketplaceManifestUrlForRegistry,
@@ -7622,6 +7623,25 @@ export async function startServer({
     }
   });
 
+  function parseCatalogListNumber(raw, fallback, max) {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(Math.floor(parsed), max);
+  }
+
+  function parseCatalogListOffset(raw) {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.floor(parsed);
+  }
+
+  function parseCatalogListQuery(raw) {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
   // Plugin-system HTTP surface. Spec §11.5. Phase 1 wires the minimum set
   // needed for the §12.5 walkthrough: list/get installed plugins, install
   // (SSE), uninstall, apply (returns ApplyResult + snapshotId), atom catalog,
@@ -7632,8 +7652,20 @@ export async function startServer({
       const modeFilter =
         parsePluginCatalogModeFilter(req.query.mode)
         ?? readDefaultPluginCatalogModeFromEnv();
-      plugins = filterInstalledPluginsByCatalogMode(plugins, modeFilter);
-      res.json({ plugins });
+      const q = parseCatalogListQuery(req.query.q ?? req.query.query ?? req.query.search);
+      const limit = parseCatalogListNumber(req.query.limit, 100, 200);
+      const offset = parseCatalogListOffset(req.query.offset);
+      plugins = q
+        ? searchInstalledPlugins({ plugins, query: q, mode: modeFilter ?? undefined }).entries.map((entry) => entry.plugin)
+        : filterInstalledPluginsByCatalogMode(plugins, modeFilter);
+      const page = plugins.slice(offset, offset + limit);
+      res.json({
+        plugins: page,
+        total: plugins.length,
+        limit,
+        offset,
+        nextOffset: offset + page.length < plugins.length ? offset + page.length : null,
+      });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }

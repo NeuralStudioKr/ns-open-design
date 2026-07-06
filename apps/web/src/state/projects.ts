@@ -960,14 +960,25 @@ export interface ListPluginsOptions {
   includeHidden?: boolean;
   /** Embed slide-only — request daemon deck catalog (`manifest.od.mode === 'deck'`). */
   mode?: 'deck';
+  query?: string;
+  limit?: number;
+  offset?: number;
 }
 
 function resolvePluginsListUrl(options: ListPluginsOptions): string {
-  if (options.mode === 'deck') return '/api/plugins?mode=deck';
-  if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
-    return '/api/plugins?mode=deck';
+  const params = new URLSearchParams();
+  const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
+  if (options.mode === 'deck' || slideOnly) params.set('mode', 'deck');
+  if (options.query?.trim()) params.set('q', options.query.trim());
+  const limit = options.limit ?? (slideOnly ? 48 : undefined);
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+    params.set('limit', String(Math.floor(limit)));
   }
-  return '/api/plugins';
+  if (typeof options.offset === 'number' && Number.isFinite(options.offset) && options.offset > 0) {
+    params.set('offset', String(Math.floor(options.offset)));
+  }
+  const query = params.toString();
+  return query ? `/api/plugins?${query}` : '/api/plugins';
 }
 
 export async function listPlugins(

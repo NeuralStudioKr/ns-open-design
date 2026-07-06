@@ -48,6 +48,42 @@ export type DesignAuthSession = {
 
 let cachedClient: TeamverClient | null = null;
 
+function isSdkAuthRefreshRequest(input: Parameters<typeof fetch>[0], init?: RequestInit): boolean {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method !== "POST") return false;
+  const rawUrl =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+  try {
+    const parsed =
+      typeof window !== "undefined"
+        ? new URL(rawUrl, window.location.href)
+        : new URL(rawUrl);
+    return parsed.pathname.endsWith("/auth/refresh");
+  } catch {
+    return rawUrl.endsWith("/auth/refresh");
+  }
+}
+
+const DESIGN_BFF_SDK_REFRESH_DISABLED_RESPONSE = JSON.stringify({
+  error: { code: "design_sdk_auth_refresh_disabled" },
+});
+
+function fetchDesignBffSdk(input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> {
+  if (isSdkAuthRefreshRequest(input, init)) {
+    return Promise.resolve(
+      new Response(DESIGN_BFF_SDK_REFRESH_DISABLED_RESPONSE, {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  }
+  return fetch(input, init);
+}
+
 export function getDesignBffClient(): TeamverClient | null {
   if (!isTeamverEmbedMode()) return null;
   const base = resolveTeamverDesignApiBase();
@@ -64,6 +100,7 @@ export function getDesignBffClient(): TeamverClient | null {
         lastByUserKey: "teamver_design_last_workspace_by_user",
       }),
       withCredentials: true,
+      fetch: fetchDesignBffSdk,
       onAuthExpired: () => {
         prepareDesignAuthSessionReload();
         redirectToTeamverLoginPreservingRoute({
