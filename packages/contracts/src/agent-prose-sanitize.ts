@@ -211,6 +211,12 @@ const LEAKED_DECK_NAV_SCRIPT_BODY_RE =
 const LEAKED_DECK_NAV_SCRIPT_TAIL_RE =
   /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);[\s\S]{0,20000}\}\s*\)\s*;?/gi;
 
+const LEADING_DECK_GENERATION_ACK_RE =
+  /^\s*(?:좋아요|좋습니다|알겠습니다|네)[^\n]{0,220}(?:PPT|슬라이드|덱|deck)[^\n]{0,220}(?:만들겠습니다|작성하겠습니다|제작하겠습니다|생성하겠습니다)\.?\s*/i;
+
+const SLIDE_PLAN_HEADING_RE = /(?:\*\*)?\s*슬라이드\s*구성\s*계획\s*(?:\*\*)?\s*:/i;
+const SLIDE_PLAN_NUMBERED_ITEM_RE = /(?:^|\n)\s*\d{1,2}\.\s+\S/;
+
 const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   /(?:^|\n)\s*(?:\(\s*)?function\s*\(\)\s*\{(?=[\s\S]{0,4000}?document\.getElementById\(['"]deck-stage['"]\))/i,
   /(?:^|\n)\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/i,
@@ -371,6 +377,40 @@ function collapseExtraBlankLines(input: string): string {
   return input.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
 
+function stripDeckGenerationPlanningProse(input: string): string {
+  if (!input) return input;
+  let out = input.replace(LEADING_DECK_GENERATION_ACK_RE, "");
+  const heading = SLIDE_PLAN_HEADING_RE.exec(out);
+  if (!heading || heading.index === undefined) return out;
+  const planTail = out.slice(heading.index);
+  if (!SLIDE_PLAN_NUMBERED_ITEM_RE.test(planTail)) return out;
+
+  const keepStart = findFirstDeckPlanKeepMarker(planTail);
+  if (keepStart >= 0) {
+    out = `${out.slice(0, heading.index).trimEnd()}\n\n${planTail.slice(keepStart).trimStart()}`;
+  } else {
+    out = out.slice(0, heading.index).trimEnd();
+  }
+  return out;
+}
+
+function findFirstDeckPlanKeepMarker(input: string): number {
+  const keepMarkers = [
+    /(?:^|\n)\s*(?:완료했습니다|완성했습니다|생성했습니다|저장했습니다|파일을\s+생성했습니다|슬라이드(?:를)?\s+생성했습니다)\b/i,
+    /(?:^|\n)\s*(?:이\s*턴에서\s*생성된\s*파일|생성된\s*파일)\b/i,
+  ];
+  let best = -1;
+  for (const marker of keepMarkers) {
+    marker.lastIndex = 0;
+    const match = marker.exec(input);
+    if (!match || match.index === undefined) continue;
+    const offset = match[0].search(/\S/);
+    const start = match.index + (offset >= 0 ? offset : 0);
+    if (best === -1 || start < best) best = start;
+  }
+  return best;
+}
+
 function stripClosedTagFamilies(input: string, tagNames: readonly string[]): string {
   let out = input;
   for (const tagName of tagNames) {
@@ -411,6 +451,7 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_BODY_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_TAIL_RE, "");
+  out = stripDeckGenerationPlanningProse(out);
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
   out = out.replace(ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE, "");
   const bareTail = out.match(new RegExp(`${BARE_TOOL_JSON_OPEN_RE.source}[\\s\\S]*$`));

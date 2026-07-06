@@ -170,8 +170,41 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
       ],
     };
     const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
-    expect(sanitized.content).toBe("좋아요! 뉴럴스튜디오 온보딩 PPT를 만들겠습니다.");
+    expect(sanitized.content).toBe("");
     expect(sanitized.content).not.toContain("deck-stage");
     expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "완료했습니다." });
+  });
+
+  it("strips persisted deck generation plan prose on project re-entry", () => {
+    const message: ChatMessage = {
+      id: "m-deck-plan",
+      role: "assistant",
+      content: [
+        "좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.",
+        "",
+        "**슬라이드 구성 계획:**1. Cover — 뉴럴스튜디오 온보딩 표지",
+        "2. 회사 소개 & 미션3. 조직 & 팀 문화",
+        "4. 커뮤니케이션 채널 & 협업 문화",
+        "5. 툴 스택",
+        "6. 업무 프로세스 (스프린트 사이클)",
+        "7. 코드 & PR 가이드",
+        "8. Closing — Day 1 체크리스트",
+        "",
+        "Neutral Modern 디자인 시스템 기반 (딥 네이비 + 코발트 #2F6FEB), Inter 폰트, 테크 톤으로 작성합니다.",
+      ].join("\n"),
+      events: [
+        {
+          kind: "text",
+          text: [
+            "**슬라이드 구성 계획:**1. Cover — 뉴럴스튜디오 온보딩 표지",
+            "2. 회사 소개 & 미션",
+          ].join("\n"),
+        },
+      ],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("");
+    expect(sanitized.events).toEqual([]);
   });
 });

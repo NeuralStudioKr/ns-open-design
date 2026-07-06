@@ -264,9 +264,27 @@ describe("agent-prose-sanitize SSOT", () => {
       "})좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.",
     ].join("\n");
     const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
-    expect(out).toBe("좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.");
+    expect(out).toBe("");
     expect(out).not.toContain("document.getElementById");
     expect(out).not.toContain("deck-stage");
+  });
+
+  it("strips deck generation preamble and numbered slide planning prose from history", () => {
+    const input = [
+      "좋아요! 뉴럴스튜디오 온보딩 PPT, 8장, 테크 & 모던 톤으로 바로 만들겠습니다.",
+      "",
+      "**슬라이드 구성 계획:**1. Cover — 뉴럴스튜디오 온보딩 표지",
+      "2. 회사 소개 & 미션3. 조직 & 팀 문화",
+      "4. 커뮤니케이션 채널 & 협업 문화",
+      "5. 툴 스택",
+      "6. 업무 프로세스 (스프린트 사이클)",
+      "7. 코드 & PR 가이드",
+      "8. Closing — Day 1 체크리스트",
+      "",
+      "Neutral Modern 디자인 시스템 기반 (딥 네이비 + 코발트 #2F6FEB), Inter 폰트, 테크 톤으로 작성합니다.",
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
   });
 
   it("strips partial deck navigation script while streaming before the closing IIFE arrives", () => {
