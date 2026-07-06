@@ -1371,6 +1371,75 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).not.toContain('<script>window.parent.document.body.innerHTML="owned"</script>');
   });
 
+  it('paints a title-only splash into the popup so the blob URL is never the tab label', async () => {
+    // Give the mock popup a document with a spyable write() implementation so
+    // we can assert the intermediate splash is emitted before the location
+    // is redirected to the blob URL.
+    const writes: string[] = [];
+    const winWithDoc = {
+      ...mockWin,
+      document: {
+        open: () => {},
+        close: () => {},
+        write: (chunk: string) => {
+          writes.push(chunk);
+        },
+      },
+    };
+    vi.stubGlobal('window', {
+      location: {
+        href: 'https://open-design.test/plugins/example',
+        origin: 'https://open-design.test',
+      },
+      open: (_url: string, _target: string) => {
+        openCalls.push([_url, _target]);
+        return winWithDoc;
+      },
+      addEventListener: () => {},
+    });
+
+    await exportAsPdf('<main>Doc</main>', 'Friendly Tab Title');
+
+    expect(writes.length).toBe(1);
+    const splash = writes[0]!;
+    expect(splash).toContain('<title>Friendly Tab Title</title>');
+    expect(splash).toContain('Preparing PDF');
+    // The splash must render before the blob navigation completes.
+    expect(winWithDoc.location.href).toBe('blob:test');
+  });
+
+  it('swallows splash write errors so environments without a writable document still receive the blob', async () => {
+    const winReadOnlyDoc = {
+      ...mockWin,
+      document: {
+        // Throwing on open() emulates a cross-origin / sandboxed popup where
+        // document.write is disallowed. The function must still complete
+        // and navigate to the blob URL.
+        open: () => {
+          throw new Error('cross-origin');
+        },
+        close: () => {},
+        write: () => {},
+      },
+    };
+    vi.stubGlobal('window', {
+      location: {
+        href: 'https://open-design.test/plugins/example',
+        origin: 'https://open-design.test',
+      },
+      open: (_url: string, _target: string) => {
+        openCalls.push([_url, _target]);
+        return winReadOnlyDoc;
+      },
+      addEventListener: () => {},
+    });
+
+    await expect(
+      exportAsPdf('<main>Doc</main>', 'Sandboxed'),
+    ).resolves.toBeUndefined();
+    expect(winReadOnlyDoc.location.href).toBe('blob:test');
+  });
+
   it('prints deck PDF fallbacks as a top-level document so slide CSS controls the page', async () => {
     await exportAsPdf('<section class="slide">One</section>', 'Deck PDF', { deck: true });
 

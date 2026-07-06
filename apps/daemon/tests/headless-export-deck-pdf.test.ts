@@ -22,6 +22,7 @@ import {
   resolveExportTimeoutMs,
   resolvePlaywrightChromiumExecutable,
   resolvePlaywrightChromiumExecutables,
+  warmupHeadlessChromiumAtBoot,
 } from '../src/headless-export.js';
 
 describe('chromiumExecutableCandidates', () => {
@@ -209,6 +210,73 @@ describe('logChromiumAvailabilityAtBoot', () => {
       else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
       if (prevOverride === undefined) delete process.env.OD_EXPORT_CHROMIUM_PATH;
       else process.env.OD_EXPORT_CHROMIUM_PATH = prevOverride;
+    }
+  });
+});
+
+describe('warmupHeadlessChromiumAtBoot', () => {
+  it('skips the launch attempt when OD_CHROMIUM_BOOT_WARMUP=off', async () => {
+    const prev = process.env.OD_CHROMIUM_BOOT_WARMUP;
+    process.env.OD_CHROMIUM_BOOT_WARMUP = 'off';
+    const infoCalls: unknown[][] = [];
+    const errorCalls: unknown[][] = [];
+    const prevInfo = console.info;
+    const prevError = console.error;
+    console.info = (...args: unknown[]) => infoCalls.push(args);
+    console.error = (...args: unknown[]) => errorCalls.push(args);
+    try {
+      await warmupHeadlessChromiumAtBoot();
+      // Not launching means neither info nor error warm-up marker fires.
+      const flat = JSON.stringify([...infoCalls, ...errorCalls]);
+      expect(flat).not.toContain('od_chromium_warmup');
+    } finally {
+      console.info = prevInfo;
+      console.error = prevError;
+      if (prev === undefined) delete process.env.OD_CHROMIUM_BOOT_WARMUP;
+      else process.env.OD_CHROMIUM_BOOT_WARMUP = prev;
+    }
+  });
+
+  it('logs od_chromium_warmup ERROR when no chromium binary can launch', async () => {
+    // Force launcher to fail: point PLAYWRIGHT_BROWSERS_PATH at an
+    // empty directory and set OD_DISABLE_RUNTIME_CHROMIUM_INSTALL so
+    // the last-ditch npx install fallback does not attempt a real
+    // download during unit tests.
+    const emptyRoot = `/tmp/od-warmup-empty-${process.pid}`;
+    const prevWarmup = process.env.OD_CHROMIUM_BOOT_WARMUP;
+    const prevRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const prevOverride = process.env.OD_EXPORT_CHROMIUM_PATH;
+    const prevNoInstall = process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL;
+    process.env.OD_CHROMIUM_BOOT_WARMUP = 'log';
+    process.env.PLAYWRIGHT_BROWSERS_PATH = emptyRoot;
+    process.env.OD_EXPORT_CHROMIUM_PATH = '/nonexistent/chromium';
+    process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL = '1';
+    const errorCalls: unknown[][] = [];
+    const infoCalls: unknown[][] = [];
+    const warnCalls: unknown[][] = [];
+    const prevError = console.error;
+    const prevInfo = console.info;
+    const prevWarn = console.warn;
+    console.error = (...args: unknown[]) => errorCalls.push(args);
+    console.info = (...args: unknown[]) => infoCalls.push(args);
+    console.warn = (...args: unknown[]) => warnCalls.push(args);
+    try {
+      await warmupHeadlessChromiumAtBoot();
+      const flat = JSON.stringify(errorCalls);
+      expect(flat).toContain('od_chromium_warmup');
+      expect(flat).toContain('chromium warm-up FAILED');
+    } finally {
+      console.error = prevError;
+      console.info = prevInfo;
+      console.warn = prevWarn;
+      if (prevWarmup === undefined) delete process.env.OD_CHROMIUM_BOOT_WARMUP;
+      else process.env.OD_CHROMIUM_BOOT_WARMUP = prevWarmup;
+      if (prevRoot === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
+      if (prevOverride === undefined) delete process.env.OD_EXPORT_CHROMIUM_PATH;
+      else process.env.OD_EXPORT_CHROMIUM_PATH = prevOverride;
+      if (prevNoInstall === undefined) delete process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL;
+      else process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL = prevNoInstall;
     }
   });
 });
