@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-import { nudgeDeckPreviewFit, scheduleDeckPreviewFitNudges } from '../../src/runtime/deckPreviewFit';
+import {
+  nudgeDeckPreviewFit,
+  postDeckHostViewportToIframe,
+  scheduleDeckPreviewFitNudges,
+} from '../../src/runtime/deckPreviewFit';
 
 describe('deckPreviewFit', () => {
   beforeEach(() => {
@@ -11,24 +15,43 @@ describe('deckPreviewFit', () => {
     vi.useRealTimers();
   });
 
-  it('posts od:deck-nudge-fit to the iframe content window', () => {
+  it('posts host viewport size then od:deck-nudge-fit', () => {
     const postMessage = vi.fn();
-    nudgeDeckPreviewFit({ contentWindow: { postMessage } as unknown as Window });
-    expect(postMessage).toHaveBeenCalledWith({ type: 'od:deck-nudge-fit' }, '*');
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 640, height: 480 } as DOMRect),
+    };
+    nudgeDeckPreviewFit(target);
+    expect(postMessage).toHaveBeenNthCalledWith(
+      1,
+      { type: 'od:deck-host-viewport', width: 640, height: 480, scale: 1 },
+      '*',
+    );
+    expect(postMessage).toHaveBeenNthCalledWith(2, { type: 'od:deck-nudge-fit' }, '*');
+  });
+
+  it('skips host viewport post when the iframe has no measurable box', () => {
+    const postMessage = vi.fn();
+    postDeckHostViewportToIframe({
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 0, height: 0 } as DOMRect),
+    });
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
   it('schedules repeated nudges through layout settles', () => {
     const postMessage = vi.fn();
-    const cancel = scheduleDeckPreviewFitNudges(
-      { contentWindow: { postMessage } as unknown as Window },
-      [0, 100, 200],
-    );
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 800, height: 600 } as DOMRect),
+    };
+    const cancel = scheduleDeckPreviewFitNudges(target, 1, [0, 100, 200]);
     vi.advanceTimersByTime(0);
-    expect(postMessage).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(100);
     expect(postMessage).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(100);
+    expect(postMessage).toHaveBeenCalledTimes(4);
     cancel();
     vi.advanceTimersByTime(200);
-    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(postMessage).toHaveBeenCalledTimes(4);
   });
 });

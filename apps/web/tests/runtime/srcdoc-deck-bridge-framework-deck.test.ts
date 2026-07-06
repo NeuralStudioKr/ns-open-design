@@ -69,6 +69,8 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     // bridge still needs the slide-state postMessage channel.
     expect(out).toMatch(/<script[^>]*data-od-deck-bridge/);
     expect(out).toContain("data.type === 'od:deck-nudge-fit'");
+    expect(out).toContain("data.type === 'od:deck-host-viewport'");
+    expect(out).toContain('runFrameworkDeckFit');
   });
 
   it('keeps injecting the place-content fix for legacy / non-framework decks', () => {

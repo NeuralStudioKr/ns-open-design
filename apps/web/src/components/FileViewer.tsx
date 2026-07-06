@@ -5697,11 +5697,12 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!effectiveDeck || mode !== 'preview') return;
-    return scheduleDeckPreviewFitNudges(iframeRef.current);
+    return scheduleDeckPreviewFitNudges(iframeRef.current, previewScale);
   }, [
     effectiveDeck,
     mode,
     zoom,
+    previewScale,
     previewBodySize?.width,
     previewBodySize?.height,
     srcDoc,
@@ -8787,7 +8788,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame);
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, previewScale);
                           }}
                         />
                       ) : (
@@ -8813,7 +8814,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame);
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, previewScale);
                           }}
                         />
                       )}
@@ -8875,7 +8876,7 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
-                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame);
+                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, previewScale);
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
                       />

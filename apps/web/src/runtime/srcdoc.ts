@@ -1814,6 +1814,49 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var didRestoreInitialSlide = initialSlideIndex <= 0;
+  var hostViewport = { w: 0, h: 0, scale: 1 };
+  function frameworkDeckStage() {
+    return document.getElementById('deck-stage');
+  }
+  function frameworkDeckViewport() {
+    var iw = Math.max(0, window.innerWidth || 0);
+    var ih = Math.max(0, window.innerHeight || 0);
+    var hw = Math.max(0, hostViewport.w || 0);
+    var hh = Math.max(0, hostViewport.h || 0);
+    var scale = hostViewport.scale > 0 ? hostViewport.scale : 1;
+    // When the host wraps us in transform:scale(z), layout width is visual/z.
+    // Reconstruct layout width from the visual box so fit() matches the
+    // framework's nested-transform contract.
+    if (hw > 0 && hh > 0 && scale > 0 && scale < 0.999) {
+      return { w: hw / scale, h: hh / scale };
+    }
+    // At 100% host zoom, trust the smaller host visual box when innerWidth
+    // was inflated by bad meta viewport or a 0×0 first-paint stuck at scale(1).
+    if (hw > 0 && hh > 0 && scale >= 0.999 && (hw < iw * 0.98 || hh < ih * 0.98)) {
+      return { w: hw, h: hh };
+    }
+    return { w: iw || hw, h: ih || hh };
+  }
+  function runFrameworkDeckFit() {
+    var stage = frameworkDeckStage();
+    if (!stage) return false;
+    var vp = frameworkDeckViewport();
+    var sw = vp.w;
+    var sh = vp.h;
+    if (sw <= 0 || sh <= 0) return false;
+    var pad = 32;
+    var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
+    if (!isFinite(s) || s <= 0) s = 1;
+    var tx = (sw - 1920 * s) / 2;
+    var ty = (sh - 1080 * s) / 2;
+    stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+    return true;
+  }
+  function nudgeDeckFit() {
+    if (runFrameworkDeckFit()) return;
+    try { window.dispatchEvent(new Event('resize')); }
+    catch (_) {}
+  }
   function slides(){
     // Structured selectors first so decorative .slide markup in non-deck
     // pages (icons, badges, code samples) is not counted as deck slides;
@@ -2171,7 +2214,17 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data) return;
-    if (data.type === 'od:deck-nudge-fit') { nudgeResize(); return; }
+    if (data.type === 'od:deck-host-viewport') {
+      var w = Number(data.width);
+      var h = Number(data.height);
+      var scale = Number(data.scale);
+      if (Number.isFinite(w) && w > 0) hostViewport.w = w;
+      if (Number.isFinite(h) && h > 0) hostViewport.h = h;
+      if (Number.isFinite(scale) && scale > 0) hostViewport.scale = scale;
+      nudgeDeckFit();
+      return;
+    }
+    if (data.type === 'od:deck-nudge-fit') { nudgeDeckFit(); return; }
     if (data.type !== 'od:slide') return;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
@@ -2194,16 +2247,6 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     clearTimeout(window.__odReportT);
     window.__odReportT = setTimeout(report, 120);
   }, { passive: true, capture: true });
-  // Nudge the deck's own fit/resize listener after layout settles. Fixed-canvas
-  // decks (e.g. ".canvas { width: 1920px }" + "transform: scale(...)") compute
-  // their scale on first run, which fires when the iframe is still 0x0 in
-  // sandboxed previews — the deck's fit() then resolves to scale(0) / scale(1)
-  // and never recovers. Re-firing 'resize' lets the deck recompute, and a
-  // ResizeObserver picks up later layout settles (zoom toggle, sidebar drag).
-  function nudgeResize(){
-    try { window.dispatchEvent(new Event('resize')); }
-    catch (_) {}
-  }
   // Aggressively nudge during the first second so the deck catches the
   // iframe's first non-zero size; bail out early once the iframe reports a
   // real width. Without this loop, fixed-canvas decks render at scale(0).
@@ -2211,8 +2254,8 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     var attempts = 0;
     function tick(){
       attempts += 1;
-      var w = window.innerWidth;
-      nudgeResize();
+      var w = frameworkDeckViewport().w;
+      nudgeDeckFit();
       if (w > 0 && attempts >= 2) return; // one extra nudge after first non-zero
       if (attempts < 30) setTimeout(tick, 50);
     }
@@ -2224,7 +2267,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   // user toggles zoom, resizes the chat sidebar, exits Present).
   if (typeof ResizeObserver !== 'undefined') {
     try {
-      var ro = new ResizeObserver(function(){ nudgeResize(); });
+      var ro = new ResizeObserver(function(){ nudgeDeckFit(); });
       ro.observe(document.documentElement);
     } catch (_) {}
   }
