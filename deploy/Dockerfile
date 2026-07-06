@@ -142,9 +142,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Playwright-managed Chromium is the ONLY supported headless export
 # binary on hosted images. `install chromium` downloads BOTH the full
-# Chromium build (chromium-<rev>/chrome-linux/chrome, ~170MB) AND the
-# headless_shell variant (chromium_headless_shell-<rev>/…, ~90MB). The
-# launcher (see resolvePlaywrightChromiumExecutables) prefers the full
+# Chromium build (chromium-<rev>/chrome-linux64/chrome since v1.49, or
+# legacy chrome-linux/chrome) AND the headless_shell variant
+# (chromium_headless_shell-<rev>/chrome-headless-shell-linux64/chrome-headless-shell).
+# The launcher (resolvePlaywrightChromiumExecutables) prefers the full
 # build and falls back to the shell so the container still exports
 # something if the full build regresses on the current base image.
 #
@@ -160,12 +161,17 @@ RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     # Hard-fail the build if the install layer silently produced no binary
     # (network hiccups against playwright.download.prss.microsoft.com have
     # bitten us before — the RUN exited 0 but `/ms-playwright` was empty).
-    # We accept either the full chromium build or the headless_shell.
-    && ( \
-      ls /ms-playwright/chromium-*/chrome-linux/chrome >/dev/null 2>&1 \
-      || ls /ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell >/dev/null 2>&1 \
-    ) || ( \
+    # Accept both legacy (chrome-linux) and v1.49+ (chrome-linux64 /
+    # chrome-headless-shell-linux64) layouts.
+    && find /ms-playwright -type f \( \
+         -path '*/chrome-linux64/chrome' \
+         -o -path '*/chrome-linux/chrome' \
+         -o -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+         -o -path '*/chrome-linux/headless_shell' \
+       \) -print -quit | grep -q . \
+    || ( \
       echo "FATAL: Playwright chromium install produced no binary under /ms-playwright" >&2; \
+      find /ms-playwright -maxdepth 4 -type f 2>/dev/null | head -20 >&2 || true; \
       ls -la /ms-playwright || true; \
       exit 1 \
     )

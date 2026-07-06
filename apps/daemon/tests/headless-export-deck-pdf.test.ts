@@ -88,6 +88,32 @@ describe('chromiumExecutableCandidates', () => {
       else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
     }
   });
+
+  it('resolves Playwright v1.49+ chrome-linux64 and chrome-headless-shell-linux64 layouts', () => {
+    const root = `/tmp/od-pw-linux64-${process.pid}`;
+    const chromePath = path.join(root, 'chromium-1223', 'chrome-linux64', 'chrome');
+    const shellPath = path.join(
+      root,
+      'chromium_headless_shell-1223',
+      'chrome-headless-shell-linux64',
+      'chrome-headless-shell',
+    );
+    const prevRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    fs.mkdirSync(path.dirname(chromePath), { recursive: true });
+    fs.writeFileSync(chromePath, '');
+    fs.mkdirSync(path.dirname(shellPath), { recursive: true });
+    fs.writeFileSync(shellPath, '');
+    process.env.PLAYWRIGHT_BROWSERS_PATH = root;
+    try {
+      const executables = resolvePlaywrightChromiumExecutables();
+      expect(executables).toEqual([chromePath, shellPath]);
+      expect(resolvePlaywrightChromiumExecutable()).toBe(chromePath);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      if (prevRoot === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = prevRoot;
+    }
+  });
 });
 
 describe('isHeadlessChromiumUnavailableError', () => {

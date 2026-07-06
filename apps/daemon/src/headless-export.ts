@@ -133,13 +133,42 @@ export function isHeadlessChromiumUnavailableError(err: unknown): boolean {
 export const isHeadlessChromiumUnavailableExportError = isHeadlessChromiumUnavailableError;
 
 /**
+ * Relative path segments from a `chromium-*` or `chromium_headless_shell-*`
+ * directory to the executable. Playwright v1.49+ switched Linux layouts
+ * from `chrome-linux/{chrome,headless_shell}` to
+ * `chrome-linux64/chrome` and `chrome-headless-shell-linux64/chrome-headless-shell`.
+ * We probe both so images built with either layout keep working.
+ */
+const PLAYWRIGHT_CHROMIUM_BINARY_LAYOUTS = {
+  full: [
+    ['chrome-linux64', 'chrome'],
+    ['chrome-linux', 'chrome'],
+  ],
+  headlessShell: [
+    ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
+    ['chrome-linux', 'headless_shell'],
+  ],
+} as const;
+
+function playwrightChromiumBinaryCandidates(root: string, dirName: string): string[] {
+  const layouts = dirName.startsWith('chromium_headless_shell-')
+    ? PLAYWRIGHT_CHROMIUM_BINARY_LAYOUTS.headlessShell
+    : dirName.startsWith('chromium-')
+      ? PLAYWRIGHT_CHROMIUM_BINARY_LAYOUTS.full
+      : [];
+  return layouts.map((segments) => path.join(root, dirName, ...segments));
+}
+
+/**
  * Enumerate every Playwright-bundled Chromium binary in
  * `$PLAYWRIGHT_BROWSERS_PATH` (or the default `~/.cache/ms-playwright`).
  *
  * Playwright ships two flavors:
- *   - `chromium-<rev>/chrome-linux/chrome` — full Chromium build.
- *   - `chromium_headless_shell-<rev>/chrome-linux/headless_shell` — the
- *     smaller headless-only shell used by `install --only-shell`.
+ *   - `chromium-<rev>/chrome-linux64/chrome` (v1.49+) or
+ *     `chromium-<rev>/chrome-linux/chrome` (legacy) — full Chromium build.
+ *   - `chromium_headless_shell-<rev>/chrome-headless-shell-linux64/chrome-headless-shell`
+ *     (v1.49+) or `…/chrome-linux/headless_shell` (legacy) — the smaller
+ *     headless-only shell used by `install --only-shell`.
  * Both are surfaced so the launcher can fall back to whichever the
  * runtime image actually contains. Newer revisions come first so we
  * prefer the currently-supported ABI when multiple installs coexist.
@@ -174,10 +203,14 @@ export function resolvePlaywrightChromiumExecutables(): string[] {
   // against the full build. The headless_shell fallback is best-effort
   // in case the full build failed to install.
   for (const dirName of listDirs('chromium-')) {
-    push(path.join(root, dirName, 'chrome-linux', 'chrome'));
+    for (const candidate of playwrightChromiumBinaryCandidates(root, dirName)) {
+      push(candidate);
+    }
   }
   for (const dirName of listDirs('chromium_headless_shell-')) {
-    push(path.join(root, dirName, 'chrome-linux', 'headless_shell'));
+    for (const candidate of playwrightChromiumBinaryCandidates(root, dirName)) {
+      push(candidate);
+    }
   }
   return found;
 }
@@ -694,14 +727,8 @@ function findChromiumBinaryUnder(root: string): string | null {
       .sort()
       .reverse();
     for (const dir of dirs) {
-      if (dir.startsWith('chromium-')) {
-        const candidate = path.join(root, dir, 'chrome-linux', 'chrome');
-        if (fs.existsSync(candidate)) return candidate;
-      }
-    }
-    for (const dir of dirs) {
-      if (dir.startsWith('chromium_headless_shell-')) {
-        const candidate = path.join(root, dir, 'chrome-linux', 'headless_shell');
+      if (!dir.startsWith('chromium-') && !dir.startsWith('chromium_headless_shell-')) continue;
+      for (const candidate of playwrightChromiumBinaryCandidates(root, dir)) {
         if (fs.existsSync(candidate)) return candidate;
       }
     }
