@@ -15,6 +15,7 @@
 | 핫픽스(2026-06-29) | BYOK terminal message PUT + idle-evict sync 가드 → **데이터 손실 봉합**. 배포 필수. |
 | 근본 fix 는? | **`mode=api` 유지 가능**. 다만 server-side lifecycle hook 을 **한곳(SSOT)** 으로 모으거나, 중기에 daemon 이 proxy 를 run 으로 감싸는 **서버 주도 통합**이 적절. |
 | 브라우저가 `POST /api/runs` 를 호출해야 하나? | **필수는 아님**. 부하도 POST 자체가 문제가 아님(아래 §7). cancel/resume UX 까지 맞추려면 **선택적** 장기 과제. |
+| 한 명이 AI 중이면 다른 사람은 대기? | **아니오** — 전역 직렬 없음. embed BYOK proxy **다중 stream**; workspace cap 기본 **8** ([38 §5](./38_Design_동시성_용량_확장_가이드.md#5-ai-동시-이용--한-명이-쓰면-나머지는-대기-ssot)). |
 
 ---
 
@@ -362,7 +363,55 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H "X-Workspace-Id: $WS" \
 
 ---
 
-## 10. 코드·문서 인덱스
+## 10. 동시 AI 이용 (multi-user) — embed
+
+**SSOT 확장:** [38 Design 동시성·용량·확장 §5](./38_Design_동시성_용량_확장_가이드.md#5-ai-동시-이용--한-명이-쓰면-나머지는-대기-ssot) (코드·ENV·검증·FAQ 전체).
+
+### 10.1 한 줄 답
+
+Teamver embed(`mode=api`)는 **`POST /api/runs` 1개 = 1명만** 구조가 **아니다**.  
+proxy stream은 **사용자·workspace별로 동시에** 여러 개 열린다. **전역 “AI 1명만” mutex 없음.**
+
+### 10.2 왜 `GET /api/runs` 가 비어 있어도 동시 이용이 가능한가
+
+| 관측 | 해석 |
+|------|------|
+| BYOK에서 `GET /api/runs` → `[]` | daemon **run registry**에 row 없음 — 정상 |
+| 동시에 여러 명이 슬라이드 생성 | 각자 **`POST /api/proxy/…/stream`** — run row와 무관 |
+| UI polling | adaptive interval; empty JSON 부하 작음 ([§7.3](#73-실제로-부하-이슈였던-것)) |
+
+### 10.3 하드 제한 (429)
+
+**`OD_BYOK_PROXY_MAX_PER_WORKSPACE`** (default **8**, `0`=비활성)
+
+- 스코프: `X-Teamver-Workspace-Id` / JWT identity 의 **workspaceId**
+- 초과: `429 TOO_MANY_REQUESTS` — `too many concurrent BYOK proxy streams for this workspace`
+- 코드: `byok-proxy-workspace-limit.ts` → `chat-routes.ts` (materialization 성공 **후** slot acquire)
+
+**다른 workspace는 cap 독립** — A팀 8명이 써도 B팀은 별도 8 슬롯.
+
+### 10.4 소프트 제한 (거절 없이 느림)
+
+- EC2 vCPU/RAM 포화 — staging `t3.large`에서 동시 3~5 stream 체감
+- export Chromium — **별도** `OD_EXPORT_MAX_CONCURRENT` ([34](./34_Export_성능_개선_로드맵.md))
+- upstream LLM 429 — 해당 사용자 키/quota
+
+### 10.5 `POST /api/runs` 경로와의 대비 (로컬 OD)
+
+로컬 `mode=daemon`은 run마다 subprocess — **여전히 전역 1명 잠금 없음** (`runs.ts` Map).  
+embed 운영 논의는 **proxy stream** 기준으로 본다.
+
+### 10.6 상용 튜닝·검증
+
+| 항목 | 권장 |
+|------|------|
+| ENV | default cap 8; Pro 12 seat이면 cap 12~16 검토 + `t3.2xlarge` |
+| 검증 | 동 workspace 3탭 + 다른 workspace 2탭 동시 생성 |
+| 로그 | `od_byok_proxy_workspace_limit` JSON marker |
+
+---
+
+## 11. 코드·문서 인덱스
 
 | 주제 | 경로 |
 |------|------|
@@ -373,16 +422,19 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H "X-Workspace-Id: $WS" \
 | proxy + tools (daemon) | `apps/daemon/src/chat-routes.ts`, `byok-tools.ts` |
 | sync-up run hook | `apps/daemon/src/storage/project-materialization-runtime.ts` |
 | BYOK terminal sync-up | `apps/daemon/src/server.ts` (message PUT) |
+| BYOK workspace concurrent cap | `apps/daemon/src/byok-proxy-workspace-limit.ts`, `chat-routes.ts` |
 | idle-evict 가드 | `apps/daemon/src/storage/scratch-idle-eviction.ts` |
+| 동시 AI SSOT | [38 §5](./38_Design_동시성_용량_확장_가이드.md#5-ai-동시-이용--한-명이-쓰면-나머지는-대기-ssot) |
 | S3 시점 SSOT | [16](./16_S3_데이터_저장_시점_SSOT.md) |
 | message PUT | [27](./27_메시지_Persist_PUT_아키텍처.md) |
 
 ---
 
-## 11. 변경 이력
+## 12. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-06 | §10 동시 AI 이용 (multi-user) — proxy 다중 stream, workspace cap, [38 §5] cross-link |
 | 2026-06-30 | §4b GET `/api/runs` nginx auth_request vs BFF · FE credentials fix · 배포 검증 대기 |
 | 2026-06-29 | §5b P1 BYOK proxy stream server hook 구현 · 로드맵 P0/P1 완료 표시 |
 | 2026-06-29 | 초版 — assumption rot, GET vs POST, 핫픽스, Option A~D, 부하 분석, 권장 로드맵 |
