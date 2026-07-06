@@ -20,7 +20,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE, repairArtifactDocumentHead } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -33,6 +33,8 @@ export type SrcdocOptions = {
   paletteBridge?: boolean;
   initialPalette?: string | null;
   previewFocusGuard?: boolean;
+  /** Lean document for PDF/browser export — omits preview-only bridges. */
+  exportDocument?: boolean;
 };
 
 export function buildSrcdoc(
@@ -42,7 +44,7 @@ export function buildSrcdoc(
   const repaired = repairArtifactDocumentHead(html);
   const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith("<!doctype") || head.startsWith("<html");
-  const wrapped = isFullDoc
+  let wrapped = isFullDoc
     ? repaired
     : `<!doctype html>
 <html>
@@ -50,8 +52,11 @@ export function buildSrcdoc(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
-  <body>${html}</body>
+  <body>${repaired}</body>
 </html>`;
+  if (!isFullDoc) {
+    wrapped = repairArtifactDocumentHead(wrapped);
+  }
   const withOdIds = annotateMissingOdIds(wrapped);
   const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
@@ -60,6 +65,9 @@ export function buildSrcdoc(
   // Artifact text-leak guard always runs in preview — viewport/CSS/JS fragments
   // agents stream as visible prose must be stripped even when focus-guard is off.
   const withArtifactGuard = injectPreviewArtifactGuard(withFocusGuard);
+  if (options.exportDocument) {
+    return withArtifactGuard;
+  }
   const withDeck = options.deck ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex) : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
@@ -873,55 +881,7 @@ function injectPreviewArtifactGuard(doc: string): string {
   pointer-events: none !important;
 }
 </style>`;
-  const script = `<script data-od-preview-artifact-guard>(function(){
-  var viewportLeak = new RegExp(${JSON.stringify(ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE)}, 'i');
-  var cssLeak = /^\\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\\s*:/i;
-  var scriptLeak = /^\\s*\\(function\\s*\\(\\)\\s*\\{\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)/i;
-  var boxLeak = /^\\s*\\{\\s*box-sizing\\s*:\\s*border-box/i;
-  var importLeak = /@import\\s+url\\s*\\(/i;
-  var deckSectionLeak = /\\/\\s*──\\s*(?:Per-deck|Shared layout|Cover slide|Section divider|Standard content|Tool grid|Process timeline|PR guide)/i;
-  var deckClassLeak = /\\.(?:slide-inner|slide-main|slide-footer|s-cover|s-section|s-content|tool-grid|tool-card|proc-step|eyebrow)\\b/i;
-  function isLeakedText(text){
-    var trimmed = (text || '').trim();
-    if (!trimmed) return false;
-    if (viewportLeak.test(trimmed)) return true;
-    if (cssLeak.test(trimmed)) return true;
-    if (scriptLeak.test(trimmed)) return true;
-    if (boxLeak.test(trimmed)) return true;
-    if (importLeak.test(trimmed)) return true;
-    if (deckSectionLeak.test(trimmed)) return true;
-    if (deckClassLeak.test(trimmed)) return true;
-    if (trimmed.indexOf('document.getElementById(\\'deck-stage\\')') >= 0) return true;
-    if (trimmed.indexOf('document.getElementById("deck-stage")') >= 0) return true;
-    if (trimmed.indexOf("document.getElementById('deck-prev')") >= 0) return true;
-    if (trimmed.indexOf('document.getElementById("deck-prev")') >= 0) return true;
-    return false;
-  }
-  function stripLeakedText(root){
-    if (!root) return;
-    for (var i = root.childNodes.length - 1; i >= 0; i--) {
-      var node = root.childNodes[i];
-      if (node.nodeType === Node.TEXT_NODE) {
-        if (isLeakedText(node.textContent)) node.remove();
-        continue;
-      }
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        var tag = node.tagName ? node.tagName.toLowerCase() : '';
-        if (tag === 'script' || tag === 'style' || tag === 'noscript') continue;
-        stripLeakedText(node);
-      }
-    }
-  }
-  function run(){
-    stripLeakedText(document.head);
-    stripLeakedText(document.body);
-  }
-  run();
-  try {
-    var obs = new MutationObserver(function(){ run(); });
-    obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-  } catch (_) {}
-})();</script>`;
+  const script = `<script data-od-preview-artifact-guard>${buildArtifactPreviewDomLeakGuardScript()}</script>`;
   const withStyle = /<head[^>]*>/i.test(doc)
     ? doc.replace(/<head[^>]*>/i, (m) => `${m}${style}`)
     : (/<body[^>]*>/i.test(doc) ? doc.replace(/<body[^>]*>/i, (m) => `${m}${style}`) : style + doc);
@@ -1830,9 +1790,10 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     if (hw > 0 && hh > 0 && scale > 0 && scale < 0.999) {
       return { w: hw / scale, h: hh / scale };
     }
-    // At 100% host zoom, trust the smaller host visual box when innerWidth
-    // was inflated by bad meta viewport or a 0×0 first-paint stuck at scale(1).
-    if (hw > 0 && hh > 0 && scale >= 0.999 && (hw < iw * 0.98 || hh < ih * 0.98)) {
+    // At 100% host zoom, trust the host visual box only when innerWidth
+    // looks inflated (bad meta viewport), not when layout legitimately
+    // exceeds the on-screen box because the host omitted shell scale.
+    if (hw > 0 && hh > 0 && scale >= 0.999 && iw > hw * 1.08) {
       return { w: hw, h: hh };
     }
     return { w: iw || hw, h: ih || hh };
@@ -1857,6 +1818,23 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     try { window.dispatchEvent(new Event('resize')); }
     catch (_) {}
   }
+  function reconcileFrameworkDeckFitSoon() {
+    if (!frameworkDeckStage()) return;
+    nudgeDeckFit();
+    var raf = window.requestAnimationFrame;
+    if (typeof raf === 'function') {
+      raf(function() { nudgeDeckFit(); });
+    } else {
+      setTimeout(nudgeDeckFit, 16);
+    }
+  }
+  // Framework decks ship their own fit() on window resize using
+  // window.innerWidth, which can be inflated inside the OD iframe.
+  // Re-apply our viewport-aware fit on the next turn so a bad pass
+  // from the artifact script cannot stick after host zoom/layout changes.
+  window.addEventListener('resize', function() {
+    setTimeout(reconcileFrameworkDeckFitSoon, 0);
+  });
   function slides(){
     // Structured selectors first so decorative .slide markup in non-deck
     // pages (icons, badges, code samples) is not counted as deck slides;

@@ -24,6 +24,24 @@ describe('buildDesktopPdfExportInput', () => {
     if (projectsRoot) rmSync(projectsRoot, { recursive: true, force: true });
   });
 
+  it('repairs viewport leaks when reading project HTML from disk', async () => {
+    await writeFile(
+      path.join(projectsRoot, projectId, 'deck', 'leaky.html'),
+      `<!doctype html><html><head><title>T</title></head><body>viewport=width=device-width, initial-scale=1" /><section class="slide">One</section></body></html>`,
+    );
+    const built = await buildDesktopPdfExportInput({
+      daemonUrl: 'http://127.0.0.1:7456',
+      deck: true,
+      fileName: 'deck/leaky.html',
+      projectId,
+      projectsRoot,
+      title: 'Leaky Deck',
+    });
+
+    expect(built.input.html).not.toMatch(/viewport=width=device-width/i);
+    expect(built.input.html).toContain('<section class="slide">One</section>');
+  });
+
   it('reads the project file and derives a raw-route baseHref from the file directory', async () => {
     const built = await buildDesktopPdfExportInput({
       daemonUrl: 'http://127.0.0.1:7456',

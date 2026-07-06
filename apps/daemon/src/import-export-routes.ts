@@ -15,6 +15,7 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
+  buildDeckScreenExportCss,
   renderHeadlessHtmlSnapshot,
   renderHeadlessImage,
   renderHeadlessPdf,
@@ -189,6 +190,37 @@ function handleExportRouteError(
   }
   console.warn(`[${routeLabel}] failed`, { projectId, reason });
   sendApiError(res, 500, 'EXPORT_FAILED', reason);
+}
+
+function injectExportSnippetIntoHead(html: string, snippet: string): string {
+  if (!snippet) return html;
+  if (/<\/head\s*>/i.test(html)) {
+    return html.replace(/<\/head\s*>/i, `${snippet}</head>`);
+  }
+  if (/<html(?:\s[^>]*)?>/i.test(html)) {
+    return html.replace(/<html(?:\s[^>]*)?>/i, (match) => `${match}<head>${snippet}</head>`);
+  }
+  return `${snippet}${html}`;
+}
+
+export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
+  if (input.deck !== true) return input.html;
+  const style = `<style data-teamver-static-html-export-fallback>
+html, body {
+  margin: 0 !important;
+  scrollbar-width: none !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+${buildDeckScreenExportCss()}
+</style>`;
+  return injectExportSnippetIntoHead(input.html, style);
+}
+
+export function isHeadlessChromiumUnavailableExportError(err: unknown): boolean {
+  const reason = String((err as Error)?.message || err);
+  return /headless Chromium unavailable/i.test(reason);
 }
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
@@ -880,10 +912,20 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           mime: 'text/html; charset=utf-8',
         }),
         async () => {
-          const html = await renderHeadlessHtmlSnapshot(
-            { input: built.input },
-            { projectId: req.params.id },
-          );
+          let html: string;
+          try {
+            html = await renderHeadlessHtmlSnapshot(
+              { input: built.input },
+              { projectId: req.params.id },
+            );
+          } catch (err) {
+            if (!isHeadlessChromiumUnavailableExportError(err)) throw err;
+            console.warn('[export/html] headless Chromium unavailable; serving static HTML fallback', {
+              projectId: req.params.id,
+              fileName,
+            });
+            html = buildStaticHtmlExportFallback(built.input);
+          }
           return {
             body: html,
             filename: `${base}.html`,
@@ -928,10 +970,20 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           mime: 'application/zip',
         }),
         async () => {
-          const html = await renderHeadlessHtmlSnapshot(
-            { input: built.input },
-            { projectId: req.params.id, format: 'zip' },
-          );
+          let html: string;
+          try {
+            html = await renderHeadlessHtmlSnapshot(
+              { input: built.input },
+              { projectId: req.params.id, format: 'zip' },
+            );
+          } catch (err) {
+            if (!isHeadlessChromiumUnavailableExportError(err)) throw err;
+            console.warn('[export/zip] headless Chromium unavailable; packaging static HTML fallback', {
+              projectId: req.params.id,
+              fileName,
+            });
+            html = buildStaticHtmlExportFallback(built.input);
+          }
           const zip = new JSZip();
           zip.file('index.html', html, { date: new Date(0), binary: false });
           const buffer = await zip.generateAsync({

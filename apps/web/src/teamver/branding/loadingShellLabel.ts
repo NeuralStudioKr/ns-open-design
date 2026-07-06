@@ -1,4 +1,5 @@
 import { readTeamverViteEnv } from "../teamverViteEnv";
+import { isTeamverEmbedMode } from "../designApiBase";
 import { isTeamverEmbedBuild, TEAMVER_DEFAULT_BRAND_TITLE } from "./siteMetadata";
 
 /**
@@ -11,7 +12,8 @@ import { isTeamverEmbedBuild, TEAMVER_DEFAULT_BRAND_TITLE } from "./siteMetadata
  *   the JS bundle loads in a Korean-first surface).
  */
 export function resolveLoadingShellLabel(): string {
-  if (!isTeamverEmbedBuild()) {
+  const isEmbed = isTeamverEmbedBuild() || isTeamverEmbedMode();
+  if (!isEmbed) {
     return "Loading Open Design…";
   }
 

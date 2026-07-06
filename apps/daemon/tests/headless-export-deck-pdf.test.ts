@@ -56,16 +56,21 @@ describe('chromiumRuntimePaths', () => {
     const dir = `/tmp/od-chromium-test-${process.pid}`;
     const prevConfig = process.env.XDG_CONFIG_HOME;
     const prevCache = process.env.XDG_CACHE_HOME;
+    const prevDbus = process.env.DBUS_SESSION_BUS_ADDRESS;
     process.env.XDG_CONFIG_HOME = dir;
     process.env.XDG_CACHE_HOME = dir;
+    delete process.env.DBUS_SESSION_BUS_ADDRESS;
     try {
       ensureChromiumRuntimeDirs();
       expect(chromiumRuntimePaths().crashDir).toContain(dir);
       const args = chromiumLaunchArgs();
       expect(args).toContain('--disable-crash-reporter');
+      expect(args).toContain('--disable-crashpad');
       expect(args.some((arg) => arg.startsWith('--crash-dumps-dir='))).toBe(true);
+      expect(args).toContain('--no-zygote');
       expect(args).toContain('--no-crashpad');
       const env = chromiumRuntimeEnv();
+      expect(env.DBUS_SESSION_BUS_ADDRESS).toBe('disabled:');
       expect(env.XDG_CONFIG_HOME).toBe(dir);
       expect(env.XDG_CACHE_HOME).toBe(dir);
     } finally {
@@ -74,6 +79,8 @@ describe('chromiumRuntimePaths', () => {
       else process.env.XDG_CONFIG_HOME = prevConfig;
       if (prevCache === undefined) delete process.env.XDG_CACHE_HOME;
       else process.env.XDG_CACHE_HOME = prevCache;
+      if (prevDbus === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS;
+      else process.env.DBUS_SESSION_BUS_ADDRESS = prevDbus;
     }
   });
 });

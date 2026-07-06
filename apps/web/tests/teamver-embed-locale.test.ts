@@ -26,6 +26,7 @@ describe("teamver embed locale", () => {
   });
 
   it("merges explicit key overrides before brand substitution", () => {
+    process.env.VITE_TEAMVER_EMBED = "1";
     const overrides = teamverEmbedOverrides("Teamver Design", "AI Design Studio", {
       title: "Teamver Design",
       subtitle: "Create with AI",
@@ -33,6 +34,8 @@ describe("teamver embed locale", () => {
     expect(overrides["chat.activeFilePlaceholder"]).toBe("슬라이드 {file} 변경 요청…");
     expect(overrides["chat.startTitle"]).toBe("슬라이드 작업 시작");
     expect(overrides["fileViewer.loading"]).toBe("슬라이드 미리보기 불러오는 중…");
+    expect(overrides["common.loading"]).toBe("Teamver Design 불러오는 중…");
+    expect(overrides["teamver.embed.sessionLoading"]).toBe("Teamver Design 불러오는 중…");
     const resolved = resolveTeamverEmbedTranslation(
       "Open Design",
       { enabled: true, title: "Teamver Design" },

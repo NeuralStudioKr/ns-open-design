@@ -4,6 +4,8 @@ import {
   hasArtifactPreviewBodyTextLeaks,
   repairMangledDeckFrameworkScript,
   stripArtifactPreviewBodyTextLeaks,
+  buildArtifactPreviewDomLeakGuardScript,
+  buildArtifactPreviewDomLeakStripScript,
 } from "../src/html/artifactPreviewTextLeaks.js";
 import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
 import { repairArtifactDocumentHead } from "../src/html/repairArtifactDocumentHead.js";
@@ -139,5 +141,24 @@ viewport=width=device-width, initial-scale=1" />
     expect(repaired).toContain("AI 도입 효과");
     expect(hasArtifactPreviewBodyTextLeaks(repaired)).toBe(false);
     expect(isArtifactHtmlStableForPreview(repaired)).toBe(true);
+  });
+
+  it("ships shared DOM leak guard/strip scripts for preview and export", () => {
+    const guard = buildArtifactPreviewDomLeakGuardScript();
+    const strip = buildArtifactPreviewDomLeakStripScript();
+    expect(guard).toContain("isLeakedMetaElement");
+    expect(guard).toContain("MutationObserver");
+    expect(strip).toContain("stripLeakedNodes(document.body)");
+    expect(strip).not.toContain("MutationObserver");
+  });
+
+  it("strips leaked meta viewport tags from body inner HTML", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<section class="slide active">A</section>
+</body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/<meta[^>]*name=["']viewport["']/i);
+    expect(out).toContain('<section class="slide active">A</section>');
   });
 });

@@ -1285,6 +1285,20 @@ describe('sandboxed preview Blob exports', () => {
     expect(doc).not.toContain('<iframe');
     expect(doc).toContain('data-deck-print="injected"');
     expect(doc).toContain('page-break-after: always !important');
+    expect(doc).not.toContain('data-od-snapshot-bridge');
+    expect(doc).not.toContain('data-od-tweaks-bridge');
+    expect(doc).not.toContain('data-od-deck-bridge');
+    expect(doc).toContain('data-od-preview-artifact-guard');
+  });
+
+  it('strips viewport text leaks from exported PDF HTML', async () => {
+    await exportAsPdf(
+      `<!doctype html><html><head><title>T</title></head><body>viewport=width=device-width, initial-scale=1" /><main>OK</main></body></html>`,
+      'Leak PDF',
+    );
+    const doc = await capturedBlob!.text();
+    expect(doc).not.toMatch(/viewport=width=device-width/i);
+    expect(doc).toContain('&lt;main&gt;OK&lt;/main&gt;');
   });
 
   it('allows explicit trusted PDF opt-out without changing the secure default', async () => {

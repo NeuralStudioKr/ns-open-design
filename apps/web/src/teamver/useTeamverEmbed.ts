@@ -79,7 +79,7 @@ export type TeamverEmbedState = {
    *   declined `/teamver-bff/auth/refresh` is retried. Reserve for explicit user
    *   retry (Banner button) or events that prove auth state changed.
    */
-  refresh: (options?: { force?: boolean; resetRefreshState?: boolean }) => Promise<void>;
+  refresh: (options?: { force?: boolean; resetRefreshState?: boolean; silent?: boolean }) => Promise<void>;
 };
 
 const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
@@ -250,7 +250,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     return recovery;
   }, []);
 
-  const refresh = useCallback(async (options?: { force?: boolean; resetRefreshState?: boolean }) => {
+  const refresh = useCallback(async (options?: { force?: boolean; resetRefreshState?: boolean; silent?: boolean }) => {
     if (!enabled || !isTeamverEmbedMode()) {
       setState(INITIAL);
       return;
@@ -258,6 +258,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
     const force = options?.force ?? false;
     const resetRefreshState = options?.resetRefreshState ?? false;
+    const silent = options?.silent ?? false;
     const bootSnapshot = peekEmbedBootstrapSession();
     const bootHydrated = bootSnapshot?.session.authenticated === true;
     // Routine tab-focus refresh should not blank the session bar — only the
@@ -265,9 +266,11 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     setState((prev) => ({
       ...prev,
       loading:
-        (prev.authenticated || bootHydrated) && !resetRefreshState && !force
+        silent
           ? prev.loading
-          : true,
+          : (prev.authenticated || bootHydrated) && !resetRefreshState && !force
+            ? prev.loading
+            : true,
       error: null,
     }));
     try {
@@ -432,7 +435,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const boot = peekEmbedBootstrapSession();
+    void refresh({ silent: boot?.session.authenticated === true });
   }, [refresh]);
 
   useEffect(() => {

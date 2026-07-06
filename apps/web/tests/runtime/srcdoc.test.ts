@@ -13,6 +13,21 @@ const deckHtml = `<!doctype html>
 </html>`;
 
 describe('buildSrcdoc', () => {
+  it('repairs viewport leaks in HTML fragments before wrapping', () => {
+    const fragment = `viewport=width=device-width, initial-scale=1" />
+<section class="slide active">A</section>`;
+    const doc = buildSrcdoc(fragment, { deck: true });
+    expect(doc).not.toMatch(/viewport=width=device-width/i);
+    expect(doc).toContain('<section class="slide active">A</section>');
+  });
+
+  it('uses the shared artifact leak guard script', () => {
+    const doc = buildSrcdoc('<main>Hero</main>');
+    expect(doc).toContain('data-od-preview-artifact-guard');
+    expect(doc).toContain('isLeakedMetaElement');
+    expect(doc).toContain('stripLeakedNodes');
+  });
+
   it('repairs corrupted viewport meta fragments in full documents', () => {
     const corrupt = `<!doctype html><html><head>device-width, initial-scale=1" /><title>T</title></head><body><div class="slide">A</div></body></html>`;
     const doc = buildSrcdoc(corrupt, { deck: true });

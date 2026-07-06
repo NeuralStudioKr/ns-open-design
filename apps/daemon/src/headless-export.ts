@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import {
   repairArtifactDocumentHead,
-  ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE,
+  buildArtifactPreviewDomLeakStripScript,
   patchArtifactDeckPrintCss,
   buildDeckSlideExportLayoutHelperJs,
   buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
@@ -145,6 +145,7 @@ export function chromiumRuntimeEnv(): NodeJS.ProcessEnv {
   const { configHome, cacheHome } = chromiumRuntimePaths();
   return {
     ...process.env,
+    DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS || 'disabled:',
     HOME: process.env.HOME?.trim() || configHome,
     XDG_CONFIG_HOME: configHome,
     XDG_CACHE_HOME: cacheHome,
@@ -161,6 +162,8 @@ export function chromiumLaunchArgs(): string[] {
     '--font-render-hinting=medium',
     '--disable-crash-reporter',
     '--disable-breakpad',
+    '--disable-crashpad',
+    '--no-zygote',
     '--no-crashpad',
     `--crash-dumps-dir=${crashDir}`,
   ];
@@ -394,27 +397,9 @@ async function preparePage(
   return page;
 }
 
-/** Remove truncated viewport / meta tails that survived string repair into the DOM. */
+/** Remove truncated viewport / meta tails and other agent leaks in the live DOM. */
 async function stripLeakedArtifactTextFromPage(page: Page): Promise<void> {
-  await evaluateInPage(
-    page,
-    `
-      const leak = new RegExp(${JSON.stringify(ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE)}, 'i');
-      const walk = (root) => {
-        for (const node of Array.from(root.childNodes)) {
-          if (node.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent || '';
-            if (leak.test(text)) node.remove();
-            continue;
-          }
-          if (node.nodeType === Node.ELEMENT_NODE) walk(node);
-        }
-      };
-      if (document.head) walk(document.head);
-      if (document.body) walk(document.body);
-    `,
-    {},
-  ).catch(() => {});
+  await page.evaluate(buildArtifactPreviewDomLeakStripScript()).catch(() => {});
 }
 
 /**

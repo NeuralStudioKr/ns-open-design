@@ -31,9 +31,10 @@ export function teamverEmbedOverrides(
     "app.brandPill": "",
     // Session banner reuses the pre-mount shell copy so the bootstrap
     // sequence reads as a single loading state instead of two distinct
-    // "Loading…" then "Checking session…" messages. `common.loading` is
-    // still the neutral spinner copy elsewhere.
+    // "Loading…" then "Checking session…" messages.
     "teamver.embed.sessionLoading": bootstrapLoading,
+    // Entry/project spinners during the first paint use the same copy.
+    "common.loading": bootstrapLoading,
   };
   if (subtitle?.trim()) {
     overrides["app.brandSubtitle"] = subtitle.trim();

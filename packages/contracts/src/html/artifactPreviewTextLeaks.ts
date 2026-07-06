@@ -204,3 +204,75 @@ export function stripArtifactPreviewBodyTextLeaks(html: string): string {
   if (cleaned === inner) return html;
   return html.replace(bodyMatch[0], `${open}${cleaned}${close}`);
 }
+
+/** Shared DOM leak detection used by preview iframe guards and headless export. */
+export const ARTIFACT_PREVIEW_DOM_LEAK_DETECTION_JS = `
+  var viewportLeak = new RegExp(${JSON.stringify(ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE)}, 'i');
+  var cssLeak = /^\\s*--(?:bg|fg|muted|accent|accent2|surface|surface2|border|success|warn|shell|font|mono)\\s*:/i;
+  var scriptLeak = /^\\s*\\(function\\s*\\(\\)\\s*\\{\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)/i;
+  var boxLeak = /^\\s*\\{\\s*box-sizing\\s*:\\s*border-box/i;
+  var importLeak = /@import\\s+url\\s*\\(/i;
+  var deckSectionLeak = /\\/\\s*──\\s*(?:Per-deck|Shared layout|Cover slide|Section divider|Standard content|Tool grid|Process timeline|PR guide)/i;
+  var deckClassLeak = /\\.(?:slide-inner|slide-main|slide-footer|s-cover|s-section|s-content|tool-grid|tool-card|proc-step|eyebrow)\\b/i;
+  function isLeakedText(text){
+    var trimmed = (text || '').trim();
+    if (!trimmed) return false;
+    if (viewportLeak.test(trimmed)) return true;
+    if (cssLeak.test(trimmed)) return true;
+    if (scriptLeak.test(trimmed)) return true;
+    if (boxLeak.test(trimmed)) return true;
+    if (importLeak.test(trimmed)) return true;
+    if (deckSectionLeak.test(trimmed)) return true;
+    if (deckClassLeak.test(trimmed)) return true;
+    if (trimmed.indexOf("document.getElementById('deck-stage')") >= 0) return true;
+    if (trimmed.indexOf('document.getElementById("deck-stage")') >= 0) return true;
+    if (trimmed.indexOf("document.getElementById('deck-prev')") >= 0) return true;
+    if (trimmed.indexOf('document.getElementById("deck-prev")') >= 0) return true;
+    return false;
+  }
+  function isLeakedMetaElement(node){
+    if (!node || !node.getAttribute) return false;
+    var name = node.getAttribute('name') || '';
+    if (/^viewport$/i.test(name)) return true;
+    return isLeakedText(node.textContent || '');
+  }
+  function stripLeakedNodes(root){
+    if (!root) return;
+    for (var i = root.childNodes.length - 1; i >= 0; i--) {
+      var node = root.childNodes[i];
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (isLeakedText(node.textContent)) node.remove();
+        continue;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        var tag = node.tagName ? node.tagName.toLowerCase() : '';
+        if (tag === 'script' || tag === 'style' || tag === 'noscript') continue;
+        if (tag === 'meta' && isLeakedMetaElement(node)) { node.remove(); continue; }
+        stripLeakedNodes(node);
+      }
+    }
+  }
+`;
+
+/** Preview iframe guard — strips leaked text on load and while streaming. */
+export function buildArtifactPreviewDomLeakGuardScript(): string {
+  return `(function(){${ARTIFACT_PREVIEW_DOM_LEAK_DETECTION_JS}
+  function run(){
+    stripLeakedNodes(document.head);
+    stripLeakedNodes(document.body);
+  }
+  run();
+  try {
+    var obs = new MutationObserver(function(){ run(); });
+    obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  } catch (_) {}
+})();`;
+}
+
+/** One-shot DOM strip for headless PDF/image export after string repair. */
+export function buildArtifactPreviewDomLeakStripScript(): string {
+  return `(function(){${ARTIFACT_PREVIEW_DOM_LEAK_DETECTION_JS}
+  if (document.head) stripLeakedNodes(document.head);
+  if (document.body) stripLeakedNodes(document.body);
+})();`;
+}

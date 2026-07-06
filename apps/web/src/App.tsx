@@ -77,6 +77,7 @@ import {
   isTeamverEmbedBootComplete,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
+import { completeTeamverEmbedInitialUi } from './teamver/teamverEmbedInitialUi';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
 import { consumeEmbedLaunchPrefs } from './teamver/teamverEmbedAuthNavigation';
 import {
@@ -595,6 +596,22 @@ function AppInner() {
   const route = useRoute();
   const routeRef = useRef(route);
   routeRef.current = route;
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) {
+      completeTeamverEmbedInitialUi();
+      return;
+    }
+    if (!isTeamverEmbedBootComplete()) return;
+    if (route.kind === 'project') {
+      completeTeamverEmbedInitialUi();
+      return;
+    }
+    if (!projectsLoading) {
+      completeTeamverEmbedInitialUi();
+    }
+  }, [route.kind, projectsLoading]);
+
   const analytics = useAnalytics();
 
   const beginAgentStreamRequest = useCallback(() => {

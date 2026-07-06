@@ -5697,12 +5697,12 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!effectiveDeck || mode !== 'preview') return;
-    return scheduleDeckPreviewFitNudges(iframeRef.current, previewScale);
+    return scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale);
   }, [
     effectiveDeck,
     mode,
     zoom,
-    previewScale,
+    overlayPreviewScale,
     previewBodySize?.width,
     previewBodySize?.height,
     srcDoc,
@@ -8788,7 +8788,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, previewScale);
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           }}
                         />
                       ) : (
@@ -8814,7 +8814,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, previewScale);
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           }}
                         />
                       )}
@@ -8876,7 +8876,7 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
-                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, previewScale);
+                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
                       />

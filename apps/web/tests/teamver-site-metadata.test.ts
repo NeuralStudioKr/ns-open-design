@@ -56,6 +56,15 @@ describe("Teamver site metadata", () => {
     expect(resolveLoadingShellLabel()).toBe("Teamver Design 불러오는 중…");
   });
 
+  it("uses Korean Teamver loading shell copy on teamver.com hostnames without embed env", () => {
+    delete process.env.VITE_TEAMVER_EMBED;
+    vi.stubGlobal("window", {
+      location: { hostname: "design.teamver.com" },
+    } as Window & typeof globalThis);
+    expect(resolveLoadingShellLabel()).toBe("Teamver Design 불러오는 중…");
+    vi.unstubAllGlobals();
+  });
+
   it("exposes document title separate from OG title", () => {
     process.env.VITE_TEAMVER_BRAND_TITLE = "Teamver Design";
     process.env.VITE_TEAMVER_OG_TITLE = "teamver | AI Design";

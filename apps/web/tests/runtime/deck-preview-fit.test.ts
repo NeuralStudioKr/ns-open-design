@@ -54,4 +54,18 @@ describe('deckPreviewFit', () => {
     vi.advanceTimersByTime(200);
     expect(postMessage).toHaveBeenCalledTimes(4);
   });
+
+  it('forwards shell scale so mobile/tablet deck fit uses layout width', () => {
+    const postMessage = vi.fn();
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 175, height: 312 } as DOMRect),
+    };
+    nudgeDeckPreviewFit(target, 0.45);
+    expect(postMessage).toHaveBeenNthCalledWith(
+      1,
+      { type: 'od:deck-host-viewport', width: 175, height: 312, scale: 0.45 },
+      '*',
+    );
+  });
 });
