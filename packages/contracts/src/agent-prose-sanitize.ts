@@ -203,13 +203,20 @@ const AGENT_RUNTIME_STATUS_LINE_RE =
   /^\s*(?:TodoWrite called with \d+ tasks|Marking task \d+ as (?:in_progress|completed|pending|cancelled|stopped)|Running tool: \w+|Tool (?:completed|failed): \w+)\s*$/gim;
 
 const LEAKED_DECK_NAV_SCRIPT_RE =
-  /(?:^|\n)\s*(?:\(\s*)?function\s*\(\)\s*\{[\s\S]{0,2000}?document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,20000}?fit\(\);\s*paint\(\);\s*focusDeck\(\);\s*\}\s*\)\s*;?/gi;
+  /(?:^|\n)\s*(?:\(\s*)?function\s*\(\)\s*\{(?=[\s\S]{0,4000}?document\.getElementById\(['"]deck-stage['"]\))[\s\S]{0,20000}\}\s*\)\s*;?/gi;
 
 const LEAKED_DECK_NAV_SCRIPT_BODY_RE =
-  /(?:^|\n)\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,20000}?fit\(\);\s*paint\(\);\s*focusDeck\(\);\s*\}\s*\)\s*;?/gi;
+  /(?:^|\n)\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,20000}\}\s*\)\s*;?/gi;
 
 const LEAKED_DECK_NAV_SCRIPT_TAIL_RE =
-  /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);[\s\S]{0,20000}?fit\(\);\s*paint\(\);\s*focusDeck\(\);\s*\}\s*\)\s*;?/gi;
+  /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);[\s\S]{0,20000}\}\s*\)\s*;?/gi;
+
+const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
+  /(?:^|\n)\s*(?:\(\s*)?function\s*\(\)\s*\{(?=[\s\S]{0,4000}?document\.getElementById\(['"]deck-stage['"]\))/i,
+  /(?:^|\n)\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/i,
+  /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);/i,
+  /(?:^|\n)\s*function\s+fit\s*\(\)\s*\{(?=[\s\S]{0,1200}?(?:stage\.style\.transform|window\.innerWidth|deck-stage))/i,
+] as const;
 
 const BARE_TOOL_JSON_OPEN_RE = new RegExp(
   `\\{"name"\\s*:\\s*"(?:${KNOWN_TOOL_JSON_NAMES})"\\s*,\\s*"arguments"\\s*:`,
@@ -337,6 +344,29 @@ function stripTrailingBareToolJson(
   return { text: input.slice(0, lastIdx).trimEnd(), hadOpenInternalMarkup: true };
 }
 
+function findOpenDeckNavScriptStart(input: string): number {
+  let best = -1;
+  for (const pattern of OPEN_DECK_NAV_SCRIPT_RE_LIST) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(input);
+    if (!match || match.index === undefined) continue;
+    const rawStart = match.index;
+    const matchText = match[0] ?? "";
+    const trimmedStart = rawStart + matchText.search(/\S/);
+    const start = trimmedStart >= rawStart ? trimmedStart : rawStart;
+    if (best === -1 || start < best) best = start;
+  }
+  return best;
+}
+
+function stripTrailingOpenDeckNavScript(
+  input: string,
+): { text: string; hadOpenInternalMarkup: boolean } {
+  const start = findOpenDeckNavScriptStart(input);
+  if (start === -1) return { text: input, hadOpenInternalMarkup: false };
+  return { text: input.slice(0, start).trimEnd(), hadOpenInternalMarkup: true };
+}
+
 function collapseExtraBlankLines(input: string): string {
   return input.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
@@ -450,6 +480,12 @@ export function stripTrailingOpenInternalMarkup(
   if (bareJson.hadOpenInternalMarkup) {
     hadOpenInternalMarkup = true;
     text = bareJson.text;
+  }
+
+  const deckScript = stripTrailingOpenDeckNavScript(text);
+  if (deckScript.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = deckScript.text;
   }
 
   if (!options.preserveOpenArtifact) {

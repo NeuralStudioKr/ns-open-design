@@ -269,6 +269,30 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("deck-stage");
   });
 
+  it("strips partial deck navigation script while streaming before the closing IIFE arrives", () => {
+    const cases = [
+      [
+        "좋아요, 만들겠습니다.\n(function () {\nvar stage = document.getElementById('deck-stage');\nvar slides =",
+        "좋아요, 만들겠습니다.",
+      ],
+      [
+        "진행 중입니다.\nvar slides = Array.prototype.slice.call(document.querySelectorAll('.slide')); var prev = document.getElementById('deck-prev');\nfunction fit() {",
+        "진행 중입니다.",
+      ],
+      [
+        "초안을 준비합니다.\nfunction fit() {\nvar sw = window.innerWidth;\nstage.style.transform = 'translate(0px,0px) scale(1)';",
+        "초안을 준비합니다.",
+      ],
+    ] as const;
+    for (const [input, expected] of cases) {
+      const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+      expect(out).toBe(expected);
+      expect(out).not.toContain("deck-stage");
+      expect(out).not.toContain("querySelectorAll");
+      expect(out).not.toContain("stage.style.transform");
+    }
+  });
+
   it("strips trailing open read/edit/artifact in history but preserves open artifact while streaming", () => {
     const streamingArtifact =
       'Working…\n<artifact identifier="deck" type="text/html" title="Deck">\n<!doctype html>';
