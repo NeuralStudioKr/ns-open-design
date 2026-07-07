@@ -954,6 +954,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-07 | Publish stream 실패 복구 보강 — presigned PUT transport 예외를 `drive_presigned_put_failed_network`로 분류하고, ticket download 실패도 64MB cap 이내에서는 legacy bytes PUT fallback으로 복구. targeted pytest 25 passed |
 | 2026-07-07 | Publish stream 관측성 보강 — daemon export ticket의 `cache`를 design-api가 파싱하고 publish stream/fallback 성공 로그에 `export_cache`로 남김. fallback too-large는 `drive_presigned_put_fallback_too_large`로 분류, targeted pytest 23 passed |
 | 2026-07-07 | staging 최신 merge 후 Publish stream fallback cap 보강 — bytes fallback fetch를 `response.content` 대신 streaming read + `max_bytes` 중단으로 변경, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 22 passed |
 | 2026-07-03 | **PDF export `teamver_project_s3_prefix_required` 502 해소** — FE prefetch(`waitForTeamverProjectStoragePrefix`) + 최대 3회 자동 재시도, daemon `/export/*`·`/archive` 라우트에서 scratch-only soft-fallback (`od_s3_export_scratch_only_fallback` metric). 회귀 테스트 5 case 추가 |

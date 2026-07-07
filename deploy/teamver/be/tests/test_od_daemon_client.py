@@ -3,10 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
-from app.services.od_daemon_client import OdDaemonClient, OdDaemonIdentity, OdExportTicket
 from app.errors import BadGatewayError
+from app.services.od_daemon_client import (
+    OdDaemonClient,
+    OdDaemonIdentity,
+    OdDaemonPresignedPutError,
+    OdExportTicket,
+)
 
 
 def test_daemon_client_headers_keep_od_token_with_teamver_identity() -> None:
@@ -218,6 +224,58 @@ async def test_daemon_client_streams_export_ticket_to_presigned_put(
         "content-type": "application/pdf",
         "content-length": "9",
     }
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_stream_export_ticket_put_network_error_is_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _DownloadResponse:
+        status_code = 200
+
+        async def __aenter__(self) -> "_DownloadResponse":
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def aiter_bytes(self):
+            yield b"pdf-bytes"
+
+    download_client = MagicMock()
+    download_client.stream = MagicMock(return_value=_DownloadResponse())
+    download_client.__aenter__ = AsyncMock(return_value=download_client)
+    download_client.__aexit__ = AsyncMock(return_value=False)
+
+    upload_client = MagicMock()
+    upload_client.put = AsyncMock(side_effect=httpx.ConnectError("upload failed"))
+    upload_client.__aenter__ = AsyncMock(return_value=upload_client)
+    upload_client.__aexit__ = AsyncMock(return_value=False)
+
+    clients = iter([download_client, upload_client])
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: next(clients))
+
+    with pytest.raises(
+        OdDaemonPresignedPutError,
+        match="drive_presigned_put_failed_network",
+    ) as exc_info:
+        await OdDaemonClient(
+            base_url="http://daemon.test",
+            api_token="od-secret-token",
+        ).stream_export_ticket_to_presigned_put(
+            OdExportTicket(
+                download_url="/api/projects/od1/export/downloads/ticket",
+                filename="Deck.pdf",
+                mime="application/pdf",
+                size_bytes=9,
+            ),
+            presigned_url="https://s3.example.com/upload",
+            content_type="application/pdf",
+            identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+        )
+
+    assert exc_info.value.status_code is None
+    upload_client.put.assert_awaited_once()
 
 
 @pytest.mark.asyncio

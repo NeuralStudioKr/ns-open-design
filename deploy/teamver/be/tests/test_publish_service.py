@@ -530,6 +530,56 @@ async def test_publish_project_stream_put_failure_falls_back_to_bytes_put():
 
 
 @pytest.mark.asyncio
+async def test_publish_project_ticket_download_failure_falls_back_to_bytes_put():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    pdf_bytes = b"%PDF-1.4 ticket download fallback"
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=len(pdf_bytes))
+    daemon.stream_export_ticket_to_presigned_put.side_effect = BadGatewayError(
+        "od_daemon_export_ticket_download_failed"
+    )
+    daemon.get_export_pdf.return_value = pdf_bytes
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-DOWNLOAD-FALLBACK")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 201
+    daemon.get_export_pdf.assert_awaited_once_with(
+        "od1",
+        "deck/index.html",
+        identity=ANY,
+        deck=True,
+        title=None,
+        max_bytes=67_108_864,
+    )
+    teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
+        "https://s3.example.com/upload/AST-DOWNLOAD-FALLBACK",
+        content=pdf_bytes,
+        content_type="application/pdf",
+    )
+    teamver_client.drive.confirm_upload.assert_awaited_once_with(
+        access_token="token",
+        asset_id="AST-DOWNLOAD-FALLBACK",
+    )
+
+
+@pytest.mark.asyncio
 async def test_publish_project_stream_fallback_too_large_is_classified():
     db = AsyncMock()
     db.add = MagicMock()

@@ -493,7 +493,7 @@ async def publish_project(
                         size_bytes,
                         export_ticket.cache or "unknown",
                     )
-                except OdDaemonPresignedPutError as exc:
+                except (OdDaemonPresignedPutError, BadGatewayError) as exc:
                     if _can_fallback_to_bytes_put(size_bytes):
                         logger.warning(
                             "publish stream PUT failed; retrying bytes PUT "

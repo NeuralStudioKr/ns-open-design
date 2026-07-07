@@ -36,8 +36,13 @@ class OdExportTicket:
 
 
 class OdDaemonPresignedPutError(BadGatewayError):
-    def __init__(self, status_code: int) -> None:
-        super().__init__("drive_presigned_put_failed")
+    def __init__(
+        self,
+        status_code: int | None = None,
+        *,
+        message: str = "drive_presigned_put_failed",
+    ) -> None:
+        super().__init__(message)
         self.status_code = status_code
 
 
@@ -262,15 +267,25 @@ class OdDaemonClient:
                         ticket.download_url,
                     )
                     raise BadGatewayError("od_daemon_export_ticket_download_failed")
-                async with httpx.AsyncClient(timeout=self.timeout_seconds) as upload_client:
-                    upload_response = await upload_client.put(
+                try:
+                    async with httpx.AsyncClient(timeout=self.timeout_seconds) as upload_client:
+                        upload_response = await upload_client.put(
+                            presigned_url,
+                            content=download_response.aiter_bytes(),
+                            headers={
+                                "content-type": content_type,
+                                "content-length": str(ticket.size_bytes),
+                            },
+                        )
+                except httpx.HTTPError as exc:
+                    logger.warning(
+                        "[drive] presigned PUT stream request failed url=%s",
                         presigned_url,
-                        content=download_response.aiter_bytes(),
-                        headers={
-                            "content-type": content_type,
-                            "content-length": str(ticket.size_bytes),
-                        },
+                        exc_info=True,
                     )
+                    raise OdDaemonPresignedPutError(
+                        message="drive_presigned_put_failed_network",
+                    ) from exc
         if upload_response.status_code >= 400:
             logger.warning(
                 "[drive] presigned PUT stream failed status=%s",
