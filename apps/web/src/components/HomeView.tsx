@@ -36,7 +36,7 @@ import {
 } from '../analytics/events';
 import {
   applyPlugin,
-  listPlugins,
+  listPluginsPage,
   renderPluginBriefTemplate,
   resolvePluginQueryFallback,
 } from '../state/projects';
@@ -117,6 +117,7 @@ import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImpor
 import type { PetTaskSummary } from './pet/PetOverlay';
 
 const HOME_DRIVE_IMPORT_MAX = 12;
+const HOME_COMMUNITY_PLUGIN_PAGE_SIZE = 48;
 
 export interface ActivePlugin {
   record: InstalledPluginRecord;
@@ -290,6 +291,9 @@ export function HomeView({
   }, [analytics.track]);
   const [plugins, setPlugins] = useState<InstalledPluginRecord[]>([]);
   const [pluginsLoading, setPluginsLoading] = useState(true);
+  const [pluginsLoadingMore, setPluginsLoadingMore] = useState(false);
+  const [pluginsNextOffset, setPluginsNextOffset] = useState<number | null>(null);
+  const [communityPluginQuery, setCommunityPluginQuery] = useState('');
   const [pendingApplyId, setPendingApplyId] = useState<string | null>(null);
   const [pendingChipId, setPendingChipId] = useState<string | null>(null);
   const [pendingAuthoringChipId, setPendingAuthoringChipId] = useState<string | null>(null);
@@ -475,20 +479,60 @@ export function HomeView({
   }, []);
   useEffect(() => {
     let cancelled = false;
+    let requestId = 0;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const pluginListOptions = (offset = 0) => ({
+      ...(slideOnlyMvp ? { mode: 'deck' as const } : {}),
+      limit: HOME_COMMUNITY_PLUGIN_PAGE_SIZE,
+      ...(offset > 0 ? { offset } : {}),
+      ...(communityPluginQuery.trim() ? { query: communityPluginQuery.trim() } : {}),
+    });
     const load = () => {
-      void listPlugins().then((rows) => {
+      const currentRequest = requestId + 1;
+      requestId = currentRequest;
+      setPluginsLoading(true);
+      void listPluginsPage(pluginListOptions()).then((page) => {
         if (cancelled) return;
-        setPlugins(rows);
+        if (currentRequest !== requestId) return;
+        setPlugins(page.plugins);
+        setPluginsNextOffset(page.nextOffset);
         setPluginsLoading(false);
       });
     };
-    load();
+    debounce = setTimeout(load, communityPluginQuery.trim() ? 180 : 0);
     window.addEventListener('open-design:plugins-changed', load);
     return () => {
       cancelled = true;
+      if (debounce) clearTimeout(debounce);
       window.removeEventListener('open-design:plugins-changed', load);
     };
-  }, []);
+  }, [communityPluginQuery, slideOnlyMvp]);
+
+  const loadMoreCommunityPlugins = useCallback(() => {
+    if (pluginsNextOffset === null || pluginsLoadingMore) return;
+    setPluginsLoadingMore(true);
+    void listPluginsPage({
+      ...(slideOnlyMvp ? { mode: 'deck' as const } : {}),
+      limit: HOME_COMMUNITY_PLUGIN_PAGE_SIZE,
+      offset: pluginsNextOffset,
+      ...(communityPluginQuery.trim() ? { query: communityPluginQuery.trim() } : {}),
+    }).then((page) => {
+      setPlugins((current) => {
+        const seen = new Set(current.map((plugin) => plugin.id));
+        const next = [...current];
+        for (const plugin of page.plugins) {
+          if (seen.has(plugin.id)) continue;
+          seen.add(plugin.id);
+          next.push(plugin);
+        }
+        return next;
+      });
+      setPluginsNextOffset(page.nextOffset);
+      setPluginsLoadingMore(false);
+    }).catch(() => {
+      setPluginsLoadingMore(false);
+    });
+  }, [communityPluginQuery, pluginsLoadingMore, pluginsNextOffset, slideOnlyMvp]);
 
   useEffect(() => {
     if (hideComposerIntegrations) {
@@ -1894,6 +1938,11 @@ export function HomeView({
           }
           hidePrimaryCategoryFacets={communityFacetUi.hidePrimaryCategoryFacets}
           lockedFacetCategory={communityFacetUi.lockedFacetCategory}
+          query={communityPluginQuery}
+          onQueryChange={setCommunityPluginQuery}
+          hasMorePlugins={pluginsNextOffset !== null}
+          loadingMorePlugins={pluginsLoadingMore}
+          onLoadMorePlugins={loadMoreCommunityPlugins}
           cardLayout="gallery"
         />
       </HomeTemplatesReveal>

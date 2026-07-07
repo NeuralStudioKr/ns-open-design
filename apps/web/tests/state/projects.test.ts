@@ -8,6 +8,7 @@ import {
   importFolderProject,
   installGeneratedPluginFolder,
   listPlugins,
+  listPluginsPage,
   pickLocalFolderPath,
   publishGeneratedPluginToGitHub,
 } from '../../src/state/projects';
@@ -171,6 +172,29 @@ describe('listPlugins', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/plugins?mode=deck&q=terminal+deck&limit=12&offset=24',
     );
+  });
+
+  it('returns catalog pagination metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        plugins: [{ id: 'deck-a', title: 'Deck A', manifest: { od: { mode: 'deck' } } }],
+        total: 91,
+        limit: 24,
+        offset: 48,
+        nextOffset: 72,
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const page = await listPluginsPage({ mode: 'deck', limit: 24, offset: 48 });
+
+    expect(page.plugins.map((plugin) => plugin.id)).toEqual(['deck-a']);
+    expect(page).toMatchObject({
+      total: 91,
+      limit: 24,
+      offset: 48,
+      nextOffset: 72,
+    });
   });
 });
 

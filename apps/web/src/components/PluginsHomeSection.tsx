@@ -63,6 +63,11 @@ interface Props {
   hidePrimaryCategoryFacets?: boolean;
   /** Pins `selection.category` when {@link hidePrimaryCategoryFacets} is on. */
   lockedFacetCategory?: string | null;
+  query?: string;
+  onQueryChange?: (next: string) => void;
+  hasMorePlugins?: boolean;
+  loadingMorePlugins?: boolean;
+  onLoadMorePlugins?: () => void;
 }
 
 export function PluginsHomeSection({
@@ -84,6 +89,11 @@ export function PluginsHomeSection({
   cardLayout = 'rich',
   hidePrimaryCategoryFacets = false,
   lockedFacetCategory = null,
+  query: controlledQuery,
+  onQueryChange,
+  hasMorePlugins: hasServerMorePlugins = false,
+  loadingMorePlugins = false,
+  onLoadMorePlugins,
 }: Props) {
   const { locale, t } = useI18n();
   const { savedPluginIds, savePluginId } = useSavedPluginIds();
@@ -102,7 +112,7 @@ export function PluginsHomeSection({
     mode,
     setMode,
     query,
-    setQuery,
+    setQuery: setLocalQuery,
     totalVisible,
   } = usePluginFacets({
     plugins,
@@ -112,11 +122,14 @@ export function PluginsHomeSection({
     lockedFacetCategory: hidePrimaryCategoryFacets ? lockedFacetCategory : null,
     locale,
   });
+  const displayQuery = controlledQuery ?? query;
+  const setQuery = onQueryChange ?? setLocalQuery;
   const renderedPlugins = useMemo(
     () => filtered.slice(0, renderLimit),
     [filtered, renderLimit],
   );
-  const hasMorePlugins = renderLimit < filtered.length;
+  const hasLocalMorePlugins = renderLimit < filtered.length;
+  const hasMorePlugins = hasLocalMorePlugins || hasServerMorePlugins;
 
   useEffect(() => {
     setRenderLimit(INITIAL_PLUGIN_RENDER_LIMIT);
@@ -127,21 +140,33 @@ export function PluginsHomeSection({
     const node = loadMoreRef.current;
     if (!node) return;
     if (typeof IntersectionObserver === 'undefined') {
-      setRenderLimit(filtered.length);
+      if (hasLocalMorePlugins) setRenderLimit(filtered.length);
+      else if (hasServerMorePlugins && !loadingMorePlugins) onLoadMorePlugins?.();
       return;
     }
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
-        setRenderLimit((limit) =>
-          Math.min(filtered.length, limit + PLUGIN_RENDER_BATCH_SIZE),
-        );
+        if (hasLocalMorePlugins) {
+          setRenderLimit((limit) =>
+            Math.min(filtered.length, limit + PLUGIN_RENDER_BATCH_SIZE),
+          );
+        } else if (hasServerMorePlugins && !loadingMorePlugins) {
+          onLoadMorePlugins?.();
+        }
       },
       { rootMargin: '640px' },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [filtered.length, hasMorePlugins]);
+  }, [
+    filtered.length,
+    hasLocalMorePlugins,
+    hasMorePlugins,
+    hasServerMorePlugins,
+    loadingMorePlugins,
+    onLoadMorePlugins,
+  ]);
 
   function handleSavePlugin(record: InstalledPluginRecord): void {
     const result = savePluginId(record.id);
@@ -153,6 +178,11 @@ export function PluginsHomeSection({
     } else {
       setSaveToast('Could not save this plugin in this browser.');
     }
+  }
+
+  function handleClearFilters(): void {
+    clearFacets();
+    if (controlledQuery !== undefined) onQueryChange?.('');
   }
 
   return (
@@ -206,7 +236,7 @@ export function PluginsHomeSection({
               onToggleSaved={() =>
                 setMode(mode === 'saved' ? 'all' : 'saved')
               }
-              query={query}
+              query={displayQuery}
               onQueryChange={setQuery}
               hideCategoryPills={hidePrimaryCategoryFacets}
             />
@@ -226,7 +256,7 @@ export function PluginsHomeSection({
               <button
                 type="button"
                 className="plugins-home__linkbtn"
-                onClick={clearFacets}
+                onClick={handleClearFilters}
               >
                 {t('pluginsHome.clearFilters')}
               </button>

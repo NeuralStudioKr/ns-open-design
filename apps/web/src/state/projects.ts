@@ -965,6 +965,14 @@ export interface ListPluginsOptions {
   offset?: number;
 }
 
+export interface ListPluginsPageResult {
+  plugins: InstalledPluginRecord[];
+  total: number | null;
+  limit: number | null;
+  offset: number;
+  nextOffset: number | null;
+}
+
 function resolvePluginsListUrl(options: ListPluginsOptions): string {
   const params = new URLSearchParams();
   const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
@@ -984,18 +992,44 @@ function resolvePluginsListUrl(options: ListPluginsOptions): string {
 export async function listPlugins(
   options: ListPluginsOptions = {},
 ): Promise<InstalledPluginRecord[]> {
+  return (await listPluginsPage(options)).plugins;
+}
+
+export async function listPluginsPage(
+  options: ListPluginsOptions = {},
+): Promise<ListPluginsPageResult> {
   try {
     const resp = await fetch(resolvePluginsListUrl(options));
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { plugins?: InstalledPluginRecord[] };
+    if (!resp.ok) return emptyPluginsPage();
+    const json = (await resp.json()) as {
+      plugins?: InstalledPluginRecord[];
+      total?: number;
+      limit?: number | null;
+      offset?: number;
+      nextOffset?: number | null;
+    };
     let plugins = json.plugins ?? [];
     if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
       plugins = pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp: true });
     }
-    return options.includeHidden ? plugins : plugins.filter(isVisiblePlugin);
+    const visible = options.includeHidden ? plugins : plugins.filter(isVisiblePlugin);
+    return {
+      plugins: visible,
+      total: typeof json.total === 'number' && Number.isFinite(json.total) ? json.total : null,
+      limit: typeof json.limit === 'number' && Number.isFinite(json.limit) ? json.limit : null,
+      offset: typeof json.offset === 'number' && Number.isFinite(json.offset) ? json.offset : 0,
+      nextOffset:
+        typeof json.nextOffset === 'number' && Number.isFinite(json.nextOffset)
+          ? json.nextOffset
+          : null,
+    };
   } catch {
-    return [];
+    return emptyPluginsPage();
   }
+}
+
+function emptyPluginsPage(): ListPluginsPageResult {
+  return { plugins: [], total: null, limit: null, offset: 0, nextOffset: null };
 }
 
 export function isVisiblePlugin(plugin: InstalledPluginRecord): boolean {

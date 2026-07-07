@@ -54,8 +54,14 @@ describe('HomeView community filter decoupling', () => {
 
   it('keeps the Community category selection independent from the hero type chips', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
-        return new Response(JSON.stringify({ plugins: PLUGINS }), {
+      if (typeof url === 'string' && url.startsWith('/api/plugins')) {
+        return new Response(JSON.stringify({
+          plugins: PLUGINS,
+          total: PLUGINS.length,
+          limit: 48,
+          offset: 0,
+          nextOffset: null,
+        }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
