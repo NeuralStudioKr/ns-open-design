@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.services.od_daemon_client import OdDaemonClient, OdDaemonIdentity, OdExportTicket
+from app.errors import BadGatewayError
 
 
 def test_daemon_client_headers_keep_od_token_with_teamver_identity() -> None:
@@ -215,3 +216,38 @@ async def test_daemon_client_streams_export_ticket_to_presigned_put(
         "content-type": "application/pdf",
         "content-length": "9",
     }
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_export_bytes_honors_max_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _ExportResponse:
+        status_code = 200
+
+        async def __aenter__(self) -> "_ExportResponse":
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def aiter_bytes(self):
+            yield b"12345"
+            yield b"67890"
+
+    http = MagicMock()
+    http.stream = MagicMock(return_value=_ExportResponse())
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: http)
+
+    with pytest.raises(BadGatewayError, match="od_daemon_export_too_large"):
+        await OdDaemonClient(
+            base_url="http://daemon.test",
+            api_token="od-secret-token",
+        ).get_export_pdf(
+            "od1",
+            "deck/index.html",
+            identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+            max_bytes=6,
+        )

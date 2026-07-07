@@ -149,6 +149,7 @@ class OdDaemonClient:
         identity: OdDaemonIdentity,
         deck: bool = False,
         title: str | None = None,
+        max_bytes: int | None = None,
     ) -> bytes:
         payload: dict[str, object] = {
             "fileName": artifact_path.strip(),
@@ -162,6 +163,7 @@ class OdDaemonClient:
             payload=payload,
             accept="text/html,*/*",
             identity=identity,
+            max_bytes=max_bytes,
         )
 
     async def request_export_html_ticket(
@@ -196,6 +198,7 @@ class OdDaemonClient:
         identity: OdDaemonIdentity,
         deck: bool = False,
         title: str | None = None,
+        max_bytes: int | None = None,
     ) -> bytes:
         payload: dict[str, object] = {
             "fileName": artifact_path.strip(),
@@ -209,6 +212,7 @@ class OdDaemonClient:
             payload=payload,
             accept="application/pdf,*/*",
             identity=identity,
+            max_bytes=max_bytes,
         )
 
     async def request_export_pdf_ticket(
@@ -455,26 +459,37 @@ class OdDaemonClient:
         payload: dict[str, object],
         accept: str,
         identity: OdDaemonIdentity,
+        max_bytes: int | None = None,
     ) -> bytes:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(
+            async with client.stream(
+                "POST",
                 f"{self.base_url}/api/projects/{od_project_id}{suffix}",
                 headers={
                     **self._headers(accept=accept, identity=identity),
                     "content-type": "application/json",
                 },
                 json=payload,
-            )
-        if response.status_code >= 400:
-            logger.warning(
-                "[od-daemon] POST %s failed project=%s status=%s body=%s",
-                suffix,
-                od_project_id,
-                response.status_code,
-                (response.text or "")[:300],
-            )
-            raise BadGatewayError("od_daemon_export_failed")
-        return response.content
+            ) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    logger.warning(
+                        "[od-daemon] POST %s failed project=%s status=%s body=%s",
+                        suffix,
+                        od_project_id,
+                        response.status_code,
+                        body.decode("utf-8", errors="replace")[:300],
+                    )
+                    raise BadGatewayError("od_daemon_export_failed")
+
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if max_bytes is not None and max_bytes > 0 and total > max_bytes:
+                        raise BadGatewayError("od_daemon_export_too_large")
+                    chunks.append(chunk)
+                return b"".join(chunks)
 
     def _absolute_url(self, path_or_url: str) -> str:
         value = path_or_url.strip()

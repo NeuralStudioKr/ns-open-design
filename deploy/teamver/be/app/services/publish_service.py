@@ -305,6 +305,7 @@ async def _fetch_export_bytes_for_publish_fallback(
     identity: OdDaemonIdentity,
     deck: bool,
     title: str | None,
+    max_bytes: int,
 ) -> bytes:
     if fmt == "html":
         return await daemon.get_export_html(
@@ -313,6 +314,7 @@ async def _fetch_export_bytes_for_publish_fallback(
             identity=identity,
             deck=deck,
             title=title,
+            max_bytes=max_bytes,
         )
     if fmt == "pdf":
         return await daemon.get_export_pdf(
@@ -321,6 +323,7 @@ async def _fetch_export_bytes_for_publish_fallback(
             identity=identity,
             deck=deck,
             title=title,
+            max_bytes=max_bytes,
         )
     raise BadRequestError(f"unsupported_formats:{fmt}")
 
@@ -501,6 +504,7 @@ async def publish_project(
                                 identity=daemon_identity,
                                 deck=is_deck_artifact,
                                 title=export_title,
+                                max_bytes=settings.teamver_drive_publish_stream_fallback_max_bytes,
                             )
                             await _drive_presigned_put(
                                 teamver_client,

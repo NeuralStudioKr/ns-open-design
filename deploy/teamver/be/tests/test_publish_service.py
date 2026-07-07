@@ -516,6 +516,7 @@ async def test_publish_project_stream_put_failure_falls_back_to_bytes_put():
         identity=ANY,
         deck=True,
         title=None,
+        max_bytes=67_108_864,
     )
     teamver_client.drive._put_presigned_bytes.assert_awaited_once_with(
         "https://s3.example.com/upload/AST-FALLBACK-PUT",

@@ -879,7 +879,7 @@ design-api publish_service:
 
 **리스크:**
 - Drive presigned PUT이 `Content-Length`가 명시된 async stream body를 staging S3에서 정상 수용하는지 실증 필요. chunked encoding은 피하기 위해 daemon ticket `bytes`를 `content-length`로 전달한다.
-- 실증 전 배포 안전장치: endpoint가 stream body를 거부하면 64MB 이하(`TEAMVER_DRIVE_PUBLISH_STREAM_FALLBACK_MAX_BYTES`, 0이면 disable)에서만 기존 bytes PUT으로 1회 fallback한다. 대형 deck은 fallback하지 않아 design-api RAM 폭증을 막는다.
+- 실증 전 배포 안전장치: endpoint가 stream body를 거부하면 64MB 이하(`TEAMVER_DRIVE_PUBLISH_STREAM_FALLBACK_MAX_BYTES`, 0이면 disable)에서만 기존 bytes PUT으로 1회 fallback한다. fallback fetch도 streaming read + `max_bytes` cap으로 읽어 한도를 넘는 순간 중단한다. 대형 deck은 fallback하지 않아 design-api RAM 폭증을 막는다.
 - ticket TTL(300s) 안에 stream이 끝나야 함 — 큰 deck PDF (수십 MB) 도 문제 없음.
 
 **병행 최적화:**
@@ -953,6 +953,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-07 | staging 최신 merge 후 Publish stream fallback cap 보강 — bytes fallback fetch를 `response.content` 대신 streaming read + `max_bytes` 중단으로 변경, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 22 passed |
 | 2026-07-03 | **PDF export `teamver_project_s3_prefix_required` 502 해소** — FE prefetch(`waitForTeamverProjectStoragePrefix`) + 최대 3회 자동 재시도, daemon `/export/*`·`/archive` 라우트에서 scratch-only soft-fallback (`od_s3_export_scratch_only_fallback` metric). 회귀 테스트 5 case 추가 |
 | 2026-07-03 | §20.4 Publish stream 배포 안전장치 추가 — presigned stream PUT 실패 시 64MB 이하 legacy bytes PUT fallback, staging/production env 예시 추가, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 21 passed |
 | 2026-07-02 | §20.4 Publish stream 1차 구현 — daemon export ticket에 bytes 포함, design-api PDF/HTML Drive publish를 ticket download stream → presigned PUT으로 전환, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 20 passed |
