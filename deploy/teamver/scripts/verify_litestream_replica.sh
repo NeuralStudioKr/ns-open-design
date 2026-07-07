@@ -13,7 +13,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LITESTREAM_CONTAINER="${LITESTREAM_CONTAINER:-teamver-design-litestream}"
-REPLICA_PREFIX="${LITESTREAM_REPLICA_PREFIX:-litestream/app.sqlite}"
+# LITESTREAM_REPLICA_PATH (docs-teamver/39_3 §5.2) — deploy.sh derives
+# per-node path. Legacy single-node continues to use litestream/app.sqlite.
+REPLICA_PREFIX="${LITESTREAM_REPLICA_PREFIX:-${LITESTREAM_REPLICA_PATH:-litestream/app.sqlite}}"
 
 ENV_FILE=""
 ENV_LABEL=""

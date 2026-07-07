@@ -77,7 +77,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 |--------|---------------|------|
 | EC2 재부팅·OOM이 **월 1회+** | vertical scale·export cache·[34](./34_Export_성능_개선_로드맵.md) | 38 P2 |
 | **99.9% HA** SLA (장애 RTO < 15분) | **Active-Passive** 또는 ALB 2 target | [39_1](./39_1_이중화_Phase_로드맵.md) Phase 2 |
-| 동시 AI **10~20+** stream 지속 | EC2 2대 **Active-Active + sticky** | [39_2](./39_2_ALB_nginx_라우팅_설계.md) |
+| 동시 AI **10~20+** stream 지속 | EC2 2대 **Active-Active + userId hash** | [39_2](./39_2_ALB_nginx_라우팅_설계.md) · [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) |
 | export만 CPU 80%+ | **export worker 분리** (daemon 전체 이중화 전) | [39_1](./39_1_이중화_Phase_로드맵.md) Phase 3 |
 | multi-node 후에도 scratch 502 | **Track B** | [39_1](./39_1_이중화_Phase_로드맵.md) Phase 5 |
 
@@ -109,7 +109,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 | **1** | Vertical scale | CPU/RAM ↑ | 단일 EC2 스펙 업 | N/A |
 | **2** | **HA (Passive)** | 장애 시 전환 | **Active-Passive** 2 EC2 | ✅ (writer 1) |
 | **3** | Export isolate | PDF spike 격리 | daemon 1 + export worker | 부분 |
-| **4** | **용량 AA** | 동시 사용자 ↑ | **2+ EC2 Active-Active + sticky** | **부분** (userId) |
+| **4** | **용량 AA** | 동시 사용자 ↑ | **2+ EC2 Active-Active + userId hash** | **부분** (userId) |
 | **5** | Track B | multi-daemon 정석 | Postgres DaemonDb + project affinity | ✅ 근본 |
 
 **권장 순서:** `0 → (지표) → 2 또는 3 → 4 → 5`  
@@ -117,7 +117,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 
 ---
 
-## 5. userId ALB sticky로 scratch를 해결할 수 있나?
+## 5. userId hash로 scratch를 해결할 수 있나?
 
 **짧은 답:** **한 사용자·한 브라우저 세션** 범위에서는 **대부분 OK** (embed 1인 1프로젝트 MVP).  
 **전체 multi-daemon 정석은 아님** — SQLite per node, 동일 project 다인 편집, 노드 장애 시 재할당.
@@ -156,6 +156,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 | [39_3](./39_3_scratch_SQLite_SSE_제약.md) | scratch split-brain·sticky 한계·Track B |
 | [39_4](./39_4_배포_Terraform_운영_Runbook.md) | 2 EC2 기동·failover·drain·Litestream |
 | [39_5](./39_5_검증_체크리스트_FAQ.md) | 부하·장애 시나리오·FAQ |
+| [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) | **CTO 보고** — userId hash·이중화 의미·중앙 nginx 비교·장기 방향 |
 
 ---
 

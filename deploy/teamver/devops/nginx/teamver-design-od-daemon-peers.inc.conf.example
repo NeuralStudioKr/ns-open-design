@@ -1,0 +1,6 @@
+# Peer OD daemon backends for nginx hash upstream (Phase 4).
+# Copied to /etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf on apply.
+# Multi-node: render_od_daemon_peers_nginx.sh overwrites with one line per peer:
+#   server 10.0.1.12:7456 max_fails=2 fail_timeout=10s;
+#
+# Single-node: leave this file empty (only 127.0.0.1 in upstream).

@@ -102,6 +102,32 @@ if ! grep -q 's3://teamver-design-staging-data/litestream/app.sqlite' <<< "$out"
   exit 1
 fi
 
+# --replica-id sanitises + rebuilds URL for multi-node (docs-teamver/39_3 §5.2).
+PATH="$WORK/bin:$PATH" out="$(cd "$SANDBOX" && bash scripts/restore_app_sqlite_from_s3.sh \
+  --staging --litestream --replica-id 'i-0Abc_123!' --dry-run 2>&1)" || true
+if ! grep -q 's3://teamver-design-staging-data/litestream/i-0abc-123/app.sqlite' <<< "$out"; then
+  echo "❌ --replica-id did not produce per-node URL"
+  echo "$out"
+  exit 1
+fi
+
+# --replica-path overrides both --replica-id and the default.
+PATH="$WORK/bin:$PATH" out="$(cd "$SANDBOX" && bash scripts/restore_app_sqlite_from_s3.sh \
+  --staging --litestream --replica-id ignored --replica-path 'litestream/custom/app.sqlite' --dry-run 2>&1)" || true
+if ! grep -q 's3://teamver-design-staging-data/litestream/custom/app.sqlite' <<< "$out"; then
+  echo "❌ --replica-path override did not win"
+  echo "$out"
+  exit 1
+fi
+
+# --replica-id whose sanitised value is empty/unknown must fail (never fall back
+# to the legacy path silently).
+if (cd "$SANDBOX" && PATH="$WORK/bin:$PATH" bash scripts/restore_app_sqlite_from_s3.sh \
+  --staging --litestream --replica-id '---' --dry-run >/dev/null 2>&1); then
+  echo "❌ empty-sanitised --replica-id should error"
+  exit 1
+fi
+
 # Litestream dry-run with --at / --generation forwards through.
 PATH="$WORK/bin:$PATH" out="$(cd "$SANDBOX" && bash scripts/restore_app_sqlite_from_s3.sh \
   --staging --litestream --at 2026-06-17T12:00:00Z --generation gen-1 --dry-run 2>&1)" || true
@@ -150,7 +176,7 @@ fi
 
 # Help text mentions the key flags.
 help_out="$(bash "$SCRIPT" --help)"
-for needle in --litestream --from-snapshot --at --generation --target-dir --apply --dry-run LITESTREAM_BUCKET SQLITE_BACKUP_PREFIX; do
+for needle in --litestream --from-snapshot --at --generation --target-dir --apply --dry-run --replica-id --replica-path LITESTREAM_BUCKET SQLITE_BACKUP_PREFIX; do
   if ! grep -q -- "$needle" <<< "$help_out"; then
     echo "❌ help text missing $needle"
     exit 1

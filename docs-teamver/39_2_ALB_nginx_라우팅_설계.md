@@ -10,9 +10,9 @@
 ## 1. 한 줄 결론
 
 > Production은 **ALB → EC2 nginx :80** ([31](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md)).  
-> **daemon (`/api/*`)** 만 affinity; **static·BFF** 는 sticky 없이 확장 가능.  
-> **1차:** ALB target group **stickiness (LBCookie)**.  
-> **2차:** nginx **`hash $teamver_user_id consistent`** (auth_request 이후).
+> **daemon (`/api/*`)** affinity SSOT: nginx **`hash $teamver_user_id consistent`** ([§4](#4-nginx-userid-hash-phase-4--ssot)).  
+> **ALB stickiness (LBCookie)** 는 multi-node 에서 **OFF** — 브라우저 쿠키가 아니라 **userId 전체 문자열** 해시로 노드 결정 (홀짝·끝자리 규칙 없음).  
+> **static·BFF** 는 sticky/hash 없이 로컬 daemon 또는 round-robin OK.
 
 ---
 
@@ -75,7 +75,24 @@ stickiness {
 
 ---
 
-## 4. nginx userId hash (Phase 4 — 2차)
+## 4. nginx userId hash (Phase 4 — **SSOT**)
+
+**구현:** `deploy/teamver/devops/nginx/teamver-design-od-daemon-upstream.inc.conf`  
+**Peer 목록:** `scripts/render_od_daemon_peers_nginx.sh` → `/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf`
+
+### 4.0 해시 방식 (홀짝·끝자리 아님)
+
+nginx `consistent` hash 는 **userId 문자열 전체**를 해시 ring 에 매핑한다.  
+`user-…0` / `user-…1` 같은 **마지막 글자 홀짝 규칙은 없다.**
+
+| hash key | 조건 |
+|----------|------|
+| `$teamver_user_id` | auth_request / session-probe 성공 후 ( **1순위** ) |
+| URI 내 `projectId` | `/api/projects/:id/preview/…` (iframe, session 없음) |
+| `$binary_remote_addr` | public static asset 등 fallback |
+
+동일 userId → **항상 같은 EC2 daemon** (브라우저·기기 무관).  
+ALB 는 **round-robin** 으로 아무 EC2 nginx 에나 도착 → nginx 가 peer 포함 upstream 으로 **올바른 daemon** 에 프록시.
 
 ### 4.1 이미 있는 identity header
 
@@ -116,6 +133,8 @@ upstream open_design_daemon_hashed {
 | **projectId** | scratch SSOT에 최적 | URL/body마다 다름 — **Phase 5** |
 
 **Phase 4 권장:** userId hash **또는** ALB cookie — product: **동일 deck 동시 공편집 비권장** ([38 §5.5](./38_Design_동시성_용량_확장_가이드.md)).
+
+**CTO·아키텍처 전체 설명:** [39_6 라우팅·의사결정](./39_6_라우팅_아키텍처_CTO_의사결정.md) (이중화 의미, 중앙 nginx 비교, projectId 연기, 장기 Phase 5).
 
 ---
 

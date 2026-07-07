@@ -1,16 +1,32 @@
-# Litestream replica for OD app.sqlite (09 Phase 2 / P0-5).
+# Litestream replica for OD app.sqlite (docs-teamver/09 P0-5 · 39_3 §5.2).
 # Requires EC2 IAM access to litestream/* on the project-data bucket.
+#
+# Multi-node (docs-teamver/39_1 Phase 4): each EC2 owns its own
+# app.sqlite (노드별 파일) — replica path is per-node so writers never
+# collide inside a single S3 prefix. deploy.sh injects
+# LITESTREAM_REPLICA_ID=$OD_NODE_ID (EC2 instance-id or hostname).
+#
+# Single-node deploys leave LITESTREAM_REPLICA_ID empty — the compose
+# entrypoint substitutes the legacy "app.sqlite" path so pre-Phase-4
+# replicas continue to write to s3://.../litestream/app.sqlite and
+# existing restore commands keep working without a mass migration.
 #
 # Usage (Teamver EC2):
 #   litestream replicate -config /opt/teamver-design/litestream.yml
 #
-# Env substitution: set LITESTREAM_BUCKET / LITESTREAM_REGION before start.
+# Env substitution: set LITESTREAM_BUCKET / LITESTREAM_REGION /
+#   LITESTREAM_REPLICA_PATH before start (deploy.sh does this
+#   automatically from LITESTREAM_REPLICA_ID).
 
 dbs:
   - path: /data/app.sqlite
     replicas:
       - type: s3
         bucket: ${LITESTREAM_BUCKET}
-        path: litestream/app.sqlite
+        # LITESTREAM_REPLICA_PATH default preserves the pre-Phase-4
+        # location (litestream/app.sqlite). deploy.sh sets
+        # LITESTREAM_REPLICA_PATH=litestream/<node-id>/app.sqlite for
+        # multi-node so both writers own disjoint S3 prefixes.
+        path: ${LITESTREAM_REPLICA_PATH:-litestream/app.sqlite}
         region: ${LITESTREAM_REGION:-ap-northeast-2}
         sync-interval: ${LITESTREAM_SYNC_INTERVAL:-3s}

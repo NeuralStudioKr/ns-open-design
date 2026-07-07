@@ -4988,6 +4988,20 @@ export async function startServer({
   // base64 images routinely exceeds 4 MB. Bump to 24 MB so the inline
   // export path stays viable end-to-end.
   app.use(express.json({ limit: '24mb' }));
+
+  // docs-teamver/39_2 · 39_5 — surface the node identity for every
+  // response so ALB stickiness (LBCookie) can be verified end-to-end
+  // and slow-request/failover investigations can pin the exact host.
+  // Missing OD_NODE_ID is treated as unknown so single-node deploys
+  // remain unaffected.
+  const daemonNodeId = (process.env.OD_NODE_ID ?? '').trim();
+  if (daemonNodeId.length > 0) {
+    app.use((_req, res, next) => {
+      res.setHeader('X-OD-Node-Id', daemonNodeId);
+      next();
+    });
+  }
+
   const projectPreviewScopes = createProjectPreviewScopeRegistry();
 
   // Plan §3.K1 — bearer-token middleware.
@@ -5540,7 +5554,11 @@ export async function startServer({
 
   app.get('/api/health', async (_req, res) => {
     const versionInfo = await readCurrentAppVersionInfo();
-    res.json({ ok: true, version: versionInfo.version });
+    // docs-teamver/39_2 · 39_5 — nodeId surfaces the exact daemon
+    // replica behind ALB stickiness. `unknown` when OD_NODE_ID is
+    // not set (single-node dev / local).
+    const nodeId = daemonNodeId.length > 0 ? daemonNodeId : 'unknown';
+    res.json({ ok: true, version: versionInfo.version, nodeId });
   });
 
   // Reachability probe for the project storage backend. In `s3` mode

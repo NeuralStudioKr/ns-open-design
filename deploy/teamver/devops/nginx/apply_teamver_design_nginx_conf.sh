@@ -109,6 +109,17 @@ if (( ${#inc_files[@]} )); then
   echo "📎 include 적용: ${#inc_files[@]} file(s) → $SITES_AVAILABLE_DIR"
 fi
 
+PEERS_EXAMPLE="$SCRIPT_DIR/teamver-design-od-daemon-peers.inc.conf.example"
+PEERS_TARGET="/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf"
+if [[ ! -f "$PEERS_TARGET" ]]; then
+  cp "$PEERS_EXAMPLE" "$PEERS_TARGET"
+  echo "📎 peers stub: $PEERS_TARGET"
+fi
+RENDER_PEERS="$SCRIPT_DIR/../../scripts/render_od_daemon_peers_nginx.sh"
+if [[ -x "$RENDER_PEERS" ]]; then
+  bash "$RENDER_PEERS" || echo "⚠️ peer render skipped (aws/imds unavailable?)"
+fi
+
 nginx -t
 systemctl reload nginx
 echo "✅ 완료."

@@ -229,6 +229,70 @@ fi
 export PLAYWRIGHT_INSTALL_TOKEN
 echo "==> PLAYWRIGHT_INSTALL_TOKEN=${PLAYWRIGHT_INSTALL_TOKEN} (cache-bust /ms-playwright)"
 
+# docs-teamver/39_2 · 39_5 — inject OD_NODE_ID from EC2 IMDS so daemon
+# (/api/health nodeId + X-OD-Node-Id) and design-api (/healthz node_id +
+# X-Design-Api-Node) share the same per-EC2 identifier. Local dev / non-
+# EC2 hosts fall back to `hostname`. Explicit OD_NODE_ID wins.
+resolve_node_id_from_imds() {
+  local token=""
+  token="$(
+    curl -sS -m 2 -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
+      -X PUT http://169.254.169.254/latest/api/token 2>/dev/null || true
+  )"
+  if [[ -n "$token" ]]; then
+    curl -sS -m 2 -H "X-aws-ec2-metadata-token: $token" \
+      http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || true
+  fi
+}
+
+if [[ -z "${OD_NODE_ID:-}" ]]; then
+  imds_instance_id="$(resolve_node_id_from_imds)"
+  if [[ -n "$imds_instance_id" ]]; then
+    OD_NODE_ID="$imds_instance_id"
+    echo "==> OD_NODE_ID=$OD_NODE_ID (IMDS EC2 instance-id)"
+  else
+    OD_NODE_ID="$(hostname 2>/dev/null || echo unknown)"
+    echo "==> OD_NODE_ID=$OD_NODE_ID (hostname fallback — non-EC2)"
+  fi
+else
+  echo "==> OD_NODE_ID=$OD_NODE_ID (explicit override)"
+fi
+export OD_NODE_ID
+
+# docs-teamver/39_3 §5.2 — derive Litestream replica path from the
+# resolved node id so multi-node deployments own disjoint S3 prefixes
+# (writer collision prevented). Explicit override wins. Sanitise the
+# node id to lower-kebab so the S3 key stays predictable.
+if [[ -z "${LITESTREAM_REPLICA_PATH:-}" ]]; then
+  sanitized_node_id="$(printf '%s' "$OD_NODE_ID" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed -E 's/^-+//; s/-+$//')"
+  if [[ -n "$sanitized_node_id" && "$sanitized_node_id" != "unknown" ]]; then
+    LITESTREAM_REPLICA_PATH="litestream/${sanitized_node_id}/app.sqlite"
+    echo "==> LITESTREAM_REPLICA_PATH=$LITESTREAM_REPLICA_PATH (per-node prefix)"
+  else
+    LITESTREAM_REPLICA_PATH="litestream/app.sqlite"
+    echo "==> LITESTREAM_REPLICA_PATH=$LITESTREAM_REPLICA_PATH (legacy single-node)"
+  fi
+else
+  echo "==> LITESTREAM_REPLICA_PATH=$LITESTREAM_REPLICA_PATH (explicit override)"
+fi
+export LITESTREAM_REPLICA_PATH
+
+# docs-teamver/39_2 §4 — nginx userId hash routing needs peer EC2 :7456 reachable
+# when multi-node. Pre-check peer list (dry-run) to bind docker publish host.
+OD_DOCKER_PUBLISH_HOST="${OD_DOCKER_PUBLISH_HOST:-127.0.0.1}"
+if [[ -x "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" ]]; then
+  peer_preview="$(
+    bash "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" --dry-run 2>/dev/null || true
+  )"
+  if grep -qE '^server [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:' <<< "$peer_preview"; then
+    OD_DOCKER_PUBLISH_HOST="0.0.0.0"
+    echo "==> OD_DOCKER_PUBLISH_HOST=0.0.0.0 (multi-node — peer OD daemon routing)"
+  else
+    echo "==> OD_DOCKER_PUBLISH_HOST=127.0.0.1 (single-node or no peers yet)"
+  fi
+fi
+export OD_DOCKER_PUBLISH_HOST
+
 if [[ -x "$SCRIPT_DIR/scripts/prepull_docker_base_images.sh" ]]; then
   bash "$SCRIPT_DIR/scripts/prepull_docker_base_images.sh" "$ENV_FILE" || {
     echo "❌ Base image pre-pull failed (Docker Hub/ECR network). 재시도 또는 .env 에 NODE_BASE_IMAGE/PYTHON_BASE_IMAGE 확인." >&2
@@ -258,6 +322,18 @@ fi
 
 "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" up -d --build "${SERVICES[@]}"
 "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" ps
+
+# Refresh nginx peer upstream (39_2 §4). Requires sudo on EC2.
+if [[ -x "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" ]]; then
+  if [[ -n "$(resolve_node_id_from_imds 2>/dev/null || true)" ]]; then
+    if sudo -n true 2>/dev/null; then
+      sudo bash "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" || \
+        echo "⚠️ render_od_daemon_peers_nginx.sh failed (nginx peer list stale?)"
+    else
+      echo "==> Tip: sudo bash scripts/render_od_daemon_peers_nginx.sh after deploy (multi-node peer list)"
+    fi
+  fi
+fi
 
 wait_for_litestream_running() {
   local max_attempts=15

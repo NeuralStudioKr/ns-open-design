@@ -26,6 +26,7 @@ from .routers.internal_billing import router as internal_billing_router
 from .routers.usage_report import router as usage_report_router
 from .routers.billing_report import router as billing_report_router
 from .middleware.csrf import OriginGuardMiddleware
+from .middleware.node_id import NodeIdMiddleware
 from .middleware.slow_request import SlowRequestMiddleware
 from .teamver_sdk import teamver_client_lifespan
 
@@ -61,6 +62,12 @@ _bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret
 app.add_middleware(SessionMiddleware, secret_key=_bff_secret, same_site="lax")
 app.add_middleware(OriginGuardMiddleware)
 app.add_middleware(SlowRequestMiddleware)
+# Node identity header (docs-teamver/39_2 · 39_5). Registered late so it
+# is one of the outermost middlewares — the header is attached on the
+# outgoing http.response.start regardless of downstream short-circuits
+# (Origin guard 403, CORS preflight OPTIONS, etc.), keeping the target
+# node discoverable even on error responses.
+app.add_middleware(NodeIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     **build_fastapi_cors_kwargs(
