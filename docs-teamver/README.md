@@ -33,6 +33,7 @@
 | **[33 프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)** | **FE→daemon 경로 · scratch/sync-down · S3 presigned 미사용 · Export vs Drive** |
 | **[34 Export 성능 개선](./34_Export_성능_개선_로드맵.md)** | **export 부하 분석 · Chromium/캐시/presigned/async · Phase 0~3 로드맵** |
 | **[38 Design 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md)** | **UVICORN worker · AI BYOK 동시 stream(workspace cap 8) · export cap · multi-node** |
+| **[39 Design 이중화·HA 로드맵](./39_0_Design_이중화_로드맵_개요.md)** | **Phase 0~5 · ALB sticky · scratch/SQLite 제약 · runbook · 검증** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -63,6 +64,7 @@
 | 33 | **[프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)** |
 | 34 | **[Export 성능 개선](./34_Export_성능_개선_로드맵.md)** |
 | 38 | **[Design 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md)** — §5 AI 동시 이용 SSOT |
+| 39 | **[Design 이중화·HA 로드맵](./39_0_Design_이중화_로드맵_개요.md)** — [39_1](./39_1_이중화_Phase_로드맵.md) Phase · [39_2](./39_2_ALB_nginx_라우팅_설계.md) 라우팅 · [39_3~5](./39_3_scratch_SQLite_SSE_제약.md) |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
@@ -116,6 +118,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-07 | [39 Design 이중화·HA](./39_0_Design_이중화_로드맵_개요.md) 시리즈 추가 |
 | 2026-06-24 | [22 Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md) — loop 354 검토 SSOT |
 | 2026-06-22 | [20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) — scratch+S3, Litestream, 용량 |
 | 2026-06-22 | [19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md) — prefix별 저장·자동 생성·lifecycle |

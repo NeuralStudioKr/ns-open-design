@@ -12,6 +12,7 @@
 | [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) | multi-daemon·queue·circuit breaker (Track B) |
 | [29 BYOK api mode vs runs](./29_BYOK_api_mode_vs_runs_아키텍처.md) | embed 부하 축 (SSE·proxy·polling) |
 | [04 구현 우선순위](./04_구현_우선순위.md) Track B | 출시 후 scale 작업 목록 |
+| [39 이중화·HA 로드맵](./39_0_Design_이중화_로드맵_개요.md) | Phase 0~5 · ALB sticky · scratch·SQLite 제약 |
 
 **코드·설정 SSOT:** `deploy/teamver/.env.{staging,production}`, `deploy/teamver/docker-compose.yml`, `deploy/teamver/be/Dockerfile`
 
@@ -621,6 +622,8 @@ curl -sf http://127.0.0.1:7456/api/runs?status=running
 
 ### 12.4 상용 scale-up (P3) — multi-node는 여기
 
+**상세 로드맵:** [39_0 이중화 개요](./39_0_Design_이중화_로드맵_개요.md) · [39_1 Phase 0~5](./39_1_이중화_Phase_로드맵.md)
+
 **시작 조건 (하나 이상):**
 
 - 단일 `t3.2xlarge`에서 **SLO 미달**이 ENV 튜닝·cache·async로도 해소 안 됨
@@ -671,6 +674,7 @@ curl -sf http://127.0.0.1:7456/api/runs?status=running
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-07 | [39 이중화 시리즈](./39_0_Design_이중화_로드맵_개요.md) cross-link |
 | 2026-07-06 | **§5 AI 동시 이용 SSOT** — BYOK proxy 다중 stream, workspace cap 8, 전역 직렬 없음, 429/soft cap, 검증·FAQ |
 | 2026-07-06 | §12 상용화 P0~P3 로드맵·의사결정 트리 추가 |
 | 2026-07-06 | 초안 — UVICORN worker vs 동시 사용자, export cap, multi-daemon 제약·로드맵 |
