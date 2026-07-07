@@ -113,6 +113,7 @@ async function respondExportPayload(
     filename: string;
     mime: string;
     bytes: number;
+    cache?: string;
     ticket: boolean;
   },
 ): Promise<void> {
@@ -133,6 +134,7 @@ async function respondExportPayload(
       mime: entry.mime,
       bytes: entry.bytes,
       sizeBytes: entry.bytes,
+      ...(options.cache ? { cache: options.cache } : {}),
       expiresAt: new Date(entry.expiresAt).toISOString(),
     });
     return;
@@ -163,6 +165,7 @@ function outcomeAsRespondPayload(
   filename: string;
   mime: string;
   bytes: number;
+  cache: string;
 } {
   return {
     ...(outcome.filePath ? { sourceFilePath: outcome.filePath } : {}),
@@ -170,6 +173,7 @@ function outcomeAsRespondPayload(
     filename: outcome.filename,
     mime: outcome.mime,
     bytes: outcome.bytes,
+    cache: outcome.cache,
   };
 }
 

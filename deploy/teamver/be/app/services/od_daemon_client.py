@@ -32,6 +32,7 @@ class OdExportTicket:
     filename: str
     mime: str
     size_bytes: int
+    cache: str | None = None
 
 
 class OdDaemonPresignedPutError(BadGatewayError):
@@ -449,6 +450,7 @@ class OdDaemonClient:
             filename=filename,
             mime=mime,
             size_bytes=size,
+            cache=body.get("cache") if isinstance(body.get("cache"), str) else None,
         )
 
     async def _request_export_bytes(

@@ -126,6 +126,7 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
         "filename": "Deck.pdf",
         "mime": "application/pdf",
         "bytes": 1234,
+        "cache": "hit-local",
     }
 
     http = AsyncMock()
@@ -149,6 +150,7 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
     assert ticket.filename == "Deck.pdf"
     assert ticket.mime == "application/pdf"
     assert ticket.size_bytes == 1234
+    assert ticket.cache == "hit-local"
     http.post.assert_awaited_once()
     assert http.post.await_args.args[0] == "http://daemon.test/api/projects/od1/export/pdf"
     assert http.post.await_args.kwargs["json"] == {

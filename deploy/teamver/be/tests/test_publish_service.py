@@ -530,6 +530,49 @@ async def test_publish_project_stream_put_failure_falls_back_to_bytes_put():
 
 
 @pytest.mark.asyncio
+async def test_publish_project_stream_fallback_too_large_is_classified():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=1024)
+    daemon.request_export_html_ticket.return_value = _export_ticket(
+        filename="Landing Page.html",
+        mime="text/html",
+        size_bytes=32,
+    )
+    daemon.stream_export_ticket_to_presigned_put.side_effect = [
+        OdDaemonPresignedPutError(411),
+        None,
+    ]
+    daemon.get_export_pdf.side_effect = BadGatewayError("od_daemon_export_too_large")
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-MIXED")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf", "html"],
+        artifact_file="deck/index.html",
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 207
+    pdf = next(output for output in result.outputs if output.kind == "pdf")
+    html = next(output for output in result.outputs if output.kind == "html")
+    assert pdf.publish_status == "failed"
+    assert pdf.error_code == "drive_presigned_put_fallback_too_large"
+    assert html.publish_status == "ready"
+
+
+@pytest.mark.asyncio
 async def test_publish_project_confirm_failure_uses_confirm_code():
     db = AsyncMock()
     db.add = MagicMock()
