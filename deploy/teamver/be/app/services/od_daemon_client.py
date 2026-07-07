@@ -254,38 +254,48 @@ class OdDaemonClient:
         identity: OdDaemonIdentity,
     ) -> None:
         download_url = self._absolute_url(ticket.download_url)
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as download_client:
-            async with download_client.stream(
-                "GET",
-                download_url,
-                headers=self._headers(accept=ticket.mime, identity=identity),
-            ) as download_response:
-                if download_response.status_code >= 400:
-                    logger.warning(
-                        "[od-daemon] export ticket download failed status=%s url=%s",
-                        download_response.status_code,
-                        ticket.download_url,
-                    )
-                    raise BadGatewayError("od_daemon_export_ticket_download_failed")
-                try:
-                    async with httpx.AsyncClient(timeout=self.timeout_seconds) as upload_client:
-                        upload_response = await upload_client.put(
-                            presigned_url,
-                            content=download_response.aiter_bytes(),
-                            headers={
-                                "content-type": content_type,
-                                "content-length": str(ticket.size_bytes),
-                            },
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as download_client:
+                async with download_client.stream(
+                    "GET",
+                    download_url,
+                    headers=self._headers(accept=ticket.mime, identity=identity),
+                ) as download_response:
+                    if download_response.status_code >= 400:
+                        logger.warning(
+                            "[od-daemon] export ticket download failed status=%s url=%s",
+                            download_response.status_code,
+                            ticket.download_url,
                         )
-                except httpx.HTTPError as exc:
-                    logger.warning(
-                        "[drive] presigned PUT stream request failed url=%s",
-                        presigned_url,
-                        exc_info=True,
-                    )
-                    raise OdDaemonPresignedPutError(
-                        message="drive_presigned_put_failed_network",
-                    ) from exc
+                        raise BadGatewayError("od_daemon_export_ticket_download_failed")
+                    try:
+                        async with httpx.AsyncClient(timeout=self.timeout_seconds) as upload_client:
+                            upload_response = await upload_client.put(
+                                presigned_url,
+                                content=download_response.aiter_bytes(),
+                                headers={
+                                    "content-type": content_type,
+                                    "content-length": str(ticket.size_bytes),
+                                },
+                            )
+                    except httpx.HTTPError as exc:
+                        logger.warning(
+                            "[drive] presigned PUT stream request failed url=%s",
+                            presigned_url,
+                            exc_info=True,
+                        )
+                        raise OdDaemonPresignedPutError(
+                            message="drive_presigned_put_failed_network",
+                        ) from exc
+        except BadGatewayError:
+            raise
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "[od-daemon] export ticket download request failed url=%s",
+                ticket.download_url,
+                exc_info=True,
+            )
+            raise BadGatewayError("od_daemon_export_ticket_download_failed") from exc
         if upload_response.status_code >= 400:
             logger.warning(
                 "[drive] presigned PUT stream failed status=%s",

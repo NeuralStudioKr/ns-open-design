@@ -591,7 +591,7 @@ embed/Drive 품질 SSOT가 **headless flatten snapshot**이다. Vite dist·deck 
 | 3 | staging concurrent **4** / prod **6** 로드 테스트 (3~5명 동시 PDF) | **P0** | ⏳ 배포 후 |
 | 4 | export metrics (`queue_wait_ms`, OOM restart) CloudWatch | P0 | ⏳ 배포 후 대시보드 |
 | 5 | Phase 1 export cache (재다운로드·HTML→ZIP·slide-flip) — memo + EBS local | **P1 (오픈 2주 내)** | ✅ §20.1~§20.3 (배포 대기) |
-| 5b | Publish stream (design-api RAM 이중화 제거) — §20.4 | P1 (오픈 직후) | ⏳ Python SDK 계약 확장 후 |
+| 5b | Publish stream (design-api RAM 이중화 제거) — §20.4 | P1 (오픈 직후) | ✅ daemon ticket stream + capped bytes fallback + failure classification |
 | 6 | FE native download (blob 이중 메모리 제거) | P1 | ✅ Phase 0 (ticket + GET) |
 | 7 | `OD_EXPORT_QUEUE_MAX` 초과 시 503 UX | P2 | ✅ Phase 0 (503 + `ExportQueueFullError`) |
 | 8 | async job (30s+ deck) | P2 | ⏳ |
@@ -954,6 +954,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-07 | Publish stream ticket-download network 오류 분류 보강 — daemon download 연결 실패를 `od_daemon_export_ticket_download_failed`로 수렴하고, fallback 불가/초과 시에도 error_code가 `bad_gateway`로 뭉개지지 않게 유지. targeted pytest 27 passed |
 | 2026-07-07 | Publish stream 실패 복구 보강 — presigned PUT transport 예외를 `drive_presigned_put_failed_network`로 분류하고, ticket download 실패도 64MB cap 이내에서는 legacy bytes PUT fallback으로 복구. targeted pytest 25 passed |
 | 2026-07-07 | Publish stream 관측성 보강 — daemon export ticket의 `cache`를 design-api가 파싱하고 publish stream/fallback 성공 로그에 `export_cache`로 남김. fallback too-large는 `drive_presigned_put_fallback_too_large`로 분류, targeted pytest 23 passed |
 | 2026-07-07 | staging 최신 merge 후 Publish stream fallback cap 보강 — bytes fallback fetch를 `response.content` 대신 streaming read + `max_bytes` 중단으로 변경, `PYTHONPATH=. pytest tests/test_publish_service.py tests/test_od_daemon_client.py` 22 passed |

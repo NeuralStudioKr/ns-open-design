@@ -253,6 +253,17 @@ def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
     return "drive_upload_failed"
 
 
+def _stream_put_error_code(exc: BadGatewayError) -> str:
+    status = getattr(exc, "status_code", None)
+    if isinstance(exc, OdDaemonPresignedPutError):
+        return (
+            f"drive_presigned_put_failed_{int(status)}"
+            if status
+            else exc.message
+        )
+    return exc.message
+
+
 async def _drive_presigned_put(
     teamver_client: TeamverAppClient,
     *,
@@ -566,12 +577,7 @@ async def publish_project(
                             settings.teamver_drive_publish_stream_fallback_max_bytes,
                             export_ticket.cache or "unknown",
                         )
-                        status = getattr(exc, "status_code", None)
-                        error_code = (
-                            f"drive_presigned_put_failed_{int(status)}"
-                            if status
-                            else _teamver_upload_error_code(exc)
-                        )
+                        error_code = _stream_put_error_code(exc)
                         raise _PublishUploadFailure(error_code, phase, exc) from exc
                 except DriveUploadError as exc:
                     status = getattr(exc, "status_code", None)

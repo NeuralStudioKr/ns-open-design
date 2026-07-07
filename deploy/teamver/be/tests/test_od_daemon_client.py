@@ -279,6 +279,46 @@ async def test_daemon_client_stream_export_ticket_put_network_error_is_classifie
 
 
 @pytest.mark.asyncio
+async def test_daemon_client_stream_export_ticket_download_network_error_is_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _DownloadResponse:
+        async def __aenter__(self) -> "_DownloadResponse":
+            raise httpx.ConnectError("download failed")
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+    download_client = MagicMock()
+    download_client.stream = MagicMock(return_value=_DownloadResponse())
+    download_client.__aenter__ = AsyncMock(return_value=download_client)
+    download_client.__aexit__ = AsyncMock(return_value=False)
+
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: download_client)
+
+    with pytest.raises(
+        BadGatewayError,
+        match="od_daemon_export_ticket_download_failed",
+    ):
+        await OdDaemonClient(
+            base_url="http://daemon.test",
+            api_token="od-secret-token",
+        ).stream_export_ticket_to_presigned_put(
+            OdExportTicket(
+                download_url="/api/projects/od1/export/downloads/ticket",
+                filename="Deck.pdf",
+                mime="application/pdf",
+                size_bytes=9,
+            ),
+            presigned_url="https://s3.example.com/upload",
+            content_type="application/pdf",
+            identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+        )
+
+    download_client.stream.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_daemon_client_export_bytes_honors_max_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
