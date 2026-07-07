@@ -113,7 +113,7 @@ describe('listPlugins', () => {
 
     await listPlugins();
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=48');
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=24');
     embedSpy.mockRestore();
     brandingSpy.mockRestore();
   });

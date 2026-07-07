@@ -36,7 +36,7 @@ export function DesignTemplatesSection({ cfg, setCfg }: Props) {
     setLoading(true);
     try {
       const list = await fetchDesignTemplates(
-        branding.slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined,
+        branding.slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined,
       );
       setTemplates(list);
     } finally {

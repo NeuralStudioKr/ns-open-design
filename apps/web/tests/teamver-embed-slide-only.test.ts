@@ -113,13 +113,13 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(chatComposer).toContain('isTeamverEmbedDriveImportAllowed');
     expect(chatComposer).toContain('teamverDriveImportAllowed');
     expect(chatComposer).toContain('importTeamverDriveAssets');
-    expect(app).toContain("fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined)");
+    expect(app).toContain("fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined)");
     expect(homeView).toContain('listPluginsPage');
     expect(homeView).toContain('HOME_COMMUNITY_PLUGIN_PAGE_SIZE');
     expect(homeView).toContain('query: communityPluginQuery.trim()');
     expect(homeView).not.toContain('void listPlugins().then((rows) =>');
     expect(designTemplatesSection).toContain('fetchDesignTemplates(');
-    expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined");
+    expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined");
     expect(chatComposer).toContain('embedAttachBlockReason');
     expect(chatComposer).toContain("intent === 'create-slides'");
     expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');

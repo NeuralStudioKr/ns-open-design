@@ -117,7 +117,7 @@ import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImpor
 import type { PetTaskSummary } from './pet/PetOverlay';
 
 const HOME_DRIVE_IMPORT_MAX = 12;
-const HOME_COMMUNITY_PLUGIN_PAGE_SIZE = 48;
+const HOME_COMMUNITY_PLUGIN_PAGE_SIZE = 24;
 
 export interface ActivePlugin {
   record: InstalledPluginRecord;

@@ -58,7 +58,7 @@ describe('HomeView community filter decoupling', () => {
         return new Response(JSON.stringify({
           plugins: PLUGINS,
           total: PLUGINS.length,
-          limit: 48,
+          limit: 24,
           offset: 0,
           nextOffset: null,
         }), {

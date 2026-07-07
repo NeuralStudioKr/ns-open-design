@@ -978,7 +978,7 @@ function resolvePluginsListUrl(options: ListPluginsOptions): string {
   const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
   if (options.mode === 'deck' || slideOnly) params.set('mode', 'deck');
   if (options.query?.trim()) params.set('q', options.query.trim());
-  const limit = options.limit ?? (slideOnly ? 48 : undefined);
+  const limit = options.limit ?? (slideOnly ? 24 : undefined);
   if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
     params.set('limit', String(Math.floor(limit)));
   }
