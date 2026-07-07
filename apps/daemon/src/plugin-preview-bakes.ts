@@ -87,19 +87,56 @@ export function bakedPreviewBlock(id: string, dir: string): BakedPreviewBlock | 
   };
 }
 
+function normalizePreviewId(id: unknown): string | null {
+  if (typeof id !== 'string') return null;
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  const segments = trimmed.split('/').filter(Boolean);
+  return segments[segments.length - 1] ?? trimmed;
+}
+
+function bakedPreviewIdCandidates(rec: {
+  id: string;
+  manifest?: unknown;
+  sourceMarketplaceEntryName?: unknown;
+}): string[] {
+  const candidates = [
+    rec.id,
+    normalizePreviewId(rec.id),
+    (rec.manifest as { name?: unknown } | undefined)?.name,
+    normalizePreviewId((rec.manifest as { name?: unknown } | undefined)?.name),
+    rec.sourceMarketplaceEntryName,
+    normalizePreviewId(rec.sourceMarketplaceEntryName),
+  ];
+  return Array.from(
+    new Set(
+      candidates.filter(
+        (candidate): candidate is string =>
+          typeof candidate === 'string' && candidate.trim().length > 0,
+      ),
+    ),
+  );
+}
+
 // Attach the baked clip under `manifest.od.bakedPreview` (a SEPARATE field —
 // we deliberately do NOT overwrite `od.preview`). The gallery card opts into the
 // baked clip via `inferPluginPreview(record, { preferBaked: true })`, while the
 // detail modal keeps reading the real `od.preview` and renders the live,
 // interactive page. Records are shallow-cloned so registry rows stay pure.
-export function applyBakedPreviews<T extends { id: string; manifest?: unknown }>(
+export function applyBakedPreviews<
+  T extends { id: string; manifest?: unknown; sourceMarketplaceEntryName?: unknown },
+>(
   records: T[],
   dir: string,
 ): T[] {
   const previews = loadManifest(dir);
   if (Object.keys(previews).length === 0) return records;
   return records.map((rec) => {
-    const block = bakedPreviewBlock(rec.id, dir);
+    let block: BakedPreviewBlock | null = null;
+    for (const id of bakedPreviewIdCandidates(rec)) {
+      block = bakedPreviewBlock(id, dir);
+      if (block) break;
+    }
     if (!block) return rec;
     const manifest = { ...((rec.manifest ?? {}) as Record<string, unknown>) };
     const od = { ...((manifest.od ?? {}) as Record<string, unknown>) };
