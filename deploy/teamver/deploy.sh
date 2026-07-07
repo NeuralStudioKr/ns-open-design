@@ -215,6 +215,20 @@ fi
 export DOCKER_CLIENT_TIMEOUT="${DOCKER_CLIENT_TIMEOUT:-300}"
 export COMPOSE_HTTP_TIMEOUT="${COMPOSE_HTTP_TIMEOUT:-300}"
 
+# PLAYWRIGHT_INSTALL_TOKEN cache-busts the deploy/Dockerfile install RUN
+# so /ms-playwright is redownloaded every deploy. Without this, a
+# previously cached-but-corrupt install layer can survive across
+# deploys and re-produce the "headless Chromium unavailable" SIGTRAP
+# path. Fall back to a timestamp when we cannot read a git SHA (e.g.
+# on hosts running from a shallow tarball).
+if [[ -z "${PLAYWRIGHT_INSTALL_TOKEN:-}" ]]; then
+  PLAYWRIGHT_INSTALL_TOKEN="$(
+    git -C "$OD_ROOT" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%dT%H%M%SZ
+  )"
+fi
+export PLAYWRIGHT_INSTALL_TOKEN
+echo "==> PLAYWRIGHT_INSTALL_TOKEN=${PLAYWRIGHT_INSTALL_TOKEN} (cache-bust /ms-playwright)"
+
 if [[ -x "$SCRIPT_DIR/scripts/prepull_docker_base_images.sh" ]]; then
   bash "$SCRIPT_DIR/scripts/prepull_docker_base_images.sh" "$ENV_FILE" || {
     echo "❌ Base image pre-pull failed (Docker Hub/ECR network). 재시도 또는 .env 에 NODE_BASE_IMAGE/PYTHON_BASE_IMAGE 확인." >&2

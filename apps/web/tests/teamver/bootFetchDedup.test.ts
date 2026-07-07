@@ -14,11 +14,17 @@ vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
   buildTeamverDaemonRequestHeaders: vi.fn(async () => ({})),
 }));
 
+vi.mock('../../src/teamver/activeTeamverWorkspace', () => ({
+  readActiveTeamverWorkspaceId: vi.fn(async () => 'ws-1'),
+}));
+
 vi.mock('../../src/teamver/projectRegistry', () => ({
+  TeamverProjectRegistryError: class TeamverProjectRegistryError extends Error {},
   filterProjectsByTeamverRegistryIfNeeded: vi.fn(async (projects: unknown[]) => projects),
 }));
 
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
+import { readActiveTeamverWorkspaceId } from '../../src/teamver/activeTeamverWorkspace';
 import { resetDaemonAppVersionCacheForTests, fetchDaemonAppVersion } from '../../src/teamver/daemonAppVersion';
 import {
   listRecentProjects,
@@ -48,6 +54,7 @@ describe('boot fetch dedup', () => {
     resetDaemonAppVersionCacheForTests();
     resetFetchLiveArtifactsInflightForTests();
     vi.stubGlobal('fetch', vi.fn());
+    vi.mocked(readActiveTeamverWorkspaceId).mockResolvedValue('ws-1');
   });
 
   afterEach(() => {
@@ -64,7 +71,9 @@ describe('boot fetch dedup', () => {
 
     const first = listRecentProjects(6);
     const second = listRecentProjects(6);
-    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    });
 
     resolveFetch(
       new Response(JSON.stringify({ projects: [] }), {
@@ -73,6 +82,24 @@ describe('boot fetch dedup', () => {
       }),
     );
     await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
+  });
+
+  it('does not coalesce listRecentProjects across active workspaces', async () => {
+    vi.mocked(readActiveTeamverWorkspaceId)
+      .mockResolvedValueOnce('ws-1')
+      .mockResolvedValueOnce('ws-2');
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(JSON.stringify({ projects: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const first = listRecentProjects(6);
+    const second = listRecentProjects(6);
+    await Promise.all([first, second]);
+
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(2);
   });
 
   it('coalesces concurrent listProjectRuns calls', async () => {
@@ -119,7 +146,7 @@ describe('boot fetch dedup', () => {
   });
 
   it('coalesces concurrent fetchDaemonAppVersion calls', async () => {
-    vi.mocked(fetch).mockResolvedValue(
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(JSON.stringify({ version: { version: '1.2.3' } }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -129,7 +156,8 @@ describe('boot fetch dedup', () => {
     const first = fetchDaemonAppVersion();
     const second = fetchDaemonAppVersion();
     await Promise.all([first, second]);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/version', { cache: 'no-store' });
   });
 
   it('coalesces concurrent fetchLiveArtifacts calls for the same project', async () => {

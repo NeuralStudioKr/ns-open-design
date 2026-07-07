@@ -1,5 +1,9 @@
 import { NetworkError } from "@teamver/app-sdk";
-import { getDesignBffClient, withDesignBffCookieAuthRecovery } from "./designBffClient";
+import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 
 export type TeamverUsageEvent = {
   workspaceId: string;
@@ -87,7 +91,7 @@ async function postUsageEvent(
     },
     {
       workspaceId: event.workspaceId,
-      skipAuthHeader: true,
+      ...TEAMVER_BFF_REQUEST_OPTIONS,
     },
   );
   return typeof response?.requestId === "string" && response.requestId ? response.requestId : null;

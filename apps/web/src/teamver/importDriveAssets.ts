@@ -1,6 +1,6 @@
 import type { ChatAttachment } from "@open-design/contracts";
 import type { Dict } from "../i18n/types";
-import { getDesignBffClient } from "./designBffClient";
+import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
@@ -130,7 +130,7 @@ export async function importTeamverDriveAssets(
     { assets },
     {
       workspaceId,
-      skipAuthHeader: true,
+      ...TEAMVER_BFF_REQUEST_OPTIONS,
     },
   );
   const result = normalizeDriveImportResponse(response, projectId);

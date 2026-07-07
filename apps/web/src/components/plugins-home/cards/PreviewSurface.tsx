@@ -21,9 +21,17 @@ interface Props {
   preview: PluginPreviewSpec;
   // Gallery layout renders the HTML iframe eagerly (no hover gate).
   eager?: boolean;
+  // Composer hover panels are portaled + fixed; skip lazy visibility gates.
+  instantMount?: boolean;
 }
 
-export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }: Props) {
+export function PreviewSurface({
+  pluginId,
+  pluginTitle,
+  preview,
+  eager = false,
+  instantMount = false,
+}: Props) {
   const usesBakedClipKeepalive =
     preview.kind === 'media' && preview.mediaType === 'video' && preview.loopHoldMs != null;
   // Visibility zones:
@@ -39,21 +47,24 @@ export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }
   //    kept-mounted off-screen clips stay paused on their poster instead of all
   //    running simultaneous decodes.
   const { ref: nearRef, inView } = useInView<HTMLDivElement>({
-    rootMargin: eager ? '480px' : '120px',
-    once: false,
+    rootMargin: instantMount ? '0px' : eager ? '480px' : '120px',
+    once: instantMount,
   });
   const { ref: mediaRef, inView: mediaReady } = useInView<HTMLDivElement>({
-    rootMargin: eager ? '720px' : '360px',
-    once: false,
+    rootMargin: instantMount ? '0px' : eager ? '720px' : '360px',
+    once: instantMount,
   });
   const { ref: keepRef, inView: keep } = useInView<HTMLDivElement>({
-    rootMargin: eager ? '1800px' : '1500px',
-    once: false,
+    rootMargin: instantMount ? '0px' : eager ? '1800px' : '1500px',
+    once: instantMount,
   });
   const { ref: visibleRef, inView: visible } = useInView<HTMLDivElement>({
     rootMargin: '0px',
-    once: false,
+    once: instantMount,
   });
+  const htmlInView = instantMount || inView;
+  const mediaInView = instantMount || (usesBakedClipKeepalive ? keep : mediaReady);
+  const mediaVisible = instantMount || visible;
   // The prefetch zone (warm the full clip a row ahead) lives inside MediaSurface
   // so only baked-clip cards pay for that observer — html/design/text/plain-video
   // tiles can never upgrade `preload`, so they must not rerender on its threshold.
@@ -77,19 +88,21 @@ export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }
         <MediaSurface
           preview={preview}
           pluginTitle={pluginTitle}
-          inView={usesBakedClipKeepalive ? keep : mediaReady}
-          visible={visible}
+          inView={mediaInView}
+          visible={mediaVisible}
+          instantMount={instantMount}
         />
       ) : preview.kind === 'html' ? (
         <HtmlSurface
           preview={preview}
           pluginId={pluginId}
           pluginTitle={pluginTitle}
-          inView={inView}
+          inView={htmlInView}
           eager={eager}
+          instantMount={instantMount}
         />
       ) : preview.kind === 'design' ? (
-        <DesignSystemSurface preview={preview} inView={inView} />
+        <DesignSystemSurface preview={preview} inView={htmlInView} />
       ) : (
         <TextSurface pluginTitle={pluginTitle} />
       )}

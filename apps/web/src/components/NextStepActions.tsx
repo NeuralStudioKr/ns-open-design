@@ -22,6 +22,11 @@ import {
 import type { SkillSummary } from '../types';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import {
+  shouldHideTeamverToolboxSkill,
+  teamverToolboxSkillDescription,
+  teamverToolboxSkillTitle,
+} from '../teamver/branding/toolboxCatalogDisplay';
+import {
   visibleDesignToolboxActionIds,
   visibleDesignToolboxActions,
 } from '../teamver/branding/slideOnlyMvpPolicy';
@@ -103,7 +108,7 @@ export function NextStepActions({
   shareToOpenDesignBusy = false,
 }: Props) {
   const { t, locale } = useI18n();
-  const { slideOnlyMvp } = useTeamverBranding();
+  const { enabled: teamverBranded, slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const exposedRef = useRef(false);
   useEffect(() => {
@@ -270,16 +275,19 @@ export function NextStepActions({
   );
 
   const visibleToolboxResources = useMemo(() => {
+    const brandedSkills = teamverBranded
+      ? skills.filter((skill) => !shouldHideTeamverToolboxSkill(skill, locale))
+      : skills;
     const source = toolboxQuery
-      ? skills.filter((skill) =>
+      ? brandedSkills.filter((skill) =>
           skillMatchesQuery(skill, toolboxQuery, [
-            localizeSkillName(locale, skill),
-            localizeSkillDescription(locale, skill),
+            teamverBranded ? teamverToolboxSkillTitle(locale, skill) : localizeSkillName(locale, skill),
+            teamverBranded ? teamverToolboxSkillDescription(locale, skill) : localizeSkillDescription(locale, skill),
           ]),
         )
-      : defaultToolboxSkillResources(nonFeaturedToolboxActions, skills);
+      : defaultToolboxSkillResources(nonFeaturedToolboxActions, brandedSkills);
     return source.slice(0, toolboxQuery ? 14 : 8);
-  }, [nonFeaturedToolboxActions, skills, toolboxQuery, locale]);
+  }, [nonFeaturedToolboxActions, skills, toolboxQuery, locale, teamverBranded]);
 
   // Share group is available whenever any of its three actions can fire.
   const canShare = !!(fileName && onShare);

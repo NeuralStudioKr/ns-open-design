@@ -583,6 +583,8 @@ interface Props {
   composerFooterAccessory?: ReactNode;
   // Slot rendered next to the composer's "+" menu (e.g. the working-dir pill).
   composerLeadingAccessory?: ReactNode;
+  // Inline status row below the project header (e.g. background-run recovery).
+  chatInsetBanner?: ReactNode;
   // Forwarded straight to the chat composer's mid-chat design-system
   // switcher. ProjectView owns the project record so the parent is the
   // natural place to mirror the patched project after a PATCH lands.
@@ -736,6 +738,7 @@ export function ChatPane({
   onChangeByokSpeechVoice,
   composerLeadingAccessory,
   composerFooterAccessory,
+  chatInsetBanner,
   currentDesignSystemId,
   onActiveDesignSystemChange,
   onShowToast,
@@ -1816,6 +1819,11 @@ export function ChatPane({
           ) : null}
         </div>
       </div>
+      {chatInsetBanner ? (
+        <div className="chat-inset-banner" data-testid="chat-inset-banner">
+          {chatInsetBanner}
+        </div>
+      ) : null}
       {tab === 'chat' ? (
         <>
           <div className="chat-log-wrap">

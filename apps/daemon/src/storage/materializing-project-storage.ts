@@ -10,9 +10,8 @@ import {
   type ProjectStorage,
   type ProjectStorageProbeResult,
 } from './project-storage.js';
-import { fetchEc2InstanceRoleCredentials } from './aws-imds-credentials.js';
+import { createS3CredentialProvider } from './s3-credential-provider.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
-import type { SigV4Credentials } from './aws-sigv4.js';
 
 const DEFAULT_SYNC_UP_ATTEMPTS = 3;
 const DEFAULT_SYNC_UP_RETRY_MS = 250;
@@ -227,31 +226,20 @@ export async function resolveRemoteProjectStorage(opts: {
   const kind = (env.OD_PROJECT_STORAGE ?? 'local').trim().toLowerCase();
   if (kind !== 's3') return null;
 
-  let accessKeyId = env.OD_S3_ACCESS_KEY_ID ?? env.AWS_ACCESS_KEY_ID ?? '';
-  let secretAccessKey = env.OD_S3_SECRET_ACCESS_KEY ?? env.AWS_SECRET_ACCESS_KEY ?? '';
-  let sessionToken = env.OD_S3_SESSION_TOKEN ?? env.AWS_SESSION_TOKEN;
-
-  if (!accessKeyId.trim() || !secretAccessKey.trim()) {
-    const imds = await fetchEc2InstanceRoleCredentials();
-    if (imds) {
-      accessKeyId = imds.accessKeyId;
-      secretAccessKey = imds.secretAccessKey;
-      sessionToken = imds.sessionToken ?? sessionToken;
-    }
-  }
-
-  const credentials: SigV4Credentials = {
-    accessKeyId: accessKeyId.trim(),
-    secretAccessKey: secretAccessKey.trim(),
-  };
-  if (sessionToken?.trim()) credentials.sessionToken = sessionToken.trim();
+  const credentialProvider = createS3CredentialProvider({
+    env,
+    ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
+  });
+  // Warm IMDS once at startup so misconfiguration fails fast; provider
+  // refreshes before Expiration on subsequent signed requests.
+  await credentialProvider.getCredentials();
 
   return new S3ProjectStorage({
     bucket: env.OD_S3_BUCKET ?? '',
     region: env.OD_S3_REGION ?? env.AWS_REGION ?? '',
     ...(env.OD_S3_PREFIX ? { prefix: env.OD_S3_PREFIX } : {}),
     ...(env.OD_S3_ENDPOINT ? { endpoint: env.OD_S3_ENDPOINT } : {}),
-    credentials,
+    credentialProvider,
     ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}),
   });
 }

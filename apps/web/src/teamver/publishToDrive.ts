@@ -1,5 +1,5 @@
 import { NetworkError } from "@teamver/app-sdk";
-import { getDesignBffClient } from "./designBffClient";
+import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
 import { readTeamverViteEnv } from "./teamverViteEnv";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
@@ -221,7 +221,7 @@ export async function publishTeamverDesignToDrive(
       body,
       {
         workspaceId: workspaceId,
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
 

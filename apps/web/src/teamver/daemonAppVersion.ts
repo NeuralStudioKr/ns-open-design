@@ -1,3 +1,5 @@
+import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
+
 type AppVersionResponse = {
   version?: { version?: unknown } | null;
 };
@@ -22,7 +24,7 @@ export async function fetchDaemonAppVersion(options?: {
 
   const run = (async (): Promise<string | null> => {
     try {
-      const resp = await fetch("/api/version", { cache: "no-store" });
+      const resp = await fetchTeamverDaemon("/api/version", { cache: "no-store" });
       if (!resp.ok) return null;
       const json = (await resp.json()) as AppVersionResponse;
       const next = parseVersionBody(json);
@@ -42,7 +44,7 @@ export async function fetchDaemonAppVersion(options?: {
 /** Poll path — always hits network so deploy auto-reload can detect drift. */
 export async function fetchDaemonAppVersionForPoll(): Promise<string | null> {
   try {
-    const resp = await fetch("/api/version", { cache: "no-store" });
+    const resp = await fetchTeamverDaemon("/api/version", { cache: "no-store" });
     if (!resp.ok) return null;
     const json = (await resp.json()) as AppVersionResponse;
     return parseVersionBody(json);

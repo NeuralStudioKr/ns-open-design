@@ -21,3 +21,24 @@ body {
   font: 500 13px/1.4 var(--sans);
 }
 
+.od-loading-shell--overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+}
+
+.embed-bootstrap-gate__stage {
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.embed-route-loading {
+  flex: 1;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+

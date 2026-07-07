@@ -252,7 +252,25 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+.recent-projects__card--skeleton {
+  pointer-events: none;
+  min-height: 168px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-panel) 88%, transparent) 0%,
+    color-mix(in srgb, var(--bg-subtle) 92%, transparent) 50%,
+    color-mix(in srgb, var(--bg-panel) 88%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: recent-projects-shimmer 1.4s ease-in-out infinite;
+  border: 1px solid var(--border);
+}
+
+
 @keyframes recent-projects-shimmer {
+  from {
+    background-position: 200% 0, 0 0;
+  }
   to {
     background-position: -200% 0, 0 0;
   }

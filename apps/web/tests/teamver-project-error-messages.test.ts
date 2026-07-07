@@ -58,7 +58,41 @@ describe("project conversation error messages", () => {
     expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
       "저장을 거부",
     );
-    expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장하지 못했습니다");
+    expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
+    // Generic fallback must never leak developer / infra jargon to end users.
+    const generic = formatProjectArtifactSaveFailedError("deck.html");
+    expect(generic).not.toContain("daemon");
+    expect(generic).not.toContain("로그를 확인");
+    // Access-denied path (design-api /access → 403 / project ownership /
+    // teamver_project_s3_prefix_required marker) must translate into an
+    // actionable permission message, not the generic retry banner.
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", { status: 403 }),
+    ).toContain("접근 권한이 없어");
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", {
+        code: "teamver_project_s3_prefix_required",
+      }),
+    ).toContain("접근 권한이 없어");
+    // Not-found path (404 / PROJECT_NOT_FOUND) tells the user to refresh
+    // rather than blaming permissions.
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", { status: 404 }),
+    ).toContain("찾을 수 없어");
+    // Unauthorized (401) → re-auth prompt.
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", { status: 401 }),
+    ).toContain("세션이 만료");
+    // Upstream 5xx → transient retry-friendly copy.
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", { status: 503 }),
+    ).toContain("일시적으로 불안정");
+    // Bare fetch/network failure (no status) → network guidance.
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", {
+        message: "Network error while saving the file",
+      }),
+    ).toContain("네트워크");
     expect(formatProjectArtifactStubWarning("deck.html", "stub")).toContain("플레이스홀더");
     expect(
       extractProjectRunErrorCode(new Error("proxy 502: PROJECT_STORAGE_UNAVAILABLE sync-down failed")),

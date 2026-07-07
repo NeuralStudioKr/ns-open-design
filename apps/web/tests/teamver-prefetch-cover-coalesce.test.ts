@@ -4,7 +4,9 @@ const fetchCoverHintsMock = vi.fn(async () => ({ ok: false }));
 const fetchProjectFilesMock = vi.fn(async () => []);
 const prefetchLatestPublishSummariesMock = vi.fn();
 
-vi.stubGlobal("fetch", (...args: unknown[]) => fetchCoverHintsMock(...args));
+vi.mock("../src/teamver/teamverDaemonHeaders", () => ({
+  fetchTeamverDaemon: (...args: unknown[]) => fetchCoverHintsMock(...args),
+}));
 
 vi.mock("../src/providers/registry", () => ({
   fetchProjectFiles: (...args: unknown[]) => fetchProjectFilesMock(...args),
@@ -53,7 +55,7 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     resetProjectCoverLoaderStateForTests();
   });
 
-  it("warmEmbed-style parallel viewport + home prefetch hits cover-hints once", async () => {
+  it("warmEmbed-style parallel viewport + home prefetch coalesces cover-hints before home fallback", async () => {
     const projects = Array.from({ length: 8 }, (_, index) =>
       project(`p${index}`, 100 - index),
     );
@@ -65,17 +67,55 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     expect(prefetchLatestPublishSummariesMock).toHaveBeenCalledTimes(1);
-    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
   });
 
-  it("home recent prefetch uses cover-hints only and skips /files listing", async () => {
+  it("home recent prefetch falls back to bounded /files listing when cover-hints are empty", async () => {
     const projects = Array.from({ length: 6 }, (_, index) =>
       project(`home-${index}`, 100 - index),
     );
+    fetchProjectFilesMock.mockImplementation(async (projectId: string) => [
+      {
+        name: `${projectId}.html`,
+        kind: "html",
+        mtime: 1,
+        size: 1,
+        mime: "text/html",
+      },
+    ]);
 
-    await prefetchHomeProjectCovers(projects);
+    const covers = await prefetchHomeProjectCovers(projects);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
+    expect(covers["home-0"]).toEqual({ kind: "html", name: "home-0.html" });
+  });
+
+  it("home recent prefetch still skips /files listing when cover-hints resolve covers", async () => {
+    const projects = Array.from({ length: 6 }, (_, index) =>
+      project(`hinted-${index}`, 100 - index),
+    );
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        hints: projects.map((item) => ({
+          projectId: item.id,
+          entryFile: `${item.id}.html`,
+          coverKind: "html",
+          coverPath: `${item.id}.html`,
+          coverVersion: 100,
+        })),
+      }),
+    });
+
+    const covers = await prefetchHomeProjectCovers(projects);
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+    expect(covers["hinted-0"]).toEqual({
+      kind: "html",
+      name: "hinted-0.html",
+      version: 100,
+    });
   });
 });

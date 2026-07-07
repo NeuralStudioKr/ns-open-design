@@ -76,13 +76,12 @@ describe('TeamverSessionBanner', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('shows a loading state while the session is resolving', () => {
+  it('hides the session banner while the bootstrap shell is still resolving', () => {
     embedState.loading = true;
-    renderBanner();
+    const { container } = renderBanner();
 
-    const bar = screen.getByTestId('teamver-embed-bar');
-    expect(bar.getAttribute('data-state')).toBe('loading');
-    expect(screen.getByText('Teamver 세션 확인 중…')).toBeTruthy();
+    expect(screen.queryByTestId('teamver-embed-bar')).toBeNull();
+    expect(container.firstChild).toBeNull();
   });
 
   it('shows a sign-in link when unauthenticated', () => {

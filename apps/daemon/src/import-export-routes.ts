@@ -15,6 +15,8 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
+  buildDeckScreenExportCss,
+  isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessImage,
   renderHeadlessPdf,
@@ -45,6 +47,49 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
     'Content-Disposition',
     `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
   );
+}
+
+/**
+ * Accept the "cache bypass" toggle from either a query string (`?fresh=1`)
+ * or a body flag (`{"fresh":true}`). Templates that ship a new render
+ * pipeline (e.g. Guizang WebGL rasterize fix) can otherwise be pinned to
+ * a bad cached artifact until the cache-version env bump reaches prod.
+ */
+/**
+ * Extract the FE-provided artifact HTML from an export request body.
+ *
+ * When the FE ships its current in-memory HTML snapshot alongside the export
+ * request, the daemon renders it directly and skips reading from local
+ * scratch (see `buildDesktopPdfExportInput`). This makes PDF/HTML/ZIP/image
+ * exports resilient to `teamver_project_s3_prefix_required` — a transient
+ * `design-api /access` failure or an evicted-scratch state no longer blocks
+ * the download. The middleware also uses this signal to unconditionally
+ * soft-continue on `/export/*` and `/archive*` routes.
+ */
+export function readInlineHtmlFromBody(
+  body: Record<string, unknown> | undefined | null,
+): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = (body as Record<string, unknown>)['html'];
+  if (typeof raw !== 'string') return null;
+  return raw.trim().length > 0 ? raw : null;
+}
+
+function wantsFreshExport(req: {
+  query?: Record<string, unknown>;
+  body?: Record<string, unknown> | undefined;
+}): boolean {
+  const qs = req.query;
+  if (qs && typeof qs === 'object') {
+    const raw = qs['fresh'];
+    if (raw === '1' || raw === 'true' || raw === true) return true;
+  }
+  const body = req.body;
+  if (body && typeof body === 'object') {
+    const raw = (body as Record<string, unknown>)['fresh'];
+    if (raw === true || raw === '1' || raw === 'true') return true;
+  }
+  return false;
 }
 
 async function respondExportPayload(
@@ -150,9 +195,51 @@ function handleExportRouteError(
     sendApiError(res, 404, 'FILE_NOT_FOUND', reason);
     return;
   }
+  // Distinct code for the "no working Chromium binary" case lets the FE
+  // trigger the browser-print fallback without regex-sniffing the
+  // message. Also collapse the Playwright call log to a compact reason
+  // so the toast/HUD is readable.
+  if (isHeadlessChromiumUnavailableExportError(err)) {
+    console.warn(`[${routeLabel}] chromium unavailable`, { projectId, reason });
+    sendApiError(
+      res,
+      503,
+      'HEADLESS_CHROMIUM_UNAVAILABLE',
+      'headless Chromium unavailable — falling back to browser print',
+    );
+    return;
+  }
   console.warn(`[${routeLabel}] failed`, { projectId, reason });
   sendApiError(res, 500, 'EXPORT_FAILED', reason);
 }
+
+function injectExportSnippetIntoHead(html: string, snippet: string): string {
+  if (!snippet) return html;
+  if (/<\/head\s*>/i.test(html)) {
+    return html.replace(/<\/head\s*>/i, `${snippet}</head>`);
+  }
+  if (/<html(?:\s[^>]*)?>/i.test(html)) {
+    return html.replace(/<html(?:\s[^>]*)?>/i, (match) => `${match}<head>${snippet}</head>`);
+  }
+  return `${snippet}${html}`;
+}
+
+export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
+  if (input.deck !== true) return input.html;
+  const style = `<style data-teamver-static-html-export-fallback>
+html, body {
+  margin: 0 !important;
+  scrollbar-width: none !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+${buildDeckScreenExportCss()}
+</style>`;
+  return injectExportSnippetIntoHead(input.html, style);
+}
+
+export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
   const { db } = ctx;
@@ -706,6 +793,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -713,6 +801,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       if (typeof desktopPdfExporter === 'function') {
         const result = await desktopPdfExporter(built.input);
@@ -741,6 +830,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             mime: 'application/pdf',
           };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
@@ -762,6 +852,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             ? 'webp'
             : 'png';
       const cacheFormat: 'png' | 'jpeg' | 'webp' = imageFormat;
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -769,6 +860,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       const extension =
         imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
@@ -800,6 +892,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
           return { body: image, filename: `${base}.${extension}`, mime };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
@@ -814,6 +907,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -821,6 +915,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
@@ -835,16 +930,27 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           mime: 'text/html; charset=utf-8',
         }),
         async () => {
-          const html = await renderHeadlessHtmlSnapshot(
-            { input: built.input },
-            { projectId: req.params.id },
-          );
+          let html: string;
+          try {
+            html = await renderHeadlessHtmlSnapshot(
+              { input: built.input },
+              { projectId: req.params.id },
+            );
+          } catch (err) {
+            if (!isHeadlessChromiumUnavailableExportError(err)) throw err;
+            console.warn('[export/html] headless Chromium unavailable; serving static HTML fallback', {
+              projectId: req.params.id,
+              fileName,
+            });
+            html = buildStaticHtmlExportFallback(built.input);
+          }
           return {
             body: html,
             filename: `${base}.html`,
             mime: 'text/html; charset=utf-8',
           };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {
@@ -859,6 +965,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
       const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
       const built = await buildDesktopPdfExportInput({
         daemonUrl: daemonUrlRef.current,
         deck: deck === true,
@@ -866,6 +973,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectId: req.params.id,
         projectsRoot: PROJECTS_DIR,
         title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
       });
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
@@ -880,10 +988,20 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           mime: 'application/zip',
         }),
         async () => {
-          const html = await renderHeadlessHtmlSnapshot(
-            { input: built.input },
-            { projectId: req.params.id, format: 'zip' },
-          );
+          let html: string;
+          try {
+            html = await renderHeadlessHtmlSnapshot(
+              { input: built.input },
+              { projectId: req.params.id, format: 'zip' },
+            );
+          } catch (err) {
+            if (!isHeadlessChromiumUnavailableExportError(err)) throw err;
+            console.warn('[export/zip] headless Chromium unavailable; packaging static HTML fallback', {
+              projectId: req.params.id,
+              fileName,
+            });
+            html = buildStaticHtmlExportFallback(built.input);
+          }
           const zip = new JSZip();
           zip.file('index.html', html, { date: new Date(0), binary: false });
           const buffer = await zip.generateAsync({
@@ -893,6 +1011,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           });
           return { body: buffer, filename: `${base}.zip`, mime: 'application/zip' };
         },
+        { fresh: wantsFreshExport(req) },
       );
       await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
     } catch (err: unknown) {

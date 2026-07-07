@@ -19,14 +19,15 @@ function setLocation(host: string) {
   });
 }
 
-describe("getDesignBffClient refresh wiring", () => {
+describe("getDesignBffClient auth recovery wiring", () => {
   beforeEach(() => {
     ctorMock.mockClear();
+    vi.unstubAllGlobals();
     vi.resetModules();
     setLocation("stg-design-api.teamver.com");
   });
 
-  it("passes design-api refreshUrl when cross-origin base is set", async () => {
+  it("uses a Design fetch wrapper so SDK auth recovery cannot post refresh on 401", async () => {
     const { getDesignBffClient } = await import("../src/teamver/designBffClient");
     getDesignBffClient();
     expect(ctorMock).toHaveBeenCalledWith(
@@ -35,11 +36,27 @@ describe("getDesignBffClient refresh wiring", () => {
         refreshUrl: "https://stg-design-api.teamver.com/api/v1/auth/refresh",
         appKey: "design",
         withCredentials: true,
+        fetch: expect.any(Function),
       }),
     );
+
+    const config = ctorMock.mock.calls[0]?.[0] as { fetch?: typeof fetch };
+    const upstreamFetch = vi.fn<typeof fetch>(async () => new Response("ok"));
+    vi.stubGlobal("fetch", upstreamFetch);
+
+    const blocked = await config.fetch?.("https://stg-design-api.teamver.com/api/v1/auth/refresh", {
+      method: "POST",
+    });
+    expect(blocked?.status).toBe(401);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+
+    await config.fetch?.("https://stg-design-api.teamver.com/api/v1/projects", {
+      method: "GET",
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("passes same-origin BFF refreshUrl when design API base is empty", async () => {
+  it("keeps same-origin BFF refresh configured only for explicit Design refresh calls", async () => {
     setLocation("stg-design.teamver.com");
     vi.resetModules();
     const { getDesignBffClient } = await import("../src/teamver/designBffClient");
@@ -48,6 +65,7 @@ describe("getDesignBffClient refresh wiring", () => {
       expect.objectContaining({
         apiBaseUrl: "/teamver-bff",
         refreshUrl: "/teamver-bff/auth/refresh",
+        fetch: expect.any(Function),
       }),
     );
   });

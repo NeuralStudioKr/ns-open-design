@@ -137,6 +137,21 @@ VITE_MESSAGE_PERSIST_THROTTLE_MS=5000   # 부하 ↑ → 10000 · reload UX ↑ 
 
 **5초 선택 근거:** staging multi-tenant daemon 부하와 SaaS reload UX 균형. terminal·pagehide는 즉시 PUT.
 
+### 6.4 pagehide keepalive 64 KiB cap (2026-07-03)
+
+브라우저는 `fetch({ keepalive: true })` **요청 본문 합계를 ~64 KiB**로 제한한다. 긴 assistant 답변(events·producedFiles 포함)은 pagehide checkpoint PUT이 **조용히 drop**될 수 있었다.
+
+| 단계 | 동작 |
+|------|------|
+| 1 | JSON 직렬화 크기 > **56 KiB** (여유 cap) 이면 `events`/`producedFiles`/`toolInput`/`renderedHtml` 제거한 essentials projection 재시도 |
+| 2 | essentials도 cap 초과 → keepalive PUT **skip** + `console.warn` |
+| 3 | non-ok 응답·throw → `console.warn` (다음 정상 세션 refresh PUT이 authoritative) |
+
+**코드:** `apps/web/src/state/projects.ts` (`KEEPALIVE_PAYLOAD_MAX_BYTES`, `projectKeepaliveEssentials`).  
+**테스트:** `apps/web/tests/save-message-keepalive-guard.test.ts`.
+
+> **Note:** 계획상 `sendBeacon` 분할 폴백은 미구현 — essentials strip + warn/skip으로 P1 목표(무음 실패 제거) 충족. 분할 beacon은 후속.
+
 ### 6.3 env 튜닝 예
 
 ```bash

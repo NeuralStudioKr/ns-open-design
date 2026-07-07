@@ -186,11 +186,65 @@ describe('static resource mutation routes', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       designTemplates: Array<{ id: string; mode: string; body?: string; dir?: string; hasBody?: boolean }>;
+      total: number;
+      nextOffset: number | null;
     };
     expect(body.designTemplates.map((template) => template.id)).toEqual(['deck-template']);
+    expect(body.total).toBe(1);
+    expect(body.nextOffset).toBeNull();
     expect(body.designTemplates[0]).toMatchObject({ mode: 'deck', hasBody: true });
     expect(body.designTemplates[0].body).toBeUndefined();
     expect(body.designTemplates[0].dir).toBeUndefined();
+  });
+
+  it('searches and paginates design templates on the server', async () => {
+    designTemplatesCatalog = [
+      {
+        id: 'deck-alpha',
+        name: 'Alpha Deck',
+        description: 'Cyber terminal deck',
+        mode: 'deck',
+        category: 'deck',
+        source: 'built-in',
+      },
+      {
+        id: 'deck-beta',
+        name: 'Beta Deck',
+        description: 'Cyber report deck',
+        mode: 'deck',
+        category: 'deck',
+        source: 'built-in',
+      },
+      {
+        id: 'deck-gamma',
+        name: 'Gamma Deck',
+        description: 'Cyber metrics deck',
+        mode: 'deck',
+        category: 'deck',
+        source: 'built-in',
+      },
+      {
+        id: 'video-cyber',
+        name: 'Cyber Video',
+        description: 'Not a deck',
+        mode: 'video',
+        category: 'video-generation',
+        source: 'built-in',
+      },
+    ];
+
+    const res = await fetch(`${baseUrl}/api/design-templates?mode=deck&q=cyber&limit=2&offset=1`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      designTemplates: Array<{ id: string }>;
+      total: number;
+      limit: number;
+      offset: number;
+      nextOffset: number | null;
+    };
+    expect(body.designTemplates.map((template) => template.id)).toEqual(['deck-beta', 'deck-gamma']);
+    expect(body).toMatchObject({ total: 3, limit: 2, offset: 1, nextOffset: null });
   });
 });
 

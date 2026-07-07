@@ -28,8 +28,9 @@
  * - Visible cookie newly appeared (cross-tab login on Main FE)
  * - bfcache pageshow restore
  *
- * ## Recovery must NOT run on routine tab focus (loop 381 — deleted-account 400 spam)
+ * ## Recovery must NOT force session probes on routine tab focus (loop 381)
  *
+ * Routine visibility/focus uses cache-friendly `force: false` + `silent: true`.
  * HttpOnly-only sessions never show document.cookie hints; do not rely on cookie hint alone
  * for sign-in return detection.
  */
@@ -63,12 +64,39 @@ export function shouldResetEmbedRefreshDeclineOnFocus(
   );
 }
 
+export type EmbedFocusSessionRefreshOptions = FetchDesignAuthSessionOptions & {
+  /** Routine focus refresh — keep UI stable on transient BFF blips. */
+  silent?: boolean;
+};
+
 /** useTeamverEmbed scheduled refresh — pass resetRefreshState only on auth-return once. */
 export function resolveEmbedFocusSessionOptions(
   signals: EmbedFocusRecoverySignals,
-): FetchDesignAuthSessionOptions {
-  return {
-    force: true,
-    resetRefreshState: signals.authReturnNavigation,
-  };
+): EmbedFocusSessionRefreshOptions {
+  if (signals.authReturnNavigation) {
+    return { force: true, resetRefreshState: true, silent: false };
+  }
+  if (signals.cookieHintAppeared || signals.pageshowPersisted) {
+    return { force: true, resetRefreshState: false, silent: true };
+  }
+  return { force: false, resetRefreshState: false, silent: true };
+}
+
+/**
+ * Focus/idle refresh can briefly read `authenticated: false` while HttpOnly
+ * cookies and the persisted workspace are still valid. Wiping embed session
+ * state in that window clears the workspace store, registry caches, and the
+ * project list — the root cause of idle "access denied" / empty-list glips.
+ *
+ * Definitive logout: cold boot, explicit auth recovery (`resetRefreshState`),
+ * or no prior session and no cookie hint.
+ */
+export function shouldClearEmbedSessionOnUnauthenticated(input: {
+  resetRefreshState: boolean;
+  hadPriorAuthenticatedUi: boolean;
+  cookieHint: boolean;
+}): boolean {
+  if (input.resetRefreshState) return true;
+  if (input.hadPriorAuthenticatedUi || input.cookieHint) return false;
+  return true;
 }

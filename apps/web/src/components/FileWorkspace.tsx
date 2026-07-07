@@ -432,6 +432,7 @@ export function FileWorkspace({
   onActiveContextChange,
   onWorkspaceContextsChange,
   messages = [],
+  artifactHtml = null,
   conversationId,
   headerActions,
   questionForm = null,
@@ -2371,6 +2372,7 @@ export function FileWorkspace({
               previewFile.name,
               slideNavDeliverableNonce,
             )}
+            liveHtml={streaming && artifactHtml ? artifactHtml : undefined}
           />
         ) : pendingPreviewTab ? (
           <div className="viewer-empty">

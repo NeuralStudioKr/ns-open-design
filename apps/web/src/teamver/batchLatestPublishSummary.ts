@@ -1,5 +1,5 @@
 import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
-import { getDesignBffClient } from "./designBffClient";
+import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from "./designApiBase";
 import type { TeamverLatestPublishSummary } from "./latestPublishSummary";
 import { PUBLISH_CHIP_BATCH_MAX } from "./publishChipLimits";
@@ -58,7 +58,7 @@ export async function batchFetchLatestPublishSummaries(
       { odProjectIds: ids },
       {
         workspaceId,
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
 

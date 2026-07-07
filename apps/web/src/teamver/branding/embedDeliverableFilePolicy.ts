@@ -38,7 +38,8 @@ export function shouldMinimizeEmbedLiveToolCode(
 ): boolean {
   if (!branding.slideOnlyMvp) return false;
   const trimmed = filePath.trim();
-  if (!trimmed) return false;
+  if (!trimmed) return true;
+  if (/\.html?$/i.test(trimmed)) return true;
   return isEmbedSupportingProjectFile({ name: trimmed });
 }
 

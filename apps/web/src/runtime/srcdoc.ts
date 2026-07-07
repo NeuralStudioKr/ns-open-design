@@ -20,7 +20,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -33,6 +33,8 @@ export type SrcdocOptions = {
   paletteBridge?: boolean;
   initialPalette?: string | null;
   previewFocusGuard?: boolean;
+  /** Lean document for PDF/browser export — omits preview-only bridges. */
+  exportDocument?: boolean;
 };
 
 export function buildSrcdoc(
@@ -42,7 +44,7 @@ export function buildSrcdoc(
   const repaired = repairArtifactDocumentHead(html);
   const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith("<!doctype") || head.startsWith("<html");
-  const wrapped = isFullDoc
+  let wrapped = isFullDoc
     ? repaired
     : `<!doctype html>
 <html>
@@ -50,14 +52,23 @@ export function buildSrcdoc(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
-  <body>${html}</body>
+  <body>${repaired}</body>
 </html>`;
+  if (!isFullDoc) {
+    wrapped = repairArtifactDocumentHead(wrapped);
+  }
   const withOdIds = annotateMissingOdIds(wrapped);
   const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
   const withShim = injectSandboxShim(withBase);
   const withFocusGuard = options.previewFocusGuard ? injectPreviewFocusGuard(withShim) : withShim;
-  const withDeck = options.deck ? injectDeckBridge(withFocusGuard, options.initialSlideIndex) : withFocusGuard;
+  // Artifact text-leak guard always runs in preview — viewport/CSS/JS fragments
+  // agents stream as visible prose must be stripped even when focus-guard is off.
+  const withArtifactGuard = injectPreviewArtifactGuard(withFocusGuard);
+  if (options.exportDocument) {
+    return withArtifactGuard;
+  }
+  const withDeck = options.deck ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex) : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
   // to either the comment popover (annotate) or the inspect panel
@@ -225,7 +236,8 @@ function injectSnapshotBridge(doc: string): string {
     var styles = cloneRoot.querySelectorAll('style');
     for (var st = 0; st < styles.length; st++) {
       styles[st].textContent = (styles[st].textContent || '')
-        .replace(/@import[^;]+;/gi, '');
+        .replace(/@import[^;]+;/gi, '')
+        .replace(/@font-face\\s*\\{[^}]*\\}/gi, '');
     }
   }
   function pruneHiddenSnapshotNodes(originalRoot, cloneRoot){
@@ -846,6 +858,38 @@ function injectPreviewFocusGuard(doc: string): string {
   if (/<body[^>]*>/i.test(doc))
     return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
   return script + doc;
+}
+
+function injectPreviewArtifactGuard(doc: string): string {
+  const style = `<style data-od-preview-artifact-guard>
+.deck-counter,
+.deck-hint,
+.deck-controls,
+.deck-page-controls,
+.deck-pager,
+.deck-progress,
+.deck-nav,
+.deck-navigation,
+#deck-prev,
+#deck-next,
+#deck-cur,
+#deck-total,
+[data-deck-controls],
+[data-page-controls] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+</style>`;
+  const script = `<script data-od-preview-artifact-guard>${buildArtifactPreviewDomLeakGuardScript()}</script>`;
+  const withStyle = /<head[^>]*>/i.test(doc)
+    ? doc.replace(/<head[^>]*>/i, (m) => `${m}${style}`)
+    : (/<body[^>]*>/i.test(doc) ? doc.replace(/<body[^>]*>/i, (m) => `${m}${style}`) : style + doc);
+  if (/<head[^>]*>/i.test(withStyle))
+    return withStyle.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(withStyle))
+    return withStyle.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + withStyle;
 }
 
 // Selection bridge: shared substrate for Comment mode and Inspect mode.
@@ -1730,6 +1774,65 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var didRestoreInitialSlide = initialSlideIndex <= 0;
+  var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
+  function frameworkDeckStage() {
+    return document.getElementById('deck-stage');
+  }
+  function frameworkDeckViewport() {
+    var iw = Math.max(0, window.innerWidth || 0);
+    var ih = Math.max(0, window.innerHeight || 0);
+    var hw = Math.max(0, hostViewport.w || 0);
+    var hh = Math.max(0, hostViewport.h || 0);
+    var scale = hostViewport.scale > 0 ? hostViewport.scale : 1;
+    // User-zoom preview shells (FileViewer toolbar) pass scale as zoom and
+    // apply it via transform:scale(). Fit to the visual box so 75%/125% differ.
+    // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
+    // reconstruct layout width so the deck still fills the iframe interior.
+    if (hw > 0 && hh > 0) {
+      if (hostViewport.layoutFit && scale > 0 && scale < 0.999) {
+        return { w: hw / scale, h: hh / scale };
+      }
+      return { w: hw, h: hh };
+    }
+    return { w: iw || hw, h: ih || hh };
+  }
+  function runFrameworkDeckFit() {
+    var stage = frameworkDeckStage();
+    if (!stage) return false;
+    var vp = frameworkDeckViewport();
+    var sw = vp.w;
+    var sh = vp.h;
+    if (sw <= 0 || sh <= 0) return false;
+    var pad = 32;
+    var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
+    if (!isFinite(s) || s <= 0) s = 1;
+    var tx = (sw - 1920 * s) / 2;
+    var ty = (sh - 1080 * s) / 2;
+    stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+    return true;
+  }
+  function nudgeDeckFit() {
+    if (runFrameworkDeckFit()) return;
+    try { window.dispatchEvent(new Event('resize')); }
+    catch (_) {}
+  }
+  function reconcileFrameworkDeckFitSoon() {
+    if (!frameworkDeckStage()) return;
+    nudgeDeckFit();
+    var raf = window.requestAnimationFrame;
+    if (typeof raf === 'function') {
+      raf(function() { nudgeDeckFit(); });
+    } else {
+      setTimeout(nudgeDeckFit, 16);
+    }
+  }
+  // Framework decks ship their own fit() on window resize using
+  // window.innerWidth, which can be inflated inside the OD iframe.
+  // Re-apply our viewport-aware fit on the next turn so a bad pass
+  // from the artifact script cannot stick after host zoom/layout changes.
+  window.addEventListener('resize', function() {
+    setTimeout(reconcileFrameworkDeckFitSoon, 0);
+  });
   function slides(){
     // Structured selectors first so decorative .slide markup in non-deck
     // pages (icons, badges, code samples) is not counted as deck slides;
@@ -2086,7 +2189,21 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
-    if (!data || data.type !== 'od:slide') return;
+    if (!data) return;
+    if (data.type === 'od:deck-host-viewport') {
+      var w = Number(data.width);
+      var h = Number(data.height);
+      var scale = Number(data.scale);
+      if (Number.isFinite(w) && w > 0) hostViewport.w = w;
+      if (Number.isFinite(h) && h > 0) hostViewport.h = h;
+      if (Number.isFinite(scale) && scale > 0) hostViewport.scale = scale;
+      if (data.layoutFit === true) hostViewport.layoutFit = true;
+      else if (data.layoutFit === false) hostViewport.layoutFit = false;
+      nudgeDeckFit();
+      return;
+    }
+    if (data.type === 'od:deck-nudge-fit') { nudgeDeckFit(); return; }
+    if (data.type !== 'od:slide') return;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
   });
@@ -2108,16 +2225,6 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     clearTimeout(window.__odReportT);
     window.__odReportT = setTimeout(report, 120);
   }, { passive: true, capture: true });
-  // Nudge the deck's own fit/resize listener after layout settles. Fixed-canvas
-  // decks (e.g. ".canvas { width: 1920px }" + "transform: scale(...)") compute
-  // their scale on first run, which fires when the iframe is still 0x0 in
-  // sandboxed previews — the deck's fit() then resolves to scale(0) / scale(1)
-  // and never recovers. Re-firing 'resize' lets the deck recompute, and a
-  // ResizeObserver picks up later layout settles (zoom toggle, sidebar drag).
-  function nudgeResize(){
-    try { window.dispatchEvent(new Event('resize')); }
-    catch (_) {}
-  }
   // Aggressively nudge during the first second so the deck catches the
   // iframe's first non-zero size; bail out early once the iframe reports a
   // real width. Without this loop, fixed-canvas decks render at scale(0).
@@ -2125,8 +2232,8 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     var attempts = 0;
     function tick(){
       attempts += 1;
-      var w = window.innerWidth;
-      nudgeResize();
+      var w = frameworkDeckViewport().w;
+      nudgeDeckFit();
       if (w > 0 && attempts >= 2) return; // one extra nudge after first non-zero
       if (attempts < 30) setTimeout(tick, 50);
     }
@@ -2138,7 +2245,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   // user toggles zoom, resizes the chat sidebar, exits Present).
   if (typeof ResizeObserver !== 'undefined') {
     try {
-      var ro = new ResizeObserver(function(){ nudgeResize(); });
+      var ro = new ResizeObserver(function(){ nudgeDeckFit(); });
       ro.observe(document.documentElement);
     } catch (_) {}
   }

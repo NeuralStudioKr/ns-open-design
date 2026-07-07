@@ -153,6 +153,20 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(text).toBe("진행하겠습니다.");
   });
 
+  it("strips orphan pseudo-tool close tags left after chunked streaming sanitization", () => {
+    const input = [
+      "진행하겠습니다.",
+      "</invoke>",
+      "</tools>",
+      "</tool_call_chunk>",
+      "슬라이드 초안을 준비합니다.",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe("진행하겠습니다.\n\n슬라이드 초안을 준비합니다.");
+    expect(out).not.toContain("</invoke>");
+    expect(out).not.toContain("</tools>");
+  });
+
   it("strips trailing open variant internal XML while streaming", () => {
     const input = "진행하겠습니다.\n<tool_call_chunk>\n{\"name\":\"TodoWrite\"";
     const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
@@ -220,6 +234,203 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<path>");
     expect(out).not.toContain("<<<<<<< SEARCH");
     expect(out).not.toContain("<!doctype html>");
+  });
+
+  it("strips leaked deck navigation script prose while preserving trailing user prose", () => {
+    const visibleProse = "요청하신 덱 초안을 바로 만들겠습니다.";
+    const input = [
+      "(function () {",
+      "var stage = document.getElementById('deck-stage');",
+      "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide')); var prev = document.getElementById('deck-prev');",
+      "var next = document.getElementById('deck-next');",
+      "var cur = document.getElementById('deck-cur');",
+      "var total = document.getElementById('deck-total'); var STORE = 'deck:idx:' + (location.pathname || '/');",
+      "var idx = 0; function fit() {",
+      "var sw = window.innerWidth;",
+      "var sh = window.innerHeight;",
+      "stage.style.transform = 'translate(0px,0px) scale(1)';",
+      "}",
+      "function paint() {",
+      "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+      "}",
+      "function go(i) { idx = i; paint(); }",
+      "function onKey(e) { if (e.key === 'ArrowRight') go(idx + 1); }",
+      "window.addEventListener('keydown', onKey, true);",
+      "document.addEventListener('keydown', onKey, true);",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "window.addEventListener('load', focusDeck);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+      `})${visibleProse}`,
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(out).toBe(visibleProse);
+    expect(out).not.toContain("document.getElementById");
+    expect(out).not.toContain("deck-stage");
+  });
+
+  it("strips deck-prev-first navigation script while preserving slide planning prose", () => {
+    const visibleProse = [
+      "요청하신 8장짜리 덱을 바로 만들겠습니다.",
+      "",
+      "**슬라이드 구성 계획:**",
+      "1. 표지",
+      "2. 소개",
+    ].join("\n");
+    const input = [
+      "(function () { var prev = document.getElementById('deck-prev');",
+      "var next = document.getElementById('deck-next');",
+      "var cur = document.getElementById('deck-cur');",
+      "var total = document.getElementById('deck-total'); var STORE = 'deck:idx:' + (location.pathname || '/');",
+      "var idx = 0;",
+      "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));",
+      "function fit() {",
+      "var sw = window.innerWidth;",
+      "var sh = window.innerHeight;",
+      "var pad = 32;",
+      "var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "}",
+      "function paint() {",
+      "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+      "}",
+      "function go(i) { idx = i; paint(); }",
+      "function onKey(e) { if (e.key === 'ArrowRight') go(idx + 1); }",
+      "window.addEventListener('keydown', onKey, true);",
+      "document.addEventListener('keydown', onKey, true);",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+      "})",
+      visibleProse,
+    ].join("\n");
+
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe(visibleProse);
+    expect(out).not.toContain("document.getElementById");
+    expect(out).not.toContain("deck-prev");
+    expect(out).not.toContain("deck:idx:");
+  });
+
+  it("leaves deck plan prose unchanged when no script leak is present", () => {
+    const input = [
+      "요청하신 8장짜리 덱을 바로 만들겠습니다.",
+      "",
+      "**슬라이드 구성 계획:**",
+      "1. 표지",
+      "2. 소개",
+      "3. 마무리",
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe(input);
+  });
+
+  it("strips partial deck navigation script while streaming before the closing IIFE arrives", () => {
+    const cases = [
+      [
+        "좋아요, 만들겠습니다.\n(function () {\nvar stage = document.getElementById('deck-stage');\nvar slides =",
+        "좋아요, 만들겠습니다.",
+      ],
+      [
+        "진행 중입니다.\nvar slides = Array.prototype.slice.call(document.querySelectorAll('.slide')); var prev = document.getElementById('deck-prev');\nfunction fit() {",
+        "진행 중입니다.",
+      ],
+      [
+        "초안을 준비합니다.\nfunction fit() {\nvar sw = window.innerWidth;\nstage.style.transform = 'translate(0px,0px) scale(1)';",
+        "초안을 준비합니다.",
+      ],
+    ] as const;
+    for (const [input, expected] of cases) {
+      const out = sanitizeAssistantProseForDisplay(input, { streaming: true });
+      expect(out).toBe(expected);
+      expect(out).not.toContain("deck-stage");
+      expect(out).not.toContain("querySelectorAll");
+      expect(out).not.toContain("stage.style.transform");
+    }
+  });
+
+  it("strips mangled deck-framework body (dropped var declarations, no deck-* ids)", () => {
+    const leaked = [
+      "(function () {location.pathname || '/');",
+      "var idx = 0; = Math.min((sw - pad) / 1920, (sh - pad) / 1080);",
+      "if (!isFinite(s) || s <= 0) s = 1;",
+      "var tx = (sw - 1920 * s) / 2;",
+      "var ty = (sh - 1080 * s) / 2;",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "}",
+      "",
+      "function pad2(n) { return (n < 10 ? '0' : '') + n; }",
+      "function paint() {",
+      "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+      "if (cur) cur.textContent = pad2(idx + 1);",
+      "if (total) total.textContent = pad2(slides.length);",
+      "if (prev) prev.toggleAttribute('disabled', idx <= 0);",
+      "if (next) next.toggleAttribute('disabled', idx >= slides.length - 1);",
+      "}",
+      "function go(i) {",
+      "idx = Math.max(0, Math.min(slides.length - 1, i));",
+      "paint();",
+      "try { localStorage.setItem(STORE, String(idx)); } catch (_) {}",
+      "}",
+      "function onKey(e) {",
+      "var t = e.target;",
+      "if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;",
+      "if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(idx + 1); }",
+      "else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(idx - 1); }",
+      "else if (e.key === 'Home') { e.preventDefault(); go(0); }",
+      "else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }",
+      "}",
+      "window.addEventListener('keydown', onKey, true);",
+      "document.addEventListener('keydown', onKey, true);",
+      "if (prev) prev.addEventListener('click', function () { go(idx - 1); });",
+      "if (next) next.addEventListener('click', function () { go(idx + 1); });",
+      "",
+      "document.body.setAttribute('tabindex', '-1');",
+      "document.body.style.outline = 'none';",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "document.addEventListener('mousedown', focusDeck);",
+      "window.addEventListener('load', focusDeck);",
+      "",
+      "try {",
+      "var saved = parseInt(localStorage.getItem(STORE) || '0', 10);",
+      "if (!isNaN(saved) && saved >= 0 && saved < slides.length) idx = saved;",
+      "} catch (_) {}",
+      "",
+      "window.addEventListener('resize', fit);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+    ].join("\n");
+
+    for (const streaming of [false, true] as const) {
+      const out = sanitizeAssistantProseForDisplay(leaked, { streaming });
+      expect(out, `streaming=${streaming}`).toBe("");
+      expect(out).not.toContain("stage.style.transform");
+      expect(out).not.toContain("focusDeck");
+      expect(out).not.toContain("localStorage");
+      expect(out).not.toContain("addEventListener");
+    }
+  });
+
+  it("keeps trailing user prose after a mangled deck-framework body closes with `})();`", () => {
+    const visibleProse = "요청하신 덱을 이어서 다듬겠습니다.";
+    const input = [
+      "(function () {location.pathname || '/');",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "document.addEventListener('mousedown', focusDeck);",
+      "window.addEventListener('resize', fit);",
+      "fit(); paint(); focusDeck();",
+      "})();",
+      "",
+      visibleProse,
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).toBe(visibleProse);
+    expect(out).not.toContain("stage.style.transform");
+    expect(out).not.toContain("focusDeck");
   });
 
   it("strips trailing open read/edit/artifact in history but preserves open artifact while streaming", () => {

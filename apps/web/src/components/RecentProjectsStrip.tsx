@@ -23,9 +23,16 @@ import { buildProjectCardCover } from '../teamver/projectCardCover';
 import { prefetchHomeProjectCovers } from '../teamver/prefetchHomeProjectCovers';
 import { homePublishChipPrefetchIds } from '../teamver/embedPublishChipProjects';
 import { prefetchLatestPublishSummaries } from '../teamver/latestPublishSummary';
+import type { PetTaskSummary } from './pet/PetOverlay';
+import {
+  buildActiveRunStatusByProjectId,
+  resolveRecentProjectDisplayStatus,
+} from '../teamver/recentProjectDisplayStatus';
 
 interface Props {
   projects: Project[];
+  /** Live active runs from `/api/runs` — overrides stale registry status on cards. */
+  activeRunSummaries?: PetTaskSummary[];
   /** Used only to show a "Published" status for design-system projects whose
    *  backing system is published (independent of the project's run status). */
   designSystems?: DesignSystemSummary[];
@@ -41,12 +48,18 @@ const EMPTY_DESIGN_SYSTEMS: DesignSystemSummary[] = [];
 
 export function RecentProjectsStrip({
   projects,
+  activeRunSummaries = [],
   designSystems = EMPTY_DESIGN_SYSTEMS,
+  loading = false,
   onOpen,
   onViewAll,
   limit = 6,
 }: Props) {
   const t = useT();
+  const activeRunStatusByProjectId = useMemo(
+    () => buildActiveRunStatusByProjectId(activeRunSummaries),
+    [activeRunSummaries],
+  );
   const recent = useMemo(
     () => [...projects]
       .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -89,9 +102,32 @@ export function RecentProjectsStrip({
 
   // First-run home shouldn't reserve space for an empty "Recent
   // projects" rail — the dashed empty box just adds visual noise
-  // above the plugin gallery. We also skip rendering during the
-  // load window so the section doesn't pop in and then collapse;
-  // the prompt hero is enough chrome on its own.
+  // above the plugin gallery. While loading, show a compact skeleton
+  // instead of popping in after the fetch settles.
+  if (loading && recent.length === 0) {
+    return (
+      <section
+        className="recent-projects recent-projects--loading"
+        data-testid="recent-projects-skeleton"
+        aria-busy="true"
+        aria-label={t('recentProjects.title')}
+      >
+        <header className="recent-projects__head">
+          <h2 className="recent-projects__title">{t('recentProjects.title')}</h2>
+        </header>
+        <div className="recent-projects__row">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div
+              key={index}
+              className="recent-projects__card recent-projects__card--skeleton"
+              aria-hidden
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   if (recent.length === 0) {
     return null;
   }
@@ -115,7 +151,11 @@ export function RecentProjectsStrip({
           const coverOverride = coverByProject[project.id] ?? null;
           const cover = buildProjectCardCover(project, coverOverride);
           const designSystemProject = isDesignSystemProject(project);
-          const status: ProjectDisplayStatus = project.status?.value ?? 'not_started';
+          const status: ProjectDisplayStatus = resolveRecentProjectDisplayStatus(
+            project.id,
+            project.status?.value,
+            activeRunStatusByProjectId,
+          );
           const publishedDesignSystem = isPublishedDesignSystemProject(project, designSystems);
           const isActive =
             !publishedDesignSystem &&

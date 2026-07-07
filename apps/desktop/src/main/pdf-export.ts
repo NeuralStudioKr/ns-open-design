@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-import { repairArtifactDocumentHead } from "@open-design/contracts";
+import { repairArtifactDocumentHead, patchArtifactDeckPrintCss, injectDeckFlattenScript, buildDeckFlattenInvokeJs, buildDeckPrintCss } from "@open-design/contracts";
 import { BrowserWindow, dialog } from "electron";
 import type { DesktopExportPdfInput, DesktopExportPdfResult } from "@open-design/sidecar-proto";
 
@@ -19,56 +19,6 @@ type PrintToPdfOptions = {
   preferCSSPageSize: boolean;
   printBackground: boolean;
 };
-
-const DECK_PRINT_CSS = `
-@media print {
-  @page { size: 1920px 1080px; margin: 0; }
-  html, body {
-    width: 1920px !important;
-    height: auto !important;
-    overflow: visible !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  body {
-    display: block !important;
-    scroll-snap-type: none !important;
-    transform: none !important;
-  }
-  .deck,
-  .deck-shell,
-  .deck-stage, .stage, #deck-stage {
-    display: contents !important;
-    transform: none !important;
-  }
-  .slide:not(.active),
-  [data-slide]:not(.active),
-  [data-screen-label]:not(.active),
-  section.slide:not(.active),
-  .deck-slide:not(.active),
-  .ppt-slide:not(.active),
-  .slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: none !important;
-    width: 1920px !important;
-    height: 1080px !important;
-    min-height: 1080px !important;
-    max-height: 1080px !important;
-    page-break-after: always;
-    break-after: page;
-    scroll-snap-align: none !important;
-    transform: none !important;
-    position: relative !important;
-    overflow: hidden !important;
-  }
-  .slide:last-child, [data-screen-label]:last-child { page-break-after: auto; break-after: auto; }
-  .deck-counter, .deck-hint, .deck-nav,
-  [aria-label="Previous slide"], [aria-label="Next slide"] {
-    display: none !important;
-  }
-}
-`;
 
 export async function exportPdfFromHtml(input: DesktopExportPdfInput): Promise<DesktopExportPdfResult> {
   const save = await dialog.showSaveDialog({
@@ -95,6 +45,9 @@ export async function exportPdfFromHtml(input: DesktopExportPdfInput): Promise<D
   try {
     await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildPrintableDocument(input))}`);
     await waitForPrintableContent(window);
+    if (input.deck) {
+      await flattenDeckForPrintInWindow(window);
+    }
     const pageSize = input.deck ? DECK_PAGE_SIZE : await inferPageSize(window);
     const pdf = await window.webContents.printToPDF(printToPdfOptions(pageSize));
     await writeFile(save.filePath, pdf);
@@ -139,6 +92,8 @@ export type PrintReadyPdfTarget = {
   waitUntilReady: (nonce: string) => Promise<void>;
   /** Measure non-deck content so dialogless PDFs do not fall back to Letter. */
   measurePageSize: () => Promise<PageSize>;
+  /** Run deck flatten JS after the document is ready (deck PDF only). */
+  prepareDeckPrint?: () => Promise<void>;
   /** Render the loaded document to PDF bytes (Electron printToPDF). */
   printToPdf: (options: PrintToPdfOptions) => Promise<Uint8Array>;
   /** Write the PDF bytes to `filePath`. */
@@ -177,6 +132,9 @@ export async function savePrintReadyDocumentAsPdf(
   try {
     await target.load(html, options);
     await target.waitUntilReady(nonce);
+    if (options.deck && target.prepareDeckPrint) {
+      await target.prepareDeckPrint();
+    }
     const pageSize = options.deck ? DECK_PAGE_SIZE : await target.measurePageSize();
     const pdf = await target.printToPdf(printToPdfOptions(pageSize));
     await target.write(savePath, pdf);
@@ -231,6 +189,10 @@ export function createElectronPdfTarget(): PrintReadyPdfTarget {
       if (!window) throw new Error("PDF render window has not been loaded");
       return inferPageSize(window);
     },
+    async prepareDeckPrint() {
+      if (!window) throw new Error("PDF render window has not been loaded");
+      await flattenDeckForPrintInWindow(window);
+    },
     async printToPdf(options) {
       if (!window) throw new Error("PDF render window has not been loaded");
       // printToPDF() is the dialogless render path: the "Save as PDF"
@@ -258,9 +220,23 @@ function printToPdfOptions(pageSize: PageSize): PrintToPdfOptions {
 }
 
 function buildPrintableDocument(input: DesktopExportPdfInput): string {
-  const source = repairArtifactDocumentHead(injectBaseHref(input.html, input.baseHref));
+  let source = patchArtifactDeckPrintCss(
+    repairArtifactDocumentHead(injectBaseHref(input.html, input.baseHref)),
+  );
   const withTitle = injectTitle(source, input.title);
-  return input.deck ? injectPrintStylesheet(withTitle, DECK_PRINT_CSS) : withTitle;
+  if (!input.deck) return withTitle;
+  return injectPrintStylesheet(injectDeckFlattenScript(withTitle), buildDeckPrintCss());
+}
+
+export async function flattenDeckForPrintInWindow(window: BrowserWindow): Promise<void> {
+  await window.webContents.executeJavaScript(
+    `(async function(){
+      ${buildDeckFlattenInvokeJs()}
+      await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r)})});
+      return true;
+    })()`,
+    true,
+  );
 }
 
 function injectBaseHref(doc: string, baseHref: string | undefined): string {

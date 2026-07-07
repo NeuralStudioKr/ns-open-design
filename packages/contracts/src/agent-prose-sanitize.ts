@@ -115,6 +115,10 @@ const OPEN_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
   `<(${INTERNAL_MARKUP_NAME_PART_RE})\\b[^>]*>`,
   "gi",
 );
+const ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
+  `</(${INTERNAL_MARKUP_NAME_PART_RE})\\s*>`,
+  "gi",
+);
 
 const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
 const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
@@ -198,6 +202,93 @@ const FAKE_FILE_READ_NARRATION_RE = /\[(?:读取|Reading|reading)\s+[^\]]{1,240}
 const AGENT_RUNTIME_STATUS_LINE_RE =
   /^\s*(?:TodoWrite called with \d+ tasks|Marking task \d+ as (?:in_progress|completed|pending|cancelled|stopped)|Running tool: \w+|Tool (?:completed|failed): \w+)\s*$/gim;
 
+/**
+ * Original deck-framework opener anchors — these only appear near the TOP of
+ * a well-formed script. Keep this list narrow so the closed-form regex below
+ * can safely use a loose `})` tail (agent-emitted close without `();`).
+ */
+const DECK_NAV_ORIGINAL_ANCHORS = [
+  `document\\.getElementById\\(['"]deck-stage['"]\\)`,
+  `document\\.getElementById\\(['"]deck-prev['"]\\)`,
+  `document\\.getElementById\\(['"]deck-next['"]\\)`,
+  `deck:idx:`,
+].join("|");
+
+/**
+ * Additional body fingerprints unique to the deck framework. Used ONLY for
+ * open-form detection (opener list) and for closed-form matching under a
+ * STRICT `})();` close — otherwise greedy backtracking could stop at an
+ * internal `});` (e.g. `focus({ preventScroll: true });`).
+ */
+const DECK_NAV_BODY_FINGERPRINTS = [
+  `stage\\.style\\.transform\\s*=\\s*['"]translate\\(['"]?\\s*\\+\\s*tx\\s*\\+`,
+  `function\\s+focusDeck\\s*\\(`,
+  `document\\.addEventListener\\(['"]mousedown['"]\\s*,\\s*focusDeck\\s*\\)`,
+  `window\\.addEventListener\\(['"]resize['"]\\s*,\\s*fit\\s*\\)`,
+].join("|");
+
+/** Loose IIFE close: bare `})` OR full `})();`. */
+const DECK_IIFE_CLOSE_TAIL = `\\}\\s*\\)\\s*(?:\\(\\s*\\)\\s*)?;?`;
+
+/** Strict IIFE close: full `})();` only. Prevents backtrack onto internal `});`. */
+const DECK_IIFE_STRICT_CLOSE_TAIL = `\\}\\s*\\)\\s*\\(\\s*\\)\\s*;?`;
+
+const LEAKED_DECK_NAV_SCRIPT_RE = new RegExp(
+  `(?:^|\\n)\\s*(?:\\(\\s*)?function\\s*\\(\\)\\s*\\{(?=[\\s\\S]{0,4000}?(?:${DECK_NAV_ORIGINAL_ANCHORS}))[\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  "gi",
+);
+
+const LEAKED_DECK_NAV_SCRIPT_BODY_RE = new RegExp(
+  `(?:^|\\n)\\s*var\\s+stage\\s*=\\s*document\\.getElementById\\(['"]deck-stage['"]\\)[\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  "gi",
+);
+
+const LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE = new RegExp(
+  `(?:^|\\n)\\s*var\\s+prev\\s*=\\s*document\\.getElementById\\(['"]deck-prev['"]\\)[\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  "gi",
+);
+
+const LEAKED_DECK_NAV_SCRIPT_TAIL_RE = new RegExp(
+  `(?:^|\\n)\\s*var\\s+slides\\s*=\\s*Array\\.prototype\\.slice\\.call\\(document\\.querySelectorAll\\(['"]\\.slide['"]\\)\\);[\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  "gi",
+);
+
+const LEAKED_DECK_NAV_SCRIPT_STORE_RE = new RegExp(
+  `(?:^|\\n)\\s*var\\s+STORE\\s*=\\s*['"]deck:idx:[^'"]*['"][\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  "gi",
+);
+
+/**
+ * Mangled variant: model dropped every `var stage/prev/next/STORE/slides`
+ * declaration and glued the body-only leak after a garbled IIFE opener
+ * `(function () {location.pathname || '/');`. Anchors detection on any
+ * deck-framework body fingerprint and REQUIRES the strict `})();` close
+ * so greedy backtracking cannot stop at an internal `});`. When there is
+ * no proper close, the open-form matcher chops from the mangled opener
+ * or the earliest body fingerprint line all the way to end.
+ */
+const LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE = new RegExp(
+  `(?:^|\\n)\\s*(?:\\(\\s*)?function\\s*\\(\\s*\\)\\s*\\{(?=[\\s\\S]{0,4000}?(?:${DECK_NAV_BODY_FINGERPRINTS}))[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  "gi",
+);
+
+const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
+  new RegExp(
+    `(?:^|\\n)\\s*(?:\\(\\s*)?function\\s*\\(\\)\\s*\\{(?=[\\s\\S]{0,4000}?(?:${DECK_NAV_ORIGINAL_ANCHORS}|${DECK_NAV_BODY_FINGERPRINTS}))`,
+    "i",
+  ),
+  /(?:^|\n)\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)/i,
+  /(?:^|\n)\s*var\s+prev\s*=\s*document\.getElementById\(['"]deck-prev['"]\)/i,
+  /(?:^|\n)\s*var\s+STORE\s*=\s*['"]deck:idx:/i,
+  /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);/i,
+  /(?:^|\n)\s*function\s+fit\s*\(\)\s*\{(?=[\s\S]{0,1200}?(?:stage\.style\.transform|window\.innerWidth|deck-stage))/i,
+  /(?:^|\n)\s*\(\s*function\s*\(\s*\)\s*\{\s*location\.pathname/i,
+  /(?:^|\n)\s*stage\.style\.transform\s*=\s*['"]translate\(['"]?\s*\+\s*tx\s*\+/i,
+  /(?:^|\n)\s*function\s+focusDeck\s*\(\s*\)\s*\{\s*try\s*\{\s*window\.focus\(\)\s*;\s*document\.body\.focus\(/i,
+  /(?:^|\n)\s*document\.addEventListener\(['"]mousedown['"]\s*,\s*focusDeck\s*\)/i,
+  /(?:^|\n)\s*window\.addEventListener\(['"]resize['"]\s*,\s*fit\s*\)\s*;?/i,
+] as const;
+
 const BARE_TOOL_JSON_OPEN_RE = new RegExp(
   `\\{"name"\\s*:\\s*"(?:${KNOWN_TOOL_JSON_NAMES})"\\s*,\\s*"arguments"\\s*:`,
   "g",
@@ -205,6 +296,7 @@ const BARE_TOOL_JSON_OPEN_RE = new RegExp(
 
 const closedTagRes = new Map<string, RegExp>();
 const openTagRes = new Map<string, RegExp>();
+const orphanCloseTagRes = new Map<string, RegExp>();
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -227,6 +319,15 @@ function openTagRe(tagName: string): RegExp {
   if (!re) {
     re = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>`, "i");
     openTagRes.set(tagName, re);
+  }
+  return re;
+}
+
+function orphanCloseTagRe(tagName: string): RegExp {
+  let re = orphanCloseTagRes.get(tagName);
+  if (!re) {
+    re = new RegExp(`</${escapeRegExp(tagName)}\\s*>`, "gi");
+    orphanCloseTagRes.set(tagName, re);
   }
   return re;
 }
@@ -314,6 +415,29 @@ function stripTrailingBareToolJson(
   return { text: input.slice(0, lastIdx).trimEnd(), hadOpenInternalMarkup: true };
 }
 
+function findOpenDeckNavScriptStart(input: string): number {
+  let best = -1;
+  for (const pattern of OPEN_DECK_NAV_SCRIPT_RE_LIST) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(input);
+    if (!match || match.index === undefined) continue;
+    const rawStart = match.index;
+    const matchText = match[0] ?? "";
+    const trimmedStart = rawStart + matchText.search(/\S/);
+    const start = trimmedStart >= rawStart ? trimmedStart : rawStart;
+    if (best === -1 || start < best) best = start;
+  }
+  return best;
+}
+
+function stripTrailingOpenDeckNavScript(
+  input: string,
+): { text: string; hadOpenInternalMarkup: boolean } {
+  const start = findOpenDeckNavScriptStart(input);
+  if (start === -1) return { text: input, hadOpenInternalMarkup: false };
+  return { text: input.slice(0, start).trimEnd(), hadOpenInternalMarkup: true };
+}
+
 function collapseExtraBlankLines(input: string): string {
   return input.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
 }
@@ -323,6 +447,16 @@ function stripClosedTagFamilies(input: string, tagNames: readonly string[]): str
   for (const tagName of tagNames) {
     const re = closedTagRe(tagName);
     // Cached /g regexes retain lastIndex — reset so back-to-back passes stay deterministic.
+    re.lastIndex = 0;
+    out = out.replace(re, "");
+  }
+  return out;
+}
+
+function stripOrphanCloseTagFamilies(input: string, tagNames: readonly string[]): string {
+  let out = input;
+  for (const tagName of tagNames) {
+    const re = orphanCloseTagRe(tagName);
     re.lastIndex = 0;
     out = out.replace(re, "");
   }
@@ -345,6 +479,14 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(FAKE_TOOL_NARRATION_RE, "");
   out = out.replace(FAKE_FILE_READ_NARRATION_RE, "");
   out = out.replace(AGENT_RUNTIME_STATUS_LINE_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_BODY_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_TAIL_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_STORE_RE, "");
+  out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
+  out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
+  out = out.replace(ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE, "");
   const bareTail = out.match(new RegExp(`${BARE_TOOL_JSON_OPEN_RE.source}[\\s\\S]*$`));
   if (bareTail?.index !== undefined) {
     out = out.slice(0, bareTail.index).trimEnd();
@@ -412,6 +554,12 @@ export function stripTrailingOpenInternalMarkup(
   if (bareJson.hadOpenInternalMarkup) {
     hadOpenInternalMarkup = true;
     text = bareJson.text;
+  }
+
+  const deckScript = stripTrailingOpenDeckNavScript(text);
+  if (deckScript.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = deckScript.text;
   }
 
   if (!options.preserveOpenArtifact) {

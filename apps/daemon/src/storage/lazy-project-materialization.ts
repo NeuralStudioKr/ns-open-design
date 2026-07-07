@@ -65,6 +65,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * ``teamver_project_s3_prefix_required`` (and its ``_mismatch`` sibling)
+ * mean design-api answered ``denied`` for this user + project pair —
+ * workspace mismatch, project deleted/moved, or the row is not registered
+ * yet. None of those are transient, and the deny is already cached for
+ * 5s (permanent) or 1.5s (transient) inside teamver-project-access.
+ * Retrying inside the same request just burns CPU + log volume while
+ * hammering design-api. Detect the marker and bail out of the retry
+ * loop; the outer error still surfaces to the caller so the FE can
+ * translate it into an access banner via
+ * formatProjectArtifactSaveFailedError.
+ */
+function isNonRetriableAccessError(err: unknown): boolean {
+  if (err instanceof TeamverTenantStorageResolutionError) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return (
+    msg.includes('teamver_project_s3_prefix_required')
+    || msg.includes('teamver_project_s3_prefix_mismatch')
+    || msg.includes('teamver_project_identity_required')
+  );
+}
+
 function isProjectMaterializationPath(pathname: string): boolean {
   // Middleware is mounted at /api/projects/:id — req.path is relative (/files, /raw/…).
   const core = String(pathname ?? '');
@@ -104,6 +126,46 @@ function isProjectMaterializationPath(pathname: string): boolean {
 
 function isMutatingMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+}
+
+/**
+ * Export/archive routes are semantically read-only even though POST is used
+ * (they never mutate the project — they just render existing scratch bytes
+ * into a downloadable artifact). When tenant-storage resolution fails on
+ * one of these routes and the agent has already written the target file to
+ * local scratch (BYOK preview path — the user just saw the slides), we
+ * prefer serving the export from scratch over blocking with a 502. This
+ * matches the "scratch is the mutable working copy, S3 is SSOT" contract:
+ * the S3 round-trip is only needed to REFRESH scratch for downstream reads,
+ * so if scratch is already fresh a transient design-api `/access` denial
+ * must not gate the export.
+ *
+ * The list here mirrors {@link isProjectMaterializationPath} but only for
+ * routes where a scratch-only fallback is safe (never sync-up, never
+ * mutating writes).
+ */
+function isProjectExportOrArchivePath(pathname: string): boolean {
+  const core = String(pathname ?? '');
+  if (/^\/export(\/|$)/.test(core)) return true;
+  if (/^\/archive(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/export(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/archive(\/|$)/.test(core)) return true;
+  return false;
+}
+
+/**
+ * Read-only project routes that may serve from local scratch when tenant S3
+ * prefix resolution fails but the agent already wrote bytes during this run
+ * (BYOK preview path). Includes listing/raw reads — not only export/archive.
+ */
+function isProjectScratchReadFallbackPath(pathname: string): boolean {
+  const core = String(pathname ?? '');
+  if (isProjectExportOrArchivePath(core)) return true;
+  if (/^\/files(\/|$)/.test(core)) return true;
+  if (/^\/raw(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/files(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(core)) return true;
+  return false;
 }
 
 export function createProjectStorageAccessHooks(
@@ -236,6 +298,21 @@ export function createProjectStorageAccessHooks(
         } catch (err) {
           lastErr = err;
           if (attempt >= maxAttempts) break;
+          if (isNonRetriableAccessError(err)) {
+            // Deny is a data-state problem — do not retry inside this
+            // request. Emit a discrete marker so ops can distinguish
+            // "denied, gave up" from "transient, exhausted retries" in
+            // CloudWatch.
+            if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+              console.info(JSON.stringify({
+                metric: 'od_s3_lazy_sync_down_denied',
+                projectId: trimmedId,
+                attempt,
+                reason: err instanceof Error ? err.message : String(err),
+              }));
+            }
+            break;
+          }
           console.warn(
             `[project-materialization] retrying lazy sync-down for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
             err instanceof Error ? err.message : err,
@@ -329,7 +406,11 @@ export function createProjectStorageAccessHooks(
           `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
           err instanceof Error ? err.message : err,
         );
-        if (options?.strict) throw err;
+        // Non-retriable access errors must always propagate so the outer
+        // retry loop can bail out. Non-strict callers otherwise swallow
+        // the error (return false) and the loop would spin the deny
+        // through every configured attempt.
+        if (options?.strict || isNonRetriableAccessError(err)) throw err;
         return false;
       }
     };
@@ -357,6 +438,19 @@ export function createProjectStorageAccessHooks(
       } catch (err) {
         lastErr = err;
         if (!options?.strict || attempt >= maxAttempts) break;
+        if (isNonRetriableAccessError(err)) {
+          // Same rationale as the sync-down loop above — deny is a data-
+          // state problem, not a transient upstream hiccup.
+          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+            console.info(JSON.stringify({
+              metric: 'od_s3_strict_persist_denied',
+              projectId: trimmedId,
+              attempt,
+              reason: err instanceof Error ? err.message : String(err),
+            }));
+          }
+          break;
+        }
         console.warn(
           `[project-materialization] retrying strict sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
           err instanceof Error ? err.message : err,
@@ -444,10 +538,44 @@ export function scheduleProjectStoragePersistAfterResponse(
   });
 }
 
+/**
+ * Detect whether an export request body carries an inline HTML snapshot.
+ *
+ * The FE ships the current in-memory artifact HTML alongside PDF/HTML/ZIP/
+ * image export requests so the daemon can render it directly without
+ * reading from local scratch or resolving the tenant S3 prefix. When this
+ * flag is set the export path is fully self-contained: the middleware must
+ * unconditionally soft-continue on a `teamver_project_s3_prefix_required`
+ * so a transient `design-api /access` deny cannot gate the download.
+ *
+ * Kept intentionally permissive — any non-empty string in `req.body.html`
+ * counts, and empty / missing bodies fall back to the pre-existing scratch
+ * fallback flow. Duplicated with `import-export-routes.ts` on purpose so
+ * middleware ordering (which runs before route handlers) does not create
+ * a circular import.
+ */
+function exportRequestHasInlineHtml(req: Request): boolean {
+  const body = (req as { body?: unknown }).body;
+  if (!body || typeof body !== 'object') return false;
+  const raw = (body as Record<string, unknown>)['html'];
+  return typeof raw === 'string' && raw.trim().length > 0;
+}
+
 export function createLazyProjectMaterializationMiddleware(
   hooks: ProjectStorageAccessHooks | null,
   sendApiError: (...args: unknown[]) => unknown,
+  options?: {
+    /**
+     * When the tenant S3 prefix cannot be resolved (design-api `/access`
+     * transient deny, `X-Teamver-S3-Prefix` header missing) AND the target
+     * project already has files on local scratch, the export/archive routes
+     * can safely serve those bytes. Injected by the caller so tests can stub
+     * the check; defaults to inspecting the local scratch storage directly.
+     */
+    scratchHasProjectFiles?: (projectId: string) => Promise<boolean>;
+  },
 ): RequestHandler {
+  const scratchHasProjectFilesForRequest = options?.scratchHasProjectFiles;
   return async (req, res, next) => {
     if (!hooks || !isProjectMaterializationPath(req.path)) return next();
 
@@ -455,16 +583,69 @@ export function createLazyProjectMaterializationMiddleware(
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
     if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
 
+    const handleError = async (err: unknown): Promise<boolean> => {
+      // Export/archive routes are read-only for the project — if scratch
+      // already holds the target files (BYOK preview path), fall back to
+      // scratch instead of surfacing a misleading 502 to the FE. This
+      // unblocks PDF/HTML/ZIP export while design-api `/access` self-heals.
+      const message = err instanceof Error ? err.message : 'project storage sync failed';
+      const isPrefixDeny =
+        err instanceof TeamverTenantStorageResolutionError
+        && err.message === 'teamver_project_s3_prefix_required';
+
+      // Inline-HTML export path: the daemon can render from body bytes
+      // without touching scratch or S3, so a prefix deny MUST NOT surface
+      // as a 502. This is the primary hardening against the recurring
+      // `daemon PDF export 502: teamver_project_s3_prefix_required` in
+      // BYOK + fresh-scratch scenarios (post-deploy, idle-evict, cache
+      // miss on the BFF prefix registry, etc.).
+      if (isPrefixDeny && isProjectExportOrArchivePath(req.path) && exportRequestHasInlineHtml(req)) {
+        console.info(
+          JSON.stringify({
+            metric: 'od_s3_export_inline_html_bypass',
+            projectId,
+            path: req.path,
+            reason: 'teamver_project_s3_prefix_required',
+          }),
+        );
+        return true;
+      }
+
+      const canSoftFallback =
+        (req.method === 'GET' || req.method === 'HEAD' || isProjectExportOrArchivePath(req.path))
+        && isProjectScratchReadFallbackPath(req.path)
+        && isPrefixDeny;
+      if (canSoftFallback) {
+        let hasScratch = false;
+        try {
+          hasScratch = scratchHasProjectFilesForRequest
+            ? await scratchHasProjectFilesForRequest(projectId)
+            : false;
+        } catch {
+          hasScratch = false;
+        }
+        if (hasScratch) {
+          console.info(
+            JSON.stringify({
+              metric: 'od_s3_export_scratch_only_fallback',
+              projectId,
+              path: req.path,
+              reason: 'teamver_project_s3_prefix_required',
+            }),
+          );
+          return true;
+        }
+      }
+      sendApiError(res, 502, 'UPSTREAM_UNAVAILABLE', message);
+      return false;
+    };
+
     if (req.method === 'GET' || req.method === 'HEAD') {
       try {
         await hooks.ensureMaterialized(req, projectId);
       } catch (err) {
-        return sendApiError(
-          res,
-          502,
-          'UPSTREAM_UNAVAILABLE',
-          err instanceof Error ? err.message : 'project storage sync failed',
-        );
+        const softContinue = await handleError(err);
+        if (!softContinue) return;
       }
       return next();
     }
@@ -473,15 +654,13 @@ export function createLazyProjectMaterializationMiddleware(
       try {
         await hooks.ensureMaterialized(req, projectId);
       } catch (err) {
-        return sendApiError(
-          res,
-          502,
-          'UPSTREAM_UNAVAILABLE',
-          err instanceof Error ? err.message : 'project storage sync failed',
-        );
+        const softContinue = await handleError(err);
+        if (!softContinue) return;
       }
       res.on('finish', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) return;
+        // Export/archive requests never mutate project state — skip sync-up.
+        if (isProjectExportOrArchivePath(req.path)) return;
         void hooks.persistAfterMutation(req, projectId);
       });
     }

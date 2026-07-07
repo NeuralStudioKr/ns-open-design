@@ -108,14 +108,73 @@ FROM ${RUNTIME_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     poppler-utils \
-    chromium \
     fonts-freefont-ttf \
     fonts-noto-core \
     fonts-noto-cjk \
     ca-certificates \
+    # Playwright chromium runtime deps (Debian bookworm SSOT). We install
+    # these explicitly rather than relying on the distro `chromium`
+    # package because that package's own bundled binary SIGTRAPs on
+    # launch inside minimal containers (issue observed in staging: pid
+    # exits with signal=SIGTRAP even with --no-sandbox / --no-zygote).
+    # List cross-checked against `npx playwright install-deps chromium
+    # --dry-run` on debian:12 and Playwright docs
+    # https://playwright.dev/docs/browsers#install-system-dependencies.
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -g 1001 open-design \
     && useradd -u 1001 -g open-design -M -s /usr/sbin/nologin open-design
+
+# Playwright-managed Chromium is the ONLY supported headless export
+# binary on hosted images. `install chromium` downloads BOTH the full
+# Chromium build (chromium-<rev>/chrome-linux64/chrome since v1.49, or
+# legacy chrome-linux/chrome) AND the headless_shell variant
+# (chromium_headless_shell-<rev>/chrome-headless-shell-linux64/chrome-headless-shell).
+# The launcher (resolvePlaywrightChromiumExecutables) prefers the full
+# build and falls back to the shell so the container still exports
+# something if the full build regresses on the current base image.
+#
+# PLAYWRIGHT_INSTALL_TOKEN cache-busts THIS layer only. deploy.sh
+# passes the current git SHA so every deploy rebuilds the install RUN
+# even without --no-cache, ensuring the container never inherits a
+# stale/partial /ms-playwright directory from a previous cached layer.
+ARG PLAYWRIGHT_INSTALL_TOKEN=default
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_INSTALL_TOKEN=$PLAYWRIGHT_INSTALL_TOKEN \
+    npx --yes playwright-core@1.60.0 install chromium \
+    && chown -R open-design:open-design /ms-playwright \
+    # Hard-fail the build if the install layer silently produced no binary
+    # (network hiccups against playwright.download.prss.microsoft.com have
+    # bitten us before — the RUN exited 0 but `/ms-playwright` was empty).
+    # Accept both legacy (chrome-linux) and v1.49+ (chrome-linux64 /
+    # chrome-headless-shell-linux64) layouts.
+    && find /ms-playwright -type f \( \
+         -path '*/chrome-linux64/chrome' \
+         -o -path '*/chrome-linux/chrome' \
+         -o -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+         -o -path '*/chrome-linux/headless_shell' \
+       \) -print -quit | grep -q . \
+    || ( \
+      echo "FATAL: Playwright chromium install produced no binary under /ms-playwright" >&2; \
+      find /ms-playwright -maxdepth 4 -type f 2>/dev/null | head -20 >&2 || true; \
+      ls -la /ms-playwright || true; \
+      exit 1 \
+    )
 
 WORKDIR /app
 COPY --from=build --chown=open-design:open-design /app/deploy/daemon ./apps/daemon
@@ -140,10 +199,19 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=192
 ENV OD_BIND_HOST=0.0.0.0
 ENV OD_PORT=7456
-ENV OD_EXPORT_CHROMIUM_PATH=/usr/bin/chromium
+# Playwright is the ONLY installed browser. We intentionally do NOT set
+# OD_EXPORT_CHROMIUM_PATH; the daemon resolves the Playwright-managed
+# chromium first (see resolvePlaywrightChromiumExecutables) and falls
+# back to distro paths only if that resolution fails.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-# Distro Chromium crashpad needs writable XDG dirs. The runtime container is
-# read-only except /tmp (tmpfs); open-design has no home (-M useradd).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# `--single-process` was previously enabled here but Chromium ≥ M120
+# SIGTRAPs on startup with that flag in tmpfs-only containers. Keep the
+# knob available (opt-in via env) but leave multi-process as the
+# default; the pool cap already bounds RSS well under `mem_limit`.
+# Playwright chromium crashpad needs writable XDG dirs. The runtime
+# container is read-only except /tmp (tmpfs); open-design has no home
+# directory (-M useradd).
 ENV HOME=/tmp
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium

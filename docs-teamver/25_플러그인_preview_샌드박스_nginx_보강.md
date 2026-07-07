@@ -19,6 +19,7 @@ Uncaught TypeError: document.querySLinks is not a function
 대표 URL:
 
 - Preview iframe: `/api/plugins/example-html-ppt-zhangzara-creative-mode/preview`
+- Marketplace alias preview iframe: `/api/plugins/open-design%2Fexample-html-ppt-zhangzara-creative-mode/preview`
 - 런타임 JS: `/api/plugins/.../asset/assets/deck-stage.js`
 - 생성 deck: `ai-adoption-effects-deck.html` (프로젝트 산출물)
 
@@ -58,6 +59,16 @@ embed·갤러리 preview iframe:
 ### 2.3 `querySLinks` (콘텐츠 — 인프라로 해결 불가)
 
 에이전트가 생성한 deck HTML 의 **JS 오타** (`querySelectorAll` 등이 정답). `deck-stage.js` 미로드 시 연쇄 실패 가능.
+
+### 2.4 marketplace namespace alias (앱 코드)
+
+bundled plugin 설치 id는 `example-html-ppt-...` 이지만 marketplace/share provenance에는 `open-design/example-html-ppt-...` 가 존재한다. FE가 namespaced id를 그대로 `/api/plugins/:id/preview` 에 넣거나, preview HTML 내부 asset URL이 같은 alias를 유지하면 daemon의 기존 `getInstalledPlugin(id)` 완전 일치 lookup이 실패한다.
+
+2026-07-03 코드 보강:
+
+- FE: plugin preview URL/fetch helper는 `manifest.name` 우선, namespaced id는 마지막 segment로 정규화.
+- daemon: `/preview`, `/example/:name`, `/asset/*` 모두 direct id → normalized id → `source_marketplace_entry_name` 순으로 resolve.
+- 회귀: `open-design/<id>` alias로 preview/example/asset이 모두 열리는 vitest 추가.
 
 ---
 

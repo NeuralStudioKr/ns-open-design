@@ -1,7 +1,16 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import {
+  repairArtifactDocumentHead,
+  buildArtifactPreviewDomLeakStripScript,
+  patchArtifactDeckPrintCss,
+  buildDeckSlideExportLayoutHelperJs,
+  buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
+  buildDeckGuizangPrintFallbackCss as buildSharedDeckGuizangPrintFallbackCss,
+  buildDeckPrintCss as buildSharedDeckPrintCss,
+} from '@open-design/contracts';
 
 import {
   bindExportBrowserLauncher,
@@ -20,7 +29,22 @@ export interface HeadlessExportOptions {
   slideIndex?: number;
 }
 
-const EXPORT_TIMEOUT_MS = 30_000;
+/**
+ * Chromium load + evaluate + PDF/screenshot timeout for a single export.
+ * Tunable via `OD_EXPORT_TIMEOUT_MS` so ops can dial it up for large
+ * decks (Guizang variants routinely take 15–25s) without a code push.
+ * The lower bound (1s) guards against footgun typos that would make
+ * every export instantly abort.
+ */
+export function resolveExportTimeoutMs(): number {
+  const raw = process.env.OD_EXPORT_TIMEOUT_MS;
+  if (!raw) return 30_000;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return 30_000;
+  return Math.max(1_000, parsed);
+}
+
+const EXPORT_TIMEOUT_MS = resolveExportTimeoutMs();
 const DECK_WIDTH = 1920;
 const DECK_HEIGHT = 1080;
 // Image downloads are user-facing deliverables, not thumbnail previews. Capture
@@ -43,6 +67,14 @@ const IMAGE_DEVICE_SCALE_FACTOR = 2;
 const DECK_SLIDE_SELECTOR =
   '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
 
+/** Horizontal carousel / stage wrappers that must not generate a print box. */
+export const DECK_WRAPPER_SELECTOR =
+  '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';
+
+/** Navigation, hints, and non-slide chrome hidden during deck PDF export. */
+export const DECK_CHROME_HIDE_SELECTOR =
+  '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
 }
@@ -62,71 +94,12 @@ function deckSlideSelectorList(): string[] {
  * horizontal-snap deck selectors.
  */
 export function buildDeckFlattenCssRules(): string {
-  const slides = deckSlideSelectorList().join(', ');
-  const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
-  const slidesLastChild = deckSlideSelectorList().map((sel) => `${sel}:last-child`).join(', ');
-  return `
-  html, body {
-    width: ${DECK_WIDTH}px !important;
-    height: auto !important;
-    overflow: visible !important;
-    background: var(--shell, var(--bg, #ffffff)) !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  body {
-    display: block !important;
-    scroll-snap-type: none !important;
-    transform: none !important;
-  }
-  /* Wrappers must not generate a box — a static 1920×1080 .deck-stage with
-     absolutely positioned slides produces an empty first printed page before
-     slide content flows (title fragments leak onto page 1, real slides start
-     on page 2). display:contents hoists slides directly into body flow. */
-  .deck,
-  .deck-shell,
-  .deck-stage, .stage {
-    display: contents !important;
-    transform: none !important;
-  }
-  ${slidesNotActive},
-  ${slides} {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: none !important;
-    position: relative !important;
-    inset: auto !important;
-    width: ${DECK_WIDTH}px !important;
-    height: ${DECK_HEIGHT}px !important;
-    min-height: ${DECK_HEIGHT}px !important;
-    max-height: ${DECK_HEIGHT}px !important;
-    background: var(--bg, var(--shell, #ffffff)) !important;
-    overflow: hidden !important;
-    page-break-after: always !important;
-    break-after: page !important;
-    break-inside: avoid !important;
-    scroll-snap-align: none !important;
-    transform: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-  }
-  ${slidesLastChild} {
-    page-break-after: auto !important;
-    break-after: auto !important;
-  }
-  ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
-    page-break-before: avoid !important;
-    break-before: avoid !important;
-  }
-  ${deckSlideSelectorList().map((sel) => `${sel}:first-child`).join(', ')} {
-    page-break-before: avoid !important;
-    break-before: avoid !important;
-  }
-  .deck-counter, .deck-hint, .deck-nav,
-  #deck-prev, #deck-next, #deck-cur, #deck-total,
-  [aria-label="Previous slide"], [aria-label="Next slide"] {
-    display: none !important;
-  }`;
+  return `${buildSharedDeckFlattenCssRules()}${buildDeckGuizangPrintFallbackCss()}`;
+}
+
+/** guizang-ppt relies on WebGL canvases + low-opacity ::before overlays. */
+export function buildDeckGuizangPrintFallbackCss(): string {
+  return buildSharedDeckGuizangPrintFallbackCss();
 }
 
 /** Screen-visible flatten rules for standalone HTML deck downloads. */
@@ -134,19 +107,126 @@ export function buildDeckScreenExportCss(): string {
   return buildDeckFlattenCssRules();
 }
 
+export { buildDeckSlideExportLayoutHelperJs } from '@open-design/contracts';
+
 export function buildDeckPrintCss(): string {
-  return `
-@media print {
-  @page { size: ${DECK_WIDTH}px ${DECK_HEIGHT}px; margin: 0; }
-  ${buildDeckFlattenCssRules()}
-}`;
+  return buildSharedDeckPrintCss();
 }
 // Alpine's `chromium` package installs the real binary at /usr/bin/chromium.
 // Debian bookworm ships `/usr/bin/chromium` as well. OD_EXPORT_CHROMIUM_PATH
-// wins when set (production override). Playwright's bundled browsers are glibc
-// only — never used in production containers (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).
+// wins when set (production override). Playwright's bundled browser (when
+// PLAYWRIGHT_BROWSERS_PATH is populated in the runtime image) is preferred
+// over distro Chromium — bookworm `/usr/bin/chromium` can SIGTRAP in minimal
+// containers even with --no-sandbox / --no-zygote.
+export function isHeadlessChromiumUnavailableError(err: unknown): boolean {
+  const reason = String((err as Error)?.message || err);
+  // Match both the classic prose ("headless Chromium unavailable (tried
+  // …)") and the structured code we send back over HTTP so callers on
+  // either side of the daemon boundary can classify the failure.
+  return (
+    /headless Chromium unavailable/i.test(reason)
+    || /HEADLESS_CHROMIUM_UNAVAILABLE/.test(reason)
+  );
+}
+
+/** @deprecated alias — import-export routes export name */
+export const isHeadlessChromiumUnavailableExportError = isHeadlessChromiumUnavailableError;
+
+/**
+ * Relative path segments from a `chromium-*` or `chromium_headless_shell-*`
+ * directory to the executable. Playwright v1.49+ switched Linux layouts
+ * from `chrome-linux/{chrome,headless_shell}` to
+ * `chrome-linux64/chrome` and `chrome-headless-shell-linux64/chrome-headless-shell`.
+ * We probe both so images built with either layout keep working.
+ */
+const PLAYWRIGHT_CHROMIUM_BINARY_LAYOUTS = {
+  full: [
+    ['chrome-linux64', 'chrome'],
+    ['chrome-linux', 'chrome'],
+  ],
+  headlessShell: [
+    ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
+    ['chrome-linux', 'headless_shell'],
+  ],
+} as const;
+
+function playwrightChromiumBinaryCandidates(root: string, dirName: string): string[] {
+  const layouts = dirName.startsWith('chromium_headless_shell-')
+    ? PLAYWRIGHT_CHROMIUM_BINARY_LAYOUTS.headlessShell
+    : dirName.startsWith('chromium-')
+      ? PLAYWRIGHT_CHROMIUM_BINARY_LAYOUTS.full
+      : [];
+  return layouts.map((segments) => path.join(root, dirName, ...segments));
+}
+
+/**
+ * Enumerate every Playwright-bundled Chromium binary in
+ * `$PLAYWRIGHT_BROWSERS_PATH` (or the default `~/.cache/ms-playwright`).
+ *
+ * Playwright ships two flavors:
+ *   - `chromium-<rev>/chrome-linux64/chrome` (v1.49+) or
+ *     `chromium-<rev>/chrome-linux/chrome` (legacy) — full Chromium build.
+ *   - `chromium_headless_shell-<rev>/chrome-headless-shell-linux64/chrome-headless-shell`
+ *     (v1.49+) or `…/chrome-linux/headless_shell` (legacy) — the smaller
+ *     headless-only shell used by `install --only-shell`.
+ * Both are surfaced so the launcher can fall back to whichever the
+ * runtime image actually contains. Newer revisions come first so we
+ * prefer the currently-supported ABI when multiple installs coexist.
+ */
+export function resolvePlaywrightChromiumExecutables(): string[] {
+  const root =
+    process.env.PLAYWRIGHT_BROWSERS_PATH?.trim()
+    || path.join(process.env.HOME?.trim() || '/tmp', '.cache', 'ms-playwright');
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const push = (candidate: string) => {
+    if (fs.existsSync(candidate) && !seen.has(candidate)) {
+      seen.add(candidate);
+      found.push(candidate);
+    }
+  };
+  const listDirs = (prefix: string): string[] => {
+    try {
+      return fs
+        .readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+        .map((entry) => entry.name)
+        .sort()
+        .reverse();
+    } catch {
+      return [];
+    }
+  };
+
+  // Full chromium first (executablePath 'chrome') because launch-time
+  // Playwright APIs (page.pdf, page.screenshot) are validated only
+  // against the full build. The headless_shell fallback is best-effort
+  // in case the full build failed to install.
+  for (const dirName of listDirs('chromium-')) {
+    for (const candidate of playwrightChromiumBinaryCandidates(root, dirName)) {
+      push(candidate);
+    }
+  }
+  for (const dirName of listDirs('chromium_headless_shell-')) {
+    for (const candidate of playwrightChromiumBinaryCandidates(root, dirName)) {
+      push(candidate);
+    }
+  }
+  return found;
+}
+
+/** @deprecated Kept for existing tests / callers; returns the top pick. */
+export function resolvePlaywrightChromiumExecutable(): string | null {
+  return resolvePlaywrightChromiumExecutables()[0] ?? null;
+}
+
 export function chromiumExecutableCandidates(): string[] {
   const ordered = [
+    // Playwright-managed browsers come first: they ship the exact
+    // libnss3/libnspr4 ABI the launcher was built against and do not
+    // depend on Debian's distro chromium package (which SIGTRAPs in
+    // minimal containers even with --no-sandbox / --no-zygote).
+    ...resolvePlaywrightChromiumExecutables(),
     process.env.OD_EXPORT_CHROMIUM_PATH,
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
@@ -175,6 +255,7 @@ export function chromiumRuntimeEnv(): NodeJS.ProcessEnv {
   const { configHome, cacheHome } = chromiumRuntimePaths();
   return {
     ...process.env,
+    DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS || 'disabled:',
     HOME: process.env.HOME?.trim() || configHome,
     XDG_CONFIG_HOME: configHome,
     XDG_CACHE_HOME: cacheHome,
@@ -183,7 +264,13 @@ export function chromiumRuntimeEnv(): NodeJS.ProcessEnv {
 
 export function chromiumLaunchArgs(): string[] {
   const { crashDir } = chromiumRuntimePaths();
-  return [
+  // Order matters: `--headless=new` is safe on full Chromium but the
+  // Playwright headless_shell binary already runs headless-only, so
+  // passing the flag there is a no-op. `--no-sandbox` +
+  // `--disable-setuid-sandbox` are needed because the runtime container
+  // does not grant CAP_SYS_ADMIN (no user namespaces).
+  const args = [
+    '--headless=new',
     '--disable-dev-shm-usage',
     '--disable-gpu',
     '--disable-setuid-sandbox',
@@ -191,9 +278,58 @@ export function chromiumLaunchArgs(): string[] {
     '--font-render-hinting=medium',
     '--disable-crash-reporter',
     '--disable-breakpad',
+    '--disable-crashpad',
+    '--no-zygote',
     '--no-crashpad',
+    '--disable-software-rasterizer',
     `--crash-dumps-dir=${crashDir}`,
   ];
+  // `--single-process` was previously enabled in production to sidestep
+  // sandboxing on read-only containers, but headless Chromium ≥ M120 can
+  // SIGTRAP inside its own IPC layer when run with a single process (the
+  // renderer trips on GPU-thread init even with --disable-gpu). Default
+  // off; keep OD_CHROMIUM_SINGLE_PROCESS=1 as an opt-in escape hatch for
+  // hosts where the multi-process launch is definitively worse.
+  if (process.env.OD_CHROMIUM_SINGLE_PROCESS === '1') {
+    args.push('--single-process');
+  }
+  return args;
+}
+
+/**
+ * Chromium launcher errors that are worth retrying once. The distro
+ * Chromium in Debian bookworm occasionally SIGTRAPs on the first launch
+ * inside a fresh container tmpfs (Playwright reports
+ * `process did exit: exitCode=null, signal=SIGTRAP`), then succeeds on
+ * the second try — the first launch appears to warm up
+ * `/tmp/.chromium/*` and subsequent runs no longer trip. Timeouts and
+ * connection resets also fall into this bucket.
+ */
+function isTransientChromiumLaunchError(reason: string): boolean {
+  return (
+    /SIGTRAP/i.test(reason)
+    || /Timeout .* exceeded/i.test(reason)
+    || /Target page, context or browser has been closed/i.test(reason)
+    || /ECONNREFUSED|ECONNRESET|EPIPE/i.test(reason)
+  );
+}
+
+/**
+ * Chromium ≥ M120 refuses to initialize V8 in `--single-process` mode
+ * (see `chrome/browser/net/system_network_context_manager.cc:979 —
+ * "Cannot use V8 Proxy resolver in single process mode."`) and dies with
+ * `signal=SIGTRAP`. When the launch failure log carries either signal,
+ * silently strip `--single-process` and try the same executable again so
+ * a stale `OD_CHROMIUM_SINGLE_PROCESS=1` env var (leftover from an old
+ * compose file) can't take the whole export path down.
+ */
+function shouldRetryWithoutSingleProcess(reason: string, args: readonly string[]): boolean {
+  if (!args.includes('--single-process')) return false;
+  return (
+    /Cannot use V8 Proxy resolver in single process mode/i.test(reason)
+    || /SIGTRAP/i.test(reason)
+    || /Target page, context or browser has been closed/i.test(reason)
+  );
 }
 
 export function ensureChromiumRuntimeDirs(): void {
@@ -219,8 +355,8 @@ export async function renderHeadlessPdf(
         await waitForPrintableContent(page);
         if (options.input.deck) {
           await page.emulateMedia({ media: 'print' });
-          await stripLeakedViewportFromPage(page);
         }
+        await stripLeakedArtifactTextFromPage(page);
         const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
         if (options.input.deck && deckSlideCount === 0) {
           console.warn('[headless-export] deck PDF: no slides matched selector', {
@@ -314,8 +450,8 @@ export async function renderHeadlessHtmlSnapshot(
       const page = await preparePage(browser, options);
       try {
         await waitForPrintableContent(page);
+        await stripLeakedArtifactTextFromPage(page);
         if (options.input.deck) {
-          await stripLeakedViewportFromPage(page);
           const deckSlideCount = await revealAllDeckSlides(page);
           if (deckSlideCount === 0) {
             console.warn('[headless-export] deck HTML: no slides matched selector', {
@@ -336,52 +472,273 @@ export async function renderHeadlessHtmlSnapshot(
   );
 }
 
+// Detail collected for each failed launch attempt. `executablePath` is
+// intentionally `string | undefined` (not `?:`) because tsconfig's
+// `exactOptionalPropertyTypes` forbids assigning `undefined` to an
+// optional property; the bundled-fallback path pushes without an
+// explicit path so we must be able to store `undefined`.
+type LaunchAttempt = {
+  executablePath: string | undefined;
+  error: string;
+  retryable: boolean;
+};
+
 async function launchChromium(): Promise<Browser> {
   const { chromium } = await dynamicImport('playwright-core');
   ensureChromiumRuntimeDirs();
-  const attempts: Array<{ executablePath?: string; error: string }> = [];
-  const launchArgs = chromiumLaunchArgs();
+  const attempts: LaunchAttempt[] = [];
+  const baseArgs = chromiumLaunchArgs();
   const launchEnv = chromiumRuntimeEnv();
-  for (const executablePath of chromiumExecutableCandidates()) {
-    if (!fs.existsSync(executablePath)) {
-      attempts.push({ executablePath, error: 'executable not found' });
-      continue;
-    }
+  const candidates = chromiumExecutableCandidates();
+
+  const tryLaunch = async (
+    executablePath: string | undefined,
+    args: string[],
+    label: string,
+  ): Promise<Browser | null> => {
     try {
-      return await chromium.launch({
-        executablePath,
+      const opts: Record<string, unknown> = {
         headless: true,
-        args: launchArgs,
+        args,
         env: launchEnv,
         timeout: EXPORT_TIMEOUT_MS,
-      });
+      };
+      if (executablePath) opts.executablePath = executablePath;
+      return await chromium.launch(opts);
     } catch (err) {
-      attempts.push({ executablePath, error: String((err as any)?.message || err) });
+      const message = String((err as any)?.message || err);
+      attempts.push({
+        executablePath,
+        error: label ? `(${label}) ${message}` : message,
+        retryable: isTransientChromiumLaunchError(message),
+      });
+      return null;
     }
+  };
+
+  /**
+   * Attempt strategy per candidate:
+   *   1. Try with the launcher's default args (may include
+   *      `--single-process` if env forces it on).
+   *   2. If the failure text matches
+   *      `shouldRetryWithoutSingleProcess`, drop `--single-process` and
+   *      retry the same executable — this is the classic Debian
+   *      bookworm + M120 SIGTRAP path, and dropping the flag fixes it
+   *      99% of the time.
+   *   3. If still failing and the error is transient, wait 250ms and
+   *      retry the reduced args once more (covers `/tmp` warm-up races).
+   */
+  const attemptCandidate = async (executablePath: string): Promise<Browser | null> => {
+    const first = await tryLaunch(executablePath, baseArgs, '');
+    if (first) return first;
+    const firstErr = attempts[attempts.length - 1]?.error ?? '';
+
+    let reducedArgs: string[] | null = null;
+    if (shouldRetryWithoutSingleProcess(firstErr, baseArgs)) {
+      reducedArgs = baseArgs.filter((arg) => arg !== '--single-process');
+      const dropSingle = await tryLaunch(executablePath, reducedArgs, 'no-single-process');
+      if (dropSingle) {
+        console.warn('[headless-export] recovered by dropping --single-process', {
+          executablePath,
+        });
+        return dropSingle;
+      }
+    }
+
+    const lastErr = attempts[attempts.length - 1];
+    if (lastErr?.retryable) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const backoffArgs = reducedArgs ?? baseArgs;
+      const backoff = await tryLaunch(executablePath, backoffArgs, 'retry');
+      if (backoff) return backoff;
+    }
+    return null;
+  };
+
+  for (const executablePath of candidates) {
+    if (!fs.existsSync(executablePath)) {
+      attempts.push({
+        executablePath,
+        error: 'executable not found',
+        retryable: false,
+      });
+      continue;
+    }
+    const browser = await attemptCandidate(executablePath);
+    if (browser) return browser;
   }
+
   const skipBundled =
     process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === '1' || process.env.NODE_ENV === 'production';
   if (!skipBundled) {
-    try {
-      return await chromium.launch({
-        headless: true,
-        args: launchArgs,
-        env: launchEnv,
-        timeout: EXPORT_TIMEOUT_MS,
-      });
-    } catch (err) {
-      attempts.push({ error: String((err as any)?.message || err) });
-    }
+    const bundled = await tryLaunch(undefined, baseArgs, 'bundled');
+    if (bundled) return bundled;
   }
+
+  // Last-ditch: install Playwright Chromium into a writable tmpfs path
+  // (`/tmp/playwright-browsers`) on the fly and retry. This is deliberately
+  // slow (~120MB download) but keeps PDF export working even when the
+  // baked image lost its `/ms-playwright` payload — a scenario we've seen
+  // when Docker build caching skipped the install layer.
+  const rescued = await tryRuntimeChromiumInstallAndLaunch(chromium, baseArgs, launchEnv, attempts);
+  if (rescued) return rescued;
+
   console.warn('[headless-export] chromium launch failed', { attempts });
+  // Keep the summary short: dump the full Playwright call log to daemon
+  // logs (above) but only expose the concise "<path>: <reason>" line to
+  // the FE so users do not see kilobytes of stack traces.
   const summary = attempts
-    .map((entry) =>
-      entry.executablePath ? `${entry.executablePath}: ${entry.error}` : entry.error,
-    )
+    .map((entry) => {
+      const reason = firstLineOf(entry.error) || 'unknown launch failure';
+      return entry.executablePath ? `${entry.executablePath}: ${reason}` : reason;
+    })
     .join('; ');
   throw new Error(
     `headless Chromium unavailable (tried ${attempts.length} path(s)): ${summary}`,
   );
+}
+
+/**
+ * Fallback that installs Playwright Chromium at runtime into a writable
+ * tmpfs location. Triggered only when every baked-in candidate has
+ * failed. We cache the result so a burst of concurrent exports does not
+ * fan out into many install processes.
+ *
+ * Disabled entirely by setting `OD_DISABLE_RUNTIME_CHROMIUM_INSTALL=1`
+ * (some deployments prefer to hard-fail rather than pay the download
+ * cost on the request path).
+ */
+let runtimeChromiumInstallPromise: Promise<string | null> | null = null;
+async function tryRuntimeChromiumInstallAndLaunch(
+  chromium: any,
+  baseArgs: string[],
+  launchEnv: NodeJS.ProcessEnv,
+  attempts: LaunchAttempt[],
+): Promise<Browser | null> {
+  if (process.env.OD_DISABLE_RUNTIME_CHROMIUM_INSTALL === '1') return null;
+  if (!runtimeChromiumInstallPromise) {
+    runtimeChromiumInstallPromise = installPlaywrightChromiumToTmpfs();
+  }
+  let installedPath: string | null = null;
+  try {
+    installedPath = await runtimeChromiumInstallPromise;
+  } catch (err) {
+    attempts.push({
+      executablePath: undefined,
+      error: `(runtime-install) ${String((err as any)?.message || err)}`,
+      retryable: false,
+    });
+    runtimeChromiumInstallPromise = null;
+    return null;
+  }
+  if (!installedPath) {
+    attempts.push({
+      executablePath: undefined,
+      error: '(runtime-install) no chromium binary produced',
+      retryable: false,
+    });
+    return null;
+  }
+  const reducedArgs = baseArgs.filter((arg) => arg !== '--single-process');
+  try {
+    return await chromium.launch({
+      executablePath: installedPath,
+      headless: true,
+      args: reducedArgs,
+      env: launchEnv,
+      timeout: EXPORT_TIMEOUT_MS,
+    });
+  } catch (err) {
+    attempts.push({
+      executablePath: installedPath,
+      error: `(runtime-install-launch) ${String((err as any)?.message || err)}`,
+      retryable: false,
+    });
+    return null;
+  }
+}
+
+async function installPlaywrightChromiumToTmpfs(): Promise<string | null> {
+  const target = process.env.OD_RUNTIME_CHROMIUM_DIR?.trim() || '/tmp/playwright-browsers';
+  try {
+    fs.mkdirSync(target, { recursive: true, mode: 0o755 });
+  } catch (err) {
+    console.warn('[headless-export] runtime-install: mkdir failed', {
+      target,
+      error: String((err as any)?.message || err),
+    });
+    return null;
+  }
+
+  // If a previous boot already dropped a chromium here, reuse it.
+  const existing = findChromiumBinaryUnder(target);
+  if (existing) {
+    console.warn('[headless-export] runtime-install: reusing cached binary', {
+      path: existing,
+    });
+    return existing;
+  }
+
+  const spec = process.env.OD_RUNTIME_CHROMIUM_SPEC?.trim() || 'playwright-core@1.60.0';
+  console.warn('[headless-export] runtime-install: fetching chromium', { target, spec });
+  const { spawn } = await import('node:child_process');
+  const child = spawn(
+    'npx',
+    ['--yes', spec, 'install', 'chromium'],
+    {
+      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: target },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  const stderrChunks: Buffer[] = [];
+  child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+  const status: number | null = await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {}
+      resolve(null);
+    }, 180_000);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
+  if (status !== 0) {
+    console.warn('[headless-export] runtime-install: npx exited non-zero', {
+      status,
+      stderr: Buffer.concat(stderrChunks).toString('utf8').slice(0, 500),
+    });
+    return null;
+  }
+  return findChromiumBinaryUnder(target);
+}
+
+function findChromiumBinaryUnder(root: string): string | null {
+  try {
+    const dirs = fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+      .reverse();
+    for (const dir of dirs) {
+      if (!dir.startsWith('chromium-') && !dir.startsWith('chromium_headless_shell-')) continue;
+      for (const candidate of playwrightChromiumBinaryCandidates(root, dir)) {
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function firstLineOf(message: string): string {
+  const idx = message.indexOf('\n');
+  return idx === -1 ? message.trim() : message.slice(0, idx).trim();
 }
 
 async function dynamicImport(specifier: string): Promise<any> {
@@ -424,36 +781,9 @@ async function preparePage(
   return page;
 }
 
-/** Remove truncated viewport meta tails that survived string repair into the DOM. */
-async function stripLeakedViewportFromPage(page: Page): Promise<void> {
-  await evaluateInPage(
-    page,
-    `
-      const leak = /^\\s*device-width\\s*,\\s*initial-scale=[^<\\n]+"?\\s*\\/?>\\s*$/i;
-      const slideSelectors = args.selector.split(',').map((sel) => sel.trim());
-      const isInsideSlide = (node) => {
-        let el = node.parentElement;
-        while (el) {
-          if (slideSelectors.some((sel) => el.matches(sel))) return true;
-          el = el.parentElement;
-        }
-        return false;
-      };
-      const walk = (root) => {
-        for (const node of Array.from(root.childNodes)) {
-          if (node.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent || '';
-            if (leak.test(text) && !isInsideSlide(node)) node.remove();
-            continue;
-          }
-          if (node.nodeType === Node.ELEMENT_NODE) walk(node);
-        }
-      };
-      if (document.head) walk(document.head);
-      if (document.body) walk(document.body);
-    `,
-    { selector: DECK_SLIDE_SELECTOR },
-  ).catch(() => {});
+/** Remove truncated viewport / meta tails and other agent leaks in the live DOM. */
+async function stripLeakedArtifactTextFromPage(page: Page): Promise<void> {
+  await page.evaluate(buildArtifactPreviewDomLeakStripScript()).catch(() => {});
 }
 
 /**
@@ -463,22 +793,72 @@ async function stripLeakedViewportFromPage(page: Page): Promise<void> {
  * order or @media print specificity battles.
  */
 export async function revealAllDeckSlides(page: Page): Promise<number> {
-  const count = await evaluateInPage<number>(
+  const result = await evaluateInPage<{
+    count: number;
+    canvasBgAttempted: number;
+    canvasBgRasterized: number;
+    canvasBgFailed: number;
+    canvasBgFailReasons: string[];
+  }>(
     page,
     `
       const slides = Array.from(document.querySelectorAll(args.selector));
-      if (slides.length === 0) return 0;
+      if (slides.length === 0) {
+        return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
+      }
 
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
 
       const rootStyle = window.getComputedStyle(document.documentElement);
-      const slideBg =
+      const resolveShellBackground = () =>
+        rootStyle.getPropertyValue('--shell').trim() ||
         rootStyle.getPropertyValue('--bg').trim() ||
+        rootStyle.getPropertyValue('--ink').trim() ||
         rootStyle.getPropertyValue('background-color').trim() ||
         '#0a0c10';
-      const shellBg = rootStyle.getPropertyValue('--shell').trim() || slideBg;
 
-      document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+      ${buildDeckSlideExportLayoutHelperJs()}
+
+      let canvasBgAttempted = 0;
+      let canvasBgRasterized = 0;
+      let canvasBgFailed = 0;
+      const canvasBgFailReasons = [];
+      document.querySelectorAll('canvas.bg').forEach((canvas) => {
+        canvasBgAttempted += 1;
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          if (!dataUrl || dataUrl === 'data:,') {
+            canvasBgFailed += 1;
+            canvasBgFailReasons.push('empty-data-url');
+            return;
+          }
+          const img = document.createElement('img');
+          img.setAttribute('data-od-rasterized-bg', canvas.id || 'bg');
+          img.src = dataUrl;
+          set(img, 'position', 'fixed');
+          set(img, 'inset', '0');
+          set(img, 'width', '100%');
+          set(img, 'height', '100%');
+          set(img, 'z-index', '0');
+          set(img, 'pointer-events', 'none');
+          set(img, 'object-fit', 'cover');
+          const opacity = window.getComputedStyle(canvas).opacity;
+          if (opacity) set(img, 'opacity', opacity);
+          canvas.replaceWith(img);
+          canvasBgRasterized += 1;
+        } catch (err) {
+          canvasBgFailed += 1;
+          // toDataURL on a WebGL canvas without preserveDrawingBuffer,
+          // or a tainted canvas, is the common failure mode. Keep the
+          // reason short but distinctive so daemon logs can group.
+          const reason = err && err.name ? err.name : String(err || 'unknown').slice(0, 64);
+          canvasBgFailReasons.push(reason);
+        }
+      });
+
+      const shellBg = resolveShellBackground();
+
+      document.querySelectorAll(args.wrapperSelector).forEach((el) => {
         set(el, 'display', 'contents');
         set(el, 'transform', 'none');
         set(el, 'box-shadow', 'none');
@@ -498,10 +878,11 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       set(document.body, 'height', totalHeight + 'px');
       set(document.body, 'margin', '0');
 
+      ${buildDeckSlideExportLayoutHelperJs()}
+
       slides.forEach((el, index) => {
         el.classList.add('active');
-        set(el, 'display', 'flex');
-        set(el, 'flex-direction', 'column');
+        applySlideExportLayout(el);
         set(el, 'flex', 'none');
         set(el, 'position', 'relative');
         set(el, 'inset', 'auto');
@@ -509,7 +890,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'height', args.height + 'px');
         set(el, 'min-height', args.height + 'px');
         set(el, 'max-height', args.height + 'px');
-        set(el, 'background', slideBg);
+        set(el, 'background', resolveSlidePrintBackground(el));
         set(el, 'visibility', 'visible');
         set(el, 'opacity', '1');
         set(el, 'overflow', 'hidden');
@@ -521,39 +902,50 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
           set(el, 'page-break-before', 'avoid');
           set(el, 'break-before', 'avoid');
         }
-        Array.from(el.children).forEach((child) => {
-          const computed = window.getComputedStyle(child);
-          if (computed.position === 'absolute' || computed.position === 'fixed') return;
-          if (child.classList.contains('grid-bg') || child.classList.contains('win-chrome')) return;
-          set(child, 'position', 'relative');
-          set(child, 'inset', 'auto');
-          set(child, 'transform', 'none');
-          set(child, 'height', 'auto');
-          set(child, 'min-height', '0');
-          set(child, 'max-height', 'none');
-        });
       });
 
       document.documentElement.style.setProperty('--deck-scale', '1');
 
       document
-        .querySelectorAll(
-          '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, [aria-label="Previous slide"], [aria-label="Next slide"]',
-        )
+        .querySelectorAll(args.chromeHideSelector)
         .forEach((el) => set(el, 'display', 'none'));
 
-      return slides.length;
+      return {
+        count: slides.length,
+        canvasBgAttempted,
+        canvasBgRasterized,
+        canvasBgFailed,
+        canvasBgFailReasons,
+      };
     `,
     {
       selector: DECK_SLIDE_SELECTOR,
+      wrapperSelector: DECK_WRAPPER_SELECTOR,
+      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
       width: DECK_WIDTH,
       height: DECK_HEIGHT,
     },
   ).catch((err: unknown) => {
     console.warn('[headless-export] revealAllDeckSlides failed', err);
-    return 0;
+    return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
   });
-  return typeof count === 'number' && Number.isFinite(count) ? count : 0;
+  if (result.canvasBgFailed > 0) {
+    // Currently the primary failure mode is WebGL contexts that were not
+    // created with preserveDrawingBuffer:true — the resulting toDataURL
+    // returns an empty buffer, which then falls back to the CSS/shell
+    // background color. Emitting the summary here lets ops correlate
+    // "blank first page" bug reports with template regressions.
+    console.warn(
+      JSON.stringify({
+        metric: 'od_export_canvas_bg_rasterize',
+        attempted: result.canvasBgAttempted,
+        rasterized: result.canvasBgRasterized,
+        failed: result.canvasBgFailed,
+        reasons: Array.from(new Set(result.canvasBgFailReasons)).slice(0, 4),
+      }),
+    );
+  }
+  return Number.isFinite(result.count) ? result.count : 0;
 }
 
 async function waitForPrintableContent(page: Page): Promise<void> {
@@ -637,9 +1029,7 @@ async function applyScreenshotStyles(page: Page, deck: boolean, slideIndex?: num
       ${deck ? `
       html, body { width: ${DECK_WIDTH}px !important; min-height: ${DECK_HEIGHT}px !important; overflow: hidden !important; }
       ${DECK_SLIDE_SELECTOR} { overflow: hidden !important; }
-      .deck-counter, .deck-hint, .deck-nav,
-      #deck-prev, #deck-next, #deck-cur, #deck-total,
-      [aria-label="Previous slide"], [aria-label="Next slide"] {
+      ${DECK_CHROME_HIDE_SELECTOR} {
         display: none !important;
       }` : ''}
     `,
@@ -681,7 +1071,7 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     set(document.body, 'width', args.width + 'px');
     set(document.body, 'height', args.height + 'px');
 
-    document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+    document.querySelectorAll(args.wrapperSelector).forEach((el) => {
       set(el, 'position', 'relative');
       set(el, 'display', 'block');
       set(el, 'inset', 'auto');
@@ -716,6 +1106,7 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     {
       index: Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex || 0)) : 0,
       selector: DECK_SLIDE_SELECTOR,
+      wrapperSelector: DECK_WRAPPER_SELECTOR,
       width: DECK_WIDTH,
       height: DECK_HEIGHT,
     },
@@ -732,9 +1123,7 @@ async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? `
-      .deck-counter, .deck-hint, .deck-nav,
-      #deck-prev, #deck-next, #deck-cur, #deck-total,
-      [aria-label="Previous slide"], [aria-label="Next slide"] {
+      ${DECK_CHROME_HIDE_SELECTOR} {
         display: none !important;
       }` : ''}
     `,
@@ -870,7 +1259,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     page,
     `
     const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
-    document.querySelectorAll('.deck, .deck-shell, .deck-stage, #deck-stage, .stage').forEach((el) => {
+    document.querySelectorAll(args.wrapperSelector).forEach((el) => {
       set(el, 'transform', 'none');
       set(el, 'box-shadow', 'none');
     });
@@ -881,7 +1270,7 @@ async function resetDeckScreenshotLayout(page: Page): Promise<void> {
     set(document.body, 'margin', '0');
     document.documentElement.style.setProperty('--deck-scale', '1');
   `,
-    { width: DECK_WIDTH, height: DECK_HEIGHT },
+    { width: DECK_WIDTH, height: DECK_HEIGHT, wrapperSelector: DECK_WRAPPER_SELECTOR },
   ).catch(() => {});
 }
 
@@ -894,19 +1283,16 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
 export { deckScreenshotClip as deckScreenshotClipRect };
 
 function buildPrintableHtml(input: DesktopExportPdfInput): string {
-  let doc = patchArtifactDeckPrintBackground(
+  let doc = patchArtifactDeckPrintCss(
     repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
   );
   doc = injectTitle(doc, input.title);
   return injectPrintStylesheet(doc, buildDeckPrintCss());
 }
 
-/** Undo agent/framework print rules that force a white page behind slides. */
+/** @deprecated Use patchArtifactDeckPrintCss from @open-design/contracts */
 export function patchArtifactDeckPrintBackground(doc: string): string {
-  return doc.replace(
-    /(@media\s+print[\s\S]*?html\s*,\s*body\s*\{[^}]*?)background\s*:\s*#fff\s*!important/gi,
-    '$1background: var(--shell, var(--bg, #fff)) !important',
-  );
+  return patchArtifactDeckPrintCss(doc);
 }
 
 function injectTitle(doc: string, title: string): string {
@@ -964,4 +1350,102 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Log which chromium binaries the launcher can see at boot so ops can
+ * catch a broken image (missing Playwright download, wrong compose
+ * env) before the first user PDF export fails. Emits one structured
+ * line per candidate — grep for `od_chromium_boot` in daemon logs.
+ */
+export function logChromiumAvailabilityAtBoot(): void {
+  const candidates = chromiumExecutableCandidates();
+  const summary = candidates.map((executablePath) => ({
+    executablePath,
+    exists: fs.existsSync(executablePath),
+  }));
+  const anyAvailable = summary.some((entry) => entry.exists);
+  const level = anyAvailable ? 'info' : 'error';
+  const payload = {
+    marker: 'od_chromium_boot',
+    playwrightBrowsersPath: process.env.PLAYWRIGHT_BROWSERS_PATH || null,
+    odExportChromiumPath: process.env.OD_EXPORT_CHROMIUM_PATH || null,
+    odChromiumSingleProcess: process.env.OD_CHROMIUM_SINGLE_PROCESS === '1',
+    launchArgsIncludeSingleProcess: chromiumLaunchArgs().includes('--single-process'),
+    candidates: summary,
+    anyAvailable,
+  };
+  if (level === 'error') {
+    console.error('[headless-export] boot: no chromium binaries found', payload);
+  } else {
+    console.info('[headless-export] boot: chromium ready', payload);
+  }
+}
+
+/**
+ * Actively probe headless Chromium at daemon startup. Runs
+ * `launchChromium()` (with the same self-healing / retry pipeline the
+ * export routes use) and immediately closes the browser. Emits a
+ * structured `od_chromium_warmup` log so ops can verify PDF export is
+ * functional the moment the container comes up, instead of discovering
+ * a broken image only when a user clicks "PDF 다운로드".
+ *
+ * Optional strict mode (`OD_CHROMIUM_BOOT_WARMUP=strict`) exits the
+ * process with a non-zero code so the orchestrator restarts the pod;
+ * default behaviour keeps the daemon alive so unrelated features (chat,
+ * BYOK, project sync) still work while ops investigates.
+ *
+ * Disable entirely with `OD_CHROMIUM_BOOT_WARMUP=off` (useful for unit
+ * tests and CI environments where Chromium isn't available).
+ */
+export async function warmupHeadlessChromiumAtBoot(): Promise<void> {
+  const mode = (process.env.OD_CHROMIUM_BOOT_WARMUP || '').trim().toLowerCase();
+  if (mode === 'off' || mode === '0' || mode === 'false') return;
+  const strict = mode === 'strict';
+  const startedAt = Date.now();
+  let browser: Awaited<ReturnType<typeof launchChromium>> | null = null;
+  try {
+    browser = await launchChromium();
+    const elapsedMs = Date.now() - startedAt;
+    console.info('[headless-export] boot: chromium warm-up ok', {
+      marker: 'od_chromium_warmup',
+      elapsedMs,
+    });
+  } catch (err) {
+    const elapsedMs = Date.now() - startedAt;
+    const reason = err instanceof Error ? err.message : String(err ?? '');
+    console.error('[headless-export] boot: chromium warm-up FAILED', {
+      marker: 'od_chromium_warmup',
+      elapsedMs,
+      strict,
+      // First line only — the full attempts array is already dumped by
+      // launchChromium() above. Keep this payload greppable.
+      reason: firstLineOf(reason),
+    });
+    if (strict) {
+      console.error(
+        '[headless-export] OD_CHROMIUM_BOOT_WARMUP=strict — exiting so orchestrator restarts the container',
+      );
+      // Prefer process.exit over throwing so the failure is not swallowed
+      // by a downstream .catch() that only logs. Exit code 78 (EX_CONFIG,
+      // BSD sysexits) signals a configuration/environmental failure to
+      // supervisors that inspect codes.
+      process.exit(78);
+    }
+    return;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        // Best-effort: an already-dying browser is fine, we care about
+        // the launch signal, not the teardown path.
+      }
+    }
+  }
+}
+
 bindExportBrowserLauncher(() => launchChromium());
+logChromiumAvailabilityAtBoot();
+// Fire-and-forget: the warm-up promise must not block module import.
+// It's harmless to have export routes handle an in-flight warm-up
+// because launchChromium is called per-export anyway.
+void warmupHeadlessChromiumAtBoot();

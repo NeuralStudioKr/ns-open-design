@@ -27,6 +27,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { encodeS3PathSegment, signSigV4, type SigV4Credentials } from './aws-sigv4.js';
+import type { S3CredentialProvider } from './s3-credential-provider.js';
 
 export interface ProjectFileMeta {
   // Path relative to the project root. Always uses forward slashes.
@@ -220,8 +221,10 @@ export interface S3ProjectStorageOptions {
   endpoint?: string;
   // AWS access credentials. Read from OD_S3_ACCESS_KEY_ID /
   // OD_S3_SECRET_ACCESS_KEY by resolveProjectStorage(); the test
-  // harness can pass them directly.
-  credentials: SigV4Credentials;
+  // harness can pass them directly. Prefer `credentialProvider` on
+  // hosted EC2 (instance profile with auto-refresh).
+  credentials?: SigV4Credentials;
+  credentialProvider?: S3CredentialProvider;
   // Pluggable fetch for tests. Defaults to globalThis.fetch.
   fetchFn?: typeof fetch;
   // Override for clock — tests pin signatures with this. Production
@@ -231,11 +234,19 @@ export interface S3ProjectStorageOptions {
 
 export class S3ProjectStorage implements ProjectStorage {
   private readonly fetchFn: typeof fetch;
+  private readonly credentialProvider: S3CredentialProvider | null;
   constructor(public readonly options: S3ProjectStorageOptions) {
     if (!options.bucket) throw new StorageError('IO', 'S3ProjectStorage requires a bucket');
     if (!options.region) throw new StorageError('IO', 'S3ProjectStorage requires a region');
-    if (!options.credentials?.accessKeyId)     throw new StorageError('IO', 'S3ProjectStorage requires credentials.accessKeyId');
-    if (!options.credentials?.secretAccessKey) throw new StorageError('IO', 'S3ProjectStorage requires credentials.secretAccessKey');
+    this.credentialProvider = options.credentialProvider ?? null;
+    if (!this.credentialProvider) {
+      if (!options.credentials?.accessKeyId) {
+        throw new StorageError('IO', 'S3ProjectStorage requires credentials.accessKeyId');
+      }
+      if (!options.credentials?.secretAccessKey) {
+        throw new StorageError('IO', 'S3ProjectStorage requires credentials.secretAccessKey');
+      }
+    }
     const fn = options.fetchFn ?? globalThis.fetch;
     if (!fn) throw new StorageError('IO', 'S3ProjectStorage requires a fetch implementation');
     this.fetchFn = fn;
@@ -476,53 +487,74 @@ export class S3ProjectStorage implements ProjectStorage {
     return `https://${this.options.bucket}.s3.${this.options.region}.amazonaws.com`;
   }
 
+  private async resolveCredentials(): Promise<SigV4Credentials> {
+    if (this.credentialProvider) return await this.credentialProvider.getCredentials();
+    return this.options.credentials!;
+  }
+
   private async signedRequest(args: {
     method:     string;
     key:        string;
     body?:      Buffer;
     extraQuery?: string;
   }): Promise<Response> {
-    const base = this.endpointBase();
-    const baseHost = new URL(base).host;
-    // Path-style for endpoint overrides (typical for S3-compat
-    // services + MinIO test setups); virtual-host-style when
-    // endpoint is omitted (default AWS S3).
-    let pathSegment: string;
-    let host: string;
-    if (this.options.endpoint) {
-      const segments = [this.options.bucket, ...args.key.split('/').filter(Boolean).map(encodeS3PathSegment)];
-      pathSegment = '/' + segments.join('/');
-      host = baseHost;
-    } else {
-      const segments = args.key.split('/').filter(Boolean).map(encodeS3PathSegment);
-      pathSegment = segments.length === 0 ? '/' : '/' + segments.join('/');
-      host = baseHost;
+    const execute = async (): Promise<Response> => {
+      const credentials = await this.resolveCredentials();
+      const base = this.endpointBase();
+      const baseHost = new URL(base).host;
+      // Path-style for endpoint overrides (typical for S3-compat
+      // services + MinIO test setups); virtual-host-style when
+      // endpoint is omitted (default AWS S3).
+      let pathSegment: string;
+      let host: string;
+      if (this.options.endpoint) {
+        const segments = [this.options.bucket, ...args.key.split('/').filter(Boolean).map(encodeS3PathSegment)];
+        pathSegment = '/' + segments.join('/');
+        host = baseHost;
+      } else {
+        const segments = args.key.split('/').filter(Boolean).map(encodeS3PathSegment);
+        pathSegment = segments.length === 0 ? '/' : '/' + segments.join('/');
+        host = baseHost;
+      }
+
+      const headers: Record<string, string> = {
+        'host': host,
+      };
+      const body = args.body ?? Buffer.alloc(0);
+      const now = this.options.now ? this.options.now() : new Date();
+      signSigV4({
+        method:  args.method,
+        path:    pathSegment,
+        query:   args.extraQuery ?? '',
+        headers,
+        body,
+        region:  this.options.region,
+        service: 's3',
+        credentials,
+        now,
+      });
+
+      const url = `${base.replace(/\/+$/, '')}${pathSegment}${args.extraQuery ? `?${args.extraQuery}` : ''}`;
+      const init: RequestInit = {
+        method:  args.method,
+        headers,
+        ...(args.body ? { body: args.body } : {}),
+      };
+      return this.fetchFn(url, init);
+    };
+
+    let res = await execute();
+    if (
+      res.status === 400
+      && this.credentialProvider?.usesImds
+    ) {
+      const snippet = await res.clone().text().catch(() => '');
+      if (snippet.includes('ExpiredToken')) {
+        this.credentialProvider.invalidate();
+        res = await execute();
+      }
     }
-
-    const headers: Record<string, string> = {
-      'host': host,
-    };
-    const body = args.body ?? Buffer.alloc(0);
-    const now = this.options.now ? this.options.now() : new Date();
-    signSigV4({
-      method:  args.method,
-      path:    pathSegment,
-      query:   args.extraQuery ?? '',
-      headers,
-      body,
-      region:  this.options.region,
-      service: 's3',
-      credentials: this.options.credentials,
-      now,
-    });
-
-    const url = `${base.replace(/\/+$/, '')}${pathSegment}${args.extraQuery ? `?${args.extraQuery}` : ''}`;
-    const init: RequestInit = {
-      method:  args.method,
-      headers,
-      ...(args.body ? { body: args.body } : {}),
-    };
-    return this.fetchFn(url, init);
+    return res;
   }
 }
 

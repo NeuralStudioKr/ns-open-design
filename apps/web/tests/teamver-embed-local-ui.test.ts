@@ -16,15 +16,19 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(source).toContain("hideLocalWorkspaceControls: false");
   });
 
-  it("keeps embed thinking blocks visible (collapsed header, not filtered out)", () => {
+  it("hides embed thinking/tool blocks entirely for demo-safe chat", () => {
     const source = readRepoFile("apps/web/src/teamver/branding/config.ts");
     const assistant = readRepoFile("apps/web/src/components/AssistantMessage.tsx");
 
-    expect(source).toContain("hideAssistantThinkingDetails: false");
-    expect(assistant).toContain("<ThinkingBlock");
-    expect(assistant).not.toMatch(
-      /hideAssistantThinkingDetails[\s\S]{0,120}filter\(\(block\) => block\.kind !== "thinking"\)/,
+    expect(source).toContain("hideAssistantThinkingDetails: true");
+    expect(assistant).toContain("hideAssistantThinkingDetails");
+    expect(assistant).toMatch(
+      /hideAssistantThinkingDetails[\s\S]{0,280}block\.kind !== "thinking"/,
     );
+    expect(assistant).toContain('block.kind !== "status"');
+    expect(assistant).toContain('block.kind !== "plugin-candidate"');
+    expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
+    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
   });
 
   it("hides Home and project composer working directory pickers", () => {

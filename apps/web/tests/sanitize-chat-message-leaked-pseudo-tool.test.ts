@@ -136,4 +136,93 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
       text: "슬라이드 초안을 반영했습니다.",
     });
   });
+
+  it("strips leaked deck navigation script from persisted assistant messages", () => {
+    const visibleProse = "요청하신 덱 초안을 바로 만들겠습니다.";
+    const message: ChatMessage = {
+      id: "m-deck-script",
+      role: "assistant",
+      content: [
+        "(function () {",
+        "var stage = document.getElementById('deck-stage');",
+        "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));",
+        "function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }",
+        "function paint() { slides.forEach(function (el, i) { el.classList.toggle('active', i === 0); }); }",
+        "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+        "fit();",
+        "paint();",
+        "focusDeck();",
+        `})${visibleProse}`,
+      ].join("\n"),
+      events: [
+        {
+          kind: "text",
+          text: [
+            "var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));",
+            "function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }",
+            "function paint() { slides.forEach(function (el, i) { el.classList.toggle('active', i === 0); }); }",
+            "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+            "fit();",
+            "paint();",
+            "focusDeck();",
+            "})완료했습니다.",
+          ].join("\n"),
+        },
+      ],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe(visibleProse);
+    expect(sanitized.content).not.toContain("deck-stage");
+    expect(sanitized.events?.[0]).toEqual({ kind: "text", text: "완료했습니다." });
+  });
+
+  it("strips mangled deck-framework body leak (no deck-* ids, no proper close) from persisted content and events", () => {
+    const leaked = [
+      "(function () {location.pathname || '/');",
+      "var idx = 0; = Math.min((sw - pad) / 1920, (sh - pad) / 1080);",
+      "stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';",
+      "function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }",
+      "document.addEventListener('mousedown', focusDeck);",
+      "window.addEventListener('resize', fit);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "m-deck-mangled",
+      role: "assistant",
+      content: leaked,
+      events: [{ kind: "text", text: leaked }],
+    };
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("");
+    expect(sanitized.content).not.toContain("stage.style.transform");
+    expect(sanitized.content).not.toContain("focusDeck");
+    expect(sanitized.events ?? []).toEqual([]);
+  });
+
+  it("does not mutate persisted deck plan prose that contains no script leak", () => {
+    const planText = [
+      "요청하신 8장짜리 덱을 바로 만들겠습니다.",
+      "",
+      "**슬라이드 구성 계획:**",
+      "1. 표지",
+      "2. 소개",
+      "3. 마무리",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "m-deck-plan",
+      role: "assistant",
+      content: planText,
+      events: [
+        {
+          kind: "text",
+          text: ["**슬라이드 구성 계획:**", "1. 표지", "2. 소개"].join("\n"),
+        },
+      ],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized).toBe(message);
+  });
 });

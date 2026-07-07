@@ -434,6 +434,12 @@ export interface Dict {
   'teamver.backgroundRuns.queued': string;
   'teamver.backgroundRuns.andMore': string;
   'teamver.backgroundRuns.open': string;
+  'teamver.runRecovery.title': string;
+  'teamver.runRecovery.connecting': string;
+  'teamver.runRecovery.connectingWithSaved': string;
+  'teamver.runRecovery.live': string;
+  'teamver.runRecovery.liveWithSaved': string;
+  'teamver.runRecovery.queued': string;
   'teamver.publish.chipLabel': string;
   'teamver.publish.chipTitle': string;
   'teamver.driveImport.attachFromMenu': string;
@@ -2752,6 +2758,15 @@ export interface Dict {
   'fileViewer.exportStarted': string;
   'fileViewer.exportInProgress': string;
   'fileViewer.exportPdfInProgress': string;
+  'fileViewer.exportHtmlInProgress': string;
+  'fileViewer.exportZipInProgress': string;
+  'fileViewer.exportCompleted': string;
+  'fileViewer.exportPdfCompleted': string;
+  'fileViewer.exportPdfBrowserPrintFallback': string;
+  'fileViewer.exportHtmlCompleted': string;
+  'fileViewer.exportZipCompleted': string;
+  'fileViewer.exportMarkdownCompleted': string;
+  'fileViewer.exportPptxRequested': string;
   'fileViewer.saveAsTemplate': string;
   'fileViewer.savingTemplate': string;
   'fileViewer.savedTemplate': string;

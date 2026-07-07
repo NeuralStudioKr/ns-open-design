@@ -35,6 +35,8 @@ interface Props {
   // view (no hover/linger gate) and drop the built-in dot+url chrome
   // strip, since the gallery card provides its own top bar.
   eager?: boolean;
+  // Composer hover panels: skip reachability probe delays.
+  instantMount?: boolean;
 }
 
 type ProbeState = 'idle' | 'probing' | 'ok' | 'unreachable';
@@ -69,23 +71,31 @@ async function probe(url: string): Promise<'ok' | 'unreachable'> {
   return result;
 }
 
-export function HtmlSurface({ preview, pluginId, pluginTitle, inView, eager = false }: Props) {
-  const [armed, setArmed] = useState(false);
-  const [shouldProbe, setShouldProbe] = useState(() => isVisualStabilityMode());
+export function HtmlSurface({
+  preview,
+  pluginId,
+  pluginTitle,
+  inView,
+  eager = false,
+  instantMount = false,
+}: Props) {
+  const [armed, setArmed] = useState(() => instantMount);
+  const [shouldProbe, setShouldProbe] = useState(() => isVisualStabilityMode() || instantMount);
   const [probeState, setProbeState] = useState<ProbeState>(() => {
     const cached = probeCache.get(preview.src);
-    return cached ?? 'idle';
+    if (cached) return cached;
+    return instantMount ? 'ok' : 'idle';
   });
 
   useEffect(() => {
-    setArmed(false);
-    setShouldProbe(isVisualStabilityMode());
+    setArmed(instantMount);
+    setShouldProbe(isVisualStabilityMode() || instantMount);
     const cached = probeCache.get(preview.src);
-    setProbeState(cached ?? 'idle');
-  }, [preview.src]);
+    setProbeState(cached ?? (instantMount ? 'ok' : 'idle'));
+  }, [preview.src, instantMount]);
 
   useEffect(() => {
-    if (!inView) return;
+    if (!inView || instantMount) return;
     if (isVisualStabilityMode()) {
       setShouldProbe(true);
       return;
@@ -96,7 +106,7 @@ export function HtmlSurface({ preview, pluginId, pluginTitle, inView, eager = fa
     }
     const id = window.setTimeout(() => setShouldProbe(true), eager ? 60 : 520);
     return () => window.clearTimeout(id);
-  }, [inView, preview.src, eager]);
+  }, [inView, preview.src, eager, instantMount]);
 
   // Kick off the probe on first in-view. We deliberately keep this
   // effect's deps narrow (just `inView` + `preview.src`) so the
@@ -104,7 +114,7 @@ export function HtmlSurface({ preview, pluginId, pluginTitle, inView, eager = fa
   // promise via a re-run cleanup. The module-level cache also makes
   // the probe a no-op if another tile already resolved the same URL.
   useEffect(() => {
-    if (!shouldProbe) return;
+    if (!shouldProbe || instantMount) return;
     if (probeCache.has(preview.src)) {
       setProbeState(probeCache.get(preview.src)!);
       return;
@@ -117,7 +127,7 @@ export function HtmlSurface({ preview, pluginId, pluginTitle, inView, eager = fa
     return () => {
       cancelled = true;
     };
-  }, [preview.src, shouldProbe]);
+  }, [preview.src, shouldProbe, instantMount]);
 
   // Arm the iframe after a short visibility window so the user can
   // scroll past tiles without paying for an iframe per tile, but tiles
@@ -128,7 +138,7 @@ export function HtmlSurface({ preview, pluginId, pluginTitle, inView, eager = fa
       if (inView) setArmed(true);
       return;
     }
-    if (eager) {
+    if (eager || instantMount) {
       if (inView) setArmed(true);
       return;
     }
@@ -136,7 +146,7 @@ export function HtmlSurface({ preview, pluginId, pluginTitle, inView, eager = fa
       if (inView) setArmed(true);
     }, 720);
     return () => window.clearTimeout(id);
-  }, [inView, probeState, eager]);
+  }, [inView, probeState, eager, instantMount]);
 
   if (probeState === 'unreachable') {
     return (

@@ -1,4 +1,5 @@
 import { readTeamverViteEnv } from "../teamverViteEnv";
+import { isTeamverEmbedMode } from "../designApiBase";
 import { isTeamverEmbedBuild, TEAMVER_DEFAULT_BRAND_TITLE } from "./siteMetadata";
 
 /**
@@ -11,11 +12,17 @@ import { isTeamverEmbedBuild, TEAMVER_DEFAULT_BRAND_TITLE } from "./siteMetadata
  *   the JS bundle loads in a Korean-first surface).
  */
 export function resolveLoadingShellLabel(): string {
-  if (!isTeamverEmbedBuild()) {
+  const isEmbed = isTeamverEmbedBuild() || isTeamverEmbedMode();
+  if (!isEmbed) {
     return "Loading Open Design…";
   }
 
   const brandTitle =
     readTeamverViteEnv("VITE_TEAMVER_BRAND_TITLE") || TEAMVER_DEFAULT_BRAND_TITLE;
   return `${brandTitle} 불러오는 중…`;
+}
+
+/** Unified bootstrap copy for shell, session banner, and auth callback. */
+export function resolveEmbedBootstrapLoadingLabel(): string {
+  return resolveLoadingShellLabel();
 }

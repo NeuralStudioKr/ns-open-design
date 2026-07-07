@@ -5,6 +5,8 @@ import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './
 import {
   buildSocialSharePayload,
   OPEN_DESIGN_GITHUB_REPO_URL,
+  isArtifactHtmlStableForPreview,
+  repairArtifactDocumentHead,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -102,6 +104,7 @@ import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
 import { buildLazySrcdocTransport, buildSrcdoc, canActivateSrcDocTransport } from '../runtime/srcdoc';
+import { scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import {
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
@@ -984,6 +987,40 @@ interface Props {
   // Bumped nonce asking a deck preview to flip to `slideIndex` (a queued chat
   // send for this file just started processing).
   slideNavRequest?: { slideIndex: number; nonce: number } | null;
+}
+
+type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
+
+function exportInProgressToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
+  switch (format) {
+    case 'pdf':
+      return t('fileViewer.exportPdfInProgress');
+    case 'html':
+      return t('fileViewer.exportHtmlInProgress');
+    case 'zip':
+      return t('fileViewer.exportZipInProgress');
+    default:
+      return t('fileViewer.exportInProgress');
+  }
+}
+
+function exportSuccessToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
+  switch (format) {
+    case 'pdf':
+      return t('fileViewer.exportPdfCompleted');
+    case 'html':
+      return t('fileViewer.exportHtmlCompleted');
+    case 'zip':
+      return t('fileViewer.exportZipCompleted');
+    case 'markdown':
+      return t('fileViewer.exportMarkdownCompleted');
+    case 'pptx':
+      return t('fileViewer.exportPptxRequested');
+    case 'image':
+      return t('fileViewer.exportImageSaved');
+    default:
+      return t('fileViewer.exportCompleted');
+  }
 }
 
 export function FileViewer({
@@ -4550,8 +4587,7 @@ function HtmlViewer({
       );
     };
     const toastFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image', 'markdown']);
-    const exportInProgressMessage =
-      format === 'pdf' ? t('fileViewer.exportPdfInProgress') : t('fileViewer.exportInProgress');
+    const exportInProgressMessage = exportInProgressToastMessage(format, t);
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
       const message = err instanceof Error && err.message.trim()
@@ -4563,6 +4599,27 @@ function HtmlViewer({
       if (toastFormats.has(format)) {
         setExportToast({ message: exportInProgressMessage, tone: 'loading' });
       }
+      const showResultToast = (result: unknown) => {
+        if (!toastFormats.has(format)) return;
+        // PDF's `'fallback'` result means the daemon export failed and
+        // the browser print dialog was opened instead. Users won't
+        // receive an automatic file download in that case, so the
+        // success-y "PDF 다운로드 완료" copy is misleading — surface a
+        // dedicated notice that tells them to pick "Save as PDF" in
+        // their browser's print dialog.
+        if (format === 'pdf' && result === 'fallback') {
+          setExportToast({
+            message: t('fileViewer.exportPdfBrowserPrintFallback'),
+            tone: 'default',
+            // Extended lifetime: the copy asks users to interact with
+            // the browser print dialog, so the toast must outlive the
+            // ~2.2s success flash and remain visible until they read it.
+            ttlMs: 9000,
+          });
+          return;
+        }
+        setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
+      };
       const out = fn();
       if (out && typeof (out as Promise<unknown>).then === 'function') {
         (out as Promise<unknown>).then(
@@ -4573,7 +4630,7 @@ function HtmlViewer({
               return;
             }
             finish('success');
-            if (toastFormats.has(format)) setExportToast({ message: t('fileViewer.exportStarted'), tone: 'default' });
+            showResultToast(result);
           },
           (err) => {
             finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
@@ -4587,7 +4644,7 @@ function HtmlViewer({
           return;
         }
         finish('success');
-        if (toastFormats.has(format)) setExportToast({ message: t('fileViewer.exportStarted'), tone: 'default' });
+        showResultToast(out);
       }
     } catch (err) {
       finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
@@ -4674,7 +4731,19 @@ function HtmlViewer({
     });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
-  const [source, setSource] = useState<string | null>(liveHtml ?? null);
+  const [source, setSource] = useState<string | null>(() => {
+    if (liveHtml == null) return null;
+    const repaired = repairArtifactDocumentHead(liveHtml);
+    return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+  });
+  const lastStablePreviewSourceRef = useRef<string | null>(
+    liveHtml
+      ? (() => {
+        const repaired = repairArtifactDocumentHead(liveHtml);
+        return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+      })()
+      : null,
+  );
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5040,8 +5109,18 @@ function HtmlViewer({
   const imageExportSlideRef = useRef<number | null>(null);
   const imageExportPrepareIdRef = useRef(0);
   const screenshotInFlightRef = useRef(false);
+  // Optional `ttlMs` lets specific toasts override the default 2.2s
+  // flash — used by the browser-print PDF fallback where the copy asks
+  // the user to interact with the print dialog before it vanishes.
+  // Comparing on message text was fragile across locale changes so the
+  // duration is now attached to the state itself (SSOT: single source
+  // of truth for how long the toast lives).
   const [exportToast, setExportToast] = useState<
-    { message: string; tone: 'default' | 'success' | 'error' | 'loading' } | null
+    {
+      message: string;
+      tone: 'default' | 'success' | 'error' | 'loading';
+      ttlMs?: number;
+    } | null
   >(null);
   const [shareLinkFeedback, setShareLinkFeedback] = useState<'copied' | 'failed' | null>(null);
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
@@ -5209,10 +5288,27 @@ function HtmlViewer({
 
   useEffect(() => {
     const sourceFileKey = `${projectId}\0${file.name}\0${liveHtml === undefined ? 'raw' : 'live'}`;
+    const acceptCandidate = (candidate: string | null): string | null => {
+      if (candidate == null) return null;
+      const repaired = repairArtifactDocumentHead(candidate);
+      const stable = isArtifactHtmlStableForPreview(repaired);
+      if (!streaming) {
+        if (stable) lastStablePreviewSourceRef.current = repaired;
+        return repaired;
+      }
+      if (stable) {
+        lastStablePreviewSourceRef.current = repaired;
+        return repaired;
+      }
+      return lastStablePreviewSourceRef.current;
+    };
     if (liveHtml !== undefined) {
       sourceFileKeyRef.current = sourceFileKey;
-      setSource(liveHtml);
-      sourceRef.current = liveHtml;
+      const accepted = acceptCandidate(liveHtml);
+      if (accepted != null) {
+        setSource(accepted);
+        sourceRef.current = accepted;
+      }
       return;
     }
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
@@ -5237,13 +5333,15 @@ function HtmlViewer({
       // transient null mid-burst would blank source → srcDoc empty →
       // shell stays on prior frame. Keep the last good text instead.
       if (text == null) return;
-      setSource(text);
-      sourceRef.current = text;
+      const accepted = acceptCandidate(text);
+      if (accepted == null) return;
+      setSource(accepted);
+      sourceRef.current = accepted;
     });
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.name, file.mtime, liveHtml, reloadKey, filesRefreshKey]);
+  }, [projectId, file.name, file.mtime, liveHtml, reloadKey, filesRefreshKey, streaming]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5627,6 +5725,22 @@ function HtmlViewer({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
+
+  useEffect(() => {
+    if (!effectiveDeck || mode !== 'preview') return;
+    return scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale);
+  }, [
+    effectiveDeck,
+    mode,
+    zoom,
+    overlayPreviewScale,
+    previewBodySize?.width,
+    previewBodySize?.height,
+    srcDoc,
+    previewStateKey,
+    useUrlLoadPreview,
+    srcDocTransportResetKey,
+  ]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
@@ -7529,6 +7643,7 @@ function HtmlViewer({
         deck: effectiveDeck,
         filePath: file.name,
         format,
+        htmlSnapshot: source ?? null,
         projectId,
         slideIndex: effectiveDeck ? slideState?.active : undefined,
         title: exportTitle,
@@ -7900,6 +8015,12 @@ function HtmlViewer({
   };
   const boardAvailable = mode === 'preview' && source !== null;
   const showPreviewToolbarControls = mode === 'preview';
+  const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
+  const showStreamingPreviewVeil = Boolean(
+    streaming
+    && liveHtml?.trim()
+    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
+  );
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
     localCommentSideDockActive ? 'comment-preview-layer-with-side-dock' : '',
@@ -8210,7 +8331,7 @@ function HtmlViewer({
               </button>
             ))}
           </div>
-          {showPreviewToolbarControls ? (
+          {showPreviewViewportControls ? (
             <>
               <span className="viewer-divider" aria-hidden />
               <PreviewViewportControls
@@ -8591,10 +8712,12 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-	                    exportPdf={() => exportProjectAsPdf({
+	                    exportPdf={(options) => exportProjectAsPdf({
 	                      deck: effectiveDeck,
 	                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
 	                      filePath: file.name,
+	                      fresh: options?.fresh,
+	                      htmlSnapshot: source ?? null,
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
@@ -8605,6 +8728,7 @@ function HtmlViewer({
 	                      filePath: file.name,
 	                      fallbackHtml: source ?? '',
 	                      fallbackTitle: exportTitle,
+	                      htmlSnapshot: source ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
@@ -8613,6 +8737,7 @@ function HtmlViewer({
 	                      filePath: file.name,
 	                      fallbackHtml: source ?? '',
 	                      fallbackTitle: exportTitle,
+	                      htmlSnapshot: source ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
                     exportMarkdown={() => exportAsMd(source ?? '', exportTitle)}
@@ -8659,7 +8784,17 @@ function HtmlViewer({
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}
                   >
-                    <div className="artifact-preview-transport-stack">
+                    <div
+                      className={[
+                        'artifact-preview-transport-stack',
+                        showStreamingPreviewVeil ? 'is-streaming-unstable' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      {showStreamingPreviewVeil ? (
+                        <div className="artifact-preview-streaming-veil" aria-hidden>
+                          {t('fileViewer.loading')}
+                        </div>
+                      ) : null}
                       {OD_PREVIEW_KEEP_ALIVE ? (
                         <PooledIframe
                           ref={urlPreviewIframeRef}
@@ -8684,6 +8819,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           }}
                         />
                       ) : (
@@ -8709,6 +8845,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
+                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           }}
                         />
                       )}
@@ -8770,6 +8907,7 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
+                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
                       />
@@ -8814,7 +8952,14 @@ function HtmlViewer({
                       message={exportToast.message}
                       tone={exportToast.tone}
                       role={exportToast.tone === 'error' ? 'alert' : 'status'}
-                      ttlMs={exportToast.tone === 'loading' ? 8000 : 2200}
+                      // `loading` shows for the whole export (up to 8s);
+                      // the browser-print fallback needs longer than the
+                      // regular 2.2s success flash because the copy asks
+                      // users to interact with the print dialog.
+                      ttlMs={
+                        exportToast.ttlMs
+                          ?? (exportToast.tone === 'loading' ? 8000 : 2200)
+                      }
                       placement="top"
                       onDismiss={() => setExportToast(null)}
                     />,

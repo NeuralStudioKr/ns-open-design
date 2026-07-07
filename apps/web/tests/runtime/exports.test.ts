@@ -15,6 +15,7 @@ import {
   exportProjectImageBlob,
   exportProjectAsPdf,
   exportProjectAsZip,
+  isTeamverProjectStoragePrefixRequiredError,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
   resolveExportDownloadTitle,
@@ -290,7 +291,11 @@ describe('exportProjectAsPdf', () => {
   it('does not fall back to browser print when rendered PDF export is required', async () => {
     const fallback = vi.fn();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 501 })));
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'tenant storage sync failed' } }), {
+        status: 502,
+      }),
+    ));
 
     await expect(exportProjectAsPdf({
       deck: true,
@@ -299,8 +304,101 @@ describe('exportProjectAsPdf', () => {
       projectId: 'proj-1',
       requireRenderedExport: true,
       title: 'Seed Deck',
-    })).rejects.toThrow('daemon PDF export unavailable');
+    })).rejects.toThrow('tenant storage sync failed');
 
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to browser print in embed when daemon Chromium is unavailable', async () => {
+    const fallback = vi.fn();
+    const open = vi.fn(() => ({
+      location: { href: '' },
+      opener: null,
+    }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:pdf'),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({
+        error: {
+          code: 'EXPORT_FAILED',
+          message: 'headless Chromium unavailable (tried 2 path(s)): signal=SIGTRAP',
+        },
+      }), { status: 500 }),
+    ));
+
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      requireRenderedExport: true,
+      title: 'Seed Deck',
+    });
+
+    expect(result).toBe('fallback');
+    expect(open).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to browser print when the daemon returns the HEADLESS_CHROMIUM_UNAVAILABLE structured code', async () => {
+    // Once the fixed image rolls forward, the daemon emits a 503 with a
+    // dedicated error code instead of the legacy "tried N paths" string.
+    // The FE must trigger the browser-print fallback for both shapes.
+    const fallback = vi.fn();
+    const open = vi.fn(() => ({
+      location: { href: '' },
+      opener: null,
+    }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:pdf'),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({
+        error: {
+          code: 'HEADLESS_CHROMIUM_UNAVAILABLE',
+          message: 'headless Chromium unavailable — falling back to browser print',
+        },
+      }), { status: 503 }),
+    ));
+
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      requireRenderedExport: true,
+      title: 'Seed Deck',
+    });
+
+    expect(result).toBe('fallback');
+    expect(open).toHaveBeenCalledOnce();
     expect(fallback).not.toHaveBeenCalled();
   });
 
@@ -402,6 +500,226 @@ describe('exportProjectAsPdf', () => {
     expect(printedDoc).not.toContain('sandbox="allow-scripts allow-modals"');
     expect(printedDoc).toContain('data-deck-print="injected"');
     expect(printedDoc).toContain('<main class="slide">inlined deck</main>');
+  });
+
+  it('forwards htmlSnapshot to the daemon so the export bypasses tenant-storage resolution', async () => {
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      expect(result).toBe('desktop');
+      expect(fallback).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const call = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(call[1].body);
+      expect(body).toEqual({
+        deck: true,
+        delivery: 'ticket',
+        fileName: 'deck/index.html',
+        html: '<!doctype html><section class="slide">Snapshot</section>',
+        title: 'Seed Deck',
+      });
+    } finally {
+      restoreHost();
+    }
+  });
+
+  it('does not retry on teamver_project_s3_prefix_required when htmlSnapshot is present', async () => {
+    const fallback = vi.fn();
+    let capturedBlob: Blob | undefined;
+    const open = vi.fn(() => ({ location: { href: '' }, opener: null }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn((blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:pdf';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 'UPSTREAM_UNAVAILABLE', message: 'teamver_project_s3_prefix_required' },
+        }),
+        { status: 502, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const started = Date.now();
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+    const elapsed = Date.now() - started;
+
+    expect(result).toBe('fallback');
+    // Single daemon POST — no retry sleeps consume the 2.4s budget.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(elapsed).toBeLessThan(500);
+    // Browser-print fallback drove from the snapshot, not from a fresh fetch.
+    expect(capturedBlob).toBeDefined();
+  });
+
+  it('drives browser print fallback directly from htmlSnapshot without hitting inline URL', async () => {
+    const fallback = vi.fn();
+    let capturedBlob: Blob | undefined;
+    const open = vi.fn(() => ({ location: { href: '' }, opener: null }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', {
+      open,
+      location: {
+        hostname: 'stg-design.teamver.com',
+        origin: 'https://stg-design.teamver.com',
+        href: 'https://stg-design.teamver.com/',
+      },
+      setTimeout: (fn: () => void) => fn(),
+    });
+    vi.stubGlobal('document', { baseURI: 'https://stg-design.teamver.com/' });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn((blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:pdf';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/export/pdf')) {
+        return new Response(
+          JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'boom' } }),
+          { status: 502, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await exportProjectAsPdf({
+      deck: true,
+      fallbackPdf: fallback,
+      filePath: 'deck/index.html',
+      htmlSnapshot: '<!doctype html><section class="slide">Snapshot</section>',
+      projectId: 'proj-1',
+      title: 'Seed Deck',
+    });
+
+    expect(result).toBe('fallback');
+    expect(fallback).not.toHaveBeenCalled();
+    // Snapshot fallback must not hit /export/deck/index.html?inline=1 —
+    // that endpoint shares the same tenant-storage middleware.
+    for (const [url] of fetchMock.mock.calls as Array<[string]>) {
+      expect(url).not.toContain('inline=1');
+    }
+    expect(capturedBlob).toBeDefined();
+    const printedDoc = await capturedBlob!.text();
+    expect(printedDoc).toContain('<section class="slide">Snapshot</section>');
+  });
+
+  it('retries when the daemon reports teamver_project_s3_prefix_required and eventually succeeds', async () => {
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      let call = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          call += 1;
+          if (call === 1) {
+            return new Response(
+              JSON.stringify({
+                error: {
+                  code: 'UPSTREAM_UNAVAILABLE',
+                  message: 'teamver_project_s3_prefix_required',
+                },
+              }),
+              { status: 502, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }),
+      );
+
+      const result = await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      expect(result).toBe('desktop');
+      expect(fallback).not.toHaveBeenCalled();
+      // First request 502 → prefix cache warm → retry → 200.
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      restoreHost();
+    }
+  });
+
+  it('exposes teamver_project_s3_prefix_required via the typed guard when required', async () => {
+    const fallback = vi.fn();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'UPSTREAM_UNAVAILABLE',
+              message: 'teamver_project_s3_prefix_required',
+            },
+          }),
+          { status: 502, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        projectId: 'proj-1',
+        requireRenderedExport: true,
+        title: 'Seed Deck',
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(isTeamverProjectStoragePrefixRequiredError(caught)).toBe(true);
+    expect(fallback).not.toHaveBeenCalled();
   });
 
   it('uses host print after desktop PDF API fails on desktop', async () => {
@@ -1053,6 +1371,75 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).not.toContain('<script>window.parent.document.body.innerHTML="owned"</script>');
   });
 
+  it('paints a title-only splash into the popup so the blob URL is never the tab label', async () => {
+    // Give the mock popup a document with a spyable write() implementation so
+    // we can assert the intermediate splash is emitted before the location
+    // is redirected to the blob URL.
+    const writes: string[] = [];
+    const winWithDoc = {
+      ...mockWin,
+      document: {
+        open: () => {},
+        close: () => {},
+        write: (chunk: string) => {
+          writes.push(chunk);
+        },
+      },
+    };
+    vi.stubGlobal('window', {
+      location: {
+        href: 'https://open-design.test/plugins/example',
+        origin: 'https://open-design.test',
+      },
+      open: (_url: string, _target: string) => {
+        openCalls.push([_url, _target]);
+        return winWithDoc;
+      },
+      addEventListener: () => {},
+    });
+
+    await exportAsPdf('<main>Doc</main>', 'Friendly Tab Title');
+
+    expect(writes.length).toBe(1);
+    const splash = writes[0]!;
+    expect(splash).toContain('<title>Friendly Tab Title</title>');
+    expect(splash).toContain('Preparing PDF');
+    // The splash must render before the blob navigation completes.
+    expect(winWithDoc.location.href).toBe('blob:test');
+  });
+
+  it('swallows splash write errors so environments without a writable document still receive the blob', async () => {
+    const winReadOnlyDoc = {
+      ...mockWin,
+      document: {
+        // Throwing on open() emulates a cross-origin / sandboxed popup where
+        // document.write is disallowed. The function must still complete
+        // and navigate to the blob URL.
+        open: () => {
+          throw new Error('cross-origin');
+        },
+        close: () => {},
+        write: () => {},
+      },
+    };
+    vi.stubGlobal('window', {
+      location: {
+        href: 'https://open-design.test/plugins/example',
+        origin: 'https://open-design.test',
+      },
+      open: (_url: string, _target: string) => {
+        openCalls.push([_url, _target]);
+        return winReadOnlyDoc;
+      },
+      addEventListener: () => {},
+    });
+
+    await expect(
+      exportAsPdf('<main>Doc</main>', 'Sandboxed'),
+    ).resolves.toBeUndefined();
+    expect(winReadOnlyDoc.location.href).toBe('blob:test');
+  });
+
   it('prints deck PDF fallbacks as a top-level document so slide CSS controls the page', async () => {
     await exportAsPdf('<section class="slide">One</section>', 'Deck PDF', { deck: true });
 
@@ -1064,6 +1451,20 @@ describe('sandboxed preview Blob exports', () => {
     expect(doc).not.toContain('<iframe');
     expect(doc).toContain('data-deck-print="injected"');
     expect(doc).toContain('page-break-after: always !important');
+    expect(doc).not.toContain('data-od-snapshot-bridge');
+    expect(doc).not.toContain('data-od-tweaks-bridge');
+    expect(doc).not.toContain('data-od-deck-bridge');
+    expect(doc).toContain('data-od-preview-artifact-guard');
+  });
+
+  it('strips viewport text leaks from exported PDF HTML', async () => {
+    await exportAsPdf(
+      `<!doctype html><html><head><title>T</title></head><body>viewport=width=device-width, initial-scale=1" /><main>OK</main></body></html>`,
+      'Leak PDF',
+    );
+    const doc = await capturedBlob!.text();
+    expect(doc).not.toMatch(/viewport=width=device-width/i);
+    expect(doc).toContain('&lt;main&gt;OK&lt;/main&gt;');
   });
 
   it('allows explicit trusted PDF opt-out without changing the secure default', async () => {

@@ -216,6 +216,8 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 |---|------|------|
 | ☐ | run 진행 중 Home/다른 프로젝트로 이탈 | daemon run은 계속 (Network `/api/runs` active) |
 | ☐ | 동일 프로젝트 재진입 | composer **Stop** + streaming UI 복원, Send만 보이지 않음 |
+| ☐ | BYOK/API 모드에서 상세 이탈 후 재진입 | `/api/proxy/active?projectId=...` 가 `conversationId`/`assistantMessageId` 를 반환하고, FE가 메시지/파일 polling을 재개 |
+| ☐ | BYOK/API run 완료까지 대기 | 새로고침 없이 assistant 메시지/produced file chip이 갱신되고, 생성된 HTML이 preview 탭에 자동 오픈 |
 
 #### C. Post-run publish UX (S-9 · loop 410–411)
 
@@ -265,7 +267,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 | S-2 | Drive publish picker full browser (Drive home recent grid) | P2 | ✅ loop 359 |
 | S-3 | 프로젝트 편집 surface `useTeamverT` 확대 (FileViewer 등) | P2 | ✅ loop 360 |
 | S-4 | embed slide E2E wording 잔여 (FileViewer download aria 등) | P1 | ✅ loop 357 |
-| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE ✅ loop 365–408 · publish UX ✅ loop 410–416 · **browser QA checklist** ✅ loop 417 · **실관측** ☐ [22 §5.3](./22_Drive_인증_Usage_연동_검토.md#53-수동-browser-qa-s-5--s-9--s-10) |
+| S-5 | 슬라이드 lifecycle — background run workspace 경계 | P0 | 🟡 FE ✅ loop 365–408 · BYOK page-exit active proxy 복구 ✅ 2026-07-03 · publish UX ✅ loop 410–416 · **browser QA checklist** ✅ loop 417 · **실관측** ☐ [22 §5.3](./22_Drive_인증_Usage_연동_검토.md#53-수동-browser-qa-s-5--s-9--s-10) |
 | S-6 | 목록 cover-hints N+1 제거 | P0 | ✅ loop 358 + loop 392(home) + loop 393(DesignsTab) + loop 400(header) |
 | S-7 | Teamver shell 컴포넌트 `useTeamverT` (chip/banner/import modal 등) | P2 | ✅ loop 364–369 |
 | **S-8** | **in-project run 성공** → preview + publish menu arm | P0 | ✅ **loop 403** |

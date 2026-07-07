@@ -12,6 +12,7 @@ import {
   requestPreviewSnapshot,
 } from '../runtime/exports';
 import { buildSrcdoc } from '../runtime/srcdoc';
+import { scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import { Icon } from './Icon';
 
 export interface PreviewView {
@@ -508,6 +509,11 @@ export function PreviewModal({
       transform: `scale(${scale})`,
     } as const;
   }, [scale, stageSize.w, stageSize.h, designWidth]);
+
+  useEffect(() => {
+    if (!activeDeck || !activeHtml) return;
+    return scheduleDeckPreviewFitNudges(previewIframeRef.current, scale, { layoutFit: true });
+  }, [activeDeck, activeHtml, activeId, scale, srcDoc, stageSize.w, stageSize.h]);
 
   function openInNewTab() {
     if (!activeHtml) return;
@@ -1082,6 +1088,10 @@ export function PreviewModal({
                   title={`${title} ${activeView?.label ?? ''}`}
                   sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                   srcDoc={srcDoc}
+                  onLoad={(event) => {
+                    if (!activeDeck) return;
+                    scheduleDeckPreviewFitNudges(event.currentTarget, scale, { layoutFit: true });
+                  }}
                 />
               </div>
             )}

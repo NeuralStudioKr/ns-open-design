@@ -72,6 +72,7 @@ import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
+import { normalizePluginApiId } from '../plugins/pluginIds';
 
 export const DEFAULT_DEPLOY_PROVIDER_ID = 'vercel-self';
 export const CLOUDFLARE_PAGES_PROVIDER_ID = 'cloudflare-pages';
@@ -236,6 +237,9 @@ export async function fetchSkills(options?: { slideOnly?: boolean }): Promise<Sk
 // specs/current/skills-and-design-templates.md.
 export async function fetchDesignTemplates(options?: {
   mode?: SkillSummary["mode"] | readonly SkillSummary["mode"][];
+  query?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<SkillSummary[]> {
   try {
     const modes = Array.isArray(options?.mode)
@@ -243,9 +247,16 @@ export async function fetchDesignTemplates(options?: {
       : options?.mode
         ? [options.mode]
         : [];
-    const query = modes.length > 0
-      ? `?mode=${encodeURIComponent(modes.join(","))}`
-      : "";
+    const params = new URLSearchParams();
+    if (modes.length > 0) params.set("mode", modes.join(","));
+    if (options?.query?.trim()) params.set("q", options.query.trim());
+    if (typeof options?.limit === "number" && Number.isFinite(options.limit) && options.limit > 0) {
+      params.set("limit", String(Math.floor(options.limit)));
+    }
+    if (typeof options?.offset === "number" && Number.isFinite(options.offset) && options.offset > 0) {
+      params.set("offset", String(Math.floor(options.offset)));
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
     const resp = await fetch(`/api/design-templates${query}`);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { designTemplates: SkillSummary[] };
@@ -2204,9 +2215,10 @@ export async function fetchDesignSystemShowcase(id: string): Promise<string | nu
 export async function fetchPluginPreviewHtml(
   id: string,
 ): Promise<SkillExampleResult> {
+  const apiId = normalizePluginApiId(id);
   try {
     const resp = await fetch(
-      `/api/plugins/${encodeURIComponent(id)}/preview`,
+      `/api/plugins/${encodeURIComponent(apiId)}/preview`,
     );
     if (!resp.ok) {
       if (resp.status === 404) return { unavailable: true, kind: 'html' };
@@ -2226,9 +2238,10 @@ export async function fetchPluginExampleHtml(
   pluginId: string,
   stem: string,
 ): Promise<SkillExampleResult> {
+  const apiId = normalizePluginApiId(pluginId);
   try {
     const resp = await fetch(
-      `/api/plugins/${encodeURIComponent(pluginId)}/example/${encodeURIComponent(stem)}`,
+      `/api/plugins/${encodeURIComponent(apiId)}/example/${encodeURIComponent(stem)}`,
     );
     if (!resp.ok) {
       if (resp.status === 404) return { unavailable: true, kind: 'html' };

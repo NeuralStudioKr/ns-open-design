@@ -9,7 +9,13 @@ import type { ProjectCoverFile } from "./projectPreviewFile";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 import { isTeamverEmbedMode } from "./designApiBase";
 
-/** Home recent rail — cover-hints batch only; no per-project `/files` listing. */
+/**
+ * Home recent rail — cover-hints first, then a tightly bounded `/files`
+ * fallback for the visible cards. Cover-hints can be briefly empty while S3
+ * materialization or project metadata catches up; without this fallback the
+ * card caches `null` and shows the title initial even though the project has a
+ * renderable deck.
+ */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
 ): Promise<Record<string, ProjectCoverFile | null>> {
@@ -28,6 +34,6 @@ export async function prefetchHomeProjectCovers(
 
   return resolveProjectCoverFiles(recent, {
     concurrency: HOME_COVER_FETCH_CONCURRENCY,
-    allowFilesFallback: false,
+    allowFilesFallback: true,
   });
 }

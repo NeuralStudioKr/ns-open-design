@@ -28,6 +28,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ns-open-design/deploy/teamver/be/app ./app
 COPY ns-open-design/deploy/teamver/be/scripts ./scripts
 
-ENV PYTHONUNBUFFERED=1
+# Multi-worker uvicorn — Dockerfile default 3/200/30 은 로컬·compose fallback.
+# Production 상용 SSOT: t3.2xlarge + UVICORN_WORKERS=5 (deploy/teamver/.env.production).
+# Staging: t3.large + UVICORN_WORKERS=2 (.env.staging). 워크로드는 asyncpg + httpx
+# I/O-bound 이지만 OD daemon(Chromium export) 과 vCPU·RAM 공유 → workers 는 env 로
+# EC2 스펙에 맞게 override (재빌드 불필요).
+#
+# --proxy-headers + --forwarded-allow-ips '*': nginx / ALB 뒤 실 IP 반영.
+# --limit-concurrency: 워커당 in-flight 상한 초과 시 503 (백프레셔).
+# --timeout-keep-alive: nginx `keepalive_timeout` 보다 크게.
+ENV PYTHONUNBUFFERED=1 \
+    UVICORN_WORKERS=3 \
+    UVICORN_LIMIT_CONCURRENCY=200 \
+    UVICORN_TIMEOUT_KEEP_ALIVE=30
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS} --proxy-headers --forwarded-allow-ips '*' --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY} --timeout-keep-alive ${UVICORN_TIMEOUT_KEEP_ALIVE}"]

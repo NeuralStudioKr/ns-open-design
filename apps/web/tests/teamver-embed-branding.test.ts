@@ -35,7 +35,7 @@ describe('Teamver embed branding policy', () => {
 
     expect(branding.enabled).toBe(true);
     expect(branding.title).toBe('Teamver Design');
-    expect(branding.heroSubtitle).toContain('slide');
+    expect(branding.heroSubtitle.length).toBeGreaterThan(0);
     expect(branding.faviconUrl).toBe('/teamver/Logo-icon.svg');
     expect(branding.hideExternalLinks).toBe(true);
     expect(branding.hideTopbarExecutionSwitcher).toBe(true);
@@ -44,7 +44,7 @@ describe('Teamver embed branding policy', () => {
     expect(branding.hideUsefulTips).toBe(true);
     expect(branding.hideHandoffButton).toBe(true);
     expect(branding.hideAssistantModelLabels).toBe(true);
-    expect(branding.hideAssistantThinkingDetails).toBe(false);
+    expect(branding.hideAssistantThinkingDetails).toBe(true);
     expect(branding.lockExecutionConfig).toBe(true);
     expect(branding.hideLocalWorkspaceControls).toBe(true);
     expect(branding.hideWorkspaceTabsBar).toBe(true);

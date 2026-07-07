@@ -23,28 +23,34 @@ import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
  * 한 경우에는 백그라운드에서 실행."
  *
  * `streamId` is exposed to the FE via the `X-Stream-Id` response header
- * (set before SSE streaming starts). Stale registry entries are dropped
- * on `res.once('finish')` immediately and on `res.once('close')` after
- * a short grace window so an in-flight Stop-button abort POST can still
- * target the registry entry before it's removed.
+ * (set before SSE streaming starts). Connected responses are dropped on
+ * finish. If the browser leaves and the response closes first, the entry
+ * stays until the route later calls `res.end()` after upstream drain, with
+ * a bounded fallback TTL for genuinely orphaned handlers.
  */
 
 /**
- * Grace window after `res.close` before the registry entry is removed.
+ * Fallback window after `res.close` before the registry entry is removed.
  * Bridges the race where the FE Stop button fires the abort POST and the
  * local fetch abort in the same tick — `res.close` fires within a few ms
  * and we want the daemon-side `POST /api/proxy/abort` (which lands a few
- * ms later) to still find the entry. Page-exit paths don't send the
- * abort POST at all, so the only effect there is that the entry sits in
- * the map for `ABORT_CLOSE_GRACE_MS` longer before being dropped.
+ * ms later) to still find the entry.
+ *
+ * Page-exit paths don't send the abort POST at all. In that case the
+ * upstream route keeps draining in the daemon, and this entry must remain
+ * listable so a returning page can show "still working" and keep refreshing
+ * messages/files. The patched `res.end` below clears the entry when the
+ * upstream handler naturally finishes; this TTL is only a leak bound.
  */
-const ABORT_CLOSE_GRACE_MS = 5_000;
+const ABORT_CLOSE_FALLBACK_TTL_MS = 15 * 60_000;
 
 type RegisteredStream = {
   controller: AbortController;
   registeredAt: number;
   workspaceId?: string;
   projectId?: string;
+  conversationId?: string;
+  assistantMessageId?: string;
 };
 
 const activeProxyStreams = new Map<string, RegisteredStream>();
@@ -92,11 +98,9 @@ export type ByokProxyAbortRegistration = {
 /**
  * Register a new abortable proxy stream for `res`. Emits the
  * `X-Stream-Id` response header so the FE can subsequently target this
- * stream for cancellation. Registry entries are cleared on
- * `res.once('finish')` immediately and on `res.once('close')` after
- * `ABORT_CLOSE_GRACE_MS` so an in-flight Stop-button abort POST can
- * still find the entry during the race window — see the
- * `ABORT_CLOSE_GRACE_MS` comment above for the rationale.
+ * stream for cancellation. Registry entries are cleared on connected
+ * response finish and also when the upstream handler later calls `res.end`
+ * after a detached browser response has closed.
  *
  * Pass the returned `signal` into every upstream `fetch()` (and any
  * downstream tool fetch) so the abort cascades end-to-end.
@@ -104,7 +108,12 @@ export type ByokProxyAbortRegistration = {
 export function registerByokProxyStream(
   _req: Request,
   res: Response,
-  meta?: { workspaceId?: string | null; projectId?: string | null },
+  meta?: {
+    workspaceId?: string | null;
+    projectId?: string | null;
+    conversationId?: string | null;
+    assistantMessageId?: string | null;
+  },
 ): ByokProxyAbortRegistration {
   const streamId = randomUUID();
   const controller = new AbortController();
@@ -114,6 +123,8 @@ export function registerByokProxyStream(
     registeredAt: Date.now(),
     ...(meta?.workspaceId ? { workspaceId: meta.workspaceId } : {}),
     ...(meta?.projectId ? { projectId: meta.projectId } : {}),
+    ...(meta?.conversationId ? { conversationId: meta.conversationId } : {}),
+    ...(meta?.assistantMessageId ? { assistantMessageId: meta.assistantMessageId } : {}),
   });
   if (!res.headersSent) {
     try {
@@ -129,10 +140,18 @@ export function registerByokProxyStream(
     cleared = true;
     activeProxyStreams.delete(streamId);
   };
+  const endPatchTarget = res as unknown as { end?: (...args: any[]) => any };
+  if (typeof endPatchTarget.end === 'function') {
+    const originalEnd = endPatchTarget.end.bind(res);
+    endPatchTarget.end = (...args: any[]) => {
+      clearImmediate();
+      return originalEnd(...args);
+    };
+  }
   res.once('finish', clearImmediate);
   res.once('close', () => {
     if (cleared) return;
-    setTimeout(clearImmediate, ABORT_CLOSE_GRACE_MS).unref();
+    setTimeout(clearImmediate, ABORT_CLOSE_FALLBACK_TTL_MS).unref();
   });
   return { streamId, signal: controller.signal };
 }
@@ -166,6 +185,42 @@ export function abortByokProxyStream(streamId: string): boolean {
 /** @internal vitest — inspect the registry size. */
 export function activeByokProxyStreamCountForTests(): number {
   return activeProxyStreams.size;
+}
+
+export type ActiveByokProxyStreamSummary = {
+  streamId: string;
+  workspaceId?: string;
+  projectId?: string;
+  conversationId?: string;
+  assistantMessageId?: string;
+  registeredAt: number;
+};
+
+/**
+ * List in-flight BYOK proxy streams for embed background recovery. The FE
+ * uses this after page re-entry to decide whether a detached API-mode turn
+ * is still draining on the daemon.
+ */
+export function listActiveByokProxyStreams(options?: {
+  workspaceId?: string | null;
+  projectId?: string | null;
+}): ActiveByokProxyStreamSummary[] {
+  const workspaceId = options?.workspaceId?.trim() ?? '';
+  const projectId = options?.projectId?.trim() ?? '';
+  const out: ActiveByokProxyStreamSummary[] = [];
+  for (const [streamId, entry] of activeProxyStreams.entries()) {
+    if (workspaceId && entry.workspaceId !== workspaceId) continue;
+    if (projectId && entry.projectId !== projectId) continue;
+    out.push({
+      streamId,
+      ...(entry.workspaceId ? { workspaceId: entry.workspaceId } : {}),
+      ...(entry.projectId ? { projectId: entry.projectId } : {}),
+      ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+      ...(entry.assistantMessageId ? { assistantMessageId: entry.assistantMessageId } : {}),
+      registeredAt: entry.registeredAt,
+    });
+  }
+  return out;
 }
 
 /** @internal vitest — reset the registry between cases. */
@@ -207,6 +262,21 @@ export function neverAbortedSignal(): AbortSignal {
  * `X-Stream-Id` response header, so the tenant check is belt-and-braces.
  */
 export function registerByokProxyAbortRoute(app: Express): void {
+  app.get('/api/proxy/active', (req, res) => {
+    const identity = readTeamverIdentityFromRequest(req);
+    if (!identity?.workspaceId?.trim()) {
+      res.json({ streams: [] });
+      return;
+    }
+    const projectId =
+      typeof req.query.projectId === 'string' ? req.query.projectId.trim() : '';
+    const streams = listActiveByokProxyStreams({
+      workspaceId: identity?.workspaceId ?? null,
+      projectId: projectId || null,
+    });
+    res.json({ streams });
+  });
+
   app.post('/api/proxy/abort', (req, res) => {
     const streamId =
       typeof req.body?.streamId === 'string' ? req.body.streamId.trim() : '';
@@ -214,6 +284,10 @@ export function registerByokProxyAbortRoute(app: Express): void {
       res.status(400).json({ error: 'streamId required' });
       return;
     }
+    const requestedConversationId =
+      typeof req.body?.conversationId === 'string'
+        ? req.body.conversationId.trim()
+        : '';
     const entry = activeProxyStreams.get(streamId);
     if (!entry) {
       res.json({ aborted: false });
@@ -236,6 +310,28 @@ export function registerByokProxyAbortRoute(app: Express): void {
         res.json({ aborted: false });
         return;
       }
+    }
+    // Defense-in-depth: if the caller supplied a conversationId (new FE
+    // Stop flow) and the entry has one, they must match. This prevents
+    // a compromised/legacy caller from aborting a *different* conversation
+    // within the same workspace after obtaining a stale stream list — the
+    // primary guard is the FE conversation filter, this closes the race
+    // where the daemon list is fetched before a conversation switch.
+    if (
+      requestedConversationId
+      && entry.conversationId
+      && requestedConversationId !== entry.conversationId
+    ) {
+      console.warn(
+        JSON.stringify({
+          metric: 'od_byok_proxy_abort_conversation_mismatch',
+          streamId,
+          expected: entry.conversationId,
+          got: requestedConversationId,
+        }),
+      );
+      res.json({ aborted: false });
+      return;
     }
     const aborted = abortByokProxyStream(streamId);
     res.json({ aborted });

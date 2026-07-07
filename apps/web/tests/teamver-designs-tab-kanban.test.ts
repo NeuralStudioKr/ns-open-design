@@ -22,9 +22,9 @@ describe("DesignsTab kanban lazy cover thumb", () => {
     expect(drawerCss).toContain(".design-kanban-card-embed-chips");
   });
 
-  it("lazy cover loader uses embed hints-only list surface options (loop 393)", () => {
+  it("lazy cover loader allows bounded /files fallback for visible cards", () => {
     const lazyCover = readSource("src/teamver/useLazyProjectCover.ts");
-    expect(lazyCover).toContain("resolveProjectCoverOptionsForListSurface");
-    expect(lazyCover).toContain("allowFilesFallback");
+    expect(lazyCover).toContain("allowFilesFallbackOption ?? true");
+    expect(lazyCover).toContain("resolveProjectCoverFile(project, { allowFilesFallback })");
   });
 });

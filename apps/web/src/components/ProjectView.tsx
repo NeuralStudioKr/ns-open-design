@@ -28,7 +28,8 @@ import { questionFormForSlideOnlyDisplay } from '../teamver/branding/embedSlideO
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
-import { EXPLICIT_PROXY_STOP_REASON } from '../providers/proxyAbort';
+import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from '../providers/proxyAbort';
+import { listActiveByokProxyStreams } from '../providers/byokProxyActive';
 import {
   fetchChatRunStatus,
   fetchVelaLoginStatus,
@@ -54,12 +55,13 @@ import {
   projectRawUrl,
   uploadProjectFiles,
   upsertPreviewComment,
-  writeProjectTextFile,
+  writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
+  repairArtifactDocumentHead,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -192,9 +194,26 @@ import {
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
+import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
+import { dispatchTeamverBackgroundChat } from '../teamver/teamverBackgroundChatEvents';
+import {
+  BYOK_BACKGROUND_RECOVERY_POLL_MS,
+  conversationAwaitingQuestionFormAnswer,
+  conversationHasRecoverableBackgroundChat,
+  findInFlightAssistantMessages,
+  isInFlightAssistantMessage,
+  isRecoverableDaemonRunMessage,
+  resolveRunRecoveryBannerPhase,
+  shouldFullReplayReattachedRun,
+  shouldShowRunRecoveryBannerInChat,
+  type RunRecoveryBannerPhase,
+} from '../teamver/backgroundChatRecovery';
+import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecoveryBanner';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
+import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -229,7 +248,7 @@ import { buildContinueInCliToast } from '../lib/build-continue-in-cli-toast';
 import { buildClipboardPrompt } from '../lib/build-clipboard-prompt';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { effectiveMaxTokens } from '../state/maxTokens';
-import { BYOK_CHAT_TOOL_NAMES } from '../state/apiProtocols';
+import { byokChatToolNamesForProtocol } from '../state/apiProtocols';
 import { effectiveAgentModelChoice } from './agentModelSelection';
 import { mediaExecutionPolicyForProjectMetadata } from '../media/execution-policy';
 import { mediaModelProviderId } from '../media/models';
@@ -254,10 +273,34 @@ type ProjectChatSendMeta = ChatSendMeta & {
   entryFrom?: ChatAnalyticsEntryFrom;
 };
 
+const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
+const DAEMON_REATTACH_MISSING_RUN_RETRY_MS = 2_000;
+
 export function mergeSavedPreviewComment(current: PreviewComment[], saved: PreviewComment): PreviewComment[] {
   const existingIndex = current.findIndex((comment) => comment.id === saved.id);
   if (existingIndex < 0) return [...current, saved];
   return current.map((comment, index) => (index === existingIndex ? saved : comment));
+}
+
+function shouldRetryRecentDaemonRunLookup(message: ChatMessage, now = Date.now()): boolean {
+  if (message.role !== 'assistant') return false;
+  if (message.endedAt !== undefined) return false;
+  const startedAt = message.startedAt ?? message.createdAt;
+  if (!startedAt) return true;
+  return now - startedAt < DAEMON_REATTACH_MISSING_RUN_GRACE_MS;
+}
+
+function shouldRetryMissingDaemonRunLookup(message: ChatMessage, now = Date.now()): boolean {
+  if (message.runId) return false;
+  return shouldRetryRecentDaemonRunLookup(message, now);
+}
+
+function messageHasInFlightRunFields(local: ChatMessage): boolean {
+  if (isActiveRunStatus(local.runStatus)) return true;
+  if (local.endedAt !== undefined) return false;
+  if (local.startedAt !== undefined) return true;
+  if (local.runId && !isTerminalRunStatus(local.runStatus)) return true;
+  return false;
 }
 
 function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): ChatMessage {
@@ -280,6 +323,30 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   }
   if (!server.runStatus && local.runStatus) {
     merged.runStatus = local.runStatus;
+  } else if (
+    local.runStatus
+    && isActiveRunStatus(local.runStatus)
+    && (!server.runStatus || !isActiveRunStatus(server.runStatus))
+  ) {
+    merged.runStatus = local.runStatus;
+  }
+  if (!merged.runId && local.runId) {
+    merged.runId = local.runId;
+  }
+  // During an in-flight turn the daemon persist throttle can lag behind the
+  // live SSE buffer. Reattach recovery must not replace a streamed
+  // `<question-form>` (or any partial assistant text) with a stale server row.
+  if (messageHasInFlightRunFields(local) && !isTerminalRunStatus(server.runStatus)) {
+    const localContent = local.content ?? '';
+    const serverContent = server.content ?? '';
+    if (localContent.length > serverContent.length) {
+      merged.content = localContent;
+    }
+    const localEventCount = local.events?.length ?? 0;
+    const serverEventCount = server.events?.length ?? 0;
+    if (localEventCount > serverEventCount && local.events) {
+      merged.events = local.events;
+    }
   }
   return merged;
 }
@@ -987,6 +1054,17 @@ export function ProjectView({
   const [attachedComments, setAttachedComments] = useState<PreviewComment[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
+  const [runRecoveryBanner, setRunRecoveryBanner] = useState<{
+    conversationId: string;
+    phase: RunRecoveryBannerPhase;
+    savedChars: number;
+    runStatus: 'queued' | 'running';
+  } | null>(null);
+  const runRecoveryBannerTrackRef = useRef<{
+    conversationId: string;
+    assistantMessageId: string;
+  } | null>(null);
+  const [reattachNonce, setReattachNonce] = useState(0);
   // Safety net: drop any live tool-input partials whose tool never produced a
   // full `tool_use` (run errored/canceled mid-call) once streaming settles.
   useEffect(() => {
@@ -1166,6 +1244,12 @@ export function ProjectView({
   const reattachTextBuffersRef = useRef<Set<BufferedTextUpdates>>(new Set());
   const reattachControllersRef = useRef<Map<string, AbortController>>(new Map());
   const reattachCancelControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const missingRunLookupRetryTimersRef = useRef<Map<string, number>>(new Map());
+  const apiBackgroundRecoveryRef = useRef(false);
+  const apiRecoveryBannerRef = useRef<{
+    conversationId: string;
+    assistantMessageIds: readonly string[];
+  } | null>(null);
   const completedReattachRunsRef = useRef<Set<string>>(new Set());
   const startingQueuedChatSendIdRef = useRef<string | null>(null);
   const [queuedAutoStartTick, setQueuedAutoStartTick] = useState(0);
@@ -1222,6 +1306,12 @@ export function ProjectView({
     const restored = loadQueuedChatSends(project.id);
     queuedChatSendsRef.current = restored;
     setQueuedChatSends(restored);
+    if (restored.length > 0) {
+      console.info(
+        '[teamver] chat-queue: restored on project mount',
+        { projectId: project.id, count: restored.length },
+      );
+    }
   }, [project.id]);
   // Monotonic token bumped on every `conversation-created` refresh dispatch.
   // Two rapid events (e.g. concurrent routine runs against the same reused
@@ -1235,7 +1325,14 @@ export function ProjectView({
   const conversationsRefreshTokenRef = useRef(0);
   const [creatingConversation, setCreatingConversation] = useState(false);
   const currentConversationHasActiveRun = useMemo(
-    () => messages.some(isRecoverableDaemonRunMessage),
+    () => conversationHasRecoverableBackgroundChat(
+      messages,
+      config.mode === 'daemon' ? 'daemon' : 'api',
+    ),
+    [messages, config.mode],
+  );
+  const inFlightAssistantSignature = useMemo(
+    () => findInFlightAssistantMessages(messages).map((message) => message.id).join(','),
     [messages],
   );
   const currentConversationLoading = Boolean(
@@ -1244,16 +1341,6 @@ export function ProjectView({
       && failedMessagesConversationId !== activeConversationId,
   );
   const currentConversationStreaming = streaming && streamingConversationId === activeConversationId;
-  const currentConversationBusy = currentConversationLoading
-    || currentConversationStreaming
-    || currentConversationHasActiveRun;
-  const currentConversationAwaitingActiveRunAttach =
-    currentConversationHasActiveRun && !currentConversationStreaming;
-  const currentConversationSendDisabled = currentConversationLoading
-    || failedMessagesConversationId === activeConversationId
-    || currentConversationAwaitingActiveRunAttach
-    || embedSubmitDisabled;
-  const currentConversationActionDisabled = currentConversationBusy || currentConversationSendDisabled;
   const currentConversationQueueDisabled = currentConversationLoading
     || failedMessagesConversationId === activeConversationId;
 
@@ -1291,7 +1378,8 @@ export function ProjectView({
     return undefined;
   }, [questionForm, lastAssistantIndex, messages]);
   const questionsGenerating =
-    currentConversationStreaming && hasUnterminatedQuestionForm(lastAssistantContent);
+    (currentConversationStreaming || currentConversationHasActiveRun)
+    && hasUnterminatedQuestionForm(lastAssistantContent);
   // While the form is still streaming, parse it tolerantly so the Questions tab
   // can show a frame (title) immediately and fill questions in as they arrive.
   const questionFormPreview = useMemo(
@@ -1310,6 +1398,23 @@ export function ProjectView({
   // Submission is gated separately by the panel via `submitDisabled`/generating.
   const questionFormActive =
     (!!questionForm || questionsGenerating) && questionFormSubmittedAnswers === undefined;
+  const awaitingQuestionFormAnswer = useMemo(
+    () => conversationAwaitingQuestionFormAnswer(messages),
+    [messages],
+  );
+  const currentConversationAwaitingActiveRunAttach =
+    currentConversationHasActiveRun
+    && !currentConversationStreaming
+    && !awaitingQuestionFormAnswer;
+  const currentConversationBusy = currentConversationLoading
+    || currentConversationStreaming
+    || currentConversationAwaitingActiveRunAttach;
+  const currentConversationSendDisabled = currentConversationLoading
+    || failedMessagesConversationId === activeConversationId
+    || currentConversationAwaitingActiveRunAttach
+    || embedSubmitDisabled;
+  const currentConversationActionDisabled =
+    currentConversationSendDisabled || currentConversationStreaming;
   // Mirror `questionFormActive`'s unanswered gate: once the user answers, the
   // Questions tab closes, so the auto-focus nonce must not treat an answered
   // form as a freshly appeared one.
@@ -1616,6 +1721,10 @@ export function ProjectView({
       }
       reattachControllersRef.current.clear();
       reattachCancelControllersRef.current.clear();
+      for (const timer of missingRunLookupRetryTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      missingRunLookupRetryTimersRef.current.clear();
     };
   }, [project.id, activeConversationId]);
 
@@ -1633,6 +1742,53 @@ export function ProjectView({
     reattachTextBuffersRef.current.clear();
   }, []);
 
+  const clearRunRecoveryBannerState = useCallback((conversationId?: string | null) => {
+    const tracked = runRecoveryBannerTrackRef.current;
+    const trackedAssistantId = tracked?.assistantMessageId ?? null;
+    const trackedConversationId = conversationId ?? tracked?.conversationId ?? activeConversationId;
+    if (trackedAssistantId && trackedConversationId) {
+      dispatchTeamverBackgroundChat({
+        projectId: project.id,
+        conversationId: trackedConversationId,
+        assistantMessageId: trackedAssistantId,
+        active: false,
+      });
+    }
+    runRecoveryBannerTrackRef.current = null;
+    setRunRecoveryBanner(null);
+  }, [activeConversationId, project.id]);
+
+  const finalizeRunRecoveryBannerForMessage = useCallback((
+    conversationId: string,
+    assistantMessageId: string,
+  ) => {
+    if (runRecoveryBannerTrackRef.current?.assistantMessageId === assistantMessageId) {
+      clearRunRecoveryBannerState(conversationId);
+      return;
+    }
+    dispatchTeamverBackgroundChat({
+      projectId: project.id,
+      conversationId,
+      assistantMessageId,
+      active: false,
+    });
+  }, [clearRunRecoveryBannerState, project.id]);
+
+  const clearApiBackgroundRecoveryBanner = useCallback(() => {
+    const tracked = apiRecoveryBannerRef.current;
+    if (!tracked) return;
+    for (const assistantMessageId of tracked.assistantMessageIds) {
+      dispatchTeamverBackgroundChat({
+        projectId: project.id,
+        conversationId: tracked.conversationId,
+        assistantMessageId,
+        active: false,
+      });
+    }
+    apiRecoveryBannerRef.current = null;
+    clearRunRecoveryBannerState(tracked.conversationId);
+  }, [clearRunRecoveryBannerState, project.id]);
+
   /** Detach browser-side run streams without POST /cancel — run continues as background. */
   const detachLocalRunStreamConsumers = useCallback(() => {
     cancelSendTextBuffer(false);
@@ -1642,15 +1798,21 @@ export function ProjectView({
       cancelRef,
       primaryOwnedDaemonRunIdRef.current,
     );
+    for (const runId of reattachControllersRef.current.keys()) {
+      releaseLocallyConsumedDaemonRun(runId);
+    }
     for (const controller of reattachControllersRef.current.values()) {
       controller.abort();
     }
     reattachControllersRef.current.clear();
     reattachCancelControllersRef.current.clear();
+    clearApiBackgroundRecoveryBanner();
+    clearRunRecoveryBannerState();
+    apiBackgroundRecoveryRef.current = false;
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
     setStreaming(false);
-  }, [cancelReattachTextBuffers, cancelSendTextBuffer]);
+  }, [cancelReattachTextBuffers, cancelSendTextBuffer, clearApiBackgroundRecoveryBanner, clearRunRecoveryBannerState]);
 
   const notifyCompletedRun = useCallback((last: ChatMessage) => {
     // Round 7 (mrcfps @ useDesignMdState.ts:131): a chat turn just
@@ -1931,6 +2093,8 @@ export function ProjectView({
       if (savedArtifactRef.current === fileName) return;
       savedArtifactRef.current = fileName;
       const title = art.title || art.identifier || fileName;
+      const htmlBody =
+        ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
       const metadata = {
         identifier: art.identifier,
         artifactType: art.artifactType,
@@ -1954,10 +2118,14 @@ export function ProjectView({
                 designSystemId: project.designSystemId,
               },
             });
-      const file = await writeProjectTextFile(project.id, fileName, artifactToPersist.html, {
-        artifactManifest: manifest ?? undefined,
-      });
-      if (file) {
+      const result = await writeProjectTextFileDetailed(
+        project.id,
+        fileName,
+        htmlBody,
+        { artifactManifest: manifest ?? undefined },
+      );
+      if (result.ok) {
+        const file = result.file;
         setFilesRefresh((n) => n + 1);
         // Surface the daemon's stub-guard warning when it fires in `warn`
         // mode (the default). Without this the warning would land in the
@@ -1973,15 +2141,21 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
       } else {
-        // writeProjectTextFile collapses all failure paths (non-OK HTTP
-        // responses, network errors, and stub-guard 422s) to null — the
-        // helper's return contract would need to be widened to distinguish
-        // them, which is out of scope here.  Show a generic banner so the
-        // failure is observable rather than silent; the daemon logs carry
-        // the structured details for any specific error type.
+        // Surface an error banner keyed on the actual failure — access
+        // denied vs project-not-found vs upstream vs network — instead of
+        // a generic "check the daemon logs" message. The structured
+        // status/code from writeProjectTextFileDetailed is what makes
+        // per-cause messaging possible; the raw daemon marker still lives
+        // in the error object for ops via the diagnostic copy button.
         // Clear the saved-artifact ref so the user can retry.
         savedArtifactRef.current = '';
-        setError(formatProjectArtifactSaveFailedError(fileName));
+        setError(
+          formatProjectArtifactSaveFailedError(fileName, {
+            status: result.status,
+            code: result.code,
+            message: result.message,
+          }),
+        );
       }
     },
     [project.id, project.designSystemId, project.skillId, requestOpenFile],
@@ -2316,7 +2490,10 @@ export function ProjectView({
       audioVoiceOptions,
       audioVoiceOptionsError: audioVoiceOptionsLookupError,
       streamFormat: config.mode === 'api' ? 'plain' : undefined,
-      byokToolNames: config.mode === 'api' ? BYOK_CHAT_TOOL_NAMES : undefined,
+      byokToolNames:
+        config.mode === 'api'
+          ? byokChatToolNamesForProtocol(config.apiProtocol)
+          : undefined,
       sessionMode: sessionModeOverride,
       locale,
       userInstructions: config.customInstructions,
@@ -2329,6 +2506,7 @@ export function ProjectView({
     designTemplates,
     designSystems,
     config.mode,
+    config.apiProtocol,
     config.customInstructions,
     activeSessionMode,
     locale,
@@ -2454,6 +2632,36 @@ export function ProjectView({
     },
     [refreshConversationMessagesFromServer],
   );
+
+  const autoOpenRecoveredHtmlOutput = useCallback((
+    messagesSnapshot: readonly ChatMessage[],
+    assistantMessageIds: ReadonlySet<string>,
+    filesSnapshot: readonly ProjectFile[],
+  ) => {
+    for (const assistantMessageId of assistantMessageIds) {
+      if (htmlAutoOpenClaimedRef.current.has(assistantMessageId)) continue;
+      const message = messagesSnapshot.find((item) => item.id === assistantMessageId);
+      if (!message || message.role !== 'assistant' || isInFlightAssistantMessage(message)) continue;
+      const produced = message.producedFiles?.length
+        ? message.producedFiles
+        : computeProducedFiles(message.preTurnFileNames, filesSnapshot) ?? [];
+      const htmlToOpen = selectAutoOpenProducedHtml(produced);
+      if (!htmlToOpen) continue;
+      htmlAutoOpenClaimedRef.current.add(assistantMessageId);
+      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
+      requestOpenFile(htmlToOpen);
+      if (!message.producedFiles?.length && produced.length > 0) {
+        updateMessageById(
+          assistantMessageId,
+          (prev) => ({ ...prev, producedFiles: produced }),
+          true,
+          { telemetryFinalized: true },
+        );
+      }
+      return true;
+    }
+    return false;
+  }, [project.id, requestOpenFile, updateMessageById]);
 
   const markStreamingConversation = useCallback((conversationId: string) => {
     streamingConversationIdRef.current = conversationId;
@@ -2692,15 +2900,77 @@ export function ProjectView({
   );
 
   useEffect(() => {
+    clearRunRecoveryBannerState();
+  }, [activeConversationId, clearRunRecoveryBannerState]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const wasHiddenRef = { current: false };
+    const bumpReattach = () => {
+      if (document.visibilityState !== 'visible' || !wasHiddenRef.current) return;
+      setReattachNonce((value) => value + 1);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        wasHiddenRef.current = true;
+        return;
+      }
+      bumpReattach();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', bumpReattach);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', bumpReattach);
+    };
+  }, []);
+
+  useEffect(() => {
     if (config.mode !== 'daemon' || !daemonLive || !activeConversationId || streaming) return;
     let cancelled = false;
     const reattachConversationId = activeConversationId;
 
+    const scheduleReattachRetry = (messageId: string, runId: string | null) => {
+      const key = `${reattachConversationId}:${messageId}:${runId ?? 'missing-run'}`;
+      if (missingRunLookupRetryTimersRef.current.has(key)) return;
+      const retryTimer = window.setTimeout(() => {
+        missingRunLookupRetryTimersRef.current.delete(key);
+        if (!cancelled) setReattachNonce((value) => value + 1);
+      }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
+      missingRunLookupRetryTimersRef.current.set(key, retryTimer);
+    };
+
     const attachRecoverableRuns = async () => {
-      const recoverableMessages = messages.filter(isRecoverableDaemonRunMessage);
+      const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
+      let messagesSnapshot = messages;
+      if ((activeRuns?.length ?? 0) > 0) {
+        try {
+          const serverMessages = await listMessages(project.id, reattachConversationId);
+          if (cancelled) return;
+          messagesSnapshot = mergeServerMessagesIntoConversation(messages, serverMessages);
+          setMessages(messagesSnapshot);
+        } catch {
+          // Best-effort — reattach still uses in-memory rows.
+        }
+      }
+
+      const recoverableById = new Map<string, ChatMessage>();
+      for (const message of messagesSnapshot) {
+        if (isRecoverableDaemonRunMessage(message)) {
+          recoverableById.set(message.id, message);
+        }
+      }
+      for (const run of activeRuns ?? []) {
+        const assistantMessageId = run.assistantMessageId?.trim();
+        if (!assistantMessageId) continue;
+        const message = messagesSnapshot.find((item) => item.id === assistantMessageId);
+        if (message?.role === 'assistant') recoverableById.set(message.id, message);
+      }
+      const recoverableMessages = [...recoverableById.values()];
       if (recoverableMessages.length === 0) return;
 
-      const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
+      const latestInFlightAssistant = findInFlightAssistantMessages(messagesSnapshot)[0] ?? null;
+
       const missingRunIdMessages = recoverableMessages.filter((m) => !m.runId);
       const historicalRuns = missingRunIdMessages.length > 0
         ? (await listProjectRuns()).filter(
@@ -2709,7 +2979,7 @@ export function ProjectView({
         : [];
       if (cancelled) return;
       const activeByMessage = new Map(
-        activeRuns
+        (activeRuns ?? [])
           .filter((run) => run.assistantMessageId)
           .map((run) => [run.assistantMessageId!, run]),
       );
@@ -2734,6 +3004,28 @@ export function ProjectView({
         // output — Working 24m+" UI the user reported. Mark it failed so
         // the composer is interactive again and the user can re-send.
         if (!runId) {
+          if (shouldRetryMissingDaemonRunLookup(message)) {
+            if (isTeamverEmbedMode() && message.id === latestInFlightAssistant?.id) {
+              runRecoveryBannerTrackRef.current = {
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+              };
+              setRunRecoveryBanner({
+                conversationId: reattachConversationId,
+                phase: 'connecting',
+                savedChars: (message.content ?? '').trim().length,
+                runStatus: 'running',
+              });
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: true,
+              });
+            }
+            scheduleReattachRetry(message.id, null);
+            continue;
+          }
           updateMessageById(
             message.id,
             (prev) => ({
@@ -2745,7 +3037,13 @@ export function ProjectView({
           );
           continue;
         }
-        if (locallyConsumedDaemonRunIds.has(runId)) continue;
+        const ownsActiveConsumer =
+          reattachControllersRef.current.has(runId)
+          || primaryOwnedDaemonRunIdRef.current === runId;
+        if (locallyConsumedDaemonRunIds.has(runId) && ownsActiveConsumer) continue;
+        if (locallyConsumedDaemonRunIds.has(runId) && !ownsActiveConsumer) {
+          releaseLocallyConsumedDaemonRun(runId);
+        }
         if (reattachControllersRef.current.has(runId)) continue;
         if (completedReattachRunsRef.current.has(runId)) continue;
 
@@ -2760,6 +3058,28 @@ export function ProjectView({
         const status = activeRun ?? fallbackRun ?? await fetchChatRunStatus(runId);
         if (cancelled) return;
         if (!status) {
+          if (shouldRetryRecentDaemonRunLookup(message)) {
+            if (isTeamverEmbedMode() && message.id === latestInFlightAssistant?.id) {
+              runRecoveryBannerTrackRef.current = {
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+              };
+              setRunRecoveryBanner({
+                conversationId: reattachConversationId,
+                phase: 'connecting',
+                savedChars: (message.content ?? '').trim().length,
+                runStatus: 'running',
+              });
+              dispatchTeamverBackgroundChat({
+                projectId: project.id,
+                conversationId: reattachConversationId,
+                assistantMessageId: message.id,
+                active: true,
+              });
+            }
+            scheduleReattachRetry(message.id, runId);
+            continue;
+          }
           updateMessageById(
             message.id,
             (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
@@ -2778,13 +3098,40 @@ export function ProjectView({
           true,
         );
 
-        if (!isActiveRunStatus(message.runStatus) && isTerminalRunStatus(status.status)) {
+        if (!isActiveRunStatus(status.status) && isTerminalRunStatus(status.status)) {
           completedReattachRunsRef.current.add(runId);
           scheduleConversationMessageRefresh(reattachConversationId);
           continue;
         }
 
-        const needsFullReplay = isActiveRunStatus(status.status);
+        const needsFullReplay =
+          isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message);
+        const savedChars = (message.content ?? '').trim().length;
+        if (
+          isTeamverEmbedMode()
+          && isActiveRunStatus(status.status)
+          && message.id === latestInFlightAssistant?.id
+        ) {
+          runRecoveryBannerTrackRef.current = {
+            conversationId: reattachConversationId,
+            assistantMessageId: message.id,
+          };
+          setRunRecoveryBanner({
+            conversationId: reattachConversationId,
+            phase: resolveRunRecoveryBannerPhase(
+              status.status === 'queued' ? 'queued' : 'running',
+              savedChars,
+            ),
+            savedChars,
+            runStatus: status.status === 'queued' ? 'queued' : 'running',
+          });
+          dispatchTeamverBackgroundChat({
+            projectId: project.id,
+            conversationId: reattachConversationId,
+            assistantMessageId: message.id,
+            active: true,
+          });
+        }
         const controller = new AbortController();
         const cancelController = new AbortController();
         reattachControllersRef.current.set(runId, controller);
@@ -2882,6 +3229,18 @@ export function ProjectView({
           handlers: {
             onDelta: (delta) => {
               replayedContent += delta;
+              if (isTeamverEmbedMode()) {
+                const nextChars = replayedContent.trim().length;
+                setRunRecoveryBanner((prev) => {
+                  if (!prev || prev.conversationId !== reattachConversationId) return prev;
+                  return {
+                    ...prev,
+                    phase: 'live',
+                    runStatus: 'running',
+                    savedChars: Math.max(prev.savedChars, nextChars),
+                  };
+                });
+              }
               textBuffer.appendContent(delta);
             },
             onAgentEvent: (ev) => {
@@ -2905,6 +3264,7 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
               if (!runMayFinalize) return;
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
               for (const ev of parser.flush()) {
                 if (ev.type === 'artifact:end') {
                   parsedArtifact = parsedArtifact
@@ -3022,6 +3382,7 @@ export function ProjectView({
               reattachControllersRef.current.delete(runId);
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
               persistNow({ telemetryFinalized: true });
             },
           },
@@ -3052,6 +3413,7 @@ export function ProjectView({
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
             }
             if (isTerminalRunStatus(runStatus)) {
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
               scheduleConversationMessageRefresh(reattachConversationId);
             }
           },
@@ -3077,6 +3439,7 @@ export function ProjectView({
                 true,
                 { telemetryFinalized: true },
               );
+              finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
             }
           })
           .finally(() => {
@@ -3115,6 +3478,240 @@ export function ProjectView({
     requestOpenFile,
     onProjectsRefresh,
     scheduleConversationMessageRefresh,
+    reattachNonce,
+  ]);
+
+  // Embed BYOK (`mode=api`) has no daemon run row — after page detach the
+  // upstream proxy may still drain on the daemon. Poll messages/files and
+  // restore Stop/streaming UI until the turn settles or proxy streams end.
+  useEffect(() => {
+    if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
+    const initialInflightMessages = findInFlightAssistantMessages(messages);
+    if (initialInflightMessages.length === 0) return;
+    // Question-form turns idle on the server while waiting for answers — not a
+    // background recovery scenario. Keep composer/form submit enabled.
+    if (conversationAwaitingQuestionFormAnswer(messages)) return;
+    // A live local stream already owns this conversation — do not compete.
+    if (streaming && abortRef.current) return;
+
+    let cancelled = false;
+    let pollTimer: number | null = null;
+    let idlePollsWithoutProxy = 0;
+    const recoveryConversationId = activeConversationId;
+    const trackedAssistantIds = new Set(initialInflightMessages.map((message) => message.id));
+    const activatedAssistantIds = new Set<string>();
+    apiRecoveryBannerRef.current = {
+      conversationId: recoveryConversationId,
+      assistantMessageIds: [...trackedAssistantIds],
+    };
+
+    const activateRecoveryUi = (messagesSnapshot: readonly ChatMessage[] = messages) => {
+      if (trackedAssistantIds.size === 0) return;
+      apiRecoveryBannerRef.current = {
+        conversationId: recoveryConversationId,
+        assistantMessageIds: [...trackedAssistantIds],
+      };
+      apiBackgroundRecoveryRef.current = true;
+      markStreamingConversation(recoveryConversationId);
+      if (isTeamverEmbedMode()) {
+        const inflight = findInFlightAssistantMessages(messagesSnapshot).filter((message) =>
+          trackedAssistantIds.has(message.id),
+        );
+        const savedChars = Math.max(
+          0,
+          ...inflight.map((message) => (message.content ?? '').trim().length),
+        );
+        setRunRecoveryBanner({
+          conversationId: recoveryConversationId,
+          phase: resolveRunRecoveryBannerPhase('running', savedChars),
+          savedChars,
+          runStatus: 'running',
+        });
+        runRecoveryBannerTrackRef.current = inflight[0]
+          ? {
+              conversationId: recoveryConversationId,
+              assistantMessageId: inflight[0].id,
+            }
+          : null;
+      }
+      for (const assistantMessageId of trackedAssistantIds) {
+        if (activatedAssistantIds.has(assistantMessageId)) continue;
+        activatedAssistantIds.add(assistantMessageId);
+        dispatchTeamverBackgroundChat({
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          assistantMessageId,
+          active: true,
+        });
+      }
+    };
+
+    for (const message of initialInflightMessages) {
+      dispatchTeamverBackgroundChat({
+        projectId: project.id,
+        conversationId: recoveryConversationId,
+        assistantMessageId: message.id,
+        active: true,
+      });
+      activatedAssistantIds.add(message.id);
+    }
+    activateRecoveryUi();
+
+    const clearPollTimer = () => {
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const finishRecovery = () => {
+      apiBackgroundRecoveryRef.current = false;
+      if (abortRef.current && cancelRef.current) {
+        clearCurrentRunStreamingMarker(
+          recoveryConversationId,
+          abortRef.current,
+          cancelRef.current,
+        );
+      } else {
+        clearStreamingMarker(recoveryConversationId);
+      }
+      clearApiBackgroundRecoveryBanner();
+      clearPollTimer();
+    };
+
+    const scheduleNextPoll = () => {
+      clearPollTimer();
+      pollTimer = window.setTimeout(() => {
+        void pollRecovery();
+      }, BYOK_BACKGROUND_RECOVERY_POLL_MS);
+    };
+
+    const pollRecovery = async () => {
+      if (cancelled) return;
+      let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
+      try {
+        activeStreams = await listActiveByokProxyStreams(project.id);
+      } catch (err) {
+        console.warn('[teamver] api background recovery stream poll failed', {
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          error: err,
+        });
+        scheduleNextPoll();
+        return;
+      }
+      if (cancelled) return;
+      const matchingActiveStreams = activeStreams.filter((stream) => {
+        const streamConversationId = stream.conversationId?.trim();
+        return !streamConversationId || streamConversationId === recoveryConversationId;
+      });
+      for (const stream of matchingActiveStreams) {
+        const assistantMessageId = stream.assistantMessageId?.trim();
+        if (assistantMessageId) trackedAssistantIds.add(assistantMessageId);
+      }
+      activateRecoveryUi();
+
+      let stillInflight = false;
+      let mergedMessages: ChatMessage[] = messages;
+      try {
+        const serverMessages = await listMessages(project.id, recoveryConversationId);
+        if (cancelled) return;
+        const recoveredMessages = mergeServerMessagesIntoConversation(messages, serverMessages).map((message) => {
+          if (
+            trackedAssistantIds.has(message.id)
+            && message.role === 'assistant'
+            && message.endedAt === undefined
+            && message.startedAt === undefined
+          ) {
+            return { ...message, startedAt: message.createdAt || Date.now() };
+          }
+          return message;
+        });
+        mergedMessages = recoveredMessages;
+        stillInflight = findInFlightAssistantMessages(recoveredMessages).length > 0;
+        setMessages((current) => {
+          const nextMessages = mergeServerMessagesIntoConversation(current, serverMessages).map((message) => {
+            if (
+              trackedAssistantIds.has(message.id)
+              && message.role === 'assistant'
+              && message.endedAt === undefined
+              && message.startedAt === undefined
+            ) {
+              return { ...message, startedAt: message.createdAt || Date.now() };
+            }
+            return message;
+          });
+          return nextMessages;
+        });
+      } catch {
+        // Fall through — proxy-active check still gates recovery exit.
+      }
+      if (cancelled) return;
+      if (stillInflight) {
+        activateRecoveryUi(mergedMessages);
+      }
+      let nextFiles: Awaited<ReturnType<typeof refreshProjectFiles>>;
+      try {
+        nextFiles = await refreshProjectFiles();
+      } catch (err) {
+        console.warn('[teamver] api background recovery file refresh failed', {
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          error: err,
+        });
+        scheduleNextPoll();
+        return;
+      }
+      if (cancelled) return;
+      autoOpenRecoveredHtmlOutput(mergedMessages, trackedAssistantIds, nextFiles);
+
+      const proxyStillActive = matchingActiveStreams.length > 0;
+      if (trackedAssistantIds.size === 0 && !proxyStillActive) {
+        finishRecovery();
+        return;
+      }
+      if (!proxyStillActive && stillInflight) {
+        idlePollsWithoutProxy += 1;
+        if (idlePollsWithoutProxy >= 3) {
+          scheduleConversationMessageRefresh(recoveryConversationId);
+          finishRecovery();
+          return;
+        }
+      } else {
+        idlePollsWithoutProxy = 0;
+      }
+
+      if (!stillInflight && !proxyStillActive) {
+        finishRecovery();
+        return;
+      }
+      scheduleNextPoll();
+    };
+
+    void pollRecovery();
+    return () => {
+      cancelled = true;
+      clearPollTimer();
+      apiBackgroundRecoveryRef.current = false;
+      // Keep App-level background-run tracking when this route unmounts — the
+      // upstream proxy/daemon run may still be draining while the user is on
+      // home. finishRecovery() and explicit run completion clear active:false.
+    };
+  }, [
+    config.mode,
+    daemonLive,
+    activeConversationId,
+    streaming,
+    inFlightAssistantSignature,
+    project.id,
+    markStreamingConversation,
+    refreshProjectFiles,
+    autoOpenRecoveredHtmlOutput,
+    clearCurrentRunStreamingMarker,
+    clearStreamingMarker,
+    scheduleConversationMessageRefresh,
+    clearApiBackgroundRecoveryBanner,
+    reattachNonce,
   ]);
 
   const commitQueuedChatSends = useCallback((next: QueuedChatSend[]) => {
@@ -3123,9 +3720,26 @@ export function ProjectView({
     saveQueuedChatSends(project.id, next);
   }, [project.id]);
 
+  // Only tear down in-flight BYOK streams when the active workspace actually
+  // changes. Cross-tab BroadcastChannel relay (B2) can re-emit the same
+  // workspaceId; without this guard we detached streams mid-run (e.g. during
+  // the onboarding question-form) even though the user never switched workspace.
+  const embedActiveWorkspaceIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    return subscribeTeamverWorkspaceChanged(() => {
+    let cancelled = false;
+    void readActiveTeamverWorkspaceId().then((id) => {
+      if (cancelled) return;
+      embedActiveWorkspaceIdRef.current = id?.trim() || null;
+    });
+    return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
+      const trimmed = workspaceId.trim();
+      if (!trimmed) return;
+      if (shouldSkipWorkspaceSwitchSideEffects(embedActiveWorkspaceIdRef.current, trimmed)) {
+        embedActiveWorkspaceIdRef.current = trimmed;
+        return;
+      }
+      embedActiveWorkspaceIdRef.current = trimmed;
       setError(null);
       setConversationLoadError(null);
       detachLocalRunStreamConsumers();
@@ -3140,9 +3754,21 @@ export function ProjectView({
       setError(null);
       setConversationLoadError(null);
       detachLocalRunStreamConsumers();
-      commitQueuedChatSends([]);
+      // Preserve queued sends across a session-expiry round-trip. Users
+      // frequently line up several prompts, and quietly wiping them here
+      // was silent data loss. Queue is already persisted in localStorage,
+      // so the login redirect + ProjectView re-mount will restore it via
+      // `loadQueuedChatSends(project.id)` and the auto-start effect will
+      // resume dispatch. Log preservation for observability.
+      const preservedCount = queuedChatSendsRef.current.length;
+      if (preservedCount > 0) {
+        console.info(
+          '[teamver] chat-queue: preserved across session expiry',
+          { projectId: project.id, count: preservedCount },
+        );
+      }
     });
-  }, [commitQueuedChatSends, detachLocalRunStreamConsumers]);
+  }, [detachLocalRunStreamConsumers, project.id]);
 
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
     const next = [...queuedChatSendsRef.current, item];
@@ -3313,6 +3939,7 @@ export function ProjectView({
       }
       setChatSeed(null);
       const runConversationId = activeConversationId;
+      clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
       const userMsg: ChatMessage = retryTarget?.userMsg ?? {
@@ -3408,6 +4035,14 @@ export function ProjectView({
         : [...nextHistory, assistantMsg];
       setMessages(nextVisibleMessages);
       markStreamingConversation(runConversationId);
+      if (config.mode === 'api') {
+        dispatchTeamverBackgroundChat({
+          projectId: project.id,
+          conversationId: runConversationId,
+          assistantMessageId: assistantId,
+          active: true,
+        });
+      }
       updateConversationLatestRun(config.mode === 'daemon' ? 'running' : 'queued');
       setArtifact(null);
       savedArtifactRef.current = null;
@@ -3835,6 +4470,14 @@ export function ProjectView({
             cancelController,
           );
           if (ownsCurrentRun) updateConversationLatestRun(finalRunStatus ?? 'succeeded', endedAt);
+          if (config.mode === 'api') {
+            dispatchTeamverBackgroundChat({
+              projectId: project.id,
+              conversationId: runConversationId,
+              assistantMessageId: assistantId,
+              active: false,
+            });
+          }
           scheduleStreamRunHtmlAutoOpen(fullText);
           onProjectsRefresh();
           releaseOwnedDaemonRun();
@@ -3879,6 +4522,14 @@ export function ProjectView({
           void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,
           });
+          if (config.mode === 'api' && runMayFinalize) {
+            dispatchTeamverBackgroundChat({
+              projectId: project.id,
+              conversationId: runConversationId,
+              assistantMessageId: assistantId,
+              active: false,
+            });
+          }
           void refreshProjectFiles();
           releaseOwnedDaemonRun();
         },
@@ -4120,6 +4771,7 @@ export function ProjectView({
           onError: handlers.onError,
         }, {
           projectId: project.id,
+          conversationId: runConversationId,
           // Daemon-side billing reconciliation (PR1 §3.6): the proxy stages
           // usage SSE frames keyed by this id so the terminal message PUT
           // can finalize Strategy-B billing even if the FE drops the PUT
@@ -4195,6 +4847,33 @@ export function ProjectView({
     const stoppedAt = Date.now();
     cancelSendTextBuffer(true);
     cancelReattachTextBuffers(true);
+    if (config.mode === 'api' && (apiBackgroundRecoveryRef.current || !abortRef.current)) {
+      // Only abort BYOK proxy streams that belong to the currently active
+      // conversation. The daemon already tenant-scopes by workspace, but
+      // without this filter Stop in conversation A would cancel a
+      // background run in conversation B (same project, same workspace),
+      // breaking the multi-conversation background-run policy.
+      // Streams missing a conversationId (legacy or race) are skipped —
+      // they'll drain naturally per the "page exit → background" policy.
+      const conversationForStop = activeConversationId;
+      void listActiveByokProxyStreams(project.id)
+        .then((streams) => {
+          for (const stream of streams) {
+            if (!conversationForStop) continue;
+            if (stream.conversationId !== conversationForStop) continue;
+            requestProxyAbort(stream.streamId, {
+              conversationId: conversationForStop,
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('[teamver] explicit proxy stop active stream lookup failed', {
+            projectId: project.id,
+            conversationId: conversationForStop,
+            error: err,
+          });
+        });
+    }
     // BYOK proxy cancellation policy (PR1 §3.5): the explicit Stop
     // button is the ONLY abort path that should propagate to the
     // upstream LLM fetch on the daemon. We mark the abort reason so
@@ -4214,6 +4893,8 @@ export function ProjectView({
       controller.abort(EXPLICIT_PROXY_STOP_REASON);
     }
     reattachControllersRef.current.clear();
+    clearApiBackgroundRecoveryBanner();
+    apiBackgroundRecoveryRef.current = false;
     setStreaming(false);
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
@@ -4222,7 +4903,7 @@ export function ProjectView({
       for (const message of finalized) persistMessage(message, { telemetryFinalized: true });
       return next;
     });
-  }, [cancelSendTextBuffer, cancelReattachTextBuffers, persistMessage]);
+  }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, persistMessage, project.id]);
 
   // Flip the deck preview to the slide a queued send's marked element lives on
   // the moment that send starts processing. No-op for plain prompts or marks
@@ -4933,6 +5614,11 @@ export function ProjectView({
     ) {
       return;
     }
+    // Any recovery banner belonging to the outgoing conversation is
+    // scoped to that conversationId; clear it here so `byokBackgroundChatsRef`
+    // in App.tsx (single-key-per-projectId) does not carry a stale "active"
+    // flag into the new conversation.
+    clearApiBackgroundRecoveryBanner();
     creatingConversationRef.current = true;
     setCreatingConversation(true);
     setConversationLoadError(null);
@@ -4972,10 +5658,16 @@ export function ProjectView({
       creatingConversationRef.current = false;
       setCreatingConversation(false);
     }
-  }, [project.id, activeConversationId, messages.length, navigate, openTabsState.active]);
+  }, [clearApiBackgroundRecoveryBanner, project.id, activeConversationId, messages.length, navigate, openTabsState.active]);
 
   const handleSelectConversation = useCallback((id: string) => {
     if (id === activeConversationId && failedMessagesConversationId !== id) return;
+    // The recovery banner is keyed by conversationId inside
+    // `apiRecoveryBannerRef`, but the Task Center / PetOverlay listen to
+    // per-projectId events. Dropping the banner for the outgoing
+    // conversation here prevents a persistent "still running" indicator on
+    // the OD host after the user pivots to a different chat.
+    clearApiBackgroundRecoveryBanner();
     setMessages([]);
     setPreviewComments([]);
     setAttachedComments([]);
@@ -5004,7 +5696,7 @@ export function ProjectView({
       { replace: true },
     );
     setMessageLoadRetryNonce((nonce) => nonce + 1);
-  }, [activeConversationId, failedMessagesConversationId, project.id, openTabsState.active]);
+  }, [clearApiBackgroundRecoveryBanner, activeConversationId, failedMessagesConversationId, project.id, openTabsState.active]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
@@ -5078,6 +5770,9 @@ export function ProjectView({
   const handleForkFromMessage = useCallback(
     async (assistantMessage: ChatMessage) => {
       if (!activeConversationId || forkingMessageId) return;
+      // Forking creates a new conversation — the recovery banner tied to
+      // the source conversation must not leak into the fork.
+      clearApiBackgroundRecoveryBanner();
       setForkingMessageId(assistantMessage.id);
       setConversationLoadError(null);
       try {
@@ -5139,6 +5834,7 @@ export function ProjectView({
       activeConversationId,
       activeConversation?.title,
       activeSessionMode,
+      clearApiBackgroundRecoveryBanner,
       forkingMessageId,
       messages,
       navigate,
@@ -5196,7 +5892,6 @@ export function ProjectView({
       activeConversationId,
       audioVoiceOptionsError,
       conversationLoadError,
-      currentConversationActionDisabled,
 	      currentConversationQueuedItems,
 	      currentConversationSendDisabled,
 	      currentConversationLoading,
@@ -5937,7 +6632,7 @@ export function ProjectView({
               aria-label="Comments"
             />
           ) : activeConversationId || conversationLoadError ? (
-            <ChatPane
+              <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.
               key={`${project.id}:${activeConversationId ?? 'conversation-unavailable'}:${chatSeed?.id ?? 'ready'}`}
@@ -6059,6 +6754,20 @@ export function ProjectView({
                 setProjectActionsToast({ message, details: null });
               }}
               embedSlideDesignSystemFallbackId={embedSlideDesignSystemFallbackId}
+              chatInsetBanner={
+                isTeamverEmbedMode()
+                && shouldShowRunRecoveryBannerInChat({
+                  banner: runRecoveryBanner,
+                  activeConversationId,
+                  conversationStreaming: currentConversationStreaming,
+                }) ? (
+                  <TeamverRunRecoveryBanner
+                    phase={runRecoveryBanner!.phase}
+                    savedChars={runRecoveryBanner!.savedChars}
+                    runStatus={runRecoveryBanner!.runStatus}
+                  />
+                ) : null
+              }
               onBack={isTeamverEmbedMode() ? undefined : onBack}
               backLabel={isTeamverEmbedMode() ? undefined : t('project.backToProjects')}
               composerFooterAccessory={
@@ -6100,7 +6809,7 @@ export function ProjectView({
             />
           ) : (
             <div className="pane" data-testid="chat-pane-loading">
-              <CenteredLoader />
+              <CenteredLoader label={t('common.loading')} />
             </div>
           )}
         </div>
@@ -6628,19 +7337,15 @@ function isPhantomDaemonRunMessage(m: ChatMessage): boolean {
   );
 }
 
-function isRecoverableDaemonRunMessage(message: ChatMessage): boolean {
-  if (message.role !== 'assistant') return false;
-  if (isActiveRunStatus(message.runStatus)) return true;
-  if (!message.runId) return false;
-  if (isTerminalRunStatus(message.runStatus)) return false;
-  return message.endedAt === undefined;
-}
-
 function isStoppableAssistantMessage(message: ChatMessage): boolean {
   if (message.role !== 'assistant') return false;
   if (isActiveRunStatus(message.runStatus)) return true;
   return message.runStatus === undefined && message.endedAt === undefined && message.startedAt !== undefined;
 }
+
+export {
+  isRecoverableDaemonRunMessage,
+} from '../teamver/backgroundChatRecovery';
 
 export function resolveSucceededRunStatus(status: ChatMessage['runStatus']): ChatMessage['runStatus'] {
   return status === 'failed' || status === 'canceled' ? status : 'succeeded';
@@ -6762,6 +7467,9 @@ export function createBufferedTextUpdates({
 }) {
   let pendingContentDelta = '';
   let pendingTextEventDelta = '';
+  let rawContentForSanitize: string | null = null;
+  let rawTextEventForSanitize = '';
+  let sanitizedTextEventSent = '';
   let flushFrame: number | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
@@ -6796,15 +7504,40 @@ export function createBufferedTextUpdates({
     pendingContentDelta = '';
     pendingTextEventDelta = '';
     try {
-      updateMessage((prev) => ({
-        ...prev,
-        content: prev.content + contentDelta,
-        events: textEventDelta
-          ? [...(prev.events ?? []), { kind: 'text', text: textEventDelta }]
-          : prev.events,
-      }));
+      let sanitizedContentDelta = '';
+      let sanitizedTextEventDelta = '';
+      updateMessage((prev) => {
+        const prevContent = prev.content ?? '';
+        if (contentDelta && rawContentForSanitize === null) {
+          rawContentForSanitize = prevContent;
+        }
+        if (contentDelta) {
+          rawContentForSanitize = `${rawContentForSanitize ?? prevContent}${contentDelta}`;
+        }
+        const nextContent = contentDelta
+          ? stripLeakedPseudoToolXml(rawContentForSanitize ?? prevContent)
+          : prevContent;
+        sanitizedContentDelta = nextContent.startsWith(prevContent)
+          ? nextContent.slice(prevContent.length)
+          : '';
+        if (textEventDelta) {
+          rawTextEventForSanitize += textEventDelta;
+          const nextTextEvent = stripLeakedPseudoToolXml(rawTextEventForSanitize);
+          sanitizedTextEventDelta = nextTextEvent.startsWith(sanitizedTextEventSent)
+            ? nextTextEvent.slice(sanitizedTextEventSent.length)
+            : nextTextEvent;
+          sanitizedTextEventSent = nextTextEvent;
+        }
+        return {
+          ...prev,
+          content: nextContent,
+          events: sanitizedTextEventDelta
+            ? [...(prev.events ?? []), { kind: 'text', text: sanitizedTextEventDelta }]
+            : prev.events,
+        };
+      });
       persistSoon();
-      if (contentDelta) onContentDelta?.(contentDelta);
+      if (sanitizedContentDelta) onContentDelta?.(sanitizedContentDelta);
     } finally {
       flushing = false;
     }

@@ -107,6 +107,17 @@ function isExportCacheDisabled(): boolean {
   return ['0', 'false', 'off', 'no'].includes(raw);
 }
 
+export type RunCachedExportOptions = {
+  /**
+   * Skip the cache lookup and force a fresh render. The result is still
+   * populated into the cache stores so subsequent (non-`fresh`) callers
+   * see the new bytes. Used by FE "새로 생성" affordances after templates
+   * update (e.g. Guizang WebGL rasterize fallback fix cached a bad PDF
+   * before OD_EXPORT_CACHE_VERSION=v2).
+   */
+  fresh?: boolean;
+};
+
 /**
  * Look up + render + populate. `render` MUST be idempotent — it may be
  * re-invoked on subsequent misses.
@@ -115,12 +126,14 @@ export async function runCachedExport(
   meta: ExportJobMeta,
   descriptor: ExportCacheDescriptor,
   render: () => Promise<ExportRenderResult>,
+  options: RunCachedExportOptions = {},
 ): Promise<ExportCacheOutcome> {
   const key = computeExportCacheKey(descriptor.keyInput);
   const shortKey = shortCacheKeyPrefix(key);
 
   const cachingEnabled = !isExportCacheDisabled();
-  if (cachingEnabled) {
+  const skipCacheLookup = Boolean(options.fresh);
+  if (cachingEnabled && !skipCacheLookup) {
     const started = Date.now();
     const { entry, ageMs } = await lookupExportCache(storeChain, key);
     if (entry) {
@@ -147,6 +160,17 @@ export async function runCachedExport(
         ageMs,
       };
     }
+  } else if (skipCacheLookup) {
+    // Observability marker so CloudWatch shows the fresh-render fraction.
+    console.info(
+      JSON.stringify({
+        metric: 'od_export_cache_fresh_bypass',
+        projectId: descriptor.keyInput.projectId,
+        format: descriptor.keyInput.format,
+        deck: descriptor.keyInput.deck,
+        cacheKey: shortKey,
+      }),
+    );
   }
 
   const rendered = await render();
@@ -158,6 +182,7 @@ export async function runCachedExport(
   if (cachingEnabled) {
     // Fire-and-await so tests can observe post-render state deterministically,
     // but individual store failures are swallowed inside populateExportCache.
+    // `fresh=1` still populates so peer callers see the new bytes.
     await populateExportCache(storeChain, {
       key,
       body: rendered.body,

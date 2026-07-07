@@ -108,7 +108,7 @@ RDS: Terraform apply로 **Design sidecar 전용** `teamver-design-prod-postgres`
 
 ## 2. Production EC2 앱 배포
 
-**권장:** **`t3.xlarge`** (staging `t3.large` 대비), EBS data 80GB (`OD_DATA_DIR`)
+**권장:** **`t3.2xlarge`** (staging `t3.large` 대비), EBS data 100GB (`OD_DATA_DIR`), design-api **`UVICORN_WORKERS=5`**
 
 ```bash
 # EC2 (SSH — terraform output ssh_command)

@@ -11,21 +11,28 @@ function readSource(relativePath: string): string {
 describe("embed workspace switch side effects", () => {
   it("clears stale workingDirError after a successful project list reload", () => {
     const app = readSource("src/App.tsx");
-    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 2800);
-    expect(block).toContain("loadRecentProjectsForHome()");
+    expect(block).toContain("loadProjectListPage()");
     expect(block).toContain("setWorkingDirError(null)");
-    expect(block.indexOf("setWorkingDirError(null)")).toBeGreaterThan(
-      block.indexOf("reconcileFetchedProjects"),
-    );
+    expect(block).toContain("applyProjectsPageResult");
+    expect(block).toContain("setProjectsRefreshing(true)");
+    expect(block).not.toContain("setProjects([])");
   });
 
   it("clears embed list caches (registry·cover·publish chip) on workspace switch", () => {
     const app = readSource("src/App.tsx");
-    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     const block = app.slice(start, start + 1200);
     expect(block).toContain("clearTeamverEmbedListCaches()");
+  });
+
+  it("ignores stale project-list responses from a previous workspace", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain("workspaceId: isTeamverEmbedMode() ? embedActiveWorkspaceIdRef.current : null");
+    expect(app).toContain("request.workspaceId !== embedActiveWorkspaceIdRef.current");
+    expect(app).toContain("project list response ignored after workspace changed");
   });
 
   it("forwards active workspace on daemon run create in embed", () => {
@@ -54,7 +61,6 @@ describe("embed workspace switch side effects", () => {
       "src/teamver/importDriveAssets.ts",
       "src/teamver/listProjectOutputs.ts",
       "src/teamver/batchLatestPublishSummary.ts",
-      "src/teamver/components/TeamverPublishDriveMenuItem.tsx",
       "src/components/ChatComposer.tsx",
     ]) {
       const source = readSource(relativePath);
@@ -107,9 +113,11 @@ describe("embed workspace switch side effects", () => {
 
   it("clears background run UI and re-seeds run tracking on workspace switch", () => {
     const app = readSource("src/App.tsx");
-    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(() => {");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
     const block = app.slice(start, start + 3200);
+    expect(block).toContain("shouldSkipWorkspaceSwitchSideEffects");
+    expect(block).toContain("capturePreWorkspaceSwitchProjectGuards");
     expect(block).toContain("setBackgroundRunSummaries([])");
     expect(block).toContain("setBackgroundRunNotice(null)");
     expect(block).toContain("resetEmbedRunTrackingRefs");
@@ -144,11 +152,26 @@ describe("embed workspace switch side effects", () => {
     );
   });
 
+  it("ProjectView preserves queued chat sends across session expiry (P2 A3)", () => {
+    const projectView = readSource("src/components/ProjectView.tsx");
+    // Skip the import line and land on the actual `return subscribe...` call.
+    const start = projectView.indexOf(
+      "return subscribeTeamverEmbedSessionChanged(",
+    );
+    expect(start).toBeGreaterThan(0);
+    const block = projectView.slice(start, start + 1500);
+    // The handler must NOT wipe the queue silently — previously this line
+    // was `commitQueuedChatSends([])` which lost user prompts on expiry.
+    expect(block).not.toMatch(/commitQueuedChatSends\(\[\]\)/);
+    // Observability marker documents the queue was preserved.
+    expect(block).toContain("chat-queue: preserved across session expiry");
+  });
+
   it("clears stale workingDirError after refreshProjects succeeds", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("const refreshProjects = useCallback");
     expect(start).toBeGreaterThan(0);
-    const block = app.slice(start, start + 400);
+    const block = app.slice(start, start + 800);
     expect(block).toContain("setWorkingDirError(null)");
   });
 

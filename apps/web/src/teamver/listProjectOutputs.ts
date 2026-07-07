@@ -1,5 +1,5 @@
 import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
-import { getDesignBffClient } from "./designBffClient";
+import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import {
   normalizePublishOutput,
@@ -36,7 +36,7 @@ export async function listTeamverProjectOutputs(
     `/projects/${encodeURIComponent(trimmedId)}/outputs`,
     {
       workspaceId,
-      skipAuthHeader: true,
+      ...TEAMVER_BFF_REQUEST_OPTIONS,
     },
   );
 

@@ -20,13 +20,9 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
 
   if (!teamverEmbed) return null;
 
-  if (embed.loading) {
-    return (
-      <div className="teamver-embed-bar" data-state="loading" data-testid="teamver-embed-bar">
-        <span className="teamver-embed-bar__status">{t("teamver.embed.sessionLoading")}</span>
-      </div>
-    );
-  }
+  // EmbedBootstrapGate already owns the unified bootstrap shell — avoid a
+  // second loading banner that swaps copy mid-boot.
+  if (embed.loading) return null;
 
   // BFF transient failure can keep `authenticated=true` while session probe lost
   // contact (`error: "session_unreachable"`) — surface a retry chip without

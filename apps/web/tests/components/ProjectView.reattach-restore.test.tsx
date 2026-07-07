@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectView,
   computeProducedFiles,
@@ -23,6 +23,7 @@ const getTemplate = vi.fn();
 const fetchChatRunStatus = vi.fn();
 const listActiveChatRuns = vi.fn();
 const listProjectRuns = vi.fn();
+const listActiveByokProxyStreams = vi.fn();
 const reattachDaemonRun = vi.fn();
 const streamViaDaemon = vi.fn();
 const saveMessage = vi.fn();
@@ -30,6 +31,7 @@ const createConversation = vi.fn();
 const patchConversation = vi.fn();
 const patchProject = vi.fn();
 const saveTabs = vi.fn();
+const fileWorkspaceProps = vi.fn();
 
 vi.mock('../../src/i18n', () => ({
   // ProjectView calls useI18n() (for locale/t); mock it like the other
@@ -52,6 +54,10 @@ vi.mock('../../src/providers/daemon', () => ({
   listProjectRuns: (...args: unknown[]) => listProjectRuns(...args),
   reattachDaemonRun: (...args: unknown[]) => reattachDaemonRun(...args),
   streamViaDaemon: (...args: unknown[]) => streamViaDaemon(...args),
+}));
+
+vi.mock('../../src/providers/byokProxyActive', () => ({
+  listActiveByokProxyStreams: (...args: unknown[]) => listActiveByokProxyStreams(...args),
 }));
 
 vi.mock('../../src/providers/registry', () => ({
@@ -77,9 +83,11 @@ vi.mock('../../src/router', () => ({
 }));
 
 vi.mock('../../src/state/projects', () => ({
+  cacheTabsLocally: (_projectId: string, state: unknown) => state,
   createConversation: (...args: unknown[]) => createConversation(...args),
   deleteConversation: vi.fn(),
   getTemplate: (...args: unknown[]) => getTemplate(...args),
+  persistTabsToDaemonNow: vi.fn(),
   listConversations: (...args: unknown[]) => listConversations(...args),
   listMessages: (...args: unknown[]) => listMessages(...args),
   loadTabs: (...args: unknown[]) => loadTabs(...args),
@@ -102,14 +110,18 @@ vi.mock('../../src/components/ChatPane', () => ({
 }));
 
 vi.mock('../../src/components/FileWorkspace', () => ({
-  FileWorkspace: () => null,
+  FileWorkspace: (props: unknown) => {
+    fileWorkspaceProps(props);
+    return null;
+  },
 }));
 
 vi.mock('../../src/components/Loading', () => ({
   CenteredLoader: () => null,
 }));
 
-function renderProjectView() {
+function renderProjectView(options: { mode?: 'daemon' | 'api' } = {}) {
+  const mode = options.mode ?? 'daemon';
   return render(
     <ProjectView
       project={
@@ -118,7 +130,11 @@ function renderProjectView() {
       routeFileName={null}
       config={
         {
-          mode: 'daemon',
+          mode,
+          apiKey: 'test-key',
+          baseUrl: 'https://api.anthropic.com',
+          model: 'claude-test',
+          apiProtocol: 'anthropic',
           agentId: 'agent-1',
           notifications: undefined,
           agentModels: {},
@@ -260,6 +276,11 @@ describe('ProjectView daemon reattach restore', () => {
     window.sessionStorage.clear();
   });
 
+  beforeEach(() => {
+    listActiveChatRuns.mockResolvedValue([]);
+    listActiveByokProxyStreams.mockResolvedValue([]);
+  });
+
   it('does not replay a terminal succeeded row just because produced files are missing', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
@@ -285,7 +306,7 @@ describe('ProjectView daemon reattach restore', () => {
 
     await waitFor(() => expect(listMessages).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(fetchProjectFiles).toHaveBeenCalled());
-    expect(listActiveChatRuns).not.toHaveBeenCalled();
+    await waitFor(() => expect(listActiveChatRuns).toHaveBeenCalledWith('project-1', 'conv-1'));
     expect(listProjectRuns).not.toHaveBeenCalled();
     expect(fetchChatRunStatus).not.toHaveBeenCalled();
     expect(reattachDaemonRun).not.toHaveBeenCalled();
@@ -341,12 +362,92 @@ describe('ProjectView daemon reattach restore', () => {
       runId: 'run-stale-active',
       initialLastEventId: null,
     });
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-stale-active' && msg.content === '';
+      }),
+    ).toBe(false);
     await waitFor(() => {
       const saved = saveMessage.mock.calls
         .map((call) => call[2] as ChatMessage)
         .find((m) => m?.id === 'msg-stale-active' && m.runStatus === 'running');
       expect(saved).toBeTruthy();
     });
+  });
+
+  it('keeps a recent assistant row running while daemon run lookup is still catching up', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-recent-no-run',
+        role: 'assistant',
+        content: 'starting...',
+        createdAt: startedAt,
+        startedAt,
+        runStatus: 'running',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    listProjectRuns.mockResolvedValue([]);
+
+    renderProjectView();
+
+    await waitFor(() => expect(listProjectRuns).toHaveBeenCalled());
+    expect(fetchChatRunStatus).not.toHaveBeenCalled();
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-recent-no-run' && msg.runStatus === 'failed';
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps a recent persisted run pending when run status lookup is still catching up', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-status-gap',
+        role: 'assistant',
+        content: 'partial output',
+        createdAt: startedAt,
+        startedAt,
+        runId: 'run-status-gap',
+        runStatus: 'running',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    fetchChatRunStatus.mockResolvedValue(null);
+
+    renderProjectView();
+
+    await waitFor(() => expect(fetchChatRunStatus).toHaveBeenCalledWith('run-status-gap'));
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-status-gap' && msg.runStatus === 'failed';
+      }),
+    ).toBe(false);
   });
 
   it('finalizes a stale assistant row without opening an events stream when the daemon run is already terminal', async () => {
@@ -465,6 +566,61 @@ describe('ProjectView daemon reattach restore', () => {
     });
   });
 
+  it('auto-opens recovered HTML output after API background recovery completes', async () => {
+    const startedAt = Date.now();
+    const runningMessage: ChatMessage = {
+      id: 'msg-byok',
+      role: 'assistant',
+      content: 'Working...',
+      createdAt: startedAt,
+      startedAt,
+      preTurnFileNames: ['brief.md'],
+    };
+    const completedMessage: ChatMessage = {
+      ...runningMessage,
+      content: 'Done',
+      endedAt: startedAt + 1_000,
+      producedFiles: [
+        {
+          name: 'deck.html',
+          path: 'deck.html',
+          size: 100,
+          mtime: startedAt + 1_000,
+          kind: 'html',
+          mime: 'text/html',
+        } as never,
+      ],
+    };
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages
+      .mockResolvedValueOnce([runningMessage])
+      .mockResolvedValueOnce([completedMessage]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles
+      .mockResolvedValueOnce([
+        { name: 'brief.md', path: 'brief.md', size: 1, mtime: startedAt, kind: 'text' },
+      ])
+      .mockResolvedValue([
+        { name: 'brief.md', path: 'brief.md', size: 1, mtime: startedAt, kind: 'text' },
+        { name: 'deck.html', path: 'deck.html', size: 100, mtime: startedAt + 1_000, kind: 'html' },
+      ]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveByokProxyStreams.mockResolvedValue([]);
+
+    renderProjectView({ mode: 'api' });
+
+    await waitFor(() => {
+      const lastProps = fileWorkspaceProps.mock.calls.at(-1)?.[0] as
+        | { openRequest?: { name: string } | null }
+        | undefined;
+      expect(lastProps?.openRequest?.name).toBe('deck.html');
+    });
+  });
+
   it('reaches succeeded state via the SSE end event even when only the terminal event replays', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
@@ -489,10 +645,10 @@ describe('ProjectView daemon reattach restore', () => {
     getTemplate.mockResolvedValue(null);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-late',
-      status: 'succeeded',
+      status: 'running',
       createdAt: startedAt,
       updatedAt: startedAt,
-      exitCode: 0,
+      exitCode: null,
       signal: null,
     });
     listActiveChatRuns.mockResolvedValue([]);
@@ -543,10 +699,10 @@ describe('ProjectView daemon reattach restore', () => {
     getTemplate.mockResolvedValue(null);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-fail',
-      status: 'failed',
+      status: 'running',
       createdAt: startedAt,
       updatedAt: startedAt,
-      exitCode: 1,
+      exitCode: null,
       signal: null,
     });
     listActiveChatRuns.mockResolvedValue([]);
@@ -661,11 +817,11 @@ describe('ProjectView daemon reattach restore', () => {
     getTemplate.mockResolvedValue(null);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-cancel',
-      status: 'canceled',
+      status: 'running',
       createdAt: startedAt,
       updatedAt: startedAt,
       exitCode: null,
-      signal: 'SIGTERM',
+      signal: null,
     });
     listActiveChatRuns.mockResolvedValue([]);
 
@@ -687,6 +843,59 @@ describe('ProjectView daemon reattach restore', () => {
         .at(-1);
       expect(finalSave?.runStatus).toBe('canceled');
     });
+  });
+
+  it('resumes from lastRunEventId instead of wiping content when checkpoint exists', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-checkpoint',
+        role: 'assistant',
+        content: 'saved before leave',
+        createdAt: startedAt,
+        startedAt,
+        runId: 'run-checkpoint',
+        runStatus: 'running',
+        lastRunEventId: 'evt-99',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([
+      {
+        id: 'run-checkpoint',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        assistantMessageId: 'msg-checkpoint',
+        agentId: 'agent-1',
+        status: 'running',
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+    ]);
+
+    reattachDaemonRun.mockImplementation(async () => new Promise<void>(() => {}));
+
+    renderProjectView();
+
+    await waitFor(() => expect(reattachDaemonRun).toHaveBeenCalledTimes(1));
+    expect(reattachDaemonRun.mock.calls[0]?.[0]).toMatchObject({
+      runId: 'run-checkpoint',
+      initialLastEventId: 'evt-99',
+    });
+    expect(
+      saveMessage.mock.calls.some((call) => {
+        const msg = call[2] as ChatMessage;
+        return msg?.id === 'msg-checkpoint' && msg.content === '';
+      }),
+    ).toBe(false);
   });
 
   it('persists the last buffered delta immediately on pagehide instead of waiting for the streaming throttle', async () => {

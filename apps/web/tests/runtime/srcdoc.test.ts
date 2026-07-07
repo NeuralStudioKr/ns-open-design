@@ -13,11 +13,53 @@ const deckHtml = `<!doctype html>
 </html>`;
 
 describe('buildSrcdoc', () => {
+  it('repairs viewport leaks in HTML fragments before wrapping', () => {
+    const fragment = `viewport=width=device-width, initial-scale=1" />
+<section class="slide active">A</section>`;
+    const doc = buildSrcdoc(fragment, { deck: true });
+    expect(doc).not.toMatch(/viewport=width=device-width/i);
+    expect(doc).toContain('<section class="slide active">A</section>');
+  });
+
+  it('uses the shared artifact leak guard script', () => {
+    const doc = buildSrcdoc('<main>Hero</main>');
+    expect(doc).toContain('data-od-preview-artifact-guard');
+    expect(doc).toContain('isLeakedMetaElement');
+    expect(doc).toContain('stripLeakedNodes');
+  });
+
   it('repairs corrupted viewport meta fragments in full documents', () => {
     const corrupt = `<!doctype html><html><head>device-width, initial-scale=1" /><title>T</title></head><body><div class="slide">A</div></body></html>`;
     const doc = buildSrcdoc(corrupt, { deck: true });
     expect(doc).not.toMatch(/<head>\s*device-width/i);
     expect(doc).toContain('content="width=device-width, initial-scale=1"');
+  });
+
+  it('repairs the shorter -width viewport suffix leak in preview srcdoc', () => {
+    const corrupt = `<!doctype html><html><head><title>T</title></head><body>-width, initial-scale=1" /><div class="slide">A</div></body></html>`;
+    const doc = buildSrcdoc(corrupt, { deck: true, previewFocusGuard: true });
+    expect(doc).not.toMatch(/<body[^>]*>[\s\S]*?>\s*-width\s*,\s*initial-scale/i);
+    expect(doc).toContain('content="width=device-width, initial-scale=1"');
+  });
+
+  it('preserves deck fit() scripts through buildSrcdoc repair and restores mangled bodies', () => {
+    const intact = `<!doctype html><html><body><div id="deck-stage"><section class="slide active">A</section></div><script>
+(function () {
+  var stage = document.getElementById('deck-stage');
+  function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }
+  fit();
+})();</script></body></html>`;
+    const intactDoc = buildSrcdoc(intact, { deck: true, previewFocusGuard: true });
+    expect(intactDoc).toContain("document.getElementById('deck-stage')");
+    expect(intactDoc).toContain('function fit()');
+
+    const mangled = `<!doctype html><html><body><div id="deck-stage"></div><script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  function fit() { stage.style.transform = 'translate(0px,0px) scale(1)'; }
+  fit();
+})();</script></body></html>`;
+    const repairedDoc = buildSrcdoc(mangled, { deck: true, previewFocusGuard: true });
+    expect(repairedDoc).toMatch(/var stage = document\.getElementById\(['"]deck-stage['"]\)/);
   });
 
   it('injects an initial slide index for deck previews', () => {

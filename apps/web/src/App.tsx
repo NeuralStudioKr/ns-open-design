@@ -15,6 +15,8 @@ import {
 } from '@open-design/contracts/analytics';
 import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
+import { EmbedBootstrapGate } from './components/EmbedBootstrapGate';
+import { CenteredLoader } from './components/Loading';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -61,10 +63,12 @@ import {
   shouldFetchHomeProjectsOnBoot,
   shouldFetchMediaProviderConfig,
   shouldFetchPromptTemplateCatalog,
+  shouldPollDaemonRuns,
   shouldPostDaemonActiveContext,
   shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
+import { resolveLoadingShellLabel } from './teamver/branding/loadingShellLabel';
 import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
@@ -76,7 +80,9 @@ import {
   isTeamverEmbedBootComplete,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
+import { completeTeamverEmbedInitialUi } from './teamver/teamverEmbedInitialUi';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
+import { consumeEmbedLaunchPrefs } from './teamver/teamverEmbedAuthNavigation';
 import {
   clampTeamverEmbedRoute,
   teamverEmbedRouteChanged,
@@ -101,9 +107,19 @@ import {
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
-import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
+import { loadProjectListPage, loadProjectListSafe } from './teamver/loadProjectList';
+import { seedEmbedBootstrapSession } from './teamver/embedBootstrapSession';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
+import {
+  capturePreWorkspaceSwitchProjectGuards,
+  isPreWorkspaceSwitchTrustedProject,
+  shouldSkipWorkspaceSwitchSideEffects,
+} from './teamver/workspaceSwitchGuards';
+import { isTeamverSessionTrustedProject } from './teamver/sessionTrustedProjects';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
+import { mergeByokBackgroundRunSummaries, reconcileByokBackgroundChatsAfterPoll, syntheticByokRunsForTaskCenter } from './teamver/backgroundChatRecovery';
+import { subscribeTeamverBackgroundChat } from './teamver/teamverBackgroundChatEvents';
+import { listActiveByokProxyStreams } from './providers/byokProxyActive';
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
@@ -261,6 +277,7 @@ function clearStaleAmrModelChoiceOnProfileChange(
 type ProjectListRequest = {
   generation: number;
   mutationVersion: number;
+  workspaceId: string | null;
 };
 
 export async function persistComposioConfigChange(
@@ -448,6 +465,20 @@ function AppInner() {
     }
   }, []);
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
+  const launchPrefsAppliedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!isTeamverEmbedMode() || launchPrefsAppliedRef.current) return;
+    const prefs = consumeEmbedLaunchPrefs();
+    if (!prefs.theme) return;
+    launchPrefsAppliedRef.current = true;
+    setConfig((current) => {
+      if (current.theme === prefs.theme) return current;
+      const next = { ...current, theme: prefs.theme! };
+      saveConfig(next);
+      return next;
+    });
+  }, []);
   const configRef = useRef(config);
   configRef.current = config;
   const latestPersistedConfigRef = useRef(config);
@@ -481,7 +512,7 @@ function AppInner() {
   // EntryView Templates tab. See specs/current/skills-and-design-templates.md.
   const [designTemplates, setDesignTemplates] = useState<SkillSummary[]>([]);
   const fetchDesignTemplatesForCurrentBranding = useCallback(
-    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck' } : undefined),
+    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined),
     [slideOnlyMvp],
   );
   const [designSystems, setDesignSystems] = useState<DesignSystemSummary[]>([]);
@@ -499,6 +530,13 @@ function AppInner() {
   const activeRunIdsRef = useRef<Set<string>>(new Set());
   const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
   const sessionActiveRunProjectIdsRef = useRef<Set<string>>(new Set());
+  const byokBackgroundChatsRef = useRef<
+    Map<string, { conversationId: string; assistantMessageId: string }>
+  >(new Map());
+  const byokProxyIdlePollsRef = useRef<Map<string, number>>(new Map());
+  const embedActiveWorkspaceIdRef = useRef<string | null>(null);
+  const workspaceSwitchReconcilingRef = useRef(false);
+  const preWorkspaceSwitchTrustedProjectsRef = useRef<Set<string>>(new Set());
   const projectsRef = useRef<Project[]>(projects);
   const wasActiveRunRef = useRef(false);
   const activeRunSignatureRef = useRef("");
@@ -536,6 +574,7 @@ function AppInner() {
   const [projectsHasMore, setProjectsHasMore] = useState(false);
   const [projectsLoadingMore, setProjectsLoadingMore] = useState(false);
   const [projectsPageLoading, setProjectsPageLoading] = useState(false);
+  const [projectsRefreshing, setProjectsRefreshing] = useState(false);
   const projectsLoadingRef = useRef(projectsLoading);
   const projectsPageLoadedRef = useRef(false);
   const projectsNextCursorRef = useRef<string | null>(null);
@@ -560,6 +599,13 @@ function AppInner() {
   const route = useRoute();
   const routeRef = useRef(route);
   routeRef.current = route;
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) {
+      completeTeamverEmbedInitialUi();
+    }
+  }, []);
+
   const analytics = useAnalytics();
 
   const beginAgentStreamRequest = useCallback(() => {
@@ -583,9 +629,19 @@ function AppInner() {
   void detectClientType;
 
   const rememberLocalProject = useCallback((projectId: string) => {
-    pendingLocalProjectIdsRef.current.add(projectId);
-    locallyDeletedProjectIdsRef.current.delete(projectId);
+    const trimmed = projectId.trim();
+    if (!trimmed) return;
+    pendingLocalProjectIdsRef.current.add(trimmed);
+    locallyDeletedProjectIdsRef.current.delete(trimmed);
     projectListMutationVersionRef.current += 1;
+  }, []);
+
+  const isSessionTrustedEmbedProject = useCallback((projectId: string) => {
+    if (!isTeamverEmbedMode()) return false;
+    return isTeamverSessionTrustedProject(projectId, {
+      pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+      sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+    });
   }, []);
 
   const clearLocalProject = useCallback((projectId: string, options?: { deleted?: boolean }) => {
@@ -604,6 +660,7 @@ function AppInner() {
     return {
       generation: projectListRequestGenerationRef.current,
       mutationVersion: projectListMutationVersionRef.current,
+      workspaceId: isTeamverEmbedMode() ? embedActiveWorkspaceIdRef.current : null,
     };
   }, []);
 
@@ -625,6 +682,18 @@ function AppInner() {
   }, []);
 
   const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+    if (
+      isTeamverEmbedMode()
+      && request.workspaceId
+      && embedActiveWorkspaceIdRef.current
+      && request.workspaceId !== embedActiveWorkspaceIdRef.current
+    ) {
+      console.info('[teamver] project list response ignored after workspace changed', {
+        requestWorkspaceId: request.workspaceId,
+        activeWorkspaceId: embedActiveWorkspaceIdRef.current,
+      });
+      return false;
+    }
     const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     const fetchedIds = new Set(list.map((project) => project.id));
@@ -1003,17 +1072,25 @@ function AppInner() {
 
       const request = beginProjectListRequest();
       if (fetchHomeProjects) {
+        // Mark the page as loaded synchronously so the `/projects` route
+        // effect (`ensureProjectsListPageLoaded`) does not fire a duplicate
+        // paginated fetch when boot lands on that route. Any failure below
+        // resets the flag so a subsequent `/projects` visit can retry.
+        projectsPageLoadedRef.current = true;
         void (async () => {
           if (isTeamverEmbedMode()) {
             await waitForTeamverEmbedBoot();
           }
           if (cancelled) return;
-          const result = await loadRecentProjectsForHome();
+          const result = await loadProjectListPage();
           if (cancelled) return;
           if (!result.ok) {
+            projectsPageLoadedRef.current = false;
             setWorkingDirError(result.errorMessage);
           } else {
             setWorkingDirError(null);
+            projectsNextCursorRef.current = result.nextCursor;
+            setProjectsHasMore(result.hasMore);
             reconcileFetchedProjects(result.projects, request);
             warmEmbedProjectListCaches(result.projects);
           }
@@ -1061,24 +1138,73 @@ function AppInner() {
         isTeamverEmbedMode()
           ? (() => {
               const bootSessionOptions = resolveEmbedBootSessionOptions();
-              return fetchDesignAuthSession(bootSessionOptions).then(async (session) => {
-                try {
-                  if (session?.authenticated) {
-                    setTeamverEmbedSessionAuthenticated(true);
-                    await syncTeamverWorkspaceFromSession(session);
-                    try {
-                      await syncAllDaemonProjectsToRegistry();
-                    } catch (err) {
-                      console.warn("[teamver] embed boot registry sync failed", err);
+              // Split into two `.then/.catch` legs so a rejected session
+              // fetch still marks embed boot as complete — otherwise the
+              // `EmbedBootstrapGate` (and any `waitForTeamverEmbedBoot`
+              // callers) would hang on the loading shell forever after a
+              // transient BFF outage on first paint.
+              return fetchDesignAuthSession(bootSessionOptions)
+                .then(async (session) => {
+                  let activeWorkspaceId: string | null = null;
+                  const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
+                  try {
+                    if (session?.authenticated) {
+                      setTeamverEmbedSessionAuthenticated(true);
+                      activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+                      void syncAllDaemonProjectsToRegistry().catch((err) => {
+                        console.warn("[teamver] embed boot registry sync failed", err);
+                      });
+                    } else {
+                      await clearTeamverEmbedSessionState();
                     }
-                  } else {
-                    await clearTeamverEmbedSessionState();
+                    seedEmbedBootstrapSession({
+                      session: session ?? { authenticated: false },
+                      activeWorkspaceId,
+                    });
+                    const prefetchProject =
+                      detailRoute && session?.authenticated
+                        ? (async () => {
+                            try {
+                              await ensureTeamverProjectRegisteredById(detailRoute.projectId);
+                              const project = await getProject(detailRoute.projectId);
+                              if (!project || cancelled) return;
+                              setProjects((current) => {
+                                const existingIndex = current.findIndex(
+                                  (candidate) => candidate.id === project.id,
+                                );
+                                if (existingIndex < 0) return [...current, project];
+                                return current.map((candidate) =>
+                                  candidate.id === project.id ? project : candidate,
+                                );
+                              });
+                              warmEmbedProjectListCaches([project]);
+                            } catch (err) {
+                              console.warn("[teamver] embed boot project prefetch failed", err);
+                            }
+                          })()
+                        : Promise.resolve();
+                    const [teamverRuntimeConfig] = await Promise.all([
+                      fetchTeamverRuntimeConfig(),
+                      prefetchProject,
+                    ]);
+                    return teamverRuntimeConfig;
+                  } finally {
+                    if (!cancelled) {
+                      completeTeamverEmbedBoot();
+                    }
                   }
-                  return await fetchTeamverRuntimeConfig();
-                } finally {
-                  completeTeamverEmbedBoot();
-                }
-              });
+                })
+                .catch((err) => {
+                  console.warn("[teamver] embed boot session probe failed", err);
+                  seedEmbedBootstrapSession({
+                    session: { authenticated: false },
+                    activeWorkspaceId: null,
+                  });
+                  if (!cancelled) {
+                    completeTeamverEmbedBoot();
+                  }
+                  return null;
+                });
             })()
           : Promise.resolve(null),
       ]).then(([
@@ -1349,25 +1475,18 @@ function AppInner() {
 
   const refreshProjects = useCallback(async () => {
     const request = beginProjectListRequest();
-    if (projectsPageLoadedRef.current) {
-      const result = await loadProjectListPage();
-      if (!result.ok) {
-        setWorkingDirError(result.errorMessage);
-        return;
-      }
-      setWorkingDirError(null);
-      applyProjectsPageResult(result, request, 'replace');
-      return;
-    }
-    const result = await loadRecentProjectsForHome();
+    const result = await loadProjectListPage();
     if (!result.ok) {
+      // Retain the previous list on transient failure so the surface does
+      // not flash empty. Reset the ref so the next `/projects` visit retries.
+      projectsPageLoadedRef.current = false;
       setWorkingDirError(result.errorMessage);
       return;
     }
     setWorkingDirError(null);
-    reconcileFetchedProjects(result.projects, request);
-    warmEmbedProjectListCaches(result.projects);
-  }, [applyProjectsPageResult, beginProjectListRequest, reconcileFetchedProjects]);
+    projectsPageLoadedRef.current = true;
+    applyProjectsPageResult(result, request, 'replace');
+  }, [applyProjectsPageResult, beginProjectListRequest]);
 
   const refreshEmbedProjectMetadata = useCallback(async (projectId: string) => {
     const trimmedId = projectId.trim();
@@ -1424,12 +1543,14 @@ function AppInner() {
       await waitForTeamverEmbedBoot();
       if (cancelled) return;
       const id = (await readActiveTeamverWorkspaceId())?.trim() || null;
-      if (!cancelled) setEmbedWorkspaceId(id);
+      if (!cancelled) {
+        embedActiveWorkspaceIdRef.current = id;
+        setEmbedWorkspaceId(id);
+      }
     };
     void syncWorkspace();
     const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
-      const trimmed = workspaceId.trim();
-      setEmbedWorkspaceId(trimmed || null);
+      setEmbedWorkspaceId(workspaceId.trim() || null);
     });
     const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
@@ -1488,6 +1609,47 @@ function AppInner() {
     );
   }, [activeRouteProjectIdForToast]);
 
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverBackgroundChat(({ projectId, conversationId, assistantMessageId, active }) => {
+      if (active) {
+        byokBackgroundChatsRef.current.set(projectId, { conversationId, assistantMessageId });
+        sessionActiveRunProjectIdsRef.current.add(projectId);
+        byokProxyIdlePollsRef.current.delete(projectId);
+      } else {
+        byokBackgroundChatsRef.current.delete(projectId);
+        sessionActiveRunProjectIdsRef.current.delete(projectId);
+        byokProxyIdlePollsRef.current.delete(projectId);
+      }
+      const byokRuns = syntheticByokRunsForTaskCenter(byokBackgroundChatsRef.current);
+      const currentProjects = projectsRef.current;
+      const projectsById = new Map(currentProjects.map((project) => [project.id, project.name]));
+      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
+      });
+      const mergedRuns = [...byokRuns];
+      if (configRef.current.pet?.enabled) {
+        setPetTaskCenter(buildPetTaskCenter(currentProjects, mergedRuns, allowMissingProjectIds));
+      }
+      const daemonSummaries = buildActiveRunSummaries(
+        currentProjects,
+        mergedRuns,
+        allowMissingProjectIds,
+      );
+      const activeSummaries = mergeByokBackgroundRunSummaries(
+        daemonSummaries,
+        byokBackgroundChatsRef.current,
+        projectsById,
+      );
+      setBackgroundRunSummaries((prev) =>
+        activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
+      );
+      wasActiveRunRef.current = activeSummaries.length > 0;
+    });
+  }, []);
+
   // Embed: leave project workspace when Design app becomes disabled mid-session.
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -1497,6 +1659,10 @@ function AppInner() {
       setBackgroundRunSummaries([]);
       const current = routeRef.current;
       if (current.kind !== 'project') return;
+      console.info('[teamver] home-nav: design app disabled mid-session', {
+        projectId: current.projectId,
+        reason: detail.appDisabledReason ?? null,
+      });
       setWorkingDirError(formatTeamverDesignDisabledMessage(detail.appDisabledReason));
       navigate({ kind: 'home', view: 'home' }, { replace: true });
     });
@@ -1504,13 +1670,29 @@ function AppInner() {
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    return subscribeTeamverWorkspaceChanged(() => {
+    return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
       if (!isTeamverEmbedBootComplete()) return;
+      const trimmed = workspaceId.trim();
+      if (!trimmed) return;
+      if (shouldSkipWorkspaceSwitchSideEffects(embedActiveWorkspaceIdRef.current, trimmed)) {
+        embedActiveWorkspaceIdRef.current = trimmed;
+        return;
+      }
+      const preSwitchProjectGuards = capturePreWorkspaceSwitchProjectGuards({
+        route: routeRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+      });
+      workspaceSwitchReconcilingRef.current = true;
+      preWorkspaceSwitchTrustedProjectsRef.current = preSwitchProjectGuards;
+      embedActiveWorkspaceIdRef.current = trimmed;
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
       setBackgroundRunSummaries([]);
       setBackgroundRunNotice(null);
+      byokBackgroundChatsRef.current.clear();
+      byokProxyIdlePollsRef.current.clear();
       resetEmbedRunTrackingRefs({
         activeRunIds: activeRunIdsRef,
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
@@ -1520,36 +1702,64 @@ function AppInner() {
       });
       void (async () => {
         try {
-          await syncAllDaemonProjectsToRegistry();
-        } catch (err) {
-          console.warn("[teamver] registry sync on workspace switch failed", err);
-        }
-        void reloadTeamverRuntimeConfig({ force: true });
-        const request = beginProjectListRequest();
-        setProjectsLoading(true);
-        setProjects([]);
-        projectsPageLoadedRef.current = false;
-        projectsNextCursorRef.current = null;
-        setProjectsHasMore(false);
-        const result = await loadRecentProjectsForHome();
-        if (!result.ok) {
-          setWorkingDirError(result.errorMessage);
-          setProjectsLoading(false);
-          return;
-        }
-        reconcileFetchedProjects(result.projects, request);
-        setProjectsLoading(false);
-        setWorkingDirError(null);
-        warmEmbedProjectListCaches(result.projects);
-        window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
-        const current = routeRef.current;
-        if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
-          setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
-          navigate({ kind: 'home', view: 'home' }, { replace: true });
+          try {
+            await syncAllDaemonProjectsToRegistry();
+          } catch (err) {
+            console.warn("[teamver] registry sync on workspace switch failed", err);
+          }
+          void reloadTeamverRuntimeConfig({ force: true });
+          const request = beginProjectListRequest();
+          setProjectsRefreshing(true);
+          projectsNextCursorRef.current = null;
+          setProjectsHasMore(false);
+          const result = await loadProjectListPage();
+          if (!result.ok) {
+            // Failure keeps the projects tab flagged as un-loaded so a
+            // subsequent `/projects` visit retries via ensureProjectsListPageLoaded.
+            projectsPageLoadedRef.current = false;
+            setWorkingDirError(result.errorMessage);
+            return;
+          }
+          projectsPageLoadedRef.current = true;
+          applyProjectsPageResult(result, request, 'replace');
+          setWorkingDirError(null);
+          warmEmbedProjectListCaches(result.projects);
+          window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
+          const current = routeRef.current;
+          if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
+            const currentProjectId = current.kind === 'project' ? current.projectId : null;
+            const allowed = currentProjectId
+              ? isPreWorkspaceSwitchTrustedProject(currentProjectId, preSwitchProjectGuards) ||
+                isSessionTrustedEmbedProject(currentProjectId) ||
+                await assertTeamverProjectAccessIfNeeded(currentProjectId)
+              : false;
+            if (allowed) {
+              console.info('[teamver] workspace switch — project missing from list but access confirmed', {
+                projectId: currentProjectId,
+                workspaceId: trimmed,
+              });
+              return;
+            }
+            console.info('[teamver] home-nav: workspace switch — project not in new list', {
+              projectId: currentProjectId,
+              workspaceId: trimmed,
+            });
+            setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
+            navigate({ kind: 'home', view: 'home' }, { replace: true });
+          }
+        } finally {
+          setProjectsRefreshing(false);
+          workspaceSwitchReconcilingRef.current = false;
+          preWorkspaceSwitchTrustedProjectsRef.current = new Set();
         }
       })();
     });
-  }, [beginProjectListRequest, reconcileFetchedProjects, reloadTeamverRuntimeConfig]);
+  }, [
+    applyProjectsPageResult,
+    beginProjectListRequest,
+    isSessionTrustedEmbedProject,
+    reloadTeamverRuntimeConfig,
+  ]);
 
   // Pageshow/visibility return — recover from sleep/standby/backgrounded tab
   // and pick up BE runtime-config changes (rotated keys, model swap, base url).
@@ -1574,8 +1784,10 @@ function AppInner() {
         pendingLocalProjectIdsRef.current.clear();
         locallyDeletedProjectIdsRef.current.clear();
         clearTeamverEmbedListCaches();
+        projectsPageLoadedRef.current = false;
         setProjects([]);
         setProjectsLoading(false);
+        setProjectsRefreshing(false);
         setBackgroundRunSummaries([]);
         setBackgroundRunNotice(null);
         resetEmbedRunTrackingRefs({
@@ -1609,10 +1821,15 @@ function AppInner() {
           void reloadTeamverRuntimeConfig({ force: true });
           return;
         }
-        setProjectsLoading(true);
+        if (projectsRef.current.length > 0) {
+          setProjectsRefreshing(true);
+        } else {
+          setProjectsLoading(true);
+        }
         await refreshProjects();
         void reloadTeamverRuntimeConfig({ force: true });
         setProjectsLoading(false);
+        setProjectsRefreshing(false);
       })();
     });
   }, [refreshEmbedProjectMetadata, refreshProjects, reloadTeamverRuntimeConfig]);
@@ -2225,6 +2442,10 @@ function AppInner() {
         await registerTeamverProjectIfNeeded(project);
       } catch (err) {
         if (err instanceof TeamverProjectRegistryError) {
+          console.info('[teamver] home-nav: project registry error on import', {
+            projectId: result.projectId,
+            code: err.code,
+          });
           setWorkingDirError(formatTeamverProjectRegistryErrorMessage(err.code));
           navigate({ kind: 'home', view: 'home' }, { replace: true });
           return;
@@ -2270,7 +2491,24 @@ function AppInner() {
       projectId: string,
       extras: { fileName?: string | null; conversationId?: string | null } = {},
     ) => {
-      const allowed = await assertTeamverProjectAccessIfNeeded(projectId);
+      if (isSessionTrustedEmbedProject(projectId)) {
+        navigate({
+          kind: 'project',
+          projectId,
+          fileName: extras.fileName ?? null,
+          ...(extras.conversationId !== undefined
+            ? { conversationId: extras.conversationId }
+            : {}),
+        });
+        return;
+      }
+
+      const visibleOnList = projects.some((project) => project.id === projectId);
+      let allowed = await assertTeamverProjectAccessIfNeeded(projectId);
+      if (!allowed && visibleOnList) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        allowed = await assertTeamverProjectAccessIfNeeded(projectId);
+      }
       if (!allowed) {
         if (isTeamverEmbedMode()) {
           setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
@@ -2286,24 +2524,40 @@ function AppInner() {
           : {}),
       });
     },
-    [],
+    [isSessionTrustedEmbedProject, projects],
   );
 
   const activeProjectRouteId = route.kind === 'project' ? route.projectId : null;
   useEffect(() => {
     if (!activeProjectRouteId) return;
+    if (workspaceSwitchReconcilingRef.current) return;
+    if (isPreWorkspaceSwitchTrustedProject(
+      activeProjectRouteId,
+      preWorkspaceSwitchTrustedProjectsRef.current,
+    )) return;
+    if (isSessionTrustedEmbedProject(activeProjectRouteId)) return;
+    if (projects.some((project) => project.id === activeProjectRouteId)) return;
     let cancelled = false;
-    void assertTeamverProjectAccessIfNeeded(activeProjectRouteId).then((allowed) => {
+    void (async () => {
+      let allowed = await assertTeamverProjectAccessIfNeeded(activeProjectRouteId);
+      if (!allowed) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        if (cancelled) return;
+        allowed = await assertTeamverProjectAccessIfNeeded(activeProjectRouteId);
+      }
       if (cancelled || allowed) return;
+      console.info('[teamver] home-nav: project access denied on route mount', {
+        projectId: activeProjectRouteId,
+      });
       if (isTeamverEmbedMode()) {
         setWorkingDirError(formatTeamverProjectAccessDeniedMessage());
       }
       navigate({ kind: 'home', view: 'home' }, { replace: true });
-    });
+    })();
     return () => {
       cancelled = true;
     };
-  }, [activeProjectRouteId]);
+  }, [activeProjectRouteId, isSessionTrustedEmbedProject, projects]);
 
   const handleOpenProject = useCallback(
     (id: string, options?: { fileName?: string | null; conversationId?: string | null }) => {
@@ -2321,6 +2575,8 @@ function AppInner() {
     if (!daemonLive) {
       setPetTaskCenter({ running: [], queued: [], recent: [] });
       setBackgroundRunSummaries([]);
+      byokBackgroundChatsRef.current.clear();
+      byokProxyIdlePollsRef.current.clear();
       resetEmbedRunTrackingRefs({
         activeRunIds: activeRunIdsRef,
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
@@ -2351,7 +2607,7 @@ function AppInner() {
     }
 
     const refresh = async () => {
-      const runs = await listProjectRuns();
+      const runs = shouldPollDaemonRuns() ? await listProjectRuns() : [];
       if (cancelled) return;
 
       const currentProjects = projectsRef.current;
@@ -2372,6 +2628,42 @@ function AppInner() {
       const trackedRuns = knownProjectIds
         ? filterRunsForEmbedKnownProjects(runs, knownProjectIds)
         : runs;
+      if (isTeamverEmbedMode() && byokBackgroundChatsRef.current.size > 0) {
+        const streamsByProjectId = new Map<
+          string,
+          Awaited<ReturnType<typeof listActiveByokProxyStreams>>
+        >();
+        let streamPollFailed = false;
+        await Promise.all(
+          [...byokBackgroundChatsRef.current.keys()].map(async (projectId) => {
+            try {
+              const streams = await listActiveByokProxyStreams(projectId);
+              streamsByProjectId.set(projectId, streams);
+            } catch (err) {
+              streamPollFailed = true;
+              console.warn("[teamver] byok background stream poll failed", {
+                projectId,
+                error: err,
+              });
+            }
+          }),
+        );
+        if (cancelled) return;
+        if (!streamPollFailed) {
+          const removed = reconcileByokBackgroundChatsAfterPoll(
+            byokBackgroundChatsRef.current,
+            byokProxyIdlePollsRef.current,
+            streamsByProjectId,
+          );
+          for (const projectId of removed) {
+            sessionActiveRunProjectIdsRef.current.delete(projectId);
+          }
+        }
+      }
+      const byokRuns = isTeamverEmbedMode()
+        ? syntheticByokRunsForTaskCenter(byokBackgroundChatsRef.current)
+        : [];
+      const allTrackedRuns = [...trackedRuns, ...byokRuns];
       const previousActiveRunIds = activeRunIdsRef.current;
       const nextActiveRunIds = new Set<string>();
       for (const run of trackedRuns) {
@@ -2475,23 +2767,32 @@ function AppInner() {
         }
       }
 
-      const center = buildPetTaskCenter(currentProjects, runs);
+      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
+        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
+        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
+        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
+      });
+
+      const center = buildPetTaskCenter(currentProjects, allTrackedRuns, allowMissingProjectIds);
       if (config.pet?.enabled) {
         setPetTaskCenter(center);
       } else {
         setPetTaskCenter({ running: [], queued: [], recent: [] });
       }
 
-      const allowMissingProjectIds = buildEmbedActiveRunAllowMissingIds({
-        sessionActiveRunProjectIds: sessionActiveRunProjectIdsRef.current,
-        pendingLocalProjectIds: pendingLocalProjectIdsRef.current,
-        locallyDeletedProjectIds: locallyDeletedProjectIdsRef.current,
-      });
-      const activeSummaries = buildActiveRunSummaries(
+      const projectNamesById = new Map(currentProjects.map((project) => [project.id, project.name]));
+      const daemonSummaries = buildActiveRunSummaries(
         currentProjects,
-        isTeamverEmbedMode() ? trackedRuns : runs,
+        isTeamverEmbedMode() ? allTrackedRuns : runs,
         allowMissingProjectIds,
       );
+      const activeSummaries = isTeamverEmbedMode()
+        ? mergeByokBackgroundRunSummaries(
+            daemonSummaries,
+            byokBackgroundChatsRef.current,
+            projectNamesById,
+          )
+        : daemonSummaries;
       if (isTeamverEmbedMode()) {
         setBackgroundRunSummaries((prev) =>
           activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
@@ -2540,16 +2841,20 @@ function AppInner() {
         return;
       }
       runsPollInFlight = true;
-      void refresh().finally(() => {
-        runsPollInFlight = false;
-        if (cancelled) return;
-        if (runsPollPending) {
-          runsPollPending = false;
-          runRunsPoll();
-          return;
-        }
-        scheduleNextRunsPoll();
-      });
+      void refresh()
+        .catch((err) => {
+          console.warn("[teamver] runs poll failed", err);
+        })
+        .finally(() => {
+          runsPollInFlight = false;
+          if (cancelled) return;
+          if (runsPollPending) {
+            runsPollPending = false;
+            runRunsPoll();
+            return;
+          }
+          scheduleNextRunsPoll();
+        });
     }
 
     const handleRunsChanged = () => {
@@ -2790,7 +3095,9 @@ function AppInner() {
       const project = await getProject(route.projectId);
       if (cancelled) return;
       if (project) {
-        const allowed = await assertTeamverProjectAccessIfNeeded(route.projectId);
+        const allowed =
+          isSessionTrustedEmbedProject(route.projectId) ||
+          await assertTeamverProjectAccessIfNeeded(route.projectId);
         if (cancelled) return;
         if (!allowed) {
           if (isTeamverEmbedMode()) {
@@ -2812,6 +3119,9 @@ function AppInner() {
       const detailRoute = readEmbedProjectDetailRoute(route);
       if (detailRoute) {
         if (!pendingLocalProjectIdsRef.current.has(detailRoute.projectId)) {
+          console.info('[teamver] home-nav: deep-linked project not found (detail route)', {
+            projectId: detailRoute.projectId,
+          });
           if (isTeamverEmbedMode()) {
             setWorkingDirError(formatTeamverProjectNotFoundMessage());
           }
@@ -2839,6 +3149,9 @@ function AppInner() {
       const knownLocalProject =
         staleRequest && pendingLocalProjectIdsRef.current.has(route.projectId);
       if (!fetchedProject && !knownLocalProject) {
+        console.info('[teamver] home-nav: deep-linked project missing after list refresh', {
+          projectId: route.projectId,
+        });
         if (isTeamverEmbedMode()) {
           setWorkingDirError(formatTeamverProjectNotFoundMessage());
         }
@@ -2848,7 +3161,15 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [route, activeProject, projects, daemonLive, beginProjectListRequest, reconcileFetchedProjects]);
+  }, [
+    route,
+    activeProject,
+    projects,
+    daemonLive,
+    beginProjectListRequest,
+    isSessionTrustedEmbedProject,
+    reconcileFetchedProjects,
+  ]);
 
   const openSettings = useCallback((
     section: SettingsSection = 'execution',
@@ -3128,6 +3449,12 @@ function AppInner() {
         onEmbedSubmitBlocked={notifyEmbedSubmitBlocked}
       />
     );
+  } else if (isTeamverEmbedMode() && route.kind === 'project' && !activeProject) {
+    appMain = (
+      <div className="embed-route-loading" data-testid="embed-project-route-loading">
+        <CenteredLoader label={resolveLoadingShellLabel()} />
+      </div>
+    );
   } else {
     appMain = (
       <EntryView
@@ -3159,6 +3486,7 @@ function AppInner() {
         designSystemsLoading={dsLoading}
         projectsLoading={projectsLoading}
         projectsPageLoading={projectsPageLoading}
+        projectsRefreshing={projectsRefreshing}
         projectsHasMore={projectsHasMore}
         projectsLoadingMore={projectsLoadingMore}
         onLoadMoreProjects={loadMoreProjects}
@@ -3198,28 +3526,30 @@ function AppInner() {
     hideWorkspaceTabsBar && isTeamverEmbedMode() && route.kind === 'project';
   return (
     <>
-      <div
-        className={`workspace-shell workspace-shell--${clientType}${
-          hideWorkspaceTabsBar ? ' workspace-shell--no-tabs' : ''
-        }${showTeamverWorkspaceEscape ? ' workspace-shell--embed-escape' : ''}`}
-        data-client-type={clientType}
-      >
-        {hideWorkspaceTabsBar ? null : (
-          <WorkspaceTabsBar
-            route={route}
-            projects={projects}
-            onboardingCompleted={config.onboardingCompleted === true}
-          />
-        )}
-        {showTeamverWorkspaceEscape ? (
-          <TeamverWorkspaceEscapeBar
-            onDesignHome={() => navigate({ kind: 'home', view: 'home' })}
-          />
-        ) : null}
-        <div className="workspace-shell__body">
-          {appMain}
+      <EmbedBootstrapGate>
+        <div
+          className={`workspace-shell workspace-shell--${clientType}${
+            hideWorkspaceTabsBar ? ' workspace-shell--no-tabs' : ''
+          }${showTeamverWorkspaceEscape ? ' workspace-shell--embed-escape' : ''}`}
+          data-client-type={clientType}
+        >
+          {hideWorkspaceTabsBar ? null : (
+            <WorkspaceTabsBar
+              route={route}
+              projects={projects}
+              onboardingCompleted={config.onboardingCompleted === true}
+            />
+          )}
+          {showTeamverWorkspaceEscape ? (
+            <TeamverWorkspaceEscapeBar
+              onDesignHome={() => navigate({ kind: 'home', view: 'home' })}
+            />
+          ) : null}
+          <div className="workspace-shell__body">
+            {appMain}
+          </div>
         </div>
-      </div>
+      </EmbedBootstrapGate>
       {clientType === 'desktop' ? null : (
         <PetOverlay
           pet={config.pet?.enabled ? config.pet : undefined}

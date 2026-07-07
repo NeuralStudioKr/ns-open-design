@@ -11,9 +11,14 @@ import {
   resolveTeamverDesignApiBase,
   resolveTeamverDesignApiCrossOriginFallback,
   resolveDesignBffRefreshUrl,
-  redirectToTeamverLogin,
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
+import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
+import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import {
+  clearOrphanTeamverAuthCookies,
+  isOrphanTeamverJwtAuthFailure,
+} from "./teamverAuthOrphanJwt";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
@@ -43,6 +48,42 @@ export type DesignAuthSession = {
 
 let cachedClient: TeamverClient | null = null;
 
+function isSdkAuthRefreshRequest(input: Parameters<typeof fetch>[0], init?: RequestInit): boolean {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method !== "POST") return false;
+  const rawUrl =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+  try {
+    const parsed =
+      typeof window !== "undefined"
+        ? new URL(rawUrl, window.location.href)
+        : new URL(rawUrl);
+    return parsed.pathname.endsWith("/auth/refresh");
+  } catch {
+    return rawUrl.endsWith("/auth/refresh");
+  }
+}
+
+const DESIGN_BFF_SDK_REFRESH_DISABLED_RESPONSE = JSON.stringify({
+  error: { code: "design_sdk_auth_refresh_disabled" },
+});
+
+function fetchDesignBffSdk(input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> {
+  if (isSdkAuthRefreshRequest(input, init)) {
+    return Promise.resolve(
+      new Response(DESIGN_BFF_SDK_REFRESH_DISABLED_RESPONSE, {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  }
+  return fetch(input, init);
+}
+
 export function getDesignBffClient(): TeamverClient | null {
   if (!isTeamverEmbedMode()) return null;
   const base = resolveTeamverDesignApiBase();
@@ -59,20 +100,33 @@ export function getDesignBffClient(): TeamverClient | null {
         lastByUserKey: "teamver_design_last_workspace_by_user",
       }),
       withCredentials: true,
+      fetch: fetchDesignBffSdk,
       onAuthExpired: () => {
         prepareDesignAuthSessionReload();
-        redirectToTeamverLogin();
+        redirectToTeamverLoginPreservingRoute({
+          returnTo:
+            typeof window !== "undefined"
+              ? resolveEmbedAuthReturnPath(
+                  window.location.pathname,
+                  window.location.search,
+                )
+              : null,
+        });
       },
     });
   }
   return cachedClient;
 }
 
-const SESSION_PROBE_OPTIONS = {
+export const TEAMVER_BFF_REQUEST_OPTIONS = {
   skipAuthHeader: true,
-  // Session probe — avoid SDK refresh + onAuthExpired before embed handles 401.
+  // Design embed handles cookie refresh explicitly via refreshDesignAuthCookie().
+  // Keep SDK auto-recovery off so ordinary BFF 401s do not spam
+  // /teamver-bff/auth/refresh or redirect before the embed auth layer decides.
   skipAuthRecovery: true,
 } as const;
+
+const SESSION_PROBE_OPTIONS = TEAMVER_BFF_REQUEST_OPTIONS;
 
 async function postAuthRefresh(
   url: string,
@@ -173,6 +227,20 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
   }
   if (bffResult.status === 400 || bffResult.status === 401) {
     authRefreshDeclinedForSession = true;
+    // C2 hookup: if the failure body signals an orphan JWT (valid
+    // signature but the Main BE no longer knows the user — typical on
+    // staging after a DB reset or a prod cookie bleed), best-effort
+    // logout on the Main BE so the `.teamver.com` HttpOnly cookie is
+    // cleared. Otherwise the browser retains a permanently-invalid
+    // cookie and the user is stuck in a refresh-loop until they clear
+    // cookies manually. Fire-and-forget: never block the refresh path.
+    if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
+      console.info(
+        '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
+        { status: bffResult.status },
+      );
+      void clearOrphanTeamverAuthCookies();
+    }
   }
   return false;
 }
@@ -265,6 +333,21 @@ export type FetchDesignAuthSessionOptions = {
 let inFlightSession: Promise<DesignAuthSession | null> | null = null;
 let cachedSession: { value: DesignAuthSession | null; at: number } | null = null;
 const SESSION_CACHE_MS = 60_000;
+/** Grace window for returning last-known-good session after transient probe failures. */
+const STALE_SESSION_GRACE_MS = 15 * 60_000;
+
+function peekAuthenticatedSessionCache(maxAgeMs: number): DesignAuthSession | null {
+  if (!cachedSession?.value?.authenticated) return null;
+  if (Date.now() - cachedSession.at > maxAgeMs) return null;
+  return cachedSession.value;
+}
+
+function isTransientSessionProbeError(err: unknown): boolean {
+  if (!(err instanceof NetworkError)) return true;
+  const status = err.status ?? 0;
+  if (status === 401 || status === 403) return false;
+  return status === 0 || status >= 500 || status === 502 || status === 503 || status === 504;
+}
 
 /** @internal vitest */
 export function resetDesignAuthSessionCacheForTests(): void {
@@ -366,13 +449,21 @@ export async function fetchDesignAuthSession(
   }
 
   const run = async (): Promise<DesignAuthSession | null> => {
-    const value = await loadDesignAuthSessionOnce();
-    if (value?.authenticated) {
-      cachedSession = { value, at: Date.now() };
-    } else {
-      cachedSession = null;
+    try {
+      const value = await loadDesignAuthSessionOnce();
+      if (value?.authenticated) {
+        cachedSession = { value, at: Date.now() };
+      } else {
+        cachedSession = null;
+      }
+      return value;
+    } catch (err) {
+      const stale = peekAuthenticatedSessionCache(STALE_SESSION_GRACE_MS);
+      if (stale && isTransientSessionProbeError(err)) {
+        return stale;
+      }
+      throw err;
     }
-    return value;
   };
 
   inFlightSession = run().finally(() => {
@@ -416,7 +507,7 @@ export async function fetchTeamverRuntimeConfig(
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
       const value = await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       });
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;
@@ -458,7 +549,7 @@ export async function fetchTeamverWorkspacePermissions(
       `/permissions/${encodeURIComponent(trimmed)}`,
       {
         workspaceId: trimmed,
-        skipAuthHeader: true,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
   } catch {

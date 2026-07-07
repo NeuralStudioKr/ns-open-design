@@ -43,6 +43,14 @@ import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import {
+  shouldHideTeamverToolboxPlugin,
+  shouldHideTeamverToolboxSkill,
+  teamverToolboxPluginDescription,
+  teamverToolboxPluginTitle,
+  teamverToolboxSkillDescription,
+  teamverToolboxSkillTitle,
+} from '../teamver/branding/toolboxCatalogDisplay';
+import {
   isTeamverEmbedDriveImportAllowed,
   isTeamverEmbedDesignSurfaceEnabled,
   subscribeTeamverDesignAccessChanged,
@@ -95,7 +103,6 @@ import {
   designToolboxActionTitle,
   findDesignToolboxSkill,
   getDesignToolboxAction,
-  isOpenDesignBrandedToolboxResource,
   skillMatchesQuery,
   type DesignToolboxAction,
   type DesignToolboxActionId,
@@ -2637,6 +2644,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   activeMcpServerIds={stagedMcpServers.map((server) => server.id)}
                   activeConnectorIds={stagedConnectors.map((connector) => connector.id)}
                   activeFilePaths={staged.map((item) => item.path)}
+                  teamverBranded={branding.enabled}
                   onOpened={() => trackDesignToolbox({ element: 'design_toolbox_open' })}
                   onPickAction={(action) => {
                     trackDesignToolbox({
@@ -2693,6 +2701,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     activeMcpServerIds={stagedMcpServers.map((server) => server.id)}
                     activeConnectorIds={stagedConnectors.map((connector) => connector.id)}
                     activeFilePaths={staged.map((item) => item.path)}
+                    teamverBranded={branding.enabled}
                     onOpened={() => trackDesignToolbox({ element: 'design_toolbox_open' })}
                     onPickAction={(action) => {
                       trackDesignToolbox({
@@ -3714,6 +3723,7 @@ function DesignToolboxPanel({
   onPickSkill,
   onPickResource,
   onOpened,
+  teamverBranded = false,
 }: {
   actions: DesignToolboxAction[];
   skills: SkillSummary[];
@@ -3731,6 +3741,7 @@ function DesignToolboxPanel({
   onPickSkill: (skill: SkillSummary) => void;
   onPickResource: (resource: DesignToolboxResource) => void;
   onOpened?: () => void;
+  teamverBranded?: boolean;
 }) {
   const { locale, t } = useI18n();
   const [query, setQuery] = useState('');
@@ -3754,8 +3765,9 @@ function DesignToolboxPanel({
         projectFiles,
         locale,
         t,
+        teamverBranded,
       }),
-    [connectors, locale, mcpServers, mcpTemplates, plugins, projectFiles, skills, t],
+    [connectors, locale, mcpServers, mcpTemplates, plugins, projectFiles, skills, t, teamverBranded],
   );
   const visibleActions = useMemo(
     () =>
@@ -4103,16 +4115,25 @@ function buildDesignToolboxResources({
   projectFiles,
   locale,
   t,
-}: DesignToolboxResourceIndex & { locale: Locale; t: TranslateFn }): DesignToolboxResource[] {
+  teamverBranded,
+}: DesignToolboxResourceIndex & {
+  locale: Locale;
+  t: TranslateFn;
+  teamverBranded?: boolean;
+}): DesignToolboxResource[] {
   const resources: DesignToolboxResource[] = [];
-  const teamverEmbed = isTeamverEmbedMode();
+  const teamverEmbed = teamverBranded || isTeamverEmbedMode();
 
   for (const skill of skills) {
-    const title = localizeSkillName(locale, skill);
-    const subtitle = localizeSkillDescription(locale, skill);
-    if (teamverEmbed && isOpenDesignBrandedToolboxResource([skill.id, skill.name, title, subtitle])) {
+    if (teamverEmbed && shouldHideTeamverToolboxSkill(skill, locale)) {
       continue;
     }
+    const title = teamverEmbed
+      ? teamverToolboxSkillTitle(locale, skill)
+      : localizeSkillName(locale, skill);
+    const subtitle = teamverEmbed
+      ? teamverToolboxSkillDescription(locale, skill)
+      : localizeSkillDescription(locale, skill);
     resources.push({
       key: `skill:${skill.id}`,
       kind: 'skill',
@@ -4137,23 +4158,15 @@ function buildDesignToolboxResources({
   }
 
   for (const plugin of plugins) {
-    const title = localizePluginTitle(locale, plugin);
-    const subtitle = localizePluginDescription(locale, plugin) || plugin.id;
-    if (
-      teamverEmbed &&
-      isOpenDesignBrandedToolboxResource([
-        plugin.id,
-        plugin.title,
-        title,
-        plugin.source,
-        subtitle,
-        plugin.manifest?.name ?? '',
-        plugin.manifest?.description ?? '',
-        ...(plugin.manifest?.tags ?? []),
-      ])
-    ) {
+    if (teamverEmbed && shouldHideTeamverToolboxPlugin(plugin, locale)) {
       continue;
     }
+    const title = teamverEmbed
+      ? teamverToolboxPluginTitle(locale, plugin)
+      : localizePluginTitle(locale, plugin);
+    const subtitle = teamverEmbed
+      ? teamverToolboxPluginDescription(locale, plugin) || plugin.id
+      : localizePluginDescription(locale, plugin) || plugin.id;
     resources.push({
       key: `plugin:${plugin.id}`,
       kind: 'plugin',

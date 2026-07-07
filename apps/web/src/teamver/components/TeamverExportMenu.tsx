@@ -43,7 +43,8 @@ export type TeamverExportMenuProps = {
   onOpenImageExport: () => void;
   onOpenSaveAsTemplate: () => void;
   fireShareExport: ShareExportHandler;
-  exportPdf: () => void | Promise<unknown>;
+  /** Pass `{ fresh: true }` to bypass the daemon export memo cache (Shift+click). */
+  exportPdf: (options?: { fresh?: boolean }) => void | Promise<unknown>;
   exportHtml: () => void | Promise<unknown>;
   exportZip: () => void | Promise<unknown>;
   exportMarkdown: () => void;
@@ -81,9 +82,19 @@ export function TeamverExportMenu({
         type="button"
         className="share-menu-item"
         role="menuitem"
-        onClick={() => {
+        data-testid="teamver-export-pdf"
+        title={
+          isTeamverEmbedMode()
+            ? embedUiLabel(
+                "Shift+click to regenerate PDF (bypass export cache)",
+                "Shift+클릭: PDF 새로 생성(캐시 무시)",
+              )
+            : undefined
+        }
+        onClick={(event) => {
+          const fresh = isTeamverEmbedMode() && event.shiftKey;
           onCloseMenu();
-          fireShareExport("pdf", () => exportPdf());
+          fireShareExport("pdf", () => exportPdf(fresh ? { fresh: true } : undefined));
         }}
       >
         <span className="share-menu-icon"><RemixIcon name="file-line" size={15} /></span>

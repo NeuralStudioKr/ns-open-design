@@ -918,6 +918,22 @@
   visibility: hidden;
   pointer-events: none;
 }
+.artifact-preview-transport-stack.is-streaming-unstable iframe {
+  visibility: hidden;
+  pointer-events: none;
+}
+.artifact-preview-streaming-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--shell, #010409) 88%, transparent);
+  color: var(--muted, #8b949e);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
 .viewer-viewport-switcher {
   position: relative;
   display: inline-flex;

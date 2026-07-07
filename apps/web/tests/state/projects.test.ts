@@ -112,7 +112,7 @@ describe('listPlugins', () => {
 
     await listPlugins();
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck');
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=48');
     embedSpy.mockRestore();
     brandingSpy.mockRestore();
   });
@@ -157,6 +157,20 @@ describe('listPlugins', () => {
     const rows = await listPlugins({ includeHidden: true });
 
     expect(rows.map((row) => row.id)).toEqual(['od-default', 'od-new-generation']);
+  });
+
+  it('passes catalog query and page options to the daemon', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({ plugins: [] }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listPlugins({ mode: 'deck', query: 'terminal deck', limit: 12, offset: 24 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/plugins?mode=deck&q=terminal+deck&limit=12&offset=24',
+    );
   });
 });
 

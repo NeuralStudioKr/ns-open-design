@@ -28,10 +28,16 @@ services:
       OD_PROJECT_STORAGE: local
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Headless export uses Playwright-managed chromium (see
+      # deploy/Dockerfile). We deliberately do NOT set
+      # `OD_EXPORT_CHROMIUM_PATH` here: pinning it to the distro
+      # `/usr/bin/chromium` forces the SIGTRAP-prone binary ahead of
+      # Playwright's build and reintroduces the M120+ V8 proxy resolver
+      # crash. Distro chromium is not even installed in the runtime image.
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp/.chromium
       XDG_CACHE_HOME: /tmp/.chromium
-      OD_EXPORT_CHROMIUM_PATH: /usr/bin/chromium
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     ports:
       - "127.0.0.1:7457:7457"
     volumes:

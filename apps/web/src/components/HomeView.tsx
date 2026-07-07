@@ -114,6 +114,7 @@ import {
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
+import type { PetTaskSummary } from './pet/PetOverlay';
 
 const HOME_DRIVE_IMPORT_MAX = 12;
 
@@ -239,6 +240,8 @@ interface Props {
   promptTemplates?: PromptTemplateSummary[];
   executionSwitcher?: ReactNode;
   embedSubmitDisabled?: boolean;
+  /** Active background runs — keeps recent-project cards aligned with the banner. */
+  backgroundRunSummaries?: PetTaskSummary[];
 }
 
 const EMPTY_DESIGN_SYSTEMS: DesignSystemSummary[] = [];
@@ -266,6 +269,7 @@ export function HomeView({
   promptTemplates = EMPTY_PROMPT_TEMPLATES,
   executionSwitcher,
   embedSubmitDisabled = false,
+  backgroundRunSummaries = [],
 }: Props) {
   const { locale, t } = useI18n();
   const {
@@ -1843,6 +1847,7 @@ export function HomeView({
 
       <RecentProjectsStrip
         projects={projects}
+        activeRunSummaries={backgroundRunSummaries}
         designSystems={designSystems}
         {...(projectsLoading !== undefined ? { loading: projectsLoading } : {})}
         onOpen={(id, options) => {

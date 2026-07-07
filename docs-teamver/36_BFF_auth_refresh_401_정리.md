@@ -30,3 +30,20 @@ POST /teamver-bff/auth/refresh -> 401 Unauthorized
 ## 운영 확인
 
 staging 배포 후 프로젝트 상세 페이지를 새로고침해, 일반 진입에서 `POST /teamver-bff/auth/refresh`가 발생하지 않는지 확인한다. 로그인 복귀나 세션 재시도 버튼 클릭 시에만 refresh 호출이 발생해야 한다.
+
+## 2026-07-02 추가 확인
+
+프로젝트 상세 진입 중 보이는 CORS 에러 중 일부는 `/teamver-bff/auth/refresh` 자체가 아니라 daemon `/api/version`, `/api/runs`가 nginx auth_request에서 Main signin 302를 반환하고 브라우저 fetch가 cross-origin redirect를 따라가며 발생했다. 해당 경로는 `fetchTeamverDaemon`으로 통일하고 redirect를 manual 처리해 signin CORS preflight로 확산되지 않도록 보강했다.
+
+## 2026-07-06 production 재점검
+
+추가 증상: `provider.tsx`에서 `POST /teamver-bff/auth/refresh -> 401`이 계속 콘솔에 보였다. 이전 패치는 Design BFF 호출 옵션에 `skipAuthRecovery:true`를 강제했지만, SDK의 기본 HTTP recovery는 `refreshUrl`이 없어도 401에서 기본 `/auth/refresh`를 시도한다. 즉, 새 호출 경로에서 옵션이 빠지거나 SDK domain wrapper가 직접 호출되면 브라우저 Network에 refresh 401이 다시 노출될 수 있었다.
+
+수정:
+- `getDesignBffClient()`가 SDK에 넘기는 fetch를 Design 전용 wrapper로 교체했다.
+- wrapper는 SDK 내부 recovery가 생성하는 `POST */auth/refresh`만 synthetic 401 응답으로 차단한다. 실제 네트워크 요청은 발생하지 않으므로 DevTools Network/Console에 401 POST가 찍히지 않는다.
+- 명시적 수동 회복 경로인 `refreshDesignAuthCookie()`는 global fetch를 계속 사용하므로 로그인 복귀/사용자 재시도 흐름은 유지된다.
+
+검증:
+- `apps/web`: `vitest run tests/teamver-design-bff-client.test.ts tests/teamver-design-auth-session.test.ts tests/teamver-bff-request-options.test.ts` -> 16 passed.
+- `apps/web`: 전체 `tsc --noEmit`은 기존 test 타입 debt(`proxy-abort-conversation-scope`, `runtime/exports`, `teamver-project-cover-*` 등)로 실패. 이번 변경 파일의 targeted vitest는 통과.

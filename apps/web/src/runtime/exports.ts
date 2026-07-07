@@ -22,6 +22,15 @@ import {
   printHostPdf,
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
+import { resolveTeamverProjectS3PrefixForDaemon } from '../teamver/teamverProjectS3PrefixResolve';
+import {
+  injectDeckFlattenScript,
+  patchArtifactDeckPrintCss,
+  repairArtifactDocumentHead,
+  buildDeckPrintCss,
+} from '@open-design/contracts';
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
@@ -111,9 +120,95 @@ async function throwIfDaemonExportFailed(resp: Response, context: string): Promi
   ) {
     throw new ExportQueueFullError();
   }
+  if (
+    resp.status === 503
+    && (code === 'HEADLESS_CHROMIUM_UNAVAILABLE'
+      || message.toLowerCase().includes('headless chromium unavailable'))
+  ) {
+    // Preserve the structured code in the thrown message so the caller's
+    // `isHeadlessChromiumUnavailableExportError` classifier can route
+    // this to the browser-print fallback without regex sniffing.
+    throw new Error(`${context} 503: HEADLESS_CHROMIUM_UNAVAILABLE`);
+  }
+  if (
+    resp.status === 502
+    && (code === 'UPSTREAM_UNAVAILABLE' || code === 'PROJECT_STORAGE_SYNC_FAILED')
+    && message.includes('teamver_project_s3_prefix_required')
+  ) {
+    throw new TeamverProjectStoragePrefixRequiredError(
+      message ? `${context} ${resp.status}: ${message}` : `${context} unavailable (${resp.status})`,
+    );
+  }
   throw new Error(
     message ? `${context} ${resp.status}: ${message}` : `${context} unavailable (${resp.status})`,
   );
+}
+
+/**
+ * Thrown when the daemon reports `teamver_project_s3_prefix_required` for an
+ * export. This is a transient design-api `/access` race — the project row is
+ * being registered in parallel to the FE issuing the export. Callers should
+ * warm the S3-prefix cache (via `waitForTeamverProjectStoragePrefix`) and
+ * retry once or twice before falling back to the browser print path.
+ */
+export class TeamverProjectStoragePrefixRequiredError extends Error {
+  readonly code = 'TEAMVER_PROJECT_S3_PREFIX_REQUIRED';
+
+  constructor(message = 'Teamver 프로젝트 저장소가 아직 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.') {
+    super(message);
+    this.name = 'TeamverProjectStoragePrefixRequiredError';
+  }
+}
+
+function isHeadlessChromiumUnavailableExportError(err: unknown): boolean {
+  const reason = err instanceof Error ? err.message : String(err ?? '');
+  // Match both the daemon's structured code (503 HEADLESS_CHROMIUM_UNAVAILABLE)
+  // and the legacy "headless Chromium unavailable (tried N paths)" string that
+  // still surfaces from older builds until the deploy image rolls forward.
+  return (
+    /HEADLESS_CHROMIUM_UNAVAILABLE/.test(reason)
+    || /headless Chromium unavailable/i.test(reason)
+  );
+}
+
+export function isTeamverProjectStoragePrefixRequiredError(
+  err: unknown,
+): err is TeamverProjectStoragePrefixRequiredError {
+  return err instanceof TeamverProjectStoragePrefixRequiredError;
+}
+
+const TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS = [0, 400, 900, 1500] as const;
+
+/**
+ * Best-effort — resolves the workspace tenant S3 prefix so the next daemon
+ * request carries `X-Teamver-S3-Prefix` even before design-api /access
+ * warms the daemon-side cache. Returns `null` when embed mode is off (native
+ * OD) or when the prefix cannot be determined within the poll window; the
+ * caller must still send the request (the daemon will resolve on its own).
+ *
+ * `opts.quick=true` skips the polling delays entirely and just consults
+ * cache / issues one registry read. Callers that already spent a full
+ * poll window (e.g. between PDF export retries) use this to avoid stacking
+ * multi-second warm-ups on top of the retry backoff.
+ */
+export async function waitForTeamverProjectStoragePrefix(
+  projectId: string,
+  opts: { quick?: boolean } = {},
+): Promise<string | null> {
+  if (!isTeamverEmbedMode()) return null;
+  const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
+  if (!workspaceId) return null;
+  const steps = opts.quick ? [0] : TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS;
+  for (const wait of steps) {
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    try {
+      const prefix = await resolveTeamverProjectS3PrefixForDaemon(workspaceId, projectId);
+      if (prefix) return prefix;
+    } catch {
+      // Registry can transiently fail during workspace switch — keep polling.
+    }
+  }
+  return null;
 }
 
 async function consumeDaemonExportDownload(
@@ -159,6 +254,13 @@ export async function exportProjectAsHtml(opts: {
   fallbackHtml: string;
   fallbackTitle: string;
   requireRenderedExport?: boolean;
+  /**
+   * Live artifact HTML to render directly on the daemon side. When
+   * provided, the daemon skips the scratch + tenant S3 prefix lookup
+   * entirely — the same hardening as {@link exportProjectAsPdf}.  Falls
+   * through to `fallbackHtml` if the daemon export still fails.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
@@ -167,6 +269,7 @@ export async function exportProjectAsHtml(opts: {
         delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.fallbackTitle,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -845,6 +948,73 @@ export function exportAsImage(dataUrl: string, title: string): void {
 
 export type ProjectPdfExportResult = 'desktop' | 'fallback' | 'cancelled';
 
+/**
+ * Retry cadence for `teamver_project_s3_prefix_required` 502 during PDF
+ * export. The design-api `/access` transient-deny cache is 1.5s (see
+ * `apps/daemon/src/teamver-project-access.ts`), so these delays give it two
+ * clean windows to expire while keeping the overall UX under ~3s. Once these
+ * are exhausted the caller falls back to browser print via `fallbackPdf`.
+ */
+const TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
+
+/**
+ * Optional caller-provided artifact HTML.  When present the daemon renders
+ * it directly and skips reading from scratch → the export path no longer
+ * depends on `teamver_project_s3_prefix_required` resolution on
+ * `design-api /access`.  Empty / all-whitespace bodies are ignored so
+ * callers that do not have a live snapshot ready still hit the file-based
+ * path exactly as before.
+ */
+function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, string> {
+  if (typeof htmlSnapshot !== 'string') return {};
+  const trimmed = htmlSnapshot.trim();
+  if (trimmed.length === 0) return {};
+  return { html: repairArtifactDocumentHead(htmlSnapshot) };
+}
+
+async function performPdfExportRequest(opts: {
+  projectId: string;
+  deck: boolean;
+  filePath: string;
+  title: string;
+  fresh?: boolean;
+  htmlSnapshot?: string | null;
+}): Promise<ProjectPdfExportResult> {
+  const url = opts.fresh
+    ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
+    : `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`;
+  const resp = await fetchTeamverDaemon(url, {
+    body: JSON.stringify({
+      deck: opts.deck,
+      delivery: 'ticket',
+      fileName: opts.filePath,
+      title: opts.title,
+      ...(opts.fresh ? { fresh: true } : {}),
+      ...inlineExportHtmlPayload(opts.htmlSnapshot),
+    }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+  if (!resp.ok && resp.status !== 201) {
+    await throwIfDaemonExportFailed(resp, 'daemon PDF export');
+  }
+  const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+  if (resp.status === 201) {
+    await triggerExportTicketDownload(resp, opts.title, 'pdf');
+    return 'desktop';
+  }
+  if (contentType.includes('application/pdf')) {
+    const blob = await resp.blob();
+    if (blob.size <= 0) throw new Error('daemon PDF export returned an empty file');
+    triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pdf'));
+    return 'desktop';
+  }
+  const body = await resp.json().catch(() => ({}));
+  if (body?.canceled === true) return 'cancelled';
+  if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
+  return 'desktop';
+}
+
 export async function exportProjectAsPdf(opts: {
   deck: boolean;
   fallbackPdf: () => void;
@@ -852,37 +1022,79 @@ export async function exportProjectAsPdf(opts: {
   projectId: string;
   requireRenderedExport?: boolean;
   title: string;
+  /**
+   * When true, bypass the daemon export cache and force a fresh render.
+   * Wire this up to a Shift+click (or "새로 생성" menu affordance) so a
+   * user who suspects a stale cached artifact (e.g. a template-fix has
+   * shipped but the cache has an older render) can force a re-render
+   * without waiting on cache version bumps. Default cache behavior is
+   * unchanged.
+   */
+  fresh?: boolean;
+  /**
+   * Live artifact HTML the FE already holds in memory (repaired + stable).
+   * When present the daemon renders this body directly and skips reading
+   * from scratch, which makes the export path resilient to
+   * `teamver_project_s3_prefix_required` (transient design-api `/access`
+   * denies, missing `X-Teamver-S3-Prefix` header, freshly-evicted scratch).
+   * Falsy values still trigger the pre-existing file-based flow so any
+   * caller that does not have a snapshot ready keeps working.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<ProjectPdfExportResult> {
+  // Warm the tenant S3-prefix cache so the very first daemon request already
+  // carries `X-Teamver-S3-Prefix`. Without this the `/access` gate must race
+  // against a possibly-stale design-api row and 502s are the visible symptom
+  // (`teamver_project_s3_prefix_required`). Inline-HTML exports bypass the
+  // scratch/prefix dependency entirely, so we only pay the warmup cost when
+  // no snapshot was provided.
+  if (!opts.htmlSnapshot || !opts.htmlSnapshot.trim()) {
+    await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+  }
+
+  const hasSnapshot =
+    typeof opts.htmlSnapshot === 'string' && opts.htmlSnapshot.trim().length > 0;
+
   let daemonErr: unknown = null;
   try {
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
-      body: JSON.stringify({
-        deck: opts.deck,
-        delivery: 'ticket',
-        fileName: opts.filePath,
-        title: opts.title,
-      }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    });
-    if (!resp.ok && resp.status !== 201) {
-      await throwIfDaemonExportFailed(resp, 'daemon PDF export');
+    for (let attempt = 0; attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delay = TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS[attempt] ?? 0;
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        // Refresh the prefix cache between retries — the design-api row may
+        // have been committed in the meantime and the cached prefix would
+        // let the daemon skip its own /access round-trip. Skip when we have
+        // an inline HTML snapshot (daemon does not need the prefix at all
+        // and the warmup adds latency for nothing).
+        if (!hasSnapshot) {
+          await waitForTeamverProjectStoragePrefix(opts.projectId, { quick: true }).catch(() => null);
+        }
+      }
+      try {
+        return await performPdfExportRequest(opts);
+      } catch (err) {
+        if (isExportQueueFullError(err)) throw err;
+        // Inline-HTML export is idempotent w.r.t. tenant-storage — retrying
+        // with the same body against a daemon that just returned the prefix
+        // deny cannot succeed. Bail early to reach the browser-print
+        // fallback (or a clean `requireRenderedExport` failure) without
+        // spending the full ~2.4s retry budget.
+        if (
+          !hasSnapshot
+          && isTeamverProjectStoragePrefixRequiredError(err)
+          && attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length - 1
+        ) {
+          console.info(
+            '[exportProjectAsPdf] retrying after teamver_project_s3_prefix_required (attempt %d)',
+            attempt + 1,
+          );
+          continue;
+        }
+        throw err;
+      }
     }
-    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-    if (resp.status === 201) {
-      await triggerExportTicketDownload(resp, opts.title, 'pdf');
-      return 'desktop';
-    }
-    if (contentType.includes('application/pdf')) {
-      const blob = await resp.blob();
-      if (blob.size <= 0) throw new Error('daemon PDF export returned an empty file');
-      triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pdf'));
-      return 'desktop';
-    }
-    const body = await resp.json().catch(() => ({}));
-    if (body?.canceled === true) return 'cancelled';
-    if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
-    return 'desktop';
+    // Loop always returns or throws; this satisfies TS narrowing.
+    throw new Error('daemon PDF export retry exhausted');
   } catch (err) {
     if (isExportQueueFullError(err)) throw err;
     daemonErr = err;
@@ -890,15 +1102,35 @@ export async function exportProjectAsPdf(opts: {
   }
 
   if (opts.requireRenderedExport) {
-    throw daemonErr instanceof Error
-      ? daemonErr
-      : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    const chromiumUnavailable = isHeadlessChromiumUnavailableExportError(daemonErr);
+    if (!chromiumUnavailable) {
+      throw daemonErr instanceof Error
+        ? daemonErr
+        : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    }
+    console.warn(
+      '[exportProjectAsPdf] daemon Chromium unavailable — using browser print fallback in embed',
+      daemonErr,
+    );
   }
 
+  // In-memory snapshot path: skip the inline daemon URL (which shares the
+  // same tenant-storage middleware as the primary export) and drive
+  // browser print directly from the FE-held HTML.  This keeps the fallback
+  // functional even when the daemon is unreachable / access is denied.
+  const inlineHtmlFallback =
+    typeof opts.htmlSnapshot === 'string' && opts.htmlSnapshot.trim().length > 0
+      ? opts.htmlSnapshot
+      : null;
+
   try {
-    const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
-    if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
-    await exportAsPdf(await resp.text(), opts.title, {
+    let renderedHtml = inlineHtmlFallback;
+    if (!renderedHtml) {
+      const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
+      if (!resp.ok) throw new Error(`inline PDF fallback export unavailable (${resp.status})`);
+      renderedHtml = await resp.text();
+    }
+    await exportAsPdf(renderedHtml, opts.title, {
       deck: opts.deck,
       // Browser print measures the top-level document, not the sandboxed
       // iframe content. Printing deck exports through the wrapper produces
@@ -975,6 +1207,12 @@ export async function exportProjectImageBlob(opts: {
   projectId: string;
   slideIndex?: number;
   title: string;
+  /**
+   * Optional live artifact HTML snapshot. Same semantics as
+   * {@link exportProjectAsPdf}: when provided the daemon renders the
+   * body directly and skips the tenant-storage lookup.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<ProjectImageBlobResult> {
   const format =
     opts.format === 'jpeg' ? 'jpeg' : opts.format === 'webp' ? 'webp' : 'png';
@@ -987,6 +1225,7 @@ export async function exportProjectImageBlob(opts: {
         format,
         slideIndex: Number.isFinite(opts.slideIndex) ? opts.slideIndex : undefined,
         title: opts.title,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1107,6 +1346,13 @@ export async function exportProjectAsZip(opts: {
   fallbackHtml: string;
   fallbackTitle: string;
   requireRenderedExport?: boolean;
+  /**
+   * Optional live artifact HTML snapshot. Same semantics as
+   * {@link exportProjectAsPdf} — the daemon renders the ZIP body from this
+   * HTML so the ZIP export succeeds even when tenant-storage resolution
+   * would deny.
+   */
+  htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
@@ -1115,6 +1361,7 @@ export async function exportProjectAsZip(opts: {
         delivery: 'ticket',
         fileName: opts.filePath,
         title: opts.fallbackTitle,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1290,10 +1537,14 @@ export async function exportAsPdf(
   // Generate a per-export nonce so the print-ready handshake is resistant to
   // spoofing by untrusted scripts inside the exported artifact.
   const nonce = randomUUID();
-  let doc = buildBlobSafeSrcdoc(html, opts);
+  let doc = buildBlobSafeSrcdoc(repairArtifactDocumentHead(patchArtifactDeckPrintCss(html)), {
+    ...opts,
+    exportDocument: true,
+    deck: false,
+  });
   if (opts?.deck) {
     doc = injectDeckPrintStylesheet(doc);
-    doc = injectDeckPrintFlattenScript(doc);
+    doc = injectDeckFlattenScript(doc);
   }
   doc = injectPrintReadyHandshake(doc, nonce);
 
@@ -1357,10 +1608,42 @@ export async function exportAsPdf(
     }
   }
 
+  // Paint a friendly intermediate document in the popup BEFORE we navigate
+  // to the blob URL. Without this the browser tab shows a blank page with
+  // the raw `blob:https://…/<uuid>` string in the address/tab label for
+  // 100–400 ms, which users report as suspicious. The intermediate doc
+  // sets a real title, matches the app background, and shows a small
+  // "Preparing PDF…" line so the popup never appears empty.
+  try {
+    const safeTitle = String(title || 'Document');
+    win.document.open();
+    win.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtmlText(safeTitle)}</title>` +
+      `<style>html,body{margin:0;background:#f7f7f8;color:#374151;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}` +
+      `.od-print-hint{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;text-align:center}` +
+      `.od-print-hint span{opacity:.75}</style></head>` +
+      `<body><div class="od-print-hint"><span>Preparing PDF… please use your browser's print dialog to save.</span></div></body></html>`,
+    );
+    win.document.close();
+  } catch {
+    // Cross-origin or write-restricted environments (some embed hosts)
+    // fall through to the direct navigation below. Losing the splash is
+    // fine — the printable blob still loads.
+  }
+
   // Navigate the verified window to the generated Blob URL then release
   // the Blob URL after the tab has had time to start loading it.
   win.location.href = url;
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }): string {
@@ -1372,15 +1655,6 @@ function injectPrintScript(doc: string, title: string, opts?: { deck?: boolean }
   // print dialog measures the page; without it some print previews come
   // out blank in Chrome.
   const script = `<script>try{document.title=${safeTitle}}catch(e){}window.addEventListener('load',function(){setTimeout(function(){${flattenCall}try{window.focus();window.print()}catch(e){}},300)})</script>`;
-  if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
-  if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
-  return doc + script;
-}
-
-function injectDeckPrintFlattenScript(doc: string): string {
-  const selector =
-    '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
-  const script = `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};function set(el,p,v){el.style.setProperty(p,v,'important')}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;document.querySelectorAll('.deck,.deck-shell,.deck-stage,#deck-stage,.stage').forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){set(el,'display','flex');set(el,'flex-direction','column');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'transform','none');set(el,'overflow','visible');set(el,'visibility','visible');set(el,'opacity','1');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll('.deck-counter,.deck-hint,.deck-nav,#deck-prev,#deck-next,#deck-cur,#deck-total,[aria-label="Previous slide"],[aria-label="Next slide"]').forEach(function(el){set(el,'display','none')})}})();</script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;
@@ -1408,7 +1682,7 @@ function injectPrintReadyHandshake(doc: string, nonce: string): string {
   // The nonce is a per-export random UUID that verifies the readiness signal
   // came from our injected handshake, not a spoofed message from untrusted
   // artifact code.
-  const script = `<script data-od-print-ready>(function(){function waitForImages(){var imgs=Array.from(document.images).filter(function(img){return !img.complete});return Promise.all(imgs.map(function(img){return new Promise(function(r){img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});if(img.complete)r()})}))}function cssUrlValues(value){var urls=[];if(!value||value==='none')return urls;value.replace(/url\\((['"]?)(.*?)\\1\\)/g,function(_,q,rawUrl){if(rawUrl&&!/^data:/i.test(rawUrl))urls.push(rawUrl);return''});return urls}function waitForCssBackgroundImages(){var urls=new Set();Array.from(document.querySelectorAll('*')).forEach(function(el){var style=window.getComputedStyle(el);cssUrlValues(style.backgroundImage).forEach(function(url){urls.add(url)});cssUrlValues(style.borderImageSource).forEach(function(url){urls.add(url)});cssUrlValues(style.listStyleImage).forEach(function(url){urls.add(url)})});return Promise.all(Array.from(urls).map(function(url){return new Promise(function(r){var img=new Image();img.onload=r;img.onerror=r;img.src=url})}))}function nextFrame(){return new Promise(function(r){requestAnimationFrame(function(){r(true)})})}Promise.all([document.fonts&&document.fonts.ready?document.fonts.ready.catch(function(){}):Promise.resolve(),new Promise(function(r){if(document.readyState==='complete')r();else window.addEventListener('load',r,{once:true})})]).then(function(){return Promise.all([waitForImages(),waitForCssBackgroundImages()])}).then(nextFrame).then(nextFrame).then(function(){var de=document.documentElement;var b=document.body||de;var w=Math.max(de.scrollWidth,b.scrollWidth,de.offsetWidth,b.offsetWidth);var h=Math.max(de.scrollHeight,b.scrollHeight,de.offsetHeight,b.offsetHeight);window.parent.postMessage({type:'OD_PRINT_READY',nonce:'${nonce}',width:w,height:h},'*')})})();<\/script>`;
+  const script = `<script data-od-print-ready>(function(){function waitForImages(){var imgs=Array.from(document.images).filter(function(img){return !img.complete});return Promise.all(imgs.map(function(img){return new Promise(function(r){img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});if(img.complete)r()})}))}function cssUrlValues(value){var urls=[];if(!value||value==='none')return urls;value.replace(/url\\((['"]?)(.*?)\\1\\)/g,function(_,q,rawUrl){if(rawUrl&&!/^data:/i.test(rawUrl))urls.push(rawUrl);return''});return urls}function waitForCssBackgroundImages(){var urls=new Set();Array.from(document.querySelectorAll('*')).forEach(function(el){var style=window.getComputedStyle(el);cssUrlValues(style.backgroundImage).forEach(function(url){urls.add(url)});cssUrlValues(style.borderImageSource).forEach(function(url){urls.add(url)});cssUrlValues(style.listStyleImage).forEach(function(url){urls.add(url)})});return Promise.all(Array.from(urls).map(function(url){return new Promise(function(r){var img=new Image();img.onload=r;img.onerror=r;img.src=url})}))}function nextFrame(){return new Promise(function(r){requestAnimationFrame(function(){r(true)})})}Promise.all([document.fonts&&document.fonts.ready?document.fonts.ready.catch(function(){}):Promise.resolve(),new Promise(function(r){if(document.readyState==='complete')r();else window.addEventListener('load',r,{once:true})})]).then(function(){return Promise.all([waitForImages(),waitForCssBackgroundImages()])}).then(nextFrame).then(nextFrame).then(function(){try{if(typeof window.__odFlattenDeckForPrint==='function')window.__odFlattenDeckForPrint()}catch(e){}return nextFrame()}).then(nextFrame).then(function(){var de=document.documentElement;var b=document.body||de;var w=Math.max(de.scrollWidth,b.scrollWidth,de.offsetWidth,b.offsetWidth);var h=Math.max(de.scrollHeight,b.scrollHeight,de.offsetHeight,b.offsetHeight);window.parent.postMessage({type:'OD_PRINT_READY',nonce:'${nonce}',width:w,height:h},'*')})})();<\/script>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${script}</head>`);
   if (/<\/body>/i.test(doc)) return doc.replace(/<\/body>/i, `${script}</body>`);
   return doc + script;
@@ -1427,92 +1701,9 @@ function injectParentPrintReadyCache(doc: string, nonce: string): string {
   return script + doc;
 }
 
-// Stitches every .slide into a vertical multi-page PDF: 1920×1080 per page.
-// Keep in sync with apps/daemon/src/headless-export.ts `buildDeckPrintCss`.
-// Critical: `.slide:not(.active)` override — deck-framework hides inactive
-// slides with specificity 0,2,1; without the :not(.active) print rule only
-// the active slide renders and page-break never produces 12 pages.
-const DECK_PRINT_CSS = `
-@media print {
-  @page { size: 1920px 1080px; margin: 0; }
-  html, body {
-    width: 1920px !important;
-    height: auto !important;
-    overflow: visible !important;
-    background: var(--shell, var(--bg, #ffffff)) !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  body {
-    display: block !important;
-    scroll-snap-type: none !important;
-    transform: none !important;
-  }
-  .deck,
-  .deck-shell,
-  .deck-stage, .stage {
-    display: contents !important;
-    transform: none !important;
-  }
-  .slide:not(.active),
-  [data-slide]:not(.active),
-  [data-screen-label]:not(.active),
-  section.slide:not(.active),
-  .deck-slide:not(.active),
-  .ppt-slide:not(.active),
-  .slide,
-  [data-slide],
-  [data-screen-label],
-  section.slide,
-  .deck-slide,
-  .ppt-slide {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: none !important;
-    position: relative !important;
-    inset: auto !important;
-    width: 1920px !important;
-    height: 1080px !important;
-    min-height: 1080px !important;
-    max-height: 1080px !important;
-    background: var(--bg, var(--shell, #ffffff)) !important;
-    overflow: hidden !important;
-    page-break-after: always !important;
-    break-after: page !important;
-    break-inside: avoid !important;
-    scroll-snap-align: none !important;
-    transform: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-  }
-  .slide:last-child,
-  [data-slide]:last-child,
-  [data-screen-label]:last-child,
-  section.slide:last-child,
-  .deck-slide:last-child,
-  .ppt-slide:last-child {
-    page-break-after: auto !important;
-    break-after: auto !important;
-  }
-  .slide:first-child,
-  [data-slide]:first-child,
-  [data-screen-label]:first-child,
-  section.slide:first-child,
-  .deck-slide:first-child,
-  .ppt-slide:first-child {
-    page-break-before: avoid !important;
-    break-before: avoid !important;
-  }
-  .deck-counter, .deck-hint, .deck-nav,
-  #deck-prev, #deck-next, #deck-cur, #deck-total,
-  [aria-label="Previous slide"], [aria-label="Next slide"] {
-    display: none !important;
-  }
-}
-`;
-
+// Deck print CSS lives in @open-design/contracts `buildDeckPrintCss`.
 function injectDeckPrintStylesheet(doc: string): string {
-  const tag = `<style data-deck-print="injected">${DECK_PRINT_CSS}</style>`;
+  const tag = `<style data-deck-print="injected">${buildDeckPrintCss()}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);
   if (/<head[^>]*>/i.test(doc)) return doc.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
   return tag + doc;

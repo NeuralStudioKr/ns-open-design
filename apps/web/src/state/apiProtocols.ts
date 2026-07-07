@@ -237,10 +237,25 @@ export function resolveFixedOriginBaseUrl(
 
 /** Server-side tools wired through the BYOK proxy tool loop (daemon). Passed to
  *  composeSystemPrompt as byokToolNames so API mode gets BYOK_TOOLS_OVERRIDE
- *  instead of the CLI-oriented API_MODE_OVERRIDE ("WebFetch unavailable"). */
+ *  instead of the CLI-oriented API_MODE_OVERRIDE ("WebFetch unavailable").
+ *
+ * Keep this behind `byokChatToolNamesForProtocol`: standard Anthropic/OpenAI/
+ * Google proxy routes do not run the daemon tool loop yet. Advertising
+ * `web_fetch` there makes the model attempt unavailable tools and can re-open
+ * pseudo-tool markup leaks.
+ */
 export const BYOK_CHAT_TOOL_NAMES: readonly string[] = [
   'web_fetch',
   'generate_image',
   'generate_speech',
   'generate_video',
 ];
+
+export function byokChatToolNamesForProtocol(
+  protocol: ApiProtocol | undefined,
+): readonly string[] | undefined {
+  if (protocol === 'senseaudio' || protocol === 'aihubmix') {
+    return BYOK_CHAT_TOOL_NAMES;
+  }
+  return undefined;
+}

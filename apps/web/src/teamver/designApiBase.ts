@@ -109,17 +109,33 @@ export function prepareTeamverLoginNavigation(): void {
   markTeamverAuthReturnPending();
 }
 
-export function redirectToTeamverLogin(returnTo?: string | null): void {
-  if (typeof window === "undefined") return;
-
+/** Dedupe rapid full-page login hops that read as flicker/errors in embed. */
+export function markTeamverLoginRedirectAttempt(): boolean {
+  if (typeof window === "undefined") return false;
   const now = Date.now();
   try {
     const last = Number(sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY) ?? "0");
-    if (last > 0 && now - last < LOGIN_REDIRECT_COOLDOWN_MS) return;
+    if (last > 0 && now - last < LOGIN_REDIRECT_COOLDOWN_MS) return false;
     sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, String(now));
   } catch {
     // sessionStorage blocked — still attempt one redirect
   }
+  return true;
+}
+
+/**
+ * Session-expired login redirect. `returnTo` is a same-origin embed path
+ * that should be restored after login. The caller is responsible for
+ * persisting it via `storeAuthReturnTo` (from `./designAuthFlow`) before
+ * calling this — we deliberately keep this module leaf-level to avoid
+ * pulling the auth-flow module into every 401 caller. See
+ * `redirectToTeamverLoginPreservingRoute` in `./designAuthFlow` for the
+ * canonical "401 catch → login" entry that handles both persistence and
+ * the bootstrap/legacy redirect split.
+ */
+export function redirectToTeamverLogin(returnTo?: string | null): void {
+  if (typeof window === "undefined") return;
+  if (!markTeamverLoginRedirectAttempt()) return;
 
   window.location.replace(resolveTeamverLoginUrl(returnTo));
 }

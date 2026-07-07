@@ -22,6 +22,11 @@ services:
         VITE_MESSAGE_PERSIST_THROTTLE_MS: ${VITE_MESSAGE_PERSIST_THROTTLE_MS:-5000}
         VITE_TEAMVER_MAIN_LOGIN_URL: ${VITE_TEAMVER_MAIN_LOGIN_URL:-https://stg.teamver.com/auth/signin}
         VITE_TEAMVER_SITE_URL: ${VITE_TEAMVER_SITE_URL:-https://design.teamver.com}
+        # Cache-busts the Playwright chromium install RUN layer. deploy.sh
+        # sets this to the current git SHA so every deploy rebuilds the
+        # download step, preventing stale/broken /ms-playwright payloads
+        # from surviving across deploys without --no-cache.
+        PLAYWRIGHT_INSTALL_TOKEN: ${PLAYWRIGHT_INSTALL_TOKEN:-default}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -35,6 +40,12 @@ services:
       TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
       TEAMVER_INTERNAL_API_KEY: ${TEAMVER_INTERNAL_API_KEY:-}
       TEAMVER_PROJECT_ACCESS_TIMEOUT_MS: ${TEAMVER_PROJECT_ACCESS_TIMEOUT_MS:-2500}
+      # daemon project-access cache TTL. 30s grant + 5s permanent deny + 1.5s
+      # transient deny 가 상용 SSOT (teamver-project-access.ts). 미설정 시
+      # code default 사용. 튜닝 이유는 docs-teamver/34 §운영 튜닝 참고.
+      TEAMVER_PROJECT_ACCESS_GRANT_TTL_MS: ${TEAMVER_PROJECT_ACCESS_GRANT_TTL_MS:-}
+      TEAMVER_PROJECT_ACCESS_DENY_PERMANENT_TTL_MS: ${TEAMVER_PROJECT_ACCESS_DENY_PERMANENT_TTL_MS:-}
+      TEAMVER_PROJECT_ACCESS_DENY_TRANSIENT_TTL_MS: ${TEAMVER_PROJECT_ACCESS_DENY_TRANSIENT_TTL_MS:-}
       # Project storage (09 — default local; s3 + MaterializingProjectStorage when OD_PROJECT_STORAGE=s3)
       OD_PROJECT_STORAGE: ${OD_PROJECT_STORAGE:-local}
       OD_S3_BUCKET: ${OD_S3_BUCKET:-}
@@ -53,16 +64,37 @@ services:
       OD_SCRATCH_DISK_METRICS: ${OD_SCRATCH_DISK_METRICS:-}
       OD_SCRATCH_DISK_THRESHOLD_MB: ${OD_SCRATCH_DISK_THRESHOLD_MB:-}
       OD_SCRATCH_DISK_METRIC_INTERVAL_MS: ${OD_SCRATCH_DISK_METRIC_INTERVAL_MS:-}
-      # Headless export (PDF/image) — Chromium crashpad needs writable XDG dirs
-      # in read-only containers (root FS is ro; /tmp is tmpfs).
+      # Headless export (PDF/image) — Playwright-managed chromium.
+      # crashpad needs writable XDG dirs in read-only containers (root
+      # FS is ro; /tmp is tmpfs). `PLAYWRIGHT_BROWSERS_PATH` matches
+      # deploy/Dockerfile so the daemon finds the bundled Chromium.
+      # `OD_EXPORT_CHROMIUM_PATH` and `OD_CHROMIUM_SINGLE_PROCESS` are
+      # NOT set: Playwright-managed chromium is preferred by the
+      # launcher and `--single-process` caused SIGTRAPs on M120+.
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp/.chromium
       XDG_CACHE_HOME: /tmp/.chromium
-      OD_EXPORT_CHROMIUM_PATH: /usr/bin/chromium
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       OD_EXPORT_MAX_CONCURRENT: ${OD_EXPORT_MAX_CONCURRENT:-4}
       OD_EXPORT_BROWSER_POOL_SIZE: ${OD_EXPORT_BROWSER_POOL_SIZE:-2}
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
+      # Export artifact cache (Phase 1a — docs-teamver/34 §20). code default ON.
+      # 0/false/off/no 로만 명시적 disable. memo (RAM LRU) + local (EBS
+      # od-data/.od-export-cache) 2-tier. cache 키에 entryFile mtime 포함이라
+      # 프로젝트 수정 시 자동 miss. staging/production 공통 ON.
+      OD_EXPORT_CACHE_ENABLED: ${OD_EXPORT_CACHE_ENABLED:-1}
+      OD_EXPORT_CACHE_VERSION: ${OD_EXPORT_CACHE_VERSION:-}
+      OD_EXPORT_CACHE_MEMO_ENABLED: ${OD_EXPORT_CACHE_MEMO_ENABLED:-}
+      OD_EXPORT_CACHE_MEMO_TTL_SEC: ${OD_EXPORT_CACHE_MEMO_TTL_SEC:-}
+      OD_EXPORT_CACHE_MEMO_MAX_ENTRIES: ${OD_EXPORT_CACHE_MEMO_MAX_ENTRIES:-}
+      OD_EXPORT_CACHE_MEMO_MAX_ENTRY_BYTES: ${OD_EXPORT_CACHE_MEMO_MAX_ENTRY_BYTES:-}
+      OD_EXPORT_CACHE_MEMO_MAX_TOTAL_BYTES: ${OD_EXPORT_CACHE_MEMO_MAX_TOTAL_BYTES:-}
+      OD_EXPORT_CACHE_LOCAL_ENABLED: ${OD_EXPORT_CACHE_LOCAL_ENABLED:-}
+      OD_EXPORT_CACHE_LOCAL_MAX_TOTAL_BYTES: ${OD_EXPORT_CACHE_LOCAL_MAX_TOTAL_BYTES:-}
+      OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC: ${OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC:-}
+      OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC: ${OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC:-}
+      OD_EXPORT_CACHE_DIR: ${OD_EXPORT_CACHE_DIR:-}
       TEAMVER_BILLING_DISABLED: ${TEAMVER_BILLING_DISABLED:-}
       TEAMVER_BILLING_TIMEOUT_MS: ${TEAMVER_BILLING_TIMEOUT_MS:-}
       TEAMVER_BILLING_RESERVE_AMOUNT: ${TEAMVER_BILLING_RESERVE_AMOUNT:-}
@@ -82,7 +114,13 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
-    mem_limit: ${OD_MEM_LIMIT:-512m}
+    # BYOK streaming + headless export (Chromium ×BROWSER_POOL_SIZE) share
+    # this container, so the 512m compose fallback was too tight for even
+    # a single deck export (Chromium alone routinely peaks over 300MB per
+    # instance). Raise the fallback to 1g so a local dev without env files
+    # does not OOM immediately; staging / production override via
+    # `OD_MEM_LIMIT` in `.env.staging` / `.env.production` (1536m / 4g).
+    mem_limit: ${OD_MEM_LIMIT:-1g}
     pids_limit: 256
     healthcheck:
       test:
@@ -159,6 +197,22 @@ services:
     # env_file: staging/production override compose 에서 .env.staging|.env.production 직접 지정.
     # CLI: docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging
     environment:
+      # uvicorn 튜닝 — Dockerfile default 3/200/30, .env 로 재빌드 없이 override.
+      # 상용 SSOT: production=5 (t3.2xlarge 8vCPU) / staging=2 (t3.large 2vCPU).
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-3}
+      UVICORN_LIMIT_CONCURRENCY: ${UVICORN_LIMIT_CONCURRENCY:-200}
+      UVICORN_TIMEOUT_KEEP_ALIVE: ${UVICORN_TIMEOUT_KEEP_ALIVE:-30}
+      # SQLAlchemy async pool 튜닝 — 코드 default 10/10/1800/30. RDS
+      # max_connections 잔여치 변경 시 재빌드 없이 조정 (connection.py).
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-}
+      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW:-}
+      DB_POOL_RECYCLE_SEC: ${DB_POOL_RECYCLE_SEC:-}
+      DB_POOL_TIMEOUT_SEC: ${DB_POOL_TIMEOUT_SEC:-}
+      # Slow-request 관측 — 코드 default 1000ms. CloudWatch metric filter
+      # 는 warn 라인의 duration_ms 필드로 p95 산정. 트래픽 급증 시 노이즈
+      # 컷하고 싶으면 이 값을 올린다.
+      SLOW_REQUEST_THRESHOLD_MS: ${SLOW_REQUEST_THRESHOLD_MS:-}
+      SLOW_REQUEST_HEADER_ENABLED: ${SLOW_REQUEST_HEADER_ENABLED:-}
       POSTGRES_HOST: ${POSTGRES_HOST:-design-db}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-teamver_design}
@@ -187,6 +241,31 @@ services:
       design-db:
         condition: service_healthy
         required: false
+    # Multi-worker uvicorn 에서 워커 하나가 event-loop hang 이면 docker
+    # restart 로 회복 가능해야 한다. wget/curl 은 python:slim 에 기본
+    # 없음 → Python one-liner (표준 라이브러리 urllib) 사용.
+    #
+    # /api/healthz 는 lifespan 스키마 체크까지 도는데, 정상 시엔 200
+    # payload {"status":"ok"} 를 리턴한다. urlopen 은 4xx/5xx 응답에서
+    # HTTPError 를, 연결 자체 실패엔 URLError 를 raise 하므로 python
+    # 프로세스는 자동으로 non-zero exit → docker 가 unhealthy 로 분류.
+    # ``sys.exit(0 if r.status < 500 else 1)`` 은 방어적으로만 남긴 것이며
+    # 실제로는 예외 경로에서 이미 걸러진다.
+    #
+    # 3s timeout — 3워커 uvicorn 이 정상이면 healthz p99 < 200ms. 3s 여유
+    # 는 lifespan warmup 이 늦게 끝나는 재기동 직후를 커버.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3); sys.exit(0 if r.status < 500 else 1)"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # Local S3-compat dev (P1-9) — docker compose --profile minio up -d
   minio:

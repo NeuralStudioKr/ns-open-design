@@ -69,8 +69,9 @@ describe('Teamver embed slide-only MVP policy', () => {
   });
 
   it('detects Open Design branded toolbox resources for embed filtering', () => {
-    expect(isOpenDesignBrandedToolboxResource(['Open Design 랜딩 덱'])).toBe(true);
-    expect(isOpenDesignBrandedToolboxResource(['nexu-io/open-design'])).toBe(true);
+    expect(isOpenDesignBrandedToolboxResource(['Open Design 랜딩 덱'], 'example-open-design-landing-deck')).toBe(true);
+    expect(isOpenDesignBrandedToolboxResource(['github:nexu-io/open-design@main/plugins/_official/examples/deck'])).toBe(false);
+    expect(isOpenDesignBrandedToolboxResource(['Open-Slide 1920 캔버스 덱'], 'example-deck-open-slide-canvas')).toBe(false);
     expect(isOpenDesignBrandedToolboxResource(['Html Ppt Hermes Cyber Terminal'])).toBe(false);
   });
 
@@ -111,9 +112,9 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(chatComposer).toContain('isTeamverEmbedDriveImportAllowed');
     expect(chatComposer).toContain('teamverDriveImportAllowed');
     expect(chatComposer).toContain('importTeamverDriveAssets');
-    expect(app).toContain("fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck' } : undefined)");
+    expect(app).toContain("fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined)");
     expect(designTemplatesSection).toContain('fetchDesignTemplates(');
-    expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck' } : undefined");
+    expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined");
     expect(chatComposer).toContain('embedAttachBlockReason');
     expect(chatComposer).toContain("intent === 'create-slides'");
     expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');
@@ -167,6 +168,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(assistant).toContain("shouldMinimizeEmbedLiveToolCode");
     expect(assistant).toContain("filterEmbedDeliverableProducedFiles");
     expect(assistant).toContain("hideCodeBody");
+    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
     expect(designFiles).toContain("partitionEmbedDesignFileSections");
     expect(designFiles).toContain("designFiles.sectionSupporting");
     expect(autoOpen).toContain("shouldDeclineEmbedAutoOpen");

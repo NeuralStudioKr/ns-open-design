@@ -876,10 +876,19 @@ export async function listActiveChatRuns(
   try {
     const qs = new URLSearchParams({ projectId, conversationId, status: 'active' });
     const resp = await fetchTeamverDaemon(`/api/runs?${qs.toString()}`);
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      console.warn('[teamver] listActiveChatRuns non-ok', {
+        projectId,
+        conversationId,
+        status: resp.status,
+        redirected: resp.type === 'opaqueredirect',
+      });
+      return [];
+    }
     const body = (await resp.json()) as ChatRunListResponse;
     return body.runs ?? [];
-  } catch {
+  } catch (err) {
+    console.warn('[teamver] listActiveChatRuns failed', { projectId, conversationId, err });
     return [];
   }
 }
@@ -896,10 +905,17 @@ export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
   listProjectRunsInflight = (async () => {
     try {
       const resp = await fetchTeamverDaemon('/api/runs');
-      if (!resp.ok) return [];
+      if (!resp.ok) {
+        console.warn('[teamver] listProjectRuns non-ok', {
+          status: resp.status,
+          redirected: resp.type === 'opaqueredirect',
+        });
+        return [];
+      }
       const body = (await resp.json()) as ChatRunListResponse;
       return body.runs ?? [];
-    } catch {
+    } catch (err) {
+      console.warn('[teamver] listProjectRuns failed', err);
       return [];
     } finally {
       listProjectRunsInflight = null;

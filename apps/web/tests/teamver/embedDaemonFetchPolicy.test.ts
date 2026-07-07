@@ -20,6 +20,7 @@ import {
   shouldFetchPromptTemplateCatalog,
   shouldFetchRecentLinkedDirs,
   shouldMountPluginRegistryView,
+  shouldPollDaemonRuns,
   shouldPostDaemonActiveContext,
   shouldShowOpenDesignPrivacyConsent,
   shouldSubscribeMemoryEvents,
@@ -44,6 +45,7 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchMediaProviderConfig()).toBe(true);
     expect(shouldFetchAppVersionAboutPanel()).toBe(true);
     expect(shouldPostDaemonActiveContext()).toBe(true);
+    expect(shouldPollDaemonRuns()).toBe(true);
     expect(shouldFetchEntryCatalogsOnBoot('project')).toBe(true);
     expect(shouldFetchHomeProjectsOnBoot('project')).toBe(true);
     expect(shouldEagerLoadCommunityPluginPreviews()).toBe(true);
@@ -65,6 +67,7 @@ describe('embedDaemonFetchPolicy', () => {
     expect(shouldFetchMediaProviderConfig()).toBe(false);
     expect(shouldFetchAppVersionAboutPanel()).toBe(false);
     expect(shouldPostDaemonActiveContext()).toBe(false);
+    expect(shouldPollDaemonRuns()).toBe(false);
     expect(shouldFetchEntryCatalogsOnBoot('project')).toBe(false);
     expect(shouldFetchHomeProjectsOnBoot('project')).toBe(false);
     expect(shouldFetchEntryCatalogsOnBoot('home')).toBe(true);

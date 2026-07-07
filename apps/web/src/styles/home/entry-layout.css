@@ -1648,6 +1648,11 @@
   flex-direction: column;
   gap: 16px;
 }
+.entry-section--stale-refresh {
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
 .entry-section__head {
   display: flex;
   align-items: baseline;

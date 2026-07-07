@@ -192,6 +192,7 @@ import {
   filterInstalledPluginsByCatalogMode,
   parsePluginCatalogModeFilter,
   readDefaultPluginCatalogModeFromEnv,
+  searchInstalledPlugins,
 } from './plugins/index.js';
 import {
   marketplaceManifestUrlForRegistry,
@@ -4982,7 +4983,11 @@ export async function startServer({
 
   const app = express();
   installRouteRegistrationGuard(app);
-  app.use(express.json({ limit: '4mb' }));
+  // 4 MB is too tight for the export/*, files POST (multi-file writes),
+  // and inline-HTML export bodies — a single deck HTML with inlined
+  // base64 images routinely exceeds 4 MB. Bump to 24 MB so the inline
+  // export path stays viable end-to-end.
+  app.use(express.json({ limit: '24mb' }));
   const projectPreviewScopes = createProjectPreviewScopeRegistry();
 
   // Plan §3.K1 — bearer-token middleware.
@@ -6653,9 +6658,32 @@ export async function startServer({
     }),
   );
   if (projectStorageHooks) {
+    const scratchStorage = materializingProjectStorage?.scratch;
     app.use(
       '/api/projects/:id',
-      createLazyProjectMaterializationMiddleware(projectStorageHooks, httpDeps.sendApiError),
+      createLazyProjectMaterializationMiddleware(
+        projectStorageHooks,
+        httpDeps.sendApiError,
+        scratchStorage
+          ? {
+              scratchHasProjectFiles: async (projectId: string) => {
+                // Only used on export/archive routes when tenant resolve
+                // fails — do the cheapest possible existence probe: a single
+                // non-recursive readdir on `<scratch>/<projectId>`. Recursive
+                // `listFiles` would walk every asset on large decks.
+                const trimmed = projectId.trim();
+                if (!trimmed) return false;
+                const projectDir = path.join(scratchStorage.projectsRoot, trimmed);
+                try {
+                  const entries = await fs.promises.readdir(projectDir);
+                  return entries.length > 0;
+                } catch {
+                  return false;
+                }
+              },
+            }
+          : undefined,
+      ),
     );
   }
   registerProjectRoutes(app, {
@@ -7595,6 +7623,26 @@ export async function startServer({
     }
   });
 
+  function parseCatalogListLimit(raw, max) {
+    if (raw == null) return null;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return Math.min(Math.floor(parsed), max);
+  }
+
+  function parseCatalogListOffset(raw) {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.floor(parsed);
+  }
+
+  function parseCatalogListQuery(raw) {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
   // Plugin-system HTTP surface. Spec §11.5. Phase 1 wires the minimum set
   // needed for the §12.5 walkthrough: list/get installed plugins, install
   // (SSE), uninstall, apply (returns ApplyResult + snapshotId), atom catalog,
@@ -7605,8 +7653,20 @@ export async function startServer({
       const modeFilter =
         parsePluginCatalogModeFilter(req.query.mode)
         ?? readDefaultPluginCatalogModeFromEnv();
-      plugins = filterInstalledPluginsByCatalogMode(plugins, modeFilter);
-      res.json({ plugins });
+      const q = parseCatalogListQuery(req.query.q ?? req.query.query ?? req.query.search);
+      const limit = parseCatalogListLimit(req.query.limit, 200);
+      const offset = parseCatalogListOffset(req.query.offset);
+      plugins = q
+        ? searchInstalledPlugins({ plugins, query: q, mode: modeFilter ?? undefined }).entries.map((entry) => entry.plugin)
+        : filterInstalledPluginsByCatalogMode(plugins, modeFilter);
+      const page = limit === null ? plugins.slice(offset) : plugins.slice(offset, offset + limit);
+      res.json({
+        plugins: page,
+        total: plugins.length,
+        limit,
+        offset,
+        nextOffset: limit !== null && offset + page.length < plugins.length ? offset + page.length : null,
+      });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
@@ -8306,7 +8366,7 @@ export async function startServer({
     pickCandidates: (plugin: any) => Promise<string[]> | string[],
   ): Promise<void> {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      const plugin = getInstalledPluginForRoute(req.params.id);
       if (!plugin) {
         res.status(404).json({ error: 'plugin not found' });
         return;
@@ -8434,6 +8494,39 @@ export async function startServer({
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
+  }
+
+  function normalizedPluginRouteId(rawId: unknown): string {
+    const id = String(rawId ?? '').trim();
+    if (!id.includes('/')) return id;
+    const segments = id.split('/').filter(Boolean);
+    return segments[segments.length - 1] ?? id;
+  }
+
+  function getInstalledPluginForRoute(rawId: unknown): any | null {
+    const id = String(rawId ?? '').trim();
+    if (!id) return null;
+    const direct = getInstalledPlugin(db, id);
+    if (direct) return direct;
+
+    const normalized = normalizedPluginRouteId(id);
+    if (normalized && normalized !== id) {
+      const byNormalizedId = getInstalledPlugin(db, normalized);
+      if (byNormalizedId) return byNormalizedId;
+    }
+
+    try {
+      const row = db.prepare(
+        `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,
+      ).get(id) as { id?: unknown } | undefined;
+      if (row && typeof row.id === 'string') {
+        return getInstalledPlugin(db, row.id);
+      }
+    } catch {
+      // Old dev databases may not have marketplace provenance columns.
+    }
+
+    return null;
   }
 
   function iframeOnlyHtmlShellTarget(html: string): string | null {
@@ -8772,7 +8865,7 @@ export async function startServer({
 
   app.get('/api/plugins/:id/asset/*splat', async (req, res) => {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      const plugin = getInstalledPluginForRoute(req.params.id);
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       const splatParam = req.params.splat;
       const relpath = Array.isArray(splatParam) ? splatParam.join('/') : String(splatParam ?? '');

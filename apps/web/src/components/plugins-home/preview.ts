@@ -17,6 +17,7 @@
 // classification without touching React.
 
 import type { InstalledPluginRecord } from '@open-design/contracts';
+import { installedPluginApiId } from '../../plugins/pluginIds';
 
 export type PluginPreviewKind = 'media' | 'html' | 'design' | 'text';
 
@@ -246,9 +247,10 @@ export function inferPluginPreview(
       };
     }
     if (t === 'html' && entry) {
+      const apiId = installedPluginApiId(record);
       return {
         kind: 'html',
-        src: `/api/plugins/${encodeURIComponent(record.id)}/preview`,
+        src: `/api/plugins/${encodeURIComponent(apiId)}/preview`,
         label: entry.replace(/^\.\//, '').split(/[\\/]/).pop() ?? entry,
         source: 'preview',
       };
@@ -258,11 +260,12 @@ export function inferPluginPreview(
   if (examples.length > 0) {
     const stem = exampleStem(examples[0]!);
     if (stem) {
+      const apiId = installedPluginApiId(record);
       const title =
         typeof examples[0]!.title === 'string' ? (examples[0]!.title as string) : stem;
       return {
         kind: 'html',
-        src: `/api/plugins/${encodeURIComponent(record.id)}/example/${encodeURIComponent(stem)}`,
+        src: `/api/plugins/${encodeURIComponent(apiId)}/example/${encodeURIComponent(stem)}`,
         label: title,
         source: 'example',
         exampleStem: stem,

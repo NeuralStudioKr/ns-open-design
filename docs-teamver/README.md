@@ -32,6 +32,7 @@
 | **[32 프로젝트 썸네일·cover 로딩](./32_프로젝트_썸네일_커버_로딩_개선.md)** | **동적 registry 미리보기 SSOT · CDN/캐시 정책 · Phase 0~2 로드맵** |
 | **[33 프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)** | **FE→daemon 경로 · scratch/sync-down · S3 presigned 미사용 · Export vs Drive** |
 | **[34 Export 성능 개선](./34_Export_성능_개선_로드맵.md)** | **export 부하 분석 · Chromium/캐시/presigned/async · Phase 0~3 로드맵** |
+| **[38 Design 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md)** | **UVICORN worker · AI BYOK 동시 stream(workspace cap 8) · export cap · multi-node** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -61,6 +62,7 @@
 | 32 | **[프로젝트 썸네일·cover 로딩](./32_프로젝트_썸네일_커버_로딩_개선.md)** |
 | 33 | **[프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)** |
 | 34 | **[Export 성능 개선](./34_Export_성능_개선_로드맵.md)** |
+| 38 | **[Design 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md)** — §5 AI 동시 이용 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |

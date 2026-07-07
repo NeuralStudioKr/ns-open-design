@@ -37,13 +37,20 @@ export type ExplicitProxyStopReason = typeof EXPLICIT_PROXY_STOP_REASON;
  * the legacy behavior (FE looks stopped, daemon finishes upstream in
  * background and sync-ups complete normally).
  */
-export function requestProxyAbort(streamId: string): void {
+export function requestProxyAbort(
+  streamId: string,
+  options?: { conversationId?: string | null },
+): void {
   if (!streamId) return;
+  const conversationId = options?.conversationId?.trim();
   try {
     void fetchTeamverDaemon("/api/proxy/abort", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ streamId }),
+      body: JSON.stringify({
+        streamId,
+        ...(conversationId ? { conversationId } : {}),
+      }),
       keepalive: true,
     }).catch(() => {
       // best-effort — if the abort POST fails the daemon falls back to
