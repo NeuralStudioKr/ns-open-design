@@ -321,6 +321,9 @@ if [[ -n "$NO_CACHE" ]]; then
 fi
 
 "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" up -d --build "${SERVICES[@]}"
+# litestream.yml is bind-mounted + env from deploy.sh — recreate so config/env
+# changes apply (compose up alone often leaves an old sidecar running).
+"${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" up -d --force-recreate --no-deps litestream
 "${DESIGN_COMPOSE_ARGS[@]}" "${COMPOSE_EXTRA_ARGS[@]}" ps
 
 # Refresh nginx peer upstream (39_2 §4). Requires sudo on EC2.
@@ -348,14 +351,19 @@ wait_for_litestream_running() {
       echo "✓ Litestream replica process running"
       sleep 3
       local litestream_logs
-      litestream_logs="$(docker logs teamver-design-litestream --tail 50 2>&1 || true)"
+      litestream_logs="$(docker logs teamver-design-litestream --since 20s 2>&1 || true)"
       if grep -q 'attempt to write a readonly database' <<< "$litestream_logs"; then
         echo "❌ Litestream sync blocked: readonly database (compose teamver_od_data:/data must be RW, not :ro)"
         echo "$litestream_logs" | tail -8
         return 1
       fi
-      if echo "$litestream_logs" | tail -8 | grep -qE 'AccessDenied|GetBucketLocation'; then
-        echo "❌ Litestream S3 IAM — role에 s3:GetBucketLocation + litestream/* 필요 (doc 18 §3.1 · terraform s3.tf apply)"
+      if grep -qE 'replicating to.*path=""' <<< "$litestream_logs"; then
+        echo "❌ Litestream replica path empty — litestream.yml/compose env 확인 (git pull + deploy.sh 재실행)"
+        echo "$litestream_logs" | tail -8
+        return 1
+      fi
+      if echo "$litestream_logs" | grep -qE 'AccessDenied|GetBucketLocation'; then
+        echo "❌ Litestream S3 IAM — static key user 또는 EC2 role에 s3:GetBucketLocation + litestream/* (doc 18 §3.1)"
         echo "$litestream_logs" | tail -8
         return 1
       fi
