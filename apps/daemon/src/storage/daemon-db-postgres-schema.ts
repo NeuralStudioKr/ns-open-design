@@ -8,8 +8,9 @@
 // v3 — B5.3 preview_comments (per-conversation anchored annotations)
 // v4 — B5.4 deployments (per-project preview/publish records)
 // v5 — B5.5 routines / routine_runs / routine_schedule_claims
+// v6 — B5.6 installed_plugins / plugin_marketplaces / applied_plugin_snapshots
 
-export const DAEMON_DB_SCHEMA_VERSION = 5;
+export const DAEMON_DB_SCHEMA_VERSION = 6;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -203,6 +204,95 @@ CREATE TABLE IF NOT EXISTS routine_schedule_claims (
 );
 `;
 
+// installed_plugins / plugin_marketplaces / applied_plugin_snapshots — the
+// v6 slice mirrors the sqlite schema shipped in plugins/persistence.ts. We
+// intentionally exclude run_devloop_iterations, genui_surfaces, and
+// skill_plugin_candidates for now: they either target in-memory runs or
+// candidate caches that don't need cross-node consistency yet.
+export const DAEMON_DB_POSTGRES_MIGRATION_V6 = `
+CREATE TABLE IF NOT EXISTS installed_plugins (
+  id                                TEXT PRIMARY KEY,
+  title                             TEXT NOT NULL,
+  version                           TEXT NOT NULL,
+  source_kind                       TEXT NOT NULL,
+  source                            TEXT NOT NULL,
+  pinned_ref                        TEXT,
+  source_digest                     TEXT,
+  source_marketplace_id             TEXT,
+  source_marketplace_entry_name     TEXT,
+  source_marketplace_entry_version  TEXT,
+  marketplace_trust                 TEXT,
+  resolved_source                   TEXT,
+  resolved_ref                      TEXT,
+  manifest_digest                   TEXT,
+  archive_integrity                 TEXT,
+  trust                             TEXT NOT NULL,
+  capabilities_granted              TEXT NOT NULL,
+  manifest_json                     TEXT NOT NULL,
+  fs_path                           TEXT NOT NULL,
+  installed_at                      BIGINT NOT NULL,
+  updated_at                        BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_installed_plugins_source_kind
+  ON installed_plugins(source_kind);
+
+CREATE TABLE IF NOT EXISTS plugin_marketplaces (
+  id             TEXT PRIMARY KEY,
+  url            TEXT NOT NULL,
+  spec_version   TEXT NOT NULL DEFAULT '1.0.0',
+  version        TEXT NOT NULL DEFAULT '0.0.0',
+  trust          TEXT NOT NULL,
+  manifest_json  TEXT NOT NULL,
+  added_at       BIGINT NOT NULL,
+  refreshed_at   BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketplaces_version
+  ON plugin_marketplaces(version);
+
+CREATE TABLE IF NOT EXISTS applied_plugin_snapshots (
+  id                                TEXT PRIMARY KEY,
+  project_id                        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  conversation_id                   TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+  run_id                            TEXT,
+  plugin_id                         TEXT NOT NULL,
+  plugin_spec_version               TEXT NOT NULL DEFAULT '1.0.0',
+  plugin_version                    TEXT NOT NULL,
+  manifest_source_digest            TEXT NOT NULL,
+  source_marketplace_id             TEXT,
+  source_marketplace_entry_name     TEXT,
+  source_marketplace_entry_version  TEXT,
+  marketplace_trust                 TEXT,
+  resolved_source                   TEXT,
+  resolved_ref                      TEXT,
+  archive_integrity                 TEXT,
+  pinned_ref                        TEXT,
+  task_kind                         TEXT NOT NULL,
+  inputs_json                       TEXT NOT NULL,
+  resolved_context_json             TEXT NOT NULL,
+  craft_requires_json               TEXT NOT NULL DEFAULT '[]',
+  pipeline_json                     TEXT,
+  genui_surfaces_json               TEXT NOT NULL DEFAULT '[]',
+  capabilities_granted              TEXT NOT NULL,
+  capabilities_required             TEXT NOT NULL DEFAULT '[]',
+  assets_staged_json                TEXT NOT NULL,
+  connectors_required_json          TEXT NOT NULL DEFAULT '[]',
+  connectors_resolved_json          TEXT NOT NULL DEFAULT '[]',
+  mcp_servers_json                  TEXT NOT NULL DEFAULT '[]',
+  plugin_title                      TEXT,
+  plugin_description                TEXT,
+  query_text                        TEXT,
+  status                            TEXT NOT NULL DEFAULT 'fresh',
+  applied_at                        BIGINT NOT NULL,
+  expires_at                        BIGINT
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_project ON applied_plugin_snapshots(project_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_run     ON applied_plugin_snapshots(run_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_plugin  ON applied_plugin_snapshots(plugin_id, plugin_version);
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -212,4 +302,5 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 3, sql: DAEMON_DB_POSTGRES_MIGRATION_V3 },
   { version: 4, sql: DAEMON_DB_POSTGRES_MIGRATION_V4 },
   { version: 5, sql: DAEMON_DB_POSTGRES_MIGRATION_V5 },
+  { version: 6, sql: DAEMON_DB_POSTGRES_MIGRATION_V6 },
 ];

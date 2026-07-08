@@ -92,20 +92,26 @@ async function main(): Promise<void> {
     routines: 0,
     routine_runs: 0,
     routine_schedule_claims: 0,
+    installed_plugins: 0,
+    plugin_marketplaces: 0,
+    applied_plugin_snapshots: 0,
     skipped: 0,
   };
 
   try {
-    stats.projects                = await migrateProjects(sqlite, pool, args.dryRun);
-    stats.conversations           = await migrateConversations(sqlite, pool, args.dryRun);
-    stats.messages                = await migrateMessages(sqlite, pool, args.dryRun);
-    stats.agent_sessions          = await migrateAgentSessions(sqlite, pool, args.dryRun);
-    stats.tabs_state              = await migrateTabsState(sqlite, pool, args.dryRun);
-    stats.preview_comments        = await migratePreviewComments(sqlite, pool, args.dryRun);
-    stats.deployments             = await migrateDeployments(sqlite, pool, args.dryRun);
-    stats.routines                = await migrateRoutines(sqlite, pool, args.dryRun);
-    stats.routine_runs            = await migrateRoutineRuns(sqlite, pool, args.dryRun);
-    stats.routine_schedule_claims = await migrateRoutineScheduleClaims(sqlite, pool, args.dryRun);
+    stats.projects                 = await migrateProjects(sqlite, pool, args.dryRun);
+    stats.conversations            = await migrateConversations(sqlite, pool, args.dryRun);
+    stats.messages                 = await migrateMessages(sqlite, pool, args.dryRun);
+    stats.agent_sessions           = await migrateAgentSessions(sqlite, pool, args.dryRun);
+    stats.tabs_state               = await migrateTabsState(sqlite, pool, args.dryRun);
+    stats.preview_comments         = await migratePreviewComments(sqlite, pool, args.dryRun);
+    stats.deployments              = await migrateDeployments(sqlite, pool, args.dryRun);
+    stats.routines                 = await migrateRoutines(sqlite, pool, args.dryRun);
+    stats.routine_runs             = await migrateRoutineRuns(sqlite, pool, args.dryRun);
+    stats.routine_schedule_claims  = await migrateRoutineScheduleClaims(sqlite, pool, args.dryRun);
+    stats.installed_plugins        = await migrateInstalledPlugins(sqlite, pool, args.dryRun);
+    stats.plugin_marketplaces      = await migratePluginMarketplaces(sqlite, pool, args.dryRun);
+    stats.applied_plugin_snapshots = await migrateAppliedPluginSnapshots(sqlite, pool, args.dryRun);
   } finally {
     sqlite.close();
     await pool.end();
@@ -622,6 +628,225 @@ async function migrateRoutineScheduleClaims(
   }
   logStage('routine_schedule_claims', rows.length, 'applied');
   return rows.length;
+}
+
+async function migrateInstalledPlugins(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  if (!sqliteTableExists(sqlite, 'installed_plugins')) return 0;
+  const rows = sqlite
+    .prepare(
+      `SELECT id, title, version, source_kind, source, pinned_ref, source_digest,
+              source_marketplace_id, source_marketplace_entry_name,
+              source_marketplace_entry_version, marketplace_trust,
+              resolved_source, resolved_ref, manifest_digest, archive_integrity,
+              trust, capabilities_granted, manifest_json, fs_path,
+              installed_at, updated_at
+         FROM installed_plugins`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('installed_plugins', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO installed_plugins
+         (id, title, version, source_kind, source, pinned_ref, source_digest,
+          source_marketplace_id, source_marketplace_entry_name,
+          source_marketplace_entry_version, marketplace_trust,
+          resolved_source, resolved_ref, manifest_digest, archive_integrity,
+          trust, capabilities_granted, manifest_json, fs_path,
+          installed_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+       ON CONFLICT (id) DO UPDATE
+         SET title = EXCLUDED.title,
+             version = EXCLUDED.version,
+             source_kind = EXCLUDED.source_kind,
+             source = EXCLUDED.source,
+             pinned_ref = EXCLUDED.pinned_ref,
+             source_digest = EXCLUDED.source_digest,
+             source_marketplace_id = EXCLUDED.source_marketplace_id,
+             source_marketplace_entry_name = EXCLUDED.source_marketplace_entry_name,
+             source_marketplace_entry_version = EXCLUDED.source_marketplace_entry_version,
+             marketplace_trust = EXCLUDED.marketplace_trust,
+             resolved_source = EXCLUDED.resolved_source,
+             resolved_ref = EXCLUDED.resolved_ref,
+             manifest_digest = EXCLUDED.manifest_digest,
+             archive_integrity = EXCLUDED.archive_integrity,
+             trust = EXCLUDED.trust,
+             capabilities_granted = EXCLUDED.capabilities_granted,
+             manifest_json = EXCLUDED.manifest_json,
+             fs_path = EXCLUDED.fs_path,
+             updated_at = EXCLUDED.updated_at`,
+      [
+        r.id,
+        r.title,
+        r.version,
+        r.source_kind,
+        r.source,
+        r.pinned_ref ?? null,
+        r.source_digest ?? null,
+        r.source_marketplace_id ?? null,
+        r.source_marketplace_entry_name ?? null,
+        r.source_marketplace_entry_version ?? null,
+        r.marketplace_trust ?? null,
+        r.resolved_source ?? null,
+        r.resolved_ref ?? null,
+        r.manifest_digest ?? null,
+        r.archive_integrity ?? null,
+        r.trust,
+        r.capabilities_granted,
+        r.manifest_json,
+        r.fs_path,
+        Number(r.installed_at ?? Date.now()),
+        Number(r.updated_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('installed_plugins', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migratePluginMarketplaces(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  if (!sqliteTableExists(sqlite, 'plugin_marketplaces')) return 0;
+  const rows = sqlite
+    .prepare(
+      `SELECT id, url, spec_version, version, trust, manifest_json,
+              added_at, refreshed_at
+         FROM plugin_marketplaces`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('plugin_marketplaces', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO plugin_marketplaces
+         (id, url, spec_version, version, trust, manifest_json, added_at, refreshed_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO UPDATE
+         SET url = EXCLUDED.url,
+             spec_version = EXCLUDED.spec_version,
+             version = EXCLUDED.version,
+             trust = EXCLUDED.trust,
+             manifest_json = EXCLUDED.manifest_json,
+             refreshed_at = EXCLUDED.refreshed_at`,
+      [
+        r.id,
+        r.url,
+        r.spec_version ?? '1.0.0',
+        r.version ?? '0.0.0',
+        r.trust,
+        r.manifest_json,
+        Number(r.added_at ?? Date.now()),
+        Number(r.refreshed_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('plugin_marketplaces', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migrateAppliedPluginSnapshots(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  if (!sqliteTableExists(sqlite, 'applied_plugin_snapshots')) return 0;
+  const rows = sqlite
+    .prepare(
+      `SELECT id, project_id, conversation_id, run_id, plugin_id,
+              plugin_spec_version, plugin_version, manifest_source_digest,
+              source_marketplace_id, source_marketplace_entry_name,
+              source_marketplace_entry_version, marketplace_trust,
+              resolved_source, resolved_ref, archive_integrity, pinned_ref,
+              task_kind, inputs_json, resolved_context_json, craft_requires_json,
+              pipeline_json, genui_surfaces_json, capabilities_granted,
+              capabilities_required, assets_staged_json, connectors_required_json,
+              connectors_resolved_json, mcp_servers_json,
+              plugin_title, plugin_description, query_text,
+              status, applied_at, expires_at
+         FROM applied_plugin_snapshots`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('applied_plugin_snapshots', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO applied_plugin_snapshots
+         (id, project_id, conversation_id, run_id, plugin_id,
+          plugin_spec_version, plugin_version, manifest_source_digest,
+          source_marketplace_id, source_marketplace_entry_name,
+          source_marketplace_entry_version, marketplace_trust,
+          resolved_source, resolved_ref, archive_integrity, pinned_ref,
+          task_kind, inputs_json, resolved_context_json, craft_requires_json,
+          pipeline_json, genui_surfaces_json, capabilities_granted,
+          capabilities_required, assets_staged_json, connectors_required_json,
+          connectors_resolved_json, mcp_servers_json,
+          plugin_title, plugin_description, query_text,
+          status, applied_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+               $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
+       ON CONFLICT (id) DO UPDATE
+         SET status = EXCLUDED.status,
+             expires_at = EXCLUDED.expires_at`,
+      [
+        r.id,
+        r.project_id,
+        r.conversation_id ?? null,
+        r.run_id ?? null,
+        r.plugin_id,
+        r.plugin_spec_version ?? '1.0.0',
+        r.plugin_version,
+        r.manifest_source_digest,
+        r.source_marketplace_id ?? null,
+        r.source_marketplace_entry_name ?? null,
+        r.source_marketplace_entry_version ?? null,
+        r.marketplace_trust ?? null,
+        r.resolved_source ?? null,
+        r.resolved_ref ?? null,
+        r.archive_integrity ?? null,
+        r.pinned_ref ?? null,
+        r.task_kind,
+        r.inputs_json,
+        r.resolved_context_json,
+        r.craft_requires_json ?? '[]',
+        r.pipeline_json ?? null,
+        r.genui_surfaces_json ?? '[]',
+        r.capabilities_granted,
+        r.capabilities_required ?? '[]',
+        r.assets_staged_json,
+        r.connectors_required_json ?? '[]',
+        r.connectors_resolved_json ?? '[]',
+        r.mcp_servers_json ?? '[]',
+        r.plugin_title ?? null,
+        r.plugin_description ?? null,
+        r.query_text ?? null,
+        r.status ?? 'fresh',
+        Number(r.applied_at ?? Date.now()),
+        r.expires_at == null ? null : Number(r.expires_at),
+      ],
+    );
+  }
+  logStage('applied_plugin_snapshots', rows.length, 'applied');
+  return rows.length;
+}
+
+function sqliteTableExists(sqlite: SqliteDb, name: string): boolean {
+  const row = sqlite
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(name);
+  return !!row;
 }
 
 function logStage(name: string, count: number, mode: string): void {
