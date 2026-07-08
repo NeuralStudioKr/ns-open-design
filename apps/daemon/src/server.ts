@@ -284,6 +284,7 @@ import {
   readTeamverS3PrefixFromRequest,
   teamverDesignApiBaseUrl,
 } from './teamver-project-access.js';
+import { createTeamverProjectSqliteHydrationMiddleware } from './teamver-project-sqlite-hydrate.js';
 import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
@@ -6115,6 +6116,7 @@ export async function startServer({
   let projectMaterialization: ProjectMaterializationRuntime = createProjectMaterializationRuntime(
     PROJECT_STORAGE_LAYOUT,
     null,
+    db,
   );
   // Held for /api/health/storage; null until the S3 backend has been
   // resolved (or stays null in local mode, where we probe the scratch
@@ -6133,6 +6135,7 @@ export async function startServer({
       projectMaterialization = createProjectMaterializationRuntime(
         PROJECT_STORAGE_LAYOUT,
         materializingStorage,
+        db,
       );
       materializingProjectStorage = materializingStorage;
       console.info(
@@ -6173,7 +6176,7 @@ export async function startServer({
   }
   const baseFinishRun = design.runs.finish.bind(design.runs);
   design.runs.finish = projectMaterialization.wrapFinish(baseFinishRun);
-  const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization);
+  const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization, db);
   const byokProxyMaterialization = createByokProxyMaterializationHooks(projectMaterialization);
 
   // Interactive Terminal sessions (node-pty). In-memory, process-local, and
@@ -6674,6 +6677,14 @@ export async function startServer({
       const title = typeof project.name === 'string' ? project.name.trim() : '';
       return title ? { title } : {};
     }),
+  );
+  app.use(
+    '/api/projects/:id',
+    createTeamverProjectSqliteHydrationMiddleware(
+      db,
+      projectStorageHooks,
+      httpDeps.sendApiError,
+    ),
   );
   if (projectStorageHooks) {
     const scratchStorage = materializingProjectStorage?.scratch;

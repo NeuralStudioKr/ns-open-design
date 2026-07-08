@@ -1,6 +1,9 @@
 # Peer OD daemon backends for nginx hash upstream (Phase 4).
-# Copied to /etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf on apply.
-# Multi-node: render_od_daemon_peers_nginx.sh overwrites with one line per peer:
+# Written to /etc/nginx/teamver-design-od-daemon-peers.inc (NOT conf.d — bare
+# `server` lines are valid only inside upstream { include ... }).
+# Multi-node: render_od_daemon_peers_nginx.sh writes ALL cluster private IPs
+# (sorted, including self) — identical on every EC2:
+#   server 10.0.1.11:7456 max_fails=2 fail_timeout=10s;
 #   server 10.0.1.12:7456 max_fails=2 fail_timeout=10s;
 #
-# Single-node: leave this file empty (only 127.0.0.1 in upstream).
+# Do NOT use 127.0.0.1 in hash ring — breaks userId sticky across ALB nginx hops.

@@ -50,6 +50,12 @@ import {
   HOME_RECENT_LIST_LIMIT,
   PROJECT_LIST_PAGE_SIZE,
 } from '../teamver/projectListLimits';
+import {
+  listEmbedProjectsFromRegistry,
+  listEmbedProjectsPageFromRegistry,
+  mapRegistryRowToProject,
+} from '../teamver/embedRegistryProjectList';
+import { fetchTeamverProject } from '../teamver/projectRegistry';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
@@ -104,6 +110,15 @@ async function resolveListRecentProjectsInflightKey(limit: number): Promise<stri
 export async function listRecentProjects(
   limit = HOME_RECENT_LIST_LIMIT,
 ): Promise<Project[]> {
+  if (isTeamverEmbedMode()) {
+    try {
+      return await listEmbedProjectsFromRegistry(limit);
+    } catch (err) {
+      if (err instanceof TeamverProjectRegistryError) throw err;
+      return [];
+    }
+  }
+
   const inflightKey = await resolveListRecentProjectsInflightKey(limit);
   const inflight = inflightKey ? listRecentProjectsInflight.get(inflightKey) : null;
   if (inflight) return inflight;
@@ -140,6 +155,15 @@ export async function listProjectsPage(options?: {
   limit?: number;
   cursor?: string | null;
 }): Promise<ProjectsListPageResult> {
+  if (isTeamverEmbedMode()) {
+    try {
+      return await listEmbedProjectsPageFromRegistry(options);
+    } catch (err) {
+      if (err instanceof TeamverProjectRegistryError) throw err;
+      return { projects: [], hasMore: false, nextCursor: null };
+    }
+  }
+
   try {
     const params = new URLSearchParams();
     params.set('limit', String(options?.limit ?? PROJECT_LIST_PAGE_SIZE));
@@ -174,6 +198,15 @@ export async function listProjectsPage(options?: {
 
 /** Full daemon listing — used by registry sync and legacy refresh paths. */
 export async function listProjects(): Promise<Project[]> {
+  if (isTeamverEmbedMode()) {
+    try {
+      return await listEmbedProjectsFromRegistry();
+    } catch (err) {
+      if (err instanceof TeamverProjectRegistryError) throw err;
+      return [];
+    }
+  }
+
   try {
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
     if (!resp) return [];
@@ -191,10 +224,24 @@ export async function listProjects(): Promise<Project[]> {
 export async function getProject(id: string): Promise<Project | null> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`);
-    if (!resp.ok) return null;
-    const json = (await resp.json()) as { project: Project };
-    return sanitizeProjectForEmbed(json.project);
+    if (resp.ok) {
+      const json = (await resp.json()) as { project: Project };
+      return sanitizeProjectForEmbed(json.project);
+    }
+    if (isTeamverEmbedMode() && resp.status === 404) {
+      const row = await fetchTeamverProject(id);
+      if (row) return mapRegistryRowToProject(row);
+    }
+    return null;
   } catch {
+    if (isTeamverEmbedMode()) {
+      try {
+        const row = await fetchTeamverProject(id);
+        if (row) return mapRegistryRowToProject(row);
+      } catch {
+        // Registry fallback is best-effort when daemon transport fails.
+      }
+    }
     return null;
   }
 }

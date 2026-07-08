@@ -19,6 +19,10 @@ import {
   scratchIdleEvictEnabled,
 } from './scratch-idle-eviction.js';
 import { safelyEvictScratchAfterRun } from './scratch-evict-policy.js';
+import type Database from 'better-sqlite3';
+import { exportTeamverProjectDaemonStateThrottled } from '../teamver-project-daemon-state.js';
+
+type SqliteDb = Database.Database;
 
 type RunLike = {
   id?: string;
@@ -109,6 +113,7 @@ function sleep(ms: number): Promise<void> {
 export function createProjectMaterializationRuntime(
   layout: ProjectStorageLayout,
   storage: MaterializingProjectStorage | null,
+  db: SqliteDb | null = null,
 ): ProjectMaterializationRuntime {
   const activeProjectRuns = new Map<string, number>();
   const projectLocks = new Map<string, Promise<void>>();
@@ -229,6 +234,9 @@ export function createProjectMaterializationRuntime(
       try {
         const result = await storage!.syncUp(projectId, remote, startedAt);
         lastResult = result;
+        if (db && result.failed === 0) {
+          await exportTeamverProjectDaemonStateThrottled(db, remote, projectId);
+        }
         if (result.failed === 0 || attempt >= maxAttempts) {
           return result;
         }

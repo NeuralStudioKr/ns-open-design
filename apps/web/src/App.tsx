@@ -107,7 +107,7 @@ import {
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
-import { loadProjectListPage, loadProjectListSafe } from './teamver/loadProjectList';
+import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { seedEmbedBootstrapSession } from './teamver/embedBootstrapSession';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import {
@@ -1075,25 +1075,17 @@ function AppInner() {
 
       const request = beginProjectListRequest();
       if (fetchHomeProjects) {
-        // Mark the page as loaded synchronously so the `/projects` route
-        // effect (`ensureProjectsListPageLoaded`) does not fire a duplicate
-        // paginated fetch when boot lands on that route. Any failure below
-        // resets the flag so a subsequent `/projects` visit can retry.
-        projectsPageLoadedRef.current = true;
         void (async () => {
           if (isTeamverEmbedMode()) {
             await waitForTeamverEmbedBoot();
           }
           if (cancelled) return;
-          const result = await loadProjectListPage();
+          const result = await loadRecentProjectsForHome();
           if (cancelled) return;
           if (!result.ok) {
-            projectsPageLoadedRef.current = false;
             setWorkingDirError(result.errorMessage);
           } else {
             setWorkingDirError(null);
-            projectsNextCursorRef.current = result.nextCursor;
-            setProjectsHasMore(result.hasMore);
             reconcileFetchedProjects(result.projects, request);
             warmEmbedProjectListCaches(result.projects);
           }

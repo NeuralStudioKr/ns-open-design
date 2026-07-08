@@ -120,15 +120,23 @@ if (( ${#inc_files[@]} )); then
 fi
 
 PEERS_EXAMPLE="$SCRIPT_DIR/teamver-design-od-daemon-peers.inc.conf.example"
-PEERS_TARGET="/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf"
+PEERS_TARGET="/etc/nginx/teamver-design-od-daemon-peers.inc"
+LEGACY_PEERS="/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf"
 if [[ ! -f "$PEERS_TARGET" ]]; then
   cp "$PEERS_EXAMPLE" "$PEERS_TARGET"
   echo "📎 peers stub: $PEERS_TARGET"
+fi
+if [[ -f "$LEGACY_PEERS" ]]; then
+  rm -f "$LEGACY_PEERS"
+  echo "🧹 removed legacy $LEGACY_PEERS (conf.d breaks nginx when peer server lines present)"
 fi
 RENDER_PEERS="$SCRIPT_DIR/../../scripts/render_od_daemon_peers_nginx.sh"
 if [[ -x "$RENDER_PEERS" ]]; then
   bash "$RENDER_PEERS" || echo "⚠️ peer render skipped (aws/imds unavailable?)"
 fi
+
+DEPLOY_TEAMVER_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+bash "$SCRIPT_DIR/ensure_teamver_design_od_token_conf.sh" "$DEPLOY_TEAMVER_ROOT/.env.production"
 
 nginx -t
 systemctl reload nginx

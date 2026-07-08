@@ -6,6 +6,14 @@ import type { MaterializingProjectStorage } from './materializing-project-storag
 import { resolveTeamverTenantRemoteStorage, TeamverTenantStorageResolutionError } from './teamver-project-storage-meta.js';
 import { isS3ProjectStorageLayout } from './project-storage-layout.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
+import type { ProjectStorage } from './project-storage.js';
+import type Database from 'better-sqlite3';
+import {
+  exportTeamverProjectDaemonStateThrottled,
+  importTeamverProjectDaemonState,
+} from '../teamver-project-daemon-state.js';
+
+type SqliteDb = Database.Database;
 
 export type ProjectStorageAccessHooks = {
   ensureMaterialized: (req: Request, projectId: string) => Promise<void>;
@@ -15,6 +23,10 @@ export type ProjectStorageAccessHooks = {
     options?: { strict?: boolean },
   ) => Promise<void>;
   onProjectRemoved: (req: Request, projectId: string) => Promise<void>;
+  resolveRemoteForDaemonState?: (
+    req: Request,
+    projectId: string,
+  ) => Promise<ProjectStorage | null>;
 };
 
 function s3RemotePurgeOnDeleteEnabled(): boolean {
@@ -170,6 +182,7 @@ function isProjectScratchReadFallbackPath(pathname: string): boolean {
 
 export function createProjectStorageAccessHooks(
   runtime: ProjectMaterializationRuntime | null,
+  db: SqliteDb | null = null,
 ): ProjectStorageAccessHooks | null {
   if (runtime === null || !isS3ProjectStorageLayout(runtime.layout)) {
     return null;
@@ -224,6 +237,9 @@ export function createProjectStorageAccessHooks(
     );
     const remote = await resolveRemote(req, projectId);
     const result = await storage.syncUp(projectId, remote, 0);
+    if (db) {
+      await exportTeamverProjectDaemonStateThrottled(db, remote, projectId);
+    }
     console.info(
       `[project-materialization] boot orphan sync-up ${projectId}: uploaded=${result.uploaded} skipped=${result.skipped} deleted=${result.deleted} failed=${result.failed}`,
     );
@@ -278,6 +294,9 @@ export function createProjectStorageAccessHooks(
             const remote = await resolveRemote(req, trimmedId);
             const syncingFailed = materializationRuntime.isProjectSyncFailed(trimmedId);
             const down = await storage.syncDown(trimmedId, remote);
+            if (db) {
+              await importTeamverProjectDaemonState(db, remote, trimmedId);
+            }
             lastSyncAt.set(trimmedId, Date.now());
             console.info(
               `[project-materialization] lazy sync-down ${trimmedId}: ${down.files} file(s)`,
@@ -379,6 +398,9 @@ export function createProjectStorageAccessHooks(
         const remote = await resolveRemote(req, trimmedId);
         // runStart=0 → upload all scratch files (non-run API writes).
         const result = await storage.syncUp(trimmedId, remote, 0);
+        if (db) {
+          await exportTeamverProjectDaemonStateThrottled(db, remote, trimmedId);
+        }
         console.info(
           `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} deleted=${result.deleted} failed=${result.failed}`,
         );
@@ -519,7 +541,18 @@ export function createProjectStorageAccessHooks(
     }
   }
 
-  return { ensureMaterialized, persistAfterMutation, onProjectRemoved };
+  return {
+    ensureMaterialized,
+    persistAfterMutation,
+    onProjectRemoved,
+    resolveRemoteForDaemonState: async (req, projectId) => {
+      try {
+        return await resolveRemote(req, projectId);
+      } catch {
+        return null;
+      }
+    },
+  };
 }
 
 /** Scratch project mutations outside file-route middleware (e.g. POST /api/projects). */

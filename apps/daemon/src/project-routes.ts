@@ -41,6 +41,7 @@ import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
+import { scheduleTeamverProjectDaemonStateExport } from './teamver-project-daemon-state.js';
 import {
   shouldReportByokUsageFromMessage,
   reportByokTeamverUsageAndBillingFromDaemon,
@@ -1811,6 +1812,15 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     });
     // Bump the parent project's updatedAt so the project list re-orders.
     updateProject(db, req.params.id, {});
+    if (isTeamverDesignManaged() && ctx.projectStorageHooks) {
+      scheduleTeamverProjectDaemonStateExport(
+        db,
+        ctx.projectStorageHooks,
+        req,
+        res,
+        req.params.id,
+      );
+    }
     ctx.telemetry?.reportFinalizedMessage(saved, m, {
       analyticsContext: readAnalyticsContext(req),
       projectId: req.params.id,

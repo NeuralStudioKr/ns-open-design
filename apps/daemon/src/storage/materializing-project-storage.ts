@@ -11,6 +11,7 @@ import {
   type ProjectStorageProbeResult,
 } from './project-storage.js';
 import { createS3CredentialProvider } from './s3-credential-provider.js';
+import { isTeamverDaemonStateRelpath } from '../teamver-project-daemon-state-store.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
 
 const DEFAULT_SYNC_UP_ATTEMPTS = 3;
@@ -136,6 +137,7 @@ export class MaterializingProjectStorage implements ProjectStorage {
     const remoteFiles = await withSyncDownRetry(() => remote.listFiles(projectId));
     let files = 0;
     for (const file of remoteFiles) {
+      if (isTeamverDaemonStateRelpath(file.path)) continue;
       const body = await withSyncDownRetry(() => remote.readFile(projectId, file.path));
       await this.scratch.writeFile(projectId, file.path, body);
       if (file.mtimeMs > 0 && Number.isFinite(file.mtimeMs)) {

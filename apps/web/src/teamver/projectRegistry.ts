@@ -37,6 +37,9 @@ export type TeamverRegisteredProject = {
   s3Prefix?: string;
   title?: string;
   ownerUserId?: string;
+  status?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
 };
 
 export class TeamverProjectRegistryError extends Error {
@@ -94,9 +97,10 @@ function legacyRegistryMigrationEnabled(): boolean {
 }
 
 const feAccessCache = new Map<string, { allowed: boolean; at: number }>();
-let registeredIdsCache: {
+let registryListCache: {
   workspaceId: string;
   userId: string;
+  projects: TeamverRegisteredProject[];
   ids: Set<string>;
   at: number;
 } | null = null;
@@ -155,7 +159,7 @@ function primeFeAccessAllowed(projectId: string, workspaceId: string, userId: st
 }
 
 function invalidateRegisteredIdsCache(): void {
-  registeredIdsCache = null;
+  registryListCache = null;
 }
 
 /** Clear FE registry caches after auth/workspace changes. */
@@ -178,29 +182,8 @@ async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
   }
 }
 
-async function getRegisteredProjectIds(workspaceId: string): Promise<Set<string> | null> {
-  const trimmedWorkspaceId = workspaceId.trim();
-  const userId = await resolveRegistryUserId();
-  if (
-    userId
-    && registeredIdsCache
-    && registeredIdsCache.workspaceId === trimmedWorkspaceId
-    && registeredIdsCache.userId === userId
-    && Date.now() - registeredIdsCache.at < REGISTRY_LIST_CACHE_MS
-  ) {
-    return registeredIdsCache.ids;
-  }
-
-  const ids = await listTeamverRegisteredProjectIds();
-  if (ids && userId) {
-    registeredIdsCache = {
-      workspaceId: trimmedWorkspaceId,
-      userId,
-      ids,
-      at: Date.now(),
-    };
-  }
-  return ids;
+async function getRegisteredProjectIds(_workspaceId: string): Promise<Set<string> | null> {
+  return listTeamverRegisteredProjectIds();
 }
 
 /** @internal vitest only — module-level caches are not request-scoped. */
@@ -359,28 +342,36 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
 }
 
 
-export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
+async function fetchRegistryProjectsFromBff(): Promise<{
+  workspaceId: string;
+  userId: string | null;
+  projects: TeamverRegisteredProject[];
+} | null> {
   if (!isTeamverEmbedMode()) return null;
   await waitForEmbedBootIfNeeded();
 
   const client = getDesignBffClient();
   if (!client) return null;
 
-  try {
-    const workspaceId = await resolveActiveTeamverWorkspaceId();
-    if (!workspaceId) return null;
-    const userId = await resolveRegistryUserId();
-    const trimmedWorkspaceId = workspaceId.trim();
-    if (
-      userId
-      && registeredIdsCache
-      && registeredIdsCache.workspaceId === trimmedWorkspaceId
-      && registeredIdsCache.userId === userId
-      && Date.now() - registeredIdsCache.at < REGISTRY_LIST_CACHE_MS
-    ) {
-      return registeredIdsCache.ids;
-    }
+  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
+  if (!workspaceId) return null;
+  const userId = await resolveRegistryUserId();
 
+  if (
+    userId
+    && registryListCache
+    && registryListCache.workspaceId === workspaceId
+    && registryListCache.userId === userId
+    && Date.now() - registryListCache.at < REGISTRY_LIST_CACHE_MS
+  ) {
+    return {
+      workspaceId,
+      userId,
+      projects: registryListCache.projects,
+    };
+  }
+
+  try {
     const result = await withDesignBffCookieAuthRecovery(() =>
       client.http.get<{ projects?: TeamverRegisteredProject[] }>(
         "/projects",
@@ -390,31 +381,67 @@ export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | n
         },
       ),
     );
+    const projects = result.projects ?? [];
     const ids = new Set<string>();
-    for (const project of result.projects ?? []) {
+    for (const project of projects) {
       const odProjectId = readRegistryOdProjectId(project);
       if (odProjectId) {
         ids.add(odProjectId);
-        rememberTeamverProjectS3Prefix(
-          trimmedWorkspaceId,
-          odProjectId,
-          project.s3Prefix,
-        );
+        rememberTeamverProjectS3Prefix(workspaceId, odProjectId, project.s3Prefix);
       }
     }
     if (userId) {
-      registeredIdsCache = {
-        workspaceId: trimmedWorkspaceId,
+      registryListCache = {
+        workspaceId,
         userId,
+        projects,
         ids,
         at: Date.now(),
       };
     }
-    return ids;
+    return { workspaceId, userId, projects };
   } catch (err) {
     console.warn("[teamver] project registry list failed", err);
     return null;
   }
+}
+
+/** Embed list SSOT — full registry rows (RDS; safe across multi-node EC2). */
+export async function listTeamverRegistryProjects(): Promise<TeamverRegisteredProject[] | null> {
+  const fetched = await fetchRegistryProjectsFromBff();
+  return fetched?.projects ?? null;
+}
+
+export async function listTeamverRegisteredProjectIds(): Promise<Set<string> | null> {
+  if (!isTeamverEmbedMode()) return null;
+
+  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim();
+  if (!workspaceId) return null;
+  const userId = await resolveRegistryUserId();
+
+  if (
+    userId
+    && registryListCache
+    && registryListCache.workspaceId === workspaceId
+    && registryListCache.userId === userId
+    && Date.now() - registryListCache.at < REGISTRY_LIST_CACHE_MS
+  ) {
+    return registryListCache.ids;
+  }
+
+  const fetched = await fetchRegistryProjectsFromBff();
+  if (!fetched) return null;
+
+  if (userId && registryListCache?.workspaceId === workspaceId && registryListCache.userId === userId) {
+    return registryListCache.ids;
+  }
+
+  const ids = new Set<string>();
+  for (const project of fetched.projects) {
+    const odProjectId = readRegistryOdProjectId(project);
+    if (odProjectId) ids.add(odProjectId);
+  }
+  return ids;
 }
 
 export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Project, "id">>(
