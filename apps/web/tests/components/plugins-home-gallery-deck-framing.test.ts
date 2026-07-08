@@ -16,13 +16,15 @@ describe('plugins home gallery deck framing', () => {
     expect(source).toContain("'data-od-mode': odMode");
   });
 
-  it('uses a 16:9 non-panning iframe frame for deck gallery cards', () => {
+  it('uses a scaled 16:9 desktop viewport for deck gallery cards', () => {
     const css = readRepoFile('src/styles/home/plugins-home.css');
 
     expect(css).toContain('.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__gallery-frame');
     expect(css).toContain('aspect-ratio: 16 / 9;');
     expect(css).toContain('.plugins-home__card--gallery[data-od-mode="deck"]:hover .plugins-home__html-iframe');
-    expect(css).toContain('transform: none;');
+    expect(css).toContain('width: 360%;');
+    expect(css).toContain('height: 360%;');
+    expect(css).toContain('transform: scale(0.2777778);');
     expect(css).toContain('transition: none;');
   });
 });
