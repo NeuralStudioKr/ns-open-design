@@ -900,6 +900,158 @@ export async function pgTryClaimScheduledRoutineRun(
   }
 }
 
+// ---------- media_tasks ----------
+
+const MEDIA_TASK_COLS = `id,
+  project_id AS "projectId",
+  status,
+  surface,
+  model,
+  progress_json AS "progressJson",
+  file_json AS "fileJson",
+  error_json AS "errorJson",
+  started_at AS "startedAt",
+  ended_at AS "endedAt",
+  created_at AS "createdAt",
+  updated_at AS "updatedAt"`;
+
+export interface PgMediaTaskInput {
+  id: string;
+  projectId: string;
+  status: string;
+  surface: string | null;
+  model: string | null;
+  progressJson: string;
+  fileJson: string | null;
+  errorJson: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function pgInsertMediaTask(pool: Pool, t: PgMediaTaskInput): Promise<void> {
+  await pool.query(
+    `INSERT INTO media_tasks
+       (id, project_id, status, surface, model, progress_json, file_json,
+        error_json, started_at, ended_at, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      t.id,
+      t.projectId,
+      t.status,
+      t.surface,
+      t.model,
+      t.progressJson,
+      t.fileJson,
+      t.errorJson,
+      t.startedAt,
+      t.endedAt,
+      t.createdAt,
+      t.updatedAt,
+    ],
+  );
+}
+
+export async function pgUpdateMediaTask(pool: Pool, id: string, t: PgMediaTaskInput): Promise<void> {
+  await pool.query(
+    `UPDATE media_tasks
+        SET status = $2,
+            surface = $3,
+            model = $4,
+            progress_json = $5,
+            file_json = $6,
+            error_json = $7,
+            started_at = $8,
+            ended_at = $9,
+            updated_at = $10
+      WHERE id = $1`,
+    [
+      id,
+      t.status,
+      t.surface,
+      t.model,
+      t.progressJson,
+      t.fileJson,
+      t.errorJson,
+      t.startedAt,
+      t.endedAt,
+      t.updatedAt,
+    ],
+  );
+}
+
+export async function pgDeleteMediaTask(pool: Pool, id: string): Promise<void> {
+  await pool.query(`DELETE FROM media_tasks WHERE id = $1`, [id]);
+}
+
+export async function pgListMediaTasksByProject(pool: Pool, projectId: string): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${MEDIA_TASK_COLS}
+       FROM media_tasks
+      WHERE project_id = $1
+      ORDER BY started_at DESC`,
+    [projectId],
+  );
+}
+
+export async function pgListRecentMediaTasks(pool: Pool, cutoff: number): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${MEDIA_TASK_COLS}
+       FROM media_tasks
+      WHERE status IN ('queued', 'running')
+         OR COALESCE(ended_at, updated_at) >= $1
+      ORDER BY started_at DESC`,
+    [cutoff],
+  );
+}
+
+/**
+ * Boot reconcile mirror for the sqlite reconcileMediaTasksOnBoot. Flips any
+ * queued/running rows to 'interrupted' with the given error blob and cleans
+ * up terminal rows older than the ttl cutoff. Runs in a single Postgres
+ * transaction for atomicity.
+ */
+export async function pgReconcileMediaTasks(
+  pool: Pool,
+  interruptedErrorJson: string,
+  now: number,
+  cutoff: number,
+): Promise<{ interrupted: number; deleted: number }> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const interrupted = await client.query(
+      `UPDATE media_tasks
+          SET status = 'interrupted',
+              error_json = $1,
+              ended_at = COALESCE(ended_at, $2),
+              updated_at = $2
+        WHERE status IN ('queued', 'running')`,
+      [interruptedErrorJson, now],
+    );
+    const deleted = await client.query(
+      `DELETE FROM media_tasks
+        WHERE status IN ('done', 'failed', 'interrupted')
+          AND COALESCE(ended_at, updated_at) < $1`,
+      [cutoff],
+    );
+    await client.query('COMMIT');
+    return {
+      interrupted: interrupted.rowCount ?? 0,
+      deleted: deleted.rowCount ?? 0,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function pgUpsertDeployment(pool: Pool, d: PgDeploymentInput): Promise<void> {
   await pool.query(
     `INSERT INTO deployments

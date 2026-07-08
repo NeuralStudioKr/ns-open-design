@@ -95,6 +95,7 @@ async function main(): Promise<void> {
     installed_plugins: 0,
     plugin_marketplaces: 0,
     applied_plugin_snapshots: 0,
+    media_tasks: 0,
     skipped: 0,
   };
 
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
     stats.installed_plugins        = await migrateInstalledPlugins(sqlite, pool, args.dryRun);
     stats.plugin_marketplaces      = await migratePluginMarketplaces(sqlite, pool, args.dryRun);
     stats.applied_plugin_snapshots = await migrateAppliedPluginSnapshots(sqlite, pool, args.dryRun);
+    stats.media_tasks              = await migrateMediaTasks(sqlite, pool, args.dryRun);
   } finally {
     sqlite.close();
     await pool.end();
@@ -839,6 +841,59 @@ async function migrateAppliedPluginSnapshots(
     );
   }
   logStage('applied_plugin_snapshots', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migrateMediaTasks(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  if (!sqliteTableExists(sqlite, 'media_tasks')) return 0;
+  const rows = sqlite
+    .prepare(
+      `SELECT id, project_id, status, surface, model, progress_json, file_json,
+              error_json, started_at, ended_at, created_at, updated_at
+         FROM media_tasks`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('media_tasks', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO media_tasks
+         (id, project_id, status, surface, model, progress_json, file_json,
+          error_json, started_at, ended_at, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id) DO UPDATE
+         SET status = EXCLUDED.status,
+             surface = EXCLUDED.surface,
+             model = EXCLUDED.model,
+             progress_json = EXCLUDED.progress_json,
+             file_json = EXCLUDED.file_json,
+             error_json = EXCLUDED.error_json,
+             started_at = EXCLUDED.started_at,
+             ended_at = EXCLUDED.ended_at,
+             updated_at = EXCLUDED.updated_at`,
+      [
+        r.id,
+        r.project_id,
+        r.status,
+        r.surface ?? null,
+        r.model ?? null,
+        r.progress_json ?? '[]',
+        r.file_json ?? null,
+        r.error_json ?? null,
+        Number(r.started_at ?? Date.now()),
+        r.ended_at == null ? null : Number(r.ended_at),
+        Number(r.created_at ?? Date.now()),
+        Number(r.updated_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('media_tasks', rows.length, 'applied');
   return rows.length;
 }
 

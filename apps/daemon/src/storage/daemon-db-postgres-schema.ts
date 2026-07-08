@@ -9,8 +9,9 @@
 // v4 — B5.4 deployments (per-project preview/publish records)
 // v5 — B5.5 routines / routine_runs / routine_schedule_claims
 // v6 — B5.6 installed_plugins / plugin_marketplaces / applied_plugin_snapshots
+// v7 — B5.7 media_tasks (queue/progress/artifacts for generative media)
 
-export const DAEMON_DB_SCHEMA_VERSION = 6;
+export const DAEMON_DB_SCHEMA_VERSION = 7;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -293,6 +294,32 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_run     ON applied_plugin_snapshots(run
 CREATE INDEX IF NOT EXISTS idx_snapshots_plugin  ON applied_plugin_snapshots(plugin_id, plugin_version);
 `;
 
+// media_tasks — queue of generative-media jobs (image / video / audio). The
+// sqlite path uses a CHECK constraint on `status`; Postgres does the same
+// with a plain CHECK. progress_json is a JSON array of log lines.
+export const DAEMON_DB_POSTGRES_MIGRATION_V7 = `
+CREATE TABLE IF NOT EXISTS media_tasks (
+  id             TEXT PRIMARY KEY,
+  project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  status         TEXT NOT NULL CHECK (status IN
+                   ('queued','running','done','failed','interrupted')),
+  surface        TEXT,
+  model          TEXT,
+  progress_json  TEXT NOT NULL DEFAULT '[]',
+  file_json      TEXT,
+  error_json     TEXT,
+  started_at     BIGINT NOT NULL,
+  ended_at       BIGINT,
+  created_at     BIGINT NOT NULL,
+  updated_at     BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_tasks_project
+  ON media_tasks(project_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_media_tasks_status
+  ON media_tasks(status, updated_at DESC);
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -303,4 +330,5 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 4, sql: DAEMON_DB_POSTGRES_MIGRATION_V4 },
   { version: 5, sql: DAEMON_DB_POSTGRES_MIGRATION_V5 },
   { version: 6, sql: DAEMON_DB_POSTGRES_MIGRATION_V6 },
+  { version: 7, sql: DAEMON_DB_POSTGRES_MIGRATION_V7 },
 ];
