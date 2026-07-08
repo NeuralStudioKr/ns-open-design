@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Rolling deploy across multiple Design EC2 nodes (docs-teamver/39_1 Phase 4 · 39_4 §3).
 #
+# Run from Mac/CI (NOT on EC2). Builds happen on each host via SSH deploy.sh — see 39_4 §3.2.
+#
 # For each host in --hosts, in order:
 #   1. `aws elbv2 deregister-targets` (drain in-flight SSE via
 #      deregistration_delay configured on the target group — 39_2 §3.1).

@@ -278,9 +278,14 @@ fi
 export LITESTREAM_REPLICA_PATH
 
 # docs-teamver/39_2 §4 — nginx userId hash routing needs peer EC2 :7456 reachable
-# when multi-node. Pre-check peer list (dry-run) to bind docker publish host.
-OD_DOCKER_PUBLISH_HOST="${OD_DOCKER_PUBLISH_HOST:-127.0.0.1}"
-if [[ -x "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" ]]; then
+# when multi-node (hash ring uses private IPs, not 127.0.0.1). Explicit env wins;
+# else auto-detect from peer render dry-run.
+env_publish_host="$(_get_env_kv OD_DOCKER_PUBLISH_HOST)"
+if [[ -n "$env_publish_host" ]]; then
+  OD_DOCKER_PUBLISH_HOST="$env_publish_host"
+  echo "==> OD_DOCKER_PUBLISH_HOST=$OD_DOCKER_PUBLISH_HOST (from $ENV_FILE)"
+elif [[ -x "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" ]]; then
+  OD_DOCKER_PUBLISH_HOST="127.0.0.1"
   peer_preview="$(
     bash "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" --dry-run 2>/dev/null || true
   )"
@@ -290,6 +295,8 @@ if [[ -x "$SCRIPT_DIR/scripts/render_od_daemon_peers_nginx.sh" ]]; then
   else
     echo "==> OD_DOCKER_PUBLISH_HOST=127.0.0.1 (single-node or no peers yet)"
   fi
+else
+  OD_DOCKER_PUBLISH_HOST="${OD_DOCKER_PUBLISH_HOST:-127.0.0.1}"
 fi
 export OD_DOCKER_PUBLISH_HOST
 
@@ -418,8 +425,8 @@ echo ""
 echo "다음:"
 echo "  - bash scripts/smoke_design.sh ${ENV_FLAG:+$ENV_FLAG}"
 if [[ "$TARGET_ENV" == "staging" ]]; then
-  echo "  - sudo bash devops/nginx/apply_teamver_design_staging_nginx_conf.sh \\"
-  echo "      ./stg-design.teamver.com.https.conf --disable stg-design.teamver.com.http.conf"
+  echo "  - sudo bash devops/nginx/apply_teamver_design_staging_nginx_conf.sh"
+  echo "    (ALB cutover 후 http.conf 기본 — certbot https.conf 는 EIP 직접 노출 legacy)"
 elif [[ "$TARGET_ENV" == "production" ]]; then
   echo "  - sudo bash devops/nginx/apply_teamver_design_nginx_conf.sh ./design.teamver.com.http.conf"
 fi

@@ -9,6 +9,8 @@
 |------|------|
 | [38 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md) | worker·AI cap·single-node 한계·P0~P3 |
 | [07 EC2·배포·인프라](./07_VM_배포_인프라.md) | t3.2xlarge·ALB·EBS·ENV |
+| [39_4 배포·Terraform Runbook §3](./39_4_배포_Terraform_운영_Runbook.md#3-rolling-배포-phase-4) | **rolling_deploy** — Mac vs EC2·빌드 위치·git pull |
+| [39_4 §10](./39_4_배포_Terraform_운영_Runbook.md#10-ec2-부트스트랩수동-복구-runbook-d6-2노드--신규-ec2-공통) | bootstrap 실패·node2 수동·`.env.staging`·od-data EBS |
 | [31 Staging vs Production 네트워크](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md) | ALB·nginx·DNS |
 | [20 Hybrid 저장소](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) | scratch·S3·SQLite |
 | [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) | Track B queue·circuit breaker |
