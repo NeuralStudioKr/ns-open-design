@@ -1,4 +1,6 @@
-import { isTeamverEmbedMode } from "./designApiBase";
+import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
+import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
+import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
 
@@ -79,6 +81,37 @@ function daemonGetInflightKey(
   return `${url}\n${headerKey}`;
 }
 
+function maybeRedirectOnEmbedDaemonUnauthorized(
+  input: RequestInfo | URL,
+  resp: Response,
+): void {
+  if (
+    resp.status !== 401
+    || !isTeamverEmbedMode()
+    || !isBootstrapAuthMode()
+    || !isLikelyDaemonApiRequest(input)
+  ) {
+    return;
+  }
+  redirectToTeamverLoginPreservingRoute({
+    returnTo:
+      typeof window !== "undefined"
+        ? resolveEmbedAuthReturnPath(
+            window.location.pathname,
+            window.location.search,
+          )
+        : null,
+  });
+}
+
+async function finalizeDaemonFetch(
+  input: RequestInfo | URL,
+  resp: Response,
+): Promise<Response> {
+  maybeRedirectOnEmbedDaemonUnauthorized(input, resp);
+  return resp.clone();
+}
+
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
 export async function buildTeamverDaemonRequestHeaders(
   base: Record<string, string>,
@@ -117,14 +150,17 @@ export async function fetchTeamverDaemon(
     requestInit.redirect ?? (isTeamverEmbedMode() && isLikelyDaemonApiRequest(input) ? "manual" : undefined);
   const nextInit = { ...requestInit, headers, credentials, ...(redirect ? { redirect } : {}) };
   const dedupeKey = daemonGetInflightKey(input, requestInit, headers);
-  if (!dedupeKey) return fetch(input, nextInit);
+  if (!dedupeKey) {
+    const resp = await fetch(input, nextInit);
+    return finalizeDaemonFetch(input, resp);
+  }
   const existing = daemonGetInflight.get(dedupeKey);
-  if (existing) return existing.then((resp) => resp.clone());
+  if (existing) return existing.then((resp) => finalizeDaemonFetch(input, resp));
   const promise = fetch(input, nextInit);
   daemonGetInflight.set(dedupeKey, promise);
   try {
     const resp = await promise;
-    return resp.clone();
+    return finalizeDaemonFetch(input, resp);
   } finally {
     daemonGetInflight.delete(dedupeKey);
   }

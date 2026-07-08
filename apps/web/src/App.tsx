@@ -141,7 +141,10 @@ import {
   readTeamverDesignAccessSnapshot,
   subscribeTeamverDesignAccessChanged,
 } from './teamver/teamverDesignAccess';
-import { resolveEmbedBootSessionOptions } from './teamver/teamverEmbedAuthFlow';
+import {
+  redirectToDesignLoginIfBffMissing,
+  resolveEmbedBootSessionOptions,
+} from './teamver/teamverEmbedAuthFlow';
 import { readActiveTeamverWorkspaceId } from './teamver/useTeamverEmbed';
 import { useTeamverAppVersionAutoReload } from './teamver/useTeamverAppVersionAutoReload';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
@@ -1156,6 +1159,7 @@ function AppInner() {
                       });
                     } else {
                       await clearTeamverEmbedSessionState();
+                      redirectToDesignLoginIfBffMissing();
                     }
                     seedEmbedBootstrapSession({
                       session: session ?? { authenticated: false },

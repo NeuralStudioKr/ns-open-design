@@ -36,7 +36,13 @@
  */
 
 import type { FetchDesignAuthSessionOptions } from "./designBffClient";
+import { isBootstrapAuthMode } from "./designApiBase";
+import { redirectToDesignLogin } from "./designAuthFlow";
 import { shouldForceEmbedAuthRecoveryOnLoad } from "./teamverAuthReturn";
+import {
+  resolveEmbedAuthReturnPath,
+  shouldDeferEmbedLoginRedirect,
+} from "./teamverEmbedAuthNavigation";
 
 /** App.tsx embed boot — first authoritative session probe. */
 export function resolveEmbedBootSessionOptions(): FetchDesignAuthSessionOptions {
@@ -88,15 +94,35 @@ export function resolveEmbedFocusSessionOptions(
  * state in that window clears the workspace store, registry caches, and the
  * project list — the root cause of idle "access denied" / empty-list glips.
  *
- * Definitive logout: cold boot, explicit auth recovery (`resetRefreshState`),
- * or no prior session and no cookie hint.
+ * Definitive logout/redirect: cold boot without prior BFF UI session, or explicit
+ * auth recovery (`resetRefreshState`).
+ *
+ * Main FE visible cookies must not block redirect — Design embed requires its own
+ * BFF HttpOnly session + exchange.
  */
 export function shouldClearEmbedSessionOnUnauthenticated(input: {
   resetRefreshState: boolean;
   hadPriorAuthenticatedUi: boolean;
-  cookieHint: boolean;
+  /** Ignored — kept for call-site compatibility. */
+  cookieHint?: boolean;
 }): boolean {
   if (input.resetRefreshState) return true;
-  if (input.hadPriorAuthenticatedUi || input.cookieHint) return false;
+  if (input.hadPriorAuthenticatedUi) return false;
   return true;
+}
+
+/** Cold start / missing BFF session — send user through Design login + exchange. */
+export function redirectToDesignLoginIfBffMissing(options?: {
+  returnTo?: string;
+  workspaceId?: string | null;
+}): void {
+  if (typeof window === "undefined") return;
+  if (!isBootstrapAuthMode()) return;
+  if (shouldDeferEmbedLoginRedirect()) return;
+  void redirectToDesignLogin({
+    workspaceId: options?.workspaceId ?? null,
+    returnTo:
+      options?.returnTo
+      ?? resolveEmbedAuthReturnPath(window.location.pathname, window.location.search),
+  });
 }

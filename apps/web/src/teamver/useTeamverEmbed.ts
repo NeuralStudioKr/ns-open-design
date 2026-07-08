@@ -11,15 +11,9 @@ import {
   type DesignAuthSession,
   type DesignAuthSessionUser,
 } from "./designBffClient";
-import { isTeamverEmbedMode, isBootstrapAuthMode } from "./designApiBase";
-import {
-  redirectToDesignLogin,
-  redirectToTeamverLoginPreservingRoute,
-} from "./designAuthFlow";
-import {
-  resolveEmbedAuthReturnPath,
-  shouldDeferEmbedLoginRedirect,
-} from "./teamverEmbedAuthNavigation";
+import { isTeamverEmbedMode } from "./designApiBase";
+import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
+import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
@@ -51,6 +45,7 @@ import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
 import {
   resolveEmbedFocusSessionOptions,
+  redirectToDesignLoginIfBffMissing,
   shouldClearEmbedSessionOnUnauthenticated,
   shouldResetEmbedRefreshDeclineOnFocus,
 } from "./teamverEmbedAuthFlow";
@@ -321,14 +316,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           return;
         }
         await clearTeamverEmbedSessionState();
-        if (isBootstrapAuthMode() && !shouldDeferEmbedLoginRedirect()) {
-          void redirectToDesignLogin({
-            returnTo: resolveEmbedAuthReturnPath(
-              window.location.pathname,
-              window.location.search,
-            ),
-          });
-        }
+        redirectToDesignLoginIfBffMissing({
+          returnTo: resolveEmbedAuthReturnPath(
+            window.location.pathname,
+            window.location.search,
+          ),
+        });
         setState({
           ...INITIAL,
           loading: false,

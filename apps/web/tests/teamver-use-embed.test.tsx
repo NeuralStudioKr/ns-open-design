@@ -393,6 +393,20 @@ describe("useTeamverEmbed", () => {
     });
   });
 
+  it("redirects to Design login on cold boot when BFF session is missing despite Main cookie hint", async () => {
+    vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: false,
+      workspaces: [],
+    });
+
+    renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(designAuthFlow.redirectToDesignLogin).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("visibility/focus refresh probes session without busting cache or sticky refresh-decline", async () => {
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: false,

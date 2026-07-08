@@ -83,7 +83,7 @@ describe("teamverEmbedAuthFlow", () => {
     });
   });
 
-  it("keeps embed session on transient unauthenticated focus refresh", () => {
+  it("keeps embed session on transient unauthenticated refresh with prior BFF UI", () => {
     expect(
       shouldClearEmbedSessionOnUnauthenticated({
         resetRefreshState: false,
@@ -91,6 +91,16 @@ describe("teamverEmbedAuthFlow", () => {
         cookieHint: false,
       }),
     ).toBe(false);
+  });
+
+  it("clears embed session on cold boot even when Main cookie hint is visible", () => {
+    expect(
+      shouldClearEmbedSessionOnUnauthenticated({
+        resetRefreshState: false,
+        hadPriorAuthenticatedUi: false,
+        cookieHint: true,
+      }),
+    ).toBe(true);
   });
 
   it("clears embed session on explicit auth recovery that stays unauthenticated", () => {
