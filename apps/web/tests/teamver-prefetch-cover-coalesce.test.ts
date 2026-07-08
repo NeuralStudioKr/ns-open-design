@@ -28,6 +28,7 @@ vi.mock("../src/teamver/latestPublishSummary", () => ({
 import { prefetchDesignsTabViewport } from "../src/teamver/prefetchDesignsTabViewport";
 import { prefetchHomeProjectCovers } from "../src/teamver/prefetchHomeProjectCovers";
 import { resetProjectCoverLoaderStateForTests } from "../src/teamver/projectCoverLoader";
+import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
 import type { Project } from "../src/types";
 
 function project(id: string, updatedAt: number): Project {
@@ -48,6 +49,7 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     fetchProjectFilesMock.mockReset();
     fetchProjectFilesMock.mockResolvedValue([]);
     prefetchLatestPublishSummariesMock.mockReset();
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     resetProjectCoverLoaderStateForTests();
   });
 
@@ -67,10 +69,10 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     expect(prefetchLatestPublishSummariesMock).toHaveBeenCalledTimes(1);
-    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
   });
 
-  it("home recent prefetch falls back to bounded /files listing when cover-hints are empty", async () => {
+  it("home recent prefetch skips /files listing on embed root when cover-hints are empty", async () => {
     const projects = Array.from({ length: 6 }, (_, index) =>
       project(`home-${index}`, 100 - index),
     );
@@ -87,8 +89,33 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     const covers = await prefetchHomeProjectCovers(projects);
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+    expect(covers["home-0"]).toBeNull();
+  });
+
+  it("standalone home recent prefetch may still use bounded /files fallback", async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
+    const projects = Array.from({ length: 6 }, (_, index) =>
+      project(`home-standalone-${index}`, 100 - index),
+    );
+    fetchProjectFilesMock.mockImplementation(async (projectId: string) => [
+      {
+        name: `${projectId}.html`,
+        kind: "html",
+        mtime: 1,
+        size: 1,
+        mime: "text/html",
+      },
+    ]);
+
+    const covers = await prefetchHomeProjectCovers(projects);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
-    expect(covers["home-0"]).toEqual({ kind: "html", name: "home-0.html" });
+    expect(covers["home-standalone-0"]).toEqual({
+      kind: "html",
+      name: "home-standalone-0.html",
+    });
   });
 
   it("home recent prefetch still skips /files listing when cover-hints resolve covers", async () => {
