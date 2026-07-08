@@ -17,15 +17,19 @@ import {
   getCachedConversations,
   getCachedConversationById,
   getCachedMessages,
+  getCachedPreviewComments,
   getCachedProject,
   getCachedTabsState,
   invalidateCachedConversations,
   invalidateCachedMessages,
   invalidateCachedTabsState,
+  removeCachedPreviewComment,
   setCachedConversations,
   setCachedMessages,
+  setCachedPreviewComments,
   setCachedProject,
   setCachedTabsState,
+  upsertCachedPreviewComment,
 } from './storage/daemon-db-entity-cache.js';
 import * as pgCore from './storage/daemon-db-postgres-core.js';
 import {
@@ -1049,6 +1053,25 @@ export async function warmProjectFromPostgres(projectId: string): Promise<void> 
       updatedAt: tabsState.updatedAt,
     });
   }
+  // Preview comments are stored in the cache as raw postgres row shapes
+  // (camelCase alias columns), matching what upsertPreviewComment writes.
+  // listPreviewComments applies normalizePreviewComment on read.
+  const previewComments = await pgCore.pgListPreviewCommentsForProject(pool, projectId);
+  const commentsByConversation = new Map<string, DbRow[]>();
+  for (const row of previewComments) {
+    const conversationId = String(row.conversationId ?? '');
+    if (!conversationId) continue;
+    const list = commentsByConversation.get(conversationId) ?? [];
+    list.push(row as DbRow);
+    commentsByConversation.set(conversationId, list);
+  }
+  for (const conversation of normalizedConversations) {
+    setCachedPreviewComments(
+      projectId,
+      String(conversation.id),
+      commentsByConversation.get(String(conversation.id)) ?? [],
+    );
+  }
 }
 
 export function getConversation(db: SqliteDb, id: string) {
@@ -1696,6 +1719,10 @@ const PREVIEW_COMMENT_STATUSES = new Set([
 ]);
 
 export function listPreviewComments(db: SqliteDb, projectId: string, conversationId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedPreviewComments(projectId, conversationId);
+    return (cached ?? []).map((row) => normalizePreviewComment(row as DbRow));
+  }
   return (db
     .prepare(
       `SELECT id, project_id AS projectId, conversation_id AS conversationId,
@@ -1739,6 +1766,77 @@ export function upsertPreviewComment(db: SqliteDb, projectId: string, conversati
   const slideIndex = Number.isFinite(target.slideIndex) ? Math.max(0, Math.round(target.slideIndex)) : null;
   const slideKey = slideIndex ?? -1;
   const now = Date.now();
+
+  if (isDaemonDbPostgres()) {
+    let cached = getCachedPreviewComments(projectId, conversationId);
+    if (!cached) {
+      // Warm miss — start with an empty list so upsertCachedPreviewComment
+      // has a bucket to write into. A subsequent full warm will overwrite
+      // this with the authoritative Postgres snapshot.
+      cached = [];
+      setCachedPreviewComments(projectId, conversationId, cached);
+    }
+    const existing = cached.find((row) => {
+      const r = row as DbRow;
+      return r.filePath === filePath && r.elementId === elementId && Number(r.slideKey ?? -1) === slideKey;
+    }) as DbRow | undefined;
+    const id = (existing?.id as string) ?? randomCommentId();
+    const createdAt = Number(existing?.createdAt ?? now);
+    const existingAttachments = normalizePreviewCommentAttachments(existing?.attachments);
+    const attachments = attachmentsProvided ? incomingAttachments : existingAttachments;
+    if (!note && attachments.length === 0) throw new Error('comment note required');
+    const rowForCache: DbRow = {
+      id,
+      projectId,
+      conversationId,
+      filePath,
+      elementId,
+      selector,
+      label,
+      text,
+      positionJson: JSON.stringify(position),
+      htmlHint,
+      selectionKind,
+      memberCount: selectionKind === 'pod' ? memberCount : null,
+      podMembersJson: selectionKind === 'pod' ? JSON.stringify(podMembers) : null,
+      styleJson: style ? JSON.stringify(style) : null,
+      attachmentsJson: attachments.length > 0 ? JSON.stringify(attachments) : null,
+      slideIndex,
+      slideKey,
+      note,
+      status: 'open',
+      createdAt,
+      updatedAt: now,
+    };
+    upsertCachedPreviewComment(projectId, conversationId, rowForCache);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertPreviewComment(getPostgresPool(), {
+        id,
+        projectId,
+        conversationId,
+        filePath,
+        elementId,
+        selector,
+        label,
+        text,
+        positionJson: rowForCache.positionJson as string,
+        htmlHint,
+        selectionKind,
+        memberCount: rowForCache.memberCount as number | null,
+        podMembersJson: rowForCache.podMembersJson as string | null,
+        styleJson: rowForCache.styleJson as string | null,
+        attachmentsJson: rowForCache.attachmentsJson as string | null,
+        slideIndex,
+        slideKey,
+        note,
+        status: 'open',
+        createdAt,
+        updatedAt: now,
+      });
+    });
+    return normalizePreviewComment(rowForCache);
+  }
+
   const existing = db
     .prepare(
       `SELECT id, created_at AS createdAt, attachments_json AS attachmentsJson
@@ -1802,6 +1900,38 @@ export function upsertPreviewComment(db: SqliteDb, projectId: string, conversati
 export function updatePreviewCommentStatus(db: SqliteDb, projectId: string, conversationId: string, id: string, status: string) {
   if (!PREVIEW_COMMENT_STATUSES.has(status)) throw new Error('invalid comment status');
   const now = Date.now();
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedPreviewComments(projectId, conversationId) ?? [];
+    const existing = cached.find((row) => String((row as DbRow).id) === id) as DbRow | undefined;
+    if (existing) {
+      const merged = { ...existing, status, updatedAt: now };
+      upsertCachedPreviewComment(projectId, conversationId, merged);
+      schedulePostgresWrite(async () => {
+        await pgCore.pgUpdatePreviewCommentStatus(
+          getPostgresPool(),
+          projectId,
+          conversationId,
+          id,
+          status,
+          now,
+        );
+      });
+      return normalizePreviewComment(merged);
+    }
+    // Not cached — issue the async write anyway; caller will re-fetch after
+    // the next warm cycle.
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdatePreviewCommentStatus(
+        getPostgresPool(),
+        projectId,
+        conversationId,
+        id,
+        status,
+        now,
+      );
+    });
+    return null;
+  }
   db.prepare(
     `UPDATE preview_comments
         SET status = ?, updated_at = ?
@@ -1811,6 +1941,20 @@ export function updatePreviewCommentStatus(db: SqliteDb, projectId: string, conv
 }
 
 export function deletePreviewComment(db: SqliteDb, projectId: string, conversationId: string, id: string) {
+  if (isDaemonDbPostgres()) {
+    const removed = removeCachedPreviewComment(projectId, conversationId, id);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeletePreviewComment(getPostgresPool(), projectId, conversationId, id);
+    });
+    // We don't know for sure whether the row existed in Postgres, but the
+    // caller's contract mirrors sqlite semantics (true when locally
+    // observed). removed==false with a warm cache means "not present" —
+    // safe to report false. When the cache is cold we optimistically
+    // report true; the async delete will no-op if the row was already
+    // gone.
+    if (removed) return true;
+    return getCachedPreviewComments(projectId, conversationId) == null;
+  }
   const result = db
     .prepare(
       `DELETE FROM preview_comments

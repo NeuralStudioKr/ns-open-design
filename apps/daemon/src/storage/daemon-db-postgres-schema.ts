@@ -5,8 +5,9 @@
 //
 // v1 — B5.1 core: projects, conversations, agent_sessions, messages
 // v2 — B5.2 tabs:  project_tabs_state (single json blob per project)
+// v3 — B5.3 preview_comments (per-conversation anchored annotations)
 
-export const DAEMON_DB_SCHEMA_VERSION = 2;
+export const DAEMON_DB_SCHEMA_VERSION = 3;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -87,10 +88,47 @@ CREATE TABLE IF NOT EXISTS project_tabs_state (
 );
 `;
 
+// preview_comments — per (project_id, conversation_id, file_path, element_id,
+// slide_key) uniqueness matches sqlite. slide_key defaults to -1 so element
+// annotations that aren't slide-anchored still satisfy the unique index.
+export const DAEMON_DB_POSTGRES_MIGRATION_V3 = `
+CREATE TABLE IF NOT EXISTS preview_comments (
+  id                  TEXT PRIMARY KEY,
+  project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  conversation_id     TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  file_path           TEXT NOT NULL,
+  element_id          TEXT NOT NULL,
+  selector            TEXT NOT NULL,
+  label               TEXT NOT NULL,
+  text                TEXT NOT NULL,
+  position_json       TEXT NOT NULL,
+  html_hint           TEXT NOT NULL,
+  selection_kind      TEXT,
+  member_count        INTEGER,
+  pod_members_json    TEXT,
+  style_json          TEXT,
+  attachments_json    TEXT,
+  slide_index         INTEGER,
+  slide_key           INTEGER NOT NULL DEFAULT -1,
+  note                TEXT NOT NULL,
+  status              TEXT NOT NULL,
+  created_at          BIGINT NOT NULL,
+  updated_at          BIGINT NOT NULL,
+  CONSTRAINT preview_comments_scope_unique
+    UNIQUE (project_id, conversation_id, file_path, element_id, slide_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_preview_comments_conversation
+  ON preview_comments(project_id, conversation_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_preview_comments_conversation_created
+  ON preview_comments(project_id, conversation_id, created_at ASC);
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
 }> = [
   { version: 1, sql: DAEMON_DB_POSTGRES_MIGRATION_V1 },
   { version: 2, sql: DAEMON_DB_POSTGRES_MIGRATION_V2 },
+  { version: 3, sql: DAEMON_DB_POSTGRES_MIGRATION_V3 },
 ];

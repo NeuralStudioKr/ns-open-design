@@ -4,6 +4,7 @@
 type CachedProject = Record<string, unknown>;
 type CachedConversation = Record<string, unknown>;
 type CachedMessage = Record<string, unknown>;
+type CachedPreviewComment = Record<string, unknown>;
 type CachedTabsState = {
   stateJson: string | null;
   updatedAt: number;
@@ -13,6 +14,13 @@ const projects = new Map<string, CachedProject>();
 const conversationsByProject = new Map<string, CachedConversation[]>();
 const messagesByConversation = new Map<string, CachedMessage[]>();
 const tabsStateByProject = new Map<string, CachedTabsState>();
+// Preview comments keyed by `${projectId}:${conversationId}` — sqlite reads
+// only ever ask for a full list per conversation, so we cache list bodies.
+const previewCommentsByScope = new Map<string, CachedPreviewComment[]>();
+
+function previewCommentsScopeKey(projectId: string, conversationId: string): string {
+  return `${projectId}:${conversationId}`;
+}
 
 export function getCachedProject(id: string): CachedProject | null {
   return projects.get(id) ?? null;
@@ -26,6 +34,9 @@ export function deleteCachedProject(id: string): void {
   projects.delete(id);
   conversationsByProject.delete(id);
   tabsStateByProject.delete(id);
+  for (const key of Array.from(previewCommentsByScope.keys())) {
+    if (key.startsWith(`${id}:`)) previewCommentsByScope.delete(key);
+  }
 }
 
 export function getCachedConversations(projectId: string): CachedConversation[] | null {
@@ -72,9 +83,75 @@ export function invalidateCachedTabsState(projectId: string): void {
   tabsStateByProject.delete(projectId);
 }
 
+export function getCachedPreviewComments(
+  projectId: string,
+  conversationId: string,
+): CachedPreviewComment[] | null {
+  return previewCommentsByScope.get(previewCommentsScopeKey(projectId, conversationId)) ?? null;
+}
+
+export function setCachedPreviewComments(
+  projectId: string,
+  conversationId: string,
+  rows: CachedPreviewComment[],
+): void {
+  previewCommentsByScope.set(previewCommentsScopeKey(projectId, conversationId), rows);
+}
+
+export function invalidateCachedPreviewComments(
+  projectId: string,
+  conversationId: string,
+): void {
+  previewCommentsByScope.delete(previewCommentsScopeKey(projectId, conversationId));
+}
+
+/**
+ * Merge a mutated / newly inserted comment into the cached list for its
+ * (projectId, conversationId) scope. Preserves insertion order (created_at
+ * ASC, id ASC) to match the sqlite read query. If the scope isn't cached
+ * yet, this is a no-op — the next warm/read populates it.
+ */
+export function upsertCachedPreviewComment(
+  projectId: string,
+  conversationId: string,
+  comment: CachedPreviewComment,
+): void {
+  const key = previewCommentsScopeKey(projectId, conversationId);
+  const list = previewCommentsByScope.get(key);
+  if (!list) return;
+  const idx = list.findIndex((row) => String(row.id) === String(comment.id));
+  if (idx >= 0) {
+    list[idx] = comment;
+    return;
+  }
+  const insertAt = list.findIndex((row) => {
+    const rowCreated = Number(row.createdAt ?? 0);
+    const cCreated = Number(comment.createdAt ?? 0);
+    if (rowCreated !== cCreated) return rowCreated > cCreated;
+    return String(row.id) > String(comment.id);
+  });
+  if (insertAt < 0) list.push(comment);
+  else list.splice(insertAt, 0, comment);
+}
+
+export function removeCachedPreviewComment(
+  projectId: string,
+  conversationId: string,
+  id: string,
+): boolean {
+  const key = previewCommentsScopeKey(projectId, conversationId);
+  const list = previewCommentsByScope.get(key);
+  if (!list) return false;
+  const idx = list.findIndex((row) => String(row.id) === id);
+  if (idx < 0) return false;
+  list.splice(idx, 1);
+  return true;
+}
+
 export function clearDaemonDbEntityCache(): void {
   projects.clear();
   conversationsByProject.clear();
   messagesByConversation.clear();
   tabsStateByProject.clear();
+  previewCommentsByScope.clear();
 }

@@ -87,15 +87,17 @@ async function main(): Promise<void> {
     messages: 0,
     agent_sessions: 0,
     tabs_state: 0,
+    preview_comments: 0,
     skipped: 0,
   };
 
   try {
-    stats.projects       = await migrateProjects(sqlite, pool, args.dryRun);
-    stats.conversations  = await migrateConversations(sqlite, pool, args.dryRun);
-    stats.messages       = await migrateMessages(sqlite, pool, args.dryRun);
-    stats.agent_sessions = await migrateAgentSessions(sqlite, pool, args.dryRun);
-    stats.tabs_state     = await migrateTabsState(sqlite, pool, args.dryRun);
+    stats.projects         = await migrateProjects(sqlite, pool, args.dryRun);
+    stats.conversations    = await migrateConversations(sqlite, pool, args.dryRun);
+    stats.messages         = await migrateMessages(sqlite, pool, args.dryRun);
+    stats.agent_sessions   = await migrateAgentSessions(sqlite, pool, args.dryRun);
+    stats.tabs_state       = await migrateTabsState(sqlite, pool, args.dryRun);
+    stats.preview_comments = await migratePreviewComments(sqlite, pool, args.dryRun);
   } finally {
     sqlite.close();
     await pool.end();
@@ -347,6 +349,77 @@ async function migrateTabsState(
     );
   }
   logStage('project_tabs_state', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migratePreviewComments(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  const rows = sqlite
+    .prepare(
+      `SELECT id, project_id, conversation_id, file_path, element_id, selector,
+              label, text, position_json, html_hint, selection_kind, member_count,
+              pod_members_json, style_json, attachments_json, slide_index,
+              slide_key, note, status, created_at, updated_at
+         FROM preview_comments`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('preview_comments', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO preview_comments
+         (id, project_id, conversation_id, file_path, element_id, selector, label,
+          text, position_json, html_hint, selection_kind, member_count,
+          pod_members_json, style_json, attachments_json,
+          slide_index, slide_key, note, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+       ON CONFLICT (id) DO UPDATE
+         SET selector = EXCLUDED.selector,
+             label = EXCLUDED.label,
+             text = EXCLUDED.text,
+             position_json = EXCLUDED.position_json,
+             html_hint = EXCLUDED.html_hint,
+             selection_kind = EXCLUDED.selection_kind,
+             member_count = EXCLUDED.member_count,
+             pod_members_json = EXCLUDED.pod_members_json,
+             style_json = EXCLUDED.style_json,
+             attachments_json = EXCLUDED.attachments_json,
+             slide_index = EXCLUDED.slide_index,
+             slide_key = EXCLUDED.slide_key,
+             note = EXCLUDED.note,
+             status = EXCLUDED.status,
+             updated_at = EXCLUDED.updated_at`,
+      [
+        r.id,
+        r.project_id,
+        r.conversation_id,
+        r.file_path,
+        r.element_id,
+        r.selector,
+        r.label,
+        r.text,
+        r.position_json,
+        r.html_hint,
+        r.selection_kind ?? null,
+        r.member_count ?? null,
+        r.pod_members_json ?? null,
+        r.style_json ?? null,
+        r.attachments_json ?? null,
+        r.slide_index ?? null,
+        Number(r.slide_key ?? -1),
+        r.note,
+        r.status,
+        Number(r.created_at ?? Date.now()),
+        Number(r.updated_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('preview_comments', rows.length, 'applied');
   return rows.length;
 }
 

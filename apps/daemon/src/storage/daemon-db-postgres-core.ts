@@ -446,3 +446,161 @@ export async function pgUpsertTabsState(
 export async function pgDeleteTabsState(pool: Pool, projectId: string): Promise<void> {
   await pool.query(`DELETE FROM project_tabs_state WHERE project_id = $1`, [projectId]);
 }
+
+// ---------- preview_comments ----------
+
+const PREVIEW_COMMENT_COLS = `id,
+  project_id AS "projectId",
+  conversation_id AS "conversationId",
+  file_path AS "filePath",
+  element_id AS "elementId",
+  selector,
+  label,
+  text,
+  position_json AS "positionJson",
+  html_hint AS "htmlHint",
+  selection_kind AS "selectionKind",
+  member_count AS "memberCount",
+  pod_members_json AS "podMembersJson",
+  style_json AS "styleJson",
+  attachments_json AS "attachmentsJson",
+  slide_index AS "slideIndex",
+  slide_key AS "slideKey",
+  note,
+  status,
+  created_at AS "createdAt",
+  updated_at AS "updatedAt"`;
+
+export async function pgListPreviewComments(
+  pool: Pool,
+  projectId: string,
+  conversationId: string,
+): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${PREVIEW_COMMENT_COLS}
+       FROM preview_comments
+      WHERE project_id = $1 AND conversation_id = $2
+      ORDER BY created_at ASC, id ASC`,
+    [projectId, conversationId],
+  );
+}
+
+export async function pgListPreviewCommentsForProject(
+  pool: Pool,
+  projectId: string,
+): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${PREVIEW_COMMENT_COLS}
+       FROM preview_comments
+      WHERE project_id = $1
+      ORDER BY conversation_id, created_at ASC, id ASC`,
+    [projectId],
+  );
+}
+
+export interface PgPreviewCommentInput {
+  id: string;
+  projectId: string;
+  conversationId: string;
+  filePath: string;
+  elementId: string;
+  selector: string;
+  label: string;
+  text: string;
+  positionJson: string;
+  htmlHint: string;
+  selectionKind: string;
+  memberCount: number | null;
+  podMembersJson: string | null;
+  styleJson: string | null;
+  attachmentsJson: string | null;
+  slideIndex: number | null;
+  slideKey: number;
+  note: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function pgUpsertPreviewComment(
+  pool: Pool,
+  c: PgPreviewCommentInput,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO preview_comments
+       (id, project_id, conversation_id, file_path, element_id, selector, label,
+        text, position_json, html_hint, selection_kind, member_count,
+        pod_members_json, style_json, attachments_json,
+        slide_index, slide_key, note, status, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+     ON CONFLICT ON CONSTRAINT preview_comments_scope_unique DO UPDATE SET
+       selector = EXCLUDED.selector,
+       label = EXCLUDED.label,
+       text = EXCLUDED.text,
+       position_json = EXCLUDED.position_json,
+       html_hint = EXCLUDED.html_hint,
+       selection_kind = EXCLUDED.selection_kind,
+       member_count = EXCLUDED.member_count,
+       pod_members_json = EXCLUDED.pod_members_json,
+       style_json = EXCLUDED.style_json,
+       attachments_json = EXCLUDED.attachments_json,
+       slide_index = EXCLUDED.slide_index,
+       note = EXCLUDED.note,
+       status = 'open',
+       updated_at = EXCLUDED.updated_at`,
+    [
+      c.id,
+      c.projectId,
+      c.conversationId,
+      c.filePath,
+      c.elementId,
+      c.selector,
+      c.label,
+      c.text,
+      c.positionJson,
+      c.htmlHint,
+      c.selectionKind,
+      c.memberCount,
+      c.podMembersJson,
+      c.styleJson,
+      c.attachmentsJson,
+      c.slideIndex,
+      c.slideKey,
+      c.note,
+      c.status,
+      c.createdAt,
+      c.updatedAt,
+    ],
+  );
+}
+
+export async function pgUpdatePreviewCommentStatus(
+  pool: Pool,
+  projectId: string,
+  conversationId: string,
+  id: string,
+  status: string,
+  updatedAt: number,
+): Promise<void> {
+  await pool.query(
+    `UPDATE preview_comments
+        SET status = $4, updated_at = $5
+      WHERE id = $1 AND project_id = $2 AND conversation_id = $3`,
+    [id, projectId, conversationId, status, updatedAt],
+  );
+}
+
+export async function pgDeletePreviewComment(
+  pool: Pool,
+  projectId: string,
+  conversationId: string,
+  id: string,
+): Promise<void> {
+  await pool.query(
+    `DELETE FROM preview_comments
+       WHERE id = $1 AND project_id = $2 AND conversation_id = $3`,
+    [id, projectId, conversationId],
+  );
+}
