@@ -5,6 +5,7 @@ type CachedProject = Record<string, unknown>;
 type CachedConversation = Record<string, unknown>;
 type CachedMessage = Record<string, unknown>;
 type CachedPreviewComment = Record<string, unknown>;
+type CachedDeployment = Record<string, unknown>;
 type CachedTabsState = {
   stateJson: string | null;
   updatedAt: number;
@@ -17,6 +18,8 @@ const tabsStateByProject = new Map<string, CachedTabsState>();
 // Preview comments keyed by `${projectId}:${conversationId}` — sqlite reads
 // only ever ask for a full list per conversation, so we cache list bodies.
 const previewCommentsByScope = new Map<string, CachedPreviewComment[]>();
+// Deployments cached per-project, ordered updated_at DESC to match sqlite.
+const deploymentsByProject = new Map<string, CachedDeployment[]>();
 
 function previewCommentsScopeKey(projectId: string, conversationId: string): string {
   return `${projectId}:${conversationId}`;
@@ -37,6 +40,7 @@ export function deleteCachedProject(id: string): void {
   for (const key of Array.from(previewCommentsByScope.keys())) {
     if (key.startsWith(`${id}:`)) previewCommentsByScope.delete(key);
   }
+  deploymentsByProject.delete(id);
 }
 
 export function getCachedConversations(projectId: string): CachedConversation[] | null {
@@ -148,10 +152,49 @@ export function removeCachedPreviewComment(
   return true;
 }
 
+export function getCachedDeployments(projectId: string): CachedDeployment[] | null {
+  return deploymentsByProject.get(projectId) ?? null;
+}
+
+export function setCachedDeployments(projectId: string, rows: CachedDeployment[]): void {
+  deploymentsByProject.set(projectId, rows);
+}
+
+export function invalidateCachedDeployments(projectId: string): void {
+  deploymentsByProject.delete(projectId);
+}
+
+/**
+ * Merge a deployment (identified by (fileName, providerId)) into the
+ * per-project list, then re-sort by updated_at DESC so listDeployments
+ * ordering stays deterministic. Caller supplies the raw row shape used
+ * for sqlite-parity reads.
+ */
+export function upsertCachedDeployment(
+  projectId: string,
+  deployment: CachedDeployment,
+): void {
+  const list = deploymentsByProject.get(projectId);
+  if (!list) return;
+  const idx = list.findIndex(
+    (row) =>
+      String((row as Record<string, unknown>).fileName) === String((deployment as Record<string, unknown>).fileName) &&
+      String((row as Record<string, unknown>).providerId) === String((deployment as Record<string, unknown>).providerId),
+  );
+  if (idx >= 0) list[idx] = deployment;
+  else list.push(deployment);
+  list.sort((a, b) => {
+    const bu = Number((b as Record<string, unknown>).updatedAt ?? 0);
+    const au = Number((a as Record<string, unknown>).updatedAt ?? 0);
+    return bu - au;
+  });
+}
+
 export function clearDaemonDbEntityCache(): void {
   projects.clear();
   conversationsByProject.clear();
   messagesByConversation.clear();
   tabsStateByProject.clear();
   previewCommentsByScope.clear();
+  deploymentsByProject.clear();
 }

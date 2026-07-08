@@ -6,8 +6,9 @@
 // v1 — B5.1 core: projects, conversations, agent_sessions, messages
 // v2 — B5.2 tabs:  project_tabs_state (single json blob per project)
 // v3 — B5.3 preview_comments (per-conversation anchored annotations)
+// v4 — B5.4 deployments (per-project preview/publish records)
 
-export const DAEMON_DB_SCHEMA_VERSION = 3;
+export const DAEMON_DB_SCHEMA_VERSION = 4;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -124,6 +125,33 @@ CREATE INDEX IF NOT EXISTS idx_preview_comments_conversation_created
   ON preview_comments(project_id, conversation_id, created_at ASC);
 `;
 
+// deployments — matches sqlite. UNIQUE(project_id, file_name, provider_id)
+// is the upsert scope; a separate id column is preserved so external
+// references (e.g. dashboards) remain stable across re-publishes.
+export const DAEMON_DB_POSTGRES_MIGRATION_V4 = `
+CREATE TABLE IF NOT EXISTS deployments (
+  id                      TEXT PRIMARY KEY,
+  project_id              TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  file_name               TEXT NOT NULL,
+  provider_id             TEXT NOT NULL,
+  url                     TEXT NOT NULL,
+  deployment_id           TEXT,
+  deployment_count        INTEGER NOT NULL DEFAULT 1,
+  target                  TEXT NOT NULL DEFAULT 'preview',
+  status                  TEXT NOT NULL DEFAULT 'ready',
+  status_message          TEXT,
+  reachable_at            BIGINT,
+  provider_metadata_json  TEXT,
+  created_at              BIGINT NOT NULL,
+  updated_at              BIGINT NOT NULL,
+  CONSTRAINT deployments_scope_unique
+    UNIQUE (project_id, file_name, provider_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deployments_project
+  ON deployments(project_id, updated_at DESC);
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -131,4 +159,5 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 1, sql: DAEMON_DB_POSTGRES_MIGRATION_V1 },
   { version: 2, sql: DAEMON_DB_POSTGRES_MIGRATION_V2 },
   { version: 3, sql: DAEMON_DB_POSTGRES_MIGRATION_V3 },
+  { version: 4, sql: DAEMON_DB_POSTGRES_MIGRATION_V4 },
 ];

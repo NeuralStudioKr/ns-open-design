@@ -16,6 +16,7 @@ import {
   deleteCachedProject,
   getCachedConversations,
   getCachedConversationById,
+  getCachedDeployments,
   getCachedMessages,
   getCachedPreviewComments,
   getCachedProject,
@@ -25,10 +26,12 @@ import {
   invalidateCachedTabsState,
   removeCachedPreviewComment,
   setCachedConversations,
+  setCachedDeployments,
   setCachedMessages,
   setCachedPreviewComments,
   setCachedProject,
   setCachedTabsState,
+  upsertCachedDeployment,
   upsertCachedPreviewComment,
 } from './storage/daemon-db-entity-cache.js';
 import * as pgCore from './storage/daemon-db-postgres-core.js';
@@ -441,6 +444,10 @@ const DEPLOYMENT_COLS = `id, project_id AS projectId, file_name AS fileName,
   created_at AS createdAt, updated_at AS updatedAt`;
 
 export function listDeployments(db: SqliteDb, projectId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedDeployments(projectId);
+    return (cached ?? []).map((row) => normalizeDeployment(row as DbRow));
+  }
   return (db
     .prepare(
       `SELECT ${DEPLOYMENT_COLS}
@@ -453,6 +460,15 @@ export function listDeployments(db: SqliteDb, projectId: string) {
 }
 
 export function getDeployment(db: SqliteDb, projectId: string, fileName: string, providerId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedDeployments(projectId) ?? [];
+    const hit = cached.find(
+      (row) =>
+        String((row as DbRow).fileName) === fileName &&
+        String((row as DbRow).providerId) === providerId,
+    );
+    return hit ? normalizeDeployment(hit as DbRow) : null;
+  }
   const row = db
     .prepare(
       `SELECT ${DEPLOYMENT_COLS}
@@ -464,6 +480,11 @@ export function getDeployment(db: SqliteDb, projectId: string, fileName: string,
 }
 
 export function getDeploymentById(db: SqliteDb, projectId: string, id: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedDeployments(projectId) ?? [];
+    const hit = cached.find((row) => String((row as DbRow).id) === id);
+    return hit ? normalizeDeployment(hit as DbRow) : null;
+  }
   const row = db
     .prepare(
       `SELECT ${DEPLOYMENT_COLS}
@@ -515,6 +536,51 @@ export function upsertDeployment(db: SqliteDb, deployment: DbRow) {
     updatedAt: deployment.updatedAt ?? now,
   };
   const providerMetadataJson = stringifyJsonObjectOrNull(next.providerMetadata);
+
+  if (isDaemonDbPostgres()) {
+    // Ensure the project bucket exists so upsertCachedDeployment isn't a
+    // no-op after a warm miss.
+    if (getCachedDeployments(next.projectId) == null) {
+      setCachedDeployments(next.projectId, []);
+    }
+    const rowForCache: DbRow = {
+      id: next.id,
+      projectId: next.projectId,
+      fileName: next.fileName,
+      providerId: next.providerId,
+      url: next.url,
+      deploymentId: next.deploymentId,
+      deploymentCount: next.deploymentCount,
+      target: next.target,
+      status: next.status,
+      statusMessage: next.statusMessage,
+      reachableAt: next.reachableAt,
+      providerMetadataJson,
+      createdAt: next.createdAt,
+      updatedAt: next.updatedAt,
+    };
+    upsertCachedDeployment(next.projectId, rowForCache);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertDeployment(getPostgresPool(), {
+        id: next.id,
+        projectId: next.projectId,
+        fileName: next.fileName,
+        providerId: next.providerId,
+        url: next.url,
+        deploymentId: next.deploymentId,
+        deploymentCount: next.deploymentCount,
+        target: next.target,
+        status: next.status,
+        statusMessage: next.statusMessage,
+        reachableAt: next.reachableAt,
+        providerMetadataJson,
+        createdAt: next.createdAt,
+        updatedAt: next.updatedAt,
+      });
+    });
+    return normalizeDeployment(rowForCache);
+  }
+
   db.prepare(
     `INSERT INTO deployments
        (id, project_id, file_name, provider_id, url, deployment_id,
@@ -1072,6 +1138,8 @@ export async function warmProjectFromPostgres(projectId: string): Promise<void> 
       commentsByConversation.get(String(conversation.id)) ?? [],
     );
   }
+  const deployments = await pgCore.pgListDeployments(pool, projectId);
+  setCachedDeployments(projectId, deployments as DbRow[]);
 }
 
 export function getConversation(db: SqliteDb, id: string) {

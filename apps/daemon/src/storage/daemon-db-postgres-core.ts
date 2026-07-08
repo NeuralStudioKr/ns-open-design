@@ -604,3 +604,99 @@ export async function pgDeletePreviewComment(
     [id, projectId, conversationId],
   );
 }
+
+// ---------- deployments ----------
+
+const DEPLOYMENT_COLS = `id,
+  project_id AS "projectId",
+  file_name AS "fileName",
+  provider_id AS "providerId",
+  url,
+  deployment_id AS "deploymentId",
+  deployment_count AS "deploymentCount",
+  target,
+  status,
+  status_message AS "statusMessage",
+  reachable_at AS "reachableAt",
+  provider_metadata_json AS "providerMetadataJson",
+  created_at AS "createdAt",
+  updated_at AS "updatedAt"`;
+
+export async function pgListDeployments(pool: Pool, projectId: string): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${DEPLOYMENT_COLS}
+       FROM deployments
+      WHERE project_id = $1
+      ORDER BY updated_at DESC`,
+    [projectId],
+  );
+}
+
+export async function pgGetDeploymentByScope(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+  providerId: string,
+): Promise<DbRow | null> {
+  return queryPostgresRow(
+    pool,
+    `SELECT ${DEPLOYMENT_COLS}
+       FROM deployments
+      WHERE project_id = $1 AND file_name = $2 AND provider_id = $3`,
+    [projectId, fileName, providerId],
+  );
+}
+
+export interface PgDeploymentInput {
+  id: string;
+  projectId: string;
+  fileName: string;
+  providerId: string;
+  url: string;
+  deploymentId: string | null;
+  deploymentCount: number;
+  target: string;
+  status: string;
+  statusMessage: string | null;
+  reachableAt: number | null;
+  providerMetadataJson: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function pgUpsertDeployment(pool: Pool, d: PgDeploymentInput): Promise<void> {
+  await pool.query(
+    `INSERT INTO deployments
+       (id, project_id, file_name, provider_id, url, deployment_id,
+        deployment_count, target, status, status_message, reachable_at,
+        provider_metadata_json, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ON CONFLICT ON CONSTRAINT deployments_scope_unique DO UPDATE SET
+       url = EXCLUDED.url,
+       deployment_id = EXCLUDED.deployment_id,
+       deployment_count = EXCLUDED.deployment_count,
+       target = EXCLUDED.target,
+       status = EXCLUDED.status,
+       status_message = EXCLUDED.status_message,
+       reachable_at = EXCLUDED.reachable_at,
+       provider_metadata_json = EXCLUDED.provider_metadata_json,
+       updated_at = EXCLUDED.updated_at`,
+    [
+      d.id,
+      d.projectId,
+      d.fileName,
+      d.providerId,
+      d.url,
+      d.deploymentId,
+      d.deploymentCount,
+      d.target,
+      d.status,
+      d.statusMessage,
+      d.reachableAt,
+      d.providerMetadataJson,
+      d.createdAt,
+      d.updatedAt,
+    ],
+  );
+}

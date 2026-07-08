@@ -88,6 +88,7 @@ async function main(): Promise<void> {
     agent_sessions: 0,
     tabs_state: 0,
     preview_comments: 0,
+    deployments: 0,
     skipped: 0,
   };
 
@@ -98,6 +99,7 @@ async function main(): Promise<void> {
     stats.agent_sessions   = await migrateAgentSessions(sqlite, pool, args.dryRun);
     stats.tabs_state       = await migrateTabsState(sqlite, pool, args.dryRun);
     stats.preview_comments = await migratePreviewComments(sqlite, pool, args.dryRun);
+    stats.deployments      = await migrateDeployments(sqlite, pool, args.dryRun);
   } finally {
     sqlite.close();
     await pool.end();
@@ -420,6 +422,62 @@ async function migratePreviewComments(
     );
   }
   logStage('preview_comments', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migrateDeployments(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  const rows = sqlite
+    .prepare(
+      `SELECT id, project_id, file_name, provider_id, url, deployment_id,
+              deployment_count, target, status, status_message, reachable_at,
+              provider_metadata_json, created_at, updated_at
+         FROM deployments`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('deployments', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO deployments
+         (id, project_id, file_name, provider_id, url, deployment_id,
+          deployment_count, target, status, status_message, reachable_at,
+          provider_metadata_json, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (id) DO UPDATE
+         SET url = EXCLUDED.url,
+             deployment_id = EXCLUDED.deployment_id,
+             deployment_count = EXCLUDED.deployment_count,
+             target = EXCLUDED.target,
+             status = EXCLUDED.status,
+             status_message = EXCLUDED.status_message,
+             reachable_at = EXCLUDED.reachable_at,
+             provider_metadata_json = EXCLUDED.provider_metadata_json,
+             updated_at = EXCLUDED.updated_at`,
+      [
+        r.id,
+        r.project_id,
+        r.file_name,
+        r.provider_id,
+        r.url,
+        r.deployment_id ?? null,
+        Number(r.deployment_count ?? 1),
+        r.target ?? 'preview',
+        r.status ?? 'ready',
+        r.status_message ?? null,
+        r.reachable_at == null ? null : Number(r.reachable_at),
+        r.provider_metadata_json ?? null,
+        Number(r.created_at ?? Date.now()),
+        Number(r.updated_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('deployments', rows.length, 'applied');
   return rows.length;
 }
 
