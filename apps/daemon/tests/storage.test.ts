@@ -421,6 +421,16 @@ describe('resolveDaemonDbConfig', () => {
     ).toThrow(DaemonDbConfigError);
   });
 
+  it('accepts POSTGRES_HOST as OD_PG_HOST fallback', () => {
+    const cfg = resolveDaemonDbConfig({
+      OD_DAEMON_DB: 'postgres',
+      POSTGRES_HOST: 'pg-fallback.local',
+      OD_PG_DATABASE: 'daemon_db',
+      OD_PG_USER: 'od',
+    });
+    expect(cfg.postgres?.host).toBe('pg-fallback.local');
+  });
+
   it('throws on an unknown OD_DAEMON_DB value', () => {
     expect(() => resolveDaemonDbConfig({ OD_DAEMON_DB: 'mongo' })).toThrow(DaemonDbConfigError);
   });

@@ -12,6 +12,24 @@ import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/
 import { migrateCritique } from './critique/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
+import {
+  deleteCachedProject,
+  getCachedConversations,
+  getCachedConversationById,
+  getCachedMessages,
+  getCachedProject,
+  invalidateCachedConversations,
+  invalidateCachedMessages,
+  setCachedConversations,
+  setCachedMessages,
+  setCachedProject,
+} from './storage/daemon-db-entity-cache.js';
+import * as pgCore from './storage/daemon-db-postgres-core.js';
+import {
+  getPostgresPool,
+  isDaemonDbPostgres,
+  schedulePostgresWrite,
+} from './storage/daemon-db-runtime.js';
 
 type SqliteDb = Database.Database;
 type DbRow = Record<string, any>;
@@ -703,6 +721,10 @@ export function listProjectsAwaitingInput(db: SqliteDb) {
 }
 
 export function getProject(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedProject(id);
+    return cached ? normalizeProject(cached) : null;
+  }
   const row = db
     .prepare(`SELECT ${PROJECT_COLS} FROM projects WHERE id = ?`)
     .get(id) as DbRow | undefined;
@@ -710,6 +732,24 @@ export function getProject(db: SqliteDb, id: string) {
 }
 
 export function insertProject(db: SqliteDb, p: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const created = normalizeProject({
+      id: p.id,
+      name: p.name,
+      skillId: p.skillId ?? null,
+      designSystemId: p.designSystemId ?? null,
+      pendingPrompt: p.pendingPrompt ?? null,
+      metadataJson: p.metadata ? JSON.stringify(p.metadata) : null,
+      customInstructions: p.customInstructions ?? null,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    });
+    setCachedProject(created);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertProject(getPostgresPool(), p);
+    });
+    return created;
+  }
   db.prepare(
     `INSERT INTO projects
        (id, name, skill_id, design_system_id, pending_prompt,
@@ -730,6 +770,20 @@ export function insertProject(db: SqliteDb, p: DbRow) {
 }
 
 export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const existing = getProject(db, id);
+    if (!existing) return null;
+    const merged = {
+      ...existing,
+      ...patch,
+      updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+    };
+    setCachedProject(merged);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateProject(getPostgresPool(), id, merged);
+    });
+    return merged;
+  }
   const existing = getProject(db, id);
   if (!existing) return null;
   const merged = {
@@ -761,6 +815,13 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 export function deleteProject(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    deleteCachedProject(id);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteProject(getPostgresPool(), id);
+    });
+    return;
+  }
   db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
 }
 
@@ -893,6 +954,10 @@ function normalizeTemplate(row: DbRow) {
 // ---------- conversations ----------
 
 export function listConversations(db: SqliteDb, projectId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedConversations(projectId);
+    return cached ? cached.map((row) => normalizeConversation(row)) : [];
+  }
   return rows(db
     .prepare(
       `WITH project_conversations AS (
@@ -954,7 +1019,34 @@ export function listConversations(db: SqliteDb, projectId: string) {
     .all(projectId)).map(normalizeConversation);
 }
 
+export async function listConversationsAsync(db: SqliteDb, projectId: string) {
+  if (!isDaemonDbPostgres()) return listConversations(db, projectId);
+  const rows = await pgCore.pgListConversations(getPostgresPool(), projectId);
+  const normalized = rows.map((row) => normalizeConversation(row));
+  setCachedConversations(projectId, normalized);
+  return normalized;
+}
+
+export async function warmProjectFromPostgres(projectId: string): Promise<void> {
+  if (!isDaemonDbPostgres()) return;
+  const pool = getPostgresPool();
+  const projectRow = await pgCore.pgGetProject(pool, projectId);
+  if (projectRow) setCachedProject(normalizeProject(projectRow));
+  const conversations = await pgCore.pgListConversations(pool, projectId);
+  const normalizedConversations = conversations.map((row) => normalizeConversation(row));
+  setCachedConversations(projectId, normalizedConversations);
+  for (const conversation of normalizedConversations) {
+    const messages = await pgCore.pgListMessages(pool, conversation.id);
+    setCachedMessages(conversation.id, messages.map((row) => normalizeMessage(row)));
+  }
+}
+
 export function getConversation(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedConversationById(id);
+    if (!cached) return null;
+    return normalizeConversation(cached);
+  }
   const r = db
     .prepare(
       `SELECT id, project_id AS projectId, title, session_mode AS sessionMode,
@@ -1105,6 +1197,22 @@ function latestUsageDurationMs(eventsJson: unknown): number | undefined {
 }
 
 export function insertConversation(db: SqliteDb, c: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const created = normalizeConversation({
+      id: c.id,
+      projectId: c.projectId,
+      title: c.title ?? null,
+      sessionMode: c.sessionMode,
+      messageCount: 0,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    });
+    invalidateCachedConversations(String(c.projectId));
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertConversation(getPostgresPool(), c);
+    });
+    return created;
+  }
   db.prepare(
     `INSERT INTO conversations
        (id, project_id, title, session_mode, created_at, updated_at)
@@ -1121,6 +1229,23 @@ export function insertConversation(db: SqliteDb, c: DbRow) {
 }
 
 export function updateConversation(db: SqliteDb, id: string, patch: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const base = getConversation(db, id);
+    if (!base) return null;
+    const merged = {
+      ...base,
+      ...patch,
+      sessionMode: Object.prototype.hasOwnProperty.call(patch, 'sessionMode')
+        ? normalizeConversationSessionMode(patch.sessionMode)
+        : base.sessionMode,
+      updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+    };
+    invalidateCachedConversations(base.projectId);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateConversation(getPostgresPool(), id, merged);
+    });
+    return merged;
+  }
   const existing = getConversation(db, id);
   if (!existing) return null;
   const merged = {
@@ -1139,6 +1264,15 @@ export function updateConversation(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 export function deleteConversation(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    const existing = getConversation(db, id);
+    if (existing?.projectId) invalidateCachedConversations(existing.projectId);
+    invalidateCachedMessages(id);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteConversation(getPostgresPool(), id);
+    });
+    return;
+  }
   db.prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
 }
 
@@ -1167,6 +1301,26 @@ export function upsertAgentSession(
     stablePromptHash?: string | null;
   },
 ): void {
+  if (isDaemonDbPostgres()) {
+    db.prepare(
+      `INSERT INTO agent_sessions (conversation_id, agent_id, session_id, stable_prompt_hash, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(conversation_id, agent_id)
+         DO UPDATE SET session_id = excluded.session_id,
+                       stable_prompt_hash = excluded.stable_prompt_hash,
+                       updated_at = excluded.updated_at`,
+    ).run(
+      input.conversationId,
+      input.agentId,
+      input.sessionId,
+      input.stablePromptHash ?? null,
+      Date.now(),
+    );
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertAgentSession(getPostgresPool(), input);
+    });
+    return;
+  }
   db.prepare(
     `INSERT INTO agent_sessions (conversation_id, agent_id, session_id, stable_prompt_hash, updated_at)
        VALUES (?, ?, ?, ?, ?)
@@ -1208,6 +1362,21 @@ export function updateAgentSessionStableHash(
   agentId: string,
   stablePromptHash: string,
 ): void {
+  if (isDaemonDbPostgres()) {
+    db.prepare(
+      `UPDATE agent_sessions SET stable_prompt_hash = ?, updated_at = ?
+        WHERE conversation_id = ? AND agent_id = ?`,
+    ).run(stablePromptHash, Date.now(), conversationId, agentId);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateAgentSessionStableHash(
+        getPostgresPool(),
+        conversationId,
+        agentId,
+        stablePromptHash,
+      );
+    });
+    return;
+  }
   db.prepare(
     `UPDATE agent_sessions SET stable_prompt_hash = ?, updated_at = ?
       WHERE conversation_id = ? AND agent_id = ?`,
@@ -1219,6 +1388,15 @@ export function clearAgentSession(
   conversationId: string,
   agentId: string,
 ): void {
+  if (isDaemonDbPostgres()) {
+    db.prepare(
+      `DELETE FROM agent_sessions WHERE conversation_id = ? AND agent_id = ?`,
+    ).run(conversationId, agentId);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgClearAgentSession(getPostgresPool(), conversationId, agentId);
+    });
+    return;
+  }
   db.prepare(
     `DELETE FROM agent_sessions WHERE conversation_id = ? AND agent_id = ?`,
   ).run(conversationId, agentId);
@@ -1227,6 +1405,10 @@ export function clearAgentSession(
 // ---------- messages ----------
 
 export function listMessages(db: SqliteDb, conversationId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedMessages(conversationId);
+    return cached ? cached.map((row) => normalizeMessage(row)) : [];
+  }
   return (db
     .prepare(
       `SELECT id, role, content, agent_id AS agentId, agent_name AS agentName,
@@ -1251,7 +1433,61 @@ export function listMessages(db: SqliteDb, conversationId: string) {
     .map(normalizeMessage);
 }
 
+export async function listMessagesAsync(db: SqliteDb, conversationId: string) {
+  if (!isDaemonDbPostgres()) return listMessages(db, conversationId);
+  const rows = await pgCore.pgListMessages(getPostgresPool(), conversationId);
+  const normalized = rows.map((row) => normalizeMessage(row));
+  setCachedMessages(conversationId, normalized);
+  return normalized;
+}
+
 export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const now = Date.now();
+    const cached = getCachedMessages(conversationId) ?? [];
+    const existing = cached.find((row) => row.id === m.id);
+    const position = existing && typeof existing.position === 'number'
+      ? Number(existing.position)
+      : cached.reduce((max, row) => Math.max(max, Number(row.position ?? -1)), -1) + 1;
+    const normalized = normalizeMessage({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      agentId: m.agentId ?? null,
+      agentName: m.agentName ?? null,
+      runId: m.runId ?? null,
+      runStatus: m.runStatus ?? null,
+      lastRunEventId: m.lastRunEventId ?? null,
+      eventsJson: m.events ? JSON.stringify(m.events) : null,
+      attachmentsJson: m.attachments ? JSON.stringify(m.attachments) : null,
+      commentAttachmentsJson: m.commentAttachments ? JSON.stringify(m.commentAttachments) : null,
+      producedFilesJson: m.producedFiles ? JSON.stringify(m.producedFiles) : null,
+      feedbackJson: m.feedback ? JSON.stringify(m.feedback) : null,
+      preTurnFileNamesJson: m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
+      sessionMode: m.sessionMode ?? null,
+      runContextJson: m.runContext ? JSON.stringify(m.runContext) : null,
+      appliedPluginSnapshotJson: m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,
+      createdAt: m.createdAt ?? now,
+      startedAt: m.startedAt ?? null,
+      endedAt: m.endedAt ?? null,
+      position,
+    });
+    const nextCache = existing
+      ? cached.map((row) => (row.id === m.id ? normalized : row))
+      : [...cached, normalized];
+    setCachedMessages(conversationId, nextCache);
+    const conversation = getCachedConversationById(conversationId);
+    if (conversation?.projectId) invalidateCachedConversations(String(conversation.projectId));
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertMessage(getPostgresPool(), conversationId, m);
+      await pgCore.pgUpdateConversation(getPostgresPool(), conversationId, {
+        title: conversation?.title ?? null,
+        sessionMode: conversation?.sessionMode ?? 'design',
+        updatedAt: now,
+      });
+    });
+    return normalized;
+  }
   const existing = db
     .prepare(`SELECT position FROM messages WHERE id = ?`)
     .get(m.id) as DbRow | undefined;

@@ -786,7 +786,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
   const { insertProject, validateLinkedDirs, getProject, updateProject, dbDeleteProject, removeProjectDir } = ctx.projectStore;
   const { writeProjectFile, readProjectFile, ensureProject, listFiles, listTabs, setTabs, resolveProjectDir } = ctx.projectFiles;
-  const { insertConversation, getConversation, listConversations, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+  const { insertConversation, getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
   const { listLatestProjectRunStatuses, listProjectsAwaitingInput, normalizeProjectDisplayStatus, composeProjectDisplayStatus, listProjects } = ctx.status;
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
@@ -1675,11 +1675,14 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   // ---- Conversations --------------------------------------------------------
 
-  app.get('/api/projects/:id/conversations', (req, res) => {
+  app.get('/api/projects/:id/conversations', async (req, res) => {
     if (!getProject(db, req.params.id)) {
       return res.status(404).json({ error: 'project not found' });
     }
-    res.json({ conversations: listConversations(db, req.params.id) });
+    const list = listConversationsAsync
+      ? await listConversationsAsync(db, req.params.id)
+      : listConversations(db, req.params.id);
+    res.json({ conversations: list });
   });
 
   app.post('/api/projects/:id/conversations', (req, res) => {

@@ -488,6 +488,7 @@ import {
   updateTemplate,
   listProjectsAwaitingInput,
   listConversations,
+  listConversationsAsync,
   listDeployments,
   listLatestProjectRunStatuses,
   listMessages,
@@ -515,6 +516,11 @@ import {
   upsertMessage,
   upsertPreviewComment,
 } from './db.js';
+import {
+  closeDaemonDbRuntime,
+  flushPostgresWrites,
+  initDaemonDbFromEnv,
+} from './storage/daemon-db-runtime.js';
 import {
   computeIncludeStable,
   hashStableInstructions,
@@ -5362,6 +5368,7 @@ export async function startServer({
     }
     next();
   });
+  await initDaemonDbFromEnv();
   const db = openDatabase(PROJECT_ROOT, { dataDir: RUNTIME_DATA_DIR });
   // Wire the upload-destination bridge to this db so multer can route
   // file uploads into baseDir-rooted projects' actual folders.
@@ -6497,6 +6504,7 @@ export async function startServer({
     insertConversation,
     getConversation,
     listConversations,
+    listConversationsAsync,
     updateConversation,
     deleteConversation,
     listMessages,
@@ -6931,7 +6939,7 @@ export async function startServer({
     if (!getProject(db, req.params.id)) {
       return res.status(404).json({ error: 'project not found' });
     }
-    res.json({ conversations: listConversations(db, req.params.id) });
+    res.json({ conversations: await listConversationsAsync(db, req.params.id) });
   });
 
   app.post('/api/projects/:id/conversations', (req, res) => {
@@ -16370,6 +16378,8 @@ export async function startServer({
       await design.runs.shutdownActive({ graceMs: resolveChatRunShutdownGraceMs() });
       await terminalService.shutdownActive();
       await design.analytics.shutdown();
+      await flushPostgresWrites();
+      await closeDaemonDbRuntime();
     };
     let server;
     try {

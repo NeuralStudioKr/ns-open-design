@@ -109,6 +109,15 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TEAMVER_OD_API_KEY: ${TEAMVER_OD_API_KEY:-}
+      # Track B5 — Postgres DaemonDb (multi-node chat SSOT). Default sqlite.
+      OD_DAEMON_DB: ${OD_DAEMON_DB:-sqlite}
+      OD_PG_HOST: ${OD_PG_HOST:-}
+      OD_PG_PORT: ${OD_PG_PORT:-5432}
+      OD_PG_DATABASE: ${OD_PG_DATABASE:-}
+      OD_PG_USER: ${OD_PG_USER:-}
+      OD_PG_PASSWORD: ${OD_PG_PASSWORD:-}
+      OD_PG_SSL_MODE: ${OD_PG_SSL_MODE:-require}
+      OD_PG_POOL_MAX: ${OD_PG_POOL_MAX:-10}
     ports:
       # 127.0.0.1 default (local dev). Multi-node: deploy.sh sets
       # OD_DOCKER_PUBLISH_HOST=0.0.0.0 so peer EC2 nginx can reach :7456

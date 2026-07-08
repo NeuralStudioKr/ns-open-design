@@ -1,7 +1,7 @@
 import type { Request, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
 
-import { getProject, insertProject } from './db.js';
+import { getProject, insertProject, warmProjectFromPostgres } from './db.js';
 import {
   isTeamverDesignManaged,
   isTeamverProjectCollectionRouteSlug,
@@ -16,6 +16,7 @@ import type { ProjectStorageAccessHooks } from './storage/lazy-project-materiali
 import {
   syncTeamverProjectDaemonStateFromRequest,
 } from './teamver-project-daemon-state.js';
+import { isDaemonDbPostgres } from './storage/daemon-db-runtime.js';
 
 type SqliteDb = Database.Database;
 
@@ -152,13 +153,17 @@ export function createTeamverProjectSqliteHydrationMiddleware(
     }
     if (!identity) return next();
 
-    await syncTeamverProjectDaemonStateFromRequest(
-      db,
-      projectStorageHooks,
-      req,
-      projectId,
-      'import',
-    );
+    if (isDaemonDbPostgres()) {
+      await warmProjectFromPostgres(projectId);
+    } else {
+      await syncTeamverProjectDaemonStateFromRequest(
+        db,
+        projectStorageHooks,
+        req,
+        projectId,
+        'import',
+      );
+    }
 
     if (!getProject(db, projectId)) {
       const detail = await fetchTeamverRegistryProjectDetail(projectId, identity);

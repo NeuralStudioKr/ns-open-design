@@ -13,6 +13,7 @@ import {
   upsertMessage,
 } from './db.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
+import { isDaemonDbPostgres } from './storage/daemon-db-runtime.js';
 import type { ProjectStorage } from './storage/project-storage.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import {
@@ -256,6 +257,7 @@ export async function exportTeamverProjectDaemonState(
   remote: ProjectStorage,
   projectId: string,
 ): Promise<boolean> {
+  if (isDaemonDbPostgres()) return false;
   if (!isTeamverDesignManaged()) return false;
   const state = buildTeamverProjectDaemonState(db, projectId);
   if (!state) return false;
@@ -268,6 +270,7 @@ export async function importTeamverProjectDaemonState(
   remote: ProjectStorage,
   projectId: string,
 ): Promise<boolean> {
+  if (isDaemonDbPostgres()) return false;
   if (!isTeamverDesignManaged()) return false;
   const state = await readTeamverProjectDaemonStateFromRemote(remote, projectId);
   if (!state) return false;
@@ -283,6 +286,7 @@ export async function exportTeamverProjectDaemonStateThrottled(
   remote: ProjectStorage,
   projectId: string,
 ): Promise<void> {
+  if (isDaemonDbPostgres()) return;
   const trimmed = projectId.trim();
   if (!trimmed) return;
   const now = Date.now();
@@ -315,6 +319,7 @@ export async function syncTeamverProjectDaemonStateFromRequest(
   projectId: string,
   direction: 'import' | 'export' | 'both',
 ): Promise<void> {
+  if (isDaemonDbPostgres()) return;
   if (!hooks || !isTeamverDesignManaged()) return;
   if (typeof hooks.resolveRemoteForDaemonState !== 'function') return;
   try {
