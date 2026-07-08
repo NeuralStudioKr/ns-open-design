@@ -208,7 +208,7 @@ daemon /api/*: **반드시 affinity**
 
 **목표:** scratch·SQLite·공정성·circuit breaker — **코드 레벨** multi-daemon.
 
-**SSOT:** [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · [04 Track B](./04_구현_우선순위.md)
+**SSOT:** [02 design-app ↔ daemon](./02_design-app_daemon_연동.md) · [04 Track B](./04_구현_우선순위.md) · **[39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md)** (B5 vs scratch·OD scratch 제거 불가)
 
 ### 7.1 구현 순서 (38 §12.4 + 02)
 

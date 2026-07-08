@@ -1,7 +1,7 @@
 # Teamver Design — scratch·SQLite·SSE 제약 (multi-node)
 
 **목적:** 이중화 시 **sticky / userId routing** 이 **해결하는 것·못 하는 것** 을 SSOT로 고정.  
-**관련:** [20 Hybrid 저장소](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) · [38 §8.2](./38_Design_동시성_용량_확장_가이드.md) · [29 BYOK sync-up](./29_BYOK_api_mode_vs_runs_아키텍처.md)
+**관련:** [20 Hybrid 저장소](./20_Design_Hybrid_저장소_로컬_S3_가이드.md) · [38 §8.2](./38_Design_동시성_용량_확장_가이드.md) · [29 BYOK sync-up](./29_BYOK_api_mode_vs_runs_아키텍처.md) · **[39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md)** (저장층 4분면·B5 vs scratch)
 
 ---
 
@@ -183,4 +183,5 @@ scratch는 **캐시** — SSOT는 S3 ([16](./16_S3_데이터_저장_시점_SSOT.
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-08 | [39_7](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) cross-link — B5 단독 vs Track B 전체 |
 | 2026-07-07 | scratch·SQLite·SSE sticky 한계 SSOT |

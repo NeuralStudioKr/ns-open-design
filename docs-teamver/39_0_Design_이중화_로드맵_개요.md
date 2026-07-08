@@ -128,7 +128,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 | export·tool write 같은 daemon 로컬 | **동일 project · 다른 user** → 다른 노드 |
 | 단일 ws 8 cap × ws 수 (코드) | ALB cookie ≠ userId (다기기) |
 
-상세: **[39_3 scratch·SQLite·SSE 제약](./39_3_scratch_SQLite_SSE_제약.md)** · **[39_2 라우팅 설계](./39_2_ALB_nginx_라우팅_설계.md)**
+상세: **[39_3 scratch·SQLite·SSE 제약](./39_3_scratch_SQLite_SSE_제약.md)** · **[39_2 라우팅 설계](./39_2_ALB_nginx_라우팅_설계.md)** · **[39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md)** (Postgres B5 vs scratch 근본 해결 구분)
 
 ---
 
@@ -157,6 +157,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 | [39_4](./39_4_배포_Terraform_운영_Runbook.md) | 2 EC2 기동·failover·drain·Litestream |
 | [39_5](./39_5_검증_체크리스트_FAQ.md) | 부하·장애 시나리오·FAQ |
 | [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) | **CTO 보고** — userId hash·이중화 의미·중앙 nginx 비교·장기 방향 |
+| [39_7](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) | **scratch vs DaemonDb vs multi-node** — 저장층 4분면·B5만으로는 부족·OD scratch 제거 불가 |
 
 ---
 
@@ -164,4 +165,5 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-08 | [39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) — 저장층 4분면·Track B vs scratch 제거 |
 | 2026-07-07 | 39 시리즈 초안 — 이중화 로드맵 SSOT (38 §8·§12.4 확장) |
