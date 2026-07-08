@@ -2,8 +2,7 @@ import { Pool, type PoolConfig, type QueryResultRow } from 'pg';
 
 import type { DaemonDbConfig } from './daemon-db.js';
 import {
-  DAEMON_DB_POSTGRES_MIGRATION_V1,
-  DAEMON_DB_SCHEMA_VERSION,
+  DAEMON_DB_POSTGRES_MIGRATIONS,
 } from './daemon-db-postgres-schema.js';
 
 export type DaemonPostgresPool = Pool;
@@ -39,18 +38,40 @@ export function createPostgresPool(
 export async function migratePostgresDaemonSchema(pool: DaemonPostgresPool): Promise<void> {
   const client = await pool.connect();
   try {
+    // Bootstrap the version table first so we can skip already-applied
+    // migrations. Each versioned migration runs in its own transaction so
+    // partial failures roll back cleanly.
     await client.query('BEGIN');
-    await client.query(DAEMON_DB_POSTGRES_MIGRATION_V1);
-    await client.query(
-      `INSERT INTO daemon_db_schema_migrations (version, applied_at)
-       VALUES ($1, $2)
-       ON CONFLICT (version) DO NOTHING`,
-      [DAEMON_DB_SCHEMA_VERSION, Date.now()],
-    );
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
+        version     INTEGER PRIMARY KEY,
+        applied_at  BIGINT NOT NULL
+      )
+    `);
     await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
+
+    const appliedRows = await client.query<{ version: number }>(
+      `SELECT version FROM daemon_db_schema_migrations`,
+    );
+    const applied = new Set(appliedRows.rows.map((r) => Number(r.version)));
+
+    for (const migration of DAEMON_DB_POSTGRES_MIGRATIONS) {
+      if (applied.has(migration.version)) continue;
+      await client.query('BEGIN');
+      try {
+        await client.query(migration.sql);
+        await client.query(
+          `INSERT INTO daemon_db_schema_migrations (version, applied_at)
+           VALUES ($1, $2)
+           ON CONFLICT (version) DO NOTHING`,
+          [migration.version, Date.now()],
+        );
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      }
+    }
   } finally {
     client.release();
   }

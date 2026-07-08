@@ -4,10 +4,15 @@
 type CachedProject = Record<string, unknown>;
 type CachedConversation = Record<string, unknown>;
 type CachedMessage = Record<string, unknown>;
+type CachedTabsState = {
+  stateJson: string | null;
+  updatedAt: number;
+};
 
 const projects = new Map<string, CachedProject>();
 const conversationsByProject = new Map<string, CachedConversation[]>();
 const messagesByConversation = new Map<string, CachedMessage[]>();
+const tabsStateByProject = new Map<string, CachedTabsState>();
 
 export function getCachedProject(id: string): CachedProject | null {
   return projects.get(id) ?? null;
@@ -20,6 +25,7 @@ export function setCachedProject(project: CachedProject): void {
 export function deleteCachedProject(id: string): void {
   projects.delete(id);
   conversationsByProject.delete(id);
+  tabsStateByProject.delete(id);
 }
 
 export function getCachedConversations(projectId: string): CachedConversation[] | null {
@@ -54,8 +60,21 @@ export function invalidateCachedMessages(conversationId: string): void {
   messagesByConversation.delete(conversationId);
 }
 
+export function getCachedTabsState(projectId: string): CachedTabsState | null {
+  return tabsStateByProject.get(projectId) ?? null;
+}
+
+export function setCachedTabsState(projectId: string, entry: CachedTabsState): void {
+  tabsStateByProject.set(projectId, entry);
+}
+
+export function invalidateCachedTabsState(projectId: string): void {
+  tabsStateByProject.delete(projectId);
+}
+
 export function clearDaemonDbEntityCache(): void {
   projects.clear();
   conversationsByProject.clear();
   messagesByConversation.clear();
+  tabsStateByProject.clear();
 }

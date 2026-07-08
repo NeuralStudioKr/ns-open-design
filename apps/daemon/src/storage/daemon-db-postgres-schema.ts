@@ -1,8 +1,12 @@
 // Track B5 — Postgres DaemonDb schema (core multi-node tables).
-// Versioned via daemon_db_schema_migrations. Full sqlite parity for
-// projects / conversations / messages / agent_sessions (B5.1).
+// Versioned via daemon_db_schema_migrations. Each migration is idempotent
+// (CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS) and applied in
+// order by migratePostgresDaemonSchema.
+//
+// v1 — B5.1 core: projects, conversations, agent_sessions, messages
+// v2 — B5.2 tabs:  project_tabs_state (single json blob per project)
 
-export const DAEMON_DB_SCHEMA_VERSION = 1;
+export const DAEMON_DB_SCHEMA_VERSION = 2;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -74,3 +78,19 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conv
   ON messages(conversation_id, position);
 `;
+
+export const DAEMON_DB_POSTGRES_MIGRATION_V2 = `
+CREATE TABLE IF NOT EXISTS project_tabs_state (
+  project_id  TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  state_json  TEXT,
+  updated_at  BIGINT NOT NULL
+);
+`;
+
+export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
+  version: number;
+  sql: string;
+}> = [
+  { version: 1, sql: DAEMON_DB_POSTGRES_MIGRATION_V1 },
+  { version: 2, sql: DAEMON_DB_POSTGRES_MIGRATION_V2 },
+];

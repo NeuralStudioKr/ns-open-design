@@ -18,11 +18,14 @@ import {
   getCachedConversationById,
   getCachedMessages,
   getCachedProject,
+  getCachedTabsState,
   invalidateCachedConversations,
   invalidateCachedMessages,
+  invalidateCachedTabsState,
   setCachedConversations,
   setCachedMessages,
   setCachedProject,
+  setCachedTabsState,
 } from './storage/daemon-db-entity-cache.js';
 import * as pgCore from './storage/daemon-db-postgres-core.js';
 import {
@@ -1038,6 +1041,13 @@ export async function warmProjectFromPostgres(projectId: string): Promise<void> 
   for (const conversation of normalizedConversations) {
     const messages = await pgCore.pgListMessages(pool, conversation.id);
     setCachedMessages(conversation.id, messages.map((row) => normalizeMessage(row)));
+  }
+  const tabsState = await pgCore.pgGetTabsState(pool, projectId);
+  if (tabsState) {
+    setCachedTabsState(projectId, {
+      stateJson: tabsState.stateJson,
+      updatedAt: tabsState.updatedAt,
+    });
   }
 }
 
@@ -2293,6 +2303,23 @@ function parseProjectTabsStateJson(value: unknown): ProjectTabsState | null {
 }
 
 export function listTabs(db: SqliteDb, projectId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedTabsState(projectId);
+    const savedState = parseProjectTabsStateJson(cached?.stateJson);
+    if (savedState) {
+      return {
+        ...savedState,
+        hasSavedState: true,
+        updatedAt: cached?.updatedAt ?? Date.now(),
+      };
+    }
+    return {
+      tabs: [] as string[],
+      active: null as string | null,
+      hasSavedState: false,
+      updatedAt: cached?.updatedAt,
+    };
+  }
   const rows = db
     .prepare(
       `SELECT name, position, is_active AS isActive
@@ -2330,6 +2357,15 @@ export function setTabs(
       ? { tabs: stateOrNames, active: activeName }
       : stateOrNames,
   ) ?? { tabs: [], active: null };
+  if (isDaemonDbPostgres()) {
+    const stateJson = JSON.stringify(state);
+    const updatedAt = Date.now();
+    setCachedTabsState(projectId, { stateJson, updatedAt });
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertTabsState(getPostgresPool(), projectId, stateJson, updatedAt);
+    });
+    return listTabs(db, projectId);
+  }
   const tx = db.transaction(() => {
     db.prepare(
       `INSERT INTO tabs_state (project_id, updated_at, state_json)

@@ -393,3 +393,56 @@ export async function pgClearAgentSession(
     [conversationId, agentId],
   );
 }
+
+// ---------- project_tabs_state ----------
+// Stored as a single JSON blob per project. sqlite has both `tabs` (derived
+// rows) and `tabs_state` (JSON) tables; Postgres only carries `tabs_state`
+// because callers always read the JSON path via listTabs.
+
+export interface PgTabsStateRow {
+  projectId: string;
+  stateJson: string | null;
+  updatedAt: number;
+}
+
+export async function pgGetTabsState(
+  pool: Pool,
+  projectId: string,
+): Promise<PgTabsStateRow | null> {
+  const row = await queryPostgresRow<{
+    project_id: string;
+    state_json: string | null;
+    updated_at: string;
+  }>(
+    pool,
+    `SELECT project_id, state_json, updated_at
+       FROM project_tabs_state WHERE project_id = $1`,
+    [projectId],
+  );
+  if (!row) return null;
+  return {
+    projectId: row.project_id,
+    stateJson: row.state_json ?? null,
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+export async function pgUpsertTabsState(
+  pool: Pool,
+  projectId: string,
+  stateJson: string,
+  updatedAt: number,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO project_tabs_state (project_id, state_json, updated_at)
+       VALUES ($1, $2, $3)
+     ON CONFLICT (project_id) DO UPDATE
+        SET state_json = EXCLUDED.state_json,
+            updated_at = EXCLUDED.updated_at`,
+    [projectId, stateJson, updatedAt],
+  );
+}
+
+export async function pgDeleteTabsState(pool: Pool, projectId: string): Promise<void> {
+  await pool.query(`DELETE FROM project_tabs_state WHERE project_id = $1`, [projectId]);
+}
