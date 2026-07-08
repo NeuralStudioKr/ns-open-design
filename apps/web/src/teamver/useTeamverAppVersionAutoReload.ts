@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { fetchDaemonAppVersion, fetchDaemonAppVersionForPoll } from './daemonAppVersion';
 import { isTeamverEmbedMode } from './designApiBase';
 
-const VERSION_POLL_INTERVAL_MS = 60_000;
+const VERSION_POLL_INTERVAL_MS = 5 * 60_000;
 const VERSION_AUTO_RELOAD_DELAY_MS = 5_000;
 
 function emitReloadMarker(fromVersion: string, toVersion: string): void {
@@ -37,7 +37,8 @@ function emitReloadMarker(fromVersion: string, toVersion: string): void {
  *
  * Strategy:
  *   - On mount, fetch `/api/version` and remember it as the baseline.
- *   - Re-fetch on a 60s timer and whenever the tab regains visibility.
+ *   - Re-fetch on a coarse timer and when the tab regains visibility after
+ *     the same interval has elapsed.
  *   - On the first observed mismatch, schedule `location.reload()` after
  *     a short delay so an in-flight network request can settle and the
  *     user can read the toast banner. The reload is deferred while the
@@ -59,6 +60,7 @@ export function useTeamverAppVersionAutoReload(options?: {
 }): void {
   const baselineRef = useRef<string | null>(null);
   const reloadScheduledRef = useRef(false);
+  const lastVersionCheckAtRef = useRef(0);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
@@ -100,11 +102,15 @@ export function useTeamverAppVersionAutoReload(options?: {
       }, reloadDelayMs);
     };
 
-    const checkVersion = async () => {
+    const checkVersion = async (options?: { force?: boolean }) => {
       if (cancelled || reloadScheduledRef.current) return;
       // Polling a hidden tab burns daemon RPS for nothing; the visibility
       // listener will retry the moment focus returns.
       if (!isTabVisible()) return;
+      const now = Date.now();
+      const force = options?.force === true || baselineRef.current == null;
+      if (!force && now - lastVersionCheckAtRef.current < pollIntervalMs) return;
+      lastVersionCheckAtRef.current = now;
 
       const current = baselineRef.current == null
         ? await fetchDaemonAppVersion()
@@ -119,7 +125,7 @@ export function useTeamverAppVersionAutoReload(options?: {
       scheduleReload(baselineRef.current, current);
     };
 
-    void checkVersion();
+    void checkVersion({ force: true });
 
     const interval = setInterval(() => {
       void checkVersion();
