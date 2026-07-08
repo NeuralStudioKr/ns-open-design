@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBoardCommentAttachments,
   buildVisualAnnotationAttachment,
+  chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
   commentVisibleOnDeckSlide,
   commentsToAttachments,
@@ -107,6 +108,45 @@ describe('preview comment attachment helpers', () => {
     expect(content).toContain('Make the title factual');
     expect(content).toContain('selector: [data-od-id="hero-title"]');
     expect(content).not.toContain('comment: Make the title factual');
+  });
+
+  it('turns comment target source files into hidden API attachments', () => {
+    expect(
+      chatAttachmentsFromPreviewCommentFiles(
+        [
+          commentAttachment({ id: 'c1', filePath: 'deck.html' }),
+          commentAttachment({ id: 'c2', filePath: 'deck.html' }),
+          commentAttachment({ id: 'c3', filePath: 'notes.bin' }),
+        ],
+        [
+          {
+            name: 'deck.html',
+            path: 'deck.html',
+            type: 'file',
+            size: 1234,
+            mtime: 1,
+            kind: 'html',
+            mime: 'text/html',
+          },
+          {
+            name: 'notes.bin',
+            path: 'notes.bin',
+            type: 'file',
+            size: 99,
+            mtime: 1,
+            kind: 'binary',
+            mime: 'application/octet-stream',
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        path: 'deck.html',
+        name: 'deck.html',
+        kind: 'file',
+        size: 1234,
+      },
+    ]);
   });
 
   it('merges saved preview comment image attachments without duplicates', () => {

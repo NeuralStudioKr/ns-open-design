@@ -29,10 +29,22 @@
 
 ---
 
+## 0. 2026-07-08 현재 상태
+
+> 1차 운영 해법은 **선-fetch 후 프롬프트 주입**이다. Teamver managed Anthropic API 모드는 아직 tool loop가 없으므로, FE가 사용자 프롬프트의 public URL을 감지해 daemon `POST /api/tools/web-fetch`로 SSRF-safe fetch를 수행하고, 결과를 `<web-fetch-context>`로 현재 user turn에만 첨부한다.
+
+- daemon `POST /api/tools/web-fetch`: 기존 `fetchUrlContent()` 재사용(public http(s), SSRF guard, redirect 차단, timeout, size cap, HTML→text).
+- web API mode: URL 최대 3개를 사전 fetch, 총 컨텍스트 예산 내에서 user message에 주입.
+- 실패 시: fetch 실패 사유만 컨텍스트로 전달하고, 채팅 요청 자체는 막지 않는다.
+- 기존 `web_fetch` tool loop는 `aihubmix`/`senseaudio` 경로에서 계속 유효하다.
+- Teamver managed Anthropic proxy(`/api/proxy/anthropic/stream`)에 native tool loop를 붙이는 작업은 장기 선택지로 남긴다.
+
+---
+
 ## 1. 한 줄 결론
 
-> Design embed에서 “**사용자가 준 URL**을 읽어 슬라이드를 만든다”는 목표는, Main Teamver 채팅의 **`use_web_search`(벤더 web search)** 와 **다른 문제**이며, 현재 `ns-open-design` BYOK 경로에는 URL 읽기 capability가 **없다**.  
-> **API 파라미터만으로는 켤 수 없고**, daemon에 **`web_fetch` tool + BYOK tool loop + 시스템 프롬프트 수정**이 필요하다 (레퍼런스: minimax-byok doc 07·08).
+> Design embed에서 “**사용자가 준 URL**을 읽어 슬라이드를 만든다”는 목표는, Main Teamver 채팅의 **`use_web_search`(벤더 web search)** 와 **다른 문제**이다.
+> tool loop 지원 프로토콜은 `web_fetch` tool을 쓸 수 있고, Teamver managed Anthropic API 모드는 **선-fetch 후 프롬프트 주입**으로 같은 UX를 제공한다.
 
 ---
 
@@ -47,9 +59,9 @@
 ```text
 사용자(URL 포함 프롬프트)
   → embed FE (managed BYOK, deck 템플릿)
+  → OD daemon /api/tools/web-fetch (FE 선-fetch, SSRF 가드)
+  → HTML→text 결과를 user turn 컨텍스트로 첨부
   → OD daemon /api/proxy/.../stream
-  → LLM이 web_fetch(url) tool call
-  → daemon이 HTTP GET (SSRF 가드) → HTML→text
   → LLM이 본문 + deck skill/template로 HTML 슬라이드 생성
   → FE 미리보기 · Drive publish
 ```
@@ -62,7 +74,7 @@
 |--|----------------------------------------|---------------------------------------------|
 | 진입 | `POST /api/v2/chat` | FE → daemon `/api/proxy/{provider}/stream` |
 | LLM 설정 | Main BE 모델별 클라이언트 | `runtime-config` (protocol, baseUrl, model, apiKeyConfigured; **apiKey 비반환**) |
-| 웹 참조 방식 | **벤더 native web search** (Responses API, Anthropic server tool, Gemini grounding) | (현재) **없음** · (계획) daemon **`web_fetch`** |
+| 웹 참조 방식 | **벤더 native web search** (Responses API, Anthropic server tool, Gemini grounding) | **선-fetch 주입** + 일부 BYOK protocol **`web_fetch` tool loop** |
 | 사용자 스위치 | `ChatDTO.use_web_search` | (현재) 없음 |
 | 구현 위치 | `avang/gpt/aichat_v2.py`, `aichat_claude.py` 등 | `apps/daemon` BYOK tool loop |
 
@@ -89,14 +101,15 @@
 
 | 항목 | 상태 | 근거 |
 |------|------|------|
-| BYOK `web_fetch` 도구 | ✅ 구현 (loop 184) | `byok-url-tools.ts` · `byok-tools.ts` · senseaudio/aihubmix proxy |
+| BYOK `web_fetch` 도구 | ✅ 구현 (tool loop 프로토콜) | `byok-url-tools.ts` · `byok-tools.ts` · senseaudio/aihubmix proxy |
+| API 모드 URL 선-fetch | ✅ 구현 | daemon `POST /api/tools/web-fetch` · web `api-web-fetch-context.ts` |
 | `executeOneTool` | ✅ 4-tool 화이트리스트 | `chat-routes.ts` — `web_fetch` 디스패치 |
 | BYOK 시스템 프롬프트 | ✅ `BYOK_TOOLS_OVERRIDE` | `byokToolNames` + `ProjectView` · contracts/daemon `system.ts` |
 | `runtime-config` web 플래그 | ❌ 없음 (선택) | `od_runtime_config.py` — protocol/model/baseUrl + apiKeyConfigured만 공개, apiKey는 비반환 |
 | FE `WebFetchCard` UI | ✅ 호출 경로 연결 | tool event + 기존 `ToolCard` |
 | minimax-byok 레퍼런스 | ✅ 포크 설계·이식 완료 | doc 07·08 |
 
-**staging 주의:** `TEAMVER_OD_API_PROTOCOL=anthropic` 단독 base stream은 **tool loop 없음** → URL 읽기 불가. tool loop 프로토콜·모델로 전환 필요 (아래 Q6 · `.env.staging.example`).
+**staging 주의:** `TEAMVER_OD_API_PROTOCOL=anthropic` 단독 base stream은 **tool loop 없음**이다. 대신 FE 선-fetch 주입 경로로 URL 본문을 전달한다. 모델이 “API 모드라 URL을 읽을 수 없다”고 답하면 선-fetch 주입 경로가 깨진 것이다.
 
 ---
 
@@ -154,7 +167,7 @@ Design BYOK:
 |------|------|-------------------|
 | **daemon `web_fetch`** (doc 07) | LLM tool call → daemon GET → tool result | ✅ **1차 권장** |
 | 벤더 native web search | Main BE와 동일 패턴을 daemon에 이식 | △ 프로토콜·모델별 작업 큼 |
-| **선-fetch 후 프롬프트 주입** | daemon/FE가 URL fetch 후 user message에 본문 첨부 | ✅ tool loop 없이 가능; 토큰·UX 설계 필요 |
+| **선-fetch 후 프롬프트 주입** | daemon/FE가 URL fetch 후 user message에 본문 첨부 | ✅ **현재 Teamver managed Anthropic 1차 적용** |
 | **Main BE가 fetch → Design에 전달** | BFF/M2M으로 본문 전달 | ✅ 가능; **cross-service** 설계 추가 |
 | CLI `WebFetch` | `mode: daemon` + claude/codex | △ embed는 managed **API(BYOK)** 고정 |
 

@@ -1,7 +1,9 @@
 import type {
+  ChatAttachment,
   ChatCommentAttachment,
   ChatCommentSelectionKind,
   ChatMessage,
+  ProjectFile,
   PreviewAnnotationStyle,
   PreviewCommentAttachment,
   PreviewCommentMember,
@@ -368,6 +370,45 @@ export function messageContentWithCommentAttachments(
   return `${visibleContent}${renderCommentAttachmentContext(commentAttachments)}`;
 }
 
+export function chatAttachmentsFromPreviewCommentFiles(
+  commentAttachments: ChatCommentAttachment[],
+  projectFiles: ProjectFile[],
+): ChatAttachment[] {
+  if (commentAttachments.length === 0 || projectFiles.length === 0) return [];
+  const byPath = new Map<string, ProjectFile>();
+  const byName = new Map<string, ProjectFile>();
+  for (const file of projectFiles) {
+    const path = (file.path ?? file.name).trim();
+    const name = file.name.trim();
+    if (path) byPath.set(path, file);
+    if (name) byName.set(name, file);
+  }
+
+  const out: ChatAttachment[] = [];
+  const seen = new Set<string>();
+  for (const comment of commentAttachments) {
+    const filePath = String(comment.filePath || '').trim();
+    if (!filePath || seen.has(filePath)) continue;
+    const file =
+      byPath.get(filePath) ??
+      byName.get(filePath) ??
+      byName.get(filePath.split('/').pop() ?? filePath);
+    if (!file || file.type === 'dir') continue;
+    const path = file.path ?? file.name;
+    if (seen.has(path)) continue;
+    if (!canAttachCommentSourceFile(path)) continue;
+    seen.add(filePath);
+    seen.add(path);
+    out.push({
+      path,
+      name: file.name,
+      kind: 'file',
+      size: file.size,
+    });
+  }
+  return out;
+}
+
 export function historyWithCommentAttachmentContext(
   history: ChatMessage[],
   messageId: string,
@@ -456,6 +497,7 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
       `${item.order}. ${item.elementId}`,
       `targetKind: ${selectionKind}`,
       `file: ${item.filePath}`,
+      'sourceFileContext: attached separately when this file exists in the project; inspect that attached-project-files content before saying the file is unavailable.',
       `label: ${item.label || '(unlabeled)'}`,
       `position: x${position.x} y${position.y} ${position.width}x${position.height}`,
       `currentText: ${trimContextText(item.currentText || '') || '(empty)'}`,
@@ -495,6 +537,11 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
   });
   lines.push('</attached-preview-comments>');
   return lines.join('\n');
+}
+
+function canAttachCommentSourceFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return /\.(html?|css|js|mjs|cjs|ts|tsx|json|md|txt|svg)$/.test(lower);
 }
 
 function imageOnlyCommentFallback(count: number): string {

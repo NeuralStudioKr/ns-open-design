@@ -24,6 +24,7 @@ import {
   type BYOKToolContext,
   type ImageToolResult,
 } from './byok-tools.js';
+import { fetchUrlContent } from './byok-url-tools.js';
 import {
   AIHUBMIX_DEFAULT_BASE_URL,
   aihubmixHeaders,
@@ -90,6 +91,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   // page exit = let it finish in background). Registered once at app
   // boot so the route is present before any proxy stream starts.
   registerByokProxyAbortRoute(app);
+
+  app.post('/api/tools/web-fetch', async (req, res) => {
+    const url = (req.body as { url?: unknown } | null | undefined)?.url;
+    const result = await fetchUrlContent(url);
+    if (!result.ok) {
+      return sendApiError(
+        res,
+        400,
+        'WEB_FETCH_FAILED',
+        result.error || 'web fetch failed',
+      );
+    }
+    return res.json(result);
+  });
 
   /**
    * Wire BYOK proxy stream materialization (sync-down at start, sync-up on

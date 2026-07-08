@@ -165,6 +165,11 @@ import type {
 } from '../types';
 import { historyWithApiAttachmentContext } from '../api-attachment-context';
 import {
+  fetchApiWebFetchContexts,
+  historyWithApiWebFetchContext,
+} from '../api-web-fetch-context';
+import {
+  chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
   historyWithCommentAttachmentContext,
   mergeAttachedComments,
@@ -3913,6 +3918,7 @@ export function ProjectView({
       ) return false;
       const effectiveAttachments = mergeChatAttachments(
         attachments,
+        chatAttachmentsFromPreviewCommentFiles(commentAttachments, projectFiles),
         ...commentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
@@ -4711,10 +4717,15 @@ export function ProjectView({
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const systemPrompt = await composedSystemPrompt(runSessionMode, effectiveDesignSystemId);
+        const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
         const apiHistory = await historyWithApiAttachmentContext(
-          historyWithCommentAttachmentContext(
-            historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+          historyWithApiWebFetchContext(
+            historyWithCommentAttachmentContext(
+              historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+              userMsg.id,
+            ),
             userMsg.id,
+            webFetchContexts,
           ),
           userMsg.id,
           project.id,
