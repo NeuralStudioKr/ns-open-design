@@ -97,6 +97,16 @@ if (( ${#DISABLE_NAMES[@]} )); then
   done
 fi
 
+# ALB http.conf uses listen 80 default_server — Ubuntu sites-enabled/default also claims default_server.
+if [[ "$CONF_NAME" == *.http.conf ]]; then
+  mkdir -p "$BACKUP_DIR/disabled-sites-enabled"
+  DEFAULT_SITE="$SITES_ENABLED_DIR/default"
+  if [[ -e "$DEFAULT_SITE" ]]; then
+    mv -f "$DEFAULT_SITE" "$BACKUP_DIR/disabled-sites-enabled/"
+    echo "🧹 비활성화(이동): $DEFAULT_SITE — ALB http default_server 충돌 방지"
+  fi
+fi
+
 cp "$SRC_PATH" "$TARGET_AVAILABLE_PATH"
 ln -sfn "$TARGET_AVAILABLE_PATH" "$TARGET_ENABLED_PATH"
 echo "📄 적용됨: $TARGET_ENABLED_PATH"
