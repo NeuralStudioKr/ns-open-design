@@ -10,6 +10,10 @@ type CachedTabsState = {
   stateJson: string | null;
   updatedAt: number;
 };
+type CachedAgentSession = {
+  sessionId: string;
+  stablePromptHash: string | null;
+};
 
 const projects = new Map<string, CachedProject>();
 const conversationsByProject = new Map<string, CachedConversation[]>();
@@ -20,6 +24,8 @@ const tabsStateByProject = new Map<string, CachedTabsState>();
 const previewCommentsByScope = new Map<string, CachedPreviewComment[]>();
 // Deployments cached per-project, ordered updated_at DESC to match sqlite.
 const deploymentsByProject = new Map<string, CachedDeployment[]>();
+// Agent sessions: conversation_id → Map<agent_id, { sessionId, stablePromptHash }>
+const agentSessionsByConversation = new Map<string, Map<string, CachedAgentSession>>();
 
 function previewCommentsScopeKey(projectId: string, conversationId: string): string {
   return `${projectId}:${conversationId}`;
@@ -41,6 +47,8 @@ export function deleteCachedProject(id: string): void {
     if (key.startsWith(`${id}:`)) previewCommentsByScope.delete(key);
   }
   deploymentsByProject.delete(id);
+  // agent_sessions are keyed by conversation_id, not project. Callers that
+  // know the affected conversation list should invalidate that separately.
 }
 
 export function getCachedConversations(projectId: string): CachedConversation[] | null {
@@ -190,6 +198,50 @@ export function upsertCachedDeployment(
   });
 }
 
+// ---------- agent_sessions ----------
+
+export function getCachedAgentSession(
+  conversationId: string,
+  agentId: string,
+): CachedAgentSession | null {
+  return agentSessionsByConversation.get(conversationId)?.get(agentId) ?? null;
+}
+
+export function setCachedAgentSession(
+  conversationId: string,
+  agentId: string,
+  entry: CachedAgentSession,
+): void {
+  let bucket = agentSessionsByConversation.get(conversationId);
+  if (!bucket) {
+    bucket = new Map();
+    agentSessionsByConversation.set(conversationId, bucket);
+  }
+  bucket.set(agentId, entry);
+}
+
+export function setCachedAgentSessionsForConversation(
+  conversationId: string,
+  entries: ReadonlyArray<{ agentId: string } & CachedAgentSession>,
+): void {
+  const bucket = new Map<string, CachedAgentSession>();
+  for (const e of entries) {
+    bucket.set(e.agentId, { sessionId: e.sessionId, stablePromptHash: e.stablePromptHash });
+  }
+  agentSessionsByConversation.set(conversationId, bucket);
+}
+
+export function deleteCachedAgentSession(conversationId: string, agentId: string): void {
+  const bucket = agentSessionsByConversation.get(conversationId);
+  if (!bucket) return;
+  bucket.delete(agentId);
+  if (bucket.size === 0) agentSessionsByConversation.delete(conversationId);
+}
+
+export function invalidateCachedAgentSessions(conversationId: string): void {
+  agentSessionsByConversation.delete(conversationId);
+}
+
 export function clearDaemonDbEntityCache(): void {
   projects.clear();
   conversationsByProject.clear();
@@ -197,4 +249,5 @@ export function clearDaemonDbEntityCache(): void {
   tabsStateByProject.clear();
   previewCommentsByScope.clear();
   deploymentsByProject.clear();
+  agentSessionsByConversation.clear();
 }

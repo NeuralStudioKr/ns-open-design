@@ -13,7 +13,9 @@ import { migrateCritique } from './critique/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
+  deleteCachedAgentSession,
   deleteCachedProject,
+  getCachedAgentSession,
   getCachedConversations,
   getCachedConversationById,
   getCachedDeployments,
@@ -25,6 +27,8 @@ import {
   invalidateCachedMessages,
   invalidateCachedTabsState,
   removeCachedPreviewComment,
+  setCachedAgentSession,
+  setCachedAgentSessionsForConversation,
   setCachedConversations,
   setCachedDeployments,
   setCachedMessages,
@@ -1111,6 +1115,8 @@ export async function warmProjectFromPostgres(projectId: string): Promise<void> 
   for (const conversation of normalizedConversations) {
     const messages = await pgCore.pgListMessages(pool, conversation.id);
     setCachedMessages(conversation.id, messages.map((row) => normalizeMessage(row)));
+    const sessions = await pgCore.pgListAgentSessionsByConversation(pool, conversation.id);
+    setCachedAgentSessionsForConversation(conversation.id, sessions);
   }
   const tabsState = await pgCore.pgGetTabsState(pool, projectId);
   if (tabsState) {
@@ -1384,6 +1390,13 @@ export function getAgentSession(
   conversationId: string,
   agentId: string,
 ): string | null {
+  if (isDaemonDbPostgres()) {
+    // Postgres path reads from the in-process cache populated by
+    // warmProjectFromPostgres. Cache miss returns null, matching sqlite
+    // semantics; the next warm cycle will backfill after a follow-up read.
+    const hit = getCachedAgentSession(conversationId, agentId);
+    return hit?.sessionId ?? null;
+  }
   const row = db
     .prepare(
       `SELECT session_id FROM agent_sessions
@@ -1403,20 +1416,13 @@ export function upsertAgentSession(
   },
 ): void {
   if (isDaemonDbPostgres()) {
-    db.prepare(
-      `INSERT INTO agent_sessions (conversation_id, agent_id, session_id, stable_prompt_hash, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(conversation_id, agent_id)
-         DO UPDATE SET session_id = excluded.session_id,
-                       stable_prompt_hash = excluded.stable_prompt_hash,
-                       updated_at = excluded.updated_at`,
-    ).run(
-      input.conversationId,
-      input.agentId,
-      input.sessionId,
-      input.stablePromptHash ?? null,
-      Date.now(),
-    );
+    // Postgres becomes the SSOT for agent sessions. Update the cache
+    // synchronously so subsequent sync reads see the latest session, then
+    // schedule the durable pg write.
+    setCachedAgentSession(input.conversationId, input.agentId, {
+      sessionId: input.sessionId,
+      stablePromptHash: input.stablePromptHash ?? null,
+    });
     schedulePostgresWrite(async () => {
       await pgCore.pgUpsertAgentSession(getPostgresPool(), input);
     });
@@ -1443,6 +1449,11 @@ export function getAgentSessionRecord(
   conversationId: string,
   agentId: string,
 ): { sessionId: string; stablePromptHash: string | null } | null {
+  if (isDaemonDbPostgres()) {
+    const hit = getCachedAgentSession(conversationId, agentId);
+    if (!hit) return null;
+    return { sessionId: hit.sessionId, stablePromptHash: hit.stablePromptHash };
+  }
   const row = db
     .prepare(
       `SELECT session_id, stable_prompt_hash FROM agent_sessions
@@ -1464,10 +1475,13 @@ export function updateAgentSessionStableHash(
   stablePromptHash: string,
 ): void {
   if (isDaemonDbPostgres()) {
-    db.prepare(
-      `UPDATE agent_sessions SET stable_prompt_hash = ?, updated_at = ?
-        WHERE conversation_id = ? AND agent_id = ?`,
-    ).run(stablePromptHash, Date.now(), conversationId, agentId);
+    const existing = getCachedAgentSession(conversationId, agentId);
+    if (existing) {
+      setCachedAgentSession(conversationId, agentId, {
+        sessionId: existing.sessionId,
+        stablePromptHash,
+      });
+    }
     schedulePostgresWrite(async () => {
       await pgCore.pgUpdateAgentSessionStableHash(
         getPostgresPool(),
@@ -1490,9 +1504,7 @@ export function clearAgentSession(
   agentId: string,
 ): void {
   if (isDaemonDbPostgres()) {
-    db.prepare(
-      `DELETE FROM agent_sessions WHERE conversation_id = ? AND agent_id = ?`,
-    ).run(conversationId, agentId);
+    deleteCachedAgentSession(conversationId, agentId);
     schedulePostgresWrite(async () => {
       await pgCore.pgClearAgentSession(getPostgresPool(), conversationId, agentId);
     });

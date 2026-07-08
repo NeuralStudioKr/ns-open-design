@@ -394,6 +394,26 @@ export async function pgClearAgentSession(
   );
 }
 
+export async function pgListAgentSessionsByConversation(
+  pool: Pool,
+  conversationId: string,
+): Promise<Array<{ agentId: string; sessionId: string; stablePromptHash: string | null }>> {
+  const rows = await queryPostgresRows<{
+    agentId: string;
+    sessionId: string;
+    stablePromptHash: string | null;
+  }>(
+    pool,
+    `SELECT agent_id AS "agentId",
+            session_id AS "sessionId",
+            stable_prompt_hash AS "stablePromptHash"
+       FROM agent_sessions
+      WHERE conversation_id = $1`,
+    [conversationId],
+  );
+  return rows;
+}
+
 // ---------- project_tabs_state ----------
 // Stored as a single JSON blob per project. sqlite has both `tabs` (derived
 // rows) and `tabs_state` (JSON) tables; Postgres only carries `tabs_state`
