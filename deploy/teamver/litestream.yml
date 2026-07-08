@@ -14,19 +14,17 @@
 # Usage (Teamver EC2):
 #   litestream replicate -config /opt/teamver-design/litestream.yml
 #
-# Env substitution: set LITESTREAM_BUCKET / LITESTREAM_REGION /
-#   LITESTREAM_REPLICA_PATH before start (deploy.sh does this
-#   automatically from LITESTREAM_REPLICA_ID).
+# Env substitution (Litestream Go ExpandEnv — bash ${VAR:-default} 불가):
+#   LITESTREAM_BUCKET / LITESTREAM_REGION / LITESTREAM_REPLICA_PATH /
+#   LITESTREAM_SYNC_INTERVAL 는 compose + deploy.sh 가 항상 주입.
 
 dbs:
   - path: /data/app.sqlite
     replicas:
       - type: s3
         bucket: ${LITESTREAM_BUCKET}
-        # LITESTREAM_REPLICA_PATH default preserves the pre-Phase-4
-        # location (litestream/app.sqlite). deploy.sh sets
-        # LITESTREAM_REPLICA_PATH=litestream/<node-id>/app.sqlite for
-        # multi-node so both writers own disjoint S3 prefixes.
-        path: ${LITESTREAM_REPLICA_PATH:-litestream/app.sqlite}
-        region: ${LITESTREAM_REGION:-ap-northeast-2}
-        sync-interval: ${LITESTREAM_SYNC_INTERVAL:-3s}
+        # deploy.sh → litestream/<node-id>/app.sqlite (multi-node) or
+        # litestream/app.sqlite (legacy). Default: compose env.
+        path: ${LITESTREAM_REPLICA_PATH}
+        region: ${LITESTREAM_REGION}
+        sync-interval: ${LITESTREAM_SYNC_INTERVAL}
