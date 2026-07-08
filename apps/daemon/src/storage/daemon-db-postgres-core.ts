@@ -665,6 +665,241 @@ export interface PgDeploymentInput {
   updatedAt: number;
 }
 
+// ---------- routines ----------
+
+const ROUTINE_COLS = `id, name, prompt,
+  schedule_kind AS "scheduleKind",
+  schedule_value AS "scheduleValue",
+  schedule_json AS "scheduleJson",
+  project_mode AS "projectMode",
+  project_id AS "projectId",
+  skill_id AS "skillId",
+  agent_id AS "agentId",
+  context_json AS "contextJson",
+  enabled,
+  created_at AS "createdAt",
+  updated_at AS "updatedAt"`;
+
+const ROUTINE_RUN_COLS = `id,
+  routine_id AS "routineId",
+  trigger,
+  status,
+  project_id AS "projectId",
+  conversation_id AS "conversationId",
+  agent_run_id AS "agentRunId",
+  started_at AS "startedAt",
+  completed_at AS "completedAt",
+  summary, error,
+  error_code AS "errorCode"`;
+
+export async function pgListRoutines(pool: Pool): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${ROUTINE_COLS} FROM routines ORDER BY created_at ASC`,
+  );
+}
+
+export async function pgGetRoutine(pool: Pool, id: string): Promise<DbRow | null> {
+  return queryPostgresRow(pool, `SELECT ${ROUTINE_COLS} FROM routines WHERE id = $1`, [id]);
+}
+
+export async function pgInsertRoutine(pool: Pool, r: DbRow): Promise<void> {
+  await pool.query(
+    `INSERT INTO routines
+       (id, name, prompt, schedule_kind, schedule_value, schedule_json,
+        project_mode, project_id, skill_id, agent_id, context_json, enabled,
+        created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      r.id,
+      r.name,
+      r.prompt,
+      r.scheduleKind,
+      r.scheduleValue,
+      r.scheduleJson ?? null,
+      r.projectMode,
+      r.projectId ?? null,
+      r.skillId ?? null,
+      r.agentId ?? null,
+      r.contextJson ?? null,
+      r.enabled ? 1 : 0,
+      r.createdAt,
+      r.updatedAt,
+    ],
+  );
+}
+
+export async function pgUpdateRoutine(pool: Pool, id: string, merged: DbRow): Promise<void> {
+  await pool.query(
+    `UPDATE routines
+        SET name = $2, prompt = $3,
+            schedule_kind = $4, schedule_value = $5, schedule_json = $6,
+            project_mode = $7, project_id = $8,
+            skill_id = $9, agent_id = $10, context_json = $11,
+            enabled = $12, updated_at = $13
+      WHERE id = $1`,
+    [
+      id,
+      merged.name,
+      merged.prompt,
+      merged.scheduleKind,
+      merged.scheduleValue,
+      merged.scheduleJson ?? null,
+      merged.projectMode,
+      merged.projectId ?? null,
+      merged.skillId ?? null,
+      merged.agentId ?? null,
+      merged.contextJson ?? null,
+      merged.enabled ? 1 : 0,
+      merged.updatedAt,
+    ],
+  );
+}
+
+export async function pgDeleteRoutine(pool: Pool, id: string): Promise<void> {
+  await pool.query(`DELETE FROM routines WHERE id = $1`, [id]);
+}
+
+export async function pgListRoutineRuns(
+  pool: Pool,
+  routineId: string,
+  limit: number,
+): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${ROUTINE_RUN_COLS}
+       FROM routine_runs
+      WHERE routine_id = $1
+      ORDER BY started_at DESC
+      LIMIT $2`,
+    [routineId, limit],
+  );
+}
+
+export async function pgGetLatestRoutineRun(
+  pool: Pool,
+  routineId: string,
+): Promise<DbRow | null> {
+  return queryPostgresRow(
+    pool,
+    `SELECT ${ROUTINE_RUN_COLS}
+       FROM routine_runs
+      WHERE routine_id = $1
+      ORDER BY started_at DESC
+      LIMIT 1`,
+    [routineId],
+  );
+}
+
+export async function pgGetRoutineRun(pool: Pool, id: string): Promise<DbRow | null> {
+  return queryPostgresRow(
+    pool,
+    `SELECT ${ROUTINE_RUN_COLS} FROM routine_runs WHERE id = $1`,
+    [id],
+  );
+}
+
+export async function pgInsertRoutineRun(pool: Pool, r: DbRow): Promise<void> {
+  await pool.query(
+    `INSERT INTO routine_runs
+       (id, routine_id, trigger, status, project_id, conversation_id,
+        agent_run_id, started_at, completed_at, summary, error, error_code)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      r.id,
+      r.routineId,
+      r.trigger,
+      r.status,
+      r.projectId,
+      r.conversationId,
+      r.agentRunId,
+      r.startedAt,
+      r.completedAt ?? null,
+      r.summary ?? null,
+      r.error ?? null,
+      r.errorCode ?? null,
+    ],
+  );
+}
+
+export async function pgUpdateRoutineRun(pool: Pool, id: string, merged: DbRow): Promise<void> {
+  await pool.query(
+    `UPDATE routine_runs
+        SET status = $2, project_id = $3, conversation_id = $4, agent_run_id = $5,
+            completed_at = $6, summary = $7, error = $8, error_code = $9
+      WHERE id = $1`,
+    [
+      id,
+      merged.status,
+      merged.projectId,
+      merged.conversationId,
+      merged.agentRunId,
+      merged.completedAt ?? null,
+      merged.summary ?? null,
+      merged.error ?? null,
+      merged.errorCode ?? null,
+    ],
+  );
+}
+
+/**
+ * Atomically claim a scheduler slot and insert the run row in a single
+ * transaction. Returns true if the claim succeeded (this daemon owns the
+ * slot), false otherwise. Callers must treat a false return as "another
+ * daemon already ran this slot" — no run row was written.
+ */
+export async function pgTryClaimScheduledRoutineRun(
+  pool: Pool,
+  run: DbRow,
+  slotAt: number,
+): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claim = await client.query(
+      `INSERT INTO routine_schedule_claims (routine_id, slot_at, claimed_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING
+       RETURNING routine_id`,
+      [run.routineId, slotAt, Date.now()],
+    );
+    if (claim.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    await client.query(
+      `INSERT INTO routine_runs
+         (id, routine_id, trigger, status, project_id, conversation_id,
+          agent_run_id, started_at, completed_at, summary, error, error_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        run.id,
+        run.routineId,
+        run.trigger,
+        run.status,
+        run.projectId,
+        run.conversationId,
+        run.agentRunId,
+        run.startedAt,
+        run.completedAt ?? null,
+        run.summary ?? null,
+        run.error ?? null,
+        run.errorCode ?? null,
+      ],
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function pgUpsertDeployment(pool: Pool, d: PgDeploymentInput): Promise<void> {
   await pool.query(
     `INSERT INTO deployments

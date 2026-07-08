@@ -7,8 +7,9 @@
 // v2 — B5.2 tabs:  project_tabs_state (single json blob per project)
 // v3 — B5.3 preview_comments (per-conversation anchored annotations)
 // v4 — B5.4 deployments (per-project preview/publish records)
+// v5 — B5.5 routines / routine_runs / routine_schedule_claims
 
-export const DAEMON_DB_SCHEMA_VERSION = 4;
+export const DAEMON_DB_SCHEMA_VERSION = 5;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -152,6 +153,56 @@ CREATE INDEX IF NOT EXISTS idx_deployments_project
   ON deployments(project_id, updated_at DESC);
 `;
 
+// routines — scheduler config (system-scoped, no project FK because project_id
+// is nullable; the sqlite table has no FK either).
+// routine_runs — per-invocation log.
+// routine_schedule_claims — leader-election claim ((routine_id, slot_at) PK).
+// The PK plus INSERT … ON CONFLICT DO NOTHING gives atomic exactly-once
+// scheduling across multiple daemon nodes, which the sqlite path can't do.
+export const DAEMON_DB_POSTGRES_MIGRATION_V5 = `
+CREATE TABLE IF NOT EXISTS routines (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  prompt           TEXT NOT NULL,
+  schedule_kind    TEXT NOT NULL,
+  schedule_value   TEXT NOT NULL,
+  schedule_json    TEXT,
+  project_mode     TEXT NOT NULL,
+  project_id       TEXT,
+  skill_id         TEXT,
+  agent_id         TEXT,
+  context_json     TEXT,
+  enabled          INTEGER NOT NULL DEFAULT 1,
+  created_at       BIGINT NOT NULL,
+  updated_at       BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS routine_runs (
+  id               TEXT PRIMARY KEY,
+  routine_id       TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+  trigger          TEXT NOT NULL,
+  status           TEXT NOT NULL,
+  project_id       TEXT NOT NULL,
+  conversation_id  TEXT NOT NULL,
+  agent_run_id     TEXT NOT NULL,
+  started_at       BIGINT NOT NULL,
+  completed_at     BIGINT,
+  summary          TEXT,
+  error            TEXT,
+  error_code       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_routine_runs_routine
+  ON routine_runs(routine_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS routine_schedule_claims (
+  routine_id  TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+  slot_at     BIGINT NOT NULL,
+  claimed_at  BIGINT NOT NULL,
+  PRIMARY KEY (routine_id, slot_at)
+);
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -160,4 +211,5 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 2, sql: DAEMON_DB_POSTGRES_MIGRATION_V2 },
   { version: 3, sql: DAEMON_DB_POSTGRES_MIGRATION_V3 },
   { version: 4, sql: DAEMON_DB_POSTGRES_MIGRATION_V4 },
+  { version: 5, sql: DAEMON_DB_POSTGRES_MIGRATION_V5 },
 ];

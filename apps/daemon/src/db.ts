@@ -2272,6 +2272,14 @@ export function insertRoutine(db: SqliteDb, r: DbRow) {
     r.createdAt,
     r.updatedAt,
   );
+  if (isDaemonDbPostgres()) {
+    // Dual-write to Postgres for cross-node visibility. Read path stays on
+    // sqlite until routine service is async-refactored (Track B5.6).
+    const snapshot = { ...r };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertRoutine(getPostgresPool(), snapshot);
+    });
+  }
   return getRoutine(db, r.id);
 }
 
@@ -2306,11 +2314,22 @@ export function updateRoutine(db: SqliteDb, id: string, patch: DbRow) {
     merged.updatedAt,
     id,
   );
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...merged };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateRoutine(getPostgresPool(), id, snapshot);
+    });
+  }
   return getRoutine(db, id);
 }
 
 export function deleteRoutine(db: SqliteDb, id: string): boolean {
   const result = db.prepare(`DELETE FROM routines WHERE id = ?`).run(id);
+  if (isDaemonDbPostgres()) {
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteRoutine(getPostgresPool(), id);
+    });
+  }
   return result.changes > 0;
 }
 
@@ -2386,9 +2405,22 @@ export function insertRoutineRun(db: SqliteDb, r: DbRow) {
     r.error ?? null,
     r.errorCode ?? null,
   );
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...r };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertRoutineRun(getPostgresPool(), snapshot);
+    });
+  }
   return getRoutineRun(db, r.id);
 }
 
+/**
+ * Sync entrypoint kept for the current server.ts scheduler shim. Claims a
+ * scheduler slot in sqlite (single-node atomic) and duplicates the write to
+ * Postgres. NOTE: for exactly-once behavior across multiple daemon nodes,
+ * callers should migrate to `tryClaimScheduledRoutineRunAsync` — sqlite
+ * claim is only atomic per-node.
+ */
 export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number) {
   const insertClaim = db.prepare(
     `INSERT OR IGNORE INTO routine_schedule_claims
@@ -2421,7 +2453,40 @@ export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number
     return true;
   });
   if (!tx()) return null;
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...r };
+    schedulePostgresWrite(async () => {
+      // Postgres claim + run insert atomically in one transaction.
+      await pgCore.pgTryClaimScheduledRoutineRun(getPostgresPool(), snapshot, slotAt);
+    });
+  }
   return getRoutineRun(db, r.id);
+}
+
+/**
+ * Cross-node atomic scheduler claim. Prefer this over `insertScheduledRoutineRun`
+ * when the caller can be async — Postgres becomes the source of truth for
+ * (routine_id, slot_at) uniqueness. Also writes to sqlite for local reads
+ * during the transition.
+ */
+export async function tryClaimScheduledRoutineRunAsync(
+  db: SqliteDb,
+  r: DbRow,
+  slotAt: number,
+): Promise<DbRow | null> {
+  if (isDaemonDbPostgres()) {
+    const ok = await pgCore.pgTryClaimScheduledRoutineRun(getPostgresPool(), r, slotAt);
+    if (!ok) return null;
+    // Mirror to sqlite so sync readers still see the row until we finish
+    // migrating routes/routine.ts.
+    try {
+      insertScheduledRoutineRun(db, r, slotAt);
+    } catch {
+      // sqlite mirror best-effort — postgres remains the SSOT for the claim.
+    }
+    return getRoutineRun(db, r.id);
+  }
+  return insertScheduledRoutineRun(db, r, slotAt);
 }
 
 export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {
@@ -2447,6 +2512,12 @@ export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {
     merged.errorCode ?? null,
     id,
   );
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...merged };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateRoutineRun(getPostgresPool(), id, snapshot);
+    });
+  }
   return getRoutineRun(db, id);
 }
 

@@ -89,17 +89,23 @@ async function main(): Promise<void> {
     tabs_state: 0,
     preview_comments: 0,
     deployments: 0,
+    routines: 0,
+    routine_runs: 0,
+    routine_schedule_claims: 0,
     skipped: 0,
   };
 
   try {
-    stats.projects         = await migrateProjects(sqlite, pool, args.dryRun);
-    stats.conversations    = await migrateConversations(sqlite, pool, args.dryRun);
-    stats.messages         = await migrateMessages(sqlite, pool, args.dryRun);
-    stats.agent_sessions   = await migrateAgentSessions(sqlite, pool, args.dryRun);
-    stats.tabs_state       = await migrateTabsState(sqlite, pool, args.dryRun);
-    stats.preview_comments = await migratePreviewComments(sqlite, pool, args.dryRun);
-    stats.deployments      = await migrateDeployments(sqlite, pool, args.dryRun);
+    stats.projects                = await migrateProjects(sqlite, pool, args.dryRun);
+    stats.conversations           = await migrateConversations(sqlite, pool, args.dryRun);
+    stats.messages                = await migrateMessages(sqlite, pool, args.dryRun);
+    stats.agent_sessions          = await migrateAgentSessions(sqlite, pool, args.dryRun);
+    stats.tabs_state              = await migrateTabsState(sqlite, pool, args.dryRun);
+    stats.preview_comments        = await migratePreviewComments(sqlite, pool, args.dryRun);
+    stats.deployments             = await migrateDeployments(sqlite, pool, args.dryRun);
+    stats.routines                = await migrateRoutines(sqlite, pool, args.dryRun);
+    stats.routine_runs            = await migrateRoutineRuns(sqlite, pool, args.dryRun);
+    stats.routine_schedule_claims = await migrateRoutineScheduleClaims(sqlite, pool, args.dryRun);
   } finally {
     sqlite.close();
     await pool.end();
@@ -478,6 +484,143 @@ async function migrateDeployments(
     );
   }
   logStage('deployments', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migrateRoutines(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  const rows = sqlite
+    .prepare(
+      `SELECT id, name, prompt, schedule_kind, schedule_value, schedule_json,
+              project_mode, project_id, skill_id, agent_id, context_json,
+              enabled, created_at, updated_at
+         FROM routines`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('routines', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO routines
+         (id, name, prompt, schedule_kind, schedule_value, schedule_json,
+          project_mode, project_id, skill_id, agent_id, context_json, enabled,
+          created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (id) DO UPDATE
+         SET name = EXCLUDED.name,
+             prompt = EXCLUDED.prompt,
+             schedule_kind = EXCLUDED.schedule_kind,
+             schedule_value = EXCLUDED.schedule_value,
+             schedule_json = EXCLUDED.schedule_json,
+             project_mode = EXCLUDED.project_mode,
+             project_id = EXCLUDED.project_id,
+             skill_id = EXCLUDED.skill_id,
+             agent_id = EXCLUDED.agent_id,
+             context_json = EXCLUDED.context_json,
+             enabled = EXCLUDED.enabled,
+             updated_at = EXCLUDED.updated_at`,
+      [
+        r.id,
+        r.name,
+        r.prompt,
+        r.schedule_kind,
+        r.schedule_value,
+        r.schedule_json ?? null,
+        r.project_mode,
+        r.project_id ?? null,
+        r.skill_id ?? null,
+        r.agent_id ?? null,
+        r.context_json ?? null,
+        Number(r.enabled ?? 0) === 1 ? 1 : 0,
+        Number(r.created_at ?? Date.now()),
+        Number(r.updated_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('routines', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migrateRoutineRuns(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  const rows = sqlite
+    .prepare(
+      `SELECT id, routine_id, trigger, status, project_id, conversation_id,
+              agent_run_id, started_at, completed_at, summary, error, error_code
+         FROM routine_runs`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('routine_runs', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO routine_runs
+         (id, routine_id, trigger, status, project_id, conversation_id,
+          agent_run_id, started_at, completed_at, summary, error, error_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id) DO UPDATE
+         SET status = EXCLUDED.status,
+             completed_at = EXCLUDED.completed_at,
+             summary = EXCLUDED.summary,
+             error = EXCLUDED.error,
+             error_code = EXCLUDED.error_code`,
+      [
+        r.id,
+        r.routine_id,
+        r.trigger,
+        r.status,
+        r.project_id,
+        r.conversation_id,
+        r.agent_run_id,
+        Number(r.started_at ?? Date.now()),
+        r.completed_at == null ? null : Number(r.completed_at),
+        r.summary ?? null,
+        r.error ?? null,
+        r.error_code ?? null,
+      ],
+    );
+  }
+  logStage('routine_runs', rows.length, 'applied');
+  return rows.length;
+}
+
+async function migrateRoutineScheduleClaims(
+  sqlite: SqliteDb,
+  pool: Pool,
+  dryRun: boolean,
+): Promise<number> {
+  const rows = sqlite
+    .prepare(
+      `SELECT routine_id, slot_at, claimed_at FROM routine_schedule_claims`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  if (dryRun) {
+    logStage('routine_schedule_claims', rows.length, 'dry-run');
+    return rows.length;
+  }
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO routine_schedule_claims (routine_id, slot_at, claimed_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [
+        r.routine_id,
+        Number(r.slot_at ?? 0),
+        Number(r.claimed_at ?? Date.now()),
+      ],
+    );
+  }
+  logStage('routine_schedule_claims', rows.length, 'applied');
   return rows.length;
 }
 
