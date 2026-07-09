@@ -98,6 +98,42 @@ export async function pgDeleteProject(pool: Pool, id: string): Promise<void> {
   await pool.query(`DELETE FROM projects WHERE id = $1`, [id]);
 }
 
+export async function pgListProjects(pool: Pool): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${PROJECT_COLS}
+       FROM projects
+      ORDER BY updated_at DESC`,
+  );
+}
+
+export async function pgListProjectsPage(
+  pool: Pool,
+  options: { limit: number; cursorUpdatedAt?: number; cursorId?: string },
+): Promise<DbRow[]> {
+  const limit = Math.max(1, Math.min(Math.floor(options.limit), 100));
+  const params: unknown[] = [];
+  let where = '';
+  if (
+    options.cursorUpdatedAt !== undefined &&
+    options.cursorId !== undefined
+  ) {
+    where = 'WHERE (updated_at < $1 OR (updated_at = $2 AND id < $3))';
+    params.push(options.cursorUpdatedAt, options.cursorUpdatedAt, options.cursorId);
+  }
+  params.push(limit + 1);
+  const limitParam = `$${params.length}`;
+  return queryPostgresRows(
+    pool,
+    `SELECT ${PROJECT_COLS}
+       FROM projects
+       ${where}
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ${limitParam}`,
+    params,
+  );
+}
+
 export async function pgListConversations(pool: Pool, projectId: string): Promise<DbRow[]> {
   return queryPostgresRows(
     pool,

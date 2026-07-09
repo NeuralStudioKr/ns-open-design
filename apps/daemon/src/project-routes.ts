@@ -23,7 +23,11 @@ import type { RouteDeps } from './server-context.js';
 import { readAnalyticsContext } from './analytics.js';
 import { listSkills } from './skills.js';
 import { isSafeId } from './projects.js';
-import { listProjectsPage, parseProjectListCursor } from './db.js';
+import {
+  listProjectsAsync,
+  listProjectsPageAsync,
+  parseProjectListCursor,
+} from './db.js';
 import {
   BUILT_IN_PROJECT_LOCATION_ID,
   allProjectLocations,
@@ -788,7 +792,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { writeProjectFile, readProjectFile, ensureProject, listFiles, listTabs, setTabs, resolveProjectDir } = ctx.projectFiles;
   const { insertConversation, getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
-  const { listLatestProjectRunStatuses, listProjectsAwaitingInput, normalizeProjectDisplayStatus, composeProjectDisplayStatus, listProjects } = ctx.status;
+  const { listLatestProjectRunStatuses, listProjectsAwaitingInput, normalizeProjectDisplayStatus, composeProjectDisplayStatus } = ctx.status;
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
   const { randomId } = ctx.ids;
   const { validateProjectDesignSystemId, validateProjectSkillId } = ctx.validation;
@@ -913,17 +917,18 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       : BUILT_IN_PROJECT_LOCATION_ID;
   }
 
-  function unregisterProjectsForRemovedLocations(
+  async function unregisterProjectsForRemovedLocations(
     previousLocations: Array<{ id: string; path: string; builtIn?: boolean }>,
     nextLocations: Array<{ id?: string; path: string }>,
-  ): string[] {
+  ): Promise<string[]> {
     const nextIds = new Set(nextLocations.map((location) => location.id).filter(Boolean));
     const nextPaths = new Set(nextLocations.map((location) => location.path));
     const removed = previousLocations.filter(
       (location) => !location.builtIn && !nextIds.has(location.id) && !nextPaths.has(location.path),
     );
     if (removed.length === 0) return [];
-    return listProjects(db)
+    const projects = await listProjectsAsync(db);
+    return projects
       .filter((project: any) => removed.some((location) => projectBelongsToLocation(project, location)))
       .map((project: any) => project.id);
   }
@@ -1012,7 +1017,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       }
       const config = await writeAppConfig(ctx.paths.RUNTIME_DATA_DIR, { projectLocations: prepared });
       const locations = allProjectLocations(PROJECTS_DIR, config.projectLocations);
-      const removedProjectIds = unregisterProjectsForRemovedLocations(previousLocations, config.projectLocations ?? []);
+      const removedProjectIds = await unregisterProjectsForRemovedLocations(previousLocations, config.projectLocations ?? []);
       /** @type {import('@open-design/contracts').ProjectLocationsResponse} */
       const body = { locations, removedProjectIds };
       res.json(body);
@@ -1089,7 +1094,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         PROJECT_RECENT_DEFAULT_LIMIT,
         PROJECT_RECENT_MAX_LIMIT,
       );
-      const page = listProjectsPage(db, { limit });
+      const page = await listProjectsPageAsync(db, { limit });
       const context = await buildProjectListingContext();
       /** @type {import('@open-design/contracts').RecentProjectsResponse} */
       const body = {
@@ -1110,7 +1115,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       if (!paginated) {
         /** @type {import('@open-design/contracts').ProjectsResponse} */
         const body = {
-          projects: enrichProjectsForListing(listProjects(db), context),
+          projects: enrichProjectsForListing(await listProjectsAsync(db), context),
         };
         res.json(body);
         return;
@@ -1120,7 +1125,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         PROJECT_LIST_DEFAULT_LIMIT,
         PROJECT_LIST_MAX_LIMIT,
       );
-      const page = listProjectsPage(db, {
+      const page = await listProjectsPageAsync(db, {
         limit,
         cursor: parseProjectListCursor(
           typeof cursorRaw === 'string' ? cursorRaw : undefined,

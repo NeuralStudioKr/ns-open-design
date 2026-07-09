@@ -110,7 +110,7 @@ DaemonDb를 켜기 **전**:
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| `listProjects` / embed 외 standalone 목록 | sqlite-only read | Teamver embed는 **BFF registry**가 목록 SSOT |
+| `listProjects` / standalone·daemon 목록 | **B5.11 PG read + cache merge** | Teamver embed 목록은 **BFF registry** SSOT (변경 없음) |
 | routines read | sqlite (+ pg dual-write) | 새 노드 cold sqlite 시 routine 목록 empty 가능 — ops는 단일 노드 또는 sqlite warm |
 | media_tasks read | sqlite-local | sticky project 라우팅 가정; cross-node visibility 미구현 |
 | plugins 3테이블 | schema+CLI만 | §2 참고 |
@@ -130,9 +130,23 @@ DaemonDb를 켜기 **전**:
 
 ---
 
-## 6. 변경 이력
+## 6. B5.11 `listProjects` Postgres read (2026-07-09)
+
+| 항목 | 내용 |
+|------|------|
+| API | `GET /api/projects`, `/api/projects/recent`, project-locations unregister |
+| PG core | `pgListProjects`, `pgListProjectsPage` (커서 `(updated_at DESC, id DESC)`) |
+| Facade | `listProjectsAsync`, `listProjectsPageAsync` — postgres 분기 |
+| Cache merge | PG row + in-process cache 병합 (async write 직후 목록 누락 방지) |
+| Delete tombstone | `deleteCachedProject` → pending PG delete 동안 목록에서 제외 |
+| Embed | registry SSOT 유지 — embed FE 변경 없음 |
+
+---
+
+## 7. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
 | 2026-07-09 | 초안 — RDS database-add 확인, plugins 후속 보류 rationale, staging 검증 체크리스트 |
 | 2026-07-09 | B5.10 리뷰 수정 항목 §5 추가 |
+| 2026-07-09 | B5.11 `listProjects` postgres read + cache merge §6 |

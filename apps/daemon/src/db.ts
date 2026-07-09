@@ -26,6 +26,8 @@ import {
   invalidateCachedConversations,
   invalidateCachedMessages,
   invalidateCachedTabsState,
+  isProjectDeletedFromCache,
+  listCachedProjects,
   removeCachedPreviewComment,
   setCachedAgentSession,
   setCachedAgentSessionsForConversation,
@@ -732,6 +734,88 @@ export function listProjectsPage(
       ? encodeProjectListCursor({ updatedAt: last.updatedAt, id: last.id })
       : null;
   return { projects, hasMore, nextCursor };
+}
+
+type NormalizedProject = ReturnType<typeof normalizeProject>;
+
+function compareProjectsDesc(a: NormalizedProject, b: NormalizedProject): number {
+  if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+  if (a.id < b.id) return 1;
+  if (a.id > b.id) return -1;
+  return 0;
+}
+
+function projectBeforeCursor(project: NormalizedProject, cursor: ProjectListCursor): boolean {
+  return (
+    project.updatedAt < cursor.updatedAt
+    || (project.updatedAt === cursor.updatedAt && project.id < cursor.id)
+  );
+}
+
+function cachedProjectAsNormalized(cached: DbRow): NormalizedProject {
+  if (cached.metadataJson !== undefined && cached.metadataJson !== null) {
+    return normalizeProject(cached);
+  }
+  return cached as NormalizedProject;
+}
+
+async function listMergedProjectsPostgres(): Promise<NormalizedProject[]> {
+  const rows = await pgCore.pgListProjects(getPostgresPool());
+  const byId = new Map<string, NormalizedProject>();
+  for (const row of rows) {
+    const id = String(row.id);
+    if (isProjectDeletedFromCache(id)) continue;
+    byId.set(id, normalizeProject(row));
+  }
+  for (const cached of listCachedProjects()) {
+    const id = String(cached.id);
+    if (isProjectDeletedFromCache(id)) continue;
+    const project = cachedProjectAsNormalized(cached);
+    const existing = byId.get(id);
+    if (!existing || project.updatedAt > existing.updatedAt) {
+      byId.set(id, project);
+    }
+  }
+  const merged = Array.from(byId.values()).sort(compareProjectsDesc);
+  for (const project of merged) {
+    setCachedProject(project);
+  }
+  return merged;
+}
+
+function paginateMergedProjects(
+  projects: NormalizedProject[],
+  options: { limit: number; cursor?: ProjectListCursor | null },
+): { projects: NormalizedProject[]; hasMore: boolean; nextCursor: string | null } {
+  const limit = Math.max(1, Math.min(Math.floor(options.limit), 100));
+  const cursor = options.cursor ?? null;
+  const filtered = cursor ? projects.filter((project) => projectBeforeCursor(project, cursor)) : projects;
+  const hasMore = filtered.length > limit;
+  const slice = hasMore ? filtered.slice(0, limit) : filtered;
+  const last = slice.at(-1);
+  const nextCursor =
+    hasMore && last
+      ? encodeProjectListCursor({ updatedAt: last.updatedAt, id: last.id })
+      : null;
+  return { projects: slice, hasMore, nextCursor };
+}
+
+export async function listProjectsAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listProjects(db);
+  return listMergedProjectsPostgres();
+}
+
+export async function listProjectsPageAsync(
+  db: SqliteDb,
+  options: { limit: number; cursor?: ProjectListCursor | null },
+): Promise<{
+  projects: NormalizedProject[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
+  if (!isDaemonDbPostgres()) return listProjectsPage(db, options);
+  const merged = await listMergedProjectsPostgres();
+  return paginateMergedProjects(merged, options);
 }
 
 export function listLatestProjectRunStatuses(db: SqliteDb) {

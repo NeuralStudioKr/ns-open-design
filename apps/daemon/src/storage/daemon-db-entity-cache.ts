@@ -16,6 +16,8 @@ type CachedAgentSession = {
 };
 
 const projects = new Map<string, CachedProject>();
+// Pending PG delete: filter ghosts until async delete completes.
+const deletedProjectIds = new Set<string>();
 const conversationsByProject = new Map<string, CachedConversation[]>();
 const messagesByConversation = new Map<string, CachedMessage[]>();
 const tabsStateByProject = new Map<string, CachedTabsState>();
@@ -35,11 +37,22 @@ export function getCachedProject(id: string): CachedProject | null {
   return projects.get(id) ?? null;
 }
 
+export function listCachedProjects(): CachedProject[] {
+  return Array.from(projects.values());
+}
+
+export function isProjectDeletedFromCache(id: string): boolean {
+  return deletedProjectIds.has(id);
+}
+
 export function setCachedProject(project: CachedProject): void {
-  projects.set(String(project.id), project);
+  const id = String(project.id);
+  deletedProjectIds.delete(id);
+  projects.set(id, project);
 }
 
 export function deleteCachedProject(id: string): void {
+  deletedProjectIds.add(id);
   projects.delete(id);
   conversationsByProject.delete(id);
   tabsStateByProject.delete(id);
@@ -274,6 +287,7 @@ export function invalidateCachedAgentSessions(conversationId: string): void {
 
 export function clearDaemonDbEntityCache(): void {
   projects.clear();
+  deletedProjectIds.clear();
   conversationsByProject.clear();
   messagesByConversation.clear();
   tabsStateByProject.clear();
