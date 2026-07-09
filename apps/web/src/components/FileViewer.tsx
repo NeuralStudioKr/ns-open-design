@@ -35,6 +35,7 @@ import { TeamverExportMenu, type ShareExportFormat } from '../teamver/components
 import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import {
   projectScopedPreviewUrl,
@@ -4622,21 +4623,26 @@ function HtmlViewer({
       };
       const out = fn();
       if (out && typeof (out as Promise<unknown>).then === 'function') {
-        (out as Promise<unknown>).then(
-          (result) => {
-            if (result === 'cancelled') {
-              finish('cancelled');
-              if (toastFormats.has(format)) setExportToast(null);
-              return;
-            }
-            finish('success');
-            showResultToast(result);
-          },
-          (err) => {
-            finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
-            showExportFailureToast(err);
-          },
-        );
+        beginTeamverEmbedActiveWork();
+        (out as Promise<unknown>)
+          .finally(() => {
+            endTeamverEmbedActiveWork();
+          })
+          .then(
+            (result) => {
+              if (result === 'cancelled') {
+                finish('cancelled');
+                if (toastFormats.has(format)) setExportToast(null);
+                return;
+              }
+              finish('success');
+              showResultToast(result);
+            },
+            (err) => {
+              finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+              showExportFailureToast(err);
+            },
+          );
       } else {
         if (out === 'cancelled') {
           finish('cancelled');

@@ -108,7 +108,23 @@ async function readExportTicketResponse(resp: Response): Promise<ExportTicketRes
 
 async function triggerExportTicketDownload(resp: Response, fallbackTitle: string, extension: string): Promise<void> {
   const ticket = await readExportTicketResponse(resp);
-  triggerHrefDownload(ticket.downloadUrl, ticket.filename || `${safeFilename(fallbackTitle, 'artifact')}.${extension}`);
+  // Never navigate the SPA tab to the ticket URL. An `<a download>` GET still
+  // follows nginx auth 302s in the current tab (login → returnTo), which drops
+  // users back on the artifact route with no file saved. Fetch with embed
+  // credentials + redirect:manual keeps the download in-page — same pattern as
+  // exportProjectImageBlob.
+  const downloadResp = await fetchTeamverDaemon(ticket.downloadUrl);
+  if (!downloadResp.ok) {
+    await throwIfDaemonExportFailed(downloadResp, 'export ticket download');
+  }
+  const blob = await downloadResp.blob();
+  if (blob.size <= 0) {
+    throw new Error('export ticket download returned an empty file');
+  }
+  triggerDownload(
+    blob,
+    ticket.filename || `${safeFilename(fallbackTitle, 'artifact')}.${extension}`,
+  );
 }
 
 async function throwIfDaemonExportFailed(resp: Response, context: string): Promise<void> {
@@ -969,7 +985,7 @@ function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, s
   if (typeof htmlSnapshot !== 'string') return {};
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
-  return { html: repairArtifactDocumentHead(htmlSnapshot) };
+  return { html: patchArtifactDeckPrintCss(repairArtifactDocumentHead(htmlSnapshot)) };
 }
 
 async function performPdfExportRequest(opts: {

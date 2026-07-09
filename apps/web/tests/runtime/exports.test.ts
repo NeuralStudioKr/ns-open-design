@@ -671,13 +671,12 @@ describe('exportProjectAsPdf', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const call = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
       const body = JSON.parse(call[1].body);
-      expect(body).toEqual({
-        deck: true,
-        delivery: 'ticket',
-        fileName: 'deck/index.html',
-        html: '<!doctype html><section class="slide">Snapshot</section>',
-        title: 'Seed Deck',
-      });
+      expect(body.deck).toBe(true);
+      expect(body.delivery).toBe('ticket');
+      expect(body.fileName).toBe('deck/index.html');
+      expect(body.title).toBe('Seed Deck');
+      expect(body.html).toContain('<section class="slide">Snapshot</section>');
+      expect(body.html).not.toContain('flex-direction: column !important');
     } finally {
       restoreHost();
     }
@@ -1184,6 +1183,48 @@ describe('exportProjectAsHtml', () => {
     });
     expect(capturedFilename).toBe('Main-Page.html');
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>inlined</p>');
+  });
+
+  it('fetches export tickets with credentials instead of navigating the SPA tab', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/html') {
+        return new Response(
+          JSON.stringify({
+            delivery: 'ticket',
+            downloadUrl: '/api/projects/proj-1/export/downloads/ticket-1',
+            filename: 'Seed-Deck.html',
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-1') {
+        return new Response('<!doctype html><p>ticket html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    await exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/proj-1/export/downloads/ticket-1',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>ticket html</p>');
   });
 
   it('falls back to daemon inline HTML when rendered HTML export fails', async () => {
