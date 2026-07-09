@@ -44,7 +44,10 @@ describe('BYOK terminal message PUT hooks', () => {
     expect(helper).toContain('isTeamverDesignManaged()');
     expect(helper).toContain('isSafeId(projectId)');
     expect(helper).toContain('isSafeId(conversationId)');
-    expect(helper).toContain('getProject(db, projectId)');
+    expect(
+      helper.includes('getProject(db, projectId)')
+      || helper.includes('getProjectAsync(db, projectId)'),
+    ).toBe(true);
     expect(helper).toContain('insertConversation(db');
     expect(helper).toContain('teamver_conversation_recovered_for_write');
   });

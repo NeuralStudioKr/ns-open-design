@@ -809,10 +809,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
   const { randomId } = ctx.ids;
   const { validateProjectDesignSystemId, validateProjectSkillId } = ctx.validation;
-  function recoverTeamverConversationForWrite(projectId: string, conversationId: string, patch?: any) {
+  async function recoverTeamverConversationForWrite(projectId: string, conversationId: string, patch?: any) {
     if (!isTeamverDesignManaged()) return null;
     if (!isSafeId(projectId) || !isSafeId(conversationId)) return null;
-    const project = getProject(db, projectId);
+    const project = getProjectAsync
+      ? await getProjectAsync(db, projectId)
+      : getProject(db, projectId);
     if (!project) return null;
     const now = Date.now();
     const sessionMode = normalizeChatSessionMode(patch?.sessionMode);
@@ -1852,10 +1854,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     res.json({ conversation: conv });
   });
 
-  app.patch('/api/projects/:id/conversations/:cid', (req, res) => {
-    const conv =
-      getConversation(db, req.params.cid) ??
-      recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
+  app.patch('/api/projects/:id/conversations/:cid', async (req, res) => {
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'not found' });
     }
@@ -1882,10 +1885,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     res.json({ messages: listMessages(db, req.params.cid) });
   });
 
-  app.put('/api/projects/:id/conversations/:cid/messages/:mid', (req, res) => {
-    const conv =
-      getConversation(db, req.params.cid) ??
-      recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
+  app.put('/api/projects/:id/conversations/:cid/messages/:mid', async (req, res) => {
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
