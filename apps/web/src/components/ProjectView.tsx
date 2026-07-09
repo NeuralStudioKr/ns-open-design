@@ -184,6 +184,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
 import {
@@ -2450,22 +2451,23 @@ export function ProjectView({
       }
     }
     // Fold in the auto-memory block so BYOK / API-mode chats see the
-    // same Personal-memory section a daemon-side CLI chat would. The
-    // daemon does this by calling `composeMemoryBody()` directly; the
-    // web side hits the equivalent HTTP surface so it can stay
-    // ignorant of daemon internals. Failures are swallowed — memory is
-    // best-effort, never a blocker for the chat round-trip.
+    // same Personal-memory section a daemon-side CLI chat would. Teamver
+    // embed intentionally skips OD personal memory: workspace/project
+    // registry state is the authority there, and global OD memories can
+    // leak stale context from another Teamver project into a fresh run.
     let memoryBody: string | undefined;
-    try {
-      const resp = await fetch('/api/memory/system-prompt');
-      if (resp.ok) {
-        const json = (await resp.json()) as MemorySystemPromptResponse;
-        if (typeof json.body === 'string' && json.body.trim().length > 0) {
-          memoryBody = json.body;
+    if (shouldInjectOdPersonalMemoryIntoPrompt()) {
+      try {
+        const resp = await fetch('/api/memory/system-prompt');
+        if (resp.ok) {
+          const json = (await resp.json()) as MemorySystemPromptResponse;
+          if (typeof json.body === 'string' && json.body.trim().length > 0) {
+            memoryBody = json.body;
+          }
         }
+      } catch {
+        // Ignore; memory injection is best-effort.
       }
-    } catch {
-      // Ignore; memory injection is best-effort.
     }
     let audioVoiceOptions: AudioVoiceOption[] | undefined;
     let audioVoiceOptionsLookupError: string | undefined;
