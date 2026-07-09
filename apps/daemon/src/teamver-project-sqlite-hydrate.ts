@@ -154,7 +154,7 @@ export function createTeamverProjectSqliteHydrationMiddleware(
     if (!identity) return next();
 
     if (isDaemonDbPostgres()) {
-      await warmProjectFromPostgres(projectId);
+      await warmProjectFromPostgres(db, projectId);
     } else {
       await syncTeamverProjectDaemonStateFromRequest(
         db,

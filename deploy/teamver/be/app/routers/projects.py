@@ -95,9 +95,16 @@ async def _resolve_existing_registry_row(
     od_project_id: str,
     title: str | None,
     auth: AuthContext,
+    reactivate_if_deleted: bool = True,
 ) -> tuple[DesignProject, bool]:
     _ensure_project_ownership(row, auth)
     if row.status == "deleted":
+        if not reactivate_if_deleted:
+            raise ApiError(
+                409,
+                "project_deleted",
+                code="conflict",
+            )
         reactivated = await design_project_crud.areactivate_by_od_id(
             db,
             od_project_id=od_project_id,
@@ -240,6 +247,7 @@ async def create_project(
                 od_project_id=od_project_id,
                 title=body.title,
                 auth=auth,
+                reactivate_if_deleted=body.reactivate_if_deleted,
             )
             await _commit_registry_row_if_needed(db, changed=changed)
             _schedule_daemon_scratch_sync_after_registry(row, auth=auth)
@@ -269,6 +277,7 @@ async def create_project(
                         od_project_id=od_project_id,
                         title=body.title,
                         auth=auth,
+                        reactivate_if_deleted=body.reactivate_if_deleted,
                     )
                 except ForbiddenError:
                     raise ApiError(

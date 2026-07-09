@@ -1,5 +1,6 @@
 import { NetworkError } from "@teamver/app-sdk";
 import type { Project } from "../types";
+import { resolveProjectDisplayName } from "./embedRegistryProjectList";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
@@ -29,6 +30,7 @@ async function waitForEmbedBootIfNeeded(): Promise<void> {
 export type TeamverProjectRegistryPayload = {
   odProjectId: string;
   title?: string;
+  reactivateIfDeleted?: boolean;
 };
 
 export type TeamverRegisteredProject = {
@@ -195,11 +197,13 @@ export function resetTeamverProjectRegistryStateForTests(): void {
 
 export function buildTeamverProjectRegistryPayload(
   project: Pick<Project, "id" | "name">,
+  options?: { reactivateIfDeleted?: boolean },
 ): TeamverProjectRegistryPayload {
   const title = project.name?.trim();
   return {
     odProjectId: project.id,
     ...(title ? { title } : {}),
+    ...(options?.reactivateIfDeleted === false ? { reactivateIfDeleted: false } : {}),
   };
 }
 
@@ -225,7 +229,12 @@ function assertRegistryS3PrefixCached(workspaceId: string, projectId: string): v
 
 export async function registerTeamverProjectIfNeeded(
   project: Pick<Project, "id" | "name">,
-  options?: { skipBootWait?: boolean; retryDelaysMs?: readonly number[] },
+  options?: {
+    skipBootWait?: boolean;
+    retryDelaysMs?: readonly number[];
+    /** Legacy bulk sync must not resurrect user-deleted registry rows. */
+    reactivateIfDeleted?: boolean;
+  },
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (isTeamverProjectCollectionRouteSlug(project.id)) return;
@@ -241,7 +250,9 @@ export async function registerTeamverProjectIfNeeded(
 
   const userId = await resolveRegistryUserId();
 
-  const payload = buildTeamverProjectRegistryPayload(project);
+  const payload = buildTeamverProjectRegistryPayload(project, {
+    reactivateIfDeleted: options?.reactivateIfDeleted,
+  });
   const retryDelaysMs = options?.retryDelaysMs ?? REGISTRY_CREATE_RETRY_DELAYS_MS;
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
@@ -263,6 +274,9 @@ export async function registerTeamverProjectIfNeeded(
       return;
     } catch (err) {
       if (err instanceof NetworkError && err.status === 409) {
+        if (options?.reactivateIfDeleted === false) {
+          return;
+        }
         invalidateRegisteredIdsCache();
         if (userId) primeFeAccessAllowed(project.id, workspaceId, userId);
         await rememberRegistryS3Prefix(project.id, workspaceId);
@@ -303,7 +317,10 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
   const project = (await fetchDaemonProjectsForRegistry()).find((row) => row.id === trimmedId);
   if (!project) return;
 
-  await registerTeamverProjectIfNeeded(project, { skipBootWait: true });
+  await registerTeamverProjectIfNeeded(project, {
+    skipBootWait: true,
+    reactivateIfDeleted: false,
+  });
 }
 
 /** Embed boot: upsert all daemon projects into design-api registry (legacy migration). */
@@ -326,10 +343,18 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   if (now - syncAllAt < SYNC_ALL_MIN_INTERVAL_MS) return;
 
   syncAllInflight = (async () => {
+    const registeredIds = await listTeamverRegisteredProjectIds();
     const projects = await fetchDaemonProjectsForRegistry();
+    const pending =
+      registeredIds != null
+        ? projects.filter((project) => !registeredIds.has(project.id))
+        : projects;
     await Promise.all(
-      projects.map((project) =>
-        registerTeamverProjectIfNeeded(project, { skipBootWait: true }),
+      pending.map((project) =>
+        registerTeamverProjectIfNeeded(project, {
+          skipBootWait: true,
+          reactivateIfDeleted: false,
+        }),
       ),
     );
     invalidateRegisteredIdsCache();
@@ -448,14 +473,29 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
   projects: T[],
 ): Promise<T[]> {
   if (!isTeamverEmbedMode()) return projects;
-  const registeredIds = await listTeamverRegisteredProjectIds();
-  if (registeredIds === null) {
-    // Never fall back to the raw daemon list in embed mode. The shared daemon
-    // indexes every project materialized on the host — including other users'
-    // projects in the same workspace when registry filtering is unavailable.
+  const fetched = await fetchRegistryProjectsFromBff();
+  if (!fetched) {
     throw new TeamverProjectRegistryError("teamver_project_registry_list_failed");
   }
-  return projects.filter((project) => registeredIds.has(project.id));
+  const registeredIds = new Set<string>();
+  const titlesById = new Map<string, string>();
+  for (const row of fetched.projects) {
+    const odProjectId = readRegistryOdProjectId(row);
+    if (!odProjectId) continue;
+    registeredIds.add(odProjectId);
+    const title = row.title?.trim();
+    if (title) titlesById.set(odProjectId, title);
+  }
+  return projects
+    .filter((project) => registeredIds.has(project.id))
+    .map((project) => {
+      const title = titlesById.get(project.id);
+      if (!title || !("name" in project)) return project;
+      const currentName = (project as Pick<Project, "id" | "name">).name;
+      const name = resolveProjectDisplayName({ id: project.id, name: currentName }, title);
+      if (name === currentName) return project;
+      return { ...project, name } as T;
+    });
 }
 
 /** Embed: single registry row (od id or DPRJ id). */
@@ -614,21 +654,21 @@ export async function assertTeamverProjectAccessIfNeeded(
   return false;
 }
 
-/** Embed: daemon project delete 후 design-api registry soft-delete (best-effort). */
+/** Embed: design-api registry soft-delete before daemon row purge (prevents boot sync resurrection). */
 export async function unregisterTeamverProjectFromRegistryIfNeeded(
   projectId: string,
-): Promise<void> {
-  if (!isTeamverEmbedMode()) return;
+): Promise<boolean> {
+  if (!isTeamverEmbedMode()) return true;
 
   const trimmedId = projectId.trim();
-  if (!trimmedId) return;
+  if (!trimmedId) return true;
 
   const client = getDesignBffClient();
-  if (!client) return;
+  if (!client) return false;
 
   try {
     const workspaceId = await resolveActiveTeamverWorkspaceId();
-    if (!workspaceId?.trim()) return;
+    if (!workspaceId?.trim()) return false;
 
     await client.http.delete<void>(
       `/projects/${encodeURIComponent(trimmedId)}`,
@@ -639,7 +679,9 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
     );
     invalidateRegisteredIdsCache();
     invalidateFeAccessCache(trimmedId, workspaceId.trim());
+    return true;
   } catch (err) {
     console.warn("[teamver] project registry delete failed", err);
+    return false;
   }
 }

@@ -4,6 +4,7 @@ import {
   listEmbedProjectsFromRegistry,
   listEmbedProjectsPageFromRegistry,
   mapRegistryRowToProject,
+  resolveProjectDisplayName,
 } from "../../src/teamver/embedRegistryProjectList";
 import * as projectRegistry from "../../src/teamver/projectRegistry";
 import type { TeamverRegisteredProject } from "../../src/teamver/projectRegistry";
@@ -22,6 +23,15 @@ vi.mock("../../src/teamver/projectRegistry", () => ({
 describe("embedRegistryProjectList", () => {
   afterEach(() => {
     vi.mocked(projectRegistry.listTeamverRegistryProjects).mockReset();
+  });
+
+  it("prefers registry title when daemon name is the od id", () => {
+    expect(
+      resolveProjectDisplayName({ id: "abc-123", name: "abc-123" }, "Landing deck"),
+    ).toBe("Landing deck");
+    expect(
+      resolveProjectDisplayName({ id: "abc-123", name: "Custom" }, "Landing deck"),
+    ).toBe("Custom");
   });
 
   it("maps registry rows to Project shape", () => {

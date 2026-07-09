@@ -24,6 +24,17 @@ function readRegistryOdProjectId(project: TeamverRegisteredProject): string | un
   return id || undefined;
 }
 
+/** Prefer registry title when daemon PG name is empty or still the od id. */
+export function resolveProjectDisplayName(
+  project: Pick<Project, "id" | "name">,
+  registryTitle?: string | null,
+): string {
+  const title = registryTitle?.trim();
+  const name = project.name?.trim();
+  if (title && (!name || name === project.id)) return title;
+  return name || title || project.id || "Untitled";
+}
+
 function parseRegistryTimestamp(raw: unknown, fallback = 0): number {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string" && raw.trim()) {
@@ -40,7 +51,7 @@ export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project 
   const title = row.title?.trim();
   return sanitizeProjectForEmbed<Project>({
     id,
-    name: title || id || "Untitled",
+    name: resolveProjectDisplayName({ id, name: title || id || "" }, title),
     skillId: null,
     designSystemId: null,
     createdAt: createdAt || Date.now(),

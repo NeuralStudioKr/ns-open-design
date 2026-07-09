@@ -473,6 +473,7 @@ import {
   deleteConversation,
   deletePreviewComment,
   deleteProject as dbDeleteProject,
+  deleteProjectAsync as dbDeleteProjectAsync,
   deleteTemplate,
   getConversation,
   getDeployment,
@@ -6497,6 +6498,7 @@ export async function startServer({
     insertProject,
     updateProject,
     dbDeleteProject,
+    dbDeleteProjectAsync,
     removeProjectDir,
     validateLinkedDirs,
   };
