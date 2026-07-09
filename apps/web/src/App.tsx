@@ -2893,10 +2893,10 @@ function AppInner() {
   }, [navigateToProject]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
-    const registryOk = await unregisterTeamverProjectFromRegistryIfNeeded(id);
-    if (!registryOk) return false;
     const ok = await deleteProjectApi(id);
     if (!ok) return false;
+    const registryOk = await unregisterTeamverProjectFromRegistryIfNeeded(id);
+    if (!registryOk) return false;
     if (isTeamverEmbedMode()) {
       clearTeamverEmbedProjectCaches(id);
     }

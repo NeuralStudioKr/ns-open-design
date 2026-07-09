@@ -1013,6 +1013,29 @@ export function insertProject(db: SqliteDb, p: DbRow) {
   return getProject(db, p.id);
 }
 
+/** Postgres: await durable insert before HTTP create returns (cross-node list parity). */
+export async function insertProjectAsync(db: SqliteDb, p: DbRow) {
+  if (!isDaemonDbPostgres()) {
+    return insertProject(db, p);
+  }
+  const created = normalizeProject({
+    id: p.id,
+    name: p.name,
+    skillId: p.skillId ?? null,
+    designSystemId: p.designSystemId ?? null,
+    pendingPrompt: p.pendingPrompt ?? null,
+    metadataJson: p.metadata ? JSON.stringify(p.metadata) : null,
+    appliedPluginSnapshotId: p.appliedPluginSnapshotId ?? null,
+    customInstructions: p.customInstructions ?? null,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  });
+  setCachedProject(created);
+  mirrorProjectRowToSqlite(db, p);
+  await pgCore.pgInsertProject(getPostgresPool(), p);
+  return created;
+}
+
 export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
   if (isDaemonDbPostgres()) {
     const existing = getProject(db, id);
@@ -1538,6 +1561,26 @@ export function insertConversation(db: SqliteDb, c: DbRow) {
   return getConversation(db, c.id);
 }
 
+/** Postgres: await durable conversation insert on project create. */
+export async function insertConversationAsync(db: SqliteDb, c: DbRow) {
+  if (!isDaemonDbPostgres()) {
+    return insertConversation(db, c);
+  }
+  const created = normalizeConversation({
+    id: c.id,
+    projectId: c.projectId,
+    title: c.title ?? null,
+    sessionMode: c.sessionMode,
+    messageCount: 0,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  });
+  upsertCachedConversation(String(c.projectId), created as DbRow);
+  mirrorConversationRowToSqlite(db, c);
+  await pgCore.pgInsertConversation(getPostgresPool(), c);
+  return created;
+}
+
 export function updateConversation(db: SqliteDb, id: string, patch: DbRow) {
   if (isDaemonDbPostgres()) {
     const base = getConversation(db, id);
@@ -1551,6 +1594,14 @@ export function updateConversation(db: SqliteDb, id: string, patch: DbRow) {
       updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
     };
     invalidateCachedConversations(base.projectId);
+    mirrorConversationRowToSqlite(db, {
+      id: merged.id,
+      projectId: merged.projectId,
+      title: merged.title ?? null,
+      sessionMode: merged.sessionMode,
+      createdAt: merged.createdAt,
+      updatedAt: merged.updatedAt,
+    });
     schedulePostgresWrite(async () => {
       await pgCore.pgUpdateConversation(getPostgresPool(), id, merged);
     });

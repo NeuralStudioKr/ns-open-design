@@ -726,6 +726,20 @@ describe('Teamver project registry delete', () => {
       ...designBffClient.TEAMVER_BFF_REQUEST_OPTIONS,
     });
   });
+
+  it('treats registry DELETE 404 as success (already removed)', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        delete: vi.fn(async () => {
+          throw new NetworkError({ status: 404, message: 'project_not_found' });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(unregisterTeamverProjectFromRegistryIfNeeded('p-gone')).resolves.toBe(true);
+  });
 });
 
 describe('formatTeamverProjectRegistryErrorMessage', () => {

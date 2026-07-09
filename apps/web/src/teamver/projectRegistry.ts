@@ -274,7 +274,7 @@ export async function registerTeamverProjectIfNeeded(
       return;
     } catch (err) {
       if (err instanceof NetworkError && err.status === 409) {
-        if (options?.reactivateIfDeleted === false) {
+        if (options?.reactivateIfDeleted === false && isRegistryProjectDeletedConflict(err)) {
           return;
         }
         invalidateRegisteredIdsCache();
@@ -298,6 +298,12 @@ function isRetryableRegistryCreateError(err: unknown): boolean {
   if (!(err instanceof NetworkError)) return true;
   if (err.status == null) return true;
   return err.status === 408 || err.status === 425 || err.status === 429 || err.status >= 500;
+}
+
+function isRegistryProjectDeletedConflict(err: unknown): boolean {
+  if (!(err instanceof NetworkError) || err.status !== 409) return false;
+  const message = err.message?.toLowerCase() ?? "";
+  return message.includes("project_deleted");
 }
 
 async function delay(ms: number): Promise<void> {
@@ -654,7 +660,7 @@ export async function assertTeamverProjectAccessIfNeeded(
   return false;
 }
 
-/** Embed: design-api registry soft-delete before daemon row purge (prevents boot sync resurrection). */
+/** Embed: daemon delete then registry soft-delete (both required). */
 export async function unregisterTeamverProjectFromRegistryIfNeeded(
   projectId: string,
 ): Promise<boolean> {
@@ -666,21 +672,27 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
   const client = getDesignBffClient();
   if (!client) return false;
 
+  let workspaceId: string | null = null;
   try {
-    const workspaceId = await resolveActiveTeamverWorkspaceId();
-    if (!workspaceId?.trim()) return false;
+    workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim() ?? null;
+    if (!workspaceId) return false;
 
     await client.http.delete<void>(
       `/projects/${encodeURIComponent(trimmedId)}`,
       {
-        workspaceId: workspaceId.trim(),
+        workspaceId,
         ...TEAMVER_BFF_REQUEST_OPTIONS,
       },
     );
     invalidateRegisteredIdsCache();
-    invalidateFeAccessCache(trimmedId, workspaceId.trim());
+    invalidateFeAccessCache(trimmedId, workspaceId);
     return true;
   } catch (err) {
+    if (err instanceof NetworkError && err.status === 404) {
+      invalidateRegisteredIdsCache();
+      if (workspaceId) invalidateFeAccessCache(trimmedId, workspaceId);
+      return true;
+    }
     console.warn("[teamver] project registry delete failed", err);
     return false;
   }
