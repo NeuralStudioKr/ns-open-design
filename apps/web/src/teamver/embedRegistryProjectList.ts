@@ -1,7 +1,8 @@
 /**
- * Teamver embed — project list SSOT is design-api registry (RDS), not daemon
- * sqlite per EC2. Multi-node: daemon `GET /api/projects*` only sees the hashed
- * node's local sqlite; BFF `/teamver-bff/projects` is workspace-consistent.
+ * Teamver embed — registry row mapping + client-side pagination helpers.
+ * Project **list** SSOT: daemon `GET /api/projects*` (Postgres, B5.11+) filtered
+ * by registry membership (`filterProjectsByTeamverRegistryIfNeeded`).
+ * Registry BFF remains workspace access gate + title metadata fallback.
  *
  * docs-teamver/39_7 · 30_embed_home_boot_API_최적화.md
  */

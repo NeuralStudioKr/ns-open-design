@@ -1044,6 +1044,14 @@ export async function pgDeleteMediaTask(pool: Pool, id: string): Promise<void> {
   await pool.query(`DELETE FROM media_tasks WHERE id = $1`, [id]);
 }
 
+export async function pgGetMediaTask(pool: Pool, id: string): Promise<DbRow | null> {
+  return queryPostgresRow(
+    pool,
+    `SELECT ${MEDIA_TASK_COLS} FROM media_tasks WHERE id = $1`,
+    [id],
+  );
+}
+
 export async function pgListMediaTasksByProject(pool: Pool, projectId: string): Promise<DbRow[]> {
   return queryPostgresRows(
     pool,

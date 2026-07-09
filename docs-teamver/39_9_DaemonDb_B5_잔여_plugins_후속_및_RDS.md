@@ -110,9 +110,9 @@ DaemonDb를 켜기 **전**:
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| `listProjects` / standalone·daemon 목록 | **B5.11 PG read + cache merge** | Teamver embed 목록은 **BFF registry** SSOT (변경 없음) |
-| routines read | sqlite (+ pg dual-write) | 새 노드 cold sqlite 시 routine 목록 empty 가능 — ops는 단일 노드 또는 sqlite warm |
-| media_tasks read | sqlite-local | sticky project 라우팅 가정; cross-node visibility 미구현 |
+| `listProjects` / standalone·daemon·embed 목록 | **B5.11–B5.12** daemon PG read + registry filter (embed) | registry = workspace access gate |
+| routines read | **B5.12 PG read** + boot sqlite warm (scheduler) | `GET /api/routines*` cross-node |
+| media_tasks read | **B5.12 PG read** + boot sqlite warm (hydrate) | `GET /api/projects/:id/media/tasks` cross-node |
 | plugins 3테이블 | schema+CLI만 | §2 참고 |
 
 ---
@@ -143,10 +143,23 @@ DaemonDb를 켜기 **전**:
 
 ---
 
-## 7. 변경 이력
+## 7. B5.12 embed list · routines · media PG read (2026-07-09)
+
+| 항목 | 내용 |
+|------|------|
+| Embed list | `listProjects*` / `listRecentProjects` → daemon `GET /api/projects*` (PG) + `filterProjectsByTeamverRegistryIfNeeded` |
+| Routines API | `listRoutinesAsync`, `getRoutineAsync`, `listRoutineRunsAsync`, … — postgres 분기 |
+| Routines boot | `warmRoutinesSqliteFromPostgres` — scheduler `RoutineService.list()` sqlite mirror |
+| Media API | `listMediaTasksByProjectAsync`, `getMediaTaskAsync` — postgres 분기 |
+| Media boot | `warmRecentMediaTasksSqliteFromPostgres` — in-memory task hydrate |
+
+---
+
+## 8. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
 | 2026-07-09 | 초안 — RDS database-add 확인, plugins 후속 보류 rationale, staging 검증 체크리스트 |
 | 2026-07-09 | B5.10 리뷰 수정 항목 §5 추가 |
 | 2026-07-09 | B5.11 `listProjects` postgres read + cache merge §6 |
+| 2026-07-09 | B5.12 embed list · routines · media PG read §7 |

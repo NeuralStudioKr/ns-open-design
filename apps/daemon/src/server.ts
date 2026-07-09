@@ -390,7 +390,9 @@ import {
   getMediaTask,
   insertMediaTask,
   listMediaTasksByProject,
+  listMediaTasksByProjectAsync,
   listRecentMediaTasks,
+  warmRecentMediaTasksSqliteFromPostgres,
   reconcileMediaTasksOnBoot,
   updateMediaTask,
 } from './media-tasks.js';
@@ -495,6 +497,7 @@ import {
   listPreviewComments,
   listProjects,
   listRoutines,
+  warmRoutinesSqliteFromPostgres,
   listRoutineRuns,
   listTabs,
   listTemplates,
@@ -5370,6 +5373,16 @@ export async function startServer({
   });
   await initDaemonDbFromEnv();
   const db = openDatabase(PROJECT_ROOT, { dataDir: RUNTIME_DATA_DIR });
+  const warmedRoutines = await warmRoutinesSqliteFromPostgres(db);
+  if (warmedRoutines > 0) {
+    console.info(JSON.stringify({ metric: 'daemon_db_routines_warm', count: warmedRoutines }));
+  }
+  const warmedMediaTasks = await warmRecentMediaTasksSqliteFromPostgres(db, {
+    terminalTtlMs: TASK_TTL_AFTER_DONE_MS,
+  });
+  if (warmedMediaTasks > 0) {
+    console.info(JSON.stringify({ metric: 'daemon_db_media_tasks_warm', count: warmedMediaTasks }));
+  }
   // Wire the upload-destination bridge to this db so multer can route
   // file uploads into baseDir-rooted projects' actual folders.
   projectMetadataLookup = (id) => {
@@ -11371,16 +11384,16 @@ export async function startServer({
     res.on('close', wake);
   });
 
-  app.get('/api/projects/:id/media/tasks', (req, res) => {
+  app.get('/api/projects/:id/media/tasks', async (req, res) => {
     if (!isLocalSameOrigin(req, resolvedPort)) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     const projectId = req.params.id;
     const includeDone =
       req.query.includeDone === '1' || req.query.includeDone === 'true';
-    const tasks = listMediaTasksByProject(db, projectId, {
+    const tasks = (await listMediaTasksByProjectAsync(db, projectId, {
       includeTerminal: includeDone,
-    }).map((t) => ({
+    })).map((t) => ({
       taskId: t.id,
       status: t.status,
       startedAt: t.startedAt,

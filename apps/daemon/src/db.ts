@@ -2385,6 +2385,83 @@ export function listRoutines(db: SqliteDb) {
     .map(normalizeRoutine);
 }
 
+function mirrorRoutineToSqlite(db: SqliteDb, r: DbRow): void {
+  db.prepare(
+    `INSERT INTO routines
+       (id, name, prompt, schedule_kind, schedule_value, schedule_json,
+        project_mode, project_id, skill_id, agent_id, context_json, enabled,
+        created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        prompt = excluded.prompt,
+        schedule_kind = excluded.schedule_kind,
+        schedule_value = excluded.schedule_value,
+        schedule_json = excluded.schedule_json,
+        project_mode = excluded.project_mode,
+        project_id = excluded.project_id,
+        skill_id = excluded.skill_id,
+        agent_id = excluded.agent_id,
+        context_json = excluded.context_json,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at`,
+  ).run(
+    r.id,
+    r.name,
+    r.prompt,
+    r.scheduleKind,
+    r.scheduleValue,
+    r.scheduleJson ?? null,
+    r.projectMode,
+    r.projectId ?? null,
+    r.skillId ?? null,
+    r.agentId ?? null,
+    r.contextJson ?? null,
+    r.enabled ? 1 : 0,
+    r.createdAt,
+    r.updatedAt,
+  );
+}
+
+export async function warmRoutinesSqliteFromPostgres(db: SqliteDb): Promise<number> {
+  if (!isDaemonDbPostgres()) return 0;
+  const rows = await pgCore.pgListRoutines(getPostgresPool());
+  for (const row of rows) {
+    mirrorRoutineToSqlite(db, normalizeRoutine(row));
+  }
+  return rows.length;
+}
+
+export async function listRoutinesAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listRoutines(db);
+  const rows = await pgCore.pgListRoutines(getPostgresPool());
+  return rows.map((row) => normalizeRoutine(row));
+}
+
+export async function getRoutineAsync(db: SqliteDb, id: string) {
+  if (!isDaemonDbPostgres()) return getRoutine(db, id);
+  const row = await pgCore.pgGetRoutine(getPostgresPool(), id);
+  return row ? normalizeRoutine(row) : null;
+}
+
+export async function listRoutineRunsAsync(db: SqliteDb, routineId: string, limit = 20) {
+  if (!isDaemonDbPostgres()) return listRoutineRuns(db, routineId, limit);
+  const rows = await pgCore.pgListRoutineRuns(getPostgresPool(), routineId, limit);
+  return rows.map(normalizeRoutineRun);
+}
+
+export async function getLatestRoutineRunAsync(db: SqliteDb, routineId: string) {
+  if (!isDaemonDbPostgres()) return getLatestRoutineRun(db, routineId);
+  const row = await pgCore.pgGetLatestRoutineRun(getPostgresPool(), routineId);
+  return row ? normalizeRoutineRun(row) : null;
+}
+
+export async function getRoutineRunAsync(db: SqliteDb, id: string) {
+  if (!isDaemonDbPostgres()) return getRoutineRun(db, id);
+  const row = await pgCore.pgGetRoutineRun(getPostgresPool(), id);
+  return row ? normalizeRoutineRun(row) : null;
+}
+
 export function getRoutine(db: SqliteDb, id: string) {
   const r = db
     .prepare(`SELECT ${ROUTINE_COLS} FROM routines WHERE id = ?`)
