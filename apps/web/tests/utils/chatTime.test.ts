@@ -28,4 +28,28 @@ describe('messageTime', () => {
 
     expect(messageTime(message)).toBe(200);
   });
+
+  it('accepts persisted ISO timestamp strings', () => {
+    const message = {
+      id: 'user-iso',
+      role: 'user',
+      content: 'Build this',
+      createdAt: '2026-07-09T05:30:00.000Z',
+    } as unknown as ChatMessage;
+
+    expect(messageTime(message)).toBe(Date.parse('2026-07-09T05:30:00.000Z'));
+  });
+
+  it('skips invalid timestamp values so chat rendering does not throw', () => {
+    const message = {
+      id: 'user-invalid',
+      role: 'user',
+      content: 'Build this',
+      createdAt: 'not-a-date',
+      startedAt: Number.NaN,
+      endedAt: undefined,
+    } as unknown as ChatMessage;
+
+    expect(messageTime(message)).toBeUndefined();
+  });
 });

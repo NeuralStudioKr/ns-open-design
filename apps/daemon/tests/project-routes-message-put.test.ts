@@ -12,7 +12,8 @@ describe('BYOK terminal message PUT hooks', () => {
       "app.put('/api/projects/:id/conversations/:cid/messages/:mid'",
     );
     expect(putIndex).toBeGreaterThanOrEqual(0);
-    const handler = source.slice(putIndex, putIndex + 2_500);
+    const handler = source.slice(putIndex, putIndex + 3_500);
+    expect(handler).toContain('recoverTeamverConversationForWrite');
     expect(handler).toContain('shouldReportByokUsageFromMessage(saved, m)');
     expect(handler).toContain('reportByokTeamverUsageAndBillingFromDaemon');
     expect(handler).toContain('scheduleProjectStoragePersistAfterResponse');
@@ -29,5 +30,22 @@ describe('BYOK terminal message PUT hooks', () => {
       /app\.put\('\/api\/projects\/:id\/conversations\/:cid\/messages\/:mid'/g,
     );
     expect(matches ?? []).toHaveLength(0);
+  });
+
+  it('limits missing-conversation write recovery to Teamver managed projects', () => {
+    const source = readFileSync(
+      new URL('../src/project-routes.ts', import.meta.url),
+      'utf8',
+    );
+    const helperIndex = source.indexOf('function recoverTeamverConversationForWrite');
+    expect(helperIndex).toBeGreaterThanOrEqual(0);
+    const helper = source.slice(helperIndex, helperIndex + 1_400);
+
+    expect(helper).toContain('isTeamverDesignManaged()');
+    expect(helper).toContain('isSafeId(projectId)');
+    expect(helper).toContain('isSafeId(conversationId)');
+    expect(helper).toContain('getProject(db, projectId)');
+    expect(helper).toContain('insertConversation(db');
+    expect(helper).toContain('teamver_conversation_recovered_for_write');
   });
 });
