@@ -790,6 +790,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
   const {
     insertProject,
+    insertProjectAsync,
     validateLinkedDirs,
     getProject,
     updateProject,
@@ -798,7 +799,10 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     removeProjectDir,
   } = ctx.projectStore;
   const { writeProjectFile, readProjectFile, ensureProject, listFiles, listTabs, setTabs, resolveProjectDir } = ctx.projectFiles;
-  const { insertConversation, getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+  const {
+    insertConversation,
+    insertConversationAsync,
+    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
   const { listLatestProjectRunStatuses, listProjectsAwaitingInput, normalizeProjectDisplayStatus, composeProjectDisplayStatus } = ctx.status;
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
@@ -1337,20 +1341,35 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
             designSystemId: normalizedDesignSystemId,
           });
         }
-        project = insertProject(db, {
-          id,
-          name: name.trim(),
-          skillId: normalizedSkillId,
-          designSystemId: normalizedDesignSystemId,
-          pendingPrompt: pendingPrompt || null,
-          metadata: projectMetadata,
-          customInstructions:
-            typeof customInstructions === 'string'
-              ? customInstructions
-              : null,
-          createdAt: now,
-          updatedAt: now,
-        });
+        project = insertProjectAsync
+          ? await insertProjectAsync(db, {
+              id,
+              name: name.trim(),
+              skillId: normalizedSkillId,
+              designSystemId: normalizedDesignSystemId,
+              pendingPrompt: pendingPrompt || null,
+              metadata: projectMetadata,
+              customInstructions:
+                typeof customInstructions === 'string'
+                  ? customInstructions
+                  : null,
+              createdAt: now,
+              updatedAt: now,
+            })
+          : insertProject(db, {
+              id,
+              name: name.trim(),
+              skillId: normalizedSkillId,
+              designSystemId: normalizedDesignSystemId,
+              pendingPrompt: pendingPrompt || null,
+              metadata: projectMetadata,
+              customInstructions:
+                typeof customInstructions === 'string'
+                  ? customInstructions
+                  : null,
+              createdAt: now,
+              updatedAt: now,
+            });
       } catch (err) {
         if (externalProjectDir) {
           await rm(externalProjectDir, { recursive: true, force: true }).catch(() => {});
@@ -1362,14 +1381,25 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       const initialSessionMode = normalizeChatSessionMode(
         req.body?.conversationMode ?? req.body?.sessionMode,
       );
-      insertConversation(db, {
-        id: cid,
-        projectId: id,
-        title: null,
-        sessionMode: initialSessionMode,
-        createdAt: now,
-        updatedAt: now,
-      });
+      if (insertConversationAsync) {
+        await insertConversationAsync(db, {
+          id: cid,
+          projectId: id,
+          title: null,
+          sessionMode: initialSessionMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else {
+        insertConversation(db, {
+          id: cid,
+          projectId: id,
+          title: null,
+          sessionMode: initialSessionMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       const explicitPlugin =
         typeof req.body?.pluginId === 'string' && req.body.pluginId.trim().length > 0
           ? true

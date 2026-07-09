@@ -482,7 +482,9 @@ import {
   getProject,
   getTemplate,
   insertConversation,
+  insertConversationAsync,
   insertProject,
+  insertProjectAsync,
   insertRoutine,
   insertRoutineRun,
   tryClaimScheduledRoutineRunAsync,
@@ -6496,6 +6498,7 @@ export async function startServer({
   const projectStoreDeps = {
     getProject,
     insertProject,
+    insertProjectAsync,
     updateProject,
     dbDeleteProject,
     dbDeleteProjectAsync,
@@ -6522,6 +6525,7 @@ export async function startServer({
   };
   const conversationDeps = {
     insertConversation,
+    insertConversationAsync,
     getConversation,
     listConversations,
     listConversationsAsync,
