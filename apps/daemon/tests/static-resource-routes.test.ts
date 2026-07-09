@@ -197,6 +197,45 @@ describe('static resource mutation routes', () => {
     expect(body.designTemplates[0].dir).toBeUndefined();
   });
 
+  it('excludes Chinese-primary deck templates when OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN=1', async () => {
+    const prev = process.env.OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN;
+    process.env.OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN = '1';
+    try {
+      designTemplatesCatalog = [
+        {
+          id: 'simple-deck',
+          name: 'Simple Deck',
+          description: 'English deck',
+          mode: 'deck',
+          category: 'deck',
+          source: 'built-in',
+          contentLocale: null,
+        },
+        {
+          id: 'html-ppt-tech-sharing',
+          name: 'Tech Sharing',
+          description: 'Chinese deck',
+          mode: 'deck',
+          category: 'deck',
+          source: 'built-in',
+          contentLocale: 'zh-CN',
+        },
+      ];
+
+      const res = await fetch(`${baseUrl}/api/design-templates?mode=deck`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { designTemplates: Array<{ id: string }>; total: number };
+      expect(body.designTemplates.map((template) => template.id)).toEqual(['simple-deck']);
+      expect(body.total).toBe(1);
+
+      const detailRes = await fetch(`${baseUrl}/api/design-templates/html-ppt-tech-sharing`);
+      expect(detailRes.status).toBe(404);
+    } finally {
+      if (prev === undefined) delete process.env.OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN;
+      else process.env.OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN = prev;
+    }
+  });
+
   it('searches and paginates design templates on the server', async () => {
     designTemplatesCatalog = [
       {

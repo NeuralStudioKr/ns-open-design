@@ -18,6 +18,7 @@ triggers:
   - "分享 PPT"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: marketing
   default_for: deck
   upstream: "https://github.com/op7418/guizang-ppt-skill"

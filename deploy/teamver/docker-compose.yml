@@ -118,6 +118,10 @@ services:
       OD_PG_PASSWORD: ${OD_PG_PASSWORD:-}
       OD_PG_SSL_MODE: ${OD_PG_SSL_MODE:-require}
       OD_PG_POOL_MAX: ${OD_PG_POOL_MAX:-10}
+      # Embed slide MVP catalog trims (Teamver design.teamver.com — docs-teamver/13).
+      OD_PLUGIN_CATALOG_DEFAULT_MODE: ${OD_PLUGIN_CATALOG_DEFAULT_MODE:-}
+      OD_SKILLS_CATALOG_SLIDE_ONLY: ${OD_SKILLS_CATALOG_SLIDE_ONLY:-}
+      OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN: ${OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN:-}
     ports:
       # 127.0.0.1 default (local dev). Multi-node: deploy.sh sets
       # OD_DOCKER_PUBLISH_HOST=0.0.0.0 so peer EC2 nginx can reach :7456

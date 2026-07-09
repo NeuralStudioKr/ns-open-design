@@ -1,6 +1,7 @@
 import type { SkillSummary } from '@open-design/contracts';
 
 import type { TeamverBrandingConfig } from './config';
+import { isEmbedHiddenChinesePrimaryDeckTemplate } from './embedChineseDeckTemplatePolicy';
 
 /** Modes that belong in the design-templates catalogue (not functional skills). */
 export const DESIGN_TEMPLATE_MODES = new Set<SkillSummary['mode']>([
@@ -26,23 +27,26 @@ export function isSlideRelatedDesignTemplate(
 
 /** Whether a design template is enabled for pickers / galleries. */
 export function isDesignTemplateEnabled(
-  template: Pick<SkillSummary, 'id' | 'mode'>,
+  template: Pick<SkillSummary, 'id' | 'mode' | 'contentLocale'>,
   disabledSkills: string[] | undefined,
   branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>,
 ): boolean {
   if (branding.slideOnlyMvp) {
-    return isSlideRelatedDesignTemplate(template);
+    if (!isSlideRelatedDesignTemplate(template)) return false;
+    if (isEmbedHiddenChinesePrimaryDeckTemplate(template, branding)) return false;
+    return true;
   }
   return !(disabledSkills ?? []).includes(template.id);
 }
 
 /** Settings / library rows visible in embed slide-only MVP. */
 export function isDesignTemplateVisibleInSettings(
-  template: Pick<SkillSummary, 'mode'>,
+  template: Pick<SkillSummary, 'id' | 'mode' | 'contentLocale'>,
   branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp'>,
 ): boolean {
   if (!branding.slideOnlyMvp) return true;
-  return isSlideRelatedDesignTemplate(template);
+  if (!isSlideRelatedDesignTemplate(template)) return false;
+  return !isEmbedHiddenChinesePrimaryDeckTemplate(template, branding);
 }
 
 /** Settings toggle — deck templates stay on (non-toggleable) in embed slide MVP. */

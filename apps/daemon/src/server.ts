@@ -195,6 +195,11 @@ import {
   searchInstalledPlugins,
 } from './plugins/index.js';
 import {
+  filterPluginsExcludingChinesePrimaryDeck,
+  isExcludedChinesePrimaryDeckPlugin,
+  readExcludeChineseDeckTemplatesFromEnv,
+} from './design-templates-chinese-catalog.js';
+import {
   marketplaceManifestUrlForRegistry,
   marketplaceRegistryIdFromUrl,
 } from './plugins/marketplaces.js';
@@ -7722,6 +7727,10 @@ export async function startServer({
       plugins = q
         ? searchInstalledPlugins({ plugins, query: q, mode: modeFilter ?? undefined }).entries.map((entry) => entry.plugin)
         : filterInstalledPluginsByCatalogMode(plugins, modeFilter);
+      plugins = filterPluginsExcludingChinesePrimaryDeck(
+        plugins,
+        readExcludeChineseDeckTemplatesFromEnv(),
+      );
       const page = limit === null ? plugins.slice(offset) : plugins.slice(offset, offset + limit);
       res.json({
         plugins: page,
@@ -7739,6 +7748,11 @@ export async function startServer({
     try {
       const plugin = getInstalledPlugin(db, req.params.id);
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
+      if (
+        isExcludedChinesePrimaryDeckPlugin(plugin, readExcludeChineseDeckTemplatesFromEnv())
+      ) {
+        return res.status(404).json({ error: 'plugin not found' });
+      }
       res.json(plugin);
     } catch (err) {
       res.status(500).json({ error: String(err) });
