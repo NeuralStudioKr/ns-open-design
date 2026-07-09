@@ -5,7 +5,7 @@ import {
 } from "./designBffClient";
 import { seedEmbedBootstrapSession } from "./embedBootstrapSession";
 import type { EmbedProjectDetailRoute } from "./embedProjectListRefresh";
-import { warmEmbedProjectListCaches } from "./teamverEmbedListCaches";
+import { warmEmbedProjectListCaches } from "./warmEmbedProjectListCaches";
 import {
   redirectToDesignLoginIfBffMissing,
   resolveEmbedBootSessionOptions,
