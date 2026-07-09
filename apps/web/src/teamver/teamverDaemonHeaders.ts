@@ -1,6 +1,5 @@
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
-import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
-import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
 
@@ -93,15 +92,8 @@ function maybeRedirectOnEmbedDaemonUnauthorized(
   ) {
     return;
   }
-  redirectToTeamverLoginPreservingRoute({
-    returnTo:
-      typeof window !== "undefined"
-        ? resolveEmbedAuthReturnPath(
-            window.location.pathname,
-            window.location.search,
-          )
-        : null,
-  });
+  void input;
+  handleEmbedPassiveUnauthorized("daemon");
 }
 
 async function finalizeDaemonFetch(

@@ -13,8 +13,7 @@ import {
   resolveDesignBffRefreshUrl,
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
-import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
-import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import {
   clearOrphanTeamverAuthCookies,
   isOrphanTeamverJwtAuthFailure,
@@ -103,15 +102,7 @@ export function getDesignBffClient(): TeamverClient | null {
       fetch: fetchDesignBffSdk,
       onAuthExpired: () => {
         prepareDesignAuthSessionReload();
-        redirectToTeamverLoginPreservingRoute({
-          returnTo:
-            typeof window !== "undefined"
-              ? resolveEmbedAuthReturnPath(
-                  window.location.pathname,
-                  window.location.search,
-                )
-              : null,
-        });
+        handleEmbedPassiveUnauthorized("bff");
       },
     });
   }

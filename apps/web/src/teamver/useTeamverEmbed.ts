@@ -44,11 +44,12 @@ import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
 import {
-  resolveEmbedFocusSessionOptions,
   redirectToDesignLoginIfBffMissing,
   shouldClearEmbedSessionOnUnauthenticated,
   shouldResetEmbedRefreshDeclineOnFocus,
+  resolveEmbedFocusSessionOptions,
 } from "./teamverEmbedAuthFlow";
+import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import {
   peekEmbedBootstrapSession,
   type EmbedBootstrapSessionSnapshot,
@@ -376,19 +377,29 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       });
     } catch (err) {
       if (isSessionExpiredError(err)) {
-        await clearTeamverEmbedSessionState();
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
         prepareDesignAuthSessionReload();
-        redirectToTeamverLoginPreservingRoute({
-          returnTo:
-            typeof window !== "undefined"
-              ? resolveEmbedAuthReturnPath(
-                  window.location.pathname,
-                  window.location.search,
-                )
-              : null,
-        });
+        if (resetRefreshState) {
+          await clearTeamverEmbedSessionState();
+          redirectToTeamverLoginPreservingRoute({
+            returnTo:
+              typeof window !== "undefined"
+                ? resolveEmbedAuthReturnPath(
+                    window.location.pathname,
+                    window.location.search,
+                  )
+                : null,
+          });
+        } else {
+          handleEmbedPassiveUnauthorized("bff");
+          setState((prev) => ({
+            ...prev,
+            error: hadEmbedSession() || prev.authenticated
+              ? "session_unreachable"
+              : "not_authenticated",
+          }));
+        }
         return;
       }
       if (hadEmbedSession() || stateRef.current.authenticated) {

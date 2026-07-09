@@ -1,9 +1,9 @@
 import type { ChatRunStatusResponse } from "@open-design/contracts";
+import type { ChatMessage } from "../types";
 import {
   findFirstQuestionForm,
   hasUnterminatedQuestionForm,
 } from "../artifacts/question-form";
-import type { ChatMessage } from "../types";
 
 export function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -230,4 +230,39 @@ export function reconcileByokBackgroundChatsAfterPoll(
     idlePollCounts.set(projectId, nextIdle);
   }
   return removed;
+}
+
+function syntheticAssistantFromActiveRun(run: ChatRunStatusResponse): ChatMessage | null {
+  const assistantMessageId = run.assistantMessageId?.trim();
+  if (!assistantMessageId) return null;
+  const now = run.updatedAt ?? run.createdAt ?? Date.now();
+  return {
+    id: assistantMessageId,
+    role: "assistant",
+    content: "",
+    runId: run.id,
+    runStatus: run.status === "queued" ? "queued" : "running",
+    startedAt: run.createdAt ?? now,
+    createdAt: run.createdAt ?? now,
+  };
+}
+
+/**
+ * After auth-return reload the daemon may still have an active run while the
+ * assistant row was never durably persisted — synthesize a recoverable stub.
+ */
+export function mergeActiveRunsIntoMessages(
+  messages: readonly ChatMessage[],
+  activeRuns: readonly ChatRunStatusResponse[],
+): ChatMessage[] {
+  if (activeRuns.length === 0) return [...messages];
+  const merged = [...messages];
+  const knownIds = new Set(merged.map((message) => message.id));
+  for (const run of activeRuns) {
+    const stub = syntheticAssistantFromActiveRun(run);
+    if (!stub || knownIds.has(stub.id)) continue;
+    merged.push(stub);
+    knownIds.add(stub.id);
+  }
+  return merged;
 }

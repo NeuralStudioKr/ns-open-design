@@ -210,12 +210,17 @@ import {
   findInFlightAssistantMessages,
   isInFlightAssistantMessage,
   isRecoverableDaemonRunMessage,
+  mergeActiveRunsIntoMessages,
   resolveRunRecoveryBannerPhase,
   shouldFullReplayReattachedRun,
   shouldShowRunRecoveryBannerInChat,
   type RunRecoveryBannerPhase,
 } from '../teamver/backgroundChatRecovery';
 import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecoveryBanner';
+import {
+  beginTeamverEmbedActiveWork,
+  endTeamverEmbedActiveWork,
+} from '../teamver/teamverEmbedActiveWork';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
@@ -1667,13 +1672,20 @@ export function ProjectView({
     }
     (async () => {
       try {
-        const [list, comments] = await Promise.all([
+        const [list, comments, activeRuns] = await Promise.all([
           listMessages(project.id, activeConversationId),
           fetchPreviewComments(project.id, activeConversationId),
+          config.mode === 'daemon'
+            ? listActiveChatRuns(project.id, activeConversationId)
+            : Promise.resolve([]),
         ]);
         if (cancelled) return;
-        setMessages(list);
+        const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns);
+        setMessages(mergedMessages);
         setMessagesInitialized(true);
+        if (activeRuns.length > 0) {
+          setReattachNonce((value) => value + 1);
+        }
         setPreviewComments(comments);
         setAttachedComments([]);
         setArtifact(null);
@@ -1701,7 +1713,15 @@ export function ProjectView({
     return () => {
       cancelled = true;
     };
-  }, [project.id, activeConversationId, messageLoadRetryNonce]);
+  }, [project.id, activeConversationId, messageLoadRetryNonce, config.mode]);
+
+  useEffect(() => {
+    if (!streaming) return;
+    beginTeamverEmbedActiveWork();
+    return () => {
+      endTeamverEmbedActiveWork();
+    };
+  }, [streaming]);
 
   useEffect(() => {
     return () => {

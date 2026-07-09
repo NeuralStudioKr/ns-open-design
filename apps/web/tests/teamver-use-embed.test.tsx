@@ -51,6 +51,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
   getDesignBffClient: vi.fn(),
   prepareDesignAuthSessionReload: vi.fn(),
+  refreshDesignAuthCookie: vi.fn(async () => true),
   invalidateDesignAuthSessionCache: vi.fn(),
   resetDesignAuthRefreshState: vi.fn(),
   resetDesignAuthBareRefreshAttempt: vi.fn(),
@@ -340,28 +341,24 @@ describe("useTeamverEmbed", () => {
     }
   });
 
-  it("prepares session reload before redirecting on 401 session expiry", async () => {
+  it("prepares session reload on routine 401 without immediate login redirect", async () => {
     vi.mocked(designBffClient.fetchDesignAuthSession).mockRejectedValue(
       new NetworkError({ status: 401, message: "Unauthorized" }),
     );
 
-    renderHook(() => useTeamverEmbed(true));
+    const { result } = renderHook(() => useTeamverEmbed(true));
 
     await waitFor(() => {
       expect(designBffClient.prepareDesignAuthSessionReload).toHaveBeenCalledTimes(1);
-      expect(
-        designAuthFlow.redirectToTeamverLoginPreservingRoute,
-      ).toHaveBeenCalledTimes(1);
+      expect(result.current.error).toBe("not_authenticated");
     });
-    expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalledTimes(1);
-    // Bare redirectToTeamverLogin must NOT be used from the 401 catch path —
-    // otherwise returnTo is lost and post-login lands on `/`.
+    expect(designAuthFlow.redirectToTeamverLoginPreservingRoute).not.toHaveBeenCalled();
+    expect(teamverEmbedSession.clearTeamverEmbedSessionState).not.toHaveBeenCalled();
     expect(designApiBase.redirectToTeamverLogin).not.toHaveBeenCalled();
   });
 
-  it("propagates the current embed route as returnTo on 401 session expiry", async () => {
+  it("redirects with returnTo on explicit auth-recovery 401", async () => {
     const originalLocation = window.location;
-    // jsdom exposes a mutable location; replace pathname/search for this test.
     Object.defineProperty(window, "location", {
       configurable: true,
       value: {
@@ -375,18 +372,19 @@ describe("useTeamverEmbed", () => {
       new NetworkError({ status: 401, message: "Unauthorized" }),
     );
 
-    renderHook(() => useTeamverEmbed(true));
-
+    const { result } = renderHook(() => useTeamverEmbed(true));
     await waitFor(() => {
-      expect(
-        designAuthFlow.redirectToTeamverLoginPreservingRoute,
-      ).toHaveBeenCalledTimes(1);
+      expect(result.current.loading).toBe(false);
     });
-    expect(
-      designAuthFlow.redirectToTeamverLoginPreservingRoute,
-    ).toHaveBeenCalledWith(
+
+    await act(async () => {
+      await result.current.refresh({ resetRefreshState: true });
+    });
+
+    expect(designAuthFlow.redirectToTeamverLoginPreservingRoute).toHaveBeenCalledWith(
       expect.objectContaining({ returnTo: "/p/PROJ-42" }),
     );
+    expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalled();
     Object.defineProperty(window, "location", {
       configurable: true,
       value: originalLocation,

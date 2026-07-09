@@ -5336,11 +5336,21 @@ function HtmlViewer({
       // shell stays on prior frame. Keep the last good text instead.
       if (text == null) {
         setSourceLoadFailed(true);
+        if (lastStablePreviewSourceRef.current) {
+          setSource(lastStablePreviewSourceRef.current);
+          sourceRef.current = lastStablePreviewSourceRef.current;
+        }
         return;
       }
       setSourceLoadFailed(false);
       const accepted = acceptCandidate(text);
-      if (accepted == null) return;
+      if (accepted == null) {
+        if (lastStablePreviewSourceRef.current) {
+          setSource(lastStablePreviewSourceRef.current);
+          sourceRef.current = lastStablePreviewSourceRef.current;
+        }
+        return;
+      }
       setSource(accepted);
       sourceRef.current = accepted;
     });
@@ -5428,6 +5438,7 @@ function HtmlViewer({
       if (cancelled) return;
       setEmbedPreviewPrefix(prefix);
       setEmbedPreviewPrefixResolved(true);
+      if (!prefix) setSourceLoadFailed(true);
     });
     return () => {
       cancelled = true;
@@ -8770,7 +8781,9 @@ function HtmlViewer({
       <div className="viewer-body" ref={previewBodyRef}>
         {source === null ? (
           <div className="viewer-empty">
-            {sourceLoadFailed && embedPreviewPrefixResolved
+            {embedPreviewPrefixResolved
+              && (sourceLoadFailed
+                || (isTeamverEmbedMode() && embedPreviewPrefix == null))
               ? t('fileViewer.previewUnavailable')
               : t('fileViewer.loading')}
           </div>
