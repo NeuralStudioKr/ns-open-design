@@ -41,7 +41,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 | 커밋 | 내용 | 판단 |
 |------|------|------|
-| `9abba14fc` | `fix(chat): abort BYOK proxy upstreams when the client disconnects` | **2026-07-09 적용.** Stop/탭 닫힘 후 upstream proxy/tool loop가 계속 진행되지 않도록 abort signal 전파. |
+| `9abba14fc` | `fix(chat): abort BYOK proxy upstreams when the client disconnects` | **2026-07-09 부분 적용.** explicit Stop abort signal을 upstream/tool loop에 전파. Teamver background 정책상 단순 탭 닫힘/페이지 이동 abort는 적용하지 않음. |
 | `708cd0654` | `fix(web): catch SSE reader errors to enable reconnection` | **2026-07-09 적용.** SSE reader error 후 재연결 안정성 개선. |
 | `8230a3a97` | `fix(web): keep consuming recovered daemon retries` | **2026-07-09 적용.** recovered retry stream을 계속 소비하도록 반영. |
 | `f6fb7c204` | `fix(web): reattach spuriously-failed messages on reload when daemon run succeeded` | 강한 후보지만 위험도 높음. reload/re-entry 후 성공 run 메시지 재부착과 관련 있으나 `ProjectView.tsx` 대형 변경이다. |
@@ -138,4 +138,4 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 1. **P0:** `f6fb7c204`의 reload/re-entry restore 로직을 읽고, Teamver `ProjectView.tsx`에 이미 구현된 background handling과 누락 gap만 추출한다.
 2. **P0:** `c89e1cf34` daemon watchdog child escalation은 Teamver run lifecycle/S3 sync hook과 대조 후 별도 적용 여부를 판단한다.
-3. **P1:** 적용된 SSE/export 패치를 staging 브라우저에서 실증한다 — 재진입 메시지, Stop/탭 닫힘 proxy abort, PDF deck 렌더링.
+3. **P1:** 적용된 SSE/export 패치를 staging 브라우저에서 실증한다 — 재진입 메시지, Stop proxy abort, 페이지 이동 background 지속, PDF deck 렌더링.

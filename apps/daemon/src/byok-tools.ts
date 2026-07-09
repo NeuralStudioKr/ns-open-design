@@ -465,9 +465,8 @@ export interface BYOKToolContext {
    *  semantics. */
   videoPollIntervalMs?: number;
   /** Optional per-request init copied from the live chat turn. Used to
-   *  forward the current proxy dispatcher AND the client-cancellation
-   *  signal into every upstream/download fetch the BYOK tool executor
-   *  performs, so a disconnected client stops the tool loop's paid work. */
+   *  forward the current proxy dispatcher and explicit Stop/abort signal
+   *  into every upstream/download fetch the BYOK tool executor performs. */
   requestInit?: Pick<RequestInit, 'dispatcher' | 'signal'>;
 }
 

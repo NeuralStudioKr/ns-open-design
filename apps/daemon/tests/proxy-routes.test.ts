@@ -2273,12 +2273,10 @@ describe('API proxy routes', () => {
     }
   });
 
-  // A client that disconnects (Stop / closed tab) must not keep the upstream
-  // request billing. Every upstream proxy fetch has to carry an AbortSignal
-  // tied to the client connection so the in-flight completion — and any
-  // BYOK tool loop that would otherwise fire further paid rounds — unwinds
-  // when the client goes away.
-  it('passes a client-cancellation signal to the upstream on a simple proxy stream', async () => {
+  // Explicit FE Stop uses /api/proxy/abort and must reach every upstream
+  // fetch. A plain page navigation/closed tab is intentionally not wired here:
+  // Teamver background runs must be allowed to finish after route changes.
+  it('passes an explicit BYOK abort signal to the upstream on a simple proxy stream', async () => {
     let upstreamInit: FetchInit | undefined;
     const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
       const url = String(input);
@@ -2303,7 +2301,7 @@ describe('API proxy routes', () => {
     expect(upstreamInit?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('passes a client-cancellation signal to the upstream on a BYOK tool-loop stream', async () => {
+  it('passes an explicit BYOK abort signal to the upstream on a BYOK tool-loop stream', async () => {
     let upstreamInit: FetchInit | undefined;
     const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
       const url = String(input);
