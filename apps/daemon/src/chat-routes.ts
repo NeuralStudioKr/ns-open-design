@@ -908,6 +908,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     return payload;
   };
 
+  // A BYOK proxy stream must unwind when the client disconnects (Stop or a
+  // closed tab); otherwise the upstream completion — and any tool loop that
+  // would fire further paid image/video/speech rounds — keeps streaming and
+  // billing after the user is gone. Every upstream fetch below carries this
+  // signal. Mirrors the AbortController wiring already used by
+  // `/api/provider/models` and `/api/test/connection`.
+  const clientDisconnectSignal = (res: any, req?: any): AbortSignal => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    res.on('close', abort);
+    if (req) req.on('close', abort);
+    return controller.signal;
+  };
+
   const runAnthropicChatStream = async (
     res: any,
     opts: {
@@ -946,9 +960,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     });
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
+      const signal = clientDisconnectSignal(res);
       sse.send('start', { model: opts.payload?.model });
       const response = await fetch(opts.url, {
         ...proxyDispatcher.requestInit,
+        signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...opts.headers },
         body: JSON.stringify(opts.payload),
@@ -1084,9 +1100,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     let outputTokens = 0;
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
+      const signal = clientDisconnectSignal(res);
       sse.send('start', { model: opts.model });
       const response = await fetch(opts.url, {
         ...proxyDispatcher.requestInit,
+        signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...opts.headers },
         body: JSON.stringify(opts.payload),
@@ -1375,9 +1393,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const upstreamAbortSignal = byokProxyAbortSignalFromRes(res);
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
+      const signal = clientDisconnectSignal(res);
       sse.send('start', { model });
       const response = await fetch(url, {
         ...proxyDispatcher.requestInit,
+        signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1543,9 +1563,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const upstreamAbortSignal = byokProxyAbortSignalFromRes(res);
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
+      const signal = clientDisconnectSignal(res);
       sse.send('start', { model });
       const requestInit = {
         ...proxyDispatcher.requestInit,
+        signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1729,9 +1751,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const upstreamAbortSignal = byokProxyAbortSignalFromRes(res);
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
+      const signal = clientDisconnectSignal(res);
       sse.send('start', { model });
       const response = await fetch(url, {
         ...proxyDispatcher.requestInit,
+        signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(payload),
@@ -2378,10 +2402,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
       try {
         proxyDispatcher = proxyDispatcherRequestInit();
-        toolCtx.requestInit = proxyDispatcher.requestInit;
+        const signal = clientDisconnectSignal(res);
+        toolCtx.requestInit = { ...proxyDispatcher.requestInit, signal };
         sse.send('start', { model });
         const convMessages: any[] = Array.isArray(messages) ? [...messages] : [];
         for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+          if (signal.aborted) return sse.end();
           const turn = await runAnthropicToolTurn(sse, anthropicUrl, headers, convMessages);
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
@@ -2400,6 +2426,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           convMessages.push({ role: 'assistant', content: turn.assistantBlocks });
           const toolResults: any[] = [];
           for (const call of turn.toolCalls) {
+            if (signal.aborted) return sse.end();
             const result = await executeOneTool(call);
             const toolName = call?.function?.name ?? 'unknown';
             if (result.ok) {
@@ -2597,13 +2624,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
       try {
         proxyDispatcher = proxyDispatcherRequestInit();
-        toolCtx.requestInit = proxyDispatcher.requestInit;
+        const signal = clientDisconnectSignal(res);
+        toolCtx.requestInit = { ...proxyDispatcher.requestInit, signal };
         sse.send('start', { model });
         const contents: any[] = (Array.isArray(messages) ? messages : []).map((m: any) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
         }));
         for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+          if (signal.aborted) return sse.end();
           const turn = await runGeminiToolTurn(sse, geminiUrl, headers, contents);
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
@@ -2622,6 +2651,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           contents.push({ role: 'model', parts: turn.functionCallParts });
           const responseParts: any[] = [];
           for (const call of turn.toolCalls) {
+            if (signal.aborted) return sse.end();
             const result = await executeOneTool(call);
             const toolName = call?.function?.name ?? 'unknown';
             if (result.ok) {
@@ -2753,9 +2783,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
-      toolCtx.requestInit = proxyDispatcher.requestInit;
+      const signal = clientDisconnectSignal(res, req);
+      toolCtx.requestInit = { ...proxyDispatcher.requestInit, signal };
       sse.send('start', { model });
       for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+        if (signal.aborted) return sse.end();
         const turn = await runTurn(sse, workingMessages);
         if (turn.kind === 'error') {
           // runTurn already emitted usage + error frames in the right
@@ -2777,6 +2809,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // turn.kind === 'tool_calls'
         workingMessages.push(turn.assistantMessage);
         for (const call of turn.toolCalls) {
+          if (signal.aborted) return sse.end();
           const result = await executeOneTool(call);
           // The tool result is delivered to the model as a `tool` role
           // message — a structured payload the model can interpret. We

@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-08 현재.  
+**반영 갱신:** 2026-07-09 — P0/P1 후보 중 작은 안정화 패치 일부를 staging에 수동 적용. 아래 표의 "적용" 상태는 2026-07-09 기준이다.
 **비교 기준:** `staging` (`3c328f26a fix(teamver): stop app version polling`) ↔ `main` / `origin/main` / `upstream/main` (`7b9864614 feat(media): wire MiniMax image-01 through the minimax provider slot`).  
 **결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. Teamver 기존 동작을 깨지 않도록, 필요한 커밋만 수동 포팅한다.
 
@@ -40,8 +41,9 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 | 커밋 | 내용 | 판단 |
 |------|------|------|
-| `708cd0654` | `fix(web): catch SSE reader errors to enable reconnection` | 반영 후보. SSE reader error 후 재연결 안정성 개선 가능성이 높다. |
-| `8230a3a97` | `fix(web): keep consuming recovered daemon retries` | 반영 후보. recovered retry stream을 계속 소비하는 동작은 background run 안정성과 맞닿는다. |
+| `9abba14fc` | `fix(chat): abort BYOK proxy upstreams when the client disconnects` | **2026-07-09 적용.** Stop/탭 닫힘 후 upstream proxy/tool loop가 계속 진행되지 않도록 abort signal 전파. |
+| `708cd0654` | `fix(web): catch SSE reader errors to enable reconnection` | **2026-07-09 적용.** SSE reader error 후 재연결 안정성 개선. |
+| `8230a3a97` | `fix(web): keep consuming recovered daemon retries` | **2026-07-09 적용.** recovered retry stream을 계속 소비하도록 반영. |
 | `f6fb7c204` | `fix(web): reattach spuriously-failed messages on reload when daemon run succeeded` | 강한 후보지만 위험도 높음. reload/re-entry 후 성공 run 메시지 재부착과 관련 있으나 `ProjectView.tsx` 대형 변경이다. |
 
 **적용 방식:** cherry-pick 금지. `apps/web/src/providers/daemon.ts`, `apps/web/src/components/ProjectView.tsx`, `apps/web/src/runtime/chat-events.ts`를 Teamver 패치와 대조해 수동 포팅한다.
@@ -61,7 +63,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 | 커밋 | 내용 | 판단 |
 |------|------|------|
-| `20c61f773` | `fix(web): gate PDF print-ready handshake on a usable content size` | 반영 후보. PDF/image/html 다운로드 렌더링 이슈와 관련 가능성이 있다. 변경 범위가 `apps/web/src/runtime/exports.ts` 중심이라 비교적 작다. |
+| `20c61f773` | `fix(web): gate PDF print-ready handshake on a usable content size` | **2026-07-09 적용.** Teamver deck flatten/다운로드 fallback을 유지하며 print-ready usable size gate만 수동 병합. |
 
 **적용 방식:** 수동 포팅. Teamver 다운로드/Drive 내보내기 분기와 충돌하지 않는지 확인한다.
 
@@ -134,6 +136,6 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 6. 다음 추천 작업
 
-1. **P0:** `708cd0654`, `8230a3a97`의 `providers/daemon.ts` SSE 처리만 Teamver 코드와 비교해 수동 포팅 가능 여부를 판단한다.
-2. **P0:** `f6fb7c204`의 reload/re-entry restore 로직을 읽고, Teamver `ProjectView.tsx`에 이미 구현된 background handling과 누락 gap만 추출한다.
-3. **P1:** `20c61f773`의 `exports.ts` print-ready gate를 Teamver export/Drive download 경로에 적용 가능한지 별도 diff로 검토한다.
+1. **P0:** `f6fb7c204`의 reload/re-entry restore 로직을 읽고, Teamver `ProjectView.tsx`에 이미 구현된 background handling과 누락 gap만 추출한다.
+2. **P0:** `c89e1cf34` daemon watchdog child escalation은 Teamver run lifecycle/S3 sync hook과 대조 후 별도 적용 여부를 판단한다.
+3. **P1:** 적용된 SSE/export 패치를 staging 브라우저에서 실증한다 — 재진입 메시지, Stop/탭 닫힘 proxy abort, PDF deck 렌더링.
