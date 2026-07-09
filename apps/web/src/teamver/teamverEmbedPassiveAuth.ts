@@ -37,7 +37,7 @@ function schedulePassiveLoginRedirect(): void {
     return;
   }
   if (passiveAuthRedirectTimer) return;
-  passiveAuthRedirectTimer = window.setTimeout(() => {
+  passiveAuthRedirectTimer = setTimeout(() => {
     passiveAuthRedirectTimer = null;
     if (shouldDeferPassiveAuthRedirect()) {
       dispatchPassiveAuthRequired("daemon");
