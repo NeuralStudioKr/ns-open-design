@@ -788,7 +788,15 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { sendApiError, createSseResponse } = ctx.http;
   const { DESIGN_SYSTEMS_DIR, PROJECTS_DIR, SKILLS_DIR } = ctx.paths;
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
-  const { insertProject, validateLinkedDirs, getProject, updateProject, dbDeleteProject, removeProjectDir } = ctx.projectStore;
+  const {
+    insertProject,
+    validateLinkedDirs,
+    getProject,
+    updateProject,
+    dbDeleteProject,
+    dbDeleteProjectAsync,
+    removeProjectDir,
+  } = ctx.projectStore;
   const { writeProjectFile, readProjectFile, ensureProject, listFiles, listTabs, setTabs, resolveProjectDir } = ctx.projectFiles;
   const { insertConversation, getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
@@ -1619,7 +1627,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   app.delete('/api/projects/:id', async (req, res) => {
     try {
       const projectId = req.params.id;
-      dbDeleteProject(db, projectId);
+      if (dbDeleteProjectAsync) {
+        await dbDeleteProjectAsync(db, projectId);
+      } else {
+        dbDeleteProject(db, projectId);
+      }
       await removeProjectDir(PROJECTS_DIR, projectId).catch(() => {});
       if (ctx.projectStorageHooks) {
         await ctx.projectStorageHooks.onProjectRemoved(req, projectId);

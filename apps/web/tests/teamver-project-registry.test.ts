@@ -157,6 +157,24 @@ describe('Teamver project registry list', () => {
     ).resolves.toEqual([{ id: 'p1' }, { id: 'p3' }]);
   });
 
+  it('enriches daemon names from registry titles when name equals id', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => ({
+          projects: [{ odProjectId: 'p1', title: 'Landing deck' }],
+        })),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(
+      filterProjectsByTeamverRegistryIfNeeded([
+        { id: 'p1', name: 'p1' },
+      ]),
+    ).resolves.toEqual([{ id: 'p1', name: 'Landing deck' }]);
+  });
+
   it('throws when registry list is unavailable instead of showing daemon projects', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
@@ -402,7 +420,7 @@ describe('Teamver project registry access', () => {
     await expect(assertTeamverProjectAccessIfNeeded('legacy-1')).resolves.toBe(true);
     expect(post).toHaveBeenCalledWith(
       '/projects',
-      { odProjectId: 'legacy-1', title: 'Legacy' },
+      { odProjectId: 'legacy-1', title: 'Legacy', reactivateIfDeleted: false },
       expect.objectContaining({ workspaceId: 'ws1' }),
     );
     expect(get).toHaveBeenCalledWith('/projects', expect.objectContaining({ workspaceId: 'ws1' }));
@@ -464,7 +482,7 @@ describe('Teamver project registry access', () => {
     await ensureTeamverProjectRegisteredById('od-legacy');
     expect(post).toHaveBeenCalledWith(
       '/projects',
-      { odProjectId: 'od-legacy', title: 'Old project' },
+      { odProjectId: 'od-legacy', title: 'Old project', reactivateIfDeleted: false },
       expect.any(Object),
     );
   });
@@ -676,7 +694,7 @@ describe('Teamver project registry boot sync', () => {
 
     expect(post).toHaveBeenCalledWith(
       '/projects',
-      { odProjectId: 'od-boot-1', title: 'Boot project' },
+      { odProjectId: 'od-boot-1', title: 'Boot project', reactivateIfDeleted: false },
       expect.objectContaining({ workspaceId: 'ws1' }),
     );
     expect(boot.isTeamverEmbedBootComplete()).toBe(false);
@@ -691,7 +709,7 @@ describe('Teamver project registry delete', () => {
   });
 
   it('no-ops outside embed mode', async () => {
-    await expect(unregisterTeamverProjectFromRegistryIfNeeded('p1')).resolves.toBeUndefined();
+    await expect(unregisterTeamverProjectFromRegistryIfNeeded('p1')).resolves.toBe(true);
   });
 
   it('calls design-api DELETE with workspace scope', async () => {
@@ -702,7 +720,7 @@ describe('Teamver project registry delete', () => {
       http: { delete: del },
     } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
 
-    await unregisterTeamverProjectFromRegistryIfNeeded('p-del');
+    await expect(unregisterTeamverProjectFromRegistryIfNeeded('p-del')).resolves.toBe(true);
     expect(del).toHaveBeenCalledWith('/projects/p-del', {
       workspaceId: 'ws1',
       ...designBffClient.TEAMVER_BFF_REQUEST_OPTIONS,

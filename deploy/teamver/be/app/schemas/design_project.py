@@ -15,6 +15,10 @@ class CreateDesignProjectBody(BaseModel):
         validation_alias=AliasChoices("od_project_id", "odProjectId"),
     )
     title: str | None = None
+    reactivate_if_deleted: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("reactivate_if_deleted", "reactivateIfDeleted"),
+    )
 
 
 class DesignProjectResponse(BaseModel):

@@ -11,6 +11,7 @@ import {
   type AIHubMixCatalogType,
 } from './aihubmix.js';
 import { isSandboxModeEnabled } from './sandbox-mode.js';
+import { listMediaTasksByProjectAsync } from './media-tasks.js';
 import type { ToolTokenGrant } from './tool-tokens.js';
 
 const LONG_MEDIA_PROXY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -592,16 +593,16 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     res.on('close', wake);
   });
 
-  app.get('/api/projects/:id/media/tasks', (req, res) => {
+  app.get('/api/projects/:id/media/tasks', async (req, res) => {
     if (!isLocalSameOrigin(req, getResolvedPort())) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     const projectId = req.params.id;
     const includeDone =
       req.query.includeDone === '1' || req.query.includeDone === 'true';
-    const tasks = listMediaTasksByProject(db, projectId, {
+    const tasks = (await listMediaTasksByProjectAsync(db, projectId, {
       includeTerminal: includeDone,
-    }).map((t: any) => ({
+    })).map((t: any) => ({
         taskId: t.id,
         status: t.status,
         startedAt: t.startedAt,

@@ -50,11 +50,7 @@ import {
   HOME_RECENT_LIST_LIMIT,
   PROJECT_LIST_PAGE_SIZE,
 } from '../teamver/projectListLimits';
-import {
-  listEmbedProjectsFromRegistry,
-  listEmbedProjectsPageFromRegistry,
-  mapRegistryRowToProject,
-} from '../teamver/embedRegistryProjectList';
+import { mapRegistryRowToProject } from '../teamver/embedRegistryProjectList';
 import { fetchTeamverProject } from '../teamver/projectRegistry';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
@@ -110,15 +106,6 @@ async function resolveListRecentProjectsInflightKey(limit: number): Promise<stri
 export async function listRecentProjects(
   limit = HOME_RECENT_LIST_LIMIT,
 ): Promise<Project[]> {
-  if (isTeamverEmbedMode()) {
-    try {
-      return await listEmbedProjectsFromRegistry(limit);
-    } catch (err) {
-      if (err instanceof TeamverProjectRegistryError) throw err;
-      return [];
-    }
-  }
-
   const inflightKey = await resolveListRecentProjectsInflightKey(limit);
   const inflight = inflightKey ? listRecentProjectsInflight.get(inflightKey) : null;
   if (inflight) return inflight;
@@ -155,15 +142,6 @@ export async function listProjectsPage(options?: {
   limit?: number;
   cursor?: string | null;
 }): Promise<ProjectsListPageResult> {
-  if (isTeamverEmbedMode()) {
-    try {
-      return await listEmbedProjectsPageFromRegistry(options);
-    } catch (err) {
-      if (err instanceof TeamverProjectRegistryError) throw err;
-      return { projects: [], hasMore: false, nextCursor: null };
-    }
-  }
-
   try {
     const params = new URLSearchParams();
     params.set('limit', String(options?.limit ?? PROJECT_LIST_PAGE_SIZE));
@@ -196,17 +174,8 @@ export async function listProjectsPage(options?: {
   }
 }
 
-/** Full daemon listing — used by registry sync and legacy refresh paths. */
+/** Full daemon listing — embed filters via registry; daemon PG is list SSOT (B5.11+). */
 export async function listProjects(): Promise<Project[]> {
-  if (isTeamverEmbedMode()) {
-    try {
-      return await listEmbedProjectsFromRegistry();
-    } catch (err) {
-      if (err instanceof TeamverProjectRegistryError) throw err;
-      return [];
-    }
-  }
-
   try {
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
     if (!resp) return [];

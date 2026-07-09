@@ -671,6 +671,84 @@ const PROJECT_COLS = `id, name, skill_id AS skillId,
   created_at AS createdAt,
   updated_at AS updatedAt`;
 
+/** Plugin/critique tables still FK to sqlite — mirror PG writes for cross-node parity. */
+function mirrorProjectRowToSqlite(db: SqliteDb, p: DbRow): void {
+  db.prepare(
+    `INSERT INTO projects
+       (id, name, skill_id, design_system_id, pending_prompt,
+        metadata_json, custom_instructions, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        skill_id = excluded.skill_id,
+        design_system_id = excluded.design_system_id,
+        pending_prompt = excluded.pending_prompt,
+        metadata_json = excluded.metadata_json,
+        custom_instructions = excluded.custom_instructions,
+        updated_at = excluded.updated_at`,
+  ).run(
+    p.id,
+    p.name,
+    p.skillId ?? null,
+    p.designSystemId ?? null,
+    p.pendingPrompt ?? null,
+    p.metadata ? JSON.stringify(p.metadata) : null,
+    p.customInstructions ?? null,
+    p.createdAt,
+    p.updatedAt,
+  );
+}
+
+function mirrorConversationRowToSqlite(db: SqliteDb, c: DbRow): void {
+  db.prepare(
+    `INSERT INTO conversations
+       (id, project_id, title, session_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id,
+        title = excluded.title,
+        session_mode = excluded.session_mode,
+        updated_at = excluded.updated_at`,
+  ).run(
+    c.id,
+    c.projectId,
+    c.title ?? null,
+    normalizeConversationSessionMode(c.sessionMode),
+    c.createdAt,
+    c.updatedAt,
+  );
+}
+
+function deleteProjectRowFromSqlite(db: SqliteDb, id: string): void {
+  db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+}
+
+function projectRowForSqliteMirror(
+  row: DbRow & {
+    id: string;
+    name: string;
+    skillId?: string | null;
+    designSystemId?: string | null;
+    pendingPrompt?: string | null;
+    metadata?: unknown;
+    customInstructions?: string | null;
+    createdAt: number;
+    updatedAt: number;
+  },
+): DbRow {
+  return {
+    id: row.id,
+    name: row.name,
+    skillId: row.skillId ?? null,
+    designSystemId: row.designSystemId ?? null,
+    pendingPrompt: row.pendingPrompt ?? null,
+    metadata: row.metadata,
+    customInstructions: row.customInstructions ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 export function listProjects(db: SqliteDb) {
   const rows = db
     .prepare(
@@ -910,6 +988,7 @@ export function insertProject(db: SqliteDb, p: DbRow) {
       updatedAt: p.updatedAt,
     });
     setCachedProject(created);
+    mirrorProjectRowToSqlite(db, p);
     schedulePostgresWrite(async () => {
       await pgCore.pgInsertProject(getPostgresPool(), p);
     });
@@ -944,6 +1023,7 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
       updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
     };
     setCachedProject(merged);
+    mirrorProjectRowToSqlite(db, projectRowForSqliteMirror(merged));
     schedulePostgresWrite(async () => {
       await pgCore.pgUpdateProject(getPostgresPool(), id, merged);
     });
@@ -982,12 +1062,24 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 export function deleteProject(db: SqliteDb, id: string) {
   if (isDaemonDbPostgres()) {
     deleteCachedProject(id);
+    deleteProjectRowFromSqlite(db, id);
     schedulePostgresWrite(async () => {
       await pgCore.pgDeleteProject(getPostgresPool(), id);
     });
     return;
   }
   db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+}
+
+/** Postgres: await durable delete (HTTP DELETE must not return before PG row is gone). */
+export async function deleteProjectAsync(db: SqliteDb, id: string): Promise<void> {
+  if (!isDaemonDbPostgres()) {
+    deleteProject(db, id);
+    return;
+  }
+  deleteCachedProject(id);
+  await pgCore.pgDeleteProject(getPostgresPool(), id);
+  deleteProjectRowFromSqlite(db, id);
 }
 
 function normalizeProject(row: DbRow) {
@@ -1192,15 +1284,37 @@ export async function listConversationsAsync(db: SqliteDb, projectId: string) {
   return normalized;
 }
 
-export async function warmProjectFromPostgres(projectId: string): Promise<void> {
+export async function warmProjectFromPostgres(db: SqliteDb, projectId: string): Promise<void> {
   if (!isDaemonDbPostgres()) return;
   const pool = getPostgresPool();
   const projectRow = await pgCore.pgGetProject(pool, projectId);
-  if (projectRow) setCachedProject(normalizeProject(projectRow));
+  if (projectRow) {
+    const normalized = normalizeProject(projectRow);
+    setCachedProject(normalized);
+    mirrorProjectRowToSqlite(db, {
+      id: normalized.id,
+      name: normalized.name,
+      skillId: normalized.skillId,
+      designSystemId: normalized.designSystemId,
+      pendingPrompt: normalized.pendingPrompt ?? null,
+      metadata: normalized.metadata,
+      customInstructions: normalized.customInstructions ?? null,
+      createdAt: normalized.createdAt,
+      updatedAt: normalized.updatedAt,
+    });
+  }
   const conversations = await pgCore.pgListConversations(pool, projectId);
   const normalizedConversations = conversations.map((row) => normalizeConversation(row));
   setCachedConversations(projectId, normalizedConversations);
   for (const conversation of normalizedConversations) {
+    mirrorConversationRowToSqlite(db, {
+      id: conversation.id,
+      projectId: conversation.projectId,
+      title: conversation.title ?? null,
+      sessionMode: conversation.sessionMode,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    });
     const messages = await pgCore.pgListMessages(pool, conversation.id);
     setCachedMessages(conversation.id, messages.map((row) => normalizeMessage(row)));
     const sessions = await pgCore.pgListAgentSessionsByConversation(pool, conversation.id);
@@ -1403,6 +1517,7 @@ export function insertConversation(db: SqliteDb, c: DbRow) {
       updatedAt: c.updatedAt,
     });
     upsertCachedConversation(String(c.projectId), created as DbRow);
+    mirrorConversationRowToSqlite(db, c);
     schedulePostgresWrite(async () => {
       await pgCore.pgInsertConversation(getPostgresPool(), c);
     });
@@ -2383,6 +2498,83 @@ export function listRoutines(db: SqliteDb) {
     .prepare(`SELECT ${ROUTINE_COLS} FROM routines ORDER BY created_at ASC`)
     .all() as DbRow[])
     .map(normalizeRoutine);
+}
+
+function mirrorRoutineToSqlite(db: SqliteDb, r: DbRow): void {
+  db.prepare(
+    `INSERT INTO routines
+       (id, name, prompt, schedule_kind, schedule_value, schedule_json,
+        project_mode, project_id, skill_id, agent_id, context_json, enabled,
+        created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        prompt = excluded.prompt,
+        schedule_kind = excluded.schedule_kind,
+        schedule_value = excluded.schedule_value,
+        schedule_json = excluded.schedule_json,
+        project_mode = excluded.project_mode,
+        project_id = excluded.project_id,
+        skill_id = excluded.skill_id,
+        agent_id = excluded.agent_id,
+        context_json = excluded.context_json,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at`,
+  ).run(
+    r.id,
+    r.name,
+    r.prompt,
+    r.scheduleKind,
+    r.scheduleValue,
+    r.scheduleJson ?? null,
+    r.projectMode,
+    r.projectId ?? null,
+    r.skillId ?? null,
+    r.agentId ?? null,
+    r.contextJson ?? null,
+    r.enabled ? 1 : 0,
+    r.createdAt,
+    r.updatedAt,
+  );
+}
+
+export async function warmRoutinesSqliteFromPostgres(db: SqliteDb): Promise<number> {
+  if (!isDaemonDbPostgres()) return 0;
+  const rows = await pgCore.pgListRoutines(getPostgresPool());
+  for (const row of rows) {
+    mirrorRoutineToSqlite(db, normalizeRoutine(row));
+  }
+  return rows.length;
+}
+
+export async function listRoutinesAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listRoutines(db);
+  const rows = await pgCore.pgListRoutines(getPostgresPool());
+  return rows.map((row) => normalizeRoutine(row));
+}
+
+export async function getRoutineAsync(db: SqliteDb, id: string) {
+  if (!isDaemonDbPostgres()) return getRoutine(db, id);
+  const row = await pgCore.pgGetRoutine(getPostgresPool(), id);
+  return row ? normalizeRoutine(row) : null;
+}
+
+export async function listRoutineRunsAsync(db: SqliteDb, routineId: string, limit = 20) {
+  if (!isDaemonDbPostgres()) return listRoutineRuns(db, routineId, limit);
+  const rows = await pgCore.pgListRoutineRuns(getPostgresPool(), routineId, limit);
+  return rows.map(normalizeRoutineRun);
+}
+
+export async function getLatestRoutineRunAsync(db: SqliteDb, routineId: string) {
+  if (!isDaemonDbPostgres()) return getLatestRoutineRun(db, routineId);
+  const row = await pgCore.pgGetLatestRoutineRun(getPostgresPool(), routineId);
+  return row ? normalizeRoutineRun(row) : null;
+}
+
+export async function getRoutineRunAsync(db: SqliteDb, id: string) {
+  if (!isDaemonDbPostgres()) return getRoutineRun(db, id);
+  const row = await pgCore.pgGetRoutineRun(getPostgresPool(), id);
+  return row ? normalizeRoutineRun(row) : null;
 }
 
 export function getRoutine(db: SqliteDb, id: string) {

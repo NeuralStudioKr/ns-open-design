@@ -1,7 +1,8 @@
 /**
- * Teamver embed — project list SSOT is design-api registry (RDS), not daemon
- * sqlite per EC2. Multi-node: daemon `GET /api/projects*` only sees the hashed
- * node's local sqlite; BFF `/teamver-bff/projects` is workspace-consistent.
+ * Teamver embed — registry row mapping + client-side pagination helpers.
+ * Project **list** SSOT: daemon `GET /api/projects*` (Postgres, B5.11+) filtered
+ * by registry membership (`filterProjectsByTeamverRegistryIfNeeded`).
+ * Registry BFF remains workspace access gate + title metadata fallback.
  *
  * docs-teamver/39_7 · 30_embed_home_boot_API_최적화.md
  */
@@ -23,6 +24,17 @@ function readRegistryOdProjectId(project: TeamverRegisteredProject): string | un
   return id || undefined;
 }
 
+/** Prefer registry title when daemon PG name is empty or still the od id. */
+export function resolveProjectDisplayName(
+  project: Pick<Project, "id" | "name">,
+  registryTitle?: string | null,
+): string {
+  const title = registryTitle?.trim();
+  const name = project.name?.trim();
+  if (title && (!name || name === project.id)) return title;
+  return name || title || project.id || "Untitled";
+}
+
 function parseRegistryTimestamp(raw: unknown, fallback = 0): number {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string" && raw.trim()) {
@@ -39,7 +51,7 @@ export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project 
   const title = row.title?.trim();
   return sanitizeProjectForEmbed<Project>({
     id,
-    name: title || id || "Untitled",
+    name: resolveProjectDisplayName({ id, name: title || id || "" }, title),
     skillId: null,
     designSystemId: null,
     createdAt: createdAt || Date.now(),
