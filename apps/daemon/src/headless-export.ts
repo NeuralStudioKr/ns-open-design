@@ -353,16 +353,19 @@ export async function renderHeadlessPdf(
       const page = await preparePage(browser, options);
       try {
         await waitForPrintableContent(page);
-        if (options.input.deck) {
-          await page.emulateMedia({ media: 'print' });
-        }
         await stripLeakedArtifactTextFromPage(page);
+        // Flatten in screen media so getComputedStyle matches the live
+        // preview layout; switching to print before reveal forced column
+        // flex and white backgrounds from stale @media print rules.
         const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
         if (options.input.deck && deckSlideCount === 0) {
           console.warn('[headless-export] deck PDF: no slides matched selector', {
             selector: DECK_SLIDE_SELECTOR,
             title: options.input.title,
           });
+        }
+        if (options.input.deck) {
+          await page.emulateMedia({ media: 'print' });
         }
         await applyPdfStyles(page, options.input.deck);
         const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
@@ -447,7 +450,7 @@ export async function renderHeadlessHtmlSnapshot(
   return runHeadlessExportJob(
     { format: 'html', deck: options.input.deck === true, ...meta },
     async (browser) => {
-      const page = await preparePage(browser, options);
+      const page = await preparePage(browser, options, { deckPrepareMode: 'html' });
       try {
         await waitForPrintableContent(page);
         await stripLeakedArtifactTextFromPage(page);
@@ -758,7 +761,7 @@ async function evaluateInPage<T>(
 async function preparePage(
   browser: Browser,
   options: HeadlessExportOptions,
-  pageOptions: { deviceScaleFactor?: number } = {},
+  pageOptions: { deviceScaleFactor?: number; deckPrepareMode?: 'pdf' | 'html' } = {},
 ): Promise<Page> {
   const page = await browser.newPage({
     viewport: {
@@ -770,7 +773,9 @@ async function preparePage(
   page.setDefaultTimeout(EXPORT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(EXPORT_TIMEOUT_MS);
   const html = options.input.deck
-    ? buildPrintableHtml(options.input)
+    ? pageOptions.deckPrepareMode === 'html'
+      ? buildDeckExportHtml(options.input)
+      : buildPrintableHtml(options.input)
     : repairArtifactDocumentHead(withBaseHref(options.input.html, options.input.baseHref || ''));
   // `load` (not `domcontentloaded`) ensures the deck framework's `fit()` /
   // scripts and stylesheets have run before we flatten slides for print.
@@ -1282,12 +1287,20 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
 
 export { deckScreenshotClip as deckScreenshotClipRect };
 
-function buildPrintableHtml(input: DesktopExportPdfInput): string {
+function buildDeckExportBaseHtml(input: DesktopExportPdfInput): string {
   let doc = patchArtifactDeckPrintCss(
     repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
   );
   doc = injectTitle(doc, input.title);
-  return injectPrintStylesheet(doc, buildDeckPrintCss());
+  return doc;
+}
+
+function buildDeckExportHtml(input: DesktopExportPdfInput): string {
+  return buildDeckExportBaseHtml(input);
+}
+
+function buildPrintableHtml(input: DesktopExportPdfInput): string {
+  return injectPrintStylesheet(buildDeckExportBaseHtml(input), buildDeckPrintCss());
 }
 
 /** @deprecated Use patchArtifactDeckPrintCss from @open-design/contracts */

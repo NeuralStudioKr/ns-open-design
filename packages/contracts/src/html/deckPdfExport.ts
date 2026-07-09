@@ -108,6 +108,10 @@ export function buildDeckPrintCss(): string {
 }`;
 }
 
+/** Untagged export preamble baked into HTML snapshot downloads. */
+const ORPHANED_EXPORT_PREAMBLE_STYLE_RE =
+  /<style\b(?![^>]*\bdata-)[^>]*>[\s\S]*?html\s*,\s*body\s*\{[^}]*background\s*:\s*#fff\s*!important[^}]*\}[\s\S]*?\*::-webkit-scrollbar[\s\S]*?<\/style>/gi;
+
 /** Remove previously injected export styles/scripts so fresh rules win. */
 export function stripStaleDeckExportArtifacts(doc: string): string {
   if (!doc) return doc;
@@ -115,6 +119,11 @@ export function stripStaleDeckExportArtifacts(doc: string): string {
     .replace(/<style\b[^>]*\bdata-deck-print(?:=["'][^"']*["'])?[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<style\b[^>]*\bdata-od-headless-pdf[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<style\b[^>]*\bdata-od-desktop-pdf[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(
+      /<style\b[^>]*\bdata-teamver-static-html-export-fallback[^>]*>[\s\S]*?<\/style>/gi,
+      '',
+    )
+    .replace(ORPHANED_EXPORT_PREAMBLE_STYLE_RE, '')
     .replace(/<script\b[^>]*\bdata-deck-print-flatten[^>]*>[\s\S]*?<\/script>/gi, '');
 }
 
@@ -133,6 +142,12 @@ export function patchArtifactDeckPrintCss(doc: string): string {
   out = out.replace(
     /(@media\s+print[\s\S]*?)([^{}]*(?:\[data-screen-label\]|\[data-slide\])[^{]*\{[^}]*?)flex-direction\s*:\s*column\s*!important\s*;?/gi,
     '$1$2',
+  );
+  // Screen-level white stage backgrounds from export snapshots must not
+  // bleed through transparent slides in headless PDF / browser print.
+  out = out.replace(
+    /(html\s*,\s*body\s*\{[^}]*?)background\s*:\s*#fff\s*!important/gi,
+    '$1background: var(--shell, var(--bg, #fff)) !important',
   );
   return out;
 }
