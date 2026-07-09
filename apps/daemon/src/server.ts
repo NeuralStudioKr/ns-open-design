@@ -480,6 +480,7 @@ import {
   getDeploymentById,
   getMessageTelemetryFinalizationState,
   getProject,
+  getProjectAsync,
   getTemplate,
   insertConversation,
   insertConversationAsync,
@@ -6497,6 +6498,7 @@ export async function startServer({
   const uploadDeps = { upload, importUpload, handleProjectUpload };
   const projectStoreDeps = {
     getProject,
+    getProjectAsync,
     insertProject,
     insertProjectAsync,
     updateProject,

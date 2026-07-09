@@ -584,6 +584,7 @@ describe('createLazyProjectMaterializationMiddleware', () => {
 
     for (const path of [
       '/api/projects/p1/preview-url',
+      '/api/projects/p1/preview/scope-token/deck.html',
       '/api/projects/p1/files/index.html/preview',
     ]) {
       ensure.mockClear();

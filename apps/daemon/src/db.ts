@@ -973,6 +973,32 @@ export function getProject(db: SqliteDb, id: string) {
   return row ? normalizeProject(row) : null;
 }
 
+/** Postgres: cache miss falls back to RDS so cold-node GET /api/projects/:id works. */
+export async function getProjectAsync(db: SqliteDb, id: string) {
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  const cached = getProject(db, trimmed);
+  if (cached) return cached;
+  if (!isDaemonDbPostgres()) return null;
+  const pool = getPostgresPool();
+  const projectRow = await pgCore.pgGetProject(pool, trimmed);
+  if (!projectRow) return null;
+  const normalized = normalizeProject(projectRow);
+  setCachedProject(normalized);
+  mirrorProjectRowToSqlite(db, {
+    id: normalized.id,
+    name: normalized.name,
+    skillId: normalized.skillId,
+    designSystemId: normalized.designSystemId,
+    pendingPrompt: normalized.pendingPrompt ?? null,
+    metadata: normalized.metadata,
+    customInstructions: normalized.customInstructions ?? null,
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+  });
+  return normalized;
+}
+
 export function insertProject(db: SqliteDb, p: DbRow) {
   if (isDaemonDbPostgres()) {
     const created = normalizeProject({

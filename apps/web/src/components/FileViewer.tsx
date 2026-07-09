@@ -4736,6 +4736,7 @@ function HtmlViewer({
     const repaired = repairArtifactDocumentHead(liveHtml);
     return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
   });
+  const [sourceLoadFailed, setSourceLoadFailed] = useState(false);
   const lastStablePreviewSourceRef = useRef<string | null>(
     liveHtml
       ? (() => {
@@ -5316,6 +5317,7 @@ function HtmlViewer({
     if (fileChanged) {
       setSource(null);
       sourceRef.current = null;
+      setSourceLoadFailed(false);
     }
     let cancelled = false;
     // Cache-bust the fetch on every mtime / reload / files-refresh bump.
@@ -5332,7 +5334,11 @@ function HtmlViewer({
       // Chokidar emits agent rewrites as unlink+add+change bursts; a
       // transient null mid-burst would blank source → srcDoc empty →
       // shell stays on prior frame. Keep the last good text instead.
-      if (text == null) return;
+      if (text == null) {
+        setSourceLoadFailed(true);
+        return;
+      }
+      setSourceLoadFailed(false);
       const accepted = acceptCandidate(text);
       if (accepted == null) return;
       setSource(accepted);
@@ -5406,6 +5412,27 @@ function HtmlViewer({
     [source],
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
+  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  const [embedPreviewPrefixResolved, setEmbedPreviewPrefixResolved] = useState(
+    () => !isTeamverEmbedMode(),
+  );
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) {
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixResolved(true);
+      return;
+    }
+    let cancelled = false;
+    setEmbedPreviewPrefixResolved(false);
+    void resolveTeamverProjectPreviewPrefix(projectId, file.name).then((prefix) => {
+      if (cancelled) return;
+      setEmbedPreviewPrefix(prefix);
+      setEmbedPreviewPrefixResolved(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, file.name]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
@@ -5417,17 +5444,8 @@ function HtmlViewer({
     drawMode: drawOverlayOpen,
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
-  }) && !manualEditRequiresSrcDoc;
-  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void resolveTeamverProjectPreviewPrefix(projectId, file.name).then((prefix) => {
-      if (!cancelled) setEmbedPreviewPrefix(prefix);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, file.name]);
+  }) && !manualEditRequiresSrcDoc
+    && (!isTeamverEmbedMode() || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
     (filePath: string) => (
       embedPreviewPrefix
@@ -8751,7 +8769,11 @@ function HtmlViewer({
         </>)}
       <div className="viewer-body" ref={previewBodyRef}>
         {source === null ? (
-          <div className="viewer-empty">{t('fileViewer.loading')}</div>
+          <div className="viewer-empty">
+            {sourceLoadFailed && embedPreviewPrefixResolved
+              ? t('fileViewer.previewUnavailable')
+              : t('fileViewer.loading')}
+          </div>
         ) : mode === 'preview' ? (
           <div
             className={`${manualEditMode ? 'manual-edit-workspace' : commentPreviewLayoutClass} preview-viewport preview-viewport-${previewViewport}${drawOverlayOpen ? ' preview-draw-active' : ''}`}

@@ -108,6 +108,10 @@ function isProjectMaterializationPath(pathname: string): boolean {
   if (/^\/raw(\/|$)/.test(core)) {
     return true;
   }
+  // Scoped preview iframe assets — same sync-down contract as /raw/.
+  if (/^\/preview\/[^/]+(\/|$)/.test(core)) {
+    return true;
+  }
   if (/^\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(core)) {
     return true;
   }
@@ -122,6 +126,9 @@ function isProjectMaterializationPath(pathname: string): boolean {
     return true;
   }
   if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(core)) {
+    return true;
+  }
+  if (/^\/api\/projects\/[^/]+\/preview\/[^/]+(\/|$)/.test(core)) {
     return true;
   }
   if (/^\/api\/projects\/[^/]+\/plugins\/(install-folder|publish-github|contribute-open-design|share-tasks)(\/|$)/.test(core)) {
@@ -175,8 +182,10 @@ function isProjectScratchReadFallbackPath(pathname: string): boolean {
   if (isProjectExportOrArchivePath(core)) return true;
   if (/^\/files(\/|$)/.test(core)) return true;
   if (/^\/raw(\/|$)/.test(core)) return true;
+  if (/^\/preview\/[^/]+(\/|$)/.test(core)) return true;
   if (/^\/api\/projects\/[^/]+\/files(\/|$)/.test(core)) return true;
   if (/^\/api\/projects\/[^/]+\/raw(\/|$)/.test(core)) return true;
+  if (/^\/api\/projects\/[^/]+\/preview\/[^/]+(\/|$)/.test(core)) return true;
   return false;
 }
 

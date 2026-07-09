@@ -793,6 +793,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     insertProjectAsync,
     validateLinkedDirs,
     getProject,
+    getProjectAsync,
     updateProject,
     dbDeleteProject,
     dbDeleteProjectAsync,
@@ -1529,7 +1530,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   });
 
   app.get('/api/projects/:id', async (req, res) => {
-    const project = getProject(db, req.params.id);
+    const project = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
     const locations = await configuredProjectLocations();
     if (!project || !projectVisibleForLocations(project, locations))
       return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'not found');
@@ -1723,7 +1726,10 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   // ---- Conversations --------------------------------------------------------
 
   app.get('/api/projects/:id/conversations', async (req, res) => {
-    if (!getProject(db, req.params.id)) {
+    const project = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!project) {
       return res.status(404).json({ error: 'project not found' });
     }
     const list = listConversationsAsync
@@ -2188,7 +2194,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { PROJECTS_DIR } = ctx.paths;
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
-  const { getProject } = ctx.projectStore;
+  const { getProject, getProjectAsync } = ctx.projectStore;
   const { listFiles, listProjectFolders, createProjectFolder, deleteProjectFolder, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
@@ -2492,7 +2498,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   app.get('/api/projects/:id/preview-url', async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
+      const project = getProjectAsync
+        ? await getProjectAsync(db, req.params.id)
+        : getProject(db, req.params.id);
       if (!project) {
         sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
         return;
@@ -2536,7 +2544,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         sendApiError(res, 400, 'BAD_REQUEST', 'invalid preview scope');
         return;
       }
-      const project = getProject(db, projectId);
+      const project = getProjectAsync
+        ? await getProjectAsync(db, projectId)
+        : getProject(db, projectId);
       if (!project) {
         sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
         return;
@@ -2597,7 +2607,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const params = req.params as unknown as { 0?: string; 1?: string };
       const projectId = String(params[0] ?? '');
       const relPath = String(params[1] ?? '');
-      const project = getProject(db, projectId);
+      const project = getProjectAsync
+        ? await getProjectAsync(db, projectId)
+        : getProject(db, projectId);
       // PreviewModal loads artifact HTML via srcdoc, giving the iframe Origin: "null".
       // data: URIs, file://, and some sandboxed iframes also send null — all are
       // local-only callers, so this is safe. Real cross-origin sites send a real
