@@ -337,35 +337,10 @@ export function reconcileMediaTasksOnBoot(
     return { interrupted, deleted };
   });
   const result = tx() as { interrupted: number; deleted: number };
-  if (isDaemonDbPostgres()) {
-    // Postgres reconcile runs asynchronously to avoid blocking daemon boot.
-    // Result is logged separately; failures don't gate startup because the
-    // sqlite reconcile already produced a consistent local state.
-    schedulePostgresWrite(async () => {
-      try {
-        const pgResult = await pgCore.pgReconcileMediaTasks(
-          getPostgresPool(),
-          interruptedErrorJson,
-          now,
-          cutoff,
-        );
-        console.info(
-          JSON.stringify({
-            metric: 'daemon_db_media_reconcile_postgres',
-            interrupted: pgResult.interrupted,
-            deleted: pgResult.deleted,
-          }),
-        );
-      } catch (err) {
-        console.error(
-          JSON.stringify({
-            metric: 'daemon_db_media_reconcile_postgres_failed',
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-      }
-    });
-  }
+  // Postgres reconcile on boot is intentionally skipped: media task reads are
+  // still sqlite-local per node, and a global UPDATE would mark sibling
+  // daemon runs as interrupted. Revisit when media_tasks get node ownership
+  // in Postgres (Track B5 follow-up).
   return result;
 }
 

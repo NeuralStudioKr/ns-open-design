@@ -136,7 +136,8 @@ async function migrateProjects(
   const rows = sqlite
     .prepare(
       `SELECT id, name, skill_id, design_system_id, pending_prompt,
-              metadata_json, custom_instructions, created_at, updated_at
+              metadata_json, applied_plugin_snapshot_id, custom_instructions,
+              created_at, updated_at
          FROM projects`,
     )
     .all() as Array<Record<string, unknown>>;
@@ -148,14 +149,16 @@ async function migrateProjects(
     await pool.query(
       `INSERT INTO projects
          (id, name, skill_id, design_system_id, pending_prompt,
-          metadata_json, custom_instructions, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          metadata_json, applied_plugin_snapshot_id, custom_instructions,
+          created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (id) DO UPDATE
          SET name = EXCLUDED.name,
              skill_id = EXCLUDED.skill_id,
              design_system_id = EXCLUDED.design_system_id,
              pending_prompt = EXCLUDED.pending_prompt,
              metadata_json = EXCLUDED.metadata_json,
+             applied_plugin_snapshot_id = EXCLUDED.applied_plugin_snapshot_id,
              custom_instructions = EXCLUDED.custom_instructions,
              updated_at = EXCLUDED.updated_at`,
       [
@@ -165,6 +168,7 @@ async function migrateProjects(
         r.design_system_id ?? null,
         r.pending_prompt ?? null,
         r.metadata_json ?? null,
+        r.applied_plugin_snapshot_id ?? null,
         r.custom_instructions ?? null,
         Number(r.created_at ?? Date.now()),
         Number(r.updated_at ?? Date.now()),

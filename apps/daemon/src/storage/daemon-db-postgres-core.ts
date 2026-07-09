@@ -75,8 +75,9 @@ export async function pgUpdateProject(pool: Pool, id: string, merged: DbRow): Pr
             design_system_id = $4,
             pending_prompt = $5,
             metadata_json = $6,
-            custom_instructions = $7,
-            updated_at = $8
+            applied_plugin_snapshot_id = $7,
+            custom_instructions = $8,
+            updated_at = $9
       WHERE id = $1`,
     [
       id,
@@ -85,6 +86,7 @@ export async function pgUpdateProject(pool: Pool, id: string, merged: DbRow): Pr
       merged.designSystemId ?? null,
       merged.pendingPrompt ?? null,
       merged.metadata ? JSON.stringify(merged.metadata) : null,
+      merged.appliedPluginSnapshotId ?? null,
       merged.customInstructions ?? null,
       merged.updatedAt,
     ],

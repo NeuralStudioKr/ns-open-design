@@ -35,8 +35,11 @@ import {
   setCachedPreviewComments,
   setCachedProject,
   setCachedTabsState,
+  updateCachedMessage,
+  upsertCachedConversation,
   upsertCachedDeployment,
   upsertCachedPreviewComment,
+  findCachedMessage,
 } from './storage/daemon-db-entity-cache.js';
 import * as pgCore from './storage/daemon-db-postgres-core.js';
 import {
@@ -817,6 +820,7 @@ export function insertProject(db: SqliteDb, p: DbRow) {
       designSystemId: p.designSystemId ?? null,
       pendingPrompt: p.pendingPrompt ?? null,
       metadataJson: p.metadata ? JSON.stringify(p.metadata) : null,
+      appliedPluginSnapshotId: p.appliedPluginSnapshotId ?? null,
       customInstructions: p.customInstructions ?? null,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -1314,7 +1318,7 @@ export function insertConversation(db: SqliteDb, c: DbRow) {
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
     });
-    invalidateCachedConversations(String(c.projectId));
+    upsertCachedConversation(String(c.projectId), created as DbRow);
     schedulePostgresWrite(async () => {
       await pgCore.pgInsertConversation(getPostgresPool(), c);
     });
@@ -1593,11 +1597,15 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
     if (conversation?.projectId) invalidateCachedConversations(String(conversation.projectId));
     schedulePostgresWrite(async () => {
       await pgCore.pgUpsertMessage(getPostgresPool(), conversationId, m);
-      await pgCore.pgUpdateConversation(getPostgresPool(), conversationId, {
-        title: conversation?.title ?? null,
-        sessionMode: conversation?.sessionMode ?? 'design',
-        updatedAt: now,
-      });
+      // Only touch conversation row when it is already in cache — otherwise
+      // we'd overwrite title with null on cold paths (insertConversation race).
+      if (conversation) {
+        await pgCore.pgUpdateConversation(getPostgresPool(), conversationId, {
+          title: conversation.title ?? null,
+          sessionMode: conversation.sessionMode ?? 'design',
+          updatedAt: now,
+        });
+      }
     });
     return normalized;
   }
@@ -1743,6 +1751,27 @@ export function appendMessageStatusEvent(db: SqliteDb, messageId: string, event:
   const label = typeof event?.label === 'string' ? event.label.trim() : '';
   const detail = typeof event?.detail === 'string' ? event.detail.trim() : '';
   if (!label) return null;
+
+  if (isDaemonDbPostgres()) {
+    const hit = findCachedMessage(messageId);
+    if (!hit) return null;
+    const events = Array.isArray(hit.message.events) ? [...(hit.message.events as DbRow[])] : [];
+    const last = events[events.length - 1];
+    if (last?.kind === 'status' && last.label === label && (last.detail ?? '') === detail) {
+      return events;
+    }
+    const nextEvent = detail
+      ? { kind: 'status', label, detail }
+      : { kind: 'status', label };
+    const next = [...events, nextEvent];
+    const merged = { ...hit.message, events: next };
+    updateCachedMessage(hit.conversationId, hit.index, merged);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+    });
+    return next;
+  }
+
   const row = db
     .prepare(`SELECT events_json AS eventsJson FROM messages WHERE id = ?`)
     .get(messageId) as DbRow | undefined;
@@ -1766,6 +1795,24 @@ export function appendMessageAgentEvent(db: SqliteDb, messageId: string, event: 
   if (!event || typeof event !== 'object') return null;
   const kind = typeof event.kind === 'string' ? event.kind : '';
   if (!kind) return null;
+
+  if (isDaemonDbPostgres()) {
+    const hit = findCachedMessage(messageId);
+    if (!hit) return null;
+    const events = Array.isArray(hit.message.events) ? [...(hit.message.events as DbRow[])] : [];
+    const last = events[events.length - 1];
+    if (last && JSON.stringify(last) === JSON.stringify(event)) return events;
+    const next = [...events, event];
+    const textDelta = kind === 'text' && typeof event.text === 'string' ? event.text : '';
+    const content = String(hit.message.content ?? '') + textDelta;
+    const merged = { ...hit.message, content, events: next };
+    updateCachedMessage(hit.conversationId, hit.index, merged);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+    });
+    return next;
+  }
+
   const row = db
     .prepare(`SELECT content, events_json AS eventsJson FROM messages WHERE id = ?`)
     .get(messageId) as DbRow | undefined;
@@ -2498,9 +2545,50 @@ export async function tryClaimScheduledRoutineRunAsync(
     } catch {
       // sqlite mirror best-effort — postgres remains the SSOT for the claim.
     }
-    return getRoutineRun(db, r.id);
+    const local = getRoutineRun(db, r.id);
+    if (local) return local as DbRow;
+    // PG claim succeeded but local sqlite mirror missed (orphan claim row).
+    // Return a synthetic row so RoutineService still runs the slot owner.
+    return normalizeRoutineRun({
+      id: r.id,
+      routineId: r.routineId,
+      trigger: r.trigger,
+      status: r.status,
+      projectId: r.projectId,
+      conversationId: r.conversationId,
+      agentRunId: r.agentRunId,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt ?? null,
+      summary: r.summary ?? null,
+      error: r.error ?? null,
+      errorCode: r.errorCode ?? null,
+    }) as DbRow;
   }
   return insertScheduledRoutineRun(db, r, slotAt);
+}
+
+function messageRowForPgUpsert(messageId: string, merged: DbRow, events: DbRow[]): DbRow {
+  return {
+    id: messageId,
+    role: merged.role,
+    content: merged.content,
+    agentId: merged.agentId,
+    agentName: merged.agentName,
+    runId: merged.runId,
+    runStatus: merged.runStatus,
+    lastRunEventId: merged.lastRunEventId,
+    events,
+    attachments: merged.attachments,
+    commentAttachments: merged.commentAttachments,
+    producedFiles: merged.producedFiles,
+    feedback: merged.feedback,
+    preTurnFileNames: merged.preTurnFileNames,
+    sessionMode: merged.sessionMode,
+    runContext: merged.runContext,
+    appliedPluginSnapshot: merged.appliedPluginSnapshot,
+    startedAt: merged.startedAt,
+    endedAt: merged.endedAt,
+  };
 }
 
 export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {

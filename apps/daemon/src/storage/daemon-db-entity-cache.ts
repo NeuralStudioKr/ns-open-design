@@ -63,6 +63,36 @@ export function invalidateCachedConversations(projectId: string): void {
   conversationsByProject.delete(projectId);
 }
 
+/** Append or replace one conversation in the per-project cache (postgres warm path). */
+export function upsertCachedConversation(projectId: string, conversation: CachedConversation): void {
+  const list = conversationsByProject.get(projectId) ?? [];
+  const idx = list.findIndex((row) => String(row.id) === String(conversation.id));
+  if (idx >= 0) list[idx] = conversation;
+  else list.push(conversation);
+  conversationsByProject.set(projectId, list);
+}
+
+export function findCachedMessage(
+  messageId: string,
+): { conversationId: string; message: CachedMessage; index: number } | null {
+  for (const [conversationId, list] of messagesByConversation) {
+    const index = list.findIndex((row) => String(row.id) === messageId);
+    if (index >= 0) return { conversationId, message: list[index]!, index };
+  }
+  return null;
+}
+
+export function updateCachedMessage(
+  conversationId: string,
+  index: number,
+  message: CachedMessage,
+): void {
+  const list = messagesByConversation.get(conversationId);
+  if (!list || index < 0 || index >= list.length) return;
+  list[index] = message;
+  messagesByConversation.set(conversationId, list);
+}
+
 export function getCachedConversationById(id: string): CachedConversation | null {
   for (const list of conversationsByProject.values()) {
     const hit = list.find((row) => String(row.id) === id);
