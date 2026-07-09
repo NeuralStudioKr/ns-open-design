@@ -113,7 +113,10 @@ export type RoutineRunHandler = (input: {
 
 export interface RoutinePersistence {
   list(): Routine[];
-  insertRun(run: RoutineRun, options?: { scheduledSlotAt?: number }): boolean | void;
+  insertRun(
+    run: RoutineRun,
+    options?: { scheduledSlotAt?: number },
+  ): boolean | Promise<boolean>;
   updateRun(id: string, patch: Partial<RoutineRun>): void;
   getLatestRun(routineId: string): RoutineRun | null;
 }
@@ -598,7 +601,7 @@ export class RoutineService {
       const discardUnstarted = handlerStart.discardUnstarted ?? handlerStart.discard;
       let inserted = true;
       try {
-        inserted = this.persistence.insertRun(run, options) !== false;
+        inserted = (await Promise.resolve(this.persistence.insertRun(run, options))) !== false;
       } catch (error) {
         try {
           discardUnstarted?.();

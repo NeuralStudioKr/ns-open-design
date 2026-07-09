@@ -482,7 +482,7 @@ import {
   insertProject,
   insertRoutine,
   insertRoutineRun,
-  insertScheduledRoutineRun,
+  tryClaimScheduledRoutineRunAsync,
   insertTemplate,
   findTemplateByNameAndProject,
   updateTemplate,
@@ -5380,12 +5380,12 @@ export async function startServer({
   composioConnectorProvider.configureCatalogCache(RUNTIME_DATA_DIR);
   composioConnectorProvider.startCatalogRefreshLoop();
 
-  // RoutineService persistence is a thin adapter over the SQLite helpers.
-  // Routines are stored as DB rows; the service holds in-memory timers and
-  // delegates "list me everything" / "record a run" back to SQLite.
+  // RoutineService persistence is a thin adapter over the db helpers.
+  // Scheduled runs use tryClaimScheduledRoutineRunAsync so (routine_id,
+  // slot_at) ownership is decided in Postgres across daemon nodes.
   routineService = new RoutineService({
     list: () => listRoutines(db).map((row) => routineDbRowToContract(row, null)),
-    insertRun: (run, options) => {
+    insertRun: async (run, options) => {
       const row = {
         id: run.id,
         routineId: run.routineId,
@@ -5401,7 +5401,12 @@ export async function startServer({
         errorCode: run.errorCode,
       };
       if (options?.scheduledSlotAt != null) {
-        return Boolean(insertScheduledRoutineRun(db, row, options.scheduledSlotAt));
+        const claimed = await tryClaimScheduledRoutineRunAsync(
+          db,
+          row,
+          options.scheduledSlotAt,
+        );
+        return claimed != null;
       }
       insertRoutineRun(db, row);
       return true;
@@ -6935,7 +6940,7 @@ export async function startServer({
 
   // ---- Conversations --------------------------------------------------------
 
-  app.get('/api/projects/:id/conversations', (req, res) => {
+  app.get('/api/projects/:id/conversations', async (req, res) => {
     if (!getProject(db, req.params.id)) {
       return res.status(404).json({ error: 'project not found' });
     }

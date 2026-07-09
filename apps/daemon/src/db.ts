@@ -2426,14 +2426,11 @@ export function insertRoutineRun(db: SqliteDb, r: DbRow) {
   return getRoutineRun(db, r.id);
 }
 
-/**
- * Sync entrypoint kept for the current server.ts scheduler shim. Claims a
- * scheduler slot in sqlite (single-node atomic) and duplicates the write to
- * Postgres. NOTE: for exactly-once behavior across multiple daemon nodes,
- * callers should migrate to `tryClaimScheduledRoutineRunAsync` — sqlite
- * claim is only atomic per-node.
- */
-export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number) {
+function claimScheduledRoutineRunInSqlite(
+  db: SqliteDb,
+  r: DbRow,
+  slotAt: number,
+): boolean {
   const insertClaim = db.prepare(
     `INSERT OR IGNORE INTO routine_schedule_claims
        (routine_id, slot_at, claimed_at)
@@ -2464,11 +2461,20 @@ export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number
     );
     return true;
   });
-  if (!tx()) return null;
+  return tx();
+}
+
+/**
+ * Sync entrypoint for sqlite-only mode and legacy callers. Claims a scheduler
+ * slot in sqlite (single-node atomic) and, when postgres is enabled, also
+ * schedules an async pg claim. For multi-node exactly-once scheduling,
+ * prefer `tryClaimScheduledRoutineRunAsync`.
+ */
+export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number) {
+  if (!claimScheduledRoutineRunInSqlite(db, r, slotAt)) return null;
   if (isDaemonDbPostgres()) {
     const snapshot = { ...r };
     schedulePostgresWrite(async () => {
-      // Postgres claim + run insert atomically in one transaction.
       await pgCore.pgTryClaimScheduledRoutineRun(getPostgresPool(), snapshot, slotAt);
     });
   }
@@ -2476,10 +2482,8 @@ export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number
 }
 
 /**
- * Cross-node atomic scheduler claim. Prefer this over `insertScheduledRoutineRun`
- * when the caller can be async — Postgres becomes the source of truth for
- * (routine_id, slot_at) uniqueness. Also writes to sqlite for local reads
- * during the transition.
+ * Cross-node atomic scheduler claim. Postgres owns (routine_id, slot_at)
+ * uniqueness; sqlite is mirrored best-effort for local sync readers.
  */
 export async function tryClaimScheduledRoutineRunAsync(
   db: SqliteDb,
@@ -2489,10 +2493,8 @@ export async function tryClaimScheduledRoutineRunAsync(
   if (isDaemonDbPostgres()) {
     const ok = await pgCore.pgTryClaimScheduledRoutineRun(getPostgresPool(), r, slotAt);
     if (!ok) return null;
-    // Mirror to sqlite so sync readers still see the row until we finish
-    // migrating routes/routine.ts.
     try {
-      insertScheduledRoutineRun(db, r, slotAt);
+      claimScheduledRoutineRunInSqlite(db, r, slotAt);
     } catch {
       // sqlite mirror best-effort — postgres remains the SSOT for the claim.
     }
