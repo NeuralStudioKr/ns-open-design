@@ -34,6 +34,7 @@
 | **[34 Export 성능 개선](./34_Export_성능_개선_로드맵.md)** | **export 부하 분석 · Chromium/캐시/presigned/async · Phase 0~3 로드맵** |
 | **[38 Design 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md)** | **UVICORN worker · AI BYOK 동시 stream(workspace cap 8) · export cap · multi-node** |
 | [39 Design 이중화·HA](./39_0_Design_이중화_로드맵_개요.md) | **Phase 0~5 · userId hash · scratch/SQLite · [39_6 CTO](./39_6_라우팅_아키텍처_CTO_의사결정.md) · [39_7 저장층 FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md)** |
+| **[40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md)** | **2026-07-08 현재 판단 · 공식 OD main 전체 merge 금지 · P0/P1 수동 포팅 후보** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -65,6 +66,7 @@
 | 34 | **[Export 성능 개선](./34_Export_성능_개선_로드맵.md)** |
 | 38 | **[Design 동시성·용량·확장](./38_Design_동시성_용량_확장_가이드.md)** — §5 AI 동시 이용 SSOT |
 | 39 | **[Design 이중화·HA](./39_0_Design_이중화_로드맵_개요.md)** — [39_1](./39_1_이중화_Phase_로드맵.md) Phase · [39_2](./39_2_ALB_nginx_라우팅_설계.md) 라우팅 · [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) CTO · [39_7](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) scratch·DaemonDb · [39_3~5](./39_3_scratch_SQLite_SSE_제약.md) |
+| 40 | **[OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md)** — 2026-07-08 현재 판단, 전체 merge 금지, SSE/background/export/community preview 수동 포팅 후보 |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |
@@ -118,6 +120,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-08 | [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) — 현재 시점 기준 반영 후보·보류 커밋 정리 |
 | 2026-07-08 | [39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) |
 | 2026-07-07 | [39 Design 이중화·HA](./39_0_Design_이중화_로드맵_개요.md) 시리즈 추가 |
 | 2026-06-24 | [22 Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md) — loop 354 검토 SSOT |
