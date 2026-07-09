@@ -485,7 +485,7 @@ describe('ProjectView daemon cleanup', () => {
   // self-heals fixture and the test body that follows uses the
   // `startedAt` variable declared only in this `it()` opener.
   it('self-heals running messages with no runId when daemon has no active run', async () => {
-    const startedAt = Date.now();
+    const startedAt = Date.now() - 120_000;
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
     listMessages.mockResolvedValue([
       {

@@ -376,6 +376,49 @@ describe('ProjectView daemon reattach restore', () => {
     });
   });
 
+  it('recreates a missing assistant row from an active daemon run and reattaches after re-entry', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'user-before-leave',
+        role: 'user',
+        content: 'Create a deck and keep running after I leave',
+        createdAt: startedAt - 1,
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([
+      {
+        id: 'run-after-leave',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        assistantMessageId: 'assistant-after-leave',
+        agentId: 'agent-1',
+        status: 'running',
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+    ]);
+    reattachDaemonRun.mockImplementation(async () => new Promise<void>(() => {}));
+
+    renderProjectView();
+
+    await waitFor(() => expect(listActiveChatRuns).toHaveBeenCalledWith('project-1', 'conv-1'));
+    await waitFor(() => expect(reattachDaemonRun).toHaveBeenCalledTimes(1));
+    expect(reattachDaemonRun.mock.calls[0]?.[0]).toMatchObject({
+      runId: 'run-after-leave',
+      initialLastEventId: null,
+    });
+    expect(fetchChatRunStatus).not.toHaveBeenCalled();
+  });
+
   it('keeps a recent assistant row running while daemon run lookup is still catching up', async () => {
     const startedAt = Date.now();
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
