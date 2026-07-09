@@ -2,7 +2,12 @@ import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { hasTeamverEmbedActiveWork } from "./teamverEmbedActiveWork";
+import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
 import { refreshDesignAuthCookie } from "./designBffClient";
+
+function shouldDeferPassiveAuthRedirect(): boolean {
+  return hasTeamverEmbedActiveWork() || hasTeamverEmbedBackgroundRuns();
+}
 
 export const TEAMVER_EMBED_PASSIVE_AUTH_EVENT = "teamver:embed-passive-auth-required";
 
@@ -27,14 +32,14 @@ function dispatchPassiveAuthRequired(reason: "daemon" | "bff"): void {
 function schedulePassiveLoginRedirect(): void {
   if (typeof window === "undefined") return;
   if (!isTeamverEmbedMode() || !isBootstrapAuthMode()) return;
-  if (hasTeamverEmbedActiveWork()) {
+  if (shouldDeferPassiveAuthRedirect()) {
     dispatchPassiveAuthRequired("daemon");
     return;
   }
   if (passiveAuthRedirectTimer) return;
   passiveAuthRedirectTimer = window.setTimeout(() => {
     passiveAuthRedirectTimer = null;
-    if (hasTeamverEmbedActiveWork()) {
+    if (shouldDeferPassiveAuthRedirect()) {
       dispatchPassiveAuthRequired("daemon");
       return;
     }
@@ -64,7 +69,7 @@ export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
   if (!isTeamverEmbedMode() || !isBootstrapAuthMode()) return;
   void (async () => {
     await tryPassiveAuthRecovery();
-    if (hasTeamverEmbedActiveWork()) {
+    if (shouldDeferPassiveAuthRedirect()) {
       dispatchPassiveAuthRequired(reason);
       return;
     }

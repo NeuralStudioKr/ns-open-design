@@ -102,6 +102,7 @@ import {
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
+import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
 import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
@@ -2607,6 +2608,7 @@ function AppInner() {
         }
       }
       activeRunIdsRef.current = nextActiveRunIds;
+      publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
 
       const completed = trackedRuns
         .filter(

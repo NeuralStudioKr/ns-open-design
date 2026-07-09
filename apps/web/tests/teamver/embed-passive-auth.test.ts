@@ -15,6 +15,10 @@ import {
   resetTeamverEmbedActiveWorkForTests as resetActiveWork,
 } from "../../src/teamver/teamverEmbedActiveWork";
 import {
+  publishTeamverSessionActiveRunProjectIds,
+  resetTeamverEmbedSessionActiveRunProjectIdsForTests,
+} from "../../src/teamver/teamverEmbedSessionRuns";
+import {
   handleEmbedPassiveUnauthorized,
   resetEmbedPassiveAuthForTests,
   TEAMVER_EMBED_PASSIVE_AUTH_EVENT,
@@ -66,6 +70,7 @@ describe("teamverEmbedPassiveAuth", () => {
     redirectMock.mockClear();
     resetEmbedPassiveAuthForTests();
     resetActiveWork();
+    resetTeamverEmbedSessionActiveRunProjectIdsForTests();
   });
 
   afterEach(() => {
@@ -91,6 +96,14 @@ describe("teamverEmbedPassiveAuth", () => {
     handleEmbedPassiveUnauthorized("daemon");
     await vi.runAllTimersAsync();
     expect(redirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers login redirect while a background daemon run is active", async () => {
+    endTeamverEmbedActiveWork();
+    publishTeamverSessionActiveRunProjectIds(new Set(["proj-bg"]));
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.runAllTimersAsync();
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("tracks active work depth", () => {
