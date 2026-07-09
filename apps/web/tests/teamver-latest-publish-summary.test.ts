@@ -17,6 +17,9 @@ vi.mock('../src/teamver/designBffClient', () => ({
     },
     workspaceStore: { get: vi.fn(async () => 'ws-1') },
   })),
+  // 803f70262 spreads `TEAMVER_BFF_REQUEST_OPTIONS` into every BFF call.
+  // Batch/list-outputs helpers pull it from this mock, so it must be defined.
+  TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true, skipAuthRecovery: true },
 }));
 
 vi.mock('../src/teamver/listProjectOutputs', () => ({
@@ -61,7 +64,9 @@ describe('fetchLatestPublishSummary', () => {
     expect(batchPostMock).toHaveBeenCalledWith(
       '/projects/batch/outputs/latest',
       { odProjectIds: ['p1'] },
-      { workspaceId: 'ws-1', skipAuthHeader: true },
+      // 803f70262: TEAMVER_BFF_REQUEST_OPTIONS carries both flags so SDK
+      // auto refresh recovery cannot double-post /auth/refresh on 401.
+      { workspaceId: 'ws-1', skipAuthHeader: true, skipAuthRecovery: true },
     );
     expect(listOutputsMock).not.toHaveBeenCalled();
   });
