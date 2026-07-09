@@ -1555,6 +1555,7 @@ function AppInner() {
         sessionActiveRunProjectIdsRef.current.delete(projectId);
         byokProxyIdlePollsRef.current.delete(projectId);
       }
+      publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
       const byokRuns = syntheticByokRunsForTaskCenter(byokBackgroundChatsRef.current);
       const currentProjects = projectsRef.current;
       const projectsById = new Map(currentProjects.map((project) => [project.id, project.name]));
@@ -2842,6 +2843,7 @@ function AppInner() {
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     sessionActiveRunProjectIdsRef.current.delete(id);
+    publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
     setProjects((curr) => curr.filter((p) => p.id !== id));
     setBackgroundRunNotice((notice) => (notice?.projectId === id ? null : notice));
     setBackgroundRunSummaries((prev) => prev.filter((summary) => summary.projectId !== id));

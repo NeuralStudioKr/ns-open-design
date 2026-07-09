@@ -99,11 +99,18 @@ describe("teamverEmbedPassiveAuth", () => {
   });
 
   it("defers login redirect while a background daemon run is active", async () => {
+    const events: string[] = [];
+    const onAuth = () => {
+      events.push("auth");
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onAuth);
     endTeamverEmbedActiveWork();
     publishTeamverSessionActiveRunProjectIds(new Set(["proj-bg"]));
     handleEmbedPassiveUnauthorized("daemon");
     await vi.runAllTimersAsync();
     expect(redirectMock).not.toHaveBeenCalled();
+    expect(events).toEqual(["auth"]);
+    window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onAuth);
   });
 
   it("tracks active work depth", () => {
