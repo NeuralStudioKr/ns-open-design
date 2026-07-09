@@ -7,7 +7,12 @@ import {
   TEAMVER_EMBED_INITIAL_UI_FALLBACK_MS,
   waitForTeamverEmbedInitialUi,
 } from '../teamver/teamverEmbedInitialUi';
-import { isTeamverEmbedBootComplete, waitForTeamverEmbedBoot } from '../teamver/teamverEmbedBoot';
+import {
+  completeTeamverEmbedBoot,
+  isTeamverEmbedBootComplete,
+  TEAMVER_EMBED_BOOT_FALLBACK_MS,
+  waitForTeamverEmbedBoot,
+} from '../teamver/teamverEmbedBoot';
 
 type Props = {
   children: ReactNode;
@@ -30,11 +35,15 @@ export function EmbedBootstrapGate({ children }: Props) {
   useEffect(() => {
     if (!embed || bootReady) return;
     let cancelled = false;
+    const fallback = window.setTimeout(() => {
+      completeTeamverEmbedBoot();
+    }, TEAMVER_EMBED_BOOT_FALLBACK_MS);
     void waitForTeamverEmbedBoot().then(() => {
       if (!cancelled) setBootReady(true);
     });
     return () => {
       cancelled = true;
+      window.clearTimeout(fallback);
     };
   }, [embed, bootReady]);
 

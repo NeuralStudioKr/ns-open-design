@@ -53,7 +53,6 @@ import { useTeamverBranding } from './teamver/branding/TeamverBrandingProvider';
 import { isDesignTemplateEnabled } from './teamver/branding/designTemplateVisibility';
 import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
-import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import {
   shouldFetchAgentRegistryOnBoot,
@@ -70,13 +69,9 @@ import {
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
 import { resolveLoadingShellLabel } from './teamver/branding/loadingShellLabel';
 import {
-  clearTeamverEmbedSessionState,
-  setTeamverEmbedSessionAuthenticated,
   subscribeTeamverEmbedSessionChanged,
 } from './teamver/teamverEmbedSession';
-import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
 import {
-  completeTeamverEmbedBoot,
   isTeamverEmbedBootComplete,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
@@ -108,7 +103,7 @@ import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './t
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
 import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
-import { seedEmbedBootstrapSession } from './teamver/embedBootstrapSession';
+import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import {
   capturePreWorkspaceSwitchProjectGuards,
@@ -141,10 +136,6 @@ import {
   readTeamverDesignAccessSnapshot,
   subscribeTeamverDesignAccessChanged,
 } from './teamver/teamverDesignAccess';
-import {
-  redirectToDesignLoginIfBffMissing,
-  resolveEmbedBootSessionOptions,
-} from './teamver/teamverEmbedAuthFlow';
 import { readActiveTeamverWorkspaceId } from './teamver/useTeamverEmbed';
 import { useTeamverAppVersionAutoReload } from './teamver/useTeamverAppVersionAutoReload';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
@@ -975,6 +966,23 @@ function AppInner() {
       const bootRouteKind = routeRef.current.kind;
       const fetchEntryCatalogs = shouldFetchEntryCatalogsOnBoot(bootRouteKind);
       const fetchHomeProjects = shouldFetchHomeProjectsOnBoot(bootRouteKind);
+      const embedSessionBootPromise = isTeamverEmbedMode()
+        ? runTeamverEmbedSessionBoot({
+            isCancelled: () => cancelled,
+            readDetailRoute: () => readEmbedProjectDetailRoute(routeRef.current),
+            onProjectPrefetched: (project) => {
+              setProjects((current) => {
+                const existingIndex = current.findIndex(
+                  (candidate) => candidate.id === project.id,
+                );
+                if (existingIndex < 0) return [...current, project];
+                return current.map((candidate) =>
+                  candidate.id === project.id ? project : candidate,
+                );
+              });
+            },
+          })
+        : Promise.resolve(null);
       const alive = await daemonIsLive();
       if (cancelled) return;
       setDaemonLive(alive);
@@ -991,6 +999,7 @@ function AppInner() {
         // we just keep whatever localStorage already held; drop the
         // skeleton so the Settings → Connectors input reflects state.
         setComposioConfigLoading(false);
+        await embedSessionBootPromise.catch(() => undefined);
         return;
       }
 
@@ -1130,79 +1139,7 @@ function AppInner() {
         shouldFetchMediaProviderConfig()
           ? fetchMediaProvidersFromDaemon()
           : Promise.resolve({ status: 'ok' as const, providers: {} }),
-        isTeamverEmbedMode()
-          ? (() => {
-              const bootSessionOptions = resolveEmbedBootSessionOptions();
-              // Split into two `.then/.catch` legs so a rejected session
-              // fetch still marks embed boot as complete — otherwise the
-              // `EmbedBootstrapGate` (and any `waitForTeamverEmbedBoot`
-              // callers) would hang on the loading shell forever after a
-              // transient BFF outage on first paint.
-              return fetchDesignAuthSession(bootSessionOptions)
-                .then(async (session) => {
-                  let activeWorkspaceId: string | null = null;
-                  const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
-                  try {
-                    if (session?.authenticated) {
-                      setTeamverEmbedSessionAuthenticated(true);
-                      activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
-                      void syncAllDaemonProjectsToRegistry().catch((err) => {
-                        console.warn("[teamver] embed boot registry sync failed", err);
-                      });
-                    } else {
-                      await clearTeamverEmbedSessionState();
-                      redirectToDesignLoginIfBffMissing();
-                    }
-                    seedEmbedBootstrapSession({
-                      session: session ?? { authenticated: false },
-                      activeWorkspaceId,
-                    });
-                    const prefetchProject =
-                      detailRoute && session?.authenticated
-                        ? (async () => {
-                            try {
-                              await ensureTeamverProjectRegisteredById(detailRoute.projectId);
-                              const project = await getProject(detailRoute.projectId);
-                              if (!project || cancelled) return;
-                              setProjects((current) => {
-                                const existingIndex = current.findIndex(
-                                  (candidate) => candidate.id === project.id,
-                                );
-                                if (existingIndex < 0) return [...current, project];
-                                return current.map((candidate) =>
-                                  candidate.id === project.id ? project : candidate,
-                                );
-                              });
-                              warmEmbedProjectListCaches([project]);
-                            } catch (err) {
-                              console.warn("[teamver] embed boot project prefetch failed", err);
-                            }
-                          })()
-                        : Promise.resolve();
-                    const [teamverRuntimeConfig] = await Promise.all([
-                      fetchTeamverRuntimeConfig(),
-                      prefetchProject,
-                    ]);
-                    return teamverRuntimeConfig;
-                  } finally {
-                    if (!cancelled) {
-                      completeTeamverEmbedBoot();
-                    }
-                  }
-                })
-                .catch((err) => {
-                  console.warn("[teamver] embed boot session probe failed", err);
-                  seedEmbedBootstrapSession({
-                    session: { authenticated: false },
-                    activeWorkspaceId: null,
-                  });
-                  if (!cancelled) {
-                    completeTeamverEmbedBoot();
-                  }
-                  return null;
-                });
-            })()
-          : Promise.resolve(null),
+        embedSessionBootPromise,
       ]).then(([
         daemonConfig,
         daemonComposioConfig,
@@ -3084,7 +3021,7 @@ function AppInner() {
   useEffect(() => {
     if (route.kind !== 'project') return;
     if (activeProject) return;
-    if (!projects.length && !daemonLive) return;
+    if (!isTeamverEmbedMode() && !projects.length && !daemonLive) return;
     if (projects.some((p) => p.id === route.projectId)) return;
     let cancelled = false;
     (async () => {

@@ -17,6 +17,6 @@ describe('embed bootstrap gate', () => {
   it('wraps the workspace shell in App', () => {
     const app = readFileSync(resolve(webRoot, 'src/App.tsx'), 'utf8');
     expect(app).toContain('EmbedBootstrapGate');
-    expect(app).toContain('seedEmbedBootstrapSession');
+    expect(app).toContain('runTeamverEmbedSessionBoot');
   });
 });

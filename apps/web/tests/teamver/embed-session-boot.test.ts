@@ -1,0 +1,43 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+const webRoot = resolve(import.meta.dirname, "../..");
+
+describe("teamver embed session boot", () => {
+  it("runs BFF session boot independently of daemon health", () => {
+    const app = readFileSync(resolve(webRoot, "src/App.tsx"), "utf8");
+    const boot = readFileSync(
+      resolve(webRoot, "src/teamver/teamverEmbedSessionBoot.ts"),
+      "utf8",
+    );
+
+    expect(boot).toContain("runTeamverEmbedSessionBoot");
+    expect(boot).toContain("completeTeamverEmbedBoot");
+    expect(app).toContain("runTeamverEmbedSessionBoot");
+    expect(app).toContain("embedSessionBootPromise");
+    expect(app).toMatch(
+      /const embedSessionBootPromise[\s\S]*?const alive = await daemonIsLive\(\)/,
+    );
+    expect(app).toContain("await embedSessionBootPromise.catch");
+  });
+
+  it("does not block embed deep-link hydration on daemonLive alone", () => {
+    const app = readFileSync(resolve(webRoot, "src/App.tsx"), "utf8");
+    expect(app).toContain(
+      "if (!isTeamverEmbedMode() && !projects.length && !daemonLive) return;",
+    );
+  });
+});
+
+describe("embed bootstrap gate boot fallback", () => {
+  it("unblocks the shell when embed boot stalls", () => {
+    const gate = readFileSync(
+      resolve(webRoot, "src/components/EmbedBootstrapGate.tsx"),
+      "utf8",
+    );
+    expect(gate).toContain("TEAMVER_EMBED_BOOT_FALLBACK_MS");
+    expect(gate).toContain("completeTeamverEmbedBoot");
+  });
+});
