@@ -377,6 +377,56 @@ export function mergeServerMessagesIntoConversation(
   return merged;
 }
 
+function synthesizeAssistantMessageForActiveRun(run: {
+  id?: string | null;
+  assistantMessageId?: string | null;
+  agentId?: string | null;
+  status?: ChatMessage['runStatus'];
+  createdAt?: number | null;
+}): ChatMessage | null {
+  const assistantMessageId = run.assistantMessageId?.trim();
+  if (!assistantMessageId) return null;
+  const now = Date.now();
+  const createdAt =
+    typeof run.createdAt === 'number' && Number.isFinite(run.createdAt)
+      ? run.createdAt
+      : now;
+  return {
+    id: assistantMessageId,
+    role: 'assistant',
+    content: '',
+    createdAt,
+    startedAt: createdAt,
+    ...(run.id ? { runId: run.id } : {}),
+    runStatus: isActiveRunStatus(run.status) ? run.status : 'running',
+    ...(run.agentId ? { agentId: run.agentId } : {}),
+  };
+}
+
+export function mergeMissingActiveRunAssistantMessages(
+  messages: ChatMessage[],
+  runs: readonly {
+    id?: string | null;
+    assistantMessageId?: string | null;
+    agentId?: string | null;
+    status?: ChatMessage['runStatus'];
+    createdAt?: number | null;
+  }[],
+): ChatMessage[] {
+  if (runs.length === 0) return messages;
+  const seen = new Set(messages.map((message) => message.id));
+  const recovered: ChatMessage[] = [];
+  for (const run of runs) {
+    const assistantMessageId = run.assistantMessageId?.trim();
+    if (!assistantMessageId || seen.has(assistantMessageId)) continue;
+    const message = synthesizeAssistantMessageForActiveRun(run);
+    if (!message) continue;
+    seen.add(assistantMessageId);
+    recovered.push(message);
+  }
+  return recovered.length > 0 ? [...messages, ...recovered] : messages;
+}
+
 interface Props {
   project: Project;
   routeFileName: string | null;
@@ -2974,10 +3024,15 @@ export function ProjectView({
         try {
           const serverMessages = await listMessages(project.id, reattachConversationId);
           if (cancelled) return;
-          messagesSnapshot = mergeServerMessagesIntoConversation(messages, serverMessages);
+          messagesSnapshot = mergeMissingActiveRunAssistantMessages(
+            mergeServerMessagesIntoConversation(messages, serverMessages),
+            activeRuns,
+          );
           setMessages(messagesSnapshot);
         } catch {
           // Best-effort — reattach still uses in-memory rows.
+          messagesSnapshot = mergeMissingActiveRunAssistantMessages(messagesSnapshot, activeRuns);
+          setMessages(messagesSnapshot);
         }
       }
 
@@ -3506,6 +3561,62 @@ export function ProjectView({
     onProjectsRefresh,
     scheduleConversationMessageRefresh,
     reattachNonce,
+  ]);
+
+  useEffect(() => {
+    if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
+    if (streaming && abortRef.current) return;
+    if (findInFlightAssistantMessages(messages).length > 0) return;
+    let cancelled = false;
+    const recoveryConversationId = activeConversationId;
+    void (async () => {
+      let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
+      try {
+        activeStreams = await listActiveByokProxyStreams(project.id);
+      } catch (err) {
+        console.warn('[teamver] api background recovery stream probe failed', {
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          error: err,
+        });
+        return;
+      }
+      if (cancelled) return;
+      const matchingStreams = activeStreams.filter((stream) => {
+        const streamConversationId = stream.conversationId?.trim();
+        return !streamConversationId || streamConversationId === recoveryConversationId;
+      });
+      const nextMessages = mergeMissingActiveRunAssistantMessages(
+        messages,
+        matchingStreams.map((stream) => ({
+          id: null,
+          assistantMessageId: stream.assistantMessageId,
+          status: 'running' as const,
+          createdAt: stream.registeredAt,
+        })),
+      );
+      if (nextMessages === messages) return;
+      setMessages(nextMessages);
+      for (const message of findInFlightAssistantMessages(nextMessages)) {
+        dispatchTeamverBackgroundChat({
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          assistantMessageId: message.id,
+          active: true,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    config.mode,
+    daemonLive,
+    activeConversationId,
+    streaming,
+    inFlightAssistantSignature,
+    messages,
+    project.id,
   ]);
 
   // Embed BYOK (`mode=api`) has no daemon run row — after page detach the
