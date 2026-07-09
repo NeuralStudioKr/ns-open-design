@@ -196,4 +196,5 @@ export function seedEmbedRunTrackingFromRuns(
       refs.notifiedBackgroundRunIds.current.add(run.id);
     }
   }
+  publishTeamverSessionActiveRunProjectIds(refs.sessionActiveRunProjectIds.current);
 }
