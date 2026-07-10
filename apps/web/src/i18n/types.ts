@@ -1018,6 +1018,9 @@ export interface Dict {
   'designSystemPicker.openPreview': string;
   'designSystemPicker.loadingPreview': string;
   'designSystemPicker.noPreview': string;
+  'designSystemPicker.previewUnavailable': string;
+  'designSystemPicker.previewLoadFailed': string;
+  'designSystemPicker.previewRetry': string;
   'designSystemPicker.previewHint': string;
   'designSystemPicker.fullscreenAria': string;
   'designSystemPicker.closeFullscreen': string;
