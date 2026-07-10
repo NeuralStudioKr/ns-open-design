@@ -81,6 +81,129 @@ export function buildDeckFlattenCssRules(): string {
   }`;
 }
 
+/**
+ * Screen layout for standalone HTML deck downloads — NOT print flatten.
+ * Slides stack vertically and scale to the browser viewport via
+ * `--od-html-export-scale` (see buildDeckHtmlExportViewportScript).
+ */
+export function buildDeckHtmlExportScreenCss(): string {
+  const slides = deckSlideSelectorList().join(', ');
+  const stageWrappers = '.deck, .deck-stage, #deck-stage, #deck, .stage';
+  return `
+  html, body {
+    width: 100% !important;
+    min-height: 100% !important;
+    height: auto !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--shell, #0a0c10) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .deck-shell {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+  ${stageWrappers} {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    gap: 24px !important;
+    padding: 24px 0 48px !important;
+    box-sizing: border-box !important;
+  }
+  ${slides} {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 0 0 auto !important;
+    position: relative !important;
+    inset: auto !important;
+    width: ${DECK_EXPORT_WIDTH}px !important;
+    height: ${DECK_EXPORT_HEIGHT}px !important;
+    min-height: ${DECK_EXPORT_HEIGHT}px !important;
+    max-height: ${DECK_EXPORT_HEIGHT}px !important;
+    overflow: hidden !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+    break-inside: auto !important;
+    scroll-snap-align: none !important;
+    zoom: var(--od-html-export-scale, 1) !important;
+    margin: 0 auto !important;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35) !important;
+  }
+  ${DECK_CHROME_HIDE_SELECTOR} {
+    display: none !important;
+  }`;
+}
+
+/** Keeps downloaded deck HTML scaled to the browser viewport width. */
+export function buildDeckHtmlExportViewportScript(): string {
+  return `
+(function () {
+  var SLIDE_W = ${DECK_EXPORT_WIDTH};
+  var PAD = 48;
+  function fit() {
+    var scale = Math.min(1, (window.innerWidth - PAD) / SLIDE_W);
+    if (!isFinite(scale) || scale <= 0) scale = 1;
+    document.documentElement.style.setProperty('--od-html-export-scale', String(scale));
+  }
+  fit();
+  window.addEventListener('resize', fit);
+})();`;
+}
+
+/** Clears print-flatten inline styles baked in by revealAllDeckSlides. */
+export function buildDeckHtmlExportFinalizeLayoutJs(): string {
+  const wrappers = DECK_WRAPPER_SELECTOR.split(',').map((sel) => sel.trim()).join(', ');
+  const slides = deckSlideSelectorList().join(', ');
+  return `
+(function () {
+  var unset = function (el, prop) { el.style.removeProperty(prop); };
+  ['width', 'height', 'overflow'].forEach(function (prop) {
+    unset(document.documentElement, prop);
+    unset(document.body, prop);
+  });
+  unset(document.documentElement, '--deck-scale');
+  unset(document.body, 'transform');
+  unset(document.body, 'scroll-snap-type');
+  document.querySelectorAll('${wrappers}').forEach(function (el) {
+    unset(el, 'display');
+    unset(el, 'transform');
+    unset(el, 'box-shadow');
+  });
+  document.querySelectorAll('${slides}').forEach(function (el) {
+    ['break-after', 'break-before', 'break-inside', 'page-break-after', 'page-break-before'].forEach(function (prop) {
+      unset(el, prop);
+    });
+  });
+  var viewport = document.querySelector('meta[name="viewport"]');
+  if (!viewport) {
+    viewport = document.createElement('meta');
+    viewport.setAttribute('name', 'viewport');
+    viewport.setAttribute('content', 'width=device-width, initial-scale=1');
+    document.head.appendChild(viewport);
+  }
+})();`;
+}
+
 /** guizang-ppt relies on WebGL canvases + low-opacity ::before overlays. */
 export function buildDeckGuizangPrintFallbackCss(): string {
   return `
@@ -129,7 +252,9 @@ export function stripStaleDeckExportArtifacts(doc: string): string {
       '',
     )
     .replace(ORPHANED_EXPORT_PREAMBLE_STYLE_RE, '')
-    .replace(/<script\b[^>]*\bdata-deck-print-flatten[^>]*>[\s\S]*?<\/script>/gi, '');
+    .replace(/<script\b[^>]*\bdata-deck-print-flatten[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*\bdata-od-html-export-screen[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script\b[^>]*\bdata-od-html-export-viewport[^>]*>[\s\S]*?<\/script>/gi, '');
 }
 
 /** Undo agent/framework print rules that break multi-slide deck PDF export. */

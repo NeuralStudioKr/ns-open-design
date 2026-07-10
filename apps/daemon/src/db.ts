@@ -896,6 +896,27 @@ export async function listProjectsPageAsync(
   return paginateMergedProjects(merged, options);
 }
 
+type ProjectRunStatusEntry = {
+  value: ReturnType<typeof normalizeProjectRunStatus>;
+  updatedAt: number;
+  runId?: string;
+};
+
+function buildLatestProjectRunStatusMap(rows: DbRow[]): Map<string, ProjectRunStatusEntry> {
+  const latestByProject = new Map<string, ProjectRunStatusEntry>();
+  for (const row of rows) {
+    const projectId = String(row.projectId ?? '');
+    if (!projectId || latestByProject.has(projectId)) continue;
+    const entry: ProjectRunStatusEntry = {
+      value: normalizeProjectRunStatus(row.status),
+      updatedAt: Number(row.updatedAt),
+    };
+    if (row.runId != null) entry.runId = String(row.runId);
+    latestByProject.set(projectId, entry);
+  }
+  return latestByProject;
+}
+
 export function listLatestProjectRunStatuses(db: SqliteDb) {
   const rows = db
     .prepare(
@@ -909,17 +930,13 @@ export function listLatestProjectRunStatuses(db: SqliteDb) {
         ORDER BY updatedAt DESC`,
     )
     .all() as DbRow[];
-  const latestByProject = new Map<string, DbRow>();
-  for (const row of rows) {
-    if (!latestByProject.has(row.projectId)) {
-      latestByProject.set(row.projectId, {
-        value: normalizeProjectRunStatus(row.status),
-        updatedAt: Number(row.updatedAt),
-        runId: row.runId ?? undefined,
-      });
-    }
-  }
-  return latestByProject;
+  return buildLatestProjectRunStatusMap(rows);
+}
+
+export async function listLatestProjectRunStatusesAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listLatestProjectRunStatuses(db);
+  const rows = await pgCore.pgListLatestProjectRunStatuses(getPostgresPool());
+  return buildLatestProjectRunStatusMap(rows);
 }
 
 export function listProjectsAwaitingInput(db: SqliteDb) {
@@ -959,7 +976,13 @@ export function listProjectsAwaitingInput(db: SqliteDb) {
           )`,
     )
     .all() as DbRow[];
-  return new Set((rows as DbRow[]).map((row: DbRow) => row.projectId));
+  return new Set((rows as DbRow[]).map((row: DbRow) => String(row.projectId)));
+}
+
+export async function listProjectsAwaitingInputAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listProjectsAwaitingInput(db);
+  const rows = await pgCore.pgListProjectsAwaitingInput(getPostgresPool());
+  return new Set(rows.map((row) => String(row.projectId)));
 }
 
 export function getProject(db: SqliteDb, id: string) {

@@ -1,6 +1,7 @@
 import {
   filterCatalogExcludingChinesePrimaryDeckTemplates,
   isChinesePrimaryDeckTemplate,
+  readOdContentLocale,
 } from '@open-design/contracts';
 
 /** `OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN=1` — Teamver embed slide MVP catalog trim. */
@@ -18,11 +19,14 @@ export function filterDesignTemplatesExcludingChinesePrimary<
 }
 
 export function isExcludedChinesePrimaryDeckPlugin(
-  plugin: { id: string },
+  plugin: { id: string; manifest?: { od?: unknown } },
   enabled: boolean,
 ): boolean {
   if (!enabled) return false;
-  return isChinesePrimaryDeckTemplate({ id: plugin.id });
+  return isChinesePrimaryDeckTemplate({
+    id: plugin.id,
+    contentLocale: readOdContentLocale(plugin.manifest?.od),
+  });
 }
 
 export function filterPluginsExcludingChinesePrimaryDeck<

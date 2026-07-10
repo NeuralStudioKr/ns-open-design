@@ -26,10 +26,20 @@ describe('design-templates-chinese-catalog', () => {
       { id: 'simple-deck', contentLocale: null },
       { id: 'html-ppt-tech-sharing', contentLocale: 'zh-CN' },
     ];
-    const plugins = [{ id: 'example-simple-deck' }, { id: 'example-guizang-ppt' }];
+    const plugins = [{ id: 'example-simple-deck' }, { id: 'example-guizang-ppt' }, { id: 'example-deck-guizang-editorial' }];
     expect(filterDesignTemplatesExcludingChinesePrimary(templates, true).map((t) => t.id)).toEqual([
       'simple-deck',
     ]);
+    expect(filterPluginsExcludingChinesePrimaryDeck(plugins, true).map((p) => p.id)).toEqual([
+      'example-simple-deck',
+    ]);
+  });
+
+  it('excludes plugins with od.content_locale zh-CN on manifest', () => {
+    const plugins = [
+      { id: 'example-future-deck', manifest: { od: { content_locale: 'zh-CN', mode: 'deck' } } },
+      { id: 'example-simple-deck', manifest: { od: { mode: 'deck' } } },
+    ];
     expect(filterPluginsExcludingChinesePrimaryDeck(plugins, true).map((p) => p.id)).toEqual([
       'example-simple-deck',
     ]);

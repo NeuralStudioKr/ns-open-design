@@ -4,6 +4,9 @@ import {
   buildDeckFlattenScriptTag,
   buildDeckSlideExportLayoutHelperJs,
   buildDeckPrintCss,
+  buildDeckHtmlExportScreenCss,
+  buildDeckHtmlExportViewportScript,
+  buildDeckHtmlExportFinalizeLayoutJs,
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
   stripStaleDeckExportArtifacts,
@@ -14,11 +17,15 @@ describe('stripStaleDeckExportArtifacts', () => {
     const html = `<html><head>
 <style data-deck-print="injected">@media print { .slide { flex-direction: column !important; } }</style>
 <script data-deck-print-flatten>window.__odFlattenDeckForPrint=function(){}</script>
+<style data-od-html-export-screen>html { width: 100%; }</style>
+<script data-od-html-export-viewport>window.__odHtmlExportFit=function(){}</script>
 <style>body{color:red}</style>
 </head><body></body></html>`;
     const out = stripStaleDeckExportArtifacts(html);
     expect(out).not.toContain('data-deck-print');
     expect(out).not.toContain('data-deck-print-flatten');
+    expect(out).not.toContain('data-od-html-export-screen');
+    expect(out).not.toContain('data-od-html-export-viewport');
     expect(out).toContain('body{color:red}');
   });
 
@@ -137,6 +144,37 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('.slide.hero.dark::before');
     expect(css).toContain('flex-direction: column !important');
+  });
+});
+
+describe('buildDeckHtmlExportScreenCss', () => {
+  it('uses viewport-friendly screen layout instead of print flatten', () => {
+    const css = buildDeckHtmlExportScreenCss();
+    expect(css).toContain('width: 100% !important');
+    expect(css).toContain('zoom: var(--od-html-export-scale, 1) !important');
+    expect(css).toContain('.deck-shell');
+    expect(css).toContain('position: static !important');
+    expect(css).not.toContain('display: contents !important');
+    expect(css).not.toContain('break-after: page !important');
+    expect(css).not.toContain('@media print');
+  });
+});
+
+describe('buildDeckHtmlExportViewportScript', () => {
+  it('sets --od-html-export-scale on load and resize', () => {
+    const script = buildDeckHtmlExportViewportScript();
+    expect(script).toContain('--od-html-export-scale');
+    expect(script).toContain('window.addEventListener(\'resize\'');
+    expect(script).toContain('1920');
+  });
+});
+
+describe('buildDeckHtmlExportFinalizeLayoutJs', () => {
+  it('clears print-flatten inline sizing from html/body and slides', () => {
+    const script = buildDeckHtmlExportFinalizeLayoutJs();
+    expect(script).toContain('removeProperty');
+    expect(script).toContain('break-after');
+    expect(script).toContain('meta[name="viewport"]');
   });
 });
 

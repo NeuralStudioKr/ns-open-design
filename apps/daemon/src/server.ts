@@ -498,10 +498,12 @@ import {
   findTemplateByNameAndProject,
   updateTemplate,
   listProjectsAwaitingInput,
+  listProjectsAwaitingInputAsync,
   listConversations,
   listConversationsAsync,
   listDeployments,
   listLatestProjectRunStatuses,
+  listLatestProjectRunStatusesAsync,
   listMessages,
   listPreviewComments,
   listProjects,
@@ -6548,7 +6550,9 @@ export async function startServer({
   const templateDeps = { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate };
   const projectStatusDeps = {
     listLatestProjectRunStatuses,
+    listLatestProjectRunStatusesAsync,
     listProjectsAwaitingInput,
+    listProjectsAwaitingInputAsync,
     normalizeProjectDisplayStatus,
     composeProjectDisplayStatus,
     listProjects,
