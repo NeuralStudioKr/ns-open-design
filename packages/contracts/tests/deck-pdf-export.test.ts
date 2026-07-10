@@ -28,6 +28,7 @@ describe('stripStaleDeckExportArtifacts', () => {
     expect(out).not.toContain('data-deck-print-flatten');
     expect(out).not.toContain('data-od-html-export-screen');
     expect(out).not.toContain('data-od-html-export-viewport');
+    expect(out).not.toContain('data-od-html-export-reveal');
     expect(out).toContain('body{color:red}');
   });
 

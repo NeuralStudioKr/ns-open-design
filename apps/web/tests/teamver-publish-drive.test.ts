@@ -233,6 +233,17 @@ describe("parsePublishFailureFromError", () => {
     expect(parsed?.projectId).toBe("DPRJ-9");
     expect(resolvePublishErrorCode(parsed!)).toBe("drive_upload_failed");
   });
+
+  it("maps legacy 502 error.message when outputs are absent", () => {
+    const err = new NetworkError({
+      message: "bad gateway",
+      status: 502,
+      responseBody: { error: { message: "od_daemon_export_failed" } },
+    });
+    const parsed = parsePublishFailureFromError(err);
+    expect(parsed?.outputs[0]?.errorCode).toBe("od_daemon_export_failed");
+    expect(resolvePublishErrorCode(parsed!)).toBe("od_daemon_export_failed");
+  });
 });
 
 describe("formatPublishErrorCodeForUser", () => {

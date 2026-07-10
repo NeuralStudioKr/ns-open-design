@@ -488,14 +488,17 @@ async def publish_project_to_drive(
     _ensure_project_access(row, auth)
 
     workspace_id = require_workspace_context(auth)
-    await OdDaemonClient().sync_scratch_project(
-        row.od_project_id,
-        identity=OdDaemonIdentity(
-            user_id=auth.user_id,
-            workspace_id=workspace_id,
-            s3_prefix=row.s3_prefix,
-        ),
+    identity = OdDaemonIdentity(
+        user_id=auth.user_id,
+        workspace_id=workspace_id,
+        s3_prefix=row.s3_prefix,
     )
+    synced = await _sync_daemon_scratch_for_od_project(row.od_project_id, identity=identity)
+    if not synced:
+        logger.warning(
+            "publish: daemon scratch sync-up failed od_project_id=%s — continuing best-effort",
+            row.od_project_id,
+        )
 
     access_token = auth.raw_token or extract_request_access_token(request)
     result = await publish_project(

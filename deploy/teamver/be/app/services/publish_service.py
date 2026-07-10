@@ -271,15 +271,18 @@ async def _drive_presigned_put(
 
 
 def _raise_if_all_failed(result: PublishResult) -> None:
+    """Raise only for single-format client errors (→ 400). Server-side failures
+    stay as a structured PublishResult so the router can return 502 with per-output
+    error_code values the FE already knows how to map (loop 177/180)."""
     if result.http_status != 502:
         return
-    if len(result.outputs) == 1:
-        error_code = result.outputs[0].error_code or "publish_failed"
-        if error_code.startswith("unsupported_formats"):
-            raise BadRequestError(error_code)
-        if error_code in _CLIENT_ERROR_CODES:
-            raise BadRequestError(error_code)
-    raise BadGatewayError("publish_all_failed")
+    if len(result.outputs) != 1:
+        return
+    error_code = result.outputs[0].error_code or "publish_failed"
+    if error_code.startswith("unsupported_formats"):
+        raise BadRequestError(error_code)
+    if error_code in _CLIENT_ERROR_CODES:
+        raise BadRequestError(error_code)
 
 
 async def publish_project(
