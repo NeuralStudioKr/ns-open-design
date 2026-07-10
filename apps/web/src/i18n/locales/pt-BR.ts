@@ -1987,6 +1987,7 @@ export const ptBR: Dict = {
   'sketch.tooltipClean': 'Salvo',
   'fileViewer.empty': 'Selecione um arquivo para visualizar.',
   'fileViewer.loading': 'Carregando…',
+  'fileViewer.updatingPreview': 'Updating preview…',
   'fileViewer.exportPptx': 'Exportar como PPTX',
   'fileViewer.openInNewTab': 'Abrir em nova aba',
   'fileViewer.copyPath': 'Copiar caminho',

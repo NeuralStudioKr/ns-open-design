@@ -111,9 +111,19 @@ export function parsePublishFailureFromError(err: unknown): TeamverPublishDriveR
   if (!(err instanceof NetworkError) || err.status !== 502) return null;
   const body = err.responseBody;
   if (!body || typeof body !== "object") return null;
-  const raw = body as PublishResponse;
-  if (!Array.isArray(raw.outputs) || raw.outputs.length === 0) return null;
-  return buildPublishResultFromResponse(raw, "");
+  const raw = body as PublishResponse & { error?: { message?: string } };
+  if (Array.isArray(raw.outputs) && raw.outputs.length > 0) {
+    return buildPublishResultFromResponse(raw, "");
+  }
+  const legacyMessage = raw.error?.message?.trim();
+  if (legacyMessage && legacyMessage !== "publish_all_failed") {
+    return {
+      projectId: "",
+      outputs: [{ id: "", kind: "", driveAssetId: "", filename: "", sizeBytes: 0, mimeType: "", publishStatus: "failed", errorCode: legacyMessage }],
+      partial: false,
+    };
+  }
+  return null;
 }
 
 export function resolvePublishErrorCode(result: TeamverPublishDriveResult): string {
@@ -146,7 +156,13 @@ export function formatPublishErrorCodeForUser(code: string): string {
   };
   if (exact[trimmed]) return exact[trimmed];
 
-  if (trimmed.startsWith("drive_upload_failed_403")) {
+  if (trimmed.startsWith("drive_upload_failed_401") || trimmed.startsWith("drive_upload_failed_403")) {
+    return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.";
+  }
+  if (
+    trimmed.startsWith("drive_upload_request_failed_")
+    && /invalid[\s_]?token/i.test(trimmed)
+  ) {
     return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_")) {

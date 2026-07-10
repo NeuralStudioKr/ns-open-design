@@ -4752,6 +4752,7 @@ function HtmlViewer({
       })()
       : null,
   );
+  const lastStablePreviewIdentityRef = useRef<string | null>(null);
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5295,7 +5296,12 @@ function HtmlViewer({
   }, [liveCommentTargets]);
 
   useEffect(() => {
-    const sourceFileKey = `${projectId}\0${file.name}\0${liveHtml === undefined ? 'raw' : 'live'}`;
+    const artifactIdentity = `${projectId}\0${file.name}`;
+    if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
+      lastStablePreviewIdentityRef.current = artifactIdentity;
+      lastStablePreviewSourceRef.current = null;
+    }
+    const sourceFileKey = `${artifactIdentity}\0${liveHtml === undefined ? 'raw' : 'live'}`;
     const acceptCandidate = (candidate: string | null): string | null => {
       if (candidate == null) return null;
       const repaired = repairArtifactDocumentHead(candidate);
@@ -5316,15 +5322,24 @@ function HtmlViewer({
       if (accepted != null) {
         setSource(accepted);
         sourceRef.current = accepted;
+      } else if (lastStablePreviewSourceRef.current) {
+        setSource(lastStablePreviewSourceRef.current);
+        sourceRef.current = lastStablePreviewSourceRef.current;
       }
       return;
     }
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
     sourceFileKeyRef.current = sourceFileKey;
     if (fileChanged) {
-      setSource(null);
-      sourceRef.current = null;
       setSourceLoadFailed(false);
+      const stable = lastStablePreviewSourceRef.current;
+      if (stable) {
+        setSource(stable);
+        sourceRef.current = stable;
+      } else {
+        setSource(null);
+        sourceRef.current = null;
+      }
     }
     let cancelled = false;
     // Cache-bust the fetch on every mtime / reload / files-refresh bump.
@@ -8058,6 +8073,7 @@ function HtmlViewer({
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
   const showStreamingPreviewVeil = Boolean(
     streaming
+    && source != null
     && liveHtml?.trim()
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
@@ -8837,8 +8853,8 @@ function HtmlViewer({
                       ].filter(Boolean).join(' ')}
                     >
                       {showStreamingPreviewVeil ? (
-                        <div className="artifact-preview-streaming-veil" aria-hidden>
-                          {t('fileViewer.loading')}
+                        <div className="artifact-preview-streaming-veil" role="status">
+                          {t('fileViewer.updatingPreview')}
                         </div>
                       ) : null}
                       {OD_PREVIEW_KEEP_ALIVE ? (

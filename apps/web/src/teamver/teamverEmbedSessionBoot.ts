@@ -47,9 +47,11 @@ export async function runTeamverEmbedSessionBoot(
       if (session?.authenticated) {
         setTeamverEmbedSessionAuthenticated(true);
         activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
-        void syncAllDaemonProjectsToRegistry().catch((err) => {
+        try {
+          await syncAllDaemonProjectsToRegistry();
+        } catch (err) {
           console.warn("[teamver] embed boot registry sync failed", err);
-        });
+        }
       } else {
         await clearTeamverEmbedSessionState();
         redirectToDesignLoginIfBffMissing();

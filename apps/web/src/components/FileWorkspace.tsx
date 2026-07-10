@@ -1518,6 +1518,17 @@ export function FileWorkspace({
 
   const pendingPreviewTab = isPreviewFileTab && !previewFile && !activeLiveArtifact;
 
+  const stalePreviewBootstrapFile = useMemo<ProjectFile | null>(() => {
+    if (!pendingPreviewTab) return null;
+    const onDisk = findProjectFileByTabName(activeTab, visibleFiles);
+    if (onDisk) return onDisk;
+    const htmlName = selectAutoOpenProducedHtml(visibleFiles);
+    if (!htmlName) return null;
+    return visibleFiles.find((entry) => entry.name === htmlName) ?? null;
+  }, [pendingPreviewTab, activeTab, visibleFiles]);
+
+  const resolvedPreviewFile = previewFile ?? stalePreviewBootstrapFile;
+
   // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
   // bump (chokidar bursts would otherwise remount FileViewer as "loading").
   useEffect(() => {
@@ -2337,19 +2348,19 @@ export function FileWorkspace({
             liveArtifactEvents={liveArtifactEvents}
             onRefreshArtifacts={onRefreshFiles}
           />
-        ) : previewFile ? (
+        ) : resolvedPreviewFile ? (
           <FileViewer
             projectId={projectId}
             projectKind={projectKind}
             projectDisplayName={projectDisplayName}
-            file={previewFile}
+            file={resolvedPreviewFile}
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
             streaming={streaming}
             commentQueueOnSend={commentQueueOnSend}
             commentSendDisabled={commentSendDisabled}
-            previewComments={previewComments.filter((comment) => comment.filePath === previewFile.name)}
+            previewComments={previewComments.filter((comment) => comment.filePath === resolvedPreviewFile.name)}
             onSavePreviewComment={onSavePreviewComment}
             onRemovePreviewComment={onRemovePreviewComment}
             onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -2358,18 +2369,18 @@ export function FileWorkspace({
             commentPortalId={commentPortalId}
             onCommentModeChange={onCommentModeChange}
             shareRequest={
-              shareRequest && shareRequest.name === previewFile.name
+              shareRequest && shareRequest.name === resolvedPreviewFile.name
                 ? { nonce: shareRequest.nonce }
                 : null
             }
             downloadRequest={
-              downloadRequest && downloadRequest.name === previewFile.name
+              downloadRequest && downloadRequest.name === resolvedPreviewFile.name
                 ? { nonce: downloadRequest.nonce }
                 : null
             }
             slideNavRequest={deliverableSlideNavForActiveFile(
               slideNavRequest,
-              previewFile.name,
+              resolvedPreviewFile.name,
               slideNavDeliverableNonce,
             )}
             liveHtml={streaming && artifactHtml ? artifactHtml : undefined}

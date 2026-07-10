@@ -127,6 +127,50 @@ async def test_refresh_auth_failure_clears_session(
 
 
 @pytest.mark.asyncio
+async def test_jwt_exp_within_skew_triggers_refresh_even_when_session_expiry_is_later(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """access_expires_at can drift ahead of the JWT exp claim after exchange."""
+    import jwt as pyjwt
+
+    refresh_mock = AsyncMock(
+        return_value={
+            "access_token": "new-access",
+            "refresh_token": "refresh-shared",
+            "expires_in": 600,
+            "aud": "teamver-design",
+            "scope": [],
+        },
+    )
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    soon_exp = int(time.time()) + 30
+    stale_access = pyjwt.encode(
+        {"sub": "user-1", "exp": soon_exp},
+        "test-secret",
+        algorithm="HS256",
+    )
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token=stale_access,
+        expires_in=3600,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+    )
+
+    result = await ensure_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "new-access"
+    refresh_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_fresh_session_skips_main_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     refresh_mock = AsyncMock()
     monkeypatch.setattr(

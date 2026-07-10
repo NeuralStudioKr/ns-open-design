@@ -848,11 +848,10 @@ async function listMergedProjectsPostgres(): Promise<NormalizedProject[]> {
   for (const cached of listCachedProjects()) {
     const id = String(cached.id);
     if (isProjectDeletedFromCache(id)) continue;
-    const project = cachedProjectAsNormalized(cached);
-    const existing = byId.get(id);
-    if (!existing || project.updatedAt > existing.updatedAt) {
-      byId.set(id, project);
-    }
+    // PG row is the multi-node SSOT; node-local cache only materializes rows
+    // that are not yet visible in RDS (cold sticky node).
+    if (byId.has(id)) continue;
+    byId.set(id, cachedProjectAsNormalized(cached));
   }
   const merged = Array.from(byId.values()).sort(compareProjectsDesc);
   for (const project of merged) {

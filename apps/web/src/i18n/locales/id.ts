@@ -1987,6 +1987,7 @@ export const id: Dict = {
   'sketch.tooltipClean': 'Tersimpan',
   'fileViewer.empty': 'Pilih file untuk dilihat.',
   'fileViewer.loading': 'Memuat file...',
+  'fileViewer.updatingPreview': 'Updating preview…',
   'fileViewer.exportPptx': 'Ekspor PPTX',
   'fileViewer.openInNewTab': 'Buka di tab baru',
   'fileViewer.copyPath': 'Salin path',

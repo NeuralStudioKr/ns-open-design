@@ -193,6 +193,128 @@ export function stripBodyInnerPreviewTextLeaks(bodyInner: string): string {
   return out;
 }
 
+const DECK_ROOT_OPEN_RE =
+  /<(?:div|section)\s[^>]*(?:class=["'][^"']*\b(?:deck-shell|deck-stage|deck)\b|id=["'](?:deck-stage|deck)["'])/i;
+
+const VOID_HTML_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+const RAW_HTML_TAGS = new Set(["script", "style", "textarea"]);
+
+/**
+ * Agents emit deck titles as bare text direct children of `<body>`
+ * (e.g. `<body>AI 도입 효과 — 2024<div class="deck-shell">…`). Slide markup
+ * never uses top-level text nodes — safe to strip at depth 0 only.
+ */
+export function stripTopLevelBareTextFromBodyInner(bodyInner: string): string {
+  return scanBodyInnerStrippingDeckLeaks(bodyInner, false);
+}
+
+function scanBodyInnerStrippingDeckLeaks(bodyInner: string, stripOrphanElements: boolean): string {
+  let out = "";
+  let i = 0;
+  let depth = 0;
+  let pendingText = "";
+
+  const flushPendingText = () => {
+    if (depth === 0) {
+      pendingText = pendingText.replace(/[^\s\r\n]/g, "");
+    }
+    out += pendingText;
+    pendingText = "";
+  };
+
+  while (i < bodyInner.length) {
+    if (bodyInner[i] !== "<") {
+      pendingText += bodyInner[i++];
+      continue;
+    }
+    flushPendingText();
+    const close = bodyInner.indexOf(">", i);
+    if (close < 0) {
+      out += bodyInner.slice(i);
+      break;
+    }
+    const tagContent = bodyInner.slice(i + 1, close);
+    const tag = bodyInner.slice(i, close + 1);
+    const isClosing = /^\/[\w-]/.test(tagContent);
+    const nameMatch = tagContent.match(/^\/?\s*([\w-]+)/);
+    const name = nameMatch?.[1]?.toLowerCase() ?? "";
+    const isVoid = !isClosing && (/\/\s*$/.test(tagContent) || VOID_HTML_TAGS.has(name));
+    const isRaw = !isClosing && RAW_HTML_TAGS.has(name);
+
+    if (isClosing) {
+      out += tag;
+      depth = Math.max(0, depth - 1);
+      i = close + 1;
+      continue;
+    }
+
+    if (depth === 0 && stripOrphanElements && isOrphanDeckTitleElementOpen(tag, name)) {
+      const endTag = new RegExp(`</${name}\\s*>`, "i");
+      const rest = bodyInner.slice(close + 1);
+      const endMatch = endTag.exec(rest);
+      if (endMatch && endMatch.index !== undefined) {
+        i = close + 1 + endMatch.index + endMatch[0].length;
+        continue;
+      }
+    }
+
+    out += tag;
+
+    if (isRaw) {
+      const endTag = new RegExp(`</${name}\\s*>`, "i");
+      const rest = bodyInner.slice(close + 1);
+      const endMatch = endTag.exec(rest);
+      if (endMatch && endMatch.index !== undefined) {
+        const rawEnd = close + 1 + endMatch.index + endMatch[0].length;
+        out += bodyInner.slice(close + 1, rawEnd);
+        i = rawEnd;
+        continue;
+      }
+    }
+
+    if (!isVoid) depth++;
+    i = close + 1;
+  }
+  flushPendingText();
+  return out;
+}
+
+function isOrphanDeckTitleElementOpen(tag: string, name: string): boolean {
+  if (/^(?:p|span|h[1-6])$/i.test(name)) return true;
+  if (name !== "div") return false;
+  if (/\b(?:deck-shell|deck-stage|deck|slide)\b/i.test(tag)) return false;
+  if (/\bid=["'](?:deck-stage|deck)["']/i.test(tag)) return false;
+  return true;
+}
+
+/** Remove orphan title elements and bare text that appear before the deck root. */
+export function stripDeckOrphansBeforeRootFromBodyInner(bodyInner: string): string {
+  const deckMatch = bodyInner.match(DECK_ROOT_OPEN_RE);
+  if (!deckMatch || deckMatch.index === undefined || deckMatch.index === 0) {
+    return stripTopLevelBareTextFromBodyInner(bodyInner);
+  }
+  const prefix = bodyInner.slice(0, deckMatch.index);
+  const suffix = bodyInner.slice(deckMatch.index);
+  const cleanedPrefix = scanBodyInnerStrippingDeckLeaks(prefix, true);
+  return cleanedPrefix + suffix;
+}
+
 export function stripArtifactPreviewBodyTextLeaks(html: string): string {
   const bodyMatch = html.match(/(<body[^>]*>)([\s\S]*?)(<\/body>)/i);
   if (!bodyMatch) return html;
@@ -200,7 +322,7 @@ export function stripArtifactPreviewBodyTextLeaks(html: string): string {
   const inner = bodyMatch[2];
   const close = bodyMatch[3];
   if (open === undefined || inner === undefined || close === undefined) return html;
-  const cleaned = stripBodyInnerPreviewTextLeaks(inner);
+  const cleaned = stripDeckOrphansBeforeRootFromBodyInner(stripBodyInnerPreviewTextLeaks(inner));
   if (cleaned === inner) return html;
   return html.replace(bodyMatch[0], `${open}${cleaned}${close}`);
 }
@@ -252,6 +374,59 @@ export const ARTIFACT_PREVIEW_DOM_LEAK_DETECTION_JS = `
       }
     }
   }
+  function stripDeckLoosePageFlow(root){
+    if (!root || !root.childNodes) return;
+    for (var i = root.childNodes.length - 1; i >= 0; i--) {
+      var node = root.childNodes[i];
+      if (node.nodeType === Node.TEXT_NODE) {
+        if ((node.textContent || '').trim().length > 0) node.remove();
+      }
+    }
+  }
+  function isDeckRootElement(node){
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    var cls = node.className || '';
+    var id = node.id || '';
+    if (/\\b(?:deck-shell|deck-stage|deck)\\b/i.test(cls)) return true;
+    return /^deck(?:-stage)?$/i.test(id);
+  }
+  function isOrphanDeckTitleElement(node){
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    var tag = node.tagName ? node.tagName.toLowerCase() : '';
+    if (tag === 'script' || tag === 'style' || tag === 'link' || tag === 'noscript') return false;
+    if (isDeckRootElement(node)) return false;
+    if (/deck|slide/i.test((node.className || '') + (node.id || ''))) return false;
+    if (/^(?:p|span|h[1-6])$/i.test(tag)) return true;
+    if (tag === 'div') {
+      if (node.querySelector && node.querySelector('.slide, [data-slide], .deck-shell, #deck-stage, .deck-stage, .deck')) {
+        return false;
+      }
+      var text = (node.textContent || '').trim();
+      return text.length > 0 && text.length < 400;
+    }
+    return false;
+  }
+  function stripOrphanDeckTitleSiblingsBeforeRoot(){
+    var body = document.body;
+    if (!body) return;
+    var deckRoot = body.querySelector('.deck-shell, #deck-stage, .deck-stage, .deck');
+    if (!deckRoot) return;
+    var node = body.firstChild;
+    while (node && node !== deckRoot) {
+      var next = node.nextSibling;
+      if (node.nodeType === Node.TEXT_NODE) {
+        if ((node.textContent || '').trim().length > 0) node.remove();
+      } else if (isOrphanDeckTitleElement(node)) {
+        node.remove();
+      }
+      node = next;
+    }
+  }
+  function stripDeckBodyLooseFlow(){
+    stripDeckLoosePageFlow(document.documentElement);
+    stripDeckLoosePageFlow(document.body);
+    stripOrphanDeckTitleSiblingsBeforeRoot();
+  }
 `;
 
 /** Preview iframe guard — strips leaked text on load and while streaming. */
@@ -260,6 +435,7 @@ export function buildArtifactPreviewDomLeakGuardScript(): string {
   function run(){
     stripLeakedNodes(document.head);
     stripLeakedNodes(document.body);
+    stripDeckBodyLooseFlow();
   }
   run();
   try {
@@ -274,5 +450,6 @@ export function buildArtifactPreviewDomLeakStripScript(): string {
   return `(function(){${ARTIFACT_PREVIEW_DOM_LEAK_DETECTION_JS}
   if (document.head) stripLeakedNodes(document.head);
   if (document.body) stripLeakedNodes(document.body);
+  stripDeckBodyLooseFlow();
 })();`;
 }

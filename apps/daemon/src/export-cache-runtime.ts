@@ -113,7 +113,7 @@ export type RunCachedExportOptions = {
    * populated into the cache stores so subsequent (non-`fresh`) callers
    * see the new bytes. Used by FE "새로 생성" affordances after templates
    * update (e.g. Guizang WebGL rasterize fallback fix cached a bad PDF
-   * before OD_EXPORT_CACHE_VERSION=v2).
+   * before OD_EXPORT_CACHE_VERSION=v4).
    */
   fresh?: boolean;
 };

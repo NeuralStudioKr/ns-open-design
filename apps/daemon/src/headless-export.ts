@@ -12,6 +12,7 @@ import {
   buildDeckHtmlExportScreenCss as buildSharedDeckHtmlExportScreenCss,
   buildDeckHtmlExportViewportScript as buildSharedDeckHtmlExportViewportScript,
   buildDeckHtmlExportFinalizeLayoutJs as buildSharedDeckHtmlExportFinalizeLayoutJs,
+  buildDeckHtmlExportStaticRevealScript as buildSharedDeckHtmlExportStaticRevealScript,
   buildDeckPrintCss as buildSharedDeckPrintCss,
 } from '@open-design/contracts';
 
@@ -108,6 +109,14 @@ export function buildDeckGuizangPrintFallbackCss(): string {
 /** Screen-visible layout rules for standalone HTML deck downloads. */
 export function buildDeckHtmlExportScreenCss(): string {
   return buildSharedDeckHtmlExportScreenCss();
+}
+
+export function buildDeckHtmlExportViewportScript(): string {
+  return buildSharedDeckHtmlExportViewportScript();
+}
+
+export function buildDeckHtmlExportStaticRevealScript(): string {
+  return buildSharedDeckHtmlExportStaticRevealScript();
 }
 
 /** Print flatten rules (PDF path) — not used for standalone HTML downloads. */
@@ -1032,7 +1041,7 @@ async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
         scrollbar-width: none !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        ${deck ? 'background: var(--shell, var(--bg, #ffffff)) !important;' : 'background: #fff !important;'}
+        ${deck ? 'background: var(--bg, var(--paper, var(--shell, #ffffff))) !important;' : 'background: #fff !important;'}
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? buildDeckPrintCss() : '@page { margin: 0; size: auto; }'}

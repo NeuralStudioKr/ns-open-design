@@ -10,6 +10,7 @@ vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
 
 import {
   listTeamverDrivePublishTargets,
+  publishTargetsFromImportScopes,
   searchTeamverDrivePublishTargets,
 } from "../src/teamver/drivePublishTargets";
 import { invalidateTeamverDriveImportCaches } from "../src/teamver/driveImportList";
@@ -153,20 +154,102 @@ describe("listTeamverDrivePublishTargets", () => {
     expect(targets.some((target) => target.id === "shared:SD-1:FLD-SD-DEEP")).toBe(false);
   });
 
-  it("falls back to default personal destination when target APIs fail", async () => {
+  it("keeps a personal root from scopes when shallow_tree fails with 503", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("unavailable", { status: 503 })),
     );
 
-    await expect(listTeamverDrivePublishTargets("ws-1")).resolves.toEqual([
-      {
-        id: "personal-default",
+    const targets = await listTeamverDrivePublishTargets("ws-1");
+    expect(targets).toEqual([
+      expect.objectContaining({
+        id: "personal-root",
         label: "내 드라이브",
-        description: "기본 드라이브 위치",
+        description: "개인 드라이브 루트",
         folderId: null,
         sharedDriveId: null,
-      },
+      }),
+    ]);
+  });
+
+  it("throws when quick-pick cannot resolve any destination", async () => {
+    vi.spyOn(await import("../src/teamver/driveImportList"), "listTeamverDriveImportScopes").mockRejectedValueOnce(
+      new Error("drive_scopes_failed"),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/drive/folder?shallow_tree=true")) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        return new Response("missing", { status: 404 });
+      }),
+    );
+
+    await expect(listTeamverDrivePublishTargets("ws-1")).rejects.toThrow("teamver_drive_fetch_failed:401");
+    invalidateTeamverDriveImportCaches();
+  });
+
+  it("keeps shared drive roots when personal shallow_tree fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/drive/folder?shallow_tree=true")) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        if (url.endsWith("/api/v2/shared-drive")) {
+          return Response.json({
+            data: [{ id: "SD-1", name: "Product", status: "ACTIVE", workspace_id: "ws-1" }],
+          });
+        }
+        if (url.endsWith("/api/v2/shared-drive/SD-1/folder-tree")) {
+          return Response.json({
+            rootFolderId: "FLD-SD-ROOT",
+            items: [
+              {
+                folderId: "FLD-SD-ROOT",
+                name: "Shared Root",
+                folderType: "SHARED_ROOT",
+              },
+            ],
+          });
+        }
+        return new Response("missing", { status: 404 });
+      }),
+    );
+
+    const targets = await listTeamverDrivePublishTargets("ws-1");
+    expect(targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "personal-root",
+          label: "내 드라이브",
+          folderId: null,
+        }),
+        expect.objectContaining({
+          id: "shared:SD-1",
+          label: "Product",
+          folderId: "FLD-SD-ROOT",
+          sharedDriveId: "SD-1",
+        }),
+      ]),
+    );
+  });
+
+  it("maps import scopes to quick-pick publish targets", () => {
+    expect(
+      publishTargetsFromImportScopes([
+        { mode: "personal", folderId: "FLD-MY-ROOT", label: "내 드라이브" },
+        {
+          mode: "shared",
+          sharedDriveId: "SD-1",
+          folderId: "FLD-SD-ROOT",
+          label: "Product",
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({ id: "personal-root", folderId: "FLD-MY-ROOT" }),
+      expect.objectContaining({ id: "shared:SD-1", folderId: "FLD-SD-ROOT" }),
     ]);
   });
 

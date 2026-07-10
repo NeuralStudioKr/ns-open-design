@@ -39,6 +39,7 @@ import {
   filterProjectsByTeamverRegistryIfNeeded,
   registerTeamverProjectIfNeeded,
   TeamverProjectRegistryError,
+  waitForTeamverRegistrySyncIfNeeded,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { resolveTeamverBranding } from '../teamver/branding/config';
@@ -64,6 +65,9 @@ export type ProjectsListPageResult = {
 };
 
 async function normalizeProjectsResponse(projects: Project[]): Promise<Project[]> {
+  if (isTeamverEmbedMode()) {
+    await waitForTeamverRegistrySyncIfNeeded();
+  }
   return filterProjectsByTeamverRegistryIfNeeded(
     projects.map((project) => sanitizeProjectForEmbed(project)),
   );

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "../../components/Icon";
 import {
   TEAMVER_DRIVE_PUBLISH_SEARCH_MIN,
+  publishTargetsFromImportScopes,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
 import { listTeamverDrivePublishHomeRecentTargets } from "../drivePublishHomeRecent";
@@ -42,6 +43,8 @@ type Props = {
   onSearch?: (query: string) => Promise<TeamverDrivePublishTarget[]>;
   onSelect: (target: TeamverDrivePublishTarget) => void;
   onClose: () => void;
+  /** When Browse loads Drive scopes, sync quick-pick dropdown targets in the parent panel. */
+  onQuickPickTargetsHydrated?: (targets: TeamverDrivePublishTarget[]) => void;
 };
 
 function rootCrumb(scope: TeamverDriveImportScope): NavCrumb {
@@ -118,6 +121,7 @@ export function TeamverDrivePickerModal({
   onSearch,
   onSelect,
   onClose,
+  onQuickPickTargetsHydrated,
 }: Props) {
   const {
     query,
@@ -362,6 +366,7 @@ export function TeamverDrivePickerModal({
         setScopes(resolved);
         setScopeIndex(0);
         setNavStack([rootCrumb(resolved[0]!)]);
+        onQuickPickTargetsHydrated?.(publishTargetsFromImportScopes(resolved));
       } catch {
         if (canceled) return;
         const fallback = [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
@@ -373,7 +378,7 @@ export function TeamverDrivePickerModal({
     return () => {
       canceled = true;
     };
-  }, [open, workspaceId]);
+  }, [open, onQuickPickTargetsHydrated, workspaceId]);
 
   useEffect(() => {
     if (!open) return;

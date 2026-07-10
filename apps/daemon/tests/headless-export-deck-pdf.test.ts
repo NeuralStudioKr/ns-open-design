@@ -394,6 +394,19 @@ describe('buildDeckPrintCss', () => {
     expect(css).not.toContain('break-after: page !important');
   });
 
+  it('applyPdfStyles uses paper-first background chain for deck exports', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toMatch(
+      /applyPdfStyles[\s\S]{0,600}background:\s*var\(--bg,\s*var\(--paper,\s*var\(--shell/,
+    );
+    expect(source).not.toMatch(
+      /applyPdfStyles[\s\S]{0,600}background:\s*var\(--shell,\s*var\(--bg/,
+    );
+  });
+
   it('applyHtmlDeckExportStyles uses html screen layout helpers', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'headless-export.ts'),

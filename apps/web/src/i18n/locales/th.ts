@@ -1987,6 +1987,7 @@ export const th: Dict = {
   'sketch.tooltipClean': 'บันทึกสมบูรณ์',
   'fileViewer.empty': 'คลิกที่ไฟล์เพื่อแสดงดู',
   'fileViewer.loading': 'กำลังเรียกโหลด…',
+  'fileViewer.updatingPreview': 'Updating preview…',
   'fileViewer.exportPptx': 'ส่งข้อมูลเป็น PPTX',
   'fileViewer.openInNewTab': 'เข้าจากหน้าต่างใหม่',
   'fileViewer.copyPath': 'ก็อปปี้ลิ้งก์',

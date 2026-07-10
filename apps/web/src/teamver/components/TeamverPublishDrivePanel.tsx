@@ -249,6 +249,31 @@ export function TeamverPublishDrivePanel({
     setLastTargetRestore("none");
   }, []);
 
+  const handleQuickPickHydrated = useCallback(
+    (hydrated: TeamverDrivePublishTarget[]) => {
+      if (hydrated.length === 0) return;
+      setTargets((current) => {
+        const recent = workspaceId ? readRecentPublishTargets(workspaceId) : [];
+        const byId = new Map(
+          current
+            .filter((target) => target.id !== DEFAULT_PUBLISH_TARGET.id)
+            .map((target) => [target.id, target] as const),
+        );
+        for (const target of hydrated) byId.set(target.id, target);
+        for (const target of recent) byId.set(target.id, target);
+        return ensureDefaultPublishTarget([...byId.values()]);
+      });
+      setTargetsError(null);
+      setAuthRequired(false);
+    },
+    [workspaceId],
+  );
+
+  const handleClosePicker = useCallback(() => {
+    setPickerOpen(false);
+    void refreshTargets();
+  }, [refreshTargets]);
+
   const handleSelectFormat = useCallback((format: DrivePublishFormat) => {
     if (busy) return;
     if (format === "pdf" && pdfBlocked) return;
@@ -343,9 +368,10 @@ export function TeamverPublishDrivePanel({
   }, [busy, publishPhase]);
 
   const handleOpenPicker = useCallback(() => {
+    invalidateTeamverDriveImportCaches();
     setPickerOpen(true);
-    if (targetsError) void refreshTargets();
-  }, [refreshTargets, targetsError]);
+    void refreshTargets();
+  }, [refreshTargets]);
 
   const showPostRunHint =
     active
@@ -492,7 +518,8 @@ export function TeamverPublishDrivePanel({
         loading={loadingTargets}
         onSearch={workspaceId ? handleSearchTargets : undefined}
         onSelect={handleSelectTarget}
-        onClose={() => setPickerOpen(false)}
+        onClose={handleClosePicker}
+        onQuickPickTargetsHydrated={handleQuickPickHydrated}
       />
       <button
         type="button"

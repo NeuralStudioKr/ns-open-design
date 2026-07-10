@@ -88,6 +88,7 @@ export function buildDeckFlattenCssRules(): string {
  */
 export function buildDeckHtmlExportScreenCss(): string {
   const slides = deckSlideSelectorList().join(', ');
+  const slidesNotActive = deckSlideSelectorList().map((sel) => `${sel}:not(.active)`).join(', ');
   const stageWrappers = '.deck, .deck-stage, #deck-stage, #deck, .stage';
   return `
   html, body {
@@ -127,6 +128,7 @@ export function buildDeckHtmlExportScreenCss(): string {
     padding: 24px 0 48px !important;
     box-sizing: border-box !important;
   }
+  ${slidesNotActive},
   ${slides} {
     display: flex !important;
     flex-direction: column !important;
@@ -152,6 +154,40 @@ export function buildDeckHtmlExportScreenCss(): string {
   ${DECK_CHROME_HIDE_SELECTOR} {
     display: none !important;
   }`;
+}
+
+/**
+ * Reveal every slide for static HTML export fallback (no headless Chromium).
+ * Deck preview CSS hides `.slide:not(.active)` — without this only slide 1 shows.
+ */
+export function buildDeckHtmlExportStaticRevealScript(): string {
+  return `
+(function () {
+  var slides = ${JSON.stringify(DECK_SLIDE_SELECTOR)};
+  var chrome = ${JSON.stringify(DECK_CHROME_HIDE_SELECTOR)};
+  document.querySelectorAll(slides).forEach(function (el) {
+    el.classList.add('active');
+    el.style.setProperty('display', 'flex', 'important');
+    el.style.setProperty('flex-direction', 'column', 'important');
+    el.style.setProperty('position', 'relative', 'important');
+    el.style.setProperty('inset', 'auto', 'important');
+    el.style.setProperty('visibility', 'visible', 'important');
+    el.style.setProperty('opacity', '1', 'important');
+  });
+  document.querySelectorAll(chrome).forEach(function (el) {
+    el.style.setProperty('display', 'none', 'important');
+  });
+  document.querySelectorAll('.deck-shell').forEach(function (el) {
+    el.style.setProperty('position', 'static', 'important');
+    el.style.setProperty('inset', 'auto', 'important');
+    el.style.setProperty('overflow', 'visible', 'important');
+  });
+  document.querySelectorAll('.deck-stage, #deck-stage').forEach(function (el) {
+    el.style.setProperty('transform', 'none', 'important');
+    el.style.setProperty('width', 'auto', 'important');
+    el.style.setProperty('height', 'auto', 'important');
+  });
+})();`;
 }
 
 /** Keeps downloaded deck HTML scaled to the browser viewport width. */
@@ -254,7 +290,8 @@ export function stripStaleDeckExportArtifacts(doc: string): string {
     .replace(ORPHANED_EXPORT_PREAMBLE_STYLE_RE, '')
     .replace(/<script\b[^>]*\bdata-deck-print-flatten[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<style\b[^>]*\bdata-od-html-export-screen[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script\b[^>]*\bdata-od-html-export-viewport[^>]*>[\s\S]*?<\/script>/gi, '');
+    .replace(/<script\b[^>]*\bdata-od-html-export-viewport[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<script\b[^>]*\bdata-od-html-export-reveal[^>]*>[\s\S]*?<\/script>/gi, '');
 }
 
 /** Undo agent/framework print rules that break multi-slide deck PDF export. */
@@ -282,6 +319,12 @@ export function patchArtifactDeckPrintCss(doc: string): string {
   out = out.replace(
     /(html\s*,\s*body\s*\{[^}]*?)background\s*:\s*#fff\s*!important/gi,
     '$1background: var(--bg, var(--paper, var(--shell, #fff))) !important',
+  );
+  // Deck-framework @media print blocks often prefer --shell over --bg, which
+  // paints light-theme deck gutters dark in PDF exports.
+  out = out.replace(
+    /background\s*:\s*var\(\s*--shell\s*,\s*var\(\s*--bg/gi,
+    'background: var(--bg, var(--paper, var(--shell',
   );
   return out;
 }

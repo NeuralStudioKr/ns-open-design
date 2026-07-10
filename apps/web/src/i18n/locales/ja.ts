@@ -1987,6 +1987,7 @@ export const ja: Dict = {
   'sketch.tooltipClean': '保存済み',
   'fileViewer.empty': 'ファイルを選択して表示します。',
   'fileViewer.loading': '読み込み中…',
+  'fileViewer.updatingPreview': 'Updating preview…',
   'fileViewer.exportPptx': 'PPTX としてエクスポート',
   'fileViewer.openInNewTab': '新しいタブで開く',
   'fileViewer.copyPath': 'パスをコピー',

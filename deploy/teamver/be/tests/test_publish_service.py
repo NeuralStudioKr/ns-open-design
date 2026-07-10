@@ -15,7 +15,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.db.models import DesignProject
 from app.errors import BadGatewayError, BadRequestError, UnauthorizedError
-from app.services.publish_service import publish_project
+from app.services.publish_service import PublishFormatResult, publish_project
 
 
 HTML_PAGE_MANIFEST = {
@@ -326,7 +326,7 @@ async def test_publish_project_accepts_html_for_slides():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_inline.return_value = b"<html>deck</html>"
+    daemon.get_export_html.return_value = b"<html>deck</html>"
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-HTML")
@@ -340,20 +340,23 @@ async def test_publish_project_accepts_html_for_slides():
         artifact_file="deck/index.html",
         folder_id=None,
         od_daemon=daemon,
+        export_title="Q4 Deck",
     )
 
     assert result.http_status == 201
     assert result.outputs[0].kind == "html"
     assert result.outputs[0].publish_status == "ready"
-    daemon.get_export_inline.assert_awaited_once_with(
+    daemon.get_export_html.assert_awaited_once_with(
         "od1",
         "deck/index.html",
         identity=ANY,
+        deck=True,
+        title="Q4 Deck",
     )
 
 
 @pytest.mark.asyncio
-async def test_publish_project_all_formats_fail_raises_bad_gateway():
+async def test_publish_project_all_formats_fail_returns_structured_502():
     db = AsyncMock()
 
     daemon = _daemon_mock()
@@ -362,17 +365,25 @@ async def test_publish_project_all_formats_fail_raises_bad_gateway():
 
     teamver_client = MagicMock()
 
-    with pytest.raises(BadGatewayError, match="publish_all_failed"):
-        await publish_project(
-            db,
-            teamver_client=teamver_client,
-            access_token="token",
-            project=_project(),
-            formats=["pdf"],
-            artifact_file=None,
-            folder_id=None,
-            od_daemon=daemon,
-        )
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs == [
+        PublishFormatResult(
+            kind="pdf",
+            publish_status="failed",
+            error_code="od_daemon_export_failed",
+        ),
+    ]
 
 
 @pytest.mark.asyncio
@@ -397,20 +408,50 @@ async def test_publish_project_upload_request_phase_status_propagates():
     teamver_client.drive._put_presigned_bytes = AsyncMock()
     teamver_client.drive.confirm_upload = AsyncMock()
 
-    with pytest.raises(BadGatewayError, match="publish_all_failed"):
-        await publish_project(
-            db,
-            teamver_client=teamver_client,
-            access_token="token",
-            project=_project(),
-            formats=["pdf"],
-            artifact_file=None,
-            folder_id=None,
-            od_daemon=daemon,
-        )
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs[0].error_code == "drive_upload_failed_403"
 
     teamver_client.drive._put_presigned_bytes.assert_not_awaited()
     teamver_client.drive.confirm_upload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_publish_project_upload_request_invalid_token_maps_to_401():
+    db = AsyncMock()
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+
+    teamver_client = MagicMock()
+    upload_request_exc = TeamverAPIError("Invalid token")
+    upload_request_exc.code = "Invalid token"
+    upload_request_exc.status_code = 401
+    teamver_client.drive.create_upload_request = AsyncMock(side_effect=upload_request_exc)
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs[0].error_code == "drive_upload_failed_401"
 
 
 @pytest.mark.asyncio
@@ -434,17 +475,19 @@ async def test_publish_project_presigned_put_status_propagates():
     teamver_client.drive._put_presigned_bytes = AsyncMock(side_effect=presigned_exc)
     teamver_client.drive.confirm_upload = AsyncMock()
 
-    with pytest.raises(BadGatewayError, match="publish_all_failed"):
-        await publish_project(
-            db,
-            teamver_client=teamver_client,
-            access_token="token",
-            project=_project(),
-            formats=["pdf"],
-            artifact_file=None,
-            folder_id=None,
-            od_daemon=daemon,
-        )
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs[0].error_code == "drive_presigned_put_failed_502"
 
     teamver_client.drive.confirm_upload.assert_not_awaited()
 
@@ -473,17 +516,19 @@ async def test_publish_project_confirm_failure_uses_confirm_code():
     confirm_exc.code = "drive.confirm_timeout"
     teamver_client.drive.confirm_upload = AsyncMock(side_effect=confirm_exc)
 
-    with pytest.raises(BadGatewayError, match="publish_all_failed"):
-        await publish_project(
-            db,
-            teamver_client=teamver_client,
-            access_token="token",
-            project=_project(),
-            formats=["pdf"],
-            artifact_file=None,
-            folder_id=None,
-            od_daemon=daemon,
-        )
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs[0].error_code == "drive.confirm_timeout"
 
 
 # ---------------------------------------------------------------------------

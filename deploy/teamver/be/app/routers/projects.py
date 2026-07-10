@@ -9,11 +9,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.bff_tokens import ensure_bff_session
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
 from ..db.models import DesignOutput, DesignProject
-from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError
+from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError, UnauthorizedError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
     DesignProjectListResponse,
@@ -488,16 +489,25 @@ async def publish_project_to_drive(
     _ensure_project_access(row, auth)
 
     workspace_id = require_workspace_context(auth)
-    await OdDaemonClient().sync_scratch_project(
-        row.od_project_id,
-        identity=OdDaemonIdentity(
-            user_id=auth.user_id,
-            workspace_id=workspace_id,
-            s3_prefix=row.s3_prefix,
-        ),
+    identity = OdDaemonIdentity(
+        user_id=auth.user_id,
+        workspace_id=workspace_id,
+        s3_prefix=row.s3_prefix,
     )
+    synced = await _sync_daemon_scratch_for_od_project(row.od_project_id, identity=identity)
+    if not synced:
+        logger.warning(
+            "publish: daemon scratch sync-up failed od_project_id=%s — continuing best-effort",
+            row.od_project_id,
+        )
 
     access_token = auth.raw_token or extract_request_access_token(request)
+    if auth.auth_source == "bff":
+        session = await ensure_bff_session(request)
+        if session is None:
+            raise UnauthorizedError("session_expired")
+        access_token = session.access_token
+
     result = await publish_project(
         db,
         teamver_client=get_teamver_client(),

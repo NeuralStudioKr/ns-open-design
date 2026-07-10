@@ -1987,6 +1987,7 @@ export const tr: Dict = {
   'sketch.tooltipClean': 'Kaydedildi',
   'fileViewer.empty': 'Görüntülemek için bir dosya seçin.',
   'fileViewer.loading': 'Yükleniyor…',
+  'fileViewer.updatingPreview': 'Updating preview…',
   'fileViewer.exportPptx': 'PPTX olarak dışa aktar',
   'fileViewer.openInNewTab': 'Yeni sekmede aç',
   'fileViewer.copyPath': 'Yolu kopyala',

@@ -233,6 +233,17 @@ describe("parsePublishFailureFromError", () => {
     expect(parsed?.projectId).toBe("DPRJ-9");
     expect(resolvePublishErrorCode(parsed!)).toBe("drive_upload_failed");
   });
+
+  it("maps legacy 502 error.message when outputs are absent", () => {
+    const err = new NetworkError({
+      message: "bad gateway",
+      status: 502,
+      responseBody: { error: { message: "od_daemon_export_failed" } },
+    });
+    const parsed = parsePublishFailureFromError(err);
+    expect(parsed?.outputs[0]?.errorCode).toBe("od_daemon_export_failed");
+    expect(resolvePublishErrorCode(parsed!)).toBe("od_daemon_export_failed");
+  });
 });
 
 describe("formatPublishErrorCodeForUser", () => {
@@ -242,6 +253,13 @@ describe("formatPublishErrorCodeForUser", () => {
     expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/완료하지 못/);
     expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/슬라이드 파일/);
     expect(formatPublishErrorCodeForUser("outputs_fetch_failed")).toMatch(/발행 이력/);
+  });
+
+  it("maps 401 and Invalid token upload codes to session-expired hint", () => {
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_401")).toMatch(/세션이 만료/);
+    expect(formatPublishErrorCodeForUser("drive_upload_request_failed_Invalid token")).toMatch(
+      /세션이 만료/,
+    );
   });
 
   it("falls back to raw code for unknown errors", () => {
