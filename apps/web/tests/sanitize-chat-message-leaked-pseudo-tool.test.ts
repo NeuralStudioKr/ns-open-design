@@ -222,6 +222,32 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.events ?? []).toEqual([]);
   });
 
+  it("strips deck navigation middle fragments from persisted content and events", () => {
+    const leaked = [
+      "function onKey(e) {",
+      "if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(idx + 1); }",
+      "else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(idx - 1); }",
+      "}",
+      "document.body.setAttribute('tabindex', '-1');",
+      "window.addEventListener('load', focusDeck);",
+      "fit();",
+      "paint();",
+      "focusDeck();",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "m-deck-middle-fragment",
+      role: "assistant",
+      content: leaked,
+      events: [{ kind: "text", text: leaked }],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("");
+    expect(sanitized.content).not.toContain("ArrowRight");
+    expect(sanitized.content).not.toContain("focusDeck");
+    expect(sanitized.events ?? []).toEqual([]);
+  });
+
   it("does not mutate persisted deck plan prose that contains no script leak", () => {
     const planText = [
       "요청하신 8장짜리 덱을 바로 만들겠습니다.",

@@ -31,6 +31,15 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(assistant).toContain("live && !hideAssistantThinkingDetails");
   });
 
+  it("hides recovered raw HTML fallback prose for every Teamver embed agent", () => {
+    const assistant = readRepoFile("apps/web/src/components/AssistantMessage.tsx");
+
+    expect(assistant).toContain("teamverEmbedEnabled");
+    expect(assistant).toContain("hideRecoveredHtmlFallback={(teamverEmbedEnabled");
+    expect(assistant).toContain('message.agentId === "grok-build"');
+    expect(assistant).toContain('message.agentId === "claude"');
+  });
+
   it("hides Home and project composer working directory pickers", () => {
     const homeView = readRepoFile("apps/web/src/components/HomeView.tsx");
     const chatComposer = readRepoFile("apps/web/src/components/ChatComposer.tsx");
