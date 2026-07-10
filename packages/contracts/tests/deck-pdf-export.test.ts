@@ -5,6 +5,7 @@ import {
   buildDeckSlideExportLayoutHelperJs,
   buildDeckPrintCss,
   buildDeckHtmlExportScreenCss,
+  buildDeckHtmlExportStaticRevealScript,
   buildDeckHtmlExportViewportScript,
   buildDeckHtmlExportFinalizeLayoutJs,
   injectDeckFlattenScript,
@@ -19,6 +20,7 @@ describe('stripStaleDeckExportArtifacts', () => {
 <script data-deck-print-flatten>window.__odFlattenDeckForPrint=function(){}</script>
 <style data-od-html-export-screen>html { width: 100%; }</style>
 <script data-od-html-export-viewport>window.__odHtmlExportFit=function(){}</script>
+<script data-od-html-export-reveal>window.__odHtmlExportReveal=function(){}</script>
 <style>body{color:red}</style>
 </head><body></body></html>`;
     const out = stripStaleDeckExportArtifacts(html);
@@ -68,6 +70,13 @@ describe('patchArtifactDeckPrintCss', () => {
     // decks (--bg: #FAFAFA) do not render dark PDF pages.
     expect(out).toContain('background: var(--bg, var(--paper, var(--shell, #fff))) !important');
     expect(out).not.toContain('background: #fff !important');
+  });
+
+  it('rewrites shell-first print backgrounds to the paper CSS variable chain', () => {
+    const input = `@media print { html, body { background: var(--shell, var(--bg)) !important; } }`;
+    const out = patchArtifactDeckPrintCss(input);
+    expect(out).toContain('background: var(--bg, var(--paper, var(--shell)) !important');
+    expect(out).not.toContain('var(--shell, var(--bg)');
   });
 
   it('cleans exported deck HTML polluted by prior headless snapshots', () => {
@@ -152,11 +161,21 @@ describe('buildDeckHtmlExportScreenCss', () => {
     const css = buildDeckHtmlExportScreenCss();
     expect(css).toContain('width: 100% !important');
     expect(css).toContain('zoom: var(--od-html-export-scale, 1) !important');
+    expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('.deck-shell');
     expect(css).toContain('position: static !important');
     expect(css).not.toContain('display: contents !important');
     expect(css).not.toContain('break-after: page !important');
     expect(css).not.toContain('@media print');
+  });
+});
+
+describe('buildDeckHtmlExportStaticRevealScript', () => {
+  it('reveals inactive slides and hides deck chrome', () => {
+    const script = buildDeckHtmlExportStaticRevealScript();
+    expect(script).toContain("classList.add('active')");
+    expect(script).toContain('.deck-counter');
+    expect(script).toContain("display', 'none', 'important'");
   });
 });
 

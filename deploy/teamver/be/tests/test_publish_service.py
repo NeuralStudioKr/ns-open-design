@@ -326,7 +326,7 @@ async def test_publish_project_accepts_html_for_slides():
 
     daemon = _daemon_mock()
     daemon.get_export_manifest.return_value = DECK_MANIFEST
-    daemon.get_export_inline.return_value = b"<html>deck</html>"
+    daemon.get_export_html.return_value = b"<html>deck</html>"
 
     teamver_client = MagicMock()
     _wire_drive_upload(teamver_client, asset_id="AST-HTML")
@@ -340,15 +340,18 @@ async def test_publish_project_accepts_html_for_slides():
         artifact_file="deck/index.html",
         folder_id=None,
         od_daemon=daemon,
+        export_title="Q4 Deck",
     )
 
     assert result.http_status == 201
     assert result.outputs[0].kind == "html"
     assert result.outputs[0].publish_status == "ready"
-    daemon.get_export_inline.assert_awaited_once_with(
+    daemon.get_export_html.assert_awaited_once_with(
         "od1",
         "deck/index.html",
         identity=ANY,
+        deck=True,
+        title="Q4 Deck",
     )
 
 

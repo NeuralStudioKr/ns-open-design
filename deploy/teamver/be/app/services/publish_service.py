@@ -352,10 +352,12 @@ async def publish_project(
                 path = (artifact_file or manifest_entry or "").strip()
                 if not path:
                     raise BadRequestError("artifact_file_required")
-                content = await daemon.get_export_inline(
+                content = await daemon.get_export_html(
                     project.od_project_id,
                     path,
                     identity=daemon_identity,
+                    deck=is_deck_artifact,
+                    title=export_title,
                 )
                 mime_type = "text/html"
                 filename = _publish_filename(
