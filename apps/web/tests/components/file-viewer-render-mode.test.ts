@@ -6,6 +6,7 @@ import {
   htmlNeedsFocusGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
+  resolveHtmlPreviewAssetUrl,
   shouldUrlLoadHtmlPreview,
 } from '../../src/components/file-viewer-render-mode';
 
@@ -73,6 +74,35 @@ describe('shouldUrlLoadHtmlPreview', () => {
     expect(shouldUrlLoadHtmlPreview({ ...base, commentMode: true, forceInline: true })).toBe(false);
     expect(shouldUrlLoadHtmlPreview({ ...base, tweaksBridge: true, forceInline: true })).toBe(false);
     expect(shouldUrlLoadHtmlPreview({ ...base, commentMode: true, urlModeBridge: true, inspectMode: true })).toBe(false);
+  });
+});
+
+describe('resolveHtmlPreviewAssetUrl', () => {
+  it('keeps standalone OD raw preview URLs', () => {
+    expect(resolveHtmlPreviewAssetUrl({
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+      rawUrl: '/api/projects/project-1/raw/page.html',
+      scopedUrl: null,
+    })).toBe('/api/projects/project-1/raw/page.html');
+  });
+
+  it('uses scoped preview URLs in Teamver embed mode', () => {
+    expect(resolveHtmlPreviewAssetUrl({
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/project-1/preview/scope-1',
+      rawUrl: '/api/projects/project-1/raw/page.html',
+      scopedUrl: '/api/projects/project-1/preview/scope-1/page.html',
+    })).toBe('/api/projects/project-1/preview/scope-1/page.html');
+  });
+
+  it('never falls back to protected raw URLs in Teamver embed mode', () => {
+    expect(resolveHtmlPreviewAssetUrl({
+      teamverEmbedMode: true,
+      embedPreviewPrefix: null,
+      rawUrl: '/api/projects/project-1/raw/page.html',
+      scopedUrl: null,
+    })).toBe('about:blank');
   });
 });
 

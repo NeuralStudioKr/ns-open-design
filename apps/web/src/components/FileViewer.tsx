@@ -111,6 +111,7 @@ import {
   htmlNeedsFocusGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
+  resolveHtmlPreviewAssetUrl,
   shouldUrlLoadHtmlPreview,
 } from './file-viewer-render-mode';
 import { saveTemplate } from '../state/projects';
@@ -5429,11 +5430,12 @@ function HtmlViewer({
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
   const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  const teamverEmbedPreviewMode = isTeamverEmbedMode();
   const [embedPreviewPrefixResolved, setEmbedPreviewPrefixResolved] = useState(
-    () => !isTeamverEmbedMode(),
+    () => !teamverEmbedPreviewMode,
   );
   useEffect(() => {
-    if (!isTeamverEmbedMode()) {
+    if (!teamverEmbedPreviewMode) {
       setEmbedPreviewPrefix(null);
       setEmbedPreviewPrefixResolved(true);
       return;
@@ -5449,7 +5451,7 @@ function HtmlViewer({
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.name]);
+  }, [file.name, projectId, teamverEmbedPreviewMode]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
@@ -5462,14 +5464,17 @@ function HtmlViewer({
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
   }) && !manualEditRequiresSrcDoc
-    && (!isTeamverEmbedMode() || embedPreviewPrefix != null);
+    && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
-    (filePath: string) => (
-      embedPreviewPrefix
+    (filePath: string) => resolveHtmlPreviewAssetUrl({
+      teamverEmbedMode: teamverEmbedPreviewMode,
+      embedPreviewPrefix,
+      rawUrl: projectRawUrl(projectId, filePath),
+      scopedUrl: embedPreviewPrefix
         ? projectScopedPreviewUrl(embedPreviewPrefix, filePath)
-        : projectRawUrl(projectId, filePath)
-    ),
-    [embedPreviewPrefix, projectId],
+        : null,
+    }),
+    [embedPreviewPrefix, projectId, teamverEmbedPreviewMode],
   );
   const basePreviewSrcUrl = useMemo(
     () => `${projectPreviewAssetUrl(file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}&odPreviewBridge=scroll&odPreviewBridge=selection&odPreviewBridge=snapshot`,
