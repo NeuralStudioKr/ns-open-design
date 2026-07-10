@@ -16,7 +16,7 @@ from ..auth.bff_session import (
     load_bff_session,
     update_bff_workspace,
 )
-from ..auth.bff_tokens import ensure_bff_session
+from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
 from ..auth.errors import raise_auth_http
 from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth.metrics import snapshot as metrics_snapshot
@@ -237,7 +237,7 @@ async def refresh_auth_session(request: Request) -> Any:
     """BFF: refresh Apps JWT in server session. Plan B proxy removed."""
     if not bff_enabled():
         raise HTTPException(status_code=410, detail={"code": "plan_b_refresh_removed"})
-    session = await ensure_bff_session(request)
+    session = await force_refresh_bff_session(request)
     if session is None:
         login_url = teamver_main_login_url_for_design()
         return JSONResponse(

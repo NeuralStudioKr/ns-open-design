@@ -50,6 +50,11 @@ describe("isTeamverBffUnauthorizedError", () => {
     ).toBe(true);
   });
 
+  it("matches Invalid token messages from Main BE pass-through", () => {
+    expect(isTeamverBffUnauthorizedError(new Error("Invalid token"))).toBe(true);
+    expect(isTeamverBffUnauthorizedError(new Error('{"detail":"Invalid token"}'))).toBe(true);
+  });
+
   it("does not match unrelated drive 4xx/5xx codes", () => {
     expect(
       isTeamverBffUnauthorizedError(new Error("teamver_drive_fetch_failed:403")),

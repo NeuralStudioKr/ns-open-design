@@ -79,6 +79,51 @@ async def test_proxy_drive_requires_access_token() -> None:
 
 
 @pytest.mark.asyncio
+async def test_proxy_drive_retries_after_bff_force_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.auth.bff_session import BffSession
+
+    forward = AsyncMock(
+        side_effect=[
+            (401, {"content-type": "application/json"}, b'{"detail":"Invalid token"}'),
+            (200, {"content-type": "application/json"}, b'{"data":[]}'),
+        ]
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
+
+    async def fake_force_refresh(_request: Request) -> BffSession:
+        return BffSession(
+            user_id="u1",
+            access_token="fresh-token",
+            refresh_token="rt",
+            access_expires_at=9999999999,
+            workspace_id="ws-1",
+            aud="teamver-design",
+            scope=[],
+        )
+
+    monkeypatch.setattr(drive_router, "force_refresh_bff_session", fake_force_refresh)
+    monkeypatch.setattr(
+        drive_router,
+        "_resolve_drive_access_token",
+        AsyncMock(return_value="stale-token"),
+    )
+
+    response = await drive_router.proxy_drive(
+        "api/v2/shared-drive",
+        _drive_request(path="api/v2/shared-drive"),
+        _auth(token="stale-token", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 200
+    assert forward.await_count == 2
+    assert forward.await_args_list[1].kwargs["access_token"] == "fresh-token"
+
+
+@pytest.mark.asyncio
 async def test_proxy_drive_blocks_disallowed_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

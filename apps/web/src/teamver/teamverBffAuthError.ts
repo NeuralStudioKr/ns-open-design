@@ -30,6 +30,7 @@ export function isTeamverBffUnauthorizedError(err: unknown): boolean {
     const message = err.message || "";
     if (/teamver_drive_fetch_failed:\s*401\b/.test(message)) return true;
     if (/\b401\b.*unauthorized/i.test(message)) return true;
+    if (/\binvalid[\s_]?token\b/i.test(message)) return true;
   }
   return false;
 }

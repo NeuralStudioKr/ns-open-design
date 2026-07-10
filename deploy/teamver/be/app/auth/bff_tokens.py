@@ -63,14 +63,19 @@ def _store_cached_refresh(key: str, payload: dict[str, Any]) -> None:
     )
 
 
-async def _refresh_apps_tokens_coalesced(refresh_token: str) -> dict[str, Any]:
+async def _refresh_apps_tokens_coalesced(
+    refresh_token: str,
+    *,
+    bypass_cache: bool = False,
+) -> dict[str, Any]:
     key = _refresh_coalesce_key(refresh_token)
     if not key:
         raise AppsTokenRefreshError("missing_refresh_token")
 
-    cached = _peek_cached_refresh(key)
-    if cached is not None:
-        return cached
+    if not bypass_cache:
+        cached = _peek_cached_refresh(key)
+        if cached is not None:
+            return cached
 
     inflight = _refresh_inflight.get(key)
     if inflight is not None:
@@ -88,6 +93,44 @@ async def _refresh_apps_tokens_coalesced(refresh_token: str) -> dict[str, Any]:
     finally:
         if _refresh_inflight.get(key) is task:
             _refresh_inflight.pop(key, None)
+
+
+async def _refresh_bff_session_core(
+    request: Request,
+    session: BffSession,
+    *,
+    bypass_cache: bool,
+) -> BffSession | None:
+    refresh = (session.refresh_token or "").strip()
+    if not refresh:
+        clear_bff_session(request)
+        return None
+    try:
+        data = await _refresh_apps_tokens_coalesced(refresh, bypass_cache=bypass_cache)
+    except AppsTokenRefreshError as exc:
+        if not bypass_cache:
+            cached = _peek_cached_refresh(_refresh_coalesce_key(refresh))
+            if cached is not None:
+                return _apply_refresh_payload(request, session, cached)
+        if exc.code == "teamver_unreachable":
+            logger.warning("[bff] refresh unreachable; retaining existing session user=%s", session.user_id)
+            return session
+        clear_bff_session(request)
+        return None
+    return _apply_refresh_payload(request, session, data)
+
+
+async def force_refresh_bff_session(request: Request) -> BffSession | None:
+    """Explicit refresh (POST /auth/refresh, upstream 401 recovery).
+
+    Unlike ensure_bff_session(), always POSTs Main /api/apps/auth/refresh (coalesced)
+    and bypasses the 30s refresh-result cache so a stale access token cannot
+    survive a client-initiated recovery after Main returns 401 Invalid token.
+    """
+    session = load_bff_session(request)
+    if session is None:
+        return None
+    return await _refresh_bff_session_core(request, session, bypass_cache=True)
 
 
 def _access_token_jwt_exp_unverified(access_token: str) -> float | None:
@@ -142,23 +185,7 @@ async def ensure_bff_session(request: Request) -> BffSession | None:
         return None
     if not _session_needs_refresh(session):
         return session
-    refresh = (session.refresh_token or "").strip()
-    if not refresh:
-        clear_bff_session(request)
-        return None
-    try:
-        data = await _refresh_apps_tokens_coalesced(refresh)
-    except AppsTokenRefreshError as exc:
-        # A sibling request may have refreshed while we awaited the coalesced task.
-        cached = _peek_cached_refresh(_refresh_coalesce_key(refresh))
-        if cached is not None:
-            return _apply_refresh_payload(request, session, cached)
-        if exc.code == "teamver_unreachable":
-            logger.warning("[bff] refresh unreachable; retaining existing session user=%s", session.user_id)
-            return session
-        clear_bff_session(request)
-        return None
-    return _apply_refresh_payload(request, session, data)
+    return await _refresh_bff_session_core(request, session, bypass_cache=False)
 
 
 def apply_exchange_to_bff_session(

@@ -12,7 +12,7 @@ from starlette.requests import Request
 os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.auth.bff_session import save_bff_session
-from app.auth.bff_tokens import ensure_bff_session, reset_bff_refresh_coalesce_for_tests
+from app.auth.bff_tokens import ensure_bff_session, force_refresh_bff_session, reset_bff_refresh_coalesce_for_tests
 from app.services.teamver_apps_token_refresh import AppsTokenRefreshError
 
 
@@ -167,6 +167,49 @@ async def test_jwt_exp_within_skew_triggers_refresh_even_when_session_expiry_is_
 
     assert result is not None
     assert result.access_token == "new-access"
+    refresh_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_bypasses_result_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.auth import bff_tokens
+
+    refresh_mock = AsyncMock(
+        return_value={
+            "access_token": "forced-access",
+            "refresh_token": "refresh-shared",
+            "expires_in": 600,
+            "aud": "teamver-design",
+            "scope": [],
+        }
+    )
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="old-access",
+        expires_in=3600,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+    )
+    bff_tokens._store_cached_refresh(
+        "refresh-shared",
+        {
+            "access_token": "cached-access",
+            "refresh_token": "refresh-shared",
+            "expires_in": 600,
+        },
+    )
+
+    result = await force_refresh_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "forced-access"
     refresh_mock.assert_awaited_once()
 
 
