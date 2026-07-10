@@ -196,6 +196,57 @@ export async function pgListConversations(pool: Pool, projectId: string): Promis
   );
 }
 
+/** Latest terminal/active run per project — mirrors sqlite listLatestProjectRunStatuses. */
+export async function pgListLatestProjectRunStatuses(pool: Pool): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT c.project_id AS "projectId",
+            m.run_id AS "runId",
+            m.run_status AS status,
+            COALESCE(m.ended_at, m.started_at, m.created_at) AS "updatedAt"
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+      WHERE m.run_status IS NOT NULL
+      ORDER BY COALESCE(m.ended_at, m.started_at, m.created_at) DESC`,
+  );
+}
+
+/** Projects whose latest assistant turn is an unanswered structured question. */
+export async function pgListProjectsAwaitingInput(pool: Pool): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT latest."projectId"
+       FROM (
+         SELECT c.project_id AS "projectId",
+                m.conversation_id AS "conversationId",
+                m.created_at AS "createdAt",
+                m.position AS position,
+                ROW_NUMBER() OVER (
+                  PARTITION BY c.project_id
+                  ORDER BY m.created_at DESC, m.position DESC
+                ) AS row_num
+           FROM messages m
+           JOIN conversations c ON c.id = m.conversation_id
+          WHERE m.role = 'assistant'
+            AND (
+              LOWER(m.content) LIKE '%<question-form%'
+              OR LOWER(m.content) LIKE '%<ask-question%'
+            )
+       ) latest
+      WHERE latest.row_num = 1
+        AND NOT EXISTS (
+          SELECT 1
+            FROM messages reply
+           WHERE reply.conversation_id = latest."conversationId"
+             AND reply.role = 'user'
+             AND (
+               reply.created_at > latest."createdAt"
+               OR (reply.created_at = latest."createdAt" AND reply.position > latest.position)
+             )
+        )`,
+  );
+}
+
 export async function pgGetConversation(pool: Pool, id: string): Promise<DbRow | null> {
   return queryPostgresRow(
     pool,

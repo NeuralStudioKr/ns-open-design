@@ -805,7 +805,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     insertConversationAsync,
     getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
-  const { listLatestProjectRunStatuses, listProjectsAwaitingInput, normalizeProjectDisplayStatus, composeProjectDisplayStatus } = ctx.status;
+  const {
+    listLatestProjectRunStatusesAsync,
+    listProjectsAwaitingInputAsync,
+    normalizeProjectDisplayStatus,
+    composeProjectDisplayStatus,
+  } = ctx.status;
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
   const { randomId } = ctx.ids;
   const { validateProjectDesignSystemId, validateProjectSkillId } = ctx.validation;
@@ -988,8 +993,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   async function buildProjectListingContext() {
     const locations = await configuredProjectLocations();
-    const latestRunStatuses = listLatestProjectRunStatuses(db);
-    const awaitingInputProjects = listProjectsAwaitingInput(db);
+    const latestRunStatuses = await listLatestProjectRunStatusesAsync(db);
+    const awaitingInputProjects = await listProjectsAwaitingInputAsync(db);
     const activeRunStatuses = new Map<string, ReturnType<typeof projectStatusFromRun>>();
     for (const run of design.runs.list()) {
       if (!run.projectId) continue;

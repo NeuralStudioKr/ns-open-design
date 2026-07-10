@@ -12,7 +12,9 @@ import {
   getConversation,
   listConversations,
   listLatestProjectRunStatuses,
+  listLatestProjectRunStatusesAsync,
   listProjectsAwaitingInput,
+  listProjectsAwaitingInputAsync,
   openDatabase,
   upsertMessage,
 } from '../src/db.js';
@@ -339,4 +341,24 @@ test('queued db-latest run status surfaces as running in project projection', ()
     updatedAt: 50,
     runId: 'project-queued-db-run-id',
   });
+});
+
+test('async run status listing matches sync path in sqlite mode', async () => {
+  const db = createDb();
+  seedProject(db, 'project-async', 'succeeded');
+
+  const sync = listLatestProjectRunStatuses(db);
+  const asyncResult = await listLatestProjectRunStatusesAsync(db);
+  assert.deepEqual(asyncResult.get('project-async'), sync.get('project-async'));
+});
+
+test('async awaiting-input listing matches sync path in sqlite mode', async () => {
+  const db = createDb();
+  const conversationId = seedProject(db, 'project-async-await');
+
+  addMessage(db, conversationId, 'assistant-question', 'assistant', '<question-form id="q1">');
+
+  const sync = listProjectsAwaitingInput(db);
+  const asyncResult = await listProjectsAwaitingInputAsync(db);
+  assert.deepEqual([...asyncResult], [...sync]);
 });
