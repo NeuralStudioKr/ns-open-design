@@ -9,11 +9,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.bff_tokens import ensure_bff_session
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
 from ..db.models import DesignOutput, DesignProject
-from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError
+from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError, UnauthorizedError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
     DesignProjectListResponse,
@@ -501,6 +502,12 @@ async def publish_project_to_drive(
         )
 
     access_token = auth.raw_token or extract_request_access_token(request)
+    if auth.auth_source == "bff":
+        session = await ensure_bff_session(request)
+        if session is None:
+            raise UnauthorizedError("session_expired")
+        access_token = session.access_token
+
     result = await publish_project(
         db,
         teamver_client=get_teamver_client(),

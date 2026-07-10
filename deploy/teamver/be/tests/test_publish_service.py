@@ -427,6 +427,34 @@ async def test_publish_project_upload_request_phase_status_propagates():
 
 
 @pytest.mark.asyncio
+async def test_publish_project_upload_request_invalid_token_maps_to_401():
+    db = AsyncMock()
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.get_export_pdf.return_value = b"%PDF-1.4 test"
+
+    teamver_client = MagicMock()
+    upload_request_exc = TeamverAPIError("Invalid token")
+    upload_request_exc.code = "Invalid token"
+    upload_request_exc.status_code = 401
+    teamver_client.drive.create_upload_request = AsyncMock(side_effect=upload_request_exc)
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs[0].error_code == "drive_upload_failed_401"
+
+
+@pytest.mark.asyncio
 async def test_publish_project_presigned_put_status_propagates():
     db = AsyncMock()
     db.add = MagicMock()

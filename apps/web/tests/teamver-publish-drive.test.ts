@@ -255,6 +255,13 @@ describe("formatPublishErrorCodeForUser", () => {
     expect(formatPublishErrorCodeForUser("outputs_fetch_failed")).toMatch(/발행 이력/);
   });
 
+  it("maps 401 and Invalid token upload codes to session-expired hint", () => {
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_401")).toMatch(/세션이 만료/);
+    expect(formatPublishErrorCodeForUser("drive_upload_request_failed_Invalid token")).toMatch(
+      /세션이 만료/,
+    );
+  });
+
   it("falls back to raw code for unknown errors", () => {
     expect(formatPublishErrorCodeForUser("custom_operator_code")).toBe("custom_operator_code");
   });

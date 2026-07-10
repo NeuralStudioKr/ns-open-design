@@ -90,8 +90,30 @@ async def _refresh_apps_tokens_coalesced(refresh_token: str) -> dict[str, Any]:
             _refresh_inflight.pop(key, None)
 
 
+def _access_token_jwt_exp_unverified(access_token: str) -> float | None:
+    raw = (access_token or "").strip()
+    if raw.count(".") != 2:
+        return None
+    try:
+        claims = jwt.decode(raw, options={"verify_signature": False})
+        if not isinstance(claims, dict):
+            return None
+        exp = claims.get("exp")
+        if isinstance(exp, (int, float)):
+            return float(exp)
+    except jwt.InvalidTokenError:
+        return None
+    return None
+
+
 def _session_needs_refresh(session: BffSession) -> bool:
-    return session.access_expires_at - time.time() <= _ACCESS_REFRESH_SKEW_SECONDS
+    now = time.time()
+    if session.access_expires_at - now <= _ACCESS_REFRESH_SKEW_SECONDS:
+        return True
+    jwt_exp = _access_token_jwt_exp_unverified(session.access_token)
+    if jwt_exp is not None and jwt_exp - now <= _ACCESS_REFRESH_SKEW_SECONDS:
+        return True
+    return False
 
 
 def _apply_refresh_payload(request: Request, session: BffSession, data: dict[str, Any]) -> BffSession | None:
