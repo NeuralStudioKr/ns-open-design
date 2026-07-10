@@ -8,6 +8,7 @@ import {
   buildDeckGuizangPrintFallbackCss,
   buildDeckPrintCss,
   buildDeckScreenExportCss,
+  buildDeckHtmlExportScreenCss,
   chromiumExecutableCandidates,
   chromiumLaunchArgs,
   chromiumRuntimeEnv,
@@ -383,6 +384,25 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
     expect(screenCss).not.toContain('background: #fff !important');
     expect(screenCss).toContain('print-color-adjust: exact');
+  });
+
+  it('buildDeckHtmlExportScreenCss uses viewport scaling instead of print flatten', () => {
+    const css = buildDeckHtmlExportScreenCss();
+    expect(css).toContain('zoom: var(--od-html-export-scale, 1) !important');
+    expect(css).toContain('width: 100% !important');
+    expect(css).not.toContain('display: contents !important');
+    expect(css).not.toContain('break-after: page !important');
+  });
+
+  it('applyHtmlDeckExportStyles uses html screen layout helpers', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('buildDeckHtmlExportScreenCss');
+    expect(source).toContain('buildDeckHtmlExportFinalizeLayoutJs');
+    expect(source).toContain('data-od-html-export-screen');
+    expect(source).toContain('data-od-html-export-viewport');
   });
 
   it('exports shared deck wrapper and chrome hide selectors', () => {

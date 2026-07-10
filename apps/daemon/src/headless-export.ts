@@ -9,6 +9,9 @@ import {
   buildDeckSlideExportLayoutHelperJs,
   buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
   buildDeckGuizangPrintFallbackCss as buildSharedDeckGuizangPrintFallbackCss,
+  buildDeckHtmlExportScreenCss as buildSharedDeckHtmlExportScreenCss,
+  buildDeckHtmlExportViewportScript as buildSharedDeckHtmlExportViewportScript,
+  buildDeckHtmlExportFinalizeLayoutJs as buildSharedDeckHtmlExportFinalizeLayoutJs,
   buildDeckPrintCss as buildSharedDeckPrintCss,
 } from '@open-design/contracts';
 
@@ -102,7 +105,12 @@ export function buildDeckGuizangPrintFallbackCss(): string {
   return buildSharedDeckGuizangPrintFallbackCss();
 }
 
-/** Screen-visible flatten rules for standalone HTML deck downloads. */
+/** Screen-visible layout rules for standalone HTML deck downloads. */
+export function buildDeckHtmlExportScreenCss(): string {
+  return buildSharedDeckHtmlExportScreenCss();
+}
+
+/** Print flatten rules (PDF path) — not used for standalone HTML downloads. */
 export function buildDeckScreenExportCss(): string {
   return buildDeckFlattenCssRules();
 }
@@ -1146,8 +1154,8 @@ async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
 }
 
 async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
-  await page.addStyleTag({
-    content: `
+  await page.evaluate(buildSharedDeckHtmlExportFinalizeLayoutJs());
+  const css = `
       html, body {
         margin: 0 !important;
         scrollbar-width: none !important;
@@ -1155,9 +1163,27 @@ async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
         print-color-adjust: exact !important;
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      ${buildDeckScreenExportCss()}
-    `,
-  });
+      ${buildDeckHtmlExportScreenCss()}
+    `;
+  const script = buildSharedDeckHtmlExportViewportScript();
+  await page.evaluate(
+    `(function (css, scriptText) {
+      var existingStyle = document.querySelector('style[data-od-html-export-screen]');
+      if (existingStyle) existingStyle.remove();
+      var style = document.createElement('style');
+      style.setAttribute('data-od-html-export-screen', '1');
+      style.type = 'text/css';
+      style.textContent = css;
+      document.head.appendChild(style);
+
+      var existingScript = document.querySelector('script[data-od-html-export-viewport]');
+      if (existingScript) existingScript.remove();
+      var viewportScript = document.createElement('script');
+      viewportScript.setAttribute('data-od-html-export-viewport', '1');
+      viewportScript.textContent = scriptText;
+      document.body.appendChild(viewportScript);
+    })(${JSON.stringify(css)}, ${JSON.stringify(script)})`,
+  );
 }
 
 async function inlineRenderedResources(page: Page): Promise<void> {
