@@ -196,14 +196,32 @@ export function buildDeckHtmlExportViewportScript(): string {
 (function () {
   var SLIDE_W = ${DECK_EXPORT_WIDTH};
   var PAD = 48;
+  function viewportWidth() {
+    if (window.visualViewport && window.visualViewport.width > 0) {
+      return window.visualViewport.width;
+    }
+    return window.innerWidth || document.documentElement.clientWidth || SLIDE_W;
+  }
   function fit() {
-    var scale = Math.min(1, (window.innerWidth - PAD) / SLIDE_W);
+    var scale = Math.min(1, (viewportWidth() - PAD) / SLIDE_W);
     if (!isFinite(scale) || scale <= 0) scale = 1;
     document.documentElement.style.setProperty('--od-html-export-scale', String(scale));
   }
   fit();
   window.addEventListener('resize', fit);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fit);
+  }
 })();`;
+}
+
+/** Append viewport-fit script for standalone HTML downloads (runs in the user's browser). */
+export function injectDeckHtmlExportViewportScript(doc: string): string {
+  const script = `<script data-od-html-export-viewport>${buildDeckHtmlExportViewportScript()}</script>`;
+  if (/<\/body\s*>/i.test(doc)) {
+    return doc.replace(/<\/body\s*>/i, `${script}</body>`);
+  }
+  return `${doc}${script}`;
 }
 
 /** Clears print-flatten inline styles baked in by revealAllDeckSlides. */
@@ -218,6 +236,7 @@ export function buildDeckHtmlExportFinalizeLayoutJs(): string {
     unset(document.body, prop);
   });
   unset(document.documentElement, '--deck-scale');
+  unset(document.documentElement, '--od-html-export-scale');
   unset(document.body, 'transform');
   unset(document.body, 'scroll-snap-type');
   document.querySelectorAll('${wrappers}').forEach(function (el) {

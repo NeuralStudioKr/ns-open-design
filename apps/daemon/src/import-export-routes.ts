@@ -1,5 +1,9 @@
 import type { Express } from 'express';
-import { PROJECT_EXPORT_MANIFEST_SCHEMA, patchArtifactDeckPrintCss } from '@open-design/contracts';
+import {
+  PROJECT_EXPORT_MANIFEST_SCHEMA,
+  injectDeckHtmlExportViewportScript,
+  patchArtifactDeckPrintCss,
+} from '@open-design/contracts';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import JSZip from 'jszip';
@@ -17,7 +21,6 @@ import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
   buildDeckHtmlExportScreenCss,
   buildDeckHtmlExportStaticRevealScript,
-  buildDeckHtmlExportViewportScript,
   isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessImage,
@@ -242,9 +245,9 @@ html, body {
 ${buildDeckHtmlExportScreenCss()}
 </style>`;
   const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
-  const viewportScript = `<script data-od-html-export-viewport>${buildDeckHtmlExportViewportScript()}</script>`;
   const withHead = injectExportSnippetIntoHead(cleaned, style);
-  return injectExportSnippetBeforeBodyClose(withHead, `${revealScript}${viewportScript}`);
+  const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
+  return injectDeckHtmlExportViewportScript(withReveal);
 }
 
 export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';

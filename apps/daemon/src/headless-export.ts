@@ -12,6 +12,7 @@ import {
   buildDeckHtmlExportScreenCss as buildSharedDeckHtmlExportScreenCss,
   buildDeckHtmlExportViewportScript as buildSharedDeckHtmlExportViewportScript,
   buildDeckHtmlExportFinalizeLayoutJs as buildSharedDeckHtmlExportFinalizeLayoutJs,
+  injectDeckHtmlExportViewportScript as injectSharedDeckHtmlExportViewportScript,
   buildDeckHtmlExportStaticRevealScript as buildSharedDeckHtmlExportStaticRevealScript,
   buildDeckPrintCss as buildSharedDeckPrintCss,
 } from '@open-design/contracts';
@@ -484,7 +485,11 @@ export async function renderHeadlessHtmlSnapshot(
           await applySnapshotStyles(page, false);
         }
         await inlineRenderedResources(page);
-        return await page.content();
+        let html = await page.content();
+        if (options.input.deck) {
+          html = injectSharedDeckHtmlExportViewportScript(html);
+        }
+        return html;
       } finally {
         await page.close().catch(() => {});
       }
@@ -1174,9 +1179,8 @@ async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${buildDeckHtmlExportScreenCss()}
     `;
-  const script = buildSharedDeckHtmlExportViewportScript();
   await page.evaluate(
-    `(function (css, scriptText) {
+    `(function (css) {
       var existingStyle = document.querySelector('style[data-od-html-export-screen]');
       if (existingStyle) existingStyle.remove();
       var style = document.createElement('style');
@@ -1184,14 +1188,7 @@ async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
       style.type = 'text/css';
       style.textContent = css;
       document.head.appendChild(style);
-
-      var existingScript = document.querySelector('script[data-od-html-export-viewport]');
-      if (existingScript) existingScript.remove();
-      var viewportScript = document.createElement('script');
-      viewportScript.setAttribute('data-od-html-export-viewport', '1');
-      viewportScript.textContent = scriptText;
-      document.body.appendChild(viewportScript);
-    })(${JSON.stringify(css)}, ${JSON.stringify(script)})`,
+    })(${JSON.stringify(css)})`,
   );
 }
 

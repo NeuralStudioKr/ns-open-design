@@ -7,6 +7,7 @@ import {
   buildDeckHtmlExportScreenCss,
   buildDeckHtmlExportStaticRevealScript,
   buildDeckHtmlExportViewportScript,
+  injectDeckHtmlExportViewportScript,
   buildDeckHtmlExportFinalizeLayoutJs,
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
@@ -185,7 +186,18 @@ describe('buildDeckHtmlExportViewportScript', () => {
     const script = buildDeckHtmlExportViewportScript();
     expect(script).toContain('--od-html-export-scale');
     expect(script).toContain('window.addEventListener(\'resize\'');
+    expect(script).toContain('visualViewport');
     expect(script).toContain('1920');
+  });
+});
+
+describe('injectDeckHtmlExportViewportScript', () => {
+  it('appends viewport script before </body> without executing during export', () => {
+    const html = '<html><head></head><body><section class="slide"></section></body></html>';
+    const out = injectDeckHtmlExportViewportScript(html);
+    expect(out).toContain('data-od-html-export-viewport');
+    expect(out.indexOf('data-od-html-export-viewport')).toBeGreaterThan(out.indexOf('<section'));
+    expect(out).toContain('</body>');
   });
 });
 
@@ -195,6 +207,7 @@ describe('buildDeckHtmlExportFinalizeLayoutJs', () => {
     expect(script).toContain('removeProperty');
     expect(script).toContain('break-after');
     expect(script).toContain('meta[name="viewport"]');
+    expect(script).toContain('--od-html-export-scale');
   });
 });
 

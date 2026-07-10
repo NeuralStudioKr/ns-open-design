@@ -415,7 +415,20 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain('buildDeckHtmlExportScreenCss');
     expect(source).toContain('buildDeckHtmlExportFinalizeLayoutJs');
     expect(source).toContain('data-od-html-export-screen');
-    expect(source).toContain('data-od-html-export-viewport');
+    expect(source).toContain('injectSharedDeckHtmlExportViewportScript');
+    expect(source).not.toMatch(
+      /applyHtmlDeckExportStyles[\s\S]{0,800}data-od-html-export-viewport/,
+    );
+  });
+
+  it('renderHeadlessHtmlSnapshot injects viewport script after inline asset pass', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toMatch(
+      /inlineRenderedResources\(page\)[\s\S]{0,200}injectSharedDeckHtmlExportViewportScript\(html\)/,
+    );
   });
 
   it('exports shared deck wrapper and chrome hide selectors', () => {
