@@ -9,7 +9,7 @@
 //     sits flush with the other footer options.
 // The popover body is identical for both variants.
 //
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { DesignSystemSummary } from '@open-design/contracts';
@@ -18,8 +18,10 @@ import {
   localizeDesignSystemCategory,
   localizeDesignSystemSummary,
 } from '../i18n/content';
-import { fetchDesignSystemPreview } from '../providers/registry';
+import { fetchDesignSystemPreviewResult } from '../providers/registry';
 import { Icon } from './Icon';
+
+type PreviewPaneState = 'loading' | 'ready' | 'not_found' | 'retryable';
 
 interface PopoverAnchor {
   left: number;
@@ -67,7 +69,8 @@ export function DesignSystemPicker({
   // target (hovered), so its right-pane blurb shows instead of a system preview.
   const [hoveredNone, setHoveredNone] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewPaneState, setPreviewPaneState] = useState<PreviewPaneState | null>(null);
+  const previewLoadTokenRef = useRef(0);
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const requestedDesignSystemsRef = useRef(false);
 
@@ -179,31 +182,40 @@ export function DesignSystemPicker({
     else previewNone = true;
   }
 
-  useEffect(() => {
-    if (!previewSystem) {
-      setPreviewHtml(null);
-      setPreviewLoading(false);
+  const loadPreview = useCallback(async (systemId: string, attempt = 0) => {
+    const token = ++previewLoadTokenRef.current;
+    setPreviewPaneState('loading');
+    setPreviewHtml(null);
+    const result = await fetchDesignSystemPreviewResult(systemId);
+    if (token !== previewLoadTokenRef.current) return;
+    if (result.ok) {
+      setPreviewHtml(result.html);
+      setPreviewPaneState('ready');
       return;
     }
-    let cancelled = false;
-    setPreviewLoading(true);
-    void fetchDesignSystemPreview(previewSystem.id)
-      .then((html) => {
-        if (cancelled) return;
-        setPreviewHtml(html);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPreviewHtml(null);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setPreviewLoading(false);
-      });
+    if (result.reason === 'unauthorized' && attempt < 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 900));
+      if (token !== previewLoadTokenRef.current) return;
+      return loadPreview(systemId, attempt + 1);
+    }
+    setPreviewHtml(null);
+    setPreviewPaneState(
+      result.reason === 'not_found' ? 'not_found' : 'retryable',
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!previewSystem) {
+      previewLoadTokenRef.current += 1;
+      setPreviewHtml(null);
+      setPreviewPaneState(null);
+      return;
+    }
+    void loadPreview(previewSystem.id);
     return () => {
-      cancelled = true;
+      previewLoadTokenRef.current += 1;
     };
-  }, [previewSystem?.id]);
+  }, [loadPreview, previewSystem?.id]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -367,13 +379,13 @@ export function DesignSystemPicker({
                         ))}
                       </div>
                     ) : null}
-                    {previewLoading ? (
+                    {previewPaneState === 'loading' ? (
                       <div className="project-ds-picker-preview-stage">
                         <div className="project-ds-picker-preview-loading">
                           {t('designSystemPicker.loadingPreview')}
                         </div>
                       </div>
-                    ) : previewHtml ? (
+                    ) : previewPaneState === 'ready' && previewHtml ? (
                       <div className="project-ds-picker-preview-stage">
                         <iframe
                           className="project-ds-picker-preview-frame"
@@ -395,10 +407,30 @@ export function DesignSystemPicker({
                           <span>{t('designSystemPicker.openPreview')}</span>
                         </button>
                       </div>
+                    ) : previewPaneState === 'not_found' ? (
+                      <div className="project-ds-picker-preview-stage">
+                        <div className="project-ds-picker-preview-empty">
+                          {t('designSystemPicker.previewUnavailable')}
+                        </div>
+                      </div>
+                    ) : previewPaneState === 'retryable' ? (
+                      <div className="project-ds-picker-preview-stage">
+                        <div className="project-ds-picker-preview-empty">
+                          <p>{t('designSystemPicker.previewLoadFailed')}</p>
+                          <button
+                            type="button"
+                            className="project-ds-picker-preview-retry"
+                            data-testid="project-ds-picker-preview-retry"
+                            onClick={() => void loadPreview(previewSystem.id)}
+                          >
+                            {t('designSystemPicker.previewRetry')}
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div className="project-ds-picker-preview-stage">
                         <div className="project-ds-picker-preview-empty">
-                          {t('designSystemPicker.noPreview')}
+                          {t('designSystemPicker.previewHint')}
                         </div>
                       </div>
                     )}
