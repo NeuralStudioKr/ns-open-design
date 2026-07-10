@@ -414,6 +414,23 @@ describe("agent-prose-sanitize SSOT", () => {
     }
   });
 
+  it("strips orphan deck navigation tail fragments from reloaded history", () => {
+    const leaked = [
+      "var total = document.getElementById('deck-total'); } catch (_) {} } {",
+      "var saved = parseInt(localStorage.getItem(STORE) || '0', 10);",
+      "if (!isNaN(saved) && saved >= 0 && saved < slides.length) idx = saved;",
+      "} catch (_) {}",
+    ].join("\n");
+
+    for (const streaming of [false, true] as const) {
+      const out = sanitizeAssistantProseForDisplay(leaked, { streaming });
+      expect(out, `streaming=${streaming}`).toBe("");
+      expect(out).not.toContain("deck-total");
+      expect(out).not.toContain("localStorage");
+      expect(out).not.toContain("slides.length");
+    }
+  });
+
   it("keeps trailing user prose after a mangled deck-framework body closes with `})();`", () => {
     const visibleProse = "요청하신 덱을 이어서 다듬겠습니다.";
     const input = [

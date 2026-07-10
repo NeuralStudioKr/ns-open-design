@@ -201,6 +201,27 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.events ?? []).toEqual([]);
   });
 
+  it("strips orphan deck navigation tail fragments from persisted content and events", () => {
+    const leaked = [
+      "var total = document.getElementById('deck-total'); } catch (_) {} } {",
+      "var saved = parseInt(localStorage.getItem(STORE) || '0', 10);",
+      "if (!isNaN(saved) && saved >= 0 && saved < slides.length) idx = saved;",
+      "} catch (_) {}",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "m-deck-tail-fragment",
+      role: "assistant",
+      content: leaked,
+      events: [{ kind: "text", text: leaked }],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("");
+    expect(sanitized.content).not.toContain("deck-total");
+    expect(sanitized.content).not.toContain("localStorage");
+    expect(sanitized.events ?? []).toEqual([]);
+  });
+
   it("does not mutate persisted deck plan prose that contains no script leak", () => {
     const planText = [
       "요청하신 8장짜리 덱을 바로 만들겠습니다.",
