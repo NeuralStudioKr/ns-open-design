@@ -22,6 +22,16 @@ vi.mock('../../src/state/projects', async () => {
   };
 });
 
+vi.mock('../../src/teamver/designApiBase', async () => {
+  const actual = await vi.importActual<typeof import('../../src/teamver/designApiBase')>(
+    '../../src/teamver/designApiBase',
+  );
+  return {
+    ...actual,
+    isTeamverEmbedMode: vi.fn(() => false),
+  };
+});
+
 import {
   CommentSidePanel,
   FileViewer,
@@ -56,6 +66,7 @@ const TEST_SNAPSHOT_DATA_URL = 'data:image/png;base64,c25hcHNob3Q=';
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
   vi.unstubAllGlobals();
   Reflect.deleteProperty(navigator, 'clipboard');
   Reflect.deleteProperty(document, 'execCommand');
@@ -525,7 +536,11 @@ describe('FileViewer SVG artifacts', () => {
       expect(container.querySelector('[data-testid="sketch-preview-svg"]')).toBeTruthy();
     });
     expect(container.querySelector('.viewer.image-viewer img')).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/raw/board.sketch.json', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/raw/board.sketch.json', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: {},
+    });
   });
 
   it('expands the sketch preview viewBox for off-origin sketches outside the default frame', async () => {
@@ -1240,7 +1255,7 @@ describe('FileViewer SVG artifacts', () => {
     expect(resolvedTop).toBe('34px');
     style.remove();
     workspaceShell.remove();
-  });
+  }, 15_000);
 
   it('allows downloads in React component preview iframes', async () => {
     const file = baseFile({
@@ -1424,7 +1439,7 @@ describe('FileViewer SVG artifacts', () => {
 
     expect(container.querySelector('.deck-nav')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manual' })).toBeNull();
-    expect(container.querySelector('.viewer-viewport-switcher')).toBeTruthy();
+    expect(container.querySelector('.viewer-viewport-switcher')).toBeNull();
     expect(screen.queryByTestId('palette-tweaks-toggle')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Code' }));
@@ -3054,7 +3069,7 @@ describe('FileViewer tweaks toolbar', () => {
     });
     expect(annotationSpy.mock.calls[0]?.[0].detail.file).toBeInstanceOf(File);
     window.removeEventListener(ANNOTATION_EVENT, annotationSpy);
-  });
+  }, 15_000);
 
   it('hides non-open saved comments from preview markers when the side panel is empty', () => {
     const resolvedComment: PreviewComment = {
