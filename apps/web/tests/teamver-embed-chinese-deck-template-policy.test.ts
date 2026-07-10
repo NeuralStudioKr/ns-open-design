@@ -14,6 +14,9 @@ import { pluginsForSlideOnlyMvp } from '../src/teamver/branding/slideOnlyMvpPoli
 describe('embedChineseDeckTemplatePolicy', () => {
   it('resolves bundled example plugin ids to canonical template ids', () => {
     expect(resolveChineseDeckTemplateId('example-guizang-ppt')).toBe('magazine-web-ppt');
+    expect(resolveChineseDeckTemplateId('example-deck-guizang-editorial')).toBe(
+      'deck-guizang-editorial',
+    );
     expect(resolveChineseDeckTemplateId('example-html-ppt-presenter-mode-reveal')).toBe(
       'html-ppt-presenter-mode',
     );
@@ -84,6 +87,14 @@ describe('pluginsForSlideOnlyMvp chinese deck gate', () => {
       {
         id: 'example-guizang-ppt',
         manifest: { name: 'example-guizang-ppt', version: '1.0.0', od: { mode: 'deck' } },
+      },
+      {
+        id: 'example-deck-guizang-editorial',
+        manifest: {
+          name: 'example-deck-guizang-editorial',
+          version: '1.0.0',
+          od: { mode: 'deck' },
+        },
       },
       {
         id: 'example-simple-deck',

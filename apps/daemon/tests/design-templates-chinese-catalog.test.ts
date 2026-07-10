@@ -26,7 +26,7 @@ describe('design-templates-chinese-catalog', () => {
       { id: 'simple-deck', contentLocale: null },
       { id: 'html-ppt-tech-sharing', contentLocale: 'zh-CN' },
     ];
-    const plugins = [{ id: 'example-simple-deck' }, { id: 'example-guizang-ppt' }];
+    const plugins = [{ id: 'example-simple-deck' }, { id: 'example-guizang-ppt' }, { id: 'example-deck-guizang-editorial' }];
     expect(filterDesignTemplatesExcludingChinesePrimary(templates, true).map((t) => t.id)).toEqual([
       'simple-deck',
     ]);

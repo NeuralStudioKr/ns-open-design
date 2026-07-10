@@ -21,6 +21,7 @@ example_source_url: "https://github.com/op7418/guizang-ppt-skill"
 example_source_label: "op7418/guizang-ppt-skill"
 od:
   mode: deck
+  content_locale: zh-CN
   surface: web
   scenario: marketing
   featured: 0.01

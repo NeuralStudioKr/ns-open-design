@@ -4,6 +4,8 @@
  */
 export const EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS = new Set([
   'magazine-web-ppt',
+  // Plugin-only guizang editorial variant (Community card: "Guizang 에디토리얼 E-Ink 덱").
+  'deck-guizang-editorial',
   'html-ppt-xhs-white-editorial',
   'html-ppt-presenter-mode',
   'html-ppt-testing-safety-alert',
@@ -19,8 +21,16 @@ export const EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS = new Set([
 /** Bundled example plugin id → canonical design-template id. */
 const EXAMPLE_PLUGIN_TO_TEMPLATE_ID: Record<string, string> = {
   'example-guizang-ppt': 'magazine-web-ppt',
+  'example-deck-guizang-editorial': 'deck-guizang-editorial',
   'example-html-ppt-presenter-mode-reveal': 'html-ppt-presenter-mode',
 };
+
+/** Guizang-origin deck family — preview demos are Chinese-centric (magazine-web-ppt fork). */
+export function isGuizangDeckFamilyTemplateId(templateId: string): boolean {
+  const id = templateId.trim().toLowerCase();
+  if (!id) return false;
+  return id === 'magazine-web-ppt' || id.includes('guizang');
+}
 
 export function resolveChineseDeckTemplateId(id: string): string {
   const trimmed = id.trim();
@@ -45,7 +55,8 @@ export function isChinesePrimaryDeckTemplate(
 ): boolean {
   if (isChinesePrimaryDeckContentLocale(ref.contentLocale)) return true;
   const templateId = resolveChineseDeckTemplateId(ref.id);
-  return EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS.has(templateId);
+  if (EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS.has(templateId)) return true;
+  return isGuizangDeckFamilyTemplateId(templateId);
 }
 
 export function filterCatalogExcludingChinesePrimaryDeckTemplates<
