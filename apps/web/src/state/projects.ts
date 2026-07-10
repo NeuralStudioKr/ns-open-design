@@ -201,7 +201,7 @@ export async function getProject(id: string): Promise<Project | null> {
       const json = (await resp.json()) as { project: Project };
       return sanitizeProjectForEmbed(json.project);
     }
-    if (isTeamverEmbedMode() && resp.status === 404) {
+    if (isTeamverEmbedMode()) {
       const row = await fetchTeamverProject(id);
       if (row) return mapRegistryRowToProject(row);
     }

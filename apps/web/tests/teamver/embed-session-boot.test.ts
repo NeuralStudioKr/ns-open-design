@@ -29,6 +29,14 @@ describe("teamver embed session boot", () => {
       "if (!isTeamverEmbedMode() && !projects.length && !daemonLive) return;",
     );
   });
+
+  it("does not leave direct project deep links on the loading shell when hydration throws", () => {
+    const app = readFileSync(resolve(webRoot, "src/App.tsx"), "utf8");
+    expect(app).toContain("deep-linked project registry preflight failed");
+    expect(app).toContain("deep-linked project access check failed");
+    expect(app).toContain("deep-linked project hydration failed");
+    expect(app).toContain("direct file links do not");
+  });
 });
 
 describe("embed bootstrap gate boot fallback", () => {

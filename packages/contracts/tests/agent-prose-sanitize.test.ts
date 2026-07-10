@@ -431,6 +431,63 @@ describe("agent-prose-sanitize SSOT", () => {
     }
   });
 
+  it("strips deck navigation middle fragments from reloaded history", () => {
+    const cases = [
+      [
+        [
+          "var cur = document.getElementById('deck-cur');",
+          "var next = document.getElementById('deck-next');",
+          "function paint() {",
+          "slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });",
+          "if (cur) cur.textContent = pad2(idx + 1);",
+          "if (total) total.textContent = pad2(slides.length);",
+          "}",
+        ].join("\n"),
+        ["deck-cur", "slides.forEach", "slides.length"],
+      ],
+      [
+        [
+          "function go(i) {",
+          "idx = Math.max(0, Math.min(slides.length - 1, i));",
+          "paint();",
+          "try { localStorage.setItem(STORE, String(idx)); } catch (_) {}",
+          "}",
+        ].join("\n"),
+        ["Math.max", "localStorage"],
+      ],
+      [
+        [
+          "function onKey(e) {",
+          "if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(idx + 1); }",
+          "else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(idx - 1); }",
+          "}",
+        ].join("\n"),
+        ["ArrowRight", "PageUp"],
+      ],
+      [
+        [
+          "document.body.setAttribute('tabindex', '-1');",
+          "document.body.style.outline = 'none';",
+          "window.addEventListener('load', focusDeck);",
+          "fit();",
+          "paint();",
+          "focusDeck();",
+        ].join("\n"),
+        ["tabindex", "focusDeck"],
+      ],
+    ] as const;
+
+    for (const [leaked, forbidden] of cases) {
+      for (const streaming of [false, true] as const) {
+        const out = sanitizeAssistantProseForDisplay(leaked, { streaming });
+        expect(out, `${forbidden.join(",")} streaming=${streaming}`).toBe("");
+        for (const token of forbidden) {
+          expect(out).not.toContain(token);
+        }
+      }
+    }
+  });
+
   it("keeps trailing user prose after a mangled deck-framework body closes with `})();`", () => {
     const visibleProse = "요청하신 덱을 이어서 다듬겠습니다.";
     const input = [
