@@ -1015,6 +1015,27 @@ export async function listPlugins(
   return (await listPluginsPage(options)).plugins;
 }
 
+export async function getInstalledPlugin(
+  pluginId: string,
+  options: Pick<ListPluginsOptions, 'includeHidden'> = {},
+): Promise<InstalledPluginRecord | null> {
+  const id = pluginId.trim();
+  if (!id) return null;
+  try {
+    const resp = await fetch(`/api/plugins/${encodeURIComponent(id)}`);
+    if (!resp.ok) return null;
+    const plugin = (await resp.json()) as InstalledPluginRecord;
+    if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
+      const visible = pluginsForSlideOnlyMvp([plugin], { slideOnlyMvp: true });
+      if (visible.length === 0) return null;
+    }
+    if (!options.includeHidden && !isVisiblePlugin(plugin)) return null;
+    return plugin;
+  } catch {
+    return null;
+  }
+}
+
 export async function listPluginsPage(
   options: ListPluginsOptions = {},
 ): Promise<ListPluginsPageResult> {

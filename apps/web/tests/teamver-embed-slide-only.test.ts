@@ -96,6 +96,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     const designTemplatesSection = readSource('src/components/DesignTemplatesSection.tsx');
     const app = readSource('src/App.tsx');
     const homeView = readSource('src/components/HomeView.tsx');
+    const projectView = readSource('src/components/ProjectView.tsx');
 
     expect(homeHero).toContain('homeHeroChipsForGroup');
     expect(homeHero).toContain('hideComposerIntegrations');
@@ -115,6 +116,10 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(chatComposer).toContain('importTeamverDriveAssets');
     expect(app).toContain("fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined)");
     expect(homeView).toContain('listPluginsPage');
+    expect(homeView).toContain('getInstalledPlugin');
+    expect(projectView).toContain('resolveArtifactPersistFileName');
+    expect(projectView).toContain('artifactVersionTabsToClose');
+    expect(homeView).toContain('pluginIdsBoundToHomeHeroChips');
     expect(homeView).toContain('HOME_COMMUNITY_PLUGIN_PAGE_SIZE');
     expect(homeView).toContain('query: communityPluginQuery.trim()');
     expect(homeView).not.toContain('void listPlugins().then((rows) =>');

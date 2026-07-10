@@ -8853,8 +8853,23 @@ function HtmlViewer({
                       ].filter(Boolean).join(' ')}
                     >
                       {showStreamingPreviewVeil ? (
-                        <div className="artifact-preview-streaming-veil" role="status">
-                          {t('fileViewer.updatingPreview')}
+                        <div
+                          className="artifact-preview-streaming-veil"
+                          role="status"
+                          aria-live="polite"
+                          data-testid="artifact-preview-streaming-veil"
+                        >
+                          <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                          <div className="artifact-preview-streaming-veil__card">
+                            <Icon
+                              name="spinner"
+                              size={18}
+                              className="artifact-preview-streaming-veil__icon"
+                            />
+                            <span className="artifact-preview-streaming-veil__label">
+                              {t('fileViewer.updatingPreview')}
+                            </span>
+                          </div>
                         </div>
                       ) : null}
                       {OD_PREVIEW_KEEP_ALIVE ? (

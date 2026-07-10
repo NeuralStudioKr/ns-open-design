@@ -120,7 +120,7 @@ interface Props {
   streaming?: boolean;
   commentQueueOnSend?: boolean;
   commentSendDisabled?: boolean;
-  openRequest?: { name: string; nonce: number } | null;
+  openRequest?: { name: string; nonce: number; closeTabs?: string[] } | null;
   // Open the named file AND surface its Share/Export menu. Drives the chat-side
   // "Share" next-step action without a dedicated share backend.
   shareRequest?: { name: string; nonce: number } | null;
@@ -756,6 +756,7 @@ export function FileWorkspace({
     if (!openRequest) return;
     const name = openRequest.name;
     if (!name) return;
+    const closeTabSet = new Set(openRequest.closeTabs ?? []);
     if (name === DESIGN_FILES_TAB || name === DESIGN_SYSTEM_TAB) {
       const nextActive =
         name === DESIGN_SYSTEM_TAB && !designSystemProject
@@ -770,13 +771,16 @@ export function FileWorkspace({
       setActiveTab(name);
       return;
     }
-    const isNewTab = !persistedTabs.includes(name);
+    const tabsAfterClose = closeTabSet.size > 0
+      ? persistedTabs.filter((tab) => !closeTabSet.has(tab))
+      : persistedTabs;
+    const isNewTab = !tabsAfterClose.includes(name);
     const nextBrowserTabs = isNewTab
       ? reanchorBrowserTabsToCurrentOrder(orderedWorkspaceTabs, browserTabs)
       : browserTabs;
     if (nextBrowserTabs !== browserTabs) setBrowserTabs(nextBrowserTabs);
     onTabsStateChange(workspaceTabsState(
-      isNewTab ? [...persistedTabs, name] : persistedTabs,
+      isNewTab ? [...tabsAfterClose, name] : tabsAfterClose,
       name,
       nextBrowserTabs,
     ));

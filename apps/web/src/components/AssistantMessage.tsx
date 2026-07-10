@@ -61,7 +61,7 @@ import {
 import type { Dict } from "../i18n/types";
 import { agentDisplayName, agentIconId, exactAgentDisplayName } from "../utils/agentLabels";
 import { AgentIcon } from "./AgentIcon";
-import { filterImplicitProducedFiles } from "../produced-files";
+import { filterImplicitProducedFiles, constrainProducedFilesToTurnBaseline } from "../produced-files";
 import type {
   AgentEvent,
   ChatMessage,
@@ -480,9 +480,13 @@ function AssistantMessageImpl({
   const produced = message.producedFiles ?? [];
   const displayedProduced = useMemo(
     () => {
+      const turnScoped = constrainProducedFilesToTurnBaseline(
+        produced,
+        message.preTurnFileNames,
+      );
       const base =
         produced.length > 0
-          ? produced
+          ? turnScoped
           : inferProducedFilesFromTurn({
               message,
               projectFiles,

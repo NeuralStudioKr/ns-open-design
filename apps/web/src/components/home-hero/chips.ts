@@ -234,3 +234,19 @@ export function chipsForGroup(group: ChipGroup): HomeHeroChip[] {
 export function findChip(id: string): HomeHeroChip | undefined {
   return HOME_HERO_CHIPS.find((c) => c.id === id);
 }
+
+/** Plugin ids the hero chip rail can dispatch to (for direct lookup outside paginated Community lists). */
+export function pluginIdsBoundToHomeHeroChips(
+  chips: readonly HomeHeroChip[],
+): string[] {
+  const ids = new Set<string>();
+  for (const chip of chips) {
+    if (
+      chip.action.kind === 'apply-scenario'
+      || chip.action.kind === 'apply-figma-migration'
+    ) {
+      ids.add(chip.action.pluginId);
+    }
+  }
+  return [...ids];
+}

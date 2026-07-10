@@ -177,7 +177,10 @@ import {
   queuedSlideNavTarget,
   removeAttachedComment,
 } from '../comments';
-import { filterImplicitProducedFiles } from '../produced-files';
+import {
+  computeProducedFiles,
+  resolveTurnStartFileBaseline,
+} from '../produced-files';
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -241,6 +244,10 @@ import {
   decideAutoOpenAfterWrite,
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
+import {
+  artifactVersionTabsToClose,
+  resolveArtifactPersistFileName,
+} from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
 import { collectReferencedJsxNames } from '../runtime/jsx-module-refs';
 import { FileWorkspace } from './FileWorkspace';
@@ -1269,11 +1276,19 @@ export function ProjectView({
   const tabsLoadedRef = useRef(false);
   const tabsHydratedFromSavedStateRef = useRef(false);
   const hasAppliedInitialPrimaryOpenRef = useRef(false);
+  const openTabsStateRef = useRef(openTabsState);
+  useEffect(() => {
+    openTabsStateRef.current = openTabsState;
+  }, [openTabsState]);
   // Routed to FileWorkspace — bumped whenever the user clicks "open" on a
   // tool card, an attachment chip, or a produced-file chip in chat. We
   // include a nonce so re-clicking the same name after the user closed the
   // tab still focuses it.
-  const [openRequest, setOpenRequest] = useState<{ name: string; nonce: number } | null>(null);
+  const [openRequest, setOpenRequest] = useState<{
+    name: string;
+    nonce: number;
+    closeTabs?: string[];
+  } | null>(null);
   // Like `openRequest`, but additionally asks the preview workspace to open the
   // file's Share/Export menu. Drives the "Share" next-step action: it reuses the
   // existing export/deploy surface rather than introducing a new share backend.
@@ -2112,7 +2127,15 @@ export function ProjectView({
 
   const requestOpenFile = useCallback((name: string) => {
     if (!name) return;
-    setOpenRequest({ name, nonce: Date.now() });
+    const closeTabs = artifactVersionTabsToClose(
+      name,
+      openTabsStateRef.current.tabs,
+    );
+    setOpenRequest({
+      name,
+      nonce: Date.now(),
+      ...(closeTabs.length > 0 ? { closeTabs } : {}),
+    });
   }, []);
 
   const persistArtifact = useCallback(
@@ -2125,17 +2148,12 @@ export function ProjectView({
       const artifactToPersist = recoveredHtml ? { ...art, html: recoveredHtml } : art;
       const baseName = artifactBaseNameFor(art);
       const ext = artifactExtensionFor(art);
-      // Pick a name that doesn't collide with an existing project file.
-      // The first run uses `<base>.<ext>`; subsequent runs append `-2`, `-3`…
-      // so prior artifacts aren't silently overwritten.
       const currentProjectFiles = projectFilesSnapshot ?? projectFilesRef.current;
-      const existing = new Set(currentProjectFiles.map((f) => f.name));
-      let fileName = `${baseName}${ext}`;
-      let n = 2;
-      while (existing.has(fileName) && savedArtifactRef.current !== fileName) {
-        fileName = `${baseName}-${n}${ext}`;
-        n += 1;
-      }
+      const fileName = resolveArtifactPersistFileName(
+        artifactToPersist,
+        currentProjectFiles,
+        openTabsStateRef.current.active,
+      );
       if (ext === '.html') {
         const pointerTarget = resolveHtmlPointerArtifactTarget({
           content: artifactToPersist.html,
@@ -2721,7 +2739,10 @@ export function ProjectView({
       if (!message || message.role !== 'assistant' || isInFlightAssistantMessage(message)) continue;
       const produced = message.producedFiles?.length
         ? message.producedFiles
-        : computeProducedFiles(message.preTurnFileNames, filesSnapshot) ?? [];
+        : computeProducedFiles(
+            resolveTurnStartFileBaseline(message.preTurnFileNames, filesSnapshot),
+            filesSnapshot,
+          ) ?? [];
       const htmlToOpen = selectAutoOpenProducedHtml(produced);
       if (!htmlToOpen) continue;
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
@@ -3377,7 +3398,7 @@ export function ProjectView({
                 // Use the turn-start snapshot when available so reload
                 // recovers files produced before the artifact write too;
                 // fall back to the current list for legacy messages.
-                const beforeFileNames = new Set(preTurn ?? nextFiles.map((f) => f.name));
+                const beforeFileNames = resolveTurnStartFileBaseline(preTurn, nextFiles);
                 let recoveredExistingArtifact: ProjectFile | null = null;
                 const artifactToPersist = parsedArtifact?.html
                   ? parsedArtifact
@@ -4125,7 +4146,7 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
-      const preTurnFileNames = projectFiles.map((f) => f.name);
+      const preTurnFileNames = projectFilesRef.current.map((f) => f.name);
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -7495,14 +7516,7 @@ export function resolveSucceededRunStatus(status: ChatMessage['runStatus']): Cha
   return status === 'failed' || status === 'canceled' ? status : 'succeeded';
 }
 
-export function computeProducedFiles(
-  beforeNames: ReadonlySet<string> | readonly string[] | undefined,
-  next: readonly ProjectFile[],
-): ProjectFile[] | undefined {
-  if (!beforeNames) return undefined;
-  const set = beforeNames instanceof Set ? beforeNames : new Set(beforeNames);
-  return filterImplicitProducedFiles(next.filter((f) => !set.has(f.name)));
-}
+export { computeProducedFiles } from '../produced-files';
 
 // Reattach with a recovered (on-disk) artifact must still include any
 // other files the turn produced before the artifact write — replacing

@@ -36,6 +36,7 @@ import {
 } from '../analytics/events';
 import {
   applyPlugin,
+  getInstalledPlugin,
   listPluginsPage,
   renderPluginBriefTemplate,
   resolvePluginQueryFallback,
@@ -65,7 +66,7 @@ import { inlineMentionToken, mentionTokenPresent } from '../utils/inlineMentions
 import { smoothScrollToTop } from '../utils/smoothScrollToTop';
 import { missingRequiredInputs, pluginInputsAreValid } from '../utils/pluginRequiredInputs';
 import { HomeHero, type ExamplePromptInfo, type HomeHeroHandle } from './HomeHero';
-import { findChip, HOME_HERO_CHIPS, type HomeHeroChip } from './home-hero/chips';
+import { findChip, pluginIdsBoundToHomeHeroChips, type HomeHeroChip } from './home-hero/chips';
 import {
   buildHomeMediaComposer,
   homeMediaSurfaceForChipId,
@@ -93,6 +94,7 @@ import { AnimatePresence } from 'motion/react';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import {
   communityGalleryFacetUi,
+  homeHeroChipsForGroup,
   pluginsForSlideOnlyMvp,
   shouldShowHomeCommunityGallery,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
@@ -533,6 +535,46 @@ export function HomeView({
       setPluginsLoadingMore(false);
     });
   }, [communityPluginQuery, pluginsLoadingMore, pluginsNextOffset, slideOnlyMvp]);
+
+  const chipBoundPluginIds = useMemo(
+    () => pluginIdsBoundToHomeHeroChips([
+      ...homeHeroChipsForGroup('create', { slideOnlyMvp }),
+      ...homeHeroChipsForGroup('migrate', { slideOnlyMvp }),
+    ]),
+    [slideOnlyMvp],
+  );
+
+  const missingChipBoundPluginIds = useMemo(
+    () => chipBoundPluginIds.filter(
+      (id) => !plugins.some((plugin) => plugin.id === id),
+    ),
+    [chipBoundPluginIds, plugins],
+  );
+
+  useEffect(() => {
+    if (pluginsLoading || missingChipBoundPluginIds.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      missingChipBoundPluginIds.map((id) => getInstalledPlugin(id)),
+    ).then((records) => {
+      if (cancelled) return;
+      const resolved = records.filter((record): record is InstalledPluginRecord => record != null);
+      if (resolved.length === 0) return;
+      setPlugins((current) => {
+        const seen = new Set(current.map((plugin) => plugin.id));
+        const next = [...current];
+        for (const record of resolved) {
+          if (seen.has(record.id)) continue;
+          seen.add(record.id);
+          next.push(record);
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [missingChipBoundPluginIds, pluginsLoading]);
 
   useEffect(() => {
     if (hideComposerIntegrations) {
@@ -1495,6 +1537,69 @@ export function HomeView({
   // Pure UI-state mapping — the heavy lifting is delegated back to
   // existing handlers. Migration chips that don't have a bound plugin
   // (`open-template-picker`) forward to callbacks threaded in from EntryShell.
+  function applyChipBoundPlugin(
+    record: InstalledPluginRecord,
+    chip: HomeHeroChip & {
+      action: Extract<HomeHeroChip['action'], { kind: 'apply-scenario' } | { kind: 'apply-figma-migration' }>;
+    },
+  ) {
+    const mediaSurface = homeMediaSurfaceForChipId(chip.id);
+    if (mediaSurface) {
+      const composer = buildHomeMediaComposer(
+        mediaSurface,
+        promptTemplates,
+        chip.action.inputs,
+        elevenLabsVoices,
+        {
+          elevenLabsVoiceWarning,
+          elevenLabsVoicesLoading,
+          imageModels: composerImageModels,
+        },
+      );
+      requestActivePlugin(record, undefined, {
+        projectKind: composer.projectKind,
+        chipId: chip.id,
+        inputs: composer.inputs,
+        inputFields: composer.fields,
+        queryTemplate: composer.queryTemplate,
+        mediaSurface,
+        projectMetadata: metadataForHomeMediaComposer(mediaSurface, composer.inputs, promptTemplates),
+        editableInputNames: composer.editableFieldNames,
+        preserveInputFields: true,
+        // Media chips are a mode switch, just like Prototype and
+        // Slide deck: they no longer surface inline model/ratio/duration
+        // settings (the agent asks for those during the run), and they
+        // leave the textarea alone until the user picks a concrete
+        // template/preset or types their own prompt.
+        suppressPromptUpdate: true,
+        replaceWithoutConfirmation: true,
+      });
+      return;
+    }
+    const pluginOptions = {
+      projectKind: chip.action.projectKind,
+      chipId: chip.id,
+      inputs: chip.action.inputs,
+      projectMetadata: chip.action.projectMetadata ?? null,
+    };
+    // Output-type tabs (create group) are mode-selection gestures:
+    // switching between them should never prompt for confirmation,
+    // and they should NOT pre-fill the textarea with the rendered
+    // useCase.query — the preset cards are the explicit opt-in
+    // for that. Migrate-group chips (From Figma, etc.) still carry
+    // a meaningful prompt the user wants dropped in, so they keep
+    // the historical behavior.
+    if (chip.group === 'create') {
+      void usePlugin(record, undefined, {
+        ...pluginOptions,
+        suppressPromptUpdate: true,
+        deferApply: true,
+      });
+    } else {
+      requestActivePlugin(record, undefined, pluginOptions);
+    }
+  }
+
   function pickChip(chip: HomeHeroChip) {
     setError(null);
     // P0 ui_click area=chat_composer element=plugin_chip|action_chip. The
@@ -1519,66 +1624,25 @@ export function HomeView({
         const targetId = chip.action.pluginId;
         const record = plugins.find((p) => p.id === targetId);
         if (!record) {
-          setError(
-            `Bundled scenario "${targetId}" is not installed. Reinstall the daemon to restore the default plugin set.`,
-          );
-          return;
-        }
-        const mediaSurface = homeMediaSurfaceForChipId(chip.id);
-        if (mediaSurface) {
-          const composer = buildHomeMediaComposer(
-            mediaSurface,
-            promptTemplates,
-            chip.action.inputs,
-            elevenLabsVoices,
-            {
-              elevenLabsVoiceWarning,
-              elevenLabsVoicesLoading,
-              imageModels: composerImageModels,
-            },
-          );
-          requestActivePlugin(record, undefined, {
-            projectKind: composer.projectKind,
-            chipId: chip.id,
-            inputs: composer.inputs,
-            inputFields: composer.fields,
-            queryTemplate: composer.queryTemplate,
-            mediaSurface,
-            projectMetadata: metadataForHomeMediaComposer(mediaSurface, composer.inputs, promptTemplates),
-            editableInputNames: composer.editableFieldNames,
-            preserveInputFields: true,
-            // Media chips are a mode switch, just like Prototype and
-            // Slide deck: they no longer surface inline model/ratio/duration
-            // settings (the agent asks for those during the run), and they
-            // leave the textarea alone until the user picks a concrete
-            // template/preset or types their own prompt.
-            suppressPromptUpdate: true,
-            replaceWithoutConfirmation: true,
+          setPendingChipId(chip.id);
+          void getInstalledPlugin(targetId).then((resolved) => {
+            setPendingChipId(null);
+            if (!resolved) {
+              setError(
+                `Bundled scenario "${targetId}" is not installed. Reinstall the daemon to restore the default plugin set.`,
+              );
+              return;
+            }
+            setPlugins((current) => (
+              current.some((plugin) => plugin.id === resolved.id)
+                ? current
+                : [...current, resolved]
+            ));
+            applyChipBoundPlugin(resolved, chip);
           });
           return;
         }
-        const pluginOptions = {
-          projectKind: chip.action.projectKind,
-          chipId: chip.id,
-          inputs: chip.action.inputs,
-          projectMetadata: chip.action.projectMetadata ?? null,
-        };
-        // Output-type tabs (create group) are mode-selection gestures:
-        // switching between them should never prompt for confirmation,
-        // and they should NOT pre-fill the textarea with the rendered
-        // useCase.query — the preset cards are the explicit opt-in
-        // for that. Migrate-group chips (From Figma, etc.) still carry
-        // a meaningful prompt the user wants dropped in, so they keep
-        // the historical behavior.
-        if (chip.group === 'create') {
-          void usePlugin(record, undefined, {
-            ...pluginOptions,
-            suppressPromptUpdate: true,
-            deferApply: true,
-          });
-        } else {
-          requestActivePlugin(record, undefined, pluginOptions);
-        }
+        applyChipBoundPlugin(record, chip);
         return;
       }
       case 'create-plugin': {
