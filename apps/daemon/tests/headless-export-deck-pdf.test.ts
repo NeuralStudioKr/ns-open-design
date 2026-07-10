@@ -356,8 +356,8 @@ describe('buildDeckPrintCss', () => {
     const css = buildDeckPrintCss();
     expect(css).toContain('@media print');
     expect(css).toContain('.slide:not(.active)');
-    expect(css).toContain('display: block !important');
-    expect(css).not.toContain('flex-direction: column !important');
+    expect(css).toContain('display: flex !important');
+    expect(css).toContain('flex-direction: column !important');
     expect(css).toContain('.deck');
     expect(css).toContain('.deck-shell');
     expect(css).toContain('.deck-stage');
@@ -375,10 +375,12 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).toBe(flattenRules);
     expect(screenCss).not.toContain('@media print');
     expect(screenCss).toContain('.slide:not(.active)');
-    expect(screenCss).toContain('display: block !important');
-    expect(screenCss).not.toContain('flex-direction: column !important');
+    expect(screenCss).toContain('display: flex !important');
+    expect(screenCss).toContain('flex-direction: column !important');
     expect(screenCss).toContain('background: var(--bg');
-    expect(screenCss).toContain('background: var(--shell');
+    // Paper color (--bg) must appear before frame chrome (--shell) in the
+    // fallback chain so a light-theme deck stays light in PDF exports.
+    expect(screenCss).toMatch(/background:\s*var\(--bg,[^)]*var\(--paper/);
     expect(screenCss).not.toContain('background: #fff !important');
     expect(screenCss).toContain('print-color-adjust: exact');
   });
@@ -396,16 +398,48 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('backdrop-filter: none');
   });
 
-  it('patches artifact @media print white backgrounds to deck CSS variables', () => {
+  it('patches artifact @media print white backgrounds to the paper CSS variable chain', () => {
     const input = `@media print { html, body { background: #fff !important; } }`;
     const out = patchArtifactDeckPrintBackground(input);
-    expect(out).toContain('background: var(--shell, var(--bg, #fff)) !important');
+    // Paper (--bg) must win over frame chrome (--shell): a light-theme deck's
+    // --bg is the deck-stage color that slides sit on. Falling back to --shell
+    // painted the whole PDF page dark for #FAFAFA + #0a0e1a decks.
+    expect(out).toContain('background: var(--bg, var(--paper, var(--shell, #fff))) !important');
     expect(out).not.toContain('background: #fff !important');
   });
 
   it('exports revealAllDeckSlides for runtime flattening', async () => {
     const mod = await import('../src/headless-export.js');
     expect(typeof mod.revealAllDeckSlides).toBe('function');
+  });
+
+  it('revealAllDeckSlides source strips leaked body-level text nodes before flattening', () => {
+    // Agents sometimes emit the deck title as a bare text node between <body>
+    // and the first .slide (e.g. `<body>AI 도입 효과 <style>…</style>…`).
+    // Even a single line of leaked text shifts every slide down and pushes
+    // each slide's bottom sliver onto its own blank PDF page. The reveal
+    // script must scrub these text nodes before laying slides out in flow.
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('stripDeckLoosePageFlow');
+    expect(source).toMatch(
+      /stripDeckLoosePageFlow\s*\(\s*document\.documentElement\s*\)[\s\S]{0,80}stripDeckLoosePageFlow\s*\(\s*document\.body\s*\)/,
+    );
+    expect(source).toContain('Node.TEXT_NODE');
+  });
+
+  it('revealAllDeckSlides injects the layout helper only once', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    const revealBlock = source.slice(
+      source.indexOf('export async function revealAllDeckSlides'),
+      source.indexOf('async function waitForPrintableContent'),
+    );
+    expect(revealBlock.match(/buildDeckSlideExportLayoutHelperJs\(\)/g)?.length).toBe(1);
   });
 
   it('pins deck screenshot clips to the 1920×1080 slide frame', async () => {
