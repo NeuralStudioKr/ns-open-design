@@ -21,12 +21,12 @@ vi.mock('../../src/teamver/activeTeamverWorkspace', () => ({
 vi.mock('../../src/teamver/projectRegistry', () => ({
   TeamverProjectRegistryError: class TeamverProjectRegistryError extends Error {},
   filterProjectsByTeamverRegistryIfNeeded: vi.fn(async (projects: unknown[]) => projects),
+  waitForTeamverRegistrySyncIfNeeded: vi.fn(async () => undefined),
   listTeamverRegistryProjects: vi.fn(async () => []),
 }));
 
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
-import { listTeamverRegistryProjects } from '../../src/teamver/projectRegistry';
 import { readActiveTeamverWorkspaceId } from '../../src/teamver/activeTeamverWorkspace';
 import { resetDaemonAppVersionCacheForTests, fetchDaemonAppVersion } from '../../src/teamver/daemonAppVersion';
 import {
@@ -90,16 +90,23 @@ describe('boot fetch dedup', () => {
 
   it('does not coalesce listRecentProjects across active workspaces', async () => {
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
-    vi.mocked(readActiveTeamverWorkspaceId)
-      .mockResolvedValueOnce('ws-1')
-      .mockResolvedValueOnce('ws-2');
-    vi.mocked(listTeamverRegistryProjects).mockResolvedValue([]);
+    let workspaceReads = 0;
+    vi.mocked(readActiveTeamverWorkspaceId).mockImplementation(async () => {
+      workspaceReads += 1;
+      return workspaceReads === 1 ? 'ws-1' : 'ws-2';
+    });
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(JSON.stringify({ projects: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
-    const first = listRecentProjects(6);
-    const second = listRecentProjects(6);
-    await Promise.all([first, second]);
+    await listRecentProjects(6);
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
 
-    expect(listTeamverRegistryProjects).toHaveBeenCalledTimes(2);
+    await listRecentProjects(6);
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(2);
   });
 
   it('coalesces concurrent listProjectRuns calls', async () => {

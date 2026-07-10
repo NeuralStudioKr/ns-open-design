@@ -109,6 +109,14 @@ let registryListCache: {
 let syncAllInflight: Promise<void> | null = null;
 let syncAllAt = 0;
 
+/** Embed list gates — wait for in-flight legacy registry sync before filtering. */
+export async function waitForTeamverRegistrySyncIfNeeded(): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+  if (syncAllInflight) {
+    await syncAllInflight;
+  }
+}
+
 function readRegistryOdProjectId(project: TeamverRegisteredProject): string | undefined {
   const id = project.odProjectId?.trim();
   return id || undefined;

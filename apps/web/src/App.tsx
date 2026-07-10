@@ -1087,6 +1087,7 @@ function AppInner() {
       if (fetchHomeProjects) {
         void (async () => {
           if (isTeamverEmbedMode()) {
+            await embedSessionBootPromise.catch(() => undefined);
             await waitForTeamverEmbedBoot();
           }
           if (cancelled) return;
@@ -2749,9 +2750,12 @@ function AppInner() {
           // registry membership sync (GET /teamver-bff/projects) is redundant
           // while the user stays on a project workspace.
           const onProjectDetail = routeRef.current.kind === 'project';
+          const onHome = routeRef.current.kind === 'home';
           if (!(isTeamverEmbedMode() && onProjectDetail)) {
             const request = beginProjectListRequest();
-            const result = await loadProjectListSafe();
+            const result = isTeamverEmbedMode() && onHome
+              ? await loadRecentProjectsForHome()
+              : await loadProjectListSafe();
             if (!cancelled && result.ok) {
               reconcileFetchedProjects(result.projects, request);
               warmEmbedProjectListCaches(result.projects);
