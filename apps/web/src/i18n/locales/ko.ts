@@ -1987,6 +1987,7 @@ export const ko: Dict = {
   'sketch.tooltipClean': '저장됨',
   'fileViewer.empty': '보려는 파일을 선택하세요.',
   'fileViewer.loading': '불러오는 중…',
+  'fileViewer.updatingPreview': '미리보기 업데이트 반영 중…',
   'fileViewer.exportPptx': 'PPTX로 다운로드',
   'fileViewer.openInNewTab': '새 탭에서 열기',
   'fileViewer.copyPath': '경로 복사',

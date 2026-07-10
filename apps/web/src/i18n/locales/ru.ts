@@ -1987,6 +1987,7 @@ export const ru: Dict = {
   'sketch.tooltipClean': 'Сохранено',
   'fileViewer.empty': 'Выберите файл для просмотра.',
   'fileViewer.loading': 'Загрузка…',
+  'fileViewer.updatingPreview': 'Updating preview…',
   'fileViewer.exportPptx': 'Экспорт в PPTX',
   'fileViewer.openInNewTab': 'Открыть в новой вкладке',
   'fileViewer.copyPath': 'Копировать путь',
