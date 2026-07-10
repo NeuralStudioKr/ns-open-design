@@ -4751,6 +4751,7 @@ function HtmlViewer({
       })()
       : null,
   );
+  const lastStablePreviewIdentityRef = useRef<string | null>(null);
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5294,7 +5295,12 @@ function HtmlViewer({
   }, [liveCommentTargets]);
 
   useEffect(() => {
-    const sourceFileKey = `${projectId}\0${file.name}\0${liveHtml === undefined ? 'raw' : 'live'}`;
+    const artifactIdentity = `${projectId}\0${file.name}`;
+    if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
+      lastStablePreviewIdentityRef.current = artifactIdentity;
+      lastStablePreviewSourceRef.current = null;
+    }
+    const sourceFileKey = `${artifactIdentity}\0${liveHtml === undefined ? 'raw' : 'live'}`;
     const acceptCandidate = (candidate: string | null): string | null => {
       if (candidate == null) return null;
       const repaired = repairArtifactDocumentHead(candidate);
