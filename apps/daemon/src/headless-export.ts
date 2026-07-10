@@ -812,16 +812,28 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
       }
 
+      // Agents sometimes leak the deck title into <body> as a bare text node
+      // (e.g. \`<body>AI 도입 효과 <style>…</style>…\`). Each leaked pixel of
+      // body flow shifts every slide down and pushes the last N pixels of
+      // each slide onto the next PDF page (empty page with just the footer
+      // sliver). Remove non-whitespace text nodes that sit as direct
+      // children of <html> / <body> so slides always start at y=0.
+      const stripDeckLoosePageFlow = (root) => {
+        if (!root || !root.childNodes) return;
+        for (let i = root.childNodes.length - 1; i >= 0; i--) {
+          const node = root.childNodes[i];
+          if (node.nodeType === Node.TEXT_NODE) {
+            if ((node.textContent || '').trim().length > 0) node.remove();
+          }
+        }
+      };
+      stripDeckLoosePageFlow(document.documentElement);
+      stripDeckLoosePageFlow(document.body);
+
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
 
-      const rootStyle = window.getComputedStyle(document.documentElement);
-      const resolveShellBackground = () =>
-        rootStyle.getPropertyValue('--shell').trim() ||
-        rootStyle.getPropertyValue('--bg').trim() ||
-        rootStyle.getPropertyValue('--ink').trim() ||
-        rootStyle.getPropertyValue('background-color').trim() ||
-        '#0a0c10';
-
+      // Layout helper below defines resolveSlidePaperBackground() — reused
+      // for the html/body surface so light-theme decks don't get --shell (dark).
       ${buildDeckSlideExportLayoutHelperJs()}
 
       let canvasBgAttempted = 0;
@@ -861,7 +873,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         }
       });
 
-      const shellBg = resolveShellBackground();
+      const pageSurfaceBg = resolveSlidePaperBackground();
 
       document.querySelectorAll(args.wrapperSelector).forEach((el) => {
         set(el, 'display', 'contents');
@@ -871,19 +883,17 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       set(document.documentElement, 'overflow', 'visible');
       set(document.documentElement, 'width', args.width + 'px');
-      set(document.documentElement, 'background', shellBg);
+      set(document.documentElement, 'background', pageSurfaceBg);
       set(document.body, 'overflow', 'visible');
       set(document.body, 'display', 'block');
       set(document.body, 'scroll-snap-type', 'none');
       set(document.body, 'transform', 'none');
       set(document.body, 'width', args.width + 'px');
-      set(document.body, 'background', shellBg);
+      set(document.body, 'background', pageSurfaceBg);
       const totalHeight = slides.length * args.height;
       set(document.documentElement, 'height', totalHeight + 'px');
       set(document.body, 'height', totalHeight + 'px');
       set(document.body, 'margin', '0');
-
-      ${buildDeckSlideExportLayoutHelperJs()}
 
       slides.forEach((el, index) => {
         el.classList.add('active');

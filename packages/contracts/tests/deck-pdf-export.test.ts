@@ -54,10 +54,12 @@ describe('patchArtifactDeckPrintCss', () => {
     expect(out).not.toContain('data-deck-print');
   });
 
-  it('rewrites white html/body print backgrounds to CSS variables', () => {
+  it('rewrites white html/body print backgrounds to the paper CSS variable chain', () => {
     const input = `@media print { html, body { background: #fff !important; } }`;
     const out = patchArtifactDeckPrintCss(input);
-    expect(out).toContain('background: var(--shell, var(--bg, #fff)) !important');
+    // Paper (var(--bg)) must win over frame chrome (var(--shell)) so light-theme
+    // decks (--bg: #FAFAFA) do not render dark PDF pages.
+    expect(out).toContain('background: var(--bg, var(--paper, var(--shell, #fff))) !important');
     expect(out).not.toContain('background: #fff !important');
   });
 
@@ -86,6 +88,46 @@ describe('buildDeckSlideExportLayoutHelperJs', () => {
     expect(js).toContain('preserveNestedLayouts');
     expect(js).toContain('sideBySide ? \'row\' : \'column\'');
   });
+
+  it('does not force cover slides into a CSS grid (that split slide-footer onto a second PDF page)', () => {
+    // The former grid rewrite for cover slides pushed .slide-footer onto its
+    // own page whenever the 1fr row + auto row calc exceeded 1080px by a
+    // fraction of a pixel. The absolute-positioned original layout is now
+    // preserved as-is.
+    const js = buildDeckSlideExportLayoutHelperJs();
+    // The cover branch must exist (still short-circuits so the default
+    // layout pass does not clobber cover-right-panel), but must NOT reassign
+    // the slide's display to `grid`.
+    expect(js).toContain('coverContent && rightPanel');
+    expect(js).not.toMatch(/coverContent && rightPanel[\s\S]*?set\(slide,\s*['"]display['"],\s*['"]grid['"]\)/);
+    expect(js).not.toMatch(/set\(slide,\s*['"]grid-template-columns['"]/);
+    expect(js).not.toMatch(/set\(slide,\s*['"]grid-template-rows['"]/);
+  });
+
+  it('falls back to the deck-stage / paper color for slides without an explicit background', () => {
+    const js = buildDeckSlideExportLayoutHelperJs();
+    expect(js).toContain('resolveSlidePaperBackground');
+    expect(js).toContain('.deck-stage');
+    expect(js).toMatch(/resolveSlidePaperBackground\s*\(\s*\)/);
+    expect(js).toMatch(
+      /getPropertyValue\(['"]--bg['"]\)[\s\S]{0,120}getPropertyValue\(['"]--paper['"]\)[\s\S]{0,120}getPropertyValue\(['"]--shell['"]\)/,
+    );
+  });
+
+  it('preserves deck-framework flex column layout instead of forcing display:block', () => {
+    const js = buildDeckSlideExportLayoutHelperJs();
+    expect(js).toContain('preserveSlideFlexLayout');
+    expect(js).toMatch(/if\s*\(\s*preserveSlideFlexLayout\(slide\)\s*\)\s*return/);
+  });
+
+  it('emits syntactically valid browser layout helper JS', () => {
+    const js = buildDeckSlideExportLayoutHelperJs();
+    const set = () => {};
+    expect(() => {
+      // eslint-disable-next-line no-new-func
+      new Function('set', js);
+    }).not.toThrow();
+  });
 });
 
 describe('buildDeckPrintCss', () => {
@@ -94,7 +136,7 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('@media print');
     expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('.slide.hero.dark::before');
-    expect(css).not.toContain('flex-direction: column !important');
+    expect(css).toContain('flex-direction: column !important');
   });
 });
 
