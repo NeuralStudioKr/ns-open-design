@@ -34,4 +34,14 @@ describe('design-templates-chinese-catalog', () => {
       'example-simple-deck',
     ]);
   });
+
+  it('excludes plugins with od.content_locale zh-CN on manifest', () => {
+    const plugins = [
+      { id: 'example-future-deck', manifest: { od: { content_locale: 'zh-CN', mode: 'deck' } } },
+      { id: 'example-simple-deck', manifest: { od: { mode: 'deck' } } },
+    ];
+    expect(filterPluginsExcludingChinesePrimaryDeck(plugins, true).map((p) => p.id)).toEqual([
+      'example-simple-deck',
+    ]);
+  });
 });

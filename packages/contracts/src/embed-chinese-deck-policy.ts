@@ -32,6 +32,15 @@ export function isGuizangDeckFamilyTemplateId(templateId: string): boolean {
   return id === 'magazine-web-ppt' || id.includes('guizang');
 }
 
+/** Read `od.content_locale` from a plugin manifest (passthrough field). */
+export function readOdContentLocale(od: unknown): string | null {
+  if (!od || typeof od !== 'object' || Array.isArray(od)) return null;
+  const raw = (od as Record<string, unknown>).content_locale;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed || null;
+}
+
 export function resolveChineseDeckTemplateId(id: string): string {
   const trimmed = id.trim();
   if (!trimmed) return trimmed;

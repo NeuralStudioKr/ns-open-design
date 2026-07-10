@@ -12,7 +12,7 @@ import type {
 } from "../../runtime/design-toolbox";
 import type { TeamverBrandingConfig } from "./config";
 import { isSlideRelatedDesignTemplate, isRenderableDesignTemplate } from "./designTemplateVisibility";
-import { isEmbedHiddenChinesePrimaryDeckTemplate } from "./embedChineseDeckTemplatePolicy";
+import { isEmbedHiddenChinesePrimaryDeckTemplate, readOdContentLocale } from "./embedChineseDeckTemplatePolicy";
 
 /** Home hero chip ids hidden in embed slide-only MVP. */
 export const TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS = new Set([
@@ -133,7 +133,10 @@ export function pluginsForSlideOnlyMvp(
   return plugins.filter(
     (plugin) =>
       isSlideRelatedPlugin(plugin) &&
-      !isEmbedHiddenChinesePrimaryDeckTemplate({ id: plugin.id }, branding),
+      !isEmbedHiddenChinesePrimaryDeckTemplate(
+        { id: plugin.id, contentLocale: readOdContentLocale(plugin.manifest?.od) },
+        branding,
+      ),
   );
 }
 

@@ -2,11 +2,13 @@ import type { TeamverBrandingConfig } from './config';
 import {
   EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS,
   isChinesePrimaryDeckTemplate,
+  readOdContentLocale,
   resolveChineseDeckTemplateId,
 } from '@open-design/contracts';
 
 export {
   EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS,
+  readOdContentLocale,
   resolveChineseDeckTemplateId,
 };
 

@@ -152,7 +152,7 @@ embed 필터는 **denylist + `contentLocale === 'zh-CN'` + guizang deck family i
 
 | ID | 항목 | 상태 |
 |----|------|------|
-| S-5c | embed Community + Design templates — 중국어 deck 11개 비노출 | ✅ |
+| S-5c | embed Community + Design templates — 중국어 deck 12개 + guizang family 비노출 | ✅ |
 | S-5c-meta | `od.content_locale: zh-CN` + API `contentLocale` | ✅ |
 
 **수동 검증**
