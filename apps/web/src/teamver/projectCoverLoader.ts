@@ -24,7 +24,14 @@ export function resolveProjectCoverOptionsForListSurface(): ResolveProjectCoverO
   return embedProjectCoverHintsOnly() ? { allowFilesFallback: false } : {};
 }
 
-const coverCache = new Map<string, { cover: ProjectCoverFile | null; at: number }>();
+type CoverCacheEntry = {
+  cover: ProjectCoverFile | null;
+  at: number;
+  /** True when null was cached from hints-only resolve — `/files` may still succeed. */
+  hintsOnlyMiss?: boolean;
+};
+
+const coverCache = new Map<string, CoverCacheEntry>();
 const inflight = new Map<string, Promise<ProjectCoverFile | null>>();
 const pendingHintIds = new Set<string>();
 const hintCheckedAt = new Map<string, number>();
@@ -67,7 +74,11 @@ export function seedProjectCoverHints(covers: Record<string, ProjectCoverFile | 
   const now = Date.now();
   for (const [projectId, cover] of Object.entries(covers)) {
     if (coverCache.has(projectId)) continue;
-    coverCache.set(projectId, { cover, at: now });
+    coverCache.set(projectId, {
+      cover,
+      at: now,
+      ...(cover === null ? { hintsOnlyMiss: true } : {}),
+    });
   }
 }
 
@@ -159,7 +170,10 @@ export async function resolveProjectCoverFile(
 
   const cached = coverCache.get(id);
   if (cached && Date.now() - cached.at < COVER_FETCH_CACHE_MS) {
-    return cached.cover;
+    if (cached.cover) return cached.cover;
+    if (!cached.hintsOnlyMiss || !allowFilesFallback) {
+      return null;
+    }
   }
 
   const existing = inflight.get(id);
@@ -178,16 +192,16 @@ export async function resolveProjectCoverFile(
       }
 
       if (!allowFilesFallback) {
-        coverCache.set(id, { cover: null, at: Date.now() });
+        coverCache.set(id, { cover: null, at: Date.now(), hintsOnlyMiss: true });
         return null;
       }
 
       const files = await fetchProjectFiles(id);
       const cover = pickProjectCoverFile(project, files);
-      coverCache.set(id, { cover, at: Date.now() });
+      coverCache.set(id, { cover, at: Date.now(), hintsOnlyMiss: false });
       return cover;
     } catch {
-      coverCache.set(id, { cover: null, at: Date.now() });
+      coverCache.set(id, { cover: null, at: Date.now(), hintsOnlyMiss: false });
       return null;
     } finally {
       inflight.delete(id);

@@ -1,7 +1,6 @@
 import { HOME_COVER_FETCH_CONCURRENCY, HOME_RECENT_LIST_LIMIT } from "./projectListLimits";
 import type { Project } from "../types";
 import {
-  resolveProjectCoverOptionsForListSurface,
   prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
   resolveProjectCoverFiles,
@@ -11,12 +10,9 @@ import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 import { isTeamverEmbedMode } from "./designApiBase";
 
 /**
- * Home recent rail — use the recent list metadata plus one coalesced
- * cover-hints batch. In embed mode we intentionally skip per-project `/files`
- * fallback on root boot; otherwise the home page fans out one extra request per
- * recent card just to improve thumbnails. The full project list/detail surfaces
- * may still resolve file-backed covers when the user intentionally navigates
- * there.
+ * Home recent rail — coalesced cover-hints plus bounded `/files` fallback for
+ * the recent list only (HOME_RECENT_LIST_LIMIT × HOME_COVER_FETCH_CONCURRENCY).
+ * Full project list surfaces stay hints-only in embed mode to avoid fan-out.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
@@ -36,6 +32,6 @@ export async function prefetchHomeProjectCovers(
 
   return resolveProjectCoverFiles(recent, {
     concurrency: HOME_COVER_FETCH_CONCURRENCY,
-    ...resolveProjectCoverOptionsForListSurface(),
+    allowFilesFallback: true,
   });
 }
