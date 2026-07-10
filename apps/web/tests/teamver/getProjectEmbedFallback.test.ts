@@ -36,6 +36,24 @@ describe('getProject embed registry fallback', () => {
     expect(fetchTeamverProject).toHaveBeenCalledWith('p-404');
   });
 
+  it('falls back to BFF registry row when daemon detail is blocked during direct embed boot', async () => {
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'UNAUTHORIZED' } }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.mocked(fetchTeamverProject).mockResolvedValue({
+      odProjectId: 'p-direct',
+      title: 'Direct Link Deck',
+      updatedAt: '2026-01-03T00:00:00.000Z',
+    });
+
+    const project = await getProject('p-direct');
+    expect(project).toMatchObject({ id: 'p-direct', name: 'Direct Link Deck' });
+    expect(fetchTeamverProject).toHaveBeenCalledWith('p-direct');
+  });
+
   it('returns daemon project when detail succeeds', async () => {
     vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(

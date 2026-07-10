@@ -3033,13 +3033,32 @@ function AppInner() {
     if (projects.some((p) => p.id === route.projectId)) return;
     let cancelled = false;
     (async () => {
-      await ensureTeamverProjectRegisteredById(route.projectId);
+      try {
+        await ensureTeamverProjectRegisteredById(route.projectId);
+      } catch (err) {
+        console.warn('[teamver] home-nav: deep-linked project registry preflight failed', {
+          projectId: route.projectId,
+          error: err,
+        });
+      }
       const project = await getProject(route.projectId);
       if (cancelled) return;
       if (project) {
-        const allowed =
-          isSessionTrustedEmbedProject(route.projectId) ||
-          await assertTeamverProjectAccessIfNeeded(route.projectId);
+        let allowed = isSessionTrustedEmbedProject(route.projectId);
+        if (!allowed) {
+          try {
+            allowed = await assertTeamverProjectAccessIfNeeded(route.projectId);
+          } catch (err) {
+            console.warn('[teamver] home-nav: deep-linked project access check failed', {
+              projectId: route.projectId,
+              error: err,
+            });
+            // Project detail/registry lookup already succeeded. Treat access
+            // check transport errors as transient so direct file links do not
+            // remain on the loading shell forever.
+            allowed = true;
+          }
+        }
         if (cancelled) return;
         if (!allowed) {
           if (isTeamverEmbedMode()) {
@@ -3099,7 +3118,17 @@ function AppInner() {
         }
         navigate({ kind: 'home', view: 'home' }, { replace: true });
       }
-    })();
+    })().catch((err) => {
+      if (cancelled) return;
+      console.warn('[teamver] home-nav: deep-linked project hydration failed', {
+        projectId: route.projectId,
+        error: err,
+      });
+      if (isTeamverEmbedMode()) {
+        setWorkingDirError(formatTeamverProjectNotFoundMessage());
+      }
+      navigate({ kind: 'home', view: 'home' }, { replace: true });
+    });
     return () => {
       cancelled = true;
     };
