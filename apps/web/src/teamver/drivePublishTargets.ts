@@ -181,17 +181,49 @@ async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDriv
 }
 
 /** Dropdown quick-pick: personal shallow + shared roots only (no shared subfolder flatten). */
+export function publishTargetsFromImportScopes(
+  scopes: readonly TeamverDriveImportScope[],
+): TeamverDrivePublishTarget[] {
+  return dedupePublishTargets(scopes.map(scopeRootTarget));
+}
+
+function settledError(result: PromiseSettledResult<unknown>): unknown {
+  return result.status === "rejected" ? result.reason : null;
+}
+
 async function fetchQuickPublishTargets(workspaceId: string): Promise<TeamverDrivePublishTarget[]> {
   const [scopesResult, personalResult] = await Promise.allSettled([
     listTeamverDriveImportScopes(workspaceId),
     fetchPersonalTargets(workspaceId),
   ]);
+
   const personal = personalResult.status === "fulfilled" ? personalResult.value : [];
   const scopes = scopesResult.status === "fulfilled" ? scopesResult.value : [];
   const sharedRoots = scopes
     .filter((scope): scope is Extract<TeamverDriveImportScope, { mode: "shared" }> => scope.mode === "shared")
     .map(scopeRootTarget);
-  return dedupePublishTargets([...personal, ...sharedRoots]);
+
+  // Personal shallow_tree can fail while scopes (shared-drive list) still succeed —
+  // keep the personal tab from scopes so the dropdown is not stuck on the emergency
+  // fallback when Browse would have worked.
+  const personalFromScope = scopes.find((scope) => scope.mode === "personal");
+  const personalMerged =
+    personal.length > 0
+      ? personal
+      : personalFromScope
+        ? [scopeRootTarget(personalFromScope)]
+        : [];
+
+  const merged = dedupePublishTargets([...personalMerged, ...sharedRoots]);
+  if (merged.length > 0) {
+    return merged;
+  }
+
+  const personalError = settledError(personalResult);
+  const scopesError = settledError(scopesResult);
+  if (personalError) throw personalError;
+  if (scopesError) throw scopesError;
+  throw new Error("drive_publish_targets_failed");
 }
 
 export async function listTeamverDrivePublishTargets(
@@ -216,15 +248,7 @@ export async function listTeamverDrivePublishTargets(
   if (targets.length > 0) {
     return targets.slice(0, limit);
   }
-  return [
-    {
-      id: "personal-default",
-      label: "내 드라이브",
-      description: "기본 드라이브 위치",
-      folderId: null,
-      sharedDriveId: null,
-    },
-  ];
+  throw new Error("drive_publish_targets_failed");
 }
 
 function scopeRootTarget(scope: TeamverDriveImportScope): TeamverDrivePublishTarget {
