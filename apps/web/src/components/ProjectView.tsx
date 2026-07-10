@@ -1,4 +1,5 @@
 import {
+  startTransition,
   useCallback,
   useEffect,
   useId,
@@ -2392,9 +2393,20 @@ export function ProjectView({
   }, []);
 
   const handleWorkspaceContextsChange = useCallback((next: WorkspaceContextItem[]) => {
-    setWorkspaceContexts((current) =>
-      workspaceContextItemsEqual(current, next) ? current : next,
-    );
+    // This runs in a post-commit effect inside FileWorkspace: on any tab
+    // mutation the workspace-context set changes and this setState schedules a
+    // SECOND full render of the entire ProjectView -> FileWorkspace ->
+    // FileViewer tree, on top of the tab-state render that triggered it. The
+    // result only feeds the composer's @-mention context picker, which never
+    // needs to update in the same frame the user closes a tab. Marking it as a
+    // transition lets the urgent tab-close render commit first (tab disappears
+    // immediately) and defers this heavy second pass so it no longer stalls the
+    // interaction.
+    startTransition(() => {
+      setWorkspaceContexts((current) =>
+        workspaceContextItemsEqual(current, next) ? current : next,
+      );
+    });
   }, []);
 
   const refreshProjectFiles = useCallback(async (): Promise<ProjectFile[]> => {
@@ -8752,11 +8764,14 @@ export function ProjectView({
           questionFormSubmittedAnswers={displayedQuestionFormSubmittedAnswers}
           questionsGenerating={displayedQuestionsGenerating}
           focusQuestionsRequest={focusQuestionsRequest}
-          onSubmitQuestionForm={(text) => {
+          onSubmitQuestionForm={(text, attachments = [], context) => {
             if (currentConversationActionDisabled) return;
             // Submitting question-form answers is a clarification turn, not a
             // fresh create/edit — tag entry_from so the dashboard can separate it.
-            void handleSend(text, [], [], { entryFrom: 'question_answer' });
+            void handleSend(text, attachments, [], {
+              entryFrom: 'question_answer',
+              ...(context ? { context } : {}),
+            });
           }}
         />
       </div>

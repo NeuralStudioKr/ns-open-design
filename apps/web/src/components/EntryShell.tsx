@@ -1237,6 +1237,7 @@ export function EntryShell({
         open={newProjectOpen}
         initialTab={newProjectInitialTab}
         skills={skills}
+        designTemplates={designTemplates}
         designSystems={designSystems}
         defaultDesignSystemId={defaultDesignSystemId}
         templates={templates}

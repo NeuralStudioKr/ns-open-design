@@ -69,7 +69,7 @@ import {
   type VelaLoginStatus,
 } from './providers/daemon';
 import { AMR_LOGIN_STATUS_EVENT } from './components/amrLoginPolling';
-import { goBack, navigate, useRoute } from './router';
+import { navigate, useRoute } from './router';
 import {
   fetchDaemonConfig,
   DEFAULT_PET,
@@ -1928,9 +1928,12 @@ function AppInner() {
     void patchProject(id, { name: trimmed });
   }, []);
 
+  // The project header back button is an escape hatch back to Home. Avoid
+  // depending on browser history here: tab restores and template-create flows
+  // can leave an in-app history entry that points back to the same project.
   const handleBack = useCallback(() => {
     const currentProjectId = route.kind === 'project' ? route.projectId : null;
-    goBack({ kind: 'home', view: 'projects' });
+    navigate({ kind: 'home', view: 'home' });
     if (currentProjectId && typeof window !== 'undefined') {
       window.setTimeout(() => {
         iframeKeepAlivePool.evictProject(currentProjectId, { includeActive: true });

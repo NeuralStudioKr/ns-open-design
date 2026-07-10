@@ -2300,7 +2300,8 @@ body.od-quick-switcher-open .chat-composer-fixed-layer .composer-send:disabled {
   border-top: 0;
 }
 .app .df-section-label {
-  padding: 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
   font-size: 10px;
 }
 .app .df-cell-name,

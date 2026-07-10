@@ -3386,7 +3386,15 @@ export async function startServer({
     },
     helpers: pluginRouteHelpers,
   });
-  registerProjectUploadRoutes(app, { http: httpDeps, uploads: uploadDeps, node: nodeDeps });
+  registerProjectUploadRoutes(app, {
+    db,
+    http: httpDeps,
+    uploads: uploadDeps,
+    node: nodeDeps,
+    paths: { PROJECTS_DIR },
+    projectStore: projectStoreDeps,
+    projectFiles: projectFileDeps,
+  });
 
   const composeDaemonSystemPrompt = async ({
     agentId,
