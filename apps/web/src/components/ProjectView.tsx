@@ -246,6 +246,7 @@ import {
 } from './auto-open-file';
 import {
   artifactVersionTabsToClose,
+  collapseArtifactVersionOpenTabs,
   resolveArtifactPersistFileName,
 } from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
@@ -1992,7 +1993,22 @@ export function ProjectView({
             active: routeActive,
           }
         : state;
-      if (routeActive) {
+      // Generation may have persisted every Write as an open tab. Collapse
+      // numbered artifact siblings (`foo.html`/`foo-2.html`) on re-entry so
+      // the workspace does not reopen the whole version history.
+      const collapsedTabs = collapseArtifactVersionOpenTabs(
+        nextState.tabs,
+        nextState.active,
+      );
+      const tabsCollapsed = collapsedTabs.length !== nextState.tabs.length;
+      if (tabsCollapsed) {
+        const nextActive =
+          nextState.active && collapsedTabs.includes(nextState.active)
+            ? nextState.active
+            : collapsedTabs[collapsedTabs.length - 1] ?? null;
+        nextState = { ...nextState, tabs: collapsedTabs, active: nextActive };
+      }
+      if (routeActive || tabsCollapsed) {
         nextState = cacheTabsLocally(project.id, nextState);
         void persistTabsToDaemonNow(project.id, nextState);
       }

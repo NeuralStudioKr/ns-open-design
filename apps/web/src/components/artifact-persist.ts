@@ -89,3 +89,71 @@ export function artifactVersionTabsToClose(
     (tab) => tab !== fileName && isArtifactVersionSiblingTab(tab, baseName, ext),
   );
 }
+
+function artifactVersionNumber(fileName: string, baseName: string, ext: string): number {
+  if (fileName === `${baseName}${ext}`) return 1;
+  const match = new RegExp(
+    `^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)${ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+  ).exec(fileName);
+  if (!match) return 0;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Prefer the focused tab, else the highest numbered sibling (`-3` > `-2` > base). */
+export function preferredArtifactVersionTab(
+  siblings: readonly string[],
+  preferredActive?: string | null,
+): string | null {
+  if (siblings.length === 0) return null;
+  if (preferredActive && siblings.includes(preferredActive)) return preferredActive;
+  const match = /^(.+?)(-\d+)?(\.[^.]+)$/.exec(siblings[0]!);
+  if (!match) return siblings[siblings.length - 1] ?? null;
+  const baseName = match[1]!;
+  const ext = match[3]!;
+  return siblings
+    .slice()
+    .sort(
+      (a, b) =>
+        artifactVersionNumber(b, baseName, ext) - artifactVersionNumber(a, baseName, ext),
+    )[0]!;
+}
+
+/**
+ * Keep at most one open tab per numbered artifact lineage
+ * (`foo.html` / `foo-2.html` / `foo-3.html`).
+ *
+ * Numbered siblings are treated as version drafts (same convention as
+ * `artifactVersionTabsToClose` / `resolveArtifactPersistFileName`), not as
+ * intentionally parallel documents. Used on project re-entry and after rapid
+ * Write auto-opens so version churn does not leave every draft open.
+ */
+export function collapseArtifactVersionOpenTabs(
+  tabs: readonly string[],
+  active: string | null = null,
+): string[] {
+  if (tabs.length <= 1) return [...tabs];
+  const toClose = new Set<string>();
+  const processedBases = new Set<string>();
+
+  for (const tab of tabs) {
+    const match = /^(.+?)(-\d+)?(\.[^.]+)$/.exec(tab);
+    if (!match) continue;
+    const baseName = match[1]!;
+    const ext = match[3]!;
+    const key = `${baseName}\0${ext}`;
+    if (processedBases.has(key)) continue;
+    processedBases.add(key);
+
+    const siblings = tabs.filter((entry) => isArtifactVersionSiblingTab(entry, baseName, ext));
+    if (siblings.length <= 1) continue;
+
+    const preferred = preferredArtifactVersionTab(siblings, active);
+    for (const sibling of siblings) {
+      if (sibling !== preferred) toClose.add(sibling);
+    }
+  }
+
+  if (toClose.size === 0) return [...tabs];
+  return tabs.filter((tab) => !toClose.has(tab));
+}

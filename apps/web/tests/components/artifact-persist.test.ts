@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   artifactVersionTabsToClose,
+  collapseArtifactVersionOpenTabs,
   isArtifactVersionSiblingTab,
+  preferredArtifactVersionTab,
   resolveArtifactPersistFileName,
 } from '../../src/components/artifact-persist';
 
@@ -86,5 +88,35 @@ describe('artifact version tab helpers', () => {
         'ai-adoption-deck-3.html',
       ]),
     ).toEqual(['ai-adoption-deck.html', 'ai-adoption-deck-2.html']);
+  });
+
+  it('prefers the active sibling, else the highest version number', () => {
+    expect(
+      preferredArtifactVersionTab(
+        ['ai-adoption-deck.html', 'ai-adoption-deck-2.html', 'ai-adoption-deck-3.html'],
+        'ai-adoption-deck-2.html',
+      ),
+    ).toBe('ai-adoption-deck-2.html');
+    expect(
+      preferredArtifactVersionTab(
+        ['ai-adoption-deck.html', 'ai-adoption-deck-2.html', 'ai-adoption-deck-3.html'],
+        null,
+      ),
+    ).toBe('ai-adoption-deck-3.html');
+  });
+
+  it('collapses numbered siblings while keeping unrelated tabs', () => {
+    expect(
+      collapseArtifactVersionOpenTabs(
+        [
+          'design-files',
+          'ai-adoption-effect.html',
+          'ai-adoption-effect-2.html',
+          'ai-adoption-effect-3.html',
+          'notes.md',
+        ],
+        'ai-adoption-effect-3.html',
+      ),
+    ).toEqual(['design-files', 'ai-adoption-effect-3.html', 'notes.md']);
   });
 });

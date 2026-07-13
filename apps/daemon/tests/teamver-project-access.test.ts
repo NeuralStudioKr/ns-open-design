@@ -168,6 +168,56 @@ describe('Teamver project access gate', () => {
     });
   });
 
+  it('rejects trusted OD bearer without identity on non-preview project routes', async () => {
+    const projectId = `teamver-access-trusted-bearer-${Date.now()}`;
+    await createProject(projectId);
+    const previousToken = process.env.OD_API_TOKEN;
+    const token = `trusted-preview-${Date.now()}`;
+    process.env.OD_API_TOKEN = token;
+
+    try {
+      await withAccessServer(204, async (url, requests) => {
+        process.env.TEAMVER_DESIGN_API_URL = url;
+        const response = await fetch(`${baseUrl}/api/projects/${projectId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status).toBe(401);
+        const body = (await response.json()) as { error?: { message?: string } };
+        expect(body.error?.message).toMatch(/identity headers required/i);
+        expect(requests).toEqual([]);
+      });
+    } finally {
+      if (previousToken === undefined) delete process.env.OD_API_TOKEN;
+      else process.env.OD_API_TOKEN = previousToken;
+    }
+  });
+
+  it('allows trusted OD bearer without identity on GET preview assets', async () => {
+    const projectId = `teamver-access-trusted-preview-${Date.now()}`;
+    await createProject(projectId);
+    const previousToken = process.env.OD_API_TOKEN;
+    const token = `trusted-preview-asset-${Date.now()}`;
+    process.env.OD_API_TOKEN = token;
+
+    try {
+      await withAccessServer(204, async (url, requests) => {
+        process.env.TEAMVER_DESIGN_API_URL = url;
+        // Invalid scope → 404 from the preview route, not identity 401 from the gate.
+        const response = await fetch(
+          `${baseUrl}/api/projects/${projectId}/preview/not-a-real-scope/index.html`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        expect(response.status).not.toBe(401);
+        const body = (await response.json()) as { error?: { message?: string; code?: string } };
+        expect(body.error?.message ?? '').not.toMatch(/identity headers required/i);
+        expect(requests).toEqual([]);
+      });
+    } finally {
+      if (previousToken === undefined) delete process.env.OD_API_TOKEN;
+      else process.env.OD_API_TOKEN = previousToken;
+    }
+  });
+
   it('GET /api/projects/recent bypasses the per-project access gate and returns an empty list', async () => {
     await withAccessServer(204, async (url, requests) => {
       process.env.TEAMVER_DESIGN_API_URL = url;
