@@ -53,14 +53,29 @@ describe("home recent projects stability", () => {
   it("waits for registry sync before filtering daemon project lists in embed", () => {
     const projects = readSource("src/state/projects.ts");
     expect(projects).toContain("waitForTeamverRegistrySyncIfNeeded");
+    expect(projects).toContain("listEmbedProjectsFromRegistry");
     expect(projects).toMatch(
-      /normalizeProjectsResponse[\s\S]*waitForTeamverRegistrySyncIfNeeded/,
+      /listRecentProjects[\s\S]*listEmbedProjectsFromRegistry/,
     );
   });
 
-  it("awaits legacy registry sync during embed session boot", () => {
+  it("uses registry membership SSOT for embed recent instead of daemon top-N intersect", () => {
+    const projects = readSource("src/state/projects.ts");
+    expect(projects).toContain("undersamples when other tenants occupy the top-N window");
+    expect(projects).toContain("listEmbedProjectsPageFromRegistry");
+    expect(projects).toContain("mergeDaemonFieldsOntoRegistryProjects");
+  });
+
+  it("awaits in-flight registry sync before embed recent list resolve", () => {
+    const projects = readSource("src/state/projects.ts");
+    expect(projects).toMatch(
+      /isTeamverEmbedMode\(\)[\s\S]*waitForTeamverRegistrySyncIfNeeded[\s\S]*listEmbedProjectsFromRegistry/,
+    );
+  });
+
+  it("keeps embed boot gate unlock ahead of legacy registry sync", () => {
     const boot = readSource("src/teamver/teamverEmbedSessionBoot.ts");
-    expect(boot).toContain("await syncAllDaemonProjectsToRegistry()");
-    expect(boot).not.toContain("void syncAllDaemonProjectsToRegistry()");
+    expect(boot).toContain("completeTeamverEmbedBoot()");
+    expect(boot).toContain("void syncAllDaemonProjectsToRegistry()");
   });
 });

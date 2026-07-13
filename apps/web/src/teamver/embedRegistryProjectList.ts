@@ -1,8 +1,11 @@
 /**
  * Teamver embed — registry row mapping + client-side pagination helpers.
- * Project **list** SSOT: daemon `GET /api/projects*` (Postgres, B5.11+) filtered
- * by registry membership (`filterProjectsByTeamverRegistryIfNeeded`).
- * Registry BFF remains workspace access gate + title metadata fallback.
+ *
+ * Embed project **list membership** SSOT: design-api BFF registry (workspace-
+ * scoped RDS). Daemon `GET /api/projects*` is used only to enrich status /
+ * metadata. Taking daemon top-N then intersecting with the registry undersamples
+ * the current workspace whenever other tenants fill the recent window
+ * (docs-teamver/09 · 39_5 Q10).
  *
  * docs-teamver/39_7 · 30_embed_home_boot_API_최적화.md
  */
@@ -60,6 +63,34 @@ export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project 
   });
 }
 
+/**
+ * Overlay daemon listing fields (status / metadata / timestamps) onto
+ * registry-ordered rows without changing membership or sort order.
+ */
+export function mergeDaemonFieldsOntoRegistryProjects(
+  registryProjects: Project[],
+  daemonProjects: Project[],
+): Project[] {
+  if (registryProjects.length === 0 || daemonProjects.length === 0) {
+    return registryProjects;
+  }
+  const byId = new Map(daemonProjects.map((project) => [project.id, project]));
+  return registryProjects.map((registry) => {
+    const daemon = byId.get(registry.id);
+    if (!daemon) return registry;
+    return sanitizeProjectForEmbed<Project>({
+      ...registry,
+      name: resolveProjectDisplayName(daemon, registry.name),
+      skillId: daemon.skillId ?? registry.skillId,
+      designSystemId: daemon.designSystemId ?? registry.designSystemId,
+      status: daemon.status ?? registry.status,
+      metadata: daemon.metadata ?? registry.metadata,
+      createdAt: registry.createdAt || daemon.createdAt,
+      updatedAt: Math.max(registry.updatedAt, daemon.updatedAt),
+    });
+  });
+}
+
 function encodeCursor(cursor: ProjectListCursor): string {
   return `${cursor.updatedAt}:${encodeURIComponent(cursor.id)}`;
 }
@@ -102,7 +133,7 @@ async function loadSortedRegistryProjects(): Promise<Project[]> {
   return sortRegistryProjects(rows.map(mapRegistryRowToProject));
 }
 
-/** Recent rail + embed list helpers — registry rows only (no daemon list). */
+/** Recent rail + embed list helpers — registry rows only (workspace SSOT). */
 export async function listEmbedProjectsFromRegistry(limit?: number): Promise<Project[]> {
   const sorted = await loadSortedRegistryProjects();
   if (limit == null || limit <= 0) return sorted;

@@ -95,6 +95,14 @@ describe('boot fetch dedup', () => {
       workspaceReads += 1;
       return workspaceReads === 1 ? 'ws-1' : 'ws-2';
     });
+    const { listTeamverRegistryProjects } = await import('../../src/teamver/projectRegistry');
+    vi.mocked(listTeamverRegistryProjects).mockResolvedValue([
+      {
+        odProjectId: 'p1',
+        title: 'Deck',
+        updatedAt: 100,
+      },
+    ] as never);
     vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(JSON.stringify({ projects: [] }), {
         status: 200,
@@ -103,10 +111,10 @@ describe('boot fetch dedup', () => {
     );
 
     await listRecentProjects(6);
-    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    expect(listTeamverRegistryProjects).toHaveBeenCalledTimes(1);
 
     await listRecentProjects(6);
-    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(2);
+    expect(listTeamverRegistryProjects).toHaveBeenCalledTimes(2);
   });
 
   it('coalesces concurrent listProjectRuns calls', async () => {
