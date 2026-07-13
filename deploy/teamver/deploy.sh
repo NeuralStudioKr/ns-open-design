@@ -141,7 +141,10 @@ fi
 
 _get_env_kv() {
   local key="$1"
-  grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | sed "s/^['\"]//;s/['\"]$//" | xargs
+  # Missing keys must not trip `set -e` + `pipefail` (grep exit 1).
+  # Regression: OD_DOCKER_PUBLISH_HOST lookup after Litestream aborted deploy
+  # silently when the key was unset in .env.production.
+  grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | sed "s/^['\"]//;s/['\"]$//" | xargs || true
 }
 
 print_deploy_diagnostic() {
