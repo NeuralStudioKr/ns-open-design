@@ -27,4 +27,18 @@ describe('plugins home gallery deck framing', () => {
     expect(css).toContain('transform: scale(0.2777778);');
     expect(css).toContain('transition: none;');
   });
+
+  it('keeps composer plugin deck previews compact instead of using the gallery scale', () => {
+    const source = readRepoFile('src/components/ComposerPluginPreview.tsx');
+    const css = readRepoFile('src/styles/home/plus-menu.css');
+
+    expect(source).toContain("const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode");
+    expect(source).toContain("'data-od-mode': odMode");
+    expect(css).toContain('.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__preview');
+    expect(css).toContain('aspect-ratio: 16 / 9;');
+    expect(css).toContain('.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__html-iframe');
+    expect(css).toContain('width: 675%;');
+    expect(css).toContain('height: 675%;');
+    expect(css).toContain('transform: scale(0.1481482);');
+  });
 });

@@ -259,6 +259,21 @@
 .plus-menu__preview-hero .plugins-home__preview {
   border-radius: 0;
 }
+.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__preview {
+  aspect-ratio: 16 / 9;
+}
+.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__html-chrome {
+  display: none;
+}
+.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__html-iframe {
+  top: 0;
+  left: 0;
+  width: 675%;
+  height: 675%;
+  transform: scale(0.1481482);
+  transform-origin: 0 0;
+  transition: none;
+}
 .plus-menu__preview-meta {
   display: flex;
   flex-direction: column;

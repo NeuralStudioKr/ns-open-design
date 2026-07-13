@@ -93,6 +93,7 @@ export function ComposerPluginPreview({
     if (facet) return facet;
     return isDesignSystemRecord(record) ? t('entry.navDesignSystems') : null;
   }, [record, t]);
+  const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode;
 
   return (
     <div className="plus-menu__preview" data-plugin-id={record.id}>
@@ -110,7 +111,10 @@ export function ComposerPluginPreview({
           <p className="plus-menu__preview-desc">{description}</p>
         ) : null}
       </div>
-      <div className="plus-menu__preview-hero">
+      <div
+        className="plus-menu__preview-hero"
+        {...(typeof odMode === 'string' ? { 'data-od-mode': odMode } : {})}
+      >
         {/* `eager` mounts media/iframe immediately — the panel is already a
             deliberate hover, so there is no off-screen cost to defer. */}
         <PreviewSurface
