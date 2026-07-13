@@ -5,6 +5,10 @@ const postMock = vi.fn();
 const getWorkspaceMock = vi.fn(async () => "ws-1");
 
 vi.mock("../src/teamver/designBffClient", () => ({
+  TEAMVER_BFF_REQUEST_OPTIONS: {
+    skipAuthHeader: true,
+    skipAuthRecovery: true,
+  },
   getDesignBffClient: vi.fn(() => ({
     http: { post: postMock },
     workspaceStore: { get: getWorkspaceMock },

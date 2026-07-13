@@ -84,20 +84,22 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("does not refresh on session_expired; soft-retries once after delay", async () => {
+  it("tries coalesced BFF refresh when session_expired survives the soft retry", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
+      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    mockedRefresh.mockResolvedValue(true);
 
     const pending = getTeamverDriveJson("/api/foo");
-    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(300);
-    await expectation;
-    expect(mockedRefresh).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    await expect(pending).resolves.toEqual({ ok: true });
+    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
-  it("soft-retries Invalid token once without /auth/refresh", async () => {
+  it("soft-retries Invalid token once before /auth/refresh", async () => {
     let callCount = 0;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       callCount += 1;
@@ -110,6 +112,20 @@ describe("getTeamverDriveJson", () => {
     const json = await pending;
     expect(json).toEqual({ items: [] });
     expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws 401 only after soft retry and BFF refresh both fail", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
+    mockedRefresh.mockResolvedValue(false);
+
+    const pending = getTeamverDriveJson("/api/foo");
+    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
+    await vi.advanceTimersByTimeAsync(300);
+    await expectation;
+    expect(mockedRefresh).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 

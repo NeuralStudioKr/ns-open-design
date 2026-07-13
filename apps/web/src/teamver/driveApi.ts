@@ -60,7 +60,7 @@ function enqueueDriveFetch<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
-const DRIVE_AUTH_RETRY_DELAY_MS = 280;
+const DRIVE_AUTH_RETRY_DELAY_MS = 150;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -97,9 +97,16 @@ async function teamverDriveFetch(
 
     if (shouldSkipDriveAuthRefresh(detail)) {
       // Sibling Drive/BFF call may have just rotated the session cookie. Wait
-      // briefly and retry once without POSTing /auth/refresh again.
+      // briefly and retry once without POSTing /auth/refresh again. If that
+      // still fails, run the regular coalesced BFF refresh as a last step before
+      // surfacing "Drive session expired" to the modal.
       await delay(DRIVE_AUTH_RETRY_DELAY_MS);
       response = await doFetch();
+      if (response.status !== 401 && response.status !== 403) {
+        return response;
+      }
+      const refreshed = await refreshDesignAuthCookie();
+      if (refreshed) response = await doFetch();
       return response;
     }
 

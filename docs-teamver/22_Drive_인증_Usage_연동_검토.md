@@ -128,6 +128,22 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 
 운영 효과: 인증 도중 화면이 에러처럼 보이는 인상을 줄이고, 탭 복귀/일시 401 때문에 Drive·워크스페이스·프로젝트 UI가 흔들리는 케이스를 줄인다.
 
+### 3.2d 2026-07-13 — Drive HA refresh race 보강
+
+현재 시점 기준 판단: 이중화 후 Drive 401이 늘어난 핵심 원인은 Drive 기능 자체가 아니라 **BFF session cookie에 들어있는 refresh token 회전 경쟁**이다.
+
+- 단일 서버에서는 in-process refresh coalesce/cache가 같은 refresh token 중복 사용을 줄였다.
+- 이중화 후 Drive 모달의 병렬 folder/list/shared-drive 요청과 import/publish mutation이 서로 다른 서버로 갈라질 수 있다.
+- 서버 A가 refresh token 회전에 성공하고 서버 B가 같은 old refresh token으로 실패하면, B가 낡은 session을 다시 `Set-Cookie`로 내려 브라우저의 새 cookie를 덮어쓸 수 있다.
+- BE `TeamverSessionMiddleware` + `suppress_session_cookie()`는 이런 stale response가 cookie를 clobber하지 못하게 한다.
+- `/teamver-bff/drive/*` browse API는 FE queue + soft retry + 최종 coalesced `/auth/refresh` 후 재호출로 401 toast를 최대한 흡수한다.
+- `/projects/{id}/publish`와 `/projects/{id}/import-drive`는 project mutation 라우트이므로 browse proxy와 별개다. 두 라우트 모두 BFF 요청 시작 시 `force_refresh_bff_session()`을 사용하고, 실패 시 stale cookie re-sign을 suppress한다.
+
+운영 확인:
+1. Drive 모달 open 시 folder/list/shared-drive가 최종 200으로 수렴하는지 확인.
+2. Drive import/publish mutation에서 401이 나오면 response가 `session_expired`인지, FE가 이후 `/auth/refresh`를 한 번 더 수행하는지 확인.
+3. ALB target별 `DESIGN_BFF_SESSION_SECRET` 값이 완전히 동일한지 확인. secret이 다르면 race와 별개로 모든 BFF cookie decode가 불안정해진다.
+
 ### 3.3 Gap · 후속
 
 | ID | 우선 | 내용 | 상태 |
