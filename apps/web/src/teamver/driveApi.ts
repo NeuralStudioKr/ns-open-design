@@ -1,6 +1,6 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
-import { refreshDesignAuthCookie } from "./designBffClient";
+import { fetchDesignAuthSession, refreshDesignAuthCookie } from "./designBffClient";
 
 export function teamverDriveApiUrl(path: string): string {
   const suffix = path.replace(/^\//, "");
@@ -68,6 +68,22 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+async function recoverDriveAuthSession(): Promise<boolean> {
+  const refreshed = await refreshDesignAuthCookie();
+  if (refreshed) return true;
+
+  // Drive modal open is an explicit user action. If a previous background
+  // refresh left the BFF client in sticky-decline state, force one fresh session
+  // probe before surfacing "Drive session expired". This also covers HA cases
+  // where another response already Set-Cookie'd a usable BFF session.
+  try {
+    const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
+    return Boolean(session?.authenticated);
+  } catch {
+    return false;
+  }
+}
+
 async function teamverDriveFetch(
   path: string,
   init: RequestInit,
@@ -105,13 +121,13 @@ async function teamverDriveFetch(
       if (response.status !== 401 && response.status !== 403) {
         return response;
       }
-      const refreshed = await refreshDesignAuthCookie();
-      if (refreshed) response = await doFetch();
+      const recovered = await recoverDriveAuthSession();
+      if (recovered) response = await doFetch();
       return response;
     }
 
-    const refreshed = await refreshDesignAuthCookie();
-    if (refreshed) response = await doFetch();
+    const recovered = await recoverDriveAuthSession();
+    if (recovered) response = await doFetch();
     return response;
   });
 }
