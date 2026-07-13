@@ -179,7 +179,7 @@ async def test_proxy_drive_owns_refresh_without_nginx_auth_request(
 
 
 @pytest.mark.asyncio
-async def test_proxy_drive_retains_usable_session_on_upstream_401(
+async def test_proxy_drive_maps_invalid_token_to_session_expired_without_clobbering_cookie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.auth.bff_session import save_bff_session
@@ -215,9 +215,12 @@ async def test_proxy_drive_retains_usable_session_on_upstream_401(
     )
 
     assert response.status_code == 401
-    assert b"Invalid token" in response.body
+    assert b"session_expired" in response.body
+    assert b"Invalid token" not in response.body
+    # Stale session remains in-memory for this request, but cookie write is suppressed
+    # so a sibling node's rotated Set-Cookie can win in the browser.
     assert "teamver_bff_v1" in request.session
-    assert isinstance(request.session["teamver_bff_v1"], dict)
+    assert request.scope.get("teamver_suppress_session_cookie") is True
 
 
 @pytest.mark.asyncio
