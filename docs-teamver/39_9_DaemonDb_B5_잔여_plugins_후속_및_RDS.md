@@ -33,7 +33,29 @@ OD_PG_PASSWORD=<RDS master password>
 OD_PG_SSL_MODE=require
 ```
 
-상세 Runbook: [39_4_배포_Terraform_운영_Runbook.md](./39_4_배포_Terraform_운영_Runbook.md), devops [DATABASE.md](../../ns-teamver-devops/terraform/services/teamver-design/docs/DATABASE.md).
+상세 Runbook: [39_4 §10.11 nginx](./39_4_배포_Terraform_운영_Runbook.md#1011-nginx-alb-httpconf-적용-순서--함정-prodstaging) · [39_4](./39_4_배포_Terraform_운영_Runbook.md), devops [DATABASE.md](../../ns-teamver-devops/terraform/services/teamver-design/docs/DATABASE.md).
+
+### 1.1 증상 — daemon Restarting: database does not exist
+
+```text
+error: database "teamver_design_daemon_production" does not exist
+```
+
+`OD_DAEMON_DB=postgres` 인데 DaemonDb를 **아직 CREATE 안 한** 상태. design-api DB와 **별개**. Terraform은 DaemonDb를 자동 생성하지 않음 (`rds_create_daemon_database_sql` output만 제공).
+
+```bash
+# EC2 — .env.production sourced
+PGPASSWORD="$POSTGRES_PASSWD" psql \
+  "host=${POSTGRES_HOST} port=${POSTGRES_PORT:-5432} user=${POSTGRES_USER} dbname=postgres sslmode=require" \
+  -c "CREATE DATABASE teamver_design_daemon_production OWNER teamver_design_admin;"
+# staging: teamver_design_daemon_staging
+
+docker compose -p teamver-open-design \
+  -f docker-compose.yml -f docker-compose.production.yml \
+  --env-file .env.production up -d open-design-daemon
+```
+
+스키마 테이블은 daemon boot migrate. CREATE는 **환경당 1회** (node1·node2 공용 RDS).
 
 ---
 

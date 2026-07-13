@@ -121,6 +121,7 @@ import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
 import {
   mergeProjectIntoList,
+  mergeRecentProjectsIntoList,
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
@@ -676,7 +677,7 @@ function AppInner() {
     }
   }, []);
 
-  const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+  const isStaleProjectListWorkspace = useCallback((request: ProjectListRequest) => {
     if (
       isTeamverEmbedMode()
       && request.workspaceId
@@ -687,8 +688,35 @@ function AppInner() {
         requestWorkspaceId: request.workspaceId,
         activeWorkspaceId: embedActiveWorkspaceIdRef.current,
       });
+      return true;
+    }
+    return false;
+  }, []);
+
+  /**
+   * Home recent rail refresh — upsert status/metadata without dropping the
+   * projects-tab page (or detail-prefetch rows) already held in memory.
+   */
+  const upsertRecentProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+    if (isStaleProjectListWorkspace(request)) return false;
+    if (request.generation < latestAppliedProjectListGenerationRef.current) {
       return false;
     }
+    latestAppliedProjectListGenerationRef.current = request.generation;
+    const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
+    const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
+    for (const project of list) pendingLocalProjectIds.delete(project.id);
+    const activeDeletedProjectIds = new Set(locallyDeletedProjectIds.keys());
+    const visibleList =
+      activeDeletedProjectIds.size > 0
+        ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
+        : list;
+    setProjects((current) => mergeRecentProjectsIntoList(current, visibleList));
+    return true;
+  }, [isStaleProjectListWorkspace]);
+
+  const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+    if (isStaleProjectListWorkspace(request)) return false;
     const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     const fetchedIds = new Set(list.map((project) => project.id));
@@ -758,7 +786,7 @@ function AppInner() {
       return preserved.length > 0 ? [...preserved, ...visibleList] : visibleList;
     });
     return true;
-  }, []);
+  }, [isStaleProjectListWorkspace]);
 
   // Propagate the Privacy toggle through to PostHog without a reload —
   // posthog-js's opt_out_capturing flips a localStorage flag that makes
@@ -1625,6 +1653,11 @@ function AppInner() {
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
+      projectsPageLoadedRef.current = false;
+      projectsNextCursorRef.current = null;
+      setProjects([]);
+      setProjectsHasMore(false);
+      setProjectsLoading(true);
       setBackgroundRunSummaries([]);
       setBackgroundRunNotice(null);
       byokBackgroundChatsRef.current.clear();
@@ -1646,8 +1679,6 @@ function AppInner() {
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
           setProjectsRefreshing(true);
-          projectsNextCursorRef.current = null;
-          setProjectsHasMore(false);
           const result = await loadProjectListPage();
           if (!result.ok) {
             // Failure keeps the projects tab flagged as un-loaded so a
@@ -1684,6 +1715,7 @@ function AppInner() {
             navigate({ kind: 'home', view: 'home' }, { replace: true });
           }
         } finally {
+          setProjectsLoading(false);
           setProjectsRefreshing(false);
           workspaceSwitchReconcilingRef.current = false;
           preWorkspaceSwitchTrustedProjectsRef.current = new Set();
@@ -2757,7 +2789,11 @@ function AppInner() {
               ? await loadRecentProjectsForHome()
               : await loadProjectListSafe();
             if (!cancelled && result.ok) {
-              reconcileFetchedProjects(result.projects, request);
+              if (isTeamverEmbedMode() && onHome) {
+                upsertRecentProjects(result.projects, request);
+              } else {
+                reconcileFetchedProjects(result.projects, request);
+              }
               warmEmbedProjectListCaches(result.projects);
             }
           }
@@ -3283,6 +3319,41 @@ function AppInner() {
     if (route.kind !== 'home') return;
     void refreshTemplates();
   }, [route.kind, refreshTemplates]);
+
+  // Embed: returning from project detail (or other non-home routes) must
+  // refresh the recent rail. Deep-link boot skips home recent fetch, so
+  // without this the strip stays empty or stuck on the single prefetched row.
+  const previousRouteKindRef = useRef(route.kind);
+  useEffect(() => {
+    const previousKind = previousRouteKindRef.current;
+    previousRouteKindRef.current = route.kind;
+    if (!isTeamverEmbedMode()) return;
+    if (route.kind !== 'home' || previousKind === 'home') return;
+    let cancelled = false;
+    void (async () => {
+      const request = beginProjectListRequest();
+      if (projectsRef.current.length === 0) setProjectsLoading(true);
+      else setProjectsRefreshing(true);
+      try {
+        const result = await loadRecentProjectsForHome();
+        if (cancelled || !result.ok) {
+          if (!cancelled && !result.ok) setWorkingDirError(result.errorMessage);
+          return;
+        }
+        setWorkingDirError(null);
+        upsertRecentProjects(result.projects, request);
+        warmEmbedProjectListCaches(result.projects);
+      } finally {
+        if (!cancelled) {
+          setProjectsLoading(false);
+          setProjectsRefreshing(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [beginProjectListRequest, route.kind, upsertRecentProjects]);
 
   // Existing card grids (DesignsTab, ProjectView), pickers (NewProjectPanel,
   // ChatComposer mention) all look skills up by id without caring whether

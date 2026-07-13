@@ -2,6 +2,7 @@
 
 **목적:** Phase 2 (Passive) · Phase 4 (Active-Active) **실행 절차** — Terraform, deploy, failover, rolling, Litestream.  
 **EC2 bootstrap 실패·node2 수동 구축:** **[§10](#10-ec2-부트스트랩수동-복구-runbook-d6-2노드--신규-ec2-공통)** (증상·Docker·`.env.staging`·EBS mount·EIP quota).  
+**nginx ALB apply · default · empty peers:** **[§10.11](#1011-nginx-alb-httpconf-적용-순서--함정-prodstaging)**.  
 **Rolling deploy (Mac vs EC2·빌드 위치·git pull):** **[§3](#3-rolling-배포-phase-4)**.  
 **관련:** [07 VM 배포](./07_VM_배포_인프라.md) · [17 Production 출시](./17_Production_출시_작업_순서.md) · [39_2 라우팅](./39_2_ALB_nginx_라우팅_설계.md)
 
@@ -564,6 +565,9 @@ sudo bash scripts/migrate_od_data_ebs.sh --apply --staging
 
 ### 10.6 앱 배포 · nginx (node2 완료 체크리스트)
 
+> **nginx 상세(순서·default 비활성·empty peers):** **[§10.11](#1011-nginx-alb-httpconf-적용-순서--함정-prodstaging)**  
+> **DaemonDb `CREATE DATABASE`:** [39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md) — `teamver_design_daemon_*` 없으면 daemon Restarting.
+
 ```bash
 cd ~/neural/ns-open-design/deploy/teamver
 
@@ -571,26 +575,41 @@ cd ~/neural/ns-open-design/deploy/teamver
 # mkdir -p ~/neural && cd ~/neural
 # git clone -b staging https://github.com/NeuralStudioKr/ns-open-design.git
 
-bash deploy.sh --staging --rds
+# .env: OD_DOCKER_PUBLISH_HOST=0.0.0.0 (2노드 peer :7456 필수)
+# .env: OD_DAEMON_DB=postgres + OD_PG_* (DaemonDb) — DB는 RDS에 1회 CREATE 후
+bash deploy.sh --staging --rds          # staging
+# bash deploy.sh --production --rds     # production
 
-# ALB cutover 후 staging — http conf only (certbot 아님)
-bash devops/nginx/apply_teamver_design_staging_nginx_conf.sh
-# OD token: apply 스크립트가 .env.staging OD_API_TOKEN 으로 /etc/nginx/conf.d/teamver-design-od-token.conf 자동 생성
-sudo nginx -t && sudo systemctl reload nginx
+# --- nginx: §10.11 전체 순서 권장 ---
+# Staging (ALB cutover 후 — http only, certbot https 금지)
+cd devops/nginx
+sudo bash ./apply_teamver_design_staging_nginx_conf.sh \
+  ./stg-design.teamver.com.http.conf \
+  --disable stg-design.teamver.com.https.conf
+# Production
+# sudo bash ./apply_teamver_design_nginx_conf.sh \
+#   ./design.teamver.com.http.conf \
+#   --disable design.teamver.com.https.conf
+#
+# apply 스크립트가 자동:
+#   - sites-enabled/default 제거 (ALB Host 없는 health → Ubuntu 웰컴 HTML 404 방지)
+#   - peers stub + render_od_daemon_peers_nginx.sh (awscli 없으면 IMDS self-IP 폴백; 2노드는 수동/awscli)
+# OD token: .env.* OD_API_TOKEN → /etc/nginx/conf.d/teamver-design-od-token.conf
 ```
 
-**로컬 헬스 (node2):**
+**로컬 헬스 (node2) — Host 없이 (ALB와 동일):**
 
 ```bash
-curl -fsS http://127.0.0.1/_nginx/health
-curl -fsS http://127.0.0.1:8000/healthz | head -c 200
+curl -fsS http://127.0.0.1/_nginx/health   # 기대: ok (200). 404 = default 잔존 또는 nginx -t 실패로 reload 안 됨
+ls -la /etc/nginx/sites-enabled/           # http.conf 만 (default / https.conf 없어야 함)
 docker ps
 ```
 
 **ALB (Mac):**
 
 ```bash
-curl -fsS https://stg-design.teamver.com/_nginx/health
+curl -fsS https://stg-design.teamver.com/_nginx/health     # staging
+# curl -fsS https://design.teamver.com/_nginx/health      # production
 # AWS: target group 2/2 healthy
 curl -sI https://stg-design.teamver.com/api/health | grep -i x-od-node-id
 ```
@@ -632,10 +651,14 @@ systemctl is-enabled teamver-design-od-data.mount.service 2>/dev/null || \
 | `OD_DATA_HOST_PATH … 마운트되지 않음` | EBS 미포맷/미마운트 | §10.5 `mount_od_data_ebs.sh --apply` |
 | `No unattached od-data block device` | EBS 미부착 | AWS volume attachment / terraform |
 | `validate_deploy_env` secrets | `.env.staging` 누락 | §10.4 |
-| ALB 1/2 healthy | node2 미배포/nginx | §10.6 |
+| ALB 1/2 healthy | node2 미배포/nginx | §10.6 · **§10.11** |
+| `/_nginx/health` **404** (Host 없음) | Ubuntu `sites-enabled/default` 또는 `nginx -t` 실패로 reload 안 됨 | §10.11 — default 제거 + peers 채운 뒤 `nginx -t && reload` |
+| `nginx: no servers are inside upstream` | peers.inc **빈 stub** (awscli 없음·render skip) | §10.11 · [39_5 §3.1.3](./39_5_검증_체크리스트_FAQ.md#313-nginx-no-servers-are-inside-upstream--_nginxhealth-404) |
+| daemon Restarting · `database "…_daemon_…" does not exist` | DaemonDb **CREATE 미실행** | [39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md) `rds_create_daemon_database_sql` |
 | `/_next/static/*.js` 404 · ChunkLoadError | **node1·node2 Docker 빌드 불일치** (ALB RR) | [31 §8.2.1](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md#821-chunkloaderror--2노드-alb--빌드-revision-불일치-404) — node1 deploy 동기화 |
-| `/api/*` **502** (nginx → `10.10.101.x:7456`) | daemon **127.0.0.1:7456 only** — hash peer unreachable | `.env.staging` **`OD_DOCKER_PUBLISH_HOST=0.0.0.0`** + `deploy.sh --staging --rds` ([39_5 §3.1.2](./39_5_검증_체크리스트_FAQ.md#312-api-502--hash-peer-7456-unreachable)) |
+| `/api/*` **502** (nginx → `10.10.101.x:7456`) | daemon **127.0.0.1:7456 only** — hash peer unreachable | `.env` **`OD_DOCKER_PUBLISH_HOST=0.0.0.0`** + deploy ([39_5 §3.1.2](./39_5_검증_체크리스트_FAQ.md#312-api-502--hash-peer-7456-unreachable)) |
 | SSH node2 publickey | EIP/키 불일치 | SSM §10.2 |
+| RDS `password authentication failed` | terraform apply 시 `TF_VAR_teamver_design_rds_pass` 오타로 master 덮임 | AWS `modify-db-instance --master-user-password` 후 `.env` `POSTGRES_PASSWD`/`OD_PG_PASSWORD` 동기화. plan에 `aws_db_instance … password` 보이면 의도 없으면 apply 금지 |
 
 ### 10.10 instance replace 시 (bootstrap tpl 수정 반영)
 
@@ -648,12 +671,123 @@ terraform apply -var-file=staging.terraform.tfvars -replace='aws_instance.app[1]
 
 또는 **수동 §10.3~10.6** (replace 없이) — staging 리허설에서 더 빠른 경우 많음.
 
+### 10.11 nginx ALB http.conf 적용 순서 · 함정 (prod/staging)
+
+**SSOT 스크립트**
+
+| 환경 | apply | conf |
+|------|-------|------|
+| Staging | `devops/nginx/apply_teamver_design_staging_nginx_conf.sh` | `stg-design.teamver.com.http.conf` |
+| Production | `devops/nginx/apply_teamver_design_nginx_conf.sh` | `design.teamver.com.http.conf` |
+| Peers | `scripts/render_od_daemon_peers_nginx.sh` | `/etc/nginx/teamver-design-od-daemon-peers.inc` |
+
+**금지:** `*.https.conf` enable (ALB가 TLS 종료 — EC2 certbot enable 시 **redirect loop**).
+
+#### 권장 순서 (node1 → healthy → node2 → 양쪽 peer)
+
+1. **deploy** — `.env`에 `OD_DOCKER_PUBLISH_HOST=0.0.0.0`. DaemonDb 사용 시 RDS에 DB 존재 ([39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md)).
+2. **(권장) awscli** — `sudo apt-get install -y awscli` (인스턴스 프로파일 `ec2:DescribeInstances` — terraform `app_ec2_peer_discovery`).
+3. **nginx apply** (아래 Production 예):
+
+```bash
+cd ~/neural/ns-open-design/deploy/teamver/devops/nginx
+sudo bash ./apply_teamver_design_nginx_conf.sh \
+  ./design.teamver.com.http.conf \
+  --disable design.teamver.com.https.conf
+```
+
+apply가 하는 일:
+
+| 단계 | 동작 |
+|------|------|
+| backup | `/etc/nginx/backup_YYYYMMDD_HHMMSS/` |
+| `--disable` | 지정 conf를 `sites-enabled`에서 이동 |
+| **default 제거** | `sites-enabled/default` 이동 — ALB health는 **Host 없음**이라 Ubuntu default(웰컴 HTML)로 가면 `/_nginx/health` **404** |
+| http.conf | `listen 80 default_server` + `design` / `design-api` |
+| includes | `teamver-design*.inc.conf` → `sites-available/` |
+| peers | stub 없으면 example 복사 → `render_od_daemon_peers_nginx.sh` |
+| token | `.env.production` `OD_API_TOKEN` → `conf.d/teamver-design-od-token.conf` |
+| reload | `nginx -t` 성공 시에만 `systemctl reload`. peers에 `server` 줄 없으면 **apply가 exit 1** (빈 stub로 -t 실패하기 전 명시적 에러) |
+
+4. **검증 (해당 노드)**
+
+```bash
+ls -la /etc/nginx/sites-enabled/
+# 기대: *.http.conf 심볼릭만 (default / https.conf 없음)
+
+curl -fsS http://127.0.0.1/_nginx/health
+# Host 헤더 없이 — ALB 와 동일. 기대: ok
+
+cat /etc/nginx/teamver-design-od-daemon-peers.inc
+# 기대: server 10.x.x.x:7456 … N줄 (2노드면 2줄, sorted, self 포함). 주석만이면 ❌
+```
+
+5. **양쪽 기동 후 peer 재생성** (hash ring 동일):
+
+```bash
+cd ~/neural/ns-open-design/deploy/teamver
+sudo bash ./scripts/render_od_daemon_peers_nginx.sh
+sudo nginx -t && sudo systemctl reload nginx
+# node1·node2 둘 다 — peers.inc 내용이 같아야 함
+```
+
+#### 함정 A — `no servers are inside upstream`
+
+**증상 (apply 직후):**
+
+```text
+⚠️ aws CLI not found — skipping peer render …
+nginx: [emerg] no servers are inside upstream in …/teamver-design-od-daemon-upstream.inc.conf
+nginx: configuration file … test failed
+```
+
+**원인:** `open_design_daemon_hashed` 가 `include /etc/nginx/teamver-design-od-daemon-peers.inc` 하는데 파일이 **주석만**(example stub)이면 nginx 거부.  
+`sites-enabled` 는 이미 http.conf로 바뀌었는데 **reload는 실패** → 메모리상 구 conf 또는 default 제거만 반영된 어중간 상태 → Host 없는 `/_nginx/health` **404**.
+
+**즉시 복구 (prod private IP 예 — 실제 EIP/IP는 `terraform output` / IMDS):**
+
+```bash
+# 양쪽 EC2에 동일 내용 (IP는 환경에 맞게, sort 유지)
+sudo tee /etc/nginx/teamver-design-od-daemon-peers.inc >/dev/null <<'EOF'
+server 10.10.101.63:7456 max_fails=2 fail_timeout=10s;
+server 10.10.101.138:7456 max_fails=2 fail_timeout=10s;
+EOF
+sudo nginx -t && sudo systemctl reload nginx
+curl -fsS http://127.0.0.1/_nginx/health
+```
+
+그다음 `apt install awscli` + `render_od_daemon_peers_nginx.sh` 로 자동화.  
+(최신 스크립트: awscli 없어도 **IMDS self-IP** 는 써서 upstream 이 비지 않게 함 — 2노드 ring은 여전히 awscli/수동 필요.)
+
+#### 함정 B — Ubuntu `default` vs `default_server`
+
+| | Ubuntu `sites-enabled/default` | Design `*.http.conf` |
+|--|-------------------------------|----------------------|
+| listen | `80 default_server` | `80 default_server` |
+| Host 없는 요청 | 웰컴 HTML / 경로 404 | `/_nginx/health` → **ok** |
+| ALB health | **실패 (404)** | **성공** |
+
+apply `*.http.conf` 시 스크립트가 `default` 를 **자동 비활성**. 수동만 할 때:
+
+```bash
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+#### 함정 C — peers 경로
+
+| 경로 | OK? |
+|------|-----|
+| `/etc/nginx/teamver-design-od-daemon-peers.inc` | ✅ upstream `{ include }` |
+| `/etc/nginx/conf.d/…peers….conf` | ❌ bare `server` → nginx 파싱 실패 |
+
 ---
 
 ## 11. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-13 | §10.11 nginx ALB apply 순서·default·empty peers·DaemonDb/RDS password 트러블슈팅 보강 |
 | 2026-07-08 | §10.9 `/api/*` 502 — `OD_DOCKER_PUBLISH_HOST=0.0.0.0` 트러블슈팅 |
 | 2026-07-08 | §10 EC2 부트스트랩·수동 복구 Runbook (D6 node2, `.env.staging`, od-data EBS, EIP quota) |
 | 2026-07-07 | Phase 2/4 배포·failover·rolling SSOT |

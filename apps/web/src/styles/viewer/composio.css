@@ -2628,6 +2628,26 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   color: var(--text-faint);
   font-size: 11px;
 }
+.assistant-footer .assistant-todo-progress {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: min(42ch, 52vw);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.assistant-footer .assistant-todo-progress::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--text-faint);
+}
+.assistant-footer .assistant-todo-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .assistant-footer[data-unfinished="true"] {
   background: none;
 }

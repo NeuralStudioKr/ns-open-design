@@ -27,10 +27,14 @@ import {
 vi.mock("../../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
   isBootstrapAuthMode: vi.fn(() => true),
+  resolveDesignBffRefreshUrl: vi.fn(() => "/teamver-bff/auth/refresh"),
 }));
 
+const refreshMock = vi.fn(async () => true);
+const prepareReloadMock = vi.fn();
 vi.mock("../../src/teamver/designBffClient", () => ({
-  refreshDesignAuthCookie: vi.fn(async () => true),
+  refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
+  prepareDesignAuthSessionReload: (...args: unknown[]) => prepareReloadMock(...args),
 }));
 
 const redirectMock = vi.fn();
@@ -68,16 +72,30 @@ describe("teamverEmbedPassiveAuth", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     redirectMock.mockClear();
+    prepareReloadMock.mockClear();
+    refreshMock.mockReset();
+    refreshMock.mockResolvedValue(true);
     resetEmbedPassiveAuthForTests();
     resetActiveWork();
     resetTeamverEmbedSessionActiveRunProjectIdsForTests();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ authenticated: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("defers login redirect while embed work is active", async () => {
+    refreshMock.mockResolvedValue(false);
     const events: string[] = [];
     const onAuth = () => {
       events.push("auth");
@@ -92,13 +110,41 @@ describe("teamverEmbedPassiveAuth", () => {
     window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onAuth);
   });
 
-  it("schedules login redirect when idle after passive 401", async () => {
+  it("does not redirect when cookie refresh recovers the session", async () => {
+    refreshMock.mockResolvedValue(true);
+    handleEmbedPassiveUnauthorized("bff");
+    await vi.runAllTimersAsync();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect when refresh fails but /auth/session is still authenticated", async () => {
+    refreshMock.mockResolvedValue(false);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ authenticated: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
     handleEmbedPassiveUnauthorized("daemon");
     await vi.runAllTimersAsync();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+  });
+
+  it("schedules login redirect when idle after passive 401 and recovery fails", async () => {
+    refreshMock.mockResolvedValue(false);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.runAllTimersAsync();
+    expect(prepareReloadMock).toHaveBeenCalledTimes(1);
     expect(redirectMock).toHaveBeenCalledTimes(1);
   });
 
   it("defers login redirect while a background daemon run is active", async () => {
+    refreshMock.mockResolvedValue(false);
     const events: string[] = [];
     const onAuth = () => {
       events.push("auth");

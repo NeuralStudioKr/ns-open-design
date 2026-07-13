@@ -135,6 +135,14 @@ if [[ -x "$RENDER_PEERS" ]]; then
   bash "$RENDER_PEERS" || echo "⚠️ peer render skipped (aws/imds unavailable?)"
 fi
 
+# Empty peers.inc → nginx -t: "no servers are inside upstream" (39_4 §10.11).
+if ! grep -qE '^[[:space:]]*server[[:space:]]+' "$PEERS_TARGET" 2>/dev/null; then
+  echo "❌ $PEERS_TARGET 에 server 줄이 없습니다. awscli 설치 후 render 하거나 수동 peers 작성:"
+  echo "   sudo apt-get install -y awscli && sudo bash $RENDER_PEERS"
+  echo "   docs-teamver/39_4 §10.11 / 39_5 §3.1.3"
+  exit 1
+fi
+
 DEPLOY_TEAMVER_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 bash "$SCRIPT_DIR/ensure_teamver_design_od_token_conf.sh" "$DEPLOY_TEAMVER_ROOT/.env.staging"
 

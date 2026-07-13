@@ -884,6 +884,7 @@ export function EntryShell({
                     hasMoreProjects={projectsHasMore}
                     projectsLoadingMore={projectsLoadingMore}
                     onLoadMoreProjects={onLoadMoreProjects}
+                    activeRunSummaries={backgroundRunSummaries}
                   />
                 </div>
               )}
