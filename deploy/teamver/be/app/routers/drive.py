@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.datastructures import QueryParams
 
-from ..auth.bff_session import bff_enabled, clear_bff_session
-from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
+from ..auth.bff_session import bff_enabled, clear_bff_session, load_bff_session
+from ..auth.bff_tokens import access_token_is_usable, ensure_bff_session, force_refresh_bff_session
 from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..errors import UnauthorizedError
@@ -85,6 +85,16 @@ async def proxy_drive(
                 workspace_id=workspace_id,
             )
         if status == 401:
+            remaining = load_bff_session(request)
+            if remaining is not None and access_token_is_usable(remaining):
+                logger.warning(
+                    "[drive] upstream 401 after refresh; retaining BFF session user=%s workspace=%s path=%s",
+                    remaining.user_id,
+                    workspace_id or "",
+                    path,
+                )
+                media_type = headers.get("content-type") or headers.get("Content-Type")
+                return Response(content=content, status_code=status, headers=headers, media_type=media_type)
             clear_bff_session(request)
             return _session_expired_response()
 

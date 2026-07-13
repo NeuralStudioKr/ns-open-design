@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -90,14 +91,43 @@ async def test_refresh_returns_401_when_force_refresh_clears_session(
         request,
         user_id="u1",
         access_token="stale-access",
-        expires_in=3600,
+        expires_in=0,
+        refresh_token="rt",
+        workspace_id="ws1",
+        aud="teamver-design",
+        access_expires_at=time.time() - 120,
+    )
+    response = await refresh_auth_session(request)
+    assert response.status_code == 401
+    assert "teamver_bff_v1" not in request.session
+
+
+@pytest.mark.asyncio
+async def test_refresh_returns_401_but_keeps_cookie_when_access_still_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import auth as auth_router
+    from app.services.teamver_apps_token_refresh import AppsTokenRefreshError
+
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        AsyncMock(side_effect=AppsTokenRefreshError("teamver_http_error", status_code=401)),
+    )
+
+    request = _request_with_session({})
+    save_bff_session(
+        request,
+        user_id="u1",
+        access_token="still-valid-access",
+        expires_in=600,
         refresh_token="rt",
         workspace_id="ws1",
         aud="teamver-design",
     )
     response = await refresh_auth_session(request)
     assert response.status_code == 401
-    assert "teamver_bff_v1" not in request.session
+    assert "teamver_bff_v1" in request.session
 
 
 @pytest.mark.asyncio

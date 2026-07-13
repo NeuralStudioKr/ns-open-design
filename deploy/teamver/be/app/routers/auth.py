@@ -16,7 +16,7 @@ from ..auth.bff_session import (
     load_bff_session,
     update_bff_workspace,
 )
-from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
+from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session, probe_bff_session
 from ..auth.errors import raise_auth_http
 from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth.metrics import snapshot as metrics_snapshot
@@ -257,12 +257,13 @@ async def get_auth_session_probe(request: Request) -> Any:
     """nginx auth_request — 204 when BFF session valid, 401 otherwise."""
     if not bff_enabled():
         raise HTTPException(status_code=404, detail={"code": "bff_not_enabled"})
-    session = await ensure_bff_session(request)
+    session = await probe_bff_session(request)
     if session is None:
         login_url = teamver_main_login_url_for_design()
         return JSONResponse(
             status_code=401,
             content={"detail": "session_expired", "login_url": login_url},
+            headers={"X-Teamver-Login-Url": login_url or ""},
         )
     workspace_id = (session.workspace_id or "").strip()
     return Response(

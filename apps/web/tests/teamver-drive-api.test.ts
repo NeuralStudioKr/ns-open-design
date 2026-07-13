@@ -8,7 +8,7 @@ vi.mock("../src/teamver/designApiBase", () => ({
   resolveTeamverDriveBffBase: vi.fn(() => "/teamver-bff/drive"),
 }));
 
-import { getTeamverDriveJson, postTeamverDriveJson } from "../src/teamver/driveApi";
+import { getTeamverDriveJson, postTeamverDriveJson, shouldSkipDriveAuthRefresh } from "../src/teamver/driveApi";
 import { refreshDesignAuthCookie } from "../src/teamver/designBffClient";
 
 const mockedRefresh = vi.mocked(refreshDesignAuthCookie);
@@ -19,6 +19,21 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+describe("shouldSkipDriveAuthRefresh", () => {
+  it("skips terminal BFF / Main auth bodies", () => {
+    expect(shouldSkipDriveAuthRefresh("session_expired")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("Unauthorized")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("Invalid token")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("error.authentication")).toBe(true);
+  });
+
+  it("does not skip unrelated failures", () => {
+    expect(shouldSkipDriveAuthRefresh("forbidden")).toBe(false);
+    expect(shouldSkipDriveAuthRefresh(null)).toBe(false);
+    expect(shouldSkipDriveAuthRefresh({ code: "x" })).toBe(false);
+  });
+});
 
 describe("getTeamverDriveJson", () => {
   beforeEach(() => {
@@ -53,6 +68,28 @@ describe("getTeamverDriveJson", () => {
     expect(json).toEqual({ ok: true });
     expect(mockedRefresh).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not refresh on session_expired JSON from BFF/nginx", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
+
+    await expect(getTeamverDriveJson("/api/foo")).rejects.toThrow("teamver_drive_fetch_failed:401");
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh on Main Invalid token after BFF already retried", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ detail: "Invalid token" }, 401));
+
+    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
+      "teamver_drive_fetch_failed:401",
+    );
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("throws teamver_drive_fetch_failed:401 when refresh declines (no retry)", async () => {

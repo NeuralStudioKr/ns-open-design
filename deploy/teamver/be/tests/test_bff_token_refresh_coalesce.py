@@ -12,7 +12,12 @@ from starlette.requests import Request
 os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.auth.bff_session import save_bff_session
-from app.auth.bff_tokens import ensure_bff_session, force_refresh_bff_session, reset_bff_refresh_coalesce_for_tests
+from app.auth.bff_tokens import (
+    ensure_bff_session,
+    force_refresh_bff_session,
+    probe_bff_session,
+    reset_bff_refresh_coalesce_for_tests,
+)
 from app.services.teamver_apps_token_refresh import AppsTokenRefreshError
 
 
@@ -47,6 +52,19 @@ def _seed_expiring_session(request: Request) -> None:
         refresh_token="refresh-shared",
         workspace_id="ws-1",
         aud="teamver-design",
+    )
+
+
+def _seed_expired_session(request: Request) -> None:
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="old-access",
+        expires_in=0,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+        aud="teamver-design",
+        access_expires_at=time.time() - 120,
     )
 
 
@@ -106,7 +124,7 @@ async def test_refresh_unreachable_retains_session_without_clearing(
 
 
 @pytest.mark.asyncio
-async def test_refresh_auth_failure_clears_session(
+async def test_refresh_auth_failure_clears_session_when_access_expired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     refresh_mock = AsyncMock(
@@ -118,12 +136,144 @@ async def test_refresh_auth_failure_clears_session(
     )
 
     request = _request_with_session({})
-    _seed_expiring_session(request)
+    _seed_expired_session(request)
 
     result = await ensure_bff_session(request)
 
     assert result is None
     assert "teamver_bff_v1" not in request.session
+
+
+@pytest.mark.asyncio
+async def test_refresh_auth_failure_retains_session_when_access_still_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh_mock = AsyncMock(
+        side_effect=AppsTokenRefreshError("teamver_http_error", status_code=401),
+    )
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="old-access",
+        expires_in=60,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+        aud="teamver-design",
+    )
+    before = request.session.get("teamver_bff_v1")
+
+    result = await ensure_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "old-access"
+    assert request.session.get("teamver_bff_v1") == before
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_failure_returns_none_but_keeps_usable_cookie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh_mock = AsyncMock(
+        side_effect=AppsTokenRefreshError("teamver_http_error", status_code=401),
+    )
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="old-access",
+        expires_in=60,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+        aud="teamver-design",
+    )
+    before = request.session.get("teamver_bff_v1")
+
+    result = await force_refresh_bff_session(request)
+
+    assert result is None
+    assert request.session.get("teamver_bff_v1") == before
+
+
+@pytest.mark.asyncio
+async def test_probe_skips_refresh_when_access_still_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="fresh-access",
+        expires_in=600,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+    )
+
+    result = await probe_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "fresh-access"
+    refresh_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_probe_refreshes_when_jwt_exp_ahead_of_session_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """access_expires_at can drift ahead of JWT exp — probe must still refresh."""
+    import jwt as pyjwt
+
+    refresh_mock = AsyncMock(
+        return_value={
+            "access_token": "new-access",
+            "refresh_token": "refresh-shared",
+            "expires_in": 600,
+            "aud": "teamver-design",
+            "scope": [],
+        },
+    )
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    soon_exp = int(time.time()) + 10
+    stale_access = pyjwt.encode(
+        {"sub": "user-1", "exp": soon_exp},
+        "test-secret",
+        algorithm="HS256",
+    )
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token=stale_access,
+        expires_in=3600,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+    )
+
+    result = await probe_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "new-access"
+    refresh_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio

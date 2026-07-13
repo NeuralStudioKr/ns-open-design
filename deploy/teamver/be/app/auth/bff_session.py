@@ -59,13 +59,14 @@ def save_bff_session(
     workspace_id: str | None = None,
     aud: str | None = None,
     scope: list[str] | None = None,
+    access_expires_at: float | None = None,
 ) -> None:
     now = time.time()
     request.session[_BFF_KEY] = {
         "user_id": user_id,
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "access_expires_at": now + max(0, int(expires_in)),
+        "access_expires_at": access_expires_at if access_expires_at is not None else now + max(0, int(expires_in)),
         "workspace_id": workspace_id,
         "aud": aud,
         "scope": scope or [],

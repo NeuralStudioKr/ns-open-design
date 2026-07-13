@@ -7,6 +7,21 @@ export function teamverDriveApiUrl(path: string): string {
   return `${resolveTeamverDriveBffBase().replace(/\/+$/, "")}/${suffix}`;
 }
 
+/**
+ * True when a Drive BFF 401/403 body means "do not call /auth/refresh".
+ * BFF already force-refreshed on upstream Invalid token, and nginx/session
+ * expiry bodies only create refresh-token rotation races if retried here.
+ */
+export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
+  if (typeof detail !== "string") return false;
+  const normalized = detail.trim().toLowerCase();
+  if (normalized === "session_expired") return true;
+  if (normalized === "unauthorized") return true;
+  if (normalized.includes("invalid token")) return true;
+  if (normalized.includes("error.authentication")) return true;
+  return false;
+}
+
 async function teamverDriveFetch(
   path: string,
   init: RequestInit,
@@ -26,6 +41,11 @@ async function teamverDriveFetch(
 
   let response = await doFetch();
   if (response.status === 401 || response.status === 403) {
+    const body = await response.clone().json().catch(() => null);
+    const detail = body && typeof body === "object" ? (body as Record<string, unknown>).detail : null;
+    if (shouldSkipDriveAuthRefresh(detail)) {
+      return response;
+    }
     const refreshed = await refreshDesignAuthCookie();
     if (refreshed) response = await doFetch();
   }
