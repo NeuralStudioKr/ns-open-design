@@ -54,6 +54,11 @@ function project(overrides: Partial<Project>): Project {
 
 describe('RecentProjectsStrip', () => {
   it('matches project cards with previews and design-system tags', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('<html><head></head><body>Prototype</body></html>')),
+    );
+
     const { container } = render(
       <RecentProjectsStrip
         projects={[
@@ -85,7 +90,12 @@ describe('RecentProjectsStrip', () => {
 
     await waitFor(() => {
       expect(designSystemCard?.querySelector('.recent-projects__card-thumb-logo img')).toBeTruthy();
-      expect(container.querySelector('.recent-projects__card-thumb-html iframe')).toBeTruthy();
+      const iframe = container.querySelector('.recent-projects__card-thumb-html iframe');
+      expect(iframe).toBeTruthy();
+      expect(iframe?.getAttribute('src')).toBeNull();
+      expect(iframe?.getAttribute('srcdoc')).toContain(
+        '<base href="/api/projects/project-html/raw/index.html?v=2">',
+      );
     });
   });
 
@@ -104,14 +114,7 @@ describe('RecentProjectsStrip', () => {
         `;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        clone: () => ({
-          ok: true,
-          text: async () => deckHtml,
-        }),
-        text: async () => deckHtml,
-      })),
+      vi.fn(async () => new Response(deckHtml)),
     );
 
     const { container } = render(
@@ -139,15 +142,21 @@ describe('RecentProjectsStrip', () => {
 
     await waitFor(() => {
       const deckIframe = deckCard?.querySelector('iframe') as HTMLIFrameElement | null;
+      const htmlIframe = htmlCard?.querySelector('iframe') as HTMLIFrameElement | null;
       expect(deckIframe?.getAttribute('srcdoc')).toContain('First slide');
+      expect(deckIframe?.getAttribute('srcdoc')).toContain(
+        '<base href="/api/projects/project-deck/raw/index.html?v=2">',
+      );
       expect(deckIframe?.getAttribute('srcdoc')).toContain('od-deck-card-preview');
       expect(deckIframe?.getAttribute('srcdoc')).toContain('.page-flip-controls');
       expect(deckIframe?.getAttribute('srcdoc')).toContain('[aria-label="Pagination"]');
       expect(deckIframe?.getAttribute('srcdoc')).not.toContain('<script');
       expect(deckIframe?.getAttribute('src')).toBeNull();
-      expect(htmlCard?.querySelector('iframe')?.getAttribute('src')).toBe(
-        '/api/projects/project-html/raw/index.html?v=2',
+      expect(htmlIframe?.getAttribute('src')).toBeNull();
+      expect(htmlIframe?.getAttribute('srcdoc')).toContain(
+        '<base href="/api/projects/project-html/raw/index.html?v=2">',
       );
+      expect(htmlIframe?.getAttribute('srcdoc')).toContain('od-page-card-preview');
     });
   });
 

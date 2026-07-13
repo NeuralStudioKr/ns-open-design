@@ -150,7 +150,7 @@ async function loadHtmlCover(
       return res.text();
     })
     .then((html) => {
-      const parsed = mode === "deck" ? deckPreviewSrcDoc(html) : pagePreviewSrcDoc(html);
+      const parsed = mode === "deck" ? deckPreviewSrcDoc(html, src) : pagePreviewSrcDoc(html, src);
       htmlCoverCache.set(cacheKey, parsed);
       return parsed;
     })
@@ -162,7 +162,7 @@ async function loadHtmlCover(
   return run;
 }
 
-function pagePreviewSrcDoc(html: string): string {
+export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
   const withoutScripts = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "");
   const style = `<style id="od-page-card-preview">
     html,
@@ -173,10 +173,10 @@ function pagePreviewSrcDoc(html: string): string {
       overflow: hidden !important;
     }
   </style>`;
-  return injectBefore(withoutScripts, "</head>", style);
+  return injectPreviewHead(withoutScripts, sourceUrl, style);
 }
 
-function deckPreviewSrcDoc(html: string): string {
+export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
   const withoutScripts = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "");
   const style = `<style id="od-deck-card-preview">
     html,
@@ -236,7 +236,21 @@ function deckPreviewSrcDoc(html: string): string {
       pointer-events: none !important;
     }
   </style>`;
-  return injectBefore(withoutScripts, "</head>", style);
+  return injectPreviewHead(withoutScripts, sourceUrl, style);
+}
+
+function previewBaseTag(source: string, sourceUrl: string): string {
+  if (/<base\b/i.test(source)) return "";
+  const escaped = sourceUrl
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<base href="${escaped}">`;
+}
+
+function injectPreviewHead(source: string, sourceUrl: string, style: string): string {
+  return injectBefore(source, "</head>", `${previewBaseTag(source, sourceUrl)}${style}`);
 }
 
 function injectBefore(source: string, marker: string, addition: string): string {

@@ -504,8 +504,10 @@ export function isTrustedPreviewAssetRequest(
 ): boolean {
   const method = String(req.method || '').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') return false;
-  const haystack = [req.path, req.url, req.originalUrl]
+  const pathCandidates = [req.path, req.url, req.originalUrl]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => value.split(/[?#]/, 1)[0] ?? '')
+    .filter(Boolean)
     .join('\n');
-  return /\/preview\/[^/]+\//.test(haystack);
+  return /\/preview\/[^/]+\//.test(pathCandidates);
 }

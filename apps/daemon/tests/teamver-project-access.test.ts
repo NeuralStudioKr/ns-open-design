@@ -192,6 +192,31 @@ describe('Teamver project access gate', () => {
     }
   });
 
+  it('does not treat query-string preview text as a trusted preview asset', async () => {
+    const projectId = `teamver-access-preview-query-${Date.now()}`;
+    await createProject(projectId);
+    const previousToken = process.env.OD_API_TOKEN;
+    const token = `trusted-preview-query-${Date.now()}`;
+    process.env.OD_API_TOKEN = token;
+
+    try {
+      await withAccessServer(204, async (url, requests) => {
+        process.env.TEAMVER_DESIGN_API_URL = url;
+        const response = await fetch(
+          `${baseUrl}/api/projects/${projectId}/files?next=/preview/not-a-scope/index.html`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        expect(response.status).toBe(401);
+        const body = (await response.json()) as { error?: { message?: string } };
+        expect(body.error?.message).toMatch(/identity headers required/i);
+        expect(requests).toEqual([]);
+      });
+    } finally {
+      if (previousToken === undefined) delete process.env.OD_API_TOKEN;
+      else process.env.OD_API_TOKEN = previousToken;
+    }
+  });
+
   it('allows trusted OD bearer without identity on GET preview assets', async () => {
     const projectId = `teamver-access-trusted-preview-${Date.now()}`;
     await createProject(projectId);
