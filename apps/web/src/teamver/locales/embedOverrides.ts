@@ -25,15 +25,12 @@ export function teamverEmbedOverrides(
   subtitle?: string,
   hero?: { title?: string; subtitle?: string },
 ): Partial<Dict> {
+  // One fixed bootstrap string — Entry/Project/banner must not rewrite copy mid-paint.
   const bootstrapLoading = resolveEmbedBootstrapLoadingLabel();
   const overrides: Partial<Dict> = {
     "app.brand": title,
     "app.brandPill": "",
-    // Session banner reuses the pre-mount shell copy so the bootstrap
-    // sequence reads as a single loading state instead of two distinct
-    // "Loading…" then "Checking session…" messages.
     "teamver.embed.sessionLoading": bootstrapLoading,
-    // Entry/project spinners during the first paint use the same copy.
     "common.loading": bootstrapLoading,
     "app.welcomeLoading": bootstrapLoading,
     "entry.loadingWorkspace": bootstrapLoading,

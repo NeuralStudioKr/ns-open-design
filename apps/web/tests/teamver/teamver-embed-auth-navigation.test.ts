@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TEAMVER_AUTH_RETURN_PENDING_KEY } from "../../src/teamver/teamverAuthReturn";
 
-vi.mock("../src/teamver/designApiBase", () => ({
+vi.mock("../../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
 }));
 
@@ -12,6 +12,11 @@ describe("teamverEmbedAuthNavigation", () => {
     vi.resetModules();
     sessionStorage.clear();
     window.history.replaceState({}, "", "/");
+    Object.defineProperty(document, "referrer", {
+      configurable: true,
+      value: "",
+      writable: true,
+    });
   });
 
   afterEach(() => {
@@ -39,6 +44,17 @@ describe("teamverEmbedAuthNavigation", () => {
       "../../src/teamver/teamverEmbedAuthNavigation"
     );
     expect(shouldDeferEmbedLoginRedirect()).toBe(true);
+  });
+
+  it("does not defer forever solely because document.referrer is an auth page", async () => {
+    Object.defineProperty(document, "referrer", {
+      configurable: true,
+      value: "https://stg.teamver.com/auth/signin",
+    });
+    const { shouldDeferEmbedLoginRedirect } = await import(
+      "../../src/teamver/teamverEmbedAuthNavigation"
+    );
+    expect(shouldDeferEmbedLoginRedirect()).toBe(false);
   });
 
   it("normalizes auth return destinations without cosmetic params", async () => {

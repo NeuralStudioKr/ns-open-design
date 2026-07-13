@@ -21,6 +21,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
     http: { post: postMock },
     workspaceStore: { get: getWorkspaceMock },
   })),
+  withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
   // 803f70262 added `...TEAMVER_BFF_REQUEST_OPTIONS` at every BFF call site —
   // spreading `undefined` throws before `postMock` is invoked.
   TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true, skipAuthRecovery: true },
@@ -33,6 +34,7 @@ vi.mock("../src/teamver/teamverDesignAccess", () => ({
 }));
 
 import { NetworkError } from "@teamver/app-sdk";
+import { withDesignBffCookieAuthRecovery } from "../src/teamver/designBffClient";
 import {
   formatPublishErrorCodeForUser,
   formatPublishErrorMessage,
@@ -48,6 +50,7 @@ describe("publishTeamverDesignToDrive", () => {
     postMock.mockReset();
     getWorkspaceMock.mockClear();
     assertAppEnabledMock.mockClear();
+    vi.mocked(withDesignBffCookieAuthRecovery).mockClear();
     delete process.env.VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID;
     delete process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID;
   });
@@ -90,6 +93,7 @@ describe("publishTeamverDesignToDrive", () => {
       },
       expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
     );
+    expect(withDesignBffCookieAuthRecovery).toHaveBeenCalledTimes(1);
     expect(result.outputs[0]?.driveAssetId).toBe("AST-1");
     expect(result.partial).toBe(false);
   });

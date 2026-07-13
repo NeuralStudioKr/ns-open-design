@@ -14,7 +14,7 @@ import {
   prepareDesignAuthSessionReload,
 } from '@/src/teamver/designBffClient';
 import { postDesignAuthWorkspace } from '@/src/teamver/designAuthClient';
-import { resolveEmbedBootstrapLoadingLabel } from '@/src/teamver/branding/loadingShellLabel';
+import { EmbedLoadingShell } from '@/src/components/EmbedLoadingShell';
 import { seedEmbedBootstrapSession } from '@/src/teamver/embedBootstrapSession';
 import { setTeamverEmbedSessionAuthenticated } from '@/src/teamver/teamverEmbedSession';
 import { syncTeamverWorkspaceFromSession } from '@/src/teamver/syncTeamverWorkspace';
@@ -23,8 +23,6 @@ import {
   normalizeEmbedAuthReturnDestination,
   scrubCosmeticLaunchParamsFromBrowserUrl,
 } from '@/src/teamver/teamverEmbedAuthNavigation';
-
-const BOOTSTRAP_LOADING_LABEL = resolveEmbedBootstrapLoadingLabel();
 
 function AuthCallbackInner() {
   const searchParams = useSearchParams();
@@ -82,18 +80,16 @@ function AuthCallbackInner() {
 
   if (message) {
     return (
-      <div className="od-loading-shell" data-testid="design-auth-callback-error">
-        {message}
-      </div>
+      <EmbedLoadingShell label={message} testId="design-auth-callback-error" />
     );
   }
 
-  return <div className="od-loading-shell" data-testid="design-auth-callback-loading">{BOOTSTRAP_LOADING_LABEL}</div>;
+  return <EmbedLoadingShell testId="design-auth-callback-loading" />;
 }
 
 export default function DesignAuthCallbackPage() {
   return (
-    <Suspense fallback={<div className="od-loading-shell">{BOOTSTRAP_LOADING_LABEL}</div>}>
+    <Suspense fallback={<EmbedLoadingShell />}>
       <AuthCallbackInner />
     </Suspense>
   );

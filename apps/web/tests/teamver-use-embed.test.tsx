@@ -64,6 +64,7 @@ vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
 
 vi.mock("../src/teamver/teamverAuthReturn", () => ({
   peekTeamverAuthReturnPending: vi.fn(() => false),
+  consumeTeamverAuthReturnPending: vi.fn(() => false),
   isLikelyTeamverAuthReturnNavigation: vi.fn(() => false),
 }));
 
@@ -87,6 +88,7 @@ describe("useTeamverEmbed", () => {
     vi.mocked(designBffClient.prepareDesignAuthSessionReload).mockClear();
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
     vi.mocked(teamverAuthReturn.peekTeamverAuthReturnPending).mockReturnValue(false);
+    vi.mocked(teamverAuthReturn.consumeTeamverAuthReturnPending).mockReturnValue(false);
     vi.mocked(teamverAuthReturn.isLikelyTeamverAuthReturnNavigation).mockReturnValue(false);
     vi.mocked(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).mockClear();
     vi.mocked(designAuthFlow.redirectToTeamverLoginPreservingRoute).mockClear();

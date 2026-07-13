@@ -67,7 +67,6 @@ import {
   shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
-import { resolveLoadingShellLabel } from './teamver/branding/loadingShellLabel';
 import {
   subscribeTeamverEmbedSessionChanged,
 } from './teamver/teamverEmbedSession';
@@ -3494,7 +3493,7 @@ function AppInner() {
   } else if (isTeamverEmbedMode() && route.kind === 'project' && !activeProject) {
     appMain = (
       <div className="embed-route-loading" data-testid="embed-project-route-loading">
-        <CenteredLoader label={resolveLoadingShellLabel()} />
+        <CenteredLoader fullBleed />
       </div>
     );
   } else {

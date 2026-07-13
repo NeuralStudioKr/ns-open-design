@@ -1,5 +1,9 @@
 import { NetworkError } from "@teamver/app-sdk";
-import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
+import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 import { readTeamverViteEnv } from "./teamverViteEnv";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
@@ -232,13 +236,15 @@ export async function publishTeamverDesignToDrive(
   };
 
   try {
-    const response = await client.http.post<PublishResponse>(
-      `/projects/${encodeURIComponent(params.projectId)}/publish`,
-      body,
-      {
-        workspaceId: workspaceId,
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
+    const response = await withDesignBffCookieAuthRecovery(() =>
+      client.http.post<PublishResponse>(
+        `/projects/${encodeURIComponent(params.projectId)}/publish`,
+        body,
+        {
+          workspaceId: workspaceId,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
     );
 
     const result = buildPublishResultFromResponse(response, params.projectId);

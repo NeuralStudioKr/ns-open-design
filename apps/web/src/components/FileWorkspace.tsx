@@ -19,6 +19,7 @@ import {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isMacPlatform } from '../utils/platform';
+import { collapseArtifactVersionOpenTabs } from './artifact-persist';
 import {
   deleteProjectFile,
   fetchProjectFileText,
@@ -779,8 +780,14 @@ export function FileWorkspace({
       ? reanchorBrowserTabsToCurrentOrder(orderedWorkspaceTabs, browserTabs)
       : browserTabs;
     if (nextBrowserTabs !== browserTabs) setBrowserTabs(nextBrowserTabs);
-    onTabsStateChange(workspaceTabsState(
+    // Collapse numbered siblings even when closeTabs was computed against a
+    // stale openTabsStateRef (rapid Write auto-opens race React updates).
+    const nextFileTabs = collapseArtifactVersionOpenTabs(
       isNewTab ? [...tabsAfterClose, name] : tabsAfterClose,
+      name,
+    );
+    onTabsStateChange(workspaceTabsState(
+      nextFileTabs,
       name,
       nextBrowserTabs,
     ));

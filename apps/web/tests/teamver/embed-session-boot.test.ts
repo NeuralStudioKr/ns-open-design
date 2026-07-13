@@ -49,6 +49,20 @@ describe("teamver embed session boot", () => {
     expect(completeIdx).toBeGreaterThan(-1);
     expect(registryIdx).toBeGreaterThan(completeIdx);
     expect(prefetchIdx).toBeGreaterThan(completeIdx);
+    // Persist last-good session for clear/logout hygiene — do not unlock the
+    // gate from sessionStorage alone (authenticated flash → login redirect).
+    expect(boot).not.toContain("readFreshEmbedAuthSnapshot");
+    expect(boot).toContain("persistEmbedAuthSnapshot");
+    expect(boot).toContain("consumeTeamverAuthReturnPending");
+    expect(boot).toContain("shouldDeferEmbedLoginRedirect");
+  });
+
+  it("client-app prefetches auth while the App chunk loads", () => {
+    const client = readFileSync(
+      resolve(webRoot, "app/[[...slug]]/client-app.tsx"),
+      "utf8",
+    );
+    expect(client).toContain("prefetchEmbedAuthSessionOnBoot");
   });
 });
 

@@ -41,7 +41,7 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
   };
 
   if (embed.authenticated) {
-    const barState = !embed.designAppEnabled || sessionUnreachable ? "warn" : "ok";
+    const barState = !embed.designAppEnabled ? "warn" : "ok";
     return (
       <div className="teamver-embed-bar" data-state={barState} data-testid="teamver-embed-bar">
         <div className="teamver-embed-bar__group teamver-embed-bar__group--workspace">
@@ -61,10 +61,10 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
           ) : null}
           {sessionUnreachable ? (
             <span
-              className="teamver-embed-bar__warn"
+              className="teamver-embed-bar__status"
               data-testid="teamver-embed-session-warn"
             >
-              세션 확인 실패
+              연결 확인 중…
             </span>
           ) : null}
         </div>
@@ -77,7 +77,7 @@ export function TeamverSessionBanner({ teamverEmbed }: Props) {
               disabled={embed.loading}
               onClick={handleRetrySession}
             >
-              세션 다시 확인
+              다시 시도
             </button>
           ) : null}
           <a

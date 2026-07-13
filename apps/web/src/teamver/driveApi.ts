@@ -1,6 +1,6 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
-import { refreshDesignAuthCookie } from "./designBffClient";
+import { fetchDesignAuthSession, refreshDesignAuthCookie } from "./designBffClient";
 
 export function teamverDriveApiUrl(path: string): string {
   const suffix = path.replace(/^\//, "");
@@ -60,12 +60,28 @@ function enqueueDriveFetch<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
-const DRIVE_AUTH_RETRY_DELAY_MS = 280;
+const DRIVE_AUTH_RETRY_DELAY_MS = 150;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function recoverDriveAuthSession(): Promise<boolean> {
+  const refreshed = await refreshDesignAuthCookie();
+  if (refreshed) return true;
+
+  // Drive modal open is an explicit user action. If a previous background
+  // refresh left the BFF client in sticky-decline state, force one fresh session
+  // probe before surfacing "Drive session expired". This also covers HA cases
+  // where another response already Set-Cookie'd a usable BFF session.
+  try {
+    const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
+    return Boolean(session?.authenticated);
+  } catch {
+    return false;
+  }
 }
 
 async function teamverDriveFetch(
@@ -97,14 +113,21 @@ async function teamverDriveFetch(
 
     if (shouldSkipDriveAuthRefresh(detail)) {
       // Sibling Drive/BFF call may have just rotated the session cookie. Wait
-      // briefly and retry once without POSTing /auth/refresh again.
+      // briefly and retry once without POSTing /auth/refresh again. If that
+      // still fails, run the regular coalesced BFF refresh as a last step before
+      // surfacing "Drive session expired" to the modal.
       await delay(DRIVE_AUTH_RETRY_DELAY_MS);
       response = await doFetch();
+      if (response.status !== 401 && response.status !== 403) {
+        return response;
+      }
+      const recovered = await recoverDriveAuthSession();
+      if (recovered) response = await doFetch();
       return response;
     }
 
-    const refreshed = await refreshDesignAuthCookie();
-    if (refreshed) response = await doFetch();
+    const recovered = await recoverDriveAuthSession();
+    if (recovered) response = await doFetch();
     return response;
   });
 }

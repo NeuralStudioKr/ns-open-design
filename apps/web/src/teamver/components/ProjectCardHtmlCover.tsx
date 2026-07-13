@@ -6,12 +6,12 @@ import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
 const DECK_PREVIEW_WIDTH = 1280;
 const DECK_PREVIEW_HEIGHT = 720;
 
-const deckCoverCache = new Map<string, string>();
-const deckCoverInflight = new Map<string, Promise<string>>();
+const htmlCoverCache = new Map<string, string>();
+const htmlCoverInflight = new Map<string, Promise<string>>();
 
 export type ProjectCardHtmlCoverProps = {
   src: string;
-  /** Deck projects — fetch HTML once, show first slide via srcDoc (lighter than live iframe). */
+  /** Deck projects — first-slide layout CSS; prototypes use a simpler clip. */
   deckCoverOnly?: boolean;
   iframeClassName?: string;
   deckFrameClassName?: string;
@@ -19,7 +19,14 @@ export type ProjectCardHtmlCoverProps = {
   deckLoadingClassName?: string;
 };
 
-/** Project card HTML preview — raw iframe or deck-first-slide srcDoc. */
+/**
+ * Project card HTML preview via authenticated fetch + srcDoc.
+ *
+ * Never use a bare iframe `src=/api/.../raw/...` in Teamver embed: sandboxed
+ * iframes cannot send identity cookies/headers, so nginx/daemon return
+ * UNAUTHORIZED JSON (reads as a black thumb). Deck covers already fetched;
+ * prototypes need the same path.
+ */
 export function ProjectCardHtmlCover({
   src,
   deckCoverOnly = false,
@@ -28,53 +35,45 @@ export function ProjectCardHtmlCover({
   deckIframeClassName = "project-thumb-deck-iframe",
   deckLoadingClassName = "project-thumb-deck-loading",
 }: ProjectCardHtmlCoverProps) {
-  if (!deckCoverOnly) {
-    return (
-      <iframe
-        className={iframeClassName}
-        src={src}
-        title=""
-        loading="lazy"
-        sandbox="allow-scripts"
-        tabIndex={-1}
-      />
-    );
-  }
-
   return (
-    <DeckCoverThumb
+    <AuthenticatedHtmlCover
       src={src}
+      mode={deckCoverOnly ? "deck" : "page"}
       deckFrameClassName={deckFrameClassName}
-      deckIframeClassName={deckIframeClassName}
+      deckIframeClassName={deckIframeClassName || iframeClassName}
       deckLoadingClassName={deckLoadingClassName}
     />
   );
 }
 
-function DeckCoverThumb({
+function AuthenticatedHtmlCover({
   src,
+  mode,
   deckFrameClassName,
   deckIframeClassName,
   deckLoadingClassName,
 }: {
   src: string;
+  mode: "deck" | "page";
   deckFrameClassName: string;
   deckIframeClassName: string;
   deckLoadingClassName: string;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const [srcDoc, setSrcDoc] = useState<string | null>(() => deckCoverCache.get(src) ?? null);
+  const cacheKey = `${mode}:${src}`;
+  const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
-    const cached = deckCoverCache.get(src);
+    const cached = htmlCoverCache.get(cacheKey);
     if (cached) {
       setSrcDoc(cached);
       return;
     }
     setSrcDoc(null);
-    loadDeckCover(src)
+    const abort = new AbortController();
+    loadHtmlCover(src, mode, abort.signal)
       .then((next) => {
         if (!cancelled) setSrcDoc(next);
       })
@@ -83,8 +82,9 @@ function DeckCoverThumb({
       });
     return () => {
       cancelled = true;
+      abort.abort();
     };
-  }, [src]);
+  }, [cacheKey, mode, src]);
 
   useEffect(() => {
     const node = frameRef.current;
@@ -127,33 +127,56 @@ function DeckCoverThumb({
   );
 }
 
-async function loadDeckCover(src: string): Promise<string> {
-  const cached = deckCoverCache.get(src);
+async function loadHtmlCover(
+  src: string,
+  mode: "deck" | "page",
+  signal?: AbortSignal,
+): Promise<string> {
+  const cacheKey = `${mode}:${src}`;
+  const cached = htmlCoverCache.get(cacheKey);
   if (cached) return cached;
-  const existing = deckCoverInflight.get(src);
+
+  // Do not share in-flight promises across cards: aborting one unmount must
+  // not cancel another card's cover fetch for the same URL.
+  const existing = !signal ? htmlCoverInflight.get(cacheKey) : undefined;
   if (existing) return existing;
-  // Per-request AbortSignal skips GET dedupe (each card needs its own response body).
-  const abort = new AbortController();
-  const run = fetchTeamverDaemon(src, { signal: abort.signal })
+
+  const run = fetchTeamverDaemon(src, {
+    // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
+    signal: signal ?? new AbortController().signal,
+  })
     .then((res) => {
       if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
       return res.text();
     })
     .then((html) => {
-      const parsed = deckPreviewSrcDoc(html);
-      deckCoverCache.set(src, parsed);
-      deckCoverInflight.delete(src);
+      const parsed = mode === "deck" ? deckPreviewSrcDoc(html, src) : pagePreviewSrcDoc(html, src);
+      htmlCoverCache.set(cacheKey, parsed);
       return parsed;
     })
-    .catch((error) => {
-      deckCoverInflight.delete(src);
-      throw error;
+    .finally(() => {
+      htmlCoverInflight.delete(cacheKey);
     });
-  deckCoverInflight.set(src, run);
+
+  if (!signal) htmlCoverInflight.set(cacheKey, run);
   return run;
 }
 
-function deckPreviewSrcDoc(html: string): string {
+export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
+  const withoutScripts = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "");
+  const style = `<style id="od-page-card-preview">
+    html,
+    body {
+      margin: 0 !important;
+      width: ${DECK_PREVIEW_WIDTH}px !important;
+      min-height: ${DECK_PREVIEW_HEIGHT}px !important;
+      overflow: hidden !important;
+    }
+  </style>`;
+  return injectPreviewHead(withoutScripts, sourceUrl, style);
+}
+
+export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
   const withoutScripts = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "");
   const style = `<style id="od-deck-card-preview">
     html,
@@ -213,7 +236,21 @@ function deckPreviewSrcDoc(html: string): string {
       pointer-events: none !important;
     }
   </style>`;
-  return injectBefore(withoutScripts, "</head>", style);
+  return injectPreviewHead(withoutScripts, sourceUrl, style);
+}
+
+function previewBaseTag(source: string, sourceUrl: string): string {
+  if (/<base\b/i.test(source)) return "";
+  const escaped = sourceUrl
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<base href="${escaped}">`;
+}
+
+function injectPreviewHead(source: string, sourceUrl: string, style: string): string {
+  return injectBefore(source, "</head>", `${previewBaseTag(source, sourceUrl)}${style}`);
 }
 
 function injectBefore(source: string, marker: string, addition: string): string {
@@ -224,6 +261,6 @@ function injectBefore(source: string, marker: string, addition: string): string 
 
 /** @internal vitest */
 export function clearProjectDeckCoverCacheForTests(): void {
-  deckCoverCache.clear();
-  deckCoverInflight.clear();
+  htmlCoverCache.clear();
+  htmlCoverInflight.clear();
 }

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.bff_session import suppress_session_cookie
 from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
@@ -44,6 +45,28 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 logger = logging.getLogger(__name__)
 
 REGISTRY_SCRATCH_SYNC_RETRY_DELAYS_SEC = (0.5, 1.5)
+
+
+async def _resolve_drive_mutation_access_token(request: Request, auth: AuthContext) -> str:
+    """Resolve a fresh-enough Main access token for Drive publish/import mutations.
+
+    Browse APIs go through `/teamver-bff/drive/*`; publish/import use project
+    routes. In ALB multi-node mode, a stale BFF cookie can survive local
+    usability checks while Main has already rotated the refresh token on a
+    sibling node. Force refresh here, and never re-sign the stale session when
+    that refresh fails.
+    """
+    if auth.auth_source == "bff":
+        session = await force_refresh_bff_session(request)
+        if session is None:
+            suppress_session_cookie(request)
+            raise UnauthorizedError("session_expired")
+        return session.access_token
+
+    access_token = auth.raw_token or extract_request_access_token(request)
+    if not access_token:
+        raise UnauthorizedError("missing_access_token")
+    return access_token
 
 
 def _to_response(row: DesignProject) -> DesignProjectResponse:
@@ -501,12 +524,7 @@ async def publish_project_to_drive(
             row.od_project_id,
         )
 
-    access_token = auth.raw_token or extract_request_access_token(request)
-    if auth.auth_source == "bff":
-        session = await force_refresh_bff_session(request)
-        if session is None:
-            raise UnauthorizedError("session_expired")
-        access_token = session.access_token
+    access_token = await _resolve_drive_mutation_access_token(request, auth)
 
     result = await publish_project(
         db,
@@ -569,7 +587,7 @@ async def import_project_drive_assets(
         raise NotFoundError("project_not_found")
     _ensure_project_access(row, auth)
 
-    access_token = auth.raw_token or extract_request_access_token(request)
+    access_token = await _resolve_drive_mutation_access_token(request, auth)
     result = await import_drive_assets(
         teamver_client=get_teamver_client(),
         access_token=access_token,
