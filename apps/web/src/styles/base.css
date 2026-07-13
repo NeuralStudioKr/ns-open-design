@@ -7,6 +7,12 @@ html {
   background-color: #faf9f7;
 }
 
+/* Teamver embed: warm cream from first paint (matches Main FE frame). */
+html.teamver-embed,
+html.teamver-embed body {
+  background-color: #F4EFE6;
+}
+
 body {
   font-family: var(--sans);
   color: var(--text, #1a1916);
@@ -18,7 +24,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.teamver-embed body {
+  background: #F4EFE6;
+  background-color: #F4EFE6;
+}
+
 html[data-theme="dark"] body {
+  background-color: #1a1917;
+}
+
+html.teamver-embed[data-theme="dark"] body {
   background-color: #1a1917;
 }
 
@@ -37,19 +52,26 @@ html[data-theme="dark"] body {
   font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
 }
 
-html[data-theme="dark"] .od-loading-shell {
+.od-loading-shell--teamver {
+  background: #F4EFE6;
+  background-color: #F4EFE6;
+  color: #8a857c;
+}
+
+html[data-theme="dark"] .od-loading-shell,
+html[data-theme="dark"] .od-loading-shell--teamver {
   background-color: #1a1917;
   color: var(--text-muted, #a8a39a);
 }
 
 .od-loading-shell::before {
   content: "";
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
-  border: 2px solid var(--border, #e1e5eb);
-  border-top-color: var(--accent, #c96442);
-  animation: od-loading-spin 700ms linear infinite;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: od-loading-spin 900ms linear infinite;
 }
 
 @keyframes od-loading-spin {
@@ -80,8 +102,8 @@ html[data-theme="dark"] .od-loading-shell {
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  background: var(--bg-app, #faf9f7);
-  background-color: #faf9f7;
+  background: #F4EFE6;
+  background-color: #F4EFE6;
 }
 
 .embed-route-loading > .od-loading-shell {
@@ -93,12 +115,23 @@ html[data-theme="dark"] .od-loading-shell {
 /* Inline entry/project loaders: same type + spinner language as the shell. */
 .centered-loader--embed-tone {
   gap: 10px;
-  color: var(--text-muted, #74716b);
+  color: #8a857c;
   font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
+  background: transparent;
+}
+
+.centered-loader--embed-tone::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: od-loading-spin 900ms linear infinite;
 }
 
 .centered-loader--embed-tone .loading-spinner {
-  color: inherit;
+  display: none;
 }
 
 .centered-loader--embed-tone .centered-loader-label {

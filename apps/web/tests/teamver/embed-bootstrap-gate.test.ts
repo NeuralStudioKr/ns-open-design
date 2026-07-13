@@ -17,7 +17,8 @@ describe('embed bootstrap gate', () => {
     expect(shell).toContain('od-loading-shell');
     expect(baseCss).toContain('.od-loading-shell::before');
     expect(baseCss).toContain('.embed-route-loading');
-    expect(baseCss).toContain('background-color: #faf9f7');
+    expect(baseCss).toContain('od-loading-shell--teamver');
+    expect(baseCss).toContain('background-color: #F4EFE6');
   });
 
   it('wraps the workspace shell in App', () => {

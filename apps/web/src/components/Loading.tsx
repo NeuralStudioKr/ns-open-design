@@ -1,6 +1,7 @@
 import { Icon } from './Icon';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { EmbedLoadingShell } from './EmbedLoadingShell';
+import { resolveLoadingShellLabel } from '../teamver/branding/loadingShellLabel';
 
 interface SpinnerProps {
   size?: number;
@@ -54,8 +55,8 @@ export function DesignCardSkeleton() {
  * Centered overlay used while bootstrap data loads (agents, skills, design
  * systems, project list). Sits inside a flex/grid parent and grows with it.
  *
- * Embed mode uses the same shell chrome as auth bootstrap so mid-route
- * loaders do not read as a different (error-like) screen.
+ * Embed mode uses the same shell chrome + fixed copy as auth bootstrap so
+ * mid-route loaders do not rewrite the label or swap spinner styles.
  */
 export function CenteredLoader({
   label,
@@ -66,13 +67,16 @@ export function CenteredLoader({
   fullBleed?: boolean;
 }) {
   if (fullBleed) {
-    return <EmbedLoadingShell label={label} />;
+    return <EmbedLoadingShell />;
   }
   const embedTone = isTeamverEmbedMode();
+  // Embed: ignore caller labels — one fixed string prevents Entry/Project
+  // "Loading…" / "불러오는 중…" / brand-title swaps mid-paint.
+  const visibleLabel = embedTone ? resolveLoadingShellLabel() : label;
   return (
     <div className={embedTone ? 'centered-loader centered-loader--embed-tone' : 'centered-loader'}>
-      <Spinner size={20} />
-      {label ? <span className="centered-loader-label">{label}</span> : null}
+      {embedTone ? null : <Spinner size={20} />}
+      {visibleLabel ? <span className="centered-loader-label">{visibleLabel}</span> : null}
     </div>
   );
 }

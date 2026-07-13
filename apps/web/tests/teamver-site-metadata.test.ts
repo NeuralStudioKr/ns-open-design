@@ -51,17 +51,17 @@ describe("Teamver site metadata", () => {
     expect(buildRootLayoutMetadata().title).toBe("Open Design");
   });
 
-  it("uses Korean Teamver loading shell copy in embed builds", () => {
+  it("uses a fixed Korean loading shell copy in embed builds", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
-    expect(resolveLoadingShellLabel()).toBe("Teamver Design 불러오는 중…");
+    expect(resolveLoadingShellLabel()).toBe("불러오는 중…");
   });
 
-  it("uses Korean Teamver loading shell copy on teamver.com hostnames without embed env", () => {
+  it("uses the same fixed loading copy on teamver.com hostnames without embed env", () => {
     delete process.env.VITE_TEAMVER_EMBED;
     vi.stubGlobal("window", {
       location: { hostname: "design.teamver.com" },
     } as Window & typeof globalThis);
-    expect(resolveLoadingShellLabel()).toBe("Teamver Design 불러오는 중…");
+    expect(resolveLoadingShellLabel()).toBe("불러오는 중…");
     vi.unstubAllGlobals();
   });
 
