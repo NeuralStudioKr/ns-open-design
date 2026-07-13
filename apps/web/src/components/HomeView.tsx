@@ -121,6 +121,14 @@ import type { PetTaskSummary } from './pet/PetOverlay';
 const HOME_DRIVE_IMPORT_MAX = 12;
 const HOME_COMMUNITY_PLUGIN_PAGE_SIZE = 24;
 
+type PluginBoundHomeHeroChip = HomeHeroChip & {
+  action: Extract<HomeHeroChip['action'], { kind: 'apply-scenario' } | { kind: 'apply-figma-migration' }>;
+};
+
+function isPluginBoundHomeHeroChip(chip: HomeHeroChip): chip is PluginBoundHomeHeroChip {
+  return chip.action.kind === 'apply-scenario' || chip.action.kind === 'apply-figma-migration';
+}
+
 export interface ActivePlugin {
   record: InstalledPluginRecord;
   // `result` is `null` during the optimistic window — set on chip
@@ -1539,9 +1547,7 @@ export function HomeView({
   // (`open-template-picker`) forward to callbacks threaded in from EntryShell.
   function applyChipBoundPlugin(
     record: InstalledPluginRecord,
-    chip: HomeHeroChip & {
-      action: Extract<HomeHeroChip['action'], { kind: 'apply-scenario' } | { kind: 'apply-figma-migration' }>;
-    },
+    chip: PluginBoundHomeHeroChip,
   ) {
     const mediaSurface = homeMediaSurfaceForChipId(chip.id);
     if (mediaSurface) {
@@ -1608,43 +1614,41 @@ export function HomeView({
     // (create-plugin, open-template-picker) are action
     // shortcuts. Failure paths below still fire because the user did pick
     // the chip — error state belongs in the run lifecycle event.
-    const chipElement: 'plugin_chip' | 'action_chip' =
-      chip.action.kind === 'apply-scenario' || chip.action.kind === 'apply-figma-migration'
-        ? 'plugin_chip'
-        : 'action_chip';
+    const chipElement: 'plugin_chip' | 'action_chip' = isPluginBoundHomeHeroChip(chip)
+      ? 'plugin_chip'
+      : 'action_chip';
     trackHomeChatComposerClick(analytics.track, {
       page_name: 'home',
       area: 'chat_composer',
       element: chipElement,
       chip_id: chip.id,
     });
-    switch (chip.action.kind) {
-      case 'apply-scenario':
-      case 'apply-figma-migration': {
-        const targetId = chip.action.pluginId;
-        const record = plugins.find((p) => p.id === targetId);
-        if (!record) {
-          setPendingChipId(chip.id);
-          void getInstalledPlugin(targetId).then((resolved) => {
-            setPendingChipId(null);
-            if (!resolved) {
-              setError(
-                `Bundled scenario "${targetId}" is not installed. Reinstall the daemon to restore the default plugin set.`,
-              );
-              return;
-            }
-            setPlugins((current) => (
-              current.some((plugin) => plugin.id === resolved.id)
-                ? current
-                : [...current, resolved]
-            ));
-            applyChipBoundPlugin(resolved, chip);
-          });
-          return;
-        }
-        applyChipBoundPlugin(record, chip);
+    if (isPluginBoundHomeHeroChip(chip)) {
+      const targetId = chip.action.pluginId;
+      const record = plugins.find((p) => p.id === targetId);
+      if (!record) {
+        setPendingChipId(chip.id);
+        void getInstalledPlugin(targetId).then((resolved) => {
+          setPendingChipId(null);
+          if (!resolved) {
+            setError(
+              `Bundled scenario "${targetId}" is not installed. Reinstall the daemon to restore the default plugin set.`,
+            );
+            return;
+          }
+          setPlugins((current) => (
+            current.some((plugin) => plugin.id === resolved.id)
+              ? current
+              : [...current, resolved]
+          ));
+          applyChipBoundPlugin(resolved, chip);
+        });
         return;
       }
+      applyChipBoundPlugin(record, chip);
+      return;
+    }
+    switch (chip.action.kind) {
       case 'create-plugin': {
         queuePluginAuthoring(chip.id);
         return;

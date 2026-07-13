@@ -424,7 +424,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
-  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle } =
+  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle, enabled: teamverEmbedEnabled } =
     useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
