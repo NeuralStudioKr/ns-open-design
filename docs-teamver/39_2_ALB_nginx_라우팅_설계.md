@@ -78,7 +78,9 @@ stickiness {
 ## 4. nginx userId hash (Phase 4 — **SSOT**)
 
 **구현:** `deploy/teamver/devops/nginx/teamver-design-od-daemon-upstream.inc.conf`  
-**Peer 목록:** `scripts/render_od_daemon_peers_nginx.sh` → `/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf`
+**Peer 목록:** `scripts/render_od_daemon_peers_nginx.sh` → **`/etc/nginx/teamver-design-od-daemon-peers.inc`**  
+(⚠️ `conf.d/*.conf` 금지 — bare `server` 줄이 있으면 nginx 기동 실패. upstream `{ include … }` 전용.)  
+운영·트러블슈팅: [39_4 §10.11](./39_4_배포_Terraform_운영_Runbook.md#1011-nginx-alb-httpconf-적용-순서--함정-prodstaging) · [39_5 §3.1.1~3.1.3](./39_5_검증_체크리스트_FAQ.md#311-peer-0개-트러블슈팅)
 
 ### 4.0 해시 방식 (홀짝·끝자리 아님)
 

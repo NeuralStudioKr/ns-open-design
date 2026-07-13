@@ -151,14 +151,24 @@ bash scripts/smoke_design.sh --production   # 배포 후 health·auth gate·od_s
 
 ### Nginx (HTTP only — ALB 뒤)
 
+**상세 순서·함정 (default / empty peers / health 404):**  
+[docs-teamver/39_4 §10.11](../../../docs-teamver/39_4_배포_Terraform_운영_Runbook.md#1011-nginx-alb-httpconf-적용-순서--함정-prodstaging) · [devops/nginx/README.md](../devops/nginx/README.md)
+
 ```bash
+# 권장: sudo apt-get install -y awscli
 cd devops/nginx
-sudo cp teamver-design-od-token.conf.example /etc/nginx/conf.d/teamver-design-od-token.conf
-# OD_API_TOKEN 편집
-sudo bash ./apply_teamver_design_nginx_conf.sh ./design.teamver.com.http.conf
+sudo bash ./apply_teamver_design_nginx_conf.sh \
+  ./design.teamver.com.http.conf \
+  --disable design.teamver.com.https.conf
+# → sites-enabled/default 자동 제거, peers render 시도
+curl -fsS http://127.0.0.1/_nginx/health   # Host 없이 → ok
+cat /etc/nginx/teamver-design-od-daemon-peers.inc   # server …:7456 필수
 ```
 
 **금지:** `design.teamver.com.https.conf` enable (ALB + EC2 443 → 리다이렉트 루프).
+
+**2노드:** 양쪽 deploy 후 `sudo bash scripts/render_od_daemon_peers_nginx.sh` (peers.inc 내용 동일).  
+`no servers are inside upstream` → [39_5 §3.1.3](../../../docs-teamver/39_5_검증_체크리스트_FAQ.md#313-nginx-no-servers-are-inside-upstream--_nginxhealth-404).
 
 ---
 
