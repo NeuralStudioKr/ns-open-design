@@ -138,10 +138,11 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 - BE `TeamverSessionMiddleware` + `suppress_session_cookie()`는 이런 stale response가 cookie를 clobber하지 못하게 한다.
 - `/teamver-bff/drive/*` browse API는 FE queue + soft retry + 최종 coalesced `/auth/refresh` 후 재호출로 401 toast를 최대한 흡수한다.
 - `/projects/{id}/publish`와 `/projects/{id}/import-drive`는 project mutation 라우트이므로 browse proxy와 별개다. 두 라우트 모두 BFF 요청 시작 시 `force_refresh_bff_session()`을 사용하고, 실패 시 stale cookie re-sign을 suppress한다.
+- 추가 점검 결과, FE import/publish mutation은 SDK BFF 경로를 직접 타면서 공통 cookie recovery wrapper가 빠져 있었다. 현재는 두 mutation 모두 `withDesignBffCookieAuthRecovery()`를 거치며, `/auth/refresh`가 HA losing-node 401로 실패해도 짧은 대기 후 원 요청을 한 번 더 재시도한다. 이 재시도는 401 전 단계에서 막힌 요청에만 적용되므로 Drive 업로드/다운로드가 이미 수행된 502/부분 성공 응답은 재실행하지 않는다.
 
 운영 확인:
 1. Drive 모달 open 시 folder/list/shared-drive가 최종 200으로 수렴하는지 확인.
-2. Drive import/publish mutation에서 401이 나오면 response가 `session_expired`인지, FE가 이후 `/auth/refresh`를 한 번 더 수행하는지 확인.
+2. Drive import/publish mutation에서 401이 나오면 response가 `session_expired`인지, FE가 `/auth/refresh` 또는 short retry 이후 같은 mutation을 한 번만 재호출하는지 확인.
 3. ALB target별 `DESIGN_BFF_SESSION_SECRET` 값이 완전히 동일한지 확인. secret이 다르면 race와 별개로 모든 BFF cookie decode가 불안정해진다.
 
 ### 3.3 Gap · 후속

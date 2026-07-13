@@ -151,6 +151,7 @@ let authRecoveryRefreshActive = false;
 let embedAuthRecoveryLoadUsed = false;
 /** Coalesce parallel refreshDesignAuthCookie() from Drive modal burst. */
 let inFlightAuthRefresh: Promise<boolean> | null = null;
+const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 150;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
@@ -200,6 +201,12 @@ export async function withDesignBffCookieAuthRecovery<T>(
     if (err instanceof NetworkError && err.status === 401) {
       const refreshed = await refreshDesignAuthCookie();
       if (refreshed) return await request();
+      // In HA, a sibling request may have already rotated and Set-Cookie'd the
+      // BFF session while this request observed the losing-node 401. Give the
+      // browser one short turn to apply that cookie, then retry the original
+      // BFF call without issuing another /auth/refresh.
+      await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+      return await request();
     }
     throw err;
   }
