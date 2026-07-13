@@ -66,6 +66,30 @@ export function unfinishedTodosFromEvents(events: AgentEvent[] | undefined): Tod
   return latestTodosFromEvents(events).filter((todo) => todo.status !== 'completed');
 }
 
+/** Compact streaming footer progress — same tally as TodoCard (done+in_progress / total). */
+export type TodoProgressSummary = {
+  done: number;
+  total: number;
+  /**
+   * Agent-authored free text (`activeForm` or `content`). Not UI-locale i18n —
+   * models usually match the user's chat language, which can differ from the
+   * chrome locale. Display as-is; only the "Working" chrome is translated.
+   */
+  currentLabel: string | null;
+};
+
+export function summarizeTodoProgress(todos: readonly TodoItem[]): TodoProgressSummary | null {
+  if (todos.length === 0) return null;
+  const inProgress = todos.find((todo) => todo.status === 'in_progress');
+  const done = todos.filter(
+    (todo) => todo.status === 'completed' || todo.status === 'in_progress',
+  ).length;
+  const currentLabel = inProgress
+    ? (inProgress.activeForm?.trim() || inProgress.content.trim() || null)
+    : null;
+  return { done, total: todos.length, currentLabel };
+}
+
 // Walk the conversation in reverse to find the most recent TodoWrite
 // tool_use, return its raw input so callers can hand it to a `TodoCard`
 // without re-implementing the discovery logic. Returns `null` when no

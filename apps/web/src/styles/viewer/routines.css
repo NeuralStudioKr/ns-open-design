@@ -1127,6 +1127,26 @@
   font-size: 11.5px;
   color: var(--text-muted);
 }
+.app .assistant-footer .assistant-todo-progress {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: min(42ch, 52vw);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.app .assistant-footer .assistant-todo-progress::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--text-faint);
+}
+.app .assistant-footer .assistant-todo-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .app .op-waiting {
   width: fit-content;
   padding: 7px 14px;
