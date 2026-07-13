@@ -4,6 +4,7 @@ import {
   listEmbedProjectsFromRegistry,
   listEmbedProjectsPageFromRegistry,
   mapRegistryRowToProject,
+  mergeDaemonFieldsOntoRegistryProjects,
   resolveProjectDisplayName,
 } from "../../src/teamver/embedRegistryProjectList";
 import * as projectRegistry from "../../src/teamver/projectRegistry";
@@ -85,5 +86,51 @@ describe("embedRegistryProjectList", () => {
     });
     expect(second.projects.map((p) => p.id)).toEqual(["p1"]);
     expect(second.hasMore).toBe(false);
+  });
+
+  it("merges daemon status onto registry rows without dropping membership", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "ws-only",
+        title: "Workspace Only",
+        updatedAt: 30,
+      }),
+      mapRegistryRowToProject({
+        odProjectId: "shared",
+        title: "Shared",
+        updatedAt: 20,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "shared",
+        name: "Shared",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 25,
+        status: { value: "succeeded" as const },
+        metadata: { kind: "deck" as const, entryFile: "index.html" },
+      },
+      {
+        id: "other-tenant",
+        name: "Other",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 99,
+        status: { value: "running" as const },
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged.map((p) => p.id)).toEqual(["ws-only", "shared"]);
+    expect(merged[0]?.status?.value).toBe("not_started");
+    expect(merged[1]).toMatchObject({
+      id: "shared",
+      status: { value: "succeeded" },
+      metadata: { kind: "deck", entryFile: "index.html" },
+      updatedAt: 25,
+    });
   });
 });

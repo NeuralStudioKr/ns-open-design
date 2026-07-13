@@ -11,6 +11,8 @@ from starlette.requests import Request
 from ..config import settings
 
 _BFF_KEY = "teamver_bff_v1"
+# request.scope flag — TeamverSessionMiddleware skips Set-Cookie when set.
+SUPPRESS_SESSION_COOKIE_SCOPE_KEY = "teamver_suppress_session_cookie"
 
 
 @dataclass
@@ -82,6 +84,17 @@ def update_bff_workspace(request: Request, workspace_id: str) -> None:
 
 def clear_bff_session(request: Request) -> None:
     request.session.pop(_BFF_KEY, None)
+
+
+def suppress_session_cookie(request: Request) -> None:
+    """Do not re-emit this request's session cookie on the response.
+
+    Parallel Drive calls across ALB nodes can race refresh-token rotation: a
+    losing node still holds the pre-rotation session in ``request.session``.
+    Re-signing that stale session would overwrite a sibling's newer Set-Cookie
+    and leave the browser stuck on Main ``Invalid token``.
+    """
+    request.scope[SUPPRESS_SESSION_COOKIE_SCOPE_KEY] = True
 
 
 def bff_session_public_view(session: BffSession | None) -> dict[str, Any]:

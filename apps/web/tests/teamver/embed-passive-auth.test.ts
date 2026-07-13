@@ -135,12 +135,57 @@ describe("teamverEmbedPassiveAuth", () => {
     expect(prepareReloadMock).not.toHaveBeenCalled();
   });
 
-  it("schedules login redirect when idle after passive 401 and recovery fails", async () => {
+  it("does not redirect on a single unrecovered passive 401", async () => {
     refreshMock.mockResolvedValue(false);
+    const events: string[] = [];
+    const onAuth = () => {
+      events.push("auth");
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onAuth);
     handleEmbedPassiveUnauthorized("daemon");
     await vi.runAllTimersAsync();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+    expect(events).toEqual(["auth"]);
+    window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onAuth);
+  });
+
+  it("does not redirect on parallel unrecovered 401s that share one recovery", async () => {
+    refreshMock.mockResolvedValue(false);
+    handleEmbedPassiveUnauthorized("daemon");
+    handleEmbedPassiveUnauthorized("bff");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTimersAsync();
+    // One shared recovery → one failure credit → below threshold.
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+  });
+
+  it("schedules login redirect after consecutive unrecovered passive 401s", async () => {
+    refreshMock.mockResolvedValue(false);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    // Second call after the first recovery settles → second failure credit.
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3_000);
     expect(prepareReloadMock).toHaveBeenCalledTimes(1);
     expect(redirectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels pending redirect when a later recovery succeeds", async () => {
+    refreshMock.mockResolvedValue(false);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    // Timer is armed after consecutive failures; a later recovery must cancel it.
+    refreshMock.mockResolvedValue(true);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
   });
 
   it("defers login redirect while a background daemon run is active", async () => {

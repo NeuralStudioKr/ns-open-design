@@ -2,7 +2,7 @@ import { isTeamverEmbedMode } from "./designApiBase";
 import { completeTeamverEmbedInitialUi } from "./teamverEmbedInitialUi";
 
 /** Safety net when session boot never reaches `completeTeamverEmbedBoot`. */
-export const TEAMVER_EMBED_BOOT_FALLBACK_MS = 8_000;
+export const TEAMVER_EMBED_BOOT_FALLBACK_MS = 4_000;
 
 let bootDone = !isTeamverEmbedMode();
 let resolveBoot: (() => void) | null = null;

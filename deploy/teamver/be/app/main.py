@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .cors import build_fastapi_cors_kwargs
@@ -28,6 +27,7 @@ from .routers.billing_report import router as billing_report_router
 from .middleware.csrf import OriginGuardMiddleware
 from .middleware.node_id import NodeIdMiddleware
 from .middleware.slow_request import SlowRequestMiddleware
+from .middleware.teamver_session import TeamverSessionMiddleware
 from .teamver_sdk import teamver_client_lifespan
 
 logging.basicConfig(level=logging.INFO)
@@ -59,7 +59,7 @@ _bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret
 #  * SlowRequest wraps OriginGuard + Session + endpoint → real user-facing
 #    latency (origin rejects, session cookie work, endpoint) is fully
 #    captured. This is what we want CloudWatch metric filters to score.
-app.add_middleware(SessionMiddleware, secret_key=_bff_secret, same_site="lax")
+app.add_middleware(TeamverSessionMiddleware, secret_key=_bff_secret, same_site="lax")
 app.add_middleware(OriginGuardMiddleware)
 app.add_middleware(SlowRequestMiddleware)
 # Node identity header (docs-teamver/39_2 · 39_5). Registered late so it

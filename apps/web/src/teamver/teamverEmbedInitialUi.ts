@@ -1,7 +1,7 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 
 /** Max time to keep the bootstrap shell before revealing the app anyway. */
-export const TEAMVER_EMBED_INITIAL_UI_FALLBACK_MS = 6_000;
+export const TEAMVER_EMBED_INITIAL_UI_FALLBACK_MS = 3_500;
 
 let initialUiComplete = false;
 let waiters: Array<() => void> = [];

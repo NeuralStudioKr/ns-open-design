@@ -51,7 +51,7 @@ import {
   HOME_RECENT_LIST_LIMIT,
   PROJECT_LIST_PAGE_SIZE,
 } from '../teamver/projectListLimits';
-import { mapRegistryRowToProject } from '../teamver/embedRegistryProjectList';
+import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjectsPageFromRegistry, mergeDaemonFieldsOntoRegistryProjects } from '../teamver/embedRegistryProjectList';
 import { fetchTeamverProject } from '../teamver/projectRegistry';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
@@ -63,6 +63,40 @@ export type ProjectsListPageResult = {
   hasMore: boolean;
   nextCursor: string | null;
 };
+
+/** Daemon listing without registry filter — status/metadata enrichment only. */
+async function fetchDaemonProjectsPageRaw(limit: number): Promise<Project[]> {
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', String(Math.max(1, Math.min(Math.floor(limit), 100))));
+    const resp = await fetchProjectsListWhenAuthenticated(`/api/projects?${params.toString()}`);
+    if (!resp?.ok) return [];
+    const json = (await resp.json()) as { projects?: Project[] };
+    return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchDaemonProjectsAllRaw(): Promise<Project[]> {
+  try {
+    const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
+    if (!resp?.ok) return [];
+    const json = (await resp.json()) as { projects?: Project[] };
+    return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
+  } catch {
+    return [];
+  }
+}
+
+async function enrichEmbedRegistryProjects(projects: Project[]): Promise<Project[]> {
+  if (projects.length === 0) return projects;
+  // Over-fetch daemon rows for status/metadata. Membership stays registry-ordered.
+  const daemonProjects = await fetchDaemonProjectsPageRaw(
+    Math.max(PROJECT_LIST_PAGE_SIZE * 4, projects.length * 8, 96),
+  );
+  return mergeDaemonFieldsOntoRegistryProjects(projects, daemonProjects);
+}
 
 async function normalizeProjectsResponse(projects: Project[]): Promise<Project[]> {
   if (isTeamverEmbedMode()) {
@@ -116,6 +150,19 @@ export async function listRecentProjects(
 
   const run = (async (): Promise<Project[]> => {
     try {
+      if (isTeamverEmbedMode()) {
+        // Workspace registry is membership SSOT. Daemon recent?limit=N then
+        // registry ∩ undersamples when other tenants occupy the top-N window.
+        await waitForTeamverRegistrySyncIfNeeded();
+        const registryProjects = await listEmbedProjectsFromRegistry();
+        const enriched = await enrichEmbedRegistryProjects(registryProjects);
+        return [...enriched]
+          .sort((a, b) => {
+            if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+            return b.id.localeCompare(a.id);
+          })
+          .slice(0, limit);
+      }
       const resp = await fetchProjectsListWhenAuthenticated(
         `/api/projects/recent?limit=${encodeURIComponent(String(limit))}`,
       );
@@ -147,6 +194,14 @@ export async function listProjectsPage(options?: {
   cursor?: string | null;
 }): Promise<ProjectsListPageResult> {
   try {
+    if (isTeamverEmbedMode()) {
+      await waitForTeamverRegistrySyncIfNeeded();
+      const page = await listEmbedProjectsPageFromRegistry(options);
+      return {
+        ...page,
+        projects: await enrichEmbedRegistryProjects(page.projects),
+      };
+    }
     const params = new URLSearchParams();
     params.set('limit', String(options?.limit ?? PROJECT_LIST_PAGE_SIZE));
     if (options?.cursor) {
@@ -178,9 +233,15 @@ export async function listProjectsPage(options?: {
   }
 }
 
-/** Full daemon listing — embed filters via registry; daemon PG is list SSOT (B5.11+). */
+/** Full daemon listing — embed uses registry membership + daemon field merge. */
 export async function listProjects(): Promise<Project[]> {
   try {
+    if (isTeamverEmbedMode()) {
+      await waitForTeamverRegistrySyncIfNeeded();
+      const registryProjects = await listEmbedProjectsFromRegistry();
+      const daemonProjects = await fetchDaemonProjectsAllRaw();
+      return mergeDaemonFieldsOntoRegistryProjects(registryProjects, daemonProjects);
+    }
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
     if (!resp) return [];
     if (!resp.ok) return [];

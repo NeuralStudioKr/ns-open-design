@@ -3,7 +3,6 @@ import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
 import {
   fetchDesignAuthSession,
-  getDesignBffClient,
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
   resetDesignAuthBareRefreshAttempt,
@@ -281,7 +280,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           silent
           && (hadEmbedSession() || stateRef.current.authenticated)
         ) {
-          setState((prev) => ({ ...prev, loading: false }));
+          // Keep unreachable so backoff retries continue (error is cleared at start).
+          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
           return;
         }
         if (hadEmbedSession() || stateRef.current.authenticated) {
@@ -306,7 +306,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           })
         ) {
           if (silent && hadPriorAuthenticatedUi) {
-            setState((prev) => ({ ...prev, loading: false }));
+            setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
             return;
           }
           setState((prev) => ({
@@ -379,15 +379,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (isSessionExpiredError(err)) {
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
-        if (
-          silent
-          && !resetRefreshState
-          && (hadEmbedSession() || stateRef.current.authenticated)
-        ) {
-          return;
-        }
-        prepareDesignAuthSessionReload();
         if (resetRefreshState) {
+          prepareDesignAuthSessionReload();
           await clearTeamverEmbedSessionState();
           redirectToTeamverLoginPreservingRoute({
             returnTo:
@@ -399,6 +392,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
                 : null,
           });
         } else {
+          // Silent probes must still enter passive recovery — otherwise
+          // session_unreachable backoff never escalates to login.
           handleEmbedPassiveUnauthorized("bff");
           setState((prev) => ({
             ...prev,
@@ -411,7 +406,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
       if (hadEmbedSession() || stateRef.current.authenticated) {
         if (silent) {
-          setState((prev) => ({ ...prev, loading: false }));
+          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
           return;
         }
         setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
@@ -505,7 +500,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       };
 
       if (shouldResetEmbedRefreshDeclineOnFocus(focusSignals)) {
-        // Cross-tab login, bfcache restore, Main FE sign-in return, or fresh cookie.
+        // Cross-tab login or Main FE sign-in return — allow a fresh refresh attempt.
+        // bfcache pageshow alone must not reset sticky decline (see authFlow).
         resetDesignAuthRefreshState();
       } else if (
         !stateRef.current.authenticated &&
@@ -521,11 +517,14 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (
         stateRef.current.error === "session_unreachable"
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+        && !focusSignals.pageshowPersisted
       ) {
         return;
       }
       scheduleFocusSessionRefresh({
-        bypassThrottle: shouldResetEmbedRefreshDeclineOnFocus(focusSignals),
+        bypassThrottle:
+          shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+          || focusSignals.pageshowPersisted,
         focusSignals,
       });
     };
@@ -584,7 +583,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (cancelled) return;
-        void refresh({ force: true, silent: true });
+        // First two attempts stay silent; escalate so passive recovery / login
+        // can run if the session is truly gone.
+        const escalate = attempt >= 2;
+        void refresh({ force: true, silent: !escalate });
       }, delay);
     };
 
