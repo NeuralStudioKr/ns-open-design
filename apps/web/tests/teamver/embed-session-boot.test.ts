@@ -37,6 +37,19 @@ describe("teamver embed session boot", () => {
     expect(app).toContain("deep-linked project hydration failed");
     expect(app).toContain("direct file links do not");
   });
+
+  it("unlocks embed boot before registry sync and project prefetch", () => {
+    const boot = readFileSync(
+      resolve(webRoot, "src/teamver/teamverEmbedSessionBoot.ts"),
+      "utf8",
+    );
+    const completeIdx = boot.indexOf("completeTeamverEmbedBoot()");
+    const registryIdx = boot.indexOf("void syncAllDaemonProjectsToRegistry()");
+    const prefetchIdx = boot.indexOf("await ensureTeamverProjectRegisteredById");
+    expect(completeIdx).toBeGreaterThan(-1);
+    expect(registryIdx).toBeGreaterThan(completeIdx);
+    expect(prefetchIdx).toBeGreaterThan(completeIdx);
+  });
 });
 
 describe("embed bootstrap gate boot fallback", () => {

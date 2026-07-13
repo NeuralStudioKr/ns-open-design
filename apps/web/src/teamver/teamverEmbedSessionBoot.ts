@@ -34,6 +34,10 @@ export type TeamverEmbedSessionBootDeps = {
  * BFF session + workspace seed for embed boot. Runs independently of daemon
  * `/api/health` so auth-return deep links do not hang on EmbedBootstrapGate
  * when the health probe fails transiently.
+ *
+ * Critical path (blocks the loading splash): session probe + workspace seed.
+ * Registry sync, deep-link prefetch, and runtime-config continue after
+ * `completeTeamverEmbedBoot()` so the gate unlocks as soon as auth is known.
  */
 export async function runTeamverEmbedSessionBoot(
   deps: TeamverEmbedSessionBootDeps,
@@ -43,46 +47,49 @@ export async function runTeamverEmbedSessionBoot(
     const session = await fetchDesignAuthSession(bootSessionOptions);
     let activeWorkspaceId: string | null = null;
     const detailRoute = deps.readDetailRoute();
-    try {
-      if (session?.authenticated) {
-        setTeamverEmbedSessionAuthenticated(true);
-        activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
-        try {
-          await syncAllDaemonProjectsToRegistry();
-        } catch (err) {
-          console.warn("[teamver] embed boot registry sync failed", err);
-        }
-      } else {
-        await clearTeamverEmbedSessionState();
-        redirectToDesignLoginIfBffMissing();
-      }
-      seedEmbedBootstrapSession({
-        session: session ?? { authenticated: false },
-        activeWorkspaceId,
+
+    if (session?.authenticated) {
+      setTeamverEmbedSessionAuthenticated(true);
+      activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+    } else {
+      await clearTeamverEmbedSessionState();
+      redirectToDesignLoginIfBffMissing();
+    }
+
+    seedEmbedBootstrapSession({
+      session: session ?? { authenticated: false },
+      activeWorkspaceId,
+    });
+
+    // Unlock EmbedBootstrapGate before heavier follow-up work.
+    if (!deps.isCancelled()) {
+      completeTeamverEmbedBoot();
+    }
+
+    if (session?.authenticated) {
+      void syncAllDaemonProjectsToRegistry().catch((err) => {
+        console.warn("[teamver] embed boot registry sync failed", err);
       });
-      const prefetchProject =
-        detailRoute && session?.authenticated
-          ? (async () => {
-              try {
-                await ensureTeamverProjectRegisteredById(detailRoute.projectId);
-                const project = await getProject(detailRoute.projectId);
-                if (!project || deps.isCancelled()) return;
-                deps.onProjectPrefetched(project);
-                warmEmbedProjectListCaches([project]);
-              } catch (err) {
-                console.warn("[teamver] embed boot project prefetch failed", err);
-              }
-            })()
-          : Promise.resolve();
-      const [teamverRuntimeConfig] = await Promise.all([
-        fetchTeamverRuntimeConfig(),
-        prefetchProject,
-      ]);
-      return teamverRuntimeConfig;
-    } finally {
-      if (!deps.isCancelled()) {
-        completeTeamverEmbedBoot();
+      if (detailRoute) {
+        void (async () => {
+          try {
+            await ensureTeamverProjectRegisteredById(detailRoute.projectId);
+            const project = await getProject(detailRoute.projectId);
+            if (!project || deps.isCancelled()) return;
+            deps.onProjectPrefetched(project);
+            warmEmbedProjectListCaches([project]);
+          } catch (err) {
+            console.warn("[teamver] embed boot project prefetch failed", err);
+          }
+        })();
       }
+    }
+
+    try {
+      return await fetchTeamverRuntimeConfig();
+    } catch (err) {
+      console.warn("[teamver] embed boot runtime-config failed", err);
+      return null;
     }
   } catch (err) {
     console.warn("[teamver] embed boot session probe failed", err);

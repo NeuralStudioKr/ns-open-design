@@ -290,6 +290,33 @@ describe("useTeamverEmbed", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("does not run passive auth recovery on a silent 401 while authenticated UI is alive", async () => {
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      })
+      .mockRejectedValueOnce(new NetworkError({ status: 401, message: "Unauthorized" }));
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ force: true, silent: true });
+    });
+
+    expect(result.current.authenticated).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(designBffClient.prepareDesignAuthSessionReload).not.toHaveBeenCalled();
+    expect(designAuthFlow.redirectToTeamverLoginPreservingRoute).not.toHaveBeenCalled();
+  });
+
   it("auto-retries session_unreachable with a 5s backoff while the tab is visible", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -341,7 +368,62 @@ describe("useTeamverEmbed", () => {
     }
   });
 
-  it("prepares session reload on routine 401 without immediate login redirect", async () => {
+  it("keeps session_unreachable visibility return on backoff instead of immediate auth probing", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+      vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+      vi.mocked(designBffClient.fetchDesignAuthSession)
+        .mockResolvedValueOnce({
+          authenticated: true,
+          user: { userId: "user-1", email: "u1@example.com" },
+          defaultWorkspaceId: "WS-1",
+          workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+        })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({
+          authenticated: true,
+          user: { userId: "user-1", email: "u1@example.com" },
+          defaultWorkspaceId: "WS-1",
+          workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+        });
+
+      const { result } = renderHook(() => useTeamverEmbed(true));
+
+      await vi.waitFor(() => {
+        expect(result.current.authenticated).toBe(true);
+      });
+
+      await act(async () => {
+        await result.current.refresh({ force: true });
+      });
+      expect(result.current.error).toBe("session_unreachable");
+      const callsAfterFail = vi.mocked(designBffClient.fetchDesignAuthSession).mock.calls.length;
+
+      document.dispatchEvent(new Event("visibilitychange"));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(vi.mocked(designBffClient.fetchDesignAuthSession)).toHaveBeenCalledTimes(callsAfterFail);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(16_000);
+      });
+      await vi.waitFor(() => {
+        expect(vi.mocked(designBffClient.fetchDesignAuthSession).mock.calls.length).toBeGreaterThan(
+          callsAfterFail,
+        );
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps routine 401 on passive recovery without marking auth-return reload", async () => {
     vi.mocked(designBffClient.fetchDesignAuthSession).mockRejectedValue(
       new NetworkError({ status: 401, message: "Unauthorized" }),
     );
@@ -349,9 +431,9 @@ describe("useTeamverEmbed", () => {
     const { result } = renderHook(() => useTeamverEmbed(true));
 
     await waitFor(() => {
-      expect(designBffClient.prepareDesignAuthSessionReload).toHaveBeenCalledTimes(1);
       expect(result.current.error).toBe("not_authenticated");
     });
+    expect(designBffClient.prepareDesignAuthSessionReload).not.toHaveBeenCalled();
     expect(designAuthFlow.redirectToTeamverLoginPreservingRoute).not.toHaveBeenCalled();
     expect(teamverEmbedSession.clearTeamverEmbedSessionState).not.toHaveBeenCalled();
     expect(designApiBase.redirectToTeamverLogin).not.toHaveBeenCalled();
@@ -497,7 +579,7 @@ describe("useTeamverEmbed", () => {
     expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
   });
 
-  it("resets full refresh state on bfcache pageshow restore", async () => {
+  it("forces a quiet session probe on bfcache pageshow restore without resetting sticky decline", async () => {
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: false,
       workspaces: [],
@@ -514,7 +596,11 @@ describe("useTeamverEmbed", () => {
     window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    expect(designBffClient.resetDesignAuthRefreshState).toHaveBeenCalledTimes(1);
+    expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
+    expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
+      force: true,
+      resetRefreshState: false,
+    });
   });
 
   it("resets refresh state and retries with resetRefreshState after Main FE sign-in return", async () => {

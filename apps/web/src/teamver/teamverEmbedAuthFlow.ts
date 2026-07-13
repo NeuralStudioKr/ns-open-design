@@ -26,7 +26,9 @@
  * - Full-page auth return (pending flag or Main FE /auth/* referrer)
  * - resetRefreshState: true (banner 「다시 시도」)
  * - Visible cookie newly appeared (cross-tab login on Main FE)
- * - bfcache pageshow restore
+ *
+ * bfcache `pageshow` alone must NOT reset decline — that re-opens sticky 400
+ * refresh loops and feels like a spontaneous re-auth after tab restore.
  *
  * ## Recovery must NOT force session probes on routine tab focus (loop 381)
  *
@@ -63,11 +65,7 @@ export type EmbedFocusRecoverySignals = {
 export function shouldResetEmbedRefreshDeclineOnFocus(
   signals: EmbedFocusRecoverySignals,
 ): boolean {
-  return (
-    signals.cookieHintAppeared
-    || signals.pageshowPersisted
-    || signals.authReturnNavigation
-  );
+  return signals.cookieHintAppeared || signals.authReturnNavigation;
 }
 
 export type EmbedFocusSessionRefreshOptions = FetchDesignAuthSessionOptions & {
@@ -80,7 +78,9 @@ export function resolveEmbedFocusSessionOptions(
   signals: EmbedFocusRecoverySignals,
 ): EmbedFocusSessionRefreshOptions {
   if (signals.authReturnNavigation) {
-    return { force: true, resetRefreshState: true, silent: false };
+    // Still force + reset sticky decline, but keep the banner quiet — boot already
+    // showed the splash; a second visible "re-auth" flash after return feels broken.
+    return { force: true, resetRefreshState: true, silent: true };
   }
   if (signals.cookieHintAppeared || signals.pageshowPersisted) {
     return { force: true, resetRefreshState: false, silent: true };

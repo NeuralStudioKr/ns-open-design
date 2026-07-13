@@ -61,7 +61,7 @@ describe("teamverEmbedAuthFlow", () => {
       pageshowPersisted: true,
       authReturnNavigation: false,
     };
-    expect(shouldResetEmbedRefreshDeclineOnFocus(signals)).toBe(true);
+    expect(shouldResetEmbedRefreshDeclineOnFocus(signals)).toBe(false);
     expect(resolveEmbedFocusSessionOptions(signals)).toEqual({
       force: true,
       resetRefreshState: false,
@@ -69,7 +69,7 @@ describe("teamverEmbedAuthFlow", () => {
     });
   });
 
-  it("resets refresh decline on auth return with visible recovery", () => {
+  it("resets refresh decline on auth return with quiet recovery", () => {
     const authReturn = {
       cookieHintAppeared: false,
       pageshowPersisted: false,
@@ -79,7 +79,7 @@ describe("teamverEmbedAuthFlow", () => {
     expect(resolveEmbedFocusSessionOptions(authReturn)).toEqual({
       force: true,
       resetRefreshState: true,
-      silent: false,
+      silent: true,
     });
   });
 

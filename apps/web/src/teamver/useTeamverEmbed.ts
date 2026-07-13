@@ -379,8 +379,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (isSessionExpiredError(err)) {
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
-        prepareDesignAuthSessionReload();
+        if (
+          silent
+          && !resetRefreshState
+          && (hadEmbedSession() || stateRef.current.authenticated)
+        ) {
+          return;
+        }
         if (resetRefreshState) {
+          prepareDesignAuthSessionReload();
           await clearTeamverEmbedSessionState();
           redirectToTeamverLoginPreservingRoute({
             returnTo:
@@ -392,6 +399,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
                 : null,
           });
         } else {
+          // Do not prepareDesignAuthSessionReload here — that marks auth-return
+          // pending and busts caches before passive recovery can succeed.
           handleEmbedPassiveUnauthorized("bff");
           setState((prev) => ({
             ...prev,
@@ -511,8 +520,17 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       lastCookieHintRef.current = cookieHintNow;
+      if (
+        stateRef.current.error === "session_unreachable"
+        && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+        && !focusSignals.pageshowPersisted
+      ) {
+        return;
+      }
       scheduleFocusSessionRefresh({
-        bypassThrottle: shouldResetEmbedRefreshDeclineOnFocus(focusSignals),
+        bypassThrottle:
+          shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+          || focusSignals.pageshowPersisted,
         focusSignals,
       });
     };
@@ -571,7 +589,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (cancelled) return;
-        void refresh({ force: true });
+        // Keep banner quiet — force probe without the loading splash.
+        void refresh({ force: true, silent: true });
       }, delay);
     };
 
@@ -586,7 +605,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         clearTimeout(retryTimer);
         retryTimer = null;
       }
-      void refresh({ force: true });
+      scheduleRetry();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 

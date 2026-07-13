@@ -14,11 +14,28 @@ body {
 
 .od-loading-shell {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   color: var(--text-muted);
   background: var(--bg-app);
-  font: 500 13px/1.4 var(--sans);
+  font: 500 12.5px/1.4 var(--sans);
+}
+
+.od-loading-shell::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .od-loading-shell--overlay {
@@ -40,5 +57,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-muted);
+  background: var(--bg-app);
 }
-

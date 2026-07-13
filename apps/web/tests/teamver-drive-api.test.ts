@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: vi.fn(),
@@ -8,7 +8,12 @@ vi.mock("../src/teamver/designApiBase", () => ({
   resolveTeamverDriveBffBase: vi.fn(() => "/teamver-bff/drive"),
 }));
 
-import { getTeamverDriveJson, postTeamverDriveJson, shouldSkipDriveAuthRefresh } from "../src/teamver/driveApi";
+import {
+  getTeamverDriveJson,
+  postTeamverDriveJson,
+  resetTeamverDriveFetchQueueForTests,
+  shouldSkipDriveAuthRefresh,
+} from "../src/teamver/driveApi";
 import { refreshDesignAuthCookie } from "../src/teamver/designBffClient";
 
 const mockedRefresh = vi.mocked(refreshDesignAuthCookie);
@@ -26,6 +31,8 @@ describe("shouldSkipDriveAuthRefresh", () => {
     expect(shouldSkipDriveAuthRefresh("Unauthorized")).toBe(true);
     expect(shouldSkipDriveAuthRefresh("Invalid token")).toBe(true);
     expect(shouldSkipDriveAuthRefresh("error.authentication")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("missing_access_token")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh({ message: "Invalid token" })).toBe(true);
   });
 
   it("does not skip unrelated failures", () => {
@@ -39,13 +46,20 @@ describe("getTeamverDriveJson", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockedRefresh.mockReset();
+    resetTeamverDriveFetchQueueForTests();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("calls same-origin BFF drive proxy on 200 without refresh", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ shared_drive_id: "sd-1" }));
-    const json = await getTeamverDriveJson("/api/foo");
+    const jsonPromise = getTeamverDriveJson("/api/foo");
+    const json = await jsonPromise;
     expect(json).toEqual({ sharedDriveId: "sd-1" });
     expect(fetchSpy).toHaveBeenCalledWith(
       "/teamver-bff/drive/api/foo",
@@ -70,26 +84,33 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("does not refresh on session_expired JSON from BFF/nginx", async () => {
+  it("does not refresh on session_expired; soft-retries once after delay", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
 
-    await expect(getTeamverDriveJson("/api/foo")).rejects.toThrow("teamver_drive_fetch_failed:401");
+    const pending = getTeamverDriveJson("/api/foo");
+    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
+    await vi.advanceTimersByTimeAsync(300);
+    await expectation;
     expect(mockedRefresh).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("does not refresh on Main Invalid token after BFF already retried", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ detail: "Invalid token" }, 401));
+  it("soft-retries Invalid token once without /auth/refresh", async () => {
+    let callCount = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      callCount += 1;
+      if (callCount === 1) return jsonResponse({ detail: "Invalid token" }, 401);
+      return jsonResponse({ items: [] });
+    });
 
-    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
-      "teamver_drive_fetch_failed:401",
-    );
+    const pending = getTeamverDriveJson("/api/v2/shared-drive");
+    await vi.advanceTimersByTimeAsync(300);
+    const json = await pending;
+    expect(json).toEqual({ items: [] });
     expect(mockedRefresh).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("throws teamver_drive_fetch_failed:401 when refresh declines (no retry)", async () => {
@@ -118,6 +139,7 @@ describe("postTeamverDriveJson", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockedRefresh.mockReset();
+    resetTeamverDriveFetchQueueForTests();
   });
 
   it("POSTs JSON body to BFF drive proxy", async () => {
