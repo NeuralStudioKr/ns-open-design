@@ -150,12 +150,25 @@ describe("teamverEmbedPassiveAuth", () => {
     window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onAuth);
   });
 
+  it("does not redirect on parallel unrecovered 401s that share one recovery", async () => {
+    refreshMock.mockResolvedValue(false);
+    handleEmbedPassiveUnauthorized("daemon");
+    handleEmbedPassiveUnauthorized("bff");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTimersAsync();
+    // One shared recovery → one failure credit → below threshold.
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+  });
+
   it("schedules login redirect after consecutive unrecovered passive 401s", async () => {
     refreshMock.mockResolvedValue(false);
     handleEmbedPassiveUnauthorized("daemon");
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    // Second call after the first recovery settles → second failure credit.
     handleEmbedPassiveUnauthorized("daemon");
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3_000);
     expect(prepareReloadMock).toHaveBeenCalledTimes(1);
     expect(redirectMock).toHaveBeenCalledTimes(1);
   });

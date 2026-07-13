@@ -20,6 +20,8 @@ const PASSIVE_AUTH_REDIRECT_DELAY_MS = 2_500;
 
 let passiveAuthRedirectTimer: ReturnType<typeof setTimeout> | null = null;
 let passiveAuthRecoveryInflight: Promise<boolean> | null = null;
+/** Dedup failure credits across parallel 401 waiters of the same recovery. */
+let lastRecoveryFailureClaimed = false;
 let consecutivePassiveFailures = 0;
 let lastPassiveFailureAt = 0;
 
@@ -113,8 +115,15 @@ async function probeBffSessionAuthenticated(): Promise<boolean> {
   }
 }
 
+function claimPassiveRecoveryFailure(): number | null {
+  if (lastRecoveryFailureClaimed) return null;
+  lastRecoveryFailureClaimed = true;
+  return notePassiveRecoveryFailure();
+}
+
 async function tryPassiveAuthRecovery(): Promise<boolean> {
   if (!passiveAuthRecoveryInflight) {
+    lastRecoveryFailureClaimed = false;
     passiveAuthRecoveryInflight = (async () => {
       try {
         const refreshed = await refreshDesignAuthCookie();
@@ -137,6 +146,8 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
  * Single unrecovered 401s (common on tab-return) only surface a soft event.
  * Login redirect requires consecutive failures inside the failure window, then
  * a final session probe still saying unauthenticated.
+ *
+ * Parallel 401s that share one recovery attempt only count as one failure.
  */
 export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
   if (!isTeamverEmbedMode() || !isBootstrapAuthMode()) return;
@@ -150,8 +161,14 @@ export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
       dispatchPassiveAuthRequired(reason);
       return;
     }
-    const failures = notePassiveRecoveryFailure();
+    const failures = claimPassiveRecoveryFailure();
     dispatchPassiveAuthRequired(reason);
+    if (failures === null) {
+      if (consecutivePassiveFailures >= PASSIVE_AUTH_FAILURE_THRESHOLD) {
+        schedulePassiveLoginRedirect();
+      }
+      return;
+    }
     if (failures < PASSIVE_AUTH_FAILURE_THRESHOLD) {
       return;
     }
@@ -163,6 +180,7 @@ export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
 export function resetEmbedPassiveAuthForTests(): void {
   cancelPassiveLoginRedirect();
   passiveAuthRecoveryInflight = null;
+  lastRecoveryFailureClaimed = false;
   consecutivePassiveFailures = 0;
   lastPassiveFailureAt = 0;
 }

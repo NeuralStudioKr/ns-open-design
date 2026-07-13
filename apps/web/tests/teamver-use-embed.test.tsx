@@ -265,7 +265,7 @@ describe("useTeamverEmbed", () => {
     expect(teamverEmbedSession.setTeamverEmbedSessionAuthenticated).not.toHaveBeenCalledWith(false);
   });
 
-  it("hides session_unreachable during silent routine focus refresh failures", async () => {
+  it("keeps session_unreachable after silent routine focus refresh failures", async () => {
     vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
     vi.mocked(designBffClient.fetchDesignAuthSession)
       .mockResolvedValueOnce({
@@ -287,10 +287,10 @@ describe("useTeamverEmbed", () => {
     });
 
     expect(result.current.authenticated).toBe(true);
-    expect(result.current.error).toBeNull();
+    expect(result.current.error).toBe("session_unreachable");
   });
 
-  it("does not run passive auth recovery on a silent 401 while authenticated UI is alive", async () => {
+  it("runs passive auth recovery on silent 401 without immediate login redirect", async () => {
     vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
     vi.mocked(designBffClient.fetchDesignAuthSession)
       .mockResolvedValueOnce({
@@ -312,7 +312,7 @@ describe("useTeamverEmbed", () => {
     });
 
     expect(result.current.authenticated).toBe(true);
-    expect(result.current.error).toBeNull();
+    expect(result.current.error).toBe("session_unreachable");
     expect(designBffClient.prepareDesignAuthSessionReload).not.toHaveBeenCalled();
     expect(designAuthFlow.redirectToTeamverLoginPreservingRoute).not.toHaveBeenCalled();
   });
