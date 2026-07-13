@@ -33,6 +33,11 @@ import {
 } from "../teamver/projectPreviewFile";
 import { prefetchDesignsTabViewport } from "../teamver/prefetchDesignsTabViewport";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "../teamver/projectListLimits";
+import {
+	buildActiveRunStatusByProjectId,
+	resolveRecentProjectDisplayStatus,
+} from "../teamver/recentProjectDisplayStatus";
+import type { PetTaskSummary } from "./pet/PetOverlay";
 
 type SubTab = "recent" | "yours";
 type ViewMode = "grid" | "kanban";
@@ -85,6 +90,8 @@ interface Props {
 	hasMoreProjects?: boolean;
 	projectsLoadingMore?: boolean;
 	onLoadMoreProjects?: () => void;
+	/** Live `/api/runs` summaries — prefer over stale registry status on cards. */
+	activeRunSummaries?: PetTaskSummary[];
 }
 
 export function DesignsTab({
@@ -100,6 +107,7 @@ export function DesignsTab({
 	hasMoreProjects = false,
 	projectsLoadingMore = false,
 	onLoadMoreProjects,
+	activeRunSummaries = [],
 }: Props) {
 	const renameTitleId = useId();
 	const confirmTitleId = useId();
@@ -107,6 +115,19 @@ export function DesignsTab({
 	const teamverEmbed = isTeamverEmbedMode();
 	const { slideOnlyMvp } = useTeamverBranding();
 	const analytics = useAnalytics();
+	const activeRunStatusByProjectId = useMemo(
+		() => buildActiveRunStatusByProjectId(activeRunSummaries),
+		[activeRunSummaries],
+	);
+	const resolveCardStatus = useCallback(
+		(project: Project): ProjectDisplayStatus =>
+			resolveRecentProjectDisplayStatus(
+				project.id,
+				project.status?.value,
+				activeRunStatusByProjectId,
+			),
+		[activeRunStatusByProjectId],
+	);
 	// P0 page_view page_name=projects — fire once when the tab mounts so
 	// `/projects` landings register even before the user clicks anything.
 	// ref-keyed to survive re-renders that flip parent state without
@@ -661,7 +682,7 @@ export function DesignsTab({
 						}
 
 						const liveCount = liveArtifactsByProject[p.id]?.length ?? 0;
-						const status = p.status?.value ?? "not_started";
+						const status = resolveCardStatus(p);
 						const previewCover = coverOverrides[p.id] ?? null;
 						const openProjectCard = () => {
 							onOpen(p.id, projectOpenOptionsFromPreviewCover(p, previewCover));
@@ -839,8 +860,7 @@ export function DesignsTab({
 					{STATUS_ORDER.map((status) => {
 						const colProjects = filteredProjects.filter(
 							(item) =>
-								normalizeStatus(item.project.status?.value ?? "not_started") ===
-								status,
+								normalizeStatus(resolveCardStatus(item.project)) === status,
 						);
 						return (
 							<div key={status} className="design-kanban-col">
