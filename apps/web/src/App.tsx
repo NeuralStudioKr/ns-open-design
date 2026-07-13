@@ -3494,7 +3494,7 @@ function AppInner() {
   } else if (isTeamverEmbedMode() && route.kind === 'project' && !activeProject) {
     appMain = (
       <div className="embed-route-loading" data-testid="embed-project-route-loading">
-        <CenteredLoader label={resolveLoadingShellLabel()} />
+        <CenteredLoader label={resolveLoadingShellLabel()} fullBleed />
       </div>
     );
   } else {

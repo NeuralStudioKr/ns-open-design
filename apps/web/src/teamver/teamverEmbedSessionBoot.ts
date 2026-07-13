@@ -14,7 +14,10 @@ import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
 } from "./teamverEmbedSession";
-import { completeTeamverEmbedBoot } from "./teamverEmbedBoot";
+import {
+  completeTeamverEmbedBoot,
+  isTeamverEmbedBootComplete,
+} from "./teamverEmbedBoot";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 import {
   ensureTeamverProjectRegisteredById,
@@ -22,6 +25,10 @@ import {
 } from "./projectRegistry";
 import { getProject } from "../state/projects";
 import { fetchTeamverRuntimeConfig } from "./designBffClient";
+import {
+  clearEmbedAuthSnapshot,
+  persistEmbedAuthSnapshot,
+} from "./embedAuthSnapshot";
 
 export type TeamverEmbedSessionBootDeps = {
   isCancelled: () => boolean;
@@ -30,19 +37,31 @@ export type TeamverEmbedSessionBootDeps = {
   sessionOptions?: FetchDesignAuthSessionOptions;
 };
 
+function unlockBootIfNeeded(isCancelled: () => boolean): void {
+  if (!isCancelled() && !isTeamverEmbedBootComplete()) {
+    completeTeamverEmbedBoot();
+  }
+}
+
 /**
- * BFF session + workspace seed for embed boot. Runs independently of daemon
- * `/api/health` so auth-return deep links do not hang on EmbedBootstrapGate
- * when the health probe fails transiently.
+ * BFF session + workspace seed for embed boot.
  *
- * Critical path (blocks the loading splash): session probe + workspace seed.
- * Registry sync, deep-link prefetch, and runtime-config continue after
- * `completeTeamverEmbedBoot()` so the gate unlocks as soon as auth is known.
+ * Critical path: unlock the loading splash after the live session probe +
+ * workspace seed. Speed comes from `prefetchEmbedAuthSessionOnBoot` in
+ * client-app (coalesced in-flight / 60s memory cache) — not from painting
+ * authenticated chrome off a sessionStorage snapshot, which can flash the
+ * workspace and then hard-redirect to login when the probe disagrees.
+ *
+ * Snapshot persist still records the last good session so logout/clear paths
+ * can drop stale hints and future soft-UI can opt in safely.
  */
 export async function runTeamverEmbedSessionBoot(
   deps: TeamverEmbedSessionBootDeps,
 ): Promise<Awaited<ReturnType<typeof fetchTeamverRuntimeConfig>> | null> {
+  // `resolveEmbedBootSessionOptions` consumes auth-return pending once —
+  // do not call shouldForceEmbedAuthRecoveryOnLoad again here.
   const bootSessionOptions = deps.sessionOptions ?? resolveEmbedBootSessionOptions();
+
   try {
     const session = await fetchDesignAuthSession(bootSessionOptions);
     let activeWorkspaceId: string | null = null;
@@ -51,22 +70,13 @@ export async function runTeamverEmbedSessionBoot(
     if (session?.authenticated) {
       setTeamverEmbedSessionAuthenticated(true);
       activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
-    } else {
-      await clearTeamverEmbedSessionState();
-      redirectToDesignLoginIfBffMissing();
-    }
+      seedEmbedBootstrapSession({
+        session,
+        activeWorkspaceId,
+      });
+      persistEmbedAuthSnapshot({ session, activeWorkspaceId });
+      unlockBootIfNeeded(deps.isCancelled);
 
-    seedEmbedBootstrapSession({
-      session: session ?? { authenticated: false },
-      activeWorkspaceId,
-    });
-
-    // Unlock EmbedBootstrapGate before heavier follow-up work.
-    if (!deps.isCancelled()) {
-      completeTeamverEmbedBoot();
-    }
-
-    if (session?.authenticated) {
       void syncAllDaemonProjectsToRegistry().catch((err) => {
         console.warn("[teamver] embed boot registry sync failed", err);
       });
@@ -83,6 +93,15 @@ export async function runTeamverEmbedSessionBoot(
           }
         })();
       }
+    } else {
+      clearEmbedAuthSnapshot();
+      await clearTeamverEmbedSessionState();
+      seedEmbedBootstrapSession({
+        session: session ?? { authenticated: false },
+        activeWorkspaceId: null,
+      });
+      unlockBootIfNeeded(deps.isCancelled);
+      redirectToDesignLoginIfBffMissing();
     }
 
     try {
@@ -93,12 +112,15 @@ export async function runTeamverEmbedSessionBoot(
     }
   } catch (err) {
     console.warn("[teamver] embed boot session probe failed", err);
-    seedEmbedBootstrapSession({
-      session: { authenticated: false },
-      activeWorkspaceId: null,
-    });
-    if (!deps.isCancelled()) {
-      completeTeamverEmbedBoot();
+    // Transient probe failure: unlock the gate without claiming a session.
+    // Stale authenticated memory cache in designBffClient may still serve
+    // follow-up probes (STALE_SESSION_GRACE_MS).
+    if (!isTeamverEmbedBootComplete()) {
+      seedEmbedBootstrapSession({
+        session: { authenticated: false },
+        activeWorkspaceId: null,
+      });
+      unlockBootIfNeeded(deps.isCancelled);
     }
     return null;
   }

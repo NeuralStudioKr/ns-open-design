@@ -1,8 +1,12 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { completeTeamverEmbedInitialUi } from "./teamverEmbedInitialUi";
 
-/** Safety net when session boot never reaches `completeTeamverEmbedBoot`. */
-export const TEAMVER_EMBED_BOOT_FALLBACK_MS = 4_000;
+/**
+ * Safety net when session boot never reaches `completeTeamverEmbedBoot`.
+ * Keep short for stuck probes, but long enough that a slow `/auth/session`
+ * usually finishes first (avoids opening the shell into an unknown auth state).
+ */
+export const TEAMVER_EMBED_BOOT_FALLBACK_MS = 2_000;
 
 let bootDone = !isTeamverEmbedMode();
 let resolveBoot: (() => void) | null = null;

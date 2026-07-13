@@ -1,4 +1,6 @@
 import { Icon } from './Icon';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { EmbedLoadingShell } from './EmbedLoadingShell';
 
 interface SpinnerProps {
   size?: number;
@@ -51,10 +53,24 @@ export function DesignCardSkeleton() {
 /**
  * Centered overlay used while bootstrap data loads (agents, skills, design
  * systems, project list). Sits inside a flex/grid parent and grows with it.
+ *
+ * Embed mode uses the same shell chrome as auth bootstrap so mid-route
+ * loaders do not read as a different (error-like) screen.
  */
-export function CenteredLoader({ label }: { label?: string }) {
+export function CenteredLoader({
+  label,
+  fullBleed = false,
+}: {
+  label?: string;
+  /** Full-viewport shell (project deep-link while hydrating). */
+  fullBleed?: boolean;
+}) {
+  if (fullBleed) {
+    return <EmbedLoadingShell label={label} />;
+  }
+  const embedTone = isTeamverEmbedMode();
   return (
-    <div className="centered-loader">
+    <div className={embedTone ? 'centered-loader centered-loader--embed-tone' : 'centered-loader'}>
       <Spinner size={20} />
       {label ? <span className="centered-loader-label">{label}</span> : null}
     </div>

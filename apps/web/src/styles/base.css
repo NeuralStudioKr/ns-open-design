@@ -2,26 +2,44 @@
 
 html, body, #root { height: 100%; margin: 0; }
 
+/* Solid fallback before tokens.css / theme vars resolve — matches --bg-app. */
+html {
+  background-color: #faf9f7;
+}
+
 body {
   font-family: var(--sans);
-  color: var(--text);
-  background: var(--bg-app);
+  color: var(--text, #1a1916);
+  background: var(--bg-app, #faf9f7);
+  background-color: #faf9f7;
   font-size: 13.5px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+html[data-theme="dark"] body {
+  background-color: #1a1917;
+}
+
 .od-loading-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: var(--text-muted);
-  background: var(--bg-app);
-  font: 500 12.5px/1.4 var(--sans);
+  margin: 0;
+  color: var(--text-muted, #74716b);
+  background: var(--bg-app, #faf9f7);
+  background-color: #faf9f7;
+  font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
+}
+
+html[data-theme="dark"] .od-loading-shell {
+  background-color: #1a1917;
+  color: var(--text-muted, #a8a39a);
 }
 
 .od-loading-shell::before {
@@ -29,11 +47,16 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  animation: spin 700ms linear infinite;
+  border: 2px solid var(--border, #e1e5eb);
+  border-top-color: var(--accent, #c96442);
+  animation: od-loading-spin 700ms linear infinite;
 }
 
+@keyframes od-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Keep legacy `spin` name for any other callers. */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -55,8 +78,31 @@ body {
   flex: 1;
   min-height: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  background: var(--bg-app);
+  align-items: stretch;
+  justify-content: stretch;
+  background: var(--bg-app, #faf9f7);
+  background-color: #faf9f7;
+}
+
+.embed-route-loading > .od-loading-shell {
+  flex: 1;
+  min-height: 100%;
+  width: 100%;
+}
+
+/* Inline entry/project loaders: same type + spinner language as the shell. */
+.centered-loader--embed-tone {
+  gap: 10px;
+  color: var(--text-muted, #74716b);
+  font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
+}
+
+.centered-loader--embed-tone .loading-spinner {
+  color: inherit;
+}
+
+.centered-loader--embed-tone .centered-loader-label {
+  font-size: 12.5px;
+  letter-spacing: 0;
+  font-weight: 500;
 }

@@ -10,7 +10,7 @@ import '../src/styles/home/index.css';
 export const metadata: Metadata = buildRootLayoutMetadata();
 
 export const viewport: Viewport = {
-  themeColor: '#F4EFE6',
+  themeColor: '#faf9f7',
 };
 
 /**
