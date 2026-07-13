@@ -33,6 +33,20 @@
 
 **근거 테스트:** `teamver-publish-drive*.test.ts`, `teamver-drive-*` (import/list/api/thumbnails), `teamver-publish-drive-menu-item.test.tsx` (workspace switch pin).
 
+### 2.1b 2026-07-13 — Drive BFF refresh 책임 경계
+
+`/teamver-bff/drive/*`는 nginx `auth_request /_teamver_bff_session`을 거치지 않고 design-api `/api/v1/drive/*`로 직접 proxy한다. Drive router 자체가 `require_auth` → `ensure_bff_session` → Main Drive API 호출 → upstream 401 시 `force_refresh_bff_session` 재시도를 수행한다.
+
+이 경계가 필요한 이유:
+- Drive 모달은 folder/list/shared-drive를 병렬 호출한다.
+- nginx `auth_request` subrequest가 먼저 BFF token을 refresh하면 refresh token이 회전될 수 있지만, subrequest의 `Set-Cookie`는 본 요청 cookie로 반영되지 않는다.
+- 그 직후 본 요청이 낡은 cookie/access token으로 Main BE Drive API를 호출하면 `{"detail":"Invalid token"}` 401이 발생한다.
+- Drive router가 본 요청 안에서 refresh를 수행하면 최종 response에 `Set-Cookie`가 붙어 브라우저가 최신 BFF session을 보존할 수 있다.
+
+운영 확인:
+- `deploy/teamver/devops/nginx/teamver-design-od-bff.inc.conf`에서 `location ^~ /teamver-bff/drive/`가 generic `location /teamver-bff/`보다 앞에 있어야 한다.
+- staging nginx reload 후 `/teamver-bff/drive/api/drive/folder?shallow_tree=true`, `/teamver-bff/drive/api/drive/list?limit=24`, `/teamver-bff/drive/api/v2/shared-drive`가 더 이상 동시 `Invalid token` 401을 내지 않아야 한다.
+
 ### 2.2 Gap · 후속
 
 | ID | 우선 | 내용 | 상태 |
@@ -348,6 +362,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-13 | Drive BFF auth_request refresh race 차단 — `/teamver-bff/drive/*` 전용 nginx location + router-owned refresh |
 | 2026-06-25 | loop 403 — in-project run success publish menu arm (S-8) |
 | 2026-06-25 | loop 402 — D-B3 thumbnail batch E2E, validate_deploy_env timeout warn |
 | 2026-06-25 | loop 392~401 후속 TODO — §TODO 신설, S-8~S-10 (in-project publish, one-click, logout QA) |

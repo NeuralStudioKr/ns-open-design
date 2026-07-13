@@ -124,6 +124,61 @@ async def test_proxy_drive_retries_after_bff_force_refresh(
 
 
 @pytest.mark.asyncio
+async def test_proxy_drive_owns_refresh_without_nginx_auth_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.auth.bff_session import BffSession
+
+    forward = AsyncMock(
+        side_effect=[
+            (401, {"content-type": "application/json"}, b'{"detail":"Invalid token"}'),
+            (200, {"content-type": "application/json"}, b'{"root_folder_id":"ROOT"}'),
+        ]
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
+
+    async def fake_ensure(_request: Request) -> BffSession:
+        return BffSession(
+            user_id="u1",
+            access_token="old-cookie-token",
+            refresh_token="rt-old",
+            access_expires_at=9999999999,
+            workspace_id="ws-1",
+            aud="teamver-design",
+            scope=[],
+        )
+
+    async def fake_force_refresh(_request: Request) -> BffSession:
+        return BffSession(
+            user_id="u1",
+            access_token="fresh-drive-token",
+            refresh_token="rt-new",
+            access_expires_at=9999999999,
+            workspace_id="ws-1",
+            aud="teamver-design",
+            scope=[],
+        )
+
+    monkeypatch.setattr(drive_router, "ensure_bff_session", fake_ensure)
+    monkeypatch.setattr(drive_router, "force_refresh_bff_session", fake_force_refresh)
+
+    request = _drive_request(path="api/drive/folder", query=b"shallow_tree=true")
+    request.scope["session"] = {}
+    response = await drive_router.proxy_drive(
+        "api/drive/folder",
+        request,
+        _auth(token="", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 200
+    assert forward.await_count == 2
+    assert forward.await_args_list[0].kwargs["access_token"] == "old-cookie-token"
+    assert forward.await_args_list[1].kwargs["access_token"] == "fresh-drive-token"
+
+
+@pytest.mark.asyncio
 async def test_proxy_drive_retains_usable_session_on_upstream_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
