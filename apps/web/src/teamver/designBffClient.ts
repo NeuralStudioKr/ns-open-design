@@ -21,7 +21,7 @@ import {
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
-  consumeTeamverAuthReturnPending,
+  peekTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
 } from "./teamverAuthReturn";
 
@@ -168,8 +168,10 @@ function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boole
     return true;
   }
   if (embedAuthRecoveryLoadUsed) return false;
+  // Peek only — pending must survive an early unauthenticated probe so login
+  // redirect defer still works. One-shot is tracked by embedAuthRecoveryLoadUsed.
   const recovery =
-    consumeTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
+    peekTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
   if (recovery) embedAuthRecoveryLoadUsed = true;
   return recovery;
 }

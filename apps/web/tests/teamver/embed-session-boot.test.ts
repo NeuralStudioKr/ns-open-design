@@ -53,6 +53,8 @@ describe("teamver embed session boot", () => {
     // gate from sessionStorage alone (authenticated flash → login redirect).
     expect(boot).not.toContain("readFreshEmbedAuthSnapshot");
     expect(boot).toContain("persistEmbedAuthSnapshot");
+    expect(boot).toContain("consumeTeamverAuthReturnPending");
+    expect(boot).toContain("shouldDeferEmbedLoginRedirect");
   });
 
   it("client-app prefetches auth while the App chunk loads", () => {

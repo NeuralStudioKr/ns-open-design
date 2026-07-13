@@ -3,10 +3,11 @@ import { completeTeamverEmbedInitialUi } from "./teamverEmbedInitialUi";
 
 /**
  * Safety net when session boot never reaches `completeTeamverEmbedBoot`.
- * Keep short for stuck probes, but long enough that a slow `/auth/session`
- * usually finishes first (avoids opening the shell into an unknown auth state).
+ * Prefer finishing `/auth/session` first; keep this above typical BFF latency
+ * so the shell does not open into an unknown auth state on warm networks,
+ * while still unblocking a hung probe.
  */
-export const TEAMVER_EMBED_BOOT_FALLBACK_MS = 2_000;
+export const TEAMVER_EMBED_BOOT_FALLBACK_MS = 3_500;
 
 let bootDone = !isTeamverEmbedMode();
 let resolveBoot: (() => void) | null = null;

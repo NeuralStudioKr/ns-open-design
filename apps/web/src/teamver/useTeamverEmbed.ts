@@ -12,7 +12,6 @@ import {
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
-import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
@@ -30,7 +29,9 @@ import {
 import {
   isLikelyTeamverAuthReturnNavigation,
   peekTeamverAuthReturnPending,
+  consumeTeamverAuthReturnPending,
 } from "./teamverAuthReturn";
+import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
@@ -48,7 +49,10 @@ import {
   shouldResetEmbedRefreshDeclineOnFocus,
   resolveEmbedFocusSessionOptions,
 } from "./teamverEmbedAuthFlow";
-import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
+import {
+  handleEmbedPassiveUnauthorized,
+  TEAMVER_EMBED_PASSIVE_AUTH_EVENT,
+} from "./teamverEmbedPassiveAuth";
 import {
   peekEmbedBootstrapSession,
   type EmbedBootstrapSessionSnapshot,
@@ -316,6 +320,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           }));
           return;
         }
+        // Definitive unauthenticated — drop the auth-return defer shield so
+        // redirectToDesignLoginIfBffMissing is not a no-op.
+        consumeTeamverAuthReturnPending();
         await clearTeamverEmbedSessionState();
         redirectToDesignLoginIfBffMissing({
           returnTo: resolveEmbedAuthReturnPath(
@@ -332,6 +339,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       setTeamverEmbedSessionAuthenticated(true);
+      consumeTeamverAuthReturnPending();
 
       const workspaces = normalizeWorkspaceList(session.workspaces);
       const userId = readUserId(session.user);
@@ -557,6 +565,23 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
     });
   }, [enabled, refresh]);
+
+  // Passive 401 recovery deferred (active run / background) — surface the same
+  // unreachable chip so the user can retry without a silent soft-signal.
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    const onPassiveAuthRequired = () => {
+      setState((prev) => {
+        if (!prev.authenticated) return prev;
+        if (prev.error === "session_unreachable") return prev;
+        return { ...prev, error: "session_unreachable" };
+      });
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
+    };
+  }, [enabled]);
 
   // C1: auto-backoff retry for `session_unreachable`. A single BFF hiccup
   // used to leave the embed banner stuck until the user changed tabs,

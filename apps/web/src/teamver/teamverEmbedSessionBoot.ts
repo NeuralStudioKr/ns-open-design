@@ -2,6 +2,7 @@ import type { Project } from "../types";
 import {
   fetchDesignAuthSession,
   type FetchDesignAuthSessionOptions,
+  fetchTeamverRuntimeConfig,
 } from "./designBffClient";
 import { seedEmbedBootstrapSession } from "./embedBootstrapSession";
 import type { EmbedProjectDetailRoute } from "./embedProjectListRefresh";
@@ -24,11 +25,12 @@ import {
   syncAllDaemonProjectsToRegistry,
 } from "./projectRegistry";
 import { getProject } from "../state/projects";
-import { fetchTeamverRuntimeConfig } from "./designBffClient";
 import {
   clearEmbedAuthSnapshot,
   persistEmbedAuthSnapshot,
 } from "./embedAuthSnapshot";
+import { consumeTeamverAuthReturnPending } from "./teamverAuthReturn";
+import { shouldDeferEmbedLoginRedirect } from "./teamverEmbedAuthNavigation";
 
 export type TeamverEmbedSessionBootDeps = {
   isCancelled: () => boolean;
@@ -52,29 +54,36 @@ function unlockBootIfNeeded(isCancelled: () => boolean): void {
  * authenticated chrome off a sessionStorage snapshot, which can flash the
  * workspace and then hard-redirect to login when the probe disagrees.
  *
- * Snapshot persist still records the last good session so logout/clear paths
- * can drop stale hints and future soft-UI can opt in safely.
+ * Auth-return pending is peeked for force recovery and only consumed after a
+ * successful authenticated probe so an early false negative cannot disable
+ * login-redirect defer and bounce the user back to Main sign-in.
  */
 export async function runTeamverEmbedSessionBoot(
   deps: TeamverEmbedSessionBootDeps,
 ): Promise<Awaited<ReturnType<typeof fetchTeamverRuntimeConfig>> | null> {
-  // `resolveEmbedBootSessionOptions` consumes auth-return pending once —
-  // do not call shouldForceEmbedAuthRecoveryOnLoad again here.
+  // `resolveEmbedBootSessionOptions` peeks auth-return pending — do not
+  // consume here; consume only after authenticated success below.
   const bootSessionOptions = deps.sessionOptions ?? resolveEmbedBootSessionOptions();
 
   try {
     const session = await fetchDesignAuthSession(bootSessionOptions);
+    if (deps.isCancelled()) return null;
+
     let activeWorkspaceId: string | null = null;
     const detailRoute = deps.readDetailRoute();
 
     if (session?.authenticated) {
       setTeamverEmbedSessionAuthenticated(true);
       activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+      if (deps.isCancelled()) return null;
+
       seedEmbedBootstrapSession({
         session,
         activeWorkspaceId,
       });
       persistEmbedAuthSnapshot({ session, activeWorkspaceId });
+      // Settlement complete — safe to drop the defer shield.
+      consumeTeamverAuthReturnPending();
       unlockBootIfNeeded(deps.isCancelled);
 
       void syncAllDaemonProjectsToRegistry().catch((err) => {
@@ -95,7 +104,13 @@ export async function runTeamverEmbedSessionBoot(
       }
     } else {
       clearEmbedAuthSnapshot();
-      await clearTeamverEmbedSessionState();
+      // Keep prior UI session when auth-return is still settling — wiping here
+      // plus an immediate login redirect is the post-signin bounce loop.
+      if (!shouldDeferEmbedLoginRedirect()) {
+        await clearTeamverEmbedSessionState();
+      }
+      if (deps.isCancelled()) return null;
+
       seedEmbedBootstrapSession({
         session: session ?? { authenticated: false },
         activeWorkspaceId: null,
@@ -114,8 +129,9 @@ export async function runTeamverEmbedSessionBoot(
     console.warn("[teamver] embed boot session probe failed", err);
     // Transient probe failure: unlock the gate without claiming a session.
     // Stale authenticated memory cache in designBffClient may still serve
-    // follow-up probes (STALE_SESSION_GRACE_MS).
-    if (!isTeamverEmbedBootComplete()) {
+    // follow-up probes (STALE_SESSION_GRACE_MS). Keep auth-return pending so
+    // defer still blocks a second login hop.
+    if (!deps.isCancelled() && !isTeamverEmbedBootComplete()) {
       seedEmbedBootstrapSession({
         session: { authenticated: false },
         activeWorkspaceId: null,

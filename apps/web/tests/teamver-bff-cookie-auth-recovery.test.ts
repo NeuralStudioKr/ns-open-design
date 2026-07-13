@@ -28,7 +28,7 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
 }));
 
 vi.mock("../src/teamver/teamverAuthReturn", () => ({
-  consumeTeamverAuthReturnPending: vi.fn(() => false),
+  peekTeamverAuthReturnPending: vi.fn(() => false),
   isLikelyTeamverAuthReturnNavigation: vi.fn(() => false),
 }));
 

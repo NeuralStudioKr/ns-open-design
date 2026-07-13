@@ -17,8 +17,10 @@
  *
  * 1. Unauthenticated boot → redirectToDesignLogin (app_id=teamver-design)
  * 2. Main FE → /auth/callback?code= → POST design/auth/exchange → BFF HttpOnly session
- * 3. Auth return load → shouldForceEmbedAuthRecoveryOnLoad() → force session probe +
- *    resetRefreshState (BFF silent refresh only — no Main BE cookie proxy)
+ * 3. Auth return load → shouldForceEmbedAuthRecoveryOnLoad() (peek) → force
+ *    session probe + resetRefreshState. Pending is consumed only after a
+ *    successful authenticated probe so early false negatives still defer
+ *    login redirects via shouldDeferEmbedLoginRedirect.
  * 4. Session authenticated → sync workspace → embedWorkspaceId set
  *
  * ## Recovery MAY reset refresh-decline (see designBffClient.resetDesignAuthRefreshState)
