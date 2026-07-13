@@ -101,7 +101,10 @@ export function getDesignBffClient(): TeamverClient | null {
       withCredentials: true,
       fetch: fetchDesignBffSdk,
       onAuthExpired: () => {
-        prepareDesignAuthSessionReload();
+        // Do not prepareDesignAuthSessionReload() here — that clears session
+        // caches before we know recovery failed, and looks like a spontaneous
+        // logout ("Teamver Design 불러오는 중…"). Cache prep runs only when
+        // passive auth actually redirects to Main sign-in.
         handleEmbedPassiveUnauthorized("bff");
       },
     });
