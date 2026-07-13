@@ -116,6 +116,16 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 
 운영 효과: 열린 embed 탭이 idle 상태일 때 Main BE OAuth session check와 daemon runs list 조회가 계속 2초/탭 단위로 누적되는 현상을 줄인다. 새 작업 시작은 `RUNS_CHANGED_EVENT`로 즉시 감지하므로 슬라이드 처리 UX 지연은 최소화한다.
 
+### 3.2c 2026-07-13 — tab return 인증 blip 안정화
+
+현재 시점 기준 판단: routine focus/visibility 복귀는 사용자가 인증을 새로 한 신호가 아니므로, 인증 상태를 흔드는 recovery trigger로 취급하지 않는다.
+
+- `session_unreachable` 상태에서 탭이 다시 visible이 되어도 즉시 `force` session probe하지 않고 5s→15s→60s backoff에 맡긴다.
+- 이미 authenticated UI/BFF session이 살아있는 상태의 `silent:true` probe가 401을 만나면 passive login recovery를 실행하지 않고 기존 UI를 유지한다.
+- auth return, cookie hint 신규 등장, bfcache restore는 명확한 recovery signal이므로 기존처럼 즉시 재검증한다.
+
+운영 효과: “잠시 다른 탭을 봤다가 돌아왔더니 갑자기 인증 로딩/401 toast가 뜨는” 케이스를 줄이고, Drive/프로젝트/워크스페이스 UI가 transient auth blip 때문에 흔들리지 않게 한다.
+
 ### 3.3 Gap · 후속
 
 | ID | 우선 | 내용 | 상태 |
@@ -362,6 +372,7 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-13 | embed tab return auth blip 안정화 — silent 401 기존 UI 유지 + `session_unreachable` 즉시 force probe 제거 |
 | 2026-07-13 | Drive BFF auth_request refresh race 차단 — `/teamver-bff/drive/*` 전용 nginx location + router-owned refresh |
 | 2026-06-25 | loop 403 — in-project run success publish menu arm (S-8) |
 | 2026-06-25 | loop 402 — D-B3 thumbnail batch E2E, validate_deploy_env timeout warn |

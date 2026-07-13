@@ -379,6 +379,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (isSessionExpiredError(err)) {
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
+        if (
+          silent
+          && !resetRefreshState
+          && (hadEmbedSession() || stateRef.current.authenticated)
+        ) {
+          return;
+        }
         prepareDesignAuthSessionReload();
         if (resetRefreshState) {
           await clearTeamverEmbedSessionState();
@@ -511,6 +518,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       lastCookieHintRef.current = cookieHintNow;
+      if (
+        stateRef.current.error === "session_unreachable"
+        && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+      ) {
+        return;
+      }
       scheduleFocusSessionRefresh({
         bypassThrottle: shouldResetEmbedRefreshDeclineOnFocus(focusSignals),
         focusSignals,
@@ -571,7 +584,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (cancelled) return;
-        void refresh({ force: true });
+        void refresh({ force: true, silent: true });
       }, delay);
     };
 
@@ -586,7 +599,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         clearTimeout(retryTimer);
         retryTimer = null;
       }
-      void refresh({ force: true });
+      scheduleRetry();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
