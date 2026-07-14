@@ -83,6 +83,7 @@ describe('Teamver embed export + Drive publish UI', () => {
     const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
     expect(history).toContain('teamver-drive-history-auth-required');
     expect(history).toContain('teamver-drive-history-login');
+    expect(history).toContain('outputs_unavailable');
   });
 
   it('supports partial publish toasts with follow-up actions', () => {

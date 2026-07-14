@@ -106,6 +106,14 @@ export function TeamverDrivePublishHistory({
     try {
       const next = await listTeamverProjectOutputs(projectId);
       if (seq !== fetchSeqRef.current) return;
+      // Soft null = BFF/workspace not ready — do not treat as an empty history.
+      if (!next) {
+        setResult(null);
+        hasRowsRef.current = false;
+        setError("outputs_unavailable");
+        onError?.(new Error("outputs_unavailable"));
+        return;
+      }
       setResult(next);
       hasRowsRef.current = readyOutputs(next.outputs ?? []).length > 0;
     } catch (err) {
@@ -279,7 +287,7 @@ export function TeamverDrivePublishHistory({
           })}
         </ul>
       )}
-      {remaining > 0 && !collapsed ? (
+      {remaining > 0 && !collapsed && !error && !authRequired ? (
         <p
           className="teamver-drive-history__more"
           data-testid="teamver-drive-history-more"

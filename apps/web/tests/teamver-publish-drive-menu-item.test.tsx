@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-const getWorkspaceMock = vi.fn(async () => "ws-1");
+const getWorkspaceMock = vi.fn(async (): Promise<string | null> => "ws-1");
 const listTargetsMock = vi.fn(async (_workspaceId: string, _options?: { limit?: number }) => [
   {
     id: "personal-root",
@@ -51,10 +51,15 @@ const publishMock = vi.fn(async (_args: unknown) => ({
     },
   ],
 }));
-const listOutputsMock = vi.fn(async (_projectId: string) => ({
-  projectId: "DPRJ-1",
-  outputs: [] as Array<Record<string, unknown>>,
-}));
+const listOutputsMock = vi.fn(
+  async (_projectId: string): Promise<{
+    projectId: string;
+    outputs: Array<Record<string, unknown>>;
+  } | null> => ({
+    projectId: "DPRJ-1",
+    outputs: [] as Array<Record<string, unknown>>,
+  }),
+);
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
@@ -505,6 +510,28 @@ describe("TeamverPublishDriveMenuItem", () => {
     ).toContain("아직 Teamver 드라이브에 발행한 적이 없습니다");
   });
 
+  it("shows an error (not empty) when outputs listing soft-returns null", async () => {
+    listOutputsMock.mockResolvedValueOnce(null);
+    render(
+      <TeamverPublishDriveMenuItem
+        projectId="od-1"
+        artifactFile="deck/index.html"
+        onCloseMenu={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("teamver-drive-history-toggle"));
+
+    await waitFor(() => {
+      expect(listOutputsMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId("teamver-drive-history-error").textContent).toContain(
+      "이력을 불러오지 못했습니다",
+    );
+    expect(screen.queryByTestId("teamver-drive-history-empty")).toBeNull();
+  });
+
   it("refetches the history right after a successful publish", async () => {
     render(
       <TeamverPublishDriveMenuItem
@@ -873,10 +900,9 @@ describe("TeamverPublishDriveMenuItem", () => {
   // must lock the background scroll while open so the operator's wheel
   // events don't leak through to the host page.
   it("drills into nested folders in browse mode before selecting the destination", async () => {
-    listImportRowsMock.mockImplementation(async (args: {
-      folderId?: string | null;
-    }) => {
-      if (args.folderId === "FLD-PARENT") {
+    listImportRowsMock.mockImplementation(async (args: unknown) => {
+      const folderId = (args as { folderId?: string | null }).folderId;
+      if (folderId === "FLD-PARENT") {
         return [
           { kind: "folder" as const, folderId: "FLD-CHILD", name: "Child exports", sharedDriveId: null },
         ];
