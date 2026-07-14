@@ -55,6 +55,10 @@ class TeamverSessionMiddleware:
             return loaded
         return None
 
+    @staticmethod
+    def _stable_dump(payload: dict[str, typing.Any]) -> str:
+        return json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
@@ -64,21 +68,34 @@ class TeamverSessionMiddleware:
         initial_session_was_empty = True
 
         loaded_session = None
+        source_cookie_name: str | None = None
         if self.session_cookie in connection.cookies:
             loaded_session = self._load_cookie_session(connection.cookies[self.session_cookie])
+            if loaded_session is not None:
+                source_cookie_name = self.session_cookie
         if loaded_session is None:
             for cookie_name in self.legacy_session_cookies:
                 if cookie_name not in connection.cookies:
                     continue
                 loaded_session = self._load_cookie_session(connection.cookies[cookie_name])
                 if loaded_session is not None:
+                    source_cookie_name = cookie_name
                     break
 
         if loaded_session is not None:
             scope["session"] = loaded_session
             initial_session_was_empty = False
+            initial_serialized: str | None = self._stable_dump(loaded_session)
         else:
             scope["session"] = {}
+            initial_serialized = None
+
+        # Legacy cookies MUST be migrated on first sight: emit Set-Cookie for the
+        # canonical name even when the handler does not mutate the session, so
+        # subsequent requests carry the app-specific cookie.
+        must_migrate_legacy_cookie = (
+            source_cookie_name is not None and source_cookie_name != self.session_cookie
+        )
 
         async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -86,6 +103,20 @@ class TeamverSessionMiddleware:
                     await send(message)
                     return
                 if scope["session"]:
+                    current_serialized = self._stable_dump(scope["session"])
+                    if (
+                        current_serialized == initial_serialized
+                        and not must_migrate_legacy_cookie
+                    ):
+                        # Session was not mutated on this request. Re-signing and
+                        # re-emitting the same signed value on every response would
+                        # overwrite a sibling ALB node's freshly rotated Set-Cookie
+                        # in the browser and force a session_expired cascade on the
+                        # next refresh. Stay silent so the winning node's cookie
+                        # can propagate unopposed.
+                        # See docs-teamver/39_10_HA_세션쿠키_경합_해결.md.
+                        await send(message)
+                        return
                     data = b64encode(json.dumps(scope["session"]).encode("utf-8"))
                     data = self.signer.sign(data)
                     headers = MutableHeaders(scope=message)

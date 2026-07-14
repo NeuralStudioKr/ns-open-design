@@ -173,6 +173,28 @@ async def test_refresh_auth_failure_retains_session_when_access_still_valid(
     assert result is not None
     assert result.access_token == "old-access"
     assert request.session.get("teamver_bff_v1") == before
+    # Rotation-race guard: never re-sign a stale session cookie in HA.
+    assert request.scope.get("teamver_suppress_session_cookie") is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_unreachable_suppresses_stale_cookie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh_mock = AsyncMock(side_effect=AppsTokenRefreshError("teamver_unreachable"))
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    _seed_expiring_session(request)
+
+    result = await ensure_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "old-access"
+    assert request.scope.get("teamver_suppress_session_cookie") is True
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,13 @@ from typing import Any
 import jwt
 from starlette.requests import Request
 
-from .bff_session import BffSession, clear_bff_session, load_bff_session, save_bff_session
+from .bff_session import (
+    BffSession,
+    clear_bff_session,
+    load_bff_session,
+    save_bff_session,
+    suppress_session_cookie,
+)
 from .teamver_jwt import user_id_from_payload
 from ..services.teamver_apps_token_refresh import AppsTokenRefreshError, refresh_apps_tokens_with_main
 
@@ -138,6 +144,9 @@ async def _refresh_bff_session_core(
     if not refresh:
         if access_token_is_usable(session):
             logger.warning("[bff] missing refresh token; retaining usable access user=%s", session.user_id)
+            # No refresh performed on this request — do not clobber a sibling
+            # ALB node's freshly rotated Set-Cookie with our unchanged session.
+            suppress_session_cookie(request)
             return session if return_usable_on_refresh_failure else None
         clear_bff_session(request)
         return None
@@ -150,6 +159,7 @@ async def _refresh_bff_session_core(
                 return _apply_refresh_payload(request, session, cached)
         if exc.code == "teamver_unreachable":
             logger.warning("[bff] refresh unreachable; retaining existing session user=%s", session.user_id)
+            suppress_session_cookie(request)
             return session
         if access_token_is_usable(session):
             logger.warning(
@@ -158,6 +168,11 @@ async def _refresh_bff_session_core(
                 session.user_id,
                 return_usable_on_refresh_failure,
             )
+            # Rotation-race: Main already accepted a sibling node's refresh with
+            # the same refresh_token and rotated it. Re-signing our stale
+            # session on the response would overwrite the sibling's new cookie
+            # and cascade to session_expired on the next refresh attempt.
+            suppress_session_cookie(request)
             return session if return_usable_on_refresh_failure else None
         clear_bff_session(request)
         return None
