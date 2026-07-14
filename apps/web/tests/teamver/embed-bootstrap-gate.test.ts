@@ -19,6 +19,8 @@ describe('embed bootstrap gate', () => {
     expect(baseCss).toContain('.embed-route-loading');
     expect(baseCss).toContain('od-loading-shell--teamver');
     expect(baseCss).toContain('background-color: #F4EFE6');
+    expect(baseCss).toContain('teamver-embed-booted');
+    expect(baseCss).toContain('html.teamver-embed:not(.teamver-embed-booted)');
   });
 
   it('wraps the workspace shell in App', () => {

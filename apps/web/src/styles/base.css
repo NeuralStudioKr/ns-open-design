@@ -33,7 +33,19 @@ html[data-theme="dark"] body {
   background-color: #1a1917;
 }
 
-html.teamver-embed[data-theme="dark"] body {
+/*
+ * Auth/bootstrap must stay on Main-frame cream even when the saved theme is
+ * dark — otherwise chunk → gate → app reads as light loader → dark loader.
+ * Themed app chrome applies only after `.teamver-embed-booted`.
+ */
+html.teamver-embed:not(.teamver-embed-booted),
+html.teamver-embed:not(.teamver-embed-booted) body,
+html.teamver-embed:not(.teamver-embed-booted)[data-theme="dark"],
+html.teamver-embed:not(.teamver-embed-booted)[data-theme="dark"] body {
+  background-color: #F4EFE6 !important;
+}
+
+html.teamver-embed.teamver-embed-booted[data-theme="dark"] body {
   background-color: #1a1917;
 }
 
@@ -53,13 +65,12 @@ html.teamver-embed[data-theme="dark"] body {
 }
 
 .od-loading-shell--teamver {
-  background: #F4EFE6;
-  background-color: #F4EFE6;
-  color: #8a857c;
+  background: #F4EFE6 !important;
+  background-color: #F4EFE6 !important;
+  color: #8a857c !important;
 }
 
-html[data-theme="dark"] .od-loading-shell,
-html[data-theme="dark"] .od-loading-shell--teamver {
+html[data-theme="dark"] .od-loading-shell:not(.od-loading-shell--teamver) {
   background-color: #1a1917;
   color: var(--text-muted, #a8a39a);
 }

@@ -5,6 +5,7 @@ import {
   completeTeamverEmbedBoot,
   isTeamverEmbedBootComplete,
   TEAMVER_EMBED_BOOT_FALLBACK_MS,
+  TEAMVER_EMBED_BOOTED_CLASS,
   waitForTeamverEmbedBoot,
 } from '../teamver/teamverEmbedBoot';
 
@@ -36,6 +37,13 @@ export function EmbedBootstrapGate({ children }: Props) {
       cancelled = true;
       window.clearTimeout(fallback);
     };
+  }, [embed, bootReady]);
+
+  // Already-booted mounts (HMR / late gate) still need the DOM class so themed
+  // chrome can replace the cream bootstrap surface.
+  useEffect(() => {
+    if (!embed || !bootReady) return;
+    document.documentElement.classList.add(TEAMVER_EMBED_BOOTED_CLASS);
   }, [embed, bootReady]);
 
   if (!embed || bootReady) {

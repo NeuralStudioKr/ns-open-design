@@ -30,9 +30,13 @@ export const viewport: Viewport = {
  */
 const themeInitScript = `(function(){try{var c=JSON.parse(localStorage.getItem('open-design:config')||'{}');var t=c.theme;if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);var a=typeof c.accentColor==='string'&&/^#[0-9a-fA-F]{6}$/.test(c.accentColor.trim())?c.accentColor.trim().toLowerCase():'#c96442';var s=document.documentElement.style;s.setProperty('--accent',a);s.setProperty('--accent-strong','color-mix(in srgb, '+a+' 86%, var(--text-strong))');s.setProperty('--accent-soft','color-mix(in srgb, '+a+' 22%, var(--bg-panel))');s.setProperty('--accent-tint','color-mix(in srgb, '+a+' 12%, var(--bg-panel))');s.setProperty('--accent-hover','color-mix(in srgb, '+a+' 90%, var(--text-strong))');}catch(e){}})();`;
 
-/** First-paint cream before CSS chunks — avoids a white flash in the Main iframe. */
+/**
+ * First-paint cream before CSS chunks — and keep cream until JS adds
+ * `.teamver-embed-booted` so a saved dark theme cannot flash a second loader.
+ */
 const embedBootStyle = embedBuild
-  ? `html,body{background-color:${TEAMVER_EMBED_LOADING_BG}!important}`
+  ? `html,body{background-color:${TEAMVER_EMBED_LOADING_BG}!important}` +
+    `html:not(.teamver-embed-booted),html:not(.teamver-embed-booted) body{background-color:${TEAMVER_EMBED_LOADING_BG}!important}`
   : null;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
