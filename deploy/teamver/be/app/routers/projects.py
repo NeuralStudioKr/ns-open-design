@@ -48,14 +48,32 @@ REGISTRY_SCRATCH_SYNC_RETRY_DELAYS_SEC = (0.5, 1.5)
 
 
 async def _resolve_drive_mutation_access_token(request: Request, auth: AuthContext) -> str:
-    """Resolve a fresh-enough Main access token for Drive publish/import mutations.
+    """Resolve a Main-accepted token for Drive publish/import mutations.
 
-    Browse APIs go through `/teamver-bff/drive/*`; publish/import use project
-    routes. In ALB multi-node mode, a stale BFF cookie can survive local
-    usability checks while Main has already rotated the refresh token on a
-    sibling node. Force refresh here, and never re-sign the stale session when
-    that refresh fails.
+    Main ``/api/asset/*`` (presigned upload-request / confirm) verify **HS256
+    platform JWTs only** (``JWTService.get_current_user``). BFF Apps RS256
+    JWTs are rejected with ``Invalid token``.
+
+    Design pages run on ``*.teamver.com`` parent-domain SSO, so the browser
+    holds Main's ``teamver_access_token`` HS256 cookie. Prefer that. Only fall
+    back to the BFF Apps refresh path when the SSO cookie is missing — that
+    path will 401 on Main, but it preserves the previous behaviour for local
+    dev / non-embed callers.
     """
+    main_cookie_token: str | None
+    try:
+        main_cookie_token = extract_request_access_token(request)
+    except RuntimeError:
+        main_cookie_token = None
+    if not main_cookie_token:
+        # Explicit fallback for early-boot / test harnesses where the SDK
+        # client is not yet installed. Design hosted envs pin the cookie name.
+        raw = (request.cookies.get("teamver_access_token") or "").strip()
+        if raw:
+            main_cookie_token = raw
+    if main_cookie_token:
+        return main_cookie_token
+
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)
         if session is None:
@@ -68,7 +86,7 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
             raise UnauthorizedError("session_expired")
         return session.access_token
 
-    access_token = auth.raw_token or extract_request_access_token(request)
+    access_token = auth.raw_token
     if not access_token:
         raise UnauthorizedError("missing_access_token")
     return access_token

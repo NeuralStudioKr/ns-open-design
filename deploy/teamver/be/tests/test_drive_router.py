@@ -12,9 +12,19 @@ from app.errors import ForbiddenError, UnauthorizedError
 from app.routers import drive as drive_router
 
 
-def _drive_request(*, path: str, method: str = "GET", query: bytes = b"") -> Request:
+def _drive_request(
+    *,
+    path: str,
+    method: str = "GET",
+    query: bytes = b"",
+    cookie_header: str | None = None,
+) -> Request:
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
+
+    headers: list[tuple[bytes, bytes]] = []
+    if cookie_header:
+        headers.append((b"cookie", cookie_header.encode()))
 
     scope: dict[str, object] = {
         "type": "http",
@@ -25,7 +35,7 @@ def _drive_request(*, path: str, method: str = "GET", query: bytes = b"") -> Req
         "path": f"/api/v1/drive/{path.lstrip('/')}",
         "raw_path": f"/api/v1/drive/{path.lstrip('/')}".encode(),
         "query_string": query,
-        "headers": [],
+        "headers": headers,
         "client": ("testclient", 50000),
         "server": ("testserver", 443),
     }
@@ -109,7 +119,7 @@ async def test_proxy_drive_retries_after_bff_force_refresh(
     monkeypatch.setattr(
         drive_router,
         "_resolve_drive_access_token",
-        AsyncMock(return_value="stale-token"),
+        AsyncMock(return_value=("stale-token", "bff")),
     )
 
     response = await drive_router.proxy_drive(
@@ -182,7 +192,7 @@ async def test_proxy_drive_maps_invalid_token_to_session_expired_without_clobber
     monkeypatch.setattr(
         drive_router,
         "_resolve_drive_access_token",
-        AsyncMock(return_value="stale-token"),
+        AsyncMock(return_value=("stale-token", "bff")),
     )
 
     request = _drive_request(path="api/v2/shared-drive")
@@ -209,6 +219,133 @@ async def test_proxy_drive_maps_invalid_token_to_session_expired_without_clobber
     # so a sibling node's rotated Set-Cookie can win in the browser.
     assert "teamver_bff_v1" in request.session
     assert request.scope.get("teamver_suppress_session_cookie") is True
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_prefers_main_hs256_cookie_over_bff_apps_jwt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Main /api/drive/* verifies HS256 only. Forward the browser's Main SSO cookie."""
+    forward = AsyncMock(
+        return_value=(200, {"content-type": "application/json"}, b'{"items":[]}'),
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(
+        drive_router,
+        "force_refresh_bff_session",
+        AsyncMock(side_effect=AssertionError("BFF refresh must not run when Main SSO cookie is present")),
+    )
+
+    request = _drive_request(
+        path="api/drive/folder",
+        query=b"shallow_tree=true",
+        cookie_header="teamver_access_token=hs256-main-jwt; other=noop",
+    )
+
+    response = await drive_router.proxy_drive(
+        "api/drive/folder",
+        request,
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 200
+    forward.assert_awaited_once()
+    assert forward.await_args.kwargs["access_token"] == "hs256-main-jwt"
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_main_cookie_401_auth_failure_maps_to_session_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When Main HS256 cookie is rejected, do NOT try BFF refresh (Apps JWT is unrelated)."""
+    forward = AsyncMock(
+        return_value=(401, {"content-type": "application/json"}, b'{"detail":"Invalid token"}'),
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(
+        drive_router,
+        "force_refresh_bff_session",
+        AsyncMock(side_effect=AssertionError("Apps refresh must not run for Main HS256 cookie 401")),
+    )
+
+    request = _drive_request(
+        path="api/v2/shared-drive",
+        cookie_header="teamver_access_token=expired-main-jwt",
+    )
+    request.scope["session"] = {}
+
+    response = await drive_router.proxy_drive(
+        "api/v2/shared-drive",
+        request,
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 401
+    assert b"session_expired" in response.body
+    assert forward.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_main_cookie_401_non_auth_passes_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-folder ACL 401 must reach FE verbatim so it is not misread as session_expired."""
+    forward = AsyncMock(
+        return_value=(
+            401,
+            {"content-type": "application/json"},
+            b'{"detail":"error.drive_folder_access_denied"}',
+        ),
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(
+        drive_router,
+        "force_refresh_bff_session",
+        AsyncMock(side_effect=AssertionError("Refresh must not run for non-auth 401")),
+    )
+
+    request = _drive_request(
+        path="api/drive/folder/abc",
+        cookie_header="teamver_access_token=hs256-main-jwt",
+    )
+
+    response = await drive_router.proxy_drive(
+        "api/drive/folder/abc",
+        request,
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 401
+    assert b"error.drive_folder_access_denied" in response.body
+    assert b"session_expired" not in response.body
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_falls_back_to_bff_when_main_cookie_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No Main SSO cookie → use BFF Apps JWT (legacy path, so misconfig still 401s clearly)."""
+    forward = AsyncMock(
+        return_value=(200, {"content-type": "application/json"}, b'{"items":[]}'),
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+
+    response = await drive_router.proxy_drive(
+        "api/drive/folder",
+        _drive_request(path="api/drive/folder"),
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 200
+    forward.assert_awaited_once()
+    assert forward.await_args.kwargs["access_token"] == "apps-rs256-jwt"
 
 
 @pytest.mark.asyncio

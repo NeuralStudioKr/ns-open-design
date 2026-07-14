@@ -40,10 +40,14 @@ def _bff_auth() -> AuthContext:
     return _auth().model_copy(update={"auth_source": "bff", "raw_token": "stale-token"})
 
 
-def _request() -> MagicMock:
+def _request(*, cookies: dict[str, str] | None = None) -> MagicMock:
     request = MagicMock()
     request.scope = {}
     request.session = {}
+    # Real dict so _resolve_drive_mutation_access_token's cookie-forwarding
+    # branch does not treat MagicMock's truthy default as a "found" token.
+    request.cookies = dict(cookies or {})
+    request.headers = {}
     return request
 
 
@@ -321,6 +325,54 @@ async def test_publish_router_allows_delete_cookie_when_bff_session_cleared(
 
     assert "session_expired" in str(raised.value)
     assert request.scope.get("teamver_suppress_session_cookie") is not True
+
+
+@pytest.mark.asyncio
+async def test_publish_router_prefers_main_hs256_cookie_over_bff_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When browser carries Main SSO cookie, forward it — Main /api/asset/* only accepts HS256."""
+    row = _project_row()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_ref",
+        AsyncMock(return_value=row),
+    )
+    monkeypatch.setattr(projects_router, "get_teamver_client", lambda: MagicMock())
+    monkeypatch.setattr(
+        projects_router,
+        "force_refresh_bff_session",
+        AsyncMock(side_effect=AssertionError("Apps refresh must not run when Main SSO cookie is present")),
+    )
+    publish = AsyncMock(
+        return_value=PublishResult(
+            project_id="DPRJ-TEST",
+            outputs=[
+                PublishFormatResult(
+                    kind="html",
+                    publish_status="ready",
+                    id="OUT-1",
+                    drive_asset_id="AST-1",
+                    filename="Landing.html",
+                    size_bytes=64,
+                    mime_type="text/html",
+                ),
+            ],
+        ),
+    )
+    monkeypatch.setattr(projects_router, "publish_project", publish)
+
+    await projects_router.publish_project_to_drive(
+        "od1",
+        PublishProjectBody(formats=["html"], artifact_file="index.html"),
+        _request(cookies={"teamver_access_token": "hs256-main-jwt"}),
+        _bff_auth(),
+        db,
+    )
+
+    assert publish.await_args.kwargs["access_token"] == "hs256-main-jwt"
 
 
 @pytest.mark.asyncio
