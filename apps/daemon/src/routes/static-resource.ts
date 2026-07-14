@@ -116,7 +116,7 @@ function setStaticPreviewCacheHeaders(req: any, res: any, body: Buffer | string)
   res.setHeader('ETag', etag);
   const ifNoneMatch = req.headers?.['if-none-match'];
   const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : typeof ifNoneMatch === 'string' ? [ifNoneMatch] : [];
-  if (values.some((value) => value.split(',').map((part) => part.trim()).includes(etag))) {
+  if (values.some((value) => value.split(',').map((part: string) => part.trim()).includes(etag))) {
     res.status(304).end();
     return true;
   }
@@ -130,7 +130,7 @@ function sendCachedCatalogJson(req: any, res: any, payload: unknown) {
   res.setHeader('ETag', etag);
   const ifNoneMatch = req.headers?.['if-none-match'];
   const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : typeof ifNoneMatch === 'string' ? [ifNoneMatch] : [];
-  if (values.some((value) => value.split(',').map((part) => part.trim()).includes(etag))) {
+  if (values.some((value) => value.split(',').map((part: string) => part.trim()).includes(etag))) {
     res.status(304).end();
     return;
   }
