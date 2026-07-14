@@ -13,6 +13,8 @@
 > **daemon (`/api/*`)** affinity SSOT: nginx **`hash $teamver_user_id consistent`** ([§4](#4-nginx-userid-hash-phase-4--ssot)).  
 > **ALB stickiness (LBCookie)** 는 multi-node 에서 **OFF** — 브라우저 쿠키가 아니라 **userId 전체 문자열** 해시로 노드 결정 (홀짝·끝자리 규칙 없음).  
 > **static·BFF** 는 sticky/hash 없이 로컬 daemon 또는 round-robin OK.
+>
+> **주의 (2026-07-14):** BFF를 sticky OFF로 두는 전제는 **세션 미변경 시 Set-Cookie를 내지 않는** design-api middleware다. 그렇지 않으면 multi-node refresh race로 Drive `session_expired`가 난다 — SSOT **[39_10](./39_10_HA_세션쿠키_경합_해결.md)**.
 
 ---
 

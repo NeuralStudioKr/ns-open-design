@@ -128,6 +128,22 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 
 운영 효과: 인증 도중 화면이 에러처럼 보이는 인상을 줄이고, 탭 복귀/일시 401 때문에 Drive·워크스페이스·프로젝트 UI가 흔들리는 케이스를 줄인다.
 
+### 3.2f 2026-07-14 — HA stale Set-Cookie 경합 (Drive `session_expired` 근본 원인)
+
+**SSOT:** [39_10 HA 세션쿠키 경합 해결](./39_10_HA_세션쿠키_경합_해결.md)
+
+현재 시점 기준 판단: 이중화 이후 Drive가 `401 {"detail":"session_expired"}`로 반복 실패하고 **단일 노드에서는 거의 안 나면**, 쿠키명 충돌(§3.2e) 다음으로 **“모든 응답 Set-Cookie + refresh 회전 race”**를 본다.
+
+- Main Apps refresh_token은 1회 사용. Node A가 `C1`을 내려도 Node B가 old session을 retain한 채 Set-Cookie `C0`를 재발행하면 브라우저가 stale로 롤백한다.
+- Drive 모달뿐 아니라 `/auth/session` 등 병렬 BFF 호출도 경합을 유발한다. FE Drive queue만으로는 부족하다.
+- 해결: `TeamverSessionMiddleware`가 **세션이 변경된 요청만** Set-Cookie를 내고, retain 경로는 `suppress_session_cookie`. hard-clear/logout은 delete cookie가 suppress보다 우선. legacy `session` migrate 시 expire.
+- 쿠키명 격리(`teamver_design_bff_session`)와 nginx Drive `auth_request` 제외(§2.1b)는 전제 조건이다 대체제가 아니다.
+
+운영 확인:
+1. [39_10 §5](./39_10_HA_세션쿠키_경합_해결.md) 체크리스트.
+2. 미변경 응답에 `Set-Cookie: teamver_design_bff_session`이 없어야 함.
+3. 모든 ALB target의 `DESIGN_BFF_SESSION_SECRET` / `COOKIE_NAME` 동일.
+
 ### 3.2e 2026-07-14 — BFF session cookie 이름 충돌 방지
 
 현재 시점 기준 판단: `{"detail":"session_expired"}`가 Drive BFF API에서 반복되는데 Main 로그인/토큰 자체가 정상이라면, refresh race뿐 아니라 **쿠키 이름 충돌**을 먼저 의심해야 한다.
@@ -141,24 +157,26 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 운영 확인:
 1. 모든 ALB target의 `.env.staging`/`.env.production`에 `DESIGN_BFF_SESSION_COOKIE_NAME=teamver_design_bff_session`이 동일하게 들어가야 한다.
 2. 배포 후 `/teamver-bff/auth/session` 또는 Drive API 응답의 Set-Cookie가 `teamver_design_bff_session`인지 확인한다.
-3. 여전히 401이면 같은 이름의 쿠키 충돌보다 `DESIGN_BFF_SESSION_SECRET` 불일치 또는 refresh token rotation race를 본다.
+3. 여전히 401이면 같은 이름의 쿠키 충돌보다 `DESIGN_BFF_SESSION_SECRET` 불일치 또는 **HA Set-Cookie 경합**을 본다 — [39_10](./39_10_HA_세션쿠키_경합_해결.md) · §3.2f.
 
 ### 3.2d 2026-07-13 — Drive HA refresh race 보강
 
-현재 시점 기준 판단: 이중화 후 Drive 401이 늘어난 핵심 원인은 Drive 기능 자체가 아니라 **BFF session cookie에 들어있는 refresh token 회전 경쟁**이다.
+현재 시점 기준 판단: 이중화 후 Drive 401이 늘어난 핵심 축 중 하나는 **BFF session cookie의 refresh token 회전 경쟁**이다.  
+**2026-07-14 근본 해결(미변경 시 Set-Cookie 생략)은 [39_10](./39_10_HA_세션쿠키_경합_해결.md) · §3.2f.** 아래는 그 전후에 들어간 보조 방어층이다.
 
-- 단일 서버에서는 in-process refresh coalesce/cache가 같은 refresh token 중복 사용을 줄였다.
+- 단일 서버에서는 in-process refresh coalesce/cache가 같은 refresh token 중복 사용을 줄인다.
 - 이중화 후 Drive 모달의 병렬 folder/list/shared-drive 요청과 import/publish mutation이 서로 다른 서버로 갈라질 수 있다.
-- 서버 A가 refresh token 회전에 성공하고 서버 B가 같은 old refresh token으로 실패하면, B가 낡은 session을 다시 `Set-Cookie`로 내려 브라우저의 새 cookie를 덮어쓸 수 있다.
-- BE `TeamverSessionMiddleware` + `suppress_session_cookie()`는 이런 stale response가 cookie를 clobber하지 못하게 한다.
+- 서버 A가 refresh token 회전에 성공하고 서버 B가 같은 old refresh token으로 실패하면, B가 낡은 session을 다시 `Set-Cookie`로 내려 브라우저의 새 cookie를 덮어쓸 수 있다 → **middleware가 미변경 세션에 Set-Cookie를 내지 않도록 고침 ([39_10](./39_10_HA_세션쿠키_경합_해결.md)).**
+- BE `suppress_session_cookie()`는 retain/upstream-401 경로의 추가 안전망이다.
 - `/teamver-bff/drive/*` browse API는 FE queue + soft retry + 최종 coalesced `/auth/refresh` 후 재호출로 401 toast를 최대한 흡수한다.
-- `/projects/{id}/publish`와 `/projects/{id}/import-drive`는 project mutation 라우트이므로 browse proxy와 별개다. 두 라우트 모두 BFF 요청 시작 시 `force_refresh_bff_session()`을 사용하고, 실패 시 stale cookie re-sign을 suppress한다.
+- `/projects/{id}/publish`와 `/projects/{id}/import-drive`는 project mutation 라우트이므로 browse proxy와 별개다. 두 라우트 모두 BFF 요청 시작 시 `force_refresh_bff_session()`을 사용하고, **세션이 retain된 실패**에서만 stale cookie re-sign을 suppress한다(hard-clear 시에는 delete cookie 허용).
 - 추가 점검 결과, FE import/publish mutation은 SDK BFF 경로를 직접 타면서 공통 cookie recovery wrapper가 빠져 있었다. 현재는 두 mutation 모두 `withDesignBffCookieAuthRecovery()`를 거치며, `/auth/refresh`가 HA losing-node 401로 실패해도 짧은 대기 후 원 요청을 한 번 더 재시도한다. 이 재시도는 401 전 단계에서 막힌 요청에만 적용되므로 Drive 업로드/다운로드가 이미 수행된 502/부분 성공 응답은 재실행하지 않는다.
 
 운영 확인:
 1. Drive 모달 open 시 folder/list/shared-drive가 최종 200으로 수렴하는지 확인.
 2. Drive import/publish mutation에서 401이 나오면 response가 `session_expired`인지, FE가 `/auth/refresh` 또는 short retry 이후 같은 mutation을 한 번만 재호출하는지 확인.
 3. ALB target별 `DESIGN_BFF_SESSION_SECRET` 값이 완전히 동일한지 확인. secret이 다르면 race와 별개로 모든 BFF cookie decode가 불안정해진다.
+4. 근본 원인·Set-Cookie 정책은 [39_10](./39_10_HA_세션쿠키_경합_해결.md)을 따른다.
 
 ### 3.3 Gap · 후속
 

@@ -161,6 +161,8 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 | [39_5](./39_5_검증_체크리스트_FAQ.md) | 부하·장애 시나리오·FAQ |
 | [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) | **CTO 보고** — userId hash·이중화 의미·중앙 nginx 비교·장기 방향 |
 | [39_7](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) | **scratch vs DaemonDb vs multi-node** — 저장층 4분면·B5만으로는 부족·OD scratch 제거 불가 |
+| [39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md) | DaemonDb B5 잔여 · plugins · RDS |
+| [39_10](./39_10_HA_세션쿠키_경합_해결.md) | **HA BFF Set-Cookie 경합 · Drive `session_expired` 근본 원인·해결** |
 
 ---
 
@@ -168,5 +170,6 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-14 | [39_10 HA 세션쿠키 경합](./39_10_HA_세션쿠키_경합_해결.md) — Drive `session_expired` 근본 원인·Set-Cookie 정책 |
 | 2026-07-08 | [39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) — 저장층 4분면·Track B vs scratch 제거 |
 | 2026-07-07 | 39 시리즈 초안 — 이중화 로드맵 SSOT (38 §8·§12.4 확장) |
