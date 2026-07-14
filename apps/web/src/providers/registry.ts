@@ -218,6 +218,13 @@ const skillsInflight = new Map<string, Promise<SkillSummary[]>>();
 const designTemplatesCache = new Map<string, { at: number; value: SkillSummary[] }>();
 const designTemplatesInflight = new Map<string, Promise<SkillSummary[]>>();
 
+export function resetRegistryCatalogCacheForTests(): void {
+  skillsCache.clear();
+  skillsInflight.clear();
+  designTemplatesCache.clear();
+  designTemplatesInflight.clear();
+}
+
 export async function fetchSkills(options?: { slideOnly?: boolean }): Promise<SkillSummary[]> {
   const slideOnly =
     options?.slideOnly
