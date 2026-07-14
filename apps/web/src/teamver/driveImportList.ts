@@ -298,6 +298,17 @@ export async function browseTeamverDriveImportPage(params: {
   };
 }
 
+function rootFolderIdFromSharedDriveListItem(obj: Record<string, unknown>): string | null {
+  // Main `GET /api/v2/shared-drive` already returns root_folder_id (camelized by
+  // the Drive BFF client). Prefer that — never N-parallel folder-tree calls on
+  // modal open just to discover the root id.
+  const camel = obj.rootFolderId;
+  if (typeof camel === "string" && camel.trim()) return camel.trim();
+  const snake = obj.root_folder_id;
+  if (typeof snake === "string" && snake.trim()) return snake.trim();
+  return null;
+}
+
 async function resolveSharedDriveRootFolderId(
   workspaceId: string,
   sharedDriveId: string,
@@ -325,21 +336,28 @@ async function fetchImportScopesUncached(workspaceId: string): Promise<TeamverDr
   const trimmed = workspaceId.trim();
   if (!trimmed) return [];
 
+  // Personal shallow + shared list in parallel (independent). Previously shared
+  // waited on personal, then fire-hosed folder-tree once per drive.
+  const [personalResult, sharedListResult] = await Promise.allSettled([
+    getPersonalShallowTreeCached(trimmed),
+    getSharedDriveListCached(trimmed),
+  ]);
+
   let personalRootId: string | null = null;
-  try {
-    const personalTree = await getPersonalShallowTreeCached(trimmed);
-    personalRootId = normalizeImportRootFolderId(personalTree);
-  } catch {
-    // personal tree optional — fall back to BE list default
+  if (personalResult.status === "fulfilled") {
+    personalRootId = normalizeImportRootFolderId(personalResult.value);
   }
 
   const scopes: TeamverDriveImportScope[] = [
     { mode: "personal", folderId: personalRootId, label: "내 드라이브" },
   ];
 
+  if (sharedListResult.status !== "fulfilled") {
+    return scopes;
+  }
+
   try {
-    const raw = await getSharedDriveListCached(trimmed);
-    const drives = extractListItems(raw);
+    const drives = extractListItems(sharedListResult.value);
     const sharedScopes = await Promise.all(
       drives.map(async (drive) => {
         if (!drive || typeof drive !== "object") return null;
@@ -349,7 +367,17 @@ async function fetchImportScopesUncached(workspaceId: string): Promise<TeamverDr
         const status = String(obj.status ?? "").toLowerCase();
         if (!id || !name) return null;
         if (status && status !== "active") return null;
-        const rootFolderId = await resolveSharedDriveRootFolderId(trimmed, id);
+        // List response includes rootFolderId (Main 620736e2). Fall back to
+        // folder-tree only for older Main / partial payloads.
+        let rootFolderId = rootFolderIdFromSharedDriveListItem(obj);
+        if (!rootFolderId) {
+          rootFolderId = await resolveSharedDriveRootFolderId(trimmed, id);
+        } else {
+          sharedDriveRootCache.set(`${trimmed}:${id}`, {
+            rootFolderId,
+            at: Date.now(),
+          });
+        }
         return {
           mode: "shared" as const,
           sharedDriveId: id,
