@@ -25,8 +25,9 @@ export function useTeamverDriveModalFocusTrap(
 ): void {
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
-    const container = containerRef.current;
-    if (!container) return;
+    const maybeContainer = containerRef.current;
+    if (!maybeContainer) return;
+    const container: HTMLElement = maybeContainer;
 
     // Snapshot before we move focus into the dialog (and before rAF).
     const previouslyFocused =
