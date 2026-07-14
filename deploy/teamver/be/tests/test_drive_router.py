@@ -139,17 +139,6 @@ async def test_proxy_drive_owns_refresh_without_nginx_auth_request(
     monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
     monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
 
-    async def fake_ensure(_request: Request) -> BffSession:
-        return BffSession(
-            user_id="u1",
-            access_token="old-cookie-token",
-            refresh_token="rt-old",
-            access_expires_at=9999999999,
-            workspace_id="ws-1",
-            aud="teamver-design",
-            scope=[],
-        )
-
     async def fake_force_refresh(_request: Request) -> BffSession:
         return BffSession(
             user_id="u1",
@@ -161,7 +150,6 @@ async def test_proxy_drive_owns_refresh_without_nginx_auth_request(
             scope=[],
         )
 
-    monkeypatch.setattr(drive_router, "ensure_bff_session", fake_ensure)
     monkeypatch.setattr(drive_router, "force_refresh_bff_session", fake_force_refresh)
 
     request = _drive_request(path="api/drive/folder", query=b"shallow_tree=true")
@@ -169,12 +157,12 @@ async def test_proxy_drive_owns_refresh_without_nginx_auth_request(
     response = await drive_router.proxy_drive(
         "api/drive/folder",
         request,
-        _auth(token="", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+        _auth(token="auth-context-token", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
     )
 
     assert response.status_code == 200
     assert forward.await_count == 2
-    assert forward.await_args_list[0].kwargs["access_token"] == "old-cookie-token"
+    assert forward.await_args_list[0].kwargs["access_token"] == "auth-context-token"
     assert forward.await_args_list[1].kwargs["access_token"] == "fresh-drive-token"
 
 

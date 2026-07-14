@@ -15,7 +15,7 @@ from ..auth.bff_session import (
     load_bff_session,
     suppress_session_cookie,
 )
-from ..auth.bff_tokens import access_token_is_usable, ensure_bff_session, force_refresh_bff_session
+from ..auth.bff_tokens import access_token_is_usable, force_refresh_bff_session
 from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..errors import UnauthorizedError
@@ -35,10 +35,12 @@ def _require_access_token(auth: AuthContext) -> str:
 
 async def _resolve_drive_access_token(request: Request, auth: AuthContext) -> str:
     if auth.auth_source == "bff" and bff_enabled():
-        session = await ensure_bff_session(request)
-        if session is None:
-            raise UnauthorizedError("session_expired")
-        return session.access_token
+        # `require_auth` has already resolved and refreshed the BFF session for
+        # this request. Calling `ensure_bff_session()` again here can trigger a
+        # second refresh during the Drive modal burst and re-open the HA
+        # refresh-token race. Use the token captured in AuthContext; if Main
+        # Drive rejects it, the 401 recovery below performs one forced refresh.
+        return _require_access_token(auth)
     return _require_access_token(auth)
 
 
