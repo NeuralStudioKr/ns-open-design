@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { TeamverDriveImportModal } from "../src/teamver/components/TeamverDriveImportModal";
+import { resetTeamverDriveBrowsePageCachesForTests } from "../src/teamver/driveBrowsePageCache";
 
 const listScopesMock = vi.fn();
 const browsePageMock = vi.fn();
@@ -40,6 +41,7 @@ describe("TeamverDriveImportModal", () => {
   });
 
   beforeEach(() => {
+    resetTeamverDriveBrowsePageCachesForTests();
     listScopesMock.mockReset();
     browsePageMock.mockReset();
     listRecentMock.mockReset();

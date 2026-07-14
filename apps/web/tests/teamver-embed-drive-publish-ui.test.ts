@@ -84,6 +84,16 @@ describe('Teamver embed export + Drive publish UI', () => {
     expect(history).toContain('teamver-drive-history-auth-required');
     expect(history).toContain('teamver-drive-history-login');
     expect(history).toContain('outputs_unavailable');
+
+    const importModal = readSource('src/teamver/components/TeamverDriveImportModal.tsx');
+    expect(importModal).toContain('teamver-drive-import-auth-required');
+    expect(importModal).toContain('teamver-drive-import-login');
+    expect(importModal).toContain('scopesHydrated');
+
+    const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
+    expect(picker).toContain('teamver-drive-picker-auth-required');
+    expect(picker).toContain('teamver-drive-picker-login');
+    expect(picker).toContain('loadTeamverDriveBrowsePageCached');
   });
 
   it('supports partial publish toasts with follow-up actions', () => {

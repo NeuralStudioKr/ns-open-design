@@ -1338,6 +1338,41 @@
   padding: 28px 10px;
   text-align: center;
 }
+.teamver-drive-picker-empty--auth {
+  color: var(--danger, #d04040);
+}
+.teamver-drive-picker-empty__login {
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, #2563eb);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.teamver-drive-picker-empty__login:hover {
+  text-decoration: none;
+}
+.teamver-drive-picker-empty__retry {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.teamver-drive-picker-empty__retry:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+.teamver-drive-picker-empty__retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .teamver-drive-picker-footer {
   display: flex;
   align-items: center;

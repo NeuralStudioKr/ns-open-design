@@ -30,8 +30,14 @@ import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import {
   getTeamverDriveBrowsePageCached,
+  loadTeamverDriveBrowsePageCached,
   setTeamverDriveBrowsePageCached,
 } from "../driveBrowsePageCache";
+import {
+  isTeamverBffUnauthorizedError,
+  redirectToTeamverLoginFromEmbed,
+} from "../teamverBffAuthError";
+import { formatTeamverDriveImportErrorMessage } from "../importDriveAssets";
 
 type NavCrumb = {
   folderId: string | null;
@@ -146,6 +152,7 @@ export function TeamverDrivePickerModal({
   const [browseAssetRows, setBrowseAssetRows] = useState<TeamverDriveImportAssetRow[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
+  const [browseAuthRequired, setBrowseAuthRequired] = useState(false);
   const [browseHasMore, setBrowseHasMore] = useState(false);
   const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
   const [homeRecentTargets, setHomeRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
@@ -214,7 +221,7 @@ export function TeamverDrivePickerModal({
     && !hasHomeRecentTargets
     && !hasRecentAssetTargets
     && !hasBrowseContent
-    && (loading || browseLoading || homeRecentLoading);
+    && (loading || browseLoading || homeRecentLoading || scopes.length === 0);
   const showBrowseRefreshing =
     !showInitialLoading
     && (loading || browseLoading || (searchLoading && searching))
@@ -377,8 +384,11 @@ export function TeamverDrivePickerModal({
         setScopeIndex(0);
         setNavStack([rootCrumb(resolved[0]!)]);
         onQuickPickTargetsHydrated?.(publishTargetsFromImportScopes(resolved));
-      } catch {
+      } catch (err) {
         if (canceled) return;
+        if (isTeamverBffUnauthorizedError(err)) {
+          setBrowseAuthRequired(true);
+        }
         const fallback = [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
         setScopes(fallback);
         setScopeIndex(0);
@@ -426,71 +436,135 @@ export function TeamverDrivePickerModal({
         currentFolderId ?? "root",
         before ?? "start",
       ].join(":");
+      const wantRecent = !append && activeScope.mode === "personal" && currentFolderId == null;
+      const seq = ++browseFetchSeqRef.current;
+
       if (!append) {
         const cached = getTeamverDriveBrowsePageCached(cacheKey);
-        if (cached) {
+        if (cached && !browseAuthRequired) {
+          if (seq !== browseFetchSeqRef.current) return;
           setBrowseTargets(cached.targets);
           setBrowseAssetRows(cached.assets);
-          setRecentAssetRows(cached.recentAssets);
           setBrowseHasMore(cached.hasMore);
           setBrowseNextCursor(cached.nextCursor);
-          setBrowseLoading(false);
           setBrowseError(null);
+          if (wantRecent && cached.recentAssets.length > 0) {
+            setRecentAssetRows(cached.recentAssets);
+            setBrowseLoading(false);
+            return;
+          }
+          if (wantRecent) {
+            setBrowseLoading(true);
+            try {
+              const recentAssets = await listTeamverDrivePublishRecentAssets(workspaceId, {
+                limit: 16,
+              });
+              if (seq !== browseFetchSeqRef.current) return;
+              const browseAssetIds = new Set(cached.assets.map((row) => row.assetId));
+              setRecentAssetRows(recentAssets.filter((row) => !browseAssetIds.has(row.assetId)));
+            } catch {
+              if (seq !== browseFetchSeqRef.current) return;
+              setRecentAssetRows([]);
+            } finally {
+              if (seq === browseFetchSeqRef.current) setBrowseLoading(false);
+            }
+            return;
+          }
+          setRecentAssetRows([]);
+          setBrowseLoading(false);
           return;
         }
       }
-      const seq = ++browseFetchSeqRef.current;
+
       if (!append) {
         setBrowseLoading(true);
         setBrowseError(null);
       }
       try {
-        const page = await browseTeamverDriveImportPage({
-          workspaceId,
-          scope: activeScope,
-          navFolderId: currentFolderId,
-          limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
-          before,
-        });
-        if (seq !== browseFetchSeqRef.current) return;
-        const folders = page.rows
-          .filter((row): row is TeamverDriveImportFolderRow => row.kind === "folder")
-          .map((row) => targetFromFolder(activeScope, row));
-        const assets = page.rows.filter(
-          (row): row is TeamverDriveImportAssetRow => row.kind === "asset",
-        );
-        let recentAssets: TeamverDrivePublishRecentAsset[] = [];
-        if (!append && activeScope.mode === "personal" && currentFolderId == null) {
-          try {
-            recentAssets = await listTeamverDrivePublishRecentAssets(workspaceId, { limit: 16 });
-            if (seq !== browseFetchSeqRef.current) return;
-            const browseAssetIds = new Set(assets.map((row) => row.assetId));
-            recentAssets = recentAssets.filter((row) => !browseAssetIds.has(row.assetId));
-          } catch {
-            recentAssets = [];
-          }
-        }
-        if (!append) {
-          setTeamverDriveBrowsePageCached(cacheKey, {
-            targets: folders,
-            assets,
-            recentAssets,
-            hasMore: page.hasMore,
-            nextCursor: page.nextCursor,
+        if (append) {
+          const page = await browseTeamverDriveImportPage({
+            workspaceId,
+            scope: activeScope,
+            navFolderId: currentFolderId,
+            limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
+            before,
           });
+          if (seq !== browseFetchSeqRef.current) return;
+          const folders = page.rows
+            .filter((row): row is TeamverDriveImportFolderRow => row.kind === "folder")
+            .map((row) => targetFromFolder(activeScope, row));
+          const assets = page.rows.filter(
+            (row): row is TeamverDriveImportAssetRow => row.kind === "asset",
+          );
+          setBrowseTargets((current) => [...current, ...folders]);
+          setBrowseAssetRows((current) => [...current, ...assets]);
+          setBrowseHasMore(page.hasMore);
+          setBrowseNextCursor(page.nextCursor);
+          return;
         }
-        setBrowseTargets((current) => (append ? [...current, ...folders] : folders));
-        setBrowseAssetRows((current) => (append ? [...current, ...assets] : assets));
-        setBrowseHasMore(page.hasMore);
-        setBrowseNextCursor(page.nextCursor);
-        if (!append) setRecentAssetRows(recentAssets);
-      } catch {
+
+        const recentPromise = wantRecent
+          ? listTeamverDrivePublishRecentAssets(workspaceId, { limit: 16 }).catch(
+            () => [] as TeamverDrivePublishRecentAsset[],
+          )
+          : Promise.resolve([] as TeamverDrivePublishRecentAsset[]);
+
+        const [entry, recentAssetsRaw] = await Promise.all([
+          loadTeamverDriveBrowsePageCached(cacheKey, async () => {
+            const page = await browseTeamverDriveImportPage({
+              workspaceId,
+              scope: activeScope,
+              navFolderId: currentFolderId,
+              limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
+              before,
+            });
+            const folders = page.rows
+              .filter((row): row is TeamverDriveImportFolderRow => row.kind === "folder")
+              .map((row) => targetFromFolder(activeScope, row));
+            const assets = page.rows.filter(
+              (row): row is TeamverDriveImportAssetRow => row.kind === "asset",
+            );
+            return {
+              rows: page.rows,
+              targets: folders,
+              assets,
+              recentAssets: [] as TeamverDrivePublishRecentAsset[],
+              hasMore: page.hasMore,
+              nextCursor: page.nextCursor,
+            };
+          }),
+          recentPromise,
+        ]);
+        if (seq !== browseFetchSeqRef.current) return;
+
+        const browseAssetIds = new Set(entry.assets.map((row) => row.assetId));
+        const recentAssets = recentAssetsRaw.filter((row) => !browseAssetIds.has(row.assetId));
+        // Refresh cache with recentAssets so Import/Picker reopen can reuse them.
+        if (wantRecent && recentAssets.length > 0) {
+          setTeamverDriveBrowsePageCached(cacheKey, { ...entry, recentAssets });
+        }
+
+        setBrowseAuthRequired(false);
+        setBrowseTargets(entry.targets);
+        setBrowseAssetRows(entry.assets);
+        setBrowseHasMore(entry.hasMore);
+        setBrowseNextCursor(entry.nextCursor);
+        setRecentAssetRows(recentAssets);
+      } catch (err) {
         if (seq !== browseFetchSeqRef.current) return;
         if (!append) {
           setBrowseTargets([]);
           setBrowseAssetRows([]);
           setRecentAssetRows([]);
-          setBrowseError("드라이브 폴더를 불러오지 못했습니다");
+          if (isTeamverBffUnauthorizedError(err)) {
+            setBrowseAuthRequired(true);
+            setBrowseError(null);
+          } else {
+            setBrowseAuthRequired(false);
+            setBrowseError(
+              formatTeamverDriveImportErrorMessage(err) || "드라이브 폴더를 불러오지 못했습니다",
+            );
+          }
         }
         setBrowseHasMore(false);
         setBrowseNextCursor(null);
@@ -498,7 +572,7 @@ export function TeamverDrivePickerModal({
         if (seq === browseFetchSeqRef.current && !append) setBrowseLoading(false);
       }
     },
-    [activeScope, currentFolderId, open, searching, workspaceId],
+    [activeScope, browseAuthRequired, currentFolderId, open, searching, workspaceId],
   );
 
   useEffect(() => {
@@ -623,10 +697,16 @@ export function TeamverDrivePickerModal({
         const results = await onSearch(submittedQuery);
         if (canceled || seq !== searchFetchSeqRef.current) return;
         setSearchTargets(results);
-      } catch {
+        setBrowseAuthRequired(false);
+      } catch (err) {
         if (canceled || seq !== searchFetchSeqRef.current) return;
         setSearchTargets([]);
-        setSearchError("드라이브 검색에 실패했습니다");
+        if (isTeamverBffUnauthorizedError(err)) {
+          setBrowseAuthRequired(true);
+          setSearchError(null);
+        } else {
+          setSearchError("드라이브 검색에 실패했습니다");
+        }
       } finally {
         if (!canceled && seq === searchFetchSeqRef.current) setSearchLoading(false);
       }
@@ -814,8 +894,40 @@ export function TeamverDrivePickerModal({
           ) : null}
           {showInitialLoading ? null : showBrowseRefreshing ? (
             <TeamverDriveListSkeleton rows={4} />
+          ) : browseAuthRequired && !hasBrowseContent ? (
+            <div
+              className="teamver-drive-picker-empty teamver-drive-picker-empty--auth"
+              role="status"
+              aria-live="polite"
+              data-testid="teamver-drive-picker-auth-required"
+            >
+              세션이 만료되어 드라이브를 불러올 수 없습니다.{" "}
+              <button
+                type="button"
+                className="teamver-drive-picker-empty__login"
+                data-testid="teamver-drive-picker-login"
+                onClick={redirectToTeamverLoginFromEmbed}
+              >
+                다시 로그인
+              </button>
+            </div>
           ) : browseError && !hasBrowseContent ? (
-            <div className="teamver-drive-picker-empty">{browseError}</div>
+            <div
+              className="teamver-drive-picker-empty"
+              role="status"
+              data-testid="teamver-drive-picker-browse-error"
+            >
+              <p>{browseError}</p>
+              <button
+                type="button"
+                className="teamver-drive-picker-empty__retry"
+                data-testid="teamver-drive-picker-retry"
+                disabled={browseLoading}
+                onClick={() => void refreshBrowse()}
+              >
+                다시 시도
+              </button>
+            </div>
           ) : searchError && !hasBrowseContent ? (
             <div className="teamver-drive-picker-empty">{searchError}</div>
           ) : hasBrowseContent ? (
