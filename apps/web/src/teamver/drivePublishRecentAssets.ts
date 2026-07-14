@@ -1,4 +1,4 @@
-import { getTeamverDriveJson } from "./driveApi";
+import { fetchTeamverDriveHomeRecentRaw } from "./driveHomeRecentCache";
 
 export type TeamverDrivePublishRecentAsset = {
   assetId: string;
@@ -18,11 +18,12 @@ export async function listTeamverDrivePublishRecentAssets(
   if (!ws) return [];
 
   const limit = Math.max(1, Math.min(options.limit ?? 16, 24));
-  const query = new URLSearchParams();
-  query.set("limit", String(limit));
-  query.set("include", "assets");
-
-  const raw = await getTeamverDriveJson(`/api/v2/drive/home/recent?${query.toString()}`, ws);
+  // Prefer the richer shared cache key so picker assets + home-recent locations
+  // collapse to one upstream `/home/recent` when both surfaces open together.
+  const raw = await fetchTeamverDriveHomeRecentRaw(ws, {
+    limit,
+    include: "assets,shared_with_me",
+  });
   const assets = Array.isArray((raw as { assets?: unknown[] })?.assets)
     ? (raw as { assets: unknown[] }).assets
     : [];

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { resolveTeamverDriveAssetUrl } from "../designApiBase";
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from "../teamverDriveDeepLink";
@@ -51,8 +51,6 @@ function formatRelativeTimestamp(iso: string | null | undefined): string {
   if (absDay < 2) return "어제";
   if (absDay < 7) return `${Math.round(absDay)}일 전`;
 
-  // Falls back to a stable Asia/Seoul-friendly absolute string for older rows
-  // so users can still compare versions across weeks.
   return target.toLocaleString("ko-KR", {
     year: "numeric",
     month: "2-digit",
@@ -75,27 +73,13 @@ function kindLabel(kind: string): string {
 }
 
 function readyOutputs(outputs: TeamverPublishDriveOutput[]): TeamverPublishDriveOutput[] {
-  // Only ready rows can carry a Drive deep link; failed rows would render a
-  // broken "Drive 열기" link, which is worse than hiding them from history.
   return outputs.filter((output) => output.publishStatus === "ready" && output.driveAssetId.trim() !== "");
 }
 
 /**
  * loop 174 — Drive publish history surface.
- *
- * Why this exists: before loop 174 the FileViewer download menu only ever
- * showed a single "Publish to Teamver Drive" action. Operators reported they
- * couldn't tell whether they had ever published this artifact, when, or what
- * version was in Drive — they had to leave the embed, open Drive, scan a
- * folder and guess. Every publish row already lives in `design_outputs` and
- * is exposed by `GET /api/v1/projects/{id}/outputs` (sorted by
- * `published_at DESC`), so this component is purely a UI surface over data we
- * already persist.
- *
- * Version labels (`v1`, `v2`, ...) are assigned client-side from the
- * ready-only DESC index: the most recent publish is always `v{ready.length}`,
- * the oldest visible row is `v1`. Operators don't have to memorise a
- * timestamp to talk about "v3 vs v2".
+ * Collapsed deferral: skip `/outputs` until expand / publish refresh / manual refresh
+ * so opening the publish panel does not always hit design-api.
  */
 export function TeamverDrivePublishHistory({
   projectId,
@@ -108,16 +92,24 @@ export function TeamverDrivePublishHistory({
   const [authRequired, setAuthRequired] = useState(false);
   const [result, setResult] = useState<TeamverProjectOutputsResult | null>(null);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [hasRequested, setHasRequested] = useState(!defaultCollapsed);
+  const [manualRefreshNonce, setManualRefreshNonce] = useState(0);
+  const fetchSeqRef = useRef(0);
+  const hasRowsRef = useRef(false);
 
   const fetchHistory = useCallback(async () => {
     if (!projectId.trim()) return;
-    setLoading(true);
+    const seq = ++fetchSeqRef.current;
+    if (!hasRowsRef.current) setLoading(true);
     setError(null);
     setAuthRequired(false);
     try {
       const next = await listTeamverProjectOutputs(projectId);
+      if (seq !== fetchSeqRef.current) return;
       setResult(next);
+      hasRowsRef.current = readyOutputs(next.outputs ?? []).length > 0;
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       if (isTeamverBffUnauthorizedError(err)) {
         setAuthRequired(true);
       } else {
@@ -125,23 +117,31 @@ export function TeamverDrivePublishHistory({
       }
       onError?.(err);
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
   }, [onError, projectId]);
 
   useEffect(() => {
+    // Defer until expand / publish refreshKey / explicit refresh — not on collapse-only.
+    if (defaultCollapsed && !hasRequested && refreshKey === 0 && manualRefreshNonce === 0) {
+      return;
+    }
     void fetchHistory();
-  }, [fetchHistory, refreshKey]);
+  }, [defaultCollapsed, fetchHistory, hasRequested, manualRefreshNonce, refreshKey]);
 
   const ready = readyOutputs(result?.outputs ?? []);
   const visibleLimit = collapsed ? 1 : VISIBLE_ROW_LIMIT;
   const visible = ready.slice(0, visibleLimit);
   const remaining = Math.max(0, ready.length - visible.length);
-  const canToggle = ready.length > 1 || (collapsed && ready.length > 0);
+  const canToggle =
+    ready.length > 1
+    || (collapsed && ready.length > 0)
+    || (defaultCollapsed && !hasRequested);
+  const showDeferredHint = defaultCollapsed && collapsed && !hasRequested && !loading;
 
   return (
     <div
-      className={`teamver-drive-history${collapsed ? " teamver-drive-history--collapsed" : ""}`}
+      className={`teamver-drive-history${collapsed ? " teamver-drive-history--truncated" : ""}`}
       role="group"
       aria-label="Teamver 드라이브 발행 이력"
       data-testid="teamver-drive-history"
@@ -153,7 +153,11 @@ export function TeamverDrivePublishHistory({
             type="button"
             className="teamver-drive-history__toggle"
             data-testid="teamver-drive-history-toggle"
-            onClick={() => setCollapsed((current) => !current)}
+            onClick={() => {
+              const expanding = collapsed;
+              setCollapsed((current) => !current);
+              if (expanding) setHasRequested(true);
+            }}
           >
             {collapsed ? "펼치기" : "접기"}
           </button>
@@ -164,12 +168,22 @@ export function TeamverDrivePublishHistory({
           aria-label="발행 이력 새로고침"
           data-testid="teamver-drive-history-refresh"
           disabled={loading}
-          onClick={() => void fetchHistory()}
+          onClick={() => {
+            setHasRequested(true);
+            setManualRefreshNonce((nonce) => nonce + 1);
+          }}
         >
           <Icon name="refresh" size={13} />
         </button>
       </div>
-      {loading && visible.length === 0 ? (
+      {showDeferredHint ? (
+        <p
+          className="teamver-drive-history__empty"
+          data-testid="teamver-drive-history-deferred"
+        >
+          펼쳐서 이전 발행을 확인하세요.
+        </p>
+      ) : loading && visible.length === 0 ? (
         <p
           className="teamver-drive-history__empty"
           data-testid="teamver-drive-history-loading"
@@ -212,9 +226,6 @@ export function TeamverDrivePublishHistory({
       ) : (
         <ul className="teamver-drive-history__list" role="list">
           {visible.map((output, index) => {
-            // ready[] is `published_at DESC`. The first visible row is the
-            // newest, so it should carry the highest version number among the
-            // ready rows we know about.
             const version = ready.length - index;
             const driveUrl = output.driveAssetId
               ? resolveTeamverDriveAssetUrl(output.driveAssetId)

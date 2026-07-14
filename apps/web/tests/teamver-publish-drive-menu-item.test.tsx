@@ -446,6 +446,9 @@ describe("TeamverPublishDriveMenuItem", () => {
       />,
     );
 
+    expect(screen.getByTestId("teamver-drive-history-deferred")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("teamver-drive-history-toggle"));
+
     await waitFor(() => {
       expect(listOutputsMock).toHaveBeenCalledWith("od-1");
     });
@@ -453,7 +456,6 @@ describe("TeamverPublishDriveMenuItem", () => {
     // The newest publish must carry the highest version number.
     const row0 = await screen.findByTestId("teamver-drive-history-row-0");
     expect(within(row0).getByTestId("teamver-drive-history-version-0").textContent).toBe("v2");
-    fireEvent.click(screen.getByTestId("teamver-drive-history-toggle"));
     const row1 = await screen.findByTestId("teamver-drive-history-row-1");
     expect(within(row1).getByTestId("teamver-drive-history-version-1").textContent).toBe("v1");
     expect(
@@ -470,6 +472,8 @@ describe("TeamverPublishDriveMenuItem", () => {
         onCloseMenu={vi.fn()}
       />,
     );
+
+    fireEvent.click(screen.getByTestId("teamver-drive-history-toggle"));
 
     await waitFor(() => {
       expect(listOutputsMock).toHaveBeenCalled();
@@ -489,15 +493,13 @@ describe("TeamverPublishDriveMenuItem", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(listOutputsMock).toHaveBeenCalledTimes(1);
-    });
+    expect(listOutputsMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("teamver-publish-drive-menu-item"));
 
     await waitFor(() => {
       expect(publishMock).toHaveBeenCalled();
-      expect(listOutputsMock).toHaveBeenCalledTimes(2);
+      expect(listOutputsMock).toHaveBeenCalledTimes(1);
     });
   });
 

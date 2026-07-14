@@ -25,6 +25,7 @@ import {
   isDriveImageAsset,
 } from "../driveFileVisual";
 import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
+import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 
@@ -145,6 +146,8 @@ export function TeamverDrivePickerModal({
   const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
   const [homeRecentTargets, setHomeRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [homeRecentLoading, setHomeRecentLoading] = useState(false);
+  const [homeRecentExpanded, setHomeRecentExpanded] = useState(false);
+  const [recentAssetsExpanded, setRecentAssetsExpanded] = useState(false);
   const [recentAssetRows, setRecentAssetRows] = useState<TeamverDrivePublishRecentAsset[]>([]);
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
   const browseFetchSeqRef = useRef(0);
@@ -193,20 +196,32 @@ export function TeamverDrivePickerModal({
     !searching
     && atScopeRoot
     && activeScope?.mode === "personal"
+    && displayedRecentAssetRows.length > 0
+    && recentAssetsExpanded;
+  const hasRecentAssetTargets =
+    !searching
+    && atScopeRoot
+    && activeScope?.mode === "personal"
     && displayedRecentAssetRows.length > 0;
   const displayedHomeRecentTargets = useMemo(() => {
     if (searching || !atScopeRoot) return [];
     const localIds = new Set(recentTargets.map((target) => target.id));
     return homeRecentTargets.filter((target) => !localIds.has(target.id));
   }, [atScopeRoot, homeRecentTargets, recentTargets, searching]);
-  const showHomeRecentSection = displayedHomeRecentTargets.length > 0;
+  const hasHomeRecentTargets = displayedHomeRecentTargets.length > 0;
+  const showHomeRecentSection = hasHomeRecentTargets && homeRecentExpanded;
   const hasBrowseContent = displayedTargets.length > 0 || displayedBrowseAssets.length > 0;
   const showInitialLoading =
     !searching
     && !showRecentSection
-    && !showHomeRecentSection
-    && !showRecentAssetSection
+    && !hasHomeRecentTargets
+    && !hasRecentAssetTargets
+    && !hasBrowseContent
     && (loading || browseLoading || homeRecentLoading);
+  const showBrowseRefreshing =
+    !showInitialLoading
+    && (loading || browseLoading || (searchLoading && searching))
+    && !hasBrowseContent;
 
   const thumbnailTargets = useMemo(() => {
     const seen = new Set<string>();
@@ -386,6 +401,8 @@ export function TeamverDrivePickerModal({
     setSearchTargets(null);
     setSearchLoading(false);
     setSearchError(null);
+    setHomeRecentExpanded(false);
+    setRecentAssetsExpanded(false);
   }, [open, resetSearch, workspaceId]);
 
   useEffect(() => {
@@ -523,7 +540,6 @@ export function TeamverDrivePickerModal({
 
   useEffect(() => {
     if (!open || !workspaceId?.trim() || thumbnailTargets.length === 0) {
-      setThumbUrls(new Map());
       return;
     }
     let cancelled = false;
@@ -533,9 +549,14 @@ export function TeamverDrivePickerModal({
           workspaceId,
           items: thumbnailTargets,
         });
-        if (!cancelled) setThumbUrls(next);
+        if (cancelled) return;
+        setThumbUrls((current) => {
+          const merged = new Map(current);
+          for (const [assetId, url] of next) merged.set(assetId, url);
+          return merged;
+        });
       } catch {
-        if (!cancelled) setThumbUrls(new Map());
+        /* keep prior thumbs */
       }
     })();
     return () => {
@@ -555,14 +576,21 @@ export function TeamverDrivePickerModal({
   useEffect(() => {
     if (!open) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (searchMode || query.trim()) {
+        resetSearch();
+        return;
       }
+      if (navStack.length > 1) {
+        setNavStack((stack) => stack.slice(0, -1));
+        return;
+      }
+      onClose();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, open]);
+  }, [navStack.length, onClose, open, query, resetSearch, searchMode]);
 
   useEffect(() => {
     if (!open) return;
@@ -637,8 +665,8 @@ export function TeamverDrivePickerModal({
       >
         <header className="teamver-drive-picker-head">
           <div>
-            <h2 id="teamver-drive-picker-title">드라이브 폴더 선택</h2>
-            <p>이 내보내기를 저장할 개인/팀 드라이브 폴더를 선택하세요.</p>
+            <h2 id="teamver-drive-picker-title">저장 폴더 선택</h2>
+            <p>폴더를 연 뒤 아래에서 저장 위치를 확정하세요.</p>
           </div>
           <button
             type="button"
@@ -664,6 +692,7 @@ export function TeamverDrivePickerModal({
                   setNavStack([rootCrumb(scope)]);
                   resetSearch();
                   setRecentAssetRows([]);
+                  setHomeRecentExpanded(false);
                 }}
               >
                 {scope.label}
@@ -673,30 +702,17 @@ export function TeamverDrivePickerModal({
         ) : null}
 
         {navStack.length > 0 && !searching ? (
-          <nav className="teamver-drive-import-crumb" aria-label="드라이브 폴더 경로">
-            {navStack.map((crumb, index) => {
-              const isLast = index === navStack.length - 1;
-              return (
-                <span key={`${crumb.folderId ?? "root"}:${index}`} className="teamver-drive-import-crumb-item">
-                  {index > 0 ? <span className="teamver-drive-import-crumb-sep">/</span> : null}
-                  {isLast ? (
-                    <span className="teamver-drive-import-crumb-current">{crumb.name}</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="teamver-drive-import-crumb-btn"
-                      onClick={() => {
-                        setNavStack(navStack.slice(0, index + 1));
-                        resetSearch();
-                      }}
-                    >
-                      {crumb.name}
-                    </button>
-                  )}
-                </span>
-              );
-            })}
-          </nav>
+          <TeamverDriveModalNav
+            crumbs={navStack}
+            onBack={() => {
+              setNavStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
+              resetSearch();
+            }}
+            onNavigate={(index) => {
+              setNavStack(navStack.slice(0, index + 1));
+              resetSearch();
+            }}
+          />
         ) : null}
 
         <TeamverDriveSearchField
@@ -706,17 +722,19 @@ export function TeamverDrivePickerModal({
           minSearchLength={TEAMVER_DRIVE_PUBLISH_SEARCH_MIN}
           placeholder={
             searchMode
-              ? "드라이브 전체 검색"
-              : "폴더 검색 · Enter로 전체 검색"
+              ? "드라이브 전체 검색 결과"
+              : "이 폴더에서 필터 · Enter로 전체 검색"
           }
           onChange={setQuery}
           onSubmit={submitSearch}
+          onClear={resetSearch}
         />
 
         <div
           className="teamver-drive-picker-list teamver-drive-import-list"
           role="listbox"
           aria-label="드라이브 폴더 목록"
+          aria-busy={showInitialLoading || browseLoading || searchLoading}
         >
           {showRecentSection ? (
             <div
@@ -749,40 +767,58 @@ export function TeamverDrivePickerModal({
               })}
             </div>
           ) : null}
-          {showInitialLoading ? (
-            <div className="teamver-drive-picker-empty">드라이브 불러오는 중…</div>
-          ) : null}
-          {showHomeRecentSection ? (
+          {showInitialLoading ? <TeamverDriveListSkeleton /> : null}
+          {hasHomeRecentTargets && atScopeRoot && !searching ? (
             <div
               className="teamver-drive-import-section"
               data-testid="teamver-drive-picker-home-recent"
             >
-              <div className="teamver-drive-import-section-label">Drive 홈 최근</div>
-              {renderFolderGrid(
-                displayedHomeRecentTargets,
-                "home-recent",
-                "teamver-drive-picker-home-recent",
-              )}
+              <button
+                type="button"
+                className={`teamver-drive-import-section-toggle${homeRecentExpanded ? " is-expanded" : ""}`}
+                aria-expanded={homeRecentExpanded}
+                data-testid="teamver-drive-picker-home-recent-toggle"
+                onClick={() => setHomeRecentExpanded((current) => !current)}
+              >
+                <span>Drive 홈 최근 ({displayedHomeRecentTargets.length})</span>
+                <Icon name="chevron-down" size={14} />
+              </button>
+              {showHomeRecentSection
+                ? renderFolderGrid(
+                  displayedHomeRecentTargets,
+                  "home-recent",
+                  "teamver-drive-picker-home-recent",
+                )
+                : null}
             </div>
           ) : null}
-          {showRecentAssetSection ? (
+          {hasRecentAssetTargets ? (
             <div
               className="teamver-drive-import-section"
               data-testid="teamver-drive-picker-recent-assets"
             >
-              <div className="teamver-drive-import-section-label">최근 파일</div>
-              {renderAssetGrid(displayedRecentAssetRows, "recent-asset", (row) => {
-                selectFolderFromRecentAsset(row as TeamverDrivePublishRecentAsset);
-              })}
+              <button
+                type="button"
+                className={`teamver-drive-import-section-toggle${recentAssetsExpanded ? " is-expanded" : ""}`}
+                aria-expanded={recentAssetsExpanded}
+                data-testid="teamver-drive-picker-recent-assets-toggle"
+                onClick={() => setRecentAssetsExpanded((current) => !current)}
+              >
+                <span>최근 파일 ({displayedRecentAssetRows.length})</span>
+                <Icon name="chevron-down" size={14} />
+              </button>
+              {showRecentAssetSection
+                ? renderAssetGrid(displayedRecentAssetRows, "recent-asset", (row) => {
+                  selectFolderFromRecentAsset(row as TeamverDrivePublishRecentAsset);
+                })
+                : null}
             </div>
           ) : null}
           {(showRecentSection || showHomeRecentSection || showRecentAssetSection) && hasBrowseContent ? (
-            <div className="teamver-drive-import-section-label">폴더 탐색</div>
+            <div className="teamver-drive-import-section-label">폴더</div>
           ) : null}
-          {showInitialLoading ? null : loading || browseLoading || (searchLoading && searching) ? (
-            <div className="teamver-drive-picker-empty">
-              {searching ? "드라이브 폴더 검색 중…" : "드라이브 폴더 불러오는 중…"}
-            </div>
+          {showInitialLoading ? null : showBrowseRefreshing ? (
+            <TeamverDriveListSkeleton rows={4} />
           ) : browseError && !hasBrowseContent ? (
             <div className="teamver-drive-picker-empty">{browseError}</div>
           ) : searchError && !hasBrowseContent ? (
@@ -812,7 +848,7 @@ export function TeamverDrivePickerModal({
                     </span>
                     <span className="teamver-drive-picker-row-copy">
                       <span>{target.label}</span>
-                      <small>{target.description}</small>
+                      <small>{searching ? target.description : "폴더"}</small>
                     </span>
                     {selected ? <Icon name="check" size={15} /> : !searching && target.folderId ? <Icon name="chevron-right" size={14} /> : null}
                   </button>
@@ -820,11 +856,13 @@ export function TeamverDrivePickerModal({
               })}
               {renderAssetGrid(displayedBrowseAssets, "browse", () => selectCurrentFolderFromAsset())}
             </>
+          ) : browseLoading || loading ? (
+            <TeamverDriveListSkeleton rows={4} />
           ) : (
             <div className="teamver-drive-picker-empty">
               {searching
                 ? "일치하는 폴더가 없습니다."
-                : "이 폴더에 하위 폴더나 파일이 없습니다. 아래 「이 폴더 사용」으로 저장하세요."}
+                : "하위 폴더가 없습니다. 아래에서 현재 폴더에 저장하세요."}
             </div>
           )}
           {!searching && browseHasMore ? (
@@ -841,9 +879,12 @@ export function TeamverDrivePickerModal({
         </div>
         {!searching && currentTarget ? (
           <footer className="teamver-drive-picker-footer">
-            <span className="teamver-drive-picker-current" title={currentTarget.label}>
-              {currentTarget.label}
-            </span>
+            <div className="teamver-drive-picker-current-wrap">
+              <span className="teamver-drive-picker-current-label">저장 위치</span>
+              <span className="teamver-drive-picker-current" title={currentTarget.label}>
+                {currentTarget.label}
+              </span>
+            </div>
             <button
               type="button"
               className="teamver-drive-picker-use"
@@ -853,7 +894,7 @@ export function TeamverDrivePickerModal({
                 onClose();
               }}
             >
-              이 폴더 사용
+              여기에 저장
             </button>
           </footer>
         ) : null}

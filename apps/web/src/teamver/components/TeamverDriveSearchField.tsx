@@ -9,6 +9,7 @@ type Props = {
   minSearchLength?: number;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onClear?: () => void;
 };
 
 export function TeamverDriveSearchField({
@@ -20,8 +21,10 @@ export function TeamverDriveSearchField({
   minSearchLength = 0,
   onChange,
   onSubmit,
+  onClear,
 }: Props) {
   const canSubmit = value.trim().length >= minSearchLength;
+  const showClear = Boolean(onClear && value.trim());
 
   return (
     <div className="teamver-drive-picker-search">
@@ -41,6 +44,18 @@ export function TeamverDriveSearchField({
           }
         }}
       />
+      {showClear ? (
+        <button
+          type="button"
+          className="teamver-drive-picker-search-clear"
+          aria-label="검색 지우기"
+          disabled={disabled}
+          data-testid="teamver-drive-search-clear"
+          onClick={onClear}
+        >
+          <Icon name="close" size={12} />
+        </button>
+      ) : null}
       <button
         type="button"
         className="teamver-drive-picker-search-submit"

@@ -308,7 +308,12 @@ export async function searchTeamverDrivePublishTargets(
     .map(scopeRootTarget);
 
   const searchGroups = await Promise.allSettled(
-    scopes.map((scope) =>
+    // Cap concurrent shared searches so orgs with many team drives don't fan out
+    // N×(v2+list) on every Enter. Root label matches above still cover all scopes.
+    [
+      ...scopes.filter((scope) => scope.mode === "personal"),
+      ...scopes.filter((scope) => scope.mode === "shared").slice(0, 6),
+    ].map((scope) =>
       searchTeamverDriveImportRows({
         workspaceId: trimmedWorkspaceId,
         query: trimmedQuery,

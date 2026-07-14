@@ -271,8 +271,7 @@ export function TeamverPublishDrivePanel({
 
   const handleClosePicker = useCallback(() => {
     setPickerOpen(false);
-    void refreshTargets();
-  }, [refreshTargets]);
+  }, []);
 
   const handleSelectFormat = useCallback((format: DrivePublishFormat) => {
     if (busy) return;
@@ -368,10 +367,10 @@ export function TeamverPublishDrivePanel({
   }, [busy, publishPhase]);
 
   const handleOpenPicker = useCallback(() => {
-    invalidateTeamverDriveImportCaches();
     setPickerOpen(true);
-    void refreshTargets();
-  }, [refreshTargets]);
+    // Soft recovery only — avoid wiping warm scopes/shallow caches on every browse.
+    if (targetsError || authRequired) void refreshTargets();
+  }, [authRequired, refreshTargets, targetsError]);
 
   const showPostRunHint =
     active

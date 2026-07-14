@@ -9,6 +9,41 @@ export type DriveImportThumbnailRequest = {
 };
 
 const MAX_THUMBNAIL_BATCH = 24;
+const THUMB_CACHE_MAX = 120;
+
+const thumbUrlCache = new Map<string, string>();
+
+function thumbCacheKey(workspaceId: string, assetId: string): string {
+  return `${workspaceId.trim()}:${assetId.trim()}`;
+}
+
+function rememberThumb(key: string, url: string): void {
+  if (thumbUrlCache.has(key)) thumbUrlCache.delete(key);
+  thumbUrlCache.set(key, url);
+  while (thumbUrlCache.size > THUMB_CACHE_MAX) {
+    const oldest = thumbUrlCache.keys().next().value;
+    if (oldest == null) break;
+    thumbUrlCache.delete(oldest);
+  }
+}
+
+export function peekTeamverDriveImportThumbnail(
+  workspaceId: string,
+  assetId: string,
+): string | undefined {
+  return thumbUrlCache.get(thumbCacheKey(workspaceId, assetId));
+}
+
+export function invalidateTeamverDriveImportThumbnails(workspaceId?: string | null): void {
+  const ws = workspaceId?.trim();
+  if (!ws) {
+    thumbUrlCache.clear();
+    return;
+  }
+  for (const key of [...thumbUrlCache.keys()]) {
+    if (key.startsWith(`${ws}:`)) thumbUrlCache.delete(key);
+  }
+}
 
 export async function fetchTeamverDriveImportThumbnails(params: {
   workspaceId: string;
@@ -30,8 +65,16 @@ export async function fetchTeamverDriveImportThumbnails(params: {
     });
   }
 
-  const batch = [...unique.values()].slice(0, MAX_THUMBNAIL_BATCH);
-  if (batch.length === 0) return new Map();
+  const out = new Map<string, string>();
+  const missing: DriveImportThumbnailRequest[] = [];
+  for (const item of unique.values()) {
+    const cached = thumbUrlCache.get(thumbCacheKey(workspaceId, item.assetId));
+    if (cached) out.set(item.assetId, cached);
+    else missing.push(item);
+  }
+
+  const batch = missing.slice(0, MAX_THUMBNAIL_BATCH);
+  if (batch.length === 0) return out;
 
   try {
     const raw = (await postTeamverDriveJson(
@@ -47,14 +90,16 @@ export async function fetchTeamverDriveImportThumbnails(params: {
       items?: Array<{ assetId?: string; objectUrl?: string; error?: string }>;
     };
 
-    const out = new Map<string, string>();
     for (const item of raw.items ?? []) {
       const assetId = item.assetId?.trim();
       const url = item.objectUrl?.trim();
-      if (assetId && url && !item.error) out.set(assetId, url);
+      if (assetId && url && !item.error) {
+        rememberThumb(thumbCacheKey(workspaceId, assetId), url);
+        out.set(assetId, url);
+      }
     }
     return out;
   } catch {
-    return new Map();
+    return out;
   }
 }

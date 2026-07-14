@@ -32,6 +32,7 @@ import {
   trackTeamverDriveImportModalSurfaceView,
   trackTeamverDriveImportPickClick,
 } from "../teamverDriveImportAnalytics";
+import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 
@@ -106,6 +107,7 @@ export function TeamverDriveImportModal({
   // that begins inside the list (e.g. selecting a long file name) and ends
   // on the backdrop doesn't dismiss the modal.
   const backdropMouseDownRef = useRef(false);
+  const browseFetchSeqRef = useRef(0);
   const [scopes, setScopes] = useState<TeamverDriveImportScope[]>([]);
   const [scopeIndex, setScopeIndex] = useState(0);
   const [navStack, setNavStack] = useState<NavCrumb[]>([]);
@@ -164,6 +166,7 @@ export function TeamverDriveImportModal({
     async (options?: { append?: boolean; before?: string | null }) => {
       if (!open || !workspaceId.trim() || !activeScope) return;
       const append = options?.append ?? false;
+      const seq = ++browseFetchSeqRef.current;
       if (listHasContentRef.current && !append) setRefreshing(true);
       else if (!append) setLoading(true);
       setError(null);
@@ -178,6 +181,7 @@ export function TeamverDriveImportModal({
             sharedDriveId,
             limit: SEARCH_LIMIT,
           });
+          if (seq !== browseFetchSeqRef.current) return;
           setRecentRows([]);
           setRows(searchRows.filter((row) => importRowMatchesScope(row, activeScope)));
           setBrowseHasMore(false);
@@ -185,33 +189,35 @@ export function TeamverDriveImportModal({
           return;
         }
 
-        const page = await browseTeamverDriveImportPage({
+        const browsePromise = browseTeamverDriveImportPage({
           workspaceId,
           scope: activeScope,
           navFolderId: currentFolderId,
           limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
           before: options?.before ?? null,
         });
+        const recentPromise =
+          showRecent && !append
+            ? listTeamverDriveImportRecent({ workspaceId, limit: 16 }).catch(() => [] as TeamverDriveImportAssetRow[])
+            : Promise.resolve([] as TeamverDriveImportAssetRow[]);
+
+        const [page, recent] = await Promise.all([browsePromise, recentPromise]);
+        if (seq !== browseFetchSeqRef.current) return;
+
         setBrowseHasMore(page.hasMore);
         setBrowseNextCursor(page.nextCursor);
         setRows((current) => (append ? [...current, ...page.rows] : page.rows));
 
         if (showRecent && !append) {
-          try {
-            const recent = await listTeamverDriveImportRecent({ workspaceId, limit: 16 });
-            const browseAssetIds = new Set(
-              page.rows.filter((row) => row.kind === "asset").map((row) => row.assetId),
-            );
-            setRecentRows(
-              recent.filter((row) => !browseAssetIds.has(row.assetId)),
-            );
-          } catch {
-            setRecentRows([]);
-          }
+          const browseAssetIds = new Set(
+            page.rows.filter((row) => row.kind === "asset").map((row) => row.assetId),
+          );
+          setRecentRows(recent.filter((row) => !browseAssetIds.has(row.assetId)));
         } else if (!append) {
           setRecentRows([]);
         }
       } catch (err) {
+        if (seq !== browseFetchSeqRef.current) return;
         if (!append) {
           setRows([]);
           setRecentRows([]);
@@ -220,8 +226,10 @@ export function TeamverDriveImportModal({
         setBrowseNextCursor(null);
         setError(formatTeamverDriveImportErrorMessage(err));
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (seq === browseFetchSeqRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [activeScope, currentFolderId, open, showRecent, submittedQuery, workspaceId],
@@ -325,7 +333,6 @@ export function TeamverDriveImportModal({
 
   useEffect(() => {
     if (!open || !workspaceId.trim() || thumbnailTargets.length === 0) {
-      setThumbUrls(new Map());
       return;
     }
     let cancelled = false;
@@ -335,9 +342,14 @@ export function TeamverDriveImportModal({
           workspaceId,
           items: thumbnailTargets,
         });
-        if (!cancelled) setThumbUrls(next);
+        if (cancelled) return;
+        setThumbUrls((current) => {
+          const merged = new Map(current);
+          for (const [assetId, url] of next) merged.set(assetId, url);
+          return merged;
+        });
       } catch {
-        if (!cancelled) setThumbUrls(new Map());
+        /* keep prior thumbs */
       }
     })();
     return () => {
@@ -364,6 +376,14 @@ export function TeamverDriveImportModal({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !confirming) {
         event.preventDefault();
+        if (searchMode || query.trim()) {
+          resetSearch();
+          return;
+        }
+        if (navStack.length > 1) {
+          setNavStack((stack) => stack.slice(0, -1));
+          return;
+        }
         onClose();
         return;
       }
@@ -378,7 +398,19 @@ export function TeamverDriveImportModal({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [confirmAssets, confirming, onClose, open, partialResult, selectedAssets, selectedCount]);
+  }, [
+    confirmAssets,
+    confirming,
+    navStack.length,
+    onClose,
+    open,
+    partialResult,
+    query,
+    resetSearch,
+    searchMode,
+    selectedAssets,
+    selectedCount,
+  ]);
 
   useEffect(() => {
     if (!actionHint) return;
@@ -559,10 +591,9 @@ export function TeamverDriveImportModal({
             <h2 id="teamver-drive-import-title">teamver Drive에서 가져오기</h2>
             <p>
               {stagingMode === "home"
-                ? `최대 ${MAX_PICK}개 파일을 새 슬라이드에 첨부할 수 있습니다.`
-                : `최대 ${MAX_PICK}개 파일을 이 프로젝트로 가져올 수 있습니다.`}
+                ? `최대 ${MAX_PICK}개 · 클릭으로 선택, 더블클릭으로 바로 첨부`
+                : `최대 ${MAX_PICK}개 · 클릭으로 선택, 더블클릭으로 바로 가져오기`}
             </p>
-            <p className="teamver-drive-import-hint">{t("teamver.driveImport.pickHint")}</p>
           </div>
           <button
             type="button"
@@ -600,44 +631,33 @@ export function TeamverDriveImportModal({
           </div>
         ) : null}
 
-        <nav className="teamver-drive-import-crumb" aria-label="드라이브 폴더 경로">
-          {navStack.map((crumb, index) => {
-            const isLast = index === navStack.length - 1;
-            return (
-              <span key={`${crumb.folderId ?? "root"}:${index}`} className="teamver-drive-import-crumb-item">
-                {index > 0 ? <span className="teamver-drive-import-crumb-sep">/</span> : null}
-                {isLast ? (
-                  <span className="teamver-drive-import-crumb-current">{crumb.name}</span>
-                ) : (
-                  <button
-                    type="button"
-                    className="teamver-drive-import-crumb-btn"
-                    disabled={confirming}
-                    onClick={() => {
-                      setNavStack(navStack.slice(0, index + 1));
-                      resetSearch();
-                    }}
-                  >
-                    {crumb.name}
-                  </button>
-                )}
-              </span>
-            );
-          })}
-        </nav>
+        <TeamverDriveModalNav
+          crumbs={navStack}
+          disabled={confirming}
+          onBack={() => {
+            setNavStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
+            resetSearch();
+          }}
+          onNavigate={(index) => {
+            setNavStack(navStack.slice(0, index + 1));
+            resetSearch();
+          }}
+        />
 
         <TeamverDriveSearchField
+          autoFocus
           value={query}
           ariaLabel="드라이브 파일 검색"
           minSearchLength={TEAMVER_DRIVE_IMPORT_SEARCH_MIN}
           placeholder={
             searchMode
-              ? "드라이브 전체 검색"
-              : "이 폴더에서 검색 · Enter로 전체 검색"
+              ? "드라이브 전체 검색 결과"
+              : "이 폴더에서 필터 · Enter로 전체 검색"
           }
           disabled={confirming}
           onChange={setQuery}
           onSubmit={submitSearch}
+          onClear={resetSearch}
         />
 
         <div
@@ -647,7 +667,7 @@ export function TeamverDriveImportModal({
           aria-busy={refreshing || showFullLoader}
         >
           {showFullLoader ? (
-            <div className="teamver-drive-picker-empty">드라이브 파일 불러오는 중…</div>
+            <TeamverDriveListSkeleton />
           ) : error ? (
             <div className="teamver-drive-picker-empty">{error}</div>
           ) : (

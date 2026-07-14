@@ -67,6 +67,7 @@ describe('Teamver embed export + Drive publish UI', () => {
     expect(panel).toContain('defaultCollapsed');
     const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
     expect(history).toContain('teamver-drive-history-toggle');
+    expect(history).toContain('teamver-drive-history-deferred');
   });
 
   it('surfaces a re-login CTA when BFF calls return 401', () => {

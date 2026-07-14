@@ -1,4 +1,9 @@
 import { extractTeamverDriveItems, getTeamverDriveJson } from "./driveApi";
+import {
+  fetchTeamverDriveHomeRecentRaw,
+  invalidateTeamverDriveHomeRecentCaches,
+} from "./driveHomeRecentCache";
+import { invalidateTeamverDriveImportThumbnails } from "./driveImportThumbnails";
 
 export type TeamverDriveImportPick = {
   assetId: string;
@@ -416,6 +421,8 @@ export function invalidateTeamverDriveImportCaches(workspaceId?: string | null):
     sharedDriveListCache.clear();
     sharedDriveListInflight.clear();
     sharedDriveRootCache.clear();
+    invalidateTeamverDriveHomeRecentCaches();
+    invalidateTeamverDriveImportThumbnails();
     return;
   }
   importScopesCache.delete(ws);
@@ -427,6 +434,8 @@ export function invalidateTeamverDriveImportCaches(workspaceId?: string | null):
   for (const key of sharedDriveRootCache.keys()) {
     if (key.startsWith(`${ws}:`)) sharedDriveRootCache.delete(key);
   }
+  invalidateTeamverDriveHomeRecentCaches(ws);
+  invalidateTeamverDriveImportThumbnails(ws);
 }
 
 /** @internal vitest — personal shallow_tree with session cache (shared with scopes + publish quick-pick). */
@@ -549,11 +558,11 @@ export async function listTeamverDriveImportRecent(params: {
   const workspaceId = params.workspaceId.trim();
   if (!workspaceId) return [];
 
-  const query = new URLSearchParams();
-  query.set("limit", String(Math.max(1, Math.min(params.limit ?? 16, 48))));
-  query.set("include", "assets");
-
-  const raw = await getTeamverDriveJson(`/api/v2/drive/home/recent?${query.toString()}`, workspaceId);
+  const limit = Math.max(1, Math.min(params.limit ?? 16, 48));
+  const raw = await fetchTeamverDriveHomeRecentRaw(workspaceId, {
+    limit,
+    include: "assets,shared_with_me",
+  });
   const assets = Array.isArray((raw as { assets?: unknown[] })?.assets)
     ? (raw as { assets: unknown[] }).assets
     : extractListItems(raw);
@@ -562,7 +571,7 @@ export async function listTeamverDriveImportRecent(params: {
     const normalized = normalizeRecentAsset(item);
     if (normalized && !normalized.sharedDriveId) rows.push(normalized);
   }
-  return rows;
+  return rows.slice(0, limit);
 }
 
 export async function searchTeamverDriveImportRows(params: {
@@ -587,6 +596,8 @@ export async function searchTeamverDriveImportRows(params: {
   v2Query.set("limit", String(limit));
   if (sharedDriveId) v2Query.set("shared_drive_id", sharedDriveId);
 
+  // SSOT (14_Design_Drive): merge v2 home/search + legacy list search so neither
+  // index's partial hits are dropped. Dedupe below.
   const [v2Settled, listSettled] = await Promise.allSettled([
     getTeamverDriveJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId),
     getTeamverDriveJson(`/api/drive/list?${listQuery.toString()}`, workspaceId),
