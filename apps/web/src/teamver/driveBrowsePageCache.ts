@@ -55,10 +55,38 @@ export async function loadTeamverDriveBrowsePageCached(
       return entry;
     })
     .finally(() => {
-      browsePageInflight.delete(cacheKey);
+      if (browsePageInflight.get(cacheKey) === run) {
+        browsePageInflight.delete(cacheKey);
+      }
     });
   browsePageInflight.set(cacheKey, run);
   return run;
+}
+
+/**
+ * Like {@link loadTeamverDriveBrowsePageCached}, but retries once when a sibling
+ * abort (different AbortSignal) rejected the shared inflight.
+ */
+export async function loadTeamverDriveBrowsePageCachedForSignal(
+  cacheKey: string,
+  signal: AbortSignal | undefined,
+  loader: () => Promise<TeamverDriveBrowsePageCacheEntry>,
+): Promise<TeamverDriveBrowsePageCacheEntry> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal?.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    try {
+      return await loadTeamverDriveBrowsePageCached(cacheKey, loader);
+    } catch (err) {
+      const aborted =
+        (err instanceof DOMException && err.name === "AbortError")
+        || (err instanceof Error && err.name === "AbortError");
+      if (aborted && signal && !signal.aborted && attempt === 0) continue;
+      throw err;
+    }
+  }
+  throw new DOMException("The operation was aborted.", "AbortError");
 }
 
 export function invalidateTeamverDriveBrowsePageCaches(workspaceId?: string | null): void {

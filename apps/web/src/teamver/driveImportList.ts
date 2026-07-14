@@ -247,6 +247,7 @@ async function fetchTeamverDriveImportListPage(params: {
   search?: string;
   limit?: number;
   before?: string | null;
+  signal?: AbortSignal;
 }): Promise<TeamverDriveImportBrowsePage> {
   const workspaceId = params.workspaceId.trim();
   if (!workspaceId) return { rows: [], hasMore: false, nextCursor: null };
@@ -259,7 +260,9 @@ async function fetchTeamverDriveImportListPage(params: {
   if (params.before) query.set("before", params.before);
   query.set("limit", String(Math.max(1, Math.min(params.limit ?? TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE, 120))));
 
-  const raw = await getTeamverDriveJson(`/api/drive/list?${query.toString()}`, workspaceId);
+  const raw = await getTeamverDriveJson(`/api/drive/list?${query.toString()}`, workspaceId, {
+    signal: params.signal,
+  });
   const sharedDriveId = params.sharedDriveId ?? null;
   const { items, hasMore, nextCursor } = extractListPage(raw);
   const rows: TeamverDriveImportListRow[] = [];
@@ -276,6 +279,7 @@ export async function browseTeamverDriveImportPage(params: {
   navFolderId?: string | null;
   limit?: number;
   before?: string | null;
+  signal?: AbortSignal;
 }): Promise<TeamverDriveImportBrowsePage> {
   const sharedDriveId = params.scope.mode === "shared" ? params.scope.sharedDriveId : null;
   const navFolderId = params.navFolderId ?? null;
@@ -288,6 +292,7 @@ export async function browseTeamverDriveImportPage(params: {
     sharedDriveId,
     limit: params.limit,
     before: params.before,
+    signal: params.signal,
   });
 
   const scoped = page.rows.filter((row) => importRowMatchesScope(row, params.scope));
@@ -599,6 +604,7 @@ export async function searchTeamverDriveImportRows(params: {
   query: string;
   sharedDriveId?: string | null;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<TeamverDriveImportListRow[]> {
   const workspaceId = params.workspaceId.trim();
   const trimmed = params.query.trim();
@@ -618,10 +624,15 @@ export async function searchTeamverDriveImportRows(params: {
 
   // SSOT (14_Design_Drive): merge v2 home/search + legacy list search so neither
   // index's partial hits are dropped. Dedupe below.
+  const fetchOpts = { signal: params.signal };
   const [v2Settled, listSettled] = await Promise.allSettled([
-    getTeamverDriveJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId),
-    getTeamverDriveJson(`/api/drive/list?${listQuery.toString()}`, workspaceId),
+    getTeamverDriveJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId, fetchOpts),
+    getTeamverDriveJson(`/api/drive/list?${listQuery.toString()}`, workspaceId, fetchOpts),
   ]);
+
+  if (params.signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
 
   const merged: TeamverDriveImportListRow[] = [];
   if (v2Settled.status === "fulfilled") {
@@ -638,6 +649,17 @@ export async function searchTeamverDriveImportRows(params: {
       const normalized = normalizeListRow(item, sharedDriveId);
       if (normalized) merged.push(normalized);
     }
+  }
+
+  // If both failed with abort, surface abort rather than empty results.
+  if (
+    merged.length === 0
+    && v2Settled.status === "rejected"
+    && listSettled.status === "rejected"
+  ) {
+    const reason = v2Settled.reason ?? listSettled.reason;
+    if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+    if (reason instanceof Error && reason.name === "AbortError") throw reason;
   }
 
   return dedupeImportRows(merged).slice(0, limit);

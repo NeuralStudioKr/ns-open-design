@@ -67,4 +67,41 @@ describe("driveBrowsePageCache", () => {
     expect(loader).not.toHaveBeenCalled();
     expect(entry.hasMore).toBe(false);
   });
+
+  it("retries once when a shared inflight was aborted", async () => {
+    const { loadTeamverDriveBrowsePageCachedForSignal } = await import(
+      "../src/teamver/driveBrowsePageCache"
+    );
+    let rejectFirst!: (reason: unknown) => void;
+    const first = new Promise<{
+      targets: [];
+      assets: [];
+      recentAssets: [];
+      hasMore: boolean;
+      nextCursor: null;
+    }>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+
+    const hang = loadTeamverDriveBrowsePageCached("ws:retry:root:start", () => first);
+    void hang.catch(() => undefined);
+    rejectFirst(new DOMException("The operation was aborted.", "AbortError"));
+    await hang.catch(() => undefined);
+
+    const controller = new AbortController();
+    const loader = vi.fn(async () => ({
+      targets: [] as [],
+      assets: [] as [],
+      recentAssets: [] as [],
+      hasMore: false,
+      nextCursor: null,
+    }));
+    const entry = await loadTeamverDriveBrowsePageCachedForSignal(
+      "ws:retry:root:start",
+      controller.signal,
+      loader,
+    );
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(entry.hasMore).toBe(false);
+  });
 });

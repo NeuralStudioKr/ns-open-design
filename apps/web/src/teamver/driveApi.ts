@@ -51,29 +51,66 @@ export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
 /** Limit concurrent Drive BFF calls (browse/recent/thumbs) without full serialization. */
 const DRIVE_FETCH_MAX_CONCURRENT = 4;
 let driveFetchActive = 0;
-const driveFetchWaiters: Array<() => void> = [];
+const driveFetchWaiters: Array<{
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+}> = [];
 
-async function acquireDriveFetchSlot(): Promise<void> {
+function createDriveAbortError(): DOMException {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+function throwIfDriveAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw createDriveAbortError();
+}
+
+async function acquireDriveFetchSlot(signal?: AbortSignal): Promise<void> {
+  throwIfDriveAborted(signal);
   if (driveFetchActive < DRIVE_FETCH_MAX_CONCURRENT) {
     driveFetchActive += 1;
     return;
   }
-  await new Promise<void>((resolve) => {
-    driveFetchWaiters.push(resolve);
+  await new Promise<void>((resolve, reject) => {
+    const entry: (typeof driveFetchWaiters)[number] = {
+      resolve: () => {
+        cleanup();
+        resolve();
+      },
+      reject: (reason) => {
+        cleanup();
+        reject(reason);
+      },
+      signal,
+    };
+    const onAbort = () => {
+      const index = driveFetchWaiters.indexOf(entry);
+      if (index >= 0) driveFetchWaiters.splice(index, 1);
+      entry.reject(createDriveAbortError());
+    };
+    entry.onAbort = onAbort;
+    const cleanup = () => {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+    };
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    driveFetchWaiters.push(entry);
   });
+  throwIfDriveAborted(signal);
   driveFetchActive += 1;
 }
 
 function releaseDriveFetchSlot(): void {
   driveFetchActive = Math.max(0, driveFetchActive - 1);
   const next = driveFetchWaiters.shift();
-  if (next) next();
+  if (next) next.resolve();
 }
 
-function enqueueDriveFetch<T>(run: () => Promise<T>): Promise<T> {
+function enqueueDriveFetch<T>(run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   return (async () => {
-    await acquireDriveFetchSlot();
+    await acquireDriveFetchSlot(signal);
     try {
+      throwIfDriveAborted(signal);
       return await run();
     } finally {
       releaseDriveFetchSlot();
@@ -110,7 +147,9 @@ async function teamverDriveFetch(
   init: RequestInit,
   workspaceId?: string | null,
 ): Promise<Response> {
+  const signal = init.signal;
   return enqueueDriveFetch(async () => {
+    throwIfDriveAborted(signal);
     const headers = new Headers(init.headers ?? {});
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
     const trimmedWorkspaceId = workspaceId?.trim();
@@ -121,9 +160,11 @@ async function teamverDriveFetch(
         ...init,
         credentials: "include",
         headers,
+        signal,
       });
 
     let response = await doFetch();
+    throwIfDriveAborted(signal);
     if (response.status !== 401 && response.status !== 403) {
       return response;
     }
@@ -137,17 +178,31 @@ async function teamverDriveFetch(
       // (`teamver_access_token`) that Drive proxy forwards. Another sibling may
       // have just written cookies — wait briefly once, then surface 401.
       await delay(DRIVE_AUTH_RETRY_DELAY_MS);
+      throwIfDriveAborted(signal);
       return doFetch();
     }
 
     const recovered = await recoverDriveAuthSession();
+    throwIfDriveAborted(signal);
     if (recovered) response = await doFetch();
     return response;
-  });
+  }, signal);
 }
 
-export async function getTeamverDriveJson(path: string, workspaceId?: string | null): Promise<unknown> {
-  const response = await teamverDriveFetch(path, { method: "GET" }, workspaceId);
+export type TeamverDriveFetchOptions = {
+  signal?: AbortSignal;
+};
+
+export async function getTeamverDriveJson(
+  path: string,
+  workspaceId?: string | null,
+  options?: TeamverDriveFetchOptions,
+): Promise<unknown> {
+  const response = await teamverDriveFetch(
+    path,
+    { method: "GET", signal: options?.signal },
+    workspaceId,
+  );
   if (!response.ok) {
     throw new Error(`teamver_drive_fetch_failed:${response.status}`);
   }
@@ -159,6 +214,7 @@ export async function postTeamverDriveJson(
   path: string,
   body: unknown,
   workspaceId?: string | null,
+  options?: TeamverDriveFetchOptions,
 ): Promise<unknown> {
   const response = await teamverDriveFetch(
     path,
@@ -166,6 +222,7 @@ export async function postTeamverDriveJson(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: options?.signal,
     },
     workspaceId,
   );
@@ -174,6 +231,11 @@ export async function postTeamverDriveJson(
   }
   const raw = await response.json();
   return snakeToCamelDeep(raw);
+}
+
+export function isTeamverDriveAbortError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  return err instanceof Error && err.name === "AbortError";
 }
 
 export function extractTeamverDriveItems<T = unknown>(raw: unknown): T[] {

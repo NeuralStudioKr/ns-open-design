@@ -30,9 +30,10 @@ import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import {
   getTeamverDriveBrowsePageCached,
-  loadTeamverDriveBrowsePageCached,
+  loadTeamverDriveBrowsePageCachedForSignal,
   setTeamverDriveBrowsePageCached,
 } from "../driveBrowsePageCache";
+import { isTeamverDriveAbortError } from "../driveApi";
 import {
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
@@ -162,7 +163,9 @@ export function TeamverDrivePickerModal({
   const [recentAssetRows, setRecentAssetRows] = useState<TeamverDrivePublishRecentAsset[]>([]);
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
   const browseFetchSeqRef = useRef(0);
+  const browseAbortRef = useRef<AbortController | null>(null);
   const searchFetchSeqRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
   const trimmedQuery = query.trim();
   const searching = Boolean(onSearch && searchMode);
   const activeScope = scopes[scopeIndex] ?? null;
@@ -365,6 +368,10 @@ export function TeamverDrivePickerModal({
       setRecentAssetRows([]);
       setHomeRecentTargets([]);
       setThumbUrls(new Map());
+      browseAbortRef.current?.abort();
+      browseAbortRef.current = null;
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = null;
       return;
     }
     let canceled = false;
@@ -438,6 +445,10 @@ export function TeamverDrivePickerModal({
       ].join(":");
       const wantRecent = !append && activeScope.mode === "personal" && currentFolderId == null;
       const seq = ++browseFetchSeqRef.current;
+      browseAbortRef.current?.abort();
+      const abortController = new AbortController();
+      browseAbortRef.current = abortController;
+      const signal = abortController.signal;
 
       if (!append) {
         const cached = getTeamverDriveBrowsePageCached(cacheKey);
@@ -462,8 +473,9 @@ export function TeamverDrivePickerModal({
               if (seq !== browseFetchSeqRef.current) return;
               const browseAssetIds = new Set(cached.assets.map((row) => row.assetId));
               setRecentAssetRows(recentAssets.filter((row) => !browseAssetIds.has(row.assetId)));
-            } catch {
+            } catch (err) {
               if (seq !== browseFetchSeqRef.current) return;
+              if (isTeamverDriveAbortError(err)) return;
               setRecentAssetRows([]);
             } finally {
               if (seq === browseFetchSeqRef.current) setBrowseLoading(false);
@@ -488,6 +500,7 @@ export function TeamverDrivePickerModal({
             navFolderId: currentFolderId,
             limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
             before,
+            signal,
           });
           if (seq !== browseFetchSeqRef.current) return;
           const folders = page.rows
@@ -510,13 +523,14 @@ export function TeamverDrivePickerModal({
           : Promise.resolve([] as TeamverDrivePublishRecentAsset[]);
 
         const [entry, recentAssetsRaw] = await Promise.all([
-          loadTeamverDriveBrowsePageCached(cacheKey, async () => {
+          loadTeamverDriveBrowsePageCachedForSignal(cacheKey, signal, async () => {
             const page = await browseTeamverDriveImportPage({
               workspaceId,
               scope: activeScope,
               navFolderId: currentFolderId,
               limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
               before,
+              signal,
             });
             const folders = page.rows
               .filter((row): row is TeamverDriveImportFolderRow => row.kind === "folder")
@@ -552,6 +566,7 @@ export function TeamverDrivePickerModal({
         setRecentAssetRows(recentAssets);
       } catch (err) {
         if (seq !== browseFetchSeqRef.current) return;
+        if (isTeamverDriveAbortError(err)) return;
         if (!append) {
           setBrowseTargets([]);
           setBrowseAssetRows([]);

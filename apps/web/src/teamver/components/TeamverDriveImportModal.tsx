@@ -34,9 +34,10 @@ import {
 } from "../teamverDriveImportAnalytics";
 import {
   getTeamverDriveBrowsePageCached,
-  loadTeamverDriveBrowsePageCached,
+  loadTeamverDriveBrowsePageCachedForSignal,
   type TeamverDriveBrowsePageCacheEntry,
 } from "../driveBrowsePageCache";
+import { isTeamverDriveAbortError } from "../driveApi";
 import {
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
@@ -182,6 +183,7 @@ export function TeamverDriveImportModal({
   // on the backdrop doesn't dismiss the modal.
   const backdropMouseDownRef = useRef(false);
   const browseFetchSeqRef = useRef(0);
+  const browseAbortRef = useRef<AbortController | null>(null);
   const [scopes, setScopes] = useState<TeamverDriveImportScope[]>([]);
   const [scopeIndex, setScopeIndex] = useState(0);
   const [navStack, setNavStack] = useState<NavCrumb[]>([]);
@@ -245,6 +247,10 @@ export function TeamverDriveImportModal({
       const append = options?.append ?? false;
       const before = options?.before ?? null;
       const seq = ++browseFetchSeqRef.current;
+      browseAbortRef.current?.abort();
+      const abortController = new AbortController();
+      browseAbortRef.current = abortController;
+      const signal = abortController.signal;
       if (listHasContentRef.current && !append) setRefreshing(true);
       else if (!append) setLoading(true);
       setError(null);
@@ -258,6 +264,7 @@ export function TeamverDriveImportModal({
             query: trimmedQuery,
             sharedDriveId,
             limit: SEARCH_LIMIT,
+            signal,
           });
           if (seq !== browseFetchSeqRef.current) return;
           setAuthRequired(false);
@@ -316,6 +323,7 @@ export function TeamverDriveImportModal({
             navFolderId: currentFolderId,
             limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
             before,
+            signal,
           }).then((page) => ({
             rows: page.rows,
             targets: targetsFromImportFolders(activeScope, page.rows),
@@ -326,13 +334,14 @@ export function TeamverDriveImportModal({
             hasMore: page.hasMore,
             nextCursor: page.nextCursor,
           }))
-          : loadTeamverDriveBrowsePageCached(cacheKey, async () => {
+          : loadTeamverDriveBrowsePageCachedForSignal(cacheKey, signal, async () => {
             const page = await browseTeamverDriveImportPage({
               workspaceId,
               scope: activeScope,
               navFolderId: currentFolderId,
               limit: TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
               before,
+              signal,
             });
             return {
               rows: page.rows,
@@ -365,6 +374,7 @@ export function TeamverDriveImportModal({
         }
       } catch (err) {
         if (seq !== browseFetchSeqRef.current) return;
+        if (isTeamverDriveAbortError(err)) return;
         if (!append) {
           setRows([]);
           setRecentRows([]);
@@ -391,6 +401,8 @@ export function TeamverDriveImportModal({
   useEffect(() => {
     if (!open) {
       openSessionRef.current = false;
+      browseAbortRef.current?.abort();
+      browseAbortRef.current = null;
       return;
     }
     if (openSessionRef.current) return;

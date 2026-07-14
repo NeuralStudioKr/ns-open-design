@@ -93,7 +93,13 @@ describe('Teamver embed export + Drive publish UI', () => {
     const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
     expect(picker).toContain('teamver-drive-picker-auth-required');
     expect(picker).toContain('teamver-drive-picker-login');
-    expect(picker).toContain('loadTeamverDriveBrowsePageCached');
+    expect(picker).toContain('loadTeamverDriveBrowsePageCachedForSignal');
+  });
+
+  it('closes the publish modal on Escape', () => {
+    const modal = readSource('src/teamver/components/TeamverPublishDriveModal.tsx');
+    expect(modal).toContain('Escape');
+    expect(modal).toContain('onClose()');
   });
 
   it('supports partial publish toasts with follow-up actions', () => {
