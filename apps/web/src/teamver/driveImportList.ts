@@ -412,6 +412,17 @@ const sharedDriveListCache = new Map<string, { raw: unknown; at: number }>();
 const sharedDriveListInflight = new Map<string, Promise<unknown>>();
 const sharedDriveRootCache = new Map<string, { rootFolderId: string | null; at: number }>();
 
+/** Sync peek of warm scopes cache — used to paint Publish quick-pick without waiting. */
+export function peekTeamverDriveImportScopesCache(
+  workspaceId: string,
+): TeamverDriveImportScope[] | null {
+  const trimmed = workspaceId.trim();
+  if (!trimmed) return null;
+  const cached = importScopesCache.get(trimmed);
+  if (!cached || Date.now() - cached.at >= DRIVE_IMPORT_CACHE_MS) return null;
+  return cached.scopes;
+}
+
 export function invalidateTeamverDriveImportCaches(workspaceId?: string | null): void {
   const ws = workspaceId?.trim();
   if (!ws) {

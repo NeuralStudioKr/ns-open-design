@@ -85,11 +85,30 @@ vi.mock("../src/teamver/drivePublishTargets", () => ({
     query: string,
     options?: { limit?: number },
   ) => searchTargetsMock(workspaceId, query, options),
+  publishTargetsFromImportScopes: (scopes: Array<{ mode: string; sharedDriveId?: string; folderId?: string | null; label: string }>) =>
+    scopes.map((scope) =>
+      scope.mode === "shared"
+        ? {
+          id: `shared:${scope.sharedDriveId}`,
+          label: scope.label,
+          description: "팀 드라이브 루트",
+          folderId: scope.folderId ?? null,
+          sharedDriveId: scope.sharedDriveId,
+        }
+        : {
+          id: "personal-root",
+          label: scope.label,
+          description: "개인 드라이브 루트",
+          folderId: scope.folderId ?? null,
+          sharedDriveId: null,
+        },
+    ),
   TEAMVER_DRIVE_PUBLISH_SEARCH_MIN: 2,
 }));
 
 vi.mock("../src/teamver/driveImportList", () => ({
   listTeamverDriveImportScopes: (workspaceId: string) => listImportScopesMock(workspaceId),
+  peekTeamverDriveImportScopesCache: () => null,
   browseTeamverDriveImportPage: async (params: {
     workspaceId: string;
     scope: { mode: string; sharedDriveId?: string | null; folderId?: string | null; label?: string };

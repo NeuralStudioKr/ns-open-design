@@ -211,23 +211,44 @@ export async function fetchAgentsStream(args: {
   return collected;
 }
 
+const SKILLS_CACHE_MS = 30_000;
+const DESIGN_TEMPLATES_CACHE_MS = 30_000;
+const skillsCache = new Map<string, { at: number; value: SkillSummary[] }>();
+const skillsInflight = new Map<string, Promise<SkillSummary[]>>();
+const designTemplatesCache = new Map<string, { at: number; value: SkillSummary[] }>();
+const designTemplatesInflight = new Map<string, Promise<SkillSummary[]>>();
+
 export async function fetchSkills(options?: { slideOnly?: boolean }): Promise<SkillSummary[]> {
-  try {
-    const slideOnly =
-      options?.slideOnly
-      ?? (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp);
-    const query = slideOnly ? '?catalog=slide' : '';
-    const resp = await fetch(`/api/skills${query}`);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { skills: SkillSummary[] };
-    let skills = json.skills ?? [];
-    if (slideOnly) {
-      skills = skillsForSlideOnlyMvp(skills, { slideOnlyMvp: true });
+  const slideOnly =
+    options?.slideOnly
+    ?? (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp);
+  const cacheKey = slideOnly ? "slide" : "all";
+  const cached = skillsCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < SKILLS_CACHE_MS) return cached.value;
+  const inflight = skillsInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    try {
+      const query = slideOnly ? '?catalog=slide' : '';
+      const resp = await fetch(`/api/skills${query}`);
+      if (!resp.ok) return [];
+      const json = (await resp.json()) as { skills: SkillSummary[] };
+      let skills = json.skills ?? [];
+      if (slideOnly) {
+        skills = skillsForSlideOnlyMvp(skills, { slideOnlyMvp: true });
+      }
+      skillsCache.set(cacheKey, { at: Date.now(), value: skills });
+      return skills;
+    } catch {
+      return [];
+    } finally {
+      skillsInflight.delete(cacheKey);
     }
-    return skills;
-  } catch {
-    return [];
-  }
+  })();
+
+  skillsInflight.set(cacheKey, promise);
+  return promise;
 }
 
 // Design templates — the rendering catalogue (decks, prototypes, image/
@@ -241,29 +262,44 @@ export async function fetchDesignTemplates(options?: {
   limit?: number;
   offset?: number;
 }): Promise<SkillSummary[]> {
-  try {
-    const modes = Array.isArray(options?.mode)
-      ? options.mode
-      : options?.mode
-        ? [options.mode]
-        : [];
-    const params = new URLSearchParams();
-    if (modes.length > 0) params.set("mode", modes.join(","));
-    if (options?.query?.trim()) params.set("q", options.query.trim());
-    if (typeof options?.limit === "number" && Number.isFinite(options.limit) && options.limit > 0) {
-      params.set("limit", String(Math.floor(options.limit)));
-    }
-    if (typeof options?.offset === "number" && Number.isFinite(options.offset) && options.offset > 0) {
-      params.set("offset", String(Math.floor(options.offset)));
-    }
-    const query = params.toString() ? `?${params.toString()}` : "";
-    const resp = await fetch(`/api/design-templates${query}`);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { designTemplates: SkillSummary[] };
-    return json.designTemplates ?? [];
-  } catch {
-    return [];
+  const modes = Array.isArray(options?.mode)
+    ? options.mode
+    : options?.mode
+      ? [options.mode]
+      : [];
+  const params = new URLSearchParams();
+  if (modes.length > 0) params.set("mode", modes.join(","));
+  if (options?.query?.trim()) params.set("q", options.query.trim());
+  if (typeof options?.limit === "number" && Number.isFinite(options.limit) && options.limit > 0) {
+    params.set("limit", String(Math.floor(options.limit)));
   }
+  if (typeof options?.offset === "number" && Number.isFinite(options.offset) && options.offset > 0) {
+    params.set("offset", String(Math.floor(options.offset)));
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const cacheKey = query || "all";
+  const cached = designTemplatesCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < DESIGN_TEMPLATES_CACHE_MS) return cached.value;
+  const inflight = designTemplatesInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    try {
+      const resp = await fetch(`/api/design-templates${query}`);
+      if (!resp.ok) return [];
+      const json = (await resp.json()) as { designTemplates: SkillSummary[] };
+      const templates = json.designTemplates ?? [];
+      designTemplatesCache.set(cacheKey, { at: Date.now(), value: templates });
+      return templates;
+    } catch {
+      return [];
+    } finally {
+      designTemplatesInflight.delete(cacheKey);
+    }
+  })();
+
+  designTemplatesInflight.set(cacheKey, promise);
+  return promise;
 }
 
 export async function fetchDesignTemplate(id: string): Promise<SkillDetail | null> {

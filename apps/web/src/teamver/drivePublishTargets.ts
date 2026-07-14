@@ -139,44 +139,50 @@ function buildPersonalPublishTargets(raw: unknown): TeamverDrivePublishTarget[] 
 async function fetchSharedDriveTargets(workspaceId: string): Promise<TeamverDrivePublishTarget[]> {
   const raw = await getJson("/api/v2/shared-drive", workspaceId);
   const drives = extractArray<RawSharedDrive>(raw).map(normalizeSharedDrive).filter(isSharedDrive);
-  const targetGroups = await Promise.all(
-    drives.map(async (drive) => {
-      try {
-        const tree = await getJson(
-          `/api/v2/shared-drive/${encodeURIComponent(drive.id)}/folder-tree`,
-          workspaceId,
-        );
-        const rootFolderId = normalizeRootFolderId(tree);
-        const targets: TeamverDrivePublishTarget[] = [{
-          id: `shared:${drive.id}`,
-          label: drive.name,
-          description: "팀 드라이브 루트",
-          folderId: rootFolderId,
-          sharedDriveId: drive.id,
-        }];
-        for (const row of flattenFolders(normalizeFolderItems(tree))) {
-          const folderId = normalizeFolderId(row.folder);
-          if (!folderId || isRootFolder(row.folder, rootFolderId)) continue;
-          targets.push({
-            id: `shared:${drive.id}:${folderId}`,
-            label: `${drive.name} / ${folderTargetLabel(row.folder, Math.max(0, row.depth - 1))}`,
-            description: "팀 드라이브 폴더",
-            folderId,
+  const CONCURRENCY = 4;
+  const targetGroups: TeamverDrivePublishTarget[][] = [];
+  for (let i = 0; i < drives.length; i += CONCURRENCY) {
+    const chunk = drives.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (drive) => {
+        try {
+          const tree = await getJson(
+            `/api/v2/shared-drive/${encodeURIComponent(drive.id)}/folder-tree`,
+            workspaceId,
+          );
+          const rootFolderId = normalizeRootFolderId(tree);
+          const targets: TeamverDrivePublishTarget[] = [{
+            id: `shared:${drive.id}`,
+            label: drive.name,
+            description: "팀 드라이브 루트",
+            folderId: rootFolderId,
             sharedDriveId: drive.id,
-          });
+          }];
+          for (const row of flattenFolders(normalizeFolderItems(tree))) {
+            const folderId = normalizeFolderId(row.folder);
+            if (!folderId || isRootFolder(row.folder, rootFolderId)) continue;
+            targets.push({
+              id: `shared:${drive.id}:${folderId}`,
+              label: `${drive.name} / ${folderTargetLabel(row.folder, Math.max(0, row.depth - 1))}`,
+              description: "팀 드라이브 폴더",
+              folderId,
+              sharedDriveId: drive.id,
+            });
+          }
+          return targets;
+        } catch {
+          return [{
+            id: `shared:${drive.id}`,
+            label: drive.name,
+            description: "팀 드라이브 루트",
+            folderId: null,
+            sharedDriveId: drive.id,
+          }];
         }
-        return targets;
-      } catch {
-        return [{
-          id: `shared:${drive.id}`,
-          label: drive.name,
-          description: "팀 드라이브 루트",
-          folderId: null,
-          sharedDriveId: drive.id,
-        }];
-      }
-    }),
-  );
+      }),
+    );
+    targetGroups.push(...chunkResults);
+  }
   return targetGroups.flat();
 }
 

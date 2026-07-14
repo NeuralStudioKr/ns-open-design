@@ -20,6 +20,7 @@ import {
 } from "../drivePublishLastTarget";
 import {
   listTeamverDrivePublishTargets,
+  publishTargetsFromImportScopes,
   searchTeamverDrivePublishTargets,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
@@ -51,7 +52,10 @@ import {
   subscribeTeamverDesignAccessChanged,
 } from "../teamverDesignAccess";
 import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
-import { invalidateTeamverDriveImportCaches } from "../driveImportList";
+import {
+  invalidateTeamverDriveImportCaches,
+  peekTeamverDriveImportScopesCache,
+} from "../driveImportList";
 import {
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
@@ -145,7 +149,6 @@ export function TeamverPublishDrivePanel({
   const refreshTargets = useCallback(async () => {
     if (!isTeamverEmbedMode() || !active) return;
     const seq = ++fetchSeqRef.current;
-    setLoadingTargets(true);
     setTargetsError(null);
     setAuthRequired(false);
     try {
@@ -156,8 +159,18 @@ export function TeamverPublishDrivePanel({
         setTargets(ensureDefaultPublishTarget([]));
         setLastTargetRestore("none");
         setTargetsError("teamver_workspace_pending");
+        setLoadingTargets(false);
         return;
       }
+
+      const warmScopes = peekTeamverDriveImportScopesCache(ws);
+      if (warmScopes && warmScopes.length > 0) {
+        setTargets(ensureDefaultPublishTarget(publishTargetsFromImportScopes(warmScopes)));
+        setLoadingTargets(false);
+      } else {
+        setLoadingTargets(true);
+      }
+
       const next = await listTeamverDrivePublishTargets(ws);
       if (seq !== fetchSeqRef.current) return;
       let merged = ensureDefaultPublishTarget(next);

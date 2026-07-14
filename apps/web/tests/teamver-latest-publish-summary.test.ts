@@ -122,7 +122,19 @@ describe('fetchLatestPublishSummary', () => {
 
     const summary = await fetchLatestPublishSummary('p1');
     expect(summary?.driveUrl).toBe('https://drive.example/a/AST-NEW');
+    // Initial + one drain retry.
+    expect(batchPostMock).toHaveBeenCalledTimes(2);
     expect(listOutputsMock).toHaveBeenCalledWith('p1');
+  });
+
+  it('soft-nulls multi-id batch failures to avoid N× /outputs', async () => {
+    batchPostMock.mockRejectedValue(new Error('502'));
+    await prefetchLatestPublishSummaries(['p1', 'p2', 'p3']);
+    expect(batchPostMock).toHaveBeenCalledTimes(2);
+    expect(listOutputsMock).not.toHaveBeenCalled();
+    expect(await fetchLatestPublishSummary('p1')).toBeNull();
+    expect(await fetchLatestPublishSummary('p2')).toBeNull();
+    expect(listOutputsMock).not.toHaveBeenCalled();
   });
 
   it('falls back to per-project outputs outside embed mode', async () => {
