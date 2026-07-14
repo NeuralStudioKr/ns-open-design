@@ -162,7 +162,7 @@ Teamver Design 스택은 **역할이 3층**이다. 이중화 대상을 혼동하
 | [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) | **CTO 보고** — userId hash·이중화 의미·중앙 nginx 비교·장기 방향 |
 | [39_7](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) | **scratch vs DaemonDb vs multi-node** — 저장층 4분면·B5만으로는 부족·OD scratch 제거 불가 |
 | [39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md) | DaemonDb B5 잔여 · plugins · RDS |
-| [39_10](./39_10_HA_세션쿠키_경합_해결.md) | **HA BFF Set-Cookie 경합 · Drive `session_expired` 근본 원인·해결** |
+| [39_10](./39_10_HA_세션쿠키_경합_해결.md) | **HA BFF Set-Cookie 경합 · Drive `session_expired`(쿠키 축) · §8 토큰 축 → [41](./41_Design_Drive_인증_계약_권고.md)** |
 
 ---
 

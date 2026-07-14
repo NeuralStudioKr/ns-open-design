@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
@@ -20,10 +20,17 @@ from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..errors import UnauthorizedError
 from ..services.drive_proxy import emit_drive_proxy_marker, forward_drive_request
+from ..teamver_sdk import extract_request_access_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["drive"])
+
+# Where a Drive-bound Bearer token originated. Only ``bff`` tokens can be
+# refreshed via ``force_refresh_bff_session``; ``main_cookie`` tokens are Main
+# platform HS256 JWTs delivered via ``teamver_access_token`` cookie on the
+# ``.teamver.com`` parent domain and rotate on Main login/refresh (not here).
+DriveTokenSource = Literal["bff", "main_cookie"]
 
 
 def _require_access_token(auth: AuthContext) -> str:
@@ -33,15 +40,52 @@ def _require_access_token(auth: AuthContext) -> str:
     return token
 
 
-async def _resolve_drive_access_token(request: Request, auth: AuthContext) -> str:
-    if auth.auth_source == "bff" and bff_enabled():
-        # `require_auth` has already resolved and refreshed the BFF session for
-        # this request. Calling `ensure_bff_session()` again here can trigger a
-        # second refresh during the Drive modal burst and re-open the HA
-        # refresh-token race. Use the token captured in AuthContext; if Main
-        # Drive rejects it, the 401 recovery below performs one forced refresh.
-        return _require_access_token(auth)
-    return _require_access_token(auth)
+def _read_main_sso_cookie(request: Request) -> str | None:
+    """Best-effort read of Main ``teamver_access_token`` HS256 cookie.
+
+    ``extract_request_access_token`` needs ``TeamverAppClient`` initialised
+    (production lifespan). Fall back to raw header parsing so pytest fixtures
+    without the SDK client still exercise the cookie-forwarding path.
+    """
+    try:
+        token = extract_request_access_token(request)
+        if token:
+            return token
+    except RuntimeError:
+        pass
+    # Explicit fallback: check the well-known cookie name directly. Design host
+    # config always sets TEAMVER_AUTH_COOKIE_NAME=teamver_access_token in
+    # hosted envs; keeping this literal in sync avoids a bootstrap race where
+    # settings import fails before we can answer a drive proxy call.
+    fallback = request.cookies.get("teamver_access_token")
+    if fallback and fallback.strip():
+        return fallback.strip()
+    return None
+
+
+async def _resolve_drive_access_token(
+    request: Request, auth: AuthContext
+) -> tuple[str, DriveTokenSource]:
+    """Pick a Bearer Main Drive will actually accept.
+
+    Main ``/api/drive/*`` and ``/api/v2/shared-drive/*`` verify **HS256 platform
+    JWTs only** (``JWTService.get_current_user``). The BFF session stores an
+    Apps RS256 JWT (``aud=teamver-design``) which Main rejects on those routes
+    with ``{"detail":"Invalid token"}``.
+
+    Design pages run on ``*.teamver.com`` (parent-domain SSO), so the browser
+    already carries Main's ``teamver_access_token`` HS256 cookie. nginx forwards
+    it via ``proxy_set_header Cookie $http_cookie``; forward that to Main and
+    the Drive verify path succeeds without any BFF refresh dance.
+
+    Fall back to the BFF Apps JWT only when the Main SSO cookie is absent so a
+    misconfigured host (missing ``AUTH_COOKIE_DOMAIN=.teamver.com``) still
+    surfaces a definitive 401 instead of a silent request drop.
+    """
+    main_cookie_token = _read_main_sso_cookie(request)
+    if main_cookie_token:
+        return main_cookie_token, "main_cookie"
+    return _require_access_token(auth), "bff"
 
 
 def _session_expired_response() -> JSONResponse:
@@ -91,7 +135,7 @@ async def proxy_drive(
     auth: Annotated[AuthContext, Depends(require_auth)],
 ) -> Any:
     """Proxy Main BE Drive browse/search/thumbnail APIs for embed same-origin BFF."""
-    token = await _resolve_drive_access_token(request, auth)
+    token, token_source = await _resolve_drive_access_token(request, auth)
     workspace_id = require_workspace_context(auth)
     body = await request.body()
     content_type = request.headers.get("content-type")
@@ -106,7 +150,25 @@ async def proxy_drive(
         workspace_id=workspace_id,
     )
 
-    if status == 401 and auth.auth_source == "bff" and bff_enabled():
+    if status == 401 and token_source == "main_cookie":
+        # Main HS256 SSO cookie expired/rotated — the browser has to re-auth
+        # on ``teamver.com`` (parent domain login). BFF Apps refresh cannot
+        # rescue this: Main Drive rejects Apps JWTs by design (HS256-only).
+        auth_failure = _upstream_auth_failure(content)
+        if auth_failure:
+            logger.warning(
+                "[drive] main HS256 cookie rejected user=%s workspace=%s path=%s",
+                auth.user_id,
+                workspace_id or "",
+                path,
+            )
+            return _session_expired_response()
+        # Non-auth-shaped 401 (e.g. per-folder ACL). Pass through so FE can
+        # tell "access denied to that folder" apart from "session expired".
+        media_type = headers.get("content-type") or headers.get("Content-Type")
+        return Response(content=content, status_code=status, headers=headers, media_type=media_type)
+
+    if status == 401 and token_source == "bff" and bff_enabled():
         refreshed = await force_refresh_bff_session(request)
         if refreshed is not None:
             status, headers, content = await forward_drive_request(
