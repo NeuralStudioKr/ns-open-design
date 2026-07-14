@@ -123,6 +123,20 @@ function setStaticPreviewCacheHeaders(req: any, res: any, body: Buffer | string)
   return false;
 }
 
+function sendCachedCatalogJson(req: any, res: any, payload: unknown) {
+  const body = JSON.stringify(payload);
+  const etag = staticPreviewEtag(body);
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  res.setHeader('ETag', etag);
+  const ifNoneMatch = req.headers?.['if-none-match'];
+  const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : typeof ifNoneMatch === 'string' ? [ifNoneMatch] : [];
+  if (values.some((value) => value.split(',').map((part) => part.trim()).includes(etag))) {
+    res.status(304).end();
+    return;
+  }
+  res.type('application/json').send(body);
+}
+
 export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticResourceRoutesDeps) {
   const {
     RUNTIME_DATA_DIR,
@@ -224,7 +238,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       const skills = filterSkillsForSlideOnlyCatalog(await listAllSkills(), slideOnly);
       // Strip full body + on-disk dir from the listing — frontend fetches the
       // body via /api/skills/:id when needed (keeps the listing payload small).
-      res.json({
+      sendCachedCatalogJson(req, res, {
         skills: skills.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,
           hasBody: typeof body === 'string' && body.length > 0,
@@ -264,7 +278,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       });
       templates = filterDesignTemplatesExcludingChinesePrimary(templates, excludeChinesePrimary);
       const page = limit === null ? templates.slice(offset) : templates.slice(offset, offset + limit);
-      res.json({
+      sendCachedCatalogJson(req, res, {
         designTemplates: page.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,
           hasBody: typeof body === 'string' && body.length > 0,
