@@ -54,7 +54,10 @@ type Props = {
   recentTargets?: TeamverDrivePublishTarget[];
   selectedTargetId: string;
   loading?: boolean;
-  onSearch?: (query: string) => Promise<TeamverDrivePublishTarget[]>;
+  onSearch?: (
+    query: string,
+    options?: { signal?: AbortSignal },
+  ) => Promise<TeamverDrivePublishTarget[]>;
   onSelect: (target: TeamverDrivePublishTarget) => void;
   onClose: () => void;
   /** When Browse loads Drive scopes, sync quick-pick dropdown targets in the parent panel. */
@@ -715,17 +718,21 @@ export function TeamverDrivePickerModal({
     }
     let canceled = false;
     const seq = ++searchFetchSeqRef.current;
+    searchAbortRef.current?.abort();
+    const abortController = new AbortController();
+    searchAbortRef.current = abortController;
     setSearchLoading(true);
     setSearchError(null);
     setSearchTargets(null);
     void (async () => {
       try {
-        const results = await onSearch(submittedQuery);
+        const results = await onSearch(submittedQuery, { signal: abortController.signal });
         if (canceled || seq !== searchFetchSeqRef.current) return;
         setSearchTargets(results);
         setBrowseAuthRequired(false);
       } catch (err) {
         if (canceled || seq !== searchFetchSeqRef.current) return;
+        if (isTeamverDriveAbortError(err)) return;
         setSearchTargets([]);
         if (isTeamverBffUnauthorizedError(err)) {
           setBrowseAuthRequired(true);
@@ -739,6 +746,7 @@ export function TeamverDrivePickerModal({
     })();
     return () => {
       canceled = true;
+      abortController.abort();
     };
   }, [onSearch, open, submittedQuery]);
 

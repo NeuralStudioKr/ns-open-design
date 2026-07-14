@@ -280,7 +280,11 @@ describe("TeamverPublishDriveMenuItem", () => {
 
     await waitFor(
       () => {
-        expect(searchTargetsMock).toHaveBeenCalledWith("ws-1", "exports", { limit: 80 });
+        expect(searchTargetsMock).toHaveBeenCalledWith(
+          "ws-1",
+          "exports",
+          expect.objectContaining({ limit: 80, signal: expect.any(AbortSignal) }),
+        );
         expect(screen.getByTestId("teamver-drive-picker-target-shared:SD-1:FLD-EXPORTS")).toBeTruthy();
       },
       { timeout: 2000 },
@@ -347,7 +351,11 @@ describe("TeamverPublishDriveMenuItem", () => {
     });
 
     await waitFor(() => {
-      expect(searchTargetsMock).toHaveBeenCalledWith("ws-1", "launch", { limit: 80 });
+      expect(searchTargetsMock).toHaveBeenCalledWith(
+        "ws-1",
+        "launch",
+        expect.objectContaining({ limit: 80, signal: expect.any(AbortSignal) }),
+      );
       expect(within(modal).getByText("Marketing / Launch exports")).toBeTruthy();
     });
     fireEvent.click(screen.getByTestId("teamver-drive-picker-target-shared:SD-2:FLD-REMOTE"));
@@ -386,7 +394,11 @@ describe("TeamverPublishDriveMenuItem", () => {
 
     fireEvent.keyDown(searchInput, { key: "Enter" });
     await waitFor(() => {
-      expect(searchTargetsMock).toHaveBeenCalledWith("ws-1", "exports", { limit: 80 });
+      expect(searchTargetsMock).toHaveBeenCalledWith(
+        "ws-1",
+        "exports",
+        expect.objectContaining({ limit: 80, signal: expect.any(AbortSignal) }),
+      );
     });
   });
 

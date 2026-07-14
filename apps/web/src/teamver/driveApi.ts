@@ -120,9 +120,18 @@ function enqueueDriveFetch<T>(run: () => Promise<T>, signal?: AbortSignal): Prom
 
 const DRIVE_AUTH_RETRY_DELAY_MS = 150;
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfDriveAborted(signal);
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createDriveAbortError());
+    };
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -177,7 +186,7 @@ async function teamverDriveFetch(
       // Soft retry only: Apps /auth/refresh cannot revive Main HS256 SSO
       // (`teamver_access_token`) that Drive proxy forwards. Another sibling may
       // have just written cookies — wait briefly once, then surface 401.
-      await delay(DRIVE_AUTH_RETRY_DELAY_MS);
+      await delay(DRIVE_AUTH_RETRY_DELAY_MS, signal);
       throwIfDriveAborted(signal);
       return doFetch();
     }

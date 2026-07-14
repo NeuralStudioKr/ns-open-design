@@ -294,9 +294,12 @@ export function TeamverPublishDrivePanel({
   }, [busy, pdfBlocked]);
 
   const handleSearchTargets = useCallback(
-    async (query: string) => {
+    async (query: string, options?: { signal?: AbortSignal }) => {
       if (!workspaceId) return [];
-      return searchTeamverDrivePublishTargets(workspaceId, query, { limit: 80 });
+      return searchTeamverDrivePublishTargets(workspaceId, query, {
+        limit: 80,
+        signal: options?.signal,
+      });
     },
     [workspaceId],
   );

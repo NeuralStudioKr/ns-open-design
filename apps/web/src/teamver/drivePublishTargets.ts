@@ -295,7 +295,7 @@ function dedupePublishTargets(targets: TeamverDrivePublishTarget[]): TeamverDriv
 export async function searchTeamverDrivePublishTargets(
   workspaceId: string,
   query: string,
-  options: { limit?: number } = {},
+  options: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<TeamverDrivePublishTarget[]> {
   const trimmedWorkspaceId = workspaceId.trim();
   const trimmedQuery = query.trim();
@@ -325,9 +325,13 @@ export async function searchTeamverDrivePublishTargets(
         query: trimmedQuery,
         sharedDriveId: scope.mode === "shared" ? scope.sharedDriveId : null,
         limit,
+        signal: options.signal,
       }),
     ),
   );
+  if (options.signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
   const folderTargets: TeamverDrivePublishTarget[] = [];
   for (const group of searchGroups) {
     if (group.status !== "fulfilled") continue;

@@ -51,7 +51,8 @@ export function useTeamverDriveModalFocusTrap(
       if (event.key !== "Tab") return;
       // Nested Drive portals (picker over publish) own their own trap;
       // ignore Tab events that did not originate inside this dialog.
-      if (!container.contains(event.target as Node | null)) return;
+      const target = event.target;
+      if (!(target instanceof Node) || !container.contains(target)) return;
       const focusable = listFocusable(container);
       if (focusable.length === 0) {
         event.preventDefault();
@@ -62,13 +63,13 @@ export function useTeamverDriveModalFocusTrap(
       const last = focusable[focusable.length - 1]!;
       const active = document.activeElement;
       if (event.shiftKey) {
-        if (active === first || !container.contains(active)) {
+        if (active === first || !(active instanceof Node) || !container.contains(active)) {
           event.preventDefault();
           last.focus();
         }
         return;
       }
-      if (active === last || !container.contains(active)) {
+      if (active === last || !(active instanceof Node) || !container.contains(active)) {
         event.preventDefault();
         first.focus();
       }
