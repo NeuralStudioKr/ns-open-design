@@ -79,7 +79,7 @@ unset TEAMVER_OD_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
   TRUST_TEAMVER_PROXY_HEADERS TEAMVER_BILLING_DISABLED \
   TEAMVER_JWKS_URL TEAMVER_JWT_ISSUER TEAMVER_JWT_AUDIENCE \
   DESIGN_BFF_SESSION_SECRET TEAMVER_MAIN_LOGIN_URL DESIGN_PUBLIC_ORIGIN \
-  TEAMVER_BFF_SESSION_ENABLED
+  TEAMVER_BFF_SESSION_ENABLED DESIGN_BFF_SESSION_COOKIE_NAME
 
 # shellcheck disable=SC1090
 set -a
@@ -129,6 +129,9 @@ case "$ENV_FILE" in
     fi
     if [[ "${TEAMVER_BFF_SESSION_ENABLED:-true}" != "true" && "${TEAMVER_BFF_SESSION_ENABLED:-1}" != "1" ]]; then
       warn "TEAMVER_BFF_SESSION_ENABLED!=true — Mail BFF cold start 비활성"
+    fi
+    if [[ "${DESIGN_BFF_SESSION_COOKIE_NAME:-teamver_design_bff_session}" == "session" ]]; then
+      fail "DESIGN_BFF_SESSION_COOKIE_NAME=session — Main Teamver 쿠키와 충돌 가능. teamver_design_bff_session 사용"
     fi
     ;;
   *)

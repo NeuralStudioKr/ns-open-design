@@ -21,6 +21,7 @@ TEAMVER_JWKS_URL=https://stg-api.teamver.com/.well-known/jwks.json
 TEAMVER_JWT_ISSUER=https://stg-api.teamver.com
 TEAMVER_JWT_AUDIENCE=teamver-design
 DESIGN_BFF_SESSION_SECRET=test-bff-secret
+DESIGN_BFF_SESSION_COOKIE_NAME=teamver_design_bff_session
 DESIGN_PUBLIC_ORIGIN=https://stg-design.teamver.com
 TEAMVER_MAIN_LOGIN_URL=https://stg.teamver.com/auth/signin
 TEAMVER_BFF_SESSION_ENABLED=true
@@ -31,6 +32,7 @@ POSTGRES_USER=teamver_be_admin
 POSTGRES_PASSWD=test-db-pass
 TEAMVER_DESIGN_API_URL=http://teamver-design-api:8000
 OD_PROJECT_STORAGE=s3
+OD_DATA_HOST_PATH=/tmp
 OD_S3_BUCKET=teamver-design-staging-data
 OD_S3_PREFIX=design/
 OD_S3_REGION=ap-northeast-2
@@ -106,6 +108,18 @@ if ! grep -q 'TEAMVER_OD_API_KEY 필요' <<< "$nokey_out"; then
 fi
 rm -f "$NOKEY_ENV"
 echo "✓ staging TEAMVER_OD_API_KEY gate ok"
+
+GENERIC_COOKIE_ENV="$(mktemp)"
+sed 's/^DESIGN_BFF_SESSION_COOKIE_NAME=.*/DESIGN_BFF_SESSION_COOKIE_NAME=session/' "$TMP_ENV" > "$GENERIC_COOKIE_ENV"
+generic_cookie_out="$(bash "$SCRIPT" --staging --rds --env-file "$GENERIC_COOKIE_ENV" 2>&1 || true)"
+if ! grep -q 'DESIGN_BFF_SESSION_COOKIE_NAME=session' <<< "$generic_cookie_out"; then
+  echo "❌ staging must reject generic BFF session cookie name"
+  echo "$generic_cookie_out"
+  rm -f "$GENERIC_COOKIE_ENV"
+  exit 1
+fi
+rm -f "$GENERIC_COOKIE_ENV"
+echo "✓ staging DESIGN_BFF_SESSION_COOKIE_NAME gate ok"
 
 BAD_PREFIX_ENV="$(mktemp)"
 sed 's/^OD_S3_PREFIX=design\//OD_S3_PREFIX=design/' "$TMP_ENV" > "$BAD_PREFIX_ENV"

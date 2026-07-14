@@ -28,17 +28,32 @@ class TeamverSessionMiddleware:
         same_site: typing.Literal["lax", "strict", "none"] = "lax",
         https_only: bool = False,
         domain: str | None = None,
+        legacy_session_cookies: typing.Sequence[str] = (),
     ) -> None:
         self.app = app
         self.signer = itsdangerous.TimestampSigner(str(secret_key))
         self.session_cookie = session_cookie
         self.max_age = max_age
         self.path = path
+        self.legacy_session_cookies = tuple(
+            cookie for cookie in legacy_session_cookies if cookie and cookie != session_cookie
+        )
         self.security_flags = "httponly; samesite=" + same_site
         if https_only:
             self.security_flags += "; secure"
         if domain is not None:
             self.security_flags += f"; domain={domain}"
+
+    def _load_cookie_session(self, value: str) -> dict[str, typing.Any] | None:
+        data = value.encode("utf-8")
+        try:
+            unsigned = self.signer.unsign(data, max_age=self.max_age)
+            loaded = json.loads(b64decode(unsigned))
+        except (BadSignature, ValueError, json.JSONDecodeError):
+            return None
+        if isinstance(loaded, dict):
+            return loaded
+        return None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -48,14 +63,20 @@ class TeamverSessionMiddleware:
         connection = HTTPConnection(scope)
         initial_session_was_empty = True
 
+        loaded_session = None
         if self.session_cookie in connection.cookies:
-            data = connection.cookies[self.session_cookie].encode("utf-8")
-            try:
-                data = self.signer.unsign(data, max_age=self.max_age)
-                scope["session"] = json.loads(b64decode(data))
-                initial_session_was_empty = False
-            except (BadSignature, ValueError, json.JSONDecodeError):
-                scope["session"] = {}
+            loaded_session = self._load_cookie_session(connection.cookies[self.session_cookie])
+        if loaded_session is None:
+            for cookie_name in self.legacy_session_cookies:
+                if cookie_name not in connection.cookies:
+                    continue
+                loaded_session = self._load_cookie_session(connection.cookies[cookie_name])
+                if loaded_session is not None:
+                    break
+
+        if loaded_session is not None:
+            scope["session"] = loaded_session
+            initial_session_was_empty = False
         else:
             scope["session"] = {}
 

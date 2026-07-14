@@ -59,7 +59,13 @@ _bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret
 #  * SlowRequest wraps OriginGuard + Session + endpoint → real user-facing
 #    latency (origin rejects, session cookie work, endpoint) is fully
 #    captured. This is what we want CloudWatch metric filters to score.
-app.add_middleware(TeamverSessionMiddleware, secret_key=_bff_secret, same_site="lax")
+app.add_middleware(
+    TeamverSessionMiddleware,
+    secret_key=_bff_secret,
+    session_cookie=settings.design_bff_session_cookie_name,
+    legacy_session_cookies=("session",),
+    same_site="lax",
+)
 app.add_middleware(OriginGuardMiddleware)
 app.add_middleware(SlowRequestMiddleware)
 # Node identity header (docs-teamver/39_2 · 39_5). Registered late so it

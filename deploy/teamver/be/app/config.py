@@ -44,6 +44,10 @@ class Settings(BaseModel):
         default_factory=lambda: _env_bool("TEAMVER_BFF_SESSION_ENABLED", default=True)
     )
     design_bff_session_secret: str = os.getenv("DESIGN_BFF_SESSION_SECRET", "")
+    design_bff_session_cookie_name: str = os.getenv(
+        "DESIGN_BFF_SESSION_COOKIE_NAME",
+        "teamver_design_bff_session",
+    )
     design_public_origin: str = os.getenv("DESIGN_PUBLIC_ORIGIN", "")
     teamver_bootstrap_cache_stale_grace_seconds: float = float(
         os.getenv("TEAMVER_BOOTSTRAP_CACHE_STALE_GRACE_SECONDS", "300")
@@ -155,6 +159,11 @@ class Settings(BaseModel):
             raise ValueError(f"TEAMVER_JWT_AUDIENCE is required in {deploy_env}")
         if self.teamver_bff_session_enabled and not self.design_bff_session_secret.strip():
             raise ValueError(f"DESIGN_BFF_SESSION_SECRET is required in {deploy_env}")
+        if self.teamver_bff_session_enabled and self.design_bff_session_cookie_name.strip() == "session":
+            raise ValueError(
+                f"DESIGN_BFF_SESSION_COOKIE_NAME=session is forbidden in {deploy_env} "
+                "— use an app-specific cookie name"
+            )
         if not (self.teamver_main_login_url or "").strip():
             raise ValueError(f"TEAMVER_MAIN_LOGIN_URL is required in {deploy_env}")
         if not self.teamver_od_api_key.strip():

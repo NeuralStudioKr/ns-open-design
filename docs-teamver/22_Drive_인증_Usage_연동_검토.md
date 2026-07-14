@@ -128,6 +128,21 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 
 운영 효과: 인증 도중 화면이 에러처럼 보이는 인상을 줄이고, 탭 복귀/일시 401 때문에 Drive·워크스페이스·프로젝트 UI가 흔들리는 케이스를 줄인다.
 
+### 3.2e 2026-07-14 — BFF session cookie 이름 충돌 방지
+
+현재 시점 기준 판단: `{"detail":"session_expired"}`가 Drive BFF API에서 반복되는데 Main 로그인/토큰 자체가 정상이라면, refresh race뿐 아니라 **쿠키 이름 충돌**을 먼저 의심해야 한다.
+
+- 기존 Design BFF session cookie 이름은 기본값 `session`이었다.
+- Main Teamver가 `.teamver.com` 범위의 일반 `session` 쿠키를 발급하면 `stg-design.teamver.com` 요청에도 함께 실릴 수 있다.
+- design-api가 Main의 `session` 쿠키를 BFF session으로 읽으면 서명 검증 실패 → 빈 session → Drive `session_expired`가 된다.
+- 해결: Design BFF cookie 이름을 `teamver_design_bff_session`으로 고정하고, hosted env에서 `DESIGN_BFF_SESSION_COOKIE_NAME=session`을 금지한다.
+- 기존 Design host-only `session` 쿠키는 1회 legacy fallback으로 읽어 새 쿠키명으로 재발급한다. 서명이 맞지 않는 Main session cookie는 무시한다.
+
+운영 확인:
+1. 모든 ALB target의 `.env.staging`/`.env.production`에 `DESIGN_BFF_SESSION_COOKIE_NAME=teamver_design_bff_session`이 동일하게 들어가야 한다.
+2. 배포 후 `/teamver-bff/auth/session` 또는 Drive API 응답의 Set-Cookie가 `teamver_design_bff_session`인지 확인한다.
+3. 여전히 401이면 같은 이름의 쿠키 충돌보다 `DESIGN_BFF_SESSION_SECRET` 불일치 또는 refresh token rotation race를 본다.
+
 ### 3.2d 2026-07-13 — Drive HA refresh race 보강
 
 현재 시점 기준 판단: 이중화 후 Drive 401이 늘어난 핵심 원인은 Drive 기능 자체가 아니라 **BFF session cookie에 들어있는 refresh token 회전 경쟁**이다.
