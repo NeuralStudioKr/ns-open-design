@@ -17,6 +17,7 @@ import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import {
   HtmlSurface,
+  __htmlSurfaceProbeCacheSizeForTests,
   __resetHtmlSurfaceProbeCacheForTests,
 } from '../../src/components/plugins-home/cards/HtmlSurface';
 import type { HtmlPreviewSpec } from '../../src/components/plugins-home/preview';
@@ -39,6 +40,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   __resetHtmlSurfaceProbeCacheForTests();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -102,5 +104,53 @@ describe('HtmlSurface reachability probe', () => {
     expect(
       container.querySelector('.plugins-home__html-fallback-glyph')?.textContent,
     ).toBe('H');
+  });
+
+  it('caps the reachability probe cache and evicts the oldest preview URL', async () => {
+    window.localStorage.setItem('open-design:visual-stability', '1');
+    const fetchMock = vi.fn().mockResolvedValue(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const previews = Array.from({ length: 260 }, (_, index) => ({
+      kind: 'html' as const,
+      src: `/api/plugins/example-html-ppt/preview-${index}`,
+      label: `preview-${index}.html`,
+      source: 'preview' as const,
+    }));
+
+    const rendered = render(
+      <>
+        {previews.map((preview, index) => (
+          <HtmlSurface
+            key={preview.src}
+            preview={preview}
+            pluginId={`example-html-ppt-${index}`}
+            pluginTitle={`Html Ppt ${index}`}
+            inView
+          />
+        ))}
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(260);
+      expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
+    });
+
+    rendered.unmount();
+
+    render(
+      <HtmlSurface
+        preview={previews[0]!}
+        pluginId="example-html-ppt-0"
+        pluginTitle="Html Ppt 0"
+        inView
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(261);
+      expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
+    });
   });
 });
