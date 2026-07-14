@@ -126,8 +126,23 @@ describe('GET /api/plugins/:id/asset/*', () => {
     expect(csp).toContain("frame-ancestors 'self'");
     expect(resp.headers.get('x-content-type-options')).toBe('nosniff');
     expect(resp.headers.get('content-type')).toMatch(/text\/html/);
+    expect(resp.headers.get('cache-control')).toContain('max-age=86400');
+    expect(resp.headers.get('etag')).toMatch(/^".+"$/);
     const body = await resp.text();
     expect(body).toContain('fixture');
+  });
+
+  it('revalidates plugin assets with ETag', async () => {
+    const first = await fetch(`${baseUrl}/api/plugins/asset-plugin/asset/surfaces/index.html`);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag');
+    expect(etag).toBeTruthy();
+
+    const second = await fetch(`${baseUrl}/api/plugins/asset-plugin/asset/surfaces/index.html`, {
+      headers: { 'if-none-match': etag ?? '' },
+    });
+    expect(second.status).toBe(304);
+    expect(second.headers.get('cache-control')).toContain('max-age=86400');
   });
 
   it('returns 404 for a missing asset under a known plugin', async () => {
