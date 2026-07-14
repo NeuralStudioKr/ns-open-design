@@ -3,6 +3,7 @@ import {
   fetchTeamverDriveHomeRecentRaw,
   invalidateTeamverDriveHomeRecentCaches,
 } from "./driveHomeRecentCache";
+import { invalidateTeamverDriveBrowsePageCaches } from "./driveBrowsePageCache";
 import { invalidateTeamverDriveImportThumbnails } from "./driveImportThumbnails";
 
 export type TeamverDriveImportPick = {
@@ -423,6 +424,7 @@ export function invalidateTeamverDriveImportCaches(workspaceId?: string | null):
     sharedDriveRootCache.clear();
     invalidateTeamverDriveHomeRecentCaches();
     invalidateTeamverDriveImportThumbnails();
+    invalidateTeamverDriveBrowsePageCaches();
     return;
   }
   importScopesCache.delete(ws);
@@ -436,6 +438,7 @@ export function invalidateTeamverDriveImportCaches(workspaceId?: string | null):
   }
   invalidateTeamverDriveHomeRecentCaches(ws);
   invalidateTeamverDriveImportThumbnails(ws);
+  invalidateTeamverDriveBrowsePageCaches(ws);
 }
 
 /** @internal vitest — personal shallow_tree with session cache (shared with scopes + publish quick-pick). */

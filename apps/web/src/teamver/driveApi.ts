@@ -48,16 +48,37 @@ export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
   return false;
 }
 
-/** Serialize Drive BFF calls so parallel modal opens cannot multi-node refresh-race. */
-let driveFetchTail: Promise<void> = Promise.resolve();
+/** Limit concurrent Drive BFF calls (browse/recent/thumbs) without full serialization. */
+const DRIVE_FETCH_MAX_CONCURRENT = 4;
+let driveFetchActive = 0;
+const driveFetchWaiters: Array<() => void> = [];
+
+async function acquireDriveFetchSlot(): Promise<void> {
+  if (driveFetchActive < DRIVE_FETCH_MAX_CONCURRENT) {
+    driveFetchActive += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    driveFetchWaiters.push(resolve);
+  });
+  driveFetchActive += 1;
+}
+
+function releaseDriveFetchSlot(): void {
+  driveFetchActive = Math.max(0, driveFetchActive - 1);
+  const next = driveFetchWaiters.shift();
+  if (next) next();
+}
 
 function enqueueDriveFetch<T>(run: () => Promise<T>): Promise<T> {
-  const result = driveFetchTail.then(run, run);
-  driveFetchTail = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+  return (async () => {
+    await acquireDriveFetchSlot();
+    try {
+      return await run();
+    } finally {
+      releaseDriveFetchSlot();
+    }
+  })();
 }
 
 const DRIVE_AUTH_RETRY_DELAY_MS = 150;
@@ -112,18 +133,11 @@ async function teamverDriveFetch(
       body && typeof body === "object" ? (body as Record<string, unknown>).detail : null;
 
     if (shouldSkipDriveAuthRefresh(detail)) {
-      // Sibling Drive/BFF call may have just rotated the session cookie. Wait
-      // briefly and retry once without POSTing /auth/refresh again. If that
-      // still fails, run the regular coalesced BFF refresh as a last step before
-      // surfacing "Drive session expired" to the modal.
+      // Soft retry only: Apps /auth/refresh cannot revive Main HS256 SSO
+      // (`teamver_access_token`) that Drive proxy forwards. Another sibling may
+      // have just written cookies — wait briefly once, then surface 401.
       await delay(DRIVE_AUTH_RETRY_DELAY_MS);
-      response = await doFetch();
-      if (response.status !== 401 && response.status !== 403) {
-        return response;
-      }
-      const recovered = await recoverDriveAuthSession();
-      if (recovered) response = await doFetch();
-      return response;
+      return doFetch();
     }
 
     const recovered = await recoverDriveAuthSession();
@@ -181,5 +195,6 @@ export function extractTeamverDriveItems<T = unknown>(raw: unknown): T[] {
 
 /** @internal vitest */
 export function resetTeamverDriveFetchQueueForTests(): void {
-  driveFetchTail = Promise.resolve();
+  driveFetchActive = 0;
+  driveFetchWaiters.length = 0;
 }

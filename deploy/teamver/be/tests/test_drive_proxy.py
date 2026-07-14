@@ -58,22 +58,15 @@ async def test_forward_drive_request_uses_long_timeout_for_thumbnail_batch(
         headers = httpx.Headers({"content-type": "application/json"})
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
-            return self
+        is_closed = False
 
-        async def __aexit__(self, *args: object) -> None:
-            return None
-
-        async def request(self, *_args: object, **_kwargs: object) -> _Response:
+        async def request(self, *_args: object, **kwargs: object) -> _Response:
+            captured["timeout"] = kwargs.get("timeout")
             return _Response()
-
-    def _client_factory(**kwargs: object) -> _Client:
-        captured["timeout"] = kwargs.get("timeout")
-        return _Client()
 
     monkeypatch.setattr(drive_proxy.settings, "teamver_http_timeout_seconds", 5.0)
     monkeypatch.setattr(drive_proxy.settings, "teamver_drive_proxy_long_timeout_seconds", 30.0)
-    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", _client_factory)
+    monkeypatch.setattr(drive_proxy, "_shared_client", _Client())
 
     await drive_proxy.forward_drive_request(
         method="POST",
@@ -102,11 +95,7 @@ async def test_forward_drive_request_passes_token_and_workspace(
         headers = httpx.Headers({"content-type": "application/json"})
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
-            return self
-
-        async def __aexit__(self, *args: object) -> None:
-            return None
+        is_closed = False
 
         async def request(self, method: str, url: str, **kwargs: Any) -> _Response:
             captured["method"] = method
@@ -114,7 +103,7 @@ async def test_forward_drive_request_passes_token_and_workspace(
             captured["headers"] = kwargs.get("headers")
             return _Response()
 
-    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", lambda **_: _Client())
+    monkeypatch.setattr(drive_proxy, "_shared_client", _Client())
 
     status, _headers, content = await drive_proxy.forward_drive_request(
         method="GET",
@@ -150,16 +139,12 @@ async def test_forward_drive_request_maps_network_error_to_bad_gateway(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _Client:
-        async def __aenter__(self) -> "_Client":
-            return self
-
-        async def __aexit__(self, *args: object) -> None:
-            return None
+        is_closed = False
 
         async def request(self, *_args: object, **_kwargs: object) -> None:
             raise httpx.ConnectError("main be down")
 
-    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", lambda **_: _Client())
+    monkeypatch.setattr(drive_proxy, "_shared_client", _Client())
 
     with pytest.raises(BadGatewayError, match="teamver_drive_unreachable"):
         await drive_proxy.forward_drive_request(

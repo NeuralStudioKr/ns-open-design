@@ -124,6 +124,7 @@ vi.mock("../src/teamver/listProjectOutputs", () => ({
 }));
 
 import { TeamverPublishDriveMenuItem } from "../src/teamver/components/TeamverPublishDriveMenuItem";
+import { resetTeamverDriveBrowsePageCachesForTests } from "../src/teamver/driveBrowsePageCache";
 
 const browseButtonOptions = { name: "찾아보기" } as const;
 const LOCAL_STORAGE_LAST_TARGET_KEY = "teamver.drive.lastPublishTarget.ws-1.od-1";
@@ -131,6 +132,7 @@ const LOCAL_STORAGE_LAST_TARGET_KEY = "teamver.drive.lastPublishTarget.ws-1.od-1
 describe("TeamverPublishDriveMenuItem", () => {
   beforeEach(() => {
     cleanup();
+    resetTeamverDriveBrowsePageCachesForTests();
     getWorkspaceMock.mockClear();
     listTargetsMock.mockClear();
     searchTargetsMock.mockClear();

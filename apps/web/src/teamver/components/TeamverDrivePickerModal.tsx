@@ -28,6 +28,10 @@ import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
+import {
+  getTeamverDriveBrowsePageCached,
+  setTeamverDriveBrowsePageCached,
+} from "../driveBrowsePageCache";
 
 type NavCrumb = {
   folderId: string | null;
@@ -152,13 +156,6 @@ export function TeamverDrivePickerModal({
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
   const browseFetchSeqRef = useRef(0);
   const searchFetchSeqRef = useRef(0);
-  const browsePageCacheRef = useRef(new Map<string, {
-    targets: TeamverDrivePublishTarget[];
-    assets: TeamverDriveImportAssetRow[];
-    recentAssets: TeamverDrivePublishRecentAsset[];
-    hasMore: boolean;
-    nextCursor: string | null;
-  }>());
   const trimmedQuery = query.trim();
   const searching = Boolean(onSearch && searchMode);
   const activeScope = scopes[scopeIndex] ?? null;
@@ -361,7 +358,6 @@ export function TeamverDrivePickerModal({
       setRecentAssetRows([]);
       setHomeRecentTargets([]);
       setThumbUrls(new Map());
-      browsePageCacheRef.current.clear();
       return;
     }
     let canceled = false;
@@ -370,7 +366,6 @@ export function TeamverDrivePickerModal({
     setRecentAssetRows([]);
     setHomeRecentTargets([]);
     setThumbUrls(new Map());
-    browsePageCacheRef.current.clear();
     void (async () => {
       try {
         const nextScopes = await listTeamverDriveImportScopes(workspaceId);
@@ -432,7 +427,7 @@ export function TeamverDrivePickerModal({
         before ?? "start",
       ].join(":");
       if (!append) {
-        const cached = browsePageCacheRef.current.get(cacheKey);
+        const cached = getTeamverDriveBrowsePageCached(cacheKey);
         if (cached) {
           setBrowseTargets(cached.targets);
           setBrowseAssetRows(cached.assets);
@@ -476,7 +471,7 @@ export function TeamverDrivePickerModal({
           }
         }
         if (!append) {
-          browsePageCacheRef.current.set(cacheKey, {
+          setTeamverDriveBrowsePageCached(cacheKey, {
             targets: folders,
             assets,
             recentAssets,
