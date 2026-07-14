@@ -147,7 +147,7 @@ async function teamverDriveFetch(
   init: RequestInit,
   workspaceId?: string | null,
 ): Promise<Response> {
-  const signal = init.signal;
+  const signal = init.signal ?? undefined;
   return enqueueDriveFetch(async () => {
     throwIfDriveAborted(signal);
     const headers = new Headers(init.headers ?? {});
