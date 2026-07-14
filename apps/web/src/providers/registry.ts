@@ -501,7 +501,7 @@ export type DesignSystemsResult =
 
 export async function fetchDesignSystemsResult(): Promise<DesignSystemsResult> {
   try {
-    const resp = await fetch('/api/design-systems');
+    const resp = await fetchTeamverDaemon('/api/design-systems');
     if (!resp.ok) return { ok: false };
     const json = (await resp.json()) as { designSystems?: DesignSystemSummary[] };
     return { ok: true, designSystems: json.designSystems ?? [] };
@@ -2181,19 +2181,40 @@ export async function openProjectInEditor(
   return (await resp.json()) as import('@open-design/contracts').OpenProjectInEditorResponse;
 }
 
-export async function fetchDesignSystemPreview(id: string): Promise<string | null> {
+export type DesignSystemPreviewResult =
+  | { ok: true; html: string }
+  | { ok: false; reason: 'not_found' | 'unauthorized' | 'error' };
+
+export async function fetchDesignSystemPreviewResult(
+  id: string,
+): Promise<DesignSystemPreviewResult> {
   try {
-    const resp = await fetch(`/api/design-systems/${encodeURIComponent(id)}/preview`);
-    if (!resp.ok) return null;
-    return await resp.text();
+    const resp = await fetchTeamverDaemon(
+      `/api/design-systems/${encodeURIComponent(id)}/preview`,
+    );
+    if (resp.status === 404) return { ok: false, reason: 'not_found' };
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, reason: 'unauthorized' };
+    }
+    if (!resp.ok) return { ok: false, reason: 'error' };
+    const html = await resp.text();
+    if (!html.trim()) return { ok: false, reason: 'not_found' };
+    return { ok: true, html };
   } catch {
-    return null;
+    return { ok: false, reason: 'error' };
   }
+}
+
+export async function fetchDesignSystemPreview(id: string): Promise<string | null> {
+  const result = await fetchDesignSystemPreviewResult(id);
+  return result.ok ? result.html : null;
 }
 
 export async function fetchDesignSystemShowcase(id: string): Promise<string | null> {
   try {
-    const resp = await fetch(`/api/design-systems/${encodeURIComponent(id)}/showcase`);
+    const resp = await fetchTeamverDaemon(
+      `/api/design-systems/${encodeURIComponent(id)}/showcase`,
+    );
     if (!resp.ok) return null;
     return await resp.text();
   } catch {

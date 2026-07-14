@@ -48,6 +48,7 @@ interface SkillFrontmatter extends JsonRecord {
     design_system?: JsonRecord;
     critique?: JsonRecord;
     category?: unknown;
+    content_locale?: unknown;
   };
 }
 
@@ -76,6 +77,7 @@ export interface SkillInfo {
   // upstream awesome-* lists) stays scannable. Not part of system-prompt
   // composition; purely a UI hint.
   category: string | null;
+  contentLocale: string | null;
   previewType: string;
   designSystemRequired: boolean;
   defaultFor: string[];
@@ -193,6 +195,7 @@ export async function listSkills(
           data.description,
         );
         const category = normalizeCategory(data.od?.category);
+        const contentLocale = normalizeContentLocale(data.od?.content_locale);
         const designSystemRequired =
           typeof data.od?.design_system?.requires === "boolean"
             ? data.od.design_system.requires
@@ -236,6 +239,7 @@ export async function listSkills(
           platform,
           scenario,
           category,
+          contentLocale,
           previewType,
           designSystemRequired,
           defaultFor: normalizeDefaultFor(data.od?.default_for),
@@ -282,6 +286,7 @@ export async function listSkills(
             platform,
             scenario,
             category,
+            contentLocale,
             previewType,
             designSystemRequired,
             defaultFor: [],
@@ -561,6 +566,19 @@ export function normalizeCritiquePolicy(value: unknown): SkillCritiquePolicy {
   const v = value.trim().toLowerCase();
   if (v === "required" || v === "opt-in" || v === "opt-out") return v;
   return null;
+}
+
+// Primary locale of shipped demo / example_prompt / preview copy.
+function normalizeContentLocale(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.toLowerCase().replace(/_/g, "-");
+  if (normalized === "zh-cn" || normalized === "zh") return "zh-CN";
+  if (normalized === "en" || normalized === "en-us" || normalized === "en-gb") {
+    return "en";
+  }
+  return trimmed;
 }
 
 // Coerce `od.featured` into a numeric priority. Lower numbers float to the

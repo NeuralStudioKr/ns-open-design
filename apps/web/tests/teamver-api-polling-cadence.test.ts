@@ -16,7 +16,10 @@ describe("Teamver embed API polling cadence", () => {
     expect(source).toContain("FOCUS_SESSION_REFRESH_MIN_INTERVAL_MS = 5 * 60_000");
     expect(source).toContain("lastFocusSessionRefreshAtRef");
     expect(source).toContain("shouldResetEmbedRefreshDeclineOnFocus(focusSignals)");
-    expect(source).toContain("bypassThrottle: shouldResetEmbedRefreshDeclineOnFocus(focusSignals)");
+    expect(source).toContain("focusSignals.pageshowPersisted");
+    expect(source).toMatch(
+      /bypassThrottle:\s*\n\s*shouldResetEmbedRefreshDeclineOnFocus\(focusSignals\)\s*\n\s*\|\|\s*focusSignals\.pageshowPersisted/,
+    );
     expect(source).not.toContain("invalidateDesignAuthSessionCache();\n      scheduleFocusSessionRefresh();");
     expect(bffSource).toContain("SESSION_CACHE_MS = 60_000");
   });

@@ -12,6 +12,10 @@ vi.mock("../src/teamver/designBffClient", () => ({
     http: { get: getMock },
     workspaceStore: { get: getWorkspaceMock },
   })),
+  // 803f70262 added `...TEAMVER_BFF_REQUEST_OPTIONS` at the call site to
+  // disable SDK auto refresh recovery; the mock must export the constant or
+  // spreading `undefined` throws before `getMock` is invoked.
+  TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true, skipAuthRecovery: true },
 }));
 
 import {

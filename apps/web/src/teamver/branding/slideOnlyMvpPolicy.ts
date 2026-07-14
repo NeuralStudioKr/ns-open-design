@@ -12,6 +12,7 @@ import type {
 } from "../../runtime/design-toolbox";
 import type { TeamverBrandingConfig } from "./config";
 import { isSlideRelatedDesignTemplate, isRenderableDesignTemplate } from "./designTemplateVisibility";
+import { isEmbedHiddenChinesePrimaryDeckTemplate, readOdContentLocale } from "./embedChineseDeckTemplatePolicy";
 
 /** Home hero chip ids hidden in embed slide-only MVP. */
 export const TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS = new Set([
@@ -129,7 +130,14 @@ export function pluginsForSlideOnlyMvp(
   branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
 ): InstalledPluginRecord[] {
   if (!branding.slideOnlyMvp) return [...plugins];
-  return plugins.filter(isSlideRelatedPlugin);
+  return plugins.filter(
+    (plugin) =>
+      isSlideRelatedPlugin(plugin) &&
+      !isEmbedHiddenChinesePrimaryDeckTemplate(
+        { id: plugin.id, contentLocale: readOdContentLocale(plugin.manifest?.od) },
+        branding,
+      ),
+  );
 }
 
 const SLIDE_ONLY_HIDDEN_SKILL_CATEGORIES = new Set([
@@ -157,7 +165,10 @@ export function skillsForSlideOnlyMvp(
   if (!branding.slideOnlyMvp) return [...skills];
   return skills.filter((skill) => {
     if (isRenderableDesignTemplate(skill)) {
-      return isSlideRelatedDesignTemplate(skill);
+      return (
+        isSlideRelatedDesignTemplate(skill) &&
+        !isEmbedHiddenChinesePrimaryDeckTemplate(skill, branding)
+      );
     }
     return isSlideRelatedSkill(skill);
   });

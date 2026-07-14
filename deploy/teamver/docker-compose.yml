@@ -37,6 +37,11 @@ services:
       OD_API_TOKEN: ${OD_API_TOKEN:?Set OD_API_TOKEN in .env (openssl rand -hex 32)}
       OD_DATA_DIR: /app/.od
       OD_ALLOWED_ORIGINS: ${OD_ALLOWED_ORIGINS:-}
+      # docs-teamver/39_2 · 39_5 — multi-node identity for ALB stickiness
+      # verification and failover triage (X-OD-Node-Id header + /api/health
+      # nodeId field). Empty on single-node dev → header omitted, health
+      # reports "unknown". deploy.sh auto-populates from EC2 IMDS.
+      OD_NODE_ID: ${OD_NODE_ID:-}
       TEAMVER_DESIGN_API_URL: ${TEAMVER_DESIGN_API_URL:-http://teamver-design-api:8000}
       TEAMVER_INTERNAL_API_KEY: ${TEAMVER_INTERNAL_API_KEY:-}
       TEAMVER_PROJECT_ACCESS_TIMEOUT_MS: ${TEAMVER_PROJECT_ACCESS_TIMEOUT_MS:-2500}
@@ -104,8 +109,24 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TEAMVER_OD_API_KEY: ${TEAMVER_OD_API_KEY:-}
+      # Track B5 — Postgres DaemonDb (multi-node chat SSOT). Default sqlite.
+      OD_DAEMON_DB: ${OD_DAEMON_DB:-sqlite}
+      OD_PG_HOST: ${OD_PG_HOST:-}
+      OD_PG_PORT: ${OD_PG_PORT:-5432}
+      OD_PG_DATABASE: ${OD_PG_DATABASE:-}
+      OD_PG_USER: ${OD_PG_USER:-}
+      OD_PG_PASSWORD: ${OD_PG_PASSWORD:-}
+      OD_PG_SSL_MODE: ${OD_PG_SSL_MODE:-require}
+      OD_PG_POOL_MAX: ${OD_PG_POOL_MAX:-10}
+      # Embed slide MVP catalog trims (Teamver design.teamver.com — docs-teamver/13).
+      OD_PLUGIN_CATALOG_DEFAULT_MODE: ${OD_PLUGIN_CATALOG_DEFAULT_MODE:-}
+      OD_SKILLS_CATALOG_SLIDE_ONLY: ${OD_SKILLS_CATALOG_SLIDE_ONLY:-}
+      OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN: ${OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN:-}
     ports:
-      - "127.0.0.1:${OD_PORT:-7456}:7456"
+      # 127.0.0.1 default (local dev). Multi-node: deploy.sh sets
+      # OD_DOCKER_PUBLISH_HOST=0.0.0.0 so peer EC2 nginx can reach :7456
+      # (app SG peer rule — docs-teamver/39_2 §4).
+      - "${OD_DOCKER_PUBLISH_HOST:-127.0.0.1}:${OD_PORT:-7456}:7456"
     volumes:
       # Hosted EC2: bind OD_DATA_HOST_PATH (/opt/teamver-design/od-data) — NOT Docker named volume on root.
       - ${OD_DATA_HOST_PATH:-./.od-data-local}:/app/.od
@@ -150,6 +171,10 @@ services:
       LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:?Set LITESTREAM_BUCKET (terraform output project_data_bucket)}
       LITESTREAM_REGION: ${LITESTREAM_REGION:-ap-northeast-2}
       LITESTREAM_SYNC_INTERVAL: ${LITESTREAM_SYNC_INTERVAL:-3s}
+      # docs-teamver/39_3 §5.2 — per-node replica path when running
+      # multiple daemons. deploy.sh overrides from OD_NODE_ID; litestream.yml
+      # uses plain ${LITESTREAM_REPLICA_PATH} (Go ExpandEnv — no :- defaults).
+      LITESTREAM_REPLICA_PATH: ${LITESTREAM_REPLICA_PATH:-litestream/app.sqlite}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       # Staging: OD_S3_* static key 가 있으면 Litestream도 사용 (instance profile IAM 패치 전 임시).
       # Production: 비워 두면 instance profile(IMDS)만 사용.
@@ -235,6 +260,11 @@ services:
       DESIGN_BILLING_RESERVE_INPUT_TOKENS: ${DESIGN_BILLING_RESERVE_INPUT_TOKENS:-}
       DESIGN_BILLING_RESERVE_OUTPUT_TOKENS: ${DESIGN_BILLING_RESERVE_OUTPUT_TOKENS:-}
       DESIGN_MODEL_PRICES_JSON: ${DESIGN_MODEL_PRICES_JSON:-}
+      # docs-teamver/39_2 · 39_5 — multi-node identity (X-Design-Api-Node
+      # header + /healthz node_id field). Mirrors daemon OD_NODE_ID so
+      # both surfaces share the same EC2 instance id. deploy.sh injects
+      # from EC2 IMDS at compose-up time; local dev leaves it empty.
+      TEAMVER_DESIGN_NODE_ID: ${OD_NODE_ID:-}
     ports:
       - "127.0.0.1:${BE_PORT:-16000}:8000"
     depends_on:

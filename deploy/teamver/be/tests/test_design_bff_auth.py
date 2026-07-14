@@ -67,7 +67,7 @@ async def test_session_probe_returns_identity_headers(monkeypatch: pytest.Monkey
     monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
     monkeypatch.setattr(
         auth_router,
-        "ensure_bff_session",
+        "probe_bff_session",
         AsyncMock(
             return_value=BffSession(
                 user_id="user-abc",

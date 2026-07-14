@@ -11,6 +11,8 @@ import {
   exportAsMd,
   exportAsPdf,
   ExportQueueFullError,
+  isUsablePrintSize,
+  reportPrintSizeWhenStable,
   exportProjectAsHtml,
   exportProjectImageBlob,
   exportProjectAsPdf,
@@ -34,6 +36,150 @@ describe('resolveExportDownloadTitle', () => {
   it('falls back to the file basename when the project name is missing or generic', () => {
     expect(resolveExportDownloadTitle(undefined, 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
     expect(resolveExportDownloadTitle('Design', 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
+  });
+});
+
+describe('isUsablePrintSize (#4458)', () => {
+  // The print-ready handshake reports the artifact's own content size so the
+  // desktop bridge can size the PDF page to it. When that size is zero or
+  // invalid, the desktop path falls back to measuring the wrapper viewport,
+  // which (per inferPageSize's own docs) blanks artifacts whose visible
+  // content sits below the fold. Gating on a usable size prevents that.
+  it('treats positive finite dimensions as usable', () => {
+    expect(isUsablePrintSize(1440, 2000)).toBe(true);
+    expect(isUsablePrintSize(1, 1)).toBe(true);
+  });
+
+  it('rejects zero, negative, non-finite, or non-number dimensions', () => {
+    expect(isUsablePrintSize(0, 2000)).toBe(false);
+    expect(isUsablePrintSize(1440, 0)).toBe(false);
+    expect(isUsablePrintSize(-5, 100)).toBe(false);
+    expect(isUsablePrintSize(Number.NaN, 100)).toBe(false);
+    expect(isUsablePrintSize(Number.POSITIVE_INFINITY, 100)).toBe(false);
+    expect(isUsablePrintSize('1440' as unknown as number, 2000)).toBe(false);
+    expect(isUsablePrintSize(undefined as unknown as number, undefined as unknown as number)).toBe(false);
+  });
+});
+
+describe('reportPrintSizeWhenStable (#4458)', () => {
+  it('reports only once the content has a usable size, polling animation frames', () => {
+    // Simulate content that has not finished layout: size is 0 for the first
+    // frames, then becomes positive once laid out. The handshake must not
+    // report the early zero size (which would blank the PDF).
+    const sizes = [
+      { width: 0, height: 0 },
+      { width: 0, height: 0 },
+      { width: 1440, height: 2000 },
+    ];
+    let call = 0;
+    const measure = (): { width: number; height: number } => sizes[Math.min(call++, sizes.length - 1)]!;
+    const reported: Array<{ width: number; height: number }> = [];
+    const raf = (cb: () => void): void => cb(); // run synchronously
+    reportPrintSizeWhenStable(measure, (s) => reported.push(s), 30, raf);
+    expect(reported).toEqual([{ width: 1440, height: 2000 }]);
+  });
+
+  it('reports the last measured size when frames are exhausted (genuinely empty content)', () => {
+    // A truly empty artifact never gains a usable size; rather than hang
+    // forever, report best-effort after the frame budget so the desktop
+    // path is not left waiting on the readiness handshake indefinitely.
+    const measure = (): { width: number; height: number } => ({ width: 0, height: 0 });
+    const reported: Array<{ width: number; height: number }> = [];
+    const raf = (cb: () => void): void => cb();
+    reportPrintSizeWhenStable(measure, (s) => reported.push(s), 3, raf);
+    expect(reported).toEqual([{ width: 0, height: 0 }]);
+  });
+});
+
+describe('injected print-ready parent cache script — runtime behavior (#4458)', () => {
+  // Issue #4458 calls out that the existing coverage only proves script
+  // *strings* are injected, never that the injected script *behaves*. These
+  // specs extract the real parent-cache <script> from a live export, run it,
+  // and drive it with postMessage to assert the runtime size gate: a usable
+  // size is cached for the desktop inferPageSize(); a zero or non-finite size
+  // is rejected so it cannot blank the page (viewport fallback) or poison it.
+  async function extractCacheScript(): Promise<{ body: string; nonce: string }> {
+    const printPdfMock = vi.fn().mockResolvedValue({ ok: true });
+    const restoreHost = installMockOpenDesignHost({ host: { pdf: { print: printPdfMock } } });
+    try {
+      await exportAsPdf('<div style="height:4000px">tall artifact</div>', 'Cache Eval');
+    } finally {
+      restoreHost();
+    }
+    const htmlArg = printPdfMock.mock.calls[0]![0] as string;
+    const match = /<script>(window\.__odPrintReady=false;[\s\S]*?)<\/script>/.exec(htmlArg);
+    if (!match) throw new Error('parent cache script not found in exported HTML');
+    const body = match[1]!;
+    const nonceMatch = /nonce===['"]([^'"]+)['"]/.exec(body);
+    if (!nonceMatch) throw new Error('nonce not found in parent cache script');
+    return { body, nonce: nonceMatch[1]! };
+  }
+
+  // This suite runs in the node environment (no DOM), so we drive the real
+  // injected script against a minimal fake `window`: a plain object with a
+  // message-listener registry. The script wires its handler through
+  // `window.addEventListener('message', …)`, so dispatching a message means
+  // invoking the registered handler with a `{ data, source }` event — exactly
+  // what a real `postMessage` delivers, including the source-identity check.
+  type FakeWindow = Record<string, unknown> & {
+    __odPrintReady?: unknown;
+    __odPrintSize?: unknown;
+  };
+
+  function loadCache(body: string): { win: FakeWindow; fire: (event: unknown) => void } {
+    const handlers: Array<(event: unknown) => void> = [];
+    const win: FakeWindow = {
+      addEventListener: (type: string, fn: (event: unknown) => void) => {
+        if (type === 'message') handlers.push(fn);
+      },
+      removeEventListener: () => undefined,
+    };
+    win.frames = [win];
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    new Function('window', body)(win);
+    return { win, fire: (event) => handlers.slice().forEach((h) => h(event)) };
+  }
+
+  function readyEvent(
+    nonce: string,
+    width: unknown,
+    height: unknown,
+    source: unknown,
+  ): { data: unknown; source: unknown } {
+    return { data: { type: 'OD_PRINT_READY', nonce, width, height }, source };
+  }
+
+  it('caches a usable content size so the desktop bridge sizes the page to the artifact', async () => {
+    const { body, nonce } = await extractCacheScript();
+    const { win, fire } = loadCache(body);
+    fire(readyEvent(nonce, 1440, 2000, win));
+    expect(win.__odPrintReady).toBe(true);
+    expect(win.__odPrintSize).toEqual({ width: 1440, height: 2000 });
+  });
+
+  it('rejects a zero size so the page does not fall back to the wrapper viewport and blank', async () => {
+    const { body, nonce } = await extractCacheScript();
+    const { win, fire } = loadCache(body);
+    fire(readyEvent(nonce, 0, 0, win));
+    // Readiness still resolves (so the desktop bridge never hangs), but the
+    // size is withheld so inferPageSize cannot adopt a blank wrapper viewport.
+    expect(win.__odPrintReady).toBe(true);
+    expect(win.__odPrintSize).toBeNull();
+  });
+
+  it('rejects a non-finite size so Infinity cannot poison the page size', async () => {
+    const { body, nonce } = await extractCacheScript();
+    const { win, fire } = loadCache(body);
+    fire(readyEvent(nonce, Number.POSITIVE_INFINITY, 100, win));
+    expect(win.__odPrintSize).toBeNull();
+  });
+
+  it('ignores a print-ready message carrying the wrong nonce (anti-spoof)', async () => {
+    const { body } = await extractCacheScript();
+    const { win, fire } = loadCache(body);
+    fire(readyEvent('not-the-real-nonce', 1440, 2000, win));
+    expect(win.__odPrintReady).toBe(false);
+    expect(win.__odPrintSize).toBeNull();
   });
 });
 
@@ -523,15 +669,14 @@ describe('exportProjectAsPdf', () => {
       expect(result).toBe('desktop');
       expect(fallback).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const call = fetchMock.mock.calls[0] as [string, { body: string }];
+      const call = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
       const body = JSON.parse(call[1].body);
-      expect(body).toEqual({
-        deck: true,
-        delivery: 'ticket',
-        fileName: 'deck/index.html',
-        html: '<!doctype html><section class="slide">Snapshot</section>',
-        title: 'Seed Deck',
-      });
+      expect(body.deck).toBe(true);
+      expect(body.delivery).toBe('ticket');
+      expect(body.fileName).toBe('deck/index.html');
+      expect(body.title).toBe('Seed Deck');
+      expect(body.html).toContain('<section class="slide">Snapshot</section>');
+      expect(body.html).not.toContain('flex-direction: column !important');
     } finally {
       restoreHost();
     }
@@ -723,7 +868,7 @@ describe('exportProjectAsPdf', () => {
   });
 
   it('uses host print after desktop PDF API fails on desktop', async () => {
-    const printSpy = vi.fn(async () => ({ ok: true }));
+    const printSpy = vi.fn(async () => ({ ok: true as const }));
     const restoreHost = installMockOpenDesignHost({ host: { pdf: { print: printSpy } } });
     try {
       const fallback = vi.fn();
@@ -1038,6 +1183,48 @@ describe('exportProjectAsHtml', () => {
     });
     expect(capturedFilename).toBe('Main-Page.html');
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>inlined</p>');
+  });
+
+  it('fetches export tickets with credentials instead of navigating the SPA tab', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/html') {
+        return new Response(
+          JSON.stringify({
+            delivery: 'ticket',
+            downloadUrl: '/api/projects/proj-1/export/downloads/ticket-1',
+            filename: 'Seed-Deck.html',
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-1') {
+        return new Response('<!doctype html><p>ticket html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    await exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/proj-1/export/downloads/ticket-1',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>ticket html</p>');
   });
 
   it('falls back to daemon inline HTML when rendered HTML export fails', async () => {
@@ -1611,17 +1798,25 @@ describe('sandboxed preview Blob exports', () => {
     expect(htmlArg).toContain('document.documentElement');
     expect(htmlArg).toContain('scrollHeight');
     expect(htmlArg).toContain('offsetHeight');
-    // ...and it ships the size alongside the readiness signal.
-    expect(htmlArg).toContain('width:w');
-    expect(htmlArg).toContain('height:h');
+    // ...and it ships that size to the parent, but only once the content has a
+    // usable (non-zero) size, by driving the measurement through
+    // reportPrintSizeWhenStable. The polling/gating behavior itself is covered
+    // by the reportPrintSizeWhenStable unit tests above (real-logic behavior
+    // assertions, not string presence); here we assert the handshake is wired
+    // to it so a heavier artifact that lays out late is not reported at size 0,
+    // which would blank the PDF (#4458).
+    expect(htmlArg).toContain('reportPrintSizeWhenStable');
+    expect(htmlArg).toContain('width:size.width');
+    expect(htmlArg).toContain('height:size.height');
     // The parent wrapper caches the reported size for inferPageSize() to read,
-    // validating it as a positive finite number so a malformed/oversized message
+    // gating it through isUsablePrintSize so a malformed/oversized message
     // cannot poison the page size. The finite check matters: `Infinity > 0` is
     // true, so a bare `typeof === 'number'` guard would cache a non-finite
-    // dimension and let it leak into the page size.
+    // dimension and let it leak into the page size. (isUsablePrintSize's own
+    // boundary behavior is covered by its unit tests above.)
     expect(htmlArg).toContain('window.__odPrintSize');
-    expect(htmlArg).toContain('Number.isFinite(e.data.width)');
-    expect(htmlArg).toContain('Number.isFinite(e.data.height)');
+    expect(htmlArg).toContain('__odUsable(e.data.width,e.data.height)');
+    expect(htmlArg).toContain('Number.isFinite(width)');
   });
 
   it('injects the readiness cache for non-sandboxed desktop exports too', async () => {

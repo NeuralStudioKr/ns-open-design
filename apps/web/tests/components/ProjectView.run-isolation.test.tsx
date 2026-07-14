@@ -1306,7 +1306,11 @@ describe('ProjectView conversation run isolation', () => {
     await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
     fireEvent.click(screen.getByTestId('conversation-select-conv-b'));
 
-    await waitFor(() => expect(screen.getByTestId('chat-error').textContent).toBe('messages unavailable'));
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-error').textContent).toBe(
+        '대화의 메시지를 불러오지 못했습니다.',
+      ),
+    );
     await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('idle'));
     expect(screen.getByTestId('send-message')).toHaveProperty('disabled', true);
     expect(screen.getByTestId('workspace-streaming-state').textContent).toBe('streaming');
@@ -1437,9 +1441,7 @@ describe('ProjectView conversation run isolation', () => {
 
     await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(screen.getByTestId('chat-error').textContent).toBe(
-        'Your authentication token has expired. Please sign in again.',
-      ),
+      expect(screen.getByTestId('chat-error').textContent).toContain('인증이 만료'),
     );
     await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('idle'));
     expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false);

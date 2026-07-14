@@ -41,16 +41,16 @@ export function resolveDaemonDbConfig(env?: Record<string, string | undefined>):
   const e = env ?? process.env;
   const kind = (e.OD_DAEMON_DB ?? 'sqlite').trim().toLowerCase();
   if (kind === 'postgres') {
-    const host = e.OD_PG_HOST ?? '';
-    const portStr = e.OD_PG_PORT ?? '5432';
-    const database = e.OD_PG_DATABASE ?? '';
-    const user = e.OD_PG_USER ?? '';
+    const host = (e.OD_PG_HOST ?? e.POSTGRES_HOST ?? '').trim();
+    const portStr = (e.OD_PG_PORT ?? e.POSTGRES_PORT ?? '5432').trim();
+    const database = (e.OD_PG_DATABASE ?? '').trim();
+    const user = (e.OD_PG_USER ?? '').trim();
     const sslMode = e.OD_PG_SSL_MODE === 'disable' || e.OD_PG_SSL_MODE === 'verify-full'
       ? e.OD_PG_SSL_MODE
       : 'require';
     if (!host || !database || !user) {
       throw new DaemonDbConfigError(
-        'OD_DAEMON_DB=postgres requires OD_PG_HOST, OD_PG_DATABASE, OD_PG_USER. ' +
+        'OD_DAEMON_DB=postgres requires OD_PG_HOST (or POSTGRES_HOST), OD_PG_DATABASE, OD_PG_USER. ' +
         'OD_PG_PORT defaults to 5432; OD_PG_SSL_MODE defaults to "require".',
       );
     }

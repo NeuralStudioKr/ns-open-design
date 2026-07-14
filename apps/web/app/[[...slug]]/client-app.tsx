@@ -3,15 +3,18 @@
 import dynamic from 'next/dynamic';
 
 import { installErrorHandlers } from '../../src/analytics/error-tracking';
+import { EmbedLoadingShell } from '../../src/components/EmbedLoadingShell';
 import { installWebObservability } from '../../src/observability/install';
-import { resolveLoadingShellLabel } from '../../src/teamver/branding/loadingShellLabel';
 import { isTeamverEmbedBuild } from '../../src/teamver/branding/siteMetadata';
+import { prefetchEmbedAuthSessionOnBoot } from '../../src/teamver/prefetchEmbedAuth';
 import { scrubCosmeticLaunchParamsFromBrowserUrl } from '../../src/teamver/teamverEmbedAuthNavigation';
-
-const LOADING_SHELL_LABEL = resolveLoadingShellLabel();
 
 if (typeof window !== 'undefined') {
   scrubCosmeticLaunchParamsFromBrowserUrl();
+  // Overlap `/auth/session` with the App chunk download.
+  if (isTeamverEmbedBuild()) {
+    prefetchEmbedAuthSessionOnBoot();
+  }
 }
 
 // Install browser exception handlers at module-load time, before any other
@@ -34,15 +37,7 @@ installWebObservability();
 const App = dynamic(() => import('../../src/App').then((m) => m.App), {
   ssr: false,
   loading: () => (
-    <div
-      className={
-        isTeamverEmbedBuild()
-          ? 'od-loading-shell od-loading-shell--overlay'
-          : 'od-loading-shell'
-      }
-    >
-      {LOADING_SHELL_LABEL}
-    </div>
+    <EmbedLoadingShell overlay={isTeamverEmbedBuild()} />
   ),
 });
 

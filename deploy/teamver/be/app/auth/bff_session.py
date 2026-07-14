@@ -11,6 +11,8 @@ from starlette.requests import Request
 from ..config import settings
 
 _BFF_KEY = "teamver_bff_v1"
+# request.scope flag — TeamverSessionMiddleware skips Set-Cookie when set.
+SUPPRESS_SESSION_COOKIE_SCOPE_KEY = "teamver_suppress_session_cookie"
 
 
 @dataclass
@@ -59,13 +61,14 @@ def save_bff_session(
     workspace_id: str | None = None,
     aud: str | None = None,
     scope: list[str] | None = None,
+    access_expires_at: float | None = None,
 ) -> None:
     now = time.time()
     request.session[_BFF_KEY] = {
         "user_id": user_id,
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "access_expires_at": now + max(0, int(expires_in)),
+        "access_expires_at": access_expires_at if access_expires_at is not None else now + max(0, int(expires_in)),
         "workspace_id": workspace_id,
         "aud": aud,
         "scope": scope or [],
@@ -80,7 +83,27 @@ def update_bff_workspace(request: Request, workspace_id: str) -> None:
 
 
 def clear_bff_session(request: Request) -> None:
+    """Drop the BFF session and allow middleware to emit a delete Set-Cookie.
+
+    Clears any prior ``suppress_session_cookie`` flag: hard expiry / logout must
+    win over HA retain races so the browser does not keep a dead cookie.
+    """
     request.session.pop(_BFF_KEY, None)
+    request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
+
+
+def suppress_session_cookie(request: Request) -> None:
+    """Do not re-emit this request's session cookie on the response.
+
+    Parallel Drive calls across ALB nodes can race refresh-token rotation: a
+    losing node still holds the pre-rotation session in ``request.session``.
+    Re-signing that stale session would overwrite a sibling's newer Set-Cookie
+    and leave the browser stuck on Main ``Invalid token``.
+
+    Only call this when the in-memory session is being *retained*. After
+    ``clear_bff_session``, delete Set-Cookie must still be allowed to ship.
+    """
+    request.scope[SUPPRESS_SESSION_COOKIE_SCOPE_KEY] = True
 
 
 def bff_session_public_view(session: BffSession | None) -> dict[str, Any]:

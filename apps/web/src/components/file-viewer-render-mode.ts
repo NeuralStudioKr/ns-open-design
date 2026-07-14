@@ -95,6 +95,16 @@ export function shouldUrlLoadHtmlPreview(d: UrlLoadDecision): boolean {
   return true;
 }
 
+export function resolveHtmlPreviewAssetUrl(options: {
+  teamverEmbedMode: boolean;
+  embedPreviewPrefix: string | null | undefined;
+  rawUrl: string;
+  scopedUrl: string | null | undefined;
+}): string {
+  if (!options.teamverEmbedMode) return options.rawUrl;
+  return options.embedPreviewPrefix ? options.scopedUrl ?? 'about:blank' : 'about:blank';
+}
+
 export function hasUrlModeBridge(source: string | null | undefined): boolean {
   if (!source) return false;
   return /<script\b[^>]*\bsrc\s*=\s*["'][^"']*\bod-direct-edit\.js\b[^"']*["'][^>]*>/i.test(source);

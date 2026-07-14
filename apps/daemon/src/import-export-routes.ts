@@ -1,5 +1,9 @@
 import type { Express } from 'express';
-import { PROJECT_EXPORT_MANIFEST_SCHEMA } from '@open-design/contracts';
+import {
+  PROJECT_EXPORT_MANIFEST_SCHEMA,
+  injectDeckHtmlExportViewportScript,
+  patchArtifactDeckPrintCss,
+} from '@open-design/contracts';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import JSZip from 'jszip';
@@ -15,7 +19,8 @@ import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
 import {
-  buildDeckScreenExportCss,
+  buildDeckHtmlExportScreenCss,
+  buildDeckHtmlExportStaticRevealScript,
   isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessImage,
@@ -228,8 +233,17 @@ function injectExportSnippetIntoHead(html: string, snippet: string): string {
   return `${snippet}${html}`;
 }
 
+function injectExportSnippetBeforeBodyClose(html: string, snippet: string): string {
+  if (!snippet) return html;
+  if (/<\/body\s*>/i.test(html)) {
+    return html.replace(/<\/body\s*>/i, `${snippet}</body>`);
+  }
+  return `${html}${snippet}`;
+}
+
 export function buildStaticHtmlExportFallback(input: { html: string; deck?: boolean }): string {
   if (input.deck !== true) return input.html;
+  const cleaned = patchArtifactDeckPrintCss(input.html);
   const style = `<style data-teamver-static-html-export-fallback>
 html, body {
   margin: 0 !important;
@@ -238,9 +252,12 @@ html, body {
   print-color-adjust: exact !important;
 }
 *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-${buildDeckScreenExportCss()}
+${buildDeckHtmlExportScreenCss()}
 </style>`;
-  return injectExportSnippetIntoHead(input.html, style);
+  const revealScript = `<script data-od-html-export-reveal>${buildDeckHtmlExportStaticRevealScript()}</script>`;
+  const withHead = injectExportSnippetIntoHead(cleaned, style);
+  const withReveal = injectExportSnippetBeforeBodyClose(withHead, revealScript);
+  return injectDeckHtmlExportViewportScript(withReveal);
 }
 
 export { isHeadlessChromiumUnavailableExportError } from './headless-export.js';

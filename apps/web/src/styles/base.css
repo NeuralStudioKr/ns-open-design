@@ -2,23 +2,96 @@
 
 html, body, #root { height: 100%; margin: 0; }
 
+/* Solid fallback before tokens.css / theme vars resolve — matches --bg-app. */
+html {
+  background-color: #faf9f7;
+}
+
+/* Teamver embed: warm cream from first paint (matches Main FE frame). */
+html.teamver-embed,
+html.teamver-embed body {
+  background-color: #F4EFE6;
+}
+
 body {
   font-family: var(--sans);
-  color: var(--text);
-  background: var(--bg-app);
+  color: var(--text, #1a1916);
+  background: var(--bg-app, #faf9f7);
+  background-color: #faf9f7;
   font-size: 13.5px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.teamver-embed body {
+  background: #F4EFE6;
+  background-color: #F4EFE6;
+}
+
+html[data-theme="dark"] body {
+  background-color: #1a1917;
+}
+
+/*
+ * Auth/bootstrap must stay on Main-frame cream even when the saved theme is
+ * dark — otherwise chunk → gate → app reads as light loader → dark loader.
+ * Themed app chrome applies only after `.teamver-embed-booted`.
+ */
+html.teamver-embed:not(.teamver-embed-booted),
+html.teamver-embed:not(.teamver-embed-booted) body,
+html.teamver-embed:not(.teamver-embed-booted)[data-theme="dark"],
+html.teamver-embed:not(.teamver-embed-booted)[data-theme="dark"] body {
+  background-color: #F4EFE6 !important;
+}
+
+html.teamver-embed.teamver-embed-booted[data-theme="dark"] body {
+  background-color: #1a1917;
+}
+
 .od-loading-shell {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  color: var(--text-muted);
-  background: var(--bg-app);
-  font: 500 13px/1.4 var(--sans);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--text-muted, #74716b);
+  background: var(--bg-app, #faf9f7);
+  background-color: #faf9f7;
+  font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
+}
+
+.od-loading-shell--teamver {
+  background: #F4EFE6 !important;
+  background-color: #F4EFE6 !important;
+  color: #8a857c !important;
+}
+
+html[data-theme="dark"] .od-loading-shell:not(.od-loading-shell--teamver) {
+  background-color: #1a1917;
+  color: var(--text-muted, #a8a39a);
+}
+
+.od-loading-shell::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: od-loading-spin 900ms linear infinite;
+}
+
+@keyframes od-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Keep legacy `spin` name for any other callers. */
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .od-loading-shell--overlay {
@@ -38,7 +111,42 @@ body {
   flex: 1;
   min-height: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
+  background: #F4EFE6;
+  background-color: #F4EFE6;
 }
 
+.embed-route-loading > .od-loading-shell {
+  flex: 1;
+  min-height: 100%;
+  width: 100%;
+}
+
+/* Inline entry/project loaders: same type + spinner language as the shell. */
+.centered-loader--embed-tone {
+  gap: 10px;
+  color: #8a857c;
+  font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
+  background: transparent;
+}
+
+.centered-loader--embed-tone::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: od-loading-spin 900ms linear infinite;
+}
+
+.centered-loader--embed-tone .loading-spinner {
+  display: none;
+}
+
+.centered-loader--embed-tone .centered-loader-label {
+  font-size: 12.5px;
+  letter-spacing: 0;
+  font-weight: 500;
+}

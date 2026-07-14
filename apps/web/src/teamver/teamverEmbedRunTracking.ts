@@ -1,5 +1,7 @@
 import type { ChatRunStatusResponse } from "@open-design/contracts";
 
+import { publishTeamverSessionActiveRunProjectIds } from "./teamverEmbedSessionRuns";
+
 export type EmbedRunTrackingRefs = {
   activeRunIds: { current: Set<string> };
   notifiedBackgroundRunIds: { current: Set<string> };
@@ -16,6 +18,7 @@ export function resetEmbedRunTrackingRefs(refs: EmbedRunTrackingRefs): void {
   refs.wasActiveRun.current = false;
   refs.activeRunSignature.current = "";
   refs.sessionActiveRunProjectIds.current.clear();
+  publishTeamverSessionActiveRunProjectIds(refs.sessionActiveRunProjectIds.current);
 }
 
 /** Skip completion toast when the run's project is outside the loaded workspace list. */
@@ -193,4 +196,5 @@ export function seedEmbedRunTrackingFromRuns(
       refs.notifiedBackgroundRunIds.current.add(run.id);
     }
   }
+  publishTeamverSessionActiveRunProjectIds(refs.sessionActiveRunProjectIds.current);
 }

@@ -25,15 +25,12 @@ export function teamverEmbedOverrides(
   subtitle?: string,
   hero?: { title?: string; subtitle?: string },
 ): Partial<Dict> {
+  // One fixed bootstrap string — Entry/Project/banner must not rewrite copy mid-paint.
   const bootstrapLoading = resolveEmbedBootstrapLoadingLabel();
   const overrides: Partial<Dict> = {
     "app.brand": title,
     "app.brandPill": "",
-    // Session banner reuses the pre-mount shell copy so the bootstrap
-    // sequence reads as a single loading state instead of two distinct
-    // "Loading…" then "Checking session…" messages.
     "teamver.embed.sessionLoading": bootstrapLoading,
-    // Entry/project spinners during the first paint use the same copy.
     "common.loading": bootstrapLoading,
     "app.welcomeLoading": bootstrapLoading,
     "entry.loadingWorkspace": bootstrapLoading,
@@ -50,6 +47,7 @@ export function teamverEmbedOverrides(
   overrides["chat.activeFilePlaceholder"] = "슬라이드 {file} 변경 요청…";
   overrides["chat.startTitle"] = "슬라이드 작업 시작";
   overrides["fileViewer.loading"] = "슬라이드 미리보기 불러오는 중…";
+  overrides["fileViewer.updatingPreview"] = "슬라이드 업데이트 반영 중…";
   overrides["fileViewer.previewUnavailable"] =
     "슬라이드 미리보기를 불러올 수 없습니다. 잠시 후 다시 시도하거나 채팅에서 생성 상태를 확인해 주세요.";
   overrides["chat.attachAria"] = "파일 첨부";

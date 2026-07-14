@@ -32,7 +32,7 @@ export function normalizeEntryFile(fileName: string): string {
 
 export function currentExportCodeVersion(): string {
   const raw = (process.env.OD_EXPORT_CACHE_VERSION ?? '').trim();
-  return raw.length > 0 ? raw : 'v2';
+  return raw.length > 0 ? raw : 'v5';
 }
 
 export function computeExportCacheKey(input: ExportCacheKeyInput): string {

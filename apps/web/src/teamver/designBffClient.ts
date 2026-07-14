@@ -13,8 +13,7 @@ import {
   resolveDesignBffRefreshUrl,
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
-import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
-import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import {
   clearOrphanTeamverAuthCookies,
   isOrphanTeamverJwtAuthFailure,
@@ -22,7 +21,7 @@ import {
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
-  consumeTeamverAuthReturnPending,
+  peekTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
 } from "./teamverAuthReturn";
 
@@ -102,16 +101,11 @@ export function getDesignBffClient(): TeamverClient | null {
       withCredentials: true,
       fetch: fetchDesignBffSdk,
       onAuthExpired: () => {
-        prepareDesignAuthSessionReload();
-        redirectToTeamverLoginPreservingRoute({
-          returnTo:
-            typeof window !== "undefined"
-              ? resolveEmbedAuthReturnPath(
-                  window.location.pathname,
-                  window.location.search,
-                )
-              : null,
-        });
+        // Do not prepareDesignAuthSessionReload() here — that clears session
+        // caches before we know recovery failed, and looks like a spontaneous
+        // logout ("Teamver Design 불러오는 중…"). Cache prep runs only when
+        // passive auth actually redirects to Main sign-in.
+        handleEmbedPassiveUnauthorized("bff");
       },
     });
   }
@@ -155,6 +149,9 @@ let unauthenticatedRefreshAttempted = false;
 let authRecoveryRefreshActive = false;
 /** One-shot load recovery — pending flag / referrer must not stick across probes. */
 let embedAuthRecoveryLoadUsed = false;
+/** Coalesce parallel refreshDesignAuthCookie() from Drive modal burst. */
+let inFlightAuthRefresh: Promise<boolean> | null = null;
+const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 150;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
@@ -162,6 +159,7 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   unauthenticatedRefreshAttempted = false;
   authRecoveryRefreshActive = false;
   embedAuthRecoveryLoadUsed = false;
+  inFlightAuthRefresh = null;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -170,8 +168,10 @@ function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boole
     return true;
   }
   if (embedAuthRecoveryLoadUsed) return false;
+  // Peek only — pending must survive an early unauthenticated probe so login
+  // redirect defer still works. One-shot is tracked by embedAuthRecoveryLoadUsed.
   const recovery =
-    consumeTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
+    peekTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
   if (recovery) embedAuthRecoveryLoadUsed = true;
   return recovery;
 }
@@ -203,6 +203,12 @@ export async function withDesignBffCookieAuthRecovery<T>(
     if (err instanceof NetworkError && err.status === 401) {
       const refreshed = await refreshDesignAuthCookie();
       if (refreshed) return await request();
+      // In HA, a sibling request may have already rotated and Set-Cookie'd the
+      // BFF session while this request observed the losing-node 401. Give the
+      // browser one short turn to apply that cookie, then retry the original
+      // BFF call without issuing another /auth/refresh.
+      await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+      return await request();
     }
     throw err;
   }
@@ -210,39 +216,41 @@ export async function withDesignBffCookieAuthRecovery<T>(
 
 /** BFF silent refresh via design-api (Apps JWT stored server-side). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
-  if (!shouldAttemptCookieRefresh()) return false;
+  if (inFlightAuthRefresh) return inFlightAuthRefresh;
 
-  const isBareAttempt =
-    !isTeamverEmbedSessionAuthenticated() &&
-    !isBootstrapAuthMode() &&
-    !hasProbableTeamverAuthCookie();
-  if (isBareAttempt) {
-    unauthenticatedRefreshAttempted = true;
-  }
+  const run = (async (): Promise<boolean> => {
+    if (!shouldAttemptCookieRefresh()) return false;
 
-  const bffResult = await postAuthRefresh(resolveDesignBffRefreshUrl());
-  if (bffResult.ok) {
-    resetDesignAuthRefreshDeclined();
-    return true;
-  }
-  if (bffResult.status === 400 || bffResult.status === 401) {
-    authRefreshDeclinedForSession = true;
-    // C2 hookup: if the failure body signals an orphan JWT (valid
-    // signature but the Main BE no longer knows the user — typical on
-    // staging after a DB reset or a prod cookie bleed), best-effort
-    // logout on the Main BE so the `.teamver.com` HttpOnly cookie is
-    // cleared. Otherwise the browser retains a permanently-invalid
-    // cookie and the user is stuck in a refresh-loop until they clear
-    // cookies manually. Fire-and-forget: never block the refresh path.
-    if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
-      console.info(
-        '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
-        { status: bffResult.status },
-      );
-      void clearOrphanTeamverAuthCookies();
+    const isBareAttempt =
+      !isTeamverEmbedSessionAuthenticated() &&
+      !isBootstrapAuthMode() &&
+      !hasProbableTeamverAuthCookie();
+    if (isBareAttempt) {
+      unauthenticatedRefreshAttempted = true;
     }
-  }
-  return false;
+
+    const bffResult = await postAuthRefresh(resolveDesignBffRefreshUrl());
+    if (bffResult.ok) {
+      resetDesignAuthRefreshDeclined();
+      return true;
+    }
+    if (bffResult.status === 400 || bffResult.status === 401) {
+      authRefreshDeclinedForSession = true;
+      if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
+        console.info(
+          '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
+          { status: bffResult.status },
+        );
+        void clearOrphanTeamverAuthCookies();
+      }
+    }
+    return false;
+  })();
+
+  inFlightAuthRefresh = run.finally(() => {
+    inFlightAuthRefresh = null;
+  });
+  return inFlightAuthRefresh;
 }
 
 /** Sign-in / post-login return — bust caches so the next probe is not stale. */

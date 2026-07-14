@@ -112,6 +112,11 @@ describe("project conversation error messages", () => {
       formatProjectRunErrorForUser(new Error("Missing API key — open Settings and paste one in.")),
     ).toContain("서버 API 키");
     expect(
+      formatProjectRunErrorForUser(
+        new Error("Your authentication token has expired. Please sign in again."),
+      ),
+    ).toContain("인증이 만료");
+    expect(
       formatProjectConversationErrorForUser(
         new Error("Network request failed"),
         "슬라이드 프로젝트의 대화 목록을 불러오지 못했습니다.",

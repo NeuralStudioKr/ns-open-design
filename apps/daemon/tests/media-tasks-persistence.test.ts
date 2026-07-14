@@ -5,6 +5,7 @@ import {
   getMediaTask,
   insertMediaTask,
   listMediaTasksByProject,
+  listMediaTasksByProjectAsync,
   listRecentMediaTasks,
   migrateMediaTasks,
   reconcileMediaTasksOnBoot,
@@ -192,5 +193,11 @@ describe('media task persistence', () => {
     insertMediaTask(db, { id: 'task_delete', projectId: 'p1', status: 'failed' });
     deleteMediaTask(db, 'task_delete');
     expect(getMediaTask(db, 'task_delete')).toBeNull();
+  });
+
+  it('listMediaTasksByProjectAsync delegates to sqlite when postgres is off', async () => {
+    insertMediaTask(db, { id: 'async-task', projectId: 'p1', status: 'running', startedAt: 100 });
+    const tasks = await listMediaTasksByProjectAsync(db, 'p1');
+    expect(tasks.map((task) => task.id)).toEqual(['async-task']);
   });
 });

@@ -4,10 +4,12 @@ import {
   contributeGeneratedPluginToOpenDesign,
   createProject,
   createPluginShareProject,
+  getInstalledPlugin,
   importClaudeDesignZip,
   importFolderProject,
   installGeneratedPluginFolder,
   listPlugins,
+  listPluginsPage,
   pickLocalFolderPath,
   publishGeneratedPluginToGitHub,
 } from '../../src/state/projects';
@@ -112,7 +114,7 @@ describe('listPlugins', () => {
 
     await listPlugins();
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=48');
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=24');
     embedSpy.mockRestore();
     brandingSpy.mockRestore();
   });
@@ -171,6 +173,79 @@ describe('listPlugins', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/plugins?mode=deck&q=terminal+deck&limit=12&offset=24',
     );
+  });
+
+  it('returns catalog pagination metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        plugins: [{ id: 'deck-a', title: 'Deck A', manifest: { od: { mode: 'deck' } } }],
+        total: 91,
+        limit: 24,
+        offset: 48,
+        nextOffset: 72,
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const page = await listPluginsPage({ mode: 'deck', limit: 24, offset: 48 });
+
+    expect(page.plugins.map((plugin) => plugin.id)).toEqual(['deck-a']);
+    expect(page).toMatchObject({
+      total: 91,
+      limit: 24,
+      offset: 48,
+      nextOffset: 72,
+    });
+  });
+});
+
+describe('getInstalledPlugin', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('fetches a plugin by id outside the paginated community list', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (typeof url === 'string' && url === '/api/plugins/example-simple-deck') {
+        return new Response(
+          JSON.stringify({
+            id: 'example-simple-deck',
+            title: 'Simple Deck',
+            manifest: { od: { mode: 'deck' } },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const plugin = await getInstalledPlugin('example-simple-deck');
+
+    expect(plugin?.id).toBe('example-simple-deck');
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/example-simple-deck');
+  });
+
+  it('returns null when slide-only embed filters the plugin out', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        id: 'example-guizang-ppt',
+        title: 'Guizang PPT',
+        manifest: { od: { mode: 'deck' } },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const plugin = await getInstalledPlugin('example-guizang-ppt');
+
+    expect(plugin).toBeNull();
+    embedSpy.mockRestore();
+    brandingSpy.mockRestore();
   });
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   decideEmbedBackgroundRunCompletion,
@@ -11,10 +11,19 @@ import {
   pruneSessionActiveRunProjectIds,
   buildEmbedActiveRunAllowMissingIds,
 } from "../src/teamver/teamverEmbedRunTracking";
+import {
+  hasTeamverEmbedBackgroundRuns,
+  publishTeamverSessionActiveRunProjectIds,
+  resetTeamverEmbedSessionActiveRunProjectIdsForTests,
+} from "../src/teamver/teamverEmbedSessionRuns";
 import type { ChatRunStatusResponse } from "@open-design/contracts";
 
 describe("resetEmbedRunTrackingRefs", () => {
-  it("clears run ids and signature bookkeeping", () => {
+  beforeEach(() => {
+    resetTeamverEmbedSessionActiveRunProjectIdsForTests();
+  });
+
+  it("clears run ids and publishes empty passive-auth snapshot", () => {
     const refs = {
       activeRunIds: { current: new Set(["r1"]) },
       notifiedBackgroundRunIds: { current: new Set(["r2"]) },
@@ -22,6 +31,8 @@ describe("resetEmbedRunTrackingRefs", () => {
       activeRunSignature: { current: "p1:running:1" },
       sessionActiveRunProjectIds: { current: new Set(["p1"]) },
     };
+    publishTeamverSessionActiveRunProjectIds(refs.sessionActiveRunProjectIds.current);
+    expect(hasTeamverEmbedBackgroundRuns()).toBe(true);
 
     resetEmbedRunTrackingRefs(refs);
 
@@ -30,6 +41,7 @@ describe("resetEmbedRunTrackingRefs", () => {
     expect(refs.wasActiveRun.current).toBe(false);
     expect(refs.activeRunSignature.current).toBe("");
     expect(refs.sessionActiveRunProjectIds.current.size).toBe(0);
+    expect(hasTeamverEmbedBackgroundRuns()).toBe(false);
   });
 });
 
@@ -111,6 +123,10 @@ describe("processEmbedBackgroundRunCompletions", () => {
 });
 
 describe("seedEmbedRunTrackingFromRuns", () => {
+  beforeEach(() => {
+    resetTeamverEmbedSessionActiveRunProjectIdsForTests();
+  });
+
   it("tracks active runs and marks terminal runs as already notified", () => {
     const refs = {
       activeRunIds: { current: new Set<string>() },
@@ -130,6 +146,7 @@ describe("seedEmbedRunTrackingFromRuns", () => {
     expect(refs.activeRunIds.current).toEqual(new Set(["r1", "q1"]));
     expect(refs.sessionActiveRunProjectIds.current).toEqual(new Set(["p1", "p2"]));
     expect(refs.notifiedBackgroundRunIds.current).toEqual(new Set(["r2"]));
+    expect(hasTeamverEmbedBackgroundRuns()).toBe(true);
   });
 
   it("tracks active runs only from workspace subset while marking all terminal runs notified", () => {

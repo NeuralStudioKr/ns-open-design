@@ -625,5 +625,28 @@ describe('AssistantMessage recovered produced files', () => {
 
     expect(screen.getByText('agent-sketch.sketch.json')).toBeTruthy();
   });
+
+  it('shows only files created after the turn-start snapshot when producedFiles was over-counted', () => {
+    render(
+      <AssistantMessage
+        message={baseMessage({
+          preTurnFileNames: ['deck.html', 'deck-2.html', 'deck-3.html'],
+          producedFiles: [
+            producedFile('deck.html'),
+            producedFile('deck-2.html'),
+            producedFile('deck-3.html'),
+            producedFile('deck-4.html'),
+          ],
+        })}
+        streaming={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('deck-4.html')).toBeTruthy();
+    expect(screen.queryByText('deck.html')).toBeNull();
+    expect(screen.queryByText('deck-2.html')).toBeNull();
+    expect(screen.queryByText('deck-3.html')).toBeNull();
+  });
 });
 

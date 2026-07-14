@@ -23,7 +23,11 @@ import type { RouteDeps } from './server-context.js';
 import { readAnalyticsContext } from './analytics.js';
 import { listSkills } from './skills.js';
 import { isSafeId } from './projects.js';
-import { listProjectsPage, parseProjectListCursor } from './db.js';
+import {
+  listProjectsAsync,
+  listProjectsPageAsync,
+  parseProjectListCursor,
+} from './db.js';
 import {
   BUILT_IN_PROJECT_LOCATION_ID,
   allProjectLocations,
@@ -41,6 +45,7 @@ import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
+import { scheduleTeamverProjectDaemonStateExport } from './teamver-project-daemon-state.js';
 import {
   shouldReportByokUsageFromMessage,
   reportByokTeamverUsageAndBillingFromDaemon,
@@ -783,14 +788,61 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { sendApiError, createSseResponse } = ctx.http;
   const { DESIGN_SYSTEMS_DIR, PROJECTS_DIR, SKILLS_DIR } = ctx.paths;
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
-  const { insertProject, validateLinkedDirs, getProject, updateProject, dbDeleteProject, removeProjectDir } = ctx.projectStore;
+  const {
+    insertProject,
+    insertProjectAsync,
+    validateLinkedDirs,
+    getProject,
+    getProjectAsync,
+    updateProject,
+    dbDeleteProject,
+    dbDeleteProjectAsync,
+    removeProjectDir,
+  } = ctx.projectStore;
   const { writeProjectFile, readProjectFile, ensureProject, listFiles, listTabs, setTabs, resolveProjectDir } = ctx.projectFiles;
-  const { insertConversation, getConversation, listConversations, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
+  const {
+    insertConversation,
+    insertConversationAsync,
+    getConversation, listConversations, listConversationsAsync, updateConversation, deleteConversation, listMessages, upsertMessage, listPreviewComments, upsertPreviewComment, updatePreviewCommentStatus, deletePreviewComment } = ctx.conversations;
   const { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate } = ctx.templates;
-  const { listLatestProjectRunStatuses, listProjectsAwaitingInput, normalizeProjectDisplayStatus, composeProjectDisplayStatus, listProjects } = ctx.status;
+  const {
+    listLatestProjectRunStatusesAsync,
+    listProjectsAwaitingInputAsync,
+    normalizeProjectDisplayStatus,
+    composeProjectDisplayStatus,
+  } = ctx.status;
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
   const { randomId } = ctx.ids;
   const { validateProjectDesignSystemId, validateProjectSkillId } = ctx.validation;
+  async function recoverTeamverConversationForWrite(projectId: string, conversationId: string, patch?: any) {
+    if (!isTeamverDesignManaged()) return null;
+    if (!isSafeId(projectId) || !isSafeId(conversationId)) return null;
+    const project = getProjectAsync
+      ? await getProjectAsync(db, projectId)
+      : getProject(db, projectId);
+    if (!project) return null;
+    const now = Date.now();
+    const sessionMode = normalizeChatSessionMode(patch?.sessionMode);
+    const conv = insertConversation(db, {
+      id: conversationId,
+      projectId,
+      title: typeof patch?.title === 'string' ? patch.title.trim() || null : null,
+      sessionMode,
+      createdAt: now,
+      updatedAt: now,
+    });
+    console.warn(
+      JSON.stringify({
+        metric: 'teamver_conversation_recovered_for_write',
+        ts: now,
+        projectId,
+        conversationId,
+        sessionMode,
+      }),
+    );
+    return conv;
+  }
+
   async function loadPluginRegistryView() {
     const [skills, designSystems] = await Promise.all([
       listSkills(SKILLS_DIR),
@@ -912,17 +964,18 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       : BUILT_IN_PROJECT_LOCATION_ID;
   }
 
-  function unregisterProjectsForRemovedLocations(
+  async function unregisterProjectsForRemovedLocations(
     previousLocations: Array<{ id: string; path: string; builtIn?: boolean }>,
     nextLocations: Array<{ id?: string; path: string }>,
-  ): string[] {
+  ): Promise<string[]> {
     const nextIds = new Set(nextLocations.map((location) => location.id).filter(Boolean));
     const nextPaths = new Set(nextLocations.map((location) => location.path));
     const removed = previousLocations.filter(
       (location) => !location.builtIn && !nextIds.has(location.id) && !nextPaths.has(location.path),
     );
     if (removed.length === 0) return [];
-    return listProjects(db)
+    const projects = await listProjectsAsync(db);
+    return projects
       .filter((project: any) => removed.some((location) => projectBelongsToLocation(project, location)))
       .map((project: any) => project.id);
   }
@@ -940,8 +993,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   async function buildProjectListingContext() {
     const locations = await configuredProjectLocations();
-    const latestRunStatuses = listLatestProjectRunStatuses(db);
-    const awaitingInputProjects = listProjectsAwaitingInput(db);
+    const latestRunStatuses = await listLatestProjectRunStatusesAsync(db);
+    const awaitingInputProjects = await listProjectsAwaitingInputAsync(db);
     const activeRunStatuses = new Map<string, ReturnType<typeof projectStatusFromRun>>();
     for (const run of design.runs.list()) {
       if (!run.projectId) continue;
@@ -1011,7 +1064,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       }
       const config = await writeAppConfig(ctx.paths.RUNTIME_DATA_DIR, { projectLocations: prepared });
       const locations = allProjectLocations(PROJECTS_DIR, config.projectLocations);
-      const removedProjectIds = unregisterProjectsForRemovedLocations(previousLocations, config.projectLocations ?? []);
+      const removedProjectIds = await unregisterProjectsForRemovedLocations(previousLocations, config.projectLocations ?? []);
       /** @type {import('@open-design/contracts').ProjectLocationsResponse} */
       const body = { locations, removedProjectIds };
       res.json(body);
@@ -1088,7 +1141,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         PROJECT_RECENT_DEFAULT_LIMIT,
         PROJECT_RECENT_MAX_LIMIT,
       );
-      const page = listProjectsPage(db, { limit });
+      const page = await listProjectsPageAsync(db, { limit });
       const context = await buildProjectListingContext();
       /** @type {import('@open-design/contracts').RecentProjectsResponse} */
       const body = {
@@ -1109,7 +1162,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       if (!paginated) {
         /** @type {import('@open-design/contracts').ProjectsResponse} */
         const body = {
-          projects: enrichProjectsForListing(listProjects(db), context),
+          projects: enrichProjectsForListing(await listProjectsAsync(db), context),
         };
         res.json(body);
         return;
@@ -1119,7 +1172,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         PROJECT_LIST_DEFAULT_LIMIT,
         PROJECT_LIST_MAX_LIMIT,
       );
-      const page = listProjectsPage(db, {
+      const page = await listProjectsPageAsync(db, {
         limit,
         cursor: parseProjectListCursor(
           typeof cursorRaw === 'string' ? cursorRaw : undefined,
@@ -1323,20 +1376,35 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
             designSystemId: normalizedDesignSystemId,
           });
         }
-        project = insertProject(db, {
-          id,
-          name: name.trim(),
-          skillId: normalizedSkillId,
-          designSystemId: normalizedDesignSystemId,
-          pendingPrompt: pendingPrompt || null,
-          metadata: projectMetadata,
-          customInstructions:
-            typeof customInstructions === 'string'
-              ? customInstructions
-              : null,
-          createdAt: now,
-          updatedAt: now,
-        });
+        project = insertProjectAsync
+          ? await insertProjectAsync(db, {
+              id,
+              name: name.trim(),
+              skillId: normalizedSkillId,
+              designSystemId: normalizedDesignSystemId,
+              pendingPrompt: pendingPrompt || null,
+              metadata: projectMetadata,
+              customInstructions:
+                typeof customInstructions === 'string'
+                  ? customInstructions
+                  : null,
+              createdAt: now,
+              updatedAt: now,
+            })
+          : insertProject(db, {
+              id,
+              name: name.trim(),
+              skillId: normalizedSkillId,
+              designSystemId: normalizedDesignSystemId,
+              pendingPrompt: pendingPrompt || null,
+              metadata: projectMetadata,
+              customInstructions:
+                typeof customInstructions === 'string'
+                  ? customInstructions
+                  : null,
+              createdAt: now,
+              updatedAt: now,
+            });
       } catch (err) {
         if (externalProjectDir) {
           await rm(externalProjectDir, { recursive: true, force: true }).catch(() => {});
@@ -1348,14 +1416,25 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       const initialSessionMode = normalizeChatSessionMode(
         req.body?.conversationMode ?? req.body?.sessionMode,
       );
-      insertConversation(db, {
-        id: cid,
-        projectId: id,
-        title: null,
-        sessionMode: initialSessionMode,
-        createdAt: now,
-        updatedAt: now,
-      });
+      if (insertConversationAsync) {
+        await insertConversationAsync(db, {
+          id: cid,
+          projectId: id,
+          title: null,
+          sessionMode: initialSessionMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else {
+        insertConversation(db, {
+          id: cid,
+          projectId: id,
+          title: null,
+          sessionMode: initialSessionMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       const explicitPlugin =
         typeof req.body?.pluginId === 'string' && req.body.pluginId.trim().length > 0
           ? true
@@ -1485,7 +1564,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   });
 
   app.get('/api/projects/:id', async (req, res) => {
-    const project = getProject(db, req.params.id);
+    const project = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
     const locations = await configuredProjectLocations();
     if (!project || !projectVisibleForLocations(project, locations))
       return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'not found');
@@ -1613,7 +1694,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   app.delete('/api/projects/:id', async (req, res) => {
     try {
       const projectId = req.params.id;
-      dbDeleteProject(db, projectId);
+      if (dbDeleteProjectAsync) {
+        await dbDeleteProjectAsync(db, projectId);
+      } else {
+        dbDeleteProject(db, projectId);
+      }
       await removeProjectDir(PROJECTS_DIR, projectId).catch(() => {});
       if (ctx.projectStorageHooks) {
         await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
@@ -1674,11 +1759,17 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   // ---- Conversations --------------------------------------------------------
 
-  app.get('/api/projects/:id/conversations', (req, res) => {
-    if (!getProject(db, req.params.id)) {
+  app.get('/api/projects/:id/conversations', async (req, res) => {
+    const project = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!project) {
       return res.status(404).json({ error: 'project not found' });
     }
-    res.json({ conversations: listConversations(db, req.params.id) });
+    const list = listConversationsAsync
+      ? await listConversationsAsync(db, req.params.id)
+      : listConversations(db, req.params.id);
+    res.json({ conversations: list });
   });
 
   app.post('/api/projects/:id/conversations', (req, res) => {
@@ -1768,8 +1859,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     res.json({ conversation: conv });
   });
 
-  app.patch('/api/projects/:id/conversations/:cid', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
+  app.patch('/api/projects/:id/conversations/:cid', async (req, res) => {
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'not found' });
     }
@@ -1796,8 +1890,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     res.json({ messages: listMessages(db, req.params.cid) });
   });
 
-  app.put('/api/projects/:id/conversations/:cid/messages/:mid', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
+  app.put('/api/projects/:id/conversations/:cid/messages/:mid', async (req, res) => {
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid, req.body || {});
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }
@@ -1811,6 +1908,15 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     });
     // Bump the parent project's updatedAt so the project list re-orders.
     updateProject(db, req.params.id, {});
+    if (isTeamverDesignManaged() && ctx.projectStorageHooks) {
+      scheduleTeamverProjectDaemonStateExport(
+        db,
+        ctx.projectStorageHooks,
+        req,
+        res,
+        req.params.id,
+      );
+    }
     ctx.telemetry?.reportFinalizedMessage(saved, m, {
       analyticsContext: readAnalyticsContext(req),
       projectId: req.params.id,
@@ -2128,7 +2234,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { PROJECTS_DIR } = ctx.paths;
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
-  const { getProject } = ctx.projectStore;
+  const { getProject, getProjectAsync } = ctx.projectStore;
   const { listFiles, listProjectFolders, createProjectFolder, deleteProjectFolder, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
@@ -2432,7 +2538,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   app.get('/api/projects/:id/preview-url', async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
+      const project = getProjectAsync
+        ? await getProjectAsync(db, req.params.id)
+        : getProject(db, req.params.id);
       if (!project) {
         sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
         return;
@@ -2476,7 +2584,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         sendApiError(res, 400, 'BAD_REQUEST', 'invalid preview scope');
         return;
       }
-      const project = getProject(db, projectId);
+      const project = getProjectAsync
+        ? await getProjectAsync(db, projectId)
+        : getProject(db, projectId);
       if (!project) {
         sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
         return;
@@ -2537,7 +2647,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const params = req.params as unknown as { 0?: string; 1?: string };
       const projectId = String(params[0] ?? '');
       const relPath = String(params[1] ?? '');
-      const project = getProject(db, projectId);
+      const project = getProjectAsync
+        ? await getProjectAsync(db, projectId)
+        : getProject(db, projectId);
       // PreviewModal loads artifact HTML via srcdoc, giving the iframe Origin: "null".
       // data: URIs, file://, and some sandboxed iframes also send null — all are
       // local-only callers, so this is safe. Real cross-origin sites send a real

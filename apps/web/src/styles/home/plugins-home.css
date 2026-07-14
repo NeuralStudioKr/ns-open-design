@@ -539,6 +539,26 @@
 .plugins-home__card--gallery:hover .plugins-home__html-iframe {
   top: -404px;
 }
+/* Deck templates ship fixed 16:9 stages. Keep the card frame 16:9, but do not
+   make the iframe viewport as small as the card itself: many community decks
+   are authored for a desktop viewport and do not self-fit inside a 400px-wide
+   iframe. Instead, give the iframe a large 16:9 virtual viewport via percent
+   sizing, then scale it back down to the card. This matches the minimax BYOK
+   gallery framing without forcing a single scroll offset for all templates. */
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__gallery-frame {
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__html-iframe,
+.plugins-home__card--gallery[data-od-mode="deck"]:hover .plugins-home__html-iframe {
+  top: 0;
+  left: 0;
+  width: 360%;
+  height: 360%;
+  transform: scale(0.2777778);
+  transform-origin: 0 0;
+  transition: none;
+}
 
 /* ---------- Hero preview surface ---------- */
 .plugins-home__preview {

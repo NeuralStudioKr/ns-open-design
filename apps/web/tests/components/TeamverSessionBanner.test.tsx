@@ -130,10 +130,10 @@ describe('TeamverSessionBanner', () => {
 
     renderBanner();
 
-    expect(screen.getByTestId('teamver-embed-bar').getAttribute('data-state')).toBe('warn');
-    expect(screen.getByTestId('teamver-embed-session-warn').textContent).toContain('세션 확인 실패');
+    expect(screen.getByTestId('teamver-embed-bar').getAttribute('data-state')).toBe('ok');
+    expect(screen.getByTestId('teamver-embed-session-warn').textContent).toContain('연결 확인 중');
     const retry = screen.getByTestId('teamver-embed-session-retry');
-    expect(retry.textContent).toContain('세션 다시 확인');
+    expect(retry.textContent).toContain('다시 시도');
     fireEvent.click(retry);
     // Explicit user retry clears the sticky refresh-decline guard so a
     // previously-declined `/teamver-bff/auth/refresh` (e.g. 400 from

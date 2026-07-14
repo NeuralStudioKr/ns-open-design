@@ -438,30 +438,40 @@ export function createTeamverProjectAccessMiddleware(
     if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
     if (!teamverProjectAccessCheckUrl(projectId)) return next();
 
-    const identity = readTeamverIdentityFromRequest(req);
-    if (!identity) {
+    // Trusted-caller fast path. BE → daemon over the compose network carries
+    // Bearer OD_API_TOKEN + identity; the BE is authoritative for the project
+    // row it just created. Verifying access on these calls used to race the
+    // BE's own transaction commit — fire the check in the background and
+    // proceed immediately when identity is present.
+    if (isTrustedBackendCaller(req)) {
+      const identityForBackground = readTeamverIdentityFromRequest(req);
+      if (identityForBackground) {
+        const registryHintForBackground = resolveRegistryProject
+          ? await resolveRegistryProject(projectId)
+          : null;
+        void verifyTeamverProjectAccess(
+          projectId,
+          identityForBackground,
+          registryHintForBackground ?? undefined,
+        ).catch(() => undefined);
+        return next();
+      }
+
+      // Nginx preview-scope locations forward only
+      // `Authorization: Bearer OD_API_TOKEN` (no X-Teamver-User-Id) so sandboxed
+      // iframes can load `/preview/:scope/*`. Narrow that exception to GET/HEAD
+      // preview assets — do not let bearer-only skip ACL for the rest of the
+      // project API surface. Scope validity is enforced by the preview route.
+      if (isTrustedPreviewAssetRequest(req)) {
+        return next();
+      }
+
       return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver identity headers required');
     }
 
-    // Trusted-caller fast path. BE → daemon over the compose network carries
-    // Bearer OD_API_TOKEN; the BE is authoritative for the project row it
-    // just created and has the row's s3_prefix already (it sends it in
-    // X-Teamver-S3-Prefix). Verifying access on these calls used to race the
-    // BE's own transaction commit and translate into 404 → registerLegacy →
-    // transient deny → 502 PROJECT_STORAGE_SYNC_FAILED for several seconds
-    // every deploy. Fire the access check in the background to keep the
-    // cache warm, but let the route proceed immediately so the BE-initiated
-    // sync-up completes.
-    if (isTrustedBackendCaller(req)) {
-      const registryHintForBackground = resolveRegistryProject
-        ? await resolveRegistryProject(projectId)
-        : null;
-      void verifyTeamverProjectAccess(
-        projectId,
-        identity,
-        registryHintForBackground ?? undefined,
-      ).catch(() => undefined);
-      return next();
+    const identity = readTeamverIdentityFromRequest(req);
+    if (!identity) {
+      return sendApiError(res, 401, 'UNAUTHORIZED', 'teamver identity headers required');
     }
 
     const registryHint = resolveRegistryProject
@@ -481,4 +491,23 @@ export function createTeamverProjectAccessMiddleware(
     }
     return sendApiError(res, 502, 'UPSTREAM_UNAVAILABLE', 'teamver project access check failed');
   };
+}
+
+/**
+ * True for GET/HEAD under `/preview/:scope/...` on a project route.
+ * Accepts mount-relative (`/preview/...`) and absolute
+ * (`/api/projects/:id/preview/...`) forms — Express path stripping varies by
+ * how the middleware is mounted.
+ */
+export function isTrustedPreviewAssetRequest(
+  req: Pick<Request, 'method' | 'path' | 'url'> & { originalUrl?: string },
+): boolean {
+  const method = String(req.method || '').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  const pathCandidates = [req.path, req.url, req.originalUrl]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => value.split(/[?#]/, 1)[0] ?? '')
+    .filter(Boolean)
+    .join('\n');
+  return /\/preview\/[^/]+\//.test(pathCandidates);
 }

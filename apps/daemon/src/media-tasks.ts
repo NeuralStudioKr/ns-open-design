@@ -1,5 +1,12 @@
 import type Database from 'better-sqlite3';
 
+import * as pgCore from './storage/daemon-db-postgres-core.js';
+import {
+  getPostgresPool,
+  isDaemonDbPostgres,
+  schedulePostgresWrite,
+} from './storage/daemon-db-runtime.js';
+
 export type MediaTaskStatus =
   | 'queued'
   | 'running'
@@ -130,6 +137,11 @@ export function insertMediaTask(
   const status = input.status ?? 'queued';
   assertValidStatus(status);
   const startedAt = input.startedAt ?? now;
+  const progressJson = JSON.stringify(input.progress ?? []);
+  const fileJson = jsonOrNull(input.file ?? null);
+  const errorJson = jsonOrNull(input.error ?? null);
+  const createdAt = input.createdAt ?? startedAt;
+  const updatedAt = input.updatedAt ?? now;
   db.prepare(
     `INSERT INTO media_tasks
        (id, project_id, status, surface, model, progress_json, file_json,
@@ -141,14 +153,32 @@ export function insertMediaTask(
     status,
     input.surface ?? null,
     input.model ?? null,
-    JSON.stringify(input.progress ?? []),
-    jsonOrNull(input.file ?? null),
-    jsonOrNull(input.error ?? null),
+    progressJson,
+    fileJson,
+    errorJson,
     startedAt,
     input.endedAt ?? null,
-    input.createdAt ?? startedAt,
-    input.updatedAt ?? now,
+    createdAt,
+    updatedAt,
   );
+  if (isDaemonDbPostgres()) {
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertMediaTask(getPostgresPool(), {
+        id: input.id,
+        projectId: input.projectId,
+        status,
+        surface: input.surface ?? null,
+        model: input.model ?? null,
+        progressJson,
+        fileJson,
+        errorJson,
+        startedAt,
+        endedAt: input.endedAt ?? null,
+        createdAt,
+        updatedAt,
+      });
+    });
+  }
   const row = getMediaTask(db, input.id);
   if (row === null) throw new Error(`Failed to fetch media task after insert: ${input.id}`);
   return row;
@@ -174,6 +204,13 @@ export function updateMediaTask(
   const status = patch.status ?? existing.status;
   assertValidStatus(status);
   const updatedAt = patch.updatedAt ?? Date.now();
+  const surface = 'surface' in patch ? patch.surface ?? null : existing.surface ?? null;
+  const model = 'model' in patch ? patch.model ?? null : existing.model ?? null;
+  const progressJson = JSON.stringify(patch.progress ?? existing.progress);
+  const fileJson = 'file' in patch ? jsonOrNull(patch.file ?? null) : jsonOrNull(existing.file);
+  const errorJson = 'error' in patch ? jsonOrNull(patch.error ?? null) : jsonOrNull(existing.error);
+  const startedAt = patch.startedAt ?? existing.startedAt;
+  const endedAt = 'endedAt' in patch ? patch.endedAt ?? null : existing.endedAt;
   db.prepare(
     `UPDATE media_tasks
         SET status = ?,
@@ -188,16 +225,34 @@ export function updateMediaTask(
       WHERE id = ?`,
   ).run(
     status,
-    'surface' in patch ? patch.surface ?? null : existing.surface ?? null,
-    'model' in patch ? patch.model ?? null : existing.model ?? null,
-    JSON.stringify(patch.progress ?? existing.progress),
-    'file' in patch ? jsonOrNull(patch.file ?? null) : jsonOrNull(existing.file),
-    'error' in patch ? jsonOrNull(patch.error ?? null) : jsonOrNull(existing.error),
-    patch.startedAt ?? existing.startedAt,
-    'endedAt' in patch ? patch.endedAt ?? null : existing.endedAt,
+    surface,
+    model,
+    progressJson,
+    fileJson,
+    errorJson,
+    startedAt,
+    endedAt,
     updatedAt,
     id,
   );
+  if (isDaemonDbPostgres()) {
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateMediaTask(getPostgresPool(), id, {
+        id,
+        projectId: existing.projectId,
+        status,
+        surface,
+        model,
+        progressJson,
+        fileJson,
+        errorJson,
+        startedAt,
+        endedAt,
+        createdAt: existing.createdAt,
+        updatedAt,
+      });
+    });
+  }
   return getMediaTask(db, id);
 }
 
@@ -220,6 +275,108 @@ export function listMediaTasksByProject(
     .filter((row) => includeTerminal || !TERMINAL_STATUSES.has(row.status));
 }
 
+function mirrorMediaTaskToSqlite(db: Database.Database, row: MediaTaskRow): void {
+  db.prepare(
+    `INSERT INTO media_tasks
+       (id, project_id, status, surface, model, progress_json, file_json,
+        error_json, started_at, ended_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id,
+        status = excluded.status,
+        surface = excluded.surface,
+        model = excluded.model,
+        progress_json = excluded.progress_json,
+        file_json = excluded.file_json,
+        error_json = excluded.error_json,
+        started_at = excluded.started_at,
+        ended_at = excluded.ended_at,
+        updated_at = excluded.updated_at`,
+  ).run(
+    row.id,
+    row.projectId,
+    row.status,
+    row.surface ?? null,
+    row.model ?? null,
+    JSON.stringify(row.progress),
+    jsonOrNull(row.file),
+    jsonOrNull(row.error),
+    row.startedAt,
+    row.endedAt,
+    row.createdAt,
+    row.updatedAt,
+  );
+}
+
+function normalizeMediaTaskPgRow(row: Record<string, unknown>): MediaTaskRow {
+  return normalizeRow({
+    id: String(row.id),
+    projectId: String(row.projectId),
+    status: String(row.status),
+    surface: row.surface == null ? null : String(row.surface),
+    model: row.model == null ? null : String(row.model),
+    progressJson: row.progressJson == null ? null : String(row.progressJson),
+    fileJson: row.fileJson == null ? null : String(row.fileJson),
+    errorJson: row.errorJson == null ? null : String(row.errorJson),
+    startedAt: Number(row.startedAt),
+    endedAt: row.endedAt == null ? null : Number(row.endedAt),
+    createdAt: Number(row.createdAt),
+    updatedAt: Number(row.updatedAt),
+  });
+}
+
+export async function warmRecentMediaTasksSqliteFromPostgres(
+  db: Database.Database,
+  options: { terminalTtlMs: number; now?: number },
+): Promise<number> {
+  if (!isDaemonDbPostgres()) return 0;
+  const now = options.now ?? Date.now();
+  const cutoff = now - options.terminalTtlMs;
+  const rows = await pgCore.pgListRecentMediaTasks(getPostgresPool(), cutoff);
+  for (const row of rows) {
+    mirrorMediaTaskToSqlite(db, normalizeMediaTaskPgRow(row));
+  }
+  return rows.length;
+}
+
+export async function listMediaTasksByProjectAsync(
+  db: Database.Database,
+  projectId: string,
+  options: { includeTerminal?: boolean } = {},
+): Promise<MediaTaskRow[]> {
+  if (!isDaemonDbPostgres()) return listMediaTasksByProject(db, projectId, options);
+  const includeTerminal = options.includeTerminal === true;
+  const rows = await pgCore.pgListMediaTasksByProject(getPostgresPool(), projectId);
+  return rows
+    .map((row) => normalizeMediaTaskPgRow(row))
+    .filter((row) => includeTerminal || !TERMINAL_STATUSES.has(row.status));
+}
+
+export async function listRecentMediaTasksAsync(
+  db: Database.Database,
+  options: { terminalTtlMs: number; now?: number },
+): Promise<MediaTaskRow[]> {
+  if (!isDaemonDbPostgres()) return listRecentMediaTasks(db, options);
+  const now = options.now ?? Date.now();
+  const cutoff = now - options.terminalTtlMs;
+  const rows = await pgCore.pgListRecentMediaTasks(getPostgresPool(), cutoff);
+  return rows.map((row) => normalizeMediaTaskPgRow(row));
+}
+
+export async function getMediaTaskAsync(
+  db: Database.Database,
+  id: string,
+): Promise<MediaTaskRow | null> {
+  const local = getMediaTask(db, id);
+  if (local) return local;
+  if (!isDaemonDbPostgres()) return null;
+  const row = await pgCore.pgGetMediaTask(getPostgresPool(), id);
+  if (!row) return null;
+  const normalized = normalizeMediaTaskPgRow(row);
+  mirrorMediaTaskToSqlite(db, normalized);
+  return normalized;
+}
+
 export function listRecentMediaTasks(
   db: Database.Database,
   options: { terminalTtlMs: number; now?: number },
@@ -240,6 +397,11 @@ export function listRecentMediaTasks(
 
 export function deleteMediaTask(db: Database.Database, id: string): void {
   db.prepare(`DELETE FROM media_tasks WHERE id = ?`).run(id);
+  if (isDaemonDbPostgres()) {
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteMediaTask(getPostgresPool(), id);
+    });
+  }
 }
 
 export function reconcileMediaTasksOnBoot(
@@ -253,6 +415,7 @@ export function reconcileMediaTasksOnBoot(
     status: 5,
     code: 'DAEMON_RESTART',
   };
+  const interruptedErrorJson = JSON.stringify(interruptedError);
   const tx = db.transaction(() => {
     const interrupted = db
       .prepare(
@@ -263,7 +426,7 @@ export function reconcileMediaTasksOnBoot(
                 updated_at = ?
           WHERE status IN ('queued', 'running')`,
       )
-      .run(JSON.stringify(interruptedError), now, now).changes;
+      .run(interruptedErrorJson, now, now).changes;
 
     const deleted = db
       .prepare(
@@ -275,7 +438,12 @@ export function reconcileMediaTasksOnBoot(
 
     return { interrupted, deleted };
   });
-  return tx() as { interrupted: number; deleted: number };
+  const result = tx() as { interrupted: number; deleted: number };
+  // Postgres reconcile on boot is intentionally skipped: media task reads are
+  // still sqlite-local per node, and a global UPDATE would mark sibling
+  // daemon runs as interrupted. Revisit when media_tasks get node ownership
+  // in Postgres (Track B5 follow-up).
+  return result;
 }
 
 function normalizeRow(raw: RawMediaTaskRow): MediaTaskRow {

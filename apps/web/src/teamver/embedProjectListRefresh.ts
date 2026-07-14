@@ -21,3 +21,23 @@ export function mergeProjectIntoList(projects: Project[], project: Project): Pro
   }
   return projects.map((row) => (row.id === project.id ? project : row));
 }
+
+/**
+ * Upsert a recent-projects slice into the full in-memory list without dropping
+ * rows that are outside the recent window (projects-tab pagination, detail
+ * prefetch). Home `/api/projects/recent` refresh must not wipe the registry.
+ */
+export function mergeRecentProjectsIntoList(
+  current: Project[],
+  recent: Project[],
+): Project[] {
+  if (recent.length === 0) return current;
+  if (current.length === 0) {
+    return [...recent].sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  const byId = new Map(current.map((project) => [project.id, project]));
+  for (const project of recent) {
+    byId.set(project.id, project);
+  }
+  return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+}

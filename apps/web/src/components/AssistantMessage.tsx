@@ -55,13 +55,16 @@ import { useT } from "../i18n";
 import { deriveFileOps, type FileOpEntry } from "../runtime/file-ops";
 import {
   isTodoWriteToolName,
+  latestTodosFromEvents,
+  summarizeTodoProgress,
   unfinishedTodosFromEvents,
   type TodoItem,
+  type TodoProgressSummary,
 } from "../runtime/todos";
 import type { Dict } from "../i18n/types";
 import { agentDisplayName, agentIconId, exactAgentDisplayName } from "../utils/agentLabels";
 import { AgentIcon } from "./AgentIcon";
-import { filterImplicitProducedFiles } from "../produced-files";
+import { filterImplicitProducedFiles, constrainProducedFilesToTurnBaseline } from "../produced-files";
 import type {
   AgentEvent,
   ChatMessage,
@@ -424,7 +427,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
-  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle } =
+  const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle, enabled: teamverEmbedEnabled } =
     useTeamverBranding();
   const events = message.events ?? [];
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
@@ -477,12 +480,22 @@ function AssistantMessageImpl({
     streaming,
   ]);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
+  // Streaming progress reads TodoWrite from events (not filtered blocks) so
+  // Teamver embed can show N/M + current task while tool cards stay hidden.
+  const streamingTodoProgress = useMemo(() => {
+    if (!streaming) return null;
+    return summarizeTodoProgress(latestTodosFromEvents(events));
+  }, [streaming, events]);
   const produced = message.producedFiles ?? [];
   const displayedProduced = useMemo(
     () => {
+      const turnScoped = constrainProducedFilesToTurnBaseline(
+        produced,
+        message.preTurnFileNames,
+      );
       const base =
         produced.length > 0
-          ? produced
+          ? turnScoped
           : inferProducedFilesFromTurn({
               message,
               projectFiles,
@@ -625,9 +638,11 @@ function AssistantMessageImpl({
   // files) the footer shimmers "Preparing…"; the moment content lands it
   // flips to "Working". The elapsed clock stays anchored to the persisted run
   // start so switching project tabs or remounting the message cannot restart it.
+  // TodoWrite alone counts as activity even when tool cards are hidden in embed.
   const hasContent =
     blocks.some((b) => b.kind !== "status")
-    || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0);
+    || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
+    || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
 
   // Index of the trailing text block — the streaming caret rides the end of
@@ -661,7 +676,7 @@ function AssistantMessageImpl({
               <ProseBlock
                 key={i}
                 text={b.text}
-                hideRecoveredHtmlFallback={(message.agentId === "grok-build" || message.agentId === "claude") && !streaming}
+                hideRecoveredHtmlFallback={(teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude") && !streaming}
                 assistantMessageId={message.id}
                 isLastAssistant={!!isLast}
                 streaming={streaming}
@@ -795,6 +810,7 @@ function AssistantMessageImpl({
                   hasUnfinishedTodos: unfinishedTodos.length > 0,
                   hasEmptyResponse,
                   preparing,
+                  todoProgress: hideAssistantThinkingDetails ? streamingTodoProgress : null,
                   copyMarkdown,
                   onFork: canFork ? onForkFromMessage : undefined,
                   forking,
@@ -811,6 +827,7 @@ function AssistantMessageImpl({
                 hasUnfinishedTodos={unfinishedTodos.length > 0}
                 hasEmptyResponse={hasEmptyResponse}
                 preparing={preparing}
+                todoProgress={hideAssistantThinkingDetails ? streamingTodoProgress : null}
                 copyMarkdown={copyMarkdown}
                 onFork={canFork ? onForkFromMessage : undefined}
                 forking={forking}
@@ -993,6 +1010,9 @@ interface AssistantFooterProps {
   // Pre-output phase: streaming but nothing rendered yet. The label shimmers
   // "Preparing…"; once content lands it flips to "Working".
   preparing?: boolean;
+  // Compact TodoWrite progress for long turns (esp. Teamver embed). Agent
+  // currentLabel is free text — not chrome-locale translated.
+  todoProgress?: TodoProgressSummary | null;
   copyMarkdown?: string;
   onFork?: () => void;
   forking?: boolean;
@@ -1011,6 +1031,7 @@ function AssistantFooter({
   hasUnfinishedTodos,
   hasEmptyResponse,
   preparing = false,
+  todoProgress = null,
   copyMarkdown,
   onFork,
   forking = false,
@@ -1057,6 +1078,22 @@ function AssistantFooter({
           ? t("assistant.unfinishedLabel")
           : t("assistant.doneLabel")}
       </span>
+      {streaming && todoProgress ? (
+        <span
+          className="assistant-todo-progress"
+          title={todoProgress.currentLabel ?? undefined}
+        >
+          <span className="assistant-todo-count">
+            {todoProgress.done}/{todoProgress.total}
+          </span>
+          {todoProgress.currentLabel ? (
+            <span className="assistant-todo-current">
+              {" · "}
+              {todoProgress.currentLabel}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
       <span className="assistant-stats">
         {elapsed}
         {usage?.outputTokens != null

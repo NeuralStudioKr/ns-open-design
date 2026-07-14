@@ -19,7 +19,11 @@ export function isTeamverAuthCallbackPath(pathname = window.location.pathname): 
   return normalized === "/auth/callback";
 }
 
-/** Main FE → Design return may still be in flight — avoid a second login redirect. */
+/**
+ * Main FE → Design return may still be in flight — avoid a second login redirect.
+ * Uses the pending flag only (peek). Do NOT key off document.referrer — it sticks
+ * for the whole document lifetime and would block later session-expiry redirects.
+ */
 export function shouldDeferEmbedLoginRedirect(): boolean {
   if (!isTeamverEmbedMode()) return false;
   if (isTeamverAuthCallbackPath()) return true;

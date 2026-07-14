@@ -3,6 +3,7 @@ import {
   latestTodosFromEvents,
   latestTodoWriteInputForPinnedCard,
   parseTodoWriteInput,
+  summarizeTodoProgress,
   unfinishedTodosFromEvents,
 } from '../../src/runtime/todos';
 import type { AgentEvent } from '../../src/types';
@@ -19,6 +20,34 @@ const firstTodoInput = {
 };
 
 describe('todo event helpers', () => {
+  it('summarizes compact progress for the streaming footer', () => {
+    expect(summarizeTodoProgress([])).toBeNull();
+    expect(
+      summarizeTodoProgress([
+        { content: 'Draft layout', status: 'completed' },
+        {
+          content: 'Build components',
+          status: 'in_progress',
+          activeForm: 'Building components',
+        },
+        { content: 'Run QA', status: 'pending' },
+      ]),
+    ).toEqual({
+      done: 2,
+      total: 3,
+      currentLabel: 'Building components',
+    });
+    expect(
+      summarizeTodoProgress([{ content: '  Only content  ', status: 'in_progress' }]),
+    ).toEqual({ done: 1, total: 1, currentLabel: 'Only content' });
+    expect(
+      summarizeTodoProgress([
+        { content: 'Done', status: 'completed' },
+        { content: 'Next', status: 'pending' },
+      ]),
+    ).toEqual({ done: 1, total: 2, currentLabel: null });
+  });
+
   it('normalizes TodoWrite input and ignores malformed items', () => {
     expect(parseTodoWriteInput(firstTodoInput)).toEqual([
       { content: 'Draft layout', status: 'completed', activeForm: undefined },

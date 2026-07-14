@@ -19,12 +19,32 @@ async def test_healthz_reports_schema_tables(monkeypatch: pytest.MonkeyPatch) ->
         }
 
     monkeypatch.setattr(health_router, "_check_schema_tables", all_ok)
+    monkeypatch.delenv("TEAMVER_DESIGN_NODE_ID", raising=False)
 
     payload = await health_router.healthz()
 
     assert payload["status"] == "ok"
     assert payload["tables"]["design_projects"] == "ok"
     assert payload["tables"]["design_outputs"] == "ok"
+    # docs-teamver/39_5 — node_id field is always present.
+    assert payload["node_id"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_healthz_reports_configured_node_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def all_ok() -> dict[str, str]:
+        return {
+            "ai_model_token_usages": "ok",
+            "design_projects": "ok",
+            "design_outputs": "ok",
+        }
+
+    monkeypatch.setattr(health_router, "_check_schema_tables", all_ok)
+    monkeypatch.setenv("TEAMVER_DESIGN_NODE_ID", "i-0abc123def")
+
+    payload = await health_router.healthz()
+
+    assert payload["node_id"] == "i-0abc123def"
 
 
 @pytest.mark.asyncio
@@ -37,11 +57,14 @@ async def test_healthz_degraded_when_registry_table_missing(monkeypatch: pytest.
         }
 
     monkeypatch.setattr(health_router, "_check_schema_tables", missing_outputs)
+    monkeypatch.setenv("TEAMVER_DESIGN_NODE_ID", "node-2")
 
     payload = await health_router.healthz()
 
     assert payload["status"] == "degraded"
     assert payload["db"] == "schema_missing"
+    # Degraded path also surfaces the node id — failover triage relies on this.
+    assert payload["node_id"] == "node-2"
 
 
 def test_collect_config_summary_reports_registry_creds(monkeypatch: pytest.MonkeyPatch) -> None:

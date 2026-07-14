@@ -7,7 +7,9 @@ vi.mock("../src/providers/registry", () => ({
   fetchProjectFiles: (...args: unknown[]) => fetchProjectFilesMock(...args),
 }));
 
-vi.stubGlobal("fetch", (...args: unknown[]) => fetchCoverHintsMock(...args));
+vi.mock("../src/teamver/teamverDaemonHeaders", () => ({
+  fetchTeamverDaemon: (...args: unknown[]) => fetchCoverHintsMock(...args),
+}));
 
 vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => false),
@@ -237,6 +239,29 @@ describe("projectCoverLoader", () => {
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String(fetchCoverHintsMock.mock.calls[0]?.[1]?.body ?? "{}"));
     expect(body.projectIds).toEqual(expect.arrayContaining(["p1", "p2", "p3", "p4"]));
+  });
+
+  it("hints-only null cache does not block later /files fallback", async () => {
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+    fetchProjectFilesMock.mockResolvedValue([
+      { name: "deck.html", kind: "html", mtime: 1, size: 1, mime: "text/html" },
+    ]);
+
+    const deck = project({ id: "p1", metadata: { kind: "deck" } });
+
+    await expect(
+      resolveProjectCoverFile(deck, { allowFilesFallback: false }),
+    ).resolves.toBeNull();
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+
+    await expect(resolveProjectCoverFile(deck)).resolves.toEqual({
+      kind: "html",
+      name: "deck.html",
+    });
+    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not re-hint after prefetch until hint TTL expires", async () => {

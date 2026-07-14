@@ -24,6 +24,7 @@ import {
   type BYOKToolContext,
   type ImageToolResult,
 } from './byok-tools.js';
+import { fetchUrlContent } from './byok-url-tools.js';
 import {
   AIHUBMIX_DEFAULT_BASE_URL,
   aihubmixHeaders,
@@ -90,6 +91,20 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   // page exit = let it finish in background). Registered once at app
   // boot so the route is present before any proxy stream starts.
   registerByokProxyAbortRoute(app);
+
+  app.post('/api/tools/web-fetch', async (req, res) => {
+    const url = (req.body as { url?: unknown } | null | undefined)?.url;
+    const result = await fetchUrlContent(url);
+    if (!result.ok) {
+      return sendApiError(
+        res,
+        400,
+        'WEB_FETCH_FAILED',
+        result.error || 'web fetch failed',
+      );
+    }
+    return res.json(result);
+  });
 
   /**
    * Wire BYOK proxy stream materialization (sync-down at start, sync-up on
@@ -2363,10 +2378,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
       try {
         proxyDispatcher = proxyDispatcherRequestInit();
-        toolCtx.requestInit = proxyDispatcher.requestInit;
+        const signal = byokProxyAbortSignalFromRes(res);
+        toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
         sse.send('start', { model });
         const convMessages: any[] = Array.isArray(messages) ? [...messages] : [];
         for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+          if (signal?.aborted) return sse.end();
           const turn = await runAnthropicToolTurn(sse, anthropicUrl, headers, convMessages);
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
@@ -2385,6 +2402,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           convMessages.push({ role: 'assistant', content: turn.assistantBlocks });
           const toolResults: any[] = [];
           for (const call of turn.toolCalls) {
+            if (signal?.aborted) return sse.end();
             const result = await executeOneTool(call);
             const toolName = call?.function?.name ?? 'unknown';
             if (result.ok) {
@@ -2582,13 +2600,15 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
       try {
         proxyDispatcher = proxyDispatcherRequestInit();
-        toolCtx.requestInit = proxyDispatcher.requestInit;
+        const signal = byokProxyAbortSignalFromRes(res);
+        toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
         sse.send('start', { model });
         const contents: any[] = (Array.isArray(messages) ? messages : []).map((m: any) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
         }));
         for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+          if (signal?.aborted) return sse.end();
           const turn = await runGeminiToolTurn(sse, geminiUrl, headers, contents);
           if (turn.kind === 'error') return sse.end();
           if (turn.kind === 'text_end') {
@@ -2607,6 +2627,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           contents.push({ role: 'model', parts: turn.functionCallParts });
           const responseParts: any[] = [];
           for (const call of turn.toolCalls) {
+            if (signal?.aborted) return sse.end();
             const result = await executeOneTool(call);
             const toolName = call?.function?.name ?? 'unknown';
             if (result.ok) {
@@ -2738,9 +2759,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
     try {
       proxyDispatcher = proxyDispatcherRequestInit();
-      toolCtx.requestInit = proxyDispatcher.requestInit;
+      const signal = byokProxyAbortSignalFromRes(res);
+      toolCtx.requestInit = { ...proxyDispatcher.requestInit, ...(signal ? { signal } : {}) };
       sse.send('start', { model });
       for (let loop = 0; loop < MAX_BYOK_TOOL_LOOPS; loop++) {
+        if (signal?.aborted) return sse.end();
         const turn = await runTurn(sse, workingMessages);
         if (turn.kind === 'error') {
           // runTurn already emitted usage + error frames in the right
@@ -2762,6 +2785,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         // turn.kind === 'tool_calls'
         workingMessages.push(turn.assistantMessage);
         for (const call of turn.toolCalls) {
+          if (signal?.aborted) return sse.end();
           const result = await executeOneTool(call);
           // The tool result is delivered to the model as a `tool` role
           // message — a structured payload the model can interpret. We

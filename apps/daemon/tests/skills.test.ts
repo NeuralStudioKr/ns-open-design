@@ -122,6 +122,18 @@ describe('listSkills', () => {
     }
   });
 
+  it('surfaces od.content_locale as contentLocale on design templates', async () => {
+    const skills = await listSkills(designTemplatesRoot);
+    const skill = skills.find((entry: { id: string }) => entry.id === 'html-ppt-tech-sharing');
+
+    if (!skill) throw new Error('html-ppt-tech-sharing skill not found');
+    expect(skill).toMatchObject({
+      id: 'html-ppt-tech-sharing',
+      mode: 'deck',
+      contentLocale: 'zh-CN',
+    });
+  });
+
   it('includes the built-in live-artifact skill catalog entry', async () => {
     const skills = await listSkills(designTemplatesRoot);
     const skill = skills.find((entry: { id: string }) => entry.id === 'live-artifact');

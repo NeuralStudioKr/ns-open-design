@@ -156,18 +156,18 @@ shouldFetchAppVersionAboutPanel()      // About 중복 version skip
 | 구분 | Before (관측) | After (목표) |
 |------|---------------|--------------|
 | 총 요청 수 | ~80+ | ~20–30 |
-| `/api/plugins` | 3–4 + 전체 catalog | 1 (`mode=deck&limit=48`, 검색/페이지는 서버 `q/offset`) |
+| `/api/plugins` | 3–4 + 전체 catalog | 1 (`mode=deck&limit=24`, 검색/페이지는 서버 `q/offset`) |
 | `/api/runs` | 10–15 (boot overlap) | 1 + poll (idle 30s) |
 | `/api/projects/recent` | 3 | 1 |
 | `/runtime-config` | 3 | 1 (60s cache) |
 | `/auth/session` | 5 | 1–2 (60s cache + focus) |
 | automation/connectors/marketing | 다수 | **0** |
 
-**유지 (정상):** `app-config`, `skills`, `design-templates?mode=deck&limit=48`, `design-systems`, `health`, `analytics/config`, BFF projects registry.
+**유지 (정상):** `app-config`, `skills`, `design-templates?mode=deck&limit=24`, `design-systems`, `health`, `analytics/config`, BFF projects registry.
 
 ### 2026-07-06 추가 보강
 
-- `/api/plugins`는 `q|query|search`, `limit`, `offset`을 지원한다. Teamver embed slide-only 기본 호출은 `mode=deck&limit=48`로 축소했다.
+- `/api/plugins`는 `q|query|search`, `limit`, `offset`을 지원한다. Teamver embed slide-only 기본 호출은 `mode=deck&limit=24`로 축소했다.
 - `/api/design-templates`도 같은 `q/limit/offset` 계약을 지원한다. 기존 `{ designTemplates }` 응답은 유지하고 `total/limit/offset/nextOffset` 메타만 추가했다.
 - `limit`을 명시하지 않은 기존 호출은 전체 목록을 반환한다. 즉 standalone/관리 화면은 기존 계약을 유지하고, embed 최적화 표면만 명시적으로 페이지 크기를 요청한다.
 - 다음 단계는 Home/Composer toolbox 검색 입력을 서버 `q`에 연결하고, `nextOffset` 기반 더보기 UI를 붙일지 결정하는 것이다.

@@ -27,7 +27,6 @@ vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
 }));
 
 vi.mock("../src/teamver/teamverAuthReturn", () => ({
-  consumeTeamverAuthReturnPending: vi.fn(() => false),
   peekTeamverAuthReturnPending: vi.fn(() => false),
   isLikelyTeamverAuthReturnNavigation: vi.fn(() => false),
 }));

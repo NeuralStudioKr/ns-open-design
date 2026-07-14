@@ -52,6 +52,10 @@ import {
 } from "../teamverDesignAccess";
 import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
 import { invalidateTeamverDriveImportCaches } from "../driveImportList";
+import {
+  isTeamverBffUnauthorizedError,
+  redirectToTeamverLoginFromEmbed,
+} from "../teamverBffAuthError";
 
 export type TeamverPublishDriveSuccessMeta = {
   partial: boolean;
@@ -89,6 +93,7 @@ export function TeamverPublishDrivePanel({
   const [publishPhase, setPublishPhase] = useState<PublishBusyPhase>("idle");
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [targetsError, setTargetsError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [targets, setTargets] = useState<TeamverDrivePublishTarget[]>(() => [
     DEFAULT_PUBLISH_TARGET,
@@ -142,6 +147,7 @@ export function TeamverPublishDrivePanel({
     const seq = ++fetchSeqRef.current;
     setLoadingTargets(true);
     setTargetsError(null);
+    setAuthRequired(false);
     try {
       const ws = (await readActiveTeamverWorkspaceId())?.trim() || null;
       if (seq !== fetchSeqRef.current) return;
@@ -179,7 +185,11 @@ export function TeamverPublishDrivePanel({
       if (seq !== fetchSeqRef.current) return;
       setTargets(ensureDefaultPublishTarget([]));
       setLastTargetRestore("none");
-      setTargetsError(err instanceof Error ? err.message : "drive_publish_targets_failed");
+      if (isTeamverBffUnauthorizedError(err)) {
+        setAuthRequired(true);
+      } else {
+        setTargetsError(err instanceof Error ? err.message : "drive_publish_targets_failed");
+      }
     } finally {
       if (seq === fetchSeqRef.current) setLoadingTargets(false);
     }
@@ -238,6 +248,31 @@ export function TeamverPublishDrivePanel({
     setSelectedTargetId(target.id);
     setLastTargetRestore("none");
   }, []);
+
+  const handleQuickPickHydrated = useCallback(
+    (hydrated: TeamverDrivePublishTarget[]) => {
+      if (hydrated.length === 0) return;
+      setTargets((current) => {
+        const recent = workspaceId ? readRecentPublishTargets(workspaceId) : [];
+        const byId = new Map(
+          current
+            .filter((target) => target.id !== DEFAULT_PUBLISH_TARGET.id)
+            .map((target) => [target.id, target] as const),
+        );
+        for (const target of hydrated) byId.set(target.id, target);
+        for (const target of recent) byId.set(target.id, target);
+        return ensureDefaultPublishTarget([...byId.values()]);
+      });
+      setTargetsError(null);
+      setAuthRequired(false);
+    },
+    [workspaceId],
+  );
+
+  const handleClosePicker = useCallback(() => {
+    setPickerOpen(false);
+    void refreshTargets();
+  }, [refreshTargets]);
 
   const handleSelectFormat = useCallback((format: DrivePublishFormat) => {
     if (busy) return;
@@ -302,6 +337,9 @@ export function TeamverPublishDrivePanel({
         setPdfBlocked(true);
         setSelectedFormat("html");
       }
+      if (isTeamverBffUnauthorizedError(err)) {
+        setAuthRequired(true);
+      }
       onError?.(err);
     } finally {
       setBusy(false);
@@ -330,9 +368,10 @@ export function TeamverPublishDrivePanel({
   }, [busy, publishPhase]);
 
   const handleOpenPicker = useCallback(() => {
+    invalidateTeamverDriveImportCaches();
     setPickerOpen(true);
-    if (targetsError) void refreshTargets();
-  }, [refreshTargets, targetsError]);
+    void refreshTargets();
+  }, [refreshTargets]);
 
   const showPostRunHint =
     active
@@ -355,10 +394,12 @@ export function TeamverPublishDrivePanel({
   if (workspaceId && !isTeamverDesignAppEnabled(workspaceId)) return null;
   if (!designAppEnabled) return null;
 
-  const disabledForPublish = busy || rememberedTargetMissing;
-  const disabledForBrowse = busy;
-  const targetSelectDisabled = busy;
-  const errorHint = targetsError ? formatPublishErrorCodeForUser(targetsError) : null;
+  const disabledForPublish = busy || rememberedTargetMissing || authRequired;
+  const disabledForBrowse = busy || authRequired;
+  const targetSelectDisabled = busy || authRequired;
+  const errorHint = !authRequired && targetsError
+    ? formatPublishErrorCodeForUser(targetsError)
+    : null;
 
   const publishLabel = publishLabelForFormat(
     selectedFormat,
@@ -441,7 +482,24 @@ export function TeamverPublishDrivePanel({
           {postRunHintText}
         </p>
       ) : null}
-      {errorHint ? (
+      {authRequired ? (
+        <p
+          className="teamver-drive-target-hint teamver-drive-target-hint--auth"
+          role="status"
+          aria-live="polite"
+          data-testid="teamver-drive-panel-auth-required"
+        >
+          세션이 만료되어 드라이브 정보를 불러올 수 없습니다.{" "}
+          <button
+            type="button"
+            className="teamver-drive-target-hint__login"
+            data-testid="teamver-drive-panel-login"
+            onClick={redirectToTeamverLoginFromEmbed}
+          >
+            다시 로그인
+          </button>
+        </p>
+      ) : errorHint ? (
         <p
           className="teamver-drive-target-hint"
           role="status"
@@ -460,7 +518,8 @@ export function TeamverPublishDrivePanel({
         loading={loadingTargets}
         onSearch={workspaceId ? handleSearchTargets : undefined}
         onSelect={handleSelectTarget}
-        onClose={() => setPickerOpen(false)}
+        onClose={handleClosePicker}
+        onQuickPickTargetsHydrated={handleQuickPickHydrated}
       />
       <button
         type="button"

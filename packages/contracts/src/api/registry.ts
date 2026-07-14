@@ -159,6 +159,9 @@ export interface SkillSummary {
   // large pre-loaded catalogue stays scannable. Free-form lowercase slug;
   // not part of system-prompt composition.
   category?: string | null;
+  // Primary language of shipped demo / example_prompt / preview copy.
+  // Declared via `od.content_locale` in SKILL.md (e.g. zh-CN, en).
+  contentLocale?: string | null;
   // Origin of the skill: 'built-in' lives under the repo's `skills/`
   // directory and cannot be deleted from the UI; 'user' lives under
   // `<runtimeData>/user-skills/` and is fully owned by the user (delete

@@ -10,11 +10,9 @@ import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 import { isTeamverEmbedMode } from "./designApiBase";
 
 /**
- * Home recent rail — cover-hints first, then a tightly bounded `/files`
- * fallback for the visible cards. Cover-hints can be briefly empty while S3
- * materialization or project metadata catches up; without this fallback the
- * card caches `null` and shows the title initial even though the project has a
- * renderable deck.
+ * Home recent rail — coalesced cover-hints plus bounded `/files` fallback for
+ * the recent list only (HOME_RECENT_LIST_LIMIT × HOME_COVER_FETCH_CONCURRENCY).
+ * Full project list surfaces stay hints-only in embed mode to avoid fan-out.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],

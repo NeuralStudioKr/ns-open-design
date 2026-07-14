@@ -3,7 +3,6 @@ import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
 import {
   fetchDesignAuthSession,
-  getDesignBffClient,
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
   resetDesignAuthBareRefreshAttempt,
@@ -11,15 +10,8 @@ import {
   type DesignAuthSession,
   type DesignAuthSessionUser,
 } from "./designBffClient";
-import { isTeamverEmbedMode, isBootstrapAuthMode } from "./designApiBase";
-import {
-  redirectToDesignLogin,
-  redirectToTeamverLoginPreservingRoute,
-} from "./designAuthFlow";
-import {
-  resolveEmbedAuthReturnPath,
-  shouldDeferEmbedLoginRedirect,
-} from "./teamverEmbedAuthNavigation";
+import { isTeamverEmbedMode } from "./designApiBase";
+import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
 import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
@@ -37,7 +29,9 @@ import {
 import {
   isLikelyTeamverAuthReturnNavigation,
   peekTeamverAuthReturnPending,
+  consumeTeamverAuthReturnPending,
 } from "./teamverAuthReturn";
+import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import {
   normalizeWorkspaceList,
   pickDefaultWorkspaceId,
@@ -50,10 +44,15 @@ import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
 import {
-  resolveEmbedFocusSessionOptions,
+  redirectToDesignLoginIfBffMissing,
   shouldClearEmbedSessionOnUnauthenticated,
   shouldResetEmbedRefreshDeclineOnFocus,
+  resolveEmbedFocusSessionOptions,
 } from "./teamverEmbedAuthFlow";
+import {
+  handleEmbedPassiveUnauthorized,
+  TEAMVER_EMBED_PASSIVE_AUTH_EVENT,
+} from "./teamverEmbedPassiveAuth";
 import {
   peekEmbedBootstrapSession,
   type EmbedBootstrapSessionSnapshot,
@@ -285,7 +284,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           silent
           && (hadEmbedSession() || stateRef.current.authenticated)
         ) {
-          setState((prev) => ({ ...prev, loading: false }));
+          // Keep unreachable so backoff retries continue (error is cleared at start).
+          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
           return;
         }
         if (hadEmbedSession() || stateRef.current.authenticated) {
@@ -310,7 +310,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           })
         ) {
           if (silent && hadPriorAuthenticatedUi) {
-            setState((prev) => ({ ...prev, loading: false }));
+            setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
             return;
           }
           setState((prev) => ({
@@ -320,15 +320,16 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           }));
           return;
         }
+        // Definitive unauthenticated — drop the auth-return defer shield so
+        // redirectToDesignLoginIfBffMissing is not a no-op.
+        consumeTeamverAuthReturnPending();
         await clearTeamverEmbedSessionState();
-        if (isBootstrapAuthMode() && !shouldDeferEmbedLoginRedirect()) {
-          void redirectToDesignLogin({
-            returnTo: resolveEmbedAuthReturnPath(
-              window.location.pathname,
-              window.location.search,
-            ),
-          });
-        }
+        redirectToDesignLoginIfBffMissing({
+          returnTo: resolveEmbedAuthReturnPath(
+            window.location.pathname,
+            window.location.search,
+          ),
+        });
         setState({
           ...INITIAL,
           loading: false,
@@ -338,6 +339,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       setTeamverEmbedSessionAuthenticated(true);
+      consumeTeamverAuthReturnPending();
 
       const workspaces = normalizeWorkspaceList(session.workspaces);
       const userId = readUserId(session.user);
@@ -383,24 +385,36 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       });
     } catch (err) {
       if (isSessionExpiredError(err)) {
-        await clearTeamverEmbedSessionState();
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
-        prepareDesignAuthSessionReload();
-        redirectToTeamverLoginPreservingRoute({
-          returnTo:
-            typeof window !== "undefined"
-              ? resolveEmbedAuthReturnPath(
-                  window.location.pathname,
-                  window.location.search,
-                )
-              : null,
-        });
+        if (resetRefreshState) {
+          prepareDesignAuthSessionReload();
+          await clearTeamverEmbedSessionState();
+          redirectToTeamverLoginPreservingRoute({
+            returnTo:
+              typeof window !== "undefined"
+                ? resolveEmbedAuthReturnPath(
+                    window.location.pathname,
+                    window.location.search,
+                  )
+                : null,
+          });
+        } else {
+          // Silent probes must still enter passive recovery — otherwise
+          // session_unreachable backoff never escalates to login.
+          handleEmbedPassiveUnauthorized("bff");
+          setState((prev) => ({
+            ...prev,
+            error: hadEmbedSession() || prev.authenticated
+              ? "session_unreachable"
+              : "not_authenticated",
+          }));
+        }
         return;
       }
       if (hadEmbedSession() || stateRef.current.authenticated) {
         if (silent) {
-          setState((prev) => ({ ...prev, loading: false }));
+          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
           return;
         }
         setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
@@ -494,7 +508,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       };
 
       if (shouldResetEmbedRefreshDeclineOnFocus(focusSignals)) {
-        // Cross-tab login, bfcache restore, Main FE sign-in return, or fresh cookie.
+        // Cross-tab login or Main FE sign-in return — allow a fresh refresh attempt.
+        // bfcache pageshow alone must not reset sticky decline (see authFlow).
         resetDesignAuthRefreshState();
       } else if (
         !stateRef.current.authenticated &&
@@ -507,8 +522,17 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       lastCookieHintRef.current = cookieHintNow;
+      if (
+        stateRef.current.error === "session_unreachable"
+        && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+        && !focusSignals.pageshowPersisted
+      ) {
+        return;
+      }
       scheduleFocusSessionRefresh({
-        bypassThrottle: shouldResetEmbedRefreshDeclineOnFocus(focusSignals),
+        bypassThrottle:
+          shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+          || focusSignals.pageshowPersisted,
         focusSignals,
       });
     };
@@ -542,6 +566,23 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     });
   }, [enabled, refresh]);
 
+  // Passive 401 recovery deferred (active run / background) — surface the same
+  // unreachable chip so the user can retry without a silent soft-signal.
+  useEffect(() => {
+    if (!enabled || !isTeamverEmbedMode()) return;
+    const onPassiveAuthRequired = () => {
+      setState((prev) => {
+        if (!prev.authenticated) return prev;
+        if (prev.error === "session_unreachable") return prev;
+        return { ...prev, error: "session_unreachable" };
+      });
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
+    };
+  }, [enabled]);
+
   // C1: auto-backoff retry for `session_unreachable`. A single BFF hiccup
   // used to leave the embed banner stuck until the user changed tabs,
   // pressed refresh, or waited for the 5-minute focus refresh window.
@@ -567,7 +608,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (cancelled) return;
-        void refresh({ force: true });
+        // First two attempts stay silent; escalate so passive recovery / login
+        // can run if the session is truly gone.
+        const escalate = attempt >= 2;
+        void refresh({ force: true, silent: !escalate });
       }, delay);
     };
 
@@ -582,7 +626,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         clearTimeout(retryTimer);
         retryTimer = null;
       }
-      void refresh({ force: true });
+      scheduleRetry();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 

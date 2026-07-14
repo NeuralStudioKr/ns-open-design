@@ -11,7 +11,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.auth_context import AuthContext
 from app.db.crud import design_project_crud
-from app.errors import BadGatewayError, ForbiddenError
+from app.errors import ApiError, BadGatewayError, ForbiddenError
 from app.routers import projects as projects_router
 from app.schemas.design_project import CreateDesignProjectBody
 
@@ -462,3 +462,38 @@ async def test_create_project_returns_existing_row_after_integrity_race(
     db.rollback.assert_awaited_once()
     await _drain_background_sync_tasks()
     sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_project_does_not_reactivate_when_flag_is_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deleted = _project_row()
+    deleted.status = "deleted"
+    db = AsyncMock()
+    reactivate = AsyncMock()
+    sync = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=deleted),
+    )
+    monkeypatch.setattr(design_project_crud, "areactivate_by_od_id", reactivate)
+    monkeypatch.setattr(design_project_crud, "acreate_project", AsyncMock())
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+
+    with pytest.raises(ApiError) as exc:
+        await projects_router.create_project(
+            CreateDesignProjectBody(
+                odProjectId="od1",
+                title="Landing",
+                reactivateIfDeleted=False,
+            ),
+            _auth(),
+            db,
+        )
+
+    assert exc.value.status_code == 409
+    reactivate.assert_not_awaited()
+    sync.assert_not_awaited()

@@ -97,6 +97,16 @@ if (( ${#DISABLE_NAMES[@]} )); then
   done
 fi
 
+# ALB http.conf uses listen 80 default_server — Ubuntu sites-enabled/default also claims default_server.
+if [[ "$CONF_NAME" == *.http.conf ]]; then
+  mkdir -p "$BACKUP_DIR/disabled-sites-enabled"
+  DEFAULT_SITE="$SITES_ENABLED_DIR/default"
+  if [[ -e "$DEFAULT_SITE" ]]; then
+    mv -f "$DEFAULT_SITE" "$BACKUP_DIR/disabled-sites-enabled/"
+    echo "🧹 비활성화(이동): $DEFAULT_SITE — ALB http default_server 충돌 방지"
+  fi
+fi
+
 cp "$SRC_PATH" "$TARGET_AVAILABLE_PATH"
 ln -sfn "$TARGET_AVAILABLE_PATH" "$TARGET_ENABLED_PATH"
 echo "📄 적용됨: $TARGET_ENABLED_PATH"
@@ -109,7 +119,33 @@ if (( ${#inc_files[@]} )); then
   echo "📎 include 적용: ${#inc_files[@]} file(s) → $SITES_AVAILABLE_DIR"
 fi
 
+PEERS_EXAMPLE="$SCRIPT_DIR/teamver-design-od-daemon-peers.inc.conf.example"
+PEERS_TARGET="/etc/nginx/teamver-design-od-daemon-peers.inc"
+LEGACY_PEERS="/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf"
+if [[ ! -f "$PEERS_TARGET" ]]; then
+  cp "$PEERS_EXAMPLE" "$PEERS_TARGET"
+  echo "📎 peers stub: $PEERS_TARGET"
+fi
+if [[ -f "$LEGACY_PEERS" ]]; then
+  rm -f "$LEGACY_PEERS"
+  echo "🧹 removed legacy $LEGACY_PEERS (conf.d breaks nginx when peer server lines present)"
+fi
+RENDER_PEERS="$SCRIPT_DIR/../../scripts/render_od_daemon_peers_nginx.sh"
+if [[ -x "$RENDER_PEERS" ]]; then
+  bash "$RENDER_PEERS" || echo "⚠️ peer render skipped (aws/imds unavailable?)"
+fi
+
+# Empty peers.inc → nginx -t: "no servers are inside upstream" (39_4 §10.11).
+if ! grep -qE '^[[:space:]]*server[[:space:]]+' "$PEERS_TARGET" 2>/dev/null; then
+  echo "❌ $PEERS_TARGET 에 server 줄이 없습니다. awscli 설치 후 render 하거나 수동 peers 작성:"
+  echo "   sudo apt-get install -y awscli && sudo bash $RENDER_PEERS"
+  echo "   docs-teamver/39_4 §10.11 / 39_5 §3.1.3"
+  exit 1
+fi
+
 DEPLOY_TEAMVER_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+bash "$SCRIPT_DIR/ensure_teamver_design_od_token_conf.sh" "$DEPLOY_TEAMVER_ROOT/.env.staging"
+
 nginx -t
 systemctl reload nginx
 echo "✅ 완료."

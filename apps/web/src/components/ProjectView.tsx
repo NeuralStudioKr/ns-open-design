@@ -165,6 +165,11 @@ import type {
 } from '../types';
 import { historyWithApiAttachmentContext } from '../api-attachment-context';
 import {
+  fetchApiWebFetchContexts,
+  historyWithApiWebFetchContext,
+} from '../api-web-fetch-context';
+import {
+  chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
   historyWithCommentAttachmentContext,
   mergeAttachedComments,
@@ -172,13 +177,17 @@ import {
   queuedSlideNavTarget,
   removeAttachedComment,
 } from '../comments';
-import { filterImplicitProducedFiles } from '../produced-files';
+import {
+  computeProducedFiles,
+  resolveTurnStartFileBaseline,
+} from '../produced-files';
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
 import {
@@ -204,12 +213,17 @@ import {
   findInFlightAssistantMessages,
   isInFlightAssistantMessage,
   isRecoverableDaemonRunMessage,
+  mergeActiveRunsIntoMessages,
   resolveRunRecoveryBannerPhase,
   shouldFullReplayReattachedRun,
   shouldShowRunRecoveryBannerInChat,
   type RunRecoveryBannerPhase,
 } from '../teamver/backgroundChatRecovery';
 import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecoveryBanner';
+import {
+  beginTeamverEmbedActiveWork,
+  endTeamverEmbedActiveWork,
+} from '../teamver/teamverEmbedActiveWork';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
@@ -230,6 +244,11 @@ import {
   decideAutoOpenAfterWrite,
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
+import {
+  artifactVersionTabsToClose,
+  collapseArtifactVersionOpenTabs,
+  resolveArtifactPersistFileName,
+} from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
 import { collectReferencedJsxNames } from '../runtime/jsx-module-refs';
 import { FileWorkspace } from './FileWorkspace';
@@ -364,6 +383,56 @@ export function mergeServerMessagesIntoConversation(
     if (!serverIds.has(message.id)) merged.push(message);
   }
   return merged;
+}
+
+function synthesizeAssistantMessageForActiveRun(run: {
+  id?: string | null;
+  assistantMessageId?: string | null;
+  agentId?: string | null;
+  status?: ChatMessage['runStatus'];
+  createdAt?: number | null;
+}): ChatMessage | null {
+  const assistantMessageId = run.assistantMessageId?.trim();
+  if (!assistantMessageId) return null;
+  const now = Date.now();
+  const createdAt =
+    typeof run.createdAt === 'number' && Number.isFinite(run.createdAt)
+      ? run.createdAt
+      : now;
+  return {
+    id: assistantMessageId,
+    role: 'assistant',
+    content: '',
+    createdAt,
+    startedAt: createdAt,
+    ...(run.id ? { runId: run.id } : {}),
+    runStatus: isActiveRunStatus(run.status) ? run.status : 'running',
+    ...(run.agentId ? { agentId: run.agentId } : {}),
+  };
+}
+
+export function mergeMissingActiveRunAssistantMessages(
+  messages: ChatMessage[],
+  runs: readonly {
+    id?: string | null;
+    assistantMessageId?: string | null;
+    agentId?: string | null;
+    status?: ChatMessage['runStatus'];
+    createdAt?: number | null;
+  }[],
+): ChatMessage[] {
+  if (runs.length === 0) return messages;
+  const seen = new Set(messages.map((message) => message.id));
+  const recovered: ChatMessage[] = [];
+  for (const run of runs) {
+    const assistantMessageId = run.assistantMessageId?.trim();
+    if (!assistantMessageId || seen.has(assistantMessageId)) continue;
+    const message = synthesizeAssistantMessageForActiveRun(run);
+    if (!message) continue;
+    seen.add(assistantMessageId);
+    recovered.push(message);
+  }
+  return recovered.length > 0 ? [...messages, ...recovered] : messages;
 }
 
 interface Props {
@@ -1208,11 +1277,19 @@ export function ProjectView({
   const tabsLoadedRef = useRef(false);
   const tabsHydratedFromSavedStateRef = useRef(false);
   const hasAppliedInitialPrimaryOpenRef = useRef(false);
+  const openTabsStateRef = useRef(openTabsState);
+  useEffect(() => {
+    openTabsStateRef.current = openTabsState;
+  }, [openTabsState]);
   // Routed to FileWorkspace — bumped whenever the user clicks "open" on a
   // tool card, an attachment chip, or a produced-file chip in chat. We
   // include a nonce so re-clicking the same name after the user closed the
   // tab still focuses it.
-  const [openRequest, setOpenRequest] = useState<{ name: string; nonce: number } | null>(null);
+  const [openRequest, setOpenRequest] = useState<{
+    name: string;
+    nonce: number;
+    closeTabs?: string[];
+  } | null>(null);
   // Like `openRequest`, but additionally asks the preview workspace to open the
   // file's Share/Export menu. Drives the "Share" next-step action: it reuses the
   // existing export/deploy surface rather than introducing a new share backend.
@@ -1661,13 +1738,20 @@ export function ProjectView({
     }
     (async () => {
       try {
-        const [list, comments] = await Promise.all([
+        const [list, comments, activeRuns] = await Promise.all([
           listMessages(project.id, activeConversationId),
           fetchPreviewComments(project.id, activeConversationId),
+          config.mode === 'daemon'
+            ? listActiveChatRuns(project.id, activeConversationId)
+            : Promise.resolve([]),
         ]);
         if (cancelled) return;
-        setMessages(list);
+        const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns);
+        setMessages(mergedMessages);
         setMessagesInitialized(true);
+        if (activeRuns.length > 0) {
+          setReattachNonce((value) => value + 1);
+        }
         setPreviewComments(comments);
         setAttachedComments([]);
         setArtifact(null);
@@ -1695,7 +1779,15 @@ export function ProjectView({
     return () => {
       cancelled = true;
     };
-  }, [project.id, activeConversationId, messageLoadRetryNonce]);
+  }, [project.id, activeConversationId, messageLoadRetryNonce, config.mode]);
+
+  useEffect(() => {
+    if (!streaming) return;
+    beginTeamverEmbedActiveWork();
+    return () => {
+      endTeamverEmbedActiveWork();
+    };
+  }, [streaming]);
 
   useEffect(() => {
     return () => {
@@ -1901,7 +1993,22 @@ export function ProjectView({
             active: routeActive,
           }
         : state;
-      if (routeActive) {
+      // Generation may have persisted every Write as an open tab. Collapse
+      // numbered artifact siblings (`foo.html`/`foo-2.html`) on re-entry so
+      // the workspace does not reopen the whole version history.
+      const collapsedTabs = collapseArtifactVersionOpenTabs(
+        nextState.tabs,
+        nextState.active,
+      );
+      const tabsCollapsed = collapsedTabs.length !== nextState.tabs.length;
+      if (tabsCollapsed) {
+        const nextActive =
+          nextState.active && collapsedTabs.includes(nextState.active)
+            ? nextState.active
+            : collapsedTabs[collapsedTabs.length - 1] ?? null;
+        nextState = { ...nextState, tabs: collapsedTabs, active: nextActive };
+      }
+      if (routeActive || tabsCollapsed) {
         nextState = cacheTabsLocally(project.id, nextState);
         void persistTabsToDaemonNow(project.id, nextState);
       }
@@ -2036,7 +2143,15 @@ export function ProjectView({
 
   const requestOpenFile = useCallback((name: string) => {
     if (!name) return;
-    setOpenRequest({ name, nonce: Date.now() });
+    const closeTabs = artifactVersionTabsToClose(
+      name,
+      openTabsStateRef.current.tabs,
+    );
+    setOpenRequest({
+      name,
+      nonce: Date.now(),
+      ...(closeTabs.length > 0 ? { closeTabs } : {}),
+    });
   }, []);
 
   const persistArtifact = useCallback(
@@ -2049,17 +2164,12 @@ export function ProjectView({
       const artifactToPersist = recoveredHtml ? { ...art, html: recoveredHtml } : art;
       const baseName = artifactBaseNameFor(art);
       const ext = artifactExtensionFor(art);
-      // Pick a name that doesn't collide with an existing project file.
-      // The first run uses `<base>.<ext>`; subsequent runs append `-2`, `-3`…
-      // so prior artifacts aren't silently overwritten.
       const currentProjectFiles = projectFilesSnapshot ?? projectFilesRef.current;
-      const existing = new Set(currentProjectFiles.map((f) => f.name));
-      let fileName = `${baseName}${ext}`;
-      let n = 2;
-      while (existing.has(fileName) && savedArtifactRef.current !== fileName) {
-        fileName = `${baseName}-${n}${ext}`;
-        n += 1;
-      }
+      const fileName = resolveArtifactPersistFileName(
+        artifactToPersist,
+        currentProjectFiles,
+        openTabsStateRef.current.active,
+      );
       if (ext === '.html') {
         const pointerTarget = resolveHtmlPointerArtifactTarget({
           content: artifactToPersist.html,
@@ -2445,22 +2555,23 @@ export function ProjectView({
       }
     }
     // Fold in the auto-memory block so BYOK / API-mode chats see the
-    // same Personal-memory section a daemon-side CLI chat would. The
-    // daemon does this by calling `composeMemoryBody()` directly; the
-    // web side hits the equivalent HTTP surface so it can stay
-    // ignorant of daemon internals. Failures are swallowed — memory is
-    // best-effort, never a blocker for the chat round-trip.
+    // same Personal-memory section a daemon-side CLI chat would. Teamver
+    // embed intentionally skips OD personal memory: workspace/project
+    // registry state is the authority there, and global OD memories can
+    // leak stale context from another Teamver project into a fresh run.
     let memoryBody: string | undefined;
-    try {
-      const resp = await fetch('/api/memory/system-prompt');
-      if (resp.ok) {
-        const json = (await resp.json()) as MemorySystemPromptResponse;
-        if (typeof json.body === 'string' && json.body.trim().length > 0) {
-          memoryBody = json.body;
+    if (shouldInjectOdPersonalMemoryIntoPrompt()) {
+      try {
+        const resp = await fetch('/api/memory/system-prompt');
+        if (resp.ok) {
+          const json = (await resp.json()) as MemorySystemPromptResponse;
+          if (typeof json.body === 'string' && json.body.trim().length > 0) {
+            memoryBody = json.body;
+          }
         }
+      } catch {
+        // Ignore; memory injection is best-effort.
       }
-    } catch {
-      // Ignore; memory injection is best-effort.
     }
     let audioVoiceOptions: AudioVoiceOption[] | undefined;
     let audioVoiceOptionsLookupError: string | undefined;
@@ -2644,7 +2755,10 @@ export function ProjectView({
       if (!message || message.role !== 'assistant' || isInFlightAssistantMessage(message)) continue;
       const produced = message.producedFiles?.length
         ? message.producedFiles
-        : computeProducedFiles(message.preTurnFileNames, filesSnapshot) ?? [];
+        : computeProducedFiles(
+            resolveTurnStartFileBaseline(message.preTurnFileNames, filesSnapshot),
+            filesSnapshot,
+          ) ?? [];
       const htmlToOpen = selectAutoOpenProducedHtml(produced);
       if (!htmlToOpen) continue;
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
@@ -2947,10 +3061,15 @@ export function ProjectView({
         try {
           const serverMessages = await listMessages(project.id, reattachConversationId);
           if (cancelled) return;
-          messagesSnapshot = mergeServerMessagesIntoConversation(messages, serverMessages);
+          messagesSnapshot = mergeMissingActiveRunAssistantMessages(
+            mergeServerMessagesIntoConversation(messages, serverMessages),
+            activeRuns,
+          );
           setMessages(messagesSnapshot);
         } catch {
           // Best-effort — reattach still uses in-memory rows.
+          messagesSnapshot = mergeMissingActiveRunAssistantMessages(messagesSnapshot, activeRuns);
+          setMessages(messagesSnapshot);
         }
       }
 
@@ -3295,7 +3414,7 @@ export function ProjectView({
                 // Use the turn-start snapshot when available so reload
                 // recovers files produced before the artifact write too;
                 // fall back to the current list for legacy messages.
-                const beforeFileNames = new Set(preTurn ?? nextFiles.map((f) => f.name));
+                const beforeFileNames = resolveTurnStartFileBaseline(preTurn, nextFiles);
                 let recoveredExistingArtifact: ProjectFile | null = null;
                 const artifactToPersist = parsedArtifact?.html
                   ? parsedArtifact
@@ -3479,6 +3598,62 @@ export function ProjectView({
     onProjectsRefresh,
     scheduleConversationMessageRefresh,
     reattachNonce,
+  ]);
+
+  useEffect(() => {
+    if (config.mode !== 'api' || !daemonLive || !activeConversationId) return;
+    if (streaming && abortRef.current) return;
+    if (findInFlightAssistantMessages(messages).length > 0) return;
+    let cancelled = false;
+    const recoveryConversationId = activeConversationId;
+    void (async () => {
+      let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
+      try {
+        activeStreams = await listActiveByokProxyStreams(project.id);
+      } catch (err) {
+        console.warn('[teamver] api background recovery stream probe failed', {
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          error: err,
+        });
+        return;
+      }
+      if (cancelled) return;
+      const matchingStreams = activeStreams.filter((stream) => {
+        const streamConversationId = stream.conversationId?.trim();
+        return !streamConversationId || streamConversationId === recoveryConversationId;
+      });
+      const nextMessages = mergeMissingActiveRunAssistantMessages(
+        messages,
+        matchingStreams.map((stream) => ({
+          id: null,
+          assistantMessageId: stream.assistantMessageId,
+          status: 'running' as const,
+          createdAt: stream.registeredAt,
+        })),
+      );
+      if (nextMessages === messages) return;
+      setMessages(nextMessages);
+      for (const message of findInFlightAssistantMessages(nextMessages)) {
+        dispatchTeamverBackgroundChat({
+          projectId: project.id,
+          conversationId: recoveryConversationId,
+          assistantMessageId: message.id,
+          active: true,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    config.mode,
+    daemonLive,
+    activeConversationId,
+    streaming,
+    inFlightAssistantSignature,
+    messages,
+    project.id,
   ]);
 
   // Embed BYOK (`mode=api`) has no daemon run row — after page detach the
@@ -3913,6 +4088,7 @@ export function ProjectView({
       ) return false;
       const effectiveAttachments = mergeChatAttachments(
         attachments,
+        chatAttachmentsFromPreviewCommentFiles(commentAttachments, projectFiles),
         ...commentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
@@ -3986,7 +4162,7 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
-      const preTurnFileNames = projectFiles.map((f) => f.name);
+      const preTurnFileNames = projectFilesRef.current.map((f) => f.name);
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -4711,10 +4887,15 @@ export function ProjectView({
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const systemPrompt = await composedSystemPrompt(runSessionMode, effectiveDesignSystemId);
+        const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
         const apiHistory = await historyWithApiAttachmentContext(
-          historyWithCommentAttachmentContext(
-            historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+          historyWithApiWebFetchContext(
+            historyWithCommentAttachmentContext(
+              historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
+              userMsg.id,
+            ),
             userMsg.id,
+            webFetchContexts,
           ),
           userMsg.id,
           project.id,
@@ -7351,14 +7532,7 @@ export function resolveSucceededRunStatus(status: ChatMessage['runStatus']): Cha
   return status === 'failed' || status === 'canceled' ? status : 'succeeded';
 }
 
-export function computeProducedFiles(
-  beforeNames: ReadonlySet<string> | readonly string[] | undefined,
-  next: readonly ProjectFile[],
-): ProjectFile[] | undefined {
-  if (!beforeNames) return undefined;
-  const set = beforeNames instanceof Set ? beforeNames : new Set(beforeNames);
-  return filterImplicitProducedFiles(next.filter((f) => !set.has(f.name)));
-}
+export { computeProducedFiles } from '../produced-files';
 
 // Reattach with a recovered (on-disk) artifact must still include any
 // other files the turn produced before the artifact write — replacing

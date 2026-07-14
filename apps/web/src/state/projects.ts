@@ -39,6 +39,7 @@ import {
   filterProjectsByTeamverRegistryIfNeeded,
   registerTeamverProjectIfNeeded,
   TeamverProjectRegistryError,
+  waitForTeamverRegistrySyncIfNeeded,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { resolveTeamverBranding } from '../teamver/branding/config';
@@ -50,6 +51,8 @@ import {
   HOME_RECENT_LIST_LIMIT,
   PROJECT_LIST_PAGE_SIZE,
 } from '../teamver/projectListLimits';
+import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjectsPageFromRegistry, mergeDaemonFieldsOntoRegistryProjects } from '../teamver/embedRegistryProjectList';
+import { fetchTeamverProject } from '../teamver/projectRegistry';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
@@ -61,7 +64,44 @@ export type ProjectsListPageResult = {
   nextCursor: string | null;
 };
 
+/** Daemon listing without registry filter — status/metadata enrichment only. */
+async function fetchDaemonProjectsPageRaw(limit: number): Promise<Project[]> {
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', String(Math.max(1, Math.min(Math.floor(limit), 100))));
+    const resp = await fetchProjectsListWhenAuthenticated(`/api/projects?${params.toString()}`);
+    if (!resp?.ok) return [];
+    const json = (await resp.json()) as { projects?: Project[] };
+    return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchDaemonProjectsAllRaw(): Promise<Project[]> {
+  try {
+    const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
+    if (!resp?.ok) return [];
+    const json = (await resp.json()) as { projects?: Project[] };
+    return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
+  } catch {
+    return [];
+  }
+}
+
+async function enrichEmbedRegistryProjects(projects: Project[]): Promise<Project[]> {
+  if (projects.length === 0) return projects;
+  // Over-fetch daemon rows for status/metadata. Membership stays registry-ordered.
+  const daemonProjects = await fetchDaemonProjectsPageRaw(
+    Math.max(PROJECT_LIST_PAGE_SIZE * 4, projects.length * 8, 96),
+  );
+  return mergeDaemonFieldsOntoRegistryProjects(projects, daemonProjects);
+}
+
 async function normalizeProjectsResponse(projects: Project[]): Promise<Project[]> {
+  if (isTeamverEmbedMode()) {
+    await waitForTeamverRegistrySyncIfNeeded();
+  }
   return filterProjectsByTeamverRegistryIfNeeded(
     projects.map((project) => sanitizeProjectForEmbed(project)),
   );
@@ -110,6 +150,19 @@ export async function listRecentProjects(
 
   const run = (async (): Promise<Project[]> => {
     try {
+      if (isTeamverEmbedMode()) {
+        // Workspace registry is membership SSOT. Daemon recent?limit=N then
+        // registry ∩ undersamples when other tenants occupy the top-N window.
+        await waitForTeamverRegistrySyncIfNeeded();
+        const registryProjects = await listEmbedProjectsFromRegistry();
+        const enriched = await enrichEmbedRegistryProjects(registryProjects);
+        return [...enriched]
+          .sort((a, b) => {
+            if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+            return b.id.localeCompare(a.id);
+          })
+          .slice(0, limit);
+      }
       const resp = await fetchProjectsListWhenAuthenticated(
         `/api/projects/recent?limit=${encodeURIComponent(String(limit))}`,
       );
@@ -141,6 +194,14 @@ export async function listProjectsPage(options?: {
   cursor?: string | null;
 }): Promise<ProjectsListPageResult> {
   try {
+    if (isTeamverEmbedMode()) {
+      await waitForTeamverRegistrySyncIfNeeded();
+      const page = await listEmbedProjectsPageFromRegistry(options);
+      return {
+        ...page,
+        projects: await enrichEmbedRegistryProjects(page.projects),
+      };
+    }
     const params = new URLSearchParams();
     params.set('limit', String(options?.limit ?? PROJECT_LIST_PAGE_SIZE));
     if (options?.cursor) {
@@ -172,9 +233,15 @@ export async function listProjectsPage(options?: {
   }
 }
 
-/** Full daemon listing — used by registry sync and legacy refresh paths. */
+/** Full daemon listing — embed uses registry membership + daemon field merge. */
 export async function listProjects(): Promise<Project[]> {
   try {
+    if (isTeamverEmbedMode()) {
+      await waitForTeamverRegistrySyncIfNeeded();
+      const registryProjects = await listEmbedProjectsFromRegistry();
+      const daemonProjects = await fetchDaemonProjectsAllRaw();
+      return mergeDaemonFieldsOntoRegistryProjects(registryProjects, daemonProjects);
+    }
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
     if (!resp) return [];
     if (!resp.ok) return [];
@@ -191,10 +258,24 @@ export async function listProjects(): Promise<Project[]> {
 export async function getProject(id: string): Promise<Project | null> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`);
-    if (!resp.ok) return null;
-    const json = (await resp.json()) as { project: Project };
-    return sanitizeProjectForEmbed(json.project);
+    if (resp.ok) {
+      const json = (await resp.json()) as { project: Project };
+      return sanitizeProjectForEmbed(json.project);
+    }
+    if (isTeamverEmbedMode()) {
+      const row = await fetchTeamverProject(id);
+      if (row) return mapRegistryRowToProject(row);
+    }
+    return null;
   } catch {
+    if (isTeamverEmbedMode()) {
+      try {
+        const row = await fetchTeamverProject(id);
+        if (row) return mapRegistryRowToProject(row);
+      } catch {
+        // Registry fallback is best-effort when daemon transport fails.
+      }
+    }
     return null;
   }
 }
@@ -965,12 +1046,20 @@ export interface ListPluginsOptions {
   offset?: number;
 }
 
+export interface ListPluginsPageResult {
+  plugins: InstalledPluginRecord[];
+  total: number | null;
+  limit: number | null;
+  offset: number;
+  nextOffset: number | null;
+}
+
 function resolvePluginsListUrl(options: ListPluginsOptions): string {
   const params = new URLSearchParams();
   const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
   if (options.mode === 'deck' || slideOnly) params.set('mode', 'deck');
   if (options.query?.trim()) params.set('q', options.query.trim());
-  const limit = options.limit ?? (slideOnly ? 48 : undefined);
+  const limit = options.limit ?? (slideOnly ? 24 : undefined);
   if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
     params.set('limit', String(Math.floor(limit)));
   }
@@ -984,18 +1073,65 @@ function resolvePluginsListUrl(options: ListPluginsOptions): string {
 export async function listPlugins(
   options: ListPluginsOptions = {},
 ): Promise<InstalledPluginRecord[]> {
+  return (await listPluginsPage(options)).plugins;
+}
+
+export async function getInstalledPlugin(
+  pluginId: string,
+  options: Pick<ListPluginsOptions, 'includeHidden'> = {},
+): Promise<InstalledPluginRecord | null> {
+  const id = pluginId.trim();
+  if (!id) return null;
+  try {
+    const resp = await fetch(`/api/plugins/${encodeURIComponent(id)}`);
+    if (!resp.ok) return null;
+    const plugin = (await resp.json()) as InstalledPluginRecord;
+    if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
+      const visible = pluginsForSlideOnlyMvp([plugin], { slideOnlyMvp: true });
+      if (visible.length === 0) return null;
+    }
+    if (!options.includeHidden && !isVisiblePlugin(plugin)) return null;
+    return plugin;
+  } catch {
+    return null;
+  }
+}
+
+export async function listPluginsPage(
+  options: ListPluginsOptions = {},
+): Promise<ListPluginsPageResult> {
   try {
     const resp = await fetch(resolvePluginsListUrl(options));
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { plugins?: InstalledPluginRecord[] };
+    if (!resp.ok) return emptyPluginsPage();
+    const json = (await resp.json()) as {
+      plugins?: InstalledPluginRecord[];
+      total?: number;
+      limit?: number | null;
+      offset?: number;
+      nextOffset?: number | null;
+    };
     let plugins = json.plugins ?? [];
     if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
       plugins = pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp: true });
     }
-    return options.includeHidden ? plugins : plugins.filter(isVisiblePlugin);
+    const visible = options.includeHidden ? plugins : plugins.filter(isVisiblePlugin);
+    return {
+      plugins: visible,
+      total: typeof json.total === 'number' && Number.isFinite(json.total) ? json.total : null,
+      limit: typeof json.limit === 'number' && Number.isFinite(json.limit) ? json.limit : null,
+      offset: typeof json.offset === 'number' && Number.isFinite(json.offset) ? json.offset : 0,
+      nextOffset:
+        typeof json.nextOffset === 'number' && Number.isFinite(json.nextOffset)
+          ? json.nextOffset
+          : null,
+    };
   } catch {
-    return [];
+    return emptyPluginsPage();
   }
+}
+
+function emptyPluginsPage(): ListPluginsPageResult {
+  return { plugins: [], total: null, limit: null, offset: 0, nextOffset: null };
 }
 
 export function isVisiblePlugin(plugin: InstalledPluginRecord): boolean {

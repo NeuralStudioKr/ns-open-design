@@ -1,0 +1,44 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const ROOT = resolve(__dirname, '../..');
+
+function readRepoFile(path: string): string {
+  return readFileSync(resolve(ROOT, path), 'utf8');
+}
+
+describe('plugins home gallery deck framing', () => {
+  it('passes od mode through as a gallery card data attribute', () => {
+    const source = readRepoFile('src/components/plugins-home/PluginCard.tsx');
+
+    expect(source).toContain("const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode");
+    expect(source).toContain("'data-od-mode': odMode");
+  });
+
+  it('uses a scaled 16:9 desktop viewport for deck gallery cards', () => {
+    const css = readRepoFile('src/styles/home/plugins-home.css');
+
+    expect(css).toContain('.plugins-home__card--gallery[data-od-mode="deck"] .plugins-home__gallery-frame');
+    expect(css).toContain('aspect-ratio: 16 / 9;');
+    expect(css).toContain('.plugins-home__card--gallery[data-od-mode="deck"]:hover .plugins-home__html-iframe');
+    expect(css).toContain('width: 360%;');
+    expect(css).toContain('height: 360%;');
+    expect(css).toContain('transform: scale(0.2777778);');
+    expect(css).toContain('transition: none;');
+  });
+
+  it('keeps composer plugin deck previews compact instead of using the gallery scale', () => {
+    const source = readRepoFile('src/components/ComposerPluginPreview.tsx');
+    const css = readRepoFile('src/styles/home/plus-menu.css');
+
+    expect(source).toContain("const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode");
+    expect(source).toContain("'data-od-mode': odMode");
+    expect(css).toContain('.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__preview');
+    expect(css).toContain('aspect-ratio: 16 / 9;');
+    expect(css).toContain('.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__html-iframe');
+    expect(css).toContain('width: 675%;');
+    expect(css).toContain('height: 675%;');
+    expect(css).toContain('transform: scale(0.1481482);');
+  });
+});

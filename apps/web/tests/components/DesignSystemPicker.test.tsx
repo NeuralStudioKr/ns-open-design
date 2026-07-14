@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DesignSystemSummary } from '../../src/types';
 
 vi.mock('../../src/providers/registry', () => ({
-  fetchDesignSystemPreview: vi.fn(),
+  fetchDesignSystemPreviewResult: vi.fn(),
 }));
 
 import { DesignSystemPicker } from '../../src/components/DesignSystemPicker';
 import { I18nProvider, type Locale } from '../../src/i18n';
-import { fetchDesignSystemPreview } from '../../src/providers/registry';
+import { fetchDesignSystemPreviewResult } from '../../src/providers/registry';
 
-const fetchDesignSystemPreviewMock = vi.mocked(fetchDesignSystemPreview);
+const fetchDesignSystemPreviewResultMock = vi.mocked(fetchDesignSystemPreviewResult);
 
 const designSystems: DesignSystemSummary[] = [
   {
@@ -34,7 +34,10 @@ const designSystems: DesignSystemSummary[] = [
 ];
 
 beforeEach(() => {
-  fetchDesignSystemPreviewMock.mockResolvedValue('<html><body><h1>Preview</h1></body></html>');
+  fetchDesignSystemPreviewResultMock.mockResolvedValue({
+    ok: true,
+    html: '<html><body><h1>Preview</h1></body></html>',
+  });
 });
 
 afterEach(() => {
@@ -69,7 +72,7 @@ describe('DesignSystemPicker', () => {
     expect(screen.getByTestId('project-ds-picker-option-noir-check')).toBeTruthy();
 
     await waitFor(() => {
-      expect(fetchDesignSystemPreviewMock).toHaveBeenCalledWith('noir');
+      expect(fetchDesignSystemPreviewResultMock).toHaveBeenCalledWith('noir');
     });
     expect(await screen.findByTestId('project-ds-picker-preview-frame')).toBeTruthy();
   });
@@ -98,7 +101,7 @@ describe('DesignSystemPicker', () => {
 
     fireEvent.mouseEnter(screen.getByTestId('project-ds-picker-option-clay'));
     await waitFor(() => {
-      expect(fetchDesignSystemPreviewMock).toHaveBeenCalledWith('clay');
+      expect(fetchDesignSystemPreviewResultMock).toHaveBeenCalledWith('clay');
     });
 
     fireEvent.click(await screen.findByTestId('project-ds-picker-preview-expand'));
@@ -134,6 +137,19 @@ describe('DesignSystemPicker', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it('shows a calm retry affordance when preview load fails', async () => {
+    fetchDesignSystemPreviewResultMock.mockResolvedValue({
+      ok: false,
+      reason: 'error',
+    });
+
+    renderPicker({}, 'ko');
+
+    fireEvent.click(screen.getByTestId('project-ds-picker-trigger'));
+    expect(await screen.findByText('미리보기를 불러오지 못했습니다. 위 색상·요약을 참고하거나 잠시 후 다시 시도해 주세요.')).toBeTruthy();
+    expect(screen.getByTestId('project-ds-picker-preview-retry')).toBeTruthy();
   });
 
   it('uses localized picker copy', async () => {

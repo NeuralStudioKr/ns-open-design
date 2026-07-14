@@ -234,9 +234,9 @@ def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
     loop 177 — Map a `TeamverAPIError` raised during the Drive upload pipeline
     into a stable, debuggable error_code surface. Order of preference:
 
-      1. SDK-supplied `code` field (e.g., `drive.upload_too_large`).
-      2. HTTP status — distinguishes presigned-PUT 4xx (likely token / mime
-         mismatch) from 5xx / transport-class names (timeouts).
+      1. HTTP 401/403 — stale or forbidden Drive session (Main Apps JWT).
+      2. SDK-supplied `code` field (e.g., `drive.upload_too_large`).
+      3. Other HTTP status — distinguishes presigned-PUT 4xx from 5xx / timeouts.
 
     Without this, every Drive failure collapsed onto `drive_upload_failed` and
     staging operators couldn't tell a stale presigned URL apart from a real S3
@@ -244,10 +244,15 @@ def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
     because the FE shows the raw code in the toast and treats anything starting
     with `drive_upload_failed` as a Drive-side fault.
     """
+    status = getattr(exc, "status_code", None)
+    if status in (401, 403):
+        return f"drive_upload_failed_{int(status)}"
     code = getattr(exc, "code", None)
     if code:
-        return str(code)
-    status = getattr(exc, "status_code", None)
+        normalized = str(code).strip()
+        if normalized.lower().replace(" ", "_") in {"invalid_token", "unauthorized"}:
+            return "drive_upload_failed_401"
+        return normalized
     if status:
         return f"drive_upload_failed_{int(status)}"
     return "drive_upload_failed"
@@ -340,15 +345,18 @@ async def _fetch_export_bytes_for_publish_fallback(
 
 
 def _raise_if_all_failed(result: PublishResult) -> None:
+    """Raise only for single-format client errors (→ 400). Server-side failures
+    stay as a structured PublishResult so the router can return 502 with per-output
+    error_code values the FE already knows how to map (loop 177/180)."""
     if result.http_status != 502:
         return
-    if len(result.outputs) == 1:
-        error_code = result.outputs[0].error_code or "publish_failed"
-        if error_code.startswith("unsupported_formats"):
-            raise BadRequestError(error_code)
-        if error_code in _CLIENT_ERROR_CODES:
-            raise BadRequestError(error_code)
-    raise BadGatewayError("publish_all_failed")
+    if len(result.outputs) != 1:
+        return
+    error_code = result.outputs[0].error_code or "publish_failed"
+    if error_code.startswith("unsupported_formats"):
+        raise BadRequestError(error_code)
+    if error_code in _CLIENT_ERROR_CODES:
+        raise BadRequestError(error_code)
 
 
 async def publish_project(

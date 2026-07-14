@@ -32,6 +32,11 @@ import {
   parseSkillsCatalogSlideOnlyQuery,
   readDefaultSkillsSlideOnlyCatalogFromEnv,
 } from '../skills-slide-catalog.js';
+import {
+  filterDesignTemplatesExcludingChinesePrimary,
+  isChinesePrimaryDeckTemplate,
+  readExcludeChineseDeckTemplatesFromEnv,
+} from '../design-templates-chinese-catalog.js';
 
 export interface RegisterStaticResourceRoutesDeps extends RouteDeps<'http' | 'paths' | 'resources'> {
   tokenContractRebuild?: {
@@ -234,10 +239,12 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       const q = parseCatalogQuery(req.query.q ?? req.query.query ?? req.query.search);
       const limit = parseCatalogLimit(req.query.limit, 200);
       const offset = parseCatalogOffset(req.query.offset);
-      const templates = (await listAllDesignTemplates()).filter((template) => {
+      const excludeChinesePrimary = readExcludeChineseDeckTemplatesFromEnv();
+      let templates = (await listAllDesignTemplates()).filter((template) => {
         if (modeFilter && !modeFilter.has(template.mode)) return false;
         return designTemplateMatchesQuery(template as unknown as Record<string, unknown>, q);
       });
+      templates = filterDesignTemplatesExcludingChinesePrimary(templates, excludeChinesePrimary);
       const page = limit === null ? templates.slice(offset) : templates.slice(offset, offset + limit);
       res.json({
         designTemplates: page.map(({ body, dir: _dir, ...rest }) => ({
@@ -259,6 +266,12 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       const templates = await listAllDesignTemplates();
       const template = findSkillById(templates, req.params.id);
       if (!template) return res.status(404).json({ error: 'design template not found' });
+      if (
+        isChinesePrimaryDeckTemplate(template) &&
+        readExcludeChineseDeckTemplatesFromEnv()
+      ) {
+        return res.status(404).json({ error: 'design template not found' });
+      }
       const { dir: _dir, ...serializable } = template;
       res.json(serializable);
     } catch (err: any) {

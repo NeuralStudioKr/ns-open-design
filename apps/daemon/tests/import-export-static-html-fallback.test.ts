@@ -12,7 +12,10 @@ describe('buildStaticHtmlExportFallback', () => {
     const fallback = buildStaticHtmlExportFallback({ deck: true, html });
 
     expect(fallback).toContain('data-teamver-static-html-export-fallback');
+    expect(fallback).toContain('data-od-html-export-reveal');
     expect(fallback).toContain('.slide:not(.active)');
+    expect(fallback).toContain('data-od-html-export-viewport');
+    expect(fallback).not.toContain('break-after: page !important');
     expect(fallback.indexOf('data-teamver-static-html-export-fallback')).toBeLessThan(fallback.indexOf('</head>'));
   });
 

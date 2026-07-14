@@ -39,6 +39,8 @@ TARGET_DIR=""
 APPLY=false
 DRY_RUN=false
 BACKUP_PREFIX_OVERRIDE=""
+REPLICA_ID=""
+REPLICA_PATH_OVERRIDE=""
 LITESTREAM_BIN="${LITESTREAM_BIN:-litestream}"
 
 usage() {
@@ -56,6 +58,15 @@ restore_app_sqlite_from_s3.sh — Litestream + fallback restore for OD app.sqlit
   --generation <id>               litestream generation (-generation)
   --target-dir <path>             output dir (default: restore/<env>/<ts>/)
   --prefix <s3-prefix>            override SQLITE_BACKUP_PREFIX for --from-snapshot
+  --replica-id <node-id>          multi-node (docs-teamver/39_3 §5.2): restore
+                                  the replica written by this specific EC2
+                                  node (deploy.sh writes to
+                                  s3://<bucket>/litestream/<sanitized-node-id>/
+                                  app.sqlite). Node id is lower-kebab-sanitised
+                                  the same way deploy.sh does it.
+  --replica-path <s3-path>        low-level override — full replica path under
+                                  the bucket (e.g. litestream/i-0abc/app.sqlite).
+                                  Wins over --replica-id.
   --apply                         after restore, copy app.sqlite into the
                                   open-design-daemon container (daemon must
                                   be stopped first; aborts if daemon running)
@@ -63,8 +74,11 @@ restore_app_sqlite_from_s3.sh — Litestream + fallback restore for OD app.sqlit
   -h | --help
 
 Notes:
-  • Litestream path expects litestream.yml mirror semantics:
-    bucket = LITESTREAM_BUCKET, path = litestream/app.sqlite, region = LITESTREAM_REGION.
+  • Bucket + region come from LITESTREAM_BUCKET / LITESTREAM_REGION in the
+    selected .env file (mirrors litestream.yml).
+  • Legacy single-node replicas live at litestream/app.sqlite; multi-node (Phase 4)
+    writers use litestream/<node-id>/app.sqlite. Pass --replica-id or --replica-path
+    to target a specific node — otherwise the legacy path is used.
   • Fallback path reads manifest.json + (app.sqlite, app.sqlite-wal, app.sqlite-shm).
   • Restored bundle never replaces /data/app.sqlite unless --apply is passed.
   • --apply will refuse to run while open-design-daemon is up.
@@ -81,6 +95,8 @@ while (( $# )); do
     --generation) GENERATION="${2:?--generation requires a value}"; shift ;;
     --target-dir) TARGET_DIR="${2:?--target-dir requires a value}"; shift ;;
     --prefix) BACKUP_PREFIX_OVERRIDE="${2:?--prefix requires a value}"; shift ;;
+    --replica-id) REPLICA_ID="${2:?--replica-id requires a value}"; shift ;;
+    --replica-path) REPLICA_PATH_OVERRIDE="${2:?--replica-path requires a value}"; shift ;;
     --apply) APPLY=true ;;
     --dry-run) DRY_RUN=true ;;
     -h|--help) usage; exit 0 ;;
@@ -161,8 +177,28 @@ if [[ "$MODE" == "litestream" ]]; then
     -config /dev/null
   )
   # Build replica URL directly so we don't need litestream.yml on the
-  # restore host.
-  REPLICA_URL="s3://${BUCKET}/litestream/app.sqlite"
+  # restore host. Multi-node (docs-teamver/39_3 §5.2): --replica-id or
+  # --replica-path targets a specific node's replica prefix. Sanitise
+  # --replica-id exactly the same way deploy.sh does when it derives
+  # LITESTREAM_REPLICA_PATH from OD_NODE_ID so the paths line up.
+  replica_subpath="litestream/app.sqlite"
+  if [[ -n "$REPLICA_PATH_OVERRIDE" ]]; then
+    replica_subpath="${REPLICA_PATH_OVERRIDE#/}"
+  elif [[ -n "$REPLICA_ID" ]]; then
+    sanitized_replica_id="$(
+      printf '%s' "$REPLICA_ID" |
+        tr '[:upper:]' '[:lower:]' |
+        tr -cs 'a-z0-9-' '-' |
+        sed -E 's/^-+//; s/-+$//'
+    )"
+    if [[ -z "$sanitized_replica_id" || "$sanitized_replica_id" == "unknown" ]]; then
+      echo "❌ --replica-id sanitises to empty/unknown; refusing to fall back to legacy path"
+      exit 1
+    fi
+    replica_subpath="litestream/${sanitized_replica_id}/app.sqlite"
+  fi
+  REPLICA_URL="s3://${BUCKET}/${replica_subpath}"
+  echo "==> replica_url=$REPLICA_URL"
   if [[ -n "$AT_TIMESTAMP" ]]; then
     litestream_args+=( -timestamp "$AT_TIMESTAMP" )
   fi

@@ -32,6 +32,14 @@ describe("teamverAuthReturn", () => {
     expect(consumeTeamverAuthReturnPending()).toBe(false);
   });
 
+  it("forces recovery from pending without consuming the defer shield", () => {
+    markTeamverAuthReturnPending();
+    expect(shouldForceEmbedAuthRecoveryOnLoad()).toBe(true);
+    expect(peekTeamverAuthReturnPending()).toBe(true);
+    expect(consumeTeamverAuthReturnPending()).toBe(true);
+    expect(peekTeamverAuthReturnPending()).toBe(false);
+  });
+
   it("detects Main FE sign-in referrer as auth return navigation", () => {
     Object.defineProperty(document, "referrer", {
       configurable: true,

@@ -33,6 +33,20 @@
 
 **근거 테스트:** `teamver-publish-drive*.test.ts`, `teamver-drive-*` (import/list/api/thumbnails), `teamver-publish-drive-menu-item.test.tsx` (workspace switch pin).
 
+### 2.1b 2026-07-13 — Drive BFF refresh 책임 경계
+
+`/teamver-bff/drive/*`는 nginx `auth_request /_teamver_bff_session`을 거치지 않고 design-api `/api/v1/drive/*`로 직접 proxy한다. Drive router 자체가 `require_auth` → `ensure_bff_session` → Main Drive API 호출 → upstream 401 시 `force_refresh_bff_session` 재시도를 수행한다.
+
+이 경계가 필요한 이유:
+- Drive 모달은 folder/list/shared-drive를 병렬 호출한다.
+- nginx `auth_request` subrequest가 먼저 BFF token을 refresh하면 refresh token이 회전될 수 있지만, subrequest의 `Set-Cookie`는 본 요청 cookie로 반영되지 않는다.
+- 그 직후 본 요청이 낡은 cookie/access token으로 Main BE Drive API를 호출하면 `{"detail":"Invalid token"}` 401이 발생한다.
+- Drive router가 본 요청 안에서 refresh를 수행하면 최종 response에 `Set-Cookie`가 붙어 브라우저가 최신 BFF session을 보존할 수 있다.
+
+운영 확인:
+- `deploy/teamver/devops/nginx/teamver-design-od-bff.inc.conf`에서 `location ^~ /teamver-bff/drive/`가 generic `location /teamver-bff/`보다 앞에 있어야 한다.
+- staging nginx reload 후 `/teamver-bff/drive/api/drive/folder?shallow_tree=true`, `/teamver-bff/drive/api/drive/list?limit=24`, `/teamver-bff/drive/api/v2/shared-drive`가 더 이상 동시 `Invalid token` 401을 내지 않아야 한다.
+
 ### 2.2 Gap · 후속
 
 | ID | 우선 | 내용 | 상태 |
@@ -101,6 +115,68 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 | `/api/runs` | embed에서도 `setInterval(refresh, 2000)` 고정 polling | `RUNS_CHANGED_EVENT`/초기 즉시 조회, active run 5초, idle 30초. in-flight/pending guard로 중첩 요청 방지 |
 
 운영 효과: 열린 embed 탭이 idle 상태일 때 Main BE OAuth session check와 daemon runs list 조회가 계속 2초/탭 단위로 누적되는 현상을 줄인다. 새 작업 시작은 `RUNS_CHANGED_EVENT`로 즉시 감지하므로 슬라이드 처리 UX 지연은 최소화한다.
+
+### 3.2c 2026-07-13 — 인증 로딩 UX·tab return 안정화
+
+현재 시점 기준 판단: routine focus/visibility 복귀는 사용자가 인증을 새로 한 신호가 아니므로, 인증 상태를 흔드는 recovery trigger로 취급하지 않는다.
+
+- boot gate는 BFF session + workspace seed만 기다리고, registry sync/project prefetch/runtime-config는 후속 best-effort로 돌린다.
+- boot fallback 4초 / initial UI fallback 3.5초. loading shell과 project route loader 톤을 통일한다.
+- `session_unreachable` 중 routine visibility 복귀는 즉시 `force` probe하지 않고 5s→15s→60s backoff에 맡긴다.
+- silent probe도 unreachable을 유지하고 passive recovery에 들어가며, 연속 실패 후에만 login redirect를 스케줄한다. 즉시 `prepareDesignAuthSessionReload`는 하지 않는다.
+- auth return, cookie hint 신규 등장, bfcache restore는 즉시 silent probe한다.
+
+운영 효과: 인증 도중 화면이 에러처럼 보이는 인상을 줄이고, 탭 복귀/일시 401 때문에 Drive·워크스페이스·프로젝트 UI가 흔들리는 케이스를 줄인다.
+
+### 3.2f 2026-07-14 — HA stale Set-Cookie 경합 (Drive `session_expired` 근본 원인)
+
+**SSOT:** [39_10 HA 세션쿠키 경합 해결](./39_10_HA_세션쿠키_경합_해결.md)
+
+현재 시점 기준 판단: 이중화 이후 Drive가 `401 {"detail":"session_expired"}`로 반복 실패하고 **단일 노드에서는 거의 안 나면**, 쿠키명 충돌(§3.2e) 다음으로 **“모든 응답 Set-Cookie + refresh 회전 race”**를 본다.
+
+- Main Apps refresh_token은 1회 사용. Node A가 `C1`을 내려도 Node B가 old session을 retain한 채 Set-Cookie `C0`를 재발행하면 브라우저가 stale로 롤백한다.
+- Drive 모달뿐 아니라 `/auth/session` 등 병렬 BFF 호출도 경합을 유발한다. FE Drive queue만으로는 부족하다.
+- 해결: `TeamverSessionMiddleware`가 **세션이 변경된 요청만** Set-Cookie를 내고, retain 경로는 `suppress_session_cookie`. hard-clear/logout은 delete cookie가 suppress보다 우선. legacy `session` migrate 시 expire.
+- 쿠키명 격리(`teamver_design_bff_session`)와 nginx Drive `auth_request` 제외(§2.1b)는 전제 조건이다 대체제가 아니다.
+
+운영 확인:
+1. [39_10 §5](./39_10_HA_세션쿠키_경합_해결.md) 체크리스트.
+2. 미변경 응답에 `Set-Cookie: teamver_design_bff_session`이 없어야 함.
+3. 모든 ALB target의 `DESIGN_BFF_SESSION_SECRET` / `COOKIE_NAME` 동일.
+
+### 3.2e 2026-07-14 — BFF session cookie 이름 충돌 방지
+
+현재 시점 기준 판단: `{"detail":"session_expired"}`가 Drive BFF API에서 반복되는데 Main 로그인/토큰 자체가 정상이라면, refresh race뿐 아니라 **쿠키 이름 충돌**을 먼저 의심해야 한다.
+
+- 기존 Design BFF session cookie 이름은 기본값 `session`이었다.
+- Main Teamver가 `.teamver.com` 범위의 일반 `session` 쿠키를 발급하면 `stg-design.teamver.com` 요청에도 함께 실릴 수 있다.
+- design-api가 Main의 `session` 쿠키를 BFF session으로 읽으면 서명 검증 실패 → 빈 session → Drive `session_expired`가 된다.
+- 해결: Design BFF cookie 이름을 `teamver_design_bff_session`으로 고정하고, hosted env에서 `DESIGN_BFF_SESSION_COOKIE_NAME=session`을 금지한다.
+- 기존 Design host-only `session` 쿠키는 1회 legacy fallback으로 읽어 새 쿠키명으로 재발급한다. 서명이 맞지 않는 Main session cookie는 무시한다.
+
+운영 확인:
+1. 모든 ALB target의 `.env.staging`/`.env.production`에 `DESIGN_BFF_SESSION_COOKIE_NAME=teamver_design_bff_session`이 동일하게 들어가야 한다.
+2. 배포 후 `/teamver-bff/auth/session` 또는 Drive API 응답의 Set-Cookie가 `teamver_design_bff_session`인지 확인한다.
+3. 여전히 401이면 같은 이름의 쿠키 충돌보다 `DESIGN_BFF_SESSION_SECRET` 불일치 또는 **HA Set-Cookie 경합**을 본다 — [39_10](./39_10_HA_세션쿠키_경합_해결.md) · §3.2f.
+
+### 3.2d 2026-07-13 — Drive HA refresh race 보강
+
+현재 시점 기준 판단: 이중화 후 Drive 401이 늘어난 핵심 축 중 하나는 **BFF session cookie의 refresh token 회전 경쟁**이다.  
+**2026-07-14 근본 해결(미변경 시 Set-Cookie 생략)은 [39_10](./39_10_HA_세션쿠키_경합_해결.md) · §3.2f.** 아래는 그 전후에 들어간 보조 방어층이다.
+
+- 단일 서버에서는 in-process refresh coalesce/cache가 같은 refresh token 중복 사용을 줄인다.
+- 이중화 후 Drive 모달의 병렬 folder/list/shared-drive 요청과 import/publish mutation이 서로 다른 서버로 갈라질 수 있다.
+- 서버 A가 refresh token 회전에 성공하고 서버 B가 같은 old refresh token으로 실패하면, B가 낡은 session을 다시 `Set-Cookie`로 내려 브라우저의 새 cookie를 덮어쓸 수 있다 → **middleware가 미변경 세션에 Set-Cookie를 내지 않도록 고침 ([39_10](./39_10_HA_세션쿠키_경합_해결.md)).**
+- BE `suppress_session_cookie()`는 retain/upstream-401 경로의 추가 안전망이다.
+- `/teamver-bff/drive/*` browse API는 FE queue + soft retry + 최종 coalesced `/auth/refresh` 후 재호출로 401 toast를 최대한 흡수한다.
+- `/projects/{id}/publish`와 `/projects/{id}/import-drive`는 project mutation 라우트이므로 browse proxy와 별개다. 두 라우트 모두 BFF 요청 시작 시 `force_refresh_bff_session()`을 사용하고, **세션이 retain된 실패**에서만 stale cookie re-sign을 suppress한다(hard-clear 시에는 delete cookie 허용).
+- 추가 점검 결과, FE import/publish mutation은 SDK BFF 경로를 직접 타면서 공통 cookie recovery wrapper가 빠져 있었다. 현재는 두 mutation 모두 `withDesignBffCookieAuthRecovery()`를 거치며, `/auth/refresh`가 HA losing-node 401로 실패해도 짧은 대기 후 원 요청을 한 번 더 재시도한다. 이 재시도는 401 전 단계에서 막힌 요청에만 적용되므로 Drive 업로드/다운로드가 이미 수행된 502/부분 성공 응답은 재실행하지 않는다.
+
+운영 확인:
+1. Drive 모달 open 시 folder/list/shared-drive가 최종 200으로 수렴하는지 확인.
+2. Drive import/publish mutation에서 401이 나오면 response가 `session_expired`인지, FE가 `/auth/refresh` 또는 short retry 이후 같은 mutation을 한 번만 재호출하는지 확인.
+3. ALB target별 `DESIGN_BFF_SESSION_SECRET` 값이 완전히 동일한지 확인. secret이 다르면 race와 별개로 모든 BFF cookie decode가 불안정해진다.
+4. 근본 원인·Set-Cookie 정책은 [39_10](./39_10_HA_세션쿠키_경합_해결.md)을 따른다.
 
 ### 3.3 Gap · 후속
 
@@ -348,6 +424,8 @@ bash deploy/teamver/scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-13 | embed tab return auth blip 안정화 — silent 401 기존 UI 유지 + `session_unreachable` 즉시 force probe 제거 |
+| 2026-07-13 | Drive BFF auth_request refresh race 차단 — `/teamver-bff/drive/*` 전용 nginx location + router-owned refresh |
 | 2026-06-25 | loop 403 — in-project run success publish menu arm (S-8) |
 | 2026-06-25 | loop 402 — D-B3 thumbnail batch E2E, validate_deploy_env timeout warn |
 | 2026-06-25 | loop 392~401 후속 TODO — §TODO 신설, S-8~S-10 (in-project publish, one-click, logout QA) |

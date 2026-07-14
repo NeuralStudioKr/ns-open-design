@@ -4,6 +4,7 @@ import {
   hasArtifactPreviewBodyTextLeaks,
   repairMangledDeckFrameworkScript,
   stripArtifactPreviewBodyTextLeaks,
+  stripDeckOrphansBeforeRootFromBodyInner,
   buildArtifactPreviewDomLeakGuardScript,
   buildArtifactPreviewDomLeakStripScript,
 } from "../src/html/artifactPreviewTextLeaks.js";
@@ -160,5 +161,50 @@ viewport=width=device-width, initial-scale=1" />
     const out = stripArtifactPreviewBodyTextLeaks(leaked);
     expect(out).not.toMatch(/<meta[^>]*name=["']viewport["']/i);
     expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("strips bare deck title text before deck-shell", () => {
+    const leaked = `<!doctype html><html><head><title>Deck</title></head><body>
+기업 AI 도입 효과 — 2024
+<div class="deck-shell"><div id="deck-stage"><section class="slide active">A</section></div></div>
+</body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/기업 AI 도입 효과/);
+    expect(out).toContain('<div class="deck-shell">');
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("strips orphan title elements before deck-shell", () => {
+    const leaked = `<!doctype html><html><head><title>Deck</title></head><body>
+<p>기업 AI 도입 효과 — 2024</p>
+<div class="deck-shell"><div id="deck-stage"><section class="slide active">A</section></div></div>
+</body></html>`;
+    const out = stripDeckOrphansBeforeRootFromBodyInner(
+      leaked.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? "",
+    );
+    expect(out).not.toMatch(/기업 AI 도입 효과/);
+    expect(out).toContain('<div class="deck-shell">');
+  });
+
+  it("preserves slide text inside deck-shell while stripping top-level leaks", () => {
+    const html = `<!doctype html><html><body>
+<div class="deck-shell"><div id="deck-stage"><section class="slide active"><h1>AI 도입 효과</h1></section></div></div>
+</body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(html);
+    expect(out).toContain('<h1>AI 도입 효과</h1>');
+  });
+
+  it("preserves non-deck top-level divs when no deck root is present", () => {
+    const html = `<!doctype html><html><body><div data-screen-label="cta">CTA</div></body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(html);
+    expect(out).toContain('<div data-screen-label="cta">CTA</div>');
+  });
+
+  it("ships deck loose page flow scrubbers in preview guard and export strip", () => {
+    const guard = buildArtifactPreviewDomLeakGuardScript();
+    const strip = buildArtifactPreviewDomLeakStripScript();
+    expect(guard).toContain("stripDeckLoosePageFlow");
+    expect(guard).toContain("stripOrphanDeckTitleSiblingsBeforeRoot");
+    expect(strip).toContain("stripDeckBodyLooseFlow");
   });
 });

@@ -195,6 +195,11 @@ import {
   searchInstalledPlugins,
 } from './plugins/index.js';
 import {
+  filterPluginsExcludingChinesePrimaryDeck,
+  isExcludedChinesePrimaryDeckPlugin,
+  readExcludeChineseDeckTemplatesFromEnv,
+} from './design-templates-chinese-catalog.js';
+import {
   marketplaceManifestUrlForRegistry,
   marketplaceRegistryIdFromUrl,
 } from './plugins/marketplaces.js';
@@ -284,6 +289,7 @@ import {
   readTeamverS3PrefixFromRequest,
   teamverDesignApiBaseUrl,
 } from './teamver-project-access.js';
+import { createTeamverProjectSqliteHydrationMiddleware } from './teamver-project-sqlite-hydrate.js';
 import { resolveTeamverManagedApiKeyFromEnv } from './teamver-managed-api-key.js';
 import type { TeamverRequestIdentity } from './teamver-project-access.js';
 import { registerTeamverDesignBffProxy } from './teamver-design-bff-proxy.js';
@@ -389,7 +395,9 @@ import {
   getMediaTask,
   insertMediaTask,
   listMediaTasksByProject,
+  listMediaTasksByProjectAsync,
   listRecentMediaTasks,
+  warmRecentMediaTasksSqliteFromPostgres,
   reconcileMediaTasksOnBoot,
   updateMediaTask,
 } from './media-tasks.js';
@@ -470,29 +478,37 @@ import {
   deleteConversation,
   deletePreviewComment,
   deleteProject as dbDeleteProject,
+  deleteProjectAsync as dbDeleteProjectAsync,
   deleteTemplate,
   getConversation,
   getDeployment,
   getDeploymentById,
   getMessageTelemetryFinalizationState,
   getProject,
+  getProjectAsync,
   getTemplate,
   insertConversation,
+  insertConversationAsync,
   insertProject,
+  insertProjectAsync,
   insertRoutine,
   insertRoutineRun,
-  insertScheduledRoutineRun,
+  tryClaimScheduledRoutineRunAsync,
   insertTemplate,
   findTemplateByNameAndProject,
   updateTemplate,
   listProjectsAwaitingInput,
+  listProjectsAwaitingInputAsync,
   listConversations,
+  listConversationsAsync,
   listDeployments,
   listLatestProjectRunStatuses,
+  listLatestProjectRunStatusesAsync,
   listMessages,
   listPreviewComments,
   listProjects,
   listRoutines,
+  warmRoutinesSqliteFromPostgres,
   listRoutineRuns,
   listTabs,
   listTemplates,
@@ -514,6 +530,11 @@ import {
   upsertMessage,
   upsertPreviewComment,
 } from './db.js';
+import {
+  closeDaemonDbRuntime,
+  flushPostgresWrites,
+  initDaemonDbFromEnv,
+} from './storage/daemon-db-runtime.js';
 import {
   computeIncludeStable,
   hashStableInstructions,
@@ -4988,6 +5009,20 @@ export async function startServer({
   // base64 images routinely exceeds 4 MB. Bump to 24 MB so the inline
   // export path stays viable end-to-end.
   app.use(express.json({ limit: '24mb' }));
+
+  // docs-teamver/39_2 · 39_5 — surface the node identity for every
+  // response so ALB stickiness (LBCookie) can be verified end-to-end
+  // and slow-request/failover investigations can pin the exact host.
+  // Missing OD_NODE_ID is treated as unknown so single-node deploys
+  // remain unaffected.
+  const daemonNodeId = (process.env.OD_NODE_ID ?? '').trim();
+  if (daemonNodeId.length > 0) {
+    app.use((_req, res, next) => {
+      res.setHeader('X-OD-Node-Id', daemonNodeId);
+      next();
+    });
+  }
+
   const projectPreviewScopes = createProjectPreviewScopeRegistry();
 
   // Plan §3.K1 — bearer-token middleware.
@@ -5347,7 +5382,18 @@ export async function startServer({
     }
     next();
   });
+  await initDaemonDbFromEnv();
   const db = openDatabase(PROJECT_ROOT, { dataDir: RUNTIME_DATA_DIR });
+  const warmedRoutines = await warmRoutinesSqliteFromPostgres(db);
+  if (warmedRoutines > 0) {
+    console.info(JSON.stringify({ metric: 'daemon_db_routines_warm', count: warmedRoutines }));
+  }
+  const warmedMediaTasks = await warmRecentMediaTasksSqliteFromPostgres(db, {
+    terminalTtlMs: TASK_TTL_AFTER_DONE_MS,
+  });
+  if (warmedMediaTasks > 0) {
+    console.info(JSON.stringify({ metric: 'daemon_db_media_tasks_warm', count: warmedMediaTasks }));
+  }
   // Wire the upload-destination bridge to this db so multer can route
   // file uploads into baseDir-rooted projects' actual folders.
   projectMetadataLookup = (id) => {
@@ -5358,12 +5404,12 @@ export async function startServer({
   composioConnectorProvider.configureCatalogCache(RUNTIME_DATA_DIR);
   composioConnectorProvider.startCatalogRefreshLoop();
 
-  // RoutineService persistence is a thin adapter over the SQLite helpers.
-  // Routines are stored as DB rows; the service holds in-memory timers and
-  // delegates "list me everything" / "record a run" back to SQLite.
+  // RoutineService persistence is a thin adapter over the db helpers.
+  // Scheduled runs use tryClaimScheduledRoutineRunAsync so (routine_id,
+  // slot_at) ownership is decided in Postgres across daemon nodes.
   routineService = new RoutineService({
     list: () => listRoutines(db).map((row) => routineDbRowToContract(row, null)),
-    insertRun: (run, options) => {
+    insertRun: async (run, options) => {
       const row = {
         id: run.id,
         routineId: run.routineId,
@@ -5379,7 +5425,12 @@ export async function startServer({
         errorCode: run.errorCode,
       };
       if (options?.scheduledSlotAt != null) {
-        return Boolean(insertScheduledRoutineRun(db, row, options.scheduledSlotAt));
+        const claimed = await tryClaimScheduledRoutineRunAsync(
+          db,
+          row,
+          options.scheduledSlotAt,
+        );
+        return claimed != null;
       }
       insertRoutineRun(db, row);
       return true;
@@ -5540,7 +5591,11 @@ export async function startServer({
 
   app.get('/api/health', async (_req, res) => {
     const versionInfo = await readCurrentAppVersionInfo();
-    res.json({ ok: true, version: versionInfo.version });
+    // docs-teamver/39_2 · 39_5 — nodeId surfaces the exact daemon
+    // replica behind ALB stickiness. `unknown` when OD_NODE_ID is
+    // not set (single-node dev / local).
+    const nodeId = daemonNodeId.length > 0 ? daemonNodeId : 'unknown';
+    res.json({ ok: true, version: versionInfo.version, nodeId });
   });
 
   // Reachability probe for the project storage backend. In `s3` mode
@@ -6097,6 +6152,7 @@ export async function startServer({
   let projectMaterialization: ProjectMaterializationRuntime = createProjectMaterializationRuntime(
     PROJECT_STORAGE_LAYOUT,
     null,
+    db,
   );
   // Held for /api/health/storage; null until the S3 backend has been
   // resolved (or stays null in local mode, where we probe the scratch
@@ -6115,6 +6171,7 @@ export async function startServer({
       projectMaterialization = createProjectMaterializationRuntime(
         PROJECT_STORAGE_LAYOUT,
         materializingStorage,
+        db,
       );
       materializingProjectStorage = materializingStorage;
       console.info(
@@ -6155,7 +6212,7 @@ export async function startServer({
   }
   const baseFinishRun = design.runs.finish.bind(design.runs);
   design.runs.finish = projectMaterialization.wrapFinish(baseFinishRun);
-  const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization);
+  const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization, db);
   const byokProxyMaterialization = createByokProxyMaterializationHooks(projectMaterialization);
 
   // Interactive Terminal sessions (node-pty). In-memory, process-local, and
@@ -6448,9 +6505,12 @@ export async function startServer({
   const uploadDeps = { upload, importUpload, handleProjectUpload };
   const projectStoreDeps = {
     getProject,
+    getProjectAsync,
     insertProject,
+    insertProjectAsync,
     updateProject,
     dbDeleteProject,
+    dbDeleteProjectAsync,
     removeProjectDir,
     validateLinkedDirs,
   };
@@ -6474,8 +6534,10 @@ export async function startServer({
   };
   const conversationDeps = {
     insertConversation,
+    insertConversationAsync,
     getConversation,
     listConversations,
+    listConversationsAsync,
     updateConversation,
     deleteConversation,
     listMessages,
@@ -6488,7 +6550,9 @@ export async function startServer({
   const templateDeps = { getTemplate, listTemplates, deleteTemplate, insertTemplate, findTemplateByNameAndProject, updateTemplate };
   const projectStatusDeps = {
     listLatestProjectRunStatuses,
+    listLatestProjectRunStatusesAsync,
     listProjectsAwaitingInput,
+    listProjectsAwaitingInputAsync,
     normalizeProjectDisplayStatus,
     composeProjectDisplayStatus,
     listProjects,
@@ -6656,6 +6720,14 @@ export async function startServer({
       const title = typeof project.name === 'string' ? project.name.trim() : '';
       return title ? { title } : {};
     }),
+  );
+  app.use(
+    '/api/projects/:id',
+    createTeamverProjectSqliteHydrationMiddleware(
+      db,
+      projectStorageHooks,
+      httpDeps.sendApiError,
+    ),
   );
   if (projectStorageHooks) {
     const scratchStorage = materializingProjectStorage?.scratch;
@@ -6898,11 +6970,11 @@ export async function startServer({
 
   // ---- Conversations --------------------------------------------------------
 
-  app.get('/api/projects/:id/conversations', (req, res) => {
+  app.get('/api/projects/:id/conversations', async (req, res) => {
     if (!getProject(db, req.params.id)) {
       return res.status(404).json({ error: 'project not found' });
     }
-    res.json({ conversations: listConversations(db, req.params.id) });
+    res.json({ conversations: await listConversationsAsync(db, req.params.id) });
   });
 
   app.post('/api/projects/:id/conversations', (req, res) => {
@@ -7659,6 +7731,10 @@ export async function startServer({
       plugins = q
         ? searchInstalledPlugins({ plugins, query: q, mode: modeFilter ?? undefined }).entries.map((entry) => entry.plugin)
         : filterInstalledPluginsByCatalogMode(plugins, modeFilter);
+      plugins = filterPluginsExcludingChinesePrimaryDeck(
+        plugins,
+        readExcludeChineseDeckTemplatesFromEnv(),
+      );
       const page = limit === null ? plugins.slice(offset) : plugins.slice(offset, offset + limit);
       res.json({
         plugins: page,
@@ -7676,6 +7752,11 @@ export async function startServer({
     try {
       const plugin = getInstalledPlugin(db, req.params.id);
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
+      if (
+        isExcludedChinesePrimaryDeckPlugin(plugin, readExcludeChineseDeckTemplatesFromEnv())
+      ) {
+        return res.status(404).json({ error: 'plugin not found' });
+      }
       res.json(plugin);
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -11329,16 +11410,16 @@ export async function startServer({
     res.on('close', wake);
   });
 
-  app.get('/api/projects/:id/media/tasks', (req, res) => {
+  app.get('/api/projects/:id/media/tasks', async (req, res) => {
     if (!isLocalSameOrigin(req, resolvedPort)) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     const projectId = req.params.id;
     const includeDone =
       req.query.includeDone === '1' || req.query.includeDone === 'true';
-    const tasks = listMediaTasksByProject(db, projectId, {
+    const tasks = (await listMediaTasksByProjectAsync(db, projectId, {
       includeTerminal: includeDone,
-    }).map((t) => ({
+    })).map((t) => ({
       taskId: t.id,
       status: t.status,
       startedAt: t.startedAt,
@@ -16341,6 +16422,8 @@ export async function startServer({
       await design.runs.shutdownActive({ graceMs: resolveChatRunShutdownGraceMs() });
       await terminalService.shutdownActive();
       await design.analytics.shutdown();
+      await flushPostgresWrites();
+      await closeDaemonDbRuntime();
     };
     let server;
     try {

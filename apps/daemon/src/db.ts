@@ -12,6 +12,43 @@ import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/
 import { migrateCritique } from './critique/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
+import {
+  deleteCachedAgentSession,
+  deleteCachedProject,
+  getCachedAgentSession,
+  getCachedConversations,
+  getCachedConversationById,
+  getCachedDeployments,
+  getCachedMessages,
+  getCachedPreviewComments,
+  getCachedProject,
+  getCachedTabsState,
+  invalidateCachedConversations,
+  invalidateCachedMessages,
+  invalidateCachedTabsState,
+  isProjectDeletedFromCache,
+  listCachedProjects,
+  removeCachedPreviewComment,
+  setCachedAgentSession,
+  setCachedAgentSessionsForConversation,
+  setCachedConversations,
+  setCachedDeployments,
+  setCachedMessages,
+  setCachedPreviewComments,
+  setCachedProject,
+  setCachedTabsState,
+  updateCachedMessage,
+  upsertCachedConversation,
+  upsertCachedDeployment,
+  upsertCachedPreviewComment,
+  findCachedMessage,
+} from './storage/daemon-db-entity-cache.js';
+import * as pgCore from './storage/daemon-db-postgres-core.js';
+import {
+  getPostgresPool,
+  isDaemonDbPostgres,
+  schedulePostgresWrite,
+} from './storage/daemon-db-runtime.js';
 
 type SqliteDb = Database.Database;
 type DbRow = Record<string, any>;
@@ -416,6 +453,10 @@ const DEPLOYMENT_COLS = `id, project_id AS projectId, file_name AS fileName,
   created_at AS createdAt, updated_at AS updatedAt`;
 
 export function listDeployments(db: SqliteDb, projectId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedDeployments(projectId);
+    return (cached ?? []).map((row) => normalizeDeployment(row as DbRow));
+  }
   return (db
     .prepare(
       `SELECT ${DEPLOYMENT_COLS}
@@ -428,6 +469,15 @@ export function listDeployments(db: SqliteDb, projectId: string) {
 }
 
 export function getDeployment(db: SqliteDb, projectId: string, fileName: string, providerId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedDeployments(projectId) ?? [];
+    const hit = cached.find(
+      (row) =>
+        String((row as DbRow).fileName) === fileName &&
+        String((row as DbRow).providerId) === providerId,
+    );
+    return hit ? normalizeDeployment(hit as DbRow) : null;
+  }
   const row = db
     .prepare(
       `SELECT ${DEPLOYMENT_COLS}
@@ -439,6 +489,11 @@ export function getDeployment(db: SqliteDb, projectId: string, fileName: string,
 }
 
 export function getDeploymentById(db: SqliteDb, projectId: string, id: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedDeployments(projectId) ?? [];
+    const hit = cached.find((row) => String((row as DbRow).id) === id);
+    return hit ? normalizeDeployment(hit as DbRow) : null;
+  }
   const row = db
     .prepare(
       `SELECT ${DEPLOYMENT_COLS}
@@ -490,6 +545,51 @@ export function upsertDeployment(db: SqliteDb, deployment: DbRow) {
     updatedAt: deployment.updatedAt ?? now,
   };
   const providerMetadataJson = stringifyJsonObjectOrNull(next.providerMetadata);
+
+  if (isDaemonDbPostgres()) {
+    // Ensure the project bucket exists so upsertCachedDeployment isn't a
+    // no-op after a warm miss.
+    if (getCachedDeployments(next.projectId) == null) {
+      setCachedDeployments(next.projectId, []);
+    }
+    const rowForCache: DbRow = {
+      id: next.id,
+      projectId: next.projectId,
+      fileName: next.fileName,
+      providerId: next.providerId,
+      url: next.url,
+      deploymentId: next.deploymentId,
+      deploymentCount: next.deploymentCount,
+      target: next.target,
+      status: next.status,
+      statusMessage: next.statusMessage,
+      reachableAt: next.reachableAt,
+      providerMetadataJson,
+      createdAt: next.createdAt,
+      updatedAt: next.updatedAt,
+    };
+    upsertCachedDeployment(next.projectId, rowForCache);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertDeployment(getPostgresPool(), {
+        id: next.id,
+        projectId: next.projectId,
+        fileName: next.fileName,
+        providerId: next.providerId,
+        url: next.url,
+        deploymentId: next.deploymentId,
+        deploymentCount: next.deploymentCount,
+        target: next.target,
+        status: next.status,
+        statusMessage: next.statusMessage,
+        reachableAt: next.reachableAt,
+        providerMetadataJson,
+        createdAt: next.createdAt,
+        updatedAt: next.updatedAt,
+      });
+    });
+    return normalizeDeployment(rowForCache);
+  }
+
   db.prepare(
     `INSERT INTO deployments
        (id, project_id, file_name, provider_id, url, deployment_id,
@@ -571,6 +671,84 @@ const PROJECT_COLS = `id, name, skill_id AS skillId,
   created_at AS createdAt,
   updated_at AS updatedAt`;
 
+/** Plugin/critique tables still FK to sqlite — mirror PG writes for cross-node parity. */
+function mirrorProjectRowToSqlite(db: SqliteDb, p: DbRow): void {
+  db.prepare(
+    `INSERT INTO projects
+       (id, name, skill_id, design_system_id, pending_prompt,
+        metadata_json, custom_instructions, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        skill_id = excluded.skill_id,
+        design_system_id = excluded.design_system_id,
+        pending_prompt = excluded.pending_prompt,
+        metadata_json = excluded.metadata_json,
+        custom_instructions = excluded.custom_instructions,
+        updated_at = excluded.updated_at`,
+  ).run(
+    p.id,
+    p.name,
+    p.skillId ?? null,
+    p.designSystemId ?? null,
+    p.pendingPrompt ?? null,
+    p.metadata ? JSON.stringify(p.metadata) : null,
+    p.customInstructions ?? null,
+    p.createdAt,
+    p.updatedAt,
+  );
+}
+
+function mirrorConversationRowToSqlite(db: SqliteDb, c: DbRow): void {
+  db.prepare(
+    `INSERT INTO conversations
+       (id, project_id, title, session_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id,
+        title = excluded.title,
+        session_mode = excluded.session_mode,
+        updated_at = excluded.updated_at`,
+  ).run(
+    c.id,
+    c.projectId,
+    c.title ?? null,
+    normalizeConversationSessionMode(c.sessionMode),
+    c.createdAt,
+    c.updatedAt,
+  );
+}
+
+function deleteProjectRowFromSqlite(db: SqliteDb, id: string): void {
+  db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+}
+
+function projectRowForSqliteMirror(
+  row: DbRow & {
+    id: string;
+    name: string;
+    skillId?: string | null;
+    designSystemId?: string | null;
+    pendingPrompt?: string | null;
+    metadata?: unknown;
+    customInstructions?: string | null;
+    createdAt: number;
+    updatedAt: number;
+  },
+): DbRow {
+  return {
+    id: row.id,
+    name: row.name,
+    skillId: row.skillId ?? null,
+    designSystemId: row.designSystemId ?? null,
+    pendingPrompt: row.pendingPrompt ?? null,
+    metadata: row.metadata,
+    customInstructions: row.customInstructions ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 export function listProjects(db: SqliteDb) {
   const rows = db
     .prepare(
@@ -636,6 +814,108 @@ export function listProjectsPage(
   return { projects, hasMore, nextCursor };
 }
 
+type NormalizedProject = ReturnType<typeof normalizeProject>;
+
+function compareProjectsDesc(a: NormalizedProject, b: NormalizedProject): number {
+  if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+  if (a.id < b.id) return 1;
+  if (a.id > b.id) return -1;
+  return 0;
+}
+
+function projectBeforeCursor(project: NormalizedProject, cursor: ProjectListCursor): boolean {
+  return (
+    project.updatedAt < cursor.updatedAt
+    || (project.updatedAt === cursor.updatedAt && project.id < cursor.id)
+  );
+}
+
+function cachedProjectAsNormalized(cached: DbRow): NormalizedProject {
+  if (cached.metadataJson !== undefined && cached.metadataJson !== null) {
+    return normalizeProject(cached);
+  }
+  return cached as NormalizedProject;
+}
+
+async function listMergedProjectsPostgres(): Promise<NormalizedProject[]> {
+  const rows = await pgCore.pgListProjects(getPostgresPool());
+  const byId = new Map<string, NormalizedProject>();
+  for (const row of rows) {
+    const id = String(row.id);
+    if (isProjectDeletedFromCache(id)) continue;
+    byId.set(id, normalizeProject(row));
+  }
+  for (const cached of listCachedProjects()) {
+    const id = String(cached.id);
+    if (isProjectDeletedFromCache(id)) continue;
+    // PG row is the multi-node SSOT; node-local cache only materializes rows
+    // that are not yet visible in RDS (cold sticky node).
+    if (byId.has(id)) continue;
+    byId.set(id, cachedProjectAsNormalized(cached));
+  }
+  const merged = Array.from(byId.values()).sort(compareProjectsDesc);
+  for (const project of merged) {
+    setCachedProject(project);
+  }
+  return merged;
+}
+
+function paginateMergedProjects(
+  projects: NormalizedProject[],
+  options: { limit: number; cursor?: ProjectListCursor | null },
+): { projects: NormalizedProject[]; hasMore: boolean; nextCursor: string | null } {
+  const limit = Math.max(1, Math.min(Math.floor(options.limit), 100));
+  const cursor = options.cursor ?? null;
+  const filtered = cursor ? projects.filter((project) => projectBeforeCursor(project, cursor)) : projects;
+  const hasMore = filtered.length > limit;
+  const slice = hasMore ? filtered.slice(0, limit) : filtered;
+  const last = slice.at(-1);
+  const nextCursor =
+    hasMore && last
+      ? encodeProjectListCursor({ updatedAt: last.updatedAt, id: last.id })
+      : null;
+  return { projects: slice, hasMore, nextCursor };
+}
+
+export async function listProjectsAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listProjects(db);
+  return listMergedProjectsPostgres();
+}
+
+export async function listProjectsPageAsync(
+  db: SqliteDb,
+  options: { limit: number; cursor?: ProjectListCursor | null },
+): Promise<{
+  projects: NormalizedProject[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
+  if (!isDaemonDbPostgres()) return listProjectsPage(db, options);
+  const merged = await listMergedProjectsPostgres();
+  return paginateMergedProjects(merged, options);
+}
+
+type ProjectRunStatusEntry = {
+  value: ReturnType<typeof normalizeProjectRunStatus>;
+  updatedAt: number;
+  runId?: string;
+};
+
+function buildLatestProjectRunStatusMap(rows: DbRow[]): Map<string, ProjectRunStatusEntry> {
+  const latestByProject = new Map<string, ProjectRunStatusEntry>();
+  for (const row of rows) {
+    const projectId = String(row.projectId ?? '');
+    if (!projectId || latestByProject.has(projectId)) continue;
+    const entry: ProjectRunStatusEntry = {
+      value: normalizeProjectRunStatus(row.status),
+      updatedAt: Number(row.updatedAt),
+    };
+    if (row.runId != null) entry.runId = String(row.runId);
+    latestByProject.set(projectId, entry);
+  }
+  return latestByProject;
+}
+
 export function listLatestProjectRunStatuses(db: SqliteDb) {
   const rows = db
     .prepare(
@@ -649,17 +929,13 @@ export function listLatestProjectRunStatuses(db: SqliteDb) {
         ORDER BY updatedAt DESC`,
     )
     .all() as DbRow[];
-  const latestByProject = new Map<string, DbRow>();
-  for (const row of rows) {
-    if (!latestByProject.has(row.projectId)) {
-      latestByProject.set(row.projectId, {
-        value: normalizeProjectRunStatus(row.status),
-        updatedAt: Number(row.updatedAt),
-        runId: row.runId ?? undefined,
-      });
-    }
-  }
-  return latestByProject;
+  return buildLatestProjectRunStatusMap(rows);
+}
+
+export async function listLatestProjectRunStatusesAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listLatestProjectRunStatuses(db);
+  const rows = await pgCore.pgListLatestProjectRunStatuses(getPostgresPool());
+  return buildLatestProjectRunStatusMap(rows);
 }
 
 export function listProjectsAwaitingInput(db: SqliteDb) {
@@ -699,17 +975,73 @@ export function listProjectsAwaitingInput(db: SqliteDb) {
           )`,
     )
     .all() as DbRow[];
-  return new Set((rows as DbRow[]).map((row: DbRow) => row.projectId));
+  return new Set((rows as DbRow[]).map((row: DbRow) => String(row.projectId)));
+}
+
+export async function listProjectsAwaitingInputAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listProjectsAwaitingInput(db);
+  const rows = await pgCore.pgListProjectsAwaitingInput(getPostgresPool());
+  return new Set(rows.map((row) => String(row.projectId)));
 }
 
 export function getProject(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedProject(id);
+    return cached ? normalizeProject(cached) : null;
+  }
   const row = db
     .prepare(`SELECT ${PROJECT_COLS} FROM projects WHERE id = ?`)
     .get(id) as DbRow | undefined;
   return row ? normalizeProject(row) : null;
 }
 
+/** Postgres: cache miss falls back to RDS so cold-node GET /api/projects/:id works. */
+export async function getProjectAsync(db: SqliteDb, id: string) {
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  const cached = getProject(db, trimmed);
+  if (cached) return cached;
+  if (!isDaemonDbPostgres()) return null;
+  const pool = getPostgresPool();
+  const projectRow = await pgCore.pgGetProject(pool, trimmed);
+  if (!projectRow) return null;
+  const normalized = normalizeProject(projectRow);
+  setCachedProject(normalized);
+  mirrorProjectRowToSqlite(db, {
+    id: normalized.id,
+    name: normalized.name,
+    skillId: normalized.skillId,
+    designSystemId: normalized.designSystemId,
+    pendingPrompt: normalized.pendingPrompt ?? null,
+    metadata: normalized.metadata,
+    customInstructions: normalized.customInstructions ?? null,
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+  });
+  return normalized;
+}
+
 export function insertProject(db: SqliteDb, p: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const created = normalizeProject({
+      id: p.id,
+      name: p.name,
+      skillId: p.skillId ?? null,
+      designSystemId: p.designSystemId ?? null,
+      pendingPrompt: p.pendingPrompt ?? null,
+      metadataJson: p.metadata ? JSON.stringify(p.metadata) : null,
+      appliedPluginSnapshotId: p.appliedPluginSnapshotId ?? null,
+      customInstructions: p.customInstructions ?? null,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    });
+    setCachedProject(created);
+    mirrorProjectRowToSqlite(db, p);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertProject(getPostgresPool(), p);
+    });
+    return created;
+  }
   db.prepare(
     `INSERT INTO projects
        (id, name, skill_id, design_system_id, pending_prompt,
@@ -729,7 +1061,45 @@ export function insertProject(db: SqliteDb, p: DbRow) {
   return getProject(db, p.id);
 }
 
+/** Postgres: await durable insert before HTTP create returns (cross-node list parity). */
+export async function insertProjectAsync(db: SqliteDb, p: DbRow) {
+  if (!isDaemonDbPostgres()) {
+    return insertProject(db, p);
+  }
+  const created = normalizeProject({
+    id: p.id,
+    name: p.name,
+    skillId: p.skillId ?? null,
+    designSystemId: p.designSystemId ?? null,
+    pendingPrompt: p.pendingPrompt ?? null,
+    metadataJson: p.metadata ? JSON.stringify(p.metadata) : null,
+    appliedPluginSnapshotId: p.appliedPluginSnapshotId ?? null,
+    customInstructions: p.customInstructions ?? null,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  });
+  setCachedProject(created);
+  mirrorProjectRowToSqlite(db, p);
+  await pgCore.pgInsertProject(getPostgresPool(), p);
+  return created;
+}
+
 export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const existing = getProject(db, id);
+    if (!existing) return null;
+    const merged = {
+      ...existing,
+      ...patch,
+      updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+    };
+    setCachedProject(merged);
+    mirrorProjectRowToSqlite(db, projectRowForSqliteMirror(merged));
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateProject(getPostgresPool(), id, merged);
+    });
+    return merged;
+  }
   const existing = getProject(db, id);
   if (!existing) return null;
   const merged = {
@@ -761,7 +1131,26 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 export function deleteProject(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    deleteCachedProject(id);
+    deleteProjectRowFromSqlite(db, id);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteProject(getPostgresPool(), id);
+    });
+    return;
+  }
   db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+}
+
+/** Postgres: await durable delete (HTTP DELETE must not return before PG row is gone). */
+export async function deleteProjectAsync(db: SqliteDb, id: string): Promise<void> {
+  if (!isDaemonDbPostgres()) {
+    deleteProject(db, id);
+    return;
+  }
+  deleteCachedProject(id);
+  await pgCore.pgDeleteProject(getPostgresPool(), id);
+  deleteProjectRowFromSqlite(db, id);
 }
 
 function normalizeProject(row: DbRow) {
@@ -893,6 +1282,10 @@ function normalizeTemplate(row: DbRow) {
 // ---------- conversations ----------
 
 export function listConversations(db: SqliteDb, projectId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedConversations(projectId);
+    return cached ? cached.map((row) => normalizeConversation(row)) : [];
+  }
   return rows(db
     .prepare(
       `WITH project_conversations AS (
@@ -954,7 +1347,86 @@ export function listConversations(db: SqliteDb, projectId: string) {
     .all(projectId)).map(normalizeConversation);
 }
 
+export async function listConversationsAsync(db: SqliteDb, projectId: string) {
+  if (!isDaemonDbPostgres()) return listConversations(db, projectId);
+  const rows = await pgCore.pgListConversations(getPostgresPool(), projectId);
+  const normalized = rows.map((row) => normalizeConversation(row));
+  setCachedConversations(projectId, normalized);
+  return normalized;
+}
+
+export async function warmProjectFromPostgres(db: SqliteDb, projectId: string): Promise<void> {
+  if (!isDaemonDbPostgres()) return;
+  const pool = getPostgresPool();
+  const projectRow = await pgCore.pgGetProject(pool, projectId);
+  if (projectRow) {
+    const normalized = normalizeProject(projectRow);
+    setCachedProject(normalized);
+    mirrorProjectRowToSqlite(db, {
+      id: normalized.id,
+      name: normalized.name,
+      skillId: normalized.skillId,
+      designSystemId: normalized.designSystemId,
+      pendingPrompt: normalized.pendingPrompt ?? null,
+      metadata: normalized.metadata,
+      customInstructions: normalized.customInstructions ?? null,
+      createdAt: normalized.createdAt,
+      updatedAt: normalized.updatedAt,
+    });
+  }
+  const conversations = await pgCore.pgListConversations(pool, projectId);
+  const normalizedConversations = conversations.map((row) => normalizeConversation(row));
+  setCachedConversations(projectId, normalizedConversations);
+  for (const conversation of normalizedConversations) {
+    mirrorConversationRowToSqlite(db, {
+      id: conversation.id,
+      projectId: conversation.projectId,
+      title: conversation.title ?? null,
+      sessionMode: conversation.sessionMode,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    });
+    const messages = await pgCore.pgListMessages(pool, conversation.id);
+    setCachedMessages(conversation.id, messages.map((row) => normalizeMessage(row)));
+    const sessions = await pgCore.pgListAgentSessionsByConversation(pool, conversation.id);
+    setCachedAgentSessionsForConversation(conversation.id, sessions);
+  }
+  const tabsState = await pgCore.pgGetTabsState(pool, projectId);
+  if (tabsState) {
+    setCachedTabsState(projectId, {
+      stateJson: tabsState.stateJson,
+      updatedAt: tabsState.updatedAt,
+    });
+  }
+  // Preview comments are stored in the cache as raw postgres row shapes
+  // (camelCase alias columns), matching what upsertPreviewComment writes.
+  // listPreviewComments applies normalizePreviewComment on read.
+  const previewComments = await pgCore.pgListPreviewCommentsForProject(pool, projectId);
+  const commentsByConversation = new Map<string, DbRow[]>();
+  for (const row of previewComments) {
+    const conversationId = String(row.conversationId ?? '');
+    if (!conversationId) continue;
+    const list = commentsByConversation.get(conversationId) ?? [];
+    list.push(row as DbRow);
+    commentsByConversation.set(conversationId, list);
+  }
+  for (const conversation of normalizedConversations) {
+    setCachedPreviewComments(
+      projectId,
+      String(conversation.id),
+      commentsByConversation.get(String(conversation.id)) ?? [],
+    );
+  }
+  const deployments = await pgCore.pgListDeployments(pool, projectId);
+  setCachedDeployments(projectId, deployments as DbRow[]);
+}
+
 export function getConversation(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedConversationById(id);
+    if (!cached) return null;
+    return normalizeConversation(cached);
+  }
   const r = db
     .prepare(
       `SELECT id, project_id AS projectId, title, session_mode AS sessionMode,
@@ -1105,6 +1577,23 @@ function latestUsageDurationMs(eventsJson: unknown): number | undefined {
 }
 
 export function insertConversation(db: SqliteDb, c: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const created = normalizeConversation({
+      id: c.id,
+      projectId: c.projectId,
+      title: c.title ?? null,
+      sessionMode: c.sessionMode,
+      messageCount: 0,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    });
+    upsertCachedConversation(String(c.projectId), created as DbRow);
+    mirrorConversationRowToSqlite(db, c);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertConversation(getPostgresPool(), c);
+    });
+    return created;
+  }
   db.prepare(
     `INSERT INTO conversations
        (id, project_id, title, session_mode, created_at, updated_at)
@@ -1120,7 +1609,52 @@ export function insertConversation(db: SqliteDb, c: DbRow) {
   return getConversation(db, c.id);
 }
 
+/** Postgres: await durable conversation insert on project create. */
+export async function insertConversationAsync(db: SqliteDb, c: DbRow) {
+  if (!isDaemonDbPostgres()) {
+    return insertConversation(db, c);
+  }
+  const created = normalizeConversation({
+    id: c.id,
+    projectId: c.projectId,
+    title: c.title ?? null,
+    sessionMode: c.sessionMode,
+    messageCount: 0,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  });
+  upsertCachedConversation(String(c.projectId), created as DbRow);
+  mirrorConversationRowToSqlite(db, c);
+  await pgCore.pgInsertConversation(getPostgresPool(), c);
+  return created;
+}
+
 export function updateConversation(db: SqliteDb, id: string, patch: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const base = getConversation(db, id);
+    if (!base) return null;
+    const merged = {
+      ...base,
+      ...patch,
+      sessionMode: Object.prototype.hasOwnProperty.call(patch, 'sessionMode')
+        ? normalizeConversationSessionMode(patch.sessionMode)
+        : base.sessionMode,
+      updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+    };
+    invalidateCachedConversations(base.projectId);
+    mirrorConversationRowToSqlite(db, {
+      id: merged.id,
+      projectId: merged.projectId,
+      title: merged.title ?? null,
+      sessionMode: merged.sessionMode,
+      createdAt: merged.createdAt,
+      updatedAt: merged.updatedAt,
+    });
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateConversation(getPostgresPool(), id, merged);
+    });
+    return merged;
+  }
   const existing = getConversation(db, id);
   if (!existing) return null;
   const merged = {
@@ -1139,6 +1673,15 @@ export function updateConversation(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 export function deleteConversation(db: SqliteDb, id: string) {
+  if (isDaemonDbPostgres()) {
+    const existing = getConversation(db, id);
+    if (existing?.projectId) invalidateCachedConversations(existing.projectId);
+    invalidateCachedMessages(id);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteConversation(getPostgresPool(), id);
+    });
+    return;
+  }
   db.prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
 }
 
@@ -1149,6 +1692,13 @@ export function getAgentSession(
   conversationId: string,
   agentId: string,
 ): string | null {
+  if (isDaemonDbPostgres()) {
+    // Postgres path reads from the in-process cache populated by
+    // warmProjectFromPostgres. Cache miss returns null, matching sqlite
+    // semantics; the next warm cycle will backfill after a follow-up read.
+    const hit = getCachedAgentSession(conversationId, agentId);
+    return hit?.sessionId ?? null;
+  }
   const row = db
     .prepare(
       `SELECT session_id FROM agent_sessions
@@ -1167,6 +1717,19 @@ export function upsertAgentSession(
     stablePromptHash?: string | null;
   },
 ): void {
+  if (isDaemonDbPostgres()) {
+    // Postgres becomes the SSOT for agent sessions. Update the cache
+    // synchronously so subsequent sync reads see the latest session, then
+    // schedule the durable pg write.
+    setCachedAgentSession(input.conversationId, input.agentId, {
+      sessionId: input.sessionId,
+      stablePromptHash: input.stablePromptHash ?? null,
+    });
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertAgentSession(getPostgresPool(), input);
+    });
+    return;
+  }
   db.prepare(
     `INSERT INTO agent_sessions (conversation_id, agent_id, session_id, stable_prompt_hash, updated_at)
        VALUES (?, ?, ?, ?, ?)
@@ -1188,6 +1751,11 @@ export function getAgentSessionRecord(
   conversationId: string,
   agentId: string,
 ): { sessionId: string; stablePromptHash: string | null } | null {
+  if (isDaemonDbPostgres()) {
+    const hit = getCachedAgentSession(conversationId, agentId);
+    if (!hit) return null;
+    return { sessionId: hit.sessionId, stablePromptHash: hit.stablePromptHash };
+  }
   const row = db
     .prepare(
       `SELECT session_id, stable_prompt_hash FROM agent_sessions
@@ -1208,6 +1776,24 @@ export function updateAgentSessionStableHash(
   agentId: string,
   stablePromptHash: string,
 ): void {
+  if (isDaemonDbPostgres()) {
+    const existing = getCachedAgentSession(conversationId, agentId);
+    if (existing) {
+      setCachedAgentSession(conversationId, agentId, {
+        sessionId: existing.sessionId,
+        stablePromptHash,
+      });
+    }
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateAgentSessionStableHash(
+        getPostgresPool(),
+        conversationId,
+        agentId,
+        stablePromptHash,
+      );
+    });
+    return;
+  }
   db.prepare(
     `UPDATE agent_sessions SET stable_prompt_hash = ?, updated_at = ?
       WHERE conversation_id = ? AND agent_id = ?`,
@@ -1219,6 +1805,13 @@ export function clearAgentSession(
   conversationId: string,
   agentId: string,
 ): void {
+  if (isDaemonDbPostgres()) {
+    deleteCachedAgentSession(conversationId, agentId);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgClearAgentSession(getPostgresPool(), conversationId, agentId);
+    });
+    return;
+  }
   db.prepare(
     `DELETE FROM agent_sessions WHERE conversation_id = ? AND agent_id = ?`,
   ).run(conversationId, agentId);
@@ -1227,6 +1820,10 @@ export function clearAgentSession(
 // ---------- messages ----------
 
 export function listMessages(db: SqliteDb, conversationId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedMessages(conversationId);
+    return cached ? cached.map((row) => normalizeMessage(row)) : [];
+  }
   return (db
     .prepare(
       `SELECT id, role, content, agent_id AS agentId, agent_name AS agentName,
@@ -1251,7 +1848,65 @@ export function listMessages(db: SqliteDb, conversationId: string) {
     .map(normalizeMessage);
 }
 
+export async function listMessagesAsync(db: SqliteDb, conversationId: string) {
+  if (!isDaemonDbPostgres()) return listMessages(db, conversationId);
+  const rows = await pgCore.pgListMessages(getPostgresPool(), conversationId);
+  const normalized = rows.map((row) => normalizeMessage(row));
+  setCachedMessages(conversationId, normalized);
+  return normalized;
+}
+
 export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
+  if (isDaemonDbPostgres()) {
+    const now = Date.now();
+    const cached = getCachedMessages(conversationId) ?? [];
+    const existing = cached.find((row) => row.id === m.id);
+    const position = existing && typeof existing.position === 'number'
+      ? Number(existing.position)
+      : cached.reduce((max, row) => Math.max(max, Number(row.position ?? -1)), -1) + 1;
+    const normalized = normalizeMessage({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      agentId: m.agentId ?? null,
+      agentName: m.agentName ?? null,
+      runId: m.runId ?? null,
+      runStatus: m.runStatus ?? null,
+      lastRunEventId: m.lastRunEventId ?? null,
+      eventsJson: m.events ? JSON.stringify(m.events) : null,
+      attachmentsJson: m.attachments ? JSON.stringify(m.attachments) : null,
+      commentAttachmentsJson: m.commentAttachments ? JSON.stringify(m.commentAttachments) : null,
+      producedFilesJson: m.producedFiles ? JSON.stringify(m.producedFiles) : null,
+      feedbackJson: m.feedback ? JSON.stringify(m.feedback) : null,
+      preTurnFileNamesJson: m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
+      sessionMode: m.sessionMode ?? null,
+      runContextJson: m.runContext ? JSON.stringify(m.runContext) : null,
+      appliedPluginSnapshotJson: m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,
+      createdAt: m.createdAt ?? now,
+      startedAt: m.startedAt ?? null,
+      endedAt: m.endedAt ?? null,
+      position,
+    });
+    const nextCache = existing
+      ? cached.map((row) => (row.id === m.id ? normalized : row))
+      : [...cached, normalized];
+    setCachedMessages(conversationId, nextCache);
+    const conversation = getCachedConversationById(conversationId);
+    if (conversation?.projectId) invalidateCachedConversations(String(conversation.projectId));
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertMessage(getPostgresPool(), conversationId, m);
+      // Only touch conversation row when it is already in cache — otherwise
+      // we'd overwrite title with null on cold paths (insertConversation race).
+      if (conversation) {
+        await pgCore.pgUpdateConversation(getPostgresPool(), conversationId, {
+          title: conversation.title ?? null,
+          sessionMode: conversation.sessionMode ?? 'design',
+          updatedAt: now,
+        });
+      }
+    });
+    return normalized;
+  }
   const existing = db
     .prepare(`SELECT position FROM messages WHERE id = ?`)
     .get(m.id) as DbRow | undefined;
@@ -1394,6 +2049,27 @@ export function appendMessageStatusEvent(db: SqliteDb, messageId: string, event:
   const label = typeof event?.label === 'string' ? event.label.trim() : '';
   const detail = typeof event?.detail === 'string' ? event.detail.trim() : '';
   if (!label) return null;
+
+  if (isDaemonDbPostgres()) {
+    const hit = findCachedMessage(messageId);
+    if (!hit) return null;
+    const events = Array.isArray(hit.message.events) ? [...(hit.message.events as DbRow[])] : [];
+    const last = events[events.length - 1];
+    if (last?.kind === 'status' && last.label === label && (last.detail ?? '') === detail) {
+      return events;
+    }
+    const nextEvent = detail
+      ? { kind: 'status', label, detail }
+      : { kind: 'status', label };
+    const next = [...events, nextEvent];
+    const merged = { ...hit.message, events: next };
+    updateCachedMessage(hit.conversationId, hit.index, merged);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+    });
+    return next;
+  }
+
   const row = db
     .prepare(`SELECT events_json AS eventsJson FROM messages WHERE id = ?`)
     .get(messageId) as DbRow | undefined;
@@ -1417,6 +2093,24 @@ export function appendMessageAgentEvent(db: SqliteDb, messageId: string, event: 
   if (!event || typeof event !== 'object') return null;
   const kind = typeof event.kind === 'string' ? event.kind : '';
   if (!kind) return null;
+
+  if (isDaemonDbPostgres()) {
+    const hit = findCachedMessage(messageId);
+    if (!hit) return null;
+    const events = Array.isArray(hit.message.events) ? [...(hit.message.events as DbRow[])] : [];
+    const last = events[events.length - 1];
+    if (last && JSON.stringify(last) === JSON.stringify(event)) return events;
+    const next = [...events, event];
+    const textDelta = kind === 'text' && typeof event.text === 'string' ? event.text : '';
+    const content = String(hit.message.content ?? '') + textDelta;
+    const merged = { ...hit.message, content, events: next };
+    updateCachedMessage(hit.conversationId, hit.index, merged);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+    });
+    return next;
+  }
+
   const row = db
     .prepare(`SELECT content, events_json AS eventsJson FROM messages WHERE id = ?`)
     .get(messageId) as DbRow | undefined;
@@ -1450,6 +2144,10 @@ const PREVIEW_COMMENT_STATUSES = new Set([
 ]);
 
 export function listPreviewComments(db: SqliteDb, projectId: string, conversationId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedPreviewComments(projectId, conversationId);
+    return (cached ?? []).map((row) => normalizePreviewComment(row as DbRow));
+  }
   return (db
     .prepare(
       `SELECT id, project_id AS projectId, conversation_id AS conversationId,
@@ -1493,6 +2191,77 @@ export function upsertPreviewComment(db: SqliteDb, projectId: string, conversati
   const slideIndex = Number.isFinite(target.slideIndex) ? Math.max(0, Math.round(target.slideIndex)) : null;
   const slideKey = slideIndex ?? -1;
   const now = Date.now();
+
+  if (isDaemonDbPostgres()) {
+    let cached = getCachedPreviewComments(projectId, conversationId);
+    if (!cached) {
+      // Warm miss — start with an empty list so upsertCachedPreviewComment
+      // has a bucket to write into. A subsequent full warm will overwrite
+      // this with the authoritative Postgres snapshot.
+      cached = [];
+      setCachedPreviewComments(projectId, conversationId, cached);
+    }
+    const existing = cached.find((row) => {
+      const r = row as DbRow;
+      return r.filePath === filePath && r.elementId === elementId && Number(r.slideKey ?? -1) === slideKey;
+    }) as DbRow | undefined;
+    const id = (existing?.id as string) ?? randomCommentId();
+    const createdAt = Number(existing?.createdAt ?? now);
+    const existingAttachments = normalizePreviewCommentAttachments(existing?.attachments);
+    const attachments = attachmentsProvided ? incomingAttachments : existingAttachments;
+    if (!note && attachments.length === 0) throw new Error('comment note required');
+    const rowForCache: DbRow = {
+      id,
+      projectId,
+      conversationId,
+      filePath,
+      elementId,
+      selector,
+      label,
+      text,
+      positionJson: JSON.stringify(position),
+      htmlHint,
+      selectionKind,
+      memberCount: selectionKind === 'pod' ? memberCount : null,
+      podMembersJson: selectionKind === 'pod' ? JSON.stringify(podMembers) : null,
+      styleJson: style ? JSON.stringify(style) : null,
+      attachmentsJson: attachments.length > 0 ? JSON.stringify(attachments) : null,
+      slideIndex,
+      slideKey,
+      note,
+      status: 'open',
+      createdAt,
+      updatedAt: now,
+    };
+    upsertCachedPreviewComment(projectId, conversationId, rowForCache);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertPreviewComment(getPostgresPool(), {
+        id,
+        projectId,
+        conversationId,
+        filePath,
+        elementId,
+        selector,
+        label,
+        text,
+        positionJson: rowForCache.positionJson as string,
+        htmlHint,
+        selectionKind,
+        memberCount: rowForCache.memberCount as number | null,
+        podMembersJson: rowForCache.podMembersJson as string | null,
+        styleJson: rowForCache.styleJson as string | null,
+        attachmentsJson: rowForCache.attachmentsJson as string | null,
+        slideIndex,
+        slideKey,
+        note,
+        status: 'open',
+        createdAt,
+        updatedAt: now,
+      });
+    });
+    return normalizePreviewComment(rowForCache);
+  }
+
   const existing = db
     .prepare(
       `SELECT id, created_at AS createdAt, attachments_json AS attachmentsJson
@@ -1556,6 +2325,38 @@ export function upsertPreviewComment(db: SqliteDb, projectId: string, conversati
 export function updatePreviewCommentStatus(db: SqliteDb, projectId: string, conversationId: string, id: string, status: string) {
   if (!PREVIEW_COMMENT_STATUSES.has(status)) throw new Error('invalid comment status');
   const now = Date.now();
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedPreviewComments(projectId, conversationId) ?? [];
+    const existing = cached.find((row) => String((row as DbRow).id) === id) as DbRow | undefined;
+    if (existing) {
+      const merged = { ...existing, status, updatedAt: now };
+      upsertCachedPreviewComment(projectId, conversationId, merged);
+      schedulePostgresWrite(async () => {
+        await pgCore.pgUpdatePreviewCommentStatus(
+          getPostgresPool(),
+          projectId,
+          conversationId,
+          id,
+          status,
+          now,
+        );
+      });
+      return normalizePreviewComment(merged);
+    }
+    // Not cached — issue the async write anyway; caller will re-fetch after
+    // the next warm cycle.
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdatePreviewCommentStatus(
+        getPostgresPool(),
+        projectId,
+        conversationId,
+        id,
+        status,
+        now,
+      );
+    });
+    return null;
+  }
   db.prepare(
     `UPDATE preview_comments
         SET status = ?, updated_at = ?
@@ -1565,6 +2366,20 @@ export function updatePreviewCommentStatus(db: SqliteDb, projectId: string, conv
 }
 
 export function deletePreviewComment(db: SqliteDb, projectId: string, conversationId: string, id: string) {
+  if (isDaemonDbPostgres()) {
+    const removed = removeCachedPreviewComment(projectId, conversationId, id);
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeletePreviewComment(getPostgresPool(), projectId, conversationId, id);
+    });
+    // We don't know for sure whether the row existed in Postgres, but the
+    // caller's contract mirrors sqlite semantics (true when locally
+    // observed). removed==false with a warm cache means "not present" —
+    // safe to report false. When the cache is cold we optimistically
+    // report true; the async delete will no-op if the row was already
+    // gone.
+    if (removed) return true;
+    return getCachedPreviewComments(projectId, conversationId) == null;
+  }
   const result = db
     .prepare(
       `DELETE FROM preview_comments
@@ -1784,6 +2599,83 @@ export function listRoutines(db: SqliteDb) {
     .map(normalizeRoutine);
 }
 
+function mirrorRoutineToSqlite(db: SqliteDb, r: DbRow): void {
+  db.prepare(
+    `INSERT INTO routines
+       (id, name, prompt, schedule_kind, schedule_value, schedule_json,
+        project_mode, project_id, skill_id, agent_id, context_json, enabled,
+        created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        prompt = excluded.prompt,
+        schedule_kind = excluded.schedule_kind,
+        schedule_value = excluded.schedule_value,
+        schedule_json = excluded.schedule_json,
+        project_mode = excluded.project_mode,
+        project_id = excluded.project_id,
+        skill_id = excluded.skill_id,
+        agent_id = excluded.agent_id,
+        context_json = excluded.context_json,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at`,
+  ).run(
+    r.id,
+    r.name,
+    r.prompt,
+    r.scheduleKind,
+    r.scheduleValue,
+    r.scheduleJson ?? null,
+    r.projectMode,
+    r.projectId ?? null,
+    r.skillId ?? null,
+    r.agentId ?? null,
+    r.contextJson ?? null,
+    r.enabled ? 1 : 0,
+    r.createdAt,
+    r.updatedAt,
+  );
+}
+
+export async function warmRoutinesSqliteFromPostgres(db: SqliteDb): Promise<number> {
+  if (!isDaemonDbPostgres()) return 0;
+  const rows = await pgCore.pgListRoutines(getPostgresPool());
+  for (const row of rows) {
+    mirrorRoutineToSqlite(db, normalizeRoutine(row));
+  }
+  return rows.length;
+}
+
+export async function listRoutinesAsync(db: SqliteDb) {
+  if (!isDaemonDbPostgres()) return listRoutines(db);
+  const rows = await pgCore.pgListRoutines(getPostgresPool());
+  return rows.map((row) => normalizeRoutine(row));
+}
+
+export async function getRoutineAsync(db: SqliteDb, id: string) {
+  if (!isDaemonDbPostgres()) return getRoutine(db, id);
+  const row = await pgCore.pgGetRoutine(getPostgresPool(), id);
+  return row ? normalizeRoutine(row) : null;
+}
+
+export async function listRoutineRunsAsync(db: SqliteDb, routineId: string, limit = 20) {
+  if (!isDaemonDbPostgres()) return listRoutineRuns(db, routineId, limit);
+  const rows = await pgCore.pgListRoutineRuns(getPostgresPool(), routineId, limit);
+  return rows.map(normalizeRoutineRun);
+}
+
+export async function getLatestRoutineRunAsync(db: SqliteDb, routineId: string) {
+  if (!isDaemonDbPostgres()) return getLatestRoutineRun(db, routineId);
+  const row = await pgCore.pgGetLatestRoutineRun(getPostgresPool(), routineId);
+  return row ? normalizeRoutineRun(row) : null;
+}
+
+export async function getRoutineRunAsync(db: SqliteDb, id: string) {
+  if (!isDaemonDbPostgres()) return getRoutineRun(db, id);
+  const row = await pgCore.pgGetRoutineRun(getPostgresPool(), id);
+  return row ? normalizeRoutineRun(row) : null;
+}
+
 export function getRoutine(db: SqliteDb, id: string) {
   const r = db
     .prepare(`SELECT ${ROUTINE_COLS} FROM routines WHERE id = ?`)
@@ -1814,6 +2706,14 @@ export function insertRoutine(db: SqliteDb, r: DbRow) {
     r.createdAt,
     r.updatedAt,
   );
+  if (isDaemonDbPostgres()) {
+    // Dual-write to Postgres for cross-node visibility. Read path stays on
+    // sqlite until routine service is async-refactored (Track B5.6).
+    const snapshot = { ...r };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertRoutine(getPostgresPool(), snapshot);
+    });
+  }
   return getRoutine(db, r.id);
 }
 
@@ -1848,11 +2748,22 @@ export function updateRoutine(db: SqliteDb, id: string, patch: DbRow) {
     merged.updatedAt,
     id,
   );
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...merged };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateRoutine(getPostgresPool(), id, snapshot);
+    });
+  }
   return getRoutine(db, id);
 }
 
 export function deleteRoutine(db: SqliteDb, id: string): boolean {
   const result = db.prepare(`DELETE FROM routines WHERE id = ?`).run(id);
+  if (isDaemonDbPostgres()) {
+    schedulePostgresWrite(async () => {
+      await pgCore.pgDeleteRoutine(getPostgresPool(), id);
+    });
+  }
   return result.changes > 0;
 }
 
@@ -1928,10 +2839,20 @@ export function insertRoutineRun(db: SqliteDb, r: DbRow) {
     r.error ?? null,
     r.errorCode ?? null,
   );
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...r };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgInsertRoutineRun(getPostgresPool(), snapshot);
+    });
+  }
   return getRoutineRun(db, r.id);
 }
 
-export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number) {
+function claimScheduledRoutineRunInSqlite(
+  db: SqliteDb,
+  r: DbRow,
+  slotAt: number,
+): boolean {
   const insertClaim = db.prepare(
     `INSERT OR IGNORE INTO routine_schedule_claims
        (routine_id, slot_at, claimed_at)
@@ -1962,8 +2883,87 @@ export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number
     );
     return true;
   });
-  if (!tx()) return null;
+  return tx();
+}
+
+/**
+ * Sync entrypoint for sqlite-only mode and legacy callers. Claims a scheduler
+ * slot in sqlite (single-node atomic) and, when postgres is enabled, also
+ * schedules an async pg claim. For multi-node exactly-once scheduling,
+ * prefer `tryClaimScheduledRoutineRunAsync`.
+ */
+export function insertScheduledRoutineRun(db: SqliteDb, r: DbRow, slotAt: number) {
+  if (!claimScheduledRoutineRunInSqlite(db, r, slotAt)) return null;
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...r };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgTryClaimScheduledRoutineRun(getPostgresPool(), snapshot, slotAt);
+    });
+  }
   return getRoutineRun(db, r.id);
+}
+
+/**
+ * Cross-node atomic scheduler claim. Postgres owns (routine_id, slot_at)
+ * uniqueness; sqlite is mirrored best-effort for local sync readers.
+ */
+export async function tryClaimScheduledRoutineRunAsync(
+  db: SqliteDb,
+  r: DbRow,
+  slotAt: number,
+): Promise<DbRow | null> {
+  if (isDaemonDbPostgres()) {
+    const ok = await pgCore.pgTryClaimScheduledRoutineRun(getPostgresPool(), r, slotAt);
+    if (!ok) return null;
+    try {
+      claimScheduledRoutineRunInSqlite(db, r, slotAt);
+    } catch {
+      // sqlite mirror best-effort — postgres remains the SSOT for the claim.
+    }
+    const local = getRoutineRun(db, r.id);
+    if (local) return local as DbRow;
+    // PG claim succeeded but local sqlite mirror missed (orphan claim row).
+    // Return a synthetic row so RoutineService still runs the slot owner.
+    return normalizeRoutineRun({
+      id: r.id,
+      routineId: r.routineId,
+      trigger: r.trigger,
+      status: r.status,
+      projectId: r.projectId,
+      conversationId: r.conversationId,
+      agentRunId: r.agentRunId,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt ?? null,
+      summary: r.summary ?? null,
+      error: r.error ?? null,
+      errorCode: r.errorCode ?? null,
+    }) as DbRow;
+  }
+  return insertScheduledRoutineRun(db, r, slotAt);
+}
+
+function messageRowForPgUpsert(messageId: string, merged: DbRow, events: DbRow[]): DbRow {
+  return {
+    id: messageId,
+    role: merged.role,
+    content: merged.content,
+    agentId: merged.agentId,
+    agentName: merged.agentName,
+    runId: merged.runId,
+    runStatus: merged.runStatus,
+    lastRunEventId: merged.lastRunEventId,
+    events,
+    attachments: merged.attachments,
+    commentAttachments: merged.commentAttachments,
+    producedFiles: merged.producedFiles,
+    feedback: merged.feedback,
+    preTurnFileNames: merged.preTurnFileNames,
+    sessionMode: merged.sessionMode,
+    runContext: merged.runContext,
+    appliedPluginSnapshot: merged.appliedPluginSnapshot,
+    startedAt: merged.startedAt,
+    endedAt: merged.endedAt,
+  };
 }
 
 export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {
@@ -1989,6 +2989,12 @@ export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {
     merged.errorCode ?? null,
     id,
   );
+  if (isDaemonDbPostgres()) {
+    const snapshot = { ...merged };
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpdateRoutineRun(getPostgresPool(), id, snapshot);
+    });
+  }
   return getRoutineRun(db, id);
 }
 
@@ -2057,6 +3063,23 @@ function parseProjectTabsStateJson(value: unknown): ProjectTabsState | null {
 }
 
 export function listTabs(db: SqliteDb, projectId: string) {
+  if (isDaemonDbPostgres()) {
+    const cached = getCachedTabsState(projectId);
+    const savedState = parseProjectTabsStateJson(cached?.stateJson);
+    if (savedState) {
+      return {
+        ...savedState,
+        hasSavedState: true,
+        updatedAt: cached?.updatedAt ?? Date.now(),
+      };
+    }
+    return {
+      tabs: [] as string[],
+      active: null as string | null,
+      hasSavedState: false,
+      updatedAt: cached?.updatedAt,
+    };
+  }
   const rows = db
     .prepare(
       `SELECT name, position, is_active AS isActive
@@ -2094,6 +3117,15 @@ export function setTabs(
       ? { tabs: stateOrNames, active: activeName }
       : stateOrNames,
   ) ?? { tabs: [], active: null };
+  if (isDaemonDbPostgres()) {
+    const stateJson = JSON.stringify(state);
+    const updatedAt = Date.now();
+    setCachedTabsState(projectId, { stateJson, updatedAt });
+    schedulePostgresWrite(async () => {
+      await pgCore.pgUpsertTabsState(getPostgresPool(), projectId, stateJson, updatedAt);
+    });
+    return listTabs(db, projectId);
+  }
   const tx = db.transaction(() => {
     db.prepare(
       `INSERT INTO tabs_state (project_id, updated_at, state_json)

@@ -69,6 +69,21 @@ describe('Teamver embed export + Drive publish UI', () => {
     expect(history).toContain('teamver-drive-history-toggle');
   });
 
+  it('surfaces a re-login CTA when BFF calls return 401', () => {
+    const helper = readSource('src/teamver/teamverBffAuthError.ts');
+    expect(helper).toContain('isTeamverBffUnauthorizedError');
+    expect(helper).toContain('redirectToTeamverLoginFromEmbed');
+
+    const panel = readSource('src/teamver/components/TeamverPublishDrivePanel.tsx');
+    expect(panel).toContain('teamver-drive-panel-auth-required');
+    expect(panel).toContain('teamver-drive-panel-login');
+    expect(panel).toContain('setAuthRequired(true)');
+
+    const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
+    expect(history).toContain('teamver-drive-history-auth-required');
+    expect(history).toContain('teamver-drive-history-login');
+  });
+
   it('supports partial publish toasts with follow-up actions', () => {
     const fileViewer = readSource('src/components/FileViewer.tsx');
     expect(fileViewer).toContain('imageExportSnapshotDataUrlRef.current = null');

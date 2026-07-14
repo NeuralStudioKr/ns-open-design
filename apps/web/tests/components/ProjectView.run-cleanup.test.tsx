@@ -174,6 +174,7 @@ async function waitForReadyChatPaneProps() {
   });
   return chatPaneSpy.mock.calls.at(-1)?.[0] as {
     onSend?: (prompt: string, attachments: unknown[], comments: unknown[]) => Promise<void>;
+    onStop?: () => void;
     initialDraft?: string;
   };
 }
@@ -394,6 +395,75 @@ describe('ProjectView daemon cleanup', () => {
     });
   });
 
+  it('aborts the daemon cancel signal only when the user explicitly stops the run', async () => {
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+
+    let capturedStreamSignal: AbortSignal | null = null;
+    let capturedCancelSignal: AbortSignal | null = null;
+    streamViaDaemon.mockImplementation(async (options: {
+      signal: AbortSignal;
+      cancelSignal?: AbortSignal;
+      onRunCreated?: (runId: string) => void;
+      onRunStatus?: (status: NonNullable<ChatMessage['runStatus']>) => void;
+    }) => {
+      capturedStreamSignal = options.signal;
+      capturedCancelSignal = options.cancelSignal ?? null;
+      options.onRunCreated?.('run-explicit-stop');
+      options.onRunStatus?.('running');
+      return new Promise<void>(() => {});
+    });
+
+    render(
+      <ProjectView
+        project={{ id: 'project-stop', name: 'Project', skillId: null, designSystemId: null } as never}
+        routeFileName={null}
+        config={{ mode: 'daemon', agentId: 'agent-1', notifications: undefined, agentModels: {} } as never}
+        agents={[{ id: 'agent-1', name: 'OpenCode', models: [] } as never]}
+        skills={[]}
+        designTemplates={[]}
+        designSystems={[]}
+        daemonLive
+        onModeChange={() => {}}
+        onAgentChange={() => {}}
+        onAgentModelChange={() => {}}
+        onRefreshAgents={() => {}}
+        onOpenSettings={() => {}}
+        onBack={() => {}}
+        onClearPendingPrompt={() => {}}
+        onTouchProject={() => {}}
+        onProjectChange={() => {}}
+        onProjectsRefresh={() => {}}
+      />,
+    );
+
+    const sendProps = await waitForReadyChatPaneProps();
+    await sendProps.onSend!('stop this run explicitly', [], []);
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    expect((capturedStreamSignal as AbortSignal | null)?.aborted).toBe(false);
+    expect((capturedCancelSignal as AbortSignal | null)?.aborted).toBe(false);
+
+    const latestProps = chatPaneSpy.mock.calls.at(-1)?.[0] as { onStop?: () => void };
+    latestProps.onStop?.();
+
+    expect((capturedStreamSignal as AbortSignal | null)?.aborted).toBe(true);
+    expect((capturedCancelSignal as AbortSignal | null)?.aborted).toBe(true);
+    await waitFor(() => {
+      const canceledSave = saveMessage.mock.calls.find(
+        (call) => call[2]?.role === 'assistant' && call[2]?.runStatus === 'canceled',
+      );
+      expect(canceledSave).toBeTruthy();
+    });
+  });
+
   it('does not abort daemon cancel reattach controllers during unmount cleanup', async () => {
     let seenCancelSignal: { aborted: boolean } | null = null;
     let seenSignal: { aborted: boolean } | null = null;
@@ -485,7 +555,7 @@ describe('ProjectView daemon cleanup', () => {
   // self-heals fixture and the test body that follows uses the
   // `startedAt` variable declared only in this `it()` opener.
   it('self-heals running messages with no runId when daemon has no active run', async () => {
-    const startedAt = Date.now();
+    const startedAt = Date.now() - 120_000;
     listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
     listMessages.mockResolvedValue([
       {

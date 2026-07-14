@@ -5,6 +5,11 @@ const postMock = vi.fn();
 const getWorkspaceMock = vi.fn(async () => "ws-1");
 
 vi.mock("../src/teamver/designBffClient", () => ({
+  TEAMVER_BFF_REQUEST_OPTIONS: {
+    skipAuthHeader: true,
+    skipAuthRecovery: true,
+  },
+  withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
   getDesignBffClient: vi.fn(() => ({
     http: { post: postMock },
     workspaceStore: { get: getWorkspaceMock },
@@ -18,12 +23,14 @@ vi.mock("../src/teamver/teamverDesignAccess", () => ({
 }));
 
 import { importTeamverDriveAssets } from "../src/teamver/importDriveAssets";
+import { withDesignBffCookieAuthRecovery } from "../src/teamver/designBffClient";
 
 describe("importTeamverDriveAssets", () => {
   beforeEach(() => {
     postMock.mockReset();
     getWorkspaceMock.mockClear();
     assertAppEnabledMock.mockClear();
+    vi.mocked(withDesignBffCookieAuthRecovery).mockClear();
   });
 
   it("checks appEnabled before importing Drive assets", async () => {
@@ -71,6 +78,7 @@ describe("importTeamverDriveAssets", () => {
       },
       expect.objectContaining({ workspaceId: "ws-1", skipAuthHeader: true }),
     );
+    expect(withDesignBffCookieAuthRecovery).toHaveBeenCalledTimes(1);
     expect(result.imported[0]?.path).toBe("refs/logo.svg");
     expect(result.partial).toBe(false);
   });

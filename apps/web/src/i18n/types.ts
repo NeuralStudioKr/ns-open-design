@@ -1018,6 +1018,9 @@ export interface Dict {
   'designSystemPicker.openPreview': string;
   'designSystemPicker.loadingPreview': string;
   'designSystemPicker.noPreview': string;
+  'designSystemPicker.previewUnavailable': string;
+  'designSystemPicker.previewLoadFailed': string;
+  'designSystemPicker.previewRetry': string;
   'designSystemPicker.previewHint': string;
   'designSystemPicker.fullscreenAria': string;
   'designSystemPicker.closeFullscreen': string;
@@ -2602,6 +2605,7 @@ export interface Dict {
   'sketch.tooltipClean': string;
   'fileViewer.empty': string;
   'fileViewer.loading': string;
+  'fileViewer.updatingPreview': string;
   'fileViewer.exportPptx': string;
   'fileViewer.openInNewTab': string;
   'fileViewer.copyPath': string;

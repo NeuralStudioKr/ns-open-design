@@ -19,6 +19,7 @@ def hosted_settings(**overrides: object) -> Settings:
         "teamver_jwt_issuer": "https://stg-api.teamver.com",
         "teamver_jwt_audience": "teamver-design",
         "design_bff_session_secret": "test-bff-secret",
+        "design_bff_session_cookie_name": "teamver_design_bff_session",
         "design_public_origin": "https://stg-design.teamver.com",
         "teamver_main_login_url": "https://stg.teamver.com/auth/signin",
         "teamver_registry_app_id": "ai-design",
@@ -36,6 +37,16 @@ def test_staging_accepts_complete_hosted_credentials() -> None:
 def test_staging_rejects_hs256_secret() -> None:
     with pytest.raises(ValidationError, match="TEAMVER_JWT_SECRET is forbidden"):
         hosted_settings(teamver_jwt_secret="legacy-secret")
+
+
+def test_staging_rejects_generic_bff_session_cookie_name() -> None:
+    with pytest.raises(ValidationError, match="DESIGN_BFF_SESSION_COOKIE_NAME=session"):
+        hosted_settings(design_bff_session_cookie_name="session")
+
+
+def test_staging_rejects_empty_bff_session_cookie_name() -> None:
+    with pytest.raises(ValidationError, match="DESIGN_BFF_SESSION_COOKIE_NAME is required"):
+        hosted_settings(design_bff_session_cookie_name="   ")
 
 
 @pytest.mark.parametrize(

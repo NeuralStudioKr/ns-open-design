@@ -79,7 +79,12 @@ export function isLikelyTeamverAuthReturnNavigation(): boolean {
 /**
  * Embed load should force a fresh session probe + refresh retry when the user
  * just returned from Main FE sign-in (returnTo) or marked pending before leave.
+ *
+ * Peeks only — do not consume here. Boot may still read `authenticated:false`
+ * while cookies settle; consuming early disables `shouldDeferEmbedLoginRedirect`
+ * and causes an immediate second login hop. Consume after a successful session
+ * (`consumeTeamverAuthReturnPending` from session boot / embed refresh).
  */
 export function shouldForceEmbedAuthRecoveryOnLoad(): boolean {
-  return consumeTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
+  return peekTeamverAuthReturnPending() || isLikelyTeamverAuthReturnNavigation();
 }

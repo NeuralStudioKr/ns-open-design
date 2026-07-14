@@ -1,0 +1,143 @@
+import { Pool, type PoolConfig, type QueryResultRow } from 'pg';
+
+import type { DaemonDbConfig } from './daemon-db.js';
+import {
+  DAEMON_DB_POSTGRES_MIGRATIONS,
+} from './daemon-db-postgres-schema.js';
+
+export type DaemonPostgresPool = Pool;
+
+export function buildPostgresPoolConfig(
+  config: NonNullable<DaemonDbConfig['postgres']>,
+  password: string,
+): PoolConfig {
+  const ssl =
+    config.sslMode === 'disable'
+      ? false
+      : { rejectUnauthorized: config.sslMode === 'verify-full' };
+  return {
+    host: config.host,
+    port: config.port,
+    database: config.database,
+    user: config.user,
+    password,
+    ssl,
+    max: Number.parseInt(process.env.OD_PG_POOL_MAX ?? '10', 10) || 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  };
+}
+
+export function createPostgresPool(
+  config: NonNullable<DaemonDbConfig['postgres']>,
+  password: string,
+): DaemonPostgresPool {
+  return new Pool(buildPostgresPoolConfig(config, password));
+}
+
+// Postgres advisory-lock key for daemon-db migrations. Stable, hard-coded
+// integer scoped to this codebase — two daemons booting against the same
+// database serialize their migration attempts through this lock so we never
+// race CREATE TABLE + version INSERT.
+const DAEMON_DB_MIGRATE_LOCK_KEY = 4_918_275_601;
+
+export async function migratePostgresDaemonSchema(pool: DaemonPostgresPool): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // Serialize concurrent boots on the same database. Advisory lock is
+    // session-scoped and released explicitly (or when the client closes),
+    // so a crash mid-migration doesn't leave a stuck lock.
+    await client.query('SELECT pg_advisory_lock($1)', [DAEMON_DB_MIGRATE_LOCK_KEY]);
+    try {
+      // Bootstrap the version table first so we can skip already-applied
+      // migrations. Each versioned migration runs in its own transaction so
+      // partial failures roll back cleanly.
+      await client.query('BEGIN');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
+          version     INTEGER PRIMARY KEY,
+          applied_at  BIGINT NOT NULL
+        )
+      `);
+      await client.query('COMMIT');
+
+      const appliedRows = await client.query<{ version: number }>(
+        `SELECT version FROM daemon_db_schema_migrations`,
+      );
+      const applied = new Set(appliedRows.rows.map((r) => Number(r.version)));
+
+      for (const migration of DAEMON_DB_POSTGRES_MIGRATIONS) {
+        if (applied.has(migration.version)) continue;
+        await client.query('BEGIN');
+        try {
+          await client.query(migration.sql);
+          await client.query(
+            `INSERT INTO daemon_db_schema_migrations (version, applied_at)
+             VALUES ($1, $2)
+             ON CONFLICT (version) DO NOTHING`,
+            [migration.version, Date.now()],
+          );
+          await client.query('COMMIT');
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        }
+      }
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [DAEMON_DB_MIGRATE_LOCK_KEY]);
+    }
+  } finally {
+    client.release();
+  }
+}
+
+export async function probePostgresPool(pool: DaemonPostgresPool): Promise<void> {
+  await pool.query('SELECT 1');
+}
+
+export async function inspectPostgresDaemonDb(pool: DaemonPostgresPool, location: string) {
+  const tables: Array<{ name: string; rowCount: number }> = [];
+  const tableRows = await pool.query<{ tablename: string }>(
+    `SELECT tablename
+       FROM pg_tables
+      WHERE schemaname = 'public'
+        AND tablename NOT LIKE 'pg_%'
+      ORDER BY tablename`,
+  );
+  for (const { tablename } of tableRows.rows) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(tablename)) continue;
+    const count = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM "${tablename}"`,
+    );
+    tables.push({ name: tablename, rowCount: Number(count.rows[0]?.c ?? 0) });
+  }
+  const versionRow = await pool.query<{ version: number }>(
+    `SELECT version FROM daemon_db_schema_migrations ORDER BY version DESC LIMIT 1`,
+  );
+  return {
+    kind: 'postgres' as const,
+    location,
+    sizeBytes: 0,
+    schemaVersion: versionRow.rows[0]?.version ?? null,
+    tables,
+    generatedAt: Date.now(),
+  };
+}
+
+export async function queryPostgresRow<T extends QueryResultRow>(
+  pool: DaemonPostgresPool,
+  sql: string,
+  params: unknown[] = [],
+): Promise<T | null> {
+  const result = await pool.query<T>(sql, params);
+  return result.rows[0] ?? null;
+}
+
+export async function queryPostgresRows<T extends QueryResultRow>(
+  pool: DaemonPostgresPool,
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const result = await pool.query<T>(sql, params);
+  return result.rows;
+}

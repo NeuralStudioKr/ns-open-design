@@ -1,6 +1,10 @@
 import type { ChatAttachment } from "@open-design/contracts";
 import type { Dict } from "../i18n/types";
-import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
+import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
@@ -125,13 +129,15 @@ export async function importTeamverDriveAssets(
 
   await assertTeamverDesignAppEnabled(workspaceId);
 
-  const response = await client.http.post<DriveImportResponse>(
-    `/projects/${encodeURIComponent(projectId)}/import-drive`,
-    { assets },
-    {
-      workspaceId,
-      ...TEAMVER_BFF_REQUEST_OPTIONS,
-    },
+  const response = await withDesignBffCookieAuthRecovery(() =>
+    client.http.post<DriveImportResponse>(
+      `/projects/${encodeURIComponent(projectId)}/import-drive`,
+      { assets },
+      {
+        workspaceId,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
+      },
+    ),
   );
   const result = normalizeDriveImportResponse(response, projectId);
   if (result.imported.length === 0 && result.failed.length > 0) {

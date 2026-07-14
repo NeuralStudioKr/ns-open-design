@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { mergeServerMessagesIntoConversation } from "../src/components/ProjectView";
+import {
+  mergeMissingActiveRunAssistantMessages,
+  mergeServerMessagesIntoConversation,
+} from "../src/components/ProjectView";
 import type { ChatMessage } from "../src/types";
 
 describe("mergeServerMessagesIntoConversation", () => {
@@ -68,5 +71,60 @@ describe("mergeServerMessagesIntoConversation", () => {
     const merged = mergeServerMessagesIntoConversation([local], [server]);
     expect(merged[0]?.content).toBe("All done!");
     expect(merged[0]?.runStatus).toBe("running");
+  });
+});
+
+describe("mergeMissingActiveRunAssistantMessages", () => {
+  it("restores an in-flight assistant row when only the user message was persisted", () => {
+    const user: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "슬라이드 만들어줘",
+      createdAt: 10,
+    };
+
+    const merged = mergeMissingActiveRunAssistantMessages([user], [
+      {
+        id: "run-1",
+        assistantMessageId: "a1",
+        agentId: "anthropic-api",
+        status: "running",
+        createdAt: 20,
+      },
+    ]);
+
+    expect(merged).toHaveLength(2);
+    expect(merged[1]).toMatchObject({
+      id: "a1",
+      role: "assistant",
+      content: "",
+      runId: "run-1",
+      runStatus: "running",
+      agentId: "anthropic-api",
+      createdAt: 20,
+      startedAt: 20,
+    });
+  });
+
+  it("does not duplicate an assistant row that already exists", () => {
+    const assistant: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "working",
+      createdAt: 20,
+      runId: "run-1",
+      runStatus: "running",
+    };
+
+    const merged = mergeMissingActiveRunAssistantMessages([assistant], [
+      {
+        id: "run-1",
+        assistantMessageId: "a1",
+        status: "running",
+        createdAt: 20,
+      },
+    ]);
+
+    expect(merged).toEqual([assistant]);
   });
 });

@@ -2272,6 +2272,60 @@ describe('API proxy routes', () => {
       });
     }
   });
+
+  // Explicit FE Stop uses /api/proxy/abort and must reach every upstream
+  // fetch. A plain page navigation/closed tab is intentionally not wired here:
+  // Teamver background runs must be allowed to finish after route changes.
+  it('passes an explicit BYOK abort signal to the upstream on a simple proxy stream', async () => {
+    let upstreamInit: FetchInit | undefined;
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      upstreamInit = init;
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/openai/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'sk-test',
+        model: 'gpt-test',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+    await res.text();
+
+    expect(upstreamInit?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('passes an explicit BYOK abort signal to the upstream on a BYOK tool-loop stream', async () => {
+    let upstreamInit: FetchInit | undefined;
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      upstreamInit = init;
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/senseaudio/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.senseaudio.cn',
+        apiKey: 'sa-key',
+        model: 'senseaudio-s2',
+        projectId: 'test-project',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+    await res.text();
+
+    expect(upstreamInit?.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 function sseResponse(text: string): Response {

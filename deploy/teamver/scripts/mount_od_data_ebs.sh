@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Format + mount Terraform od-data EBS at OD_DATA_HOST_PATH (default /opt/teamver-design/od-data).
 #
+# Runbook: docs-teamver/39_4_배포_Terraform_운영_Runbook.md §10.5
+#
 # Why: user_data often runs before aws_volume_attachment completes, so nvme1n1 exists
 # but was never formatted/mounted. Docker named volumes then fill root EBS.
 #

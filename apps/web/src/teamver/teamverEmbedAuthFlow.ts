@@ -17,8 +17,10 @@
  *
  * 1. Unauthenticated boot → redirectToDesignLogin (app_id=teamver-design)
  * 2. Main FE → /auth/callback?code= → POST design/auth/exchange → BFF HttpOnly session
- * 3. Auth return load → shouldForceEmbedAuthRecoveryOnLoad() → force session probe +
- *    resetRefreshState (BFF silent refresh only — no Main BE cookie proxy)
+ * 3. Auth return load → shouldForceEmbedAuthRecoveryOnLoad() (peek) → force
+ *    session probe + resetRefreshState. Pending is consumed only after a
+ *    successful authenticated probe so early false negatives still defer
+ *    login redirects via shouldDeferEmbedLoginRedirect.
  * 4. Session authenticated → sync workspace → embedWorkspaceId set
  *
  * ## Recovery MAY reset refresh-decline (see designBffClient.resetDesignAuthRefreshState)
@@ -26,7 +28,9 @@
  * - Full-page auth return (pending flag or Main FE /auth/* referrer)
  * - resetRefreshState: true (banner 「다시 시도」)
  * - Visible cookie newly appeared (cross-tab login on Main FE)
- * - bfcache pageshow restore
+ *
+ * bfcache `pageshow` alone must NOT reset decline — that re-opens sticky 400
+ * refresh loops and feels like a spontaneous re-auth after tab restore.
  *
  * ## Recovery must NOT force session probes on routine tab focus (loop 381)
  *
@@ -36,7 +40,13 @@
  */
 
 import type { FetchDesignAuthSessionOptions } from "./designBffClient";
+import { isBootstrapAuthMode } from "./designApiBase";
+import { redirectToDesignLogin } from "./designAuthFlow";
 import { shouldForceEmbedAuthRecoveryOnLoad } from "./teamverAuthReturn";
+import {
+  resolveEmbedAuthReturnPath,
+  shouldDeferEmbedLoginRedirect,
+} from "./teamverEmbedAuthNavigation";
 
 /** App.tsx embed boot — first authoritative session probe. */
 export function resolveEmbedBootSessionOptions(): FetchDesignAuthSessionOptions {
@@ -57,11 +67,7 @@ export type EmbedFocusRecoverySignals = {
 export function shouldResetEmbedRefreshDeclineOnFocus(
   signals: EmbedFocusRecoverySignals,
 ): boolean {
-  return (
-    signals.cookieHintAppeared
-    || signals.pageshowPersisted
-    || signals.authReturnNavigation
-  );
+  return signals.cookieHintAppeared || signals.authReturnNavigation;
 }
 
 export type EmbedFocusSessionRefreshOptions = FetchDesignAuthSessionOptions & {
@@ -74,7 +80,9 @@ export function resolveEmbedFocusSessionOptions(
   signals: EmbedFocusRecoverySignals,
 ): EmbedFocusSessionRefreshOptions {
   if (signals.authReturnNavigation) {
-    return { force: true, resetRefreshState: true, silent: false };
+    // Still force + reset sticky decline, but keep the banner quiet — boot already
+    // showed the splash; a second visible "re-auth" flash after return feels broken.
+    return { force: true, resetRefreshState: true, silent: true };
   }
   if (signals.cookieHintAppeared || signals.pageshowPersisted) {
     return { force: true, resetRefreshState: false, silent: true };
@@ -88,15 +96,35 @@ export function resolveEmbedFocusSessionOptions(
  * state in that window clears the workspace store, registry caches, and the
  * project list — the root cause of idle "access denied" / empty-list glips.
  *
- * Definitive logout: cold boot, explicit auth recovery (`resetRefreshState`),
- * or no prior session and no cookie hint.
+ * Definitive logout/redirect: cold boot without prior BFF UI session, or explicit
+ * auth recovery (`resetRefreshState`).
+ *
+ * Main FE visible cookies must not block redirect — Design embed requires its own
+ * BFF HttpOnly session + exchange.
  */
 export function shouldClearEmbedSessionOnUnauthenticated(input: {
   resetRefreshState: boolean;
   hadPriorAuthenticatedUi: boolean;
-  cookieHint: boolean;
+  /** Ignored — kept for call-site compatibility. */
+  cookieHint?: boolean;
 }): boolean {
   if (input.resetRefreshState) return true;
-  if (input.hadPriorAuthenticatedUi || input.cookieHint) return false;
+  if (input.hadPriorAuthenticatedUi) return false;
   return true;
+}
+
+/** Cold start / missing BFF session — send user through Design login + exchange. */
+export function redirectToDesignLoginIfBffMissing(options?: {
+  returnTo?: string;
+  workspaceId?: string | null;
+}): void {
+  if (typeof window === "undefined") return;
+  if (!isBootstrapAuthMode()) return;
+  if (shouldDeferEmbedLoginRedirect()) return;
+  void redirectToDesignLogin({
+    workspaceId: options?.workspaceId ?? null,
+    returnTo:
+      options?.returnTo
+      ?? resolveEmbedAuthReturnPath(window.location.pathname, window.location.search),
+  });
 }

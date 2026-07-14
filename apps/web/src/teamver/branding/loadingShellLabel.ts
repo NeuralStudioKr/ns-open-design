@@ -1,28 +1,33 @@
-import { readTeamverViteEnv } from "../teamverViteEnv";
 import { isTeamverEmbedMode } from "../designApiBase";
-import { isTeamverEmbedBuild, TEAMVER_DEFAULT_BRAND_TITLE } from "./siteMetadata";
+import { isTeamverEmbedBuild } from "./siteMetadata";
 
 /**
- * Pre-mount loading shell copy.
- *
- * - Standalone OD: keep the upstream English label so non-Korean users see a
- *   familiar product name during the first paint.
- * - Embed builds: ship a Korean label keyed off the configured brand title so
- *   Teamver users don't see Open Design wording (and don't see English while
- *   the JS bundle loads in a Korean-first surface).
+ * Warm cream used by Teamver Main chrome around the Design iframe.
+ * Near-white `#faf9f7` / `#fff` flash against that frame — keep bootstrap
+ * shells on this tone so chunk → gate → route never pop as a white card.
  */
-export function resolveLoadingShellLabel(): string {
-  const isEmbed = isTeamverEmbedBuild() || isTeamverEmbedMode();
-  if (!isEmbed) {
-    return "Loading Open Design…";
-  }
+export const TEAMVER_EMBED_LOADING_BG = "#F4EFE6";
 
-  const brandTitle =
-    readTeamverViteEnv("VITE_TEAMVER_BRAND_TITLE") || TEAMVER_DEFAULT_BRAND_TITLE;
-  return `${brandTitle} 불러오는 중…`;
+/** Single visible bootstrap copy — never swap brand/English mid-sequence. */
+export const TEAMVER_EMBED_LOADING_LABEL = "불러오는 중…";
+
+export function isEmbedLoadingSurface(): boolean {
+  return isTeamverEmbedBuild() || isTeamverEmbedMode();
 }
 
-/** Unified bootstrap copy for shell, session banner, and auth callback. */
+/**
+ * Pre-mount / gate / deep-link loading copy.
+ * Embed: one fixed Korean string so dynamic-import → gate → entry never
+ * rewrite the label (that rewrite reads as flicker).
+ */
+export function resolveLoadingShellLabel(): string {
+  if (isEmbedLoadingSurface()) {
+    return TEAMVER_EMBED_LOADING_LABEL;
+  }
+  return "Loading Open Design…";
+}
+
+/** @deprecated alias — same as resolveLoadingShellLabel */
 export function resolveEmbedBootstrapLoadingLabel(): string {
   return resolveLoadingShellLabel();
 }

@@ -1,5 +1,6 @@
 import { getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
+import { clearEmbedAuthSnapshot } from "./embedAuthSnapshot";
 import { clearTeamverEmbedListCaches } from "./teamverEmbedListCaches";
 import {
   postTeamverEmbedBroadcast,
@@ -97,6 +98,7 @@ export function isTeamverEmbedSessionAuthenticated(): boolean {
 export async function clearTeamverEmbedSessionState(): Promise<void> {
   setTeamverEmbedSessionAuthenticated(false);
   clearTeamverEmbedListCaches();
+  clearEmbedAuthSnapshot();
 
   const client = getDesignBffClient();
   const store = client?.workspaceStore as { clear?: () => Promise<void> | void } | null | undefined;

@@ -35,6 +35,7 @@ import { TeamverExportMenu, type ShareExportFormat } from '../teamver/components
 import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import {
   projectScopedPreviewUrl,
@@ -110,6 +111,7 @@ import {
   htmlNeedsFocusGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
+  resolveHtmlPreviewAssetUrl,
   shouldUrlLoadHtmlPreview,
 } from './file-viewer-render-mode';
 import { saveTemplate } from '../state/projects';
@@ -4622,21 +4624,26 @@ function HtmlViewer({
       };
       const out = fn();
       if (out && typeof (out as Promise<unknown>).then === 'function') {
-        (out as Promise<unknown>).then(
-          (result) => {
-            if (result === 'cancelled') {
-              finish('cancelled');
-              if (toastFormats.has(format)) setExportToast(null);
-              return;
-            }
-            finish('success');
-            showResultToast(result);
-          },
-          (err) => {
-            finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
-            showExportFailureToast(err);
-          },
-        );
+        beginTeamverEmbedActiveWork();
+        (out as Promise<unknown>)
+          .finally(() => {
+            endTeamverEmbedActiveWork();
+          })
+          .then(
+            (result) => {
+              if (result === 'cancelled') {
+                finish('cancelled');
+                if (toastFormats.has(format)) setExportToast(null);
+                return;
+              }
+              finish('success');
+              showResultToast(result);
+            },
+            (err) => {
+              finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+              showExportFailureToast(err);
+            },
+          );
       } else {
         if (out === 'cancelled') {
           finish('cancelled');
@@ -4736,6 +4743,7 @@ function HtmlViewer({
     const repaired = repairArtifactDocumentHead(liveHtml);
     return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
   });
+  const [sourceLoadFailed, setSourceLoadFailed] = useState(false);
   const lastStablePreviewSourceRef = useRef<string | null>(
     liveHtml
       ? (() => {
@@ -4744,6 +4752,7 @@ function HtmlViewer({
       })()
       : null,
   );
+  const lastStablePreviewIdentityRef = useRef<string | null>(null);
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5287,7 +5296,12 @@ function HtmlViewer({
   }, [liveCommentTargets]);
 
   useEffect(() => {
-    const sourceFileKey = `${projectId}\0${file.name}\0${liveHtml === undefined ? 'raw' : 'live'}`;
+    const artifactIdentity = `${projectId}\0${file.name}`;
+    if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
+      lastStablePreviewIdentityRef.current = artifactIdentity;
+      lastStablePreviewSourceRef.current = null;
+    }
+    const sourceFileKey = `${artifactIdentity}\0${liveHtml === undefined ? 'raw' : 'live'}`;
     const acceptCandidate = (candidate: string | null): string | null => {
       if (candidate == null) return null;
       const repaired = repairArtifactDocumentHead(candidate);
@@ -5308,14 +5322,24 @@ function HtmlViewer({
       if (accepted != null) {
         setSource(accepted);
         sourceRef.current = accepted;
+      } else if (lastStablePreviewSourceRef.current) {
+        setSource(lastStablePreviewSourceRef.current);
+        sourceRef.current = lastStablePreviewSourceRef.current;
       }
       return;
     }
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
     sourceFileKeyRef.current = sourceFileKey;
     if (fileChanged) {
-      setSource(null);
-      sourceRef.current = null;
+      setSourceLoadFailed(false);
+      const stable = lastStablePreviewSourceRef.current;
+      if (stable) {
+        setSource(stable);
+        sourceRef.current = stable;
+      } else {
+        setSource(null);
+        sourceRef.current = null;
+      }
     }
     let cancelled = false;
     // Cache-bust the fetch on every mtime / reload / files-refresh bump.
@@ -5332,9 +5356,23 @@ function HtmlViewer({
       // Chokidar emits agent rewrites as unlink+add+change bursts; a
       // transient null mid-burst would blank source → srcDoc empty →
       // shell stays on prior frame. Keep the last good text instead.
-      if (text == null) return;
+      if (text == null) {
+        setSourceLoadFailed(true);
+        if (lastStablePreviewSourceRef.current) {
+          setSource(lastStablePreviewSourceRef.current);
+          sourceRef.current = lastStablePreviewSourceRef.current;
+        }
+        return;
+      }
+      setSourceLoadFailed(false);
       const accepted = acceptCandidate(text);
-      if (accepted == null) return;
+      if (accepted == null) {
+        if (lastStablePreviewSourceRef.current) {
+          setSource(lastStablePreviewSourceRef.current);
+          sourceRef.current = lastStablePreviewSourceRef.current;
+        }
+        return;
+      }
       setSource(accepted);
       sourceRef.current = accepted;
     });
@@ -5406,6 +5444,29 @@ function HtmlViewer({
     [source],
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
+  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  const teamverEmbedPreviewMode = isTeamverEmbedMode();
+  const [embedPreviewPrefixResolved, setEmbedPreviewPrefixResolved] = useState(
+    () => !teamverEmbedPreviewMode,
+  );
+  useEffect(() => {
+    if (!teamverEmbedPreviewMode) {
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixResolved(true);
+      return;
+    }
+    let cancelled = false;
+    setEmbedPreviewPrefixResolved(false);
+    void resolveTeamverProjectPreviewPrefix(projectId, file.name).then((prefix) => {
+      if (cancelled) return;
+      setEmbedPreviewPrefix(prefix);
+      setEmbedPreviewPrefixResolved(true);
+      if (!prefix) setSourceLoadFailed(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [file.name, projectId, teamverEmbedPreviewMode]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
@@ -5417,24 +5478,18 @@ function HtmlViewer({
     drawMode: drawOverlayOpen,
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
-  }) && !manualEditRequiresSrcDoc;
-  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void resolveTeamverProjectPreviewPrefix(projectId, file.name).then((prefix) => {
-      if (!cancelled) setEmbedPreviewPrefix(prefix);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, file.name]);
+  }) && !manualEditRequiresSrcDoc
+    && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
-    (filePath: string) => (
-      embedPreviewPrefix
+    (filePath: string) => resolveHtmlPreviewAssetUrl({
+      teamverEmbedMode: teamverEmbedPreviewMode,
+      embedPreviewPrefix,
+      rawUrl: projectRawUrl(projectId, filePath),
+      scopedUrl: embedPreviewPrefix
         ? projectScopedPreviewUrl(embedPreviewPrefix, filePath)
-        : projectRawUrl(projectId, filePath)
-    ),
-    [embedPreviewPrefix, projectId],
+        : null,
+    }),
+    [embedPreviewPrefix, projectId, teamverEmbedPreviewMode],
   );
   const basePreviewSrcUrl = useMemo(
     () => `${projectPreviewAssetUrl(file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}&odPreviewBridge=scroll&odPreviewBridge=selection&odPreviewBridge=snapshot`,
@@ -8018,6 +8073,7 @@ function HtmlViewer({
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
   const showStreamingPreviewVeil = Boolean(
     streaming
+    && source != null
     && liveHtml?.trim()
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
@@ -8751,7 +8807,13 @@ function HtmlViewer({
         </>)}
       <div className="viewer-body" ref={previewBodyRef}>
         {source === null ? (
-          <div className="viewer-empty">{t('fileViewer.loading')}</div>
+          <div className="viewer-empty">
+            {embedPreviewPrefixResolved
+              && (sourceLoadFailed
+                || (isTeamverEmbedMode() && embedPreviewPrefix == null))
+              ? t('fileViewer.previewUnavailable')
+              : t('fileViewer.loading')}
+          </div>
         ) : mode === 'preview' ? (
           <div
             className={`${manualEditMode ? 'manual-edit-workspace' : commentPreviewLayoutClass} preview-viewport preview-viewport-${previewViewport}${drawOverlayOpen ? ' preview-draw-active' : ''}`}
@@ -8791,8 +8853,23 @@ function HtmlViewer({
                       ].filter(Boolean).join(' ')}
                     >
                       {showStreamingPreviewVeil ? (
-                        <div className="artifact-preview-streaming-veil" aria-hidden>
-                          {t('fileViewer.loading')}
+                        <div
+                          className="artifact-preview-streaming-veil"
+                          role="status"
+                          aria-live="polite"
+                          data-testid="artifact-preview-streaming-veil"
+                        >
+                          <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                          <div className="artifact-preview-streaming-veil__card">
+                            <Icon
+                              name="spinner"
+                              size={18}
+                              className="artifact-preview-streaming-veil__icon"
+                            />
+                            <span className="artifact-preview-streaming-veil__label">
+                              {t('fileViewer.updatingPreview')}
+                            </span>
+                          </div>
                         </div>
                       ) : null}
                       {OD_PREVIEW_KEEP_ALIVE ? (

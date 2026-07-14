@@ -46,4 +46,17 @@ if ! grep -q 'co-located with OD_S3_BUCKET' <<< "$out_ok"; then
 fi
 echo "✓ verify_litestream_replica env co-location check (SKIP_S3_PROBE)"
 
+# docs-teamver/39_3 §5.2 — per-node LITESTREAM_REPLICA_PATH must be
+# reflected in the header banner. verify uses this prefix for the S3
+# probe when SKIP_S3_PROBE is off.
+out_multinode="$(SKIP_S3_PROBE=1 \
+  LITESTREAM_REPLICA_PATH=litestream/i-0abc/app.sqlite \
+  bash scripts/verify_litestream_replica.sh --staging 2>&1 || true)"
+if ! grep -q 'prefix=litestream/i-0abc/app.sqlite' <<< "$out_multinode"; then
+  echo "❌ LITESTREAM_REPLICA_PATH env not honored in banner"
+  echo "$out_multinode"
+  exit 1
+fi
+echo "✓ verify_litestream_replica honors LITESTREAM_REPLICA_PATH override"
+
 echo "✓ all verify_litestream_replica fixtures passed"

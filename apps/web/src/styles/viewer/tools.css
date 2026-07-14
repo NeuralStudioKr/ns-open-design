@@ -944,6 +944,19 @@
 .teamver-drive-history__empty--error {
   color: var(--danger, #d04040);
 }
+.teamver-drive-history__login {
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, #2563eb);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.teamver-drive-history__login:hover {
+  text-decoration: none;
+}
 .teamver-drive-history__more {
   margin: 0;
   padding: 2px 0 0;
@@ -1045,6 +1058,22 @@
 }
 .teamver-drive-post-run-hint {
   color: var(--accent, var(--text));
+}
+.teamver-drive-target-hint--auth {
+  color: var(--danger, #d04040);
+}
+.teamver-drive-target-hint__login {
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, #2563eb);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.teamver-drive-target-hint__login:hover {
+  text-decoration: none;
 }
 
 /* loop 173 — format selector row that sits above the publish action */

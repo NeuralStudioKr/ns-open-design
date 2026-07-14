@@ -9,6 +9,11 @@ import {
   buildDeckSlideExportLayoutHelperJs,
   buildDeckFlattenCssRules as buildSharedDeckFlattenCssRules,
   buildDeckGuizangPrintFallbackCss as buildSharedDeckGuizangPrintFallbackCss,
+  buildDeckHtmlExportScreenCss as buildSharedDeckHtmlExportScreenCss,
+  buildDeckHtmlExportViewportScript as buildSharedDeckHtmlExportViewportScript,
+  buildDeckHtmlExportFinalizeLayoutJs as buildSharedDeckHtmlExportFinalizeLayoutJs,
+  injectDeckHtmlExportViewportScript as injectSharedDeckHtmlExportViewportScript,
+  buildDeckHtmlExportStaticRevealScript as buildSharedDeckHtmlExportStaticRevealScript,
   buildDeckPrintCss as buildSharedDeckPrintCss,
 } from '@open-design/contracts';
 
@@ -102,7 +107,20 @@ export function buildDeckGuizangPrintFallbackCss(): string {
   return buildSharedDeckGuizangPrintFallbackCss();
 }
 
-/** Screen-visible flatten rules for standalone HTML deck downloads. */
+/** Screen-visible layout rules for standalone HTML deck downloads. */
+export function buildDeckHtmlExportScreenCss(): string {
+  return buildSharedDeckHtmlExportScreenCss();
+}
+
+export function buildDeckHtmlExportViewportScript(): string {
+  return buildSharedDeckHtmlExportViewportScript();
+}
+
+export function buildDeckHtmlExportStaticRevealScript(): string {
+  return buildSharedDeckHtmlExportStaticRevealScript();
+}
+
+/** Print flatten rules (PDF path) — not used for standalone HTML downloads. */
 export function buildDeckScreenExportCss(): string {
   return buildDeckFlattenCssRules();
 }
@@ -353,16 +371,19 @@ export async function renderHeadlessPdf(
       const page = await preparePage(browser, options);
       try {
         await waitForPrintableContent(page);
-        if (options.input.deck) {
-          await page.emulateMedia({ media: 'print' });
-        }
         await stripLeakedArtifactTextFromPage(page);
+        // Flatten in screen media so getComputedStyle matches the live
+        // preview layout; switching to print before reveal forced column
+        // flex and white backgrounds from stale @media print rules.
         const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
         if (options.input.deck && deckSlideCount === 0) {
           console.warn('[headless-export] deck PDF: no slides matched selector', {
             selector: DECK_SLIDE_SELECTOR,
             title: options.input.title,
           });
+        }
+        if (options.input.deck) {
+          await page.emulateMedia({ media: 'print' });
         }
         await applyPdfStyles(page, options.input.deck);
         const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
@@ -447,7 +468,7 @@ export async function renderHeadlessHtmlSnapshot(
   return runHeadlessExportJob(
     { format: 'html', deck: options.input.deck === true, ...meta },
     async (browser) => {
-      const page = await preparePage(browser, options);
+      const page = await preparePage(browser, options, { deckPrepareMode: 'html' });
       try {
         await waitForPrintableContent(page);
         await stripLeakedArtifactTextFromPage(page);
@@ -464,7 +485,11 @@ export async function renderHeadlessHtmlSnapshot(
           await applySnapshotStyles(page, false);
         }
         await inlineRenderedResources(page);
-        return await page.content();
+        let html = await page.content();
+        if (options.input.deck) {
+          html = injectSharedDeckHtmlExportViewportScript(html);
+        }
+        return html;
       } finally {
         await page.close().catch(() => {});
       }
@@ -758,7 +783,7 @@ async function evaluateInPage<T>(
 async function preparePage(
   browser: Browser,
   options: HeadlessExportOptions,
-  pageOptions: { deviceScaleFactor?: number } = {},
+  pageOptions: { deviceScaleFactor?: number; deckPrepareMode?: 'pdf' | 'html' } = {},
 ): Promise<Page> {
   const page = await browser.newPage({
     viewport: {
@@ -770,7 +795,9 @@ async function preparePage(
   page.setDefaultTimeout(EXPORT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(EXPORT_TIMEOUT_MS);
   const html = options.input.deck
-    ? buildPrintableHtml(options.input)
+    ? pageOptions.deckPrepareMode === 'html'
+      ? buildDeckExportHtml(options.input)
+      : buildPrintableHtml(options.input)
     : repairArtifactDocumentHead(withBaseHref(options.input.html, options.input.baseHref || ''));
   // `load` (not `domcontentloaded`) ensures the deck framework's `fit()` /
   // scripts and stylesheets have run before we flatten slides for print.
@@ -807,16 +834,28 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         return { count: 0, canvasBgAttempted: 0, canvasBgRasterized: 0, canvasBgFailed: 0, canvasBgFailReasons: [] };
       }
 
+      // Agents sometimes leak the deck title into <body> as a bare text node
+      // (e.g. \`<body>AI 도입 효과 <style>…</style>…\`). Each leaked pixel of
+      // body flow shifts every slide down and pushes the last N pixels of
+      // each slide onto the next PDF page (empty page with just the footer
+      // sliver). Remove non-whitespace text nodes that sit as direct
+      // children of <html> / <body> so slides always start at y=0.
+      const stripDeckLoosePageFlow = (root) => {
+        if (!root || !root.childNodes) return;
+        for (let i = root.childNodes.length - 1; i >= 0; i--) {
+          const node = root.childNodes[i];
+          if (node.nodeType === Node.TEXT_NODE) {
+            if ((node.textContent || '').trim().length > 0) node.remove();
+          }
+        }
+      };
+      stripDeckLoosePageFlow(document.documentElement);
+      stripDeckLoosePageFlow(document.body);
+
       const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
 
-      const rootStyle = window.getComputedStyle(document.documentElement);
-      const resolveShellBackground = () =>
-        rootStyle.getPropertyValue('--shell').trim() ||
-        rootStyle.getPropertyValue('--bg').trim() ||
-        rootStyle.getPropertyValue('--ink').trim() ||
-        rootStyle.getPropertyValue('background-color').trim() ||
-        '#0a0c10';
-
+      // Layout helper below defines resolveSlidePaperBackground() — reused
+      // for the html/body surface so light-theme decks don't get --shell (dark).
       ${buildDeckSlideExportLayoutHelperJs()}
 
       let canvasBgAttempted = 0;
@@ -856,7 +895,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         }
       });
 
-      const shellBg = resolveShellBackground();
+      const pageSurfaceBg = resolveSlidePaperBackground();
 
       document.querySelectorAll(args.wrapperSelector).forEach((el) => {
         set(el, 'display', 'contents');
@@ -866,19 +905,17 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       set(document.documentElement, 'overflow', 'visible');
       set(document.documentElement, 'width', args.width + 'px');
-      set(document.documentElement, 'background', shellBg);
+      set(document.documentElement, 'background', pageSurfaceBg);
       set(document.body, 'overflow', 'visible');
       set(document.body, 'display', 'block');
       set(document.body, 'scroll-snap-type', 'none');
       set(document.body, 'transform', 'none');
       set(document.body, 'width', args.width + 'px');
-      set(document.body, 'background', shellBg);
+      set(document.body, 'background', pageSurfaceBg);
       const totalHeight = slides.length * args.height;
       set(document.documentElement, 'height', totalHeight + 'px');
       set(document.body, 'height', totalHeight + 'px');
       set(document.body, 'margin', '0');
-
-      ${buildDeckSlideExportLayoutHelperJs()}
 
       slides.forEach((el, index) => {
         el.classList.add('active');
@@ -1009,7 +1046,7 @@ async function applyPdfStyles(page: Page, deck: boolean): Promise<void> {
         scrollbar-width: none !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        ${deck ? 'background: var(--shell, var(--bg, #ffffff)) !important;' : 'background: #fff !important;'}
+        ${deck ? 'background: var(--bg, var(--paper, var(--shell, #ffffff))) !important;' : 'background: #fff !important;'}
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       ${deck ? buildDeckPrintCss() : '@page { margin: 0; size: auto; }'}
@@ -1131,8 +1168,8 @@ async function applySnapshotStyles(page: Page, deck: boolean): Promise<void> {
 }
 
 async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
-  await page.addStyleTag({
-    content: `
+  await page.evaluate(buildSharedDeckHtmlExportFinalizeLayoutJs());
+  const css = `
       html, body {
         margin: 0 !important;
         scrollbar-width: none !important;
@@ -1140,9 +1177,19 @@ async function applyHtmlDeckExportStyles(page: Page): Promise<void> {
         print-color-adjust: exact !important;
       }
       *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      ${buildDeckScreenExportCss()}
-    `,
-  });
+      ${buildDeckHtmlExportScreenCss()}
+    `;
+  await page.evaluate(
+    `(function (css) {
+      var existingStyle = document.querySelector('style[data-od-html-export-screen]');
+      if (existingStyle) existingStyle.remove();
+      var style = document.createElement('style');
+      style.setAttribute('data-od-html-export-screen', '1');
+      style.type = 'text/css';
+      style.textContent = css;
+      document.head.appendChild(style);
+    })(${JSON.stringify(css)})`,
+  );
 }
 
 async function inlineRenderedResources(page: Page): Promise<void> {
@@ -1282,12 +1329,20 @@ function deckScreenshotClip(): { x: number; y: number; width: number; height: nu
 
 export { deckScreenshotClip as deckScreenshotClipRect };
 
-function buildPrintableHtml(input: DesktopExportPdfInput): string {
+function buildDeckExportBaseHtml(input: DesktopExportPdfInput): string {
   let doc = patchArtifactDeckPrintCss(
     repairArtifactDocumentHead(withBaseHref(input.html, input.baseHref || '')),
   );
   doc = injectTitle(doc, input.title);
-  return injectPrintStylesheet(doc, buildDeckPrintCss());
+  return doc;
+}
+
+function buildDeckExportHtml(input: DesktopExportPdfInput): string {
+  return buildDeckExportBaseHtml(input);
+}
+
+function buildPrintableHtml(input: DesktopExportPdfInput): string {
+  return injectPrintStylesheet(buildDeckExportBaseHtml(input), buildDeckPrintCss());
 }
 
 /** @deprecated Use patchArtifactDeckPrintCss from @open-design/contracts */

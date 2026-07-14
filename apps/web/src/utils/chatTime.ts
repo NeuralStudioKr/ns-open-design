@@ -3,11 +3,30 @@ import type { Dict } from '../i18n/types';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
+function validTimestamp(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
 export function messageTime(message: ChatMessage): number | undefined {
   if (message.role === 'assistant') {
-    return message.startedAt ?? message.createdAt ?? message.endedAt;
+    return (
+      validTimestamp(message.startedAt) ??
+      validTimestamp(message.createdAt) ??
+      validTimestamp(message.endedAt)
+    );
   }
-  return message.createdAt ?? message.startedAt ?? message.endedAt;
+  return (
+    validTimestamp(message.createdAt) ??
+    validTimestamp(message.startedAt) ??
+    validTimestamp(message.endedAt)
+  );
 }
 
 export function dayKey(ts: number): string {

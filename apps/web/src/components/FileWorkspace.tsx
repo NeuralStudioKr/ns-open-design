@@ -19,6 +19,7 @@ import {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isMacPlatform } from '../utils/platform';
+import { collapseArtifactVersionOpenTabs } from './artifact-persist';
 import {
   deleteProjectFile,
   fetchProjectFileText,
@@ -120,7 +121,7 @@ interface Props {
   streaming?: boolean;
   commentQueueOnSend?: boolean;
   commentSendDisabled?: boolean;
-  openRequest?: { name: string; nonce: number } | null;
+  openRequest?: { name: string; nonce: number; closeTabs?: string[] } | null;
   // Open the named file AND surface its Share/Export menu. Drives the chat-side
   // "Share" next-step action without a dedicated share backend.
   shareRequest?: { name: string; nonce: number } | null;
@@ -756,6 +757,7 @@ export function FileWorkspace({
     if (!openRequest) return;
     const name = openRequest.name;
     if (!name) return;
+    const closeTabSet = new Set(openRequest.closeTabs ?? []);
     if (name === DESIGN_FILES_TAB || name === DESIGN_SYSTEM_TAB) {
       const nextActive =
         name === DESIGN_SYSTEM_TAB && !designSystemProject
@@ -770,13 +772,22 @@ export function FileWorkspace({
       setActiveTab(name);
       return;
     }
-    const isNewTab = !persistedTabs.includes(name);
+    const tabsAfterClose = closeTabSet.size > 0
+      ? persistedTabs.filter((tab) => !closeTabSet.has(tab))
+      : persistedTabs;
+    const isNewTab = !tabsAfterClose.includes(name);
     const nextBrowserTabs = isNewTab
       ? reanchorBrowserTabsToCurrentOrder(orderedWorkspaceTabs, browserTabs)
       : browserTabs;
     if (nextBrowserTabs !== browserTabs) setBrowserTabs(nextBrowserTabs);
+    // Collapse numbered siblings even when closeTabs was computed against a
+    // stale openTabsStateRef (rapid Write auto-opens race React updates).
+    const nextFileTabs = collapseArtifactVersionOpenTabs(
+      isNewTab ? [...tabsAfterClose, name] : tabsAfterClose,
+      name,
+    );
     onTabsStateChange(workspaceTabsState(
-      isNewTab ? [...persistedTabs, name] : persistedTabs,
+      nextFileTabs,
       name,
       nextBrowserTabs,
     ));
@@ -1517,6 +1528,17 @@ export function FileWorkspace({
     && !(isSketchName(activeTab) && sketches[activeTab]);
 
   const pendingPreviewTab = isPreviewFileTab && !previewFile && !activeLiveArtifact;
+
+  const stalePreviewBootstrapFile = useMemo<ProjectFile | null>(() => {
+    if (!pendingPreviewTab) return null;
+    const onDisk = findProjectFileByTabName(activeTab, visibleFiles);
+    if (onDisk) return onDisk;
+    const htmlName = selectAutoOpenProducedHtml(visibleFiles);
+    if (!htmlName) return null;
+    return visibleFiles.find((entry) => entry.name === htmlName) ?? null;
+  }, [pendingPreviewTab, activeTab, visibleFiles]);
+
+  const resolvedPreviewFile = previewFile ?? stalePreviewBootstrapFile;
 
   // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
   // bump (chokidar bursts would otherwise remount FileViewer as "loading").
@@ -2337,19 +2359,19 @@ export function FileWorkspace({
             liveArtifactEvents={liveArtifactEvents}
             onRefreshArtifacts={onRefreshFiles}
           />
-        ) : previewFile ? (
+        ) : resolvedPreviewFile ? (
           <FileViewer
             projectId={projectId}
             projectKind={projectKind}
             projectDisplayName={projectDisplayName}
-            file={previewFile}
+            file={resolvedPreviewFile}
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
             streaming={streaming}
             commentQueueOnSend={commentQueueOnSend}
             commentSendDisabled={commentSendDisabled}
-            previewComments={previewComments.filter((comment) => comment.filePath === previewFile.name)}
+            previewComments={previewComments.filter((comment) => comment.filePath === resolvedPreviewFile.name)}
             onSavePreviewComment={onSavePreviewComment}
             onRemovePreviewComment={onRemovePreviewComment}
             onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -2358,18 +2380,18 @@ export function FileWorkspace({
             commentPortalId={commentPortalId}
             onCommentModeChange={onCommentModeChange}
             shareRequest={
-              shareRequest && shareRequest.name === previewFile.name
+              shareRequest && shareRequest.name === resolvedPreviewFile.name
                 ? { nonce: shareRequest.nonce }
                 : null
             }
             downloadRequest={
-              downloadRequest && downloadRequest.name === previewFile.name
+              downloadRequest && downloadRequest.name === resolvedPreviewFile.name
                 ? { nonce: downloadRequest.nonce }
                 : null
             }
             slideNavRequest={deliverableSlideNavForActiveFile(
               slideNavRequest,
-              previewFile.name,
+              resolvedPreviewFile.name,
               slideNavDeliverableNonce,
             )}
             liveHtml={streaming && artifactHtml ? artifactHtml : undefined}

@@ -7,6 +7,10 @@ import {
   type TeamverProjectOutputsResult,
 } from "../listProjectOutputs";
 import type { TeamverPublishDriveOutput } from "../publishToDrive";
+import {
+  isTeamverBffUnauthorizedError,
+  redirectToTeamverLoginFromEmbed,
+} from "../teamverBffAuthError";
 
 type Props = {
   projectId: string;
@@ -101,6 +105,7 @@ export function TeamverDrivePublishHistory({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
   const [result, setResult] = useState<TeamverProjectOutputsResult | null>(null);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
@@ -108,11 +113,16 @@ export function TeamverDrivePublishHistory({
     if (!projectId.trim()) return;
     setLoading(true);
     setError(null);
+    setAuthRequired(false);
     try {
       const next = await listTeamverProjectOutputs(projectId);
       setResult(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "outputs_fetch_failed");
+      if (isTeamverBffUnauthorizedError(err)) {
+        setAuthRequired(true);
+      } else {
+        setError(err instanceof Error ? err.message : "outputs_fetch_failed");
+      }
       onError?.(err);
     } finally {
       setLoading(false);
@@ -165,6 +175,23 @@ export function TeamverDrivePublishHistory({
           data-testid="teamver-drive-history-loading"
         >
           이력을 불러오는 중…
+        </p>
+      ) : authRequired ? (
+        <p
+          className="teamver-drive-history__empty teamver-drive-history__empty--error"
+          role="status"
+          aria-live="polite"
+          data-testid="teamver-drive-history-auth-required"
+        >
+          세션이 만료되어 이력을 불러올 수 없습니다.{" "}
+          <button
+            type="button"
+            className="teamver-drive-history__login"
+            data-testid="teamver-drive-history-login"
+            onClick={redirectToTeamverLoginFromEmbed}
+          >
+            다시 로그인
+          </button>
         </p>
       ) : error ? (
         <p

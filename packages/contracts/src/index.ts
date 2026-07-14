@@ -42,6 +42,7 @@ export * from './prompts/system.js';
 export * from './prompts/plugin-block.js';
 export * from './prompts/atom-block.js';
 export * from './critique.js';
+export * from './embed-chinese-deck-policy.js';
 export * from './plugins/index.js';
 export * from './agent-prose-sanitize.js';
 export * from './html/repairArtifactDocumentHead.js';

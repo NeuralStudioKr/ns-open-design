@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# Render nginx hash upstream backends for OD daemon userId routing (39_2 §4).
+#
+# Discovers ALL teamver-design EC2 instances (same Service + Env tags) and writes
+# /etc/nginx/teamver-design-od-daemon-peers.inc with one line per private IP
+# (sorted — file must be identical on every nginx node):
+#   server 10.0.1.11:7456 max_fails=2 fail_timeout=10s;
+#
+# Do NOT use 127.0.0.1 in the hash ring — ALB round-robin picks nginx on
+# different EC2; loopback then points at different daemons for the same userId.
+#
+# Usage:
+#   sudo bash scripts/render_od_daemon_peers_nginx.sh
+#   sudo bash scripts/render_od_daemon_peers_nginx.sh --dry-run
+#   OD_DAEMON_PEER_PORT=7456 bash scripts/render_od_daemon_peers_nginx.sh
+#
+# Env:
+#   AWS_REGION / AWS_DEFAULT_REGION
+#   TEAMVER_DESIGN_SERVICE_TAG (default teamver-design)
+#   TEAMVER_DESIGN_ENV_TAG       (default from ENV in .env.staging|.env.production)
+#   OD_DAEMON_PEER_PORT          (default 7456)
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET="${OD_DAEMON_PEERS_NGINX_CONF:-/etc/nginx/teamver-design-od-daemon-peers.inc}"
+LEGACY_TARGET="/etc/nginx/conf.d/teamver-design-od-daemon-peers.inc.conf"
+DRY_RUN=false
+PEER_PORT="${OD_DAEMON_PEER_PORT:-7456}"
+SERVICE_TAG="${TEAMVER_DESIGN_SERVICE_TAG:-teamver-design}"
+
+usage() {
+  cat <<'EOF'
+render_od_daemon_peers_nginx.sh — peer OD daemon lines for nginx hash upstream
+
+  sudo bash scripts/render_od_daemon_peers_nginx.sh [--dry-run]
+
+Preferred: aws CLI + EC2 instance profile (or AWS creds) to list all cluster
+private IPs (identical peers.inc on every node).
+
+Fallback: IMDS self private IP only (keeps nginx upstream non-empty when awscli
+is missing). Multi-node still needs awscli or a manual peers.inc — see
+docs-teamver/39_4 §10.11 / 39_5 §3.1.3.
+EOF
+}
+
+while (( $# )); do
+  case "$1" in
+    --dry-run) DRY_RUN=true ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown: $1" >&2; usage; exit 1 ;;
+  esac
+  shift
+done
+
+resolve_self_instance_id() {
+  local token=""
+  token="$(
+    curl -sS -m 2 -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
+      -X PUT http://169.254.169.254/latest/api/token 2>/dev/null || true
+  )"
+  if [[ -n "$token" ]]; then
+    curl -sS -m 2 -H "X-aws-ec2-metadata-token: $token" \
+      http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || true
+  fi
+}
+
+resolve_self_private_ip() {
+  local token=""
+  token="$(
+    curl -sS -m 2 -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
+      -X PUT http://169.254.169.254/latest/api/token 2>/dev/null || true
+  )"
+  if [[ -n "$token" ]]; then
+    curl -sS -m 2 -H "X-aws-ec2-metadata-token: $token" \
+      http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null || true
+  fi
+}
+
+resolve_env_tag() {
+  if [[ -n "${TEAMVER_DESIGN_ENV_TAG:-}" ]]; then
+    echo "$TEAMVER_DESIGN_ENV_TAG"
+    return
+  fi
+  if [[ -f "$ROOT/.env.production" ]]; then
+    # shellcheck disable=SC1091
+    set -a; source "$ROOT/.env.production"; set +a
+    if [[ "${ENV:-}" == "production" || "${ENV:-}" == "prod" ]]; then
+      echo "prod"
+      return
+    fi
+  fi
+  if [[ -f "$ROOT/.env.staging" ]]; then
+    echo "staging"
+    return
+  fi
+  echo "staging"
+}
+
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-ap-northeast-2}}"
+SELF_ID="$(resolve_self_instance_id)"
+ENV_TAG="$(resolve_env_tag)"
+
+backend_ips=()
+aws_err=""
+aws_out=""
+HAVE_AWS=false
+command -v aws >/dev/null 2>&1 && HAVE_AWS=true
+
+# Prefer aws describe-instances whenever CLI is present (works from laptop with
+# creds too — do NOT gate on IMDS SELF_ID). Empty peers.inc → nginx:
+# "no servers are inside upstream".
+if [[ "$HAVE_AWS" == true ]]; then
+  query='Reservations[].Instances[].[InstanceId,PrivateIpAddress,State.Name,Tags[?Key==`Env`].Value|[0],Tags[?Key==`Service`].Value|[0]]'
+  if ! aws_out="$(
+    aws ec2 describe-instances \
+      --region "$REGION" \
+      --filters \
+        "Name=tag:Service,Values=${SERVICE_TAG}" \
+        "Name=tag:Env,Values=${ENV_TAG}" \
+        "Name=instance-state-name,Values=running,pending" \
+      --query "$query" \
+      --output text 2>&1
+  )"; then
+    aws_err="$aws_out"
+    aws_out=""
+  fi
+
+  if [[ -n "$aws_err" ]]; then
+    echo "⚠️ aws ec2 describe-instances failed — will fall back to IMDS self-IP (IAM ec2:DescribeInstances? tags Service=${SERVICE_TAG} Env=${ENV_TAG}?)" >&2
+    echo "    $aws_err" >&2
+  fi
+
+  while IFS=$'\t' read -r iid priv state env_tag svc_tag; do
+    [[ -z "${iid:-}" ]] && continue
+    [[ -z "${priv:-}" || "$priv" == "None" ]] && continue
+    backend_ips+=( "$priv" )
+  done <<< "${aws_out:-}"
+else
+  echo "⚠️ aws CLI not found — peer discovery via IMDS self-IP only (install awscli for full cluster list)" >&2
+fi
+
+# Fallback: at least self private IP from IMDS (required for valid nginx upstream).
+if (( ${#backend_ips[@]} == 0 )); then
+  if [[ -z "$SELF_ID" ]]; then
+    echo "⚠️ not on EC2 (no IMDS instance-id) and no aws backends yet" >&2
+  fi
+  self_ip="$(resolve_self_private_ip)"
+  if [[ -n "$self_ip" ]]; then
+    backend_ips+=( "$self_ip" )
+  fi
+fi
+
+# Stable sort — hash ring must match on every nginx node.
+# Portable (macOS bash 3.2 has no readarray); guard empty array under set -u.
+backend_ips_sorted=()
+if (( ${#backend_ips[@]} > 0 )); then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    backend_ips_sorted+=( "$line" )
+  done < <(printf '%s\n' "${backend_ips[@]}" | sort -u)
+fi
+
+peer_lines=()
+if (( ${#backend_ips_sorted[@]} > 0 )); then
+  for priv in "${backend_ips_sorted[@]}"; do
+    [[ -n "$priv" ]] || continue
+    peer_lines+=( "server ${priv}:${PEER_PORT} max_fails=2 fail_timeout=10s;" )
+  done
+fi
+
+tmp="$(mktemp)"
+{
+  echo "# Generated by render_od_daemon_peers_nginx.sh at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  echo "# self=$SELF_ID env=$ENV_TAG service=$SERVICE_TAG region=$REGION"
+  echo "# Hash upstream backends (ALL cluster private IPs, sorted — include self)."
+  echo "# Peer OD daemons for nginx hash \$teamver_user_id (docs-teamver/39_2 §4)."
+  if (( ${#peer_lines[@]} == 0 )); then
+    echo "# No backends — IAM/tags missing. Manual 2-node example (sorted private IPs):"
+    echo "# server 10.10.101.11:7456 max_fails=2 fail_timeout=10s;"
+    echo "# server 10.10.101.12:7456 max_fails=2 fail_timeout=10s;"
+  else
+    printf '%s\n' "${peer_lines[@]}"
+  fi
+} > "$tmp"
+
+if [[ "$DRY_RUN" == true ]]; then
+  cat "$tmp"
+  rm -f "$tmp"
+  echo "DRYRUN: would write → $TARGET (${#peer_lines[@]} peer(s))"
+  exit 0
+fi
+
+if (( ${#peer_lines[@]} == 0 )); then
+  echo "❌ no hash backends — refusing to write empty $TARGET (nginx upstream would fail)" >&2
+  cat "$tmp" >&2
+  rm -f "$tmp"
+  exit 1
+fi
+
+if (( ${#peer_lines[@]} == 1 )) && [[ "$HAVE_AWS" != true ]]; then
+  echo "⚠️ only 1 hash backend (self) — multi-node ring incomplete until awscli or manual peers.inc (39_4 §10.11)" >&2
+fi
+
+if [[ ! -d "$(dirname "$TARGET")" ]]; then
+  echo "❌ target directory missing: $(dirname "$TARGET") (run on EC2 with nginx installed)"
+  rm -f "$tmp"
+  exit 1
+fi
+
+install -m 0644 "$tmp" "$TARGET"
+rm -f "$tmp"
+if [[ -f "$LEGACY_TARGET" ]]; then
+  rm -f "$LEGACY_TARGET"
+  echo "✓ removed legacy $LEGACY_TARGET (must not live under conf.d/)"
+fi
+echo "✓ wrote $TARGET (${#peer_lines[@]} hash backend(s))"
+
+if command -v nginx >/dev/null 2>&1 && nginx -t >/dev/null 2>&1; then
+  systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+fi

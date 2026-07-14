@@ -53,7 +53,6 @@ import { useTeamverBranding } from './teamver/branding/TeamverBrandingProvider';
 import { isDesignTemplateEnabled } from './teamver/branding/designTemplateVisibility';
 import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
-import { fetchTeamverRuntimeConfig, fetchDesignAuthSession } from './teamver/designBffClient';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import {
   shouldFetchAgentRegistryOnBoot,
@@ -68,15 +67,10 @@ import {
   shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
-import { resolveLoadingShellLabel } from './teamver/branding/loadingShellLabel';
 import {
-  clearTeamverEmbedSessionState,
-  setTeamverEmbedSessionAuthenticated,
   subscribeTeamverEmbedSessionChanged,
 } from './teamver/teamverEmbedSession';
-import { syncTeamverWorkspaceFromSession } from './teamver/syncTeamverWorkspace';
 import {
-  completeTeamverEmbedBoot,
   isTeamverEmbedBootComplete,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
@@ -107,8 +101,9 @@ import {
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
-import { loadProjectListPage, loadProjectListSafe } from './teamver/loadProjectList';
-import { seedEmbedBootstrapSession } from './teamver/embedBootstrapSession';
+import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
+import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
+import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import {
   capturePreWorkspaceSwitchProjectGuards,
@@ -125,6 +120,7 @@ import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
 import {
   mergeProjectIntoList,
+  mergeRecentProjectsIntoList,
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
@@ -141,7 +137,6 @@ import {
   readTeamverDesignAccessSnapshot,
   subscribeTeamverDesignAccessChanged,
 } from './teamver/teamverDesignAccess';
-import { resolveEmbedBootSessionOptions } from './teamver/teamverEmbedAuthFlow';
 import { readActiveTeamverWorkspaceId } from './teamver/useTeamverEmbed';
 import { useTeamverAppVersionAutoReload } from './teamver/useTeamverAppVersionAutoReload';
 import { PrivacyConsentModal } from './components/PrivacyConsentModal';
@@ -512,7 +507,7 @@ function AppInner() {
   // EntryView Templates tab. See specs/current/skills-and-design-templates.md.
   const [designTemplates, setDesignTemplates] = useState<SkillSummary[]>([]);
   const fetchDesignTemplatesForCurrentBranding = useCallback(
-    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 48 } : undefined),
+    () => fetchDesignTemplates(slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined),
     [slideOnlyMvp],
   );
   const [designSystems, setDesignSystems] = useState<DesignSystemSummary[]>([]);
@@ -681,7 +676,7 @@ function AppInner() {
     }
   }, []);
 
-  const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+  const isStaleProjectListWorkspace = useCallback((request: ProjectListRequest) => {
     if (
       isTeamverEmbedMode()
       && request.workspaceId
@@ -692,8 +687,35 @@ function AppInner() {
         requestWorkspaceId: request.workspaceId,
         activeWorkspaceId: embedActiveWorkspaceIdRef.current,
       });
+      return true;
+    }
+    return false;
+  }, []);
+
+  /**
+   * Home recent rail refresh — upsert status/metadata without dropping the
+   * projects-tab page (or detail-prefetch rows) already held in memory.
+   */
+  const upsertRecentProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+    if (isStaleProjectListWorkspace(request)) return false;
+    if (request.generation < latestAppliedProjectListGenerationRef.current) {
       return false;
     }
+    latestAppliedProjectListGenerationRef.current = request.generation;
+    const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
+    const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
+    for (const project of list) pendingLocalProjectIds.delete(project.id);
+    const activeDeletedProjectIds = new Set(locallyDeletedProjectIds.keys());
+    const visibleList =
+      activeDeletedProjectIds.size > 0
+        ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
+        : list;
+    setProjects((current) => mergeRecentProjectsIntoList(current, visibleList));
+    return true;
+  }, [isStaleProjectListWorkspace]);
+
+  const reconcileFetchedProjects = useCallback((list: Project[], request: ProjectListRequest) => {
+    if (isStaleProjectListWorkspace(request)) return false;
     const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     const fetchedIds = new Set(list.map((project) => project.id));
@@ -763,7 +785,7 @@ function AppInner() {
       return preserved.length > 0 ? [...preserved, ...visibleList] : visibleList;
     });
     return true;
-  }, []);
+  }, [isStaleProjectListWorkspace]);
 
   // Propagate the Privacy toggle through to PostHog without a reload —
   // posthog-js's opt_out_capturing flips a localStorage flag that makes
@@ -972,6 +994,23 @@ function AppInner() {
       const bootRouteKind = routeRef.current.kind;
       const fetchEntryCatalogs = shouldFetchEntryCatalogsOnBoot(bootRouteKind);
       const fetchHomeProjects = shouldFetchHomeProjectsOnBoot(bootRouteKind);
+      const embedSessionBootPromise = isTeamverEmbedMode()
+        ? runTeamverEmbedSessionBoot({
+            isCancelled: () => cancelled,
+            readDetailRoute: () => readEmbedProjectDetailRoute(routeRef.current),
+            onProjectPrefetched: (project) => {
+              setProjects((current) => {
+                const existingIndex = current.findIndex(
+                  (candidate) => candidate.id === project.id,
+                );
+                if (existingIndex < 0) return [...current, project];
+                return current.map((candidate) =>
+                  candidate.id === project.id ? project : candidate,
+                );
+              });
+            },
+          })
+        : Promise.resolve(null);
       const alive = await daemonIsLive();
       if (cancelled) return;
       setDaemonLive(alive);
@@ -988,6 +1027,7 @@ function AppInner() {
         // we just keep whatever localStorage already held; drop the
         // skeleton so the Settings → Connectors input reflects state.
         setComposioConfigLoading(false);
+        await embedSessionBootPromise.catch(() => undefined);
         return;
       }
 
@@ -1072,25 +1112,18 @@ function AppInner() {
 
       const request = beginProjectListRequest();
       if (fetchHomeProjects) {
-        // Mark the page as loaded synchronously so the `/projects` route
-        // effect (`ensureProjectsListPageLoaded`) does not fire a duplicate
-        // paginated fetch when boot lands on that route. Any failure below
-        // resets the flag so a subsequent `/projects` visit can retry.
-        projectsPageLoadedRef.current = true;
         void (async () => {
           if (isTeamverEmbedMode()) {
+            await embedSessionBootPromise.catch(() => undefined);
             await waitForTeamverEmbedBoot();
           }
           if (cancelled) return;
-          const result = await loadProjectListPage();
+          const result = await loadRecentProjectsForHome();
           if (cancelled) return;
           if (!result.ok) {
-            projectsPageLoadedRef.current = false;
             setWorkingDirError(result.errorMessage);
           } else {
             setWorkingDirError(null);
-            projectsNextCursorRef.current = result.nextCursor;
-            setProjectsHasMore(result.hasMore);
             reconcileFetchedProjects(result.projects, request);
             warmEmbedProjectListCaches(result.projects);
           }
@@ -1135,78 +1168,7 @@ function AppInner() {
         shouldFetchMediaProviderConfig()
           ? fetchMediaProvidersFromDaemon()
           : Promise.resolve({ status: 'ok' as const, providers: {} }),
-        isTeamverEmbedMode()
-          ? (() => {
-              const bootSessionOptions = resolveEmbedBootSessionOptions();
-              // Split into two `.then/.catch` legs so a rejected session
-              // fetch still marks embed boot as complete — otherwise the
-              // `EmbedBootstrapGate` (and any `waitForTeamverEmbedBoot`
-              // callers) would hang on the loading shell forever after a
-              // transient BFF outage on first paint.
-              return fetchDesignAuthSession(bootSessionOptions)
-                .then(async (session) => {
-                  let activeWorkspaceId: string | null = null;
-                  const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
-                  try {
-                    if (session?.authenticated) {
-                      setTeamverEmbedSessionAuthenticated(true);
-                      activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
-                      void syncAllDaemonProjectsToRegistry().catch((err) => {
-                        console.warn("[teamver] embed boot registry sync failed", err);
-                      });
-                    } else {
-                      await clearTeamverEmbedSessionState();
-                    }
-                    seedEmbedBootstrapSession({
-                      session: session ?? { authenticated: false },
-                      activeWorkspaceId,
-                    });
-                    const prefetchProject =
-                      detailRoute && session?.authenticated
-                        ? (async () => {
-                            try {
-                              await ensureTeamverProjectRegisteredById(detailRoute.projectId);
-                              const project = await getProject(detailRoute.projectId);
-                              if (!project || cancelled) return;
-                              setProjects((current) => {
-                                const existingIndex = current.findIndex(
-                                  (candidate) => candidate.id === project.id,
-                                );
-                                if (existingIndex < 0) return [...current, project];
-                                return current.map((candidate) =>
-                                  candidate.id === project.id ? project : candidate,
-                                );
-                              });
-                              warmEmbedProjectListCaches([project]);
-                            } catch (err) {
-                              console.warn("[teamver] embed boot project prefetch failed", err);
-                            }
-                          })()
-                        : Promise.resolve();
-                    const [teamverRuntimeConfig] = await Promise.all([
-                      fetchTeamverRuntimeConfig(),
-                      prefetchProject,
-                    ]);
-                    return teamverRuntimeConfig;
-                  } finally {
-                    if (!cancelled) {
-                      completeTeamverEmbedBoot();
-                    }
-                  }
-                })
-                .catch((err) => {
-                  console.warn("[teamver] embed boot session probe failed", err);
-                  seedEmbedBootstrapSession({
-                    session: { authenticated: false },
-                    activeWorkspaceId: null,
-                  });
-                  if (!cancelled) {
-                    completeTeamverEmbedBoot();
-                  }
-                  return null;
-                });
-            })()
-          : Promise.resolve(null),
+        embedSessionBootPromise,
       ]).then(([
         daemonConfig,
         daemonComposioConfig,
@@ -1621,6 +1583,7 @@ function AppInner() {
         sessionActiveRunProjectIdsRef.current.delete(projectId);
         byokProxyIdlePollsRef.current.delete(projectId);
       }
+      publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
       const byokRuns = syntheticByokRunsForTaskCenter(byokBackgroundChatsRef.current);
       const currentProjects = projectsRef.current;
       const projectsById = new Map(currentProjects.map((project) => [project.id, project.name]));
@@ -1689,6 +1652,11 @@ function AppInner() {
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
+      projectsPageLoadedRef.current = false;
+      projectsNextCursorRef.current = null;
+      setProjects([]);
+      setProjectsHasMore(false);
+      setProjectsLoading(true);
       setBackgroundRunSummaries([]);
       setBackgroundRunNotice(null);
       byokBackgroundChatsRef.current.clear();
@@ -1710,8 +1678,6 @@ function AppInner() {
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
           setProjectsRefreshing(true);
-          projectsNextCursorRef.current = null;
-          setProjectsHasMore(false);
           const result = await loadProjectListPage();
           if (!result.ok) {
             // Failure keeps the projects tab flagged as un-loaded so a
@@ -1748,6 +1714,7 @@ function AppInner() {
             navigate({ kind: 'home', view: 'home' }, { replace: true });
           }
         } finally {
+          setProjectsLoading(false);
           setProjectsRefreshing(false);
           workspaceSwitchReconcilingRef.current = false;
           preWorkspaceSwitchTrustedProjectsRef.current = new Set();
@@ -2674,6 +2641,7 @@ function AppInner() {
         }
       }
       activeRunIdsRef.current = nextActiveRunIds;
+      publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
 
       const completed = trackedRuns
         .filter(
@@ -2813,11 +2781,18 @@ function AppInner() {
           // registry membership sync (GET /teamver-bff/projects) is redundant
           // while the user stays on a project workspace.
           const onProjectDetail = routeRef.current.kind === 'project';
+          const onHome = routeRef.current.kind === 'home';
           if (!(isTeamverEmbedMode() && onProjectDetail)) {
             const request = beginProjectListRequest();
-            const result = await loadProjectListSafe();
+            const result = isTeamverEmbedMode() && onHome
+              ? await loadRecentProjectsForHome()
+              : await loadProjectListSafe();
             if (!cancelled && result.ok) {
-              reconcileFetchedProjects(result.projects, request);
+              if (isTeamverEmbedMode() && onHome) {
+                upsertRecentProjects(result.projects, request);
+              } else {
+                reconcileFetchedProjects(result.projects, request);
+              }
               warmEmbedProjectListCaches(result.projects);
             }
           }
@@ -2899,13 +2874,15 @@ function AppInner() {
   const handleDeleteProject = useCallback(async (id: string) => {
     const ok = await deleteProjectApi(id);
     if (!ok) return false;
-    await unregisterTeamverProjectFromRegistryIfNeeded(id);
+    const registryOk = await unregisterTeamverProjectFromRegistryIfNeeded(id);
+    if (!registryOk) return false;
     if (isTeamverEmbedMode()) {
       clearTeamverEmbedProjectCaches(id);
     }
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     sessionActiveRunProjectIdsRef.current.delete(id);
+    publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
     setProjects((curr) => curr.filter((p) => p.id !== id));
     setBackgroundRunNotice((notice) => (notice?.projectId === id ? null : notice));
     setBackgroundRunSummaries((prev) => prev.filter((summary) => summary.projectId !== id));
@@ -3087,17 +3064,36 @@ function AppInner() {
   useEffect(() => {
     if (route.kind !== 'project') return;
     if (activeProject) return;
-    if (!projects.length && !daemonLive) return;
+    if (!isTeamverEmbedMode() && !projects.length && !daemonLive) return;
     if (projects.some((p) => p.id === route.projectId)) return;
     let cancelled = false;
     (async () => {
-      await ensureTeamverProjectRegisteredById(route.projectId);
+      try {
+        await ensureTeamverProjectRegisteredById(route.projectId);
+      } catch (err) {
+        console.warn('[teamver] home-nav: deep-linked project registry preflight failed', {
+          projectId: route.projectId,
+          error: err,
+        });
+      }
       const project = await getProject(route.projectId);
       if (cancelled) return;
       if (project) {
-        const allowed =
-          isSessionTrustedEmbedProject(route.projectId) ||
-          await assertTeamverProjectAccessIfNeeded(route.projectId);
+        let allowed = isSessionTrustedEmbedProject(route.projectId);
+        if (!allowed) {
+          try {
+            allowed = await assertTeamverProjectAccessIfNeeded(route.projectId);
+          } catch (err) {
+            console.warn('[teamver] home-nav: deep-linked project access check failed', {
+              projectId: route.projectId,
+              error: err,
+            });
+            // Project detail/registry lookup already succeeded. Treat access
+            // check transport errors as transient so direct file links do not
+            // remain on the loading shell forever.
+            allowed = true;
+          }
+        }
         if (cancelled) return;
         if (!allowed) {
           if (isTeamverEmbedMode()) {
@@ -3157,7 +3153,17 @@ function AppInner() {
         }
         navigate({ kind: 'home', view: 'home' }, { replace: true });
       }
-    })();
+    })().catch((err) => {
+      if (cancelled) return;
+      console.warn('[teamver] home-nav: deep-linked project hydration failed', {
+        projectId: route.projectId,
+        error: err,
+      });
+      if (isTeamverEmbedMode()) {
+        setWorkingDirError(formatTeamverProjectNotFoundMessage());
+      }
+      navigate({ kind: 'home', view: 'home' }, { replace: true });
+    });
     return () => {
       cancelled = true;
     };
@@ -3313,6 +3319,41 @@ function AppInner() {
     void refreshTemplates();
   }, [route.kind, refreshTemplates]);
 
+  // Embed: returning from project detail (or other non-home routes) must
+  // refresh the recent rail. Deep-link boot skips home recent fetch, so
+  // without this the strip stays empty or stuck on the single prefetched row.
+  const previousRouteKindRef = useRef(route.kind);
+  useEffect(() => {
+    const previousKind = previousRouteKindRef.current;
+    previousRouteKindRef.current = route.kind;
+    if (!isTeamverEmbedMode()) return;
+    if (route.kind !== 'home' || previousKind === 'home') return;
+    let cancelled = false;
+    void (async () => {
+      const request = beginProjectListRequest();
+      if (projectsRef.current.length === 0) setProjectsLoading(true);
+      else setProjectsRefreshing(true);
+      try {
+        const result = await loadRecentProjectsForHome();
+        if (cancelled || !result.ok) {
+          if (!cancelled && !result.ok) setWorkingDirError(result.errorMessage);
+          return;
+        }
+        setWorkingDirError(null);
+        upsertRecentProjects(result.projects, request);
+        warmEmbedProjectListCaches(result.projects);
+      } finally {
+        if (!cancelled) {
+          setProjectsLoading(false);
+          setProjectsRefreshing(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [beginProjectListRequest, route.kind, upsertRecentProjects]);
+
   // Existing card grids (DesignsTab, ProjectView), pickers (NewProjectPanel,
   // ChatComposer mention) all look skills up by id without caring whether
   // the id resolves to a functional skill or a design template. Pass them
@@ -3452,7 +3493,7 @@ function AppInner() {
   } else if (isTeamverEmbedMode() && route.kind === 'project' && !activeProject) {
     appMain = (
       <div className="embed-route-loading" data-testid="embed-project-route-loading">
-        <CenteredLoader label={resolveLoadingShellLabel()} />
+        <CenteredLoader fullBleed />
       </div>
     );
   } else {

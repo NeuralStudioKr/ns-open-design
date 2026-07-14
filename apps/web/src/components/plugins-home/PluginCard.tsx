@@ -98,6 +98,9 @@ export function PluginCard({
     // name + open-fullscreen) over an eagerly-rendered example.html
     // iframe. The whole tile opens the detail surface; the ↗ link opens
     // the real page in a new tab.
+    // Deck templates render a fixed 16:9 stage; tag them so gallery previews
+    // use a 16:9 frame instead of the tall scroll-preview viewport.
+    const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode;
     const previewSrc = preview.kind === 'html' ? preview.src : null;
     return (
       <article
@@ -113,6 +116,7 @@ export function PluginCard({
           .join(' ')}
         data-plugin-id={record.id}
         data-preview-kind={preview.kind}
+        {...(typeof odMode === 'string' ? { 'data-od-mode': odMode } : {})}
         {...(isFeatured ? { 'data-featured': 'true' } : {})}
         // Mouse convenience: clicking anywhere on the tile opens details.
         // Keyboard/AT users get a real, announced control via the title

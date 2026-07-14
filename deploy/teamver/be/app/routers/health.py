@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from fastapi import APIRouter
 
@@ -16,6 +17,13 @@ _SCHEMA_TABLES = (
     "design_projects",
     "design_outputs",
 )
+
+
+def _resolve_node_id() -> str:
+    # docs-teamver/39_2 · 39_5 — surfaces the multi-node identity so ALB
+    # stickiness / failover investigations can pin the exact host without
+    # a separate shell round-trip. Missing env → `unknown` (single-node).
+    return (os.getenv("TEAMVER_DESIGN_NODE_ID") or "").strip() or "unknown"
 
 
 async def _check_schema_tables() -> dict[str, str]:
@@ -34,14 +42,18 @@ async def _check_schema_tables() -> dict[str, str]:
 @router.get("/healthz")
 async def healthz() -> dict[str, object]:
     tables = await _check_schema_tables()
+    node_id = _resolve_node_id()
     if any(status == "unavailable" for status in tables.values()):
-        return {"status": "degraded", "db": "unavailable", "tables": tables}
+        return {"status": "degraded", "db": "unavailable", "tables": tables, "node_id": node_id}
     if any(status != "ok" for status in tables.values()):
-        return {"status": "degraded", "db": "schema_missing", "tables": tables}
-    return {"status": "ok", "db": "ok", "tables": tables}
+        return {"status": "degraded", "db": "schema_missing", "tables": tables, "node_id": node_id}
+    return {"status": "ok", "db": "ok", "tables": tables, "node_id": node_id}
 
 
 @router.get("/healthz/deps")
 async def healthz_deps() -> dict[str, object]:
     """Sidecar dependency probe — Postgres, OD daemon, Main BE reachability."""
-    return await collect_dependency_status()
+    result = await collect_dependency_status()
+    if isinstance(result, dict) and "node_id" not in result:
+        result["node_id"] = _resolve_node_id()
+    return result
