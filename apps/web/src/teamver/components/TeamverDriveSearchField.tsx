@@ -30,7 +30,9 @@ export function TeamverDriveSearchField({
     <div className="teamver-drive-picker-search">
       <Icon name="search" size={14} />
       <input
-        autoFocus={autoFocus}
+        /* Prefer focus-trap initial focus over native autoFocus so nested
+           modals can restore the real opener (not this input). */
+        data-teamver-drive-autofocus={autoFocus ? "true" : undefined}
         value={value}
         aria-label={ariaLabel}
         placeholder={placeholder}

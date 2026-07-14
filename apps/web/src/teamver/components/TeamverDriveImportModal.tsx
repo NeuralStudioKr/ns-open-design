@@ -19,6 +19,7 @@ import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import {
   browseTeamverDriveImportPage,
   importRowMatchesScope,
+  invalidateTeamverDriveImportCaches,
   listTeamverDriveImportRecent,
   listTeamverDriveImportScopes,
   searchTeamverDriveImportRows,
@@ -45,8 +46,10 @@ import {
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
+import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import type { TeamverDrivePublishRecentAsset } from "../drivePublishRecentAssets";
 import type { TeamverDrivePublishTarget } from "../drivePublishTargets";
+
 
 const MAX_PICK = 12;
 const SEARCH_LIMIT = 40;
@@ -218,6 +221,13 @@ export function TeamverDriveImportModal({
   const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
   const showRecent =
     !searchMode && currentFolderId == null && activeScope?.mode === "personal";
+
+  useTeamverDriveModalFocusTrap(open, modalRef);
+
+  useEffect(() => {
+    if (!authRequired) return;
+    invalidateTeamverDriveImportCaches(workspaceId);
+  }, [authRequired, workspaceId]);
 
   useEffect(() => {
     if (!open) {
@@ -759,6 +769,7 @@ export function TeamverDriveImportModal({
         aria-modal="true"
         aria-labelledby="teamver-drive-import-title"
         data-testid="teamver-drive-import-modal"
+        tabIndex={-1}
       >
         <header className="teamver-drive-picker-head">
           <div>

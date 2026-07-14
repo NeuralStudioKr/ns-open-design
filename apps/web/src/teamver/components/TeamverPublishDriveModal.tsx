@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../../components/Icon";
 import { drivePublishMessaging } from "../drivePublishMessaging";
+import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import {
   TeamverPublishDrivePanel,
   type TeamverPublishDrivePanelProps,
@@ -17,7 +18,10 @@ export function TeamverPublishDriveModal({
   ...panelProps
 }: Props) {
   const backdropMouseDownRef = useRef(false);
+  const modalRef = useRef<HTMLElement | null>(null);
   const messaging = drivePublishMessaging();
+
+  useTeamverDriveModalFocusTrap(open, modalRef);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
@@ -55,11 +59,13 @@ export function TeamverPublishDriveModal({
         }}
       >
         <section
+          ref={modalRef}
           className="teamver-drive-picker-modal teamver-drive-publish-modal"
           role="dialog"
           aria-modal="true"
           aria-labelledby="teamver-drive-publish-title"
           data-testid="teamver-publish-drive-modal"
+          tabIndex={-1}
           onMouseDown={(event) => event.stopPropagation()}
         >
           <header className="teamver-drive-picker-head">
@@ -72,6 +78,7 @@ export function TeamverPublishDriveModal({
               className="teamver-drive-picker-close"
               aria-label="드라이브 올리기 닫기"
               data-testid="teamver-publish-drive-modal-close"
+              data-teamver-drive-autofocus="true"
               onClick={onClose}
             >
               <Icon name="close" size={16} />

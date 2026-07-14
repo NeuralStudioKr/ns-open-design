@@ -100,6 +100,7 @@ describe('Teamver embed export + Drive publish UI', () => {
     const modal = readSource('src/teamver/components/TeamverPublishDriveModal.tsx');
     expect(modal).toContain('Escape');
     expect(modal).toContain('onClose()');
+    expect(modal).toContain('useTeamverDriveModalFocusTrap');
   });
 
   it('supports partial publish toasts with follow-up actions', () => {

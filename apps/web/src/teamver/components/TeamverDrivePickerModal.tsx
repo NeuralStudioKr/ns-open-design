@@ -13,6 +13,7 @@ import {
 } from "../drivePublishRecentAssets";
 import {
   browseTeamverDriveImportPage,
+  invalidateTeamverDriveImportCaches,
   listTeamverDriveImportScopes,
   TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE,
   type TeamverDriveImportAssetRow,
@@ -28,6 +29,7 @@ import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
+import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import {
   getTeamverDriveBrowsePageCached,
   loadTeamverDriveBrowsePageCachedForSignal,
@@ -166,12 +168,21 @@ export function TeamverDrivePickerModal({
   const browseAbortRef = useRef<AbortController | null>(null);
   const searchFetchSeqRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const modalRef = useRef<HTMLElement | null>(null);
   const trimmedQuery = query.trim();
   const searching = Boolean(onSearch && searchMode);
   const activeScope = scopes[scopeIndex] ?? null;
   const currentCrumb = navStack[navStack.length - 1] ?? null;
   const currentFolderId = currentCrumb?.folderId ?? null;
   const atScopeRoot = navStack.length <= 1;
+
+  useTeamverDriveModalFocusTrap(open, modalRef);
+
+  useEffect(() => {
+    if (!browseAuthRequired) return;
+    invalidateTeamverDriveImportCaches(workspaceId);
+  }, [browseAuthRequired, workspaceId]);
+
   const currentTarget = activeScope && navStack.length > 0
     ? targetFromCurrentFolder(activeScope, navStack)
     : null;
@@ -747,11 +758,13 @@ export function TeamverDrivePickerModal({
       }}
     >
       <section
+        ref={modalRef}
         className="teamver-drive-picker-modal teamver-drive-import-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="teamver-drive-picker-title"
         data-testid="teamver-drive-picker-modal"
+        tabIndex={-1}
       >
         <header className="teamver-drive-picker-head">
           <div>
