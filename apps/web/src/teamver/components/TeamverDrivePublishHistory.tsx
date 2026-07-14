@@ -197,7 +197,7 @@ export function TeamverDrivePublishHistory({
           aria-live="polite"
           data-testid="teamver-drive-history-auth-required"
         >
-          세션이 만료되어 이력을 불러올 수 없습니다.{" "}
+          로그인이 만료되어 발행 이력을 불러올 수 없습니다.{" "}
           <button
             type="button"
             className="teamver-drive-history__login"

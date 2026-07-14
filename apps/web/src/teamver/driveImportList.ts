@@ -364,34 +364,40 @@ async function fetchImportScopesUncached(workspaceId: string): Promise<TeamverDr
 
   try {
     const drives = extractListItems(sharedListResult.value);
-    const sharedScopes = await Promise.all(
-      drives.map(async (drive) => {
-        if (!drive || typeof drive !== "object") return null;
-        const obj = drive as Record<string, unknown>;
-        const id = String(obj.id ?? "").trim();
-        const name = String(obj.name ?? "").trim();
-        const status = String(obj.status ?? "").toLowerCase();
-        if (!id || !name) return null;
-        if (status && status !== "active") return null;
-        // List response includes rootFolderId (Main 620736e2). Fall back to
-        // folder-tree only for older Main / partial payloads.
-        let rootFolderId = rootFolderIdFromSharedDriveListItem(obj);
-        if (!rootFolderId) {
-          rootFolderId = await resolveSharedDriveRootFolderId(trimmed, id);
-        } else {
-          sharedDriveRootCache.set(`${trimmed}:${id}`, {
-            rootFolderId,
-            at: Date.now(),
-          });
-        }
-        return {
-          mode: "shared" as const,
-          sharedDriveId: id,
-          folderId: rootFolderId,
-          label: name,
-        };
-      }),
-    );
+    const sharedScopes: Array<Extract<TeamverDriveImportScope, { mode: "shared" }> | null> = [];
+    const TREE_FALLBACK_CONCURRENCY = 4;
+    for (let i = 0; i < drives.length; i += TREE_FALLBACK_CONCURRENCY) {
+      const chunk = drives.slice(i, i + TREE_FALLBACK_CONCURRENCY);
+      const chunkScopes = await Promise.all(
+        chunk.map(async (drive) => {
+          if (!drive || typeof drive !== "object") return null;
+          const obj = drive as Record<string, unknown>;
+          const id = String(obj.id ?? "").trim();
+          const name = String(obj.name ?? "").trim();
+          const status = String(obj.status ?? "").toLowerCase();
+          if (!id || !name) return null;
+          if (status && status !== "active") return null;
+          // List response includes rootFolderId (Main 620736e2). Fall back to
+          // folder-tree only for older Main / partial payloads.
+          let rootFolderId = rootFolderIdFromSharedDriveListItem(obj);
+          if (!rootFolderId) {
+            rootFolderId = await resolveSharedDriveRootFolderId(trimmed, id);
+          } else {
+            sharedDriveRootCache.set(`${trimmed}:${id}`, {
+              rootFolderId,
+              at: Date.now(),
+            });
+          }
+          return {
+            mode: "shared" as const,
+            sharedDriveId: id,
+            folderId: rootFolderId,
+            label: name,
+          };
+        }),
+      );
+      sharedScopes.push(...chunkScopes);
+    }
     for (const scope of sharedScopes) {
       if (scope) scopes.push(scope);
     }
