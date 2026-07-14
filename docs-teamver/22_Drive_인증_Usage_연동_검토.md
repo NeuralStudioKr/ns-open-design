@@ -130,19 +130,21 @@ run.teamverIdentity.workspaceId → usage bridge · billing · S3 access
 
 ### 3.2g 2026-07-14 — Main Drive는 HS256 platform JWT만 수용 (근본, 최상위)
 
-**SSOT:** [39_10 §8](./39_10_HA_세션쿠키_경합_해결.md)
+**SSOT (구현):** [39_10 §8](./39_10_HA_세션쿠키_경합_해결.md)  
+**SSOT (권고·선택지):** [41 Design Drive 인증 계약 권고](./41_Design_Drive_인증_계약_권고.md)
 
 이중화 이후 재로그인 → `/teamver-bff/auth/refresh` 200 → Drive `401 session_expired`가 **재로그인 이후에도** 반복되면 §3.2f보다 이 축을 먼저 본다.
 
 - Main `/api/drive/*`, `/api/v2/shared-drive/*`, `/api/asset/*`는 `JWTService.get_current_user` — **HS256 platform JWT 전용**.
 - BFF session의 access_token은 RS256 Apps JWT(`aud=teamver-design`)로, `/internal/apps/*`에서만 유효 → Main Drive는 항상 `Invalid token`.
-- 해결: Design proxy(`drive.py`, `projects.py`)가 브라우저의 `teamver_access_token`(HS256, `.teamver.com` parent-domain SSO) 쿠키를 **Bearer로 forwarding**. Main HS256 401은 Apps refresh를 시도하지 않고 즉시 `session_expired` 응답 → FE 재로그인 유도.
-- 쿠키 부재 시에만 이전 BFF Apps JWT 경로로 폴백(로컬 dev·오구성 대비, 여전히 Main에서는 401 예상).
+- **권고(방안 A):** Design proxy가 브라우저의 `teamver_access_token`(HS256, `.teamver.com` parent-domain SSO) 쿠키를 **Bearer로 forwarding**. Main HS256 401은 Apps refresh를 시도하지 않고 즉시 `session_expired`.
+- **중기 후보(방안 B):** Main dual-auth — [41 §3.2 트리거](./41_Design_Drive_인증_계약_권고.md)가 있을 때만.
+- **금지:** HS256 secret Apps 공유 · Design의 Apps→HS256 재발급.
 
 운영 확인:
 1. 브라우저 DevTools → Application → Cookies에 `teamver_access_token`(Domain=`.teamver.com`) 존재.
 2. nginx `/teamver-bff/drive/` location에 `proxy_set_header Cookie $http_cookie` 유지(현재 conf 포함).
-3. Drive proxy 응답이 `session_expired`이면, 재로그인 후 브라우저에 Main SSO 쿠키가 실제로 왔는지 먼저 확인.
+3. Drive proxy 응답이 `session_expired`이면, 재로그인 후 브라우저에 Main SSO 쿠키가 실제로 왔는지 먼저 확인. 전체 체크리스트는 [41 §6](./41_Design_Drive_인증_계약_권고.md).
 
 ### 3.2f 2026-07-14 — HA stale Set-Cookie 경합 (Drive `session_expired` — HA sticky OFF 조합 시)
 

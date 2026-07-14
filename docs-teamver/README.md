@@ -23,6 +23,7 @@
 | **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** | **로컬 scratch+S3 · Litestream · 용량·evict · FAQ** |
 | **[21 Scratch 디스크 메트릭](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** | **`OD_SCRATCH_DISK_METRICS` 목적·부하·배포 preflight·FAQ** |
 | **[22 Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md)** | **Drive/auth/usage wiring 판정 · workspace 정렬 · E2E 체크리스트** |
+| **[41 Design Drive 인증 계약 권고](./41_Design_Drive_인증_계약_권고.md)** | **Drive에 붙일 토큰 패밀리 · 방안 A(SSO forward) 권고 · dual-auth 트리거** |
 | **[25 플러그인 preview 샌드박스 nginx](./25_플러그인_preview_샌드박스_nginx_보강.md)** | **deck-stage.js·Google Fonts CSP · sandbox subresource · nginx 보강** |
 | **[28 embed 숨김 UI API](./28_embed_숨김_UI_API_점검.md)** | **marketing·marketplaces·agents boot — embed 불필요 호출 gate** |
 | **[30 embed home boot API 최적화](./30_embed_home_boot_API_최적화.md)** | **`/` 접속 50+ 요청 분석 · hidden unmount · dedup · 검증** |
@@ -57,6 +58,7 @@
 | 20 | **[Hybrid 저장소 (로컬+S3)](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** |
 | 21 | **[Scratch 디스크 메트릭](./21_OD_SCRATCH_DISK_METRICS_가이드.md)** |
 | 22 | **[Drive·인증·Usage 연동 검토](./22_Drive_인증_Usage_연동_검토.md)** |
+| 41 | **[Design Drive 인증 계약 권고](./41_Design_Drive_인증_계약_권고.md)** — Apps JWT vs Main SSO · 방안 A 권고 |
 | 27 | **[메시지 Persist PUT 아키텍처](./27_메시지_Persist_PUT_아키텍처.md)** |
 | 28 | **[embed 숨김 UI API 점검](./28_embed_숨김_UI_API_점검.md)** |
 | 30 | **[embed home boot API 최적화](./30_embed_home_boot_API_최적화.md)** |
