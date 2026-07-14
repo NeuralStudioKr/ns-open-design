@@ -107,8 +107,10 @@ def test_session_middleware_migrates_legacy_session_cookie() -> None:
     cookies = _set_cookie_headers(messages)
 
     assert seen == {"user_id": "u1", "access_token": "legacy-token"}
-    assert len(cookies) == 1
+    assert len(cookies) == 2
     assert cookies[0].startswith("teamver_design_bff_session=")
+    assert cookies[1].startswith("session=null")
+    assert "expires=Thu, 01 Jan 1970" in cookies[1]
 
 
 def test_session_middleware_ignores_foreign_generic_session_cookie() -> None:
@@ -241,8 +243,10 @@ def test_session_middleware_still_migrates_legacy_cookie_without_mutation() -> N
     )
     cookies = _set_cookie_headers(messages)
 
-    assert len(cookies) == 1
+    assert len(cookies) == 2
     assert cookies[0].startswith("teamver_design_bff_session=")
+    assert cookies[1].startswith("session=null")
+    assert "expires=Thu, 01 Jan 1970" in cookies[1]
 
 
 def test_session_middleware_deletes_cookie_when_session_cleared() -> None:
@@ -255,6 +259,7 @@ def test_session_middleware_deletes_cookie_when_session_cleared() -> None:
         app=seed_app,
         secret_key="test-secret",
         session_cookie="teamver_design_bff_session",
+        legacy_session_cookies=("session",),
     )
     seeded = _cookie_value(_set_cookie_headers(asyncio.run(_call_middleware(seed_middleware)))[0])
 
@@ -267,6 +272,7 @@ def test_session_middleware_deletes_cookie_when_session_cleared() -> None:
         app=clear_app,
         secret_key="test-secret",
         session_cookie="teamver_design_bff_session",
+        legacy_session_cookies=("session",),
     )
     messages = asyncio.run(
         _call_middleware(
@@ -276,9 +282,10 @@ def test_session_middleware_deletes_cookie_when_session_cleared() -> None:
     )
     cookies = _set_cookie_headers(messages)
 
-    assert len(cookies) == 1
+    assert len(cookies) == 2
     assert cookies[0].startswith("teamver_design_bff_session=null")
-    assert "expires=Thu, 01 Jan 1970" in cookies[0]
+    assert cookies[1].startswith("session=null")
+    assert all("expires=Thu, 01 Jan 1970" in cookie for cookie in cookies)
 
 
 def test_session_middleware_suppresses_set_cookie_when_flag_set() -> None:

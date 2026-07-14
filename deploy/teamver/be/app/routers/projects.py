@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.bff_session import suppress_session_cookie
+from ..auth.bff_session import load_bff_session, suppress_session_cookie
 from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
@@ -59,7 +59,12 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)
         if session is None:
-            suppress_session_cookie(request)
+            # Retention race (access still usable locally): suppress re-sign so
+            # a sibling node's rotated Set-Cookie wins. Hard clear already
+            # emptied the session — leave suppress off so middleware can emit
+            # the delete cookie.
+            if load_bff_session(request) is not None:
+                suppress_session_cookie(request)
             raise UnauthorizedError("session_expired")
         return session.access_token
 

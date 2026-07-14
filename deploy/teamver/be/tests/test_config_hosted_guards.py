@@ -44,6 +44,11 @@ def test_staging_rejects_generic_bff_session_cookie_name() -> None:
         hosted_settings(design_bff_session_cookie_name="session")
 
 
+def test_staging_rejects_empty_bff_session_cookie_name() -> None:
+    with pytest.raises(ValidationError, match="DESIGN_BFF_SESSION_COOKIE_NAME is required"):
+        hosted_settings(design_bff_session_cookie_name="   ")
+
+
 @pytest.mark.parametrize(
     ("field", "message"),
     [

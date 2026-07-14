@@ -43,6 +43,7 @@ def _bff_auth() -> AuthContext:
 def _request() -> MagicMock:
     request = MagicMock()
     request.scope = {}
+    request.session = {}
     return request
 
 
@@ -252,6 +253,49 @@ async def test_publish_router_uses_force_refreshed_bff_token(
 async def test_publish_router_suppresses_stale_cookie_when_bff_refresh_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Retain race: refresh fails but session remains — suppress re-sign."""
+    from app.auth.bff_session import save_bff_session
+
+    row = _project_row()
+    db = AsyncMock()
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_ref",
+        AsyncMock(return_value=row),
+    )
+    monkeypatch.setattr(
+        projects_router,
+        "force_refresh_bff_session",
+        AsyncMock(return_value=None),
+    )
+    request = _request()
+    save_bff_session(
+        request,
+        user_id="u1",
+        access_token="still-usable",
+        expires_in=600,
+        refresh_token="rt",
+        workspace_id="ws1",
+    )
+
+    with pytest.raises(Exception) as raised:
+        await projects_router.publish_project_to_drive(
+            "od1",
+            PublishProjectBody(formats=["html"], artifact_file="index.html"),
+            request,
+            _bff_auth(),
+            db,
+        )
+
+    assert "session_expired" in str(raised.value)
+    assert request.scope.get("teamver_suppress_session_cookie") is True
+
+
+@pytest.mark.asyncio
+async def test_publish_router_allows_delete_cookie_when_bff_session_cleared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hard expiry: session already cleared — do not suppress delete Set-Cookie."""
     row = _project_row()
     db = AsyncMock()
     monkeypatch.setattr(
@@ -276,7 +320,7 @@ async def test_publish_router_suppresses_stale_cookie_when_bff_refresh_fails(
         )
 
     assert "session_expired" in str(raised.value)
-    assert request.scope.get("teamver_suppress_session_cookie") is True
+    assert request.scope.get("teamver_suppress_session_cookie") is not True
 
 
 @pytest.mark.asyncio

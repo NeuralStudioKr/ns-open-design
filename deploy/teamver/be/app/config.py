@@ -159,7 +159,10 @@ class Settings(BaseModel):
             raise ValueError(f"TEAMVER_JWT_AUDIENCE is required in {deploy_env}")
         if self.teamver_bff_session_enabled and not self.design_bff_session_secret.strip():
             raise ValueError(f"DESIGN_BFF_SESSION_SECRET is required in {deploy_env}")
-        if self.teamver_bff_session_enabled and self.design_bff_session_cookie_name.strip() == "session":
+        cookie_name = self.design_bff_session_cookie_name.strip()
+        if self.teamver_bff_session_enabled and not cookie_name:
+            raise ValueError(f"DESIGN_BFF_SESSION_COOKIE_NAME is required in {deploy_env}")
+        if self.teamver_bff_session_enabled and cookie_name == "session":
             raise ValueError(
                 f"DESIGN_BFF_SESSION_COOKIE_NAME=session is forbidden in {deploy_env} "
                 "— use an app-specific cookie name"

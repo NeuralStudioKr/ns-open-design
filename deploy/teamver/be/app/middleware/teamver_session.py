@@ -130,6 +130,22 @@ class TeamverSessionMiddleware:
                         )
                     )
                     headers.append("Set-Cookie", header_value)
+                    if must_migrate_legacy_cookie:
+                        # Expire the Design host-only legacy cookie so logout /
+                        # hard-clear cannot be undone by legacy-name fallback.
+                        for legacy_name in self.legacy_session_cookies:
+                            headers.append(
+                                "Set-Cookie",
+                                (
+                                    "{cookie}=null; path={path}; "
+                                    "expires=Thu, 01 Jan 1970 00:00:00 GMT; "
+                                    "{security_flags}"
+                                ).format(
+                                    cookie=legacy_name,
+                                    path=self.path,
+                                    security_flags=self.security_flags,
+                                ),
+                            )
                 elif not initial_session_was_empty:
                     headers = MutableHeaders(scope=message)
                     header_value = (
@@ -142,6 +158,21 @@ class TeamverSessionMiddleware:
                         )
                     )
                     headers.append("Set-Cookie", header_value)
+                    # Also wipe any legacy sibling that might resurrect the
+                    # session on the next request via fallback load.
+                    for legacy_name in self.legacy_session_cookies:
+                        headers.append(
+                            "Set-Cookie",
+                            (
+                                "{cookie}=null; path={path}; "
+                                "expires=Thu, 01 Jan 1970 00:00:00 GMT; "
+                                "{security_flags}"
+                            ).format(
+                                cookie=legacy_name,
+                                path=self.path,
+                                security_flags=self.security_flags,
+                            ),
+                        )
             await send(message)
 
         await self.app(scope, receive, send_wrapper)

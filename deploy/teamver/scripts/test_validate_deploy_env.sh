@@ -121,6 +121,18 @@ fi
 rm -f "$GENERIC_COOKIE_ENV"
 echo "✓ staging DESIGN_BFF_SESSION_COOKIE_NAME gate ok"
 
+MISSING_COOKIE_ENV="$(mktemp)"
+sed '/^DESIGN_BFF_SESSION_COOKIE_NAME=/d' "$TMP_ENV" > "$MISSING_COOKIE_ENV"
+missing_cookie_out="$(bash "$SCRIPT" --staging --rds --env-file "$MISSING_COOKIE_ENV" 2>&1 || true)"
+if ! grep -q 'DESIGN_BFF_SESSION_COOKIE_NAME 가 비어 있습니다' <<< "$missing_cookie_out"; then
+  echo "❌ staging must require DESIGN_BFF_SESSION_COOKIE_NAME"
+  echo "$missing_cookie_out"
+  rm -f "$MISSING_COOKIE_ENV"
+  exit 1
+fi
+rm -f "$MISSING_COOKIE_ENV"
+echo "✓ staging DESIGN_BFF_SESSION_COOKIE_NAME required ok"
+
 BAD_PREFIX_ENV="$(mktemp)"
 sed 's/^OD_S3_PREFIX=design\//OD_S3_PREFIX=design/' "$TMP_ENV" > "$BAD_PREFIX_ENV"
 bad_prefix_out="$(bash "$SCRIPT" --staging --rds --env-file "$BAD_PREFIX_ENV" 2>&1 || true)"
