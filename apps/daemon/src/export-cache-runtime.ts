@@ -214,6 +214,7 @@ export function exportCacheDescriptor(input: {
   format: ExportCacheFormat;
   deck: boolean;
   slideIndex?: number;
+  codeVersion?: string;
   filename: string;
   mime: string;
 }): ExportCacheDescriptor {
@@ -224,6 +225,7 @@ export function exportCacheDescriptor(input: {
     format: input.format,
     deck: input.deck,
     ...(typeof input.slideIndex === 'number' ? { slideIndex: input.slideIndex } : {}),
+    ...(input.codeVersion ? { codeVersion: input.codeVersion } : {}),
   };
   return {
     keyInput,

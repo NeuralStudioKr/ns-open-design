@@ -954,6 +954,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           sourceMtimeMs: built.source.mtimeMs,
           format: 'pptx',
           deck: true,
+          codeVersion: 'pptx-ooxml-v2',
           filename,
           mime,
         }),
