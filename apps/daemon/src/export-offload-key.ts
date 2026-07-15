@@ -25,7 +25,7 @@ function readPositiveIntEnv(
 export type ExportOffloadConfig =
   | {
       enabled: false;
-      reason: 'flag_disabled' | 'missing_bucket' | 'missing_region';
+      reason: ExportOffloadDisabledReason;
     }
   | {
       enabled: true;
@@ -34,6 +34,8 @@ export type ExportOffloadConfig =
       prefix: string;
       presignTtlSec: number;
     };
+
+export type ExportOffloadDisabledReason = 'flag_disabled' | 'missing_bucket' | 'missing_region';
 
 export function resolveExportOffloadConfig(
   env: NodeJS.ProcessEnv = process.env,
