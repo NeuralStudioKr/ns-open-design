@@ -35,6 +35,7 @@ class OdExportTicket:
     cache: str | None = None
     delivery_mode: str = "stream"
     single_use: bool = True
+    offload_key: str | None = None
 
 
 class OdDaemonPresignedPutError(BadGatewayError):
@@ -501,6 +502,7 @@ class OdDaemonClient:
         size = body.get("bytes", body.get("sizeBytes"))
         delivery_mode = body.get("deliveryMode", "stream")
         single_use = body.get("singleUse", True)
+        offload_key = body.get("offloadKey")
         if not isinstance(download_url, str) or not download_url:
             raise BadGatewayError("od_daemon_invalid_export_ticket")
         if not isinstance(filename, str) or not filename:
@@ -513,6 +515,8 @@ class OdDaemonClient:
             raise BadGatewayError("od_daemon_invalid_export_ticket")
         if not isinstance(single_use, bool):
             raise BadGatewayError("od_daemon_invalid_export_ticket")
+        if offload_key is not None and not isinstance(offload_key, str):
+            raise BadGatewayError("od_daemon_invalid_export_ticket")
         return OdExportTicket(
             download_url=download_url,
             filename=filename,
@@ -521,6 +525,7 @@ class OdDaemonClient:
             cache=body.get("cache") if isinstance(body.get("cache"), str) else None,
             delivery_mode=delivery_mode,
             single_use=single_use,
+            offload_key=offload_key.strip() if isinstance(offload_key, str) and offload_key.strip() else None,
         )
 
     async def _request_export_bytes(

@@ -972,6 +972,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-15 | Export ticket 응답에 Teamver scope 기반 `offloadKey` 준비 필드 연결 — 실제 presigned URL 발급 전 cacheKey→exports object key 매핑을 ticket JSON·design-api parser·publish 로그에서 검증할 수 있게 함 |
 | 2026-07-15 | Export offload object key SSOT 추가 — `exports/ws_{workspace}/proj_{project}/{cacheHash}.{ext}` 규칙과 scope sanitizing을 코드·테스트로 고정해 presigned GET/S3 lifecycle 구현 전 object naming drift를 차단 |
 | 2026-07-15 | Drive publish export stream 로그 보강 — 성공/실패/fallback 로그에 `export_delivery`, `export_single_use`를 추가해 stream/redirect 전환 상태를 운영 로그에서 확인 가능하게 함 |
 | 2026-07-15 | Export ticket GET 응답 헤더 보강 — `Content-Length`, `Cache-Control: private, no-store`, `X-OD-Export-Delivery-Mode`, `X-OD-Export-Single-Use` 추가로 다운로드 크기·보안·운영 확인성을 명확화. `npm test -- export-ticket-download-route.test.ts export-download-store.test.ts` 8 passed |

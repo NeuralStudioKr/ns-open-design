@@ -1,4 +1,4 @@
-import type { Express } from 'express';
+import type { Express, Request } from 'express';
 import {
   PROJECT_EXPORT_MANIFEST_SCHEMA,
   injectDeckHtmlExportViewportScript,
@@ -40,6 +40,8 @@ import {
   runCachedExport,
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
+import { buildExportOffloadObjectKey } from './export-offload-key.js';
+import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -132,6 +134,7 @@ async function respondExportPayload(
     mime: string;
     bytes: number;
     cache?: string;
+    offloadKey?: string;
     ticket: boolean;
   },
 ): Promise<void> {
@@ -154,6 +157,7 @@ async function respondExportPayload(
       bytes: entry.bytes,
       sizeBytes: entry.bytes,
       singleUse: true,
+      ...(options.offloadKey ? { offloadKey: options.offloadKey } : {}),
       ...(options.cache ? { cache: options.cache } : {}),
       expiresAt: new Date(entry.expiresAt).toISOString(),
     });
@@ -195,6 +199,28 @@ function outcomeAsRespondPayload(
     bytes: outcome.bytes,
     cache: outcome.cache,
   };
+}
+
+function exportOffloadKeyForRequest(
+  req: Request,
+  outcome: ExportCacheOutcome,
+): string | undefined {
+  const identity = readTeamverIdentityFromRequest(req);
+  if (!identity) return undefined;
+  return buildExportOffloadObjectKey({
+    workspaceId: identity.workspaceId,
+    projectId: String(req.params.id ?? ''),
+    cacheKey: outcome.key,
+    filename: outcome.filename,
+  });
+}
+
+function exportOffloadPayloadForRequest(
+  req: Request,
+  outcome: ExportCacheOutcome,
+): { offloadKey: string } | Record<string, never> {
+  const offloadKey = exportOffloadKeyForRequest(req, outcome);
+  return offloadKey ? { offloadKey } : {};
 }
 
 function handleExportRouteError(
@@ -869,7 +895,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         },
         { fresh: wantsFreshExport(req) },
       );
-      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        ...outcomeAsRespondPayload(outcome),
+        ...exportOffloadPayloadForRequest(req, outcome),
+        ticket,
+      });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/pdf', req.params.id, err);
     }
@@ -931,7 +962,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         },
         { fresh: wantsFreshExport(req) },
       );
-      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        ...outcomeAsRespondPayload(outcome),
+        ...exportOffloadPayloadForRequest(req, outcome),
+        ticket,
+      });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/image', req.params.id, err);
     }
@@ -989,7 +1025,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         },
         { fresh: wantsFreshExport(req) },
       );
-      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        ...outcomeAsRespondPayload(outcome),
+        ...exportOffloadPayloadForRequest(req, outcome),
+        ticket,
+      });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/html', req.params.id, err);
     }
@@ -1050,7 +1091,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         },
         { fresh: wantsFreshExport(req) },
       );
-      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        ...outcomeAsRespondPayload(outcome),
+        ...exportOffloadPayloadForRequest(req, outcome),
+        ticket,
+      });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/zip', req.params.id, err);
     }

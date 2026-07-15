@@ -135,6 +135,7 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
         "cache": "hit-local",
         "deliveryMode": "stream",
         "singleUse": True,
+        "offloadKey": "exports/ws_ws1/proj_od1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf",
     }
 
     http = AsyncMock()
@@ -161,6 +162,7 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
     assert ticket.cache == "hit-local"
     assert ticket.delivery_mode == "stream"
     assert ticket.single_use is True
+    assert ticket.offload_key == "exports/ws_ws1/proj_od1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf"
     http.post.assert_awaited_once()
     assert http.post.await_args.args[0] == "http://daemon.test/api/projects/od1/export/pdf"
     assert http.post.await_args.kwargs["json"] == {
