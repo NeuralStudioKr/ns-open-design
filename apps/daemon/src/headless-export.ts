@@ -1731,7 +1731,11 @@ function injectTitle(doc: string, title: string): string {
 }
 
 function injectPrintStylesheet(doc: string, css: string): string {
-  const tag = `<style data-od-headless-pdf>${css}</style>`;
+  const emojiFontCss = `
+html, body {
+  font-family: var(--font-body, var(--font-sans, inherit)), "Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+}`;
+  const tag = `<style data-od-headless-pdf>${css}${emojiFontCss}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);
   if (/<head[^>]*>/i.test(doc)) return doc.replace(/<head[^>]*>/i, (match) => `${match}${tag}`);
   return `${tag}${doc}`;

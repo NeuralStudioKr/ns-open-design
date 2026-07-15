@@ -1773,7 +1773,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
 </style>`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
-  var didRestoreInitialSlide = initialSlideIndex <= 0;
+  var didRestoreInitialSlide = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   function frameworkDeckStage() {
     return document.getElementById('deck-stage');
@@ -2181,11 +2181,16 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     return { active: activeIndex(list), count: list.length };
   };
   function restoreInitialSlide(){
-    if (didRestoreInitialSlide) { report(); return; }
     var list = slides();
     if (!list.length) return;
+    var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
+    if (didRestoreInitialSlide) {
+      if (findActiveByVisibility(list) < 0) gotoIndex(target);
+      report();
+      return;
+    }
     didRestoreInitialSlide = true;
-    gotoIndex(initialSlideIndex);
+    gotoIndex(target);
   }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;

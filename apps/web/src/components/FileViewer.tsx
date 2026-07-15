@@ -8074,7 +8074,7 @@ function HtmlViewer({
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
   const showStreamingPreviewVeil = Boolean(
     streaming
-    && source != null
+    && source == null
     && liveHtml?.trim()
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
