@@ -4,6 +4,7 @@ import * as designApiBase from "../src/teamver/designApiBase";
 import {
   mergeProjectIntoList,
   mergeRecentProjectsIntoList,
+  preserveProjectListDisplayNames,
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from "../src/teamver/embedProjectListRefresh";
@@ -74,6 +75,17 @@ describe("embedProjectListRefresh", () => {
     ]);
   });
 
+  it("does not let id fallback names overwrite an existing display name", () => {
+    expect(
+      mergeProjectIntoList(
+        [{ ...project, id: "proj-123", name: "AI 도입 효과 발표", updatedAt: 10 }],
+        { ...project, id: "proj-123", name: "proj-123", updatedAt: 20 },
+      ),
+    ).toEqual([
+      { ...project, id: "proj-123", name: "AI 도입 효과 발표", updatedAt: 20 },
+    ]);
+  });
+
   it("upserts recent slice without dropping paginated list rows", () => {
     const current = [
       { ...project, id: "p-old", name: "Old", updatedAt: 1 },
@@ -107,6 +119,31 @@ describe("embedProjectListRefresh", () => {
       },
       { ...project, id: "p2", name: "Keep", updatedAt: 3 },
       { ...project, id: "p-old", name: "Old", updatedAt: 1 },
+    ]);
+  });
+
+  it("preserves existing names when a recent refresh only has id fallback names", () => {
+    const current = [
+      { ...project, id: "proj-123", name: "온보딩 덱", updatedAt: 5 },
+    ];
+    const recent = [
+      { ...project, id: "proj-123", name: "proj-123", updatedAt: 50 },
+    ];
+    expect(mergeRecentProjectsIntoList(current, recent)).toEqual([
+      { ...project, id: "proj-123", name: "온보딩 덱", updatedAt: 50 },
+    ]);
+  });
+
+  it("preserves existing names for replace-style project list refreshes", () => {
+    const current = [
+      { ...project, id: "proj-123", name: "기존 프로젝트명", updatedAt: 5 },
+      { ...project, id: "proj-456", name: "다른 프로젝트", updatedAt: 4 },
+    ];
+    const incoming = [
+      { ...project, id: "proj-123", name: "proj-123", updatedAt: 50 },
+    ];
+    expect(preserveProjectListDisplayNames(current, incoming)).toEqual([
+      { ...project, id: "proj-123", name: "기존 프로젝트명", updatedAt: 50 },
     ]);
   });
 

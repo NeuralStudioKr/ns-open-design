@@ -122,6 +122,7 @@ import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches
 import {
   mergeProjectIntoList,
   mergeRecentProjectsIntoList,
+  preserveProjectListDisplayNames,
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
@@ -786,13 +787,14 @@ function AppInner() {
         ? new Set(visibleList.map((project) => project.id))
         : fetchedIds;
     setProjects((current) => {
+      const displaySafeVisibleList = preserveProjectListDisplayNames(current, visibleList);
       const preserved = current.filter(
         (project) =>
           pendingLocalProjectIds.has(project.id) &&
           !visibleFetchedIds.has(project.id) &&
           !activeDeletedProjectIds.has(project.id),
       );
-      return preserved.length > 0 ? [...preserved, ...visibleList] : visibleList;
+      return preserved.length > 0 ? [...preserved, ...displaySafeVisibleList] : displaySafeVisibleList;
     });
     return true;
   }, [isStaleProjectListWorkspace]);

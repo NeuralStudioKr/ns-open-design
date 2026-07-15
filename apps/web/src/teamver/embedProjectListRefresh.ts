@@ -14,12 +14,35 @@ export function readEmbedProjectDetailRoute(route: Route): EmbedProjectDetailRou
   return route;
 }
 
+function isIdLikeProjectName(project: Pick<Project, "id" | "name">): boolean {
+  const name = project.name?.trim();
+  return !name || name === project.id;
+}
+
+export function preserveProjectDisplayName(existing: Project | undefined, incoming: Project): Project {
+  if (!existing || isIdLikeProjectName(existing) || !isIdLikeProjectName(incoming)) {
+    return incoming;
+  }
+  return { ...incoming, name: existing.name };
+}
+
 export function mergeProjectIntoList(projects: Project[], project: Project): Project[] {
   const existingIndex = projects.findIndex((row) => row.id === project.id);
   if (existingIndex < 0) {
     return [...projects, project];
   }
-  return projects.map((row) => (row.id === project.id ? project : row));
+  return projects.map((row) => (
+    row.id === project.id ? preserveProjectDisplayName(row, project) : row
+  ));
+}
+
+export function preserveProjectListDisplayNames(
+  current: Project[],
+  incoming: Project[],
+): Project[] {
+  if (current.length === 0 || incoming.length === 0) return incoming;
+  const currentById = new Map(current.map((project) => [project.id, project]));
+  return incoming.map((project) => preserveProjectDisplayName(currentById.get(project.id), project));
 }
 
 /**
@@ -50,7 +73,7 @@ export function mergeRecentProjectsIntoList(
   }
   const byId = new Map(base.map((project) => [project.id, project]));
   for (const project of incoming) {
-    byId.set(project.id, project);
+    byId.set(project.id, preserveProjectDisplayName(byId.get(project.id), project));
   }
   return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
