@@ -10,7 +10,7 @@ class ImportCanvasProjectBody(BaseModel):
 
     session_id: str = Field(validation_alias=AliasChoices("session_id", "sessionId"), min_length=1)
     artifact_id: str = Field(validation_alias=AliasChoices("artifact_id", "artifactId"), min_length=1)
-    revision: str | None = None
+    revision: str | None = Field(default=None, validation_alias=AliasChoices("revision", "rev"))
     filename: str | None = None
 
 
