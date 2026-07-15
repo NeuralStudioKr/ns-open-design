@@ -1267,12 +1267,46 @@ function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; erro
     }
   }
 
+  function isCompactMetricText(text: string): boolean {
+    return /^[+\-]?\d+(?:[.,]\d+)?\s*(?:%|x|×)?$/i.test(text) || /^[%x×]$/i.test(text);
+  }
+
+  function stabilizeCompactMetricText(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const rawText = el.innerText || el.textContent || '';
+        const text = rawText.replace(/\s+/g, ' ').trim();
+        if (!isCompactMetricText(text) || rawText.includes('\n')) return;
+
+        const style = getComputedStyle(el);
+        const fontSizePx = Number.parseFloat(style.fontSize);
+        if (!Number.isFinite(fontSizePx) || fontSizePx < 48) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 1 || rect.height <= 1) return;
+
+        const estimatedTextWidth = fontSizePx * Math.max(1.8, text.length * 0.9);
+        const width = Math.ceil(Math.max(rect.width, el.scrollWidth || 0, estimatedTextWidth));
+
+        el.style.setProperty('display', 'block', 'important');
+        el.style.setProperty('width', `${width}px`, 'important');
+        el.style.setProperty('min-width', `${width}px`, 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('white-space', 'nowrap', 'important');
+        el.style.setProperty('word-break', 'keep-all', 'important');
+        el.style.setProperty('overflow-wrap', 'normal', 'important');
+        el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+  }
+
   function stabilizeLargeSingleLineText(slides: HTMLElement[]): void {
     for (const slide of slides) {
       slide.querySelectorAll('*').forEach((el: HTMLElement) => {
         const rawText = el.innerText || el.textContent || '';
         const text = rawText.replace(/\s+/g, ' ').trim();
         if (!text || rawText.includes('\n')) return;
+        if (isCompactMetricText(text) || el.children.length > 0) return;
 
         const style = getComputedStyle(el);
         const fontSizePx = Number.parseFloat(style.fontSize);
@@ -1316,6 +1350,7 @@ function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; erro
         .filter((el) => !(el as HTMLElement).closest('.mini-slide, .overview, .notes-overlay, .thumb'));
       if (slides.length === 0) return { error: 'no slides to export' };
       ensureExplicitSlideBackgrounds(slides as HTMLElement[]);
+      stabilizeCompactMetricText(slides as HTMLElement[]);
       stabilizeLargeSingleLineText(slides as HTMLElement[]);
       document.querySelectorAll('*').forEach((el: HTMLElement) => {
         const cn = (el as { className?: unknown }).className;

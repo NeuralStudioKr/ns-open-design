@@ -535,6 +535,9 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain('dom-to-pptx.bundle.js.gz');
     expect(source).toContain('w.domToPptx.exportToPptx');
     expect(source).toContain('svgAsVector: true');
+    expect(source).toContain('stabilizeCompactMetricText');
+    expect(source).toContain('isCompactMetricText(text)');
+    expect(source).toContain("el.style.setProperty('white-space', 'nowrap', 'important')");
   });
 
   it('routes PPTX downloads to editable export by default', () => {
@@ -548,7 +551,7 @@ describe('buildDeckPrintCss', () => {
     );
     expect(pptxBlock).toContain('renderHeadlessEditablePptx');
     expect(pptxBlock).toContain('req.body?.editable !== false');
-    expect(pptxBlock).toContain('pptx-editable-dom-v1');
+    expect(pptxBlock).toContain('pptx-editable-dom-v2');
   });
 });
 
