@@ -27,6 +27,7 @@ from ..schemas.drive_import import (
     ImportDriveProjectBody,
     ImportDriveProjectResponse,
 )
+from ..schemas.canvas_import import ImportCanvasProjectBody, ImportCanvasProjectResponse
 from ..schemas.publish import (
     BatchLatestPublishBody,
     BatchLatestPublishSummariesResponse,
@@ -37,6 +38,7 @@ from ..schemas.publish import (
     PublishProjectResponse,
 )
 from ..services.drive_import_service import import_drive_assets
+from ..services.canvas_import_service import import_canvas_html
 from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 from ..services.publish_service import publish_project
 from ..teamver_sdk import extract_request_access_token, get_teamver_client
@@ -643,3 +645,35 @@ async def import_project_drive_assets(
             content=payload.model_dump(mode="json", by_alias=True),
         )
     return payload
+
+
+@router.post(
+    "/{project_ref}/import-canvas",
+    response_model=ImportCanvasProjectResponse,
+    status_code=201,
+)
+async def import_project_canvas_html(
+    project_ref: str,
+    body: ImportCanvasProjectBody,
+    request: Request,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    db: AsyncSession = Depends(get_async_session),
+) -> ImportCanvasProjectResponse:
+    """T2 Canvas handoff — Main export-html pull into the Design project (no Drive)."""
+    row = await design_project_crud.aget_project_by_ref(db, project_ref=project_ref)
+    if row is None:
+        raise NotFoundError("project_not_found")
+    _ensure_project_access(row, auth)
+
+    access_token = await _resolve_drive_mutation_access_token(request, auth)
+    result = await import_canvas_html(
+        access_token=access_token,
+        project=row,
+        session_id=body.session_id,
+        artifact_id=body.artifact_id,
+        filename=body.filename,
+    )
+    return ImportCanvasProjectResponse(
+        project_id=result.project_id,
+        imported=result.imported,
+    )
