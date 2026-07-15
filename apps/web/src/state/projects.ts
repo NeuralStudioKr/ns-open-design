@@ -78,6 +78,38 @@ async function fetchDaemonProjectsPageRaw(limit: number): Promise<Project[]> {
   }
 }
 
+/**
+ * Id-targeted status/metadata enrich — avoids daemon top-N miss that left
+ * registry cards stuck on `not_started` when other tenants fill the window.
+ */
+async function fetchDaemonProjectStatusHints(projectIds: string[]): Promise<{
+  projects: Project[];
+  /** True when the daemon build does not yet expose status-hints. */
+  legacyFallback: boolean;
+}> {
+  const ids = [...new Set(projectIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return { projects: [], legacyFallback: false };
+  try {
+    const resp = await fetchProjectsListWhenAuthenticated('/api/projects/status-hints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectIds: ids.slice(0, 48) }),
+    });
+    if (!resp) return { projects: [], legacyFallback: true };
+    if (resp.status === 404 || resp.status === 405) {
+      return { projects: [], legacyFallback: true };
+    }
+    if (!resp.ok) return { projects: [], legacyFallback: false };
+    const json = (await resp.json()) as { projects?: Project[] };
+    return {
+      projects: (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project)),
+      legacyFallback: false,
+    };
+  } catch {
+    return { projects: [], legacyFallback: true };
+  }
+}
+
 async function fetchDaemonProjectsAllRaw(): Promise<Project[]> {
   try {
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
@@ -91,10 +123,16 @@ async function fetchDaemonProjectsAllRaw(): Promise<Project[]> {
 
 async function enrichEmbedRegistryProjects(projects: Project[]): Promise<Project[]> {
   if (projects.length === 0) return projects;
-  // Over-fetch daemon rows for status/metadata. Membership stays registry-ordered.
-  const daemonProjects = await fetchDaemonProjectsPageRaw(
-    Math.max(PROJECT_LIST_PAGE_SIZE * 4, projects.length * 8, 96),
+  const { projects: daemonProjects, legacyFallback } = await fetchDaemonProjectStatusHints(
+    projects.map((project) => project.id),
   );
+  if (legacyFallback) {
+    // Soft fallback for older daemons without status-hints.
+    const fallback = await fetchDaemonProjectsPageRaw(
+      Math.max(PROJECT_LIST_PAGE_SIZE * 4, projects.length * 8, 96),
+    );
+    return mergeDaemonFieldsOntoRegistryProjects(projects, fallback);
+  }
   return mergeDaemonFieldsOntoRegistryProjects(projects, daemonProjects);
 }
 
@@ -151,10 +189,13 @@ export async function listRecentProjects(
   const run = (async (): Promise<Project[]> => {
     try {
       if (isTeamverEmbedMode()) {
-        // Workspace registry is membership SSOT. Daemon recent?limit=N then
-        // registry ∩ undersamples when other tenants occupy the top-N window.
+        // Workspace registry is membership SSOT. Fetch a registry window
+        // sized for recent + status reorder, then id-targeted daemon enrich
+        // (not top-N ∩ registry — that undersamples other tenants' runs).
         await waitForTeamverRegistrySyncIfNeeded();
-        const registryProjects = await listEmbedProjectsFromRegistry();
+        const registryProjects = await listEmbedProjectsFromRegistry(
+          Math.max(limit * 4, HOME_RECENT_LIST_LIMIT * 4, 24),
+        );
         const enriched = await enrichEmbedRegistryProjects(registryProjects);
         return [...enriched]
           .sort((a, b) => {

@@ -44,10 +44,13 @@ describe("home recent projects stability", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
-    const block = app.slice(start, start + 2200);
-    expect(block).toContain("setProjects([])");
+    const block = app.slice(start, start + 2800);
+    // Keep previous cards until reload succeeds — early setProjects([]) left
+    // empty home when BFF/list failed.
+    expect(block).not.toMatch(/setProjects\(\[\]\);\s*\n\s*setProjectsHasMore/);
     expect(block).toContain("projectsPageLoadedRef.current = false");
     expect(block).toContain("setProjectsLoading(true)");
+    expect(block).toContain("Keep previous cards visible until the new workspace list arrives");
   });
 
   it("waits for registry sync before filtering daemon project lists in embed", () => {
@@ -61,7 +64,8 @@ describe("home recent projects stability", () => {
 
   it("uses registry membership SSOT for embed recent instead of daemon top-N intersect", () => {
     const projects = readSource("src/state/projects.ts");
-    expect(projects).toContain("undersamples when other tenants occupy the top-N window");
+    expect(projects).toContain("status-hints");
+    expect(projects).toContain("fetchDaemonProjectStatusHints");
     expect(projects).toContain("listEmbedProjectsPageFromRegistry");
     expect(projects).toContain("mergeDaemonFieldsOntoRegistryProjects");
   });
@@ -70,6 +74,14 @@ describe("home recent projects stability", () => {
     const projects = readSource("src/state/projects.ts");
     expect(projects).toMatch(
       /isTeamverEmbedMode\(\)[\s\S]*waitForTeamverRegistrySyncIfNeeded[\s\S]*listEmbedProjectsFromRegistry/,
+    );
+  });
+
+  it("refreshes recent without marking previousRouteKind home until apply succeeds", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain("previousRouteKindRef.current = 'home'");
+    expect(app).toMatch(
+      /upsertRecentProjects\(result\.projects, request\)[\s\S]*previousRouteKindRef\.current = 'home'/,
     );
   });
 

@@ -53,6 +53,8 @@ import {
 import { resolveProjectCoverHint } from './project-cover-hints.js';
 
 const PROJECT_COVER_HINTS_BATCH_MAX = 12;
+/** Status/metadata enrichment for registry-backed lists (home + projects tab). */
+const PROJECT_STATUS_HINTS_BATCH_MAX = 48;
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -1220,6 +1222,41 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       }
       /** @type {import('@open-design/contracts').ProjectCoverHintsResponse} */
       const body = { hints };
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  /**
+   * Registry-first embed lists send membership from BFF RDS; daemon top-N
+   * pages miss tenant rows and leave cards stuck on `not_started`. Resolve
+   * status/metadata for an explicit id set via sqlite (no S3 materialize).
+   */
+  app.post('/api/projects/status-hints', async (req, res) => {
+    try {
+      const rawIds = Array.isArray(req.body?.projectIds) ? req.body.projectIds : [];
+      const seen = new Set<string>();
+      const projectIds: string[] = [];
+      for (const raw of rawIds) {
+        if (typeof raw !== 'string') continue;
+        const id = raw.trim();
+        if (!isSafeId(id) || seen.has(id)) continue;
+        seen.add(id);
+        projectIds.push(id);
+        if (projectIds.length >= PROJECT_STATUS_HINTS_BATCH_MAX) break;
+      }
+      const context = await buildProjectListingContext();
+      const rawProjects = [];
+      for (const projectId of projectIds) {
+        const project = getProject(db, projectId);
+        if (!project) continue;
+        rawProjects.push(project);
+      }
+      /** @type {import('@open-design/contracts').ProjectsResponse} */
+      const body = {
+        projects: enrichProjectsForListing(rawProjects, context),
+      };
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
