@@ -1,28 +1,45 @@
 import { Icon } from "../../components/Icon";
 import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
+import type { TeamverCanvasLaunchHandoff } from "../canvasLaunchHandoff";
 import { driveImportAssetIconName } from "../driveFileVisual";
+
+export type TeamverCanvasSlideLaunchSource =
+  | { kind: "drive"; asset: TeamverDriveImportAsset }
+  | { kind: "canvas"; handoff: TeamverCanvasLaunchHandoff };
 
 type Props = {
   open: boolean;
-  asset: TeamverDriveImportAsset;
+  source: TeamverCanvasSlideLaunchSource;
   confirming?: boolean;
+  errorMessage?: string | null;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
 };
 
+function sourceDisplayName(source: TeamverCanvasSlideLaunchSource): string {
+  if (source.kind === "drive") {
+    return source.asset.filename?.trim() || source.asset.assetId;
+  }
+  return `canvas/${source.handoff.artifactId.slice(0, 8)}…`;
+}
+
 export function TeamverCanvasSlideLaunchModal({
   open,
-  asset,
+  source,
   confirming = false,
+  errorMessage = null,
   onConfirm,
   onClose,
 }: Props) {
   const t = useTeamverT();
   if (!open) return null;
 
-  const filename = asset.filename?.trim() || asset.assetId;
-  const iconName = driveImportAssetIconName(filename, asset.mimeType);
+  const filename = sourceDisplayName(source);
+  const iconName =
+    source.kind === "drive"
+      ? driveImportAssetIconName(filename, source.asset.mimeType)
+      : "file";
 
   return (
     <div
@@ -69,6 +86,16 @@ export function TeamverCanvasSlideLaunchModal({
           </div>
         </div>
 
+        {errorMessage ? (
+          <p
+            className="teamver-canvas-slide-launch-error"
+            role="alert"
+            data-testid="teamver-canvas-slide-launch-error"
+          >
+            {errorMessage}
+          </p>
+        ) : null}
+
         <footer className="teamver-drive-import-footer">
           <div className="teamver-drive-import-actions">
             <button
@@ -88,7 +115,9 @@ export function TeamverCanvasSlideLaunchModal({
             >
               {confirming
                 ? t("teamver.canvasSlideLaunch.working")
-                : t("teamver.canvasSlideLaunch.confirm")}
+                : errorMessage
+                  ? t("teamver.canvasSlideLaunch.retry")
+                  : t("teamver.canvasSlideLaunch.confirm")}
             </button>
           </div>
         </footer>

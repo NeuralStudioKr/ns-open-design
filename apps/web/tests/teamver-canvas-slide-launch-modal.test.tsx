@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TeamverCanvasSlideLaunchModal } from "../src/teamver/components/TeamverCanvasSlideLaunchModal";
 
-vi.mock("../src/i18n", () => ({
-  useT: () => (key: string) => key,
+vi.mock("../src/teamver/branding/useTeamverT", () => ({
+  useTeamverT: () => (key: string) => key,
 }));
 
 describe("TeamverCanvasSlideLaunchModal", () => {
@@ -13,14 +13,17 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     cleanup();
   });
 
-  it("renders source asset and confirms in one action", () => {
+  it("renders drive source asset and confirms in one action", () => {
     const onConfirm = vi.fn();
     const onClose = vi.fn();
 
     render(
       <TeamverCanvasSlideLaunchModal
         open
-        asset={{ assetId: "AST-1", filename: "canvas-export.html", mimeType: "text/html" }}
+        source={{
+          kind: "drive",
+          asset: { assetId: "AST-1", filename: "canvas-export.html", mimeType: "text/html" },
+        }}
         onConfirm={onConfirm}
         onClose={onClose}
       />,
@@ -32,6 +35,28 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it("renders canvas handoff source and shows retry label when errored", () => {
+    const onConfirm = vi.fn();
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{
+          kind: "canvas",
+          handoff: { sessionId: "s1", artifactId: "artifact-12345678" },
+        }}
+        errorMessage="too large"
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/canvas\/artifact/)).toBeTruthy();
+    expect(screen.getByTestId("teamver-canvas-slide-launch-error").textContent).toBe("too large");
+    expect(screen.getByTestId("teamver-canvas-slide-launch-confirm").textContent).toBe(
+      "teamver.canvasSlideLaunch.retry",
+    );
+  });
+
   it("closes from cancel without confirming", () => {
     const onConfirm = vi.fn();
     const onClose = vi.fn();
@@ -39,7 +64,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     render(
       <TeamverCanvasSlideLaunchModal
         open
-        asset={{ assetId: "AST-2", filename: "deck.html" }}
+        source={{ kind: "drive", asset: { assetId: "AST-2", filename: "deck.html" } }}
         onConfirm={onConfirm}
         onClose={onClose}
       />,
