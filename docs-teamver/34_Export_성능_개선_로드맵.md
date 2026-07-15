@@ -975,6 +975,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-15 | Export ticket `offloadEnabled` 메타 추가 — offload flag 활성 상태를 ticket JSON·design-api parser·publish 로그에서 구분 가능하게 해 presigned GET rollout 관측성을 보강 |
 | 2026-07-15 | `OD_EXPORT_OFFLOAD_ENABLED` feature flag 추가 — 기본 off 상태에서는 ticket JSON에 `offloadKey`를 노출하지 않고, staging에서 명시적으로 켤 때만 offload 메타를 검증하도록 변경 |
 | 2026-07-15 | Export ticket 응답에 Teamver scope 기반 `offloadKey` 준비 필드 연결 — 실제 presigned URL 발급 전 cacheKey→exports object key 매핑을 ticket JSON·design-api parser·publish 로그에서 검증할 수 있게 함 |
 | 2026-07-15 | Export offload object key SSOT 추가 — `exports/ws_{workspace}/proj_{project}/{cacheHash}.{ext}` 규칙과 scope sanitizing을 코드·테스트로 고정해 presigned GET/S3 lifecycle 구현 전 object naming drift를 차단 |

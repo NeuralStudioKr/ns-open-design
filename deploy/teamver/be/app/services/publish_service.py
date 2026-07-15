@@ -506,7 +506,7 @@ async def publish_project(
                     logger.info(
                         "publish export stream PUT succeeded "
                         "project=%s od_project=%s format=%s bytes=%s export_cache=%s "
-                        "export_delivery=%s export_single_use=%s export_offload_key=%s",
+                        "export_delivery=%s export_single_use=%s export_offload_enabled=%s export_offload_key=%s",
                         project.id,
                         project.od_project_id,
                         fmt,
@@ -514,6 +514,7 @@ async def publish_project(
                         export_ticket.cache or "unknown",
                         export_ticket.delivery_mode,
                         export_ticket.single_use,
+                        export_ticket.offload_enabled,
                         export_ticket.offload_key or "none",
                     )
                 except (OdDaemonPresignedPutError, BadGatewayError) as exc:
@@ -521,7 +522,7 @@ async def publish_project(
                         logger.warning(
                             "publish stream PUT failed; retrying bytes PUT "
                             "project=%s od_project=%s format=%s status=%s bytes=%s "
-                            "export_cache=%s export_delivery=%s export_single_use=%s export_offload_key=%s",
+                            "export_cache=%s export_delivery=%s export_single_use=%s export_offload_enabled=%s export_offload_key=%s",
                             project.id,
                             project.od_project_id,
                             fmt,
@@ -530,6 +531,7 @@ async def publish_project(
                             export_ticket.cache or "unknown",
                             export_ticket.delivery_mode,
                             export_ticket.single_use,
+                            export_ticket.offload_enabled,
                             export_ticket.offload_key or "none",
                         )
                         try:
@@ -552,7 +554,7 @@ async def publish_project(
                             logger.info(
                                 "publish fallback bytes PUT succeeded "
                                 "project=%s od_project=%s format=%s bytes=%s export_cache=%s "
-                                "export_delivery=%s export_single_use=%s export_offload_key=%s",
+                                "export_delivery=%s export_single_use=%s export_offload_enabled=%s export_offload_key=%s",
                                 project.id,
                                 project.od_project_id,
                                 fmt,
@@ -560,6 +562,7 @@ async def publish_project(
                                 export_ticket.cache or "unknown",
                                 export_ticket.delivery_mode,
                                 export_ticket.single_use,
+                                export_ticket.offload_enabled,
                                 export_ticket.offload_key or "none",
                             )
                         except BadGatewayError as fallback_exc:
@@ -589,7 +592,7 @@ async def publish_project(
                         logger.warning(
                             "publish stream PUT failed and bytes fallback is disabled/too large "
                             "project=%s od_project=%s format=%s status=%s bytes=%s max=%s "
-                            "export_cache=%s export_delivery=%s export_single_use=%s export_offload_key=%s",
+                            "export_cache=%s export_delivery=%s export_single_use=%s export_offload_enabled=%s export_offload_key=%s",
                             project.id,
                             project.od_project_id,
                             fmt,
@@ -599,6 +602,7 @@ async def publish_project(
                             export_ticket.cache or "unknown",
                             export_ticket.delivery_mode,
                             export_ticket.single_use,
+                            export_ticket.offload_enabled,
                             export_ticket.offload_key or "none",
                         )
                         error_code = _stream_put_error_code(exc)

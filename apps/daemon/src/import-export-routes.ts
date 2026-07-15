@@ -135,6 +135,7 @@ async function respondExportPayload(
     bytes: number;
     cache?: string;
     offloadKey?: string;
+    offloadEnabled?: true;
     ticket: boolean;
   },
 ): Promise<void> {
@@ -157,6 +158,7 @@ async function respondExportPayload(
       bytes: entry.bytes,
       sizeBytes: entry.bytes,
       singleUse: true,
+      ...(options.offloadEnabled ? { offloadEnabled: true } : {}),
       ...(options.offloadKey ? { offloadKey: options.offloadKey } : {}),
       ...(options.cache ? { cache: options.cache } : {}),
       expiresAt: new Date(entry.expiresAt).toISOString(),
@@ -219,9 +221,9 @@ function exportOffloadKeyForRequest(
 function exportOffloadPayloadForRequest(
   req: Request,
   outcome: ExportCacheOutcome,
-): { offloadKey: string } | Record<string, never> {
+): { offloadEnabled: true; offloadKey: string } | Record<string, never> {
   const offloadKey = exportOffloadKeyForRequest(req, outcome);
-  return offloadKey ? { offloadKey } : {};
+  return offloadKey ? { offloadEnabled: true, offloadKey } : {};
 }
 
 function handleExportRouteError(
