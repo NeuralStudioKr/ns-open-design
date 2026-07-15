@@ -1,15 +1,30 @@
 # OD upstream main 반영 검토
 
-**판단 시점:** 2026-07-08 현재.  
-**반영 갱신:** 2026-07-09 — P0/P1 후보 중 작은 안정화 패치 일부를 staging에 수동 적용. 아래 표의 "적용" 상태는 2026-07-09 기준이다.
-**비교 기준:** `staging` (`3c328f26a fix(teamver): stop app version polling`) ↔ `main` / `origin/main` / `upstream/main` (`7b9864614 feat(media): wire MiniMax image-01 through the minimax provider slot`).  
+**판단 시점:** 2026-07-15 현재.
+**반영 갱신:** 2026-07-15 — 현재 `main` 상태와 PPTX export 추가 여부를 재검토. 2026-07-09 이후 Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, 다운로드 안정화 패치가 추가로 많이 반영되어 있으므로 전체 merge 위험도는 더 높아졌다.
+**비교 기준:** `staging` (`cac418d52 fix(web): 삭제 프로젝가 홈 최근 목록에 「방금 전」으로 부활하지 않게 함`) ↔ `main` / `origin/main` (`7b9864614 feat(media): wire MiniMax image-01 through the minimax provider slot`).
 **결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. Teamver 기존 동작을 깨지 않도록, 필요한 커밋만 수동 포팅한다.
 
 ---
 
+## 0. 2026-07-15 현재 main 상태 요약
+
+`main`은 현재 `7b9864614 feat(media): wire MiniMax image-01 through the minimax provider slot (#4563)`까지 반영되어 있다. `staging...main` divergence는 `665 / 410`으로, 2026-07-08 당시 `532 / 376`보다 더 벌어졌다.
+
+확인 결과 `main`에는 **프로그램식 PPTX 다운로드/export 기능이 추가되어 있음**:
+
+- `59bca72f7 feat(export): programmatic screenshot-based PPTX/PDF export (#4604)`
+- daemon: `apps/daemon/src/deck-export.ts`, `/api/projects/:id/export/pptx`, `od export --format pptx`
+- desktop: `apps/desktop/src/main/deck-capture.ts`의 `dom-to-pptx` 기반 editable PPTX 경로
+- tests: `apps/daemon/tests/deck-export.test.ts`, `apps/daemon/tests/screenshot-export-file-handoff.test.ts`, `apps/daemon/tests/export-cli-routing.test.ts`
+
+반면 `staging`에는 아직 위 programmatic PPTX route가 없다. `PptxGenJS` 관련 문구/프롬프트는 존재하지만, 사용자가 다운로드 메뉴에서 안정적으로 받을 수 있는 `/export/pptx` 구현은 미반영 상태다.
+
+**현재 판단:** PPTX 다운로드는 Teamver AI Design의 “슬라이드 결과물 다운로드” 핵심 기능과 직접 연결되므로 반영 후보로 격상한다. 다만 `59bca72f7` 단일 커밋도 66개 파일, 5천 줄 이상을 건드리며 desktop/sidecar/packaging/vendor까지 포함한다. Teamver 웹 배포형/daemon 기반 구조에는 그대로 cherry-pick하지 말고, **screenshot 기반 PPTX 최소 경로부터 수동 이식**한다.
+
 ## 1. 왜 전체 merge 금지인가
 
-`staging`과 `main`은 크게 diverge되어 있다. 2026-07-08 검토 시점 기준 `git rev-list --left-right --count staging...main` 결과는 `532 376`이었다.
+`staging`과 `main`은 크게 diverge되어 있다. 2026-07-15 검토 시점 기준 `git rev-list --left-right --count staging...main` 결과는 `665 410`이다.
 
 즉 Teamver 전용 변경도 많고, 공식 OD 쪽 신규 변경도 많다. 공식 OD `main`에는 다음 성격의 변경이 섞여 있다.
 
@@ -76,6 +91,35 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ---
 
+### P0/P1 후보 — PPTX 다운로드/export 추가
+
+| 커밋 | 내용 | 판단 |
+|------|------|------|
+| `59bca72f7` | `feat(export): programmatic screenshot-based PPTX/PDF export` | **2026-07-15 신규 격상 후보.** main에 PPTX 다운로드 기능이 추가되어 있으며, Teamver 슬라이드 결과물의 핵심 다운로드 포맷으로 가치가 높다. 다만 66개 파일/desktop/vendor/sidecar/packaging까지 포함하므로 전체 cherry-pick 금지. |
+| `5a5431e3e` | `fix(daemon): recover PPTX export renderer failures` | PPTX route 도입 시 함께 검토. renderer 실패를 구조적으로 복구하는 후속 안정화 성격. |
+| `5b8e3a25f` | `fix(desktop): keep CJK typefaces intact in editable PPTX export` | editable PPTX까지 도입할 경우 CJK/한글 폰트 품질 때문에 필요. 단, 1차 screenshot PPTX에는 후순위. |
+
+**권장 1차 범위:** Teamver 웹/daemon 배포에서 바로 쓸 수 있는 screenshot-based PPTX만 수동 이식한다.
+
+- daemon `buildScreenshotPptx` 최소 구현 및 `pptxgenjs` dependency 추가.
+- `/api/projects/:id/export/pptx` route 추가.
+- 기존 Teamver PDF/image export에서 보강한 S3/scratch sync, auth gate, filename, deck render fallback을 유지.
+- FE 다운로드 메뉴에는 `PPTX로 다운로드`를 추가하되, 실패 시 현재 PDF/image 다운로드 UX와 같은 구조화 오류/토스트를 사용.
+- Drive로 내보내기와 혼동되지 않도록 “다운로드” 그룹 안에만 노출.
+
+**권장 보류 범위:** editable PPTX / `dom-to-pptx` / desktop renderer vendor bundle / sidecar packaging은 2차로 둔다. Teamver staging은 웹/daemon 흐름 안정화가 우선이며, desktop resource packaging을 같이 들고 오면 충돌면이 급격히 커진다.
+
+**검증 필수:**
+
+1. 8~12장 HTML deck에서 PPTX 다운로드가 각 slide 1장씩 생성.
+2. 한글/CJK 텍스트가 깨지지 않음. screenshot PPTX 기준 텍스트는 이미지이므로 폰트 렌더링은 브라우저 렌더 결과와 같아야 한다.
+3. PDF/image/html/zip 기존 다운로드가 회귀하지 않음.
+4. 슬라이드 생성 직후 S3 sync 전후 상태에서 `/export/pptx`가 동일하게 동작.
+5. 대형 deck에서 서버 CPU/메모리 부하가 PDF/image export보다 과도하게 증가하지 않음.
+6. 실패 응답이 `EXPORT_FAILED`, `NO_SLIDES`, renderer unavailable 등으로 구조화되어 FE 토스트가 구분 가능.
+
+---
+
 ### P1 후보 — Community / plugin preview 동기화
 
 | 커밋 | 내용 | 판단 |
@@ -106,7 +150,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 | 커밋 | 내용 | 판단 |
 |------|------|------|
 | `91f22f301` | agent-protocol 대형 refactor | 보류. daemon 구조를 크게 바꾸므로 Teamver S3/DB/run lifecycle 패치와 충돌 위험이 크다. |
-| `59bca72f7` | programmatic screenshot-based PPTX/PDF export | 보류. 기능적으로 매력은 있으나 60개 이상 파일을 건드리는 대형 변경이다. Teamver export 안정화가 끝난 뒤 별도 트랙으로 검토한다. |
+| `59bca72f7` 전체 cherry-pick | programmatic screenshot-based PPTX/PDF export 전체 커밋 | **전체 cherry-pick은 보류.** 다만 screenshot-based PPTX 최소 경로는 위 P0/P1 후보로 격상한다. desktop editable PPTX/vendor/sidecar/packaging은 후순위. |
 | `7b9864614` | MiniMax image-01 provider wiring | 보류. 현재 Teamver AI Design은 slide/deck 안정화가 우선이며, image/media 기능은 embed MVP에서 낮은 우선순위 또는 비노출 영역이다. |
 | landing / SEO / updater / packaged / AMR / onboarding 계열 | 공식 OD 제품/마케팅 변경 | Teamver staging 출시 안정화와 직접 관련 낮음. 반영하지 않는다. |
 
@@ -114,13 +158,15 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 4. 권장 작업 순서
 
-1. 깨끗한 `staging` worktree에서 P0 SSE 후보의 diff를 작게 나누어 확인한다.
-2. `providers/daemon.ts`의 SSE reconnection/reader error 처리만 먼저 수동 포팅한다.
-3. `ProjectView.tsx` reattach/reload 복원 로직은 Teamver background run guard, workspace guard, auth/session 최적화와 대조해 필요한 부분만 옮긴다.
-4. staging에서 background run 재진입 QA를 먼저 통과시킨다.
-5. 다음으로 `exports.ts` print-ready handshake를 수동 포팅한다.
-6. Community preview sync는 runtime 문제로 확인된 항목만 선별 반영한다.
-7. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
+1. **P0/P1:** PPTX screenshot export 최소 경로를 별도 브랜치/작은 루프로 수동 이식한다.
+2. `59bca72f7`에서 daemon-only 핵심만 추출한다: `deck-export.ts`, `export-cli-request/routing` 중 route에 필요한 타입, `import-export-routes.ts`의 `/export/pptx` handler, `pptxgenjs` dependency, 관련 daemon tests.
+3. Teamver 기존 export 보강과 충돌하는 부분을 먼저 대조한다: S3 sync, scratch materialization, filename, auth gate, headless fallback, structured error.
+4. FE는 `FileViewer` 전체 diff를 가져오지 말고 현재 Teamver 다운로드 메뉴에 `PPTX로 다운로드` action만 추가한다.
+5. 1차는 screenshot PPTX만 출시 후보로 둔다. editable PPTX/dom-to-pptx/desktop vendor bundle은 한글/CJK 편집 가능성이 필요하다고 판단될 때 2차로 분리한다.
+6. PPTX 적용 후 PDF/image/html/zip 기존 다운로드와 Drive 내보내기 회귀 테스트를 먼저 수행한다.
+7. 그 다음 P0 background run/re-entry 잔여 후보(`f6fb7c204`)를 다시 검토한다.
+8. Community preview sync는 runtime 문제가 재현되는 항목만 선별 반영한다.
+9. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
 
 ---
 
@@ -136,6 +182,8 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 6. 다음 추천 작업
 
-1. **P0:** `f6fb7c204`의 reload/re-entry restore 로직을 읽고, Teamver `ProjectView.tsx`에 이미 구현된 background handling과 누락 gap만 추출한다.
-2. **P0:** `c89e1cf34` daemon watchdog child escalation은 Teamver run lifecycle/S3 sync hook과 대조 후 별도 적용 여부를 판단한다.
-3. **P1:** 적용된 SSE/export 패치를 staging 브라우저에서 실증한다 — 재진입 메시지, Stop proxy abort, 페이지 이동 background 지속, PDF deck 렌더링.
+1. **P0/P1:** PPTX screenshot export 최소 이식 작업을 착수한다. 전체 `59bca72f7` cherry-pick이 아니라 daemon route + FE menu + tests 단위로 작게 진행한다.
+2. **P0:** 기존 PDF/image/html/zip 다운로드와 Drive 내보내기 회귀 테스트 목록을 PPTX 작업의 acceptance criteria로 먼저 고정한다.
+3. **P0:** `f6fb7c204`의 reload/re-entry restore 로직은 PPTX 최소 이식 이후 검토한다. 현재 Teamver background handling이 많이 바뀌어 있어 바로 적용하면 충돌 위험이 있다.
+4. **P1:** Community preview sync는 template preview blank/404가 staging에서 재현될 때 runtime fallback만 선별 반영한다.
+5. **P2:** MiniMax image-01 provider wiring은 slide/deck MVP와 직접 관련 낮으므로 보류한다.

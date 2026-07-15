@@ -37,7 +37,7 @@ describe("TeamverBrandingHead", () => {
     await waitFor(() => {
       expect(document.title).toBe("Teamver Design");
       expect(linkHref("icon")).toBe("/teamver/Logo-icon.svg");
-      expect(metaContent('meta[property="og:title"]')).toBe("teamver | AI Design");
+      expect(metaContent('meta[property="og:title"]')).toBe("teamver | Teamver Design");
       expect(metaContent('meta[property="og:image"]')).toBe(
         "https://stg-design.teamver.com/teamver/teamver-design-opengraph.png",
       );

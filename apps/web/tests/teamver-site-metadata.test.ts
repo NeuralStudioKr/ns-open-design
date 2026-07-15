@@ -67,10 +67,10 @@ describe("Teamver site metadata", () => {
 
   it("exposes document title separate from OG title", () => {
     process.env.VITE_TEAMVER_BRAND_TITLE = "Teamver Design";
-    process.env.VITE_TEAMVER_OG_TITLE = "teamver | AI Design";
+    process.env.VITE_TEAMVER_OG_TITLE = "teamver | Teamver Design";
     const values = resolveTeamverSiteMetadataValues();
     expect(values.title).toBe("Teamver Design");
-    expect(values.ogTitle).toBe("teamver | AI Design");
+    expect(values.ogTitle).toBe("teamver | Teamver Design");
   });
 
   it("resolves Design OG image from siteUrl when env override is unset", () => {

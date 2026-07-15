@@ -27,7 +27,7 @@ describe("teamver embed locale", () => {
 
   it("merges explicit key overrides before brand substitution", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
-    const overrides = teamverEmbedOverrides("Teamver Design", "AI Design Studio", {
+    const overrides = teamverEmbedOverrides("Teamver Design", "Teamver Design Studio", {
       title: "Teamver Design",
       subtitle: "Create with AI",
     });

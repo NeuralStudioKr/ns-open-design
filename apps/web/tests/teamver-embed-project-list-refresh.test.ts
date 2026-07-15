@@ -109,4 +109,19 @@ describe("embedProjectListRefresh", () => {
       { ...project, id: "p-old", name: "Old", updatedAt: 1 },
     ]);
   });
+
+  it("evicts locally deleted ids from both current and recent slices", () => {
+    const current = [
+      { ...project, id: "deleted", name: "Gone", updatedAt: 99 },
+      { ...project, id: "keep", name: "Keep", updatedAt: 5 },
+    ];
+    const recent = [
+      { ...project, id: "deleted", name: "Ghost", updatedAt: Date.now() },
+      { ...project, id: "fresh", name: "Fresh", updatedAt: 20 },
+    ];
+    const merged = mergeRecentProjectsIntoList(current, recent, {
+      excludeIds: new Set(["deleted"]),
+    });
+    expect(merged.map((row) => row.id)).toEqual(["fresh", "keep"]);
+  });
 });

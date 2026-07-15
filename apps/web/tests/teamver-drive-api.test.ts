@@ -10,7 +10,9 @@ vi.mock("../src/teamver/designApiBase", () => ({
 }));
 
 import {
+  extractDriveAuthBodyText,
   getTeamverDriveJson,
+  isDriveWorkspaceForbiddenBody,
   postTeamverDriveJson,
   resetTeamverDriveFetchQueueForTests,
   shouldSkipDriveAuthRefresh,
@@ -37,10 +39,21 @@ describe("shouldSkipDriveAuthRefresh", () => {
     expect(shouldSkipDriveAuthRefresh({ message: "Invalid token" })).toBe(true);
   });
 
+  it("skips Main ACL / workspace forbid bodies (no Apps refresh)", () => {
+    expect(shouldSkipDriveAuthRefresh("forbidden")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("error.forbidden")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("error.workspace.not_member")).toBe(true);
+    expect(extractDriveAuthBodyText({ message: "error.forbidden" })).toBe("error.forbidden");
+    expect(isDriveWorkspaceForbiddenBody("error.forbidden")).toBe(true);
+    expect(isDriveWorkspaceForbiddenBody(extractDriveAuthBodyText({ message: "error.forbidden" }))).toBe(
+      true,
+    );
+  });
+
   it("does not skip unrelated failures", () => {
-    expect(shouldSkipDriveAuthRefresh("forbidden")).toBe(false);
     expect(shouldSkipDriveAuthRefresh(null)).toBe(false);
     expect(shouldSkipDriveAuthRefresh({ code: "x" })).toBe(false);
+    expect(isDriveWorkspaceForbiddenBody("session_expired")).toBe(false);
   });
 });
 
@@ -87,37 +100,32 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("tries coalesced BFF refresh when session_expired survives the soft retry", async () => {
+  it("soft-retries session_expired once without posting /auth/refresh", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
-    mockedRefresh.mockResolvedValue(true);
 
     const pending = getTeamverDriveJson("/api/foo");
     await vi.advanceTimersByTimeAsync(300);
     await expect(pending).resolves.toEqual({ ok: true });
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("forces a fresh session probe when terminal Drive 401 survives soft retry and refresh declines", async () => {
+  it("does not force a session probe when session_expired survives soft retry", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ ok: true }));
-    mockedRefresh.mockResolvedValue(false);
-    mockedFetchSession.mockResolvedValue({ authenticated: true });
+      .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
 
     const pending = getTeamverDriveJson("/api/drive/folder?shallow_tree=true");
+    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(300);
-    await expect(pending).resolves.toEqual({ ok: true });
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
-    expect(mockedFetchSession).toHaveBeenCalledWith({ force: true, resetRefreshState: true });
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    await expectation;
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("soft-retries Invalid token once before /auth/refresh", async () => {
@@ -136,19 +144,17 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("throws 401 only after soft retry and BFF refresh both fail", async () => {
+  it("throws 401 after soft retry without BFF recover for terminal Drive auth bodies", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
-    mockedRefresh.mockResolvedValue(false);
-    mockedFetchSession.mockResolvedValue({ authenticated: false });
 
     const pending = getTeamverDriveJson("/api/foo");
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(300);
     await expectation;
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
-    expect(mockedFetchSession).toHaveBeenCalledWith({ force: true, resetRefreshState: true });
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -164,6 +170,19 @@ describe("getTeamverDriveJson", () => {
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(mockedFetchSession).toHaveBeenCalledWith({ force: true, resetRefreshState: true });
+  });
+
+  it("surfaces Main ACL 403 without /auth/refresh or soft retry", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ message: "error.forbidden" }, 403));
+
+    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
+      "teamver_drive_fetch_failed:403",
+    );
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("forwards X-Workspace-Id header when provided", async () => {

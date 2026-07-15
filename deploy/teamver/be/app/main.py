@@ -43,6 +43,9 @@ async def lifespan(app: FastAPI):
             logger.exception("Postgres schema ensure failed")
             raise
         yield
+    from .services.drive_proxy import aclose_drive_proxy_client
+
+    await aclose_drive_proxy_client()
     await async_engine.dispose()
 
 

@@ -52,13 +52,17 @@ export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project 
   const updatedAt = parseRegistryTimestamp(row.updatedAt);
   const createdAt = parseRegistryTimestamp(row.createdAt, updatedAt);
   const title = row.title?.trim();
+  // Never fall back to Date.now() — missing timestamps used to render as
+  // 「방금 전」 and bubble resurrected ghosts to the top of recent.
+  const safeCreatedAt = createdAt || updatedAt || 0;
+  const safeUpdatedAt = updatedAt || createdAt || 0;
   return sanitizeProjectForEmbed<Project>({
     id,
     name: resolveProjectDisplayName({ id, name: title || id || "" }, title),
     skillId: null,
     designSystemId: null,
-    createdAt: createdAt || Date.now(),
-    updatedAt: updatedAt || createdAt || Date.now(),
+    createdAt: safeCreatedAt,
+    updatedAt: safeUpdatedAt,
     status: { value: "not_started" },
   });
 }

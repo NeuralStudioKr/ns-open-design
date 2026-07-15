@@ -1,4 +1,4 @@
-import { getTeamverDriveJson } from "./driveApi";
+import { fetchTeamverDriveHomeRecentRaw } from "./driveHomeRecentCache";
 import type { TeamverDrivePublishTarget } from "./drivePublishTargets";
 
 function publishTargetKey(target: TeamverDrivePublishTarget): string {
@@ -14,11 +14,10 @@ export async function listTeamverDrivePublishHomeRecentTargets(
   if (!ws) return [];
 
   const limit = Math.max(1, Math.min(options.limit ?? 12, 24));
-  const query = new URLSearchParams();
-  query.set("limit", String(limit));
-  query.set("include", "assets,shared_with_me");
-
-  const raw = await getTeamverDriveJson(`/api/v2/drive/home/recent?${query.toString()}`, ws);
+  const raw = await fetchTeamverDriveHomeRecentRaw(ws, {
+    limit,
+    include: "assets,shared_with_me",
+  });
   const targets: TeamverDrivePublishTarget[] = [];
   const seen = new Set<string>();
 

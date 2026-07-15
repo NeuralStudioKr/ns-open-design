@@ -6,11 +6,12 @@ vi.mock("../src/teamver/driveApi", () => ({
   postTeamverDriveJson: (...args: unknown[]) => postTeamverDriveJson(...args),
 }));
 
-import { fetchTeamverDriveImportThumbnails } from "../src/teamver/driveImportThumbnails";
+import { fetchTeamverDriveImportThumbnails, invalidateTeamverDriveImportThumbnails } from "../src/teamver/driveImportThumbnails";
 
 describe("fetchTeamverDriveImportThumbnails", () => {
   afterEach(() => {
     postTeamverDriveJson.mockReset();
+    invalidateTeamverDriveImportThumbnails();
   });
 
   it("requests presigned object URLs for image assets only", async () => {

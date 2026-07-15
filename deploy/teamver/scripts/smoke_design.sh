@@ -136,6 +136,32 @@ echo
 check "OD daemon /api/health" curl_ok "${DESIGN_BASE}/api/health"
 check "design-api /api/healthz" curl_ok "${API_BASE}/api/healthz"
 
+catalog_cache_headers="$(mktemp)"
+catalog_cache_code="$(curl -s -o /dev/null -D "$catalog_cache_headers" -w '%{http_code}' --max-time 15 \
+  "${DESIGN_BASE}/api/design-templates?mode=deck&limit=1" 2>/dev/null || echo "000")"
+catalog_cache_control="$(awk 'BEGIN{IGNORECASE=1} /^Cache-Control:/ {sub(/\r$/,""); print substr($0, index($0,":")+2)}' "$catalog_cache_headers" | head -1)"
+catalog_cache_etag="$(awk 'BEGIN{IGNORECASE=1} /^ETag:/ {sub(/\r$/,""); print substr($0, index($0,":")+2)}' "$catalog_cache_headers" | head -1)"
+rm -f "$catalog_cache_headers"
+case "$catalog_cache_code" in
+  200)
+    if [[ "$catalog_cache_control" == *"max-age=60"* && -n "$catalog_cache_etag" ]]; then
+      echo "✓ OD daemon /api/design-templates cache headers"
+      pass=$((pass + 1))
+    else
+      echo "○ OD daemon /api/design-templates cache headers missing (redeploy daemon/nginx to pick up cache optimization)"
+    fi
+    ;;
+  302|401|403)
+    echo "○ OD daemon /api/design-templates cache probe auth-gated → $catalog_cache_code"
+    ;;
+  000)
+    echo "○ OD daemon /api/design-templates cache probe unreachable"
+    ;;
+  *)
+    echo "○ OD daemon /api/design-templates cache probe → $catalog_cache_code"
+    ;;
+esac
+
 deps_probe_code="$(curl_status "${API_BASE}/api/healthz/deps")"
 if [[ "$deps_probe_code" == "200" ]]; then
   echo "✓ design-api /api/healthz/deps"

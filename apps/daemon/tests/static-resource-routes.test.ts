@@ -15,7 +15,9 @@ describe('static resource mutation routes', () => {
   let baseUrl: string;
   let tempRoot: string;
   let catalogReadCount = 0;
+  let skillsCatalog: Array<Record<string, unknown>> = [];
   let designTemplatesCatalog: Array<Record<string, unknown>> = [];
+  let skillLikeCatalog: Array<Record<string, unknown>> = [];
 
   beforeAll(
     () =>
@@ -62,10 +64,10 @@ describe('static resource mutation routes', () => {
             },
             listAllSkills: async () => {
               catalogReadCount += 1;
-              return [];
+              return skillsCatalog as never;
             },
             listAllDesignTemplates: async () => designTemplatesCatalog as never,
-            listAllSkillLikeEntries: async () => [],
+            listAllSkillLikeEntries: async () => skillLikeCatalog as never,
             mimeFor: () => 'application/octet-stream',
           },
         });
@@ -89,7 +91,9 @@ describe('static resource mutation routes', () => {
   );
 
   afterEach(() => {
+    skillsCatalog = [];
     designTemplatesCatalog = [];
+    skillLikeCatalog = [];
   });
 
   it.each([
@@ -284,6 +288,119 @@ describe('static resource mutation routes', () => {
     };
     expect(body.designTemplates.map((template) => template.id)).toEqual(['deck-beta', 'deck-gamma']);
     expect(body).toMatchObject({ total: 3, limit: 2, offset: 1, nextOffset: null });
+  });
+
+  it('caches the skills catalog with ETag revalidation', async () => {
+    const skillDir = path.join(tempRoot, 'skills', 'skill-cache');
+    fs.mkdirSync(skillDir, { recursive: true });
+    skillsCatalog = [
+      {
+        id: 'skill-cache',
+        name: 'Skill cache',
+        dir: skillDir,
+        body: 'hidden body',
+      },
+    ];
+
+    const first = await fetch(`${baseUrl}/api/skills`);
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toContain('max-age=60');
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^".+"$/);
+    await expect(first.json()).resolves.toMatchObject({
+      skills: [{ id: 'skill-cache', name: 'Skill cache', hasBody: true }],
+    });
+
+    const second = await fetch(`${baseUrl}/api/skills`, {
+      headers: { 'if-none-match': etag ?? '' },
+    });
+    expect(second.status).toBe(304);
+    expect(second.headers.get('cache-control')).toContain('max-age=60');
+  });
+
+  it('caches the design-template catalog with ETag revalidation', async () => {
+    designTemplatesCatalog = [
+      {
+        id: 'deck-cache-list',
+        name: 'Deck cache list',
+        mode: 'deck',
+        body: 'hidden body',
+      },
+    ];
+
+    const first = await fetch(`${baseUrl}/api/design-templates?mode=deck&limit=24`);
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toContain('max-age=60');
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^".+"$/);
+    await expect(first.json()).resolves.toMatchObject({
+      designTemplates: [{ id: 'deck-cache-list', name: 'Deck cache list', hasBody: true }],
+      total: 1,
+      limit: 24,
+      offset: 0,
+      nextOffset: null,
+    });
+
+    const second = await fetch(`${baseUrl}/api/design-templates?mode=deck&limit=24`, {
+      headers: { 'if-none-match': etag ?? '' },
+    });
+    expect(second.status).toBe(304);
+    expect(second.headers.get('cache-control')).toContain('max-age=60');
+  });
+
+  it('caches skill-like example HTML with ETag revalidation', async () => {
+    const skillDir = path.join(tempRoot, 'design-templates', 'deck-cache');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'example.html'),
+      '<!doctype html><html><body><img src="./assets/cover.png">deck</body></html>',
+    );
+    skillLikeCatalog = [
+      {
+        id: 'deck-cache',
+        name: 'Deck cache',
+        dir: skillDir,
+      },
+    ];
+
+    const first = await fetch(`${baseUrl}/api/skills/deck-cache/example`);
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toContain('max-age=86400');
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^".+"$/);
+    expect(await first.text()).toContain('/api/skills/deck-cache/assets/cover.png');
+
+    const second = await fetch(`${baseUrl}/api/skills/deck-cache/example`, {
+      headers: { 'if-none-match': etag ?? '' },
+    });
+    expect(second.status).toBe(304);
+    expect(second.headers.get('cache-control')).toContain('max-age=86400');
+  });
+
+  it('caches skill-like example assets with ETag revalidation', async () => {
+    const skillDir = path.join(tempRoot, 'design-templates', 'deck-asset-cache');
+    const assetsDir = path.join(skillDir, 'assets');
+    fs.mkdirSync(assetsDir, { recursive: true });
+    fs.writeFileSync(path.join(assetsDir, 'cover.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    skillLikeCatalog = [
+      {
+        id: 'deck-asset-cache',
+        name: 'Deck asset cache',
+        dir: skillDir,
+      },
+    ];
+
+    const first = await fetch(`${baseUrl}/api/skills/deck-asset-cache/assets/cover.png`);
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toContain('max-age=86400');
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^".+"$/);
+
+    const second = await fetch(`${baseUrl}/api/skills/deck-asset-cache/assets/cover.png`, {
+      headers: { 'if-none-match': etag ?? '' },
+    });
+    expect(second.status).toBe(304);
+    expect(second.headers.get('cache-control')).toContain('max-age=86400');
   });
 });
 

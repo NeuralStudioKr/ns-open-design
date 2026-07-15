@@ -6,11 +6,13 @@ vi.mock("../src/teamver/driveApi", () => ({
   getTeamverDriveJson: (...args: unknown[]) => getTeamverDriveJson(...args),
 }));
 
+import { invalidateTeamverDriveHomeRecentCaches } from "../src/teamver/driveHomeRecentCache";
 import { listTeamverDrivePublishHomeRecentTargets } from "../src/teamver/drivePublishHomeRecent";
 
 describe("listTeamverDrivePublishHomeRecentTargets", () => {
   afterEach(() => {
     getTeamverDriveJson.mockReset();
+    invalidateTeamverDriveHomeRecentCaches();
   });
 
   it("returns empty when workspace is missing", async () => {

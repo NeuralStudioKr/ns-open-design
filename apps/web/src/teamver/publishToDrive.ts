@@ -160,7 +160,10 @@ export function formatPublishErrorCodeForUser(code: string): string {
   };
   if (exact[trimmed]) return exact[trimmed];
 
-  if (trimmed.startsWith("drive_upload_failed_401") || trimmed.startsWith("drive_upload_failed_403")) {
+  if (trimmed.startsWith("drive_upload_failed_403")) {
+    return "이 작업공간의 Drive에 발행할 권한이 없습니다 — 폴더 권한이나 작업공간을 확인하세요.";
+  }
+  if (trimmed.startsWith("drive_upload_failed_401")) {
     return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.";
   }
   if (

@@ -7,7 +7,7 @@ import { TeamverBrandingHead } from "./TeamverBrandingHead";
 const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   enabled: false,
   title: "Teamver Design",
-  subtitle: "AI Design Studio",
+  subtitle: "Teamver Design Studio",
   faviconUrl: "/teamver/Logo-icon.svg",
   logoUrl: "/teamver/teamver-design-light.png",
   logoUrlDark: "/teamver/teamver-design-dark.png",

@@ -11,6 +11,7 @@ vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
 import {
   browseTeamverDriveImportPage,
   filterTeamverDriveImportListRows,
+  invalidateTeamverDriveImportCaches,
   listTeamverDriveImportRecent,
   listTeamverDriveImportScopes,
   resolveTeamverDriveImportListFolderId,
@@ -20,6 +21,7 @@ import {
 describe("driveImportList recent/search", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    invalidateTeamverDriveImportCaches();
   });
 
   it("normalizes recent assets from v2 home recent (personal only)", async () => {
@@ -128,7 +130,35 @@ describe("driveImportList recent/search", () => {
     ]);
   });
 
-  it("loads scopes with resolved personal and shared root folder ids", async () => {
+  it("loads scopes from list rootFolderId without N folder-tree calls", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/api/drive/folder?shallow_tree=true")) {
+        return Response.json({ root_folder_id: "ROOT-P" });
+      }
+      if (url.endsWith("/api/v2/shared-drive")) {
+        // Main list already exposes root_folder_id (camelized by drive client).
+        return Response.json([
+          { id: "SD-1", name: "개발팀", status: "active", rootFolderId: "ROOT-SD" },
+          { id: "SD-2", name: "마케팅", status: "active", rootFolderId: "ROOT-MKT" },
+        ]);
+      }
+      if (url.includes("/folder-tree")) {
+        throw new Error(`folder-tree must not run on modal open when list has rootFolderId: ${url}`);
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const scopes = await listTeamverDriveImportScopes("ws-1");
+    expect(scopes).toEqual([
+      { mode: "personal", folderId: "ROOT-P", label: "내 드라이브" },
+      { mode: "shared", sharedDriveId: "SD-1", folderId: "ROOT-SD", label: "개발팀" },
+      { mode: "shared", sharedDriveId: "SD-2", folderId: "ROOT-MKT", label: "마케팅" },
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/folder-tree"))).toBe(false);
+  });
+
+  it("falls back to folder-tree only when shared-drive list omits rootFolderId", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/api/drive/folder?shallow_tree=true")) {
         return Response.json({ root_folder_id: "ROOT-P" });
@@ -148,6 +178,7 @@ describe("driveImportList recent/search", () => {
       { mode: "personal", folderId: "ROOT-P", label: "내 드라이브" },
       { mode: "shared", sharedDriveId: "SD-1", folderId: "ROOT-SD", label: "개발팀" },
     ]);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/folder-tree"))).toHaveLength(1);
   });
 
   it("browse uses resolved folder_id and cursor pagination", async () => {

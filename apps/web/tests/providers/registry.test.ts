@@ -14,12 +14,14 @@ import {
   fetchConnectorDetail,
   fetchConnectorDiscovery,
   fetchDesignTemplates,
+  fetchSkills,
   fetchPluginExampleHtml,
   fetchPluginPreviewHtml,
   fetchProjectDesignSystemPackageAudit,
   fetchProjectFileText,
   fetchSkillExample,
   isDeployProviderId,
+  resetRegistryCatalogCacheForTests,
   updateDeployConfig,
   uploadProjectFiles,
   writeProjectTextFileDetailed,
@@ -133,6 +135,8 @@ describe('fetchAppVersionInfo', () => {
 
 describe('fetchSkills', () => {
   afterEach(() => {
+    resetRegistryCatalogCacheForTests();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -152,10 +156,28 @@ describe('fetchSkills', () => {
     embedSpy.mockRestore();
     brandingSpy.mockRestore();
   });
+
+  it('deduplicates concurrent catalog requests and reuses the short cache', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ skills: [{ id: 'deck-skill', mode: 'deck' }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(Promise.all([fetchSkills({ slideOnly: true }), fetchSkills({ slideOnly: true })])).resolves.toEqual([
+      [{ id: 'deck-skill', mode: 'deck' }],
+      [{ id: 'deck-skill', mode: 'deck' }],
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/skills?catalog=slide');
+
+    await expect(fetchSkills({ slideOnly: true })).resolves.toEqual([{ id: 'deck-skill', mode: 'deck' }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('fetchDesignTemplates', () => {
   afterEach(() => {
+    resetRegistryCatalogCacheForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -202,6 +224,26 @@ describe('fetchDesignTemplates', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/design-templates?mode=deck&q=terminal+deck&limit=24&offset=48',
     );
+  });
+
+  it('deduplicates concurrent filtered catalog requests and reuses the short cache', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ designTemplates: [{ id: 'deck-1', mode: 'deck' }] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const options = { mode: 'deck' as const, query: 'terminal deck', limit: 24 };
+    await expect(Promise.all([fetchDesignTemplates(options), fetchDesignTemplates(options)])).resolves.toEqual([
+      [{ id: 'deck-1', mode: 'deck' }],
+      [{ id: 'deck-1', mode: 'deck' }],
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/design-templates?mode=deck&q=terminal+deck&limit=24');
+
+    await expect(fetchDesignTemplates(options)).resolves.toEqual([{ id: 'deck-1', mode: 'deck' }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

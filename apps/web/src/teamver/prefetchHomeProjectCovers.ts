@@ -4,15 +4,16 @@ import {
   prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
   resolveProjectCoverFiles,
+  resolveProjectCoverOptionsForListSurface,
 } from "./projectCoverLoader";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 import { isTeamverEmbedMode } from "./designApiBase";
 
 /**
- * Home recent rail — coalesced cover-hints plus bounded `/files` fallback for
- * the recent list only (HOME_RECENT_LIST_LIMIT × HOME_COVER_FETCH_CONCURRENCY).
- * Full project list surfaces stay hints-only in embed mode to avoid fan-out.
+ * Home recent rail covers.
+ * Embed design surface: cover-hints only (parity with DesignsTab — no /files fan-out).
+ * Standalone: may still use bounded /files fallback when hints miss.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
@@ -30,8 +31,9 @@ export async function prefetchHomeProjectCovers(
     );
   }
 
+  const listOpts = resolveProjectCoverOptionsForListSurface();
   return resolveProjectCoverFiles(recent, {
     concurrency: HOME_COVER_FETCH_CONCURRENCY,
-    allowFilesFallback: true,
+    allowFilesFallback: listOpts.allowFilesFallback ?? true,
   });
 }

@@ -67,6 +67,7 @@ describe('Teamver embed export + Drive publish UI', () => {
     expect(panel).toContain('defaultCollapsed');
     const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
     expect(history).toContain('teamver-drive-history-toggle');
+    expect(history).toContain('teamver-drive-history-deferred');
   });
 
   it('surfaces a re-login CTA when BFF calls return 401', () => {
@@ -82,6 +83,24 @@ describe('Teamver embed export + Drive publish UI', () => {
     const history = readSource('src/teamver/components/TeamverDrivePublishHistory.tsx');
     expect(history).toContain('teamver-drive-history-auth-required');
     expect(history).toContain('teamver-drive-history-login');
+    expect(history).toContain('outputs_unavailable');
+
+    const importModal = readSource('src/teamver/components/TeamverDriveImportModal.tsx');
+    expect(importModal).toContain('teamver-drive-import-auth-required');
+    expect(importModal).toContain('teamver-drive-import-login');
+    expect(importModal).toContain('scopesHydrated');
+
+    const picker = readSource('src/teamver/components/TeamverDrivePickerModal.tsx');
+    expect(picker).toContain('teamver-drive-picker-auth-required');
+    expect(picker).toContain('teamver-drive-picker-login');
+    expect(picker).toContain('loadTeamverDriveBrowsePageCachedForSignal');
+  });
+
+  it('closes the publish modal on Escape', () => {
+    const modal = readSource('src/teamver/components/TeamverPublishDriveModal.tsx');
+    expect(modal).toContain('Escape');
+    expect(modal).toContain('onClose()');
+    expect(modal).toContain('useTeamverDriveModalFocusTrap');
   });
 
   it('supports partial publish toasts with follow-up actions', () => {

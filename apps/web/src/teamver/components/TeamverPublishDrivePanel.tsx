@@ -20,6 +20,7 @@ import {
 } from "../drivePublishLastTarget";
 import {
   listTeamverDrivePublishTargets,
+  publishTargetsFromImportScopes,
   searchTeamverDrivePublishTargets,
   type TeamverDrivePublishTarget,
 } from "../drivePublishTargets";
@@ -51,7 +52,10 @@ import {
   subscribeTeamverDesignAccessChanged,
 } from "../teamverDesignAccess";
 import { subscribeTeamverWorkspaceChanged } from "../teamverWorkspaceEvents";
-import { invalidateTeamverDriveImportCaches } from "../driveImportList";
+import {
+  invalidateTeamverDriveImportCaches,
+  peekTeamverDriveImportScopesCache,
+} from "../driveImportList";
 import {
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
@@ -145,7 +149,6 @@ export function TeamverPublishDrivePanel({
   const refreshTargets = useCallback(async () => {
     if (!isTeamverEmbedMode() || !active) return;
     const seq = ++fetchSeqRef.current;
-    setLoadingTargets(true);
     setTargetsError(null);
     setAuthRequired(false);
     try {
@@ -156,8 +159,18 @@ export function TeamverPublishDrivePanel({
         setTargets(ensureDefaultPublishTarget([]));
         setLastTargetRestore("none");
         setTargetsError("teamver_workspace_pending");
+        setLoadingTargets(false);
         return;
       }
+
+      const warmScopes = peekTeamverDriveImportScopesCache(ws);
+      if (warmScopes && warmScopes.length > 0) {
+        setTargets(ensureDefaultPublishTarget(publishTargetsFromImportScopes(warmScopes)));
+        setLoadingTargets(false);
+      } else {
+        setLoadingTargets(true);
+      }
+
       const next = await listTeamverDrivePublishTargets(ws);
       if (seq !== fetchSeqRef.current) return;
       let merged = ensureDefaultPublishTarget(next);
@@ -271,8 +284,7 @@ export function TeamverPublishDrivePanel({
 
   const handleClosePicker = useCallback(() => {
     setPickerOpen(false);
-    void refreshTargets();
-  }, [refreshTargets]);
+  }, []);
 
   const handleSelectFormat = useCallback((format: DrivePublishFormat) => {
     if (busy) return;
@@ -282,9 +294,12 @@ export function TeamverPublishDrivePanel({
   }, [busy, pdfBlocked]);
 
   const handleSearchTargets = useCallback(
-    async (query: string) => {
+    async (query: string, options?: { signal?: AbortSignal }) => {
       if (!workspaceId) return [];
-      return searchTeamverDrivePublishTargets(workspaceId, query, { limit: 80 });
+      return searchTeamverDrivePublishTargets(workspaceId, query, {
+        limit: 80,
+        signal: options?.signal,
+      });
     },
     [workspaceId],
   );
@@ -368,10 +383,10 @@ export function TeamverPublishDrivePanel({
   }, [busy, publishPhase]);
 
   const handleOpenPicker = useCallback(() => {
-    invalidateTeamverDriveImportCaches();
     setPickerOpen(true);
-    void refreshTargets();
-  }, [refreshTargets]);
+    // Soft recovery only — avoid wiping warm scopes/shallow caches on every browse.
+    if (targetsError || authRequired) void refreshTargets();
+  }, [authRequired, refreshTargets, targetsError]);
 
   const showPostRunHint =
     active
@@ -489,7 +504,8 @@ export function TeamverPublishDrivePanel({
           aria-live="polite"
           data-testid="teamver-drive-panel-auth-required"
         >
-          세션이 만료되어 드라이브 정보를 불러올 수 없습니다.{" "}
+          세션이 만료되어 드라이브를 불러올 수 없습니다. Teamver에 다시 로그인한 뒤
+          이 창을 열어 주세요.{" "}
           <button
             type="button"
             className="teamver-drive-target-hint__login"

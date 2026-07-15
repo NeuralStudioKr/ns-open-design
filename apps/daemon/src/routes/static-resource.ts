@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import type { DesignSystemTokenContractRebuildJobResponse } from '@open-design/contracts';
 import { detectAgents, detectAgentsStream } from '../agents.js';
 import {
@@ -105,6 +106,37 @@ function designTemplateMatchesQuery(template: Record<string, unknown>, query: st
   );
 }
 
+function staticPreviewEtag(buf: Buffer | string): string {
+  return `"${createHash('sha1').update(buf).digest('base64url')}"`;
+}
+
+function setStaticPreviewCacheHeaders(req: any, res: any, body: Buffer | string): boolean {
+  const etag = staticPreviewEtag(body);
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  res.setHeader('ETag', etag);
+  const ifNoneMatch = req.headers?.['if-none-match'];
+  const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : typeof ifNoneMatch === 'string' ? [ifNoneMatch] : [];
+  if (values.some((value) => value.split(',').map((part: string) => part.trim()).includes(etag))) {
+    res.status(304).end();
+    return true;
+  }
+  return false;
+}
+
+function sendCachedCatalogJson(req: any, res: any, payload: unknown) {
+  const body = JSON.stringify(payload);
+  const etag = staticPreviewEtag(body);
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  res.setHeader('ETag', etag);
+  const ifNoneMatch = req.headers?.['if-none-match'];
+  const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : typeof ifNoneMatch === 'string' ? [ifNoneMatch] : [];
+  if (values.some((value) => value.split(',').map((part: string) => part.trim()).includes(etag))) {
+    res.status(304).end();
+    return;
+  }
+  res.type('application/json').send(body);
+}
+
 export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticResourceRoutesDeps) {
   const {
     RUNTIME_DATA_DIR,
@@ -206,7 +238,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       const skills = filterSkillsForSlideOnlyCatalog(await listAllSkills(), slideOnly);
       // Strip full body + on-disk dir from the listing — frontend fetches the
       // body via /api/skills/:id when needed (keeps the listing payload small).
-      res.json({
+      sendCachedCatalogJson(req, res, {
         skills: skills.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,
           hasBody: typeof body === 'string' && body.length > 0,
@@ -246,7 +278,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       });
       templates = filterDesignTemplatesExcludingChinesePrimary(templates, excludeChinesePrimary);
       const page = limit === null ? templates.slice(offset) : templates.slice(offset, offset + limit);
-      res.json({
+      sendCachedCatalogJson(req, res, {
         designTemplates: page.map(({ body, dir: _dir, ...rest }) => ({
           ...rest,
           hasBody: typeof body === 'string' && body.length > 0,
@@ -557,9 +589,10 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
         );
         if (fs.existsSync(candidate)) {
           const html = await fs.promises.readFile(candidate, 'utf8');
-          return res
-            .type('text/html')
-            .send(rewriteSkillAssetUrls(html, parent.id));
+          const body = rewriteSkillAssetUrls(html, parent.id);
+          res.type('text/html');
+          if (setStaticPreviewCacheHeaders(req, res, body)) return;
+          return res.send(body);
         }
         return res
           .status(404)
@@ -575,9 +608,10 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       const baked = path.join(skill.dir, 'example.html');
       if (fs.existsSync(baked)) {
         const html = await fs.promises.readFile(baked, 'utf8');
-        return res
-          .type('text/html')
-          .send(rewriteSkillAssetUrls(html, skill.id));
+        const body = rewriteSkillAssetUrls(html, skill.id);
+        res.type('text/html');
+        if (setStaticPreviewCacheHeaders(req, res, body)) return;
+        return res.send(body);
       }
 
       const tpl = path.join(skill.dir, 'assets', 'template.html');
@@ -587,25 +621,28 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
           const tplHtml = await fs.promises.readFile(tpl, 'utf8');
           const slidesHtml = await fs.promises.readFile(slides, 'utf8');
           const assembled = assembleExample(tplHtml, slidesHtml, skill.name);
-          return res
-            .type('text/html')
-            .send(rewriteSkillAssetUrls(assembled, skill.id));
+          const body = rewriteSkillAssetUrls(assembled, skill.id);
+          res.type('text/html');
+          if (setStaticPreviewCacheHeaders(req, res, body)) return;
+          return res.send(body);
         } catch {
           // Fall through to raw template on read failure.
         }
       }
       if (fs.existsSync(tpl)) {
         const html = await fs.promises.readFile(tpl, 'utf8');
-        return res
-          .type('text/html')
-          .send(rewriteSkillAssetUrls(html, skill.id));
+        const body = rewriteSkillAssetUrls(html, skill.id);
+        res.type('text/html');
+        if (setStaticPreviewCacheHeaders(req, res, body)) return;
+        return res.send(body);
       }
       const idx = path.join(skill.dir, 'assets', 'index.html');
       if (fs.existsSync(idx)) {
         const html = await fs.promises.readFile(idx, 'utf8');
-        return res
-          .type('text/html')
-          .send(rewriteSkillAssetUrls(html, skill.id));
+        const body = rewriteSkillAssetUrls(html, skill.id);
+        res.type('text/html');
+        if (setStaticPreviewCacheHeaders(req, res, body)) return;
+        return res.send(body);
       }
 
       // Friendly fallback for skills that aggregate examples in a sibling
@@ -631,9 +668,10 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
           const direct = path.join(examplesDir, name);
           try {
             const html = await fs.promises.readFile(direct, 'utf8');
-            return res
-              .type('text/html')
-              .send(rewriteSkillAssetUrls(html, skill.id));
+            const body = rewriteSkillAssetUrls(html, skill.id);
+            res.type('text/html');
+            if (setStaticPreviewCacheHeaders(req, res, body)) return;
+            return res.send(body);
           } catch {
             continue;
           }
@@ -683,7 +721,10 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       if (req.headers.origin === 'null') {
         res.header('Access-Control-Allow-Origin', '*');
       }
-      await res.type(mimeFor(target)).sendFile(target);
+      const buf = await fs.promises.readFile(target);
+      res.type(mimeFor(target));
+      if (setStaticPreviewCacheHeaders(req, res, buf)) return;
+      res.send(buf);
     } catch (err: any) {
       res.status(500).type('text/plain').send(String(err));
     }

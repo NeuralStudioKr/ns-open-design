@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from urllib.parse import urlencode
 
 import httpx
 
@@ -47,6 +46,29 @@ _HOP_BY_HOP_HEADERS = frozenset(
 
 # Never forward upstream session cookies to the embed browser.
 _STRIP_RESPONSE_HEADERS = frozenset({"set-cookie"})
+
+# Shared upstream client — reuse TLS/HTTP connections across Drive proxy bursts.
+# Tests may replace this via setattr(drive_proxy, "_shared_client", Mock()).
+_shared_client: httpx.AsyncClient | None = None
+
+
+def get_drive_proxy_client() -> httpx.AsyncClient:
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        # Per-request timeout is passed to request(); client default is generous.
+        _shared_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(settings.teamver_drive_proxy_long_timeout_seconds),
+            limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
+        )
+    return _shared_client
+
+
+async def aclose_drive_proxy_client() -> None:
+    global _shared_client
+    client = _shared_client
+    _shared_client = None
+    if client is not None and not client.is_closed:
+        await client.aclose()
 
 
 def normalize_and_validate_drive_path(path: str) -> str:
@@ -103,9 +125,15 @@ async def forward_drive_request(
         headers["Content-Type"] = content_type
 
     timeout = httpx.Timeout(resolve_drive_proxy_timeout_seconds(normalized))
+    client = get_drive_proxy_client()
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(method.upper(), url, headers=headers, content=body)
+        response = await client.request(
+            method.upper(),
+            url,
+            headers=headers,
+            content=body,
+            timeout=timeout,
+        )
     except httpx.RequestError as exc:
         logger.warning(
             "[drive_proxy] upstream unreachable path=%s workspace=%s err=%s",
@@ -123,7 +151,11 @@ async def forward_drive_request(
             workspace_id or "",
         )
 
-    return response.status_code, _pass_through_headers(response.headers), response.content
+    return (
+        response.status_code,
+        _pass_through_headers(response.headers),
+        response.content,
+    )
 
 
 def emit_drive_proxy_marker(

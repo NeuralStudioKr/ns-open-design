@@ -41,8 +41,19 @@ interface Props {
 
 type ProbeState = 'idle' | 'probing' | 'ok' | 'unreachable';
 
+const PROBE_CACHE_LIMIT = 256;
 const probeCache = new Map<string, 'ok' | 'unreachable'>();
 const inflight = new Map<string, Promise<'ok' | 'unreachable'>>();
+
+function rememberProbeResult(url: string, result: 'ok' | 'unreachable'): void {
+  probeCache.delete(url);
+  probeCache.set(url, result);
+  while (probeCache.size > PROBE_CACHE_LIMIT) {
+    const oldest = probeCache.keys().next().value;
+    if (!oldest) break;
+    probeCache.delete(oldest);
+  }
+}
 
 async function probe(url: string): Promise<'ok' | 'unreachable'> {
   const cached = probeCache.get(url);
@@ -66,7 +77,7 @@ async function probe(url: string): Promise<'ok' | 'unreachable'> {
   })();
   inflight.set(url, run);
   const result = await run;
-  probeCache.set(url, result);
+  rememberProbeResult(url, result);
   inflight.delete(url);
   return result;
 }
@@ -253,4 +264,8 @@ function UnreachableFallback({ pluginId, pluginTitle, preview, eager = false }: 
 export function __resetHtmlSurfaceProbeCacheForTests(): void {
   probeCache.clear();
   inflight.clear();
+}
+
+export function __htmlSurfaceProbeCacheSizeForTests(): number {
+  return probeCache.size;
 }

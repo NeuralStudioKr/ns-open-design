@@ -4,7 +4,7 @@ import express from 'express';
 import multer from 'multer';
 import JSZip from 'jszip';
 import { execFile, spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import dns from 'node:dns';
 import https from 'node:https';
 import { createRequire } from 'node:module';
@@ -8441,6 +8441,23 @@ export async function startServer({
   // with the §9.2 sandboxed-iframe CSP (same shape as `/asset/*`).
   // Pulled out so /preview and /example/:name share a single source
   // of truth for the security envelope.
+  function pluginPreviewStaticEtag(buf: Buffer): string {
+    return `"${createHash('sha1').update(buf).digest('base64url')}"`;
+  }
+
+  function setPluginPreviewCacheHeaders(req: any, res: any, buf: Buffer): boolean {
+    const etag = pluginPreviewStaticEtag(buf);
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.setHeader('ETag', etag);
+    const ifNoneMatch = req.headers?.['if-none-match'];
+    const values = Array.isArray(ifNoneMatch) ? ifNoneMatch : typeof ifNoneMatch === 'string' ? [ifNoneMatch] : [];
+    if (values.some((value) => value.split(',').map((part) => part.trim()).includes(etag))) {
+      res.status(304).end();
+      return true;
+    }
+    return false;
+  }
+
   async function servePluginSandboxedHtml(
     req: any,
     res: any,
@@ -8571,6 +8588,7 @@ export async function startServer({
           'utf8',
         );
       }
+      if (setPluginPreviewCacheHeaders(req, res, buf)) return;
       res.send(buf);
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -9016,6 +9034,7 @@ export async function startServer({
         : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
         : 'application/octet-stream';
       res.setHeader('Content-Type', ct);
+      if (setPluginPreviewCacheHeaders(req, res, buf)) return;
       res.send(buf);
     } catch (err) {
       res.status(500).json({ error: String(err) });

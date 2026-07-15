@@ -68,7 +68,24 @@ async function drainPublishSummaryBatch(expectedGeneration: number): Promise<voi
     if (expectedGeneration !== batchGeneration) return;
 
     if (batchResult.status !== "ok") {
-      // BFF/workspace not ready or transient HTTP error — leave uncached for per-project fallback.
+      // One retry for transient BFF/workspace errors. Multi-id failure soft-nulls
+      // so viewport chips do not each hit `/outputs`. Single-id leaves uncached for
+      // the existing per-project fallback path.
+      const retry = await batchFetchLatestPublishSummaries(missing);
+      if (expectedGeneration !== batchGeneration) return;
+      if (retry.status === "ok") {
+        for (const id of missing) {
+          if (cache.has(id)) continue;
+          cache.set(id, Promise.resolve(retry.summaries[id] ?? null));
+        }
+        continue;
+      }
+      if (missing.length > 1) {
+        for (const id of missing) {
+          if (cache.has(id)) continue;
+          cache.set(id, Promise.resolve(null));
+        }
+      }
       return;
     }
 

@@ -167,6 +167,8 @@ describe('GET /api/plugins/:id/preview', () => {
     }
     expect(resp.status).toBe(200);
     expect(resp.headers.get('content-type')).toMatch(/text\/html/);
+    expect(resp.headers.get('cache-control')).toContain('max-age=86400');
+    expect(resp.headers.get('etag')).toMatch(/^".+"$/);
     const csp = resp.headers.get('content-security-policy') ?? '';
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("connect-src 'none'");
@@ -185,6 +187,19 @@ describe('GET /api/plugins/:id/preview', () => {
     expect(body).toContain('window.lucide');
     expect(body).toContain('window.Chart');
     expect(body).toContain('/api/asset-cache?url=https%3A%2F%2Fcdn.example.com%2Fhero.png');
+  });
+
+  it('revalidates plugin preview HTML with ETag', async () => {
+    const first = await fetch(`${baseUrl}/api/plugins/${PLUGIN_ID}/preview`);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag');
+    expect(etag).toBeTruthy();
+
+    const second = await fetch(`${baseUrl}/api/plugins/${PLUGIN_ID}/preview`, {
+      headers: { 'if-none-match': etag ?? '' },
+    });
+    expect(second.status).toBe(304);
+    expect(second.headers.get('cache-control')).toContain('max-age=86400');
   });
 
   it('accepts marketplace-namespaced ids for bundled community previews', async () => {

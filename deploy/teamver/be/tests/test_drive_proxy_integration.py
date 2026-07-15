@@ -39,11 +39,7 @@ def test_drive_proxy_get_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
         headers = httpx.Headers({"content-type": "application/json", "set-cookie": "x=1"})
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
-            return self
-
-        async def __aexit__(self, *args: object) -> None:
-            return None
+        is_closed = False
 
         async def request(self, method: str, url: str, **kwargs: Any) -> _Response:
             captured["method"] = method
@@ -51,7 +47,7 @@ def test_drive_proxy_get_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
             captured["headers"] = kwargs.get("headers")
             return _Response()
 
-    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", lambda **_: _Client())
+    monkeypatch.setattr(drive_proxy, "_shared_client", _Client())
 
     client = TestClient(_build_app(), raise_server_exceptions=False)
     response = client.get(
@@ -84,11 +80,7 @@ def test_drive_proxy_post_batch_round_trip(monkeypatch: pytest.MonkeyPatch) -> N
         headers = httpx.Headers({"content-type": "application/json"})
 
     class _Client:
-        async def __aenter__(self) -> "_Client":
-            return self
-
-        async def __aexit__(self, *args: object) -> None:
-            return None
+        is_closed = False
 
         async def request(self, method: str, url: str, **kwargs: Any) -> _Response:
             captured["method"] = method
@@ -97,13 +89,9 @@ def test_drive_proxy_post_batch_round_trip(monkeypatch: pytest.MonkeyPatch) -> N
             captured["content"] = kwargs.get("content")
             return _Response()
 
-    def _client_factory(**kwargs: object) -> _Client:
-        captured["client_timeout"] = kwargs.get("timeout")
-        return _Client()
-
     monkeypatch.setattr(drive_proxy.settings, "teamver_http_timeout_seconds", 5.0)
     monkeypatch.setattr(drive_proxy.settings, "teamver_drive_proxy_long_timeout_seconds", 30.0)
-    monkeypatch.setattr(drive_proxy.httpx, "AsyncClient", _client_factory)
+    monkeypatch.setattr(drive_proxy, "_shared_client", _Client())
 
     client = TestClient(_build_app(), raise_server_exceptions=False)
     response = client.post(
@@ -116,6 +104,6 @@ def test_drive_proxy_post_batch_round_trip(monkeypatch: pytest.MonkeyPatch) -> N
     assert response.json()["items"][0]["object_url"] == "https://cdn.example/x.png"
     assert captured["method"] == "POST"
     assert captured["url"].endswith("/api/v2/asset/object-url/batch")
-    timeout = captured["client_timeout"]
+    timeout = captured["timeout"]
     assert isinstance(timeout, httpx.Timeout)
     assert timeout.read == 30.0

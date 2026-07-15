@@ -1,4 +1,10 @@
 import { extractTeamverDriveItems, getTeamverDriveJson } from "./driveApi";
+import {
+  fetchTeamverDriveHomeRecentRaw,
+  invalidateTeamverDriveHomeRecentCaches,
+} from "./driveHomeRecentCache";
+import { invalidateTeamverDriveBrowsePageCaches } from "./driveBrowsePageCache";
+import { invalidateTeamverDriveImportThumbnails } from "./driveImportThumbnails";
 
 export type TeamverDriveImportPick = {
   assetId: string;
@@ -241,6 +247,7 @@ async function fetchTeamverDriveImportListPage(params: {
   search?: string;
   limit?: number;
   before?: string | null;
+  signal?: AbortSignal;
 }): Promise<TeamverDriveImportBrowsePage> {
   const workspaceId = params.workspaceId.trim();
   if (!workspaceId) return { rows: [], hasMore: false, nextCursor: null };
@@ -253,7 +260,9 @@ async function fetchTeamverDriveImportListPage(params: {
   if (params.before) query.set("before", params.before);
   query.set("limit", String(Math.max(1, Math.min(params.limit ?? TEAMVER_DRIVE_IMPORT_BROWSE_PAGE_SIZE, 120))));
 
-  const raw = await getTeamverDriveJson(`/api/drive/list?${query.toString()}`, workspaceId);
+  const raw = await getTeamverDriveJson(`/api/drive/list?${query.toString()}`, workspaceId, {
+    signal: params.signal,
+  });
   const sharedDriveId = params.sharedDriveId ?? null;
   const { items, hasMore, nextCursor } = extractListPage(raw);
   const rows: TeamverDriveImportListRow[] = [];
@@ -270,6 +279,7 @@ export async function browseTeamverDriveImportPage(params: {
   navFolderId?: string | null;
   limit?: number;
   before?: string | null;
+  signal?: AbortSignal;
 }): Promise<TeamverDriveImportBrowsePage> {
   const sharedDriveId = params.scope.mode === "shared" ? params.scope.sharedDriveId : null;
   const navFolderId = params.navFolderId ?? null;
@@ -282,6 +292,7 @@ export async function browseTeamverDriveImportPage(params: {
     sharedDriveId,
     limit: params.limit,
     before: params.before,
+    signal: params.signal,
   });
 
   const scoped = page.rows.filter((row) => importRowMatchesScope(row, params.scope));
@@ -296,6 +307,17 @@ export async function browseTeamverDriveImportPage(params: {
     hasMore: page.hasMore,
     nextCursor: page.nextCursor,
   };
+}
+
+function rootFolderIdFromSharedDriveListItem(obj: Record<string, unknown>): string | null {
+  // Main `GET /api/v2/shared-drive` already returns root_folder_id (camelized by
+  // the Drive BFF client). Prefer that — never N-parallel folder-tree calls on
+  // modal open just to discover the root id.
+  const camel = obj.rootFolderId;
+  if (typeof camel === "string" && camel.trim()) return camel.trim();
+  const snake = obj.root_folder_id;
+  if (typeof snake === "string" && snake.trim()) return snake.trim();
+  return null;
 }
 
 async function resolveSharedDriveRootFolderId(
@@ -325,39 +347,62 @@ async function fetchImportScopesUncached(workspaceId: string): Promise<TeamverDr
   const trimmed = workspaceId.trim();
   if (!trimmed) return [];
 
+  // Personal shallow + shared list in parallel (independent). Previously shared
+  // waited on personal, then fire-hosed folder-tree once per drive.
+  const [personalResult, sharedListResult] = await Promise.allSettled([
+    getPersonalShallowTreeCached(trimmed),
+    getSharedDriveListCached(trimmed),
+  ]);
+
   let personalRootId: string | null = null;
-  try {
-    const personalTree = await getPersonalShallowTreeCached(trimmed);
-    personalRootId = normalizeImportRootFolderId(personalTree);
-  } catch {
-    // personal tree optional — fall back to BE list default
+  if (personalResult.status === "fulfilled") {
+    personalRootId = normalizeImportRootFolderId(personalResult.value);
   }
 
   const scopes: TeamverDriveImportScope[] = [
     { mode: "personal", folderId: personalRootId, label: "내 드라이브" },
   ];
 
+  if (sharedListResult.status !== "fulfilled") {
+    return scopes;
+  }
+
   try {
-    const raw = await getSharedDriveListCached(trimmed);
-    const drives = extractListItems(raw);
-    const sharedScopes = await Promise.all(
-      drives.map(async (drive) => {
-        if (!drive || typeof drive !== "object") return null;
-        const obj = drive as Record<string, unknown>;
-        const id = String(obj.id ?? "").trim();
-        const name = String(obj.name ?? "").trim();
-        const status = String(obj.status ?? "").toLowerCase();
-        if (!id || !name) return null;
-        if (status && status !== "active") return null;
-        const rootFolderId = await resolveSharedDriveRootFolderId(trimmed, id);
-        return {
-          mode: "shared" as const,
-          sharedDriveId: id,
-          folderId: rootFolderId,
-          label: name,
-        };
-      }),
-    );
+    const drives = extractListItems(sharedListResult.value);
+    const sharedScopes: Array<Extract<TeamverDriveImportScope, { mode: "shared" }> | null> = [];
+    const TREE_FALLBACK_CONCURRENCY = 4;
+    for (let i = 0; i < drives.length; i += TREE_FALLBACK_CONCURRENCY) {
+      const chunk = drives.slice(i, i + TREE_FALLBACK_CONCURRENCY);
+      const chunkScopes = await Promise.all(
+        chunk.map(async (drive) => {
+          if (!drive || typeof drive !== "object") return null;
+          const obj = drive as Record<string, unknown>;
+          const id = String(obj.id ?? "").trim();
+          const name = String(obj.name ?? "").trim();
+          const status = String(obj.status ?? "").toLowerCase();
+          if (!id || !name) return null;
+          if (status && status !== "active") return null;
+          // List response includes rootFolderId (Main 620736e2). Fall back to
+          // folder-tree only for older Main / partial payloads.
+          let rootFolderId = rootFolderIdFromSharedDriveListItem(obj);
+          if (!rootFolderId) {
+            rootFolderId = await resolveSharedDriveRootFolderId(trimmed, id);
+          } else {
+            sharedDriveRootCache.set(`${trimmed}:${id}`, {
+              rootFolderId,
+              at: Date.now(),
+            });
+          }
+          return {
+            mode: "shared" as const,
+            sharedDriveId: id,
+            folderId: rootFolderId,
+            label: name,
+          };
+        }),
+      );
+      sharedScopes.push(...chunkScopes);
+    }
     for (const scope of sharedScopes) {
       if (scope) scopes.push(scope);
     }
@@ -378,6 +423,17 @@ const sharedDriveListCache = new Map<string, { raw: unknown; at: number }>();
 const sharedDriveListInflight = new Map<string, Promise<unknown>>();
 const sharedDriveRootCache = new Map<string, { rootFolderId: string | null; at: number }>();
 
+/** Sync peek of warm scopes cache — used to paint Publish quick-pick without waiting. */
+export function peekTeamverDriveImportScopesCache(
+  workspaceId: string,
+): TeamverDriveImportScope[] | null {
+  const trimmed = workspaceId.trim();
+  if (!trimmed) return null;
+  const cached = importScopesCache.get(trimmed);
+  if (!cached || Date.now() - cached.at >= DRIVE_IMPORT_CACHE_MS) return null;
+  return cached.scopes;
+}
+
 export function invalidateTeamverDriveImportCaches(workspaceId?: string | null): void {
   const ws = workspaceId?.trim();
   if (!ws) {
@@ -388,6 +444,9 @@ export function invalidateTeamverDriveImportCaches(workspaceId?: string | null):
     sharedDriveListCache.clear();
     sharedDriveListInflight.clear();
     sharedDriveRootCache.clear();
+    invalidateTeamverDriveHomeRecentCaches();
+    invalidateTeamverDriveImportThumbnails();
+    invalidateTeamverDriveBrowsePageCaches();
     return;
   }
   importScopesCache.delete(ws);
@@ -399,6 +458,9 @@ export function invalidateTeamverDriveImportCaches(workspaceId?: string | null):
   for (const key of sharedDriveRootCache.keys()) {
     if (key.startsWith(`${ws}:`)) sharedDriveRootCache.delete(key);
   }
+  invalidateTeamverDriveHomeRecentCaches(ws);
+  invalidateTeamverDriveImportThumbnails(ws);
+  invalidateTeamverDriveBrowsePageCaches(ws);
 }
 
 /** @internal vitest — personal shallow_tree with session cache (shared with scopes + publish quick-pick). */
@@ -521,11 +583,11 @@ export async function listTeamverDriveImportRecent(params: {
   const workspaceId = params.workspaceId.trim();
   if (!workspaceId) return [];
 
-  const query = new URLSearchParams();
-  query.set("limit", String(Math.max(1, Math.min(params.limit ?? 16, 48))));
-  query.set("include", "assets");
-
-  const raw = await getTeamverDriveJson(`/api/v2/drive/home/recent?${query.toString()}`, workspaceId);
+  const limit = Math.max(1, Math.min(params.limit ?? 16, 48));
+  const raw = await fetchTeamverDriveHomeRecentRaw(workspaceId, {
+    limit,
+    include: "assets,shared_with_me",
+  });
   const assets = Array.isArray((raw as { assets?: unknown[] })?.assets)
     ? (raw as { assets: unknown[] }).assets
     : extractListItems(raw);
@@ -534,7 +596,7 @@ export async function listTeamverDriveImportRecent(params: {
     const normalized = normalizeRecentAsset(item);
     if (normalized && !normalized.sharedDriveId) rows.push(normalized);
   }
-  return rows;
+  return rows.slice(0, limit);
 }
 
 export async function searchTeamverDriveImportRows(params: {
@@ -542,6 +604,7 @@ export async function searchTeamverDriveImportRows(params: {
   query: string;
   sharedDriveId?: string | null;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<TeamverDriveImportListRow[]> {
   const workspaceId = params.workspaceId.trim();
   const trimmed = params.query.trim();
@@ -559,10 +622,17 @@ export async function searchTeamverDriveImportRows(params: {
   v2Query.set("limit", String(limit));
   if (sharedDriveId) v2Query.set("shared_drive_id", sharedDriveId);
 
+  // SSOT (14_Design_Drive): merge v2 home/search + legacy list search so neither
+  // index's partial hits are dropped. Dedupe below.
+  const fetchOpts = { signal: params.signal };
   const [v2Settled, listSettled] = await Promise.allSettled([
-    getTeamverDriveJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId),
-    getTeamverDriveJson(`/api/drive/list?${listQuery.toString()}`, workspaceId),
+    getTeamverDriveJson(`/api/v2/drive/home/search?${v2Query.toString()}`, workspaceId, fetchOpts),
+    getTeamverDriveJson(`/api/drive/list?${listQuery.toString()}`, workspaceId, fetchOpts),
   ]);
+
+  if (params.signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
 
   const merged: TeamverDriveImportListRow[] = [];
   if (v2Settled.status === "fulfilled") {
@@ -579,6 +649,17 @@ export async function searchTeamverDriveImportRows(params: {
       const normalized = normalizeListRow(item, sharedDriveId);
       if (normalized) merged.push(normalized);
     }
+  }
+
+  // If both failed with abort, surface abort rather than empty results.
+  if (
+    merged.length === 0
+    && v2Settled.status === "rejected"
+    && listSettled.status === "rejected"
+  ) {
+    const reason = v2Settled.reason ?? listSettled.reason;
+    if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+    if (reason instanceof Error && reason.name === "AbortError") throw reason;
   }
 
   return dedupeImportRows(merged).slice(0, limit);

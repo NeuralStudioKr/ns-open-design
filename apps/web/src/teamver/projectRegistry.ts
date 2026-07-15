@@ -106,6 +106,8 @@ let registryListCache: {
   ids: Set<string>;
   at: number;
 } | null = null;
+/** Bumped on list invalidate so in-flight GETs cannot repopulate a stale membership. */
+let registryListFetchEpoch = 0;
 let syncAllInflight: Promise<void> | null = null;
 let syncAllAt = 0;
 
@@ -170,6 +172,7 @@ function primeFeAccessAllowed(projectId: string, workspaceId: string, userId: st
 
 function invalidateRegisteredIdsCache(): void {
   registryListCache = null;
+  registryListFetchEpoch += 1;
 }
 
 /** Clear FE registry caches after auth/workspace changes. */
@@ -411,6 +414,7 @@ async function fetchRegistryProjectsFromBff(): Promise<{
   }
 
   try {
+    const epochAtStart = registryListFetchEpoch;
     const result = await withDesignBffCookieAuthRecovery(() =>
       client.http.get<{ projects?: TeamverRegisteredProject[] }>(
         "/projects",
@@ -429,7 +433,9 @@ async function fetchRegistryProjectsFromBff(): Promise<{
         rememberTeamverProjectS3Prefix(workspaceId, odProjectId, project.s3Prefix);
       }
     }
-    if (userId) {
+    // Delete/unregister bumps epoch while this GET was in flight — never
+    // re-seed the 15s cache with pre-delete membership.
+    if (userId && epochAtStart === registryListFetchEpoch) {
       registryListCache = {
         workspaceId,
         userId,
