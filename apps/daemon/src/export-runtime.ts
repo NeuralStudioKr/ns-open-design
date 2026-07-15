@@ -10,7 +10,7 @@ export class ExportQueueFullError extends Error {
 }
 
 export type ExportJobMeta = {
-  format: 'pdf' | 'html' | 'zip' | 'image';
+  format: 'pdf' | 'html' | 'zip' | 'image' | 'pptx';
   deck: boolean;
   projectId?: string;
   // Populated by the cache runtime wrapper; runHeadlessExportJob defaults to

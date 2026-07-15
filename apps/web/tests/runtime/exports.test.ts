@@ -16,6 +16,7 @@ import {
   exportProjectAsHtml,
   exportProjectImageBlob,
   exportProjectAsPdf,
+  exportProjectAsPptx,
   exportProjectAsZip,
   isTeamverProjectStoragePrefixRequiredError,
   openSandboxedPreviewInNewTab,
@@ -1389,6 +1390,81 @@ describe('exportProjectAsZip', () => {
     })).rejects.toThrow('렌더링된 ZIP 다운로드');
 
     expect(capturedBlob).toBeUndefined();
+  });
+});
+
+describe('exportProjectAsPptx', () => {
+  let capturedBlob: Blob | undefined;
+  let capturedFilename: string | undefined;
+
+  beforeEach(() => {
+    capturedBlob = undefined;
+    capturedFilename = undefined;
+    vi.stubGlobal('URL', {
+      createObjectURL: (blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:test';
+      },
+      revokeObjectURL: () => {},
+    });
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const anchor = { href: '', click: () => {} } as { href: string; download?: string; click: () => void };
+        Object.defineProperty(anchor, 'download', {
+          set(value: string) {
+            capturedFilename = value;
+          },
+          get() {
+            return capturedFilename ?? '';
+          },
+        });
+        return anchor;
+      },
+      body: { appendChild: () => {}, removeChild: () => {} },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('requests daemon-rendered PPTX with the live HTML snapshot', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob(['pptx'], {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    }), {
+      headers: {
+        'content-disposition': 'attachment; filename="Seed-Deck.pptx"',
+        'content-type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      },
+      status: 200,
+    })));
+
+    await exportProjectAsPptx({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      title: 'Seed Deck',
+      htmlSnapshot: '<!doctype html><section class="slide">A</section>',
+    });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const requestBody = JSON.parse(String((init as RequestInit).body));
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj-1/export/pptx', {
+      body: expect.any(String),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    expect(requestBody).toMatchObject({
+      deck: true,
+      delivery: 'ticket',
+      fileName: 'deck/index.html',
+      title: 'Seed Deck',
+    });
+    expect(requestBody.html).toContain('<section class="slide">A</section>');
+    expect(capturedBlob?.size).toBe(4);
+    expect(capturedFilename).toBe('Seed-Deck.pptx');
   });
 });
 

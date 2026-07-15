@@ -122,6 +122,7 @@ import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches
 import {
   mergeProjectIntoList,
   mergeRecentProjectsIntoList,
+  preserveProjectListDisplayNames,
   readEmbedProjectDetailRoute,
   shouldDeferEmbedProjectListRefresh,
 } from './teamver/embedProjectListRefresh';
@@ -786,13 +787,14 @@ function AppInner() {
         ? new Set(visibleList.map((project) => project.id))
         : fetchedIds;
     setProjects((current) => {
+      const displaySafeVisibleList = preserveProjectListDisplayNames(current, visibleList);
       const preserved = current.filter(
         (project) =>
           pendingLocalProjectIds.has(project.id) &&
           !visibleFetchedIds.has(project.id) &&
           !activeDeletedProjectIds.has(project.id),
       );
-      return preserved.length > 0 ? [...preserved, ...visibleList] : visibleList;
+      return preserved.length > 0 ? [...preserved, ...displaySafeVisibleList] : displaySafeVisibleList;
     });
     return true;
   }, [isStaleProjectListWorkspace]);
@@ -1666,9 +1668,11 @@ function AppInner() {
       clearTeamverEmbedListCaches();
       projectsPageLoadedRef.current = false;
       projectsNextCursorRef.current = null;
-      setProjects([]);
+      // Keep previous cards visible until the new workspace list arrives —
+      // clearing first left a permanent empty home when reload failed.
       setProjectsHasMore(false);
       setProjectsLoading(true);
+      setProjectsRefreshing(true);
       setBackgroundRunSummaries([]);
       setBackgroundRunNotice(null);
       byokBackgroundChatsRef.current.clear();
@@ -1689,11 +1693,8 @@ function AppInner() {
           }
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
-          setProjectsRefreshing(true);
           const result = await loadProjectListPage();
           if (!result.ok) {
-            // Failure keeps the projects tab flagged as un-loaded so a
-            // subsequent `/projects` visit retries via ensureProjectsListPageLoaded.
             projectsPageLoadedRef.current = false;
             setWorkingDirError(result.errorMessage);
             return;
@@ -3349,26 +3350,36 @@ function AppInner() {
   // Embed: returning from project detail (or other non-home routes) must
   // refresh the recent rail. Deep-link boot skips home recent fetch, so
   // without this the strip stays empty or stuck on the single prefetched row.
+  // Update previousRouteKindRef only after scheduling/handling a transition so
+  // React Strict Mode remounts still re-fetch (early prev=home skip would leave
+  // empty+loading if the first effect's cancelled cleanup skipped apply).
   const previousRouteKindRef = useRef(route.kind);
   useEffect(() => {
+    if (!isTeamverEmbedMode()) {
+      previousRouteKindRef.current = route.kind;
+      return;
+    }
     const previousKind = previousRouteKindRef.current;
-    previousRouteKindRef.current = route.kind;
-    if (!isTeamverEmbedMode()) return;
-    if (route.kind !== 'home' || previousKind === 'home') return;
+    if (route.kind !== 'home' || previousKind === 'home') {
+      previousRouteKindRef.current = route.kind;
+      return;
+    }
     let cancelled = false;
+    const request = beginProjectListRequest();
+    if (projectsRef.current.length === 0) setProjectsLoading(true);
+    else setProjectsRefreshing(true);
     void (async () => {
-      const request = beginProjectListRequest();
-      if (projectsRef.current.length === 0) setProjectsLoading(true);
-      else setProjectsRefreshing(true);
       try {
         const result = await loadRecentProjectsForHome();
-        if (cancelled || !result.ok) {
-          if (!cancelled && !result.ok) setWorkingDirError(result.errorMessage);
+        if (cancelled) return;
+        if (!result.ok) {
+          setWorkingDirError(result.errorMessage);
           return;
         }
         setWorkingDirError(null);
         upsertRecentProjects(result.projects, request);
         warmEmbedProjectListCaches(result.projects);
+        previousRouteKindRef.current = 'home';
       } finally {
         if (!cancelled) {
           setProjectsLoading(false);

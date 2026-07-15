@@ -23,10 +23,12 @@ import {
   buildDeckHtmlExportStaticRevealScript,
   isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
+  renderHeadlessDeckImages,
   renderHeadlessImage,
   renderHeadlessPdf,
   type HeadlessImageFormat,
 } from './headless-export.js';
+import { buildScreenshotPptx } from './deck-export.js';
 import { ExportQueueFullError } from './export-runtime.js';
 import {
   claimExportDownload,
@@ -973,6 +975,62 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       });
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/image', req.params.id, err);
+    }
+  });
+
+  app.post('/api/projects/:id/export/pptx', async (req, res) => {
+    try {
+      const { fileName, title, deck } = req.body || {};
+      if (typeof fileName !== 'string' || fileName.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+      if (deck !== true) {
+        return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires a slide deck');
+      }
+      const ticket = wantsTicketDelivery(req.body);
+      const inlineHtml = readInlineHtmlFromBody(req.body);
+      const built = await buildDesktopPdfExportInput({
+        daemonUrl: daemonUrlRef.current,
+        deck: true,
+        fileName,
+        projectId: req.params.id,
+        projectsRoot: PROJECTS_DIR,
+        title: typeof title === 'string' ? title : undefined,
+        ...(inlineHtml ? { inlineHtml } : {}),
+      });
+      const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
+      const filename = `${base}.pptx`;
+      const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      const outcome = await runCachedExport(
+        { format: 'pptx', deck: true, projectId: req.params.id },
+        exportCacheDescriptor({
+          projectId: req.params.id,
+          sourceRelPath: built.source.relPath,
+          sourceMtimeMs: built.source.mtimeMs,
+          format: 'pptx',
+          deck: true,
+          filename,
+          mime,
+        }),
+        async () => {
+          const rendered = await renderHeadlessDeckImages(
+            { input: built.input, imageFormat: 'png' },
+            { projectId: req.params.id },
+          );
+          const pptx = await buildScreenshotPptx(rendered.images, {
+            title: built.input.title,
+            aspect: rendered.aspect,
+          });
+          return { body: pptx, filename, mime };
+        },
+        { fresh: wantsFreshExport(req) },
+      );
+      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
+    } catch (err: unknown) {
+      if (String((err as Error)?.message || err).toLowerCase().includes('no slides')) {
+        return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires at least one slide');
+      }
+      handleExportRouteError(res, sendApiError, 'export/pptx', req.params.id, err);
     }
   });
 

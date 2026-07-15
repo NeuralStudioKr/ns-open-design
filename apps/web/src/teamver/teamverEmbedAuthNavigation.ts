@@ -44,6 +44,11 @@ export function stripCosmeticLaunchSearchParams(search: string): string {
 export function resolveEmbedAuthReturnPath(pathname: string, search = ""): string {
   const stripped = stripCosmeticLaunchSearchParams(search);
   const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  // Never restore onto daemon/API routes — nginx used to 302 login with
+  // returnTo=/api/plugins/... which lands users on JSON after sign-in.
+  if (path === "/api" || path.startsWith("/api/") || path.startsWith("/teamver-bff/")) {
+    return "/";
+  }
   return `${path}${stripped}`;
 }
 
@@ -53,8 +58,11 @@ export function normalizeEmbedAuthReturnDestination(returnTo: string, fallback =
     return fallback;
   }
   const queryIndex = trimmed.indexOf("?");
+  const pathname = (queryIndex === -1 ? trimmed : trimmed.slice(0, queryIndex)) || "/";
+  if (pathname === "/api" || pathname.startsWith("/api/") || pathname.startsWith("/teamver-bff/")) {
+    return fallback;
+  }
   if (queryIndex === -1) return trimmed || fallback;
-  const pathname = trimmed.slice(0, queryIndex) || "/";
   const search = stripCosmeticLaunchSearchParams(trimmed.slice(queryIndex));
   return `${pathname}${search}` || fallback;
 }

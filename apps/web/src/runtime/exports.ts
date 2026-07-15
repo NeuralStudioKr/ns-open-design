@@ -9,8 +9,8 @@
 //            windows, vault apps, etc.). No conversion is performed — the
 //            file content is the same source the Source view shows. See
 //            issue #279.
-// PPTX export is fundamentally different — it asks the agent to convert the
-// artifact server-side, so it lives in ProjectView.tsx (not here).
+// PPTX export is daemon-rendered for Teamver deck artifacts: each slide is
+// captured from the same preview HTML and packaged into a presentation.
 
 import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
 import { buildReactComponentSrcdoc } from './react-component';
@@ -1160,6 +1160,54 @@ export async function exportProjectAsPdf(opts: {
     opts.fallbackPdf();
   }
   return 'fallback';
+}
+
+export async function exportProjectAsPptx(opts: {
+  deck: boolean;
+  filePath: string;
+  projectId: string;
+  requireRenderedExport?: boolean;
+  title: string;
+  htmlSnapshot?: string | null;
+}): Promise<void> {
+  if (!opts.deck) {
+    throw new Error('PPTX 다운로드는 슬라이드 덱에서만 사용할 수 있습니다.');
+  }
+  try {
+    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pptx`, {
+      body: JSON.stringify({
+        deck: true,
+        delivery: 'ticket',
+        fileName: opts.filePath,
+        title: opts.title,
+        ...inlineExportHtmlPayload(opts.htmlSnapshot),
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    if (!resp.ok && resp.status !== 201) {
+      await throwIfDaemonExportFailed(resp, 'daemon PPTX export');
+    }
+    if (resp.status === 201) {
+      await triggerExportTicketDownload(resp, opts.title, 'pptx');
+      return;
+    }
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('presentationml.presentation')) {
+      throw new Error(
+        `daemon PPTX export returned ${contentType || 'unknown content-type'}`,
+      );
+    }
+    const blob = await resp.blob();
+    if (blob.size <= 0) throw new Error('daemon PPTX export returned an empty file');
+    triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pptx'));
+  } catch (err) {
+    if (opts.requireRenderedExport) {
+      console.warn('[exportProjectAsPptx] rendered PPTX export failed:', err);
+      throw new Error('PPTX 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
+    }
+    throw err;
+  }
 }
 
 export type ProjectImageBlobResult =

@@ -188,6 +188,19 @@ function shouldApplyRemoteDaemonState(
   return state.exportedAt >= localWatermark;
 }
 
+function resolveImportedProjectName(
+  projectId: string,
+  existingName: string | null | undefined,
+  remoteName: string | null | undefined,
+): string {
+  const existing = existingName?.trim() ?? '';
+  const remote = remoteName?.trim() ?? '';
+  if (existing && existing !== projectId && (!remote || remote === projectId)) {
+    return existing;
+  }
+  return remote || existing || projectId;
+}
+
 export function applyTeamverProjectDaemonState(
   db: SqliteDb,
   state: TeamverProjectDaemonStateV1,
@@ -202,7 +215,7 @@ export function applyTeamverProjectDaemonState(
   if (!existingProject) {
     insertProject(db, {
       id: remoteProject.id,
-      name: remoteProject.name,
+      name: resolveImportedProjectName(projectId, null, remoteProject.name),
       skillId: remoteProject.skillId,
       designSystemId: remoteProject.designSystemId,
       pendingPrompt: remoteProject.pendingPrompt ?? null,
@@ -213,7 +226,7 @@ export function applyTeamverProjectDaemonState(
     });
   } else if (remoteProject.updatedAt >= existingProject.updatedAt) {
     updateProject(db, projectId, {
-      name: remoteProject.name,
+      name: resolveImportedProjectName(projectId, existingProject.name, remoteProject.name),
       skillId: remoteProject.skillId,
       designSystemId: remoteProject.designSystemId,
       pendingPrompt: remoteProject.pendingPrompt ?? null,

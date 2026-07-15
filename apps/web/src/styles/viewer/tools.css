@@ -2000,6 +2000,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.teamver-canvas-slide-launch-error {
+  margin: 0 1rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, #b42318 12%, transparent);
+  color: #b42318;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
 .teamver-drive-import-partial {
   margin: 0 1rem 0.75rem;
   padding: 0.65rem 0.75rem;

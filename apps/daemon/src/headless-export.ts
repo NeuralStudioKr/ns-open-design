@@ -34,6 +34,16 @@ export interface HeadlessExportOptions {
   slideIndex?: number;
 }
 
+export interface HeadlessDeckSlideImage {
+  buffer: Buffer;
+  jpeg: boolean;
+}
+
+export interface HeadlessDeckImagesResult {
+  images: HeadlessDeckSlideImage[];
+  aspect: number;
+}
+
 /**
  * Chromium load + evaluate + PDF/screenshot timeout for a single export.
  * Tunable via `OD_EXPORT_TIMEOUT_MS` so ops can dial it up for large
@@ -454,6 +464,50 @@ export async function renderHeadlessImage(
           timeout: EXPORT_TIMEOUT_MS,
         });
         return Buffer.from(image);
+      } finally {
+        await page.close().catch(() => {});
+      }
+    },
+  );
+}
+
+export async function renderHeadlessDeckImages(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<HeadlessDeckImagesResult> {
+  if (!options.input.deck) {
+    throw new Error('PPTX export requires a slide deck');
+  }
+  return runHeadlessExportJob(
+    { format: 'pptx', deck: true, ...meta },
+    async (browser) => {
+      const page = await preparePage(browser, options, {
+        deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
+      });
+      try {
+        await waitForPrintableContent(page);
+        await stripLeakedArtifactTextFromPage(page);
+        await resetDeckScreenshotLayout(page);
+        await inlineRenderedResources(page);
+        await waitForPrintableContent(page);
+        await applyScreenshotStyles(page, true, 0);
+        const slideCount = await countDeckSlides(page);
+        if (slideCount <= 0) {
+          throw new Error('no slides to export');
+        }
+
+        const images: HeadlessDeckSlideImage[] = [];
+        for (let index = 0; index < slideCount; index += 1) {
+          await revealDeckSlideForScreenshot(page, index);
+          await waitForPrintableContent(page);
+          const image = await page.screenshot({
+            ...imageScreenshotOptions('png'),
+            clip: deckScreenshotClip(),
+            timeout: EXPORT_TIMEOUT_MS,
+          });
+          images.push({ buffer: Buffer.from(image), jpeg: false });
+        }
+        return { images, aspect: DECK_WIDTH / DECK_HEIGHT };
       } finally {
         await page.close().catch(() => {});
       }
@@ -983,6 +1037,17 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
     );
   }
   return Number.isFinite(result.count) ? result.count : 0;
+}
+
+async function countDeckSlides(page: Page): Promise<number> {
+  return evaluateInPage<number>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector));
+      return slides.length;
+    `,
+    { selector: DECK_SLIDE_SELECTOR },
+  ).catch(() => 0);
 }
 
 async function waitForPrintableContent(page: Page): Promise<void> {

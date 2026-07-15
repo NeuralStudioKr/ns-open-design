@@ -65,7 +65,7 @@ describe('byok-proxy-materialization', () => {
     const req = mockReq();
     const { res } = mockRes();
 
-    for (const slug of ['recent', 'cover-hints', 'RECENT']) {
+    for (const slug of ['recent', 'cover-hints', 'status-hints', 'RECENT']) {
       const result = await hooks!.attachByokProxyStreamMaterialization(req, res, slug);
       expect(result).toEqual({ ok: true });
     }

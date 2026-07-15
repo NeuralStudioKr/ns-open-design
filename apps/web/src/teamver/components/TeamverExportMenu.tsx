@@ -45,6 +45,7 @@ export type TeamverExportMenuProps = {
   fireShareExport: ShareExportHandler;
   /** Pass `{ fresh: true }` to bypass the daemon export memo cache (Shift+click). */
   exportPdf: (options?: { fresh?: boolean }) => void | Promise<unknown>;
+  exportPptx?: () => void | Promise<unknown>;
   exportHtml: () => void | Promise<unknown>;
   exportZip: () => void | Promise<unknown>;
   exportMarkdown: () => void;
@@ -67,6 +68,7 @@ export function TeamverExportMenu({
   onOpenSaveAsTemplate,
   fireShareExport,
   exportPdf,
+  exportPptx,
   exportHtml,
   exportZip,
   exportMarkdown,
@@ -107,7 +109,7 @@ export function TeamverExportMenu({
           role="menuitem"
           disabled={!canPptx}
           title={
-            onExportAsPptx
+            exportPptx || onExportAsPptx
               ? streaming
                 ? t("fileViewer.exportPptxBusy")
                 : t("fileViewer.exportPptxHint")
@@ -116,7 +118,9 @@ export function TeamverExportMenu({
           onClick={() => {
             onCloseMenu();
             fireShareExport("pptx", () => {
+              if (exportPptx) return exportPptx();
               if (onExportAsPptx) onExportAsPptx(fileName);
+              return undefined;
             });
           }}
         >

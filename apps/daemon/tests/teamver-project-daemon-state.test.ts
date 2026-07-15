@@ -198,4 +198,46 @@ describe('teamver project daemon state', () => {
     closeDatabase(db);
     fs.rmSync(root, { recursive: true, force: true });
   });
+
+  it('does not replace an existing project title with an id fallback from remote state', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'od-daemon-state-name-'));
+    const db = openDatabase(root, { dataDir: path.join(root, '.od') });
+    const projectId = 'proj-name-guard';
+    const now = Date.now();
+
+    insertProject(db, {
+      id: projectId,
+      name: '고객사 제안 덱',
+      skillId: null,
+      designSystemId: null,
+      pendingPrompt: null,
+      metadata: { kind: 'deck' },
+      customInstructions: null,
+      createdAt: now - 10_000,
+      updatedAt: now - 10_000,
+    });
+
+    const remoteState: NonNullable<ReturnType<typeof buildTeamverProjectDaemonState>> = {
+      version: 1,
+      projectId,
+      exportedAt: now,
+      project: {
+        id: projectId,
+        name: projectId,
+        skillId: null,
+        designSystemId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      conversations: [],
+      messages: [],
+      agentSessions: [],
+    };
+
+    expect(applyTeamverProjectDaemonState(db, remoteState)).toBe(true);
+    expect(getProject(db, projectId)?.name).toBe('고객사 제안 덱');
+
+    closeDatabase(db);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
 });

@@ -66,4 +66,16 @@ describe("teamverEmbedAuthNavigation", () => {
     );
     expect(normalizeEmbedAuthReturnDestination("/auth/callback?theme=system")).toBe("/auth/callback");
   });
+
+  it("never restores auth return onto daemon/API paths", async () => {
+    const {
+      normalizeEmbedAuthReturnDestination,
+      resolveEmbedAuthReturnPath,
+    } = await import("../../src/teamver/teamverEmbedAuthNavigation");
+
+    expect(resolveEmbedAuthReturnPath("/api/plugins/example-simple-deck")).toBe("/");
+    expect(resolveEmbedAuthReturnPath("/teamver-bff/auth/session")).toBe("/");
+    expect(normalizeEmbedAuthReturnDestination("/api/plugins/example-simple-deck")).toBe("/");
+    expect(normalizeEmbedAuthReturnDestination("/teamver-bff/drive/api/v2/shared-drive")).toBe("/");
+  });
 });

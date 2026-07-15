@@ -53,8 +53,8 @@ embed·갤러리 preview iframe:
 - `allow-same-origin` **없음** → 문서 effective origin 은 opaque (보안 by design, `apps/web/src/runtime/exports.ts`)
 - iframe **최초 navigation**(`/preview`)은 세션 쿠키로 통과 → HTML 수신 OK
 - HTML 내부 `<script src="/api/plugins/.../asset/deck-stage.js">` 는 **credentialed subresource가 아님**
-- nginx `location /api/` 의 `auth_request` 실패 → `@teamver_login` **302**
-- 브라우저가 signin HTML을 script로 로드 시도 → `script-src 'self'` 위반
+- (구) nginx `@teamver_login` **302** → signin HTML이 script로 로드되어 CSP 위반
+- **(현)** session-gated plugin/skills는 `@teamver_od_bff_unauthorized` **401 JSON** — SPA 상위 창이 `/api/plugins/...` returnTo 로 Main 로그인에 끌려가지 않음. 번들 `asset/` 은 세션 gate 제외.
 
 ### 2.3 `querySLinks` (콘텐츠 — 인프라로 해결 불가)
 

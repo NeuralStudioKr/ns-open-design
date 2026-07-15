@@ -82,8 +82,8 @@ export function teamverProjectAccessCheckUrl(projectId: string): string | null {
 
 /** Collection routes under `/api/projects/*` — not OD project ids. */
 // When embed code or legacy auto-register passes these as `:id`, refuse registry
-// pollution (design_projects rows with od_project_id=recent|cover-hints).
-const PROJECT_COLLECTION_ROUTE_SLUGS = new Set(['recent', 'cover-hints']);
+// pollution (design_projects rows with od_project_id=recent|cover-hints|status-hints).
+const PROJECT_COLLECTION_ROUTE_SLUGS = new Set(['recent', 'cover-hints', 'status-hints']);
 
 export function isTeamverProjectCollectionRouteSlug(projectId: string): boolean {
   return PROJECT_COLLECTION_ROUTE_SLUGS.has(projectId.trim().toLowerCase());

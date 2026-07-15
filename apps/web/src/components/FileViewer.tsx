@@ -89,6 +89,7 @@ import {
   resolveExportDownloadTitle,
   exportProjectAsHtml,
   exportProjectAsPdf,
+  exportProjectAsPptx,
   exportProjectAsZip,
   copyImageDataUrlToClipboard,
   exportReactComponentAsHtml,
@@ -7464,8 +7465,8 @@ function HtmlViewer({
     rendererId === 'html';
   const canShare = source !== null && isShareableArtifact;
   const canDownload = source !== null && (isShareableArtifact || isMarkdownArtifact);
-  const canPptx = canShare && isDeckArtifact && Boolean(onExportAsPptx) && !streaming;
-  const showPptxExport = canShare && isDeckArtifact;
+  const canPptx = canShare && effectiveDeck && !streaming;
+  const showPptxExport = canShare && effectiveDeck;
   const showMarkdownExport = source !== null && isMarkdownArtifact;
   const showImageExport = canShare && !isTeamverEmbedMode();
   const showExternalShareMenu = canShare && !hideExternalShareSurfaces;
@@ -8778,6 +8779,14 @@ function HtmlViewer({
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
 	                    })}
+                    exportPptx={() => exportProjectAsPptx({
+                      deck: effectiveDeck,
+                      projectId,
+                      filePath: file.name,
+                      title: exportTitle,
+                      htmlSnapshot: source ?? null,
+                      requireRenderedExport: isTeamverEmbedMode(),
+                    })}
 	                    exportHtml={() => exportProjectAsHtml({
 	                      deck: effectiveDeck,
 	                      projectId,

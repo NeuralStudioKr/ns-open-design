@@ -2,7 +2,9 @@
 
 2026-06-22 기준, Canvas 결과물을 AI Design slide 생성 source로 사용하는 범위와 Teamver Design의 다음 작업 순서를 결정한다.
 
-**관련 문서:** [04 구현 우선순위](./04_구현_우선순위.md) · [09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md) · [13 embed slide MVP](./13_embed_슬라이드_MVP_기능게이트.md) · [14 Drive 연동](./14_Design_Drive_연동_설계.md)
+> **2026-07-15 UX 후속:** 진입점을 드라이브 메뉴에서 캔버스 헤더 **Apps** 드롭다운으로 옮기는 기획은 **[42 Canvas Apps 슬라이드 생성](./42_Canvas_앱스_슬라이드_생성_기획설계.md)** 을 본다. handoff 계약(HTML · `create-slides`)은 본 문서와 동일하게 유지한다.
+
+**관련 문서:** [04 구현 우선순위](./04_구현_우선순위.md) · [09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md) · [13 embed slide MVP](./13_embed_슬라이드_MVP_기능게이트.md) · [14 Drive 연동](./14_Design_Drive_연동_설계.md) · **[42 Apps UX·형식 비교](./42_Canvas_앱스_슬라이드_생성_기획설계.md)**
 
 ---
 

@@ -138,7 +138,7 @@ class UsageEventBody(BaseModel):
 | daemon export (ZIP archive) | `import-export-routes.ts` ✅ — 로컬 다운로드 전용, Drive publish 금지 |
 | daemon export (manifest) | `import-export-routes.ts` L487–509 ✅ |
 | daemon PDF | headless PDF export ✅ — Drive publish PDF + 로컬 다운로드 |
-| PPTX HTTP export | **없음** |
+| PPTX HTTP export | daemon `/api/projects/:id/export/pptx` ✅ — screenshot 기반 로컬 다운로드 |
 | SDK `upload_bytes_to_personal_drive` | Python `drive.py` L85–106, TS `drive.ts` L239–299 ✅ |
 | Main BE Drive | user JWT only (`router/drive.py` L1877–1916) |
 
@@ -806,7 +806,7 @@ curl -H "X-Teamver-Internal-Api-Key: $KEY" \
 | **HTML** | ✅ | daemon `GET .../export/{path}?inline=1` → bytes |
 | **ZIP** | ✅ | daemon `GET .../archive` → buffer |
 | PDF | ❌ Phase 4+ | hosted daemon **501** |
-| PPTX | ❌ Phase 4+ | HTTP export route 없음 |
+| PPTX | ✅ 로컬 다운로드 | daemon `/export/pptx` → screenshot 기반 PPTX. Drive publish 포맷은 아직 HTML/PDF만 유지 |
 
 **권장:** manifest `entryFile` 또는 `artifacts[0].file` primary 1회 업로드 ([03 §4.2](./03_키_저장소_Drive_DB.md) 옵션 A).
 
@@ -1017,7 +1017,7 @@ Browser
 | 항목 | 시점 |
 |------|------|
 | hosted PDF (Playwright sidecar) | Phase 4+ |
-| PPTX export HTTP route | upstream OD 또는 sidecar |
+| PPTX export HTTP route | ✅ daemon screenshot route 도입. editable PPTX/dom-to-pptx는 후순위 |
 | M2M Drive (server-only publish) | Main BE internal API 미설계 — **비권장** |
 
 ---
