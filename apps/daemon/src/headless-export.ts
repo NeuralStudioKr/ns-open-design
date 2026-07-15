@@ -438,6 +438,7 @@ export async function renderHeadlessImage(
     async (browser) => {
       const page = await preparePage(browser, options, {
         deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
+        ...(options.input.deck ? { deckPrepareMode: 'html' } : {}),
       });
       try {
         await waitForPrintableContent(page);
@@ -483,6 +484,7 @@ export async function renderHeadlessDeckImages(
     async (browser) => {
       const page = await preparePage(browser, options, {
         deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
+        deckPrepareMode: 'html',
       });
       try {
         await waitForPrintableContent(page);
@@ -1188,10 +1190,14 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     slides.forEach((el) => {
       if (el !== target) {
         set(el, 'display', 'none');
+        el.classList.remove('active', 'current', 'is-active');
         return;
       }
-      set(el, 'display', 'flex');
-      set(el, 'flex-direction', 'column');
+      el.classList.add('active', 'current', 'is-active');
+      el.removeAttribute('hidden');
+      el.removeAttribute('aria-hidden');
+      el.style.removeProperty('display');
+      el.style.removeProperty('flex-direction');
       set(el, 'position', 'relative');
       set(el, 'inset', 'auto');
       set(el, 'width', args.width + 'px');

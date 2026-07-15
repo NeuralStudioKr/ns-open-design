@@ -492,6 +492,38 @@ describe('buildDeckPrintCss', () => {
     const { deckScreenshotClipRect } = await import('../src/headless-export.js');
     expect(deckScreenshotClipRect()).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
   });
+
+  it('uses screen deck HTML, not print-flattened HTML, for deck screenshot captures', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    const imageBlock = source.slice(
+      source.indexOf('export async function renderHeadlessImage'),
+      source.indexOf('export async function renderHeadlessDeckImages'),
+    );
+    const pptxBlock = source.slice(
+      source.indexOf('export async function renderHeadlessDeckImages'),
+      source.indexOf('export async function renderHeadlessHtmlSnapshot'),
+    );
+    expect(imageBlock).toContain("deckPrepareMode: 'html'");
+    expect(pptxBlock).toContain("deckPrepareMode: 'html'");
+  });
+
+  it('does not force deck screenshot slides into a flex column layout', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    const revealBlock = source.slice(
+      source.indexOf('async function revealDeckSlideForScreenshot'),
+      source.indexOf('async function applySnapshotStyles'),
+    );
+    expect(revealBlock).not.toContain("set(el, 'display', 'flex')");
+    expect(revealBlock).not.toContain("set(el, 'flex-direction', 'column')");
+    expect(revealBlock).toContain("el.classList.add('active', 'current', 'is-active')");
+    expect(revealBlock).toContain("el.style.removeProperty('display')");
+  });
 });
 
 describe('imageScreenshotOptions', () => {
