@@ -3,6 +3,11 @@ import { encodeS3PathSegment } from './storage/aws-sigv4.js';
 const SAFE_SEGMENT_RE = /[^a-zA-Z0-9._-]+/g;
 const EXPORT_HASH_RE = /^[a-f0-9]{32,64}$/i;
 
+export function isExportOffloadEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env.OD_EXPORT_OFFLOAD_ENABLED ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function safeSegment(value: string, fallback: string): string {
   const cleaned = String(value ?? '')
     .trim()

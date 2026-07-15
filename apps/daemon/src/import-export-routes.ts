@@ -40,7 +40,7 @@ import {
   runCachedExport,
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
-import { buildExportOffloadObjectKey } from './export-offload-key.js';
+import { buildExportOffloadObjectKey, isExportOffloadEnabled } from './export-offload-key.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
@@ -205,6 +205,7 @@ function exportOffloadKeyForRequest(
   req: Request,
   outcome: ExportCacheOutcome,
 ): string | undefined {
+  if (!isExportOffloadEnabled()) return undefined;
   const identity = readTeamverIdentityFromRequest(req);
   if (!identity) return undefined;
   return buildExportOffloadObjectKey({

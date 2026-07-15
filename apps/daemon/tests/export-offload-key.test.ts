@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildExportOffloadObjectKey } from '../src/export-offload-key.js';
+import {
+  buildExportOffloadObjectKey,
+  isExportOffloadEnabled,
+} from '../src/export-offload-key.js';
 
 describe('export offload object key', () => {
+  it('keeps export offload disabled unless the feature flag is explicit', () => {
+    expect(isExportOffloadEnabled({} as NodeJS.ProcessEnv)).toBe(false);
+    expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: '0' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: '1' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: 'true' } as NodeJS.ProcessEnv)).toBe(true);
+  });
+
   it('builds a tenant/project scoped exports key with the cache hash', () => {
     expect(
       buildExportOffloadObjectKey({
