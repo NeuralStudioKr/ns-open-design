@@ -437,24 +437,38 @@ Worker (daemon sidecar or queue consumer):
 
 **성공 기준:** FE heap spike 제거; 동시 2 export 시 3번째만 대기; p95 export duration 가시화.
 
-### Sprint 2 — Phase 1a/1d (2~3주) — 🟢 코드 구현 완료 (§20.1~§20.4 · 배포 대기)
+### Sprint 2 — Phase 1a/1d (2~3주) — ✅ 완료 (§20.1~§20.4 · staging 반영)
 
 | # | 작업 | 상태 |
 |---|------|------|
-| 1.1 | in-process memo (RAM LRU + TTL) — `MemoExportCacheStore` | ✅ `export-cache-memo.ts` |
-| 1.2 | export artifact cache 저장소 결정 (§20) — **EBS `od-data/.od-export-cache/`**, S3는 multi-instance 시 승격 | ✅ 결정: EBS local (§19.3) |
-| 1.3 | cacheKey SSOT (`sha256(projectId + entryFile + mtimeMs + format + deck + slideIndex + codeVersion)`) | ✅ `export-cache-key.ts` |
-| 1.4 | daemon local cache hit → filePath stream (ticket + direct) — `LocalFileExportCacheStore` + sweep | ✅ `export-cache-local.ts` + `respondExportPayload` |
-| 1.5 | route 통합 (PDF/HTML/ZIP/image) + `runCachedExport` chain | ✅ `import-export-routes.ts` + `export-cache-runtime.ts` |
-| 1.6 | metrics 확장 (`cache=miss|hit-memo|hit-local`, `cacheKey`, `cacheAgeMs`) | ✅ `export-runtime.ts` |
-| 1.d | Publish stream (§20.4) — design-api RAM 이중화 제거 | ✅ PDF/HTML Drive publish가 daemon export ticket + presigned PUT stream 사용 + 64MB bytes fallback safety net (`od_daemon_client.py`, `publish_service.py`) |
+| 1.1 | in-process memo (RAM LRU + TTL) — `MemoExportCacheStore` | ✅ 완료 — `export-cache-memo.ts` |
+| 1.2 | export artifact cache 저장소 결정 (§20) — **EBS `od-data/.od-export-cache/`**, S3는 multi-instance 시 승격 | ✅ 완료 — EBS local 결정 (§19.3) |
+| 1.3 | cacheKey SSOT (`sha256(projectId + entryFile + mtimeMs + format + deck + slideIndex + codeVersion)`) | ✅ 완료 — `export-cache-key.ts` |
+| 1.4 | daemon local cache hit → filePath stream (ticket + direct) — `LocalFileExportCacheStore` + sweep | ✅ 완료 — `export-cache-local.ts` + `respondExportPayload` |
+| 1.5 | route 통합 (PDF/HTML/ZIP/image) + `runCachedExport` chain | ✅ 완료 — `import-export-routes.ts` + `export-cache-runtime.ts` |
+| 1.6 | metrics 확장 (`cache=miss|hit-memo|hit-local`, `cacheKey`, `cacheAgeMs`) | ✅ 완료 — `export-runtime.ts` |
+| 1.d | Publish stream (§20.4) — design-api RAM 이중화 제거 | ✅ 완료 — PDF/HTML Drive publish가 daemon export ticket + presigned PUT stream 사용 + 64MB bytes fallback safety net (`od_daemon_client.py`, `publish_service.py`) |
+
+#### 1.7 Cache Hit 운영 확인 방법
+
+staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으로 PDF/HTML을 2회 이상 요청해서 아래를 확인한다.
+
+| 확인 위치 | 기대값 |
+|---|---|
+| daemon 로그 | 첫 요청은 `cache=miss`, 반복 요청은 `cache=hit-memo` 또는 `cache=hit-local` |
+| design-api 로그 (Drive publish) | `publish export stream PUT succeeded ... export_cache=hit-memo|hit-local` 또는 fallback 시 `publish fallback bytes PUT succeeded ... export_cache=...` |
+| 응답 ticket JSON (직접 확인 시) | `cache` 필드가 `miss`, `hit-memo`, `hit-local` 중 하나 |
+| 체감/계측 | 반복 export에서 Chromium render 시간이 줄고, `od_export_duration_ms`가 감소 |
+| 로컬 cache dir | `OD_EXPORT_CACHE_DIR` 또는 기본 `${OD_DATA_DIR}/.od-export-cache` 아래 payload/meta 파일 생성 |
+
+**주의:** `cache=miss`가 계속 나와도 즉시 버그는 아니다. HTML 파일 mtime 변경, `OD_EXPORT_CACHE_VERSION` 변경, `fresh=1`, 다른 `deck/slideIndex/format/title` 조합이면 cacheKey가 달라져 정상 miss가 난다.
 
 ### Sprint 3 — Phase 1b + 2 (3~4주)
 
 | # | 작업 | 상태 |
 |---|------|------|
 | 2.1 | presigned GET 발급 API (session-gated) | ⏳ |
-| 2.2 | publish_service: cache hit 시 Chromium skip (daemon ticket/local cache reuse) | ✅ single-node EBS cache 기준 / S3 object 반환은 1c 이후 |
+| 2.2 | publish_service: cache hit 시 Chromium skip (daemon ticket/local cache reuse) | ✅ 완료 — single-node EBS cache 기준 / S3 object 반환은 1c 이후 |
 | 2.3 | FE Download + Publish 공통 cache benefit E2E | ⏳ |
 
 ### Backlog — Phase 3
