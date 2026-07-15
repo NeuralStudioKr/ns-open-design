@@ -22,7 +22,7 @@ export function embedBlockedComposerSlashReason(
   const trimmed = prompt.trim();
   if (!trimmed) return null;
   if (!EMBED_BLOCKED_COMPOSER_SLASH.test(trimmed)) return null;
-  return "Teamver Design embed에서는 Codex 펫(/pet, /hatch) 명령을 사용할 수 없습니다. 슬라이드 덱 작업만 지원합니다.";
+  return "teamver Design embed에서는 Codex 펫(/pet, /hatch) 명령을 사용할 수 없습니다. 슬라이드 덱 작업만 지원합니다.";
 }
 
 export function embedSlideOnlyOutboundBlockReason(
@@ -33,5 +33,5 @@ export function embedSlideOnlyOutboundBlockReason(
   const trimmed = prompt.trim();
   if (!trimmed) return null;
   if (!MEDIA_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed))) return null;
-  return "Teamver Design 1차 출시는 슬라이드(덱)만 지원합니다. 이미지·동영상·오디오·HyperFrames 생성 요청은 아직 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
+  return "teamver Design 1차 출시는 슬라이드(덱)만 지원합니다. 이미지·동영상·오디오·HyperFrames 생성 요청은 아직 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
 }

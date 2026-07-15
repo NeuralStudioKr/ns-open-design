@@ -3,7 +3,7 @@ import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 
 /**
- * True when an error thrown from a Teamver Design BFF call represents an
+ * True when an error thrown from a teamver Design BFF call represents an
  * expired / missing HttpOnly session (HTTP 401).
  *
  * Two shapes are recognized:

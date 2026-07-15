@@ -11,24 +11,24 @@ describe("teamver embed locale", () => {
     expect(
       applyTeamverBrandToLocalizedText(
         "Open Design에 브랜드, 제품, 코드, 에셋, 디자인 레퍼런스를 학습시키세요.",
-        "Teamver Design",
+        "teamver Design",
       ),
-    ).toBe("Teamver Design에 브랜드, 제품, 코드, 에셋, 디자인 레퍼런스를 학습시키세요.");
+    ).toBe("teamver Design에 브랜드, 제품, 코드, 에셋, 디자인 레퍼런스를 학습시키세요.");
   });
 
   it("skips replacements inside backticks", () => {
     expect(
       applyTeamverBrandToLocalizedText(
         "Types live in `@open-design/contracts` — Open Design ships them.",
-        "Teamver Design",
+        "teamver Design",
       ),
-    ).toBe("Types live in `@open-design/contracts` — Teamver Design ships them.");
+    ).toBe("Types live in `@open-design/contracts` — teamver Design ships them.");
   });
 
   it("merges explicit key overrides before brand substitution", () => {
     process.env.VITE_TEAMVER_EMBED = "1";
-    const overrides = teamverEmbedOverrides("Teamver Design", "Teamver Design Studio", {
-      title: "Teamver Design",
+    const overrides = teamverEmbedOverrides("teamver Design", "AI로 슬라이드·디자인 초안까지", {
+      title: "teamver Design",
       subtitle: "Create with AI",
     });
     expect(overrides["chat.activeFilePlaceholder"]).toBe("슬라이드 {file} 변경 요청…");
@@ -42,26 +42,26 @@ describe("teamver embed locale", () => {
     expect(overrides["teamver.embed.sessionLoading"]).toBe("불러오는 중…");
     const resolved = resolveTeamverEmbedTranslation(
       "Open Design",
-      { enabled: true, title: "Teamver Design" },
+      { enabled: true, title: "teamver Design" },
       overrides,
       "app.brand",
     );
-    expect(resolved).toBe("Teamver Design");
+    expect(resolved).toBe("teamver Design");
     expect(
       resolveTeamverEmbedTranslation(
         "Teach Open Design your brand.",
-        { enabled: true, title: "Teamver Design" },
+        { enabled: true, title: "teamver Design" },
         overrides,
         "dsManager.createBody",
       ),
-    ).toBe("Teach Teamver Design your brand.");
+    ).toBe("Teach teamver Design your brand.");
   });
 
   it("interpolates vars on embed key overrides", () => {
-    const overrides = teamverEmbedOverrides("Teamver Design");
+    const overrides = teamverEmbedOverrides("teamver Design");
     const base = resolveTeamverEmbedTranslation(
       "Open Design에 {file} 변경 요청...",
-      { enabled: true, title: "Teamver Design" },
+      { enabled: true, title: "teamver Design" },
       overrides,
       "chat.activeFilePlaceholder",
     );

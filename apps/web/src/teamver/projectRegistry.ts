@@ -56,7 +56,7 @@ export class TeamverProjectRegistryError extends Error {
 
 const REGISTRY_ERROR_MESSAGES: Record<string, string> = {
   teamver_project_registry_unavailable:
-    "Teamver Design 연동을 사용할 수 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
+    "teamver Design 연동을 사용할 수 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
   teamver_workspace_required:
     "워크스페이스를 선택한 뒤 프로젝트를 만들어 주세요.",
   teamver_project_registry_sync_failed:

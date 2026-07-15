@@ -8,7 +8,7 @@ import { localizeSkillDescription, localizeSkillName } from "../../i18n/content"
 import type { Locale } from "../../i18n/types";
 import { applyTeamverBrandToLocalizedText } from "../locales/embedOverrides";
 
-export const TEAMVER_CATALOG_BRAND = "Teamver Design";
+export const TEAMVER_CATALOG_BRAND = "teamver Design";
 
 /** Catalog entries that must not appear in Teamver embed toolbox surfaces. */
 const HIDDEN_TOOLBOX_PLUGIN_IDS = new Set([

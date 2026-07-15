@@ -59,7 +59,7 @@ describe("Teamver toolbox catalog display", () => {
     expect(isOpenDesignBrandedToolboxResource(["Html Ppt Hermes Cyber Terminal"])).toBe(false);
   });
 
-  it("renames Open-Slide labels to Teamver Design without hiding the plugin", () => {
+  it("renames Open-Slide labels to teamver Design without hiding the plugin", () => {
     const record = pluginFixture({
       id: "example-deck-open-slide-canvas",
       manifest: {
@@ -74,9 +74,9 @@ describe("Teamver toolbox catalog display", () => {
     });
 
     expect(shouldHideTeamverToolboxPlugin(record, "ko")).toBe(false);
-    expect(teamverToolboxPluginTitle("ko", record)).toBe("Teamver Design 1920 캔버스 덱");
+    expect(teamverToolboxPluginTitle("ko", record)).toBe("teamver Design 1920 캔버스 덱");
     expect(applyTeamverCatalogDisplayText("Open-Slide 1920 Canvas Deck")).toBe(
-      "Teamver Design 1920 Canvas Deck",
+      "teamver Design 1920 Canvas Deck",
     );
   });
 

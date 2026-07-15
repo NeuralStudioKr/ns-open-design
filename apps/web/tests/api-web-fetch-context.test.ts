@@ -31,7 +31,7 @@ describe('api web fetch context', () => {
     ]);
 
     expect(context).toContain('<web-fetch-context>');
-    expect(context).toContain('Teamver Design pre-fetched');
+    expect(context).toContain('teamver Design pre-fetched');
     expect(context).toContain('Professional team profile builder');
     expect(context).toContain('</web-fetch-context>');
   });

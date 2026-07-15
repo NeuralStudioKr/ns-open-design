@@ -2668,7 +2668,7 @@ export const ko: Dict = {
   'teamver.canvasSlideLaunch.working': '시작 중…',
   'teamver.about.panelHint': '정보',
   'teamver.about.openSourceTitle': '오픈소스 소프트웨어',
-  'teamver.about.openSourceIntro': 'Teamver Design은 다음 오픈소스 구성요소를 포함합니다.',
+  'teamver.about.openSourceIntro': 'teamver Design은 다음 오픈소스 구성요소를 포함합니다.',
   'teamver.about.basedOn': 'Open Design 기반 소프트웨어를 Teamver용으로 수정·통합했습니다.',
   'teamver.about.copyright': '저작권',
   'teamver.about.license': '라이선스',

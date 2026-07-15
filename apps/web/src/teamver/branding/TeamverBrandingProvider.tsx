@@ -6,13 +6,13 @@ import { TeamverBrandingHead } from "./TeamverBrandingHead";
 
 const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   enabled: false,
-  title: "Teamver Design",
-  subtitle: "Teamver Design Studio",
+  title: "teamver Design",
+  subtitle: "AI로 슬라이드·디자인 초안까지",
   faviconUrl: "/teamver/Logo-icon.svg",
   logoUrl: "/teamver/teamver-design-light.png",
   logoUrlDark: "/teamver/teamver-design-dark.png",
   navMarkUrl: "/teamver/Logo-icon.svg",
-  heroTitle: "Teamver Design",
+  heroTitle: "teamver Design",
   heroSubtitle: "Create visual designs and layouts with AI from your workspace context.",
   hideExternalLinks: false,
   hideNavViews: new Set(),

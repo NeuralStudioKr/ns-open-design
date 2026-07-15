@@ -54,16 +54,16 @@ export function readTeamverDesignAccessSnapshot(): TeamverDesignAccessSnapshot |
 
 const DESIGN_DISABLED_MESSAGES: Record<string, string> = {
   app_disabled_globally:
-    "Teamver Design 앱이 현재 비활성화되어 있습니다. 워크스페이스 관리자에게 문의하세요.",
+    "teamver Design 앱이 현재 비활성화되어 있습니다. 워크스페이스 관리자에게 문의하세요.",
   design_app_disabled:
-    "이 워크스페이스에서는 Teamver Design을 사용할 수 없습니다.",
+    "이 워크스페이스에서는 teamver Design을 사용할 수 없습니다.",
 };
 
 /** Embed — workspace Design 앱 비활성 시 사용자 메시지. */
 export function formatTeamverDesignDisabledMessage(reason?: string | null): string {
   const key = reason?.trim();
   if (key && DESIGN_DISABLED_MESSAGES[key]) return DESIGN_DISABLED_MESSAGES[key];
-  return "이 워크스페이스에서는 Teamver Design을 사용할 수 없습니다. 워크스페이스 관리자에게 문의하세요.";
+  return "이 워크스페이스에서는 teamver Design을 사용할 수 없습니다. 워크스페이스 관리자에게 문의하세요.";
 }
 
 /** Embed read/write surfaces (chat, import, publish) — false when Design app disabled. */

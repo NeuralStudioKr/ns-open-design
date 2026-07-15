@@ -4,9 +4,9 @@ import { readTeamverViteEnv } from "../teamverViteEnv";
 import { TEAMVER_BRAND_ASSETS } from "./assets";
 
 export const TEAMVER_OG_SERVICE_NAME = "teamver";
-export const TEAMVER_DEFAULT_BRAND_TITLE = "Teamver Design";
-export const TEAMVER_DEFAULT_BRAND_SUBTITLE = "Teamver Design Studio";
-export const TEAMVER_DEFAULT_OG_TITLE = `${TEAMVER_OG_SERVICE_NAME} | Teamver Design`;
+export const TEAMVER_DEFAULT_BRAND_TITLE = "teamver Design";
+export const TEAMVER_DEFAULT_BRAND_SUBTITLE = "AI로 슬라이드·디자인 초안까지";
+export const TEAMVER_DEFAULT_OG_TITLE = `${TEAMVER_OG_SERVICE_NAME} | Design`;
 export const TEAMVER_DEFAULT_OG_DESCRIPTION =
   "팀을 위한 AI 기반 협업 워크스페이스. 아이디어를 AI로 슬라이드·문서 초안까지 빠르게.";
 export const TEAMVER_DEFAULT_HERO_SUBTITLE = TEAMVER_DEFAULT_OG_DESCRIPTION;

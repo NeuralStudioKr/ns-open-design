@@ -149,7 +149,7 @@ export function formatPublishErrorCodeForUser(code: string): string {
 
   const exact: Record<string, string> = {
     teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
-    teamver_design_client_unavailable: "Teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
+    teamver_design_client_unavailable: "teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
     artifact_file_required: "편집기에서 슬라이드 파일을 연 뒤 다시 발행하세요.",
     od_daemon_export_failed: "프로젝트를 내보낼 수 없습니다 — 작업을 저장한 뒤 다시 시도하세요.",
     publish_failed: "발행에 실패했습니다 — 세션을 확인하고 다시 시도하세요.",

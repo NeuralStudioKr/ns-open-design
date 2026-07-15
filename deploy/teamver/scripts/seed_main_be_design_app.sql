@@ -1,4 +1,4 @@
--- Idempotent Main BE ai_app row for Teamver Design.
+-- Idempotent Main BE ai_app row for teamver Design.
 -- Registry app_id: ai-design (Admin UI) · internal bootstrap app_key: design
 --
 -- Usage (Main BE Postgres, staging example):
@@ -26,8 +26,8 @@ INSERT INTO public.ai_app (
 ) VALUES (
   'ai-design',
   'design',
-  'Teamver Design — Open Design embed (design.teamver.com)',
-  'Teamver Design',
+  'teamver Design — Open Design embed (design.teamver.com)',
+  'teamver Design',
   'Design with AI in your workspace',
   'productivity',
   TRUE,

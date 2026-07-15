@@ -8,7 +8,7 @@ const OPEN_SETTINGS_LABEL = /Open settings|打开设置|開啟設定/i;
 test.describe.configure({ timeout: 30_000 });
 
 async function waitForLoadingToClear(page: Page) {
-  await expect(page.getByText(/Loading (Open Design|Teamver Design)/i)).toHaveCount(0, {
+  await expect(page.getByText(/Loading (Open Design|teamver Design)/i)).toHaveCount(0, {
     timeout: 15_000,
   });
 }
