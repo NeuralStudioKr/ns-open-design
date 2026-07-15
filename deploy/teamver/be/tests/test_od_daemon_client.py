@@ -133,6 +133,8 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
         "mime": "application/pdf",
         "bytes": 1234,
         "cache": "hit-local",
+        "deliveryMode": "stream",
+        "singleUse": True,
     }
 
     http = AsyncMock()
@@ -157,6 +159,8 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
     assert ticket.mime == "application/pdf"
     assert ticket.size_bytes == 1234
     assert ticket.cache == "hit-local"
+    assert ticket.delivery_mode == "stream"
+    assert ticket.single_use is True
     http.post.assert_awaited_once()
     assert http.post.await_args.args[0] == "http://daemon.test/api/projects/od1/export/pdf"
     assert http.post.await_args.kwargs["json"] == {
@@ -218,6 +222,7 @@ async def test_daemon_client_streams_export_ticket_to_presigned_put(
         "GET",
         "http://daemon.test/api/projects/od1/export/downloads/ticket",
     )
+    assert download_client.stream.call_args.kwargs["follow_redirects"] is True
     upload_client.put.assert_awaited_once()
     assert upload_client.put.await_args.args[0] == "https://s3.example.com/upload"
     assert upload_client.put.await_args.kwargs["headers"] == {
@@ -316,6 +321,73 @@ async def test_daemon_client_stream_export_ticket_download_network_error_is_clas
         )
 
     download_client.stream.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_request_export_ticket_accepts_redirect_delivery_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = MagicMock()
+    response.status_code = 201
+    response.json.return_value = {
+        "delivery": "ticket",
+        "deliveryMode": "redirect",
+        "downloadUrl": "/api/projects/od1/export/downloads/ticket",
+        "filename": "Deck.pdf",
+        "mime": "application/pdf",
+        "bytes": 1234,
+        "singleUse": True,
+    }
+
+    http = AsyncMock()
+    http.post = AsyncMock(return_value=response)
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: http)
+
+    ticket = await OdDaemonClient(
+        base_url="http://daemon.test",
+        api_token="od-secret-token",
+    ).request_export_pdf_ticket(
+        "od1",
+        "deck/index.html",
+        identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+    )
+
+    assert ticket.delivery_mode == "redirect"
+    assert ticket.single_use is True
+
+
+@pytest.mark.asyncio
+async def test_daemon_client_request_export_ticket_rejects_unknown_delivery_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = MagicMock()
+    response.status_code = 201
+    response.json.return_value = {
+        "delivery": "ticket",
+        "deliveryMode": "s3",
+        "downloadUrl": "/api/projects/od1/export/downloads/ticket",
+        "filename": "Deck.pdf",
+        "mime": "application/pdf",
+        "bytes": 1234,
+    }
+
+    http = AsyncMock()
+    http.post = AsyncMock(return_value=response)
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: http)
+
+    with pytest.raises(BadGatewayError, match="od_daemon_invalid_export_ticket"):
+        await OdDaemonClient(
+            base_url="http://daemon.test",
+            api_token="od-secret-token",
+        ).request_export_pdf_ticket(
+            "od1",
+            "deck/index.html",
+            identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+        )
 
 
 @pytest.mark.asyncio

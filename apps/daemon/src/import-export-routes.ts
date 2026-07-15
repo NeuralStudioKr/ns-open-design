@@ -134,11 +134,13 @@ async function respondExportPayload(
     });
     res.status(201).json({
       delivery: 'ticket',
+      deliveryMode: entry.deliveryMode,
       downloadUrl: entry.url,
       filename: entry.filename,
       mime: entry.mime,
       bytes: entry.bytes,
       sizeBytes: entry.bytes,
+      singleUse: true,
       ...(options.cache ? { cache: options.cache } : {}),
       expiresAt: new Date(entry.expiresAt).toISOString(),
     });

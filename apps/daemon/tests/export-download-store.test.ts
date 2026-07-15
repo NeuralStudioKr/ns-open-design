@@ -33,6 +33,7 @@ describe('export download store', () => {
     });
 
     expect(stored.url).toBe('/api/projects/proj-1/export/downloads/' + stored.token);
+    expect(stored.deliveryMode).toBe('stream');
     expect(stored.bytes).toBe(Buffer.byteLength('pdf-bytes'));
     const resolved = resolveExportDownload('proj-1', stored.token);
     expect(resolved?.filename).toBe('Seed Deck.pdf');

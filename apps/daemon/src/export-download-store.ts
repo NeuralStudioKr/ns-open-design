@@ -6,6 +6,7 @@ import path from 'node:path';
 export type StoredExportDownload = {
   token: string;
   url: string;
+  deliveryMode: 'stream';
   filename: string;
   mime: string;
   bytes: number;
@@ -90,6 +91,7 @@ export async function storeExportDownload(options: {
   const entry: ExportDownloadEntry = {
     token,
     url,
+    deliveryMode: 'stream',
     filename,
     mime: options.mime,
     bytes,
