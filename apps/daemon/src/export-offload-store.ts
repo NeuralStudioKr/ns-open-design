@@ -14,6 +14,11 @@ export type ExportOffloadPutResult =
   | { status: 'uploaded'; key: string; bytes: number }
   | { status: 'failed'; key: string; reason: string };
 
+export type ExportOffloadPresignResult =
+  | { status: 'disabled'; reason: ExportOffloadDisabledReason }
+  | { status: 'ready'; key: string; url: string; expiresInSec: number }
+  | { status: 'failed'; key: string; reason: string };
+
 export type ExportOffloadPutInput = {
   key: string;
   body: Buffer | string;
@@ -150,6 +155,40 @@ export async function putExportOffloadObject(
     return {
       status: 'failed',
       key,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function presignExportOffloadGet(
+  key: string,
+  options: {
+    config?: ExportOffloadConfig;
+    credentialProvider?: ReturnType<typeof createS3CredentialProvider>;
+    now?: Date;
+  } = {},
+): Promise<ExportOffloadPresignResult> {
+  const config = options.config ?? resolveExportOffloadConfig();
+  if (!config.enabled) return { status: 'disabled', reason: config.reason };
+  const fullKey = prefixedOffloadKey(config.prefix, key);
+  try {
+    const provider = options.credentialProvider ?? createS3CredentialProvider();
+    const credentials = await provider.getCredentials();
+    return {
+      status: 'ready',
+      key: fullKey,
+      url: buildExportOffloadPresignedGetUrl({
+        key,
+        config,
+        credentials,
+        ...(options.now ? { now: options.now } : {}),
+      }),
+      expiresInSec: config.presignTtlSec,
+    };
+  } catch (err) {
+    return {
+      status: 'failed',
+      key: fullKey,
       reason: err instanceof Error ? err.message : String(err),
     };
   }

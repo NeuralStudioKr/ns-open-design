@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildExportOffloadPresignedGetUrl,
+  presignExportOffloadGet,
   putExportOffloadObject,
   type ExportOffloadStorage,
 } from '../src/export-offload-store.js';
@@ -139,5 +140,53 @@ describe('export offload store', () => {
     expect(url.pathname).toBe('/teamver-design-data/teamver/exports/ws/proj/hash.pdf');
     expect(url.searchParams.get('X-Amz-Security-Token')).toBe('session-token');
     expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('presigns a ready offload object with provider credentials', async () => {
+    const result = await presignExportOffloadGet('exports/ws/proj/hash.pdf', {
+      config: enabledConfig({ prefix: 'teamver', presignTtlSec: 180 }),
+      credentialProvider: {
+        usesImds: false,
+        invalidate() {},
+        async getCredentials() {
+          return { accessKeyId: 'AKTEST', secretAccessKey: 'secret' };
+        },
+      },
+      now: new Date('2026-07-15T00:00:00.000Z'),
+    });
+
+    expect(result.status).toBe('ready');
+    if (result.status === 'ready') {
+      expect(result.key).toBe('teamver/exports/ws/proj/hash.pdf');
+      expect(result.expiresInSec).toBe(180);
+      const url = new URL(result.url);
+      expect(url.pathname).toBe('/teamver/exports/ws/proj/hash.pdf');
+      expect(url.searchParams.get('X-Amz-Expires')).toBe('180');
+    }
+  });
+
+  it('returns disabled or failed instead of throwing from presign', async () => {
+    await expect(
+      presignExportOffloadGet('exports/ws/proj/hash.pdf', {
+        config: { enabled: false, reason: 'flag_disabled' },
+      }),
+    ).resolves.toEqual({ status: 'disabled', reason: 'flag_disabled' });
+
+    await expect(
+      presignExportOffloadGet('exports/ws/proj/hash.pdf', {
+        config: enabledConfig(),
+        credentialProvider: {
+          usesImds: false,
+          invalidate() {},
+          async getCredentials() {
+            throw new Error('no creds');
+          },
+        },
+      }),
+    ).resolves.toEqual({
+      status: 'failed',
+      key: 'exports/ws/proj/hash.pdf',
+      reason: 'no creds',
+    });
   });
 });
