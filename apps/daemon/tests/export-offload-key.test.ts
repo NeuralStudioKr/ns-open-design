@@ -50,6 +50,7 @@ describe('export offload object key', () => {
         OD_EXPORT_OFFLOAD_ENABLED: '1',
         OD_EXPORT_OFFLOAD_BUCKET: 'exports-bucket',
         OD_EXPORT_OFFLOAD_REGION: 'ap-northeast-2',
+        OD_EXPORT_OFFLOAD_ENDPOINT: 'https://s3.internal.test/',
         OD_EXPORT_OFFLOAD_PREFIX: '/teamver-design/',
         OD_EXPORT_OFFLOAD_PRESIGN_TTL_SEC: '9999',
       } as NodeJS.ProcessEnv),
@@ -57,6 +58,7 @@ describe('export offload object key', () => {
       enabled: true,
       bucket: 'exports-bucket',
       region: 'ap-northeast-2',
+      endpoint: 'https://s3.internal.test',
       prefix: 'teamver-design',
       presignTtlSec: 900,
     });

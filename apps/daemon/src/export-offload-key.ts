@@ -32,6 +32,7 @@ export type ExportOffloadConfig =
       bucket: string;
       region: string;
       prefix: string;
+      endpoint?: string;
       presignTtlSec: number;
     };
 
@@ -46,11 +47,13 @@ export function resolveExportOffloadConfig(
   const region = (env.OD_EXPORT_OFFLOAD_REGION ?? env.OD_S3_REGION ?? env.AWS_REGION ?? '').trim();
   if (!region) return { enabled: false, reason: 'missing_region' };
   const prefix = (env.OD_EXPORT_OFFLOAD_PREFIX ?? '').trim().replace(/^\/+|\/+$/g, '');
+  const endpoint = (env.OD_EXPORT_OFFLOAD_ENDPOINT ?? env.OD_S3_ENDPOINT ?? '').trim().replace(/\/+$/, '');
   return {
     enabled: true,
     bucket,
     region,
     prefix,
+    ...(endpoint ? { endpoint } : {}),
     presignTtlSec: readPositiveIntEnv(env, 'OD_EXPORT_OFFLOAD_PRESIGN_TTL_SEC', 300, 60, 900),
   };
 }

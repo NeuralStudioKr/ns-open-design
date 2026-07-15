@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildExportOffloadPresignedGetUrl,
   putExportOffloadObject,
   type ExportOffloadStorage,
 } from '../src/export-offload-store.js';
@@ -92,5 +93,51 @@ describe('export offload store', () => {
         { config: enabledConfig(), storage },
       ),
     ).resolves.toEqual({ status: 'failed', key: 'exports/ws/proj/hash.pdf', reason: 's3 down' });
+  });
+
+  it('builds a virtual-host S3 presigned GET URL', () => {
+    const url = new URL(
+      buildExportOffloadPresignedGetUrl({
+        key: 'exports/ws/proj/hash.pdf',
+        config: enabledConfig({ region: 'ap-northeast-2', presignTtlSec: 120 }),
+        credentials: {
+          accessKeyId: 'AKTEST',
+          secretAccessKey: 'secret',
+        },
+        now: new Date('2026-07-15T00:00:00.000Z'),
+      }),
+    );
+
+    expect(url.origin).toBe('https://teamver-design-data.s3.ap-northeast-2.amazonaws.com');
+    expect(url.pathname).toBe('/exports/ws/proj/hash.pdf');
+    expect(url.searchParams.get('X-Amz-Algorithm')).toBe('AWS4-HMAC-SHA256');
+    expect(url.searchParams.get('X-Amz-Credential')).toBe('AKTEST/20260715/ap-northeast-2/s3/aws4_request');
+    expect(url.searchParams.get('X-Amz-Date')).toBe('20260715T000000Z');
+    expect(url.searchParams.get('X-Amz-Expires')).toBe('120');
+    expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('host');
+    expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('builds a path-style presigned GET URL for endpoint overrides', () => {
+    const url = new URL(
+      buildExportOffloadPresignedGetUrl({
+        key: 'exports/ws/proj/hash.pdf',
+        config: {
+          ...enabledConfig({ prefix: 'teamver' }),
+          endpoint: 'https://s3.internal.test',
+        },
+        credentials: {
+          accessKeyId: 'ASIA_TEST',
+          secretAccessKey: 'secret',
+          sessionToken: 'session-token',
+        },
+        now: new Date('2026-07-15T00:00:00.000Z'),
+      }),
+    );
+
+    expect(url.origin).toBe('https://s3.internal.test');
+    expect(url.pathname).toBe('/teamver-design-data/teamver/exports/ws/proj/hash.pdf');
+    expect(url.searchParams.get('X-Amz-Security-Token')).toBe('session-token');
+    expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/);
   });
 });
