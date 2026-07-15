@@ -115,7 +115,23 @@ import {
 } from '../teamver/teamverDesignAccess';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
+import { formatDriveImportErrorForUser } from '../teamver/importDriveAssets';
+import { formatTeamverCanvasImportErrorMessage } from '../teamver/importCanvas';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
+import {
+  TeamverCanvasSlideLaunchModal,
+  type TeamverCanvasSlideLaunchSource,
+} from '../teamver/components/TeamverCanvasSlideLaunchModal';
+import {
+  consumeTeamverCanvasLaunchHandoff,
+  readTeamverCanvasLaunchHandoff,
+} from '../teamver/canvasLaunchHandoff';
+import { CANVAS_CREATE_SLIDES_PROMPT } from '../teamver/canvasSlideLaunch';
+import {
+  consumeTeamverDriveLaunchHandoff,
+  readTeamverDriveLaunchHandoffAssets,
+  readTeamverDriveLaunchIntent,
+} from '../teamver/driveLaunchHandoff';
 import type { PetTaskSummary } from './pet/PetOverlay';
 
 const HOME_DRIVE_IMPORT_MAX = 12;
@@ -328,6 +344,9 @@ export function HomeView({
   const [driveImportOpen, setDriveImportOpen] = useState(false);
   const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
   const [designAccessTick, setDesignAccessTick] = useState(0);
+  const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverCanvasSlideLaunchSource | null>(null);
+  const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
+  const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -352,6 +371,8 @@ export function HomeView({
       setTeamverWorkspaceId(trimmed || null);
       setDriveImportOpen(false);
       setStagedDriveAssets([]);
+      setCanvasSlideLaunch(null);
+      setCanvasSlideLaunchError(null);
     });
     return () => {
       cancelled = true;
@@ -367,6 +388,39 @@ export function HomeView({
   useEffect(() => {
     if (teamverDriveImportAllowed) return;
     setDriveImportOpen(false);
+    setCanvasSlideLaunch(null);
+  }, [teamverDriveImportAllowed]);
+  // Main Canvas / Drive → Design lands on Home (`/`). ChatComposer is project-only,
+  // so one-confirm must boot here (§5.6 / docs 42).
+  useEffect(() => {
+    if (!teamverDriveImportAllowed) return;
+    const canvasHandoff = readTeamverCanvasLaunchHandoff();
+    if (canvasHandoff) {
+      setCanvasSlideLaunchError(null);
+      setCanvasSlideLaunch({ kind: 'canvas', handoff: canvasHandoff });
+      return;
+    }
+    const assets = readTeamverDriveLaunchHandoffAssets();
+    if (assets.length === 0) return;
+    const intent = readTeamverDriveLaunchIntent();
+    consumeTeamverDriveLaunchHandoff();
+    if (intent === 'create-slides') {
+      setCanvasSlideLaunchError(null);
+      setCanvasSlideLaunch({ kind: 'drive', asset: assets[0]! });
+      return;
+    }
+    setStagedDriveAssets((prev) => {
+      const seen = new Set(prev.map((item) => item.assetId));
+      const next = [...prev];
+      for (const asset of assets) {
+        if (seen.has(asset.assetId)) continue;
+        if (next.length >= HOME_DRIVE_IMPORT_MAX) break;
+        next.push(asset);
+        seen.add(asset.assetId);
+      }
+      return next;
+    });
+    setDriveImportOpen(true);
   }, [teamverDriveImportAllowed]);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   // Token paired with `workingDir` when picked through the desktop host's
@@ -1664,6 +1718,99 @@ export function HomeView({
     }
   }
 
+  async function confirmCanvasSlideLaunch() {
+    if (!canvasSlideLaunch || canvasSlideLaunchBusy || submitPending) return;
+    if (!teamverDriveImportAllowed) return;
+    setCanvasSlideLaunchBusy(true);
+    setCanvasSlideLaunchError(null);
+    setError(null);
+    try {
+      if (canvasSlideLaunch.kind === 'canvas') {
+        const submittedDesignSystemId = slideOnlyMvp
+          ? resolveEmbedSlideDesignSystemId({
+              explicitId: null,
+              workspaceDefaultId: defaultDesignSystemId,
+              designSystems: designSystemPickerSystems,
+            })
+          : null;
+        const submitResult = await Promise.resolve(
+          onSubmit({
+            prompt: CANVAS_CREATE_SLIDES_PROMPT,
+            pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+            pluginType: 'official',
+            skillId: null,
+            appliedPluginSnapshotId: null,
+            pluginTitle: null,
+            taskKind: null,
+            pluginInputs: { prompt: CANVAS_CREATE_SLIDES_PROMPT },
+            projectKind: 'deck',
+            projectMetadata: null,
+            designSystemId: submittedDesignSystemId,
+            contextPlugins: [],
+            contextMcpServers: [],
+            contextConnectors: [],
+            attachments: [],
+            canvasHandoff: canvasSlideLaunch.handoff,
+            conversationMode: 'design',
+          }),
+        );
+        if (submitResult === false) {
+          setCanvasSlideLaunchError('프로젝트를 만들지 못했습니다 — 다시 시도해 주세요.');
+          return;
+        }
+        consumeTeamverCanvasLaunchHandoff();
+        setCanvasSlideLaunch(null);
+        setCanvasSlideLaunchError(null);
+        return;
+      }
+
+      const asset = canvasSlideLaunch.asset;
+      const submitResult = await Promise.resolve(
+        onSubmit({
+          prompt: CANVAS_CREATE_SLIDES_PROMPT,
+          pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+          pluginType: 'official',
+          skillId: null,
+          appliedPluginSnapshotId: null,
+          pluginTitle: null,
+          taskKind: null,
+          pluginInputs: { prompt: CANVAS_CREATE_SLIDES_PROMPT },
+          projectKind: 'deck',
+          projectMetadata: null,
+          designSystemId: slideOnlyMvp
+            ? resolveEmbedSlideDesignSystemId({
+                explicitId: null,
+                workspaceDefaultId: defaultDesignSystemId,
+                designSystems: designSystemPickerSystems,
+              })
+            : null,
+          contextPlugins: [],
+          contextMcpServers: [],
+          contextConnectors: [],
+          attachments: [],
+          driveAttachments: [asset],
+          conversationMode: 'design',
+        }),
+      );
+      if (submitResult === false) {
+        setCanvasSlideLaunchError(formatDriveImportErrorForUser('drive_import_failed'));
+        return;
+      }
+      setCanvasSlideLaunch(null);
+      setCanvasSlideLaunchError(null);
+    } catch (err) {
+      const message =
+        canvasSlideLaunch.kind === 'canvas'
+          ? formatTeamverCanvasImportErrorMessage(err)
+          : formatDriveImportErrorForUser(
+              err instanceof Error ? err.message : String(err),
+            );
+      setCanvasSlideLaunchError(message);
+    } finally {
+      setCanvasSlideLaunchBusy(false);
+    }
+  }
+
   async function submit() {
     if (submitPending) return;
     const trimmed = prompt.trim();
@@ -1953,6 +2100,26 @@ export function HomeView({
           onConfirm={(assets) => {
             stageDriveAssets(assets);
             setDriveImportOpen(false);
+          }}
+        />
+      ) : null}
+      {teamverDriveImportAllowed && canvasSlideLaunch ? (
+        <TeamverCanvasSlideLaunchModal
+          open
+          source={canvasSlideLaunch}
+          confirming={canvasSlideLaunchBusy}
+          errorMessage={canvasSlideLaunchError}
+          onClose={() => {
+            if (!canvasSlideLaunchBusy) {
+              if (canvasSlideLaunch.kind === 'canvas') {
+                consumeTeamverCanvasLaunchHandoff();
+              }
+              setCanvasSlideLaunch(null);
+              setCanvasSlideLaunchError(null);
+            }
+          }}
+          onConfirm={() => {
+            void confirmCanvasSlideLaunch();
           }}
         />
       ) : null}

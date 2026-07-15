@@ -99,6 +99,12 @@ import {
   formatTeamverDriveImportErrorMessage,
   importTeamverDriveAssets,
 } from './teamver/importDriveAssets';
+import {
+  canvasImportedToChatAttachments,
+  formatTeamverCanvasImportErrorMessage,
+  importTeamverCanvas,
+} from './teamver/importCanvas';
+import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
@@ -2081,6 +2087,7 @@ function AppInner() {
         requestId?: string;
         pendingFiles?: File[];
         pendingDriveAssets?: import('./teamver/importDriveAssets').TeamverDriveImportAsset[];
+        pendingCanvasHandoff?: TeamverCanvasLaunchHandoff;
         userWorkingDirToken?: string;
       },
     ): Promise<boolean> => {
@@ -2188,6 +2195,20 @@ function AppInner() {
               Boolean(asset && typeof asset === 'object' && typeof asset.assetId === 'string'),
           )
         : [];
+      const pendingCanvasHandoff =
+        input.pendingCanvasHandoff &&
+        typeof input.pendingCanvasHandoff.sessionId === 'string' &&
+        typeof input.pendingCanvasHandoff.artifactId === 'string' &&
+        input.pendingCanvasHandoff.sessionId.trim() &&
+        input.pendingCanvasHandoff.artifactId.trim()
+          ? {
+              sessionId: input.pendingCanvasHandoff.sessionId.trim(),
+              artifactId: input.pendingCanvasHandoff.artifactId.trim(),
+              ...(input.pendingCanvasHandoff.revision?.trim()
+                ? { revision: input.pendingCanvasHandoff.revision.trim() }
+                : {}),
+            }
+          : null;
       // Flip the project onto the user-picked working directory BEFORE
       // uploading staged Home attachments. `replaceProjectWorkingDir` changes
       // `metadata.baseDir`, so the project starts reading from the external
@@ -2265,6 +2286,18 @@ function AppInner() {
           setWorkingDirError(formatTeamverDriveImportErrorMessage(err));
         }
       }
+      let canvasImportFailed = false;
+      if (!workingDirHandoffFailed && pendingCanvasHandoff) {
+        try {
+          const canvasResult = await importTeamverCanvas(result.project.id, pendingCanvasHandoff);
+          const canvasAttachments = canvasImportedToChatAttachments(canvasResult.imported);
+          firstMessageAttachments = [...firstMessageAttachments, ...canvasAttachments];
+        } catch (err) {
+          canvasImportFailed = true;
+          console.warn('Home Canvas import-canvas failed for new project', err);
+          setWorkingDirError(formatTeamverCanvasImportErrorMessage(err));
+        }
+      }
       trackProjectCreateResult(
         analytics.track,
         {
@@ -2287,6 +2320,7 @@ function AppInner() {
       // reload after the run has started does not refire.
       if (
         !workingDirHandoffFailed &&
+        !canvasImportFailed &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
       ) {

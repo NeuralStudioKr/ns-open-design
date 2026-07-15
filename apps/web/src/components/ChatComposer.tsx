@@ -580,7 +580,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     useEffect(() => {
       if (teamverDriveImportAllowed) return;
       setDriveImportOpen(false);
-      consumeTeamverCanvasLaunchHandoff();
+      // Do not consume canvas URL here — workspace may still be loading
+      // (allowed=false on first paint). Premature consume drops handoff on /.
       setCanvasSlideLaunch(null);
       setDriveLaunchAssets([]);
     }, [teamverDriveImportAllowed]);
@@ -603,8 +604,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         // cannot be attached after the switch.
         setDriveImportOpen(false);
         setDriveLaunchAssets([]);
-        // Clear sticky T2 query so a remount after switch does not reopen the modal.
-        consumeTeamverCanvasLaunchHandoff();
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
         setDriveImportPartial(null);

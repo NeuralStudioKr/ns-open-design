@@ -105,6 +105,7 @@ interface Props {
       autoSendFirstMessage?: boolean;
       pendingFiles?: File[];
       pendingDriveAssets?: import('../teamver/importDriveAssets').TeamverDriveImportAsset[];
+      pendingCanvasHandoff?: import('../teamver/canvasLaunchHandoff').TeamverCanvasLaunchHandoff;
     },
   ) => Promise<boolean> | boolean | void;
   onCreatePluginShareProject: (
