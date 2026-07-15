@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExportOffloadObjectKey,
   isExportOffloadEnabled,
+  resolveExportOffloadConfig,
 } from '../src/export-offload-key.js';
 
 describe('export offload object key', () => {
@@ -11,6 +12,54 @@ describe('export offload object key', () => {
     expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: '0' } as NodeJS.ProcessEnv)).toBe(false);
     expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: '1' } as NodeJS.ProcessEnv)).toBe(true);
     expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: 'true' } as NodeJS.ProcessEnv)).toBe(true);
+  });
+
+  it('resolves offload config only when required S3 env is present', () => {
+    expect(resolveExportOffloadConfig({} as NodeJS.ProcessEnv)).toEqual({
+      enabled: false,
+      reason: 'flag_disabled',
+    });
+    expect(resolveExportOffloadConfig({ OD_EXPORT_OFFLOAD_ENABLED: '1' } as NodeJS.ProcessEnv)).toEqual({
+      enabled: false,
+      reason: 'missing_bucket',
+    });
+    expect(
+      resolveExportOffloadConfig({
+        OD_EXPORT_OFFLOAD_ENABLED: '1',
+        OD_S3_BUCKET: 'teamver-design-data',
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ enabled: false, reason: 'missing_region' });
+    expect(
+      resolveExportOffloadConfig({
+        OD_EXPORT_OFFLOAD_ENABLED: '1',
+        OD_S3_BUCKET: 'teamver-design-data',
+        AWS_REGION: 'us-east-1',
+      } as NodeJS.ProcessEnv),
+    ).toEqual({
+      enabled: true,
+      bucket: 'teamver-design-data',
+      region: 'us-east-1',
+      prefix: '',
+      presignTtlSec: 300,
+    });
+  });
+
+  it('supports dedicated export offload env and clamps presign ttl', () => {
+    expect(
+      resolveExportOffloadConfig({
+        OD_EXPORT_OFFLOAD_ENABLED: '1',
+        OD_EXPORT_OFFLOAD_BUCKET: 'exports-bucket',
+        OD_EXPORT_OFFLOAD_REGION: 'ap-northeast-2',
+        OD_EXPORT_OFFLOAD_PREFIX: '/teamver-design/',
+        OD_EXPORT_OFFLOAD_PRESIGN_TTL_SEC: '9999',
+      } as NodeJS.ProcessEnv),
+    ).toEqual({
+      enabled: true,
+      bucket: 'exports-bucket',
+      region: 'ap-northeast-2',
+      prefix: 'teamver-design',
+      presignTtlSec: 900,
+    });
   });
 
   it('builds a tenant/project scoped exports key with the cache hash', () => {
