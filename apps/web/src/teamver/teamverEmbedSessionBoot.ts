@@ -11,6 +11,7 @@ import {
   redirectToDesignLoginIfBffMissing,
   resolveEmbedBootSessionOptions,
 } from "./teamverEmbedAuthFlow";
+import { readLaunchWorkspaceIdFromBrowserUrl } from "./teamverEmbedAuthNavigation";
 import {
   clearTeamverEmbedSessionState,
   setTeamverEmbedSessionAuthenticated,
@@ -74,7 +75,12 @@ export async function runTeamverEmbedSessionBoot(
 
     if (session?.authenticated) {
       setTeamverEmbedSessionAuthenticated(true);
-      activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+      const launchWorkspaceId = readLaunchWorkspaceIdFromBrowserUrl();
+      activeWorkspaceId = await syncTeamverWorkspaceFromSession(
+        session,
+        undefined,
+        launchWorkspaceId ? { preferredIdOverride: launchWorkspaceId } : undefined,
+      );
       if (deps.isCancelled()) return null;
 
       seedEmbedBootstrapSession({

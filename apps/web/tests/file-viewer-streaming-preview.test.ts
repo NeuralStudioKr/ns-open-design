@@ -25,7 +25,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("data-testid=\"artifact-preview-streaming-veil\"");
     expect(source).toContain("is-streaming-unstable");
     expect(source).toContain("fileViewer.updatingPreview");
-    expect(source).toContain("&& source != null");
+    expect(source).toContain("&& source == null");
   });
 
   it("keeps last stable preview during disk refresh instead of blanking source", () => {

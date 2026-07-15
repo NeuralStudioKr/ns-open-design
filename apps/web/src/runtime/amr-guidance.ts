@@ -44,6 +44,17 @@ const PROMOTE_AMR_CODES = new Set<string>([
   'UPSTREAM_UNAVAILABLE',
 ]);
 
+// Infrastructure failures that replaying the same prompt cannot fix — hide the
+// retry button so users do not stack identical failed assistant rows.
+const NON_RETRYABLE_CODES = new Set<string>([
+  'MANAGED_API_KEY_MISSING',
+  'API_KEY_REQUIRED',
+  'PROJECT_STORAGE_UNAVAILABLE',
+  'session_unreachable',
+  'FORBIDDEN',
+  'PROJECT_NOT_FOUND',
+]);
+
 // Primary action offered in the gray error card.
 //   - retry:                       re-run with the current agent.
 //   - authorize:                   AMR sign-in/authorize flow, then auto-retry on success.
@@ -68,6 +79,7 @@ const PROMOTE_AMR_CODES = new Set<string>([
 // daemon side).
 export type RunFailurePrimaryAction =
   | 'retry'
+  | 'none'
   | 'authorize'
   | 'recharge'
   | 'launch-terminal-auth'
@@ -102,6 +114,14 @@ export function resolveRunFailureUi(
   code: string | null | undefined,
   agentId: string | null | undefined,
 ): RunFailureUi {
+  if (code && NON_RETRYABLE_CODES.has(code)) {
+    return {
+      primaryAction: 'none',
+      messageKey: null,
+      secondaryRetry: false,
+      showSwitchCard: false,
+    };
+  }
   if (agentId === 'amr') {
     if (code === 'AMR_AUTH_REQUIRED') {
       return {

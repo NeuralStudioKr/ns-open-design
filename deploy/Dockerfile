@@ -111,6 +111,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-freefont-ttf \
     fonts-noto-core \
     fonts-noto-cjk \
+    fonts-noto-color-emoji \
     ca-certificates \
     # Playwright chromium runtime deps (Debian bookworm SSOT). We install
     # these explicitly rather than relying on the distro `chromium`

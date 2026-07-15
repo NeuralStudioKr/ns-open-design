@@ -1629,9 +1629,23 @@ export function ProjectView({
     setArtifact(null);
     savedArtifactRef.current = null;
     pendingWritesRef.current.clear();
+    const loadConversationsWithRetry = async () => {
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await listConversations(project.id);
+        } catch (err) {
+          lastError = err;
+          if (attempt < 2) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+          }
+        }
+      }
+      throw lastError;
+    };
     (async () => {
       try {
-        const list = await listConversations(project.id);
+        const list = await loadConversationsWithRetry();
         if (cancelled) return;
         if (list.length === 0) {
           const fresh = await createConversation(project.id);
@@ -1737,14 +1751,28 @@ export function ProjectView({
       messagesConversationIdRef.current = null;
     }
     (async () => {
+      const loadMessagesWithRetry = async () => {
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            return await Promise.all([
+              listMessages(project.id, activeConversationId),
+              fetchPreviewComments(project.id, activeConversationId),
+              config.mode === 'daemon'
+                ? listActiveChatRuns(project.id, activeConversationId)
+                : Promise.resolve([]),
+            ]);
+          } catch (err) {
+            lastError = err;
+            if (attempt < 2) {
+              await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+            }
+          }
+        }
+        throw lastError;
+      };
       try {
-        const [list, comments, activeRuns] = await Promise.all([
-          listMessages(project.id, activeConversationId),
-          fetchPreviewComments(project.id, activeConversationId),
-          config.mode === 'daemon'
-            ? listActiveChatRuns(project.id, activeConversationId)
-            : Promise.resolve([]),
-        ]);
+        const [list, comments, activeRuns] = await loadMessagesWithRetry();
         if (cancelled) return;
         const mergedMessages = mergeActiveRunsIntoMessages(list, activeRuns);
         setMessages(mergedMessages);
@@ -3549,12 +3577,19 @@ export function ProjectView({
             const runMayFinalize =
               !supersededRunsRef.current.has(controller);
             if ((err as Error).name !== 'AbortError' && runMayFinalize) {
+              const errorCode = extractProjectRunErrorCode(err);
+              const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               const msg = formatProjectRunErrorForUser(err);
               setError(msg);
-              appendAssistantErrorEvent(message.id, msg);
+              appendAssistantErrorEvent(message.id, msg, errorCode);
               updateMessageById(
                 message.id,
-                (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
+                (prev) => ({
+                  ...prev,
+                  runStatus: 'failed',
+                  endedAt: prev.endedAt ?? Date.now(),
+                  resumable,
+                }),
                 true,
                 { telemetryFinalized: true },
               );
@@ -5208,9 +5243,10 @@ export function ProjectView({
   const handleRetry = useCallback(
     (assistantMessage: ChatMessage) => {
       if (currentConversationActionDisabled) return;
+      if (currentConversationHasActiveRun) return;
       void handleSend('', [], [], { retryOfAssistantId: assistantMessage.id });
     },
-    [currentConversationActionDisabled, handleSend],
+    [currentConversationActionDisabled, currentConversationHasActiveRun, handleSend],
   );
 
   // "Continue" on a resumable failed run: send a fresh turn in the same

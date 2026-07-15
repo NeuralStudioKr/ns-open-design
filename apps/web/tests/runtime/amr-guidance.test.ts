@@ -134,4 +134,12 @@ describe('resolveRunFailureUi', () => {
       expect(ui.primaryAction).not.toBe('launch-terminal-auth');
     }
   });
+
+  it('hides retry for infrastructure failures that replay cannot fix', () => {
+    for (const code of ['MANAGED_API_KEY_MISSING', 'PROJECT_STORAGE_UNAVAILABLE', 'session_unreachable']) {
+      const ui = resolveRunFailureUi(code, 'claude');
+      expect(ui.primaryAction).toBe('none');
+      expect(ui.secondaryRetry).toBe(false);
+    }
+  });
 });
