@@ -10,6 +10,8 @@ type Props = {
   onChange: (value: string) => void;
   onSubmit: () => void;
   onClear?: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 export function TeamverDriveSearchField({
@@ -22,6 +24,8 @@ export function TeamverDriveSearchField({
   onChange,
   onSubmit,
   onClear,
+  onFocus,
+  onBlur,
 }: Props) {
   const canSubmit = value.trim().length >= minSearchLength;
   const showClear = Boolean(onClear && value.trim());
@@ -38,6 +42,8 @@ export function TeamverDriveSearchField({
         placeholder={placeholder}
         disabled={disabled}
         onChange={(event) => onChange(event.currentTarget.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();

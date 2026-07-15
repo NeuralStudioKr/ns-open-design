@@ -44,6 +44,7 @@ import {
   redirectToTeamverLoginFromEmbed,
 } from "../teamverBffAuthError";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
+import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
@@ -214,13 +215,22 @@ export function TeamverDriveImportModal({
   const selectedAssets = useMemo(() => Array.from(selected.values()), [selected]);
   const selectedCount = selectedAssets.length;
   const canAttach = selectedCount > 0 && !confirming;
+  const [searchFieldFocused, setSearchFieldFocused] = useState(false);
   const activeScope = scopes[scopeIndex] ?? null;
   const awaitingScopes = open && (!scopesHydrated || !activeScope);
   const showFullLoader =
     (loading || awaitingScopes) && rows.length === 0 && recentRows.length === 0;
   const currentFolderId = navStack[navStack.length - 1]?.folderId ?? null;
+  // `showRecent` still controls whether recent rows are FETCHED (personal root),
+  // matching the picker's home-recent semantics. Actual visibility below is
+  // additionally gated on search focus / empty state so the list is not always
+  // pushed down by the "최근" strip.
   const showRecent =
     !searchMode && currentFolderId == null && activeScope?.mode === "personal";
+  const hasBrowseImportContent =
+    (rows.length > 0);
+  const recentSectionRevealed =
+    showRecent && (searchFieldFocused || !hasBrowseImportContent);
 
   useTeamverDriveModalFocusTrap(open, modalRef);
 
@@ -791,59 +801,56 @@ export function TeamverDriveImportModal({
           </button>
         </header>
 
-        {scopes.length > 1 ? (
-          <div className="teamver-drive-import-tabs" role="tablist" aria-label="드라이브 범위">
-            {scopes.map((scope, index) => (
-              <button
-                key={scope.mode === "personal" ? "personal" : scope.sharedDriveId}
-                type="button"
-                role="tab"
-                aria-selected={index === scopeIndex}
-                className={`teamver-drive-import-tab${index === scopeIndex ? " is-active" : ""}`}
-                disabled={confirming}
-                onClick={() => {
-                  setScopeIndex(index);
-                  setNavStack([rootCrumb(scope)]);
-                  resetSearch();
-                  setRows([]);
-                  setRecentRows([]);
-                  setBrowseNextCursor(null);
-                }}
-              >
-                {scope.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <div className="teamver-drive-modal-body">
+          {scopes.length > 0 ? (
+            <TeamverDriveScopeSidebar
+              scopes={scopes}
+              activeIndex={scopeIndex}
+              disabled={confirming}
+              onSelect={(index) => {
+                const scope = scopes[index];
+                if (!scope) return;
+                setScopeIndex(index);
+                setNavStack([rootCrumb(scope)]);
+                resetSearch();
+                setRows([]);
+                setRecentRows([]);
+                setBrowseNextCursor(null);
+              }}
+            />
+          ) : null}
 
-        <TeamverDriveModalNav
-          crumbs={navStack}
-          disabled={confirming}
-          onBack={() => {
-            setNavStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
-            resetSearch();
-          }}
-          onNavigate={(index) => {
-            setNavStack(navStack.slice(0, index + 1));
-            resetSearch();
-          }}
-        />
+          <div className="teamver-drive-modal-content">
+            <TeamverDriveModalNav
+              crumbs={navStack}
+              disabled={confirming}
+              onBack={() => {
+                setNavStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
+                resetSearch();
+              }}
+              onNavigate={(index) => {
+                setNavStack(navStack.slice(0, index + 1));
+                resetSearch();
+              }}
+            />
 
-        <TeamverDriveSearchField
-          autoFocus
-          value={query}
-          ariaLabel="드라이브 파일 검색"
-          minSearchLength={TEAMVER_DRIVE_IMPORT_SEARCH_MIN}
-          placeholder={
-            searchMode
-              ? "드라이브 전체 검색 결과"
-              : "이 폴더에서 필터 · Enter로 전체 검색"
-          }
-          disabled={confirming}
-          onChange={setQuery}
-          onSubmit={submitSearch}
-          onClear={resetSearch}
-        />
+            <TeamverDriveSearchField
+              autoFocus
+              value={query}
+              ariaLabel="드라이브 파일 검색"
+              minSearchLength={TEAMVER_DRIVE_IMPORT_SEARCH_MIN}
+              placeholder={
+                searchMode
+                  ? "드라이브 전체 검색 결과"
+                  : "이 폴더에서 필터 · Enter로 전체 검색"
+              }
+              disabled={confirming}
+              onChange={setQuery}
+              onSubmit={submitSearch}
+              onClear={resetSearch}
+              onFocus={() => setSearchFieldFocused(true)}
+              onBlur={() => setSearchFieldFocused(false)}
+            />
 
         <div
           className={`teamver-drive-picker-list teamver-drive-import-list${refreshing ? " is-refreshing" : ""}`}
@@ -889,7 +896,7 @@ export function TeamverDriveImportModal({
             </div>
           ) : (
             <>
-              {showRecent && recentRows.length > 0 ? (
+              {recentSectionRevealed && recentRows.length > 0 ? (
                 <div className="teamver-drive-import-section" data-testid="teamver-drive-import-recent">
                   <div className="teamver-drive-import-section-label">최근</div>
                   {renderAssetGrid(recentRows, "recent")}
@@ -898,7 +905,7 @@ export function TeamverDriveImportModal({
 
               {folderRows.length > 0 || browseAssetRows.length > 0 ? (
                 <>
-                  {showRecent && recentRows.length > 0 && (folderRows.length > 0 || browseAssetRows.length > 0) ? (
+                  {recentSectionRevealed && recentRows.length > 0 && (folderRows.length > 0 || browseAssetRows.length > 0) ? (
                     <div className="teamver-drive-import-section-label">탐색</div>
                   ) : null}
                   {folderRows.map((row) => (
@@ -922,7 +929,7 @@ export function TeamverDriveImportModal({
                   ))}
                   {renderAssetGrid(browseAssetRows, "browse")}
                 </>
-              ) : showRecent && recentRows.length > 0 ? null : (
+              ) : recentSectionRevealed && recentRows.length > 0 ? null : (
                 <div className="teamver-drive-picker-empty">
                   {searchMode ? "일치하는 드라이브 파일이 없습니다" : "이 폴더에 파일이 없습니다"}
                 </div>
@@ -940,6 +947,8 @@ export function TeamverDriveImportModal({
               ) : null}
             </>
           )}
+        </div>
+          </div>
         </div>
 
         {partialResult && partialResult.failures.length > 0 ? (

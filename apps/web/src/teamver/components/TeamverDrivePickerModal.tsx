@@ -27,6 +27,7 @@ import {
 } from "../driveFileVisual";
 import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
+import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
@@ -209,33 +210,31 @@ export function TeamverDrivePickerModal({
     const browseAssetIds = new Set(browseAssetRows.map((row) => row.assetId));
     return recentAssetRows.filter((row) => !browseAssetIds.has(row.assetId));
   }, [browseAssetRows, recentAssetRows]);
-  const showRecentSection =
-    !searching
-    && atScopeRoot
-    && recentTargets.length > 0;
-  const showRecentAssetSection =
-    !searching
-    && atScopeRoot
-    && activeScope?.mode === "personal"
-    && displayedRecentAssetRows.length > 0
-    && recentAssetsExpanded;
-  const hasRecentAssetTargets =
-    !searching
-    && atScopeRoot
-    && activeScope?.mode === "personal"
-    && displayedRecentAssetRows.length > 0;
+  const [searchFieldFocused, setSearchFieldFocused] = useState(false);
   const displayedHomeRecentTargets = useMemo(() => {
     if (searching || !atScopeRoot) return [];
     const localIds = new Set(recentTargets.map((target) => target.id));
     return homeRecentTargets.filter((target) => !localIds.has(target.id));
   }, [atScopeRoot, homeRecentTargets, recentTargets, searching]);
   const hasHomeRecentTargets = displayedHomeRecentTargets.length > 0;
-  const showHomeRecentSection = hasHomeRecentTargets && homeRecentExpanded;
   const hasBrowseContent = displayedTargets.length > 0 || displayedBrowseAssets.length > 0;
+  // Recent-related helpers hide by default (redundant with folder list) and only
+  // reveal when the user focuses search OR the current view is genuinely empty.
+  const recentHelpersRevealed =
+    !searching
+    && atScopeRoot
+    && (searchFieldFocused || (!hasBrowseContent && !browseLoading));
+  const showRecentSection = recentHelpersRevealed && recentTargets.length > 0;
+  const hasPersonalRecentAssets =
+    activeScope?.mode === "personal" && displayedRecentAssetRows.length > 0;
+  const hasRecentAssetTargets = recentHelpersRevealed && hasPersonalRecentAssets;
+  const showRecentAssetSection = hasRecentAssetTargets && recentAssetsExpanded;
+  const showHomeRecentToggle = recentHelpersRevealed && hasHomeRecentTargets;
+  const showHomeRecentSection = showHomeRecentToggle && homeRecentExpanded;
   const showInitialLoading =
     !searching
     && !showRecentSection
-    && !hasHomeRecentTargets
+    && !showHomeRecentToggle
     && !hasRecentAssetTargets
     && !hasBrowseContent
     && (loading || browseLoading || homeRecentLoading || scopes.length === 0);
@@ -789,57 +788,55 @@ export function TeamverDrivePickerModal({
           </button>
         </header>
 
-        {scopes.length > 1 && !searching ? (
-          <div className="teamver-drive-import-tabs" role="tablist" aria-label="드라이브 범위">
-            {scopes.map((scope, index) => (
-              <button
-                key={scope.mode === "personal" ? "personal" : scope.sharedDriveId}
-                type="button"
-                role="tab"
-                aria-selected={index === scopeIndex}
-                className={`teamver-drive-import-tab${index === scopeIndex ? " is-active" : ""}`}
-                onClick={() => {
-                  setScopeIndex(index);
-                  setNavStack([rootCrumb(scope)]);
+        <div className="teamver-drive-modal-body">
+          {scopes.length > 0 && !searching ? (
+            <TeamverDriveScopeSidebar
+              scopes={scopes}
+              activeIndex={scopeIndex}
+              onSelect={(index) => {
+                const scope = scopes[index];
+                if (!scope) return;
+                setScopeIndex(index);
+                setNavStack([rootCrumb(scope)]);
+                resetSearch();
+                setRecentAssetRows([]);
+                setHomeRecentExpanded(false);
+                setRecentAssetsExpanded(false);
+              }}
+            />
+          ) : null}
+
+          <div className="teamver-drive-modal-content">
+            {navStack.length > 0 && !searching ? (
+              <TeamverDriveModalNav
+                crumbs={navStack}
+                onBack={() => {
+                  setNavStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
                   resetSearch();
-                  setRecentAssetRows([]);
-                  setHomeRecentExpanded(false);
                 }}
-              >
-                {scope.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
+                onNavigate={(index) => {
+                  setNavStack(navStack.slice(0, index + 1));
+                  resetSearch();
+                }}
+              />
+            ) : null}
 
-        {navStack.length > 0 && !searching ? (
-          <TeamverDriveModalNav
-            crumbs={navStack}
-            onBack={() => {
-              setNavStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
-              resetSearch();
-            }}
-            onNavigate={(index) => {
-              setNavStack(navStack.slice(0, index + 1));
-              resetSearch();
-            }}
-          />
-        ) : null}
-
-        <TeamverDriveSearchField
-          autoFocus
-          value={query}
-          ariaLabel="드라이브 폴더 검색"
-          minSearchLength={TEAMVER_DRIVE_PUBLISH_SEARCH_MIN}
-          placeholder={
-            searchMode
-              ? "드라이브 전체 검색 결과"
-              : "이 폴더에서 필터 · Enter로 전체 검색"
-          }
-          onChange={setQuery}
-          onSubmit={submitSearch}
-          onClear={resetSearch}
-        />
+            <TeamverDriveSearchField
+              autoFocus
+              value={query}
+              ariaLabel="드라이브 폴더 검색"
+              minSearchLength={TEAMVER_DRIVE_PUBLISH_SEARCH_MIN}
+              placeholder={
+                searchMode
+                  ? "드라이브 전체 검색 결과"
+                  : "이 폴더에서 필터 · Enter로 전체 검색"
+              }
+              onChange={setQuery}
+              onSubmit={submitSearch}
+              onClear={resetSearch}
+              onFocus={() => setSearchFieldFocused(true)}
+              onBlur={() => setSearchFieldFocused(false)}
+            />
 
         <div
           className="teamver-drive-picker-list teamver-drive-import-list"
@@ -879,7 +876,7 @@ export function TeamverDrivePickerModal({
             </div>
           ) : null}
           {showInitialLoading ? <TeamverDriveListSkeleton /> : null}
-          {hasHomeRecentTargets && atScopeRoot && !searching ? (
+          {showHomeRecentToggle ? (
             <div
               className="teamver-drive-import-section"
               data-testid="teamver-drive-picker-home-recent"
@@ -1019,6 +1016,8 @@ export function TeamverDrivePickerModal({
               더 보기
             </button>
           ) : null}
+        </div>
+          </div>
         </div>
         {!searching && currentTarget ? (
           <footer className="teamver-drive-picker-footer">
