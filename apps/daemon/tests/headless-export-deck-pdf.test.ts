@@ -524,6 +524,32 @@ describe('buildDeckPrintCss', () => {
     expect(revealBlock).toContain("el.classList.add('active', 'current', 'is-active')");
     expect(revealBlock).toContain("el.style.removeProperty('display')");
   });
+
+  it('includes a daemon-side editable PPTX renderer backed by dom-to-pptx', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('renderHeadlessEditablePptx');
+    expect(source).toContain('loadDomToPptxBundle');
+    expect(source).toContain('dom-to-pptx.bundle.js.gz');
+    expect(source).toContain('w.domToPptx.exportToPptx');
+    expect(source).toContain('svgAsVector: true');
+  });
+
+  it('routes PPTX downloads to editable export by default', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'import-export-routes.ts'),
+      'utf8',
+    );
+    const pptxBlock = source.slice(
+      source.indexOf("app.post('/api/projects/:id/export/pptx'"),
+      source.indexOf("app.post('/api/projects/:id/export/html'"),
+    );
+    expect(pptxBlock).toContain('renderHeadlessEditablePptx');
+    expect(pptxBlock).toContain('req.body?.editable !== false');
+    expect(pptxBlock).toContain('pptx-editable-dom-v1');
+  });
 });
 
 describe('imageScreenshotOptions', () => {

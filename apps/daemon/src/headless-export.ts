@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import {
@@ -42,6 +44,30 @@ export interface HeadlessDeckSlideImage {
 export interface HeadlessDeckImagesResult {
   images: HeadlessDeckSlideImage[];
   aspect: number;
+}
+
+let cachedDomToPptxBundle: string | null = null;
+
+function loadDomToPptxBundle(): string {
+  if (cachedDomToPptxBundle != null) return cachedDomToPptxBundle;
+  const candidates = [
+    fileURLToPath(new URL('../vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz', import.meta.url)),
+    fileURLToPath(new URL('../vendor/dom-to-pptx/dom-to-pptx.bundle.js', import.meta.url)),
+    path.resolve(process.cwd(), 'apps/daemon/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz'),
+    path.resolve(process.cwd(), 'apps/daemon/vendor/dom-to-pptx/dom-to-pptx.bundle.js'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const bytes = fs.readFileSync(candidate);
+      cachedDomToPptxBundle = candidate.endsWith('.gz')
+        ? gunzipSync(bytes).toString('utf8')
+        : bytes.toString('utf8');
+      return cachedDomToPptxBundle;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error('dom-to-pptx vendor bundle not found');
 }
 
 /**
@@ -510,6 +536,48 @@ export async function renderHeadlessDeckImages(
           images.push({ buffer: Buffer.from(image), jpeg: false });
         }
         return { images, aspect: DECK_WIDTH / DECK_HEIGHT };
+      } finally {
+        await page.close().catch(() => {});
+      }
+    },
+  );
+}
+
+export async function renderHeadlessEditablePptx(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<Buffer> {
+  if (!options.input.deck) {
+    throw new Error('PPTX export requires a slide deck');
+  }
+  return runHeadlessExportJob(
+    { format: 'pptx', deck: true, ...meta },
+    async (browser) => {
+      const page = await preparePage(browser, options, {
+        deckPrepareMode: 'html',
+      });
+      try {
+        await waitForPrintableContent(page);
+        await stripLeakedArtifactTextFromPage(page);
+        await resetDeckScreenshotLayout(page);
+        await inlineRenderedResources(page);
+        await waitForPrintableContent(page);
+        const slideCount = await showAllDeckSlidesForEditablePptx(page);
+        if (slideCount <= 0) {
+          throw new Error('no slides to export');
+        }
+        await page.addScriptTag({ content: loadDomToPptxBundle() });
+        const out = await evaluateInPage<{ b64?: string; error?: string }>(
+          page,
+          `
+          return (${runDomToPptxInPage.toString()})(args.selector);
+        `,
+          { selector: DECK_SLIDE_SELECTOR },
+        );
+        if (!out || out.error || !out.b64) {
+          throw new Error(out?.error || 'editable PPTX export produced no output');
+        }
+        return Buffer.from(out.b64, 'base64');
       } finally {
         await page.close().catch(() => {});
       }
@@ -1050,6 +1118,239 @@ async function countDeckSlides(page: Page): Promise<number> {
     `,
     { selector: DECK_SLIDE_SELECTOR },
   ).catch(() => 0);
+}
+
+async function showAllDeckSlidesForEditablePptx(page: Page): Promise<number> {
+  return evaluateInPage<number>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector))
+        .filter((el) => !el.closest('.mini-slide, .overview, .notes-overlay, .thumb'));
+      const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+      set(document.documentElement, 'width', args.width + 'px');
+      set(document.documentElement, 'height', args.height + 'px');
+      set(document.body, 'width', args.width + 'px');
+      set(document.body, 'height', args.height + 'px');
+      set(document.body, 'margin', '0');
+      document.querySelectorAll(args.wrapperSelector).forEach((el) => {
+        set(el, 'position', 'relative');
+        set(el, 'display', 'block');
+        set(el, 'overflow', 'hidden');
+        set(el, 'width', args.width + 'px');
+        set(el, 'height', args.height + 'px');
+        set(el, 'transform', 'none');
+      });
+      slides.forEach((node) => {
+        const el = node;
+        ['active', 'visible', 'is-active', 'current'].forEach((c) => el.classList.add(c));
+        el.removeAttribute('hidden');
+        el.removeAttribute('aria-hidden');
+        set(el, 'opacity', '1');
+        set(el, 'visibility', 'visible');
+        set(el, 'position', 'absolute');
+        set(el, 'left', '0');
+        set(el, 'top', '0');
+        set(el, 'width', args.width + 'px');
+        set(el, 'height', args.height + 'px');
+        set(el, 'overflow', 'hidden');
+      });
+      document.querySelectorAll(args.chromeHideSelector).forEach((el) => set(el, 'display', 'none'));
+      return slides.length;
+    `,
+    {
+      selector: DECK_SLIDE_SELECTOR,
+      wrapperSelector: DECK_WRAPPER_SELECTOR,
+      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
+      width: DECK_WIDTH,
+      height: DECK_HEIGHT,
+    },
+  ).catch(() => 0);
+}
+
+function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; error?: string }> {
+  type Element = any;
+  type HTMLElement = any;
+  type Blob = any;
+  const browserGlobal = globalThis as any;
+  const window = browserGlobal.window ?? browserGlobal;
+  const document = window.document;
+  const getComputedStyle = window.getComputedStyle.bind(window);
+  const btoa = window.btoa.bind(window);
+
+  function isTransparentColor(input: string): boolean {
+    const value = input.trim().toLowerCase();
+    return value === '' || value === 'transparent' || value === 'rgba(0, 0, 0, 0)';
+  }
+
+  function firstCssColor(input: string): string | null {
+    const rgb = input.match(/rgba?\([^)]*\)/i);
+    if (rgb) return rgb[0];
+    const hex = input.match(/#[0-9a-f]{3,8}\b/i);
+    return hex ? hex[0] : null;
+  }
+
+  function effectiveBackgroundStyle(slide: HTMLElement): {
+    color: string;
+    image: string;
+    position: string;
+    size: string;
+    repeat: string;
+    origin: string;
+    clip: string;
+  } | null {
+    const candidates: Element[] = [];
+    for (let el: Element | null = slide; el; el = el.parentElement) candidates.push(el);
+    if (document.body && !candidates.includes(document.body)) candidates.push(document.body);
+    if (document.documentElement && !candidates.includes(document.documentElement)) {
+      candidates.push(document.documentElement);
+    }
+
+    for (const el of candidates) {
+      const style = getComputedStyle(el);
+      const bgColor = style.backgroundColor;
+      const bgImage = style.backgroundImage;
+      const hasImage = bgImage && bgImage !== 'none';
+      const hasColor = bgColor && !isTransparentColor(bgColor);
+      const fallbackColor = hasColor ? bgColor : firstCssColor(bgImage);
+      if (!hasImage && !hasColor) continue;
+      if (!fallbackColor) continue;
+      return {
+        color: fallbackColor,
+        image: bgImage,
+        position: style.backgroundPosition,
+        size: style.backgroundSize,
+        repeat: style.backgroundRepeat,
+        origin: style.backgroundOrigin,
+        clip: style.backgroundClip,
+      };
+    }
+    return null;
+  }
+
+  function ensureExplicitSlideBackgrounds(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll(':scope > [data-od-pptx-bg]').forEach((el: HTMLElement) => el.remove());
+      const background = effectiveBackgroundStyle(slide);
+      if (!background) continue;
+
+      const bg = document.createElement('div');
+      bg.setAttribute('data-od-pptx-bg', 'true');
+      bg.setAttribute('aria-hidden', 'true');
+      bg.style.setProperty('position', 'absolute', 'important');
+      bg.style.setProperty('inset', '0', 'important');
+      bg.style.setProperty('z-index', '0', 'important');
+      bg.style.setProperty('pointer-events', 'none', 'important');
+      bg.style.setProperty('background-color', background.color, 'important');
+      bg.style.setProperty('background-image', background.image, 'important');
+      bg.style.setProperty('background-position', background.position, 'important');
+      bg.style.setProperty('background-size', background.size, 'important');
+      bg.style.setProperty('background-repeat', background.repeat, 'important');
+      bg.style.setProperty('background-origin', background.origin, 'important');
+      bg.style.setProperty('background-clip', background.clip, 'important');
+
+      const style = getComputedStyle(slide);
+      if (style.position === 'static') slide.style.setProperty('position', 'relative', 'important');
+      if (style.overflow === 'visible') slide.style.setProperty('overflow', 'hidden', 'important');
+      slide.style.setProperty('background-color', background.color, 'important');
+      Array.from(slide.children as HTMLElement[]).forEach((child: HTMLElement) => {
+        if (child.getAttribute('data-od-pptx-bg') === 'true') return;
+        const childStyle = getComputedStyle(child as Element);
+        const element = child as HTMLElement;
+        if (childStyle.position === 'static') {
+          element.style.setProperty('position', 'relative', 'important');
+        }
+        if (childStyle.zIndex === 'auto') {
+          element.style.setProperty('z-index', '1', 'important');
+        }
+      });
+      slide.prepend(bg);
+    }
+  }
+
+  function stabilizeLargeSingleLineText(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const rawText = el.innerText || el.textContent || '';
+        const text = rawText.replace(/\s+/g, ' ').trim();
+        if (!text || rawText.includes('\n')) return;
+
+        const style = getComputedStyle(el);
+        const fontSizePx = Number.parseFloat(style.fontSize);
+        if (!Number.isFinite(fontSizePx) || fontSizePx < 96) return;
+
+        const lineHeightPx = Number.parseFloat(style.lineHeight);
+        if (!Number.isFinite(lineHeightPx) || lineHeightPx <= 0 || lineHeightPx > fontSizePx * 1.05) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 1 || rect.height <= 1) return;
+
+        const justify =
+          style.textAlign === 'center' || style.textAlign === '-webkit-center'
+            ? 'center'
+            : style.textAlign === 'right' || style.textAlign === 'end'
+              ? 'flex-end'
+              : 'flex-start';
+
+        el.style.setProperty('display', 'flex', 'important');
+        el.style.setProperty('align-items', 'center', 'important');
+        el.style.setProperty('justify-content', justify, 'important');
+        el.style.setProperty('width', `${rect.width}px`, 'important');
+        el.style.setProperty('height', `${rect.height}px`, 'important');
+        el.style.setProperty('line-height', 'normal', 'important');
+        el.style.setProperty('white-space', 'nowrap', 'important');
+        el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+  }
+
+  return (async () => {
+    try {
+      const w = window as unknown as {
+        domToPptx?: { exportToPptx: (target: unknown, options: unknown) => Promise<Blob> };
+      };
+      if (!w.domToPptx || typeof w.domToPptx.exportToPptx !== 'function') {
+        return { error: 'dom-to-pptx engine did not load' };
+      }
+      const slides = Array.prototype.slice
+        .call(document.querySelectorAll(slideSelector))
+        .filter((el) => !(el as HTMLElement).closest('.mini-slide, .overview, .notes-overlay, .thumb'));
+      if (slides.length === 0) return { error: 'no slides to export' };
+      ensureExplicitSlideBackgrounds(slides as HTMLElement[]);
+      stabilizeLargeSingleLineText(slides as HTMLElement[]);
+      document.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const cn = (el as { className?: unknown }).className;
+        if (cn != null && typeof cn !== 'string') {
+          try {
+            Object.defineProperty(el, 'className', {
+              value: (cn as { baseVal?: string }).baseVal ?? '',
+              configurable: true,
+              writable: true,
+            });
+          } catch {
+            // Leave it; dom-to-pptx may still handle this node.
+          }
+        }
+      });
+      const blob = await w.domToPptx.exportToPptx(slides, {
+        fileName: 'deck.pptx',
+        skipDownload: true,
+        autoEmbedFonts: true,
+        svgAsVector: true,
+      });
+      if (!blob || typeof (blob as Blob).arrayBuffer !== 'function') {
+        return { error: 'dom-to-pptx returned no blob' };
+      }
+      const bytes = new Uint8Array(await (blob as Blob).arrayBuffer());
+      let binary = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+      }
+      return { b64: btoa(binary) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  })();
 }
 
 async function waitForPrintableContent(page: Page): Promise<void> {

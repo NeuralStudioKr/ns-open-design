@@ -101,24 +101,27 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 | `5a5431e3e` | `fix(daemon): recover PPTX export renderer failures` | PPTX route 도입 시 함께 검토. renderer 실패를 구조적으로 복구하는 후속 안정화 성격. |
 | `5b8e3a25f` | `fix(desktop): keep CJK typefaces intact in editable PPTX export` | editable PPTX까지 도입할 경우 CJK/한글 폰트 품질 때문에 필요. 단, 1차 screenshot PPTX에는 후순위. |
 
-**권장 1차 범위:** Teamver 웹/daemon 배포에서 바로 쓸 수 있는 screenshot-based PPTX만 수동 이식한다.
+**2026-07-15 적용 상태:** 처음에는 screenshot-based PPTX만 수동 이식했으나, 사용자가 편집 가능한 PPTX를 P0로 요구하여 daemon hosted 환경용 editable 경로까지 추가했다. OD `main`의 desktop/sidecar 전체 구조를 가져오지는 않고, `dom-to-pptx` browser UMD bundle을 daemon vendor로 포함해 Playwright page에서 직접 실행한다.
 
 - ✅ daemon `buildScreenshotPptx` 최소 구현. 새 의존성 추가 없이 `JSZip` 기반 PPTX package 생성.
 - ✅ `/api/projects/:id/export/pptx` route 추가.
+- ✅ daemon `renderHeadlessEditablePptx` 추가. 기본 PPTX 다운로드는 native shape/text editable PPTX를 생성하며, `editable:false` 요청 시 screenshot PPTX fallback 경로를 유지.
+- ✅ `dom-to-pptx` v2.0.1 MIT browser bundle을 daemon vendor에 포함. npm package의 Puppeteer/Chromium dependency는 설치하지 않는다.
 - ✅ 기존 Teamver PDF/image export에서 보강한 inline HTML snapshot, S3/scratch sync 회피, auth gate, filename, export cache/ticket 흐름을 유지.
 - ✅ FE 다운로드 메뉴의 `PPTX로 다운로드`는 기존 agent prompt 요청 대신 daemon rendered download로 연결.
 - ✅ Drive로 내보내기와 혼동되지 않도록 “내 컴퓨터에 저장/다운로드” 그룹 안에만 노출.
 
-**권장 보류 범위:** editable PPTX / `dom-to-pptx` / desktop renderer vendor bundle / sidecar packaging은 2차로 둔다. Teamver staging은 웹/daemon 흐름 안정화가 우선이며, desktop resource packaging을 같이 들고 오면 충돌면이 급격히 커진다.
+**보류 범위:** OD `main`의 desktop renderer/sidecar/packaging 전체 cherry-pick은 계속 보류한다. Teamver hosted 환경은 desktop runtime이 없으므로, desktop Electron handoff를 그대로 가져오면 작동하지 않는다.
 
 **검증 필수:**
 
 1. 8~12장 HTML deck에서 PPTX 다운로드가 각 slide 1장씩 생성.
-2. 한글/CJK 텍스트가 깨지지 않음. screenshot PPTX 기준 텍스트는 이미지이므로 폰트 렌더링은 브라우저 렌더 결과와 같아야 한다.
-3. PDF/image/html/zip 기존 다운로드가 회귀하지 않음.
-4. 슬라이드 생성 직후 S3 sync 전후 상태에서 `/export/pptx`가 동일하게 동작.
-5. 대형 deck에서 서버 CPU/메모리 부하가 PDF/image export보다 과도하게 증가하지 않음.
-6. 실패 응답이 `EXPORT_FAILED`, `NO_SLIDES`, renderer unavailable 등으로 구조화되어 FE 토스트가 구분 가능.
+2. Google Slides/PowerPoint에서 텍스트 선택·수정이 가능.
+3. 한글/CJK 텍스트가 깨지지 않음. dom-to-pptx 변환 한계가 있으면 샘플별 fidelity 보정 필요.
+4. PDF/image/html/zip 기존 다운로드가 회귀하지 않음.
+5. 슬라이드 생성 직후 S3 sync 전후 상태에서 `/export/pptx`가 동일하게 동작.
+6. 대형 deck에서 서버 CPU/메모리 부하가 PDF/image export보다 과도하게 증가하지 않음.
+7. 실패 응답이 `EXPORT_FAILED`, `NO_SLIDES`, renderer unavailable 등으로 구조화되어 FE 토스트가 구분 가능.
 
 ---
 

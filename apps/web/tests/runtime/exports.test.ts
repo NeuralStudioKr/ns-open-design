@@ -1459,6 +1459,7 @@ describe('exportProjectAsPptx', () => {
     expect(requestBody).toMatchObject({
       deck: true,
       delivery: 'ticket',
+      editable: true,
       fileName: 'deck/index.html',
       title: 'Seed Deck',
     });
