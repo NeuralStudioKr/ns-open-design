@@ -648,6 +648,11 @@ function AppInner() {
         projectId,
         projectListMutationVersionRef.current,
       );
+      // Invalidate in-flight list applies that started before this delete so
+      // a stale registry membership response cannot resurrect the row.
+      projectListRequestGenerationRef.current += 1;
+      latestAppliedProjectListGenerationRef.current =
+        projectListRequestGenerationRef.current;
     }
   }, []);
 
@@ -711,7 +716,11 @@ function AppInner() {
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
         : list;
-    setProjects((current) => mergeRecentProjectsIntoList(current, visibleList));
+    setProjects((current) =>
+      mergeRecentProjectsIntoList(current, visibleList, {
+        excludeIds: activeDeletedProjectIds,
+      }),
+    );
     return true;
   }, [isStaleProjectListWorkspace]);
 
@@ -1454,9 +1463,11 @@ function AppInner() {
   const refreshEmbedProjectMetadata = useCallback(async (projectId: string) => {
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
+    if (locallyDeletedProjectIdsRef.current.has(trimmedId)) return;
     try {
       const project = await getProject(trimmedId);
       if (!project) return;
+      if (locallyDeletedProjectIdsRef.current.has(trimmedId)) return;
       setProjects((current) => mergeProjectIntoList(current, project));
       warmEmbedProjectListCaches([project]);
       setWorkingDirError(null);
@@ -2688,11 +2699,13 @@ function AppInner() {
             clearProjectCoverCache(completedRun.projectId);
             void prefetchDesignsTabViewport([fresh]);
             void prefetchLatestPublishSummaries([completedRun.projectId]);
-            setProjects((curr) => {
-              const idx = curr.findIndex((item) => item.id === fresh.id);
-              if (idx < 0) return [...curr, fresh];
-              return curr.map((item) => (item.id === fresh.id ? fresh : item));
-            });
+            if (!locallyDeletedProjectIdsRef.current.has(fresh.id)) {
+              setProjects((curr) => {
+                const idx = curr.findIndex((item) => item.id === fresh.id);
+                if (idx < 0) return [...curr, fresh];
+                return curr.map((item) => (item.id === fresh.id ? fresh : item));
+              });
+            }
           }
         }
         if (!inSameProject && !locallyDeletedProjectIdsRef.current.has(completedRun.projectId)) {

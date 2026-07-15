@@ -49,6 +49,17 @@ describe("embedRegistryProjectList", () => {
     });
   });
 
+  it("does not invent Date.now() for missing registry timestamps", () => {
+    const before = Date.now();
+    const project = mapRegistryRowToProject({
+      odProjectId: "p-ghost",
+      title: "Ghost",
+    });
+    expect(project.updatedAt).toBe(0);
+    expect(project.createdAt).toBe(0);
+    expect(project.updatedAt).toBeLessThan(before);
+  });
+
   it("lists recent projects from registry sorted by updatedAt", async () => {
     vi.mocked(projectRegistry.listTeamverRegistryProjects).mockResolvedValue([
       {

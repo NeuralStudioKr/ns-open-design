@@ -9,10 +9,13 @@ export function clearTeamverEmbedListCaches(): void {
   clearLatestPublishSummaryCache();
 }
 
-/** Single-project purge after delete — cover hints + publish chip cache. */
+/** Single-project purge after delete — cover hints + publish chip + registry list. */
 export function clearTeamverEmbedProjectCaches(projectId: string): void {
   const id = projectId.trim();
   if (!id) return;
   clearProjectCoverCache(id);
   clearLatestPublishSummaryCache(id);
+  // Membership may already be invalidated by unregister; keep list cache empty
+  // so the next home recent fetch cannot serve a 15s pre-delete snapshot.
+  invalidateTeamverProjectRegistryCaches();
 }
