@@ -1,6 +1,7 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
 import { fetchDesignAuthSession, refreshDesignAuthCookie } from "./designBffClient";
+import { recoverStaleDriveWorkspace } from "./driveWorkspaceRecovery";
 
 export function teamverDriveApiUrl(path: string): string {
   const suffix = path.replace(/^\//, "");
@@ -193,16 +194,19 @@ async function teamverDriveFetch(
     throwIfDriveAborted(signal);
     const headers = new Headers(init.headers ?? {});
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
-    const trimmedWorkspaceId = workspaceId?.trim();
+    const trimmedWorkspaceId = workspaceId?.trim() || null;
     if (trimmedWorkspaceId) headers.set("X-Workspace-Id", trimmedWorkspaceId);
 
-    const doFetch = () =>
-      fetch(teamverDriveApiUrl(path), {
+    const doFetch = (overrideWorkspaceId?: string | null) => {
+      const fetchHeaders = overrideWorkspaceId ? new Headers(headers) : headers;
+      if (overrideWorkspaceId) fetchHeaders.set("X-Workspace-Id", overrideWorkspaceId);
+      return fetch(teamverDriveApiUrl(path), {
         ...init,
         credentials: "include",
-        headers,
+        headers: fetchHeaders,
         signal,
       });
+    };
 
     let response = await doFetch();
     throwIfDriveAborted(signal);
@@ -213,8 +217,19 @@ async function teamverDriveFetch(
     const body = await response.clone().json().catch(() => null);
     const detail = extractDriveAuthBodyText(body);
 
-    // Workspace ACL 403: do not soft-retry or call Apps /auth/refresh.
+    // Workspace ACL 403 → the store's workspace_id is likely stale (user removed
+    // from workspace, workspace archived, or cross-tab Main account switch).
+    // Force a fresh session probe + workspace reconcile. Apps `/auth/refresh` is
+    // deliberately skipped: it rotates the Apps JWT but never affects Main ACL.
     if (response.status === 403 && isDriveWorkspaceForbiddenBody(detail)) {
+      const recoveredWorkspaceId = await recoverStaleDriveWorkspace(trimmedWorkspaceId);
+      throwIfDriveAborted(signal);
+      if (recoveredWorkspaceId) {
+        // Retry once with the reconciled workspace. `workspace-changed` has
+        // already been dispatched by the sync so mounted callers refetch their
+        // own caches for the new workspace.
+        return doFetch(recoveredWorkspaceId);
+      }
       return response;
     }
 

@@ -9,6 +9,10 @@ vi.mock("../src/teamver/designApiBase", () => ({
   resolveTeamverDriveBffBase: vi.fn(() => "/teamver-bff/drive"),
 }));
 
+vi.mock("../src/teamver/driveWorkspaceRecovery", () => ({
+  recoverStaleDriveWorkspace: vi.fn(),
+}));
+
 import {
   extractDriveAuthBodyText,
   getTeamverDriveJson,
@@ -18,9 +22,11 @@ import {
   shouldSkipDriveAuthRefresh,
 } from "../src/teamver/driveApi";
 import { fetchDesignAuthSession, refreshDesignAuthCookie } from "../src/teamver/designBffClient";
+import { recoverStaleDriveWorkspace } from "../src/teamver/driveWorkspaceRecovery";
 
 const mockedRefresh = vi.mocked(refreshDesignAuthCookie);
 const mockedFetchSession = vi.mocked(fetchDesignAuthSession);
+const mockedRecoverWorkspace = vi.mocked(recoverStaleDriveWorkspace);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -62,6 +68,8 @@ describe("getTeamverDriveJson", () => {
     vi.restoreAllMocks();
     mockedRefresh.mockReset();
     mockedFetchSession.mockReset();
+    mockedRecoverWorkspace.mockReset();
+    mockedRecoverWorkspace.mockResolvedValue(null);
     resetTeamverDriveFetchQueueForTests();
     vi.useFakeTimers();
   });
@@ -172,17 +180,37 @@ describe("getTeamverDriveJson", () => {
     expect(mockedFetchSession).toHaveBeenCalledWith({ force: true, resetRefreshState: true });
   });
 
-  it("surfaces Main ACL 403 without /auth/refresh or soft retry", async () => {
+  it("surfaces Main ACL 403 without /auth/refresh when reconciliation cannot fix it", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ message: "error.forbidden" }, 403));
+    mockedRecoverWorkspace.mockResolvedValueOnce(null);
 
-    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
+    await expect(getTeamverDriveJson("/api/v2/shared-drive", "ws-stale")).rejects.toThrow(
       "teamver_drive_fetch_failed:403",
     );
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(mockedRecoverWorkspace).toHaveBeenCalledWith("ws-stale");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers Main ACL 403 by reconciling stale workspace_id and retrying once", async () => {
+    let call = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      call += 1;
+      if (call === 1) return jsonResponse({ message: "error.forbidden" }, 403);
+      const headers = init?.headers as Headers | undefined;
+      const wsHeader = headers?.get("X-Workspace-Id") ?? null;
+      return jsonResponse({ ok: true, ws: wsHeader });
+    });
+    mockedRecoverWorkspace.mockResolvedValueOnce("ws-fresh");
+
+    const json = await getTeamverDriveJson("/api/v2/shared-drive", "ws-stale");
+    expect(json).toEqual({ ok: true, ws: "ws-fresh" });
+    expect(mockedRecoverWorkspace).toHaveBeenCalledWith("ws-stale");
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("forwards X-Workspace-Id header when provided", async () => {

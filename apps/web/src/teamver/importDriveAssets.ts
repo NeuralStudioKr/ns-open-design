@@ -62,7 +62,7 @@ export function formatDriveImportErrorForUser(code: string): string {
   if (exact[trimmed]) return exact[trimmed];
 
   if (trimmed.startsWith("teamver_drive_fetch_failed:403")) {
-    return "이 작업공간의 Drive에 접근할 권한이 없습니다 — 작업공간을 확인하거나 관리자에게 문의하세요.";
+    return "이 작업공간의 Drive에 접근할 권한이 없습니다 — 다른 작업공간을 선택하거나 다시 로그인해 주세요.";
   }
   if (trimmed.startsWith("teamver_drive_fetch_failed:401")) {
     return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 다시 시도하세요.";
