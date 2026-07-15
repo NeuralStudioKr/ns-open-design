@@ -505,24 +505,30 @@ async def publish_project(
                     )
                     logger.info(
                         "publish export stream PUT succeeded "
-                        "project=%s od_project=%s format=%s bytes=%s export_cache=%s",
+                        "project=%s od_project=%s format=%s bytes=%s export_cache=%s "
+                        "export_delivery=%s export_single_use=%s",
                         project.id,
                         project.od_project_id,
                         fmt,
                         size_bytes,
                         export_ticket.cache or "unknown",
+                        export_ticket.delivery_mode,
+                        export_ticket.single_use,
                     )
                 except (OdDaemonPresignedPutError, BadGatewayError) as exc:
                     if _can_fallback_to_bytes_put(size_bytes):
                         logger.warning(
                             "publish stream PUT failed; retrying bytes PUT "
-                            "project=%s od_project=%s format=%s status=%s bytes=%s export_cache=%s",
+                            "project=%s od_project=%s format=%s status=%s bytes=%s "
+                            "export_cache=%s export_delivery=%s export_single_use=%s",
                             project.id,
                             project.od_project_id,
                             fmt,
                             getattr(exc, "status_code", None),
                             size_bytes,
                             export_ticket.cache or "unknown",
+                            export_ticket.delivery_mode,
+                            export_ticket.single_use,
                         )
                         try:
                             fallback_content = await _fetch_export_bytes_for_publish_fallback(
@@ -543,12 +549,15 @@ async def publish_project(
                             )
                             logger.info(
                                 "publish fallback bytes PUT succeeded "
-                                "project=%s od_project=%s format=%s bytes=%s export_cache=%s",
+                                "project=%s od_project=%s format=%s bytes=%s export_cache=%s "
+                                "export_delivery=%s export_single_use=%s",
                                 project.id,
                                 project.od_project_id,
                                 fmt,
                                 len(fallback_content),
                                 export_ticket.cache or "unknown",
+                                export_ticket.delivery_mode,
+                                export_ticket.single_use,
                             )
                         except BadGatewayError as fallback_exc:
                             error_code = (
@@ -576,7 +585,8 @@ async def publish_project(
                     else:
                         logger.warning(
                             "publish stream PUT failed and bytes fallback is disabled/too large "
-                            "project=%s od_project=%s format=%s status=%s bytes=%s max=%s export_cache=%s",
+                            "project=%s od_project=%s format=%s status=%s bytes=%s max=%s "
+                            "export_cache=%s export_delivery=%s export_single_use=%s",
                             project.id,
                             project.od_project_id,
                             fmt,
@@ -584,6 +594,8 @@ async def publish_project(
                             size_bytes,
                             settings.teamver_drive_publish_stream_fallback_max_bytes,
                             export_ticket.cache or "unknown",
+                            export_ticket.delivery_mode,
+                            export_ticket.single_use,
                         )
                         error_code = _stream_put_error_code(exc)
                         raise _PublishUploadFailure(error_code, phase, exc) from exc

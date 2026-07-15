@@ -971,6 +971,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-15 | Drive publish export stream 로그 보강 — 성공/실패/fallback 로그에 `export_delivery`, `export_single_use`를 추가해 stream/redirect 전환 상태를 운영 로그에서 확인 가능하게 함 |
 | 2026-07-15 | Export ticket GET 응답 헤더 보강 — `Content-Length`, `Cache-Control: private, no-store`, `X-OD-Export-Delivery-Mode`, `X-OD-Export-Single-Use` 추가로 다운로드 크기·보안·운영 확인성을 명확화. `npm test -- export-ticket-download-route.test.ts export-download-store.test.ts` 8 passed |
 | 2026-07-15 | Export P2 착수 — ticket 응답에 `deliveryMode=stream|redirect`, `singleUse` 계약을 추가하고 design-api Drive publish 스트림이 향후 presigned GET redirect를 따라가도록 `follow_redirects=True` 보강. `PYTHONPATH=. pytest tests/test_od_daemon_client.py tests/test_publish_service.py` 30 passed, `npm test -- export-download-store.test.ts` 6 passed |
 | 2026-07-07 | Publish stream ticket-download network 오류 분류 보강 — daemon download 연결 실패를 `od_daemon_export_ticket_download_failed`로 수렴하고, fallback 불가/초과 시에도 error_code가 `bad_gateway`로 뭉개지지 않게 유지. targeted pytest 27 passed |
