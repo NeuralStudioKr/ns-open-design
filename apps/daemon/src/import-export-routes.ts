@@ -43,6 +43,7 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 import { buildExportOffloadObjectKey, isExportOffloadEnabled } from './export-offload-key.js';
+import { putExportOffloadObject } from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
@@ -138,6 +139,7 @@ async function respondExportPayload(
     cache?: string;
     offloadKey?: string;
     offloadEnabled?: true;
+    offloadStatus?: string;
     ticket: boolean;
   },
 ): Promise<void> {
@@ -162,6 +164,7 @@ async function respondExportPayload(
       singleUse: true,
       ...(options.offloadEnabled ? { offloadEnabled: true } : {}),
       ...(options.offloadKey ? { offloadKey: options.offloadKey } : {}),
+      ...(options.offloadStatus ? { offloadStatus: options.offloadStatus } : {}),
       ...(options.cache ? { cache: options.cache } : {}),
       expiresAt: new Date(entry.expiresAt).toISOString(),
     });
@@ -223,9 +226,29 @@ function exportOffloadKeyForRequest(
 function exportOffloadPayloadForRequest(
   req: Request,
   outcome: ExportCacheOutcome,
-): { offloadEnabled: true; offloadKey: string } | Record<string, never> {
+): Promise<
+  | { offloadEnabled: true; offloadKey: string; offloadStatus: string }
+  | Record<string, never>
+> {
   const offloadKey = exportOffloadKeyForRequest(req, outcome);
-  return offloadKey ? { offloadEnabled: true, offloadKey } : {};
+  if (!offloadKey) return Promise.resolve({});
+  return (async () => {
+    let offloadStatus = 'skipped_source_file';
+    if (outcome.body !== undefined) {
+      const result = await putExportOffloadObject({ key: offloadKey, body: outcome.body });
+      offloadStatus = result.status;
+      console.info(
+        JSON.stringify({
+          metric: 'od_export_offload_put',
+          projectId: req.params.id,
+          status: result.status,
+          cache: outcome.cache,
+          bytes: outcome.bytes,
+        }),
+      );
+    }
+    return { offloadEnabled: true, offloadKey, offloadStatus };
+  })();
 }
 
 function handleExportRouteError(
@@ -903,7 +926,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
-        ...exportOffloadPayloadForRequest(req, outcome),
+        ...(await exportOffloadPayloadForRequest(req, outcome)),
         ticket,
       });
     } catch (err: unknown) {
@@ -970,7 +993,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
-        ...exportOffloadPayloadForRequest(req, outcome),
+        ...(await exportOffloadPayloadForRequest(req, outcome)),
         ticket,
       });
     } catch (err: unknown) {
@@ -1025,7 +1048,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         },
         { fresh: wantsFreshExport(req) },
       );
-      await respondExportPayload(res, { projectId: req.params.id, ...outcomeAsRespondPayload(outcome), ticket });
+      await respondExportPayload(res, {
+        projectId: req.params.id,
+        ...outcomeAsRespondPayload(outcome),
+        ...(await exportOffloadPayloadForRequest(req, outcome)),
+        ticket,
+      });
     } catch (err: unknown) {
       if (String((err as Error)?.message || err).toLowerCase().includes('no slides')) {
         return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires at least one slide');
@@ -1089,7 +1117,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
-        ...exportOffloadPayloadForRequest(req, outcome),
+        ...(await exportOffloadPayloadForRequest(req, outcome)),
         ticket,
       });
     } catch (err: unknown) {
@@ -1155,7 +1183,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       await respondExportPayload(res, {
         projectId: req.params.id,
         ...outcomeAsRespondPayload(outcome),
-        ...exportOffloadPayloadForRequest(req, outcome),
+        ...(await exportOffloadPayloadForRequest(req, outcome)),
         ticket,
       });
     } catch (err: unknown) {
