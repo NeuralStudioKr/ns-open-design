@@ -72,6 +72,7 @@ import {
 } from './teamver/teamverEmbedSession';
 import {
   isTeamverEmbedBootComplete,
+  revealTeamverEmbedChrome,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
 import { completeTeamverEmbedInitialUi } from './teamver/teamverEmbedInitialUi';
@@ -3057,6 +3058,19 @@ function AppInner() {
     route.kind === 'project'
       ? (projects.find((p) => p.id === route.projectId) ?? null)
       : null;
+
+  // Keep cream bootstrap until the first real surface is ready — otherwise
+  // session boot unmasks a dark EntryShell while projects are still empty.
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    if (route.kind === 'project' && activeProject) {
+      revealTeamverEmbedChrome();
+      return;
+    }
+    if (route.kind === 'home' && !projectsLoading) {
+      revealTeamverEmbedChrome();
+    }
+  }, [activeProject, projectsLoading, route.kind]);
 
   // Deep-linked route to a project we don't have yet (e.g. after a refresh
   // that finishes after the project list comes back). Fetch it in the
