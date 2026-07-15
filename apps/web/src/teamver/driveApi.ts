@@ -11,6 +11,9 @@ export function teamverDriveApiUrl(path: string): string {
  * True when a Drive BFF 401/403 body means "do not call /auth/refresh".
  * BFF already force-refreshed on upstream Invalid token, and nginx/session
  * expiry bodies only create refresh-token rotation races if retried here.
+ *
+ * Also covers Main ACL bodies (`{"message":"error.forbidden"}`) — Apps
+ * refresh cannot fix workspace membership and must not be attempted.
  */
 function normalizeDriveAuthDetail(detail: unknown): string | null {
   if (typeof detail === "string") return detail;
@@ -32,8 +35,19 @@ function normalizeDriveAuthDetail(detail: unknown): string | null {
     if (typeof record.message === "string") return record.message;
     if (typeof record.detail === "string") return record.detail;
     if (typeof record.code === "string") return record.code;
+    if (typeof record.error === "string") return record.error;
   }
   return null;
+}
+
+/** Pull skippable auth/ACL text from a Drive error JSON body (detail or message). */
+export function extractDriveAuthBodyText(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const record = body as Record<string, unknown>;
+  if ("detail" in record && record.detail != null) return record.detail;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  return body;
 }
 
 export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
@@ -45,7 +59,25 @@ export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
   if (normalized.includes("invalid token")) return true;
   if (normalized.includes("error.authentication")) return true;
   if (normalized.includes("missing_access_token")) return true;
+  // Main ACL / workspace gate — not recoverable via Apps JWT refresh.
+  if (normalized === "forbidden") return true;
+  if (normalized === "error.forbidden") return true;
+  if (normalized.includes("error.workspace")) return true;
+  if (normalized.includes("error.forbidden")) return true;
   return false;
+}
+
+/** True when the body is workspace ACL forbid (not SSO expiry). */
+export function isDriveWorkspaceForbiddenBody(detail: unknown): boolean {
+  const text = normalizeDriveAuthDetail(detail);
+  if (!text) return false;
+  const normalized = text.trim().toLowerCase();
+  return (
+    normalized === "forbidden"
+    || normalized === "error.forbidden"
+    || normalized.includes("error.forbidden")
+    || normalized.includes("error.workspace")
+  );
 }
 
 /** Limit concurrent Drive BFF calls (browse/recent/thumbs) without full serialization. */
@@ -179,8 +211,12 @@ async function teamverDriveFetch(
     }
 
     const body = await response.clone().json().catch(() => null);
-    const detail =
-      body && typeof body === "object" ? (body as Record<string, unknown>).detail : null;
+    const detail = extractDriveAuthBodyText(body);
+
+    // Workspace ACL 403: do not soft-retry or call Apps /auth/refresh.
+    if (response.status === 403 && isDriveWorkspaceForbiddenBody(detail)) {
+      return response;
+    }
 
     if (shouldSkipDriveAuthRefresh(detail)) {
       // Soft retry only: Apps /auth/refresh cannot revive Main HS256 SSO
@@ -189,6 +225,11 @@ async function teamverDriveFetch(
       await delay(DRIVE_AUTH_RETRY_DELAY_MS, signal);
       throwIfDriveAborted(signal);
       return doFetch();
+    }
+
+    // Prefer not to recover on bare 403 — Apps refresh never grants Main ACL.
+    if (response.status === 403) {
+      return response;
     }
 
     const recovered = await recoverDriveAuthSession();

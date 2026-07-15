@@ -62,7 +62,7 @@ export function TeamverDriveModalNav({
   );
 }
 
-export function TeamverDriveListSkeleton({ rows = 5 }: { rows?: number }) {
+export function TeamverDriveListSkeleton({ rows = 3 }: { rows?: number }) {
   return (
     <div className="teamver-drive-skeleton" aria-hidden data-testid="teamver-drive-skeleton">
       {Array.from({ length: rows }, (_, index) => (

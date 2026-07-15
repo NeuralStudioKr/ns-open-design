@@ -10,7 +10,9 @@ vi.mock("../src/teamver/designApiBase", () => ({
 }));
 
 import {
+  extractDriveAuthBodyText,
   getTeamverDriveJson,
+  isDriveWorkspaceForbiddenBody,
   postTeamverDriveJson,
   resetTeamverDriveFetchQueueForTests,
   shouldSkipDriveAuthRefresh,
@@ -37,10 +39,21 @@ describe("shouldSkipDriveAuthRefresh", () => {
     expect(shouldSkipDriveAuthRefresh({ message: "Invalid token" })).toBe(true);
   });
 
+  it("skips Main ACL / workspace forbid bodies (no Apps refresh)", () => {
+    expect(shouldSkipDriveAuthRefresh("forbidden")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("error.forbidden")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("error.workspace.not_member")).toBe(true);
+    expect(extractDriveAuthBodyText({ message: "error.forbidden" })).toBe("error.forbidden");
+    expect(isDriveWorkspaceForbiddenBody("error.forbidden")).toBe(true);
+    expect(isDriveWorkspaceForbiddenBody(extractDriveAuthBodyText({ message: "error.forbidden" }))).toBe(
+      true,
+    );
+  });
+
   it("does not skip unrelated failures", () => {
-    expect(shouldSkipDriveAuthRefresh("forbidden")).toBe(false);
     expect(shouldSkipDriveAuthRefresh(null)).toBe(false);
     expect(shouldSkipDriveAuthRefresh({ code: "x" })).toBe(false);
+    expect(isDriveWorkspaceForbiddenBody("session_expired")).toBe(false);
   });
 });
 
@@ -157,6 +170,19 @@ describe("getTeamverDriveJson", () => {
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(mockedFetchSession).toHaveBeenCalledWith({ force: true, resetRefreshState: true });
+  });
+
+  it("surfaces Main ACL 403 without /auth/refresh or soft retry", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ message: "error.forbidden" }, 403));
+
+    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
+      "teamver_drive_fetch_failed:403",
+    );
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("forwards X-Workspace-Id header when provided", async () => {

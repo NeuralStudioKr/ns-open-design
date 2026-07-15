@@ -252,7 +252,7 @@ describe("parsePublishFailureFromError", () => {
 
 describe("formatPublishErrorCodeForUser", () => {
   it("maps loop-177 phase codes to Korean user hints (loop 173)", () => {
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/세션이 만료/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/권한/);
     expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/저장소 업로드/);
     expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/완료하지 못/);
     expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/슬라이드 파일/);
