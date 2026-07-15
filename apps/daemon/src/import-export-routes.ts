@@ -54,6 +54,19 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
   );
 }
 
+function setExportDownloadHeaders(
+  res: { setHeader(name: string, value: string): void },
+  entry: {
+    bytes: number;
+    deliveryMode: string;
+  },
+): void {
+  res.setHeader('Content-Length', String(entry.bytes));
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-OD-Export-Delivery-Mode', entry.deliveryMode);
+  res.setHeader('X-OD-Export-Single-Use', 'true');
+}
+
 /**
  * Accept the "cache bypass" toggle from either a query string (`?fresh=1`)
  * or a body flag (`{"fresh":true}`). Templates that ship a new render
@@ -788,6 +801,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         return sendApiError(res, 404, 'EXPORT_DOWNLOAD_NOT_FOUND', 'export download not found or expired');
       }
       setAttachmentHeaders(res, entry.mime, entry.filename);
+      setExportDownloadHeaders(res, entry);
       const stream = fs.createReadStream(entry.filePath);
       let finished = false;
       stream.on('error', () => {

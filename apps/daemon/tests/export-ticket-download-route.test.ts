@@ -40,6 +40,10 @@ describe('GET /api/projects/:id/export/downloads/:token', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('application/pdf');
       expect(response.headers.get('content-disposition')).toContain('Seed Deck.pdf');
+      expect(response.headers.get('content-length')).toBe(String(Buffer.byteLength('%PDF-ticket-test')));
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(response.headers.get('x-od-export-delivery-mode')).toBe('stream');
+      expect(response.headers.get('x-od-export-single-use')).toBe('true');
       expect(await response.text()).toBe('%PDF-ticket-test');
 
       const expired = await fetch(`${started.url}${stored.url}`);
