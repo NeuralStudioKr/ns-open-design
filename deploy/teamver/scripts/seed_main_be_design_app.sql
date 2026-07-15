@@ -26,8 +26,8 @@ INSERT INTO public.ai_app (
 ) VALUES (
   'ai-design',
   'design',
-  'Teamver AI Design — Open Design embed (design.teamver.com)',
-  'AI Design',
+  'Teamver Design — Open Design embed (design.teamver.com)',
+  'Teamver Design',
   'Design with AI in your workspace',
   'productivity',
   TRUE,

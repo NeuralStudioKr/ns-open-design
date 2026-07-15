@@ -9,7 +9,7 @@ vi.mock("../src/teamver/branding/TeamverBrandingProvider", () => ({
   useTeamverBranding: () => ({
     enabled: true,
     title: "Teamver Design",
-    subtitle: "AI Design Studio",
+    subtitle: "Teamver Design Studio",
     heroTitle: "Teamver Design",
     heroSubtitle: "Create with AI",
   }),
