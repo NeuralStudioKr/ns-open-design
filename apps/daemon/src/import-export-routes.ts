@@ -43,7 +43,7 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 import { buildExportOffloadObjectKey, isExportOffloadEnabled } from './export-offload-key.js';
-import { putExportOffloadObject } from './export-offload-store.js';
+import { presignExportOffloadGet, putExportOffloadObject } from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
@@ -70,6 +70,11 @@ function setExportDownloadHeaders(
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-OD-Export-Delivery-Mode', entry.deliveryMode);
   res.setHeader('X-OD-Export-Single-Use', 'true');
+}
+
+function attachmentDisposition(filename: string): string {
+  const safeName = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '_') || 'artifact';
+  return `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 /**
@@ -144,6 +149,8 @@ async function respondExportPayload(
   },
 ): Promise<void> {
   if (options.ticket) {
+    const canRedirect =
+      options.offloadKey && (options.offloadStatus === 'uploaded' || options.offloadStatus === 'hit');
     const entry = await storeExportDownload({
       projectId: options.projectId,
       ...(options.sourceFilePath
@@ -152,6 +159,9 @@ async function respondExportPayload(
       bytes: options.bytes,
       filename: options.filename,
       mime: options.mime,
+      ...(canRedirect
+        ? { deliveryMode: 'redirect' as const, offloadKey: options.offloadKey }
+        : {}),
     });
     res.status(201).json({
       delivery: 'ticket',
@@ -854,8 +864,29 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (!entry) {
         return sendApiError(res, 404, 'EXPORT_DOWNLOAD_NOT_FOUND', 'export download not found or expired');
       }
+      let deliveryModeForResponse = entry.deliveryMode;
+      if (entry.deliveryMode === 'redirect' && entry.offloadKey) {
+        const presigned = await presignExportOffloadGet(entry.offloadKey, {
+          responseContentDisposition: attachmentDisposition(entry.filename),
+          responseContentType: entry.mime,
+        });
+        if (presigned.status === 'ready') {
+          res.setHeader('Cache-Control', 'private, no-store');
+          res.setHeader('X-OD-Export-Delivery-Mode', 'redirect');
+          res.setHeader('X-OD-Export-Single-Use', 'true');
+          await completeExportDownload(req.params.token);
+          res.redirect(302, presigned.url);
+          return;
+        }
+        console.warn('[export/download] offload presign failed; falling back to stream', {
+          projectId: req.params.id,
+          status: presigned.status,
+          reason: presigned.status === 'failed' || presigned.status === 'disabled' ? presigned.reason : undefined,
+        });
+        deliveryModeForResponse = 'stream';
+      }
       setAttachmentHeaders(res, entry.mime, entry.filename);
-      setExportDownloadHeaders(res, entry);
+      setExportDownloadHeaders(res, { ...entry, deliveryMode: deliveryModeForResponse });
       const stream = fs.createReadStream(entry.filePath);
       let finished = false;
       stream.on('error', () => {

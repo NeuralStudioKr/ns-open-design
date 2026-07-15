@@ -42,6 +42,28 @@ describe('export download store', () => {
     await expect(fs.readFile(resolved!.filePath)).resolves.toEqual(Buffer.from('pdf-bytes'));
   });
 
+  it('stores redirect metadata only when an offload key is present', async () => {
+    const redirected = await storeExportDownload({
+      projectId: 'proj-1',
+      body: 'pdf-bytes',
+      filename: 'deck.pdf',
+      mime: 'application/pdf',
+      deliveryMode: 'redirect',
+      offloadKey: 'exports/ws/proj/hash.pdf',
+    });
+    expect(redirected.deliveryMode).toBe('redirect');
+    expect(resolveExportDownload('proj-1', redirected.token)?.offloadKey).toBe('exports/ws/proj/hash.pdf');
+
+    const fallback = await storeExportDownload({
+      projectId: 'proj-1',
+      body: 'pdf-bytes',
+      filename: 'deck.pdf',
+      mime: 'application/pdf',
+      deliveryMode: 'redirect',
+    });
+    expect(fallback.deliveryMode).toBe('stream');
+  });
+
   it('rejects tokens for other projects', async () => {
     const stored = await storeExportDownload({
       projectId: 'proj-1',

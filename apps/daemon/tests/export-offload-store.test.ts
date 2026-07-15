@@ -153,6 +153,8 @@ describe('export offload store', () => {
         },
       },
       now: new Date('2026-07-15T00:00:00.000Z'),
+      responseContentDisposition: 'attachment; filename="Deck.pdf"',
+      responseContentType: 'application/pdf',
     });
 
     expect(result.status).toBe('ready');
@@ -162,6 +164,8 @@ describe('export offload store', () => {
       const url = new URL(result.url);
       expect(url.pathname).toBe('/teamver/exports/ws/proj/hash.pdf');
       expect(url.searchParams.get('X-Amz-Expires')).toBe('180');
+      expect(url.searchParams.get('response-content-disposition')).toBe('attachment; filename="Deck.pdf"');
+      expect(url.searchParams.get('response-content-type')).toBe('application/pdf');
     }
   });
 

@@ -29,6 +29,8 @@ export type ExportOffloadPresignInput = {
   config: Extract<ExportOffloadConfig, { enabled: true }>;
   credentials: SigV4Credentials;
   now?: Date;
+  responseContentDisposition?: string;
+  responseContentType?: string;
 };
 
 function prefixedOffloadKey(prefix: string, key: string): string {
@@ -91,6 +93,12 @@ export function buildExportOffloadPresignedGetUrl(input: ExportOffloadPresignInp
     ['X-Amz-Expires', String(input.config.presignTtlSec)],
     ['X-Amz-SignedHeaders', 'host'],
   ];
+  if (input.responseContentDisposition) {
+    params.push(['response-content-disposition', input.responseContentDisposition]);
+  }
+  if (input.responseContentType) {
+    params.push(['response-content-type', input.responseContentType]);
+  }
   if (input.credentials.sessionToken) {
     params.push(['X-Amz-Security-Token', input.credentials.sessionToken]);
   }
@@ -166,6 +174,8 @@ export async function presignExportOffloadGet(
     config?: ExportOffloadConfig;
     credentialProvider?: ReturnType<typeof createS3CredentialProvider>;
     now?: Date;
+    responseContentDisposition?: string;
+    responseContentType?: string;
   } = {},
 ): Promise<ExportOffloadPresignResult> {
   const config = options.config ?? resolveExportOffloadConfig();
@@ -182,6 +192,10 @@ export async function presignExportOffloadGet(
         config,
         credentials,
         ...(options.now ? { now: options.now } : {}),
+        ...(options.responseContentDisposition
+          ? { responseContentDisposition: options.responseContentDisposition }
+          : {}),
+        ...(options.responseContentType ? { responseContentType: options.responseContentType } : {}),
       }),
       expiresInSec: config.presignTtlSec,
     };
