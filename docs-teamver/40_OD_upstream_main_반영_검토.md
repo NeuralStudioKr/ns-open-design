@@ -18,9 +18,11 @@
 - desktop: `apps/desktop/src/main/deck-capture.ts`의 `dom-to-pptx` 기반 editable PPTX 경로
 - tests: `apps/daemon/tests/deck-export.test.ts`, `apps/daemon/tests/screenshot-export-file-handoff.test.ts`, `apps/daemon/tests/export-cli-routing.test.ts`
 
-반면 `staging`에는 아직 위 programmatic PPTX route가 없다. `PptxGenJS` 관련 문구/프롬프트는 존재하지만, 사용자가 다운로드 메뉴에서 안정적으로 받을 수 있는 `/export/pptx` 구현은 미반영 상태다.
+반면 `staging`에는 검토 당시 위 programmatic PPTX route가 없었다. `PptxGenJS` 관련 문구/프롬프트는 존재했지만, 사용자가 다운로드 메뉴에서 안정적으로 받을 수 있는 `/export/pptx` 구현은 미반영 상태였다.
 
 **현재 판단:** PPTX 다운로드는 Teamver AI Design의 “슬라이드 결과물 다운로드” 핵심 기능과 직접 연결되므로 반영 후보로 격상한다. 다만 `59bca72f7` 단일 커밋도 66개 파일, 5천 줄 이상을 건드리며 desktop/sidecar/packaging/vendor까지 포함한다. Teamver 웹 배포형/daemon 기반 구조에는 그대로 cherry-pick하지 말고, **screenshot 기반 PPTX 최소 경로부터 수동 이식**한다.
+
+**2026-07-15 적용 메모:** `staging`에는 전체 cherry-pick 없이 daemon/web 최소 경로만 수동 반영했다. 새 `pptxgenjs` dependency는 추가하지 않고, 이미 daemon이 사용하는 `JSZip`으로 PPTX OOXML package를 구성해 lockfile/배포 이미지 변경 리스크를 낮췄다.
 
 ## 1. 왜 전체 merge 금지인가
 
@@ -101,11 +103,11 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 **권장 1차 범위:** Teamver 웹/daemon 배포에서 바로 쓸 수 있는 screenshot-based PPTX만 수동 이식한다.
 
-- daemon `buildScreenshotPptx` 최소 구현 및 `pptxgenjs` dependency 추가.
-- `/api/projects/:id/export/pptx` route 추가.
-- 기존 Teamver PDF/image export에서 보강한 S3/scratch sync, auth gate, filename, deck render fallback을 유지.
-- FE 다운로드 메뉴에는 `PPTX로 다운로드`를 추가하되, 실패 시 현재 PDF/image 다운로드 UX와 같은 구조화 오류/토스트를 사용.
-- Drive로 내보내기와 혼동되지 않도록 “다운로드” 그룹 안에만 노출.
+- ✅ daemon `buildScreenshotPptx` 최소 구현. 새 의존성 추가 없이 `JSZip` 기반 PPTX package 생성.
+- ✅ `/api/projects/:id/export/pptx` route 추가.
+- ✅ 기존 Teamver PDF/image export에서 보강한 inline HTML snapshot, S3/scratch sync 회피, auth gate, filename, export cache/ticket 흐름을 유지.
+- ✅ FE 다운로드 메뉴의 `PPTX로 다운로드`는 기존 agent prompt 요청 대신 daemon rendered download로 연결.
+- ✅ Drive로 내보내기와 혼동되지 않도록 “내 컴퓨터에 저장/다운로드” 그룹 안에만 노출.
 
 **권장 보류 범위:** editable PPTX / `dom-to-pptx` / desktop renderer vendor bundle / sidecar packaging은 2차로 둔다. Teamver staging은 웹/daemon 흐름 안정화가 우선이며, desktop resource packaging을 같이 들고 오면 충돌면이 급격히 커진다.
 

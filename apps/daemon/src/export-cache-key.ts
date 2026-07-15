@@ -13,7 +13,7 @@
  */
 import crypto from 'node:crypto';
 
-export type ExportCacheFormat = 'pdf' | 'html' | 'zip' | 'png' | 'jpeg' | 'webp';
+export type ExportCacheFormat = 'pdf' | 'html' | 'zip' | 'pptx' | 'png' | 'jpeg' | 'webp';
 
 export type ExportCacheKeyInput = {
   projectId: string;
