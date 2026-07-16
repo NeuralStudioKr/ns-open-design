@@ -400,17 +400,8 @@ async function loadDesignAuthSessionOnce(): Promise<DesignAuthSession | null> {
     }
   };
 
-  const loadWithAuthRecovery = async (): Promise<DesignAuthSession> => {
-    try {
-      return await loadSession();
-    } catch (err) {
-      if (err instanceof NetworkError && err.status === 401) {
-        const refreshed = await refreshDesignAuthCookie();
-        if (refreshed) return await loadSession();
-      }
-      throw err;
-    }
-  };
+  const loadWithAuthRecovery = (): Promise<DesignAuthSession> =>
+    withDesignBffCookieAuthRecovery(loadSession);
 
   let session = await loadWithAuthRecovery();
   if (session.authenticated) return session;
@@ -538,9 +529,11 @@ export async function fetchTeamverRuntimeConfig(
 
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
-      const value = await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      });
+      const value = await withDesignBffCookieAuthRecovery(() =>
+        client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        }),
+      );
       runtimeConfigAuthBlocked = false;
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;

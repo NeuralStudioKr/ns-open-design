@@ -94,6 +94,34 @@ describe("fetchDesignAuthSession", () => {
     expect(session?.authenticated).toBe(false);
   });
 
+  it("retries session probe after refresh declines when a sibling may have set cookies", async () => {
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    const { NetworkError } = await import("@teamver/app-sdk");
+    getMock
+      .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }))
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1" },
+        workspaces: [{ id: "WS-1", name: "Alpha" }],
+      });
+
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
+    const pending = fetchDesignAuthSession({ force: true, resetRefreshState: true });
+    await vi.advanceTimersByTimeAsync(200);
+    const session = await pending;
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getMock).toHaveBeenCalledTimes(2);
+    expect(session?.authenticated).toBe(true);
+    vi.useRealTimers();
+  });
+
   it("retries session after explicit auth recovery refresh succeeds", async () => {
     getMock
       .mockResolvedValueOnce({ authenticated: false, workspaces: [] })

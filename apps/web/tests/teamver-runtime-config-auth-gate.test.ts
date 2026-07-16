@@ -72,15 +72,24 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     resetTeamverRuntimeConfigCacheForTests();
     setTeamverEmbedSessionAuthenticated(true);
 
-    httpGet.mockRejectedValueOnce(
+    vi.useFakeTimers();
+    const refreshFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
+    );
+    vi.stubGlobal("fetch", refreshFetch);
+
+    httpGet.mockRejectedValue(
       new NetworkError({ status: 401, message: "session_expired" }),
     );
 
-    expect(await fetchTeamverRuntimeConfig({ force: true })).toBeNull();
-    expect(httpGet).toHaveBeenCalledTimes(1);
+    const pending = fetchTeamverRuntimeConfig({ force: true });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(await pending).toBeNull();
+    // Initial GET + HA sibling retry after refresh declines.
+    expect(httpGet).toHaveBeenCalledTimes(2);
 
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
-    expect(httpGet).toHaveBeenCalledTimes(1);
+    expect(httpGet).toHaveBeenCalledTimes(2);
 
     // Re-auth clears the backoff (even if already marked authenticated).
     setTeamverEmbedSessionAuthenticated(true);
@@ -92,7 +101,48 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
 
     const recovered = await fetchTeamverRuntimeConfig({ force: true });
     expect(recovered?.model).toBe("claude-sonnet-4-6");
+    expect(httpGet).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("recovers runtime-config after transient 401 when HA sibling cookie lands", async () => {
+    const { NetworkError } = await import("@teamver/app-sdk");
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      fetchTeamverRuntimeConfig,
+      resetTeamverRuntimeConfigCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
+      ),
+    );
+
+    httpGet
+      .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }))
+      .mockResolvedValueOnce({
+        configured: true,
+        apiKeyConfigured: true,
+        model: "claude-sonnet-4-6",
+      });
+
+    const pending = fetchTeamverRuntimeConfig({ force: true });
+    await vi.advanceTimersByTimeAsync(200);
+    const value = await pending;
+
+    expect(value?.model).toBe("claude-sonnet-4-6");
     expect(httpGet).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("force cannot bypass the unauthenticated session gate", async () => {

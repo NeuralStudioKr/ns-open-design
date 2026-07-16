@@ -1,5 +1,9 @@
 import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
-import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
+import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from "./designApiBase";
 import type { TeamverLatestPublishSummary } from "./latestPublishSummary";
 import { PUBLISH_CHIP_BATCH_MAX } from "./publishChipLimits";
@@ -53,13 +57,15 @@ export async function batchFetchLatestPublishSummaries(
   if (!workspaceId) return { status: "skipped" };
 
   try {
-    const response = await client.http.post<BatchLatestPublishResponse>(
-      "/projects/batch/outputs/latest",
-      { odProjectIds: ids },
-      {
-        workspaceId,
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
+    const response = await withDesignBffCookieAuthRecovery(() =>
+      client.http.post<BatchLatestPublishResponse>(
+        "/projects/batch/outputs/latest",
+        { odProjectIds: ids },
+        {
+          workspaceId,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
     );
 
     const summaries: Record<string, TeamverLatestPublishSummary | null> = {};

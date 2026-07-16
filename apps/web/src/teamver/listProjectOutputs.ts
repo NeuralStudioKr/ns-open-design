@@ -1,5 +1,9 @@
 import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspace";
-import { TEAMVER_BFF_REQUEST_OPTIONS, getDesignBffClient } from "./designBffClient";
+import {
+  TEAMVER_BFF_REQUEST_OPTIONS,
+  getDesignBffClient,
+  withDesignBffCookieAuthRecovery,
+} from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import {
   normalizePublishOutput,
@@ -32,12 +36,14 @@ export async function listTeamverProjectOutputs(
   const workspaceId = await resolveActiveTeamverWorkspaceIdForEmbed();
   if (!workspaceId) return null;
 
-  const response = await client.http.get<OutputsListResponse>(
-    `/projects/${encodeURIComponent(trimmedId)}/outputs`,
-    {
-      workspaceId,
-      ...TEAMVER_BFF_REQUEST_OPTIONS,
-    },
+  const response = await withDesignBffCookieAuthRecovery(() =>
+    client.http.get<OutputsListResponse>(
+      `/projects/${encodeURIComponent(trimmedId)}/outputs`,
+      {
+        workspaceId,
+        ...TEAMVER_BFF_REQUEST_OPTIONS,
+      },
+    ),
   );
 
   const outputs = (response.outputs ?? []).map(normalizePublishOutput);
