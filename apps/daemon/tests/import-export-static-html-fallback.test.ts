@@ -4,6 +4,7 @@ import {
   buildStaticHtmlExportFallback,
   isHeadlessChromiumUnavailableExportError,
   resolveExportOffloadWorkspaceIdFromRequest,
+  safeExportHeaderValue,
 } from '../src/import-export-routes.js';
 
 describe('buildStaticHtmlExportFallback', () => {
@@ -62,5 +63,17 @@ describe('resolveExportOffloadWorkspaceIdFromRequest', () => {
     };
 
     expect(resolveExportOffloadWorkspaceIdFromRequest(req as any)).toBe('W-CLIENT');
+  });
+});
+
+describe('safeExportHeaderValue', () => {
+  it('removes characters that Node rejects in response headers', () => {
+    expect(safeExportHeaderValue('AccessDenied\n상세: 권한 없음\r\nbucket="x"')).toBe(
+      'AccessDenied : bucket="x"',
+    );
+  });
+
+  it('bounds diagnostic headers so long provider errors do not bloat responses', () => {
+    expect(safeExportHeaderValue('a'.repeat(500))).toHaveLength(240);
   });
 });

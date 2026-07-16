@@ -68,6 +68,14 @@ function setAttachmentHeaders(res: { setHeader(name: string, value: string): voi
   );
 }
 
+export function safeExportHeaderValue(value: string, maxLength = 240): string {
+  return String(value ?? '')
+    .replace(/[^\x20-\x7e]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
 function setExportDownloadHeaders(
   res: { setHeader(name: string, value: string): void },
   entry: {
@@ -81,8 +89,8 @@ function setExportDownloadHeaders(
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-OD-Export-Delivery-Mode', entry.deliveryMode);
   res.setHeader('X-OD-Export-Single-Use', 'true');
-  if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', entry.offloadStatus);
-  if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', entry.offloadReason);
+  if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', safeExportHeaderValue(entry.offloadStatus));
+  if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', safeExportHeaderValue(entry.offloadReason));
 }
 
 function attachmentDisposition(filename: string): string {
@@ -939,8 +947,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           res.setHeader('Cache-Control', 'private, no-store');
           res.setHeader('X-OD-Export-Delivery-Mode', 'redirect');
           res.setHeader('X-OD-Export-Single-Use', 'true');
-          if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', entry.offloadStatus);
-          if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', entry.offloadReason);
+          if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', safeExportHeaderValue(entry.offloadStatus));
+          if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', safeExportHeaderValue(entry.offloadReason));
           await completeExportDownload(req.params.token);
           res.redirect(302, presigned.url);
           return;

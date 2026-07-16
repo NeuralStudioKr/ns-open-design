@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-16 | Export offload reason 헤더 500 hotfix — S3/AWS 오류 문자열의 비ASCII·개행 문자가 `X-OD-Export-Offload-Reason`에 그대로 들어가 Node `Invalid character in header content` 500을 유발. 헤더용 값은 ASCII-safe + 길이 제한으로 정리하고 JSON 진단은 유지 |
 | 2026-07-16 | Export offload required 가드 재검토 보완 — `OD_EXPORT_OFFLOAD_REQUIRED=1`이면 `OD_EXPORT_OFFLOAD_ENABLED`가 누락되어도 offload 경로를 강제 활성 상태로 판정해 `missing_bucket/missing_region` 등 설정 오류가 200 stream fallback으로 숨지 않게 고정 |
 | 2026-07-16 | Staging export offload required 모드 추가 — `OD_EXPORT_OFFLOAD_REQUIRED=1`이면 S3 upload/presign 실패를 200 stream fallback으로 숨기지 않고 503 + `offloadStatus/offloadReason`으로 노출. `/export/downloads/{token}` stream fallback 응답에도 `X-OD-Export-Offload-*` 헤더를 추가해 원인 확인 가능 |
 | 2026-07-16 | Export offload env wiring 누락 수정 — `.env.staging`에 `OD_EXPORT_OFFLOAD_*`가 있어도 `open-design-daemon.environment`가 전달하지 않으면 컨테이너에서는 offload disabled로 동작해 `/export/downloads/{token}`이 200 stream으로 남는다. `docker-compose.yml`에 offload env pass-through를 추가 |
