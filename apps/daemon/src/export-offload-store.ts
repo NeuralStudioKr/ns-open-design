@@ -1,4 +1,5 @@
 import { createHash, createHmac } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
 import type { ProjectFileMeta } from './storage/project-storage.js';
 import { S3ProjectStorage } from './storage/project-storage.js';
 import { encodeS3PathSegment, type SigV4Credentials } from './storage/aws-sigv4.js';
@@ -22,6 +23,12 @@ export type ExportOffloadPresignResult =
 export type ExportOffloadPutInput = {
   key: string;
   body: Buffer | string;
+};
+
+export type ExportOffloadFileInput = {
+  key: string;
+  filePath: string;
+  bytes?: number;
 };
 
 export type ExportOffloadPresignInput = {
@@ -157,6 +164,38 @@ export async function putExportOffloadObject(
     if (existing && existing.size === body.byteLength) {
       return { status: 'hit', key, bytes: existing.size };
     }
+    const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body);
+    return { status: 'uploaded', key, bytes: written.size };
+  } catch (err) {
+    return {
+      status: 'failed',
+      key,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function putExportOffloadFileObject(
+  input: ExportOffloadFileInput,
+  options: {
+    config?: ExportOffloadConfig;
+    storage?: ExportOffloadStorage;
+  } = {},
+): Promise<ExportOffloadPutResult> {
+  const config = options.config ?? resolveExportOffloadConfig();
+  if (!config.enabled) return { status: 'disabled', reason: config.reason };
+  const key = prefixedOffloadKey(config.prefix, input.key);
+  const storage = options.storage ?? createExportOffloadStorage(config);
+  try {
+    const expectedBytes =
+      Number.isFinite(input.bytes) && input.bytes !== undefined && input.bytes >= 0
+        ? Math.floor(input.bytes)
+        : (await stat(input.filePath)).size;
+    const existing = await storage.statObjectAtKey(key);
+    if (existing && existing.size === expectedBytes) {
+      return { status: 'hit', key, bytes: existing.size };
+    }
+    const body = await readFile(input.filePath);
     const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body);
     return { status: 'uploaded', key, bytes: written.size };
   } catch (err) {
