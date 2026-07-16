@@ -82,6 +82,21 @@ function attachmentDisposition(filename: string): string {
   return `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return String(value[0] ?? '').trim();
+  return String(value ?? '').trim();
+}
+
+export function resolveExportOffloadWorkspaceIdFromRequest(req: Request): string | null {
+  const identity = readTeamverIdentityFromRequest(req);
+  return (
+    identity?.workspaceId
+    || firstHeaderValue(req.headers['x-workspace-id'])
+    || firstHeaderValue(req.headers['x-teamver-workspace-id'])
+    || null
+  );
+}
+
 /**
  * Accept the "cache bypass" toggle from either a query string (`?fresh=1`)
  * or a body flag (`{"fresh":true}`). Templates that ship a new render
@@ -233,16 +248,16 @@ function exportOffloadPayloadForRequest(
   | Record<string, never>
 > {
   if (!isExportOffloadEnabled()) return Promise.resolve({});
-  const identity = readTeamverIdentityFromRequest(req);
-  if (!identity) {
+  const workspaceId = resolveExportOffloadWorkspaceIdFromRequest(req);
+  if (!workspaceId) {
     return Promise.resolve({
       offloadEnabled: true,
-      offloadStatus: 'skipped_missing_identity',
-      offloadReason: 'missing_teamver_identity_headers',
+      offloadStatus: 'skipped_missing_workspace',
+      offloadReason: 'missing_teamver_workspace_header',
     });
   }
   const offloadKey = buildExportOffloadObjectKey({
-    workspaceId: identity.workspaceId,
+    workspaceId,
     projectId: String(req.params.id ?? ''),
     cacheKey: outcome.key,
     filename: outcome.filename,

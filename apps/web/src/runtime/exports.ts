@@ -79,6 +79,7 @@ function triggerHrefDownload(href: string, filename: string): void {
 
 type ExportTicketResponse = {
   delivery: 'ticket';
+  deliveryMode?: 'stream' | 'redirect';
   downloadUrl: string;
   filename: string;
   mime?: string;
@@ -105,6 +106,7 @@ async function readExportTicketResponse(resp: Response): Promise<ExportTicketRes
   }
   return {
     delivery: 'ticket',
+    deliveryMode: body.deliveryMode === 'redirect' ? 'redirect' : 'stream',
     downloadUrl: body.downloadUrl,
     filename: typeof body.filename === 'string' && body.filename.trim()
       ? body.filename
@@ -116,6 +118,13 @@ async function readExportTicketResponse(resp: Response): Promise<ExportTicketRes
 
 async function triggerExportTicketDownload(resp: Response, fallbackTitle: string, extension: string): Promise<void> {
   const ticket = await readExportTicketResponse(resp);
+  if (ticket.deliveryMode === 'redirect') {
+    triggerHrefDownload(
+      ticket.downloadUrl,
+      ticket.filename || `${safeFilename(fallbackTitle, 'artifact')}.${extension}`,
+    );
+    return;
+  }
   // Never navigate the SPA tab to the ticket URL. An `<a download>` GET still
   // follows nginx auth 302s in the current tab (login → returnTo), which drops
   // users back on the artifact route with no file saved. Fetch with embed

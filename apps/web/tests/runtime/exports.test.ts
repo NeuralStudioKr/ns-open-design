@@ -1130,10 +1130,14 @@ describe('exportProjectImageBlob', () => {
 describe('exportProjectAsHtml', () => {
   let capturedBlob: Blob | undefined;
   let capturedFilename: string | undefined;
+  let capturedHref: string | undefined;
+  let clickCount = 0;
 
   beforeEach(() => {
     capturedBlob = undefined;
     capturedFilename = undefined;
+    capturedHref = undefined;
+    clickCount = 0;
     vi.stubGlobal('URL', {
       createObjectURL: (blob: Blob) => {
         capturedBlob = blob;
@@ -1143,7 +1147,15 @@ describe('exportProjectAsHtml', () => {
     });
     vi.stubGlobal('document', {
       createElement: () => {
-        const anchor = { href: '', click: () => {} } as { href: string; download?: string; click: () => void };
+        const anchor = { click: () => { clickCount += 1; } } as { href: string; download?: string; click: () => void };
+        Object.defineProperty(anchor, 'href', {
+          set(value: string) {
+            capturedHref = value;
+          },
+          get() {
+            return capturedHref ?? '';
+          },
+        });
         Object.defineProperty(anchor, 'download', {
           set(value: string) {
             capturedFilename = value;
@@ -1235,6 +1247,37 @@ describe('exportProjectAsHtml', () => {
     );
     expect(capturedFilename).toBe('Seed-Deck.html');
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>ticket html</p>');
+  });
+
+  it('uses native browser download for redirect export tickets', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/html') {
+        return new Response(
+          JSON.stringify({
+            delivery: 'ticket',
+            deliveryMode: 'redirect',
+            downloadUrl: '/api/projects/proj-1/export/downloads/ticket-redirect',
+            filename: 'Seed-Deck.html',
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    await exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(capturedHref).toBe('/api/projects/proj-1/export/downloads/ticket-redirect');
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(capturedBlob).toBeUndefined();
+    expect(clickCount).toBe(1);
   });
 
   it('falls back to daemon inline HTML when rendered HTML export fails', async () => {

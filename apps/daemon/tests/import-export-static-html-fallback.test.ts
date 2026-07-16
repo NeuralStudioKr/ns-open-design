@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildStaticHtmlExportFallback,
   isHeadlessChromiumUnavailableExportError,
+  resolveExportOffloadWorkspaceIdFromRequest,
 } from '../src/import-export-routes.js';
 
 describe('buildStaticHtmlExportFallback', () => {
@@ -37,5 +38,29 @@ describe('isHeadlessChromiumUnavailableExportError', () => {
 
   it('does not hide unrelated render failures', () => {
     expect(isHeadlessChromiumUnavailableExportError(new Error('page.pdf failed'))).toBe(false);
+  });
+});
+
+describe('resolveExportOffloadWorkspaceIdFromRequest', () => {
+  it('accepts workspace-only embed headers because FE cannot set x-teamver-user-id', () => {
+    const req = {
+      headers: {
+        'x-workspace-id': 'W-STAGING',
+      },
+    };
+
+    expect(resolveExportOffloadWorkspaceIdFromRequest(req as any)).toBe('W-STAGING');
+  });
+
+  it('prefers the embed workspace header when multiple workspace headers are present', () => {
+    const req = {
+      headers: {
+        'x-teamver-user-id': 'U-1',
+        'x-teamver-workspace-id': 'W-SESSION',
+        'x-workspace-id': 'W-CLIENT',
+      },
+    };
+
+    expect(resolveExportOffloadWorkspaceIdFromRequest(req as any)).toBe('W-CLIENT');
   });
 });
