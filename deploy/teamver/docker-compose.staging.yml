@@ -20,6 +20,11 @@ services:
       OD_EXPORT_BROWSER_POOL_SIZE: ${OD_EXPORT_BROWSER_POOL_SIZE:-2}
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
+      # Staging is the offload verification environment. Keep this pinned in
+      # compose so an older .env.staging cannot silently fall back to 200
+      # daemon-stream tickets.
+      OD_EXPORT_OFFLOAD_ENABLED: "1"
+      OD_EXPORT_OFFLOAD_REQUIRED: "1"
       OD_CHAT_RUN_INACTIVITY_TIMEOUT_MS: ${OD_CHAT_RUN_INACTIVITY_TIMEOUT_MS:-1200000}
 
   teamver-design-api:
