@@ -13,6 +13,7 @@ describe('export offload object key', () => {
     expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: '0' } as NodeJS.ProcessEnv)).toBe(false);
     expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: '1' } as NodeJS.ProcessEnv)).toBe(true);
     expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_ENABLED: 'true' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isExportOffloadEnabled({ OD_EXPORT_OFFLOAD_REQUIRED: '1' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
   it('keeps export offload fallback allowed unless required is explicit', () => {
@@ -28,6 +29,10 @@ describe('export offload object key', () => {
       reason: 'flag_disabled',
     });
     expect(resolveExportOffloadConfig({ OD_EXPORT_OFFLOAD_ENABLED: '1' } as NodeJS.ProcessEnv)).toEqual({
+      enabled: false,
+      reason: 'missing_bucket',
+    });
+    expect(resolveExportOffloadConfig({ OD_EXPORT_OFFLOAD_REQUIRED: '1' } as NodeJS.ProcessEnv)).toEqual({
       enabled: false,
       reason: 'missing_bucket',
     });

@@ -5,7 +5,7 @@ const EXPORT_HASH_RE = /^[a-f0-9]{32,64}$/i;
 
 export function isExportOffloadEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = (env.OD_EXPORT_OFFLOAD_ENABLED ?? '').trim().toLowerCase();
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on' || isExportOffloadRequired(env);
 }
 
 export function isExportOffloadRequired(env: NodeJS.ProcessEnv = process.env): boolean {

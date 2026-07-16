@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-16 | Export offload required 가드 재검토 보완 — `OD_EXPORT_OFFLOAD_REQUIRED=1`이면 `OD_EXPORT_OFFLOAD_ENABLED`가 누락되어도 offload 경로를 강제 활성 상태로 판정해 `missing_bucket/missing_region` 등 설정 오류가 200 stream fallback으로 숨지 않게 고정 |
 | 2026-07-16 | Staging export offload required 모드 추가 — `OD_EXPORT_OFFLOAD_REQUIRED=1`이면 S3 upload/presign 실패를 200 stream fallback으로 숨기지 않고 503 + `offloadStatus/offloadReason`으로 노출. `/export/downloads/{token}` stream fallback 응답에도 `X-OD-Export-Offload-*` 헤더를 추가해 원인 확인 가능 |
 | 2026-07-16 | Export offload env wiring 누락 수정 — `.env.staging`에 `OD_EXPORT_OFFLOAD_*`가 있어도 `open-design-daemon.environment`가 전달하지 않으면 컨테이너에서는 offload disabled로 동작해 `/export/downloads/{token}`이 200 stream으로 남는다. `docker-compose.yml`에 offload env pass-through를 추가 |
 | 2026-07-16 | PRD PPTX 첫 다운로드 transient 실패 보강 — PPTX export도 PDF처럼 storage prefix warmup을 수행하고, 500/502/503·네트워크성 실패는 짧게 자동 재시도. `EXPORT_QUEUE_FULL`은 서버 보호 신호이므로 재시도하지 않고 기존 사용자 안내를 유지 |
