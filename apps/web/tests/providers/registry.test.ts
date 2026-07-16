@@ -948,6 +948,32 @@ describe('uploadProjectFiles', () => {
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0]).toMatchObject({ name: 'c.txt' });
   });
+
+  it('returns session-aware auth copy on daemon 401 in embed mode', async () => {
+    const embedSpy = vi.spyOn(
+      await import('../../src/teamver/designApiBase'),
+      'isTeamverEmbedMode',
+    ).mockReturnValue(true);
+    const sessionSpy = vi.spyOn(
+      await import('../../src/teamver/teamverEmbedSession'),
+      'isTeamverEmbedSessionAuthenticated',
+    ).mockReturnValue(true);
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+
+    const result = await uploadProjectFiles('project-1', [
+      new File(['hello'], 'note.txt', { type: 'text/plain' }),
+    ]);
+
+    expect(result.uploaded).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.error).toContain('연결');
+    embedSpy.mockRestore();
+    sessionSpy.mockRestore();
+    fetchDaemonSpy.mockRestore();
+  });
 });
 
 describe('deploy provider registry helpers', () => {

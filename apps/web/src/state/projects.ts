@@ -609,7 +609,12 @@ export async function patchProject(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sanitized),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      if (resp.status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      return null;
+    }
     const json = (await resp.json()) as { project: Project };
     return sanitizeProjectForEmbed(json.project);
   } catch {
@@ -622,7 +627,13 @@ export async function deleteProject(id: string): Promise<boolean> {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
-    return resp.ok;
+    if (!resp.ok) {
+      if (resp.status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }

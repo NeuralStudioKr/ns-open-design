@@ -625,4 +625,26 @@ describe('conversation daemon auth', () => {
     await expect(getProjectFailSoft('project-1')).resolves.toBeNull();
     fetchDaemonSpy.mockRestore();
   });
+
+  it('patchProject returns null on daemon 401 without throwing', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+    const { patchProject } = await import('../../src/state/projects');
+
+    await expect(patchProject('project-1', { name: 'Renamed' })).resolves.toBeNull();
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('deleteProject returns false on daemon 401 without throwing', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+    const { deleteProject } = await import('../../src/state/projects');
+
+    await expect(deleteProject('project-1')).resolves.toBe(false);
+    fetchDaemonSpy.mockRestore();
+  });
 });

@@ -72,7 +72,7 @@ import {
   fetchTeamverDaemon,
   TeamverDaemonUnauthorizedError,
 } from '../teamver/teamverDaemonHeaders';
-import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
+import { notifyTeamverEmbedAuthFailureIfNeeded, formatTeamverEmbedOperationFailureMessage } from '../teamver/teamverBffAuthError';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
@@ -100,6 +100,24 @@ export function isDeployProviderId(value: unknown): value is WebDeployProviderId
 
 function deployProviderQuery(providerId?: WebDeployProviderId): string {
   return providerId ? `?providerId=${encodeURIComponent(providerId)}` : '';
+}
+
+function notifyDaemonMutatingUnauthorized(resp: Response): void {
+  if (resp.status === 401) {
+    notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+  }
+}
+
+function formatDaemonMutatingAuthError(fallback: string): string {
+  if (!isTeamverEmbedMode()) return fallback;
+  return formatTeamverEmbedOperationFailureMessage(
+    new TeamverDaemonUnauthorizedError(),
+    fallback,
+    {
+      logoutMessage: '로그인 세션이 만료되어 요청에 실패했습니다. 다시 로그인한 뒤 시도하세요.',
+      transientMessage: '요청 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.',
+    },
+  );
 }
 
 export async function fetchAgents(options?: { throwOnError?: boolean }): Promise<AgentInfo[]> {
@@ -1430,10 +1448,14 @@ export async function deployProjectFile(
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
+    notifyDaemonMutatingUnauthorized(resp);
     const payload = (await resp.json().catch(() => null)) as
       | { error?: { message?: string }; message?: string }
       | null;
-    throw new Error(payload?.error?.message || payload?.message || `Deploy failed (${resp.status})`);
+    const fallback = payload?.error?.message || payload?.message || `Deploy failed (${resp.status})`;
+    throw new Error(
+      resp.status === 401 ? formatDaemonMutatingAuthError(fallback) : fallback,
+    );
   }
   return (await resp.json()) as WebDeployProjectFileResponse;
 }
@@ -1447,10 +1469,14 @@ export async function checkDeploymentLink(
     { method: 'POST' },
   );
   if (!resp.ok) {
+    notifyDaemonMutatingUnauthorized(resp);
     const payload = (await resp.json().catch(() => null)) as
       | { error?: { message?: string }; message?: string }
       | null;
-    throw new Error(payload?.error?.message || payload?.message || `Link check failed (${resp.status})`);
+    const fallback = payload?.error?.message || payload?.message || `Link check failed (${resp.status})`;
+    throw new Error(
+      resp.status === 401 ? formatDaemonMutatingAuthError(fallback) : fallback,
+    );
   }
   return (await resp.json()) as WebDeployProjectFileResponse;
 }
@@ -1507,7 +1533,10 @@ export async function createProjectFolder(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      return null;
+    }
     const json = (await resp.json()) as { folder?: ProjectFolder };
     return json.folder ?? null;
   } catch {
@@ -1525,6 +1554,10 @@ export async function deleteProjectFolder(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: folderPath }),
     });
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      return false;
+    }
     return resp.ok;
   } catch {
     return false;
@@ -1900,15 +1933,15 @@ export async function writeProjectTextFileDetailed(
       body: JSON.stringify({ name, content, artifactManifest: options?.artifactManifest }),
     });
     if (!resp.ok) {
-      if (resp.status === 401) {
-        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
-      }
+      notifyDaemonMutatingUnauthorized(resp);
       const body = await readApiErrorBody(resp);
       return {
         ok: false,
         status: resp.status,
         code: body.code,
-        message: body.message || resp.statusText || 'Save failed',
+        message: resp.status === 401
+          ? formatDaemonMutatingAuthError(body.message || resp.statusText || 'Save failed')
+          : body.message || resp.statusText || 'Save failed',
       };
     }
     const json = (await resp.json()) as { file: ProjectFile };
@@ -1929,7 +1962,10 @@ export async function writeProjectBase64File(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, content: base64, encoding: 'base64' }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      return null;
+    }
     const json = (await resp.json()) as { file: ProjectFile };
     return json.file;
   } catch {
@@ -1950,7 +1986,10 @@ export async function uploadProjectFile(
       method: 'POST',
       body: form,
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      return null;
+    }
     const json = (await resp.json()) as { file: ProjectFile };
     return json.file;
   } catch {
@@ -2005,10 +2044,13 @@ export async function uploadProjectFiles(
       );
 
       if (!resp.ok) {
+        notifyDaemonMutatingUnauthorized(resp);
         const payload = (await resp.json().catch(() => null)) as
           | { code?: string; error?: string }
           | null;
-        error = payload?.error ?? `upload failed (${resp.status})`;
+        error = resp.status === 401
+          ? formatDaemonMutatingAuthError(`upload failed (${resp.status})`)
+          : payload?.error ?? `upload failed (${resp.status})`;
         for (const f of batch) {
           failed.push({ name: f.name, code: payload?.code, error: error });
         }
@@ -2081,6 +2123,10 @@ export async function deleteProjectFile(
       projectRawUrl(projectId, name),
       { method: 'DELETE' },
     );
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      return false;
+    }
     return resp.ok;
   } catch {
     return false;
@@ -2098,8 +2144,12 @@ export async function renameProjectFile(
     body: JSON.stringify({ from, to }),
   });
   if (!resp.ok) {
+    notifyDaemonMutatingUnauthorized(resp);
     const errorBody = await readApiErrorBody(resp);
-    throw new Error(errorBody.message);
+    const fallback = errorBody.message || `Rename failed (${resp.status})`;
+    throw new Error(
+      resp.status === 401 ? formatDaemonMutatingAuthError(fallback) : fallback,
+    );
   }
   return (await resp.json()) as RenameProjectFileResponse;
 }
