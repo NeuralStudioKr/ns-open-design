@@ -370,7 +370,7 @@ export function TeamverPublishDrivePanel({
           setPdfBlocked(true);
           setSelectedFormat("html");
         }
-        onError?.(new Error(failed?.errorCode ?? "publish_failed"));
+        onError?.(new Error(formatPublishErrorCodeForUser(failed?.errorCode ?? "publish_failed")));
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -379,14 +379,16 @@ export function TeamverPublishDrivePanel({
         setPdfBlocked(true);
         setSelectedFormat("html");
       }
-      handleTeamverBffAuthFailure(err, {
+      const authHandled = handleTeamverBffAuthFailure(err, {
         onRelogin: () => setAuthRequired(true),
         onTransient: () => {
           setAuthRequired(false);
           onError?.(new Error(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE));
         },
       });
-      onError?.(err);
+      if (!authHandled) {
+        onError?.(err instanceof Error ? err : new Error(String(err)));
+      }
     } finally {
       setBusy(false);
       setPublishPhase("idle");
