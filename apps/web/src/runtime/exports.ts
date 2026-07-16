@@ -34,6 +34,12 @@ import {
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
+export const TEAMVER_DEFAULT_EXPORT_BASENAME = 'teamver_design';
+
+function isGenericExportLabel(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return !normalized || normalized === 'design' || normalized === 'artifact';
+}
 
 /** Prefer the user-visible project name over artifact/S3 slug filenames. */
 export function resolveExportDownloadTitle(
@@ -42,8 +48,10 @@ export function resolveExportDownloadTitle(
 ): string {
   const fromFile = (fileName.replace(/\.html?$/i, '') || fileName).trim();
   const fromProject = (projectDisplayName ?? '').trim();
-  if (fromProject && fromProject.toLowerCase() !== 'design') return fromProject;
-  return fromFile || 'artifact';
+  if (fromProject && !isGenericExportLabel(fromProject)) return fromProject;
+  if (fromProject && isGenericExportLabel(fromFile)) return fromProject;
+  if (fromFile && !isGenericExportLabel(fromFile)) return fromFile;
+  return TEAMVER_DEFAULT_EXPORT_BASENAME;
 }
 
 function safeFilename(name: string, fallback: string): string {

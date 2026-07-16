@@ -64,6 +64,18 @@ describe('export download store', () => {
     expect(fallback.deliveryMode).toBe('stream');
   });
 
+  it('preserves non-ascii export filenames in ticket storage', async () => {
+    const stored = await storeExportDownload({
+      projectId: 'proj-1',
+      body: Buffer.from('pdf-bytes'),
+      filename: 'AI 도입 효과.pdf',
+      mime: 'application/pdf',
+    });
+
+    expect(stored.filename).toBe('AI 도입 효과.pdf');
+    expect(resolveExportDownload('proj-1', stored.token)?.filename).toBe('AI 도입 효과.pdf');
+  });
+
   it('rejects tokens for other projects', async () => {
     const stored = await storeExportDownload({
       projectId: 'proj-1',

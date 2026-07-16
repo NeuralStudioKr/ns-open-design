@@ -83,7 +83,7 @@ describe("TeamverDriveImportModal", () => {
     expect(await screen.findByTestId("teamver-drive-import-modal")).toBeTruthy();
     expect(await screen.findByTestId("teamver-drive-import-asset-AST-1")).toBeTruthy();
     expect(document.querySelector(".teamver-drive-import-grid")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("teamver-drive-import-asset-AST-1"));
+    fireEvent.mouseDown(screen.getByTestId("teamver-drive-import-asset-AST-1"));
     fireEvent.click(screen.getByTestId("teamver-drive-import-attach"));
 
     await waitFor(() => {
@@ -227,6 +227,25 @@ describe("TeamverDriveImportModal", () => {
     });
   });
 
+  it("selects recent assets on mousedown before search blur collapses the strip", async () => {
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    await screen.findByTestId("teamver-drive-import-recent");
+    const recentCard = await screen.findByTestId("teamver-drive-import-asset-AST-RECENT");
+    fireEvent.mouseDown(recentCard);
+    fireEvent.blur(screen.getByLabelText("드라이브 파일 검색"));
+
+    expect(await screen.findByTestId("teamver-drive-import-selected")).toBeTruthy();
+    expect((screen.getByTestId("teamver-drive-import-attach") as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows blocked hint when unsupported file is clicked", async () => {
     useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: true });
     browsePageMock.mockResolvedValue({
@@ -245,7 +264,7 @@ describe("TeamverDriveImportModal", () => {
       />,
     );
 
-    fireEvent.click(await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO"));
+    fireEvent.mouseDown(await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO"));
     expect(await screen.findByTestId("teamver-drive-import-action-hint")).toBeTruthy();
   });
 

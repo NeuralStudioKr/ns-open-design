@@ -216,6 +216,10 @@ import {
   mergeActiveRunsIntoMessages,
   resolveRunRecoveryBannerPhase,
   shouldFullReplayReattachedRun,
+  shouldPollStaleDaemonRun,
+  shouldForceFailStaleDaemonRun,
+  terminalAssistantPatchFromRunStatus,
+  TEAMVER_STALE_RUN_POLL_MS,
   shouldShowRunRecoveryBannerInChat,
   type RunRecoveryBannerPhase,
 } from '../teamver/backgroundChatRecovery';
@@ -3066,6 +3070,69 @@ export function ProjectView({
       window.removeEventListener('pageshow', bumpReattach);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode() || config.mode !== 'daemon' || !daemonLive || !activeConversationId) return;
+    const staleMessages = findInFlightAssistantMessages(messages).filter((message) =>
+      shouldPollStaleDaemonRun(message),
+    );
+    if (staleMessages.length === 0) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      const targets = findInFlightAssistantMessages(messages).filter((message) =>
+        shouldPollStaleDaemonRun(message),
+      );
+      for (const message of targets) {
+        const runId = message.runId?.trim();
+        if (!runId) continue;
+        const status = await fetchChatRunStatus(runId);
+        if (cancelled) return;
+        if (status) {
+          const patch = terminalAssistantPatchFromRunStatus(status);
+          if (patch) {
+            updateMessageById(message.id, (prev) => ({ ...prev, ...patch }), true);
+            clearStreamingMarker(activeConversationId);
+            scheduleConversationMessageRefresh(activeConversationId);
+            continue;
+          }
+        }
+        if (shouldForceFailStaleDaemonRun(message)) {
+          updateMessageById(
+            message.id,
+            (prev) => ({
+              ...prev,
+              runStatus: 'failed',
+              endedAt: prev.endedAt ?? Date.now(),
+              errorCode: prev.errorCode ?? 'AGENT_EXECUTION_FAILED',
+            }),
+            true,
+          );
+          clearStreamingMarker(activeConversationId);
+          scheduleConversationMessageRefresh(activeConversationId);
+        }
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, TEAMVER_STALE_RUN_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    activeConversationId,
+    clearStreamingMarker,
+    config.mode,
+    daemonLive,
+    messages,
+    scheduleConversationMessageRefresh,
+    updateMessageById,
+  ]);
 
   useEffect(() => {
     if (config.mode !== 'daemon' || !daemonLive || !activeConversationId || streaming) return;

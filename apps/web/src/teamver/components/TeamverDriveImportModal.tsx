@@ -230,7 +230,7 @@ export function TeamverDriveImportModal({
   const hasBrowseImportContent =
     (rows.length > 0);
   const recentSectionRevealed =
-    showRecent && (searchFieldFocused || !hasBrowseImportContent);
+    showRecent && (searchFieldFocused || !hasBrowseImportContent || selectedCount > 0);
 
   useTeamverDriveModalFocusTrap(open, modalRef);
 
@@ -713,9 +713,17 @@ export function TeamverDriveImportModal({
         className={`teamver-drive-import-card${picked ? " is-selected" : ""}${blocked ? " is-blocked" : ""}`}
         data-testid={`teamver-drive-import-asset-${row.assetId}`}
         disabled={confirming || (!picked && !blocked && selectedCount >= MAX_PICK)}
-        onClick={(event) => {
-          if (event.detail > 1) return;
+        onMouseDown={(event) => {
+          if (event.button !== 0 || confirming || partialResult) return;
+          event.preventDefault();
+          if (blocked) {
+            if (blockReason) setActionHint(blockReason);
+            return;
+          }
           toggleAsset(row);
+        }}
+        onClick={(event) => {
+          event.preventDefault();
         }}
         onDoubleClick={(event) => {
           event.preventDefault();

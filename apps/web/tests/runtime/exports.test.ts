@@ -38,6 +38,15 @@ describe('resolveExportDownloadTitle', () => {
     expect(resolveExportDownloadTitle(undefined, 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
     expect(resolveExportDownloadTitle('Design', 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
   });
+
+  it('uses the project name when the artifact slug is generic', () => {
+    expect(resolveExportDownloadTitle('Design', 'design.html')).toBe('Design');
+  });
+
+  it('falls back to teamver_design when no usable title exists', () => {
+    expect(resolveExportDownloadTitle(undefined, 'design.html')).toBe('teamver_design');
+    expect(resolveExportDownloadTitle('Design', 'design.html')).toBe('Design');
+  });
 });
 
 describe('isUsablePrintSize (#4458)', () => {

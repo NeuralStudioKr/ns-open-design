@@ -266,3 +266,42 @@ export function mergeActiveRunsIntoMessages(
   }
   return merged;
 }
+
+/** Embed safety net when SSE stalls but the daemon run has already finished. */
+export const TEAMVER_STALE_RUN_RECONCILE_MS = 10 * 60 * 1000 + 30_000;
+export const TEAMVER_STALE_RUN_POLL_MS = 30_000;
+/** After this window, force-fail a still-running UI row so the composer unlocks. */
+export const TEAMVER_STALE_RUN_FORCE_FAIL_MS = 12 * 60 * 1000;
+
+export function staleDaemonRunStartedAt(message: ChatMessage): number | null {
+  if (message.role !== "assistant") return null;
+  const startedAt = message.startedAt ?? message.createdAt;
+  return typeof startedAt === "number" && Number.isFinite(startedAt) ? startedAt : null;
+}
+
+export function shouldPollStaleDaemonRun(message: ChatMessage, now = Date.now()): boolean {
+  if (!isRecoverableDaemonRunMessage(message)) return false;
+  if (!message.runId?.trim()) return false;
+  const startedAt = staleDaemonRunStartedAt(message);
+  if (startedAt == null) return false;
+  return now - startedAt >= TEAMVER_STALE_RUN_RECONCILE_MS;
+}
+
+export function shouldForceFailStaleDaemonRun(message: ChatMessage, now = Date.now()): boolean {
+  if (!shouldPollStaleDaemonRun(message, now)) return false;
+  const startedAt = staleDaemonRunStartedAt(message);
+  if (startedAt == null) return false;
+  return now - startedAt >= TEAMVER_STALE_RUN_FORCE_FAIL_MS;
+}
+
+export function terminalAssistantPatchFromRunStatus(
+  status: ChatRunStatusResponse,
+): Partial<ChatMessage> | null {
+  if (!isTerminalRunStatus(status.status)) return null;
+  return {
+    runStatus: status.status,
+    endedAt: status.updatedAt ?? Date.now(),
+    ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
+    ...(status.errorCode ? { errorCode: status.errorCode } : {}),
+  };
+}

@@ -40,8 +40,17 @@ function ticketTtlMs(): number {
 }
 
 function safeFilename(name: string): string {
-  const base = path.basename(name.trim() || 'export');
-  return base.replace(/[^\w.\-()+ ]+/g, '_').slice(0, 180) || 'export';
+  const fallback = 'teamver_design';
+  const base = path.basename(name.trim() || fallback);
+  const cleaned = base
+    .replace(/[/\\?%*:|"<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .replace(/^[-\s]+|[-\s]+$/g, '')
+    .trim()
+    .slice(0, 180);
+  if (!cleaned || !/[\p{L}\p{N}]/u.test(cleaned)) return fallback;
+  return cleaned;
 }
 
 export async function storeExportDownload(options: {

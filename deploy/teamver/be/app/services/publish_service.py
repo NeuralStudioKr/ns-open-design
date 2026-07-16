@@ -28,8 +28,19 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_FORMATS = {"html", "pdf", "pptx"}
 _PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-_FILENAME_UNSAFE_RE = re.compile(r"[^\w.\- ]+")
 _MAX_PUBLISH_FILENAME_CHARS = 80
+_FILENAME_UNSAFE_RE = re.compile(r'[/\\?%*:|"<>]')
+_DEFAULT_PUBLISH_BASENAME = "teamver_design"
+
+
+def _safe_filename(title: str | None, *, suffix: str) -> str:
+    base = (title or _DEFAULT_PUBLISH_BASENAME).strip() or _DEFAULT_PUBLISH_BASENAME
+    cleaned = _FILENAME_UNSAFE_RE.sub(" ", base)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip("._ ") or _DEFAULT_PUBLISH_BASENAME
+    if not re.search(r"[\w]", cleaned, re.UNICODE):
+        cleaned = _DEFAULT_PUBLISH_BASENAME
+    max_base_len = max(1, _MAX_PUBLISH_FILENAME_CHARS - len(suffix))
+    return f"{cleaned[:max_base_len].rstrip('._ ')}{suffix}"
 _CLIENT_ERROR_CODES = frozenset(
     {
         "artifact_file_required",
@@ -80,13 +91,6 @@ class PublishResult:
         if ready_count < len(self.outputs):
             return 207
         return 201
-
-
-def _safe_filename(title: str | None, *, suffix: str) -> str:
-    base = (title or "design").strip() or "design"
-    cleaned = _FILENAME_UNSAFE_RE.sub("_", base).strip("._ ") or "design"
-    max_base_len = max(1, _MAX_PUBLISH_FILENAME_CHARS - len(suffix))
-    return f"{cleaned[:max_base_len].rstrip('._ ')}{suffix}"
 
 
 def _basename_without_extension(path: str | None) -> str:
