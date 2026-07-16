@@ -1644,6 +1644,8 @@ export function DesignBrowserPanel({
         setBrowserPreviewIndex(null);
         setStatusMessage('Browser comment saved');
       }
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : 'Comment save failed');
     } finally {
       setSendingComment(false);
     }
@@ -1661,6 +1663,8 @@ export function DesignBrowserPanel({
       try {
         await onSendBoardCommentAttachments(commentsToAttachments([activeSavedComment]));
         clearBrowserTool();
+      } catch (err) {
+        setStatusMessage(err instanceof Error ? err.message : 'Comment send failed');
       } finally {
         setSendingComment(false);
       }
@@ -1686,6 +1690,8 @@ export function DesignBrowserPanel({
       );
       if (accepted === false) return;
       clearBrowserTool();
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : 'Comment send failed');
     } finally {
       setSendingComment(false);
     }

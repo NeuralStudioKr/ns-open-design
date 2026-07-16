@@ -5141,6 +5141,7 @@ function HtmlViewer({
     };
   }, [boardImages]);
   const [commentSavedToast, setCommentSavedToast] = useState<string | null>(null);
+  const [commentErrorToast, setCommentErrorToast] = useState<string | null>(null);
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
   const [deploySavedToast, setDeploySavedToast] = useState<{
     message: string;
@@ -7437,6 +7438,8 @@ function HtmlViewer({
         try {
           await onSendBoardCommentAttachments(commentsToAttachments([existingComment]));
           clearBoardComposer();
+        } catch (err) {
+          setCommentErrorToast(err instanceof Error ? err.message : t('chat.annotationUploadFailed'));
         } finally {
           setSendingBoardBatch(false);
         }
@@ -7462,6 +7465,8 @@ function HtmlViewer({
       );
       if (accepted === false) return;
       clearBoardComposer();
+    } catch (err) {
+      setCommentErrorToast(err instanceof Error ? err.message : t('chat.annotationUploadFailed'));
     } finally {
       setSendingBoardBatch(false);
     }
@@ -7492,6 +7497,8 @@ function HtmlViewer({
         setActivePreviewCommentId(saved.id);
         setCommentSavedToast(isFreePin ? t('chat.comments.pinSavedToast') : t('chat.comments.savedToast'));
       }
+    } catch (err) {
+      setCommentErrorToast(err instanceof Error ? err.message : t('chat.annotationUploadFailed'));
     } finally {
       setSendingBoardBatch(false);
     }
@@ -7523,6 +7530,9 @@ function HtmlViewer({
         if (activeCommentTarget) clearBoardComposer();
       }
       return Boolean(saved);
+    } catch (err) {
+      setCommentErrorToast(err instanceof Error ? err.message : t('chat.annotationUploadFailed'));
+      return false;
     } finally {
       setSendingBoardBatch(false);
     }
@@ -9140,6 +9150,17 @@ function HtmlViewer({
                     message={commentSavedToast}
                     ttlMs={2200}
                     onDismiss={() => setCommentSavedToast(null)}
+                  />
+                </div>
+              ) : null}
+              {commentErrorToast ? (
+                <div className="comment-toast-anchor">
+                  <Toast
+                    message={commentErrorToast}
+                    tone="error"
+                    role="alert"
+                    ttlMs={5000}
+                    onDismiss={() => setCommentErrorToast(null)}
                   />
                 </div>
               ) : null}

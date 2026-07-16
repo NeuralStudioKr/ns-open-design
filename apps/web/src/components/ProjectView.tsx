@@ -234,6 +234,7 @@ import {
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
+import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -2994,7 +2995,7 @@ export function ProjectView({
       let uploadedAttachments: PreviewCommentAttachment[] | undefined;
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
-        if (result.uploaded.length !== images.length) return null;
+        throwIfProjectCommentUploadIncomplete(result, images.length);
         uploadedAttachments = result.uploaded.map((file) => ({ path: file.path, name: file.name }));
       }
       const existing = previewComments.find(
@@ -5450,6 +5451,7 @@ export function ProjectView({
       let uploaded: ChatAttachment[] = [];
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
+        throwIfProjectCommentUploadIncomplete(result, images.length);
         uploaded = result.uploaded;
       }
       if (commentAttachments.length === 0) {

@@ -13,6 +13,7 @@ import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedS
 import {
   formatProjectUploadFailureDetail,
   resolveProjectUploadBatchErrorMessage,
+  throwIfProjectCommentUploadIncomplete,
 } from "../src/teamver/projectUploadErrors";
 
 describe("projectUploadErrors", () => {
@@ -35,5 +36,14 @@ describe("projectUploadErrors", () => {
         slideOnlyMvp: true,
       }),
     ).toContain("연결");
+  });
+
+  it("throwIfProjectCommentUploadIncomplete throws auth-aware message", () => {
+    expect(() =>
+      throwIfProjectCommentUploadIncomplete(
+        { uploaded: [], failed: [{ name: "a.png", error: "upload failed (401)" }], error: "upload failed (401)" },
+        1,
+      ),
+    ).toThrow(/연결|로그인/);
   });
 });

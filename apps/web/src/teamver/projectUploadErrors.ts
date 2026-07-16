@@ -1,6 +1,7 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { formatTeamverEmbedOperationFailureMessage } from "./teamverBffAuthError";
 import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
+import type { UploadProjectFilesResult } from "../providers/registry";
 
 const UPLOAD_AUTH_LOGOUT =
   "로그인 세션이 만료되어 파일을 업로드하지 못했습니다. 다시 로그인한 뒤 시도하세요.";
@@ -92,5 +93,22 @@ export function formatProjectRenameErrorForUser(err: unknown): string {
       transientMessage:
         "파일 이름 변경 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
     },
+  );
+}
+
+/** Preview/board comment image uploads must complete before persisting or queuing. */
+export function throwIfProjectCommentUploadIncomplete(
+  result: UploadProjectFilesResult,
+  expectedCount: number,
+): void {
+  if (result.uploaded.length >= expectedCount) return;
+  const failedCount = Math.max(expectedCount - result.uploaded.length, result.failed.length);
+  throw new Error(
+    resolveProjectUploadBatchErrorMessage({
+      uploadedCount: result.uploaded.length,
+      failedCount,
+      error: result.error,
+      slideOnlyMvp: isTeamverEmbedMode(),
+    }),
   );
 }
