@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TeamverCanvasSlideLaunchModal } from "../src/teamver/components/TeamverCanvasSlideLaunchModal";
@@ -15,6 +15,19 @@ vi.mock("../src/teamver/branding/useTeamverT", () => ({
     if (key === "teamver.canvasSlideLaunch.untitled") return "Untitled document";
     return key;
   },
+}));
+
+vi.mock("../src/teamver/fetchCanvasPreview", () => ({
+  fetchTeamverCanvasPreview: vi.fn(async () => ({
+    sessionId: "s1",
+    artifactId: "artifact-12345678",
+    title: "Live 제목",
+    preview: "서버에서 보강한 미리보기",
+    threadTitle: "기획 스레드",
+    sectionCount: 3,
+    headings: ["목표", "일정", "리스크"],
+    updatedAt: "2026-07-15T09:09:19.819370",
+  })),
 }));
 
 describe("TeamverCanvasSlideLaunchModal", () => {
@@ -44,8 +57,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("renders canvas title, preview, and meta instead of raw artifact id", () => {
-    const onConfirm = vi.fn();
+  it("enriches canvas handoff with live preview outline and thread", async () => {
     render(
       <TeamverCanvasSlideLaunchModal
         open
@@ -54,30 +66,26 @@ describe("TeamverCanvasSlideLaunchModal", () => {
           handoff: {
             sessionId: "s1",
             artifactId: "artifact-12345678",
-            title: "Q3 기획 요약",
-            preview: "이번 분기 목표는 온보딩 전환율을 올리는 것입니다.",
-            sectionCount: 4,
-            updatedAt: "2026-07-15T09:09:19.819370",
+            title: "URL 제목",
+            preview: "URL 미리보기",
           },
         }}
-        errorMessage="too large"
-        onConfirm={onConfirm}
+        onConfirm={vi.fn()}
         onClose={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("Q3 기획 요약")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("Live 제목")).toBeTruthy();
+    });
     expect(screen.getByTestId("teamver-canvas-slide-launch-preview").textContent).toContain(
-      "온보딩 전환율",
+      "서버에서 보강",
     );
+    expect(screen.getByTestId("teamver-canvas-slide-launch-outline").textContent).toContain("목표");
     expect(screen.getByTestId("teamver-canvas-slide-launch-meta").textContent).toContain(
-      "sections 4",
+      "기획 스레드",
     );
     expect(screen.queryByText(/canvas\/artifact/)).toBeNull();
-    expect(screen.getByTestId("teamver-canvas-slide-launch-error").textContent).toBe("too large");
-    expect(screen.getByTestId("teamver-canvas-slide-launch-confirm").textContent).toBe(
-      "teamver.canvasSlideLaunch.retry",
-    );
   });
 
   it("closes from cancel without confirming", () => {

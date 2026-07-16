@@ -2013,6 +2013,59 @@
   font-size: 13px;
   line-height: 1.45;
 }
+.teamver-canvas-slide-launch-hint {
+  margin: -4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.92;
+}
+.teamver-canvas-slide-launch-outline {
+  margin: 0;
+  padding: 0 0 0 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.teamver-canvas-slide-launch-outline li {
+  padding-left: 2px;
+}
+.teamver-canvas-slide-launch-skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.teamver-canvas-slide-launch-skeleton {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--border) 55%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 70%, var(--border)) 50%,
+    color-mix(in srgb, var(--border) 55%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: teamver-canvas-slide-launch-shimmer 1.2s ease-in-out infinite;
+}
+.teamver-canvas-slide-launch-skeleton-title {
+  width: min(220px, 70%);
+  height: 14px;
+  margin-top: 4px;
+}
+.teamver-canvas-slide-launch-skeleton-stack .teamver-canvas-slide-launch-skeleton:nth-child(1) {
+  width: 92%;
+}
+.teamver-canvas-slide-launch-skeleton-stack .teamver-canvas-slide-launch-skeleton:nth-child(2) {
+  width: 68%;
+}
+@keyframes teamver-canvas-slide-launch-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
 .teamver-canvas-slide-launch-card {
   display: flex;
   flex-direction: column;

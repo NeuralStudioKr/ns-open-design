@@ -24,6 +24,7 @@ from .routers.internal_usage import router as internal_usage_router
 from .routers.internal_billing import router as internal_billing_router
 from .routers.usage_report import router as usage_report_router
 from .routers.billing_report import router as billing_report_router
+from .routers.canvas import router as canvas_router
 from .middleware.csrf import OriginGuardMiddleware
 from .middleware.node_id import NodeIdMiddleware
 from .middleware.slow_request import SlowRequestMiddleware
@@ -90,6 +91,7 @@ app.include_router(auth_router)
 app.include_router(design_auth_router)
 app.include_router(bootstrap_router)
 app.include_router(drive_router)
+app.include_router(canvas_router)
 app.include_router(runtime_config_router)
 app.include_router(projects_router)
 app.include_router(usage_report_router)

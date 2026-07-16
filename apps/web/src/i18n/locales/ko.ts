@@ -2662,6 +2662,7 @@ export const ko: Dict = {
   'teamver.driveImport.error.drive_import_failed': 'Drive 가져오기에 실패했습니다',
   'teamver.canvasSlideLaunch.title': '캔버스에서 슬라이드 만들기',
   'teamver.canvasSlideLaunch.description': '이 문서를 Design 프로젝트로 가져온 뒤 슬라이드 초안을 바로 만듭니다.',
+  'teamver.canvasSlideLaunch.hint': '확인하면 새 Design 프로젝트에 문서를 넣고 슬라이드 초안 생성을 시작합니다.',
   'teamver.canvasSlideLaunch.badge': 'Canvas → Design',
   'teamver.canvasSlideLaunch.sourceLabel': '가져올 문서',
   'teamver.canvasSlideLaunch.untitled': '제목 없는 문서',

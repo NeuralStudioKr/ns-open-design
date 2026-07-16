@@ -2662,6 +2662,7 @@ export const ja: Dict = {
   'teamver.driveImport.error.drive_import_failed': 'Drive import failed',
   'teamver.canvasSlideLaunch.title': 'キャンバスからスライドを作成',
   'teamver.canvasSlideLaunch.description': 'このドキュメントをDesignプロジェクトに取り込み、すぐにスライド生成を開始します。',
+  'teamver.canvasSlideLaunch.hint': '確認すると新しいDesignプロジェクトに文書を取り込み、スライド草案の生成を開始します。',
   'teamver.canvasSlideLaunch.badge': 'Canvas → Design',
   'teamver.canvasSlideLaunch.sourceLabel': '取り込む文書',
   'teamver.canvasSlideLaunch.untitled': '無題のドキュメント',

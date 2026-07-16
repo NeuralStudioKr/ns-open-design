@@ -37,6 +37,7 @@ describe("canvasLaunchHandoff", () => {
       title: "Doc",
       preview: "Preview text",
       sectionCount: 2,
+      headings: ["Intro", "Goals"],
       updatedAt: "2026-07-15T00:00:00Z",
     });
     expect(q).toContain("teamverCanvasSessionId=sess");
@@ -45,6 +46,8 @@ describe("canvasLaunchHandoff", () => {
     expect(q).toContain("teamverCanvasTitle=Doc");
     expect(q).toContain("teamverCanvasPreview=Preview");
     expect(q).toContain("teamverCanvasSections=2");
+    expect(q).toContain("teamverCanvasHeading=Intro");
+    expect(q).toContain("teamverCanvasHeading=Goals");
     expect(q).toContain("teamverDriveIntent=create-slides");
 
     window.history.replaceState({}, "", `/${q}`);

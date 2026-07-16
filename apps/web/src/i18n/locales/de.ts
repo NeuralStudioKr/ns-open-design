@@ -2662,6 +2662,7 @@ export const de: Dict = {
   'teamver.driveImport.error.drive_import_failed': 'Drive import failed',
   'teamver.canvasSlideLaunch.title': 'Create slides from Canvas',
   'teamver.canvasSlideLaunch.description': 'Import this document into a Design project and start slide generation in one step.',
+  'teamver.canvasSlideLaunch.hint': 'Confirm to import this document into a new Design project and start generating slides.',
   'teamver.canvasSlideLaunch.badge': 'Canvas → Design',
   'teamver.canvasSlideLaunch.sourceLabel': 'Document',
   'teamver.canvasSlideLaunch.untitled': 'Untitled document',
