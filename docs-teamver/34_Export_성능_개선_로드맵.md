@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-16 | 다운로드 메뉴 close-first 보장 — `TeamverExportMenu`에서 메뉴 닫기와 export/Drive modal 실행을 분리해 다음 tick에 작업을 시작하도록 변경. 전용 테스트로 `onCloseMenu`가 action보다 먼저 호출됨을 고정 |
 | 2026-07-16 | 다운로드 UX 즉시 피드백 2차 보강 — `flushSync`로 메뉴 닫힘+loading toast를 즉시 commit하고 export 작업은 double `requestAnimationFrame` 뒤 시작하도록 해 실제 paint 전에 작업이 시작되는 케이스를 차단 |
 | 2026-07-16 | 다운로드 UX 즉시 피드백 개선 — PDF/PPTX/ZIP/HTML/Markdown 다운로드 클릭 시 메뉴 닫힘과 loading toast가 먼저 paint 된 뒤 export 작업을 시작하도록 해 요청 지연 구간의 무반응 느낌을 완화 |
 | 2026-07-16 | Export offload fallback 진단 보강 — ticket 생성 응답에 `offloadReason`을 추가해 200 stream fallback이 `missing_teamver_identity_headers`, S3 disabled/failed 등 어떤 이유인지 Network 탭에서 즉시 확인 가능하게 함 |

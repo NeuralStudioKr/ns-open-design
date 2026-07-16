@@ -74,6 +74,10 @@ export function TeamverExportMenu({
   exportMarkdown,
 }: TeamverExportMenuProps) {
   const driveCopy = drivePublishMessaging();
+  const runAfterMenuClose = (action: () => void) => {
+    onCloseMenu();
+    window.setTimeout(action, 0);
+  };
 
   return (
     <>
@@ -95,8 +99,9 @@ export function TeamverExportMenu({
         }
         onClick={(event) => {
           const fresh = isTeamverEmbedMode() && event.shiftKey;
-          onCloseMenu();
-          fireShareExport("pdf", () => exportPdf(fresh ? { fresh: true } : undefined));
+          runAfterMenuClose(() => {
+            fireShareExport("pdf", () => exportPdf(fresh ? { fresh: true } : undefined));
+          });
         }}
       >
         <span className="share-menu-icon"><RemixIcon name="file-line" size={15} /></span>
@@ -116,11 +121,12 @@ export function TeamverExportMenu({
               : t("fileViewer.exportPptxNa")
           }
           onClick={() => {
-            onCloseMenu();
-            fireShareExport("pptx", () => {
-              if (exportPptx) return exportPptx();
-              if (onExportAsPptx) onExportAsPptx(fileName);
-              return undefined;
+            runAfterMenuClose(() => {
+              fireShareExport("pptx", () => {
+                if (exportPptx) return exportPptx();
+                if (onExportAsPptx) onExportAsPptx(fileName);
+                return undefined;
+              });
             });
           }}
         >
@@ -134,8 +140,7 @@ export function TeamverExportMenu({
           className="share-menu-item"
           role="menuitem"
           onClick={() => {
-            onCloseMenu();
-            onOpenImageExport();
+            runAfterMenuClose(onOpenImageExport);
           }}
         >
           <span className="share-menu-icon"><RemixIcon name="image-line" size={15} /></span>
@@ -147,8 +152,9 @@ export function TeamverExportMenu({
         className="share-menu-item"
         role="menuitem"
         onClick={() => {
-          onCloseMenu();
-          fireShareExport("html", () => exportHtml());
+          runAfterMenuClose(() => {
+            fireShareExport("html", () => exportHtml());
+          });
         }}
       >
         <span className="share-menu-icon"><RemixIcon name="file-code-line" size={15} /></span>
@@ -159,8 +165,9 @@ export function TeamverExportMenu({
         className="share-menu-item"
         role="menuitem"
         onClick={() => {
-          onCloseMenu();
-          fireShareExport("zip", () => exportZip());
+          runAfterMenuClose(() => {
+            fireShareExport("zip", () => exportZip());
+          });
         }}
       >
         <span className="share-menu-icon"><RemixIcon name="file-zip-line" size={15} /></span>
@@ -172,8 +179,9 @@ export function TeamverExportMenu({
           className="share-menu-item"
           role="menuitem"
           onClick={() => {
-            onCloseMenu();
-            fireShareExport("markdown", exportMarkdown);
+            runAfterMenuClose(() => {
+              fireShareExport("markdown", exportMarkdown);
+            });
           }}
         >
           <span className="share-menu-icon"><RemixIcon name="file-line" size={15} /></span>
@@ -192,8 +200,7 @@ export function TeamverExportMenu({
             role="menuitem"
             data-testid="teamver-open-publish-drive-modal-pdf"
             onClick={() => {
-              onCloseMenu();
-              onOpenDrivePublish("pdf");
+              runAfterMenuClose(() => onOpenDrivePublish("pdf"));
             }}
           >
             <span className="share-menu-icon">
@@ -207,8 +214,7 @@ export function TeamverExportMenu({
             role="menuitem"
             data-testid="teamver-open-publish-drive-modal-html"
             onClick={() => {
-              onCloseMenu();
-              onOpenDrivePublish("html");
+              runAfterMenuClose(() => onOpenDrivePublish("html"));
             }}
           >
             <span className="share-menu-icon">
@@ -231,8 +237,7 @@ export function TeamverExportMenu({
                     : t("fileViewer.exportPptxNa")
               }
               onClick={() => {
-                onCloseMenu();
-                onOpenDrivePublish("pptx");
+                runAfterMenuClose(() => onOpenDrivePublish("pptx"));
               }}
             >
               <span className="share-menu-icon">
