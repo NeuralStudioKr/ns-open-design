@@ -48,6 +48,8 @@ import {
   formatTeamverEmbedOperationFailureMessage,
   notifyTeamverEmbedAuthFailureIfNeeded,
 } from '../teamver/teamverBffAuthError';
+import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
+import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { buildDrivePublishToastContent } from '../teamver/drivePublishSuccess';
 import { canOfferAlternateDrivePublishFormat } from '../teamver/drivePublishFormatHealth';
 import type { DrivePublishFormat } from '../teamver/drivePublishMessaging';
@@ -6511,11 +6513,16 @@ function HtmlViewer({
         const status = 'status' in saved ? saved.status : undefined;
         const code = 'code' in saved ? saved.code : undefined;
         const message = 'message' in saved ? saved.message : 'Unknown save error';
+        if (status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
         setManualEditError(
-          embedUiLabel(
-            `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
-            '편집한 파일을 저장하지 못했습니다.',
-          ),
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+            : embedUiLabel(
+                `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+                '편집한 파일을 저장하지 못했습니다.',
+              ),
         );
         return false;
       }

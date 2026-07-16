@@ -188,6 +188,8 @@ import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
+import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
@@ -2292,6 +2294,9 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
       } else {
+        if (result.status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
         // Surface an error banner keyed on the actual failure — access
         // denied vs project-not-found vs upstream vs network — instead of
         // a generic "check the daemon logs" message. The structured
