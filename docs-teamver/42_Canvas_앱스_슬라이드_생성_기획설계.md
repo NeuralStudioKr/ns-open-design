@@ -330,7 +330,8 @@ T1(postMessage)은 “작은 HTML + Web 전용 빠른 경로”로만 두고, **
 [Design FE]
   4. boot + workspace/auth ready
   5. handoff 감지 → one-confirm 모달
-       표시: 캔버스 제목(옵션 fetch) · “슬라이드 생성”
+       표시: **문서 제목** · 본문 미리보기(2~3줄) · 섹션 수·수정 시각(선택) · “슬라이드 만들기”
+       (Main URL query: `teamverCanvasTitle` / `Preview` / `Sections` / `UpdatedAt` — BFF import에는 미사용)
   6. 사용자 확인
        → POST design-api /projects/{id}/import-canvas
          body: { sessionId, artifactId, rev? }

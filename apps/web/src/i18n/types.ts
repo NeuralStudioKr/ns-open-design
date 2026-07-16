@@ -459,7 +459,11 @@ export interface Dict {
   'teamver.driveImport.error.drive_import_failed': string;
   'teamver.canvasSlideLaunch.title': string;
   'teamver.canvasSlideLaunch.description': string;
+  'teamver.canvasSlideLaunch.badge': string;
   'teamver.canvasSlideLaunch.sourceLabel': string;
+  'teamver.canvasSlideLaunch.untitled': string;
+  'teamver.canvasSlideLaunch.sections': string;
+  'teamver.canvasSlideLaunch.updated': string;
   'teamver.canvasSlideLaunch.confirm': string;
   'teamver.canvasSlideLaunch.cancel': string;
   'teamver.canvasSlideLaunch.working': string;
