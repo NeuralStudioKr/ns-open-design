@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-16 | Export offload env wiring 누락 수정 — `.env.staging`에 `OD_EXPORT_OFFLOAD_*`가 있어도 `open-design-daemon.environment`가 전달하지 않으면 컨테이너에서는 offload disabled로 동작해 `/export/downloads/{token}`이 200 stream으로 남는다. `docker-compose.yml`에 offload env pass-through를 추가 |
 | 2026-07-16 | PRD PPTX 첫 다운로드 transient 실패 보강 — PPTX export도 PDF처럼 storage prefix warmup을 수행하고, 500/502/503·네트워크성 실패는 짧게 자동 재시도. `EXPORT_QUEUE_FULL`은 서버 보호 신호이므로 재시도하지 않고 기존 사용자 안내를 유지 |
 | 2026-07-16 | Export offload 200 stream 원인 수정 — FE daemon fetch는 `X-Workspace-Id`만 전달하고 `x-teamver-user-id`는 직접 세팅하지 않으므로, offload key 생성을 full Teamver identity 대신 workspace header fallback으로 허용. redirect ticket은 FE가 blob fetch하지 않고 native download 링크로 열어 S3 302를 브라우저가 따라가게 변경 |
 | 2026-07-16 | 다운로드 메뉴 close-first 보장 — `TeamverExportMenu`에서 메뉴 닫기와 export/Drive modal 실행을 분리해 다음 tick에 작업을 시작하도록 변경. 전용 테스트로 `onCloseMenu`가 action보다 먼저 호출됨을 고정 |

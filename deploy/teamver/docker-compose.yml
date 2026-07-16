@@ -100,6 +100,17 @@ services:
       OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC: ${OD_EXPORT_CACHE_LOCAL_MAX_AGE_SEC:-}
       OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC: ${OD_EXPORT_CACHE_LOCAL_SWEEP_INTERVAL_SEC:-}
       OD_EXPORT_CACHE_DIR: ${OD_EXPORT_CACHE_DIR:-}
+      # Export offload (Phase 2 — docs-teamver/34). When enabled, ticketed
+      # downloads upload the rendered artifact to S3 and return a single-use
+      # daemon ticket that redirects to a short-lived presigned GET URL. Keep
+      # these explicitly wired here; values that only exist in .env are not
+      # visible inside the daemon container unless compose passes them through.
+      OD_EXPORT_OFFLOAD_ENABLED: ${OD_EXPORT_OFFLOAD_ENABLED:-0}
+      OD_EXPORT_OFFLOAD_BUCKET: ${OD_EXPORT_OFFLOAD_BUCKET:-}
+      OD_EXPORT_OFFLOAD_REGION: ${OD_EXPORT_OFFLOAD_REGION:-}
+      OD_EXPORT_OFFLOAD_PREFIX: ${OD_EXPORT_OFFLOAD_PREFIX:-}
+      OD_EXPORT_OFFLOAD_ENDPOINT: ${OD_EXPORT_OFFLOAD_ENDPOINT:-}
+      OD_EXPORT_OFFLOAD_PRESIGN_TTL_SEC: ${OD_EXPORT_OFFLOAD_PRESIGN_TTL_SEC:-300}
       TEAMVER_BILLING_DISABLED: ${TEAMVER_BILLING_DISABLED:-}
       TEAMVER_BILLING_TIMEOUT_MS: ${TEAMVER_BILLING_TIMEOUT_MS:-}
       TEAMVER_BILLING_RESERVE_AMOUNT: ${TEAMVER_BILLING_RESERVE_AMOUNT:-}
