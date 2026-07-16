@@ -8,6 +8,9 @@ import { isTeamverEmbedBuild } from "./siteMetadata";
  */
 export const TEAMVER_EMBED_LOADING_BG = "#F4EFE6";
 
+/** Readable on cream even when OS `prefers-color-scheme: dark` sets light --text. */
+export const TEAMVER_EMBED_LOADING_TEXT = "#5c574f";
+
 /** Single visible bootstrap copy — never swap brand/English mid-sequence. */
 export const TEAMVER_EMBED_LOADING_LABEL = "불러오는 중…";
 

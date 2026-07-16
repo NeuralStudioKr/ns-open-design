@@ -5,14 +5,15 @@ import dynamic from 'next/dynamic';
 import { installErrorHandlers } from '../../src/analytics/error-tracking';
 import { EmbedLoadingShell } from '../../src/components/EmbedLoadingShell';
 import { installWebObservability } from '../../src/observability/install';
+import { installEmbedChunkLoadRecovery, clearEmbedChunkLoadRecoveryCounters } from '../../src/teamver/embedChunkLoadRecovery';
 import { isTeamverEmbedBuild } from '../../src/teamver/branding/siteMetadata';
 import { prefetchEmbedAuthSessionOnBoot } from '../../src/teamver/prefetchEmbedAuth';
 import { scrubCosmeticLaunchParamsFromBrowserUrl } from '../../src/teamver/teamverEmbedAuthNavigation';
 
 if (typeof window !== 'undefined') {
   scrubCosmeticLaunchParamsFromBrowserUrl();
-  // Overlap `/auth/session` with the App chunk download.
   if (isTeamverEmbedBuild()) {
+    installEmbedChunkLoadRecovery();
     prefetchEmbedAuthSessionOnBoot();
   }
 }
@@ -42,5 +43,8 @@ const App = dynamic(() => import('../../src/App').then((m) => m.App), {
 });
 
 export function ClientApp() {
+  if (typeof window !== 'undefined' && isTeamverEmbedBuild()) {
+    clearEmbedChunkLoadRecoveryCounters();
+  }
   return <App />;
 }

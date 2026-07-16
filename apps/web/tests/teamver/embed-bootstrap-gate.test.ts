@@ -19,10 +19,12 @@ describe('embed bootstrap gate', () => {
     expect(gate).toContain('embed-bootstrap-gate__stage');
     expect(boot).toContain('revealTeamverEmbedChrome');
     expect(shell).toContain('od-loading-shell');
+    expect(shell).toContain('TEAMVER_EMBED_LOADING_TEXT');
     expect(baseCss).toContain('.od-loading-shell::before');
     expect(baseCss).toContain('.embed-route-loading');
     expect(baseCss).toContain('od-loading-shell--teamver');
     expect(baseCss).toContain('background-color: #F4EFE6');
+    expect(baseCss).toContain('color: #5c574f');
     expect(baseCss).toContain('teamver-embed-booted');
     expect(baseCss).toContain('html.teamver-embed:not(.teamver-embed-booted)');
   });

@@ -43,6 +43,7 @@ html.teamver-embed:not(.teamver-embed-booted) body,
 html.teamver-embed:not(.teamver-embed-booted)[data-theme="dark"],
 html.teamver-embed:not(.teamver-embed-booted)[data-theme="dark"] body {
   background-color: #F4EFE6 !important;
+  color: #5c574f !important;
 }
 
 html.teamver-embed.teamver-embed-booted[data-theme="dark"] body {
@@ -67,7 +68,7 @@ html.teamver-embed.teamver-embed-booted[data-theme="dark"] body {
 .od-loading-shell--teamver {
   background: #F4EFE6 !important;
   background-color: #F4EFE6 !important;
-  color: #8a857c !important;
+  color: #5c574f !important;
 }
 
 html[data-theme="dark"] .od-loading-shell:not(.od-loading-shell--teamver) {
@@ -126,7 +127,7 @@ html[data-theme="dark"] .od-loading-shell:not(.od-loading-shell--teamver) {
 /* Inline entry/project loaders: same type + spinner language as the shell. */
 .centered-loader--embed-tone {
   gap: 10px;
-  color: #8a857c;
+  color: #5c574f;
   font: 500 12.5px/1.4 var(--sans, system-ui, -apple-system, sans-serif);
   background: transparent;
 }

@@ -2,6 +2,7 @@ import {
   isEmbedLoadingSurface,
   resolveLoadingShellLabel,
   TEAMVER_EMBED_LOADING_BG,
+  TEAMVER_EMBED_LOADING_TEXT,
 } from '../teamver/branding/loadingShellLabel';
 
 type Props = {
@@ -28,7 +29,10 @@ export function EmbedLoadingShell({ label, overlay = false, testId }: Props) {
 
   // Inline bg beats FOUC when CSS chunks lag behind the first React paint.
   const style = embed
-    ? { backgroundColor: TEAMVER_EMBED_LOADING_BG }
+    ? {
+        backgroundColor: TEAMVER_EMBED_LOADING_BG,
+        color: TEAMVER_EMBED_LOADING_TEXT,
+      }
     : undefined;
 
   return (

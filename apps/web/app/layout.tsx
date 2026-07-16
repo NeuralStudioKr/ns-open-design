@@ -7,7 +7,7 @@ import {
   buildRootLayoutMetadata,
   isTeamverEmbedBuild,
 } from '../src/teamver/branding/siteMetadata';
-import { TEAMVER_EMBED_LOADING_BG } from '../src/teamver/branding/loadingShellLabel';
+import { TEAMVER_EMBED_LOADING_BG, TEAMVER_EMBED_LOADING_TEXT } from '../src/teamver/branding/loadingShellLabel';
 import '../src/index.css';
 import '../src/styles/home/index.css';
 
@@ -35,8 +35,8 @@ const themeInitScript = `(function(){try{var c=JSON.parse(localStorage.getItem('
  * `.teamver-embed-booted` so a saved dark theme cannot flash a second loader.
  */
 const embedBootStyle = embedBuild
-  ? `html,body{background-color:${TEAMVER_EMBED_LOADING_BG}!important}` +
-    `html:not(.teamver-embed-booted),html:not(.teamver-embed-booted) body{background-color:${TEAMVER_EMBED_LOADING_BG}!important}`
+  ? `html,body{background-color:${TEAMVER_EMBED_LOADING_BG}!important;color:${TEAMVER_EMBED_LOADING_TEXT}!important}` +
+    `html:not(.teamver-embed-booted),html:not(.teamver-embed-booted) body{background-color:${TEAMVER_EMBED_LOADING_BG}!important;color:${TEAMVER_EMBED_LOADING_TEXT}!important}`
   : null;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
