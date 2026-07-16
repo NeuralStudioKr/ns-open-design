@@ -54,6 +54,7 @@ import { isDesignTemplateEnabled } from './teamver/branding/designTemplateVisibi
 import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } from './teamver/branding/applyEmbedConfigLock';
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import { isTeamverEmbedSessionAuthenticated } from './teamver/teamverEmbedSession';
 import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
@@ -1749,10 +1750,13 @@ function AppInner() {
 
   // Pageshow/visibility return — recover from sleep/standby/backgrounded tab
   // and pick up BE runtime-config changes (rotated keys, model swap, base url).
+  // Skip when embed session is known-unauthenticated so we do not spam
+  // GET /teamver-bff/runtime-config → 401 session_expired (docs-teamver/43).
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     const handler = () => {
       if (document.visibilityState !== "visible") return;
+      if (!isTeamverEmbedSessionAuthenticated()) return;
       void reloadTeamverRuntimeConfig();
     };
     window.addEventListener("pageshow", handler);

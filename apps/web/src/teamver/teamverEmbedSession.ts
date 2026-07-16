@@ -1,4 +1,4 @@
-import { getDesignBffClient } from "./designBffClient";
+import { clearTeamverRuntimeConfigAuthBlock, getDesignBffClient } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { clearEmbedAuthSnapshot } from "./embedAuthSnapshot";
 import { clearTeamverEmbedListCaches } from "./teamverEmbedListCaches";
@@ -31,6 +31,9 @@ function ensureCrossTabRelayInstalled(): void {
     const nextAuthenticated = true;
     const changed = embedSessionAuthenticated !== nextAuthenticated;
     embedSessionAuthenticated = nextAuthenticated;
+    // Mirror setTeamverEmbedSessionAuthenticated(true): peer login must lift
+    // `/runtime-config` 401 backoff without re-broadcasting (avoid loop).
+    clearTeamverRuntimeConfigAuthBlock();
     if (changed) {
       window.dispatchEvent(
         new CustomEvent<TeamverEmbedSessionChangedDetail>(
@@ -84,6 +87,11 @@ export function setTeamverEmbedSessionAuthenticated(authenticated: boolean): voi
   const next = Boolean(authenticated);
   const changed = embedSessionAuthenticated !== next;
   embedSessionAuthenticated = next;
+  // Re-allow `/runtime-config` after re-login even when the flag was already true
+  // (stale true + dead cookie → 401 backoff → fresh probe confirms auth).
+  if (next) {
+    clearTeamverRuntimeConfigAuthBlock();
+  }
   if (changed) {
     dispatchTeamverEmbedSessionChanged(next);
   }

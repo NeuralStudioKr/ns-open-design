@@ -108,29 +108,32 @@ export async function runTeamverEmbedSessionBoot(
           }
         })();
       }
-    } else {
-      clearEmbedAuthSnapshot();
-      // Keep prior UI session when auth-return is still settling — wiping here
-      // plus an immediate login redirect is the post-signin bounce loop.
-      if (!shouldDeferEmbedLoginRedirect()) {
-        await clearTeamverEmbedSessionState();
+
+      try {
+        return await fetchTeamverRuntimeConfig();
+      } catch (err) {
+        console.warn("[teamver] embed boot runtime-config failed", err);
+        return null;
       }
-      if (deps.isCancelled()) return null;
-
-      seedEmbedBootstrapSession({
-        session: session ?? { authenticated: false },
-        activeWorkspaceId: null,
-      });
-      unlockBootIfNeeded(deps.isCancelled);
-      redirectToDesignLoginIfBffMissing();
     }
 
-    try {
-      return await fetchTeamverRuntimeConfig();
-    } catch (err) {
-      console.warn("[teamver] embed boot runtime-config failed", err);
-      return null;
+    clearEmbedAuthSnapshot();
+    // Keep prior UI session when auth-return is still settling — wiping here
+    // plus an immediate login redirect is the post-signin bounce loop.
+    if (!shouldDeferEmbedLoginRedirect()) {
+      await clearTeamverEmbedSessionState();
     }
+    if (deps.isCancelled()) return null;
+
+    seedEmbedBootstrapSession({
+      session: session ?? { authenticated: false },
+      activeWorkspaceId: null,
+    });
+    unlockBootIfNeeded(deps.isCancelled);
+    redirectToDesignLoginIfBffMissing();
+    // Unauthenticated boot must not hit /runtime-config (nginx 401). Gate in
+    // fetchTeamverRuntimeConfig is belt-and-suspenders; skip the call here.
+    return null;
   } catch (err) {
     console.warn("[teamver] embed boot session probe failed", err);
     // Transient probe failure: unlock the gate without claiming a session.
