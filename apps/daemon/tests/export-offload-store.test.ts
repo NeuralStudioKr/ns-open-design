@@ -1,8 +1,12 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildExportOffloadPresignedGetUrl,
   presignExportOffloadGet,
+  putExportOffloadFileObject,
   putExportOffloadObject,
   type ExportOffloadStorage,
 } from '../src/export-offload-store.js';
@@ -94,6 +98,50 @@ describe('export offload store', () => {
         { config: enabledConfig(), storage },
       ),
     ).resolves.toEqual({ status: 'failed', key: 'exports/ws/proj/hash.pdf', reason: 's3 down' });
+  });
+
+  it('uploads file-backed cache entries and skips reads when S3 already has matching bytes', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'od-offload-file-'));
+    const filePath = path.join(dir, 'deck.pdf');
+    await writeFile(filePath, Buffer.from('pdf'));
+    try {
+      const hitStorage: ExportOffloadStorage = {
+        statObjectAtKey: vi.fn(async () => ({
+          path: 'exports/ws/proj/hash.pdf',
+          size: 3,
+          mtimeMs: 1,
+        })),
+        writeObjectAtKey: vi.fn(),
+      };
+      await expect(
+        putExportOffloadFileObject(
+          { key: 'exports/ws/proj/hash.pdf', filePath, bytes: 3 },
+          { config: enabledConfig(), storage: hitStorage },
+        ),
+      ).resolves.toEqual({ status: 'hit', key: 'exports/ws/proj/hash.pdf', bytes: 3 });
+      expect(hitStorage.writeObjectAtKey).not.toHaveBeenCalled();
+
+      const uploadStorage: ExportOffloadStorage = {
+        statObjectAtKey: vi.fn(async () => null),
+        writeObjectAtKey: vi.fn(async (key: string, body: Buffer) => ({
+          path: key,
+          size: body.byteLength,
+          mtimeMs: 1,
+        })),
+      };
+      await expect(
+        putExportOffloadFileObject(
+          { key: 'exports/ws/proj/hash.pdf', filePath, bytes: 3 },
+          { config: enabledConfig({ prefix: 'teamver' }), storage: uploadStorage },
+        ),
+      ).resolves.toEqual({ status: 'uploaded', key: 'teamver/exports/ws/proj/hash.pdf', bytes: 3 });
+      expect(uploadStorage.writeObjectAtKey).toHaveBeenCalledWith(
+        'teamver/exports/ws/proj/hash.pdf',
+        Buffer.from('pdf'),
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('builds a virtual-host S3 presigned GET URL', () => {

@@ -44,7 +44,11 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 import { buildExportOffloadObjectKey, isExportOffloadEnabled } from './export-offload-key.js';
-import { presignExportOffloadGet, putExportOffloadObject } from './export-offload-store.js';
+import {
+  presignExportOffloadGet,
+  putExportOffloadFileObject,
+  putExportOffloadObject,
+} from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
@@ -244,9 +248,21 @@ function exportOffloadPayloadForRequest(
   const offloadKey = exportOffloadKeyForRequest(req, outcome);
   if (!offloadKey) return Promise.resolve({});
   return (async () => {
-    let offloadStatus = 'skipped_source_file';
+    let offloadStatus = 'skipped_no_payload';
+    let result:
+      | Awaited<ReturnType<typeof putExportOffloadObject>>
+      | Awaited<ReturnType<typeof putExportOffloadFileObject>>
+      | null = null;
     if (outcome.body !== undefined) {
-      const result = await putExportOffloadObject({ key: offloadKey, body: outcome.body });
+      result = await putExportOffloadObject({ key: offloadKey, body: outcome.body });
+    } else if (outcome.filePath) {
+      result = await putExportOffloadFileObject({
+        key: offloadKey,
+        filePath: outcome.filePath,
+        bytes: outcome.bytes,
+      });
+    }
+    if (result) {
       offloadStatus = result.status;
       console.info(
         JSON.stringify({
