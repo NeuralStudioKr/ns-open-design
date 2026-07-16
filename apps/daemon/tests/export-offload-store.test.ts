@@ -84,12 +84,61 @@ describe('export offload store', () => {
     );
   });
 
+  it('does not duplicate the configured prefix when the key already includes it', async () => {
+    const storage: ExportOffloadStorage = {
+      statObjectAtKey: vi.fn(async () => null),
+      writeObjectAtKey: vi.fn(async (key: string, body: Buffer) => ({
+        path: key,
+        size: body.byteLength,
+        mtimeMs: 1,
+      })),
+    };
+
+    await expect(
+      putExportOffloadObject(
+        { key: 'exports/ws/proj/hash.pdf', body: Buffer.from('pdf') },
+        { config: enabledConfig({ prefix: 'exports' }), storage },
+      ),
+    ).resolves.toEqual({ status: 'uploaded', key: 'exports/ws/proj/hash.pdf', bytes: 3 });
+    expect(storage.statObjectAtKey).toHaveBeenCalledWith('exports/ws/proj/hash.pdf');
+    expect(storage.writeObjectAtKey).toHaveBeenCalledWith(
+      'exports/ws/proj/hash.pdf',
+      Buffer.from('pdf'),
+    );
+  });
+
+  it('still uploads when HEAD/stat is forbidden but PUT succeeds', async () => {
+    const storage: ExportOffloadStorage = {
+      statObjectAtKey: vi.fn(async () => {
+        throw new Error('S3 HEAD exports/ws/proj/hash.pdf → 403 Forbidden');
+      }),
+      writeObjectAtKey: vi.fn(async (key: string, body: Buffer) => ({
+        path: key,
+        size: body.byteLength,
+        mtimeMs: 1,
+      })),
+    };
+
+    await expect(
+      putExportOffloadObject(
+        { key: 'exports/ws/proj/hash.pdf', body: Buffer.from('pdf') },
+        { config: enabledConfig({ prefix: 'exports' }), storage },
+      ),
+    ).resolves.toEqual({ status: 'uploaded', key: 'exports/ws/proj/hash.pdf', bytes: 3 });
+    expect(storage.writeObjectAtKey).toHaveBeenCalledWith(
+      'exports/ws/proj/hash.pdf',
+      Buffer.from('pdf'),
+    );
+  });
+
   it('returns failed instead of throwing on storage errors', async () => {
     const storage: ExportOffloadStorage = {
       statObjectAtKey: vi.fn(async () => {
         throw new Error('s3 down');
       }),
-      writeObjectAtKey: vi.fn(),
+      writeObjectAtKey: vi.fn(async () => {
+        throw new Error('store disabled');
+      }),
     };
 
     await expect(
@@ -97,7 +146,11 @@ describe('export offload store', () => {
         { key: 'exports/ws/proj/hash.pdf', body: 'pdf' },
         { config: enabledConfig(), storage },
       ),
-    ).resolves.toEqual({ status: 'failed', key: 'exports/ws/proj/hash.pdf', reason: 's3 down' });
+    ).resolves.toEqual({
+      status: 'failed',
+      key: 'exports/ws/proj/hash.pdf',
+      reason: 'stat failed: s3 down; write failed: store disabled',
+    });
   });
 
   it('uploads file-backed cache entries and skips reads when S3 already has matching bytes', async () => {
@@ -165,6 +218,22 @@ describe('export offload store', () => {
     expect(url.searchParams.get('X-Amz-Expires')).toBe('120');
     expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('host');
     expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('does not duplicate a matching prefix in presigned GET URLs', () => {
+    const url = new URL(
+      buildExportOffloadPresignedGetUrl({
+        key: 'exports/ws/proj/hash.pdf',
+        config: enabledConfig({ prefix: 'exports', region: 'ap-northeast-2' }),
+        credentials: {
+          accessKeyId: 'AKTEST',
+          secretAccessKey: 'secret',
+        },
+        now: new Date('2026-07-15T00:00:00.000Z'),
+      }),
+    );
+
+    expect(url.pathname).toBe('/exports/ws/proj/hash.pdf');
   });
 
   it('builds a path-style presigned GET URL for endpoint overrides', () => {

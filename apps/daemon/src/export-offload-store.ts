@@ -43,6 +43,7 @@ export type ExportOffloadPresignInput = {
 function prefixedOffloadKey(prefix: string, key: string): string {
   const root = prefix.trim().replace(/^\/+|\/+$/g, '');
   const normalized = key.trim().replace(/^\/+/, '');
+  if (root && (normalized === root || normalized.startsWith(`${root}/`))) return normalized;
   return root ? `${root}/${normalized}` : normalized;
 }
 
@@ -159,18 +160,23 @@ export async function putExportOffloadObject(
   const key = prefixedOffloadKey(config.prefix, input.key);
   const body = typeof input.body === 'string' ? Buffer.from(input.body, 'utf8') : input.body;
   const storage = options.storage ?? createExportOffloadStorage(config);
+  let statReason: string | undefined;
   try {
-    const existing = await storage.statObjectAtKey(key);
+    const existing = await storage.statObjectAtKey(key).catch((err) => {
+      statReason = err instanceof Error ? err.message : String(err);
+      return null;
+    });
     if (existing && existing.size === body.byteLength) {
       return { status: 'hit', key, bytes: existing.size };
     }
     const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body);
     return { status: 'uploaded', key, bytes: written.size };
   } catch (err) {
+    const writeReason = err instanceof Error ? err.message : String(err);
     return {
       status: 'failed',
       key,
-      reason: err instanceof Error ? err.message : String(err),
+      reason: statReason ? `stat failed: ${statReason}; write failed: ${writeReason}` : writeReason,
     };
   }
 }
@@ -186,12 +192,16 @@ export async function putExportOffloadFileObject(
   if (!config.enabled) return { status: 'disabled', reason: config.reason };
   const key = prefixedOffloadKey(config.prefix, input.key);
   const storage = options.storage ?? createExportOffloadStorage(config);
+  let statReason: string | undefined;
   try {
     const expectedBytes =
       Number.isFinite(input.bytes) && input.bytes !== undefined && input.bytes >= 0
         ? Math.floor(input.bytes)
         : (await stat(input.filePath)).size;
-    const existing = await storage.statObjectAtKey(key);
+    const existing = await storage.statObjectAtKey(key).catch((err) => {
+      statReason = err instanceof Error ? err.message : String(err);
+      return null;
+    });
     if (existing && existing.size === expectedBytes) {
       return { status: 'hit', key, bytes: existing.size };
     }
@@ -199,10 +209,11 @@ export async function putExportOffloadFileObject(
     const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body);
     return { status: 'uploaded', key, bytes: written.size };
   } catch (err) {
+    const writeReason = err instanceof Error ? err.message : String(err);
     return {
       status: 'failed',
       key,
-      reason: err instanceof Error ? err.message : String(err),
+      reason: statReason ? `stat failed: ${statReason}; write failed: ${writeReason}` : writeReason,
     };
   }
 }

@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-16 | Export offload S3 key/HEAD 403 수정 — `OD_EXPORT_OFFLOAD_PREFIX=exports`와 offload key `exports/...`가 만나 `exports/exports/...`로 HEAD 하던 중복 prefix를 방지. S3 HEAD/stat가 403이어도 곧바로 실패하지 않고 PUT 업로드를 시도하도록 변경 |
 | 2026-07-16 | Staging compose offload 검증 모드 고정 — 서버 `.env.staging`이 오래되어 `OD_EXPORT_OFFLOAD_REQUIRED`가 빠져도 200 stream fallback으로 숨지 않도록 `docker-compose.staging.yml`에서 `OD_EXPORT_OFFLOAD_ENABLED=1`, `OD_EXPORT_OFFLOAD_REQUIRED=1`을 직접 지정 |
 | 2026-07-16 | Export offload reason 헤더 500 hotfix — S3/AWS 오류 문자열의 비ASCII·개행 문자가 `X-OD-Export-Offload-Reason`에 그대로 들어가 Node `Invalid character in header content` 500을 유발. 헤더용 값은 ASCII-safe + 길이 제한으로 정리하고 JSON 진단은 유지 |
 | 2026-07-16 | Export offload required 가드 재검토 보완 — `OD_EXPORT_OFFLOAD_REQUIRED=1`이면 `OD_EXPORT_OFFLOAD_ENABLED`가 누락되어도 offload 경로를 강제 활성 상태로 판정해 `missing_bucket/missing_region` 등 설정 오류가 200 stream fallback으로 숨지 않게 고정 |
