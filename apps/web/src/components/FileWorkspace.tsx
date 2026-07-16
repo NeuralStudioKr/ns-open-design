@@ -21,6 +21,7 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   formatProjectFileManagerUploadError,
+  formatProjectDeleteFailureForUser,
   formatProjectRenameErrorForUser,
 } from '../teamver/projectUploadErrors';
 import { isMacPlatform } from '../utils/platform';
@@ -1287,6 +1288,8 @@ export function FileWorkspace({
         delete next[name];
         return next;
       });
+    } else if (isTeamverEmbedMode()) {
+      setUploadError(formatProjectDeleteFailureForUser(1));
     }
   }
 
@@ -1320,7 +1323,11 @@ export function FileWorkspace({
       });
     }
     if (failed.length > 0) {
-      alert(t('workspace.deleteSelectedFilesPartial', { n: failed.length }));
+      if (isTeamverEmbedMode()) {
+        setUploadError(formatProjectDeleteFailureForUser(failed.length));
+      } else {
+        alert(t('workspace.deleteSelectedFilesPartial', { n: failed.length }));
+      }
     }
   }
 
