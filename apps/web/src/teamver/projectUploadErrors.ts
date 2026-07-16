@@ -1,12 +1,29 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { formatTeamverEmbedOperationFailureMessage, formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
-import type { UploadProjectFilesResult } from "../providers/registry";
+import type { UploadProjectFilesResult, WriteProjectFileSaveResult } from "../providers/registry";
+import { formatProjectArtifactSaveFailedError } from "./projectErrorMessages";
 
 const UPLOAD_AUTH_LOGOUT =
   "로그인 세션이 만료되어 파일을 업로드하지 못했습니다. 다시 로그인한 뒤 시도하세요.";
 const UPLOAD_AUTH_TRANSIENT =
   "파일 업로드 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
+
+/** Map structured daemon file-save failures for embed browser/workspace UI. */
+export function formatProjectFileSaveResultForUser(
+  fileName: string,
+  result: Extract<WriteProjectFileSaveResult, { ok: false }>,
+  englishFallback: string,
+): string {
+  if (!isTeamverEmbedMode()) {
+    return result.message?.trim() || englishFallback;
+  }
+  return formatProjectArtifactSaveFailedError(fileName, {
+    status: result.status,
+    code: result.code,
+    message: result.message,
+  });
+}
 
 /** Map upload API error strings (including daemon 401 copy) for embed UI. */
 export function formatProjectUploadFailureDetail(

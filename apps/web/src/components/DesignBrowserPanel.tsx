@@ -23,12 +23,11 @@ import {
 import {
   openExternalUrl,
   projectRawUrl,
-  writeProjectBase64File,
-  writeProjectTextFile,
+  writeProjectBase64FileDetailed,
+  writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { useT } from '../i18n';
-import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { formatProjectPassiveSaveFailureForUser } from '../teamver/projectUploadErrors';
+import { formatProjectFileSaveResultForUser } from '../teamver/projectUploadErrors';
 import type { Dict } from '../i18n/types';
 import { captureHostRegionSnapshot } from '../runtime/exports';
 import { buildBoardCommentAttachments, commentsToAttachments } from '../comments';
@@ -1285,17 +1284,15 @@ export function DesignBrowserPanel({
       // durable artifact, the clipboard is the fast path.
       const copied = await copyImageToClipboard(dataUrl);
       const base64 = dataUrl.split(',', 2)[1] ?? '';
-      const file = await writeProjectBase64File(
-        projectId,
-        browserFileName('browser-capture', currentUrl, 'png'),
-        base64,
-      );
-      if (!file) {
-        if (isTeamverEmbedMode()) {
-          setStatusMessage(formatProjectPassiveSaveFailureForUser('스크린샷 저장'));
-          return;
-        }
-        throw new Error('screenshot save failed');
+      const captureName = browserFileName('browser-capture', currentUrl, 'png');
+      const saved = await writeProjectBase64FileDetailed(projectId, captureName, base64);
+      if (!saved.ok) {
+        setStatusMessage(formatProjectFileSaveResultForUser(
+          captureName,
+          saved,
+          'screenshot save failed',
+        ));
+        return;
       }
       await onRefreshFiles();
       // Stay on the browser so the confirmation toast is visible and the page
@@ -1372,14 +1369,22 @@ export function DesignBrowserPanel({
     setSavingAction('brief');
     try {
       const brief = await webviewNode.executeJavaScript<PageBrief>(PAGE_BRIEF_SCRIPT, true);
-      const file = await writeProjectTextFile(
+      const briefName = browserFileName('browser-brief', currentUrl, 'md');
+      const saved = await writeProjectTextFileDetailed(
         projectId,
-        browserFileName('browser-brief', currentUrl, 'md'),
+        briefName,
         pageBriefMarkdown(brief, currentUrl),
       );
-      if (!file) throw new Error('brief save failed');
+      if (!saved.ok) {
+        setStatusMessage(formatProjectFileSaveResultForUser(
+          briefName,
+          saved,
+          'Brief save failed',
+        ));
+        return;
+      }
       await onRefreshFiles();
-      onOpenFile(file.name);
+      onOpenFile(saved.file.name);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Brief save failed');
     } finally {
@@ -1601,8 +1606,15 @@ export function DesignBrowserPanel({
     setSavingDomEdit(true);
     try {
       const html = await webviewNode.executeJavaScript<string>(BROWSER_SERIALIZE_HTML_SCRIPT, true);
-      const file = await writeProjectTextFile(projectId, relativePath, html);
-      if (!file) throw new Error('HTML save failed');
+      const saved = await writeProjectTextFileDetailed(projectId, relativePath, html);
+      if (!saved.ok) {
+        setStatusMessage(formatProjectFileSaveResultForUser(
+          relativePath,
+          saved,
+          'HTML save failed',
+        ));
+        return;
+      }
       await onRefreshFiles();
       setStatusMessage('HTML changes saved');
     } catch (error) {

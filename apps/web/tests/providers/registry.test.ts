@@ -24,6 +24,7 @@ import {
   resetRegistryCatalogCacheForTests,
   updateDeployConfig,
   uploadProjectFiles,
+  writeProjectBase64FileDetailed,
   writeProjectTextFileDetailed,
 } from '../../src/providers/registry';
 
@@ -267,6 +268,39 @@ describe('writeProjectTextFileDetailed', () => {
       code: 'ARTIFACT_REGRESSION',
       message: 'new artifact is smaller than the prior version',
     });
+  });
+});
+
+describe('writeProjectBase64FileDetailed', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns session-aware auth copy on daemon 401 in embed mode', async () => {
+    const embedSpy = vi.spyOn(
+      await import('../../src/teamver/designApiBase'),
+      'isTeamverEmbedMode',
+    ).mockReturnValue(true);
+    const sessionSpy = vi.spyOn(
+      await import('../../src/teamver/teamverEmbedSession'),
+      'isTeamverEmbedSessionAuthenticated',
+    ).mockReturnValue(true);
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+
+    await expect(
+      writeProjectBase64FileDetailed('project-1', 'capture.png', 'abc'),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 401,
+      message: expect.stringContaining('연결'),
+    });
+
+    embedSpy.mockRestore();
+    sessionSpy.mockRestore();
+    fetchDaemonSpy.mockRestore();
   });
 });
 

@@ -1920,6 +1920,8 @@ export type WriteProjectTextFileResult =
   | { ok: true; file: ProjectFile }
   | { ok: false; status?: number; code?: string; message: string };
 
+export type WriteProjectFileSaveResult = WriteProjectTextFileResult;
+
 export async function writeProjectTextFileDetailed(
   projectId: string,
   name: string,
@@ -1956,6 +1958,15 @@ export async function writeProjectBase64File(
   name: string,
   base64: string,
 ): Promise<ProjectFile | null> {
+  const result = await writeProjectBase64FileDetailed(projectId, name, base64);
+  return result.ok ? result.file : null;
+}
+
+export async function writeProjectBase64FileDetailed(
+  projectId: string,
+  name: string,
+  base64: string,
+): Promise<WriteProjectFileSaveResult> {
   try {
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
       method: 'POST',
@@ -1964,12 +1975,20 @@ export async function writeProjectBase64File(
     });
     if (!resp.ok) {
       notifyDaemonMutatingUnauthorized(resp);
-      return null;
+      const body = await readApiErrorBody(resp);
+      return {
+        ok: false,
+        status: resp.status,
+        code: body.code,
+        message: resp.status === 401
+          ? formatDaemonMutatingAuthError(body.message || resp.statusText || 'Save failed')
+          : body.message || resp.statusText || 'Save failed',
+      };
     }
     const json = (await resp.json()) as { file: ProjectFile };
-    return json.file;
+    return { ok: true, file: json.file };
   } catch {
-    return null;
+    return { ok: false, message: 'Network error while saving the file' };
   }
 }
 

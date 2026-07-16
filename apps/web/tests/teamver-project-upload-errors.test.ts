@@ -16,6 +16,7 @@ import {
   throwIfProjectCommentUploadIncomplete,
   formatProjectDeployErrorForUser,
   formatProjectDeleteFailureForUser,
+  formatProjectFileSaveResultForUser,
   formatProjectImageExportErrorForUser,
   formatProjectPassiveSaveFailureForUser,
 } from "../src/teamver/projectUploadErrors";
@@ -63,6 +64,16 @@ describe("projectUploadErrors", () => {
 
   it("formatProjectPassiveSaveFailureForUser uses retry-first copy", () => {
     expect(formatProjectPassiveSaveFailureForUser("스크린샷 저장")).toContain("연결");
+  });
+
+  it("formatProjectFileSaveResultForUser maps daemon 401 to transient copy", () => {
+    expect(
+      formatProjectFileSaveResultForUser("brief.md", {
+        ok: false,
+        status: 401,
+        message: "Save failed (401)",
+      }, "Brief save failed"),
+    ).toContain("연결");
   });
 
   it("formatProjectImageExportErrorForUser maps export 401 detail", () => {
