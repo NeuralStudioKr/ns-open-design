@@ -106,6 +106,7 @@ import {
   importTeamverCanvas,
 } from './teamver/importCanvas';
 import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
+import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
@@ -2323,6 +2324,9 @@ function AppInner() {
           const canvasResult = await importTeamverCanvas(result.project.id, pendingCanvasHandoff);
           const canvasAttachments = canvasImportedToChatAttachments(canvasResult.imported);
           firstMessageAttachments = [...firstMessageAttachments, ...canvasAttachments];
+          // Drop URL handoff once import succeeded so ProjectView does not
+          // re-open one-confirm while auto-send is queued.
+          consumeTeamverCanvasLaunchHandoff();
         } catch (err) {
           canvasImportFailed = true;
           console.warn('Home Canvas import-canvas failed for new project', err);

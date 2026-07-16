@@ -127,7 +127,11 @@ import {
   consumeTeamverCanvasLaunchHandoff,
   readTeamverCanvasLaunchHandoff,
 } from '../teamver/canvasLaunchHandoff';
-import { CANVAS_CREATE_SLIDES_PROMPT } from '../teamver/canvasSlideLaunch';
+import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  CANVAS_CREATE_SLIDES_PROMPT,
+  canvasCreateSlidesPluginInputs,
+} from '../teamver/canvasSlideLaunch';
 import {
   consumeTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchHandoffAssets,
@@ -1734,18 +1738,22 @@ export function HomeView({
               designSystems: designSystemPickerSystems,
             })
           : null;
+        const topicHint =
+          canvasSlideLaunch.handoff.title?.trim() ||
+          canvasSlideLaunch.handoff.threadTitle?.trim() ||
+          null;
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: CANVAS_CREATE_SLIDES_PROMPT,
-            pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+            pluginId: CANVAS_CREATE_SLIDES_PLUGIN_ID,
             pluginType: 'official',
             skillId: null,
             appliedPluginSnapshotId: null,
             pluginTitle: null,
             taskKind: null,
-            pluginInputs: { prompt: CANVAS_CREATE_SLIDES_PROMPT },
+            pluginInputs: canvasCreateSlidesPluginInputs(topicHint),
             projectKind: 'deck',
-            projectMetadata: null,
+            projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
             designSystemId: submittedDesignSystemId,
             contextPlugins: [],
             contextMcpServers: [],
@@ -1769,15 +1777,15 @@ export function HomeView({
       const submitResult = await Promise.resolve(
         onSubmit({
           prompt: CANVAS_CREATE_SLIDES_PROMPT,
-          pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+          pluginId: CANVAS_CREATE_SLIDES_PLUGIN_ID,
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
           pluginTitle: null,
           taskKind: null,
-          pluginInputs: { prompt: CANVAS_CREATE_SLIDES_PROMPT },
+          pluginInputs: canvasCreateSlidesPluginInputs(asset.filename ?? asset.assetId),
           projectKind: 'deck',
-          projectMetadata: null,
+          projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
           designSystemId: slideOnlyMvp
             ? resolveEmbedSlideDesignSystemId({
                 explicitId: null,

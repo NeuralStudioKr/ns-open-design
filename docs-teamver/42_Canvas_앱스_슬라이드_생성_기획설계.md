@@ -375,6 +375,11 @@ Drive assetId query는 **사용하지 않는다.**
 |------|------|
 | **지금 (1b)** | hard cap = Drive import와 동일 대역(≤50MB). soft warn(예 20MB) 시 모달에 “시간이 걸릴 수 있음”. BFF는 **스트리밍 프록시**(전량 메모리 buffer 금지 목표). |
 | **곧** | export-html 옵션 `images=link` 또는 `images=refs` — Drive/asset URL을 HTML에 넣고, Design ingest 시 **이미지 별도 fetch**(또는 LLM에 URL). base64 팽창 완화. |
+
+### create-slides 런 바인딩 (필수)
+
+one-confirm 후 프로젝트 생성은 **`example-simple-deck`** + `metadata.skipDiscoveryBrief: true` 로 고정한다.  
+`od-default` 를 넘기면 kind=`deck` 폴백이 막혀, import된 canvas HTML만 Design Files에 남고 덱 프레임 생성이 빠질 수 있다.
 | **이후** | IR outline sidecar(작게) + 이미지 멀티파트. HTML 풀셀프컨테인드만 의존하지 않기. |
 | **하지 말 것** | 한도 초과를 Drive 업로드로 “우회” (이중 I/O 회귀). |
 

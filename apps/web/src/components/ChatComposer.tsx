@@ -76,7 +76,10 @@ import {
   consumeTeamverCanvasLaunchHandoff,
   readTeamverCanvasLaunchHandoff,
 } from '../teamver/canvasLaunchHandoff';
-import { CANVAS_CREATE_SLIDES_PROMPT } from '../teamver/canvasSlideLaunch';
+import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  CANVAS_CREATE_SLIDES_PROMPT,
+} from '../teamver/canvasSlideLaunch';
 import {
   canvasImportedToChatAttachments,
   formatTeamverCanvasImportErrorMessage,
@@ -616,6 +619,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }, [teamverDriveImportEnabled]);
     useEffect(() => {
       if (!teamverDriveImportAllowed) return;
+      // Home already queued auto-send for this project — do not re-open one-confirm.
+      if (projectId) {
+        try {
+          if (window.sessionStorage.getItem(`od:auto-send-first:${projectId}`) === "1") {
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       const canvasHandoff = readTeamverCanvasLaunchHandoff();
       if (canvasHandoff) {
         // Consume only after confirm success or cancel (§5.6) — not on detect —
@@ -635,7 +648,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       }
       setDriveLaunchAssets(assets);
       setDriveImportOpen(true);
-    }, [teamverDriveImportAllowed]);
+    }, [teamverDriveImportAllowed, projectId]);
     const rememberRecentDir = useCallback(async (dir: string) => {
       setRecentDirs((prev) => [dir, ...prev.filter((d) => d !== dir)].slice(0, 5));
       const persisted = await pushRecentLinkedDir(dir);
@@ -1641,9 +1654,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           consumeTeamverCanvasLaunchHandoff();
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
+          const baseMeta = currentRunContextMeta();
           sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
-            ...currentRunContextMeta(),
+            ...baseMeta,
             designSystemId: designSystemIdForRun,
+            context: {
+              ...(baseMeta?.context ?? {}),
+              pluginIds: [
+                CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                ...((baseMeta?.context?.pluginIds ?? []).filter(
+                  (id) => id !== CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                )),
+              ],
+            },
           });
           return;
         }
@@ -1677,11 +1700,22 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
-        sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
-          ...currentRunContextMeta(),
-          designSystemId: designSystemIdForRun,
-        });
-      } catch (err) {
+        {
+          const baseMeta = currentRunContextMeta();
+          sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
+            ...baseMeta,
+            designSystemId: designSystemIdForRun,
+            context: {
+              ...(baseMeta?.context ?? {}),
+              pluginIds: [
+                CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                ...((baseMeta?.context?.pluginIds ?? []).filter(
+                  (id) => id !== CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                )),
+              ],
+            },
+          });
+        }      } catch (err) {
         const message =
           canvasSlideLaunch.kind === "canvas"
             ? formatTeamverCanvasImportErrorMessage(err)
