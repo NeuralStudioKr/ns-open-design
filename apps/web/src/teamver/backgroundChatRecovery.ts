@@ -4,6 +4,7 @@ import {
   findFirstQuestionForm,
   hasUnterminatedQuestionForm,
 } from "../artifacts/question-form";
+import { appendErrorStatusEvent } from "../runtime/chat-events";
 
 export function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -298,10 +299,21 @@ export function terminalAssistantPatchFromRunStatus(
   status: ChatRunStatusResponse,
 ): Partial<ChatMessage> | null {
   if (!isTerminalRunStatus(status.status)) return null;
-  return {
+  const base: Partial<ChatMessage> = {
     runStatus: status.status,
     endedAt: status.updatedAt ?? Date.now(),
     ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
-    ...(status.errorCode ? { errorCode: status.errorCode } : {}),
+  };
+  const errorDetail = status.error?.trim();
+  if (!errorDetail && !status.errorCode) return base;
+
+  const withError = appendErrorStatusEvent(
+    { id: "patch", role: "assistant", content: "", ...base } as ChatMessage,
+    errorDetail || status.errorCode || "Run failed",
+    status.errorCode ?? undefined,
+  );
+  return {
+    ...base,
+    ...(withError.events ? { events: withError.events } : {}),
   };
 }

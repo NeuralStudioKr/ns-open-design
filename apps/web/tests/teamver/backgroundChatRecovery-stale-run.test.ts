@@ -61,8 +61,14 @@ describe("backgroundChatRecovery stale run helpers", () => {
     ).toMatchObject({
       runStatus: "failed",
       endedAt: 2,
-      errorCode: "AGENT_EXECUTION_FAILED",
       resumable: true,
+      events: [
+        {
+          kind: "status",
+          label: "error",
+          code: "AGENT_EXECUTION_FAILED",
+        },
+      ],
     });
   });
 });

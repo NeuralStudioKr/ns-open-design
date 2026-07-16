@@ -3101,12 +3101,20 @@ export function ProjectView({
         if (shouldForceFailStaleDaemonRun(message)) {
           updateMessageById(
             message.id,
-            (prev) => ({
-              ...prev,
-              runStatus: 'failed',
-              endedAt: prev.endedAt ?? Date.now(),
-              errorCode: prev.errorCode ?? 'AGENT_EXECUTION_FAILED',
-            }),
+            (prev) =>
+              appendErrorStatusEvent(
+                {
+                  ...prev,
+                  runStatus: 'failed',
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           clearStreamingMarker(activeConversationId);
