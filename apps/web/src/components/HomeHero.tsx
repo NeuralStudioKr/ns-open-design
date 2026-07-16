@@ -1809,6 +1809,7 @@ function PluginPromptPresetCard({
   // Example-prompt preset tiles are thumbnails too — prefer the cheap baked
   // hover-pan clip when one exists (same as the gallery cards).
   const preview = useMemo(() => inferPluginPreview(record, { preferBaked: true }), [record]);
+  const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode;
   // Home cards keep their richer structured-preview path as the last-resort
   // fallback (the detail modal injects a simpler one).
   const seedPrompt = examplePresetSeedPrompt(record, locale, () =>
@@ -1829,6 +1830,7 @@ function PluginPromptPresetCard({
           pluginId={record.id}
           pluginTitle={localizePluginTitle(locale, record)}
           preview={preview}
+          eager={odMode === 'deck'}
         />
         {active ? (
           <span className="home-hero__plugin-preset-check" aria-hidden>

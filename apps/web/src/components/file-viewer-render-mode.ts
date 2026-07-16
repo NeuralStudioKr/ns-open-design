@@ -54,6 +54,12 @@ export interface UrlLoadDecision {
    * so `injectPreviewFocusGuard` can suppress the focus grab.
    */
   needsFocusGuard?: boolean;
+  /**
+   * The HTML source contains a self-redirecting directive that can loop forever
+   * and freeze the preview. When true, forces the srcDoc path so
+   * buildSrcdoc's redirect-loop guard is present.
+   */
+  needsRedirectGuard?: boolean;
 }
 
 /**
@@ -92,6 +98,7 @@ export function shouldUrlLoadHtmlPreview(d: UrlLoadDecision): boolean {
   if (d.tweaksBridge) return false;
   if (d.forceInline) return false;
   if (d.needsFocusGuard) return false;
+  if (d.needsRedirectGuard) return false;
   return true;
 }
 
@@ -190,6 +197,15 @@ export function htmlNeedsFocusGuard(source: string): boolean {
   if (/\.\s*focus\s*\(/i.test(source)) return true;
   if (/\bautofocus\b/i.test(source)) return true;
   if (/<script\b[^>]*\bsrc\s*=/i.test(source)) return true;
+  return false;
+}
+
+export function htmlNeedsRedirectGuard(source: string | null | undefined): boolean {
+  if (!source) return false;
+  if (/<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh\b/i.test(source)) return true;
+  if (/\blocation\s*\.\s*(?:reload|replace|assign)\s*\(/i.test(source)) return true;
+  if (/\blocation\s*\.\s*href\s*=[^=]/i.test(source)) return true;
+  if (/\b(?:window|document|self|top|parent)\s*\.\s*location\s*=[^=]/i.test(source)) return true;
   return false;
 }
 

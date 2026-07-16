@@ -19,6 +19,7 @@ interface MakeArgs {
   mode?: string;
   designSystemRef?: string;
   preview?: Record<string, unknown>;
+  bakedPreview?: Record<string, unknown>;
   exampleOutputs?: Array<{ path: string; title?: string }>;
 }
 
@@ -43,6 +44,7 @@ function make(args: MakeArgs): InstalledPluginRecord {
           ? { context: { designSystem: { ref: args.designSystemRef } } }
           : {}),
         ...(args.preview ? { preview: args.preview } : {}),
+        ...(args.bakedPreview ? { bakedPreview: args.bakedPreview } : {}),
         ...(args.exampleOutputs
           ? { useCase: { exampleOutputs: args.exampleOutputs } }
           : {}),
@@ -139,6 +141,42 @@ describe('inferPluginPreview', () => {
     if (out.kind !== 'html') return;
     expect(out.src).toBe('/api/plugins/wbr/example/index');
     expect(out.label).toBe('Weekly');
+  });
+
+  it('uses baked previews for commercial slide templates when available', () => {
+    const out = inferPluginPreview(
+      make({
+        id: 'commercial-deck',
+        tags: ['commercial-slide-agent'],
+        preview: { type: 'html', entry: './example.html' },
+        bakedPreview: {
+          poster: '/api/plugin-previews/commercial-deck/current/poster.jpg',
+          video: '/api/plugin-previews/commercial-deck/current/preview.mp4',
+          holdMs: 2500,
+        },
+      }),
+      { preferBaked: true },
+    );
+    expect(out.kind).toBe('media');
+    if (out.kind !== 'media') return;
+    expect(out.mediaType).toBe('video');
+    expect(out.poster).toBe('/api/plugin-previews/commercial-deck/current/poster.jpg');
+    expect(out.videoUrl).toBe('/api/plugin-previews/commercial-deck/current/preview.mp4');
+    expect(out.loopHoldMs).toBe(2500);
+  });
+
+  it('falls back to live HTML for commercial slide templates without a baked preview', () => {
+    const out = inferPluginPreview(
+      make({
+        id: 'commercial-deck',
+        tags: ['commercial-slide-agent'],
+        preview: { type: 'html', entry: './example.html' },
+      }),
+      { preferBaked: true },
+    );
+    expect(out.kind).toBe('html');
+    if (out.kind !== 'html') return;
+    expect(out.src).toBe('/api/plugins/commercial-deck/preview');
   });
 
   it('renders design-system plugins (mode signal) as showcase-backed design surfaces', () => {
