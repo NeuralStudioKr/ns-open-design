@@ -110,7 +110,7 @@ export function buildExportOffloadPresignedGetUrl(input: ExportOffloadPresignInp
   if (input.credentials.sessionToken) {
     params.push(['X-Amz-Security-Token', input.credentials.sessionToken]);
   }
-  params.sort((a, b) => a[0].localeCompare(b[0]));
+  params.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   const canonicalQuery = params
     .map(([k, v]) => `${encodeAwsSigV4UriComponent(k)}=${encodeAwsSigV4UriComponent(v)}`)
     .join('&');

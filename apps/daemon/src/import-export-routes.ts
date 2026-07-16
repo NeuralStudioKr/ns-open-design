@@ -98,6 +98,17 @@ function attachmentDisposition(filename: string): string {
   return `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
+/**
+ * S3 presigned GET query params must stay ASCII-safe.
+ * RFC 5987 `filename*=UTF-8''…` (and the `*` / `%` it introduces) routinely
+ * produces SignatureDoesNotMatch against S3's canonical query encoding.
+ * Stream downloads still use {@link attachmentDisposition} for Korean names.
+ */
+function attachmentDispositionForS3Presign(filename: string): string {
+  const safeName = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '_') || 'artifact';
+  return `attachment; filename="${safeName}"`;
+}
+
 function firstHeaderValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] ?? '').trim();
   return String(value ?? '').trim();
@@ -940,7 +951,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       let deliveryModeForResponse = entry.deliveryMode;
       if (entry.deliveryMode === 'redirect' && entry.offloadKey) {
         const presigned = await presignExportOffloadGet(entry.offloadKey, {
-          responseContentDisposition: attachmentDisposition(entry.filename),
+          responseContentDisposition: attachmentDispositionForS3Presign(entry.filename),
           responseContentType: entry.mime,
         });
         if (presigned.status === 'ready') {
@@ -950,7 +961,11 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', safeExportHeaderValue(entry.offloadStatus));
           if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', safeExportHeaderValue(entry.offloadReason));
           await completeExportDownload(req.params.token);
-          res.redirect(302, presigned.url);
+          // Do not use res.redirect() — Express encodeUrl can re-encode the
+          // already-signed query string and trigger S3 SignatureDoesNotMatch.
+          res.status(302);
+          res.setHeader('Location', presigned.url);
+          res.end();
           return;
         }
         const presignReason =

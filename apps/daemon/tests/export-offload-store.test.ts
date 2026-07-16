@@ -286,9 +286,8 @@ describe('export offload store', () => {
     }
   });
 
-  it('AWS-encodes filename* asterisk so S3 SignatureDoesNotMatch is avoided', () => {
-    const disposition =
-      'attachment; filename="___ AI ___.pdf"; filename*=UTF-8\'\'%EA%B8%B0%EC%97%85.pdf';
+  it('AWS-encodes query values and keeps ASCII-only disposition free of filename*', () => {
+    const disposition = 'attachment; filename="___ AI ___.pdf"';
     const url = new URL(
       buildExportOffloadPresignedGetUrl({
         key: 'exports/ws/proj/hash.pdf',
@@ -302,9 +301,9 @@ describe('export offload store', () => {
       }),
     );
 
-    // Raw query must use SigV4 encoding (`*` → %2A, `'` → %27), not encodeURIComponent.
-    expect(url.search).toContain('filename%2A%3DUTF-8%27%27%25EA%25B8%25B0');
-    expect(url.search).not.toMatch(/filename\*=/);
+    expect(url.searchParams.get('response-content-disposition')).toBe(disposition);
+    expect(url.search).not.toContain('filename%2A');
+    expect(url.search).not.toContain('filename*');
   });
 
   it('returns disabled or failed instead of throwing from presign', async () => {
