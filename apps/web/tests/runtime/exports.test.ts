@@ -1519,6 +1519,61 @@ describe('exportProjectAsPptx', () => {
     expect(capturedBlob?.size).toBe(4);
     expect(capturedFilename).toBe('Seed-Deck.pptx');
   });
+
+  it('retries a transient PPTX render failure before showing an error', async () => {
+    vi.stubGlobal('setTimeout', (fn: () => void) => {
+      fn();
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (vi.mocked(fetch).mock.calls.length === 1) {
+        return new Response(
+          JSON.stringify({ error: { code: 'EXPORT_FAILED', message: 'cold browser launch failed' } }),
+          { headers: { 'content-type': 'application/json' }, status: 500 },
+        );
+      }
+      return new Response(new Blob(['pptx'], {
+        type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      }), {
+        headers: {
+          'content-disposition': 'attachment; filename="Seed-Deck.pptx"',
+          'content-type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        },
+        status: 200,
+      });
+    }));
+
+    await exportProjectAsPptx({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      title: 'Seed Deck',
+      htmlSnapshot: '<!doctype html><section class="slide">A</section>',
+      requireRenderedExport: true,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(capturedBlob?.size).toBe(4);
+    expect(capturedFilename).toBe('Seed-Deck.pptx');
+  });
+
+  it('does not retry PPTX export when the daemon queue is full', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: 'EXPORT_QUEUE_FULL', message: 'export queue full — retry shortly' } }),
+      { headers: { 'content-type': 'application/json' }, status: 503 },
+    )));
+
+    await expect(exportProjectAsPptx({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      title: 'Seed Deck',
+      htmlSnapshot: '<!doctype html><section class="slide">A</section>',
+      requireRenderedExport: true,
+    })).rejects.toBeInstanceOf(ExportQueueFullError);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // `exportAsMd` is a pass-through (the file body is the artifact source

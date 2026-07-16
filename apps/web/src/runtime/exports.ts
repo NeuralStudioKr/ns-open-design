@@ -1005,6 +1005,17 @@ export type ProjectPdfExportResult = 'desktop' | 'fallback' | 'cancelled';
  * are exhausted the caller falls back to browser print via `fallbackPdf`.
  */
 const TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
+const TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
+
+function isRetryableRenderedExportError(err: unknown): boolean {
+  if (isExportQueueFullError(err)) return false;
+  if (isTeamverProjectStoragePrefixRequiredError(err)) return true;
+  if (err instanceof TypeError) return true;
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  if (/HEADLESS_CHROMIUM_UNAVAILABLE/.test(message)) return false;
+  if (/\b(?:500|502|503)\b/.test(message)) return true;
+  return /failed to fetch|networkerror|load failed|temporar/i.test(message);
+}
 
 /**
  * Optional caller-provided artifact HTML.  When present the daemon renders
@@ -1063,6 +1074,43 @@ async function performPdfExportRequest(opts: {
   if (body?.canceled === true) return 'cancelled';
   if (body && body.ok === false) throw new Error(body.error || 'daemon PDF export failed');
   return 'desktop';
+}
+
+async function performPptxExportRequest(opts: {
+  deck: boolean;
+  filePath: string;
+  projectId: string;
+  title: string;
+  htmlSnapshot?: string | null;
+}): Promise<void> {
+  await refreshEmbedAuthBeforeDaemonExport();
+  const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pptx`, {
+    body: JSON.stringify({
+      deck: true,
+      delivery: 'ticket',
+      fileName: opts.filePath,
+      title: opts.title,
+      ...inlineExportHtmlPayload(opts.htmlSnapshot),
+    }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+  if (!resp.ok && resp.status !== 201) {
+    await throwIfDaemonExportFailed(resp, 'daemon PPTX export');
+  }
+  if (resp.status === 201) {
+    await triggerExportTicketDownload(resp, opts.title, 'pptx');
+    return;
+  }
+  const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('presentationml.presentation')) {
+    throw new Error(
+      `daemon PPTX export returned ${contentType || 'unknown content-type'}`,
+    );
+  }
+  const blob = await resp.blob();
+  if (blob.size <= 0) throw new Error('daemon PPTX export returned an empty file');
+  triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pptx'));
 }
 
 export async function exportProjectAsPdf(opts: {
@@ -1207,36 +1255,37 @@ export async function exportProjectAsPptx(opts: {
   if (!opts.deck) {
     throw new Error('PPTX 다운로드는 슬라이드 덱에서만 사용할 수 있습니다.');
   }
+  const hasSnapshot =
+    typeof opts.htmlSnapshot === 'string' && opts.htmlSnapshot.trim().length > 0;
+  if (!hasSnapshot) {
+    await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
+  }
   try {
-    await refreshEmbedAuthBeforeDaemonExport();
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pptx`, {
-      body: JSON.stringify({
-        deck: true,
-        delivery: 'ticket',
-        fileName: opts.filePath,
-        title: opts.title,
-        ...inlineExportHtmlPayload(opts.htmlSnapshot),
-      }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    });
-    if (!resp.ok && resp.status !== 201) {
-      await throwIfDaemonExportFailed(resp, 'daemon PPTX export');
+    for (let attempt = 0; attempt < TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
+      const delay = TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS[attempt] ?? 0;
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        if (!hasSnapshot) {
+          await waitForTeamverProjectStoragePrefix(opts.projectId, { quick: true }).catch(() => null);
+        }
+      }
+      try {
+        await performPptxExportRequest(opts);
+        return;
+      } catch (err) {
+        if (
+          attempt < TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS.length - 1
+          && isRetryableRenderedExportError(err)
+        ) {
+          console.info('[exportProjectAsPptx] retrying transient export failure (attempt %d)', attempt + 1);
+          continue;
+        }
+        throw err;
+      }
     }
-    if (resp.status === 201) {
-      await triggerExportTicketDownload(resp, opts.title, 'pptx');
-      return;
-    }
-    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('presentationml.presentation')) {
-      throw new Error(
-        `daemon PPTX export returned ${contentType || 'unknown content-type'}`,
-      );
-    }
-    const blob = await resp.blob();
-    if (blob.size <= 0) throw new Error('daemon PPTX export returned an empty file');
-    triggerDownload(blob, attachmentFilenameFrom(resp, opts.title, 'pptx'));
+    throw new Error('daemon PPTX export retry exhausted');
   } catch (err) {
+    if (isExportQueueFullError(err)) throw err;
     if (opts.requireRenderedExport) {
       console.warn('[exportProjectAsPptx] rendered PPTX export failed:', err);
       throw new Error('PPTX 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
