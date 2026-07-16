@@ -37,6 +37,59 @@ export type SrcdocOptions = {
   exportDocument?: boolean;
 };
 
+export const PREVIEW_REDIRECT_GUARD_MAX_HOPS = 15;
+export const PREVIEW_REDIRECT_GUARD_WINDOW_MS = 4000;
+export const PREVIEW_REDIRECT_GUARD_SELF_REFRESH_MIN_DELAY_MS = 2000;
+export const PREVIEW_REDIRECT_LOOP_MESSAGE = 'od:redirect-loop-blocked';
+
+export interface RedirectGuardState {
+  hops: number;
+  windowStart: number;
+}
+
+export function nextRedirectGuardState(
+  prev: RedirectGuardState | null,
+  now: number,
+  opts: { maxHops?: number; windowMs?: number } = {},
+): { state: RedirectGuardState; tripped: boolean } {
+  const maxHops = opts.maxHops ?? PREVIEW_REDIRECT_GUARD_MAX_HOPS;
+  const windowMs = opts.windowMs ?? PREVIEW_REDIRECT_GUARD_WINDOW_MS;
+  const withinWindow =
+    prev != null &&
+    Number.isFinite(prev.windowStart) &&
+    now - prev.windowStart <= windowMs;
+  const windowStart = withinWindow ? prev.windowStart : now;
+  const hops = (withinWindow ? prev.hops : 0) + 1;
+  return { state: { hops, windowStart }, tripped: hops > maxHops };
+}
+
+export function buildRedirectLoopBlockedDoc(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex; align-items: center; justify-content: center;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0d1117; color: #e6edf3; text-align: center; padding: 24px;
+      }
+      .card { max-width: 420px; }
+      h1 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+      p { font-size: 13px; line-height: 1.5; margin: 0; color: #9ba7b4; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Preview stopped: redirect loop detected</h1>
+      <p>This document kept redirecting to itself, which would freeze the preview. Reload the preview to try again.</p>
+    </div>
+  </body>
+</html>`;
+}
+
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
@@ -61,7 +114,12 @@ export function buildSrcdoc(
   const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
   const withShim = injectSandboxShim(withBase);
-  const withFocusGuard = options.previewFocusGuard ? injectPreviewFocusGuard(withShim) : withShim;
+  const withRedirectGuard = options.exportDocument
+    ? withShim
+    : injectPreviewRedirectGuard(withShim, {
+        blockLoadTimeScriptRedirect: htmlHasLoadTimeLocationNavigation(withBase),
+      });
+  const withFocusGuard = options.previewFocusGuard ? injectPreviewFocusGuard(withRedirectGuard) : withRedirectGuard;
   // Artifact text-leak guard always runs in preview — viewport/CSS/JS fragments
   // agents stream as visible prose must be stripped even when focus-guard is off.
   const withArtifactGuard = injectPreviewArtifactGuard(withFocusGuard);
@@ -852,6 +910,154 @@ function injectPreviewFocusGuard(doc: string): string {
       }
     });
   } catch (_) {}
+})();</script>`;
+  if (/<head[^>]*>/i.test(doc))
+    return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(doc))
+    return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + doc;
+}
+
+function htmlHasLoadTimeLocationNavigation(source: string): boolean {
+  if (/\blocation\s*\.\s*(?:reload|replace|assign)\s*\(/i.test(source)) return true;
+  if (/\blocation\s*\.\s*href\s*=[^=]/i.test(source)) return true;
+  if (/\b(?:window|document|self|top|parent)\s*\.\s*location\s*=[^=]/i.test(source)) return true;
+  return false;
+}
+
+function injectPreviewRedirectGuard(
+  doc: string,
+  opts: { blockLoadTimeScriptRedirect?: boolean } = {},
+): string {
+  const script = `<script data-od-preview-redirect-guard>(function(){
+  var NAME_PREFIX = '__odRedirectGuard=';
+  var MAX_HOPS = ${PREVIEW_REDIRECT_GUARD_MAX_HOPS};
+  var WINDOW_MS = ${PREVIEW_REDIRECT_GUARD_WINDOW_MS};
+  var SELF_MIN_DELAY_MS = ${PREVIEW_REDIRECT_GUARD_SELF_REFRESH_MIN_DELAY_MS};
+  var MESSAGE_TYPE = ${JSON.stringify(PREVIEW_REDIRECT_LOOP_MESSAGE)};
+  var BLOCK_LOAD_TIME_SCRIPT_REDIRECT = ${opts.blockLoadTimeScriptRedirect ? 'true' : 'false'};
+  function nowMs(){ try { return Date.now(); } catch (_) { return 0; } }
+  function readState(){
+    try {
+      var raw = window.name;
+      if (typeof raw === 'string' && raw.indexOf(NAME_PREFIX) === 0) {
+        var parsed = JSON.parse(raw.slice(NAME_PREFIX.length));
+        if (parsed && typeof parsed.hops === 'number' && typeof parsed.windowStart === 'number') return parsed;
+      }
+    } catch (_) {}
+    return null;
+  }
+  function writeState(state){
+    try { window.name = NAME_PREFIX + JSON.stringify({ hops: state.hops, windowStart: state.windowStart }); } catch (_) {}
+  }
+  function clearState(){
+    try { if (typeof window.name === 'string' && window.name.indexOf(NAME_PREFIX) === 0) window.name = ''; } catch (_) {}
+  }
+  function nextState(){
+    var t = nowMs();
+    var prev = readState();
+    var withinWindow = prev && (t - prev.windowStart) <= WINDOW_MS;
+    return { hops: (withinWindow ? prev.hops : 0) + 1, windowStart: withinWindow ? prev.windowStart : t };
+  }
+  function scheduleCandidateReset(state){
+    try {
+      if (typeof setTimeout !== 'function') return;
+      setTimeout(function(){
+        try {
+          var current = readState();
+          if (current && current.hops === state.hops && current.windowStart === state.windowStart) clearState();
+        } catch (_) {}
+      }, WINDOW_MS + 1);
+    } catch (_) {}
+  }
+  function report(hops){
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: MESSAGE_TYPE, hops: hops }, '*');
+      }
+    } catch (_) {}
+  }
+  function recordScriptRedirectCandidate(){
+    if (!BLOCK_LOAD_TIME_SCRIPT_REDIRECT) return;
+    var state = nextState();
+    if (state.hops > MAX_HOPS) {
+      clearState();
+      report(state.hops);
+      return;
+    }
+    writeState(state);
+    scheduleCandidateReset(state);
+  }
+  function metaRefreshes(){
+    var out = [];
+    try {
+      var metas = document.getElementsByTagName('meta');
+      for (var i = 0; i < metas.length; i++) {
+        var equiv = metas[i].getAttribute ? metas[i].getAttribute('http-equiv') : null;
+        if (equiv && String(equiv).toLowerCase() === 'refresh') out.push(metas[i]);
+      }
+    } catch (_) {}
+    return out;
+  }
+  function parseContent(meta){
+    var content = '';
+    try { content = String(meta.getAttribute('content') || ''); } catch (_) {}
+    var delayMatch = content.match(/^\\s*([0-9]+(?:\\.[0-9]+)?)/);
+    var delayMs = delayMatch ? Math.round(parseFloat(delayMatch[1]) * 1000) : 0;
+    var urlMatch = content.match(/[;,]\\s*url\\s*=\\s*['"]?\\s*([^'"\\s]+)/i);
+    return { delayMs: delayMs, url: urlMatch ? urlMatch[1] : '' };
+  }
+  function currentArtifactHref(){
+    try {
+      var href = String(location.href || '');
+      if (href === 'about:srcdoc') return String(document.baseURI || href);
+      return href;
+    } catch (_) { return ''; }
+  }
+  function isSelfTarget(url){
+    if (!url) return true;
+    try {
+      var base = document.baseURI || location.href;
+      return new URL(url, base).href === currentArtifactHref();
+    } catch (_) { return false; }
+  }
+  function isFastSrcdocUrlHop(parsed){
+    if (!parsed.url || parsed.delayMs > SELF_MIN_DELAY_MS) return false;
+    try { return String(location.href || '') === 'about:srcdoc'; } catch (_) { return false; }
+  }
+  function neutralize(metas){
+    for (var i = 0; i < metas.length; i++) {
+      try { metas[i].parentNode && metas[i].parentNode.removeChild(metas[i]); } catch (_) {}
+    }
+    try { if (window.stop) window.stop(); } catch (_) {}
+  }
+  function evaluate(){
+    var metas = metaRefreshes();
+    if (!metas.length) {
+      if (!BLOCK_LOAD_TIME_SCRIPT_REDIRECT) clearState();
+      return;
+    }
+    var selfLoop = false;
+    for (var i = 0; i < metas.length; i++) {
+      var parsed = parseContent(metas[i]);
+      if (parsed.delayMs <= SELF_MIN_DELAY_MS && isSelfTarget(parsed.url)) { selfLoop = true; break; }
+      if (isFastSrcdocUrlHop(parsed)) { selfLoop = true; break; }
+    }
+    var state = nextState();
+    if (selfLoop || state.hops > MAX_HOPS) {
+      neutralize(metas);
+      clearState();
+      report(state.hops);
+      return;
+    }
+    writeState(state);
+  }
+  recordScriptRedirectCandidate();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', evaluate);
+  } else {
+    evaluate();
+  }
 })();</script>`;
   if (/<head[^>]*>/i.test(doc))
     return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);

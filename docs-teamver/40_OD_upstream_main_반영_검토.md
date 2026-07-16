@@ -16,14 +16,14 @@
 | 커밋 | 내용 | 현재 판단 |
 |------|------|-----------|
 | `cdffb1b63` | `fix(daemon): block SSRF in library ingest remote fetch` | **P0 보안 후보.** Teamver에서 URL 기반 분석/web-fetch/라이브러리 ingest를 제공하거나 재활성화할 때 반드시 필요한 방어선이다. 다만 Teamver BFF/auth와 SSRF allow/deny 정책을 대조해 수동 포팅한다. |
-| `b5d9a12f4` | `fix(web): break redirect-loop scripts that freeze the HTML preview` | **P0/P1 preview 안정성 후보.** 생성 HTML이 redirect-loop script를 포함할 때 preview가 멈추는 문제를 막는다. AI 생성물 preview 안정성과 직접 연결된다. |
+| `b5d9a12f4` | `fix(web): break redirect-loop scripts that freeze the HTML preview` | **2026-07-16 선별 반영.** 생성 HTML이 redirect-loop script를 포함할 때 preview가 멈추는 문제를 막는다. exportDocument에는 주입하지 않아 다운로드/내보내기 결과물에는 영향이 없도록 했다. |
 | `24c7876b3` | `fix(web): preserve delivery for in-place HTML edits` | **P1 후보.** 댓글/수정 요청 후 in-place HTML edit delivery가 보존되는지 확인할 가치가 있다. Teamver background/reattach 패치와 충돌 가능성이 있어 ProjectView 전체 cherry-pick은 금지. |
 | `88c238ec7` | `fix(web): reveal rendered deck thumbnails` | **P1 후보.** 홈/프로젝트 목록 썸네일이 첫 글자 fallback으로 보이는 문제와 관련될 수 있다. Teamver 썸네일/cache 최적화와 대조 필요. |
 | `498802189` | `fix: use baked previews for slide presets` | **P1 후보.** Community/template preview blank 문제와 관련. Teamver에서는 Community 노출 범위가 제한되어 있으므로 runtime preview lookup만 선별 검토. |
 | `05cb03c8a` | `fix(web): sandbox the speaker-notes presenter deck iframes` | **P2 보안/격리 후보.** presenter notes 경로를 Teamver가 노출하지 않는다면 후순위. |
 | `167db9de2` / `c67048516` | preview delivery status feedback/polish | **P2 UX 후보.** Teamver의 생성 중 이탈/재진입 UX와 맞닿지만, 먼저 background run 안정성 회귀 여부를 확인한 뒤 선별한다. |
 
-**현재 바로 추진 추천:** 전체 merge 대신 `cdffb1b63` → `b5d9a12f4` → `88c238ec7` 순서로 수동 포팅 가능성을 검토한다. 보안/preview freeze/thumbnail은 실제 서비스 구동과 사용자 신뢰에 직접 영향을 주며, AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
+**현재 바로 추진 추천:** 전체 merge 대신 `88c238ec7` deck thumbnail reveal, `24c7876b3` in-place HTML edit delivery 보존, `498802189` baked slide preset preview 순서로 수동 포팅 가능성을 검토한다. 보안/preview freeze/thumbnail은 실제 서비스 구동과 사용자 신뢰에 직접 영향을 주며, AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
 
 ---
 
@@ -184,10 +184,10 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 ## 4. 권장 작업 순서
 
 1. **P0:** `cdffb1b63`의 library ingest SSRF 차단을 Teamver daemon에 수동 포팅할 수 있는지 검토한다. URL 기반 분석/web-fetch/라이브러리 ingest는 외부 URL을 다루므로, 출시 전 보안 방어가 우선이다.
-2. **P0/P1:** `b5d9a12f4`의 preview redirect-loop guard를 검토한다. AI가 생성한 HTML이 redirect/freeze script를 포함해도 preview가 멈추지 않아야 한다.
-3. **P1:** `88c238ec7` deck thumbnail reveal 패치를 Teamver 홈/최근 프로젝트 썸네일 cache 흐름과 대조한다. 프로젝트 목록에서 썸네일이 첫 글자 fallback으로 보이는 문제와 연결될 수 있다.
-4. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정/재진입/background run 패치와 대조한다. `ProjectView.tsx` 전체 cherry-pick은 금지하고, delivery 보존에 필요한 최소 변경만 검토한다.
-5. **P1:** `498802189` baked slide preset preview는 Community/template preview blank 문제가 재현되는 범위에서만 선별한다.
+2. **P1:** `88c238ec7` deck thumbnail reveal 패치를 Teamver 홈/최근 프로젝트 썸네일 cache 흐름과 대조한다. 프로젝트 목록에서 썸네일이 첫 글자 fallback으로 보이는 문제와 연결될 수 있다.
+3. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정/재진입/background run 패치와 대조한다. `ProjectView.tsx` 전체 cherry-pick은 금지하고, delivery 보존에 필요한 최소 변경만 검토한다.
+4. **P1:** `498802189` baked slide preset preview는 Community/template preview blank 문제가 재현되는 범위에서만 선별한다.
+5. **P1/P2:** `4b660237c` slim system prompt/token 절약 패치는 바로 적용하지 않는다. 실제 슬라이드 생성 품질, 블록 비노출, Teamver managed key 흐름, 질문 form UX를 샘플로 검증한 뒤 별도 루프로 판단한다.
 6. PPTX는 일반 다운로드 screenshot 기본 정책을 유지한다. editable PPTX는 별도 메뉴/고급 옵션을 만들기 전까지 일반 사용자 경로에 노출하지 않는다.
 7. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
 
@@ -206,7 +206,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 ## 6. 다음 추천 작업
 
 1. **P0:** `cdffb1b63` library ingest SSRF 차단을 먼저 검토한다. web-fetch/사이트 분석 기능을 출시하려면 외부 URL 접근 안전장치가 선행되어야 한다.
-2. **P0/P1:** `b5d9a12f4` preview redirect-loop guard를 검토한다. 생성 HTML preview freeze는 사용자 입장에서 “작업물이 깨짐/서비스가 멈춤”으로 보인다.
-3. **P1:** `88c238ec7` deck thumbnail reveal을 현재 Teamver 썸네일 fallback 문제와 대조한다.
-4. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
-5. **P1:** `498802189` baked previews는 Community/template preview blank 재현 시 런타임 lookup만 선별 반영한다.
+2. **P1:** `88c238ec7` deck thumbnail reveal을 현재 Teamver 썸네일 fallback 문제와 대조한다.
+3. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
+4. **P1:** `498802189` baked previews는 Community/template preview blank 재현 시 런타임 lookup만 선별 반영한다.
+5. **P1/P2:** slim system prompt/token 절약 패치는 별도 품질 평가 루프를 먼저 만든다. 프롬프트 축소는 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.

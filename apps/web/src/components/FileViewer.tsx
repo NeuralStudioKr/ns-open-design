@@ -105,11 +105,18 @@ import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
-import { buildLazySrcdocTransport, buildSrcdoc, canActivateSrcDocTransport } from '../runtime/srcdoc';
+import {
+  buildLazySrcdocTransport,
+  buildRedirectLoopBlockedDoc,
+  buildSrcdoc,
+  canActivateSrcDocTransport,
+  PREVIEW_REDIRECT_LOOP_MESSAGE,
+} from '../runtime/srcdoc';
 import { scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import {
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
+  htmlNeedsRedirectGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
   resolveHtmlPreviewAssetUrl,
@@ -5429,6 +5436,10 @@ function HtmlViewer({
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
     ? manualEditFrozenSource
     : livePreviewSource;
+  const [redirectLoopBlocked, setRedirectLoopBlocked] = useState(false);
+  useEffect(() => {
+    setRedirectLoopBlocked(false);
+  }, [file.name, previewSource, reloadKey]);
   const manualEditPageStylesEnabled = typeof source === 'string' && isManualEditFullHtmlDocument(source);
   const urlModeBridge = hasUrlModeBridge(source);
   const manualEditRequiresSrcDoc = manualEditSrcDocActive && !urlModeBridge;
@@ -5448,6 +5459,10 @@ function HtmlViewer({
   );
   const needsFocusGuard = useMemo(
     () => source != null && htmlNeedsFocusGuard(source),
+    [source],
+  );
+  const needsRedirectGuard = useMemo(
+    () => source != null && htmlNeedsRedirectGuard(source),
     [source],
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
@@ -5485,6 +5500,7 @@ function HtmlViewer({
     drawMode: drawOverlayOpen,
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
+    needsRedirectGuard,
   }) && !manualEditRequiresSrcDoc
     && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
@@ -5544,7 +5560,7 @@ function HtmlViewer({
   }, [source, effectiveDeck, projectId, file.name, reloadKey, useUrlLoadPreview]);
 
   const srcDoc = useMemo(
-    () => (previewSource ? buildSrcdoc(previewSource, {
+    () => (redirectLoopBlocked ? buildRedirectLoopBlockedDoc() : previewSource ? buildSrcdoc(previewSource, {
       deck: effectiveDeck,
       baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
@@ -5553,7 +5569,7 @@ function HtmlViewer({
       paletteBridge: false,
       previewFocusGuard: true,
     }) : ''),
-    [previewSource, effectiveDeck, projectId, file.name, previewStateKey, manualEditRequiresSrcDoc],
+    [redirectLoopBlocked, previewSource, effectiveDeck, projectId, file.name, previewStateKey, manualEditRequiresSrcDoc],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
   const [srcDocTransportResetKey, setSrcDocTransportResetKey] = useState(0);
@@ -5577,6 +5593,16 @@ function HtmlViewer({
       const data = ev.data as { type?: string } | null;
       if (data?.type !== 'od:srcdoc-transport-ready') return;
       setSrcDocShellReady(true);
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      if (ev.source !== srcDocPreviewIframeRef.current?.contentWindow) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== PREVIEW_REDIRECT_LOOP_MESSAGE) return;
+      setRedirectLoopBlocked(true);
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

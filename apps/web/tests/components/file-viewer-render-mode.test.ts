@@ -4,6 +4,7 @@ import {
   hasTweaksTemplate,
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
+  htmlNeedsRedirectGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
   resolveHtmlPreviewAssetUrl,
@@ -62,6 +63,10 @@ describe('shouldUrlLoadHtmlPreview', () => {
 
   it('falls back to srcDoc when the HTML source needs a focus guard', () => {
     expect(shouldUrlLoadHtmlPreview({ ...base, needsFocusGuard: true })).toBe(false);
+  });
+
+  it('falls back to srcDoc when the HTML source needs a redirect guard', () => {
+    expect(shouldUrlLoadHtmlPreview({ ...base, needsRedirectGuard: true })).toBe(false);
   });
 
   it('does not URL-load while the source-code tab is active', () => {
@@ -338,5 +343,34 @@ describe('htmlNeedsFocusGuard', () => {
     expect(htmlNeedsFocusGuard('// focus the element')).toBe(false);
     expect(htmlNeedsFocusGuard(':focus')).toBe(false);
     expect(htmlNeedsFocusGuard('focus-visible')).toBe(false);
+  });
+});
+
+describe('htmlNeedsRedirectGuard', () => {
+  it('returns false for empty / null / undefined input', () => {
+    expect(htmlNeedsRedirectGuard('')).toBe(false);
+    expect(htmlNeedsRedirectGuard(null)).toBe(false);
+    expect(htmlNeedsRedirectGuard(undefined)).toBe(false);
+  });
+
+  it('detects meta refresh redirects', () => {
+    expect(htmlNeedsRedirectGuard('<meta http-equiv="refresh" content="0">')).toBe(true);
+    expect(htmlNeedsRedirectGuard("<meta content='0; url=./self' http-equiv='refresh'>")).toBe(true);
+    expect(htmlNeedsRedirectGuard('<META HTTP-EQUIV="REFRESH" CONTENT="0">')).toBe(true);
+  });
+
+  it('detects load-time location navigation', () => {
+    expect(htmlNeedsRedirectGuard('<script>location.reload()</script>')).toBe(true);
+    expect(htmlNeedsRedirectGuard('<script>location.replace("/")</script>')).toBe(true);
+    expect(htmlNeedsRedirectGuard('<script>location.assign(url)</script>')).toBe(true);
+    expect(htmlNeedsRedirectGuard('<script>location.href = "./"</script>')).toBe(true);
+    expect(htmlNeedsRedirectGuard('<script>window.location = "./page"</script>')).toBe(true);
+  });
+
+  it('does not match reads, comparisons, or unrelated text', () => {
+    expect(htmlNeedsRedirectGuard('<script>const u = window.location.href;</script>')).toBe(false);
+    expect(htmlNeedsRedirectGuard('<script>if (location.href === target) {}</script>')).toBe(false);
+    expect(htmlNeedsRedirectGuard('<input name="location" value="NYC">')).toBe(false);
+    expect(htmlNeedsRedirectGuard('<meta http-equiv="content-type" content="text/html">')).toBe(false);
   });
 });
