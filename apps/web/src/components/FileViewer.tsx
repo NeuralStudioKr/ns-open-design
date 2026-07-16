@@ -51,6 +51,7 @@ import {
 import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
 import {
   formatProjectDeployErrorForUser,
+  formatProjectImageExportErrorForUser,
   formatProjectUploadFailureDetail,
 } from '../teamver/projectUploadErrors';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
@@ -86,7 +87,6 @@ import {
   type WebDeployProjectFileResponse,
   type WebDeployProviderId,
   type WebUpdateDeployConfigRequest,
-  writeProjectTextFile,
   writeProjectTextFileDetailed,
 } from '../providers/registry';
 import type { ProjectFilePreview } from '../providers/registry';
@@ -6608,12 +6608,21 @@ function HtmlViewer({
           '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
         ),
       ))) return;
-      const saved = await writeProjectTextFile(projectId, file.name, latest.beforeSource, {
+      const saved = await writeProjectTextFileDetailed(projectId, file.name, latest.beforeSource, {
         artifactManifest: file.artifactManifest,
       });
-      if (!saved) {
+      if (!saved.ok) {
+        if (saved.status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
         setManualEditError(
-          embedUiLabel('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, {
+                status: saved.status,
+                code: saved.code,
+                message: saved.message,
+              })
+            : embedUiLabel('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
         );
         return;
       }
@@ -6645,12 +6654,21 @@ function HtmlViewer({
           '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
         ),
       ))) return;
-      const saved = await writeProjectTextFile(projectId, file.name, latest.afterSource, {
+      const saved = await writeProjectTextFileDetailed(projectId, file.name, latest.afterSource, {
         artifactManifest: file.artifactManifest,
       });
-      if (!saved) {
+      if (!saved.ok) {
+        if (saved.status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
         setManualEditError(
-          embedUiLabel('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, {
+                status: saved.status,
+                code: saved.code,
+                message: saved.message,
+              })
+            : embedUiLabel('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
         );
         return;
       }
@@ -7829,10 +7847,8 @@ function HtmlViewer({
       console.warn('[exportAsImage] failed to prepare snapshot:', err);
       if (imageExportPrepareIdRef.current === prepareId) {
         const baseMessage = t('fileViewer.exportImageFailed');
-        // Surface the daemon reason (e.g. "headless Chromium unavailable ...")
-        // so dev/staging can diagnose without digging into network panel logs.
         const detail = serverFailureReason || (err instanceof Error ? err.message : null);
-        setImageExportError(detail ? `${baseMessage}\n(${detail})` : baseMessage);
+        setImageExportError(formatProjectImageExportErrorForUser(detail, baseMessage));
       }
     } finally {
       if (imageExportPrepareIdRef.current === prepareId) {
