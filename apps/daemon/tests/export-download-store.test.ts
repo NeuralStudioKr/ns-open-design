@@ -64,6 +64,24 @@ describe('export download store', () => {
     expect(fallback.deliveryMode).toBe('stream');
   });
 
+  it('preserves offload diagnostics on stream fallback tickets', async () => {
+    const stored = await storeExportDownload({
+      projectId: 'proj-1',
+      body: 'pdf-bytes',
+      filename: 'deck.pdf',
+      mime: 'application/pdf',
+      offloadKey: 'exports/ws/proj/hash.pdf',
+      offloadStatus: 'failed',
+      offloadReason: 'AccessDenied',
+    });
+
+    const resolved = resolveExportDownload('proj-1', stored.token);
+    expect(resolved?.deliveryMode).toBe('stream');
+    expect(resolved?.offloadKey).toBe('exports/ws/proj/hash.pdf');
+    expect(resolved?.offloadStatus).toBe('failed');
+    expect(resolved?.offloadReason).toBe('AccessDenied');
+  });
+
   it('preserves non-ascii export filenames in ticket storage', async () => {
     const stored = await storeExportDownload({
       projectId: 'proj-1',

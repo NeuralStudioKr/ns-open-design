@@ -8,6 +8,11 @@ export function isExportOffloadEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 
+export function isExportOffloadRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env.OD_EXPORT_OFFLOAD_REQUIRED ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function readPositiveIntEnv(
   env: NodeJS.ProcessEnv,
   name: string,

@@ -14,6 +14,7 @@ describe('GET /api/projects/:id/export/downloads/:token', () => {
     delete process.env.OD_EXPORT_OFFLOAD_REGION;
     delete process.env.OD_EXPORT_OFFLOAD_PREFIX;
     delete process.env.OD_EXPORT_OFFLOAD_PRESIGN_TTL_SEC;
+    delete process.env.OD_EXPORT_OFFLOAD_REQUIRED;
     delete process.env.OD_S3_ACCESS_KEY_ID;
     delete process.env.OD_S3_SECRET_ACCESS_KEY;
   });
@@ -124,6 +125,35 @@ describe('GET /api/projects/:id/export/downloads/:token', () => {
 
       const expired = await fetch(`${started.url}${stored.url}`, { redirect: 'manual' });
       expect(expired.status).toBe(404);
+    } finally {
+      await new Promise<void>((resolve) => started.server.close(resolve));
+    }
+  }, 60_000);
+
+  it('does not stream fallback when offload is required and presign is unavailable', async () => {
+    process.env.OD_EXPORT_OFFLOAD_REQUIRED = '1';
+
+    const projectId = `proj-export-ticket-${Date.now()}`;
+    const started = await startServer({
+      port: 0,
+      returnServer: true,
+    }) as { server: { close(cb: () => void): void }; url: string };
+
+    try {
+      const stored = await storeExportDownload({
+        projectId,
+        body: Buffer.from('%PDF-ticket-test'),
+        filename: 'Seed Deck.pdf',
+        mime: 'application/pdf',
+        deliveryMode: 'redirect',
+        offloadKey: 'exports/ws/proj/hash.pdf',
+      });
+
+      const response = await fetch(`${started.url}${stored.url}`, { redirect: 'manual' });
+      expect(response.status).toBe(503);
+      const body = await response.json() as { error?: { code?: string }; offloadStatus?: string };
+      expect(body.error?.code).toBe('EXPORT_OFFLOAD_PRESIGN_UNAVAILABLE');
+      expect(body.offloadStatus).toBe('disabled');
     } finally {
       await new Promise<void>((resolve) => started.server.close(resolve));
     }

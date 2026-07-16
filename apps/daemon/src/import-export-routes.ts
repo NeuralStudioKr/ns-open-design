@@ -43,7 +43,11 @@ import {
   runCachedExport,
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
-import { buildExportOffloadObjectKey, isExportOffloadEnabled } from './export-offload-key.js';
+import {
+  buildExportOffloadObjectKey,
+  isExportOffloadEnabled,
+  isExportOffloadRequired,
+} from './export-offload-key.js';
 import {
   presignExportOffloadGet,
   putExportOffloadFileObject,
@@ -69,12 +73,16 @@ function setExportDownloadHeaders(
   entry: {
     bytes: number;
     deliveryMode: string;
+    offloadStatus?: string;
+    offloadReason?: string;
   },
 ): void {
   res.setHeader('Content-Length', String(entry.bytes));
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-OD-Export-Delivery-Mode', entry.deliveryMode);
   res.setHeader('X-OD-Export-Single-Use', 'true');
+  if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', entry.offloadStatus);
+  if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', entry.offloadReason);
 }
 
 function attachmentDisposition(filename: string): string {
@@ -172,6 +180,20 @@ async function respondExportPayload(
   if (options.ticket) {
     const canRedirect =
       options.offloadKey && (options.offloadStatus === 'uploaded' || options.offloadStatus === 'hit');
+    if (options.offloadEnabled && isExportOffloadRequired() && !canRedirect) {
+      res.status(503).json({
+        error: {
+          code: 'EXPORT_OFFLOAD_UNAVAILABLE',
+          message: 'export offload is required but no S3 redirect ticket could be prepared',
+        },
+        offloadEnabled: true,
+        ...(options.offloadKey ? { offloadKey: options.offloadKey } : {}),
+        ...(options.offloadStatus ? { offloadStatus: options.offloadStatus } : {}),
+        ...(options.offloadReason ? { offloadReason: options.offloadReason } : {}),
+        ...(options.cache ? { cache: options.cache } : {}),
+      });
+      return;
+    }
     const entry = await storeExportDownload({
       projectId: options.projectId,
       ...(options.sourceFilePath
@@ -183,6 +205,8 @@ async function respondExportPayload(
       ...(canRedirect
         ? { deliveryMode: 'redirect' as const, offloadKey: options.offloadKey }
         : {}),
+      ...(options.offloadStatus ? { offloadStatus: options.offloadStatus } : {}),
+      ...(options.offloadReason ? { offloadReason: options.offloadReason } : {}),
     });
     res.status(201).json({
       delivery: 'ticket',
@@ -915,19 +939,38 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           res.setHeader('Cache-Control', 'private, no-store');
           res.setHeader('X-OD-Export-Delivery-Mode', 'redirect');
           res.setHeader('X-OD-Export-Single-Use', 'true');
+          if (entry.offloadStatus) res.setHeader('X-OD-Export-Offload-Status', entry.offloadStatus);
+          if (entry.offloadReason) res.setHeader('X-OD-Export-Offload-Reason', entry.offloadReason);
           await completeExportDownload(req.params.token);
           res.redirect(302, presigned.url);
           return;
         }
+        const presignReason =
+          presigned.status === 'failed' || presigned.status === 'disabled' ? presigned.reason : undefined;
         console.warn('[export/download] offload presign failed; falling back to stream', {
           projectId: req.params.id,
           status: presigned.status,
-          reason: presigned.status === 'failed' || presigned.status === 'disabled' ? presigned.reason : undefined,
+          reason: presignReason,
         });
+        if (isExportOffloadRequired()) {
+          releaseExportDownloadClaim(req.params.token);
+          return res.status(503).json({
+            error: {
+              code: 'EXPORT_OFFLOAD_PRESIGN_UNAVAILABLE',
+              message: 'export offload is required but the S3 download URL could not be prepared',
+            },
+            offloadEnabled: true,
+            offloadStatus: presigned.status,
+            ...(presignReason ? { offloadReason: presignReason } : {}),
+          });
+        }
         deliveryModeForResponse = 'stream';
       }
       setAttachmentHeaders(res, entry.mime, entry.filename);
-      setExportDownloadHeaders(res, { ...entry, deliveryMode: deliveryModeForResponse });
+      setExportDownloadHeaders(res, {
+        ...entry,
+        deliveryMode: deliveryModeForResponse,
+      });
       const stream = fs.createReadStream(entry.filePath);
       let finished = false;
       stream.on('error', () => {

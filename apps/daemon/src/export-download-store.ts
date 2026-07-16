@@ -13,6 +13,8 @@ export type StoredExportDownload = {
   expiresAt: number;
   filePath: string;
   offloadKey?: string;
+  offloadStatus?: string;
+  offloadReason?: string;
 };
 
 type ExportDownloadEntry = StoredExportDownload & {
@@ -68,6 +70,8 @@ export async function storeExportDownload(options: {
   mime: string;
   deliveryMode?: 'stream' | 'redirect';
   offloadKey?: string;
+  offloadStatus?: string;
+  offloadReason?: string;
 }): Promise<StoredExportDownload> {
   const token = crypto.randomBytes(16).toString('hex');
   const filename = safeFilename(options.filename);
@@ -112,6 +116,8 @@ export async function storeExportDownload(options: {
     projectId: options.projectId,
     ownsFile,
     ...(options.offloadKey ? { offloadKey: options.offloadKey } : {}),
+    ...(options.offloadStatus ? { offloadStatus: options.offloadStatus } : {}),
+    ...(options.offloadReason ? { offloadReason: options.offloadReason } : {}),
   };
   downloads.set(token, entry);
   return entry;
