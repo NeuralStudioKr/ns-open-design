@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import type { ProjectFileMeta } from './storage/project-storage.js';
 import { S3ProjectStorage } from './storage/project-storage.js';
-import { encodeS3PathSegment, type SigV4Credentials } from './storage/aws-sigv4.js';
+import { encodeAwsSigV4UriComponent, encodeS3PathSegment, type SigV4Credentials } from './storage/aws-sigv4.js';
 import { createS3CredentialProvider } from './storage/s3-credential-provider.js';
 import type { ExportOffloadConfig, ExportOffloadDisabledReason } from './export-offload-key.js';
 import { resolveExportOffloadConfig } from './export-offload-key.js';
@@ -112,7 +112,7 @@ export function buildExportOffloadPresignedGetUrl(input: ExportOffloadPresignInp
   }
   params.sort((a, b) => a[0].localeCompare(b[0]));
   const canonicalQuery = params
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .map(([k, v]) => `${encodeAwsSigV4UriComponent(k)}=${encodeAwsSigV4UriComponent(v)}`)
     .join('&');
   const canonicalRequest = [
     'GET',

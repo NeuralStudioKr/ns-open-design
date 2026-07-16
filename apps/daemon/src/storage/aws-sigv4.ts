@@ -131,6 +131,18 @@ function formatAmzDate(d: Date): string {
 // the slash separator between segments stays literal. S3 object key
 // chars that fall outside the unreserved set get %HH-encoded.
 export function encodeS3PathSegment(seg: string): string {
-  return encodeURIComponent(seg)
-    .replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  return encodeAwsSigV4UriComponent(seg);
+}
+
+/**
+ * AWS SigV4 query/path encoding — stricter than encodeURIComponent.
+ * Unreserved: A-Z a-z 0-9 - _ . ~
+ * `!'()*` must be percent-encoded (`*` → `%2A`, `'` → `%27`) or S3
+ * SignatureDoesNotMatch on presigned URLs with Content-Disposition.
+ */
+export function encodeAwsSigV4UriComponent(value: string): string {
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
