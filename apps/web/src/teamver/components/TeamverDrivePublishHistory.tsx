@@ -8,8 +8,9 @@ import {
 } from "../listProjectOutputs";
 import type { TeamverPublishDriveOutput } from "../publishToDrive";
 import {
-  isTeamverBffUnauthorizedError,
+  handleTeamverBffAuthFailure,
   redirectToTeamverLoginFromEmbed,
+  TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
 
 type Props = {
@@ -118,8 +119,16 @@ export function TeamverDrivePublishHistory({
       hasRowsRef.current = readyOutputs(next.outputs ?? []).length > 0;
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
-      if (isTeamverBffUnauthorizedError(err)) {
-        setAuthRequired(true);
+      if (
+        handleTeamverBffAuthFailure(err, {
+          onRelogin: () => setAuthRequired(true),
+          onTransient: () => {
+            setAuthRequired(false);
+            setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+          },
+        })
+      ) {
+        // handled
       } else {
         setError(err instanceof Error ? err.message : "outputs_fetch_failed");
       }

@@ -4,18 +4,25 @@ vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => false),
 }));
 
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+}));
+
 import {
   formatProjectConversationCreateError,
   formatProjectConversationListError,
   formatProjectMessagesLoadError,
 } from "../src/teamver/projectErrorMessages";
 import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
+import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 
 const mockedEmbedMode = vi.mocked(isTeamverEmbedMode);
+const mockedSessionAuth = vi.mocked(isTeamverEmbedSessionAuthenticated);
 
 describe("project conversation error messages", () => {
   beforeEach(() => {
     mockedEmbedMode.mockReset();
+    mockedSessionAuth.mockReturnValue(false);
   });
 
   it("returns English fallbacks for standalone OD", () => {
@@ -79,10 +86,14 @@ describe("project conversation error messages", () => {
     expect(
       formatProjectArtifactSaveFailedError("deck.html", { status: 404 }),
     ).toContain("찾을 수 없어");
-    // Unauthorized (401) → re-auth prompt.
+    // Unauthorized (401) → re-auth prompt when session memory says logged out.
     expect(
       formatProjectArtifactSaveFailedError("deck.html", { status: 401 }),
     ).toContain("세션이 만료");
+    mockedSessionAuth.mockReturnValue(true);
+    expect(
+      formatProjectArtifactSaveFailedError("deck.html", { status: 401 }),
+    ).toContain("연결을 확인");
     // Upstream 5xx → transient retry-friendly copy.
     expect(
       formatProjectArtifactSaveFailedError("deck.html", { status: 503 }),
@@ -115,7 +126,7 @@ describe("project conversation error messages", () => {
       formatProjectRunErrorForUser(
         new Error("Your authentication token has expired. Please sign in again."),
       ),
-    ).toContain("인증이 만료");
+    ).toContain("슬라이드 실행");
     expect(
       formatProjectConversationErrorForUser(
         new Error("Network request failed"),

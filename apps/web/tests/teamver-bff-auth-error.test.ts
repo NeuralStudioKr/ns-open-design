@@ -16,9 +16,17 @@ vi.mock("../src/teamver/teamverEmbedAuthNavigation", () => ({
 }));
 
 import {
+  classifyTeamverBffAuthFailure,
+  handleTeamverBffAuthFailure,
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
 } from "../src/teamver/teamverBffAuthError";
+
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+}));
+
+import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 
 describe("isTeamverBffUnauthorizedError", () => {
   it("matches SDK NetworkError with status 401", () => {
@@ -50,9 +58,13 @@ describe("isTeamverBffUnauthorizedError", () => {
     ).toBe(true);
   });
 
-  it("matches Invalid token messages from Main BE pass-through", () => {
-    expect(isTeamverBffUnauthorizedError(new Error("Invalid token"))).toBe(true);
-    expect(isTeamverBffUnauthorizedError(new Error('{"detail":"Invalid token"}'))).toBe(true);
+  it("does not treat Invalid token as session expiry (often HA/upstream transient)", () => {
+    expect(isTeamverBffUnauthorizedError(new Error("Invalid token"))).toBe(false);
+    expect(isTeamverBffUnauthorizedError(new Error('{"detail":"Invalid token"}'))).toBe(false);
+  });
+
+  it("matches explicit session_expired bodies", () => {
+    expect(isTeamverBffUnauthorizedError(new Error("session_expired"))).toBe(true);
   });
 
   it("does not match unrelated drive 4xx/5xx codes", () => {
@@ -70,6 +82,39 @@ describe("isTeamverBffUnauthorizedError", () => {
     expect(isTeamverBffUnauthorizedError(undefined)).toBe(false);
     expect(isTeamverBffUnauthorizedError("401")).toBe(false);
     expect(isTeamverBffUnauthorizedError({ status: 401 })).toBe(false);
+  });
+});
+
+describe("classifyTeamverBffAuthFailure", () => {
+  beforeEach(() => {
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+  });
+
+  it("returns relogin when session memory is unauthenticated", () => {
+    expect(
+      classifyTeamverBffAuthFailure(new NetworkError({ status: 401, message: "unauth" })),
+    ).toBe("relogin");
+  });
+
+  it("returns transient when embed session flag is still authenticated", () => {
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    expect(
+      classifyTeamverBffAuthFailure(new NetworkError({ status: 401, message: "unauth" })),
+    ).toBe("transient");
+  });
+
+  it("handleTeamverBffAuthFailure invokes the matching handler", () => {
+    const onRelogin = vi.fn();
+    const onTransient = vi.fn();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    expect(
+      handleTeamverBffAuthFailure(new NetworkError({ status: 401, message: "unauth" }), {
+        onRelogin,
+        onTransient,
+      }),
+    ).toBe(true);
+    expect(onTransient).toHaveBeenCalledTimes(1);
+    expect(onRelogin).not.toHaveBeenCalled();
   });
 });
 

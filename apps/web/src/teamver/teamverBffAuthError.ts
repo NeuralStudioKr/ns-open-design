@@ -1,6 +1,7 @@
 import { NetworkError } from "@teamver/app-sdk";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 /**
  * True when an error thrown from a teamver Design BFF call represents an
@@ -16,13 +17,9 @@ import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
  *    client, so the status is encoded in the message. Historical BFF error
  *    strings like `"401 Unauthorized"` also match, defensive-only.
  *
- * When staging routes a request to a peer node whose
- * `DESIGN_BFF_SESSION_SECRET` differs from ours the middleware silently
- * fails to decode `teamver_bff_v1` and every protected route (drive
- * folder/shared-drive, publish, project outputs, refresh) returns 401
- * together. Detecting the class here lets each UI surface distinguish that
- * from a real fetch failure and offer an explicit re-login CTA instead of
- * "please try again", which just loops.
+ * `invalid token` from Main BE pass-through is intentionally excluded — it
+ * often reflects HA cookie decode races or upstream JWT shape mismatches that
+ * recover on retry while the embed session flag is still true.
  */
 export function isTeamverBffUnauthorizedError(err: unknown): boolean {
   if (err instanceof NetworkError && err.status === 401) return true;
@@ -30,7 +27,39 @@ export function isTeamverBffUnauthorizedError(err: unknown): boolean {
     const message = err.message || "";
     if (/teamver_drive_fetch_failed:\s*401\b/.test(message)) return true;
     if (/\b401\b.*unauthorized/i.test(message)) return true;
-    if (/\binvalid[\s_]?token\b/i.test(message)) return true;
+    if (/\bsession_expired\b/i.test(message)) return true;
+  }
+  return false;
+}
+
+export type TeamverBffAuthFailureKind = "none" | "transient" | "relogin";
+
+/** Distinguish recoverable auth blips from confirmed logout for embed UI. */
+export function classifyTeamverBffAuthFailure(err: unknown): TeamverBffAuthFailureKind {
+  if (!isTeamverBffUnauthorizedError(err)) return "none";
+  return isTeamverEmbedSessionAuthenticated() ? "transient" : "relogin";
+}
+
+/** Retry-first copy while embed session memory still says authenticated. */
+export const TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE =
+  "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
+
+/** Apply relogin vs retry-first UI for BFF 401 catch blocks. Returns true when handled. */
+export function handleTeamverBffAuthFailure(
+  err: unknown,
+  handlers: {
+    onRelogin: () => void;
+    onTransient: () => void;
+  },
+): boolean {
+  const kind = classifyTeamverBffAuthFailure(err);
+  if (kind === "relogin") {
+    handlers.onRelogin();
+    return true;
+  }
+  if (kind === "transient") {
+    handlers.onTransient();
+    return true;
   }
   return false;
 }

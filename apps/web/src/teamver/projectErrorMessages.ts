@@ -1,4 +1,5 @@
 import { isTeamverEmbedMode } from "./designApiBase";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 /**
  * Teamver-tone Korean fallbacks for ProjectView conversation lifecycle errors.
@@ -97,6 +98,9 @@ export function formatProjectArtifactSaveFailedError(
   }
 
   if (UNAUTHORIZED_ERROR_CODES.has(code) || status === 401) {
+    if (embed && isTeamverEmbedSessionAuthenticated()) {
+      return '저장 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.';
+    }
     return embed
       ? '로그인 세션이 만료되어 저장에 실패했습니다. 다시 로그인한 뒤 시도하세요.'
       : 'Your session expired while saving. Sign in again to continue.';
@@ -177,27 +181,12 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   if (messageImpliesMissingApiKey(err)) {
     return "서버 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";
   }
-  if (messageImpliesExpiredAuth(err)) {
-    return "AI 작업 인증이 만료되었습니다. 다시 로그인하거나 연동 인증을 갱신한 뒤 시도하세요.";
-  }
   return "슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.";
 }
 
 function messageImpliesMissingApiKey(err: unknown): boolean {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return message.includes("missing api key");
-}
-
-function messageImpliesExpiredAuth(err: unknown): boolean {
-  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return (
-    message.includes("authentication token has expired")
-    || message.includes("auth token has expired")
-    || message.includes("token expired")
-    || message.includes("token has expired")
-    || message.includes("authentication expired")
-    || message.includes("auth expired")
-  );
 }
 
 /** User-facing conversation lifecycle banner — embed avoids raw API/daemon English. */

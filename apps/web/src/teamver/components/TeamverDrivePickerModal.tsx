@@ -38,8 +38,9 @@ import {
 } from "../driveBrowsePageCache";
 import { isTeamverDriveAbortError } from "../driveApi";
 import {
-  isTeamverBffUnauthorizedError,
+  handleTeamverBffAuthFailure,
   redirectToTeamverLoginFromEmbed,
+  TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
 import { formatTeamverDriveImportErrorMessage } from "../importDriveAssets";
 
@@ -406,8 +407,13 @@ export function TeamverDrivePickerModal({
         onQuickPickTargetsHydrated?.(publishTargetsFromImportScopes(resolved));
       } catch (err) {
         if (canceled) return;
-        if (isTeamverBffUnauthorizedError(err)) {
-          setBrowseAuthRequired(true);
+        if (
+          handleTeamverBffAuthFailure(err, {
+            onRelogin: () => setBrowseAuthRequired(true),
+            onTransient: () => setBrowseAuthRequired(false),
+          })
+        ) {
+          // handled
         }
         const fallback = [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
         setScopes(fallback);
@@ -584,9 +590,19 @@ export function TeamverDrivePickerModal({
           setBrowseTargets([]);
           setBrowseAssetRows([]);
           setRecentAssetRows([]);
-          if (isTeamverBffUnauthorizedError(err)) {
-            setBrowseAuthRequired(true);
-            setBrowseError(null);
+          if (
+            handleTeamverBffAuthFailure(err, {
+              onRelogin: () => {
+                setBrowseAuthRequired(true);
+                setBrowseError(null);
+              },
+              onTransient: () => {
+                setBrowseAuthRequired(false);
+                setBrowseError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+              },
+            })
+          ) {
+            // handled
           } else {
             setBrowseAuthRequired(false);
             setBrowseError(
@@ -733,9 +749,19 @@ export function TeamverDrivePickerModal({
         if (canceled || seq !== searchFetchSeqRef.current) return;
         if (isTeamverDriveAbortError(err)) return;
         setSearchTargets([]);
-        if (isTeamverBffUnauthorizedError(err)) {
-          setBrowseAuthRequired(true);
-          setSearchError(null);
+        if (
+          handleTeamverBffAuthFailure(err, {
+            onRelogin: () => {
+              setBrowseAuthRequired(true);
+              setSearchError(null);
+            },
+            onTransient: () => {
+              setBrowseAuthRequired(false);
+              setSearchError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+            },
+          })
+        ) {
+          // handled
         } else {
           setSearchError("드라이브 검색에 실패했습니다");
         }

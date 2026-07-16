@@ -40,8 +40,9 @@ import {
 } from "../driveBrowsePageCache";
 import { isTeamverDriveAbortError } from "../driveApi";
 import {
-  isTeamverBffUnauthorizedError,
+  handleTeamverBffAuthFailure,
   redirectToTeamverLoginFromEmbed,
+  TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
@@ -401,9 +402,19 @@ export function TeamverDriveImportModal({
         }
         setBrowseHasMore(false);
         setBrowseNextCursor(null);
-        if (isTeamverBffUnauthorizedError(err)) {
-          setAuthRequired(true);
-          setError(null);
+        if (
+          handleTeamverBffAuthFailure(err, {
+            onRelogin: () => {
+              setAuthRequired(true);
+              setError(null);
+            },
+            onTransient: () => {
+              setAuthRequired(false);
+              setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+            },
+          })
+        ) {
+          // handled
         } else {
           setAuthRequired(false);
           setError(formatTeamverDriveImportErrorMessage(err));
@@ -461,8 +472,16 @@ export function TeamverDriveImportModal({
         }
       } catch (err) {
         if (!cancelled) {
-          if (isTeamverBffUnauthorizedError(err)) {
-            setAuthRequired(true);
+          if (
+            handleTeamverBffAuthFailure(err, {
+              onRelogin: () => setAuthRequired(true),
+              onTransient: () => {
+                setAuthRequired(false);
+                setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+              },
+            })
+          ) {
+            // handled
           }
           setScopes([{ mode: "personal", folderId: null, label: "내 드라이브" }]);
         }

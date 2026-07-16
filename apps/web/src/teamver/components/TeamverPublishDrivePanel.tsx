@@ -57,8 +57,9 @@ import {
   peekTeamverDriveImportScopesCache,
 } from "../driveImportList";
 import {
-  isTeamverBffUnauthorizedError,
+  handleTeamverBffAuthFailure,
   redirectToTeamverLoginFromEmbed,
+  TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
 
 export type TeamverPublishDriveSuccessMeta = {
@@ -209,8 +210,16 @@ export function TeamverPublishDrivePanel({
       if (seq !== fetchSeqRef.current) return;
       setTargets(ensureDefaultPublishTarget([]));
       setLastTargetRestore("none");
-      if (isTeamverBffUnauthorizedError(err)) {
-        setAuthRequired(true);
+      if (
+        handleTeamverBffAuthFailure(err, {
+          onRelogin: () => setAuthRequired(true),
+          onTransient: () => {
+            setAuthRequired(false);
+            setTargetsError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+          },
+        })
+      ) {
+        // handled
       } else {
         setTargetsError(err instanceof Error ? err.message : "drive_publish_targets_failed");
       }
@@ -369,9 +378,13 @@ export function TeamverPublishDrivePanel({
         setPdfBlocked(true);
         setSelectedFormat("html");
       }
-      if (isTeamverBffUnauthorizedError(err)) {
-        setAuthRequired(true);
-      }
+      handleTeamverBffAuthFailure(err, {
+        onRelogin: () => setAuthRequired(true),
+        onTransient: () => {
+          setAuthRequired(false);
+          onError?.(new Error(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE));
+        },
+      });
       onError?.(err);
     } finally {
       setBusy(false);

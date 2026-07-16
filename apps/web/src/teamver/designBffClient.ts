@@ -574,12 +574,14 @@ export async function fetchTeamverWorkspacePermissions(
   const trimmed = workspaceId.trim();
   if (!trimmed) return null;
   try {
-    return await client.http.get<TeamverWorkspacePermissions>(
-      `/permissions/${encodeURIComponent(trimmed)}`,
-      {
-        workspaceId: trimmed,
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
+    return await withDesignBffCookieAuthRecovery(() =>
+      client.http.get<TeamverWorkspacePermissions>(
+        `/permissions/${encodeURIComponent(trimmed)}`,
+        {
+          workspaceId: trimmed,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
     );
   } catch {
     return null;

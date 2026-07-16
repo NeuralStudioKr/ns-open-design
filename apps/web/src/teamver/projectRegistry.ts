@@ -708,12 +708,14 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
     workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim() ?? null;
     if (!workspaceId) return false;
 
-    await client.http.delete<void>(
-      `/projects/${encodeURIComponent(trimmedId)}`,
-      {
-        workspaceId,
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
+    await withDesignBffCookieAuthRecovery(() =>
+      client.http.delete<void>(
+        `/projects/${encodeURIComponent(trimmedId)}`,
+        {
+          workspaceId,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
     );
     invalidateRegisteredIdsCache();
     invalidateFeAccessCache(trimmedId, workspaceId);
