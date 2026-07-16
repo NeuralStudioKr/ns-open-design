@@ -19,6 +19,7 @@ import {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
 import {
   formatProjectFileManagerUploadError,
   formatProjectDeleteFailureForUser,
@@ -38,7 +39,7 @@ import {
   updateDesignSystemDraft,
   type UploadProjectFilesResult,
   uploadProjectFiles,
-  writeProjectTextFile,
+  writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
@@ -1466,11 +1467,12 @@ export function FileWorkspace({
       entry.items,
     );
     const startedAt = Date.now();
-    const file = await writeProjectTextFile(projectId, name, JSON.stringify(doc, null, 2));
+    const saved = await writeProjectTextFileDetailed(projectId, name, JSON.stringify(doc, null, 2));
     const elapsed = Date.now() - startedAt;
     // Ensures saving UI shows so the button does not flicker
     if (elapsed < 500) await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
-    if (file) {
+    if (saved.ok) {
+      const file = saved.file;
       setSketches((curr) => ({
         ...curr,
         [name]: {
@@ -1491,10 +1493,16 @@ export function FileWorkspace({
       setActiveTab(name);
       await onRefreshFiles();
       return true;
-    } else {
-      setSketches((curr) => ({ ...curr, [name]: { ...curr[name]!, saving: false } }));
-      return false;
     }
+    setSketches((curr) => ({ ...curr, [name]: { ...curr[name]!, saving: false } }));
+    if (isTeamverEmbedMode()) {
+      setUploadError(formatProjectArtifactSaveFailedError(name, {
+        status: saved.status,
+        code: saved.code,
+        message: saved.message,
+      }));
+    }
+    return false;
   }
 
   const activeFile = useMemo<ProjectFile | null>(() => {
@@ -2462,10 +2470,16 @@ export function FileWorkspace({
               setShowPasteDialog(false);
               // Save under the folder currently being viewed, if any.
               const target = uploadDir ? `${uploadDir}/${name}` : name;
-              const file = await writeProjectTextFile(projectId, target, content);
-              if (file) {
+              const saved = await writeProjectTextFileDetailed(projectId, target, content);
+              if (saved.ok) {
                 await onRefreshFiles();
-                openFile(file.name);
+                openFile(saved.file.name);
+              } else if (isTeamverEmbedMode()) {
+                setUploadError(formatProjectArtifactSaveFailedError(target, {
+                  status: saved.status,
+                  code: saved.code,
+                  message: saved.message,
+                }));
               }
             }}
           />
