@@ -4,6 +4,14 @@ import type { Dict } from "../src/i18n/types";
 const postMock = vi.fn();
 const getWorkspaceMock = vi.fn(async () => "ws-1");
 
+vi.mock("../src/teamver/designApiBase", () => ({
+  isTeamverEmbedMode: vi.fn(() => true),
+}));
+
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+}));
+
 vi.mock("../src/teamver/designBffClient", () => ({
   TEAMVER_BFF_REQUEST_OPTIONS: {
     skipAuthHeader: true,
@@ -147,6 +155,9 @@ describe("formatDriveImportErrorForUser", () => {
       "다운로드",
     );
     expect(formatDriveImportErrorForUser("teamver_drive_fetch_failed:401")).toMatch(/세션/);
+    const { isTeamverEmbedSessionAuthenticated } = await import("../src/teamver/teamverEmbedSession");
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    expect(formatDriveImportErrorForUser("teamver_drive_fetch_failed:401")).toMatch(/연결/);
     expect(formatDriveImportErrorForUser("teamver_drive_fetch_failed:403")).toMatch(/권한/);
     expect(formatDriveImportErrorForUser("teamver_drive_fetch_failed:500")).toMatch(
       /목록을 불러오지/,

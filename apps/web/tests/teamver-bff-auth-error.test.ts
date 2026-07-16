@@ -17,10 +17,15 @@ vi.mock("../src/teamver/teamverEmbedAuthNavigation", () => ({
 
 import {
   classifyTeamverBffAuthFailure,
+  formatTeamverEmbedAuthRequiredMessage,
   handleTeamverBffAuthFailure,
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
 } from "../src/teamver/teamverBffAuthError";
+
+vi.mock("../src/teamver/designApiBase", () => ({
+  isTeamverEmbedMode: vi.fn(() => true),
+}));
 
 vi.mock("../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
@@ -115,6 +120,13 @@ describe("classifyTeamverBffAuthFailure", () => {
     ).toBe(true);
     expect(onTransient).toHaveBeenCalledTimes(1);
     expect(onRelogin).not.toHaveBeenCalled();
+  });
+
+  it("formatTeamverEmbedAuthRequiredMessage prefers transient copy while authenticated", () => {
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    expect(
+      formatTeamverEmbedAuthRequiredMessage("로그인 세션이 만료되었습니다."),
+    ).toContain("연결");
   });
 });
 

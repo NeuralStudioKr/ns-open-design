@@ -15,6 +15,10 @@ vi.mock("../src/teamver/activeTeamverWorkspace", () => ({
   requireActiveTeamverWorkspaceId: vi.fn(async () => "ws-1"),
 }));
 
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+}));
+
 vi.mock("../src/teamver/designBffClient", () => ({
   fetchTeamverWorkspacePermissions: vi.fn(async () => null),
   getDesignBffClient: vi.fn(() => ({
@@ -263,6 +267,15 @@ describe("formatPublishErrorCodeForUser", () => {
     expect(formatPublishErrorCodeForUser("drive_upload_failed_401")).toMatch(/세션이 만료/);
     expect(formatPublishErrorCodeForUser("drive_upload_request_failed_Invalid token")).toMatch(
       /세션이 만료/,
+    );
+  });
+
+  it("maps 401 upload codes to transient copy while embed session is still authenticated", async () => {
+    const { isTeamverEmbedSessionAuthenticated } = await import("../src/teamver/teamverEmbedSession");
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_401")).toMatch(/연결/);
+    expect(formatPublishErrorCodeForUser("drive_upload_request_failed_Invalid token")).toMatch(
+      /연결/,
     );
   });
 

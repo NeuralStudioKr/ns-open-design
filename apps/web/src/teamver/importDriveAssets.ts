@@ -5,6 +5,7 @@ import {
   getDesignBffClient,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
+import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
@@ -65,7 +66,9 @@ export function formatDriveImportErrorForUser(code: string): string {
     return "이 작업공간의 Drive에 접근할 권한이 없습니다 — 다른 작업공간을 선택하거나 다시 로그인해 주세요.";
   }
   if (trimmed.startsWith("teamver_drive_fetch_failed:401")) {
-    return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 다시 시도하세요.";
+    return formatTeamverEmbedAuthRequiredMessage(
+      "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 다시 시도하세요.",
+    );
   }
   if (trimmed.startsWith("teamver_drive_fetch_failed:")) {
     return "드라이브 파일 목록을 불러오지 못했습니다.";

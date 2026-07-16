@@ -1,4 +1,5 @@
 import { NetworkError } from "@teamver/app-sdk";
+import { isTeamverEmbedMode } from "./designApiBase";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
@@ -43,6 +44,15 @@ export function classifyTeamverBffAuthFailure(err: unknown): TeamverBffAuthFailu
 /** Retry-first copy while embed session memory still says authenticated. */
 export const TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE =
   "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
+
+/** Pick retry-first vs re-login copy based on embed session memory. */
+export function formatTeamverEmbedAuthRequiredMessage(
+  logoutMessage: string,
+  transientMessage = TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
+): string {
+  if (!isTeamverEmbedMode()) return logoutMessage;
+  return isTeamverEmbedSessionAuthenticated() ? transientMessage : logoutMessage;
+}
 
 /** Apply relogin vs retry-first UI for BFF 401 catch blocks. Returns true when handled. */
 export function handleTeamverBffAuthFailure(

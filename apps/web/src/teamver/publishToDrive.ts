@@ -4,6 +4,7 @@ import {
   getDesignBffClient,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
+import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import { readTeamverViteEnv } from "./teamverViteEnv";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
@@ -164,13 +165,18 @@ export function formatPublishErrorCodeForUser(code: string): string {
     return "이 작업공간의 Drive에 발행할 권한이 없습니다 — 다른 작업공간을 선택하거나 폴더 권한을 확인하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_401")) {
-    return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.";
+    return formatTeamverEmbedAuthRequiredMessage(
+      "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.",
+    );
   }
   if (
     trimmed.startsWith("drive_upload_request_failed_")
     && /invalid[\s_]?token/i.test(trimmed)
   ) {
-    return "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.";
+    return formatTeamverEmbedAuthRequiredMessage(
+      "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.",
+      "Drive 연결을 확인하지 못했습니다 — 잠시 후 발행을 다시 시도하세요.",
+    );
   }
   if (trimmed.startsWith("drive_upload_failed_")) {
     return "Teamver 드라이브가 업로드를 거부했습니다 — 폴더 권한을 확인하거나 다른 위치를 선택하세요.";

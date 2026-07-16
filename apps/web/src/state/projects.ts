@@ -584,6 +584,14 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 // ---------- conversations ----------
 
+export class TeamverDaemonUnauthorizedError extends Error {
+  readonly code = 'TEAMVER_DAEMON_UNAUTHORIZED';
+  constructor() {
+    super('teamver_daemon_unauthorized');
+    this.name = 'TeamverDaemonUnauthorizedError';
+  }
+}
+
 export async function listConversations(
   projectId: string,
 ): Promise<Conversation[]> {
@@ -591,6 +599,9 @@ export async function listConversations(
     const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations`,
     );
+    if (resp.status === 401) {
+      throw new TeamverDaemonUnauthorizedError();
+    }
     if (!resp.ok) return [];
     const json = (await resp.json()) as { conversations: Conversation[] };
     return json.conversations ?? [];
@@ -638,6 +649,9 @@ export async function createConversation(
         body: JSON.stringify(body),
       },
     );
+    if (resp.status === 401) {
+      throw new TeamverDaemonUnauthorizedError();
+    }
     if (!resp.ok) return null;
     const json = (await resp.json()) as { conversation: Conversation };
     return json.conversation;

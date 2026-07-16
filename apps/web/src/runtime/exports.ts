@@ -23,6 +23,8 @@ import {
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import { formatTeamverEmbedAuthRequiredMessage } from '../teamver/teamverBffAuthError';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { resolveTeamverProjectS3PrefixForDaemon } from '../teamver/teamverProjectS3PrefixResolve';
 import {
@@ -144,8 +146,21 @@ async function triggerExportTicketDownload(resp: Response, fallbackTitle: string
   );
 }
 
+async function refreshEmbedAuthBeforeDaemonExport(): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+  await refreshTeamverEmbedAuthBeforeMutating();
+}
+
 async function throwIfDaemonExportFailed(resp: Response, context: string): Promise<void> {
   if (resp.ok || resp.status === 201) return;
+  if (resp.status === 401 && isTeamverEmbedMode()) {
+    throw new Error(
+      formatTeamverEmbedAuthRequiredMessage(
+        '로그인 세션이 만료되어 내보내기에 실패했습니다. 다시 로그인한 뒤 시도하세요.',
+        '내보내기 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.',
+      ),
+    );
+  }
   const { message, code } = await readDaemonApiError(resp);
   if (
     resp.status === 503
@@ -296,6 +311,7 @@ export async function exportProjectAsHtml(opts: {
   htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
+    await refreshEmbedAuthBeforeDaemonExport();
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
       body: JSON.stringify({
         deck: opts.deck === true,
@@ -1016,6 +1032,7 @@ async function performPdfExportRequest(opts: {
   const url = opts.fresh
     ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
     : `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`;
+  await refreshEmbedAuthBeforeDaemonExport();
   const resp = await fetchTeamverDaemon(url, {
     body: JSON.stringify({
       deck: opts.deck,
@@ -1191,6 +1208,7 @@ export async function exportProjectAsPptx(opts: {
     throw new Error('PPTX 다운로드는 슬라이드 덱에서만 사용할 수 있습니다.');
   }
   try {
+    await refreshEmbedAuthBeforeDaemonExport();
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pptx`, {
       body: JSON.stringify({
         deck: true,
@@ -1298,6 +1316,7 @@ export async function exportProjectImageBlob(opts: {
   const format =
     opts.format === 'jpeg' ? 'jpeg' : opts.format === 'webp' ? 'webp' : 'png';
   try {
+    await refreshEmbedAuthBeforeDaemonExport();
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/image`, {
       body: JSON.stringify({
         deck: opts.deck,
@@ -1436,6 +1455,7 @@ export async function exportProjectAsZip(opts: {
   htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
+    await refreshEmbedAuthBeforeDaemonExport();
     const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
       body: JSON.stringify({
         deck: opts.deck === true,
