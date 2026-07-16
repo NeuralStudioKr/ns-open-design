@@ -11,7 +11,7 @@ import httpx
 
 from ..config import settings
 from ..db.models import DesignProject
-from ..errors import ApiError, BadGatewayError, BadRequestError, ForbiddenError, NotFoundError
+from ..errors import ApiError, BadRequestError
 from ..schemas.drive_import import DriveImportAssetResponse
 from .drive_import_service import (
     DEFAULT_IMPORT_DIR,
@@ -24,10 +24,7 @@ from .od_daemon_client import OdDaemonClient, OdDaemonIdentity
 logger = logging.getLogger(__name__)
 
 # Canvas HTML export can be slow; allow more than general teamver HTTP timeout.
-CANVAS_EXPORT_TIMEOUT_SECONDS = float(
-    getattr(settings, "teamver_canvas_export_timeout_seconds", None)
-    or max(settings.teamver_http_timeout_seconds, 60.0)
-)
+CANVAS_EXPORT_TIMEOUT_SECONDS = max(float(settings.teamver_http_timeout_seconds), 60.0)
 
 
 @dataclass(frozen=True)
@@ -36,25 +33,31 @@ class CanvasImportResult:
     imported: list[DriveImportAssetResponse]
 
 
-def _safe_filename(raw: str | None, artifact_id: str) -> str:
-    base = (raw or "").strip() or f"canvas-{artifact_id}.html"
+def _safe_filename(raw: str | None, artifact_id: str, revision: str | None = None) -> str:
+    base = (raw or "").strip() or f"canvas-{artifact_id}"
     base = base.replace("\\", "/").split("/")[-1]
     base = re.sub(r"[^\w.\-가-힣]+", "_", base, flags=re.UNICODE).strip("._") or f"canvas-{artifact_id}"
+    if revision and revision.strip():
+        rev = re.sub(r"[^\w.\-]+", "_", revision.strip())[:40]
+        if rev and rev not in base:
+            stem = base.rsplit(".", 1)[0] if "." in base else base
+            base = f"{stem}-{rev}"
     if not base.lower().endswith((".html", ".htm")):
         base = f"{base}.html"
     return base[:180]
 
 
 def _map_main_status(status: int) -> ApiError:
+    """Stable `error.code` for FE mapping (nested `error.message` also carries the same token)."""
     if status in (401, 403):
-        return ForbiddenError("canvas_export_forbidden")
+        return ApiError(403, "canvas_export_forbidden", code="canvas_export_forbidden")
     if status == 404:
-        return NotFoundError("canvas_export_not_found")
+        return ApiError(404, "canvas_export_not_found", code="canvas_export_not_found")
     if status == 413:
-        return BadRequestError("canvas_export_too_large")
+        return ApiError(413, "canvas_export_too_large", code="canvas_export_too_large")
     if status >= 500:
-        return BadGatewayError("canvas_export_failed")
-    return BadRequestError("canvas_export_failed")
+        return ApiError(502, "canvas_export_failed", code="canvas_export_failed")
+    return ApiError(400, "canvas_export_failed", code="canvas_export_failed")
 
 
 async def _download_canvas_html_to_path(
@@ -92,16 +95,16 @@ async def _download_canvas_html_to_path(
                             continue
                         written += len(chunk)
                         if written > max_bytes:
-                            raise BadRequestError("canvas_export_too_large")
+                            raise ApiError(413, "canvas_export_too_large", code="canvas_export_too_large")
                         handle.write(chunk)
                 if written <= 0:
-                    raise BadRequestError("canvas_export_failed")
+                    raise ApiError(400, "canvas_export_failed", code="canvas_export_failed")
                 return written
     except httpx.TimeoutException as exc:
-        raise BadGatewayError("canvas_export_timeout") from exc
+        raise ApiError(504, "canvas_export_timeout", code="canvas_export_timeout") from exc
     except httpx.HTTPError as exc:
         logger.warning("canvas export-html upstream error: %s", exc)
-        raise BadGatewayError("canvas_export_failed") from exc
+        raise ApiError(502, "canvas_export_failed", code="canvas_export_failed") from exc
 
 
 async def import_canvas_html(
@@ -111,6 +114,7 @@ async def import_canvas_html(
     session_id: str,
     artifact_id: str,
     filename: str | None = None,
+    revision: str | None = None,
     od_daemon: OdDaemonClient | None = None,
 ) -> CanvasImportResult:
     session_id = session_id.strip()
@@ -123,7 +127,7 @@ async def import_canvas_html(
     try:
         await asyncio.wait_for(_IMPORT_REQUEST_LIMITER.acquire(), timeout=IMPORT_QUEUE_WAIT_SECONDS)
     except TimeoutError as exc:
-        raise BadGatewayError("canvas_import_busy") from exc
+        raise ApiError(429, "canvas_import_busy", code="canvas_import_busy") from exc
 
     try:
         daemon = od_daemon or OdDaemonClient()
@@ -132,7 +136,7 @@ async def import_canvas_html(
             workspace_id=project.workspace_id,
             s3_prefix=project.s3_prefix,
         )
-        safe_name = _safe_filename(filename, artifact_id)
+        safe_name = _safe_filename(filename, artifact_id, revision)
         directory = DEFAULT_IMPORT_DIR
         with tempfile.TemporaryDirectory(prefix="teamver-canvas-import-") as temp_dir:
             temp_path = Path(temp_dir) / safe_name

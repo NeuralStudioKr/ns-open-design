@@ -580,6 +580,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     useEffect(() => {
       if (teamverDriveImportAllowed) return;
       setDriveImportOpen(false);
+      // Do not consume canvas URL here — workspace may still be loading
+      // (allowed=false on first paint). Premature consume drops handoff on /.
       setCanvasSlideLaunch(null);
       setDriveLaunchAssets([]);
     }, [teamverDriveImportAllowed]);
@@ -615,7 +617,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (!teamverDriveImportAllowed) return;
       const canvasHandoff = readTeamverCanvasLaunchHandoff();
       if (canvasHandoff) {
-        consumeTeamverCanvasLaunchHandoff();
+        // Consume only after confirm success or cancel (§5.6) — not on detect —
+        // so StrictMode remount / cancel-before-confirm does not lose the handoff.
         setCanvasSlideLaunchError(null);
         setCanvasSlideLaunch({ kind: "canvas", handoff: canvasHandoff });
         return;
@@ -1639,6 +1642,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               if (patched) onActiveDesignSystemChange?.(patched);
             });
           }
+          consumeTeamverCanvasLaunchHandoff();
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
           sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
@@ -2864,6 +2868,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             errorMessage={canvasSlideLaunchError}
             onClose={() => {
               if (!canvasSlideLaunchBusy) {
+                if (canvasSlideLaunch.kind === "canvas") {
+                  consumeTeamverCanvasLaunchHandoff();
+                }
                 setCanvasSlideLaunch(null);
                 setCanvasSlideLaunchError(null);
               }

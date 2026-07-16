@@ -1257,6 +1257,49 @@ describe('FileViewer SVG artifacts', () => {
     workspaceShell.remove();
   }, 15_000);
 
+  it('forwards host ArrowRight to the present-overlay iframe while presenting in-tab', async () => {
+    const file = baseFile({
+      name: 'deck.html',
+      path: 'deck.html',
+      mime: 'text/html',
+      kind: 'html',
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes('/raw/deck.html') || url.includes('/files/deck.html')) {
+        return new Response('<html><body><section class="slide">one</section><section class="slide">two</section></body></html>');
+      }
+      return new Response('', { status: 404 });
+    }));
+
+    render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={file}
+        isDeck
+        liveHtml={'<html><body><section class="slide">one</section><section class="slide">two</section></body></html>'}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /present/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /in this tab/i }));
+
+    const overlayFrame = await waitFor(() => {
+      const frame = document.body.querySelector('.present-overlay iframe') as HTMLIFrameElement | null;
+      expect(frame?.contentWindow).toBeTruthy();
+      return frame!;
+    });
+    const previewFrame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    const presentSpy = vi.spyOn(overlayFrame.contentWindow!, 'postMessage');
+    const previewSpy = vi.spyOn(previewFrame.contentWindow!, 'postMessage');
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+
+    expect(presentSpy).toHaveBeenCalledWith({ type: 'od:slide', action: 'next' }, '*');
+    expect(previewSpy).toHaveBeenCalledWith({ type: 'od:slide', action: 'next' }, '*');
+  }, 15_000);
+
   it('allows downloads in React component preview iframes', async () => {
     const file = baseFile({
       name: 'Card.jsx',

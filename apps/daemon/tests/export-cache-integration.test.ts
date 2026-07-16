@@ -223,6 +223,32 @@ describe('runCachedExport (memo only)', () => {
     expect(render).toHaveBeenCalledTimes(2);
   });
 
+  it('busts the cache when a route pins a different codeVersion', async () => {
+    const render = vi.fn(async () => ({
+      body: Buffer.from(`pptx-v${render.mock.calls.length + 1}`),
+      filename: 'artifact.pptx',
+      mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    }));
+    const meta = { format: 'pptx', deck: true, projectId: 'proj-a' } as const;
+    const descriptor = (codeVersion: string) =>
+      exportCacheDescriptor({
+        projectId: 'proj-a',
+        sourceRelPath: 'index.html',
+        sourceMtimeMs: 42,
+        format: 'pptx',
+        deck: true,
+        codeVersion,
+        filename: 'artifact.pptx',
+        mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      });
+
+    await runCachedExport(meta, descriptor('pptx-ooxml-v1'), render);
+    await runCachedExport(meta, descriptor('pptx-ooxml-v1'), render);
+    await runCachedExport(meta, descriptor('pptx-ooxml-v2'), render);
+
+    expect(render).toHaveBeenCalledTimes(2);
+  });
+
   it('bypasses cache when OD_EXPORT_CACHE_ENABLED=0', async () => {
     process.env.OD_EXPORT_CACHE_ENABLED = '0';
     const render = vi.fn(async () => ({

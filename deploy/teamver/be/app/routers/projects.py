@@ -672,6 +672,7 @@ async def import_project_canvas_html(
         session_id=body.session_id,
         artifact_id=body.artifact_id,
         filename=body.filename,
+        revision=body.revision,
     )
     return ImportCanvasProjectResponse(
         project_id=result.project_id,

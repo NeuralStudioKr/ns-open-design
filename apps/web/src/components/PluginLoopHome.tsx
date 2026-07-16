@@ -58,6 +58,8 @@ export interface PluginLoopSubmit {
   attachments?: File[];
   // Drive assets staged on Home; imported after project creation (same cap as modal).
   driveAttachments?: TeamverDriveImportAsset[];
+  /** Canvas T2 handoff — Design BFF import-canvas after project create (no Drive). */
+  canvasHandoff?: import('../teamver/canvasLaunchHandoff').TeamverCanvasLaunchHandoff;
   examplePromptContext?: { title: string; artifactType: string; brief: Record<string, string> };
 }
 

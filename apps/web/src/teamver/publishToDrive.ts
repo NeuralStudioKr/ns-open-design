@@ -9,10 +9,10 @@ import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 
 /**
- * Teamver embed is slide-only: Drive publish sends deck PDF and/or inline HTML.
- * ZIP/PPTX remain local 다운로드 paths.
+ * Teamver embed is slide-only: Drive publish sends deck PDF, inline HTML,
+ * and/or PPTX. ZIP remains a local 다운로드 path.
  */
-export type TeamverPublishDriveFormat = "html" | "pdf";
+export type TeamverPublishDriveFormat = "html" | "pdf" | "pptx";
 
 export type TeamverPublishDriveParams = {
   projectId: string;

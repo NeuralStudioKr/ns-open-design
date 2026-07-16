@@ -57,6 +57,8 @@ export interface LauncherAction {
 }
 
 const ENABLE_TERMINAL_WORKSPACE_ENTRYPOINT = false;
+/** Teamver / slide MVP hides the built-in Browser tab launcher ("새 브라우저"). */
+const ENABLE_BROWSER_WORKSPACE_ENTRYPOINT = false;
 
 /**
  * Build the list of "create new" actions for the current context.
@@ -81,7 +83,7 @@ export function buildLauncherActions(ctx: LauncherContext): LauncherAction[] {
       },
     });
   }
-  if (ctx.createBrowser) {
+  if (ENABLE_BROWSER_WORKSPACE_ENTRYPOINT && ctx.createBrowser) {
     actions.push({
       id: 'new-browser',
       iconName: 'globe',

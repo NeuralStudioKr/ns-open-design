@@ -806,7 +806,7 @@ curl -H "X-Teamver-Internal-Api-Key: $KEY" \
 | **HTML** | ✅ | daemon `GET .../export/{path}?inline=1` → bytes |
 | **ZIP** | ✅ | daemon `GET .../archive` → buffer |
 | PDF | ❌ Phase 4+ | hosted daemon **501** |
-| PPTX | ✅ 로컬 다운로드 | daemon `/export/pptx` → screenshot 기반 PPTX. Drive publish 포맷은 아직 HTML/PDF만 유지 |
+| PPTX | ✅ 로컬 다운로드 | daemon `/export/pptx` → 기본 editable PPTX(dom-to-pptx native shape/text). `editable:false` 요청 시 screenshot PPTX fallback. Drive publish 포맷은 아직 HTML/PDF만 유지 |
 
 **권장:** manifest `entryFile` 또는 `artifacts[0].file` primary 1회 업로드 ([03 §4.2](./03_키_저장소_Drive_DB.md) 옵션 A).
 

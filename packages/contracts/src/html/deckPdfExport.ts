@@ -10,7 +10,7 @@ export const DECK_WRAPPER_SELECTOR =
   '.deck, .deck-shell, .deck-stage, #deck-stage, #deck, .stage';
 
 export const DECK_CHROME_HIDE_SELECTOR =
-  '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
 
 export const DECK_EXPORT_WIDTH = 1920;
 export const DECK_EXPORT_HEIGHT = 1080;
@@ -47,8 +47,11 @@ export function buildDeckFlattenCssRules(): string {
   }
   ${slidesNotActive},
   ${slides} {
-    display: flex !important;
-    flex-direction: column !important;
+    /* Override .slide:not(.active){display:none}. Do NOT force
+       flex-direction:column here — absolute-layout covers (Cobalt Grid)
+       and row splits must keep their preview layout; reveal JS sets flex
+       only when preserveSlideFlexLayout detects it. */
+    display: block !important;
     flex: none !important;
     position: relative !important;
     inset: auto !important;
@@ -123,7 +126,8 @@ export function buildDeckHtmlExportScreenCss(): string {
     overflow: visible !important;
     transform: none !important;
     box-shadow: none !important;
-    background: transparent !important;
+    /* Keep template paper / ::before grid — forcing transparent dropped
+       cobalt-grid cream + graph paper on HTML downloads. */
     gap: 24px !important;
     padding: 24px 0 48px !important;
     box-sizing: border-box !important;
@@ -595,6 +599,96 @@ export function buildDeckSlideExportLayoutHelperJs(): string {
         if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
         return resolveSlidePaperBackground();
       }
+      // Flatten sets wrappers to display:contents, which drops ::before/::after
+      // boxes. Cobalt-grid (and similar) paint graph paper on .stage::before —
+      // clone those painted layers onto each slide as absolute divs before unwrap
+      // so PDF matches the preview stacking (paper under grid under content).
+      function collectWrapperDecorationLayers() {
+        var layers = [];
+        var wrappers = document.querySelectorAll(
+          '.deck-stage, #deck-stage, .stage, .deck, #deck, .deck-shell'
+        );
+        wrappers.forEach(function(wrapper) {
+          ['::before', '::after'].forEach(function(pseudo) {
+            var cs;
+            try { cs = window.getComputedStyle(wrapper, pseudo); } catch (e) { return; }
+            if (!cs) return;
+            var content = String(cs.content || '').trim();
+            // Skip only when the pseudo box is absent. Empty content ("") still
+            // paints (cobalt grid uses content:'').
+            if (!content || content === 'none' || content === 'normal') return;
+            if (!cs.backgroundImage || cs.backgroundImage === 'none') return;
+            layers.push({
+              image: cs.backgroundImage,
+              size: cs.backgroundSize || 'auto',
+              position: cs.backgroundPosition || '0% 0%',
+              repeat: cs.backgroundRepeat || 'repeat',
+              opacity: cs.opacity && cs.opacity !== '1' ? cs.opacity : '',
+            });
+          });
+          var selfCs = window.getComputedStyle(wrapper);
+          if (selfCs.backgroundImage && selfCs.backgroundImage !== 'none') {
+            layers.push({
+              image: selfCs.backgroundImage,
+              size: selfCs.backgroundSize || 'auto',
+              position: selfCs.backgroundPosition || '0% 0%',
+              repeat: selfCs.backgroundRepeat || 'repeat',
+              opacity: '',
+            });
+          }
+        });
+        return layers;
+      }
+      function promoteWrapperBackgroundDecorations(slides) {
+        if (!slides || !slides.length) return;
+        var layers = collectWrapperDecorationLayers();
+        if (!layers.length) return;
+        slides.forEach(function(slide) {
+          if (slide.getAttribute('data-od-export-deco-promoted') === '1') return;
+          slide.setAttribute('data-od-export-deco-promoted', '1');
+          layers.forEach(function(layer, idx) {
+            var node = document.createElement('div');
+            node.setAttribute('data-od-export-deco', String(idx));
+            node.setAttribute('aria-hidden', 'true');
+            set(node, 'position', 'absolute');
+            set(node, 'inset', '0');
+            set(node, 'width', '100%');
+            set(node, 'height', '100%');
+            set(node, 'pointer-events', 'none');
+            set(node, 'z-index', '0');
+            set(node, 'background-image', layer.image);
+            set(node, 'background-size', layer.size);
+            set(node, 'background-position', layer.position);
+            set(node, 'background-repeat', layer.repeat);
+            if (layer.opacity) set(node, 'opacity', layer.opacity);
+            slide.insertBefore(node, slide.firstChild);
+          });
+          Array.from(slide.children).forEach(function(child) {
+            if (child.hasAttribute('data-od-export-deco')) return;
+            var pos = window.getComputedStyle(child).position;
+            if (pos === 'static') set(child, 'position', 'relative');
+            var z = window.getComputedStyle(child).zIndex;
+            if (!z || z === 'auto') set(child, 'z-index', '1');
+          });
+        });
+      }
+      // Use background-color (not the background shorthand) so deco layers /
+      // any remaining background-image survive. Shorthand + !important wiped grids.
+      function applySlideExportSurface(el, color) {
+        set(el, 'background-color', color);
+      }
+      function ensureEmojiFontFallbacks(root) {
+        var emojiStack = '"Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji"';
+        var scope = root && root.querySelectorAll ? root : document;
+        var nodes = scope.querySelectorAll
+          ? scope.querySelectorAll('body, body *')
+          : [];
+        Array.from(nodes).forEach(function(el) {
+          var ff = window.getComputedStyle(el).fontFamily;
+          if (!ff || /Noto Color Emoji|Apple Color Emoji|Segoe UI Emoji/i.test(ff)) return;
+          set(el, 'font-family', ff + ', ' + emojiStack);
+        });
+      }
   `;
 }
 
@@ -615,7 +709,7 @@ export function buildDeckFlattenScriptTag(): string {
   const wrap = DECK_WRAPPER_SELECTOR;
   const chrome = DECK_CHROME_HIDE_SELECTOR;
   const helper = buildDeckSlideExportLayoutHelperJs();
-  return `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP=${JSON.stringify(wrap)};var CHROME=${JSON.stringify(chrome)};function set(el,p,v){el.style.setProperty(p,v,'important')}${helper}function resolvePageSurfaceBackground(){var stageEl=document.querySelector('.deck-stage, #deck-stage, .stage');if(stageEl){var stageBg=getComputedStyle(stageEl).backgroundColor;if(stageBg&&stageBg!=='rgba(0, 0, 0, 0)'&&stageBg!=='transparent')return stageBg}var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--paper').trim()||rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('background-color').trim()||'#ffffff'}function resolveShellBackground(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveShellBg(){return resolveShellBackground()}function stripDeckLoosePageFlow(root){if(!root||!root.childNodes)return;for(var i=root.childNodes.length-1;i>=0;i--){var node=root.childNodes[i];if(node.nodeType===Node.TEXT_NODE){if((node.textContent||'').trim().length>0)node.remove()}}}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;stripDeckLoosePageFlow(document.documentElement);stripDeckLoosePageFlow(document.body);document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});document.querySelectorAll(WRAP).forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var pageBg=resolvePageSurfaceBackground();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background',pageBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background',pageBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){el.classList.add('active');applySlideExportLayout(el);set(el,'flex','none');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');set(el,'background',resolveSlidePrintBackground(el));set(el,'transform','none');set(el,'overflow','hidden');set(el,'visibility','visible');set(el,'opacity','1');set(el,'page-break-after',i<slides.length-1?'always':'auto');set(el,'break-after',i<slides.length-1?'page':'auto');set(el,'break-inside','avoid');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')})}})();</script>`;
+  return `<script data-deck-print-flatten>(function(){var SEL=${JSON.stringify(selector)};var WRAP=${JSON.stringify(wrap)};var CHROME=${JSON.stringify(chrome)};function set(el,p,v){el.style.setProperty(p,v,'important')}${helper}function resolvePageSurfaceBackground(){var stageEl=document.querySelector('.deck-stage, #deck-stage, .stage');if(stageEl){var stageBg=getComputedStyle(stageEl).backgroundColor;if(stageBg&&stageBg!=='rgba(0, 0, 0, 0)'&&stageBg!=='transparent')return stageBg}var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--paper').trim()||rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('background-color').trim()||'#ffffff'}function resolveShellBackground(){var rs=getComputedStyle(document.documentElement);return rs.getPropertyValue('--shell').trim()||rs.getPropertyValue('--bg').trim()||rs.getPropertyValue('--ink').trim()||rs.getPropertyValue('background-color').trim()||'#0a0c10'}function resolveShellBg(){return resolveShellBackground()}function stripDeckLoosePageFlow(root){if(!root||!root.childNodes)return;for(var i=root.childNodes.length-1;i>=0;i--){var node=root.childNodes[i];if(node.nodeType===Node.TEXT_NODE){if((node.textContent||'').trim().length>0)node.remove()}}}window.__odFlattenDeckForPrint=function(){var slides=Array.from(document.querySelectorAll(SEL));if(!slides.length)return;stripDeckLoosePageFlow(document.documentElement);stripDeckLoosePageFlow(document.body);document.querySelectorAll('canvas.bg').forEach(function(canvas){try{var dataUrl=canvas.toDataURL('image/png');if(!dataUrl||dataUrl==='data:,')return;var img=document.createElement('img');img.src=dataUrl;set(img,'position','fixed');set(img,'inset','0');set(img,'width','100%');set(img,'height','100%');set(img,'z-index','0');set(img,'pointer-events','none');set(img,'object-fit','cover');canvas.replaceWith(img)}catch(e){}});promoteWrapperBackgroundDecorations(slides);document.querySelectorAll(WRAP).forEach(function(el){set(el,'display','contents');set(el,'transform','none');set(el,'box-shadow','none')});var pageBg=resolvePageSurfaceBackground();set(document.documentElement,'overflow','visible');set(document.documentElement,'width','1920px');set(document.documentElement,'background-color',pageBg);set(document.body,'overflow','visible');set(document.body,'display','block');set(document.body,'scroll-snap-type','none');set(document.body,'transform','none');set(document.body,'width','1920px');set(document.body,'background-color',pageBg);document.documentElement.style.setProperty('--deck-scale','1');slides.forEach(function(el,i){el.classList.add('active');applySlideExportLayout(el);set(el,'flex','none');set(el,'position','relative');set(el,'inset','auto');set(el,'width','1920px');set(el,'height','1080px');set(el,'min-height','1080px');set(el,'max-height','1080px');applySlideExportSurface(el,resolveSlidePrintBackground(el));set(el,'transform','none');set(el,'overflow','hidden');set(el,'visibility','visible');set(el,'opacity','1');set(el,'page-break-after',i<slides.length-1?'always':'auto');set(el,'break-after',i<slides.length-1?'page':'auto');set(el,'break-inside','avoid');if(i===0){set(el,'page-break-before','avoid');set(el,'break-before','avoid')}});document.querySelectorAll(CHROME).forEach(function(el){set(el,'display','none')});ensureEmojiFontFallbacks(document)})})();</script>`;
 }
 
 export function injectDeckFlattenScript(doc: string): string {

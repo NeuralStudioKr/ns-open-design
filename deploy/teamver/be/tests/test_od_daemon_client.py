@@ -176,6 +176,49 @@ async def test_daemon_client_request_export_pdf_ticket_posts_ticket_delivery(
 
 
 @pytest.mark.asyncio
+async def test_daemon_client_request_export_pptx_ticket_posts_ticket_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = MagicMock()
+    response.status_code = 201
+    response.json.return_value = {
+        "delivery": "ticket",
+        "downloadUrl": "/api/projects/od1/export/downloads/ticket",
+        "filename": "Deck.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "bytes": 4096,
+        "cache": "miss",
+    }
+
+    http = AsyncMock()
+    http.post = AsyncMock(return_value=response)
+    http.__aenter__ = AsyncMock(return_value=http)
+    http.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.od_daemon_client.httpx.AsyncClient", lambda **_: http)
+
+    ticket = await OdDaemonClient(
+        base_url="http://daemon.test",
+        api_token="od-secret-token",
+    ).request_export_pptx_ticket(
+        "od1",
+        "deck/index.html",
+        identity=OdDaemonIdentity(user_id="u1", workspace_id="ws1"),
+        title="Deck",
+    )
+
+    assert ticket.filename == "Deck.pptx"
+    assert ticket.size_bytes == 4096
+    http.post.assert_awaited_once()
+    assert http.post.await_args.args[0] == "http://daemon.test/api/projects/od1/export/pptx"
+    assert http.post.await_args.kwargs["json"] == {
+        "fileName": "deck/index.html",
+        "deck": True,
+        "delivery": "ticket",
+        "title": "Deck",
+    }
+
+
+@pytest.mark.asyncio
 async def test_daemon_client_streams_export_ticket_to_presigned_put(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

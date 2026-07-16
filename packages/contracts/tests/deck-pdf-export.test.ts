@@ -132,6 +132,18 @@ describe('buildDeckSlideExportLayoutHelperJs', () => {
     );
   });
 
+  it('promotes wrapper ::before/::after background layers onto slides before unwrap', () => {
+    // Cobalt-grid paints graph paper on .stage::before. display:contents on
+    // wrappers drops those pseudo boxes, so export must clone painted layers.
+    const js = buildDeckSlideExportLayoutHelperJs();
+    expect(js).toContain('promoteWrapperBackgroundDecorations');
+    expect(js).toContain('collectWrapperDecorationLayers');
+    expect(js).toContain('data-od-export-deco');
+    expect(js).toContain('applySlideExportSurface');
+    expect(js).toContain("set(el, 'background-color', color)");
+    expect(js).toContain('ensureEmojiFontFallbacks');
+  });
+
   it('preserves deck-framework flex column layout instead of forcing display:block', () => {
     const js = buildDeckSlideExportLayoutHelperJs();
     expect(js).toContain('preserveSlideFlexLayout');
@@ -154,7 +166,8 @@ describe('buildDeckPrintCss', () => {
     expect(css).toContain('@media print');
     expect(css).toContain('.slide:not(.active)');
     expect(css).toContain('.slide.hero.dark::before');
-    expect(css).toContain('flex-direction: column !important');
+    expect(css).toContain('display: block !important');
+    expect(css).not.toMatch(/\n\s*flex-direction:\s*column\s*!important/);
   });
 });
 
@@ -169,6 +182,10 @@ describe('buildDeckHtmlExportScreenCss', () => {
     expect(css).not.toContain('display: contents !important');
     expect(css).not.toContain('break-after: page !important');
     expect(css).not.toContain('@media print');
+    // Stage must keep template paper/::before grid (not forced transparent).
+    expect(css).not.toMatch(
+      /\.deck,\s*\.deck-stage[\s\S]{0,500}background:\s*transparent\s*!important/,
+    );
   });
 });
 
@@ -217,6 +234,15 @@ describe('injectDeckFlattenScript', () => {
     expect(doc).toContain('data-deck-print-flatten');
     expect(doc).toContain('window.__odFlattenDeckForPrint');
     expect(doc).toContain('resolveSlidePrintBackground');
+  });
+
+  it('promotes wrapper decorations and uses background-color (not shorthand)', () => {
+    const tag = buildDeckFlattenScriptTag();
+    expect(tag).toContain('promoteWrapperBackgroundDecorations(slides)');
+    expect(tag).toContain('applySlideExportSurface(el,resolveSlidePrintBackground(el))');
+    expect(tag).toContain("set(document.documentElement,'background-color',pageBg)");
+    expect(tag).not.toMatch(/set\(document\.documentElement,'background',pageBg\)/);
+    expect(tag).toContain('ensureEmojiFontFallbacks(document)');
   });
 
   it('matches buildDeckFlattenScriptTag output shape', () => {

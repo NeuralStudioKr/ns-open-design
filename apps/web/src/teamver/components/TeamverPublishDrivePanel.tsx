@@ -71,6 +71,10 @@ export type TeamverPublishDrivePanelProps = {
   projectId: string;
   artifactFile: string;
   exportTitle?: string;
+  /** Pass FE slide detection so PDF/HTML flatten and PPTX stay in sync. */
+  deck?: boolean;
+  /** When false, hide PPTX (non-slide artifacts). Defaults to `deck`. */
+  allowPptx?: boolean;
   initialFormat?: DrivePublishFormat | null;
   /** When false, skip target/history fetches (modal closed). */
   active?: boolean;
@@ -86,6 +90,8 @@ export function TeamverPublishDrivePanel({
   projectId,
   artifactFile,
   exportTitle,
+  deck = true,
+  allowPptx,
   initialFormat = null,
   active = true,
   onClose,
@@ -93,6 +99,11 @@ export function TeamverPublishDrivePanel({
   onError,
   focusTargetSelectNonce = null,
 }: TeamverPublishDrivePanelProps) {
+  const pptxAllowed = allowPptx ?? deck;
+  const formatOptions = useMemo(
+    () => DRIVE_PUBLISH_FORMAT_OPTIONS.filter((option) => option.value !== "pptx" || pptxAllowed),
+    [pptxAllowed],
+  );
   const [busy, setBusy] = useState(false);
   const [publishPhase, setPublishPhase] = useState<PublishBusyPhase>("idle");
   const [loadingTargets, setLoadingTargets] = useState(false);
@@ -289,9 +300,15 @@ export function TeamverPublishDrivePanel({
   const handleSelectFormat = useCallback((format: DrivePublishFormat) => {
     if (busy) return;
     if (format === "pdf" && pdfBlocked) return;
+    if (format === "pptx" && !pptxAllowed) return;
     userSelectedFormatRef.current = true;
     setSelectedFormat(format);
-  }, [busy, pdfBlocked]);
+  }, [busy, pdfBlocked, pptxAllowed]);
+
+  useEffect(() => {
+    if (selectedFormat !== "pptx" || pptxAllowed) return;
+    setSelectedFormat(pdfBlocked ? "html" : "pdf");
+  }, [pdfBlocked, pptxAllowed, selectedFormat]);
 
   const handleSearchTargets = useCallback(
     async (query: string, options?: { signal?: AbortSignal }) => {
@@ -308,7 +325,7 @@ export function TeamverPublishDrivePanel({
     if (busy) return;
     if (rememberedTargetMissing) return;
     setBusy(true);
-    setPublishPhase(selectedFormat === "pdf" ? "generating" : "uploading");
+    setPublishPhase(selectedFormat === "html" ? "uploading" : "generating");
     try {
       const result = await publishTeamverDesignToDrive({
         projectId,
@@ -316,7 +333,7 @@ export function TeamverPublishDrivePanel({
         formats: [selectedFormat],
         folderId: selectedTarget?.folderId ?? null,
         sharedDriveId: selectedTarget?.sharedDriveId ?? null,
-        deck: true,
+        deck,
         ...(exportTitle?.trim() ? { title: exportTitle.trim() } : {}),
       });
       const ready = pickReadyPublishOutputs(result.outputs);
@@ -363,6 +380,7 @@ export function TeamverPublishDrivePanel({
   }, [
     artifactFile,
     busy,
+    deck,
     exportTitle,
     onClose,
     onError,
@@ -453,7 +471,7 @@ export function TeamverPublishDrivePanel({
           role="radiogroup"
           aria-label="드라이브 업로드 형식"
         >
-          {DRIVE_PUBLISH_FORMAT_OPTIONS.map(({ value, label }) => {
+          {formatOptions.map(({ value, label }) => {
             const disabled = busy || (value === "pdf" && pdfBlocked);
             const checked = selectedFormat === value;
             return (

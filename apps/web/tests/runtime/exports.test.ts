@@ -1462,6 +1462,7 @@ describe('exportProjectAsPptx', () => {
       fileName: 'deck/index.html',
       title: 'Seed Deck',
     });
+    expect(requestBody).not.toHaveProperty('editable');
     expect(requestBody.html).toContain('<section class="slide">A</section>');
     expect(capturedBlob?.size).toBe(4);
     expect(capturedFilename).toBe('Seed-Deck.pptx');
@@ -1539,20 +1540,26 @@ describe('exportAsMd', () => {
 });
 
 describe('sandboxed preview Blob exports', () => {
+  let capturedBlobs: Blob[];
   let capturedBlob: Blob | undefined;
   let openedFeatures: string | undefined;
   let mockWin: { opener: unknown; location: { href: string } };
   let openCalls: string[][];
+  let blobUrlCounter: number;
 
   beforeEach(() => {
+    capturedBlobs = [];
     capturedBlob = undefined;
     openedFeatures = undefined;
     openCalls = [];
+    blobUrlCounter = 0;
     mockWin = { opener: {}, location: { href: '' } };
     vi.stubGlobal('URL', {
       createObjectURL: (blob: Blob) => {
+        capturedBlobs.push(blob);
         capturedBlob = blob;
-        return 'blob:test';
+        blobUrlCounter += 1;
+        return `blob:test-${blobUrlCounter}`;
       },
       revokeObjectURL: vi.fn(),
     });
@@ -1579,20 +1586,23 @@ describe('sandboxed preview Blob exports', () => {
     openSandboxedPreviewInNewTab('<script>window.parent.localStorage.clear()</script>', 'Unsafe preview');
 
     expect(openedFeatures).toBe('noopener,noreferrer');
-    expect(capturedBlob).toBeDefined();
-    const wrapper = await capturedBlob!.text();
+    expect(capturedBlobs).toHaveLength(2);
+    const wrapper = await capturedBlobs[1]!.text();
+    const inner = await capturedBlobs[0]!.text();
     expect(wrapper).toContain('sandbox="allow-scripts"');
     expect(wrapper).not.toContain('allow-same-origin');
-    expect(wrapper).toContain('&lt;script&gt;window.parent.localStorage.clear()&lt;/script&gt;');
+    expect(wrapper).toContain('src="blob:test-1"');
+    expect(wrapper).not.toContain('srcdoc=');
+    expect(inner).toContain('<script>window.parent.localStorage.clear()</script>');
     expect(wrapper).not.toContain('<script>window.parent.localStorage.clear()</script>');
   });
 
   it('anchors new-tab srcdoc previews to the current origin when no explicit base is provided', async () => {
     openSandboxedPreviewInNewTab('<img src="/api/plugins/example/assets/hero.png"><img src="assets/card.png">', 'Plugin preview');
 
-    expect(capturedBlob).toBeDefined();
-    const wrapper = await capturedBlob!.text();
-    expect(wrapper).toContain('&lt;base href=&quot;https://open-design.test/&quot;&gt;');
+    expect(capturedBlobs).toHaveLength(2);
+    const inner = await capturedBlobs[0]!.text();
+    expect(inner).toContain('<base href="https://open-design.test/">');
   });
 
   it('passes srcdoc options through the sandboxed new-tab wrapper', async () => {
@@ -1603,12 +1613,28 @@ describe('sandboxed preview Blob exports', () => {
     });
 
     expect(openedFeatures).toBe('noopener,noreferrer');
-    expect(capturedBlob).toBeDefined();
-    const wrapper = await capturedBlob!.text();
+    expect(capturedBlobs).toHaveLength(2);
+    const wrapper = await capturedBlobs[1]!.text();
+    const inner = await capturedBlobs[0]!.text();
     expect(wrapper).toContain('sandbox="allow-scripts"');
     expect(wrapper).not.toContain('allow-same-origin');
-    expect(wrapper).toContain('&lt;base href=&quot;/artifacts/project/assets/&quot;&gt;');
-    expect(wrapper).toContain('od:slide');
+    expect(wrapper).toContain('src="blob:test-1"');
+    expect(wrapper).toContain('data-od-deck-host-viewport');
+    expect(wrapper).toContain("type: 'od:deck-host-viewport'");
+    expect(inner).toContain('<base href="/artifacts/project/assets/">');
+    expect(inner).toContain('od:slide');
+  });
+
+  it('loads large deck HTML via blob iframe src instead of an inline srcdoc attribute', async () => {
+    const largeDeck = `<section class="slide">${'x'.repeat(120_000)}</section>`;
+    openSandboxedPreviewInNewTab(largeDeck, 'Large deck', { deck: true });
+
+    expect(capturedBlobs).toHaveLength(2);
+    const wrapper = await capturedBlobs[1]!.text();
+    const inner = await capturedBlobs[0]!.text();
+    expect(wrapper).not.toContain('srcdoc=');
+    expect(inner).toContain(largeDeck);
+    expect(inner.length).toBeGreaterThan(100_000);
   });
 
   it('can build a print wrapper without granting same-origin access', () => {
@@ -1625,7 +1651,7 @@ describe('sandboxed preview Blob exports', () => {
 
     expect(openCalls).toEqual([['', '_blank']]);
     expect(mockWin.opener).toBeNull();
-    expect(mockWin.location.href).toBe('blob:test');
+    expect(mockWin.location.href).toBe('blob:test-1');
     expect(capturedBlob).toBeDefined();
     const wrapper = await capturedBlob!.text();
     expect(wrapper).toContain('sandbox="allow-scripts allow-modals"');
@@ -1668,7 +1694,7 @@ describe('sandboxed preview Blob exports', () => {
     expect(splash).toContain('<title>Friendly Tab Title</title>');
     expect(splash).toContain('Preparing PDF');
     // The splash must render before the blob navigation completes.
-    expect(winWithDoc.location.href).toBe('blob:test');
+    expect(winWithDoc.location.href).toBe('blob:test-1');
   });
 
   it('swallows splash write errors so environments without a writable document still receive the blob', async () => {
@@ -1700,14 +1726,14 @@ describe('sandboxed preview Blob exports', () => {
     await expect(
       exportAsPdf('<main>Doc</main>', 'Sandboxed'),
     ).resolves.toBeUndefined();
-    expect(winReadOnlyDoc.location.href).toBe('blob:test');
+    expect(winReadOnlyDoc.location.href).toBe('blob:test-1');
   });
 
   it('prints deck PDF fallbacks as a top-level document so slide CSS controls the page', async () => {
     await exportAsPdf('<section class="slide">One</section>', 'Deck PDF', { deck: true });
 
     expect(openCalls).toEqual([['', '_blank']]);
-    expect(mockWin.location.href).toBe('blob:test');
+    expect(mockWin.location.href).toBe('blob:test-1');
     expect(capturedBlob).toBeDefined();
     const doc = await capturedBlob!.text();
     expect(doc).not.toContain('sandbox="allow-scripts allow-modals"');
@@ -1737,7 +1763,7 @@ describe('sandboxed preview Blob exports', () => {
 
     expect(openCalls).toEqual([['', '_blank']]);
     expect(mockWin.opener).toEqual({});
-    expect(mockWin.location.href).toBe('blob:test');
+    expect(mockWin.location.href).toBe('blob:test-1');
     expect(capturedBlob).toBeDefined();
     const doc = await capturedBlob!.text();
     expect(doc).not.toContain('sandbox="allow-scripts allow-modals"');
@@ -1756,7 +1782,7 @@ describe('sandboxed preview Blob exports', () => {
     await exportAsPdf('<p>test</p>', 'Blocked');
 
     expect(alert).toHaveBeenCalledWith('Popup blocked! Click the popup-blocked icon in your browser address bar (or browser menu), choose "Always allow pop-ups" for this site, then retry Export PDF.');
-    expect(revokeSpy).toHaveBeenCalledWith('blob:test');
+    expect(revokeSpy).toHaveBeenCalledWith('blob:test-1');
   });
 
   it('uses the desktop native print bridge when the host PDF bridge is available', async () => {

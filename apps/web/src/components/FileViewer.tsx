@@ -4847,13 +4847,19 @@ function HtmlViewer({
   // document.open/write/close inside the shell). See onLoad below for
   // the infinite-loop story (issue #2361).
   const srcDocFrameDedupeResetForRef = useRef<HTMLIFrameElement | null>(null);
+  const presentIframeRef = useRef<HTMLIFrameElement | null>(null);
   const isActivePreviewIframeSource = useCallback((source: MessageEventSource | null) => {
-    return !!source && source === iframeRef.current?.contentWindow;
+    if (!source) return false;
+    // In-tab presentation mounts a second iframe over the host; accept its
+    // slide-state / bridge messages so keyboard nav in the overlay stays in sync.
+    if (source === presentIframeRef.current?.contentWindow) return true;
+    return source === iframeRef.current?.contentWindow;
   }, []);
   const isOurPreviewIframeSource = useCallback((source: MessageEventSource | null) => {
     if (!source) return false;
     return (
       source === iframeRef.current?.contentWindow ||
+      source === presentIframeRef.current?.contentWindow ||
       source === urlPreviewIframeRef.current?.contentWindow ||
       source === srcDocPreviewIframeRef.current?.contentWindow
     );
@@ -6639,10 +6645,22 @@ function HtmlViewer({
     return () => window.removeEventListener('message', onMessage);
   }, [inspectMode, isOurPreviewIframeSource]);
 
+  function slideMessageTargets(): Window[] {
+    const targets: Window[] = [];
+    const previewWin = iframeRef.current?.contentWindow;
+    if (previewWin) targets.push(previewWin);
+    // Present-in-tab opens a separate fullscreen overlay iframe. Host ←/→ must
+    // advance that visible frame, not only the hidden preview behind it —
+    // otherwise keys look broken until the user exits presentation.
+    const presentWin = presentIframeRef.current?.contentWindow;
+    if (presentWin && presentWin !== previewWin) targets.push(presentWin);
+    return targets;
+  }
+
   function postSlide(action: 'next' | 'prev' | 'first' | 'last') {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: 'od:slide', action }, '*');
+    for (const win of slideMessageTargets()) {
+      win.postMessage({ type: 'od:slide', action }, '*');
+    }
   }
 
   function syncCachedSlideStateToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
@@ -8074,7 +8092,7 @@ function HtmlViewer({
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
   const showStreamingPreviewVeil = Boolean(
     streaming
-    && source != null
+    && source == null
     && liveHtml?.trim()
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
@@ -9206,17 +9224,25 @@ function HtmlViewer({
           </button>
           {useUrlLoadPreview ? (
             <iframe
+              ref={presentIframeRef}
               title="present"
               sandbox="allow-scripts allow-downloads"
               data-od-render-mode="url-load"
               src={activePreviewSrcUrl}
+              onLoad={(event) => {
+                syncCachedSlideStateToIframe(event.currentTarget);
+              }}
             />
           ) : (
             <iframe
+              ref={presentIframeRef}
               title="present"
               sandbox="allow-scripts allow-downloads"
               data-od-render-mode="srcdoc"
               srcDoc={srcDoc}
+              onLoad={(event) => {
+                syncCachedSlideStateToIframe(event.currentTarget);
+              }}
             />
           )}
         </div>,
@@ -9314,6 +9340,8 @@ function HtmlViewer({
         projectId={projectId}
         artifactFile={file.name}
         exportTitle={exportTitle}
+        deck={effectiveDeck}
+        allowPptx={effectiveDeck}
         initialFormat={drivePublishInitialFormat}
         focusTargetSelectNonce={drivePublishFocusNonce}
         onClose={() => {
@@ -9327,8 +9355,15 @@ function HtmlViewer({
             meta.partial,
             meta.selectedFormat,
           );
-          const alternateLabel = toast.alternateFormat === 'pdf' ? 'PDF' : 'HTML';
-          const offerAlternate = canOfferAlternateDrivePublishFormat(toast.alternateFormat, projectId);
+          const alternateLabel =
+            toast.alternateFormat === 'pdf'
+              ? 'PDF'
+              : toast.alternateFormat === 'html'
+                ? 'HTML'
+                : 'PPTX';
+          const offerAlternate =
+            canOfferAlternateDrivePublishFormat(toast.alternateFormat, projectId)
+            && !(toast.alternateFormat === 'pptx' && !effectiveDeck);
           drivePublishFollowUpRef.current = offerAlternate
             ? () => openDrivePublishModal(toast.alternateFormat)
             : null;

@@ -97,4 +97,20 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
       expect(out, `variant ${JSON.stringify(variant)}`).not.toContain('data-od-deck-fix');
     }
   });
+
+  it('activates the initial slide on load when no slide is visible yet', () => {
+    const out = buildSrcdoc(
+      [
+        '<!doctype html><html><head><style>',
+        '.slide:not(.active) { display: none !important; }',
+        '</style></head><body>',
+        '<section class="slide">slide 1</section>',
+        '<section class="slide">slide 2</section>',
+        '</body></html>',
+      ].join(''),
+      { deck: true },
+    );
+    expect(out).toContain('var didRestoreInitialSlide = false;');
+    expect(out).toContain('if (findActiveByVisibility(list) < 0) gotoIndex(target);');
+  });
 });

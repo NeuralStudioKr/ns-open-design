@@ -2,7 +2,7 @@ import type { AppTheme } from "../types";
 import { peekTeamverAuthReturnPending } from "./teamverAuthReturn";
 import { isTeamverEmbedMode } from "./designApiBase";
 
-const COSMETIC_LAUNCH_PARAMS = ["theme", "locale"] as const;
+const COSMETIC_LAUNCH_PARAMS = ["theme", "locale", "workspace_id", "workspace"] as const;
 const LAUNCH_PREFS_KEY = "teamver:embed-launch-prefs";
 
 type LaunchPrefs = {
@@ -94,6 +94,16 @@ export function consumeEmbedLaunchPrefs(): LaunchPrefs {
  * stash for App boot, and strip from the address bar to avoid auth-loop URLs
  * like `/auth/callback/?theme=system`.
  */
+export function readLaunchWorkspaceIdFromBrowserUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const url = new URL(window.location.href);
+  return (
+    url.searchParams.get("workspace_id")?.trim()
+    || url.searchParams.get("workspace")?.trim()
+    || null
+  );
+}
+
 export function scrubCosmeticLaunchParamsFromBrowserUrl(): LaunchPrefs {
   if (typeof window === "undefined") return {};
   const url = new URL(window.location.href);

@@ -26,7 +26,8 @@ from ..services.od_daemon_client import (
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FORMATS = {"html", "pdf"}
+SUPPORTED_FORMATS = {"html", "pdf", "pptx"}
+_PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 _FILENAME_UNSAFE_RE = re.compile(r"[^\w.\- ]+")
 _MAX_PUBLISH_FILENAME_CHARS = 80
 _CLIENT_ERROR_CODES = frozenset(
@@ -169,6 +170,14 @@ def _artifact_record_from_manifest(
 
 
 def _is_deck_artifact_manifest(manifest: dict, artifact_file: str | None) -> bool:
+    """
+    Detect slide-deck artifacts for Drive publish export.
+
+    Freeform / template decks are often recorded as ``kind: "html"`` even when
+    the file is a multi-slide deck (Cobalt Grid, agent pitch decks, etc.).
+    Returning False on any non-deck kind used to skip path heuristics and force
+    ``deck=false`` PDF export (Letter-ish ~1080×792, missing stage grid/paper).
+    """
     record = _artifact_record_from_manifest(manifest, artifact_file)
     if record:
         kind = record.get("kind")
@@ -179,19 +188,39 @@ def _is_deck_artifact_manifest(manifest: dict, artifact_file: str | None) -> boo
             renderer = record.get("renderer")
             if isinstance(renderer, str) and renderer.strip().lower() == "deck-html":
                 return True
-            return False
+            # Non-html kinds that are explicitly not decks (zip, image, …).
+            if normalized not in ("html", "page", "document", "artifact"):
+                return False
+            # kind:html — fall through to path heuristics below.
     path = (artifact_file or _entry_file_from_manifest(manifest) or "").strip().lower()
     segments = [segment for segment in path.replace("\\", "/").lower().split("/") if segment]
     if any(segment in ("deck", "decks", "slides", "pitch") for segment in segments):
         return True
     basename = segments[-1] if segments else ""
+    # Do not match bare ``deck`` as a basename substring (``mydeck.html`` false
+    # positive). Folder segments above already catch ``deck/`` / ``decks/``.
     return any(token in basename for token in ("slides", "pitch"))
 
 
+def _resolve_publish_deck(
+    *,
+    deck: bool | None,
+    manifest: dict,
+    artifact_file: str | None,
+) -> bool:
+    """FE ``deck: true`` always wins; otherwise trust manifest/path heuristics."""
+    if deck is True:
+        return True
+    return _is_deck_artifact_manifest(manifest, artifact_file)
+
+
 def _allowed_publish_formats(*, is_deck: bool) -> frozenset[str]:
-    # Slide-only embed: Drive publish lets users pick PDF (sharing) and/or inline HTML.
-    del is_deck
-    return frozenset({"html", "pdf"})
+    # Slide-only embed: Drive publish lets users pick PDF, inline HTML, and
+    # (for decks) editable-ish PPTX for PowerPoint follow-up.
+    allowed = {"html", "pdf"}
+    if is_deck:
+        allowed.add("pptx")
+    return frozenset(allowed)
 
 
 def _validate_publish_formats(
@@ -341,6 +370,14 @@ async def _fetch_export_bytes_for_publish_fallback(
             title=title,
             max_bytes=max_bytes,
         )
+    if fmt == "pptx":
+        return await daemon.get_export_pptx(
+            project.od_project_id,
+            path,
+            identity=identity,
+            title=title,
+            max_bytes=max_bytes,
+        )
     raise BadRequestError(f"unsupported_formats:{fmt}")
 
 
@@ -402,7 +439,11 @@ async def publish_project(
         identity=daemon_identity,
     )
     manifest_entry = _entry_file_from_manifest(manifest)
-    is_deck_artifact = _is_deck_artifact_manifest(manifest, artifact_file)
+    is_deck_artifact = _resolve_publish_deck(
+        deck=deck,
+        manifest=manifest,
+        artifact_file=artifact_file,
+    )
     _validate_publish_formats(normalized_formats, is_deck=is_deck_artifact)
 
     # Best-effort: fetch the daemon's current project name so Drive filenames
@@ -467,6 +508,29 @@ async def publish_project(
                     artifact_file=artifact_file or path,
                     manifest_entry=manifest_entry,
                     suffix=".pdf",
+                    live_title=live_title,
+                )
+                size_bytes = export_ticket.size_bytes
+                source_path = path
+                entry_file = manifest_entry
+                artifact = artifact_file or path
+            elif fmt == "pptx":
+                path = (artifact_file or manifest_entry or "").strip()
+                if not path:
+                    raise BadRequestError("artifact_file_required")
+                # Daemon PPTX export requires deck=true (slide list).
+                export_ticket = await daemon.request_export_pptx_ticket(
+                    project.od_project_id,
+                    path,
+                    identity=daemon_identity,
+                    title=export_title,
+                )
+                mime_type = _PPTX_MIME
+                filename = _publish_filename(
+                    project,
+                    artifact_file=artifact_file or path,
+                    manifest_entry=manifest_entry,
+                    suffix=".pptx",
                     live_title=live_title,
                 )
                 size_bytes = export_ticket.size_bytes

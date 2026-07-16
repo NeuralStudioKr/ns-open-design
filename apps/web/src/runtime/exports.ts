@@ -1511,6 +1511,44 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function buildSandboxedPreviewDeckHostViewportScript(): string {
+  return `<script data-od-deck-host-viewport>(function(){
+  var iframe = document.querySelector('iframe');
+  function postViewport(){
+    if (!iframe || !iframe.contentWindow) return;
+    var w = window.innerWidth || 0;
+    var h = window.innerHeight || 0;
+    if (w <= 0 || h <= 0) return;
+    iframe.contentWindow.postMessage({
+      type: 'od:deck-host-viewport',
+      width: w,
+      height: h,
+      scale: 1,
+      layoutFit: false
+    }, '*');
+  }
+  window.addEventListener('resize', postViewport);
+  if (iframe) {
+    iframe.addEventListener('load', function(){
+      postViewport();
+      setTimeout(postViewport, 50);
+      setTimeout(postViewport, 150);
+      setTimeout(postViewport, 400);
+    });
+  }
+  if (document.readyState === 'complete') postViewport();
+  else window.addEventListener('load', postViewport);
+})();</script>`;
+}
+
+export type SandboxedPreviewDocumentOptions = {
+  allowModals?: boolean;
+  /** Load the generated artifact from a Blob URL instead of an inline srcdoc attribute. */
+  iframeSrc?: string;
+  /** Post od:deck-host-viewport from the wrapper so deck fit() sees a real host box. */
+  deckHostViewport?: boolean;
+};
+
 // Blob documents inherit the origin of the page that created them. For
 // generated preview HTML, opening the artifact itself as the top-level Blob
 // document would bypass the preview contract documented in
@@ -1520,10 +1558,15 @@ function escapeHtmlAttribute(value: string): string {
 export function buildSandboxedPreviewDocument(
   doc: string,
   title: string,
-  opts?: { allowModals?: boolean },
+  opts?: SandboxedPreviewDocumentOptions,
 ): string {
   const safeTitle = escapeHtmlAttribute(title || 'Preview');
   const sandbox = opts?.allowModals ? 'allow-scripts allow-modals' : 'allow-scripts';
+  const iframeSrc = typeof opts?.iframeSrc === 'string' ? opts.iframeSrc.trim() : '';
+  const iframeTag = iframeSrc
+    ? `<iframe title="${safeTitle}" sandbox="${sandbox}" src="${escapeHtmlAttribute(iframeSrc)}"></iframe>`
+    : `<iframe title="${safeTitle}" sandbox="${sandbox}" srcdoc="${escapeHtmlAttribute(doc)}"></iframe>`;
+  const deckHostScript = opts?.deckHostViewport ? buildSandboxedPreviewDeckHostViewportScript() : '';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1533,7 +1576,8 @@ export function buildSandboxedPreviewDocument(
   <style>html,body,iframe{margin:0;width:100%;height:100%;border:0}body{overflow:hidden;background:#fff}</style>
 </head>
 <body>
-  <iframe title="${safeTitle}" sandbox="${sandbox}" srcdoc="${escapeHtmlAttribute(doc)}"></iframe>
+  ${iframeTag}
+  ${deckHostScript}
 </body>
 </html>`;
 }
@@ -1570,11 +1614,20 @@ export function openSandboxedPreviewInNewTab(
   title: string,
   srcdocOptions?: SrcdocOptions,
 ): void {
-  const doc = buildSandboxedPreviewDocument(buildBlobSafeSrcdoc(html, srcdocOptions), title);
-  const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank', 'noopener,noreferrer');
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  const innerDoc = buildBlobSafeSrcdoc(html, srcdocOptions);
+  const innerBlob = new Blob([innerDoc], { type: 'text/html;charset=utf-8' });
+  const innerUrl = URL.createObjectURL(innerBlob);
+  const wrapper = buildSandboxedPreviewDocument('', title, {
+    iframeSrc: innerUrl,
+    deckHostViewport: srcdocOptions?.deck === true,
+  });
+  const outerBlob = new Blob([wrapper], { type: 'text/html;charset=utf-8' });
+  const outerUrl = URL.createObjectURL(outerBlob);
+  window.open(outerUrl, '_blank', 'noopener,noreferrer');
+  setTimeout(() => {
+    URL.revokeObjectURL(innerUrl);
+    URL.revokeObjectURL(outerUrl);
+  }, 60_000);
 }
 
 // Open the artifact in a new tab via a Blob URL with a self-printing

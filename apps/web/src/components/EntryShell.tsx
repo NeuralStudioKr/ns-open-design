@@ -340,6 +340,7 @@ interface Props {
       autoSendFirstMessage?: boolean;
       pendingFiles?: File[];
       pendingDriveAssets?: import('../teamver/importDriveAssets').TeamverDriveImportAsset[];
+      pendingCanvasHandoff?: import('../teamver/canvasLaunchHandoff').TeamverCanvasLaunchHandoff;
     },
   ) => Promise<boolean> | boolean | void;
   onCreatePluginShareProject: (
@@ -690,6 +691,9 @@ export function EntryShell({
         : {}),
       ...(payload.driveAttachments && payload.driveAttachments.length > 0
         ? { pendingDriveAssets: payload.driveAttachments }
+        : {}),
+      ...(payload.canvasHandoff
+        ? { pendingCanvasHandoff: payload.canvasHandoff }
         : {}),
       // No `userWorkingDirToken`: linkedDirs grant read-only `--add-dir`
       // access and are validated by the daemon at create time, so they do

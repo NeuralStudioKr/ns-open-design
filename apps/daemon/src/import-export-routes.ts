@@ -24,6 +24,7 @@ import {
   isHeadlessChromiumUnavailableExportError,
   renderHeadlessHtmlSnapshot,
   renderHeadlessDeckImages,
+  renderHeadlessEditablePptx,
   renderHeadlessImage,
   renderHeadlessPdf,
   type HeadlessImageFormat,
@@ -1007,6 +1008,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           format: cacheFormat,
           deck: deck === true,
           ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
+          ...(deck === true ? { codeVersion: 'deck-screenshot-screen-v2' } : {}),
           filename: `${base}.${extension}`,
           mime,
         }),
@@ -1055,6 +1057,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const filename = `${base}.pptx`;
       const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      const editable = req.body?.editable === true;
       const outcome = await runCachedExport(
         { format: 'pptx', deck: true, projectId: req.params.id },
         exportCacheDescriptor({
@@ -1063,10 +1066,18 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
           sourceMtimeMs: built.source.mtimeMs,
           format: 'pptx',
           deck: true,
+          codeVersion: editable ? 'pptx-editable-dom-v2' : 'pptx-screen-ooxml-v4',
           filename,
           mime,
         }),
         async () => {
+          if (editable) {
+            const pptx = await renderHeadlessEditablePptx(
+              { input: built.input },
+              { projectId: req.params.id },
+            );
+            return { body: pptx, filename, mime };
+          }
           const rendered = await renderHeadlessDeckImages(
             { input: built.input, imageFormat: 'png' },
             { projectId: req.params.id },

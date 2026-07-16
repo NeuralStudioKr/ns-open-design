@@ -1,9 +1,11 @@
 import {
   fetchDesignAuthSession,
   getDesignBffClient,
+  readCachedDesignAuthSessionMeta,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
+import { readTeamverWorkspaceStoreRevisionMs } from "./teamverWorkspaceStoreRevision";
 import { normalizeWorkspaceList, readWorkspaceId } from "./workspaceUtils";
 
 /**
@@ -40,6 +42,27 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
   const workspaces = normalizeWorkspaceList(session.workspaces);
 
   if (storeId && workspaces.some((workspace) => readWorkspaceId(workspace) === storeId)) {
+    const defaultWorkspaceId = session.defaultWorkspaceId?.trim() || null;
+    if (
+      defaultWorkspaceId
+      && storeId !== defaultWorkspaceId
+      && workspaces.some((workspace) => readWorkspaceId(workspace) === defaultWorkspaceId)
+    ) {
+      const sessionMeta = readCachedDesignAuthSessionMeta();
+      const embedRevision = readTeamverWorkspaceStoreRevisionMs();
+      if (
+        sessionMeta
+        && sessionMeta.defaultWorkspaceId === defaultWorkspaceId
+        && sessionMeta.fetchedAt > embedRevision
+      ) {
+        return (
+          await syncTeamverWorkspaceFromSession(session, workspaces, {
+            preferredIdOverride: defaultWorkspaceId,
+            preserveStoredWorkspace: false,
+          })
+        )?.trim() || storeId;
+      }
+    }
     return storeId;
   }
 

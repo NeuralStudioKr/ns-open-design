@@ -12,10 +12,11 @@ import {
 } from "../src/teamver/drivePublishLastFormat";
 
 describe("drivePublishMessaging", () => {
-  it("frames slide Drive publish as user-selectable PDF or HTML", () => {
+  it("frames slide Drive publish as user-selectable PDF, HTML, or PPTX", () => {
     const copy = drivePublishMessaging();
     expect(copy.menuTitlePdf).toContain("PDF");
     expect(copy.menuTitleHtml).toContain("HTML");
+    expect(copy.menuTitlePptx).toContain("PPTX");
     expect(copy.modalSubtitle).toContain("저장 위치");
   });
 
@@ -23,6 +24,8 @@ describe("drivePublishMessaging", () => {
     expect(publishLabelForFormat("pdf", false, "generating")).toContain("PDF 생성");
     expect(publishLabelForFormat("pdf", false, "uploading")).toContain("업로드");
     expect(publishLabelForFormat("html", false, "idle")).toContain("HTML");
+    expect(publishLabelForFormat("pptx", false, "generating")).toContain("PPTX 생성");
+    expect(publishLabelForFormat("pptx", true, "idle")).toContain("PPTX");
   });
 
   it("describes each format with plain-language example and benefit", () => {
@@ -39,6 +42,11 @@ describe("drivePublishMessaging", () => {
     expect(html).toContain("알려 주고");
     expect(html).toContain("이야기할 수");
     expect(html).not.toMatch(/덱|맥락|원본|브라우저|발표|지금 화면|이어서|좋습니다/);
+
+    const pptx = formatHintForSelection("pptx");
+    expect(pptx).toContain("예:");
+    expect(pptx).toContain("PowerPoint");
+    expect(pptx).toContain("드라이브");
   });
 });
 

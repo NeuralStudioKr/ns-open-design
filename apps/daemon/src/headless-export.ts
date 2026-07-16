@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import {
@@ -42,6 +44,30 @@ export interface HeadlessDeckSlideImage {
 export interface HeadlessDeckImagesResult {
   images: HeadlessDeckSlideImage[];
   aspect: number;
+}
+
+let cachedDomToPptxBundle: string | null = null;
+
+function loadDomToPptxBundle(): string {
+  if (cachedDomToPptxBundle != null) return cachedDomToPptxBundle;
+  const candidates = [
+    fileURLToPath(new URL('../vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz', import.meta.url)),
+    fileURLToPath(new URL('../vendor/dom-to-pptx/dom-to-pptx.bundle.js', import.meta.url)),
+    path.resolve(process.cwd(), 'apps/daemon/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz'),
+    path.resolve(process.cwd(), 'apps/daemon/vendor/dom-to-pptx/dom-to-pptx.bundle.js'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const bytes = fs.readFileSync(candidate);
+      cachedDomToPptxBundle = candidate.endsWith('.gz')
+        ? gunzipSync(bytes).toString('utf8')
+        : bytes.toString('utf8');
+      return cachedDomToPptxBundle;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error('dom-to-pptx vendor bundle not found');
 }
 
 /**
@@ -88,7 +114,7 @@ export const DECK_WRAPPER_SELECTOR =
 
 /** Navigation, hints, and non-slide chrome hidden during deck PDF export. */
 export const DECK_CHROME_HIDE_SELECTOR =
-  '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
 
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
@@ -382,21 +408,30 @@ export async function renderHeadlessPdf(
       try {
         await waitForPrintableContent(page);
         await stripLeakedArtifactTextFromPage(page);
+        // Drive publish historically passed deck:false for kind:html decks.
+        // Auto-detect slide stages so PDF still flattens to 1920×1080.
+        let deck = options.input.deck === true;
+        if (!deck) {
+          deck = await pageLooksLikeDeckExport(page);
+          if (deck) {
+            console.warn('[headless-export] deck PDF: auto-detected slide deck despite deck=false');
+          }
+        }
         // Flatten in screen media so getComputedStyle matches the live
         // preview layout; switching to print before reveal forced column
         // flex and white backgrounds from stale @media print rules.
-        const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
-        if (options.input.deck && deckSlideCount === 0) {
+        const deckSlideCount = deck ? await revealAllDeckSlides(page) : 0;
+        if (deck && deckSlideCount === 0) {
           console.warn('[headless-export] deck PDF: no slides matched selector', {
             selector: DECK_SLIDE_SELECTOR,
             title: options.input.title,
           });
         }
-        if (options.input.deck) {
+        if (deck) {
           await page.emulateMedia({ media: 'print' });
         }
-        await applyPdfStyles(page, options.input.deck);
-        const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
+        await applyPdfStyles(page, deck);
+        const pdf = await page.pdf(deckPdfOptions(deck, deckSlideCount));
         return Buffer.from(pdf);
       } finally {
         await page.close().catch(() => {});
@@ -438,6 +473,7 @@ export async function renderHeadlessImage(
     async (browser) => {
       const page = await preparePage(browser, options, {
         deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
+        ...(options.input.deck ? { deckPrepareMode: 'html' } : {}),
       });
       try {
         await waitForPrintableContent(page);
@@ -483,6 +519,7 @@ export async function renderHeadlessDeckImages(
     async (browser) => {
       const page = await preparePage(browser, options, {
         deviceScaleFactor: IMAGE_DEVICE_SCALE_FACTOR,
+        deckPrepareMode: 'html',
       });
       try {
         await waitForPrintableContent(page);
@@ -515,6 +552,48 @@ export async function renderHeadlessDeckImages(
   );
 }
 
+export async function renderHeadlessEditablePptx(
+  options: HeadlessExportOptions,
+  meta: Partial<ExportJobMeta> = {},
+): Promise<Buffer> {
+  if (!options.input.deck) {
+    throw new Error('PPTX export requires a slide deck');
+  }
+  return runHeadlessExportJob(
+    { format: 'pptx', deck: true, ...meta },
+    async (browser) => {
+      const page = await preparePage(browser, options, {
+        deckPrepareMode: 'html',
+      });
+      try {
+        await waitForPrintableContent(page);
+        await stripLeakedArtifactTextFromPage(page);
+        await resetDeckScreenshotLayout(page);
+        await inlineRenderedResources(page);
+        await waitForPrintableContent(page);
+        const slideCount = await showAllDeckSlidesForEditablePptx(page);
+        if (slideCount <= 0) {
+          throw new Error('no slides to export');
+        }
+        await page.addScriptTag({ content: loadDomToPptxBundle() });
+        const out = await evaluateInPage<{ b64?: string; error?: string }>(
+          page,
+          `
+          return (${runDomToPptxInPage.toString()})(args.selector);
+        `,
+          { selector: DECK_SLIDE_SELECTOR },
+        );
+        if (!out || out.error || !out.b64) {
+          throw new Error(out?.error || 'editable PPTX export produced no output');
+        }
+        return Buffer.from(out.b64, 'base64');
+      } finally {
+        await page.close().catch(() => {});
+      }
+    },
+  );
+}
+
 export async function renderHeadlessHtmlSnapshot(
   options: HeadlessExportOptions,
   meta: Partial<ExportJobMeta> = {},
@@ -526,8 +605,15 @@ export async function renderHeadlessHtmlSnapshot(
       try {
         await waitForPrintableContent(page);
         await stripLeakedArtifactTextFromPage(page);
-        if (options.input.deck) {
-          const deckSlideCount = await revealAllDeckSlides(page);
+        let deck = options.input.deck === true;
+        if (!deck) {
+          deck = await pageLooksLikeDeckExport(page);
+        }
+        if (deck) {
+          // HTML downloads must keep .stage / ::before intact. PDF flatten
+          // (display:contents + deco promote) would bake print layout into the
+          // saved HTML and double the grid after finalize restores wrappers.
+          const deckSlideCount = await revealDeckSlidesForHtmlExport(page);
           if (deckSlideCount === 0) {
             console.warn('[headless-export] deck HTML: no slides matched selector', {
               selector: DECK_SLIDE_SELECTOR,
@@ -540,7 +626,7 @@ export async function renderHeadlessHtmlSnapshot(
         }
         await inlineRenderedResources(page);
         let html = await page.content();
-        if (options.input.deck) {
+        if (deck) {
           html = injectSharedDeckHtmlExportViewportScript(html);
         }
         return html;
@@ -951,6 +1037,10 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       const pageSurfaceBg = resolveSlidePaperBackground();
 
+      // Capture .stage::before grid (etc.) onto slides before display:contents
+      // drops pseudo boxes on wrappers.
+      promoteWrapperBackgroundDecorations(slides);
+
       document.querySelectorAll(args.wrapperSelector).forEach((el) => {
         set(el, 'display', 'contents');
         set(el, 'transform', 'none');
@@ -959,13 +1049,13 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       set(document.documentElement, 'overflow', 'visible');
       set(document.documentElement, 'width', args.width + 'px');
-      set(document.documentElement, 'background', pageSurfaceBg);
+      set(document.documentElement, 'background-color', pageSurfaceBg);
       set(document.body, 'overflow', 'visible');
       set(document.body, 'display', 'block');
       set(document.body, 'scroll-snap-type', 'none');
       set(document.body, 'transform', 'none');
       set(document.body, 'width', args.width + 'px');
-      set(document.body, 'background', pageSurfaceBg);
+      set(document.body, 'background-color', pageSurfaceBg);
       const totalHeight = slides.length * args.height;
       set(document.documentElement, 'height', totalHeight + 'px');
       set(document.body, 'height', totalHeight + 'px');
@@ -981,7 +1071,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'height', args.height + 'px');
         set(el, 'min-height', args.height + 'px');
         set(el, 'max-height', args.height + 'px');
-        set(el, 'background', resolveSlidePrintBackground(el));
+        applySlideExportSurface(el, resolveSlidePrintBackground(el));
         set(el, 'visibility', 'visible');
         set(el, 'opacity', '1');
         set(el, 'overflow', 'hidden');
@@ -1000,6 +1090,8 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       document
         .querySelectorAll(args.chromeHideSelector)
         .forEach((el) => set(el, 'display', 'none'));
+
+      ensureEmojiFontFallbacks(document);
 
       return {
         count: slides.length,
@@ -1048,6 +1140,318 @@ async function countDeckSlides(page: Page): Promise<number> {
     `,
     { selector: DECK_SLIDE_SELECTOR },
   ).catch(() => 0);
+}
+
+/** True when the document is a slide deck even if the caller passed deck=false. */
+async function pageLooksLikeDeckExport(page: Page): Promise<boolean> {
+  return evaluateInPage<boolean>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector));
+      if (slides.length >= 2) return true;
+      if (slides.length < 1) return false;
+      return Boolean(
+        document.querySelector('.stage, .deck-stage, #deck-stage, .deck, #deck, .deck-shell')
+      );
+    `,
+    { selector: DECK_SLIDE_SELECTOR },
+  ).catch(() => false);
+}
+
+/**
+ * HTML export reveal — show every slide without PDF flatten.
+ * Keeps .stage / ::before so cream paper + graph grid survive in the download.
+ */
+async function revealDeckSlidesForHtmlExport(page: Page): Promise<number> {
+  return evaluateInPage<number>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector));
+      const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+      slides.forEach((el) => {
+        el.classList.add('active');
+        el.removeAttribute('hidden');
+        el.removeAttribute('aria-hidden');
+        set(el, 'opacity', '1');
+        set(el, 'visibility', 'visible');
+        set(el, 'pointer-events', 'auto');
+      });
+      document.querySelectorAll(args.chromeHideSelector).forEach((el) => set(el, 'display', 'none'));
+      return slides.length;
+    `,
+    {
+      selector: DECK_SLIDE_SELECTOR,
+      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
+    },
+  ).catch(() => 0);
+}
+
+async function showAllDeckSlidesForEditablePptx(page: Page): Promise<number> {
+  return evaluateInPage<number>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector))
+        .filter((el) => !el.closest('.mini-slide, .overview, .notes-overlay, .thumb'));
+      const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+      set(document.documentElement, 'width', args.width + 'px');
+      set(document.documentElement, 'height', args.height + 'px');
+      set(document.body, 'width', args.width + 'px');
+      set(document.body, 'height', args.height + 'px');
+      set(document.body, 'margin', '0');
+      document.querySelectorAll(args.wrapperSelector).forEach((el) => {
+        set(el, 'position', 'relative');
+        set(el, 'display', 'block');
+        set(el, 'overflow', 'hidden');
+        set(el, 'width', args.width + 'px');
+        set(el, 'height', args.height + 'px');
+        set(el, 'transform', 'none');
+      });
+      slides.forEach((node) => {
+        const el = node;
+        ['active', 'visible', 'is-active', 'current'].forEach((c) => el.classList.add(c));
+        el.removeAttribute('hidden');
+        el.removeAttribute('aria-hidden');
+        set(el, 'opacity', '1');
+        set(el, 'visibility', 'visible');
+        set(el, 'position', 'absolute');
+        set(el, 'left', '0');
+        set(el, 'top', '0');
+        set(el, 'width', args.width + 'px');
+        set(el, 'height', args.height + 'px');
+        set(el, 'overflow', 'hidden');
+      });
+      document.querySelectorAll(args.chromeHideSelector).forEach((el) => set(el, 'display', 'none'));
+      return slides.length;
+    `,
+    {
+      selector: DECK_SLIDE_SELECTOR,
+      wrapperSelector: DECK_WRAPPER_SELECTOR,
+      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
+      width: DECK_WIDTH,
+      height: DECK_HEIGHT,
+    },
+  ).catch(() => 0);
+}
+
+function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; error?: string }> {
+  type Element = any;
+  type HTMLElement = any;
+  type Blob = any;
+  const browserGlobal = globalThis as any;
+  const window = browserGlobal.window ?? browserGlobal;
+  const document = window.document;
+  const getComputedStyle = window.getComputedStyle.bind(window);
+  const btoa = window.btoa.bind(window);
+
+  function isTransparentColor(input: string): boolean {
+    const value = input.trim().toLowerCase();
+    return value === '' || value === 'transparent' || value === 'rgba(0, 0, 0, 0)';
+  }
+
+  function firstCssColor(input: string): string | null {
+    const rgb = input.match(/rgba?\([^)]*\)/i);
+    if (rgb) return rgb[0];
+    const hex = input.match(/#[0-9a-f]{3,8}\b/i);
+    return hex ? hex[0] : null;
+  }
+
+  function effectiveBackgroundStyle(slide: HTMLElement): {
+    color: string;
+    image: string;
+    position: string;
+    size: string;
+    repeat: string;
+    origin: string;
+    clip: string;
+  } | null {
+    const candidates: Element[] = [];
+    for (let el: Element | null = slide; el; el = el.parentElement) candidates.push(el);
+    if (document.body && !candidates.includes(document.body)) candidates.push(document.body);
+    if (document.documentElement && !candidates.includes(document.documentElement)) {
+      candidates.push(document.documentElement);
+    }
+
+    for (const el of candidates) {
+      const style = getComputedStyle(el);
+      const bgColor = style.backgroundColor;
+      const bgImage = style.backgroundImage;
+      const hasImage = bgImage && bgImage !== 'none';
+      const hasColor = bgColor && !isTransparentColor(bgColor);
+      const fallbackColor = hasColor ? bgColor : firstCssColor(bgImage);
+      if (!hasImage && !hasColor) continue;
+      if (!fallbackColor) continue;
+      return {
+        color: fallbackColor,
+        image: bgImage,
+        position: style.backgroundPosition,
+        size: style.backgroundSize,
+        repeat: style.backgroundRepeat,
+        origin: style.backgroundOrigin,
+        clip: style.backgroundClip,
+      };
+    }
+    return null;
+  }
+
+  function ensureExplicitSlideBackgrounds(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll(':scope > [data-od-pptx-bg]').forEach((el: HTMLElement) => el.remove());
+      const background = effectiveBackgroundStyle(slide);
+      if (!background) continue;
+
+      const bg = document.createElement('div');
+      bg.setAttribute('data-od-pptx-bg', 'true');
+      bg.setAttribute('aria-hidden', 'true');
+      bg.style.setProperty('position', 'absolute', 'important');
+      bg.style.setProperty('inset', '0', 'important');
+      bg.style.setProperty('z-index', '0', 'important');
+      bg.style.setProperty('pointer-events', 'none', 'important');
+      bg.style.setProperty('background-color', background.color, 'important');
+      bg.style.setProperty('background-image', background.image, 'important');
+      bg.style.setProperty('background-position', background.position, 'important');
+      bg.style.setProperty('background-size', background.size, 'important');
+      bg.style.setProperty('background-repeat', background.repeat, 'important');
+      bg.style.setProperty('background-origin', background.origin, 'important');
+      bg.style.setProperty('background-clip', background.clip, 'important');
+
+      const style = getComputedStyle(slide);
+      if (style.position === 'static') slide.style.setProperty('position', 'relative', 'important');
+      if (style.overflow === 'visible') slide.style.setProperty('overflow', 'hidden', 'important');
+      slide.style.setProperty('background-color', background.color, 'important');
+      Array.from(slide.children as HTMLElement[]).forEach((child: HTMLElement) => {
+        if (child.getAttribute('data-od-pptx-bg') === 'true') return;
+        const childStyle = getComputedStyle(child as Element);
+        const element = child as HTMLElement;
+        if (childStyle.position === 'static') {
+          element.style.setProperty('position', 'relative', 'important');
+        }
+        if (childStyle.zIndex === 'auto') {
+          element.style.setProperty('z-index', '1', 'important');
+        }
+      });
+      slide.prepend(bg);
+    }
+  }
+
+  function isCompactMetricText(text: string): boolean {
+    return /^[+\-]?\d+(?:[.,]\d+)?\s*(?:%|x|×)?$/i.test(text) || /^[%x×]$/i.test(text);
+  }
+
+  function stabilizeCompactMetricText(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const rawText = el.innerText || el.textContent || '';
+        const text = rawText.replace(/\s+/g, ' ').trim();
+        if (!isCompactMetricText(text) || rawText.includes('\n')) return;
+
+        const style = getComputedStyle(el);
+        const fontSizePx = Number.parseFloat(style.fontSize);
+        if (!Number.isFinite(fontSizePx) || fontSizePx < 48) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 1 || rect.height <= 1) return;
+
+        const estimatedTextWidth = fontSizePx * Math.max(1.8, text.length * 0.9);
+        const width = Math.ceil(Math.max(rect.width, el.scrollWidth || 0, estimatedTextWidth));
+
+        el.style.setProperty('display', 'block', 'important');
+        el.style.setProperty('width', `${width}px`, 'important');
+        el.style.setProperty('min-width', `${width}px`, 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('white-space', 'nowrap', 'important');
+        el.style.setProperty('word-break', 'keep-all', 'important');
+        el.style.setProperty('overflow-wrap', 'normal', 'important');
+        el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+  }
+
+  function stabilizeLargeSingleLineText(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const rawText = el.innerText || el.textContent || '';
+        const text = rawText.replace(/\s+/g, ' ').trim();
+        if (!text || rawText.includes('\n')) return;
+        if (isCompactMetricText(text) || el.children.length > 0) return;
+
+        const style = getComputedStyle(el);
+        const fontSizePx = Number.parseFloat(style.fontSize);
+        if (!Number.isFinite(fontSizePx) || fontSizePx < 96) return;
+
+        const lineHeightPx = Number.parseFloat(style.lineHeight);
+        if (!Number.isFinite(lineHeightPx) || lineHeightPx <= 0 || lineHeightPx > fontSizePx * 1.05) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 1 || rect.height <= 1) return;
+
+        const justify =
+          style.textAlign === 'center' || style.textAlign === '-webkit-center'
+            ? 'center'
+            : style.textAlign === 'right' || style.textAlign === 'end'
+              ? 'flex-end'
+              : 'flex-start';
+
+        el.style.setProperty('display', 'flex', 'important');
+        el.style.setProperty('align-items', 'center', 'important');
+        el.style.setProperty('justify-content', justify, 'important');
+        el.style.setProperty('width', `${rect.width}px`, 'important');
+        el.style.setProperty('height', `${rect.height}px`, 'important');
+        el.style.setProperty('line-height', 'normal', 'important');
+        el.style.setProperty('white-space', 'nowrap', 'important');
+        el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+  }
+
+  return (async () => {
+    try {
+      const w = window as unknown as {
+        domToPptx?: { exportToPptx: (target: unknown, options: unknown) => Promise<Blob> };
+      };
+      if (!w.domToPptx || typeof w.domToPptx.exportToPptx !== 'function') {
+        return { error: 'dom-to-pptx engine did not load' };
+      }
+      const slides = Array.prototype.slice
+        .call(document.querySelectorAll(slideSelector))
+        .filter((el) => !(el as HTMLElement).closest('.mini-slide, .overview, .notes-overlay, .thumb'));
+      if (slides.length === 0) return { error: 'no slides to export' };
+      ensureExplicitSlideBackgrounds(slides as HTMLElement[]);
+      stabilizeCompactMetricText(slides as HTMLElement[]);
+      stabilizeLargeSingleLineText(slides as HTMLElement[]);
+      document.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const cn = (el as { className?: unknown }).className;
+        if (cn != null && typeof cn !== 'string') {
+          try {
+            Object.defineProperty(el, 'className', {
+              value: (cn as { baseVal?: string }).baseVal ?? '',
+              configurable: true,
+              writable: true,
+            });
+          } catch {
+            // Leave it; dom-to-pptx may still handle this node.
+          }
+        }
+      });
+      const blob = await w.domToPptx.exportToPptx(slides, {
+        fileName: 'deck.pptx',
+        skipDownload: true,
+        autoEmbedFonts: true,
+        svgAsVector: true,
+      });
+      if (!blob || typeof (blob as Blob).arrayBuffer !== 'function') {
+        return { error: 'dom-to-pptx returned no blob' };
+      }
+      const bytes = new Uint8Array(await (blob as Blob).arrayBuffer());
+      let binary = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+      }
+      return { b64: btoa(binary) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  })();
 }
 
 async function waitForPrintableContent(page: Page): Promise<void> {
@@ -1188,10 +1592,14 @@ async function revealDeckSlideForScreenshot(page: Page, slideIndex?: number): Pr
     slides.forEach((el) => {
       if (el !== target) {
         set(el, 'display', 'none');
+        el.classList.remove('active', 'current', 'is-active');
         return;
       }
-      set(el, 'display', 'flex');
-      set(el, 'flex-direction', 'column');
+      el.classList.add('active', 'current', 'is-active');
+      el.removeAttribute('hidden');
+      el.removeAttribute('aria-hidden');
+      el.style.removeProperty('display');
+      el.style.removeProperty('flex-direction');
       set(el, 'position', 'relative');
       set(el, 'inset', 'auto');
       set(el, 'width', args.width + 'px');
@@ -1424,7 +1832,19 @@ function injectTitle(doc: string, title: string): string {
 }
 
 function injectPrintStylesheet(doc: string, css: string): string {
-  const tag = `<style data-od-headless-pdf>${css}</style>`;
+  // html/body alone is not enough — slide type classes set their own
+  // font-family without emoji fallbacks, so glyphs missing from
+  // Newsreader/Hanken render as tofu in headless Chromium.
+  const emojiFontCss = `
+html, body {
+  font-family: var(--font-body, var(--font-sans, inherit)), "Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+}
+@font-face {
+  font-family: "Noto Color Emoji";
+  src: local("Noto Color Emoji"), local("NotoColorEmoji");
+  unicode-range: U+1F300-1FAFF, U+2600-27BF, U+FE0F, U+200D, U+20E3;
+}`;
+  const tag = `<style data-od-headless-pdf>${css}${emojiFontCss}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);
   if (/<head[^>]*>/i.test(doc)) return doc.replace(/<head[^>]*>/i, (match) => `${match}${tag}`);
   return `${tag}${doc}`;

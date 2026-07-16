@@ -488,18 +488,42 @@ export type FetchTeamverRuntimeConfigOptions = {
 
 let runtimeConfigInflight: Promise<TeamverRuntimeConfigResponse | null> | null = null;
 let cachedRuntimeConfig: { value: TeamverRuntimeConfigResponse | null; at: number } | null = null;
+/**
+ * After a 401/session_expired on `/runtime-config`, skip opportunistic refetches
+ * (visibility/pageshow) until embed session is authenticated again. Avoids
+ * DevTools spam when BFF cookie is dead but the tab keeps refocusing.
+ * See docs-teamver/43_runtime_config_visibility_401.md.
+ */
+let runtimeConfigAuthBlocked = false;
 const RUNTIME_CONFIG_CACHE_MS = 60_000;
+
+/** Clear 401 backoff — called when embed session becomes authenticated. */
+export function clearTeamverRuntimeConfigAuthBlock(): void {
+  runtimeConfigAuthBlocked = false;
+}
 
 /** @internal vitest */
 export function resetTeamverRuntimeConfigCacheForTests(): void {
   runtimeConfigInflight = null;
   cachedRuntimeConfig = null;
+  runtimeConfigAuthBlocked = false;
 }
 
 export async function fetchTeamverRuntimeConfig(
   options?: FetchTeamverRuntimeConfigOptions,
 ): Promise<TeamverRuntimeConfigResponse | null> {
   const force = options?.force ?? false;
+
+  // Session gate: unauthenticated embed must not hit nginx auth_request (401).
+  if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) {
+    return null;
+  }
+
+  // 401 backoff: cookie expired while UI still thought it was signed in.
+  if (!force && runtimeConfigAuthBlocked) {
+    return cachedRuntimeConfig?.value ?? null;
+  }
+
   if (!force && runtimeConfigInflight) return runtimeConfigInflight;
   if (
     !force &&
@@ -517,9 +541,13 @@ export async function fetchTeamverRuntimeConfig(
       const value = await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
         ...TEAMVER_BFF_REQUEST_OPTIONS,
       });
+      runtimeConfigAuthBlocked = false;
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;
-    } catch {
+    } catch (err) {
+      if (err instanceof NetworkError && err.status === 401) {
+        runtimeConfigAuthBlocked = true;
+      }
       return null;
     } finally {
       runtimeConfigInflight = null;

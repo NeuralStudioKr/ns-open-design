@@ -1,13 +1,33 @@
 # OD upstream main 반영 검토
 
-**판단 시점:** 2026-07-15 현재.
-**반영 갱신:** 2026-07-15 — 현재 `main` 상태와 PPTX export 추가 여부를 재검토. 2026-07-09 이후 Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, 다운로드 안정화 패치가 추가로 많이 반영되어 있으므로 전체 merge 위험도는 더 높아졌다.
-**비교 기준:** `staging` (`cac418d52 fix(web): 삭제 프로젝가 홈 최근 목록에 「방금 전」으로 부활하지 않게 함`) ↔ `main` / `origin/main` (`7b9864614 feat(media): wire MiniMax image-01 through the minimax provider slot`).
+**판단 시점:** 2026-07-16 현재.
+**반영 갱신:** 2026-07-16 — `git fetch origin main` 후 `origin/main` 최신 상태를 재확인했다. Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, background run, 다운로드 안정화 패치가 계속 누적되어 있으므로 전체 merge 위험도는 여전히 높다.
+**비교 기준:** `staging` (`10b0ba491 fix(export): prefer screenshot pptx fidelity by default`) ↔ `origin/main` (`94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`).
 **결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. Teamver 기존 동작을 깨지 않도록, 필요한 커밋만 수동 포팅한다.
 
 ---
 
-## 0. 2026-07-15 현재 main 상태 요약
+## 0. 2026-07-16 현재 main 상태 요약
+
+`origin/main`은 현재 `94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`까지 반영되어 있다. `staging...origin/main` divergence는 `703 / 586`으로, 2026-07-15 기준 `665 / 410`보다 더 벌어졌다. 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.
+
+최근 `origin/main`에서 Teamver AI Design에 바로 검토 가치가 있는 변경은 다음이다.
+
+| 커밋 | 내용 | 현재 판단 |
+|------|------|-----------|
+| `cdffb1b63` | `fix(daemon): block SSRF in library ingest remote fetch` | **P0 보안 후보.** Teamver에서 URL 기반 분석/web-fetch/라이브러리 ingest를 제공하거나 재활성화할 때 반드시 필요한 방어선이다. 다만 Teamver BFF/auth와 SSRF allow/deny 정책을 대조해 수동 포팅한다. |
+| `b5d9a12f4` | `fix(web): break redirect-loop scripts that freeze the HTML preview` | **P0/P1 preview 안정성 후보.** 생성 HTML이 redirect-loop script를 포함할 때 preview가 멈추는 문제를 막는다. AI 생성물 preview 안정성과 직접 연결된다. |
+| `24c7876b3` | `fix(web): preserve delivery for in-place HTML edits` | **P1 후보.** 댓글/수정 요청 후 in-place HTML edit delivery가 보존되는지 확인할 가치가 있다. Teamver background/reattach 패치와 충돌 가능성이 있어 ProjectView 전체 cherry-pick은 금지. |
+| `88c238ec7` | `fix(web): reveal rendered deck thumbnails` | **P1 후보.** 홈/프로젝트 목록 썸네일이 첫 글자 fallback으로 보이는 문제와 관련될 수 있다. Teamver 썸네일/cache 최적화와 대조 필요. |
+| `498802189` | `fix: use baked previews for slide presets` | **P1 후보.** Community/template preview blank 문제와 관련. Teamver에서는 Community 노출 범위가 제한되어 있으므로 runtime preview lookup만 선별 검토. |
+| `05cb03c8a` | `fix(web): sandbox the speaker-notes presenter deck iframes` | **P2 보안/격리 후보.** presenter notes 경로를 Teamver가 노출하지 않는다면 후순위. |
+| `167db9de2` / `c67048516` | preview delivery status feedback/polish | **P2 UX 후보.** Teamver의 생성 중 이탈/재진입 UX와 맞닿지만, 먼저 background run 안정성 회귀 여부를 확인한 뒤 선별한다. |
+
+**현재 바로 추진 추천:** 전체 merge 대신 `cdffb1b63` → `b5d9a12f4` → `88c238ec7` 순서로 수동 포팅 가능성을 검토한다. 보안/preview freeze/thumbnail은 실제 서비스 구동과 사용자 신뢰에 직접 영향을 주며, AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
+
+---
+
+## 0-1. 2026-07-15 main 상태 요약 기록
 
 `main`은 현재 `7b9864614 feat(media): wire MiniMax image-01 through the minimax provider slot (#4563)`까지 반영되어 있다. `staging...main` divergence는 `665 / 410`으로, 2026-07-08 당시 `532 / 376`보다 더 벌어졌다.
 
@@ -101,24 +121,27 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 | `5a5431e3e` | `fix(daemon): recover PPTX export renderer failures` | PPTX route 도입 시 함께 검토. renderer 실패를 구조적으로 복구하는 후속 안정화 성격. |
 | `5b8e3a25f` | `fix(desktop): keep CJK typefaces intact in editable PPTX export` | editable PPTX까지 도입할 경우 CJK/한글 폰트 품질 때문에 필요. 단, 1차 screenshot PPTX에는 후순위. |
 
-**권장 1차 범위:** Teamver 웹/daemon 배포에서 바로 쓸 수 있는 screenshot-based PPTX만 수동 이식한다.
+**2026-07-16 적용 상태:** screenshot-based PPTX 최소 경로는 Teamver `staging`에 수동 반영 완료. 일반 `PPTX 다운로드`는 OD `main`과 동일하게 **미리보기 충실도 우선 screenshot PPTX**를 기본으로 사용한다. editable PPTX는 daemon hosted 환경용 실험 경로로 남겨두되, `editable:true`가 명시될 때만 사용한다. arbitrary HTML/CSS를 완전한 editable PPTX로 1:1 변환하는 것은 `dom-to-pptx` 한계가 있어 일반 다운로드 기본값으로 두지 않는다.
 
 - ✅ daemon `buildScreenshotPptx` 최소 구현. 새 의존성 추가 없이 `JSZip` 기반 PPTX package 생성.
 - ✅ `/api/projects/:id/export/pptx` route 추가.
+- ✅ daemon `renderHeadlessEditablePptx` 추가. 단, 일반 PPTX 다운로드는 screenshot PPTX가 기본이며, `editable:true` 요청 시에만 native shape/text editable PPTX 경로를 사용한다.
+- ✅ `dom-to-pptx` v2.0.1 MIT browser bundle을 daemon vendor에 포함. npm package의 Puppeteer/Chromium dependency는 설치하지 않는다.
 - ✅ 기존 Teamver PDF/image export에서 보강한 inline HTML snapshot, S3/scratch sync 회피, auth gate, filename, export cache/ticket 흐름을 유지.
 - ✅ FE 다운로드 메뉴의 `PPTX로 다운로드`는 기존 agent prompt 요청 대신 daemon rendered download로 연결.
 - ✅ Drive로 내보내기와 혼동되지 않도록 “내 컴퓨터에 저장/다운로드” 그룹 안에만 노출.
 
-**권장 보류 범위:** editable PPTX / `dom-to-pptx` / desktop renderer vendor bundle / sidecar packaging은 2차로 둔다. Teamver staging은 웹/daemon 흐름 안정화가 우선이며, desktop resource packaging을 같이 들고 오면 충돌면이 급격히 커진다.
+**보류 범위:** OD `main`의 desktop renderer/sidecar/packaging 전체 cherry-pick은 계속 보류한다. Teamver hosted 환경은 desktop runtime이 없으므로, desktop Electron handoff를 그대로 가져오면 작동하지 않는다.
 
 **검증 필수:**
 
 1. 8~12장 HTML deck에서 PPTX 다운로드가 각 slide 1장씩 생성.
-2. 한글/CJK 텍스트가 깨지지 않음. screenshot PPTX 기준 텍스트는 이미지이므로 폰트 렌더링은 브라우저 렌더 결과와 같아야 한다.
-3. PDF/image/html/zip 기존 다운로드가 회귀하지 않음.
-4. 슬라이드 생성 직후 S3 sync 전후 상태에서 `/export/pptx`가 동일하게 동작.
-5. 대형 deck에서 서버 CPU/메모리 부하가 PDF/image export보다 과도하게 증가하지 않음.
-6. 실패 응답이 `EXPORT_FAILED`, `NO_SLIDES`, renderer unavailable 등으로 구조화되어 FE 토스트가 구분 가능.
+2. Google Slides/PowerPoint에서 미리보기와 유사한 시각 결과로 열린다.
+3. 한글/CJK 텍스트가 깨지지 않음. 일반 경로는 screenshot PPTX이므로 편집 가능성보다 fidelity를 우선한다.
+4. PDF/image/html/zip 기존 다운로드가 회귀하지 않음.
+5. 슬라이드 생성 직후 S3 sync 전후 상태에서 `/export/pptx`가 동일하게 동작.
+6. 대형 deck에서 서버 CPU/메모리 부하가 PDF/image export보다 과도하게 증가하지 않음.
+7. 실패 응답이 `EXPORT_FAILED`, `NO_SLIDES`, renderer unavailable 등으로 구조화되어 FE 토스트가 구분 가능.
 
 ---
 
@@ -160,15 +183,13 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 4. 권장 작업 순서
 
-1. **P0/P1:** PPTX screenshot export 최소 경로를 별도 브랜치/작은 루프로 수동 이식한다.
-2. `59bca72f7`에서 daemon-only 핵심만 추출한다: `deck-export.ts`, `export-cli-request/routing` 중 route에 필요한 타입, `import-export-routes.ts`의 `/export/pptx` handler, `pptxgenjs` dependency, 관련 daemon tests.
-3. Teamver 기존 export 보강과 충돌하는 부분을 먼저 대조한다: S3 sync, scratch materialization, filename, auth gate, headless fallback, structured error.
-4. FE는 `FileViewer` 전체 diff를 가져오지 말고 현재 Teamver 다운로드 메뉴에 `PPTX로 다운로드` action만 추가한다.
-5. 1차는 screenshot PPTX만 출시 후보로 둔다. editable PPTX/dom-to-pptx/desktop vendor bundle은 한글/CJK 편집 가능성이 필요하다고 판단될 때 2차로 분리한다.
-6. PPTX 적용 후 PDF/image/html/zip 기존 다운로드와 Drive 내보내기 회귀 테스트를 먼저 수행한다.
-7. 그 다음 P0 background run/re-entry 잔여 후보(`f6fb7c204`)를 다시 검토한다.
-8. Community preview sync는 runtime 문제가 재현되는 항목만 선별 반영한다.
-9. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
+1. **P0:** `cdffb1b63`의 library ingest SSRF 차단을 Teamver daemon에 수동 포팅할 수 있는지 검토한다. URL 기반 분석/web-fetch/라이브러리 ingest는 외부 URL을 다루므로, 출시 전 보안 방어가 우선이다.
+2. **P0/P1:** `b5d9a12f4`의 preview redirect-loop guard를 검토한다. AI가 생성한 HTML이 redirect/freeze script를 포함해도 preview가 멈추지 않아야 한다.
+3. **P1:** `88c238ec7` deck thumbnail reveal 패치를 Teamver 홈/최근 프로젝트 썸네일 cache 흐름과 대조한다. 프로젝트 목록에서 썸네일이 첫 글자 fallback으로 보이는 문제와 연결될 수 있다.
+4. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정/재진입/background run 패치와 대조한다. `ProjectView.tsx` 전체 cherry-pick은 금지하고, delivery 보존에 필요한 최소 변경만 검토한다.
+5. **P1:** `498802189` baked slide preset preview는 Community/template preview blank 문제가 재현되는 범위에서만 선별한다.
+6. PPTX는 일반 다운로드 screenshot 기본 정책을 유지한다. editable PPTX는 별도 메뉴/고급 옵션을 만들기 전까지 일반 사용자 경로에 노출하지 않는다.
+7. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
 
 ---
 
@@ -184,8 +205,8 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 6. 다음 추천 작업
 
-1. **P0/P1:** PPTX screenshot export 최소 이식 작업을 착수한다. 전체 `59bca72f7` cherry-pick이 아니라 daemon route + FE menu + tests 단위로 작게 진행한다.
-2. **P0:** 기존 PDF/image/html/zip 다운로드와 Drive 내보내기 회귀 테스트 목록을 PPTX 작업의 acceptance criteria로 먼저 고정한다.
-3. **P0:** `f6fb7c204`의 reload/re-entry restore 로직은 PPTX 최소 이식 이후 검토한다. 현재 Teamver background handling이 많이 바뀌어 있어 바로 적용하면 충돌 위험이 있다.
-4. **P1:** Community preview sync는 template preview blank/404가 staging에서 재현될 때 runtime fallback만 선별 반영한다.
-5. **P2:** MiniMax image-01 provider wiring은 slide/deck MVP와 직접 관련 낮으므로 보류한다.
+1. **P0:** `cdffb1b63` library ingest SSRF 차단을 먼저 검토한다. web-fetch/사이트 분석 기능을 출시하려면 외부 URL 접근 안전장치가 선행되어야 한다.
+2. **P0/P1:** `b5d9a12f4` preview redirect-loop guard를 검토한다. 생성 HTML preview freeze는 사용자 입장에서 “작업물이 깨짐/서비스가 멈춤”으로 보인다.
+3. **P1:** `88c238ec7` deck thumbnail reveal을 현재 Teamver 썸네일 fallback 문제와 대조한다.
+4. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
+5. **P1:** `498802189` baked previews는 Community/template preview blank 재현 시 런타임 lookup만 선별 반영한다.
