@@ -4606,7 +4606,10 @@ function HtmlViewer({
       setExportToast({ message, tone: 'error' });
     };
     if (toastFormats.has(format)) {
-      setExportToast({ message: exportInProgressMessage, tone: 'loading' });
+      flushSync(() => {
+        setDownloadMenuOpen(false);
+        setExportToast({ message: exportInProgressMessage, tone: 'loading' });
+      });
     }
     const runExport = () => {
       try {
@@ -4673,7 +4676,9 @@ function HtmlViewer({
     if (!toastFormats.has(format)) {
       runExport();
     } else if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(runExport);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(runExport);
+      });
     } else {
       window.setTimeout(runExport, 0);
     }
