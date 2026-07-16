@@ -948,7 +948,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const filename = `${base}.pptx`;
       const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-      const editable = req.body?.editable !== false;
+      const editable = req.body?.editable === true;
       const outcome = await runCachedExport(
         { format: 'pptx', deck: true, projectId: req.params.id },
         exportCacheDescriptor({

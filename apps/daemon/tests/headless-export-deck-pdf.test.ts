@@ -540,7 +540,7 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain("el.style.setProperty('white-space', 'nowrap', 'important')");
   });
 
-  it('routes PPTX downloads to editable export by default', () => {
+  it('keeps PPTX downloads screenshot-based by default and editable only when requested', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'src', 'import-export-routes.ts'),
       'utf8',
@@ -550,8 +550,9 @@ describe('buildDeckPrintCss', () => {
       source.indexOf("app.post('/api/projects/:id/export/html'"),
     );
     expect(pptxBlock).toContain('renderHeadlessEditablePptx');
-    expect(pptxBlock).toContain('req.body?.editable !== false');
+    expect(pptxBlock).toContain('req.body?.editable === true');
     expect(pptxBlock).toContain('pptx-editable-dom-v2');
+    expect(pptxBlock).toContain('buildScreenshotPptx');
   });
 });
 

@@ -1178,7 +1178,6 @@ export async function exportProjectAsPptx(opts: {
       body: JSON.stringify({
         deck: true,
         delivery: 'ticket',
-        editable: true,
         fileName: opts.filePath,
         title: opts.title,
         ...inlineExportHtmlPayload(opts.htmlSnapshot),
