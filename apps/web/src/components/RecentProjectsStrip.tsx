@@ -42,6 +42,8 @@ interface Props {
   onOpen: (id: string, options?: { fileName?: string }) => void;
   onViewAll: () => void;
   limit?: number;
+  /** Embed: invalidate cached covers when the active workspace changes. */
+  workspaceScopeKey?: string | null;
 }
 
 const EMPTY_DESIGN_SYSTEMS: DesignSystemSummary[] = [];
@@ -54,6 +56,7 @@ export function RecentProjectsStrip({
   onOpen,
   onViewAll,
   limit = 6,
+  workspaceScopeKey,
 }: Props) {
   const t = useT();
   const activeRunStatusByProjectId = useMemo(
@@ -71,6 +74,10 @@ export function RecentProjectsStrip({
   >({});
 
   useEffect(() => {
+    setCoverByProject({});
+  }, [workspaceScopeKey]);
+
+  useEffect(() => {
     let cancelled = false;
     if (recent.length === 0) {
       setCoverByProject({});
@@ -85,7 +92,7 @@ export function RecentProjectsStrip({
     return () => {
       cancelled = true;
     };
-  }, [recent]);
+  }, [recent, workspaceScopeKey]);
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;

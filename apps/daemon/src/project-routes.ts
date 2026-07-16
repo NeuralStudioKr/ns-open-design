@@ -40,6 +40,7 @@ import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import {
   isTeamverDesignManaged,
   readTeamverIdentityFromRequest,
+  verifyTeamverProjectAccess,
 } from './teamver-project-access.js';
 import {
   scheduleProjectStoragePersistAfterResponse,
@@ -1206,18 +1207,32 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         if (projectIds.length >= PROJECT_COVER_HINTS_BATCH_MAX) break;
       }
       const locations = await configuredProjectLocations();
+      const teamverManaged = isTeamverDesignManaged();
+      const teamverIdentity = teamverManaged ? readTeamverIdentityFromRequest(req) : null;
       /** @type {import('@open-design/contracts').ProjectCoverHint[]} */
       const hints = [];
       for (const projectId of projectIds) {
         const project = getProject(db, projectId);
-        if (!project || !projectVisibleForLocations(project, locations)) continue;
-        const resolved = await resolveProjectCoverHint(PROJECTS_DIR, projectId, project);
+        if (project && !projectVisibleForLocations(project, locations)) continue;
+        if (!project && teamverManaged) {
+          if (!teamverIdentity) continue;
+          const access = await verifyTeamverProjectAccess(projectId, teamverIdentity);
+          if (!access.ok) continue;
+        }
+        // Registry-first embed lists may reference ids not yet materialized in
+        // local sqlite — still resolve from on-disk project dir when present.
+        const resolved = await resolveProjectCoverHint(
+          PROJECTS_DIR,
+          projectId,
+          project ?? { metadata: {} },
+        );
+        if (!resolved) continue;
         hints.push({
           projectId,
-          entryFile: resolved?.entryFile ?? null,
-          coverKind: resolved?.coverKind ?? null,
-          coverPath: resolved?.coverPath ?? null,
-          coverVersion: resolved?.coverVersion ?? null,
+          entryFile: resolved.entryFile ?? null,
+          coverKind: resolved.coverKind ?? null,
+          coverPath: resolved.coverPath ?? null,
+          coverVersion: resolved.coverVersion ?? null,
         });
       }
       /** @type {import('@open-design/contracts').ProjectCoverHintsResponse} */

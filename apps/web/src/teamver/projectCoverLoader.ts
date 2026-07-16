@@ -24,6 +24,11 @@ export function resolveProjectCoverOptionsForListSurface(): ResolveProjectCoverO
   return embedProjectCoverHintsOnly() ? { allowFilesFallback: false } : {};
 }
 
+/** Home recent rail — bounded at HOME_RECENT_LIST_LIMIT; may use /files when hints miss. */
+export function resolveProjectCoverOptionsForHomeSurface(): ResolveProjectCoverOptions {
+  return { allowFilesFallback: true };
+}
+
 type CoverCacheEntry = {
   cover: ProjectCoverFile | null;
   at: number;

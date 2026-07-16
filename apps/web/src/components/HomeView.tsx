@@ -107,6 +107,7 @@ import {
 } from '../teamver/embedDaemonFetchPolicy';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { getDesignBffClient } from '../teamver/designBffClient';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import {
   isTeamverEmbedDriveImportAllowed,
@@ -2128,6 +2129,9 @@ export function HomeView({
         projects={projects}
         activeRunSummaries={backgroundRunSummaries}
         designSystems={designSystems}
+        {...(isTeamverEmbedMode() && teamverWorkspaceId
+          ? { workspaceScopeKey: teamverWorkspaceId }
+          : {})}
         {...(projectsLoading !== undefined ? { loading: projectsLoading } : {})}
         onOpen={(id, options) => {
           // P0 ui_click area=recent_projects element=project_card — emit

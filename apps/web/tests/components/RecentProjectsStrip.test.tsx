@@ -160,6 +160,40 @@ describe('RecentProjectsStrip', () => {
     });
   });
 
+  it('resets cover cache when workspaceScopeKey changes', async () => {
+    const onOpen = vi.fn();
+    const projects = [
+      project({
+        id: 'project-html',
+        name: 'Web Prototype',
+        updatedAt: 3,
+      }),
+    ];
+    const { rerender, container } = render(
+      <RecentProjectsStrip
+        projects={projects}
+        workspaceScopeKey="ws-a"
+        onOpen={onOpen}
+        onViewAll={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.recent-projects__card-glyph')).toBeNull();
+    });
+
+    rerender(
+      <RecentProjectsStrip
+        projects={projects}
+        workspaceScopeKey="ws-b"
+        onOpen={onOpen}
+        onViewAll={() => {}}
+      />,
+    );
+
+    expect(container.querySelector('.recent-projects__card-glyph')).toBeTruthy();
+  });
+
   it('opens deck projects with preview file deep-link', async () => {
     const onOpen = vi.fn();
     const { container } = render(

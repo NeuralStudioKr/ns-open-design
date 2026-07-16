@@ -35,4 +35,20 @@ describe("resolveProjectCoverHint", () => {
       coverVersion: Math.round(st.mtimeMs),
     });
   });
+
+  it("returns html cover from shallow scan when metadata is empty", async () => {
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "od-cover-hint-"));
+    const projectId = "proj-fs-only";
+    const projectDir = path.join(tmpRoot, projectId);
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(path.join(projectDir, "index.html"), "<html></html>", "utf8");
+
+    const hint = await resolveProjectCoverHint(tmpRoot, projectId, { metadata: {} });
+
+    expect(hint).toMatchObject({
+      entryFile: "index.html",
+      coverKind: "html",
+      coverPath: "index.html",
+    });
+  });
 });

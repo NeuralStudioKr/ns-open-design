@@ -4,7 +4,7 @@ import {
   prefetchProjectCoverHintsForProjects,
   projectNeedsCoverFileFetch,
   resolveProjectCoverFiles,
-  resolveProjectCoverOptionsForListSurface,
+  resolveProjectCoverOptionsForHomeSurface,
 } from "./projectCoverLoader";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
@@ -12,8 +12,9 @@ import { isTeamverEmbedMode } from "./designApiBase";
 
 /**
  * Home recent rail covers.
- * Embed design surface: cover-hints only (parity with DesignsTab — no /files fan-out).
- * Standalone: may still use bounded /files fallback when hints miss.
+ * Cover-hints first; when hints miss (registry row not in daemon sqlite), a bounded
+ * `/files` fallback is allowed because HOME_RECENT_LIST_LIMIT caps fan-out.
+ * DesignsTab keeps hints-only policy via resolveProjectCoverOptionsForListSurface.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
@@ -31,9 +32,9 @@ export async function prefetchHomeProjectCovers(
     );
   }
 
-  const listOpts = resolveProjectCoverOptionsForListSurface();
+  const homeOpts = resolveProjectCoverOptionsForHomeSurface();
   return resolveProjectCoverFiles(recent, {
     concurrency: HOME_COVER_FETCH_CONCURRENCY,
-    allowFilesFallback: listOpts.allowFilesFallback ?? true,
+    allowFilesFallback: homeOpts.allowFilesFallback ?? true,
   });
 }

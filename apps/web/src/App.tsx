@@ -1534,7 +1534,9 @@ function AppInner() {
     };
     void syncWorkspace();
     const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
-      setEmbedWorkspaceId(workspaceId.trim() || null);
+      const trimmed = workspaceId.trim() || null;
+      embedActiveWorkspaceIdRef.current = trimmed;
+      setEmbedWorkspaceId(trimmed);
     });
     const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {

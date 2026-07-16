@@ -57,7 +57,7 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     resetProjectCoverLoaderStateForTests();
   });
 
-  it("warmEmbed-style parallel viewport + home prefetch coalesces cover-hints without home /files", async () => {
+  it("warmEmbed-style parallel viewport + home prefetch coalesces cover-hints; home may use bounded /files", async () => {
     const projects = Array.from({ length: 8 }, (_, index) =>
       project(`p${index}`, 100 - index),
     );
@@ -78,10 +78,11 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
     expect(prefetchLatestPublishSummariesMock).toHaveBeenCalledTimes(1);
-    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+    // Home recent caps at HOME_RECENT_LIST_LIMIT (6); DesignsTab stays hints-only.
+    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
   });
 
-  it("home recent prefetch skips /files on embed when cover-hints are empty", async () => {
+  it("home recent prefetch uses bounded /files fallback on embed when cover-hints are empty", async () => {
     const projects = Array.from({ length: 6 }, (_, index) =>
       project(`home-${index}`, 100 - index),
     );
@@ -98,8 +99,11 @@ describe("prefetch cover-hints coalesce (loop 358 · S-6)", () => {
     const covers = await prefetchHomeProjectCovers(projects);
 
     expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
-    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
-    expect(covers["home-0"]).toBeNull();
+    expect(fetchProjectFilesMock).toHaveBeenCalledTimes(6);
+    expect(covers["home-0"]).toEqual({
+      kind: "html",
+      name: "home-0.html",
+    });
   });
 
   it("standalone home recent prefetch may still use bounded /files fallback", async () => {
