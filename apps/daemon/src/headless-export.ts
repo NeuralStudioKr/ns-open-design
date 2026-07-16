@@ -114,7 +114,7 @@ export const DECK_WRAPPER_SELECTOR =
 
 /** Navigation, hints, and non-slide chrome hidden during deck PDF export. */
 export const DECK_CHROME_HIDE_SELECTOR =
-  '.deck-counter, .deck-hint, .deck-nav, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
+  '.deck-counter, .deck-hint, .deck-nav, .nav-hint, #deck-prev, #deck-next, #deck-cur, #deck-total, #nav, #hint, canvas.bg, #overview, [aria-label="Previous slide"], [aria-label="Next slide"]';
 
 function deckSlideSelectorList(): string[] {
   return DECK_SLIDE_SELECTOR.split(',').map((sel) => sel.trim());
@@ -408,21 +408,30 @@ export async function renderHeadlessPdf(
       try {
         await waitForPrintableContent(page);
         await stripLeakedArtifactTextFromPage(page);
+        // Drive publish historically passed deck:false for kind:html decks.
+        // Auto-detect slide stages so PDF still flattens to 1920×1080.
+        let deck = options.input.deck === true;
+        if (!deck) {
+          deck = await pageLooksLikeDeckExport(page);
+          if (deck) {
+            console.warn('[headless-export] deck PDF: auto-detected slide deck despite deck=false');
+          }
+        }
         // Flatten in screen media so getComputedStyle matches the live
         // preview layout; switching to print before reveal forced column
         // flex and white backgrounds from stale @media print rules.
-        const deckSlideCount = options.input.deck ? await revealAllDeckSlides(page) : 0;
-        if (options.input.deck && deckSlideCount === 0) {
+        const deckSlideCount = deck ? await revealAllDeckSlides(page) : 0;
+        if (deck && deckSlideCount === 0) {
           console.warn('[headless-export] deck PDF: no slides matched selector', {
             selector: DECK_SLIDE_SELECTOR,
             title: options.input.title,
           });
         }
-        if (options.input.deck) {
+        if (deck) {
           await page.emulateMedia({ media: 'print' });
         }
-        await applyPdfStyles(page, options.input.deck);
-        const pdf = await page.pdf(deckPdfOptions(options.input.deck, deckSlideCount));
+        await applyPdfStyles(page, deck);
+        const pdf = await page.pdf(deckPdfOptions(deck, deckSlideCount));
         return Buffer.from(pdf);
       } finally {
         await page.close().catch(() => {});
@@ -596,8 +605,15 @@ export async function renderHeadlessHtmlSnapshot(
       try {
         await waitForPrintableContent(page);
         await stripLeakedArtifactTextFromPage(page);
-        if (options.input.deck) {
-          const deckSlideCount = await revealAllDeckSlides(page);
+        let deck = options.input.deck === true;
+        if (!deck) {
+          deck = await pageLooksLikeDeckExport(page);
+        }
+        if (deck) {
+          // HTML downloads must keep .stage / ::before intact. PDF flatten
+          // (display:contents + deco promote) would bake print layout into the
+          // saved HTML and double the grid after finalize restores wrappers.
+          const deckSlideCount = await revealDeckSlidesForHtmlExport(page);
           if (deckSlideCount === 0) {
             console.warn('[headless-export] deck HTML: no slides matched selector', {
               selector: DECK_SLIDE_SELECTOR,
@@ -610,7 +626,7 @@ export async function renderHeadlessHtmlSnapshot(
         }
         await inlineRenderedResources(page);
         let html = await page.content();
-        if (options.input.deck) {
+        if (deck) {
           html = injectSharedDeckHtmlExportViewportScript(html);
         }
         return html;
@@ -1021,6 +1037,10 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       const pageSurfaceBg = resolveSlidePaperBackground();
 
+      // Capture .stage::before grid (etc.) onto slides before display:contents
+      // drops pseudo boxes on wrappers.
+      promoteWrapperBackgroundDecorations(slides);
+
       document.querySelectorAll(args.wrapperSelector).forEach((el) => {
         set(el, 'display', 'contents');
         set(el, 'transform', 'none');
@@ -1029,13 +1049,13 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
 
       set(document.documentElement, 'overflow', 'visible');
       set(document.documentElement, 'width', args.width + 'px');
-      set(document.documentElement, 'background', pageSurfaceBg);
+      set(document.documentElement, 'background-color', pageSurfaceBg);
       set(document.body, 'overflow', 'visible');
       set(document.body, 'display', 'block');
       set(document.body, 'scroll-snap-type', 'none');
       set(document.body, 'transform', 'none');
       set(document.body, 'width', args.width + 'px');
-      set(document.body, 'background', pageSurfaceBg);
+      set(document.body, 'background-color', pageSurfaceBg);
       const totalHeight = slides.length * args.height;
       set(document.documentElement, 'height', totalHeight + 'px');
       set(document.body, 'height', totalHeight + 'px');
@@ -1051,7 +1071,7 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
         set(el, 'height', args.height + 'px');
         set(el, 'min-height', args.height + 'px');
         set(el, 'max-height', args.height + 'px');
-        set(el, 'background', resolveSlidePrintBackground(el));
+        applySlideExportSurface(el, resolveSlidePrintBackground(el));
         set(el, 'visibility', 'visible');
         set(el, 'opacity', '1');
         set(el, 'overflow', 'hidden');
@@ -1070,6 +1090,8 @@ export async function revealAllDeckSlides(page: Page): Promise<number> {
       document
         .querySelectorAll(args.chromeHideSelector)
         .forEach((el) => set(el, 'display', 'none'));
+
+      ensureEmojiFontFallbacks(document);
 
       return {
         count: slides.length,
@@ -1117,6 +1139,50 @@ async function countDeckSlides(page: Page): Promise<number> {
       return slides.length;
     `,
     { selector: DECK_SLIDE_SELECTOR },
+  ).catch(() => 0);
+}
+
+/** True when the document is a slide deck even if the caller passed deck=false. */
+async function pageLooksLikeDeckExport(page: Page): Promise<boolean> {
+  return evaluateInPage<boolean>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector));
+      if (slides.length >= 2) return true;
+      if (slides.length < 1) return false;
+      return Boolean(
+        document.querySelector('.stage, .deck-stage, #deck-stage, .deck, #deck, .deck-shell')
+      );
+    `,
+    { selector: DECK_SLIDE_SELECTOR },
+  ).catch(() => false);
+}
+
+/**
+ * HTML export reveal — show every slide without PDF flatten.
+ * Keeps .stage / ::before so cream paper + graph grid survive in the download.
+ */
+async function revealDeckSlidesForHtmlExport(page: Page): Promise<number> {
+  return evaluateInPage<number>(
+    page,
+    `
+      const slides = Array.from(document.querySelectorAll(args.selector));
+      const set = (el, prop, value) => el.style.setProperty(prop, value, 'important');
+      slides.forEach((el) => {
+        el.classList.add('active');
+        el.removeAttribute('hidden');
+        el.removeAttribute('aria-hidden');
+        set(el, 'opacity', '1');
+        set(el, 'visibility', 'visible');
+        set(el, 'pointer-events', 'auto');
+      });
+      document.querySelectorAll(args.chromeHideSelector).forEach((el) => set(el, 'display', 'none'));
+      return slides.length;
+    `,
+    {
+      selector: DECK_SLIDE_SELECTOR,
+      chromeHideSelector: DECK_CHROME_HIDE_SELECTOR,
+    },
   ).catch(() => 0);
 }
 
@@ -1766,9 +1832,17 @@ function injectTitle(doc: string, title: string): string {
 }
 
 function injectPrintStylesheet(doc: string, css: string): string {
+  // html/body alone is not enough — slide type classes set their own
+  // font-family without emoji fallbacks, so glyphs missing from
+  // Newsreader/Hanken render as tofu in headless Chromium.
   const emojiFontCss = `
 html, body {
   font-family: var(--font-body, var(--font-sans, inherit)), "Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+}
+@font-face {
+  font-family: "Noto Color Emoji";
+  src: local("Noto Color Emoji"), local("NotoColorEmoji");
+  unicode-range: U+1F300-1FAFF, U+2600-27BF, U+FE0F, U+200D, U+20E3;
 }`;
   const tag = `<style data-od-headless-pdf>${css}${emojiFontCss}</style>`;
   if (/<\/head>/i.test(doc)) return doc.replace(/<\/head>/i, `${tag}</head>`);

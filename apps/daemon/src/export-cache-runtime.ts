@@ -113,7 +113,7 @@ export type RunCachedExportOptions = {
    * populated into the cache stores so subsequent (non-`fresh`) callers
    * see the new bytes. Used by FE "새로 생성" affordances after templates
    * update (e.g. PPTX package compatibility parts cached old OOXML
-   * before OD_EXPORT_CACHE_VERSION=v6).
+   * before OD_EXPORT_CACHE_VERSION=v8).
    */
   fresh?: boolean;
 };

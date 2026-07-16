@@ -47,7 +47,7 @@ export function clearPdfExportBlocked(projectId: string): void {
 
 /** Hide follow-up toast actions when PDF export is blocked for this project. */
 export function canOfferAlternateDrivePublishFormat(
-  alternateFormat: "html" | "pdf",
+  alternateFormat: "html" | "pdf" | "pptx",
   projectId: string,
 ): boolean {
   return !(alternateFormat === "pdf" && isPdfExportBlocked(projectId));

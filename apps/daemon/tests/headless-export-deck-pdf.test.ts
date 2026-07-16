@@ -357,14 +357,10 @@ describe('buildDeckPrintCss', () => {
     const css = buildDeckPrintCss();
     expect(css).toContain('@media print');
     expect(css).toContain('.slide:not(.active)');
-    expect(css).toContain('display: flex !important');
-    expect(css).toContain('flex-direction: column !important');
-    expect(css).toContain('.deck');
-    expect(css).toContain('.deck-shell');
-    expect(css).toContain('.deck-stage');
-    expect(css).toContain('#deck');
-    expect(css).toContain('#nav');
-    expect(css).toContain('canvas.bg');
+    expect(css).toContain('display: block !important');
+    // Absolute-layout covers (Cobalt Grid) break if flatten forces column flex.
+    expect(css).not.toMatch(/\n\s*flex-direction:\s*column\s*!important/);
+    expect(css).toContain('.nav-hint');
     expect(css).not.toMatch(/\.deck-stage[^}]*height:\s*auto/);
     expect(css).toContain('page-break-before: avoid !important');
     expect(css).toContain('page-break-after: always !important');
@@ -376,8 +372,7 @@ describe('buildDeckPrintCss', () => {
     expect(screenCss).toBe(flattenRules);
     expect(screenCss).not.toContain('@media print');
     expect(screenCss).toContain('.slide:not(.active)');
-    expect(screenCss).toContain('display: flex !important');
-    expect(screenCss).toContain('flex-direction: column !important');
+    expect(screenCss).toContain('display: block !important');
     expect(screenCss).toContain('background: var(--bg');
     // Paper color (--bg) must appear before frame chrome (--shell) in the
     // fallback chain so a light-theme deck stays light in PDF exports.
@@ -486,6 +481,62 @@ describe('buildDeckPrintCss', () => {
       source.indexOf('async function waitForPrintableContent'),
     );
     expect(revealBlock.match(/buildDeckSlideExportLayoutHelperJs\(\)/g)?.length).toBe(1);
+  });
+
+  it('revealAllDeckSlides promotes wrapper decorations before display:contents', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    const revealBlock = source.slice(
+      source.indexOf('export async function revealAllDeckSlides'),
+      source.indexOf('async function waitForPrintableContent'),
+    );
+    expect(revealBlock).toContain('promoteWrapperBackgroundDecorations(slides)');
+    expect(revealBlock).toContain('applySlideExportSurface(el, resolveSlidePrintBackground(el))');
+    expect(revealBlock).toContain("set(document.documentElement, 'background-color', pageSurfaceBg)");
+    expect(revealBlock).not.toMatch(
+      /set\(document\.documentElement,\s*'background',\s*pageSurfaceBg\)/,
+    );
+    expect(revealBlock).toContain('ensureEmojiFontFallbacks(document)');
+    expect(
+      revealBlock.indexOf('promoteWrapperBackgroundDecorations(slides)'),
+    ).toBeLessThan(revealBlock.indexOf("set(el, 'display', 'contents')"));
+  });
+
+  it('renderHeadlessPdf auto-detects decks when callers pass deck=false', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('pageLooksLikeDeckExport');
+    expect(source).toMatch(
+      /renderHeadlessPdf[\s\S]{0,900}pageLooksLikeDeckExport/,
+    );
+  });
+
+  it('HTML deck export uses light reveal (keeps stage ::before) not PDF flatten', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('revealDeckSlidesForHtmlExport');
+    const htmlBlock = source.slice(
+      source.indexOf('export async function renderHeadlessHtmlSnapshot'),
+      source.indexOf('// Detail collected for each failed launch attempt'),
+    );
+    expect(htmlBlock).toContain('revealDeckSlidesForHtmlExport(page)');
+    expect(htmlBlock).not.toContain('revealAllDeckSlides(page)');
+  });
+
+  it('injectPrintStylesheet appends emoji font fallbacks for custom type stacks', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'headless-export.ts'),
+      'utf8',
+    );
+    expect(source).toContain('Noto Color Emoji');
+    expect(source).toContain('unicode-range');
+    expect(source).toContain('ensureEmojiFontFallbacks');
   });
 
   it('pins deck screenshot clips to the 1920×1080 slide frame', async () => {

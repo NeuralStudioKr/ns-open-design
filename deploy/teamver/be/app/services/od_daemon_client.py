@@ -245,6 +245,53 @@ class OdDaemonClient:
             identity=identity,
         )
 
+    async def get_export_pptx(
+        self,
+        od_project_id: str,
+        artifact_path: str,
+        *,
+        identity: OdDaemonIdentity,
+        title: str | None = None,
+        max_bytes: int | None = None,
+    ) -> bytes:
+        payload: dict[str, object] = {
+            "fileName": artifact_path.strip(),
+            "deck": True,
+        }
+        if title and title.strip():
+            payload["title"] = title.strip()
+        return await self._request_export_bytes(
+            od_project_id,
+            "/export/pptx",
+            payload=payload,
+            accept="application/vnd.openxmlformats-officedocument.presentationml.presentation,*/*",
+            identity=identity,
+            max_bytes=max_bytes,
+        )
+
+    async def request_export_pptx_ticket(
+        self,
+        od_project_id: str,
+        artifact_path: str,
+        *,
+        identity: OdDaemonIdentity,
+        title: str | None = None,
+    ) -> OdExportTicket:
+        payload: dict[str, object] = {
+            "fileName": artifact_path.strip(),
+            "deck": True,
+            "delivery": "ticket",
+        }
+        if title and title.strip():
+            payload["title"] = title.strip()
+        return await self._request_export_ticket(
+            od_project_id,
+            "/export/pptx",
+            payload=payload,
+            accept="application/json",
+            identity=identity,
+        )
+
     async def stream_export_ticket_to_presigned_put(
         self,
         ticket: OdExportTicket,

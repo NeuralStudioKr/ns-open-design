@@ -16,7 +16,12 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 from app.db.models import DesignProject
 from app.errors import BadGatewayError, BadRequestError, UnauthorizedError
 from app.services.od_daemon_client import OdDaemonPresignedPutError, OdExportTicket
-from app.services.publish_service import PublishFormatResult, publish_project
+from app.services.publish_service import (
+    PublishFormatResult,
+    _is_deck_artifact_manifest,
+    _resolve_publish_deck,
+    publish_project,
+)
 
 
 HTML_PAGE_MANIFEST = {
@@ -27,6 +32,83 @@ DECK_MANIFEST = {
     "entryFile": "deck/index.html",
     "artifacts": [{"file": "deck/index.html", "kind": "deck", "renderer": "deck-html"}],
 }
+# Freeform / template decks are often recorded as plain html (Cobalt Grid etc.).
+HTML_KIND_DECK_PATH_MANIFEST = {
+    "entryFile": "decks/shine-muscat.html",
+    "artifacts": [{"file": "decks/shine-muscat.html", "kind": "html"}],
+}
+HTML_KIND_FLAT_MANIFEST = {
+    "entryFile": "index.html",
+    "artifacts": [{"file": "index.html", "kind": "html"}],
+}
+
+
+def test_is_deck_artifact_manifest_html_kind_still_uses_path_heuristics():
+    assert _is_deck_artifact_manifest(HTML_KIND_DECK_PATH_MANIFEST, "decks/shine-muscat.html") is True
+    assert _is_deck_artifact_manifest(HTML_KIND_FLAT_MANIFEST, "index.html") is False
+    # Basename substring must not treat ``mydeck.html`` as a deck path token.
+    assert (
+        _is_deck_artifact_manifest(
+            {"entryFile": "mydeck.html", "artifacts": [{"file": "mydeck.html", "kind": "html"}]},
+            "mydeck.html",
+        )
+        is False
+    )
+
+
+def test_resolve_publish_deck_fe_true_wins_over_html_kind_manifest():
+    assert (
+        _resolve_publish_deck(
+            deck=True,
+            manifest=HTML_KIND_FLAT_MANIFEST,
+            artifact_file="index.html",
+        )
+        is True
+    )
+    assert (
+        _resolve_publish_deck(
+            deck=None,
+            manifest=HTML_KIND_FLAT_MANIFEST,
+            artifact_file="index.html",
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_fe_deck_true_allows_pptx_for_html_kind_slide_artifact():
+    """Embed FE sets deck=true for .slide HTML even when manifest kind is html."""
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = HTML_KIND_FLAT_MANIFEST
+    export_ticket = _export_ticket(
+        filename="index.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        size_bytes=2048,
+    )
+    daemon.request_export_pptx_ticket.return_value = export_ticket
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-PPTX-HTML")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pptx"],
+        artifact_file="index.html",
+        folder_id=None,
+        deck=True,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 201
+    daemon.request_export_pptx_ticket.assert_awaited_once()
 
 
 def _project() -> DesignProject:
@@ -114,11 +196,78 @@ async def test_publish_project_rejects_unsupported_format():
             teamver_client=client,
             access_token="token",
             project=_project(),
-            formats=["pptx"],
+            formats=["zip"],
             artifact_file=None,
             folder_id=None,
             od_daemon=_daemon_mock(),
         )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_rejects_pptx_for_non_deck_html():
+    db = AsyncMock()
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = HTML_PAGE_MANIFEST
+    client = MagicMock()
+
+    with pytest.raises(BadRequestError, match="publish_format_policy_violation:pptx"):
+        await publish_project(
+            db,
+            teamver_client=client,
+            access_token="token",
+            project=_project(),
+            formats=["pptx"],
+            artifact_file="pages/landing.html",
+            folder_id=None,
+            od_daemon=daemon,
+        )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_pptx_uploads_for_deck():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    export_ticket = _export_ticket(
+        filename="Landing Page.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        size_bytes=4096,
+    )
+    daemon.request_export_pptx_ticket.return_value = export_ticket
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-PPTX")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pptx"],
+        artifact_file="deck/index.html",
+        folder_id=None,
+        deck=True,
+        export_title="Q4 Deck",
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 201
+    assert result.outputs[0].kind == "pptx"
+    assert result.outputs[0].publish_status == "ready"
+    daemon.request_export_pptx_ticket.assert_awaited_once_with(
+        "od1",
+        "deck/index.html",
+        identity=ANY,
+        title="Q4 Deck",
+    )
+    assert (
+        teamver_client.drive.create_upload_request.await_args.kwargs["content_type"]
+        == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
 
 
 @pytest.mark.asyncio
@@ -334,6 +483,45 @@ async def test_publish_project_rejects_zip_format():
             folder_id=None,
             od_daemon=daemon,
         )
+
+
+@pytest.mark.asyncio
+async def test_publish_project_fe_deck_true_forces_deck_export_for_html_kind():
+    """kind:html manifests must not drop FE deck=True (Cobalt Grid Drive PDF bug)."""
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = HTML_KIND_FLAT_MANIFEST
+    export_ticket = _export_ticket(size_bytes=len(b"%PDF-1.4 test"))
+    daemon.request_export_pdf_ticket.return_value = export_ticket
+
+    teamver_client = MagicMock()
+    _wire_drive_upload(teamver_client, asset_id="AST-HTML-DECK")
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file="index.html",
+        folder_id=None,
+        deck=True,
+        export_title="Shine Muscat",
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 201
+    daemon.request_export_pdf_ticket.assert_awaited_once_with(
+        "od1",
+        "index.html",
+        identity=ANY,
+        deck=True,
+        title="Shine Muscat",
+    )
 
 
 @pytest.mark.asyncio

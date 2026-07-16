@@ -1,6 +1,6 @@
 import type { DrivePublishFormat } from "./drivePublishMessaging";
 
-const VALID_FORMATS = new Set<DrivePublishFormat>(["html", "pdf"]);
+const VALID_FORMATS = new Set<DrivePublishFormat>(["html", "pdf", "pptx"]);
 
 export function lastPublishFormatStorageKey(
   workspaceId: string | null,

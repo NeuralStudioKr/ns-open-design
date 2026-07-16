@@ -9340,6 +9340,8 @@ function HtmlViewer({
         projectId={projectId}
         artifactFile={file.name}
         exportTitle={exportTitle}
+        deck={effectiveDeck}
+        allowPptx={effectiveDeck}
         initialFormat={drivePublishInitialFormat}
         focusTargetSelectNonce={drivePublishFocusNonce}
         onClose={() => {
@@ -9353,8 +9355,15 @@ function HtmlViewer({
             meta.partial,
             meta.selectedFormat,
           );
-          const alternateLabel = toast.alternateFormat === 'pdf' ? 'PDF' : 'HTML';
-          const offerAlternate = canOfferAlternateDrivePublishFormat(toast.alternateFormat, projectId);
+          const alternateLabel =
+            toast.alternateFormat === 'pdf'
+              ? 'PDF'
+              : toast.alternateFormat === 'html'
+                ? 'HTML'
+                : 'PPTX';
+          const offerAlternate =
+            canOfferAlternateDrivePublishFormat(toast.alternateFormat, projectId)
+            && !(toast.alternateFormat === 'pptx' && !effectiveDeck);
           drivePublishFollowUpRef.current = offerAlternate
             ? () => openDrivePublishModal(toast.alternateFormat)
             : null;

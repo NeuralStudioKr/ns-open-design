@@ -216,6 +216,31 @@ export function TeamverExportMenu({
             </span>
             <span>{driveCopy.menuTitleHtml}</span>
           </button>
+          {showPptxExport ? (
+            <button
+              type="button"
+              className="share-menu-item"
+              role="menuitem"
+              data-testid="teamver-open-publish-drive-modal-pptx"
+              disabled={!canPptx}
+              title={
+                canPptx
+                  ? undefined
+                  : streaming
+                    ? t("fileViewer.exportPptxBusy")
+                    : t("fileViewer.exportPptxNa")
+              }
+              onClick={() => {
+                onCloseMenu();
+                onOpenDrivePublish("pptx");
+              }}
+            >
+              <span className="share-menu-icon">
+                <Icon name="upload" size={15} />
+              </span>
+              <span>{driveCopy.menuTitlePptx}</span>
+            </button>
+          ) : null}
         </>
       ) : null}
       <div className="share-menu-divider" />
