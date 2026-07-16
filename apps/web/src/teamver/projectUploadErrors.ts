@@ -1,0 +1,96 @@
+import { isTeamverEmbedMode } from "./designApiBase";
+import { formatTeamverEmbedOperationFailureMessage } from "./teamverBffAuthError";
+import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
+
+const UPLOAD_AUTH_LOGOUT =
+  "로그인 세션이 만료되어 파일을 업로드하지 못했습니다. 다시 로그인한 뒤 시도하세요.";
+const UPLOAD_AUTH_TRANSIENT =
+  "파일 업로드 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
+
+/** Map upload API error strings (including daemon 401 copy) for embed UI. */
+export function formatProjectUploadFailureDetail(
+  error: string | undefined,
+): string | undefined {
+  const raw = error?.trim();
+  if (!raw) return undefined;
+  if (!isTeamverEmbedMode()) return raw;
+  const err =
+    raw === "teamver_daemon_unauthorized" || /\b401\b/.test(raw)
+      ? new TeamverDaemonUnauthorizedError()
+      : new Error(raw);
+  return formatTeamverEmbedOperationFailureMessage(err, raw, {
+    logoutMessage: UPLOAD_AUTH_LOGOUT,
+    transientMessage: UPLOAD_AUTH_TRANSIENT,
+  });
+}
+
+export function resolveProjectUploadBatchErrorMessage(options: {
+  uploadedCount: number;
+  failedCount: number;
+  error?: string;
+  /** Teamver slide-only embed — always Korean, omit raw English tails unless auth. */
+  slideOnlyMvp?: boolean;
+}): string {
+  const { uploadedCount, failedCount, error, slideOnlyMvp } = options;
+  const formattedError = formatProjectUploadFailureDetail(error);
+  const authSpecific = Boolean(
+    formattedError
+    && formattedError !== error?.trim()
+    && (formattedError.includes("연결") || formattedError.includes("로그인")),
+  );
+
+  if (slideOnlyMvp || isTeamverEmbedMode()) {
+    const prefix =
+      uploadedCount > 0
+        ? `${uploadedCount}개 파일을 첨부했지만 ${failedCount}개는 실패했습니다.`
+        : `파일 ${failedCount}개 첨부에 실패했습니다.`;
+    if (authSpecific && formattedError) {
+      return uploadedCount > 0 ? `${prefix} ${formattedError}` : formattedError;
+    }
+    return prefix;
+  }
+
+  const detail = formattedError ? ` (${formattedError})` : "";
+  return uploadedCount > 0
+    ? `Attached ${uploadedCount} file(s), but ${failedCount} failed${detail}.`
+    : `Attachment upload failed for ${failedCount} file(s)${detail}.`;
+}
+
+export function formatProjectFileManagerUploadError(options: {
+  pickedCount: number;
+  uploadedCount: number;
+  failedCount: number;
+  error?: string;
+}): string {
+  const formattedError = formatProjectUploadFailureDetail(options.error);
+  if (isTeamverEmbedMode()) {
+    const prefix =
+      options.uploadedCount > 0
+        ? `${options.uploadedCount}개 파일을 업로드했지만 ${options.failedCount}개는 실패했습니다.`
+        : `파일 ${options.failedCount}개 업로드에 실패했습니다.`;
+    if (formattedError && (formattedError.includes("연결") || formattedError.includes("로그인"))) {
+      return options.uploadedCount > 0 ? `${prefix} ${formattedError}` : formattedError;
+    }
+    return prefix;
+  }
+  const detail = formattedError ? ` (${formattedError})` : "";
+  return options.uploadedCount > 0
+    ? `Uploaded ${options.uploadedCount} file(s), but ${options.failedCount} failed${detail}.`
+    : `Upload failed for ${options.failedCount} file(s)${detail}.`;
+}
+
+export function formatProjectRenameErrorForUser(err: unknown): string {
+  if (!isTeamverEmbedMode()) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  return formatTeamverEmbedOperationFailureMessage(
+    err,
+    "파일 이름을 변경하지 못했습니다. 잠시 후 다시 시도하세요.",
+    {
+      logoutMessage:
+        "로그인 세션이 만료되어 파일 이름을 변경하지 못했습니다. 다시 로그인한 뒤 시도하세요.",
+      transientMessage:
+        "파일 이름 변경 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+    },
+  );
+}

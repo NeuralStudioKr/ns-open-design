@@ -49,6 +49,7 @@ import {
   notifyTeamverEmbedAuthFailureIfNeeded,
 } from '../teamver/teamverBffAuthError';
 import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
+import { formatProjectUploadFailureDetail } from '../teamver/projectUploadErrors';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { buildDrivePublishToastContent } from '../teamver/drivePublishSuccess';
 import { canOfferAlternateDrivePublishFormat } from '../teamver/drivePublishFormatHealth';
@@ -8226,7 +8227,10 @@ function HtmlViewer({
         const result = await uploadProjectFiles(projectId, [pickedFile]);
         const uploaded = result.uploaded[0];
         if (!uploaded?.path) {
-          setManualEditError(result.error ?? t('manualEdit.uploadImageFailed'));
+          setManualEditError(
+            formatProjectUploadFailureDetail(result.error)
+            ?? t('manualEdit.uploadImageFailed'),
+          );
           return null;
         }
         setManualEditError(null);

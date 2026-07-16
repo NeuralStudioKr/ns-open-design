@@ -112,6 +112,7 @@ import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBa
 import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
 import { loadProjectListPage, loadProjectListSafe, loadProjectsForWorkspaceSwitch, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { formatProjectGetErrorForUser } from './teamver/projectErrorMessages';
+import { resolveProjectUploadBatchErrorMessage } from './teamver/projectUploadErrors';
 import { TeamverDaemonUnauthorizedError } from './teamver/teamverDaemonHeaders';
 import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
@@ -2278,6 +2279,16 @@ function AppInner() {
         const partial = uploadResult.failed.length > 0;
         if (partial) {
           console.warn('Some Home attachments failed to upload', uploadResult.failed);
+          if (isTeamverEmbedMode() && uploadResult.error) {
+            setWorkingDirError(
+              resolveProjectUploadBatchErrorMessage({
+                uploadedCount: uploadResult.uploaded.length,
+                failedCount: uploadResult.failed.length,
+                error: uploadResult.error,
+                slideOnlyMvp: true,
+              }),
+            );
+          }
         }
         trackFileUploadResult(analytics.track, {
           page_name: 'home',

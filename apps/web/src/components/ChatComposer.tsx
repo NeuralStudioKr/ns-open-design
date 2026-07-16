@@ -39,6 +39,7 @@ import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedD
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
+import { resolveProjectUploadBatchErrorMessage } from '../teamver/projectUploadErrors';
 import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
@@ -1511,18 +1512,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
         const partial = result.failed.length > 0;
         if (partial) {
-          const failedCount = result.failed.length;
-          const uploadedCount = result.uploaded.length;
-          const detail =
-            slideOnlyMvp || !result.error ? '' : ` (${result.error})`;
           setUploadError(
-            slideOnlyMvp
-              ? uploadedCount > 0
-                ? `${uploadedCount}개 파일을 첨부했지만 ${failedCount}개는 실패했습니다.`
-                : `파일 ${failedCount}개 첨부에 실패했습니다.`
-              : uploadedCount > 0
-                ? `Attached ${uploadedCount} file(s), but ${failedCount} failed${detail}.`
-                : `Attachment upload failed for ${failedCount} file(s)${detail}.`,
+            resolveProjectUploadBatchErrorMessage({
+              uploadedCount: result.uploaded.length,
+              failedCount: result.failed.length,
+              error: result.error,
+              slideOnlyMvp,
+            }),
           );
           console.warn('Some attachments failed to upload', result.failed);
         }
@@ -1778,12 +1774,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
               if (result.failed.length > 0) {
-                const detailText =
-                  slideOnlyMvp || !result.error ? '' : ` (${result.error})`;
                 setUploadError(
-                  slideOnlyMvp
-                    ? `파일 ${result.failed.length}개 첨부에 실패했습니다.`
-                    : `Attachment upload failed for ${result.failed.length} file(s)${detailText}.`,
+                  resolveProjectUploadBatchErrorMessage({
+                    uploadedCount: uploaded.length,
+                    failedCount: result.failed.length,
+                    error: result.error,
+                    slideOnlyMvp,
+                  }),
                 );
                 if (uploaded.length === 0) {
                   ack({ ok: false, message: t('chat.annotationUploadFailed') });

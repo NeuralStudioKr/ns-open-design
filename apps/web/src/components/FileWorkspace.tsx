@@ -18,6 +18,11 @@ import {
 } from '../analytics/events';
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import {
+  formatProjectFileManagerUploadError,
+  formatProjectRenameErrorForUser,
+} from '../teamver/projectUploadErrors';
 import { isMacPlatform } from '../utils/platform';
 import { collapseArtifactVersionOpenTabs } from './artifact-persist';
 import {
@@ -1053,7 +1058,16 @@ export function FileWorkspace({
       result = await uploadProjectFiles(projectId, picked, uploadDir);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setUploadError(`Upload failed for ${picked.length} file(s) (${detail}).`);
+      setUploadError(
+        isTeamverEmbedMode()
+          ? formatProjectFileManagerUploadError({
+              pickedCount: picked.length,
+              uploadedCount: 0,
+              failedCount: picked.length,
+              error: detail,
+            })
+          : `Upload failed for ${picked.length} file(s) (${detail}).`,
+      );
       trackFileUploadResult(analytics.track, {
         page_name: 'file_manager',
         area: 'file_manager',
@@ -1073,11 +1087,13 @@ export function FileWorkspace({
     if (result.failed.length > 0) {
       const failedCount = result.failed.length;
       const uploadedCount = result.uploaded.length;
-      const detail = result.error ? ` (${result.error})` : '';
       setUploadError(
-        uploadedCount > 0
-          ? `Uploaded ${uploadedCount} file(s), but ${failedCount} failed${detail}.`
-          : `Upload failed for ${failedCount} file(s)${detail}.`,
+        formatProjectFileManagerUploadError({
+          pickedCount: picked.length,
+          uploadedCount,
+          failedCount,
+          error: result.error,
+        }),
       );
       console.warn('Project upload had failures', result.failed);
       trackFileUploadResult(analytics.track, {
@@ -1318,26 +1334,30 @@ export function FileWorkspace({
       );
     }
 
-    const result = await renameProjectFile(projectId, oldName, nextName);
-    const renamed = result.file;
-    await onRefreshFiles();
-    await refreshProjectFolders();
+    try {
+      const result = await renameProjectFile(projectId, oldName, nextName);
+      const renamed = result.file;
+      await onRefreshFiles();
+      await refreshProjectFolders();
 
-    const nextTabs = persistedTabs.map((name) => (name === oldName ? renamed.name : name));
-    const nextActive = tabsState.active === oldName ? renamed.name : tabsState.active;
-    onTabsStateChange(workspaceTabsState(nextTabs, nextActive));
-    if (activeTab === oldName) setActiveTab(renamed.name);
+      const nextTabs = persistedTabs.map((name) => (name === oldName ? renamed.name : name));
+      const nextActive = tabsState.active === oldName ? renamed.name : tabsState.active;
+      onTabsStateChange(workspaceTabsState(nextTabs, nextActive));
+      if (activeTab === oldName) setActiveTab(renamed.name);
 
-    setSketches((curr) => {
-      const entry = curr[oldName];
-      if (!entry) return curr;
-      const next = { ...curr };
-      delete next[oldName];
-      next[renamed.name] = entry;
-      return next;
-    });
+      setSketches((curr) => {
+        const entry = curr[oldName];
+        if (!entry) return curr;
+        const next = { ...curr };
+        delete next[oldName];
+        next[renamed.name] = entry;
+        return next;
+      });
 
-    return renamed;
+      return renamed;
+    } catch (err) {
+      throw new Error(formatProjectRenameErrorForUser(err));
+    }
   }
 
   function startNewSketch() {
