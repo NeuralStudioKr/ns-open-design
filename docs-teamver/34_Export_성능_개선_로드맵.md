@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-16 | Export offload fallback 진단 보강 — ticket 생성 응답에 `offloadReason`을 추가해 200 stream fallback이 `missing_teamver_identity_headers`, S3 disabled/failed 등 어떤 이유인지 Network 탭에서 즉시 확인 가능하게 함 |
 | 2026-07-16 | Export offload filePath cache hit 보강 — local export cache hit처럼 `body` 없이 `filePath`만 있는 결과도 S3 size hit를 먼저 확인하고, miss일 때 파일을 읽어 업로드하도록 변경. `/export/downloads/:token` 200 stream fallback만 발생하던 cache-hit 경로를 302 redirect 대상으로 확장 |
 | 2026-07-16 | staging export offload env 활성화 — `.env.staging` / `.env.staging.example`에 `OD_EXPORT_OFFLOAD_ENABLED=1`, staging bucket/region, `PREFIX=exports`, `PRESIGN_TTL=300` 반영 |
 | 2026-07-15 | Export ticket presigned GET redirect 연결 — offload `uploaded|hit` ticket만 `deliveryMode=redirect`로 저장하고, GET `/export/downloads/:token`에서 single-use claim 후 S3 presigned URL로 302. presign 실패 시 기존 stream 다운로드로 fail-open |

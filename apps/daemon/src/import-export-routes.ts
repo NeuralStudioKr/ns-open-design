@@ -150,6 +150,7 @@ async function respondExportPayload(
     offloadKey?: string;
     offloadEnabled?: true;
     offloadStatus?: string;
+    offloadReason?: string;
     ticket: boolean;
   },
 ): Promise<void> {
@@ -180,6 +181,7 @@ async function respondExportPayload(
       ...(options.offloadEnabled ? { offloadEnabled: true } : {}),
       ...(options.offloadKey ? { offloadKey: options.offloadKey } : {}),
       ...(options.offloadStatus ? { offloadStatus: options.offloadStatus } : {}),
+      ...(options.offloadReason ? { offloadReason: options.offloadReason } : {}),
       ...(options.cache ? { cache: options.cache } : {}),
       expiresAt: new Date(entry.expiresAt).toISOString(),
     });
@@ -223,32 +225,31 @@ function outcomeAsRespondPayload(
   };
 }
 
-function exportOffloadKeyForRequest(
+function exportOffloadPayloadForRequest(
   req: Request,
   outcome: ExportCacheOutcome,
-): string | undefined {
-  if (!isExportOffloadEnabled()) return undefined;
+): Promise<
+  | { offloadEnabled: true; offloadKey?: string; offloadStatus: string; offloadReason?: string }
+  | Record<string, never>
+> {
+  if (!isExportOffloadEnabled()) return Promise.resolve({});
   const identity = readTeamverIdentityFromRequest(req);
-  if (!identity) return undefined;
-  return buildExportOffloadObjectKey({
+  if (!identity) {
+    return Promise.resolve({
+      offloadEnabled: true,
+      offloadStatus: 'skipped_missing_identity',
+      offloadReason: 'missing_teamver_identity_headers',
+    });
+  }
+  const offloadKey = buildExportOffloadObjectKey({
     workspaceId: identity.workspaceId,
     projectId: String(req.params.id ?? ''),
     cacheKey: outcome.key,
     filename: outcome.filename,
   });
-}
-
-function exportOffloadPayloadForRequest(
-  req: Request,
-  outcome: ExportCacheOutcome,
-): Promise<
-  | { offloadEnabled: true; offloadKey: string; offloadStatus: string }
-  | Record<string, never>
-> {
-  const offloadKey = exportOffloadKeyForRequest(req, outcome);
-  if (!offloadKey) return Promise.resolve({});
   return (async () => {
     let offloadStatus = 'skipped_no_payload';
+    let offloadReason: string | undefined;
     let result:
       | Awaited<ReturnType<typeof putExportOffloadObject>>
       | Awaited<ReturnType<typeof putExportOffloadFileObject>>
@@ -264,17 +265,25 @@ function exportOffloadPayloadForRequest(
     }
     if (result) {
       offloadStatus = result.status;
+      if (result.status === 'failed') offloadReason = result.reason;
+      if (result.status === 'disabled') offloadReason = result.reason;
       console.info(
         JSON.stringify({
           metric: 'od_export_offload_put',
           projectId: req.params.id,
           status: result.status,
+          ...(offloadReason ? { reason: offloadReason } : {}),
           cache: outcome.cache,
           bytes: outcome.bytes,
         }),
       );
     }
-    return { offloadEnabled: true, offloadKey, offloadStatus };
+    return {
+      offloadEnabled: true,
+      offloadKey,
+      offloadStatus,
+      ...(offloadReason ? { offloadReason } : {}),
+    };
   })();
 }
 
