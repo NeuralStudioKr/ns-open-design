@@ -4605,65 +4605,77 @@ function HtmlViewer({
         : '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.';
       setExportToast({ message, tone: 'error' });
     };
-    try {
-      if (toastFormats.has(format)) {
-        setExportToast({ message: exportInProgressMessage, tone: 'loading' });
-      }
-      const showResultToast = (result: unknown) => {
-        if (!toastFormats.has(format)) return;
-        // PDF's `'fallback'` result means the daemon export failed and
-        // the browser print dialog was opened instead. Users won't
-        // receive an automatic file download in that case, so the
-        // success-y "PDF 다운로드 완료" copy is misleading — surface a
-        // dedicated notice that tells them to pick "Save as PDF" in
-        // their browser's print dialog.
-        if (format === 'pdf' && result === 'fallback') {
-          setExportToast({
-            message: t('fileViewer.exportPdfBrowserPrintFallback'),
-            tone: 'default',
-            // Extended lifetime: the copy asks users to interact with
-            // the browser print dialog, so the toast must outlive the
-            // ~2.2s success flash and remain visible until they read it.
-            ttlMs: 9000,
-          });
-          return;
+    if (toastFormats.has(format)) {
+      setExportToast({ message: exportInProgressMessage, tone: 'loading' });
+    }
+    const runExport = () => {
+      try {
+        const showResultToast = (result: unknown) => {
+          if (!toastFormats.has(format)) return;
+          // PDF's `'fallback'` result means the daemon export failed and
+          // the browser print dialog was opened instead. Users won't
+          // receive an automatic file download in that case, so the
+          // success-y "PDF 다운로드 완료" copy is misleading — surface a
+          // dedicated notice that tells them to pick "Save as PDF" in
+          // their browser's print dialog.
+          if (format === 'pdf' && result === 'fallback') {
+            setExportToast({
+              message: t('fileViewer.exportPdfBrowserPrintFallback'),
+              tone: 'default',
+              // Extended lifetime: the copy asks users to interact with
+              // the browser print dialog, so the toast must outlive the
+              // ~2.2s success flash and remain visible until they read it.
+              ttlMs: 9000,
+            });
+            return;
+          }
+          setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
+        };
+        const out = fn();
+        if (out && typeof (out as Promise<unknown>).then === 'function') {
+          beginTeamverEmbedActiveWork();
+          (out as Promise<unknown>)
+            .finally(() => {
+              endTeamverEmbedActiveWork();
+            })
+            .then(
+              (result) => {
+                if (result === 'cancelled') {
+                  finish('cancelled');
+                  if (toastFormats.has(format)) setExportToast(null);
+                  return;
+                }
+                finish('success');
+                showResultToast(result);
+              },
+              (err) => {
+                finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+                showExportFailureToast(err);
+              },
+            );
+        } else {
+          if (out === 'cancelled') {
+            finish('cancelled');
+            if (toastFormats.has(format)) setExportToast(null);
+            return;
+          }
+          finish('success');
+          showResultToast(out);
         }
-        setExportToast({ message: exportSuccessToastMessage(format, t), tone: 'default' });
-      };
-      const out = fn();
-      if (out && typeof (out as Promise<unknown>).then === 'function') {
-        beginTeamverEmbedActiveWork();
-        (out as Promise<unknown>)
-          .finally(() => {
-            endTeamverEmbedActiveWork();
-          })
-          .then(
-            (result) => {
-              if (result === 'cancelled') {
-                finish('cancelled');
-                if (toastFormats.has(format)) setExportToast(null);
-                return;
-              }
-              finish('success');
-              showResultToast(result);
-            },
-            (err) => {
-              finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
-              showExportFailureToast(err);
-            },
-          );
-      } else {
-        if (out === 'cancelled') {
-          finish('cancelled');
-          if (toastFormats.has(format)) setExportToast(null);
-          return;
-        }
-        finish('success');
-        showResultToast(out);
+      } catch (err) {
+        finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+        showExportFailureToast(err);
       }
-    } catch (err) {
-      finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
-      showExportFailureToast(err);
+    };
+    // Let React paint the closed menu + loading toast before expensive
+    // export preparation starts. Otherwise the click can feel ignored while
+    // headless export ticket creation or HTML snapshot work begins.
+    if (!toastFormats.has(format)) {
+      runExport();
+    } else if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(runExport);
+    } else {
+      window.setTimeout(runExport, 0);
     }
   };
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
