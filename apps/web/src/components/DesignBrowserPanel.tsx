@@ -27,6 +27,8 @@ import {
   writeProjectTextFile,
 } from '../providers/registry';
 import { useT } from '../i18n';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { formatProjectPassiveSaveFailureForUser } from '../teamver/projectUploadErrors';
 import type { Dict } from '../i18n/types';
 import { captureHostRegionSnapshot } from '../runtime/exports';
 import { buildBoardCommentAttachments, commentsToAttachments } from '../comments';
@@ -1288,7 +1290,13 @@ export function DesignBrowserPanel({
         browserFileName('browser-capture', currentUrl, 'png'),
         base64,
       );
-      if (!file) throw new Error('screenshot save failed');
+      if (!file) {
+        if (isTeamverEmbedMode()) {
+          setStatusMessage(formatProjectPassiveSaveFailureForUser('스크린샷 저장'));
+          return;
+        }
+        throw new Error('screenshot save failed');
+      }
       await onRefreshFiles();
       // Stay on the browser so the confirmation toast is visible and the page
       // remains in view; the capture is reachable from Design Files. Show

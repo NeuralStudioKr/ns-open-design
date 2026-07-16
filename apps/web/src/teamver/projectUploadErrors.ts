@@ -131,6 +131,20 @@ export function formatProjectDeployErrorForUser(err: unknown, fallback: string):
   });
 }
 
+/** Passive-auth companion when mutating save APIs return null/false without detail. */
+export function formatProjectPassiveSaveFailureForUser(
+  actionLabel: string,
+): string {
+  if (!isTeamverEmbedMode()) {
+    return `${actionLabel} failed.`;
+  }
+  const logoutMessage =
+    `로그인 세션이 만료되어 ${actionLabel}에 실패했습니다. 다시 로그인한 뒤 시도하세요.`;
+  const transientMessage =
+    `${actionLabel} 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.`;
+  return formatTeamverEmbedAuthRequiredMessage(logoutMessage, transientMessage);
+}
+
 /** Passive-auth companion copy when file delete returns false in embed. */
 export function formatProjectDeleteFailureForUser(failedCount = 1): string {
   if (!isTeamverEmbedMode()) {
@@ -144,4 +158,29 @@ export function formatProjectDeleteFailureForUser(failedCount = 1): string {
       : "로그인 세션이 만료되어 파일을 삭제하지 못했습니다. 다시 로그인한 뒤 시도하세요.";
   const transientMessage = "파일 삭제 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
   return formatTeamverEmbedAuthRequiredMessage(logoutMessage, transientMessage);
+}
+
+/** Image export modal errors — prefer auth-aware Korean copy in embed. */
+export function formatProjectImageExportErrorForUser(
+  detail: string | null | undefined,
+  fallback: string,
+): string {
+  if (!isTeamverEmbedMode()) {
+    return detail ? `${fallback}\n(${detail})` : fallback;
+  }
+  if (detail && (detail.includes("연결") || detail.includes("로그인"))) {
+    return detail;
+  }
+  const normalizedErr =
+    detail && (detail === "teamver_daemon_unauthorized" || /\b401\b/.test(detail))
+      ? new TeamverDaemonUnauthorizedError()
+      : detail
+        ? new Error(detail)
+        : null;
+  return formatTeamverEmbedOperationFailureMessage(normalizedErr ?? fallback, fallback, {
+    logoutMessage:
+      "로그인 세션이 만료되어 이미지 내보내기에 실패했습니다. 다시 로그인한 뒤 시도하세요.",
+    transientMessage:
+      "이미지 내보내기 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+  });
 }

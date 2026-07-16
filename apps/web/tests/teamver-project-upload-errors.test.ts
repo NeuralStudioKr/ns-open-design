@@ -16,6 +16,8 @@ import {
   throwIfProjectCommentUploadIncomplete,
   formatProjectDeployErrorForUser,
   formatProjectDeleteFailureForUser,
+  formatProjectImageExportErrorForUser,
+  formatProjectPassiveSaveFailureForUser,
 } from "../src/teamver/projectUploadErrors";
 
 describe("projectUploadErrors", () => {
@@ -57,5 +59,18 @@ describe("projectUploadErrors", () => {
 
   it("formatProjectDeleteFailureForUser uses retry-first copy while session memory is true", () => {
     expect(formatProjectDeleteFailureForUser(2)).toContain("연결");
+  });
+
+  it("formatProjectPassiveSaveFailureForUser uses retry-first copy", () => {
+    expect(formatProjectPassiveSaveFailureForUser("스크린샷 저장")).toContain("연결");
+  });
+
+  it("formatProjectImageExportErrorForUser maps export 401 detail", () => {
+    expect(
+      formatProjectImageExportErrorForUser(
+        "export image 401",
+        "Export failed",
+      ),
+    ).toContain("연결");
   });
 });
