@@ -110,7 +110,7 @@ import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './t
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
 import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
-import { loadProjectListPage, loadProjectListSafe, loadRecentProjectsForHome } from './teamver/loadProjectList';
+import { loadProjectListPage, loadProjectListSafe, loadProjectsForWorkspaceSwitch, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import {
@@ -198,6 +198,7 @@ import {
   listTemplates,
   deleteTemplate,
   patchProject,
+  clearListRecentProjectsInflight,
 } from './state/projects';
 import { useModalWindowDragGuard } from './hooks/useModalWindowDragGuard';
 import type {
@@ -1673,6 +1674,7 @@ function AppInner() {
       pendingLocalProjectIdsRef.current.clear();
       locallyDeletedProjectIdsRef.current.clear();
       clearTeamverEmbedListCaches();
+      clearListRecentProjectsInflight();
       projectsPageLoadedRef.current = false;
       projectsNextCursorRef.current = null;
       // Keep previous cards visible until the new workspace list arrives —
@@ -1700,16 +1702,24 @@ function AppInner() {
           }
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
-          const result = await loadProjectListPage();
+          const onHome = routeRef.current.kind === 'home';
+          // Home recent rail uses registry-window + status-hints; projects tab
+          // uses paginated registry. Match the surface the user is looking at.
+          const result = await loadProjectsForWorkspaceSwitch({ homeRecent: onHome });
+          if (isStaleProjectListWorkspace(request)) {
+            return;
+          }
           if (!result.ok) {
             projectsPageLoadedRef.current = false;
+            // Do not leave the previous tenant's cards painted after a failed switch.
+            setProjects([]);
+            setProjectsHasMore(false);
             setWorkingDirError(result.errorMessage);
             return;
           }
           projectsPageLoadedRef.current = true;
           applyProjectsPageResult(result, request, 'replace');
           setWorkingDirError(null);
-          warmEmbedProjectListCaches(result.projects);
           window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
           const current = routeRef.current;
           if (shouldNavigateHomeAfterWorkspaceProjectList(current, result.projects)) {
@@ -1745,6 +1755,7 @@ function AppInner() {
     applyProjectsPageResult,
     beginProjectListRequest,
     isSessionTrustedEmbedProject,
+    isStaleProjectListWorkspace,
     reloadTeamverRuntimeConfig,
   ]);
 

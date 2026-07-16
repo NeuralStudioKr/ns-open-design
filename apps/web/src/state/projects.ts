@@ -230,6 +230,12 @@ export function resetListRecentProjectsInflightForTests(): void {
   listRecentProjectsInflight.clear();
 }
 
+/** Drop coalesced recent fetches — call on workspace switch so the next home
+ * rail load cannot reuse another tenant's in-flight promise. */
+export function clearListRecentProjectsInflight(): void {
+  listRecentProjectsInflight.clear();
+}
+
 export async function listProjectsPage(options?: {
   limit?: number;
   cursor?: string | null;

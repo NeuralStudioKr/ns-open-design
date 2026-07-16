@@ -1,11 +1,9 @@
 import {
   fetchDesignAuthSession,
   getDesignBffClient,
-  readCachedDesignAuthSessionMeta,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
-import { readTeamverWorkspaceStoreRevisionMs } from "./teamverWorkspaceStoreRevision";
 import { normalizeWorkspaceList, readWorkspaceId } from "./workspaceUtils";
 
 /**
@@ -14,11 +12,12 @@ import { normalizeWorkspaceList, readWorkspaceId } from "./workspaceUtils";
  * Trust the embed-local store whenever it still exists on the session list.
  * Do not reconcile to `session.defaultWorkspaceId` on routine reads — that
  * account default often differs from the workspace the user is actively
- * working in and was firing `workspace-changed` mid-project (e.g. during the
- * first-turn question form), wiping the list and bouncing to home.
+ * working in. Hard refresh used to re-fetch `/auth/session` (new `fetchedAt`)
+ * and snap back to the account default, wiping the user's explicit pick.
  *
  * Explicit workspace picks and parent-app switches go through
- * `setActiveTeamverWorkspace` / `syncTeamverWorkspaceFromSession` dispatch paths.
+ * `setActiveTeamverWorkspace` / `syncTeamverWorkspaceFromSession` dispatch paths
+ * (URL `workspace_id` / preferredIdOverride on boot).
  */
 export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> {
   const client = getDesignBffClient();
@@ -42,27 +41,6 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
   const workspaces = normalizeWorkspaceList(session.workspaces);
 
   if (storeId && workspaces.some((workspace) => readWorkspaceId(workspace) === storeId)) {
-    const defaultWorkspaceId = session.defaultWorkspaceId?.trim() || null;
-    if (
-      defaultWorkspaceId
-      && storeId !== defaultWorkspaceId
-      && workspaces.some((workspace) => readWorkspaceId(workspace) === defaultWorkspaceId)
-    ) {
-      const sessionMeta = readCachedDesignAuthSessionMeta();
-      const embedRevision = readTeamverWorkspaceStoreRevisionMs();
-      if (
-        sessionMeta
-        && sessionMeta.defaultWorkspaceId === defaultWorkspaceId
-        && sessionMeta.fetchedAt > embedRevision
-      ) {
-        return (
-          await syncTeamverWorkspaceFromSession(session, workspaces, {
-            preferredIdOverride: defaultWorkspaceId,
-            preserveStoredWorkspace: false,
-          })
-        )?.trim() || storeId;
-      }
-    }
     return storeId;
   }
 

@@ -70,3 +70,31 @@ export async function loadProjectListSafe(): Promise<LoadProjectListResult> {
     return mapProjectListError(err);
   }
 }
+
+/**
+ * Workspace switch reload — home uses recent rail SSOT; projects tab uses
+ * paginated registry. Normalizes both to `LoadProjectListPageResult`.
+ */
+export async function loadProjectsForWorkspaceSwitch(options?: {
+  homeRecent?: boolean;
+}): Promise<LoadProjectListPageResult> {
+  if (options?.homeRecent) {
+    const recent = await loadRecentProjectsForHome();
+    if (!recent.ok) {
+      return {
+        ok: false,
+        errorMessage: recent.errorMessage,
+        projects: [],
+        hasMore: false,
+        nextCursor: null,
+      };
+    }
+    return {
+      ok: true,
+      projects: recent.projects,
+      hasMore: false,
+      nextCursor: null,
+    };
+  }
+  return loadProjectListPage();
+}

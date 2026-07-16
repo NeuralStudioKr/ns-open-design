@@ -13,12 +13,22 @@ describe("embed workspace switch side effects", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
-    const block = app.slice(start, start + 2800);
-    expect(block).toContain("loadProjectListPage()");
+    const block = app.slice(start, start + 4500);
+    expect(block).toContain("loadProjectsForWorkspaceSwitch");
+    expect(block).toContain("homeRecent: onHome");
+    expect(block).toContain("isStaleProjectListWorkspace(request)");
     expect(block).toContain("setWorkingDirError(null)");
     expect(block).toContain("applyProjectsPageResult");
     expect(block).toContain("setProjectsRefreshing(true)");
-    expect(block).not.toContain("setProjects([])");
+    expect(block).toContain("clearListRecentProjectsInflight()");
+    expect(block).not.toMatch(/setProjects\(\[\]\);\s*\n\s*setProjectsHasMore\(false\);\s*\n\s*setProjectsLoading/);
+  });
+
+  it("clears previous-tenant cards when workspace switch list reload fails", () => {
+    const app = readSource("src/App.tsx");
+    const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
+    const block = app.slice(start, start + 4500);
+    expect(block).toMatch(/if \(!result\.ok\) \{[\s\S]*setProjects\(\[\]\)/);
   });
 
   it("clears embed list caches (registry·cover·publish chip) on workspace switch", () => {
@@ -115,7 +125,7 @@ describe("embed workspace switch side effects", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
-    const block = app.slice(start, start + 3200);
+    const block = app.slice(start, start + 4500);
     expect(block).toContain("shouldSkipWorkspaceSwitchSideEffects");
     expect(block).toContain("capturePreWorkspaceSwitchProjectGuards");
     expect(block).toContain("setBackgroundRunSummaries([])");

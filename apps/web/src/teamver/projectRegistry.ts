@@ -110,6 +110,8 @@ let registryListCache: {
 let registryListFetchEpoch = 0;
 let syncAllInflight: Promise<void> | null = null;
 let syncAllAt = 0;
+/** Workspace id of the last completed (or in-flight) syncAll run. */
+let syncAllWorkspaceId: string | null = null;
 
 /** Embed list gates — wait for in-flight legacy registry sync before filtering. */
 export async function waitForTeamverRegistrySyncIfNeeded(): Promise<void> {
@@ -204,6 +206,7 @@ export function resetTeamverProjectRegistryStateForTests(): void {
   invalidateTeamverProjectRegistryCaches();
   syncAllInflight = null;
   syncAllAt = 0;
+  syncAllWorkspaceId = null;
 }
 
 export function buildTeamverProjectRegistryPayload(
@@ -355,9 +358,22 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   const now = Date.now();
   if (syncAllInflight) {
     await syncAllInflight;
+  }
+  if (
+    syncAllWorkspaceId === workspaceId
+    && now - syncAllAt < SYNC_ALL_MIN_INTERVAL_MS
+  ) {
     return;
   }
-  if (now - syncAllAt < SYNC_ALL_MIN_INTERVAL_MS) return;
+  if (syncAllInflight) {
+    await syncAllInflight;
+    if (
+      syncAllWorkspaceId === workspaceId
+      && Date.now() - syncAllAt < SYNC_ALL_MIN_INTERVAL_MS
+    ) {
+      return;
+    }
+  }
 
   syncAllInflight = (async () => {
     const registeredIds = await listTeamverRegisteredProjectIds();
@@ -375,6 +391,7 @@ export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
       ),
     );
     invalidateRegisteredIdsCache();
+    syncAllWorkspaceId = workspaceId;
     syncAllAt = Date.now();
   })().finally(() => {
     syncAllInflight = null;
