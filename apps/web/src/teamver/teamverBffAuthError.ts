@@ -2,6 +2,8 @@ import { NetworkError } from "@teamver/app-sdk";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
+import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
+import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 /**
@@ -52,6 +54,73 @@ export function formatTeamverEmbedAuthRequiredMessage(
 ): string {
   if (!isTeamverEmbedMode()) return logoutMessage;
   return isTeamverEmbedSessionAuthenticated() ? transientMessage : logoutMessage;
+}
+
+export function isTeamverDaemonUnauthorizedError(err: unknown): err is TeamverDaemonUnauthorizedError {
+  return err instanceof TeamverDaemonUnauthorizedError;
+}
+
+/** User-facing copy for export/save/conversation failures after auth recovery. */
+export function formatTeamverEmbedOperationFailureMessage(
+  err: unknown,
+  fallback: string,
+  options?: {
+    logoutMessage?: string;
+    transientMessage?: string;
+  },
+): string {
+  const logoutMessage =
+    options?.logoutMessage
+    ?? "로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도하세요.";
+  const transientMessage = options?.transientMessage ?? TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE;
+
+  if (isTeamverDaemonUnauthorizedError(err) || isTeamverBffUnauthorizedError(err)) {
+    return formatTeamverEmbedAuthRequiredMessage(logoutMessage, transientMessage);
+  }
+
+  if (err instanceof Error) {
+    const message = err.message.trim();
+    if (message) {
+      if (
+        message.includes("연결을 확인하지 못했습니다")
+        || message.includes("로그인 세션이 만료")
+      ) {
+        return message;
+      }
+      if (
+        message === "teamver_daemon_unauthorized"
+        || /\b401\b.*unauthorized/i.test(message)
+        || /\bsession_expired\b/i.test(message)
+      ) {
+        return formatTeamverEmbedAuthRequiredMessage(logoutMessage, transientMessage);
+      }
+      return message;
+    }
+  }
+
+  return fallback;
+}
+
+/** Surface passive-auth recovery when a mutating/export path still sees auth loss. */
+export function notifyTeamverEmbedAuthFailureIfNeeded(
+  err: unknown,
+  reason: "daemon" | "bff",
+): void {
+  if (!isTeamverEmbedMode()) return;
+  if (isTeamverDaemonUnauthorizedError(err) || isTeamverBffUnauthorizedError(err)) {
+    handleEmbedPassiveUnauthorized(reason);
+    return;
+  }
+  if (err instanceof Error) {
+    const message = err.message.trim();
+    if (
+      message === "teamver_daemon_unauthorized"
+      || /\b401\b.*unauthorized/i.test(message)
+      || /\bsession_expired\b/i.test(message)
+    ) {
+      handleEmbedPassiveUnauthorized(reason);
+    }
+  }
 }
 
 /** Apply relogin vs retry-first UI for BFF 401 catch blocks. Returns true when handled. */

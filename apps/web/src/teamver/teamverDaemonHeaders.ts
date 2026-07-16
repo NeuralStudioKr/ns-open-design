@@ -8,6 +8,22 @@ import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3Prefix
 /** HA sibling Set-Cookie race — mirror BFF/Drive soft retry delay. */
 const DAEMON_AUTH_RETRY_DELAY_MS = 150;
 
+/** Thrown when embed daemon `/api/*` still returns 401 after cookie recovery. */
+export class TeamverDaemonUnauthorizedError extends Error {
+  readonly code = "TEAMVER_DAEMON_UNAUTHORIZED";
+
+  constructor() {
+    super("teamver_daemon_unauthorized");
+    this.name = "TeamverDaemonUnauthorizedError";
+  }
+}
+
+export function throwIfDaemonUnauthorized(resp: Response): void {
+  if (resp.status === 401) {
+    throw new TeamverDaemonUnauthorizedError();
+  }
+}
+
 const DAEMON_PROJECT_ID_RE =
   /\/api\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 

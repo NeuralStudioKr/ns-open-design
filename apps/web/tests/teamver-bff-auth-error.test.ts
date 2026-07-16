@@ -2,9 +2,10 @@
 import { NetworkError } from "@teamver/app-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { redirectMock, resolveReturnMock } = vi.hoisted(() => ({
+const { redirectMock, resolveReturnMock, passiveAuthMock } = vi.hoisted(() => ({
   redirectMock: vi.fn(),
   resolveReturnMock: vi.fn((pathname: string, search = "") => `${pathname}${search}`),
+  passiveAuthMock: vi.fn(),
 }));
 
 vi.mock("../src/teamver/designAuthFlow", () => ({
@@ -31,7 +32,16 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
 }));
 
+vi.mock("../src/teamver/teamverEmbedPassiveAuth", () => ({
+  handleEmbedPassiveUnauthorized: passiveAuthMock,
+}));
+
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
+import { TeamverDaemonUnauthorizedError } from "../src/teamver/teamverDaemonHeaders";
+import {
+  formatTeamverEmbedOperationFailureMessage,
+  notifyTeamverEmbedAuthFailureIfNeeded,
+} from "../src/teamver/teamverBffAuthError";
 
 describe("isTeamverBffUnauthorizedError", () => {
   it("matches SDK NetworkError with status 401", () => {
@@ -127,6 +137,50 @@ describe("classifyTeamverBffAuthFailure", () => {
     expect(
       formatTeamverEmbedAuthRequiredMessage("로그인 세션이 만료되었습니다."),
     ).toContain("연결");
+  });
+});
+
+describe("formatTeamverEmbedOperationFailureMessage", () => {
+  beforeEach(() => {
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+  });
+
+  it("maps daemon unauthorized errors to transient copy while authenticated", () => {
+    expect(
+      formatTeamverEmbedOperationFailureMessage(
+        new TeamverDaemonUnauthorizedError(),
+        "fallback",
+        { logoutMessage: "logout", transientMessage: "transient" },
+      ),
+    ).toBe("transient");
+  });
+
+  it("preserves already-formatted export auth messages", () => {
+    expect(
+      formatTeamverEmbedOperationFailureMessage(
+        new Error("내보내기 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요."),
+        "fallback",
+      ),
+    ).toContain("연결");
+  });
+});
+
+describe("notifyTeamverEmbedAuthFailureIfNeeded", () => {
+  beforeEach(() => {
+    passiveAuthMock.mockReset();
+  });
+
+  it("notifies passive auth recovery for daemon unauthorized errors", () => {
+    notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), "daemon");
+    expect(passiveAuthMock).toHaveBeenCalledWith("daemon");
+  });
+
+  it("notifies passive auth recovery for BFF 401 errors", () => {
+    notifyTeamverEmbedAuthFailureIfNeeded(
+      new NetworkError({ status: 401, message: "unauth" }),
+      "bff",
+    );
+    expect(passiveAuthMock).toHaveBeenCalledWith("bff");
   });
 });
 

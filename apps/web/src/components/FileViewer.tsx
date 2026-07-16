@@ -44,6 +44,10 @@ import {
 import { TEAMVER_DRIVE_ASSET_LINK_LABEL } from '../teamver/teamverDriveDeepLink';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatTeamverDesignErrorMessage } from '../teamver/publishToDrive';
+import {
+  formatTeamverEmbedOperationFailureMessage,
+  notifyTeamverEmbedAuthFailureIfNeeded,
+} from '../teamver/teamverBffAuthError';
 import { buildDrivePublishToastContent } from '../teamver/drivePublishSuccess';
 import { canOfferAlternateDrivePublishFormat } from '../teamver/drivePublishFormatHealth';
 import type { DrivePublishFormat } from '../teamver/drivePublishMessaging';
@@ -4600,9 +4604,15 @@ function HtmlViewer({
     const exportInProgressMessage = exportInProgressToastMessage(format, t);
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
-      const message = err instanceof Error && err.message.trim()
-        ? err.message.trim()
-        : '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.';
+      notifyTeamverEmbedAuthFailureIfNeeded(err, 'daemon');
+      const message = formatTeamverEmbedOperationFailureMessage(
+        err,
+        '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.',
+        {
+          logoutMessage: '로그인 세션이 만료되어 내보내기에 실패했습니다. 다시 로그인한 뒤 시도하세요.',
+          transientMessage: '내보내기 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.',
+        },
+      );
       setExportToast({ message, tone: 'error' });
     };
     if (toastFormats.has(format)) {

@@ -45,7 +45,7 @@ import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
-import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { fetchTeamverDaemon, throwIfDaemonUnauthorized, TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import {
   HOME_RECENT_LIST_LIMIT,
@@ -584,13 +584,7 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 // ---------- conversations ----------
 
-export class TeamverDaemonUnauthorizedError extends Error {
-  readonly code = 'TEAMVER_DAEMON_UNAUTHORIZED';
-  constructor() {
-    super('teamver_daemon_unauthorized');
-    this.name = 'TeamverDaemonUnauthorizedError';
-  }
-}
+export { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 
 export async function listConversations(
   projectId: string,
@@ -599,13 +593,12 @@ export async function listConversations(
     const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations`,
     );
-    if (resp.status === 401) {
-      throw new TeamverDaemonUnauthorizedError();
-    }
+    throwIfDaemonUnauthorized(resp);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { conversations: Conversation[] };
     return json.conversations ?? [];
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return [];
   }
 }
@@ -649,13 +642,12 @@ export async function createConversation(
         body: JSON.stringify(body),
       },
     );
-    if (resp.status === 401) {
-      throw new TeamverDaemonUnauthorizedError();
-    }
+    throwIfDaemonUnauthorized(resp);
     if (!resp.ok) return null;
     const json = (await resp.json()) as { conversation: Conversation };
     return json.conversation;
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return null;
   }
 }
@@ -674,10 +666,12 @@ export async function patchConversation(
         body: JSON.stringify(patch),
       },
     );
+    throwIfDaemonUnauthorized(resp);
     if (!resp.ok) return null;
     const json = (await resp.json()) as { conversation: Conversation };
     return json.conversation;
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return null;
   }
 }
@@ -691,8 +685,10 @@ export async function deleteConversation(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}`,
       { method: 'DELETE' },
     );
+    throwIfDaemonUnauthorized(resp);
     return resp.ok;
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return false;
   }
 }
@@ -707,10 +703,12 @@ export async function listMessages(
     const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages`,
     );
+    throwIfDaemonUnauthorized(resp);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { messages: ChatMessage[] };
     return (json.messages ?? []).map(sanitizeChatMessageLeakedPseudoTool);
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return [];
   }
 }

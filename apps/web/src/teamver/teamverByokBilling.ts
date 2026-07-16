@@ -4,6 +4,7 @@ import {
   getDesignBffClient,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
+import { isTeamverBffUnauthorizedError, notifyTeamverEmbedAuthFailureIfNeeded } from "./teamverBffAuthError";
 
 export type ByokBillingFinalizeInput = {
   workspaceId: string;
@@ -130,6 +131,9 @@ export async function finalizeTeamverByokBilling(
   try {
     return await withDesignBffCookieAuthRecovery(() => postFinalizeByokRun(client, input));
   } catch (err) {
+    if (isTeamverBffUnauthorizedError(err)) {
+      notifyTeamverEmbedAuthFailureIfNeeded(err, "bff");
+    }
     if (!isRetryableBillingError(err)) {
       emitByokBillingDropMarker("billing.finalize_byok_client_drop", input, err);
       return null;
@@ -137,6 +141,9 @@ export async function finalizeTeamverByokBilling(
     try {
       return await withDesignBffCookieAuthRecovery(() => postFinalizeByokRun(client, input));
     } catch (retryErr) {
+      if (isTeamverBffUnauthorizedError(retryErr)) {
+        notifyTeamverEmbedAuthFailureIfNeeded(retryErr, "bff");
+      }
       emitByokBillingDropMarker("billing.finalize_byok_client_retry_drop", input, retryErr);
       return null;
     }

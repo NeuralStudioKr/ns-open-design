@@ -1,5 +1,6 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
 
 /**
  * Teamver-tone Korean fallbacks for ProjectView conversation lifecycle errors.
@@ -193,6 +194,11 @@ function messageImpliesMissingApiKey(err: unknown): boolean {
 export function formatProjectConversationErrorForUser(err: unknown, fallback: string): string {
   if (!isTeamverEmbedMode()) {
     return err instanceof Error ? err.message : fallback;
+  }
+  if (err instanceof TeamverDaemonUnauthorizedError) {
+    return isTeamverEmbedSessionAuthenticated()
+      ? "대화 목록을 불러오는 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요."
+      : "로그인 세션이 만료되어 대화를 불러올 수 없습니다. 다시 로그인한 뒤 시도하세요.";
   }
   if (err instanceof Error && err.message === "teamver_daemon_unauthorized") {
     return isTeamverEmbedSessionAuthenticated()

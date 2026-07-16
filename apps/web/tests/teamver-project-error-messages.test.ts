@@ -140,6 +140,13 @@ describe("project conversation error messages", () => {
         "슬라이드 프로젝트의 대화 목록을 불러오지 못했습니다.",
       ),
     ).toContain("연결");
+    const { TeamverDaemonUnauthorizedError } = await import("../src/teamver/teamverDaemonHeaders");
+    expect(
+      formatProjectConversationErrorForUser(
+        new TeamverDaemonUnauthorizedError(),
+        "슬라이드 프로젝트의 대화 목록을 불러오지 못했습니다.",
+      ),
+    ).toContain("연결");
     expect(formatProjectForkConversationError()).toBe("대화를 복제하지 못했습니다.");
   });
 

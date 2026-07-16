@@ -559,3 +559,35 @@ describe('pickLocalFolderPath', () => {
     await expect(pickLocalFolderPath()).rejects.toThrow('cross-origin request rejected');
   });
 });
+
+describe('conversation daemon auth', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('listConversations rethrows TeamverDaemonUnauthorizedError instead of returning []', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+    const { listConversations } = await import('../../src/state/projects');
+
+    await expect(listConversations('project-1')).rejects.toMatchObject({
+      message: 'teamver_daemon_unauthorized',
+    });
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('listMessages rethrows TeamverDaemonUnauthorizedError instead of returning []', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+    const { listMessages } = await import('../../src/state/projects');
+
+    await expect(listMessages('project-1', 'conv-1')).rejects.toMatchObject({
+      message: 'teamver_daemon_unauthorized',
+    });
+    fetchDaemonSpy.mockRestore();
+  });
+});

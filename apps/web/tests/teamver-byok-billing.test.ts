@@ -12,13 +12,21 @@ vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
 }));
 
-const mockPost = vi.fn();
+const { mockPost, passiveAuthMock } = vi.hoisted(() => ({
+  mockPost: vi.fn(),
+  passiveAuthMock: vi.fn(),
+}));
 
 vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: vi.fn(() => ({
     http: { post: mockPost },
   })),
   withDesignBffCookieAuthRecovery: vi.fn((fn: () => Promise<unknown>) => fn()),
+  TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true },
+}));
+
+vi.mock("../src/teamver/teamverEmbedPassiveAuth", () => ({
+  handleEmbedPassiveUnauthorized: passiveAuthMock,
 }));
 
 vi.mock("../src/teamver/reportUsage", () => ({
@@ -71,6 +79,24 @@ describe("teamverByokBilling", () => {
       error: null,
       idempotent: false,
     });
+  });
+
+  it("notifies passive auth when billing finalize still returns 401", async () => {
+    const { NetworkError } = await import("@teamver/app-sdk");
+    passiveAuthMock.mockClear();
+    mockPost.mockRejectedValue(new NetworkError({ status: 401, message: "unauth" }));
+
+    const result = await finalizeTeamverByokBilling({
+      workspaceId: "ws-1",
+      runId: "msg-1",
+      runStatus: "succeeded",
+      modelName: "claude-sonnet-4-5",
+      inputTokens: 100,
+      outputTokens: 50,
+    });
+
+    expect(result).toBeNull();
+    expect(passiveAuthMock).toHaveBeenCalledWith("bff");
   });
 });
 
