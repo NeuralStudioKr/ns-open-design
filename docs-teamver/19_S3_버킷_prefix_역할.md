@@ -50,6 +50,11 @@ s3://teamver-design-{staging|prod}-data/
 │   │           └── … (export·upload 파일)
 │   └── _deleted/                              ← lifecycle 만료 대상 (선택 규칙)
 │
+├── exports/                                   ← export offload presigned download cache
+│   └── ws_<workspaceId>/
+│       └── proj_<odProjectId>/
+│           └── <export-cache-key>.<ext>
+│
 ├── litestream/
 │   └── app.sqlite                             ← Litestream replica (daemon SQLite)
 │
@@ -125,7 +130,21 @@ design/ws_<workspaceId>/user_<ownerUserId>/proj_<odProjectId>/
 
 ---
 
-### 3.3 `design/_deleted/` — lifecycle 스크래치 잔여 (선택)
+### 3.3 `exports/ws_…/proj_…/` — export offload presigned download
+
+| 항목 | 내용 |
+|------|------|
+| **역할** | PDF/PPTX/HTML/ZIP 등 다운로드 결과물을 S3에 업로드하고 daemon ticket이 presigned GET으로 302 redirect하기 위한 export offload cache |
+| **키** | `exports/ws_<workspaceId>/proj_<odProjectId>/<export-cache-key>.<ext>` |
+| **설정** | `OD_EXPORT_OFFLOAD_ENABLED=1`, `OD_EXPORT_OFFLOAD_PREFIX=exports`; staging은 `OD_EXPORT_OFFLOAD_REQUIRED=1` |
+| **생성** | `/api/projects/{id}/export/{format}` ticket 응답 생성 직전 S3 PUT |
+| **만료** | Terraform lifecycle `expire-export-offload-cache` — current/noncurrent object 7일 만료 |
+| **IAM** | EC2 role/static key — `exports/*` List/Get/Put/Delete ([18 §3](./18_EC2_IAM_Instance_Profile_S3_설정.md)) |
+| **주의** | `OD_EXPORT_OFFLOAD_PREFIX=exports`와 key root `exports/`가 중복되어 `exports/exports/...`가 되면 안 된다. |
+
+---
+
+### 3.4 `design/_deleted/` — lifecycle 스크래치 잔여 (선택)
 
 | 항목 | 내용 |
 |------|------|
@@ -136,7 +155,7 @@ design/ws_<workspaceId>/user_<ownerUserId>/proj_<odProjectId>/
 
 ---
 
-### 3.4 `litestream/` — daemon `app.sqlite` 복제
+### 3.5 `litestream/` — daemon `app.sqlite` 복제
 
 | 항목 | 내용 |
 |------|------|
@@ -153,7 +172,7 @@ design/ws_<workspaceId>/user_<ownerUserId>/proj_<odProjectId>/
 
 ---
 
-### 3.5 `sqlite-backups/` — 수동 SQLite 스냅샷 (fallback)
+### 3.6 `sqlite-backups/` — 수동 SQLite 스냅샷 (fallback)
 
 | 항목 | 내용 |
 |------|------|
@@ -174,6 +193,7 @@ design/ws_<workspaceId>/user_<ownerUserId>/proj_<odProjectId>/
 | 버킷 자체 | ❌ (Terraform) | `teamver-design` apply |
 | `design/` | ❌ | daemon sync-up |
 | `design/ws_…/user_…/proj_…/` | ❌ | 프로젝트 create + sync-up |
+| `exports/ws_…/proj_…/` | ❌ | export offload S3 PUT |
 | `litestream/app.sqlite` | ❌ | Litestream sidecar |
 | `sqlite-backups/…` | ❌ (선택) | `backup_sqlite_to_s3.sh` |
 | `design/_deleted/` | ❌ | lifecycle 규칙만; 객체는 purge 잔여 시 |
