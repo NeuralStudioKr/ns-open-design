@@ -111,6 +111,8 @@ import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
 import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
 import { loadProjectListPage, loadProjectListSafe, loadProjectsForWorkspaceSwitch, loadRecentProjectsForHome } from './teamver/loadProjectList';
+import { formatProjectGetErrorForUser } from './teamver/projectErrorMessages';
+import { TeamverDaemonUnauthorizedError } from './teamver/teamverDaemonHeaders';
 import { runTeamverEmbedSessionBoot } from './teamver/teamverEmbedSessionBoot';
 import { shouldNavigateHomeAfterWorkspaceProjectList } from './teamver/teamverWorkspaceProjectRoute';
 import {
@@ -1481,7 +1483,11 @@ function AppInner() {
       setProjects((current) => mergeProjectIntoList(current, project));
       warmEmbedProjectListCaches([project]);
       setWorkingDirError(null);
-    } catch {
+    } catch (err) {
+      if (err instanceof TeamverDaemonUnauthorizedError && isTeamverEmbedMode()) {
+        setWorkingDirError(formatProjectGetErrorForUser(err));
+        return;
+      }
       // Detail view keeps working from daemon state; list/registry sync is optional.
     }
   }, []);
@@ -3155,7 +3161,17 @@ function AppInner() {
           error: err,
         });
       }
-      const project = await getProject(route.projectId);
+      let project: Project | null;
+      try {
+        project = await getProject(route.projectId);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof TeamverDaemonUnauthorizedError && isTeamverEmbedMode()) {
+          setWorkingDirError(formatProjectGetErrorForUser(err));
+          return;
+        }
+        throw err;
+      }
       if (cancelled) return;
       if (project) {
         let allowed = isSessionTrustedEmbedProject(route.projectId);

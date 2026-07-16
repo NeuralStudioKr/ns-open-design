@@ -61,6 +61,7 @@ import {
   redirectToTeamverLoginFromEmbed,
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
+import { formatTeamverDrivePanelReloginMessage } from "../teamverDriveAuthCopy";
 
 export type TeamverPublishDriveSuccessMeta = {
   partial: boolean;
@@ -535,8 +536,7 @@ export function TeamverPublishDrivePanel({
           aria-live="polite"
           data-testid="teamver-drive-panel-auth-required"
         >
-          세션이 만료되어 드라이브를 불러올 수 없습니다. Teamver에 다시 로그인한 뒤
-          이 창을 열어 주세요.{" "}
+          {formatTeamverDrivePanelReloginMessage()}{" "}
           <button
             type="button"
             className="teamver-drive-target-hint__login"

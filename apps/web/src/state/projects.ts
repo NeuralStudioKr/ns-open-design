@@ -46,6 +46,7 @@ import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
 import { fetchTeamverDaemon, throwIfDaemonUnauthorized, TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
+import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import {
   HOME_RECENT_LIST_LIMIT,
@@ -64,16 +65,24 @@ export type ProjectsListPageResult = {
   nextCursor: string | null;
 };
 
+function throwIfDaemonProjectsListUnauthorized(resp: Response | null): void {
+  if (resp?.status === 401) {
+    throw new TeamverDaemonUnauthorizedError();
+  }
+}
+
 /** Daemon listing without registry filter — status/metadata enrichment only. */
 async function fetchDaemonProjectsPageRaw(limit: number): Promise<Project[]> {
   try {
     const params = new URLSearchParams();
     params.set('limit', String(Math.max(1, Math.min(Math.floor(limit), 100))));
     const resp = await fetchProjectsListWhenAuthenticated(`/api/projects?${params.toString()}`);
+    throwIfDaemonProjectsListUnauthorized(resp);
     if (!resp?.ok) return [];
     const json = (await resp.json()) as { projects?: Project[] };
     return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return [];
   }
 }
@@ -99,13 +108,15 @@ async function fetchDaemonProjectStatusHints(projectIds: string[]): Promise<{
     if (resp.status === 404 || resp.status === 405) {
       return { projects: [], legacyFallback: true };
     }
+    throwIfDaemonProjectsListUnauthorized(resp);
     if (!resp.ok) return { projects: [], legacyFallback: false };
     const json = (await resp.json()) as { projects?: Project[] };
     return {
       projects: (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project)),
       legacyFallback: false,
     };
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return { projects: [], legacyFallback: true };
   }
 }
@@ -113,10 +124,12 @@ async function fetchDaemonProjectStatusHints(projectIds: string[]): Promise<{
 async function fetchDaemonProjectsAllRaw(): Promise<Project[]> {
   try {
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
+    throwIfDaemonProjectsListUnauthorized(resp);
     if (!resp?.ok) return [];
     const json = (await resp.json()) as { projects?: Project[] };
     return (json.projects ?? []).map((project) => sanitizeProjectForEmbed(project));
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return [];
   }
 }
@@ -208,11 +221,15 @@ export async function listRecentProjects(
         `/api/projects/recent?limit=${encodeURIComponent(String(limit))}`,
       );
       if (!resp) return [];
+      throwIfDaemonProjectsListUnauthorized(resp);
       if (!resp.ok) return [];
       const json = (await resp.json()) as { projects: Project[] };
       return normalizeProjectsResponse(json.projects ?? []);
     } catch (err) {
       if (err instanceof TeamverProjectRegistryError) {
+        throw err;
+      }
+      if (err instanceof TeamverDaemonUnauthorizedError) {
         throw err;
       }
       return [];
@@ -258,6 +275,7 @@ export async function listProjectsPage(options?: {
     if (!resp) {
       return { projects: [], hasMore: false, nextCursor: null };
     }
+    throwIfDaemonProjectsListUnauthorized(resp);
     if (!resp.ok) {
       return { projects: [], hasMore: false, nextCursor: null };
     }
@@ -276,6 +294,9 @@ export async function listProjectsPage(options?: {
     if (err instanceof TeamverProjectRegistryError) {
       throw err;
     }
+    if (err instanceof TeamverDaemonUnauthorizedError) {
+      throw err;
+    }
     return { projects: [], hasMore: false, nextCursor: null };
   }
 }
@@ -291,11 +312,15 @@ export async function listProjects(): Promise<Project[]> {
     }
     const resp = await fetchProjectsListWhenAuthenticated('/api/projects');
     if (!resp) return [];
+    throwIfDaemonProjectsListUnauthorized(resp);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects: Project[] };
     return normalizeProjectsResponse(json.projects ?? []);
   } catch (err) {
     if (err instanceof TeamverProjectRegistryError) {
+      throw err;
+    }
+    if (err instanceof TeamverDaemonUnauthorizedError) {
       throw err;
     }
     return [];
@@ -309,12 +334,14 @@ export async function getProject(id: string): Promise<Project | null> {
       const json = (await resp.json()) as { project: Project };
       return sanitizeProjectForEmbed(json.project);
     }
+    throwIfDaemonUnauthorized(resp);
     if (isTeamverEmbedMode()) {
       const row = await fetchTeamverProject(id);
       if (row) return mapRegistryRowToProject(row);
     }
     return null;
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     if (isTeamverEmbedMode()) {
       try {
         const row = await fetchTeamverProject(id);
@@ -1021,12 +1048,15 @@ function newestTabsState(
 }
 
 async function persistTabsToDaemon(projectId: string, state: OpenTabsState): Promise<void> {
-  await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/tabs`, {
+  const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/tabs`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state),
     keepalive: true,
   });
+  if (resp.status === 401) {
+    notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+  }
 }
 
 export async function loadTabs(projectId: string): Promise<OpenTabsState> {
@@ -1035,6 +1065,7 @@ export async function loadTabs(projectId: string): Promise<OpenTabsState> {
     const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/tabs`,
     );
+    throwIfDaemonUnauthorized(resp);
     if (!resp.ok) return cached ?? { tabs: [], active: null };
     const saved = normalizeTabsState(await resp.json());
     const latest = newestTabsState(cached, saved);
@@ -1042,7 +1073,8 @@ export async function loadTabs(projectId: string): Promise<OpenTabsState> {
       void persistTabsToDaemon(projectId, cached).catch(() => {});
     }
     return latest;
-  } catch {
+  } catch (err) {
+    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return cached ?? { tabs: [], active: null };
   }
 }

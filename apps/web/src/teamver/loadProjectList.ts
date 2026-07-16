@@ -10,6 +10,8 @@ import {
   formatTeamverProjectRegistryErrorMessage,
   TeamverProjectRegistryError,
 } from "./projectRegistry";
+import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
+import { formatProjectListErrorForUser } from "./projectErrorMessages";
 
 export type LoadProjectListResult =
   | { ok: true; projects: Project[] }
@@ -20,6 +22,12 @@ export type LoadProjectListPageResult =
   | { ok: false; errorMessage: string; projects: Project[]; hasMore: false; nextCursor: null };
 
 function mapProjectListError(err: unknown): LoadProjectListResult {
+  if (err instanceof TeamverDaemonUnauthorizedError) {
+    return {
+      ok: false,
+      errorMessage: formatProjectListErrorForUser(err),
+    };
+  }
   if (isTeamverEmbedMode() && err instanceof TeamverProjectRegistryError) {
     return {
       ok: false,

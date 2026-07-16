@@ -213,3 +213,47 @@ export function formatProjectForkConversationError(): string {
     ? "대화를 복제하지 못했습니다."
     : "Could not fork this conversation.";
 }
+
+export function formatProjectListLoadError(): string {
+  return isTeamverEmbedMode()
+    ? "슬라이드 프로젝트 목록을 불러오지 못했습니다."
+    : "Could not load projects.";
+}
+
+export function formatProjectGetLoadError(): string {
+  return isTeamverEmbedMode()
+    ? "슬라이드 프로젝트를 불러오지 못했습니다."
+    : "Could not load this project.";
+}
+
+/** User-facing project list/home errors — embed maps daemon 401 to retry-first copy. */
+export function formatProjectListErrorForUser(err: unknown): string {
+  if (!isTeamverEmbedMode()) {
+    return err instanceof Error ? err.message : formatProjectListLoadError();
+  }
+  if (
+    err instanceof TeamverDaemonUnauthorizedError
+    || (err instanceof Error && err.message === "teamver_daemon_unauthorized")
+  ) {
+    return isTeamverEmbedSessionAuthenticated()
+      ? "프로젝트 목록을 불러오는 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요."
+      : "로그인 세션이 만료되어 프로젝트 목록을 불러올 수 없습니다. 다시 로그인한 뒤 시도하세요.";
+  }
+  return formatProjectListLoadError();
+}
+
+/** User-facing single-project fetch errors for deep links and metadata refresh. */
+export function formatProjectGetErrorForUser(err: unknown): string {
+  if (!isTeamverEmbedMode()) {
+    return err instanceof Error ? err.message : formatProjectGetLoadError();
+  }
+  if (
+    err instanceof TeamverDaemonUnauthorizedError
+    || (err instanceof Error && err.message === "teamver_daemon_unauthorized")
+  ) {
+    return isTeamverEmbedSessionAuthenticated()
+      ? "슬라이드 프로젝트를 불러오는 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요."
+      : "로그인 세션이 만료되어 슬라이드 프로젝트를 불러올 수 없습니다. 다시 로그인한 뒤 시도하세요.";
+  }
+  return formatProjectGetLoadError();
+}

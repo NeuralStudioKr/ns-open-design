@@ -43,6 +43,7 @@ import {
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
 import { formatTeamverDriveImportErrorMessage } from "../importDriveAssets";
+import { formatTeamverDriveBrowseReloginMessage } from "../teamverDriveAuthCopy";
 
 type NavCrumb = {
   folderId: string | null;
@@ -409,8 +410,14 @@ export function TeamverDrivePickerModal({
         if (canceled) return;
         if (
           handleTeamverBffAuthFailure(err, {
-            onRelogin: () => setBrowseAuthRequired(true),
-            onTransient: () => setBrowseAuthRequired(false),
+            onRelogin: () => {
+              setBrowseAuthRequired(true);
+              setBrowseError(null);
+            },
+            onTransient: () => {
+              setBrowseAuthRequired(false);
+              setBrowseError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+            },
           })
         ) {
           // handled
@@ -960,7 +967,7 @@ export function TeamverDrivePickerModal({
               aria-live="polite"
               data-testid="teamver-drive-picker-auth-required"
             >
-              세션이 만료되어 드라이브를 불러올 수 없습니다.{" "}
+              {formatTeamverDriveBrowseReloginMessage()}{" "}
               <button
                 type="button"
                 className="teamver-drive-picker-empty__login"

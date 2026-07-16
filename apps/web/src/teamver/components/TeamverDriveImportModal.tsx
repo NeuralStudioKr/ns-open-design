@@ -44,6 +44,7 @@ import {
   redirectToTeamverLoginFromEmbed,
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
+import { formatTeamverDriveBrowseReloginMessage } from "../teamverDriveAuthCopy";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
@@ -894,7 +895,7 @@ export function TeamverDriveImportModal({
               aria-live="polite"
               data-testid="teamver-drive-import-auth-required"
             >
-              세션이 만료되어 드라이브를 불러올 수 없습니다.{" "}
+              {formatTeamverDriveBrowseReloginMessage()}{" "}
               <button
                 type="button"
                 className="teamver-drive-picker-empty__login"
