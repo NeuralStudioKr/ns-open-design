@@ -195,6 +195,7 @@ import {
   createPluginShareProject,
   deleteProject as deleteProjectApi,
   getProject,
+  getProjectFailSoft,
   importClaudeDesignZip,
   importFolderProject,
   listTemplates,
@@ -1477,17 +1478,13 @@ function AppInner() {
     if (!trimmedId) return;
     if (locallyDeletedProjectIdsRef.current.has(trimmedId)) return;
     try {
-      const project = await getProject(trimmedId);
+      const project = await getProjectFailSoft(trimmedId);
       if (!project) return;
       if (locallyDeletedProjectIdsRef.current.has(trimmedId)) return;
       setProjects((current) => mergeProjectIntoList(current, project));
       warmEmbedProjectListCaches([project]);
       setWorkingDirError(null);
-    } catch (err) {
-      if (err instanceof TeamverDaemonUnauthorizedError && isTeamverEmbedMode()) {
-        setWorkingDirError(formatProjectGetErrorForUser(err));
-        return;
-      }
+    } catch {
       // Detail view keeps working from daemon state; list/registry sync is optional.
     }
   }, []);
@@ -2473,7 +2470,7 @@ function AppInner() {
   // through the normal daemon API.
   const handleImportFolderResponse = useCallback(async (result: OpenDesignHostProjectImportSuccess) => {
     rememberLocalProject(result.projectId);
-    const project = await getProject(result.projectId);
+    const project = await getProjectFailSoft(result.projectId);
     if (project != null) {
       try {
         await registerTeamverProjectIfNeeded(project);
@@ -2750,7 +2747,7 @@ function AppInner() {
           currentRoute.kind === 'project' && currentRoute.projectId === completedRun.projectId;
         let completedProject = projectsById.get(completedRun.projectId);
         if (completedRun.status === 'succeeded') {
-          const fresh = await getProject(completedRun.projectId);
+          const fresh = await getProjectFailSoft(completedRun.projectId);
           if (cancelled) return;
           if (fresh) {
             completedProject = fresh;

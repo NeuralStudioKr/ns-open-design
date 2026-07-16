@@ -604,16 +604,25 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
-  it('loadTabs rethrows TeamverDaemonUnauthorizedError instead of returning cache only', async () => {
+  it('loadTabs keeps cached tabs on daemon 401 instead of throwing', async () => {
     const fetchDaemonSpy = vi.spyOn(
       await import('../../src/teamver/teamverDaemonHeaders'),
       'fetchTeamverDaemon',
     ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
     const { loadTabs } = await import('../../src/state/projects');
 
-    await expect(loadTabs('project-1')).rejects.toMatchObject({
-      message: 'teamver_daemon_unauthorized',
-    });
+    await expect(loadTabs('project-1')).resolves.toEqual({ tabs: [], active: null });
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('getProjectFailSoft returns null on daemon 401', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+    const { getProjectFailSoft } = await import('../../src/state/projects');
+
+    await expect(getProjectFailSoft('project-1')).resolves.toBeNull();
     fetchDaemonSpy.mockRestore();
   });
 });

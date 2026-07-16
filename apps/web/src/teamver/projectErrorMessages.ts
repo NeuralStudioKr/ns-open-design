@@ -226,6 +226,21 @@ export function formatProjectGetLoadError(): string {
     : "Could not load this project.";
 }
 
+export function formatProjectCreateErrorForUser(err: unknown): string {
+  if (!isTeamverEmbedMode()) {
+    return err instanceof Error ? err.message : "Could not create project.";
+  }
+  if (
+    err instanceof TeamverDaemonUnauthorizedError
+    || (err instanceof Error && err.message === "teamver_daemon_unauthorized")
+  ) {
+    return isTeamverEmbedSessionAuthenticated()
+      ? "프로젝트를 만드는 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요."
+      : "로그인 세션이 만료되어 프로젝트를 만들 수 없습니다. 다시 로그인한 뒤 시도하세요.";
+  }
+  return err instanceof Error ? err.message : "슬라이드 프로젝트를 만들지 못했습니다.";
+}
+
 /** User-facing project list/home errors — embed maps daemon 401 to retry-first copy. */
 export function formatProjectListErrorForUser(err: unknown): string {
   if (!isTeamverEmbedMode()) {

@@ -68,7 +68,11 @@ import {
   openHostExternalUrl,
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
-import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import {
+  fetchTeamverDaemon,
+  TeamverDaemonUnauthorizedError,
+} from '../teamver/teamverDaemonHeaders';
+import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
@@ -1896,6 +1900,9 @@ export async function writeProjectTextFileDetailed(
       body: JSON.stringify({ name, content, artifactManifest: options?.artifactManifest }),
     });
     if (!resp.ok) {
+      if (resp.status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
       const body = await readApiErrorBody(resp);
       return {
         ok: false,

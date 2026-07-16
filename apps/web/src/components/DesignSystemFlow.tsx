@@ -23,7 +23,7 @@ import {
 } from '../providers/registry';
 import {
   createConversation,
-  getProject,
+  getProjectFailSoft,
   listConversations,
   listMessages,
   loadTabs,
@@ -280,7 +280,7 @@ async function resolveDesignSystemWorkspaceProject(
     };
   }
   if (!system.projectId) return null;
-  const fallbackProject = await getProject(system.projectId);
+  const fallbackProject = await getProjectFailSoft(system.projectId);
   if (!fallbackProject) return null;
   const files = await fetchProjectFiles(system.projectId);
   return {
