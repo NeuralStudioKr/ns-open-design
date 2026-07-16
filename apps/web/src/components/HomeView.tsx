@@ -94,8 +94,10 @@ import { AnimatePresence } from 'motion/react';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
 import {
   communityGalleryFacetUi,
+  defaultSlideOnlyDeckPluginInputs,
   homeHeroChipsForGroup,
   pluginsForSlideOnlyMvp,
+  resolveSlideOnlyCreatePluginId,
   shouldShowHomeCommunityGallery,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
   skillsForSlideOnlyMvp,
@@ -1933,22 +1935,45 @@ export function HomeView({
           status: item.connector.status,
           ...(item.connector.accountLabel ? { accountLabel: item.connector.accountLabel } : {}),
         }));
-      const submittedProjectKind =
-        submittedActive?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other';
-      const submittedProjectMetadata = submittedActive?.mediaSurface
-        ? metadataForHomeMediaComposer(submittedActive.mediaSurface, submittedActive.inputs, promptTemplates)
-        : homeCreateProjectMetadata(
-            submittedProjectKind,
-            submittedActive?.inputs ?? null,
-            submittedActive?.projectMetadata ?? fallbackProjectMetadata ?? null,
-          );
+      const submittedProjectKind = slideOnlyMvp
+        ? 'deck'
+        : submittedActive?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other';
+      const submittedProjectMetadata = slideOnlyMvp
+        ? {
+            ...(submittedActive?.mediaSurface
+              ? metadataForHomeMediaComposer(submittedActive.mediaSurface, submittedActive.inputs, promptTemplates)
+              : homeCreateProjectMetadata(
+                  'deck',
+                  submittedActive?.inputs ?? null,
+                  submittedActive?.projectMetadata ?? fallbackProjectMetadata ?? null,
+                )),
+            kind: 'deck' as const,
+            skipDiscoveryBrief: true,
+          }
+        : submittedActive?.mediaSurface
+          ? metadataForHomeMediaComposer(submittedActive.mediaSurface, submittedActive.inputs, promptTemplates)
+          : homeCreateProjectMetadata(
+              submittedProjectKind,
+              submittedActive?.inputs ?? null,
+              submittedActive?.projectMetadata ?? fallbackProjectMetadata ?? null,
+            );
       // Scenario plugins (chips / preset cards) and explicit skill picks are
       // mutually exclusive routing sources — never send both (#2972).
       const resolvedSkillId = submittedActive ? null : activeSkill?.id ?? null;
-      const routedPluginId =
-        sessionMode === 'design'
+      const routedPluginId = slideOnlyMvp
+        ? resolveSlideOnlyCreatePluginId(
+            submittedActive?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+            { slideOnlyMvp: true },
+          )
+        : sessionMode === 'design'
           ? submittedActive?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID
           : submittedActive?.record.id ?? null;
+      const submittedPluginInputsForCreate = slideOnlyMvp
+        ? {
+            ...defaultSlideOnlyDeckPluginInputs(trimmed),
+            ...(submittedPluginInputs ?? {}),
+          }
+        : submittedPluginInputs;
       const submitResult = await Promise.resolve(onSubmit({
         prompt: trimmed,
         pluginId: routedPluginId,
@@ -1957,7 +1982,7 @@ export function HomeView({
         appliedPluginSnapshotId: submittedActive?.result?.appliedPlugin?.snapshotId ?? null,
         pluginTitle: submittedActive?.record.title ?? null,
         taskKind: submittedActive?.result?.appliedPlugin?.taskKind ?? null,
-        pluginInputs: submittedPluginInputs,
+        pluginInputs: submittedPluginInputsForCreate,
         projectKind: submittedProjectKind,
         projectMetadata: submittedProjectMetadata,
         designSystemId: submittedDesignSystemId,
@@ -1968,7 +1993,7 @@ export function HomeView({
         ...(stagedDriveAssets.length > 0 ? { driveAttachments: stagedDriveAssets } : {}),
         ...(hideLocalWorkspaceControls || !workingDir ? {} : { workingDir }),
         ...(hideLocalWorkspaceControls || !workingDirToken ? {} : { workingDirToken }),
-        conversationMode: sessionMode,
+        conversationMode: slideOnlyMvp ? 'design' : sessionMode,
         ...(() => {
           if (!examplePromptInfoRef.current) return {};
           const key = 'od:example-prompt-used';

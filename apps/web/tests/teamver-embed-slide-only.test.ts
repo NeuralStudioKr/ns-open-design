@@ -6,9 +6,11 @@ import {
   TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS,
   TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS,
   TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS,
+  TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID,
   homeHeroChipsForGroup,
   visibleNewProjectTabs,
   defaultNewProjectTab,
+  resolveSlideOnlyCreatePluginId,
   visibleDesignToolboxActions,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
 import { chipsForGroup } from '../src/components/home-hero/chips';
@@ -34,6 +36,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('image')).toBe(true);
     expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('video')).toBe(true);
     expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('audio')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('template')).toBe(true);
   });
 
   it('keeps full chip rail outside slide-only mode', () => {
@@ -42,13 +45,14 @@ describe('Teamver embed slide-only MVP policy', () => {
     );
   });
 
-  it('limits new project tabs to deck and template in slide-only mode', () => {
+  it('limits new project tabs to deck only in slide-only mode', () => {
     const tabs = visibleNewProjectTabs(
       ['prototype', 'live-artifact', 'deck', 'template', 'media', 'other'],
       { slideOnlyMvp: true },
     );
-    expect(tabs).toEqual(['deck', 'template']);
+    expect(tabs).toEqual(['deck']);
     expect(TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS.has('media')).toBe(true);
+    expect(TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS.has('template')).toBe(true);
   });
 
   it('defaults new project tab to deck in slide-only mode', () => {
@@ -83,6 +87,25 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(entryShell).toContain("if (slideOnlyMvp) return 'deck'");
     expect(entryShell).toContain("payload.projectKind ?? payload.projectMetadata?.kind ?? 'prototype'");
     expect(entryShell).not.toMatch(/kind:\s*payload\.projectKind\s*\?\?\s*payload\.projectMetadata\?\.kind\s*\?\?\s*['"]prototype['"]/);
+    expect(entryShell).toContain('resolveSlideOnlyCreatePluginId');
+    expect(entryShell).toContain("conversationMode: 'design'");
+  });
+
+  it('coerces free-form create to example-simple-deck in slide-only mode', () => {
+    expect(TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID).toBe('example-simple-deck');
+    expect(resolveSlideOnlyCreatePluginId('od-default', { slideOnlyMvp: true })).toBe(
+      'example-simple-deck',
+    );
+    expect(resolveSlideOnlyCreatePluginId('od-new-generation', { slideOnlyMvp: true })).toBe(
+      'example-simple-deck',
+    );
+    expect(resolveSlideOnlyCreatePluginId('example-simple-deck', { slideOnlyMvp: true })).toBe(
+      'example-simple-deck',
+    );
+    expect(resolveSlideOnlyCreatePluginId('community-deck-plugin', { slideOnlyMvp: true })).toBe(
+      'community-deck-plugin',
+    );
+    expect(resolveSlideOnlyCreatePluginId('od-default', { slideOnlyMvp: false })).toBe('od-default');
   });
 
   it('wires slide-only gates into entry and composer surfaces', () => {
@@ -100,6 +123,7 @@ describe('Teamver embed slide-only MVP policy', () => {
 
     expect(homeHero).toContain('homeHeroChipsForGroup');
     expect(homeHero).toContain('hideComposerIntegrations');
+    expect(homeHero).toContain('!slideOnlyMvp');
     expect(newProject).toContain('visibleNewProjectTabs');
     expect(entryShell).toContain('defaultNewProjectTab');
     expect(entryShell).toContain('!slideOnlyMvp');
@@ -107,6 +131,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(entryNavRail).toContain('entry-nav-design-systems');
     expect(chatComposer).toContain('showMcp={!hideComposerIntegrations}');
     expect(chatComposer).toContain('visibleDesignToolboxActions');
+    expect(chatComposer).toContain('!slideOnlyMvp');
     expect(nextStepActions).toContain('visibleDesignToolboxActions');
     expect(plusMenu).toContain('showConnectors');
     expect(plusMenu).toContain('showMcp');

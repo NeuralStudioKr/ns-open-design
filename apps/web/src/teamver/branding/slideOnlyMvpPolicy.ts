@@ -1,4 +1,8 @@
 import type { InstalledPluginRecord, SkillSummary } from "@open-design/contracts";
+import {
+  DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+  defaultScenarioPluginIdForKind,
+} from "@open-design/contracts";
 import type { CreateTab } from "../../components/NewProjectPanel";
 import type { FacetSelection } from "../../components/plugins-home/facets";
 import {
@@ -24,6 +28,8 @@ export const TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS = new Set([
   "audio",
   "create-plugin",
   "figma",
+  // Template picker can spawn non-deck / od-new-generation projects.
+  "template",
 ]);
 
 /** New project modal tabs hidden in embed slide-only MVP. */
@@ -32,10 +38,56 @@ export const TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS = new Set<CreateTab>([
   "live-artifact",
   "media",
   "other",
+  "template",
 ]);
 
 export const TEAMVER_EMBED_DEFAULT_HOME_HERO_CHIP_ID = "deck";
 export const TEAMVER_EMBED_DEFAULT_NEW_PROJECT_TAB: CreateTab = "deck";
+
+/** Deck scenario used when slide-only embed would otherwise bind od-default / routers. */
+export const TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID =
+  defaultScenarioPluginIdForKind("deck") ?? "example-simple-deck";
+
+const SLIDE_ONLY_COERCED_ROUTER_PLUGIN_IDS = new Set([
+  DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+  "od-new-generation",
+  "od-media-generation",
+  "od-figma-migration",
+  "od-code-migration",
+  "od-tune-collab",
+  "od-plugin-authoring",
+  "example-web-prototype",
+  "example-live-artifact",
+  "example-hyperframes",
+]);
+
+/**
+ * Pin Home / NewProject create to the deck scenario in slide-only embed.
+ * Community `mode: deck` plugins keep their id; routers and non-deck examples coerce.
+ */
+export function resolveSlideOnlyCreatePluginId(
+  pluginId: string | null | undefined,
+  branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
+): string | null {
+  if (!branding.slideOnlyMvp) return pluginId?.trim() || null;
+  const trimmed = pluginId?.trim() || "";
+  if (!trimmed || SLIDE_ONLY_COERCED_ROUTER_PLUGIN_IDS.has(trimmed)) {
+    return TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID;
+  }
+  return trimmed;
+}
+
+export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Record<string, unknown> {
+  const topic = (topicHint ?? "").trim() || "the user brief";
+  return {
+    deckType: "pitch deck",
+    topic,
+    audience: "decision makers",
+    slideCount: "10-15 pages",
+    speakerNotes: "no speaker notes",
+    designSystem: "the active project design system",
+  };
+}
 
 export function homeHeroChipsForGroup(
   group: ChipGroup,

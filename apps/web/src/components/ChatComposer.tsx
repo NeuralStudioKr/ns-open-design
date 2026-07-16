@@ -2811,22 +2811,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             {leadingAccessory}
             <span className="composer-spacer" />
             {footerAccessory}
-            <SessionModeToggle
-              mode={sessionMode}
-              onChange={(next) => {
-                if (next !== sessionMode) {
-                  trackComposerSessionModeClick(analytics.track, {
-                    page_name: 'chat_panel',
-                    area: 'chat_composer',
-                    element: 'session_mode_toggle',
-                    mode_before: sessionModeToTracking(sessionMode),
-                    mode_after: sessionModeToTracking(next),
-                    ...(projectId ? { project_id: projectId } : {}),
-                  });
-                }
-                onSessionModeChange?.(next);
-              }}
-            />
+            {!slideOnlyMvp ? (
+              <SessionModeToggle
+                mode={sessionMode}
+                onChange={(next) => {
+                  if (next !== sessionMode) {
+                    trackComposerSessionModeClick(analytics.track, {
+                      page_name: 'chat_panel',
+                      area: 'chat_composer',
+                      element: 'session_mode_toggle',
+                      mode_before: sessionModeToTracking(sessionMode),
+                      mode_after: sessionModeToTracking(next),
+                      ...(projectId ? { project_id: projectId } : {}),
+                    });
+                  }
+                  onSessionModeChange?.(next);
+                }}
+              />
+            ) : null}
             {showStopButton ? (
               <button
                 type="button"

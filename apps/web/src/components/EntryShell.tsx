@@ -88,6 +88,8 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import {
   defaultNewProjectTab,
   coerceNewProjectTab,
+  resolveSlideOnlyCreatePluginId,
+  defaultSlideOnlyDeckPluginInputs,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
@@ -600,10 +602,26 @@ export function EntryShell({
     // is intentionally explicit so future kind-specific scenarios
     // (e.g. a deck- or image-specialized pipeline) can take over a
     // single row without touching the form.
-    const pluginId = defaultPluginIdForMetadata(input.metadata);
-    const pluginInputs = defaultPluginInputsForCreate(input, pluginId);
+    //
+    // Teamver slide-only embed: never create non-deck projects from this
+    // panel (template/prototype tabs are hidden, but coerce as a backstop).
+    const metadata = slideOnlyMvp
+      ? {
+          ...input.metadata,
+          kind: 'deck' as const,
+          skipDiscoveryBrief: true,
+        }
+      : input.metadata;
+    const pluginId = resolveSlideOnlyCreatePluginId(
+      defaultPluginIdForMetadata(metadata),
+      { slideOnlyMvp },
+    );
+    const pluginInputs =
+      defaultPluginInputsForCreate({ ...input, metadata }, pluginId) ??
+      (slideOnlyMvp ? defaultSlideOnlyDeckPluginInputs(input.name) : null);
     return onCreateProject({
       ...input,
+      metadata,
       ...(pluginId ? { pluginId } : {}),
       ...(pluginInputs ? { pluginInputs } : {}),
     });
@@ -649,6 +667,7 @@ export function EntryShell({
       // the run reaches the daemon.
       kind: resolvePluginLoopProjectKind(payload),
       nameSource: 'prompt',
+      ...(slideOnlyMvp ? { skipDiscoveryBrief: true } : {}),
       ...(payload.contextPlugins && payload.contextPlugins.length > 0
         ? { contextPlugins: payload.contextPlugins }
         : {}),
@@ -673,19 +692,32 @@ export function EntryShell({
         examplePromptBrief: payload.examplePromptContext.brief,
       } : {}),
     };
+    const pluginId = resolveSlideOnlyCreatePluginId(payload.pluginId, { slideOnlyMvp });
+    const pluginInputs =
+      slideOnlyMvp && pluginId
+        ? {
+            ...defaultSlideOnlyDeckPluginInputs(name),
+            ...(payload.pluginInputs ?? {}),
+          }
+        : payload.pluginInputs ?? null;
     return onCreateProject({
       name,
       skillId: payload.skillId ?? null,
       designSystemId: payload.designSystemId ?? null,
       metadata,
       pendingPrompt: payload.prompt,
-      ...(payload.pluginId ? { pluginId: payload.pluginId } : {}),
+      ...(pluginId ? { pluginId } : {}),
       ...(payload.pluginType ? { pluginType: payload.pluginType } : {}),
       ...(payload.appliedPluginSnapshotId
         ? { appliedPluginSnapshotId: payload.appliedPluginSnapshotId }
         : {}),
-      ...(payload.pluginInputs ? { pluginInputs: payload.pluginInputs } : {}),
-      ...(payload.conversationMode ? { conversationMode: payload.conversationMode } : {}),
+      ...(pluginInputs ? { pluginInputs } : {}),
+      // Slide-only embed never opens Docs/chat mode projects from Home.
+      ...(slideOnlyMvp
+        ? { conversationMode: 'design' as const }
+        : payload.conversationMode
+          ? { conversationMode: payload.conversationMode }
+          : {}),
       ...(payload.attachments && payload.attachments.length > 0
         ? { pendingFiles: payload.attachments }
         : {}),
