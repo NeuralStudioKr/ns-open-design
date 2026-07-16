@@ -983,7 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
-| 2026-07-16 | Export offload IAM 권한 누락 확인 — `teamver-design-staging-s3` static key user가 `exports/*`에 `s3:PutObject` 권한이 없어 S3 PUT 403 발생. `ns-teamver-devops` Terraform role policy와 운영 IAM 문서에 `exports/*` List/Get/Put/Delete scope 추가. `exports/` cache는 Terraform lifecycle로 7일 만료 |
+| 2026-07-16 | Export offload 한글 파일명 복구 — S3 SigV4 충돌을 피하려고 presign 쿼리에 ASCII `filename=`만 넣으면 프로젝트명이 `_`로 저장됨. PUT 시 객체에 RFC 5987 `Content-Disposition`(+`Content-Type`)을 저장하고 presign에서는 `response-content-disposition`을 제거. HEAD로 disposition 일치 시 PUT skip, 구 객체(메타 없음)는 다음 export에서 한 번 재업로드 |
 | 2026-07-16 | Export offload S3 key/HEAD 403 수정 — `OD_EXPORT_OFFLOAD_PREFIX=exports`와 offload key `exports/...`가 만나 `exports/exports/...`로 HEAD 하던 중복 prefix를 방지. S3 HEAD/stat가 403이어도 곧바로 실패하지 않고 PUT 업로드를 시도하도록 변경 |
 | 2026-07-16 | Staging compose offload 검증 모드 고정 — 서버 `.env.staging`이 오래되어 `OD_EXPORT_OFFLOAD_REQUIRED`가 빠져도 200 stream fallback으로 숨지 않도록 `docker-compose.staging.yml`에서 `OD_EXPORT_OFFLOAD_ENABLED=1`, `OD_EXPORT_OFFLOAD_REQUIRED=1`을 직접 지정 |
 | 2026-07-16 | Export offload reason 헤더 500 hotfix — S3/AWS 오류 문자열의 비ASCII·개행 문자가 `X-OD-Export-Offload-Reason`에 그대로 들어가 Node `Invalid character in header content` 500을 유발. 헤더용 값은 ASCII-safe + 길이 제한으로 정리하고 JSON 진단은 유지 |

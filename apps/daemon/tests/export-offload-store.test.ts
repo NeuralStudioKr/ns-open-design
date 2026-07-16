@@ -81,6 +81,7 @@ describe('export offload store', () => {
     expect(storage.writeObjectAtKey).toHaveBeenCalledWith(
       'teamver/exports/ws/proj/hash.pdf',
       Buffer.from('pdf'),
+      {},
     );
   });
 
@@ -104,6 +105,7 @@ describe('export offload store', () => {
     expect(storage.writeObjectAtKey).toHaveBeenCalledWith(
       'exports/ws/proj/hash.pdf',
       Buffer.from('pdf'),
+      {},
     );
   });
 
@@ -128,7 +130,70 @@ describe('export offload store', () => {
     expect(storage.writeObjectAtKey).toHaveBeenCalledWith(
       'exports/ws/proj/hash.pdf',
       Buffer.from('pdf'),
+      {},
     );
+  });
+
+  it('re-uploads when size matches but Content-Disposition is missing', async () => {
+    const storage: ExportOffloadStorage = {
+      statObjectAtKey: vi.fn(async () => ({
+        path: 'hash.pdf',
+        size: 3,
+        mtimeMs: 1,
+      })),
+      writeObjectAtKey: vi.fn(async (key: string, body: Buffer) => ({
+        path: key,
+        size: body.byteLength,
+        mtimeMs: 1,
+      })),
+    };
+    const disposition =
+      "attachment; filename=\"___.pdf\"; filename*=UTF-8''%ED%95%9C%EA%B8%80.pdf";
+
+    await expect(
+      putExportOffloadObject(
+        {
+          key: 'exports/ws/proj/hash.pdf',
+          body: 'pdf',
+          contentType: 'application/pdf',
+          contentDisposition: disposition,
+        },
+        { config: enabledConfig(), storage },
+      ),
+    ).resolves.toEqual({ status: 'uploaded', key: 'exports/ws/proj/hash.pdf', bytes: 3 });
+    expect(storage.writeObjectAtKey).toHaveBeenCalledWith(
+      'exports/ws/proj/hash.pdf',
+      Buffer.from('pdf'),
+      { contentType: 'application/pdf', contentDisposition: disposition },
+    );
+  });
+
+  it('skips PUT when size and Content-Disposition already match', async () => {
+    const disposition =
+      "attachment; filename=\"___.pdf\"; filename*=UTF-8''%ED%95%9C%EA%B8%80.pdf";
+    const storage: ExportOffloadStorage = {
+      statObjectAtKey: vi.fn(async () => ({
+        path: 'hash.pdf',
+        size: 3,
+        mtimeMs: 1,
+        contentType: 'application/pdf',
+        contentDisposition: disposition,
+      })),
+      writeObjectAtKey: vi.fn(),
+    };
+
+    await expect(
+      putExportOffloadObject(
+        {
+          key: 'exports/ws/proj/hash.pdf',
+          body: 'pdf',
+          contentType: 'application/pdf',
+          contentDisposition: disposition,
+        },
+        { config: enabledConfig(), storage },
+      ),
+    ).resolves.toEqual({ status: 'hit', key: 'exports/ws/proj/hash.pdf', bytes: 3 });
+    expect(storage.writeObjectAtKey).not.toHaveBeenCalled();
   });
 
   it('returns failed instead of throwing on storage errors', async () => {
@@ -191,6 +256,7 @@ describe('export offload store', () => {
       expect(uploadStorage.writeObjectAtKey).toHaveBeenCalledWith(
         'teamver/exports/ws/proj/hash.pdf',
         Buffer.from('pdf'),
+        {},
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -270,8 +336,6 @@ describe('export offload store', () => {
         },
       },
       now: new Date('2026-07-15T00:00:00.000Z'),
-      responseContentDisposition: 'attachment; filename="Deck.pdf"',
-      responseContentType: 'application/pdf',
     });
 
     expect(result.status).toBe('ready');
@@ -281,13 +345,13 @@ describe('export offload store', () => {
       const url = new URL(result.url);
       expect(url.pathname).toBe('/teamver/exports/ws/proj/hash.pdf');
       expect(url.searchParams.get('X-Amz-Expires')).toBe('180');
-      expect(url.searchParams.get('response-content-disposition')).toBe('attachment; filename="Deck.pdf"');
-      expect(url.searchParams.get('response-content-type')).toBe('application/pdf');
+      expect(url.searchParams.get('response-content-disposition')).toBeNull();
+      expect(url.searchParams.get('response-content-type')).toBeNull();
     }
   });
 
-  it('AWS-encodes query values and keeps ASCII-only disposition free of filename*', () => {
-    const disposition = 'attachment; filename="___ AI ___.pdf"';
+  it('still supports optional response-* overrides on presigned GET', () => {
+    const disposition = 'attachment; filename="Deck.pdf"';
     const url = new URL(
       buildExportOffloadPresignedGetUrl({
         key: 'exports/ws/proj/hash.pdf',
@@ -298,12 +362,12 @@ describe('export offload store', () => {
         },
         now: new Date('2026-07-15T00:00:00.000Z'),
         responseContentDisposition: disposition,
+        responseContentType: 'application/pdf',
       }),
     );
 
     expect(url.searchParams.get('response-content-disposition')).toBe(disposition);
-    expect(url.search).not.toContain('filename%2A');
-    expect(url.search).not.toContain('filename*');
+    expect(url.searchParams.get('response-content-type')).toBe('application/pdf');
   });
 
   it('returns disabled or failed instead of throwing from presign', async () => {

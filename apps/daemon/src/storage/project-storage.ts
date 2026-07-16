@@ -36,6 +36,9 @@ export interface ProjectFileMeta {
   size: number;
   // Unix epoch milliseconds of last modification.
   mtimeMs: number;
+  // Present when the backing store exposes them (S3 HEAD / GET).
+  contentType?: string;
+  contentDisposition?: string;
 }
 
 export type ProjectStorageProbeResult =
@@ -424,9 +427,19 @@ export class S3ProjectStorage implements ProjectStorage {
     return Buffer.from(await res.arrayBuffer());
   }
 
-  async writeObjectAtKey(key: string, body: Buffer): Promise<ProjectFileMeta> {
+  async writeObjectAtKey(
+    key: string,
+    body: Buffer,
+    options: { contentType?: string; contentDisposition?: string } = {},
+  ): Promise<ProjectFileMeta> {
     const objectKey = normalizeObjectKey(key);
-    const res = await this.signedRequest({ method: 'PUT', key: objectKey, body });
+    const res = await this.signedRequest({
+      method: 'PUT',
+      key: objectKey,
+      body,
+      ...(options.contentType ? { contentType: options.contentType } : {}),
+      ...(options.contentDisposition ? { contentDisposition: options.contentDisposition } : {}),
+    });
     if (!res.ok) throw new StorageError('IO', `S3 PUT ${objectKey} \u2192 ${res.status} ${res.statusText}: ${await safeText(res)}`);
     return {
       path: objectKey,
@@ -450,11 +463,15 @@ export class S3ProjectStorage implements ProjectStorage {
     if (!res.ok) throw new StorageError('IO', `S3 HEAD ${objectKey} \u2192 ${res.status} ${res.statusText}`);
     const contentLength = Number(res.headers.get('content-length') ?? '0');
     const lastModified = res.headers.get('last-modified');
+    const contentType = res.headers.get('content-type') ?? undefined;
+    const contentDisposition = res.headers.get('content-disposition') ?? undefined;
     const rel = objectKey.includes('/') ? objectKey.slice(objectKey.lastIndexOf('/') + 1) : objectKey;
     return {
       path: rel,
       size: Number.isFinite(contentLength) ? contentLength : 0,
       mtimeMs: lastModified ? Date.parse(lastModified) : Date.now(),
+      ...(contentType ? { contentType } : {}),
+      ...(contentDisposition ? { contentDisposition } : {}),
     };
   }
 
@@ -497,6 +514,8 @@ export class S3ProjectStorage implements ProjectStorage {
     key:        string;
     body?:      Buffer;
     extraQuery?: string;
+    contentType?: string;
+    contentDisposition?: string;
   }): Promise<Response> {
     const execute = async (): Promise<Response> => {
       const credentials = await this.resolveCredentials();
@@ -520,6 +539,8 @@ export class S3ProjectStorage implements ProjectStorage {
       const headers: Record<string, string> = {
         'host': host,
       };
+      if (args.contentType) headers['content-type'] = args.contentType;
+      if (args.contentDisposition) headers['content-disposition'] = args.contentDisposition;
       const body = args.body ?? Buffer.alloc(0);
       const now = this.options.now ? this.options.now() : new Date();
       signSigV4({

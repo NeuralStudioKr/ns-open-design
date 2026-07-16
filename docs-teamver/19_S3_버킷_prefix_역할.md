@@ -137,7 +137,8 @@ design/ws_<workspaceId>/user_<ownerUserId>/proj_<odProjectId>/
 | **역할** | PDF/PPTX/HTML/ZIP 등 다운로드 결과물을 S3에 업로드하고 daemon ticket이 presigned GET으로 302 redirect하기 위한 export offload cache |
 | **키** | `exports/ws_<workspaceId>/proj_<odProjectId>/<export-cache-key>.<ext>` |
 | **설정** | `OD_EXPORT_OFFLOAD_ENABLED=1`, `OD_EXPORT_OFFLOAD_PREFIX=exports`; staging은 `OD_EXPORT_OFFLOAD_REQUIRED=1` |
-| **생성** | `/api/projects/{id}/export/{format}` ticket 응답 생성 직전 S3 PUT |
+| **생성** | `/api/projects/{id}/export/{format}` ticket 응답 생성 직전 S3 PUT (`Content-Type` + RFC 5987 `Content-Disposition` 객체 메타 — 한글 프로젝트명) |
+| **다운로드** | `/export/downloads/{token}` → presigned GET **302** (쿼리에 `response-content-disposition` 없음 — 객체 메타 사용; filename* 쿼리는 SigV4 SignatureDoesNotMatch) |
 | **만료** | Terraform lifecycle `expire-export-offload-cache` — current/noncurrent object 7일 만료 |
 | **IAM** | EC2 role/static key — `exports/*` List/Get/Put/Delete ([18 §3](./18_EC2_IAM_Instance_Profile_S3_설정.md)) |
 | **주의** | `OD_EXPORT_OFFLOAD_PREFIX=exports`와 key root `exports/`가 중복되어 `exports/exports/...`가 되면 안 된다. |

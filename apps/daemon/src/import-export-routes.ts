@@ -98,17 +98,6 @@ function attachmentDisposition(filename: string): string {
   return `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
-/**
- * S3 presigned GET query params must stay ASCII-safe.
- * RFC 5987 `filename*=UTF-8''…` (and the `*` / `%` it introduces) routinely
- * produces SignatureDoesNotMatch against S3's canonical query encoding.
- * Stream downloads still use {@link attachmentDisposition} for Korean names.
- */
-function attachmentDispositionForS3Presign(filename: string): string {
-  const safeName = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '_') || 'artifact';
-  return `attachment; filename="${safeName}"`;
-}
-
 function firstHeaderValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] ?? '').trim();
   return String(value ?? '').trim();
@@ -313,12 +302,19 @@ function exportOffloadPayloadForRequest(
       | Awaited<ReturnType<typeof putExportOffloadFileObject>>
       | null = null;
     if (outcome.body !== undefined) {
-      result = await putExportOffloadObject({ key: offloadKey, body: outcome.body });
+      result = await putExportOffloadObject({
+        key: offloadKey,
+        body: outcome.body,
+        contentType: outcome.mime,
+        contentDisposition: attachmentDisposition(outcome.filename),
+      });
     } else if (outcome.filePath) {
       result = await putExportOffloadFileObject({
         key: offloadKey,
         filePath: outcome.filePath,
         bytes: outcome.bytes,
+        contentType: outcome.mime,
+        contentDisposition: attachmentDisposition(outcome.filename),
       });
     }
     if (result) {
@@ -950,10 +946,10 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       }
       let deliveryModeForResponse = entry.deliveryMode;
       if (entry.deliveryMode === 'redirect' && entry.offloadKey) {
-        const presigned = await presignExportOffloadGet(entry.offloadKey, {
-          responseContentDisposition: attachmentDispositionForS3Presign(entry.filename),
-          responseContentType: entry.mime,
-        });
+        // Filename / Content-Type come from object metadata set at PUT time.
+        // Do not pass response-content-disposition here — RFC 5987 filename*
+        // in the query string triggers S3 SignatureDoesNotMatch.
+        const presigned = await presignExportOffloadGet(entry.offloadKey);
         if (presigned.status === 'ready') {
           res.setHeader('Cache-Control', 'private, no-store');
           res.setHeader('X-OD-Export-Delivery-Mode', 'redirect');

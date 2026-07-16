@@ -23,12 +23,17 @@ export type ExportOffloadPresignResult =
 export type ExportOffloadPutInput = {
   key: string;
   body: Buffer | string;
+  /** Stored on the S3 object so GET/presign can return Korean filenames. */
+  contentType?: string;
+  contentDisposition?: string;
 };
 
 export type ExportOffloadFileInput = {
   key: string;
   filePath: string;
   bytes?: number;
+  contentType?: string;
+  contentDisposition?: string;
 };
 
 export type ExportOffloadPresignInput = {
@@ -45,6 +50,31 @@ function prefixedOffloadKey(prefix: string, key: string): string {
   const normalized = key.trim().replace(/^\/+/, '');
   if (root && (normalized === root || normalized.startsWith(`${root}/`))) return normalized;
   return root ? `${root}/${normalized}` : normalized;
+}
+
+function exportOffloadObjectHeaders(input: {
+  contentType?: string;
+  contentDisposition?: string;
+}): { contentType?: string; contentDisposition?: string } | undefined {
+  const contentType = input.contentType?.trim();
+  const contentDisposition = input.contentDisposition?.trim();
+  if (!contentType && !contentDisposition) return undefined;
+  return {
+    ...(contentType ? { contentType } : {}),
+    ...(contentDisposition ? { contentDisposition } : {}),
+  };
+}
+
+function exportOffloadHeadersMatch(
+  existing: { contentType?: string; contentDisposition?: string },
+  wanted: { contentType?: string; contentDisposition?: string } | undefined,
+): boolean {
+  if (!wanted) return true;
+  if (wanted.contentType && existing.contentType !== wanted.contentType) return false;
+  if (wanted.contentDisposition && existing.contentDisposition !== wanted.contentDisposition) {
+    return false;
+  }
+  return true;
 }
 
 function formatAmzDate(d: Date): string {
@@ -160,16 +190,22 @@ export async function putExportOffloadObject(
   const key = prefixedOffloadKey(config.prefix, input.key);
   const body = typeof input.body === 'string' ? Buffer.from(input.body, 'utf8') : input.body;
   const storage = options.storage ?? createExportOffloadStorage(config);
+  const objectHeaders = exportOffloadObjectHeaders(input);
   let statReason: string | undefined;
   try {
     const existing = await storage.statObjectAtKey(key).catch((err) => {
       statReason = err instanceof Error ? err.message : String(err);
       return null;
     });
-    if (existing && existing.size === body.byteLength) {
+    // Skip PUT when bytes and download headers already match.
+    if (
+      existing
+      && existing.size === body.byteLength
+      && exportOffloadHeadersMatch(existing, objectHeaders)
+    ) {
       return { status: 'hit', key, bytes: existing.size };
     }
-    const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body);
+    const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body, objectHeaders ?? {});
     return { status: 'uploaded', key, bytes: written.size };
   } catch (err) {
     const writeReason = err instanceof Error ? err.message : String(err);
@@ -192,6 +228,7 @@ export async function putExportOffloadFileObject(
   if (!config.enabled) return { status: 'disabled', reason: config.reason };
   const key = prefixedOffloadKey(config.prefix, input.key);
   const storage = options.storage ?? createExportOffloadStorage(config);
+  const objectHeaders = exportOffloadObjectHeaders(input);
   let statReason: string | undefined;
   try {
     const expectedBytes =
@@ -202,11 +239,15 @@ export async function putExportOffloadFileObject(
       statReason = err instanceof Error ? err.message : String(err);
       return null;
     });
-    if (existing && existing.size === expectedBytes) {
+    if (
+      existing
+      && existing.size === expectedBytes
+      && exportOffloadHeadersMatch(existing, objectHeaders)
+    ) {
       return { status: 'hit', key, bytes: existing.size };
     }
     const body = await readFile(input.filePath);
-    const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body);
+    const written: ProjectFileMeta = await storage.writeObjectAtKey(key, body, objectHeaders ?? {});
     return { status: 'uploaded', key, bytes: written.size };
   } catch (err) {
     const writeReason = err instanceof Error ? err.message : String(err);
