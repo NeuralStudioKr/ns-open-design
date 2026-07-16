@@ -49,7 +49,10 @@ import {
   notifyTeamverEmbedAuthFailureIfNeeded,
 } from '../teamver/teamverBffAuthError';
 import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
-import { formatProjectUploadFailureDetail } from '../teamver/projectUploadErrors';
+import {
+  formatProjectDeployErrorForUser,
+  formatProjectUploadFailureDetail,
+} from '../teamver/projectUploadErrors';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { buildDrivePublishToastContent } from '../teamver/drivePublishSuccess';
 import { canOfferAlternateDrivePublishFormat } from '../teamver/drivePublishFormatHealth';
@@ -7062,7 +7065,10 @@ function HtmlViewer({
       }
       return config;
     } catch (err) {
-      setDeployError(err instanceof Error ? err.message : t('fileViewer.deployProviderConfigSaveFailed', { provider: deployProviderLabel }));
+      setDeployError(formatProjectDeployErrorForUser(
+        err,
+        t('fileViewer.deployProviderConfigSaveFailed', { provider: deployProviderLabel }),
+      ));
       return null;
     } finally {
       setSavingDeployConfig(false);
@@ -7137,9 +7143,10 @@ function HtmlViewer({
       }
     } catch (err) {
       const option = getDeployProviderOption(deployProviderId);
-      const message = err instanceof Error
+      const fallback = err instanceof Error
         ? err.message
         : t('fileViewer.deployProviderFailed', { provider: t(option.labelKey) });
+      const message = formatProjectDeployErrorForUser(err, fallback);
       if (message === t(option.tokenRequiredKey, { provider: t(option.labelKey) })) {
         setDeployActionToast(message);
         deployTokenInputRef.current?.focus();
@@ -7166,7 +7173,7 @@ function HtmlViewer({
       setDeployment(next);
       setDeployResult(next);
     } catch (err) {
-      setDeployError(err instanceof Error ? err.message : t('fileViewer.deployFailed'));
+      setDeployError(formatProjectDeployErrorForUser(err, t('fileViewer.deployFailed')));
     } finally {
       setDeployPhase('idle');
     }

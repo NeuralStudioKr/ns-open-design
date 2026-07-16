@@ -14,6 +14,8 @@ import {
   formatProjectUploadFailureDetail,
   resolveProjectUploadBatchErrorMessage,
   throwIfProjectCommentUploadIncomplete,
+  formatProjectDeployErrorForUser,
+  formatProjectDeleteFailureForUser,
 } from "../src/teamver/projectUploadErrors";
 
 describe("projectUploadErrors", () => {
@@ -45,5 +47,15 @@ describe("projectUploadErrors", () => {
         1,
       ),
     ).toThrow(/연결|로그인/);
+  });
+
+  it("formatProjectDeployErrorForUser maps daemon 401 to transient copy", () => {
+    expect(
+      formatProjectDeployErrorForUser(new Error("Deploy failed (401)"), "Deploy failed"),
+    ).toContain("연결");
+  });
+
+  it("formatProjectDeleteFailureForUser uses retry-first copy while session memory is true", () => {
+    expect(formatProjectDeleteFailureForUser(2)).toContain("연결");
   });
 });

@@ -1,5 +1,5 @@
 import { isTeamverEmbedMode } from "./designApiBase";
-import { formatTeamverEmbedOperationFailureMessage } from "./teamverBffAuthError";
+import { formatTeamverEmbedOperationFailureMessage, formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
 import type { UploadProjectFilesResult } from "../providers/registry";
 
@@ -111,4 +111,37 @@ export function throwIfProjectCommentUploadIncomplete(
       slideOnlyMvp: isTeamverEmbedMode(),
     }),
   );
+}
+
+/** User-facing deploy modal errors in Teamver embed (daemon 401 or generic). */
+export function formatProjectDeployErrorForUser(err: unknown, fallback: string): string {
+  if (!isTeamverEmbedMode()) {
+    return err instanceof Error ? err.message : fallback;
+  }
+  const normalizedErr =
+    err instanceof Error
+    && (err.message === "teamver_daemon_unauthorized" || /\b401\b/.test(err.message))
+      ? new TeamverDaemonUnauthorizedError()
+      : err;
+  return formatTeamverEmbedOperationFailureMessage(normalizedErr, fallback, {
+    logoutMessage:
+      "로그인 세션이 만료되어 배포를 진행하지 못했습니다. 다시 로그인한 뒤 시도하세요.",
+    transientMessage:
+      "배포 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+  });
+}
+
+/** Passive-auth companion copy when file delete returns false in embed. */
+export function formatProjectDeleteFailureForUser(failedCount = 1): string {
+  if (!isTeamverEmbedMode()) {
+    return failedCount > 1
+      ? `Could not delete ${failedCount} file(s).`
+      : "Could not delete file.";
+  }
+  const logoutMessage =
+    failedCount > 1
+      ? `로그인 세션이 만료되어 ${failedCount}개 파일을 삭제하지 못했습니다. 다시 로그인한 뒤 시도하세요.`
+      : "로그인 세션이 만료되어 파일을 삭제하지 못했습니다. 다시 로그인한 뒤 시도하세요.";
+  const transientMessage = "파일 삭제 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
+  return formatTeamverEmbedAuthRequiredMessage(logoutMessage, transientMessage);
 }
