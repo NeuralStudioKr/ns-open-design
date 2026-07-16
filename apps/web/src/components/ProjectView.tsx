@@ -187,6 +187,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
@@ -2187,7 +2188,12 @@ export function ProjectView({
   }, []);
 
   const persistArtifact = useCallback(
-    async (art: Artifact, projectFilesSnapshot?: ProjectFile[], sourceText?: string) => {
+    async (
+      art: Artifact,
+      projectFilesSnapshot?: ProjectFile[],
+      sourceText?: string,
+      activityStartedAt?: number,
+    ) => {
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
         artifactHtml: art.html,
         identifier: art.identifier,
@@ -2234,6 +2240,9 @@ export function ProjectView({
       }
       if (savedArtifactRef.current === fileName) return;
       savedArtifactRef.current = fileName;
+      if (isTeamverEmbedMode()) {
+        await refreshTeamverEmbedAuthBeforeMutating({ activityStartedAt });
+      }
       const title = art.title || art.identifier || fileName;
       const htmlBody =
         ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
@@ -3553,7 +3562,7 @@ export function ProjectView({
                       requestOpenFile(recoveredExistingArtifact.name);
                     }
                   } else {
-                    await persistArtifact(artifactToPersist, nextFiles, replayedContent);
+                    await persistArtifact(artifactToPersist, nextFiles, replayedContent, runStartedAt);
                     nextFiles = await refreshProjectFiles();
                   }
                 }
@@ -4426,7 +4435,7 @@ export function ProjectView({
                       requestOpenFile(sameTurnHtmlWrite.name);
                     }
                 } else {
-                  await persistArtifact(artifactToPersist, nextFiles, finalText);
+                  await persistArtifact(artifactToPersist, nextFiles, finalText, startedAt);
                   nextFiles = await refreshProjectFiles();
                 }
               }

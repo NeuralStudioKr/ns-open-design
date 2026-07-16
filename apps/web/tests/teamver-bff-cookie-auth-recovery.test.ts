@@ -33,9 +33,11 @@ vi.mock("../src/teamver/teamverAuthReturn", () => ({
 }));
 
 import {
+  refreshTeamverEmbedAuthBeforeMutating,
   resetDesignAuthRefreshDeclinedForTests,
   withDesignBffCookieAuthRecovery,
 } from "../src/teamver/designBffClient";
+import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 
 describe("withDesignBffCookieAuthRecovery", () => {
   beforeEach(() => {
@@ -66,5 +68,34 @@ describe("withDesignBffCookieAuthRecovery", () => {
     await expect(pending).resolves.toBe("ok");
     expect(request).toHaveBeenCalledTimes(2);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("refreshTeamverEmbedAuthBeforeMutating", () => {
+  beforeEach(() => {
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+  });
+
+  it("skips refresh for short-lived activity", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { refreshTeamverEmbedAuthBeforeMutating } = await import("../src/teamver/designBffClient");
+    await refreshTeamverEmbedAuthBeforeMutating({
+      activityStartedAt: Date.now() - 30_000,
+      minAgeMs: 120_000,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes before mutating when activity exceeded the age threshold", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "" });
+    vi.stubGlobal("fetch", fetchMock);
+    const { refreshTeamverEmbedAuthBeforeMutating } = await import("../src/teamver/designBffClient");
+    await refreshTeamverEmbedAuthBeforeMutating({
+      activityStartedAt: Date.now() - 180_000,
+      minAgeMs: 120_000,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

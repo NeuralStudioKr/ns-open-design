@@ -1,4 +1,5 @@
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import { refreshDesignAuthCookie } from "./designBffClient";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
@@ -84,14 +85,18 @@ function daemonGetInflightKey(
   return `${url}\n${headerKey}`;
 }
 
+function embedDaemonAuthRecoveryEnabled(): boolean {
+  if (!isTeamverEmbedMode()) return false;
+  return isBootstrapAuthMode() || isTeamverEmbedSessionAuthenticated();
+}
+
 function shouldRecoverEmbedDaemonUnauthorized(
   input: RequestInfo | URL,
   resp: Response,
 ): boolean {
   return (
     resp.status === 401
-    && isTeamverEmbedMode()
-    && isBootstrapAuthMode()
+    && embedDaemonAuthRecoveryEnabled()
     && isLikelyDaemonApiRequest(input)
   );
 }

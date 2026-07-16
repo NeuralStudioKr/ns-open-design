@@ -214,6 +214,25 @@ export async function withDesignBffCookieAuthRecovery<T>(
   }
 }
 
+/** Default age before proactive refresh ahead of mutating daemon routes. */
+export const TEAMVER_EMBED_PROACTIVE_AUTH_REFRESH_MS = 2 * 60 * 1000;
+
+/**
+ * Refresh BFF cookies before a mutating daemon call when a long-running turn
+ * may have outlived the nginx auth_request access token.
+ */
+export async function refreshTeamverEmbedAuthBeforeMutating(options?: {
+  activityStartedAt?: number;
+  minAgeMs?: number;
+}): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+  if (!isBootstrapAuthMode() && !isTeamverEmbedSessionAuthenticated()) return;
+  const minAgeMs = options?.minAgeMs ?? TEAMVER_EMBED_PROACTIVE_AUTH_REFRESH_MS;
+  const startedAt = options?.activityStartedAt;
+  if (startedAt != null && Date.now() - startedAt < minAgeMs) return;
+  await refreshDesignAuthCookie();
+}
+
 /** BFF silent refresh via design-api (Apps JWT stored server-side). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (inFlightAuthRefresh) return inFlightAuthRefresh;

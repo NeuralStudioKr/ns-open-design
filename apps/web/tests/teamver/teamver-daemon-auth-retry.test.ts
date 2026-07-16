@@ -8,6 +8,10 @@ vi.mock("../../src/teamver/designApiBase", () => ({
   isBootstrapAuthMode: vi.fn(() => true),
 }));
 
+vi.mock("../../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => true),
+}));
+
 const refreshMock = vi.fn(async () => true);
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
