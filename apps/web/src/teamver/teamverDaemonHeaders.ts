@@ -1,7 +1,11 @@
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
+import { refreshDesignAuthCookie } from "./designBffClient";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
+
+/** HA sibling Set-Cookie race — mirror BFF/Drive soft retry delay. */
+const DAEMON_AUTH_RETRY_DELAY_MS = 150;
 
 const DAEMON_PROJECT_ID_RE =
   /\/api\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
@@ -80,27 +84,65 @@ function daemonGetInflightKey(
   return `${url}\n${headerKey}`;
 }
 
-function maybeRedirectOnEmbedDaemonUnauthorized(
+function shouldRecoverEmbedDaemonUnauthorized(
   input: RequestInfo | URL,
   resp: Response,
-): void {
-  if (
-    resp.status !== 401
-    || !isTeamverEmbedMode()
-    || !isBootstrapAuthMode()
-    || !isLikelyDaemonApiRequest(input)
-  ) {
-    return;
-  }
-  void input;
+): boolean {
+  return (
+    resp.status === 401
+    && isTeamverEmbedMode()
+    && isBootstrapAuthMode()
+    && isLikelyDaemonApiRequest(input)
+  );
+}
+
+function noteEmbedDaemonUnauthorized(input: RequestInfo | URL, resp: Response): void {
+  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) return;
   handleEmbedPassiveUnauthorized("daemon");
+}
+
+function delayDaemonAuthRetry(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, DAEMON_AUTH_RETRY_DELAY_MS);
+  });
+}
+
+/**
+ * Embed daemon `/api/*` passes nginx auth_request. Long runs can expire the
+ * BFF access token mid-flight; mutating calls like artifact save must refresh
+ * once and retry instead of surfacing a false "session expired" banner while
+ * the UI still looks signed in.
+ */
+async function fetchDaemonWithEmbedAuthRecovery(
+  input: RequestInfo | URL,
+  init: RequestInit,
+): Promise<Response> {
+  let resp = await fetch(input, init);
+  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    return resp;
+  }
+
+  const refreshed = await refreshDesignAuthCookie();
+  if (refreshed) {
+    resp = await fetch(input, init);
+    if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+      return resp;
+    }
+  }
+
+  // Another tab/node may have rotated cookies while this request saw 401.
+  await delayDaemonAuthRetry();
+  resp = await fetch(input, init);
+  if (shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    noteEmbedDaemonUnauthorized(input, resp);
+  }
+  return resp;
 }
 
 async function finalizeDaemonFetch(
   input: RequestInfo | URL,
   resp: Response,
 ): Promise<Response> {
-  maybeRedirectOnEmbedDaemonUnauthorized(input, resp);
   return resp.clone();
 }
 
@@ -143,12 +185,12 @@ export async function fetchTeamverDaemon(
   const nextInit = { ...requestInit, headers, credentials, ...(redirect ? { redirect } : {}) };
   const dedupeKey = daemonGetInflightKey(input, requestInit, headers);
   if (!dedupeKey) {
-    const resp = await fetch(input, nextInit);
+    const resp = await fetchDaemonWithEmbedAuthRecovery(input, nextInit);
     return finalizeDaemonFetch(input, resp);
   }
   const existing = daemonGetInflight.get(dedupeKey);
   if (existing) return existing.then((resp) => finalizeDaemonFetch(input, resp));
-  const promise = fetch(input, nextInit);
+  const promise = fetchDaemonWithEmbedAuthRecovery(input, nextInit);
   daemonGetInflight.set(dedupeKey, promise);
   try {
     const resp = await promise;
