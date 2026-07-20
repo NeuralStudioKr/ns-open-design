@@ -2332,6 +2332,31 @@ function AppInner() {
         } catch (err) {
           canvasImportFailed = true;
           console.warn('Home Canvas import-canvas failed for new project', err);
+          trackProjectCreateResult(
+            analytics.track,
+            {
+              page_name: 'home',
+              area: 'new_project',
+              project_source: 'create_button',
+              project_id: result.project.id,
+              project_kind: projectKindToTracking(kind, input.metadata?.videoModel),
+              fidelity,
+              ...(input.pluginId ? { plugin_id: input.pluginId } : {}),
+              ...(input.pluginType ? { plugin_type: input.pluginType } : {}),
+              result: 'failed',
+              error_code:
+                err instanceof Error && err.message.trim()
+                  ? err.message.trim().slice(0, 120)
+                  : 'canvas_import_failed',
+            },
+            { requestId: input.requestId },
+          );
+          // Best-effort: remove the empty project so retry does not pile orphans.
+          try {
+            await deleteProjectApi(result.project.id);
+          } catch {
+            /* ignore cleanup failure */
+          }
           // Do not navigate as success or consume handoff — HomeView one-confirm
           // must keep the modal + URL so the user can retry.
           throw err instanceof Error ? err : new Error(String(err));

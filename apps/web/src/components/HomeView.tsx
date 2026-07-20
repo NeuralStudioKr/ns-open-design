@@ -1727,7 +1727,14 @@ export function HomeView({
 
   async function confirmCanvasSlideLaunch() {
     if (!canvasSlideLaunch || canvasSlideLaunchBusy || submitPending) return;
-    if (!teamverDriveImportAllowed) return;
+    if (!teamverDriveImportAllowed) {
+      setCanvasSlideLaunchError(
+        canvasSlideLaunch.kind === 'canvas'
+          ? 'Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.'
+          : formatDriveImportErrorForUser('teamver_workspace_required'),
+      );
+      return;
+    }
     setCanvasSlideLaunchBusy(true);
     setCanvasSlideLaunchError(null);
     setError(null);

@@ -41,6 +41,11 @@ export function extractCanvasImportErrorCode(err: unknown): string {
       if (code && isStableCanvasImportToken(code)) {
         return code;
       }
+      // Drive-shaped UnauthorizedError(session_expired) body: { detail, login_url }
+      const detail = (body as { detail?: unknown }).detail;
+      if (typeof detail === "string" && isStableCanvasImportToken(detail.trim())) {
+        return detail.trim();
+      }
     }
     // Missing Main SSO cookie → BFF UnauthorizedError("session_expired").
     // Do not map bare 401 to canvas_export_forbidden (wrong "no access" copy).

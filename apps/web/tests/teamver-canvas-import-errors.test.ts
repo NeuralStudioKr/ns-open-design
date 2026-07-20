@@ -29,6 +29,19 @@ describe("extractCanvasImportErrorCode / formatTeamverCanvasImportErrorMessage",
     expect(formatTeamverCanvasImportErrorMessage(err)).toContain("권한");
   });
 
+  it("maps Drive-shaped session_expired detail body", () => {
+    const err = new NetworkError({
+      message: "HTTP 401",
+      status: 401,
+      responseBody: {
+        detail: "session_expired",
+        login_url: "https://stg.teamver.com/auth/signin",
+      },
+    });
+    expect(extractCanvasImportErrorCode(err)).toBe("session_expired");
+    expect(formatTeamverCanvasImportErrorMessage(err)).toContain("로그인");
+  });
+
   it("maps session_expired / 401 to re-login copy, not canvas forbidden", () => {
     const err = new NetworkError({
       message: "HTTP 401",
