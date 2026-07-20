@@ -257,6 +257,24 @@ describe('findSameTurnHtmlWriteForRecoveredArtifact', () => {
     })).resolves.toBeNull();
   });
 
+  it('does not blindly bind a mismatched Claude HTML write', async () => {
+    const indexFile = {
+      name: 'index.html',
+      path: 'index.html',
+      size: html.length,
+      mtime: 2,
+      kind: 'html',
+      mime: 'text/html',
+    };
+
+    await expect(findSameTurnHtmlWriteForRecoveredArtifact({
+      artifactHtml: html,
+      producedFiles: [indexFile] as never,
+      readProjectHtml: vi.fn(async () => html.replace('Demo</h1>', 'Other</h1>')),
+      allowAnyHtmlWrite: true,
+    })).resolves.toBeNull();
+  });
+
   it('ignores non-HTML same-turn files', async () => {
     const readProjectHtml = vi.fn(async () => html);
 

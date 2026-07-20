@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 14. `24c7876b3` in-place HTML edit delivery 보존 패치 중 현재 Teamver 구조에 바로 맞는 안전 부분을 수동 반영했다. 기존 Claude 전용 `allowAnyHtmlWrite` blind fallback은 내용이 다른 same-turn HTML 파일도 결과물로 묶을 수 있어 queued/comment 수정 플로우에서 엉뚱한 파일을 열거나 완료로 표시할 위험이 있었다. 이제 같은 turn HTML write는 normalize된 실제 HTML 내용이 일치할 때만 recovered artifact로 인정한다. 호출부 호환성은 유지했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 13. loop 11~12의 `endedWithUnfinishedWork` 신호를 pet/task center 최근 작업 요약까지 연결했다. succeeded run이라도 미완료 항목이 남아 있으면 최근 완료 목록에서 `incomplete` 상태로 보존하고 warning dot으로 표시해, background 작업 센터가 “완료됨”처럼 오인되는 경로를 줄였다. 기존 active running/queued grouping과 preview deep-link 흐름은 변경하지 않았다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 12. loop 11에서 daemon이 노출한 `endedWithUnfinishedWork`를 Teamver embed background completion surface에서 소비하도록 FE 최소 경로를 보강했다. succeeded run이라도 unfinished 신호가 있으면 toast/desktop notification을 “완료”가 아닌 “확인 필요/미완료 항목 있음”으로 표시하고, 성공음·성공 톤으로 오인하지 않게 했다. preview deep-link는 유지해 사용자가 생성된 결과물과 남은 작업을 바로 확인할 수 있다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 11. `bc5b6f058`의 전체 project-status/UI/DB 변경은 계속 보류하되, 핵심 run completeness 신호만 현재 Teamver run service에 수동 포팅했다. TodoWrite 최신 snapshot에 미완료 항목이 있거나 usage `stopReason=max_tokens`로 끝난 succeeded run은 `/api/runs` status와 terminal `end` event에 `endedWithUnfinishedWork:true`를 싣는다. 기존 `status:succeeded`는 유지해 호환성을 지키면서, background/re-entry UI가 “완료처럼 보이지만 실제로는 미완료” 상태를 구분할 수 있는 기반을 만든다.

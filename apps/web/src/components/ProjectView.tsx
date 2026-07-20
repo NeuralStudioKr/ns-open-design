@@ -7721,11 +7721,11 @@ export async function findSameTurnHtmlWriteForRecoveredArtifact({
   artifactHtml,
   producedFiles,
   readProjectHtml,
-  allowAnyHtmlWrite = false,
 }: {
   artifactHtml: string;
   producedFiles: readonly ProjectFile[];
   readProjectHtml: (name: string) => Promise<string | null>;
+  /** Deprecated compatibility: never blind-bind mismatched HTML writes. */
   allowAnyHtmlWrite?: boolean;
 }): Promise<ProjectFile | null> {
   const recovered = normalizeHtmlForRecoveredArtifactComparison(artifactHtml);
@@ -7737,7 +7737,6 @@ export async function findSameTurnHtmlWriteForRecoveredArtifact({
       return file;
     }
   }
-  if (allowAnyHtmlWrite) return candidates[0] ?? null;
   return null;
 }
 
