@@ -369,8 +369,12 @@ export async function verifyTeamverProjectAccess(
   let outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
   // Transient BFF / network blip: one immediate soft retry before surfacing
   // UPSTREAM_UNAVAILABLE to the FE (intermittent "AI 연결 실패" adjacent failures
-  // on messages/files during a chat turn).
-  if (outcome.kind === 'failed' || (outcome.kind === 'upstream' && outcome.httpStatus >= 500)) {
+  // on messages/files during a chat turn). Also retry 408/429 from the BFF.
+  if (
+    outcome.kind === 'failed'
+    || (outcome.kind === 'upstream'
+      && (outcome.httpStatus >= 500 || outcome.httpStatus === 408 || outcome.httpStatus === 429))
+  ) {
     await new Promise((resolve) => setTimeout(resolve, 200));
     outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
   }

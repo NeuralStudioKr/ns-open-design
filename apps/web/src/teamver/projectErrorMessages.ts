@@ -148,8 +148,13 @@ export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
   if (direct) return direct;
   const message = err instanceof Error ? err.message : String(err);
-  const proxyMatch = /^proxy \d+: (\S+)/.exec(message);
-  return proxyMatch?.[1]?.trim() || undefined;
+  const proxyMatch = /^(?:proxy|daemon) \d+: (\S+)/.exec(message);
+  if (proxyMatch?.[1]?.trim()) return proxyMatch[1].trim();
+  const known =
+    /\b(UPSTREAM_UNAVAILABLE|RATE_LIMITED|UNAUTHORIZED|FORBIDDEN|BAD_REQUEST|INTERNAL_ERROR|OVERLOADED_ERROR|PROJECT_STORAGE_UNAVAILABLE|PROJECT_STORAGE_SYNC_FAILED|MANAGED_API_KEY_MISSING|API_KEY_REQUIRED|MANAGED_KEY_UNAVAILABLE)\b/.exec(
+      message,
+    );
+  return known?.[1];
 }
 
 /** User-facing run/stream failure — embed avoids raw daemon/SSE English (banner + chat status). */
@@ -179,6 +184,16 @@ export function formatProjectRunErrorForUser(err: unknown): string {
     return "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
   }
   if (code === "UPSTREAM_UNAVAILABLE") {
+    return "AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.";
+  }
+  // Legacy/provider-native codes that predate mid-stream normalization.
+  if (
+    code === "OVERLOADED_ERROR"
+    || code === "OVERLOADED"
+    || code === "API_ERROR"
+    || code === "SERVER_ERROR"
+    || code === "SERVICE_UNAVAILABLE"
+  ) {
     return "AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.";
   }
   if (code === "BAD_REQUEST") {

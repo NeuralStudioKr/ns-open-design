@@ -129,6 +129,12 @@ describe("project conversation error messages", () => {
     const upstreamErr = new Error("fetch failed") as Error & { code?: string };
     upstreamErr.code = "UPSTREAM_UNAVAILABLE";
     expect(formatProjectRunErrorForUser(upstreamErr)).toContain("AI 서비스에 연결");
+    expect(
+      formatProjectRunErrorForUser(new Error("daemon 502: UPSTREAM_UNAVAILABLE teamver project access check failed")),
+    ).toContain("AI 서비스에 연결");
+    const overloadedErr = new Error("Overloaded") as Error & { code?: string };
+    overloadedErr.code = "OVERLOADED_ERROR";
+    expect(formatProjectRunErrorForUser(overloadedErr)).toContain("AI 서비스에 연결");
     const internalErr = new Error("bug") as Error & { code?: string };
     internalErr.code = "INTERNAL_ERROR";
     expect(formatProjectRunErrorForUser(internalErr)).toContain("내부 오류");

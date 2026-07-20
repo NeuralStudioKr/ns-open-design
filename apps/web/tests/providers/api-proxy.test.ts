@@ -555,6 +555,20 @@ describe('shouldSoftRetryProxyFailure', () => {
     ).toBe(true);
   });
 
+  it('retries storage / network message shapes', () => {
+    const storage = new Error('proxy 502') as Error & { code?: string };
+    storage.code = 'PROJECT_STORAGE_UNAVAILABLE';
+    expect(shouldSoftRetryProxyFailure(storage)).toBe(true);
+    expect(shouldSoftRetryProxyFailure(new Error('TypeError: Failed to fetch'))).toBe(true);
+  });
+
+  it('does not retry when retryable was explicitly cleared after deltas', () => {
+    const afterDelta = new Error('upstream') as Error & { code?: string; retryable?: boolean };
+    afterDelta.code = 'UPSTREAM_UNAVAILABLE';
+    afterDelta.retryable = false;
+    expect(shouldSoftRetryProxyFailure(afterDelta)).toBe(false);
+  });
+
   it('does not retry auth / bad request', () => {
     const unauthorized = new Error('proxy 401') as Error & { code?: string };
     unauthorized.code = 'UNAUTHORIZED';

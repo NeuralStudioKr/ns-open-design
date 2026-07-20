@@ -60,6 +60,7 @@ import { tryAcquireWorkspaceProxySlot } from './byok-proxy-workspace-limit.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
 import {
   classifyProxyCatchError,
+  classifyProviderStreamError,
   proxyHttpErrorCode,
   proxyHttpRetryable,
 } from './proxy-error-classification.js';
@@ -620,15 +621,18 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     sse.end();
   };
 
-  const providerStreamErrorCode = (data: any, fallback = 'UPSTREAM_UNAVAILABLE') => {
-    const raw =
-      data?.error?.code
-      ?? data?.error?.type
-      ?? data?.code
-      ?? data?.type
-      ?? fallback;
-    if (typeof raw !== 'string' || !raw.trim()) return fallback;
-    return raw.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+  const sendProviderStreamError = (
+    sse: any,
+    message: string,
+    data: unknown,
+    options?: { fallbackCode?: string; forceNonRetryable?: boolean },
+  ) => {
+    const classified = classifyProviderStreamError(data, options);
+    sendProxyError(sse, message, {
+      code: classified.code,
+      details: data,
+      retryable: classified.retryable,
+    });
   };
 
   const appendVersionedApiPath = (baseUrl: string, path: string) => {
@@ -1005,10 +1009,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           // (api-proxy.ts) records it for billing — api-proxy handles the
           // `usage` frame before flowing onError into the run lifecycle.
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
-          sendProxyError(sse, message, {
-            code: providerStreamErrorCode(data),
-            details: data,
-          });
+          sendProviderStreamError(sse, message, data);
           ended = true;
           return true;
         }
@@ -1136,11 +1137,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
-          sendProxyError(sse, `Gemini error: ${streamError}`, {
-            code: providerStreamErrorCode(data),
-            details: data,
-            retryable: false,
-          });
+          sendProviderStreamError(sse, `Gemini error: ${streamError}`, data);
           ended = true;
           return true;
         }
@@ -1172,10 +1169,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const blockMessage = extractGeminiBlockMessage(data);
         if (blockMessage) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
-          sendProxyError(sse, blockMessage, {
-            code: providerStreamErrorCode(data, 'BAD_REQUEST'),
-            details: data,
-            retryable: false,
+          sendProviderStreamError(sse, blockMessage, data, {
+            fallbackCode: 'BAD_REQUEST',
+            forceNonRetryable: true,
           });
           ended = true;
           return true;
@@ -1448,11 +1444,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-          sendProxyError(sse, `Provider error: ${streamError}`, {
-            code: providerStreamErrorCode(data),
-            details: data,
-            retryable: false,
-          });
+          sendProviderStreamError(sse, `Provider error: ${streamError}`, data);
           ended = true;
           return true;
         }
@@ -1637,11 +1629,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-          sendProxyError(sse, `Azure error: ${streamError}`, {
-            code: providerStreamErrorCode(data),
-            details: data,
-            retryable: false,
-          });
+          sendProviderStreamError(sse, `Azure error: ${streamError}`, data);
           ended = true;
           return true;
         }
@@ -2165,13 +2153,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           turnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Provider error: ${providerError}`, {
-          code: providerStreamErrorCode(
-            typeof providerError === 'object' ? providerError : { message: providerError },
-          ),
-          details: providerError,
-          retryable: false,
-        });
+        sendProviderStreamError(
+          sse,
+          `Provider error: ${providerError}`,
+          typeof providerError === 'object' ? providerError : { message: providerError },
+        );
         return { kind: 'error' };
       }
 
@@ -2380,13 +2366,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           anthTurnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Provider error: ${providerError}`, {
-          code: providerStreamErrorCode(
-            typeof providerError === 'object' ? providerError : { message: providerError },
-          ),
-          details: providerError,
-          retryable: false,
-        });
+        sendProviderStreamError(
+          sse,
+          `Provider error: ${providerError}`,
+          typeof providerError === 'object' ? providerError : { message: providerError },
+        );
         return { kind: 'error' };
       }
       const toolBlocks = Object.keys(blocks)
@@ -2616,13 +2600,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           geminiTurnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Gemini error: ${providerError}`, {
-          code: providerStreamErrorCode(
-            typeof providerError === 'object' ? providerError : { message: providerError },
-          ),
-          details: providerError,
-          retryable: false,
-        });
+        sendProviderStreamError(
+          sse,
+          `Gemini error: ${providerError}`,
+          typeof providerError === 'object' ? providerError : { message: providerError },
+        );
         return { kind: 'error' };
       }
       if (functionCalls.length > 0) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyProxyCatchError,
+  classifyProviderStreamError,
   isProxyNetworkFailure,
   proxyHttpErrorCode,
   proxyHttpRetryable,
@@ -44,5 +45,50 @@ describe('proxy-error-classification', () => {
     expect(proxyHttpErrorCode(502)).toBe('UPSTREAM_UNAVAILABLE');
     expect(proxyHttpRetryable(502)).toBe(true);
     expect(proxyHttpRetryable(400)).toBe(false);
+  });
+
+  it('maps overloaded / rate-limit mid-stream frames to retryable UPSTREAM', () => {
+    expect(
+      classifyProviderStreamError({
+        type: 'error',
+        error: { type: 'overloaded_error', message: 'Overloaded' },
+      }),
+    ).toEqual({ code: 'UPSTREAM_UNAVAILABLE', retryable: true });
+
+    expect(
+      classifyProviderStreamError({
+        error: { code: 'rate_limit_exceeded', message: 'Rate limit reached' },
+      }),
+    ).toEqual({ code: 'RATE_LIMITED', retryable: true });
+  });
+
+  it('keeps auth / invalid-request mid-stream frames non-retryable', () => {
+    expect(
+      classifyProviderStreamError({
+        error: { type: 'invalid_request_error', message: 'messages: empty' },
+      }),
+    ).toEqual({ code: 'BAD_REQUEST', retryable: false });
+
+    expect(
+      classifyProviderStreamError({
+        error: { type: 'authentication_error', message: 'invalid x-api-key' },
+      }),
+    ).toEqual({ code: 'UNAUTHORIZED', retryable: false });
+  });
+
+  it('forceNonRetryable is used for content-policy / Gemini block paths', () => {
+    expect(
+      classifyProviderStreamError(
+        { promptFeedback: { blockReason: 'SAFETY' } },
+        { forceNonRetryable: true, fallbackCode: 'BAD_REQUEST' },
+      ),
+    ).toEqual({ code: 'BAD_REQUEST', retryable: false });
+  });
+
+  it('defaults unknown provider mid-stream errors to retryable UPSTREAM', () => {
+    expect(classifyProviderStreamError({ error: { message: 'weird blip' } })).toEqual({
+      code: 'UPSTREAM_UNAVAILABLE',
+      retryable: true,
+    });
   });
 });

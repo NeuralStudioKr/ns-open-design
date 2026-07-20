@@ -14486,8 +14486,11 @@ export async function startServer({
             diagnostic?.code ?? serviceCode ?? 'AGENT_EXECUTION_FAILED',
             agentStreamError,
             {
-              retryable: diagnostic?.retryable
-                ?? (serviceCode === 'AGENT_AUTH_REQUIRED' || serviceCode === 'RATE_LIMITED'),
+              // Match json-event-stream / child-close: any classified service
+              // failure (incl. UPSTREAM_UNAVAILABLE) is retryable so daemon
+              // silent retry can absorb mid-stream blips before the FE shows
+              // 「AI 서비스에 연결하지 못했습니다」.
+              retryable: diagnostic?.retryable ?? Boolean(serviceCode),
               ...(diagnostic ? { details: { detail: diagnostic.detail } } : {}),
             },
           ));

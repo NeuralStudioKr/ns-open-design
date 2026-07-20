@@ -69,9 +69,9 @@ export async function streamProxyEndpoint(
     return;
   }
 
-  // Embed: one soft retry for transient LLM/network failures before tokens
-  // stream (mirrors export soft-retry). Standalone keeps single-shot.
-  const maxAttempts = isTeamverEmbedMode() ? 2 : 1;
+  // One soft retry for transient LLM/network/access failures before tokens
+  // stream (mirrors export soft-retry). Avoids intermittent hard failures.
+  const maxAttempts = 2;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal.aborted) return;
     const outcome = await streamProxyEndpointOnce(
@@ -124,11 +124,22 @@ function delayMs(ms: number, signal: AbortSignal): Promise<void> {
 export function shouldSoftRetryProxyFailure(
   err: Error & { code?: string; retryable?: boolean },
 ): boolean {
+  // Explicit false wins (e.g. after tokens streamed — do not duplicate UI).
+  if (err.retryable === false) return false;
   if (err.retryable === true) return true;
   const code = (err.code || '').trim().toUpperCase();
-  if (code === 'UPSTREAM_UNAVAILABLE' || code === 'RATE_LIMITED') return true;
+  if (
+    code === 'UPSTREAM_UNAVAILABLE'
+    || code === 'RATE_LIMITED'
+    || code === 'PROJECT_STORAGE_UNAVAILABLE'
+    || code === 'PROJECT_STORAGE_SYNC_FAILED'
+  ) {
+    return true;
+  }
   if (/^proxy (502|503|504):/i.test(err.message)) return true;
-  if (/fetch failed|networkerror|failed to fetch/i.test(err.message)) return true;
+  if (/fetch failed|networkerror|failed to fetch|econnreset|econnrefused|etimedout/i.test(err.message)) {
+    return true;
+  }
   return false;
 }
 
@@ -329,6 +340,17 @@ async function streamProxyEndpointOnce(
       code?: string;
       retryable?: boolean;
     };
+    // Mirror daemon network classification so FE soft-retry fires even when
+    // the browser throws before an SSE error frame (daemon unreachable, TLS, etc.).
+    if (
+      !error.code
+      && /fetch failed|networkerror|failed to fetch|econnreset|econnrefused|etimedout|network|load failed/i.test(
+        `${error.name} ${error.message}`,
+      )
+    ) {
+      error.code = 'UPSTREAM_UNAVAILABLE';
+      error.retryable = true;
+    }
     return { error };
   }
 }
@@ -523,7 +545,7 @@ function proxyErrorMessage(data: Record<string, unknown>): string {
 export function buildProxyResponseError(
   status: number,
   text: string,
-): Error & { code?: string } {
+): Error & { code?: string; retryable?: boolean } {
   const parsed = parseProxyErrorEnvelope(text);
   const codeFragment = parsed?.code ? `${parsed.code} ` : '';
   const messageFragment =
@@ -532,14 +554,17 @@ export function buildProxyResponseError(
     || 'no body';
   const err = new Error(`proxy ${status}: ${codeFragment}${messageFragment}`) as Error & {
     code?: string;
+    retryable?: boolean;
   };
   if (parsed?.code) err.code = parsed.code;
+  if (parsed?.retryable === true) err.retryable = true;
+  else if (status === 429 || status === 408 || status >= 500) err.retryable = true;
   return err;
 }
 
 function parseProxyErrorEnvelope(
   text: string,
-): { code?: string; message?: string } | null {
+): { code?: string; message?: string; retryable?: boolean } | null {
   if (!text || typeof text !== 'string') return null;
   try {
     const parsed = JSON.parse(text);
@@ -547,7 +572,7 @@ function parseProxyErrorEnvelope(
     const nested =
       (parsed as { error?: unknown }).error
       && typeof (parsed as { error?: unknown }).error === 'object'
-        ? ((parsed as { error: { code?: unknown; message?: unknown } }).error)
+        ? ((parsed as { error: { code?: unknown; message?: unknown; retryable?: unknown } }).error)
         : null;
     const code =
       typeof nested?.code === 'string' && nested.code.trim()
@@ -567,10 +592,16 @@ function parseProxyErrorEnvelope(
             : typeof (parsed as { details?: unknown }).details === 'string'
               ? (parsed as { details: string }).details.trim() || undefined
               : undefined;
-    if (!code && !message) return null;
-    const out: { code?: string; message?: string } = {};
+    const retryable =
+      nested?.retryable === true
+      || (parsed as { retryable?: unknown }).retryable === true
+        ? true
+        : undefined;
+    if (!code && !message && retryable === undefined) return null;
+    const out: { code?: string; message?: string; retryable?: boolean } = {};
     if (code) out.code = code;
     if (message) out.message = message;
+    if (retryable) out.retryable = true;
     return out;
   } catch {
     return null;
