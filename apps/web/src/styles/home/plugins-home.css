@@ -332,30 +332,18 @@
   background: var(--bg-subtle);
   color: var(--text-muted);
 }
-/*
- * Planned scene buckets stay visible even before the bundled catalog
- * has examples for every bucket. Fade zero-count chips without adding
- * synthetic placeholder cards to the starter grid.
- */
-.plugins-home__pill[data-empty='true']:not(.is-active) {
-  opacity: 0.45;
-  border-style: dashed;
+/* Slide-only / emptied primary axes: search is the only control on the row. */
+.plugins-home__facet-row--search-only {
+  min-height: 36px;
 }
-.plugins-home__pill[data-empty='true']:not(.is-active):hover {
-  opacity: 0.75;
+.plugins-home__facet-row--search-only .plugins-home__facet-tools {
+  flex: 1 1 auto;
+  margin-left: 0;
+  max-width: 360px;
+  min-width: min(100%, 220px);
 }
-.plugins-home__pill[data-empty='true']:not(.is-active) .plugins-home__pill-count {
-  color: var(--text-faint);
-}
-/*
- * "All" pills always reflect the catalog's full size (or full lane
- * size in the sub-row's case) and should not pick up the empty
- * treatment even when an unrelated category happens to be zero.
- */
-.plugins-home__pill--all[data-empty='true'],
-.plugins-home__pill--sub-all[data-empty='true'] {
-  opacity: 1;
-  border-style: solid;
+.plugins-home__facets[data-hide-primary-facets='true'] {
+  gap: 6px;
 }
 
 .plugins-home__empty--filtered {

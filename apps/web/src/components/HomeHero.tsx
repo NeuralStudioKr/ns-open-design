@@ -569,6 +569,17 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     () => subChipsForChip(activeChipId, pluginOptions),
     [activeChipId, pluginOptions],
   );
+  // Drop a stale/lone sub-chip so example prompts match Community: the sub-row
+  // hides when ≤1 option, and a locked single selection would be un-clearable.
+  useEffect(() => {
+    if (!selectedSubcategory) return;
+    if (
+      activeSubChips.length <= 1
+      || !activeSubChips.some((chip) => chip.slug === selectedSubcategory)
+    ) {
+      setSelectedSubcategory(null);
+    }
+  }, [activeSubChips, selectedSubcategory]);
   // When a sub-category pill is active, show the SAME set the Community section
   // shows for that sub-category — every matching plugin from the full install
   // set, in the same visual-appeal order — rather than the small curated
@@ -1643,7 +1654,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
         </RailGroup>
       )}
 
-      {activeSubChips.length > 0 && isSubChipParent(activeChipId) ? (
+      {activeSubChips.length > 1 && isSubChipParent(activeChipId) ? (
         <SubTypeRow
           subChips={activeSubChips}
           selectedSlug={selectedSubcategory}

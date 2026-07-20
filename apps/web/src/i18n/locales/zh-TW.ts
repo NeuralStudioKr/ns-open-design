@@ -623,6 +623,8 @@ export const zhTW: Dict = {
   'pluginsHome.loadingCatalog': '正在載入目錄…',
   'pluginsHome.emptyCatalog': '目錄是空的。內建外掛隨 Open Design 一同提供，應會自動出現在此處 — 若問題持續發生，請嘗試重新啟動 daemon。',
   'pluginsHome.emptyFiltered': '沒有符合目前篩選條件的外掛程式。',
+  'pluginsHome.emptyFilteredSearch': '沒有外掛程式符合您的搜尋。',
+  'pluginsHome.filtersAria': '外掛程式篩選',
   'pluginsHome.clearFilters': '清除篩選條件',
   'pluginsHome.modeAria': '外掛程式模式',
   'pluginsHome.featured': '已儲存',

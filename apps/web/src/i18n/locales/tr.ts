@@ -623,6 +623,8 @@ export const tr: Dict = {
   'pluginsHome.loadingCatalog': 'Katalog yükleniyor…',
   'pluginsHome.emptyCatalog': 'Katalog boş. Paketlenmiş eklentiler Open Design ile birlikte gelir ve buraya otomatik olarak görünmelidir — bu durum devam ederse daemon\'u yeniden başlatmayı deneyin.',
   'pluginsHome.emptyFiltered': 'Geçerli filtrelerle eşleşen eklenti yok.',
+  'pluginsHome.emptyFilteredSearch': 'Aramanızla eşleşen eklenti yok.',
+  'pluginsHome.filtersAria': 'Eklenti filtreleri',
   'pluginsHome.clearFilters': 'Filtreleri temizle',
   'pluginsHome.modeAria': 'Eklenti modu',
   'pluginsHome.featured': 'Kaydedildi',

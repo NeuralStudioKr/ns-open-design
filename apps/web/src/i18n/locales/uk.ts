@@ -623,6 +623,8 @@ export const uk: Dict = {
   'pluginsHome.loadingCatalog': 'Завантаження каталогу…',
   'pluginsHome.emptyCatalog': 'Каталог порожній. Вбудовані плагіни постачаються разом з Open Design і мають з\'являтися тут автоматично — спробуйте перезапустити демон, якщо проблема не зникає.',
   'pluginsHome.emptyFiltered': 'Жоден плагін не відповідає поточним фільтрам.',
+  'pluginsHome.emptyFilteredSearch': 'Жоден плагін не відповідає вашому пошуку.',
+  'pluginsHome.filtersAria': 'Фільтри плагінів',
   'pluginsHome.clearFilters': 'Очистити фільтри',
   'pluginsHome.modeAria': 'Режим плагіна',
   'pluginsHome.featured': 'Збережено',

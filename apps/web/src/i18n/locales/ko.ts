@@ -623,6 +623,8 @@ export const ko: Dict = {
   'pluginsHome.loadingCatalog': '카탈로그 불러오는 중…',
   'pluginsHome.emptyCatalog': '카탈로그가 비어 있습니다. 번들 플러그인은 Open Design에 포함되어 있으며 여기에 자동으로 표시되어야 합니다 — 문제가 계속되면 데몬을 다시 시작해 보세요.',
   'pluginsHome.emptyFiltered': '현재 필터와 일치하는 플러그인이 없습니다.',
+  'pluginsHome.emptyFilteredSearch': '검색과 일치하는 플러그인이 없습니다.',
+  'pluginsHome.filtersAria': '플러그인 필터',
   'pluginsHome.clearFilters': '필터 지우기',
   'pluginsHome.modeAria': '플러그인 모드',
   'pluginsHome.featured': '저장됨',

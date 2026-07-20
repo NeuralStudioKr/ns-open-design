@@ -115,6 +115,42 @@ function readBakedPreview(
   return { poster, video, holdMs: typeof holdMs === 'number' ? holdMs : null };
 }
 
+function readContextAssetPaths(record: InstalledPluginRecord): string[] {
+  const od = record.manifest?.od as { context?: { assets?: unknown } } | undefined;
+  const list = od?.context?.assets;
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const entry of list) {
+    if (typeof entry === 'string' && entry.trim()) {
+      out.push(entry);
+      continue;
+    }
+    if (entry && typeof entry === 'object' && typeof (entry as { path?: unknown }).path === 'string') {
+      out.push(String((entry as { path: string }).path));
+    }
+  }
+  return out;
+}
+
+/**
+ * Avoid gallery GET /api/plugins/:id/preview 404 spam for skill scaffolds that
+ * declare `od.preview.type=html` + `entry` but ship only CSS/MD (e.g. html-ppt).
+ * When context.assets is non-empty and contains zero HTML, and there are no
+ * exampleOutputs, fall through to the text card instead of probing the daemon.
+ */
+function shouldAttemptHtmlPreviewFetch(
+  record: InstalledPluginRecord,
+  entry: string,
+): boolean {
+  // exampleOutputs are handled by the `/example/:stem` fallthrough below —
+  // do not treat them as proof that `/preview` exists on disk.
+  const assets = readContextAssetPaths(record);
+  if (assets.length === 0) return Boolean(entry.trim());
+  if (assets.some((rel) => /\.html?$/i.test(rel))) return true;
+  // Declared entry alone is not enough when assets already prove no HTML payload.
+  return false;
+}
+
 function readExamples(record: InstalledPluginRecord): ExampleOutputEntry[] {
   const od = record.manifest?.od as
     | { useCase?: { exampleOutputs?: unknown } }
@@ -247,13 +283,17 @@ export function inferPluginPreview(
       };
     }
     if (t === 'html' && entry) {
-      const apiId = installedPluginApiId(record);
-      return {
-        kind: 'html',
-        src: `/api/plugins/${encodeURIComponent(apiId)}/preview`,
-        label: entry.replace(/^\.\//, '').split(/[\\/]/).pop() ?? entry,
-        source: 'preview',
-      };
+      if (!shouldAttemptHtmlPreviewFetch(record, entry)) {
+        // Skill scaffold with no on-disk HTML — text card, no 404 fetch.
+      } else {
+        const apiId = installedPluginApiId(record);
+        return {
+          kind: 'html',
+          src: `/api/plugins/${encodeURIComponent(apiId)}/preview`,
+          label: entry.replace(/^\.\//, '').split(/[\\/]/).pop() ?? entry,
+          source: 'preview',
+        };
+      }
     }
   }
 

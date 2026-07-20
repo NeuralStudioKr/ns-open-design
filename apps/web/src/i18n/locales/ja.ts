@@ -623,6 +623,8 @@ export const ja: Dict = {
   'pluginsHome.loadingCatalog': 'カタログを読み込み中…',
   'pluginsHome.emptyCatalog': 'カタログは空です。バンドルされたプラグインは Open Design に同梱されており、ここに自動的に表示されるはずです — 解消しない場合はデーモンを再起動してみてください。',
   'pluginsHome.emptyFiltered': '現在のフィルターに一致するプラグインはありません。',
+  'pluginsHome.emptyFilteredSearch': '検索に一致するプラグインはありません。',
+  'pluginsHome.filtersAria': 'プラグインフィルター',
   'pluginsHome.clearFilters': 'フィルターをクリア',
   'pluginsHome.modeAria': 'プラグインモード',
   'pluginsHome.featured': '保存済み',

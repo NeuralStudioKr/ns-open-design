@@ -623,6 +623,8 @@ export const zhCN: Dict = {
   'pluginsHome.loadingCatalog': '正在加载目录…',
   'pluginsHome.emptyCatalog': '目录为空。Open Design 会随附内置插件，如果这里一直为空，请尝试重启 daemon。',
   'pluginsHome.emptyFiltered': '没有插件匹配当前筛选条件。',
+  'pluginsHome.emptyFilteredSearch': '没有插件匹配您的搜索。',
+  'pluginsHome.filtersAria': '插件筛选',
   'pluginsHome.clearFilters': '清除筛选',
   'pluginsHome.modeAria': '插件模式',
   'pluginsHome.featured': '已保存',

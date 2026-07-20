@@ -623,6 +623,8 @@ export const fa: Dict = {
   'pluginsHome.loadingCatalog': 'در حال بارگذاری کاتالوگ…',
   'pluginsHome.emptyCatalog': 'کاتالوگ خالی است. پلاگین‌های همراه با Open Design ارائه می‌شوند و باید به‌صورت خودکار اینجا نمایش داده شوند — اگر این مشکل ادامه داشت، daemon را مجدداً راه‌اندازی کنید.',
   'pluginsHome.emptyFiltered': 'هیچ افزونه‌ای با فیلترهای فعلی مطابقت ندارد.',
+  'pluginsHome.emptyFilteredSearch': 'هیچ افزونه‌ای با جستجوی شما مطابقت ندارد.',
+  'pluginsHome.filtersAria': 'فیلترهای افزونه',
   'pluginsHome.clearFilters': 'پاک کردن فیلترها',
   'pluginsHome.modeAria': 'حالت افزونه',
   'pluginsHome.featured': 'ذخیره شد',

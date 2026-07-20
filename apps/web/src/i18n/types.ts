@@ -1043,6 +1043,8 @@ export interface Dict {
   'pluginsHome.loadingCatalog': string;
   'pluginsHome.emptyCatalog': string;
   'pluginsHome.emptyFiltered': string;
+  'pluginsHome.emptyFilteredSearch': string;
+  'pluginsHome.filtersAria': string;
   'pluginsHome.clearFilters': string;
   'pluginsHome.modeAria': string;
   'pluginsHome.featured': string;

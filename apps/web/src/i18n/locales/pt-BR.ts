@@ -623,6 +623,8 @@ export const ptBR: Dict = {
   'pluginsHome.loadingCatalog': 'Carregando catálogo…',
   'pluginsHome.emptyCatalog': 'O catálogo está vazio. Os plugins integrados vêm com o Open Design e devem aparecer aqui automaticamente — tente reiniciar o daemon se isso persistir.',
   'pluginsHome.emptyFiltered': 'Nenhum plugin corresponde aos filtros atuais.',
+  'pluginsHome.emptyFilteredSearch': 'Nenhum plugin corresponde à sua busca.',
+  'pluginsHome.filtersAria': 'Filtros de plugins',
   'pluginsHome.clearFilters': 'Limpar filtros',
   'pluginsHome.modeAria': 'Modo de plugin',
   'pluginsHome.featured': 'Salvo',

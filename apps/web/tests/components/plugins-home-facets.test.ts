@@ -202,42 +202,33 @@ describe('buildFacetCatalog', () => {
       ['hyperframes', 1],
       ['audio', 1],
     ]);
-    // Display order (SUBCATEGORY_DISPLAY_ORDER) — distinct from the matching
-    // precedence encoded by the SUBCATEGORIES array order.
+    // Only populated scene buckets appear (count > 0). Display order still
+    // follows SUBCATEGORY_DISPLAY_ORDER among the survivors.
     expect((catalog.subcategory.prototype ?? []).map((o) => o.slug)).toEqual([
-      'landing-marketing',
-      'brand-design',
       'business-dashboards',
-      'app-prototypes',
-      'developer-tools',
-      'docs-reports',
     ]);
     expect((catalog.subcategory.deck ?? []).map((o) => o.slug)).toEqual([
-      'creative-decks',
-      'engineering-talks',
       'pitch-business',
-      'course-training',
-      'reports-briefings',
-      'product-sales',
     ]);
     expect((catalog.subcategory.image ?? []).map((o) => o.slug)).toEqual([
-      'ui-product-mockups',
-      'brand-visuals',
-      'storyboards-motion-refs',
-      'social-content',
       'avatar-portrait',
-      'illustration-style',
     ]);
     expect((catalog.subcategory.video ?? []).map((o) => o.slug)).toEqual([
-      'motion-effects',
-      'social-short-form',
-      'marketing-product',
-      'data-explainers',
       'cinematic-story',
     ]);
     expect(catalog.subcategory['live-artifact']).toBeUndefined();
     expect(catalog.subcategory.hyperframes).toBeUndefined();
     expect(catalog.subcategory.audio).toBeUndefined();
+  });
+
+  it('omits zero-count primary categories and scene buckets', () => {
+    const catalog = buildFacetCatalog([
+      fixture({ id: 'deck', tags: ['pitch-deck'], od: { mode: 'deck' } }),
+    ]);
+
+    expect(catalog.category.map((o) => o.slug)).toEqual(['deck']);
+    expect((catalog.subcategory.deck ?? []).map((o) => o.slug)).toEqual(['pitch-business']);
+    expect((catalog.subcategory.deck ?? []).some((o) => o.slug === 'engineering-talks')).toBe(false);
   });
 });
 

@@ -17,6 +17,10 @@
 // a selection because per-axis counts that "go to zero" as the user
 // clicks make the row visually noisy and obscure how the overall
 // catalog is shaped.
+//
+// Zero-count buckets are omitted from the facet lists entirely (e.g.
+// when locale policy hides every plugin in a scene). Empty pills are
+// not useful as navigation and strand the user on a filtered-empty grid.
 
 import { resolveLocalizedText, type InstalledPluginRecord } from '@open-design/contracts';
 import { CURATED_LIVE_ARTIFACT_PLUGIN_IDS } from './curatedPriority';
@@ -602,7 +606,7 @@ export function buildCategoryCatalog(plugins: InstalledPluginRecord[]): FacetOpt
     label: c.label,
     starterPrompt: c.starterPrompt,
     count: counts.get(c.slug) ?? 0,
-  }));
+  })).filter((option) => option.count > 0);
 }
 
 export function buildSubcategoryCatalog(plugins: InstalledPluginRecord[]): Record<string, FacetOption[]> {
@@ -621,7 +625,8 @@ export function buildSubcategoryCatalog(plugins: InstalledPluginRecord[]): Recor
         label: c.label,
         starterPrompt: c.starterPrompt,
         count: counts.get(`${category.slug}:${c.slug}`) ?? 0,
-      }));
+      }))
+      .filter((option) => option.count > 0);
     if (options.length > 0) {
       // Presentation order only; bucket membership is fixed by SUBCATEGORIES.
       acc[category.slug] = orderSubcategoriesForDisplay(category.slug, options);

@@ -623,6 +623,8 @@ export const fr: Dict = {
   'pluginsHome.loadingCatalog': 'Chargement du catalogue…',
   'pluginsHome.emptyCatalog': 'Le catalogue est vide. Les plugins intégrés sont fournis avec Open Design et devraient apparaître ici automatiquement — essayez de redémarrer le daemon si cela persiste.',
   'pluginsHome.emptyFiltered': 'Aucun plugin ne correspond aux filtres actuels.',
+  'pluginsHome.emptyFilteredSearch': 'Aucun plugin ne correspond à votre recherche.',
+  'pluginsHome.filtersAria': 'Filtres de plugins',
   'pluginsHome.clearFilters': 'Effacer les filtres',
   'pluginsHome.modeAria': 'Mode du plugin',
   'pluginsHome.featured': 'Enregistrés',

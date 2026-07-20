@@ -623,6 +623,8 @@ export const hu: Dict = {
   'pluginsHome.loadingCatalog': 'Katalógus betöltése…',
   'pluginsHome.emptyCatalog': 'A katalógus üres. A beépített pluginok az Open Design részeként érkeznek, és automatikusan meg kell jelenniük itt — próbáld újraindítani a daemont, ha ez továbbra is fennáll.',
   'pluginsHome.emptyFiltered': 'Egyetlen plugin sem felel meg a jelenlegi szűrőknek.',
+  'pluginsHome.emptyFilteredSearch': 'Egyetlen plugin sem felel meg a keresésnek.',
+  'pluginsHome.filtersAria': 'Plugin szűrők',
   'pluginsHome.clearFilters': 'Szűrők törlése',
   'pluginsHome.modeAria': 'Plugin mód',
   'pluginsHome.featured': 'Mentve',

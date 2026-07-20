@@ -623,6 +623,8 @@ export const ru: Dict = {
   'pluginsHome.loadingCatalog': 'Загрузка каталога…',
   'pluginsHome.emptyCatalog': 'Каталог пуст. Встроенные плагины поставляются вместе с Open Design и должны появляться здесь автоматически — если проблема не исчезает, попробуйте перезапустить демон.',
   'pluginsHome.emptyFiltered': 'Нет плагинов, соответствующих текущим фильтрам.',
+  'pluginsHome.emptyFilteredSearch': 'Нет плагинов, соответствующих вашему поиску.',
+  'pluginsHome.filtersAria': 'Фильтры плагинов',
   'pluginsHome.clearFilters': 'Сбросить фильтры',
   'pluginsHome.modeAria': 'Режим плагина',
   'pluginsHome.featured': 'Сохранено',

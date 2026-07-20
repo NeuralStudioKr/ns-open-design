@@ -219,7 +219,7 @@ export function PluginsHomeSection({
           <div
             className="plugins-home__facets"
             role="group"
-            aria-label="Plugin filters"
+            aria-label={t('pluginsHome.filtersAria')}
             {...(hidePrimaryCategoryFacets ? { 'data-hide-primary-facets': 'true' } : {})}
           >
             <CategoryRow
@@ -252,7 +252,9 @@ export function PluginsHomeSection({
 
           {filtered.length === 0 ? (
             <div className="plugins-home__empty plugins-home__empty--filtered">
-              {t('pluginsHome.emptyFiltered')}{' '}
+              {displayQuery.trim()
+                ? t('pluginsHome.emptyFilteredSearch')
+                : t('pluginsHome.emptyFiltered')}{' '}
               <button
                 type="button"
                 className="plugins-home__linkbtn"
@@ -342,20 +344,22 @@ function CategoryRow({
   hideCategoryPills = false,
 }: CategoryRowProps) {
   const t = useT();
-  if (!hideCategoryPills && options.length === 0) return null;
+  // Keep search reachable even when every primary category was omitted
+  // (locale / policy emptied the catalog axes). Only the pill strip is gated.
+  const showPills = !hideCategoryPills && options.length > 0;
   return (
     <div
       className={[
         'plugins-home__facet-row',
         'plugins-home__facet-row--inline',
-        hideCategoryPills ? 'plugins-home__facet-row--search-only' : '',
+        !showPills ? 'plugins-home__facet-row--search-only' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       data-testid="plugins-home-row-category"
-      data-hide-category-pills={hideCategoryPills ? 'true' : 'false'}
+      data-hide-category-pills={hideCategoryPills || !showPills ? 'true' : 'false'}
     >
-      {!hideCategoryPills ? (
+      {showPills ? (
       <div
         className="plugins-home__facet-pills"
         role="tablist"
@@ -416,7 +420,9 @@ interface SubcategoryRowProps {
 
 function SubcategoryRow({ parent, options, selectedSlug, onPick }: SubcategoryRowProps) {
   const t = useT();
-  if (!parent || options.length === 0) return null;
+  // A single surviving scene bucket is equivalent to "all of this category"
+  // for populated plugins; showing All + one pill (or a lone pill) is noise.
+  if (!parent || options.length <= 1) return null;
   return (
     <div
       className="plugins-home__facet-row plugins-home__facet-row--inline plugins-home__facet-row--sub"
@@ -479,11 +485,6 @@ function CategoryPill({ slug, label, count, active, variant, testId, onPick }: C
         .filter(Boolean)
         .join(' ')}
       onClick={() => onPick(slug)}
-      // Planned child buckets stay visible even before the catalog
-      // has examples for each scene. The `data-empty` flag gives
-      // those zero-count buckets a lighter treatment without adding
-      // placeholder cards to the starter grid.
-      data-empty={count === 0 ? 'true' : 'false'}
       data-testid={testId ?? `plugins-home-pill-category-${slug ?? 'all'}`}
     >
       <span>{displayLabel}</span>

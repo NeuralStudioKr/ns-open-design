@@ -623,6 +623,8 @@ export const th: Dict = {
   'pluginsHome.loadingCatalog': 'กำลังโหลดแคตตาล็อก…',
   'pluginsHome.emptyCatalog': 'แคตตาล็อกว่างเปล่า ปลั๊กอินที่มาพร้อมกับ Open Design ควรปรากฏที่นี่โดยอัตโนมัติ — ลองรีสตาร์ท daemon หากยังเกิดปัญหานี้อยู่',
   'pluginsHome.emptyFiltered': 'ไม่มีปลั๊กอินที่ตรงกับตัวกรองปัจจุบัน',
+  'pluginsHome.emptyFilteredSearch': 'ไม่มีปลั๊กอินที่ตรงกับการค้นหา',
+  'pluginsHome.filtersAria': 'ตัวกรองปลั๊กอิน',
   'pluginsHome.clearFilters': 'ล้างตัวกรอง',
   'pluginsHome.modeAria': 'โหมดปลั๊กอิน',
   'pluginsHome.featured': 'บันทึกแล้ว',

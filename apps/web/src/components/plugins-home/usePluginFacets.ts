@@ -139,6 +139,41 @@ export function usePluginFacets({
     );
   }, [lockedFacetCategory, visiblePlugins.length]);
 
+  // Drop a subcategory (or category) selection when policy/filtering empties
+  // that bucket so the user is not stranded on an empty filtered grid.
+  // Also clear subcategory when ≤1 scene remains — the sub-row is hidden and
+  // "all of category" is the only meaningful view (includes uncategorized).
+  useEffect(() => {
+    setSelection((prev) => {
+      if (prev.category) {
+        const categoryStillVisible = catalog.category.some(
+          (option) => option.slug === prev.category,
+        );
+        if (!categoryStillVisible) {
+          if (lockedFacetCategory) {
+            if (
+              prev.category === lockedFacetCategory && prev.subcategory == null
+            ) {
+              return prev;
+            }
+            return { category: lockedFacetCategory, subcategory: null };
+          }
+          return prev.category == null && prev.subcategory == null
+            ? prev
+            : EMPTY_SELECTION;
+        }
+      }
+      if (!prev.subcategory || !prev.category) return prev;
+      const options = catalog.subcategory[prev.category] ?? [];
+      if (options.length <= 1) {
+        return { ...prev, subcategory: null };
+      }
+      const stillVisible = options.some((option) => option.slug === prev.subcategory);
+      if (stillVisible) return prev;
+      return { ...prev, subcategory: null };
+    });
+  }, [catalog, lockedFacetCategory]);
+
   // The visual-appeal sort is applied at `visiblePlugins` derivation
   // (above), so any downstream `applyFacetSelection` slice preserves
   // the ranking. We do not re-sort here because filter + featured

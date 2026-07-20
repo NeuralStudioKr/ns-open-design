@@ -623,6 +623,8 @@ export const ar: Dict = {
   'pluginsHome.loadingCatalog': 'جارٍ تحميل الكتالوج…',
   'pluginsHome.emptyCatalog': 'الكتالوج فارغ. تأتي الإضافات المُجمَّعة مع Open Design ومن المفترض أن تظهر هنا تلقائيًا — جرّب إعادة تشغيل الـ daemon إذا استمرت هذه المشكلة.',
   'pluginsHome.emptyFiltered': 'لا توجد إضافات تطابق عوامل التصفية الحالية.',
+  'pluginsHome.emptyFilteredSearch': 'لا توجد إضافات تطابق بحثك.',
+  'pluginsHome.filtersAria': 'عوامل تصفية الإضافات',
   'pluginsHome.clearFilters': 'مسح عوامل التصفية',
   'pluginsHome.modeAria': 'وضع الإضافات',
   'pluginsHome.featured': 'محفوظ',

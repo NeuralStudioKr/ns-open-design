@@ -21,9 +21,16 @@ interface MakeArgs {
   preview?: Record<string, unknown>;
   bakedPreview?: Record<string, unknown>;
   exampleOutputs?: Array<{ path: string; title?: string }>;
+  assets?: Array<string | { path: string }>;
 }
 
 function make(args: MakeArgs): InstalledPluginRecord {
+  const context = {
+    ...(args.designSystemRef
+      ? { designSystem: { ref: args.designSystemRef } }
+      : {}),
+    ...(args.assets ? { assets: args.assets } : {}),
+  };
   return {
     id: args.id,
     title: args.title ?? args.id,
@@ -40,9 +47,7 @@ function make(args: MakeArgs): InstalledPluginRecord {
       od: {
         kind: 'scenario',
         ...(args.mode ? { mode: args.mode } : {}),
-        ...(args.designSystemRef
-          ? { context: { designSystem: { ref: args.designSystemRef } } }
-          : {}),
+        ...(Object.keys(context).length > 0 ? { context } : {}),
         ...(args.preview ? { preview: args.preview } : {}),
         ...(args.bakedPreview ? { bakedPreview: args.bakedPreview } : {}),
         ...(args.exampleOutputs
@@ -117,7 +122,7 @@ describe('inferPluginPreview', () => {
     expect(out.label).toBe('example.html');
   });
 
-  it('uses the manifest plugin name for marketplace-namespaced records', () => {
+  it('uses the install id (normalized) for marketplace-namespaced records', () => {
     const out = inferPluginPreview(
       make({
         id: 'open-design/example-html-ppt-zhangzara-creative-mode',
@@ -128,6 +133,32 @@ describe('inferPluginPreview', () => {
     expect(out.kind).toBe('html');
     if (out.kind !== 'html') return;
     expect(out.src).toBe('/api/plugins/example-html-ppt-zhangzara-creative-mode/preview');
+  });
+
+  it('skips html preview fetch for skill scaffolds with assets but no HTML', () => {
+    const out = inferPluginPreview(
+      make({
+        id: 'example-html-ppt',
+        preview: { type: 'html', entry: './index.html' },
+        assets: ['./assets/base.css', './assets/runtime.js', './references/themes.md'],
+      }),
+    );
+    expect(out.kind).toBe('text');
+  });
+
+  it('uses /example when assets have no HTML but exampleOutputs declare HTML', () => {
+    const out = inferPluginPreview(
+      make({
+        id: 'example-html-ppt',
+        preview: { type: 'html', entry: './index.html' },
+        assets: ['./assets/base.css', './references/themes.md'],
+        exampleOutputs: [{ path: './examples/demo/index.html', title: 'Demo' }],
+      }),
+    );
+    expect(out.kind).toBe('html');
+    if (out.kind !== 'html') return;
+    expect(out.src).toBe('/api/plugins/example-html-ppt/example/index');
+    expect(out.source).toBe('example');
   });
 
   it('falls back to the first exampleOutputs entry when no preview block is set', () => {

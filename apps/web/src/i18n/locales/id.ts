@@ -623,6 +623,8 @@ export const id: Dict = {
   'pluginsHome.loadingCatalog': 'Memuat katalog…',
   'pluginsHome.emptyCatalog': 'Katalog kosong. Plugin bawaan disertakan dengan Open Design dan seharusnya muncul di sini secara otomatis — coba mulai ulang daemon jika masalah ini berlanjut.',
   'pluginsHome.emptyFiltered': 'Tidak ada plugin yang cocok dengan filter saat ini.',
+  'pluginsHome.emptyFilteredSearch': 'Tidak ada plugin yang cocok dengan pencarian Anda.',
+  'pluginsHome.filtersAria': 'Filter plugin',
   'pluginsHome.clearFilters': 'Hapus filter',
   'pluginsHome.modeAria': 'Mode plugin',
   'pluginsHome.featured': 'Tersimpan',

@@ -623,6 +623,8 @@ export const pl: Dict = {
   'pluginsHome.loadingCatalog': 'Wczytywanie katalogu…',
   'pluginsHome.emptyCatalog': 'Katalog jest pusty. Wbudowane wtyczki są dostarczane z Open Design i powinny pojawić się tutaj automatycznie — spróbuj ponownie uruchomić daemona, jeśli problem nie ustępuje.',
   'pluginsHome.emptyFiltered': 'Żadne wtyczki nie pasują do bieżących filtrów.',
+  'pluginsHome.emptyFilteredSearch': 'Żadne wtyczki nie pasują do wyszukiwania.',
+  'pluginsHome.filtersAria': 'Filtry wtyczek',
   'pluginsHome.clearFilters': 'Wyczyść filtry',
   'pluginsHome.modeAria': 'Tryb wtyczek',
   'pluginsHome.featured': 'Zapisano',
