@@ -83,7 +83,8 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     );
 
     const pending = fetchTeamverRuntimeConfig({ force: true });
-    await vi.advanceTimersByTimeAsync(200);
+    // Cover DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS (400ms) plus soft-retry probes.
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(await pending).toBeNull();
     // Initial GET + HA sibling retry after refresh declines.
     expect(httpGet).toHaveBeenCalledTimes(2);
@@ -136,7 +137,8 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
       });
 
     const pending = fetchTeamverRuntimeConfig({ force: true });
-    await vi.advanceTimersByTimeAsync(200);
+    // Cover DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS (400ms) plus soft-retry probes.
+    await vi.advanceTimersByTimeAsync(2_000);
     const value = await pending;
 
     expect(value?.model).toBe("claude-sonnet-4-6");
