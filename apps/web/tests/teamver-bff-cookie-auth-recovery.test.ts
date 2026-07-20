@@ -248,6 +248,53 @@ describe("withDesignBffCookieAuthRecovery", () => {
   });
 });
 
+describe("probeDesignBffSessionAuthenticated", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("returns false when session-probe 404s without falling back to ensure /auth/session", async () => {
+    // Older nginx may 404 the public probe location. Falling back to
+    // /auth/session would trigger ensure_bff_session → Main refresh, which
+    // defeats the read-only contract of probe and can rotate cookies mid-race.
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "not_found" }), {
+        status: 404,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { probeDesignBffSessionAuthenticated } = await import(
+      "../src/teamver/designBffClient"
+    );
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    // Exactly one call — no fallback to /auth/session.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/auth/session-probe");
+  });
+
+  it("returns true on 204", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { probeDesignBffSessionAuthenticated } = await import(
+      "../src/teamver/designBffClient"
+    );
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(true);
+  });
+
+  it("returns false on 401", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { probeDesignBffSessionAuthenticated } = await import(
+      "../src/teamver/designBffClient"
+    );
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("refreshTeamverEmbedAuthBeforeMutating", () => {
   beforeEach(() => {
     resetDesignAuthRefreshDeclinedForTests();

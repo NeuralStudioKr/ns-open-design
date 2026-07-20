@@ -108,3 +108,99 @@ async def test_bff_auth_session_retains_usable_cookie_on_bootstrap_401(
     assert result["user"]["user_id"] == "user-1"
     clear_mock.assert_not_called()
     assert request.scope.get(SUPPRESS_SESSION_COOKIE_SCOPE_KEY) is True
+
+
+@pytest.mark.asyncio
+async def test_post_auth_workspace_retains_via_stale_bootstrap_on_main_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HA parity with GET /auth/session: a bootstrap 401 during workspace
+    switch must fall back to a stale-grace bootstrap for the SAME workspace
+    if the cache still holds a valid app_enabled entry.
+    """
+    import time
+    from unittest.mock import Mock
+
+    from app.auth.bff_session import BffSession
+    from app.routers import auth as auth_router
+    from app.services.teamver_bootstrap import TeamverBootstrapError
+    from app.routers.auth import WorkspaceSelectRequest
+
+    session = BffSession(
+        user_id="user-1",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id="ws-old",
+        aud="teamver-design",
+        scope=["design"],
+    )
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    bootstrap_exc = TeamverBootstrapError("upstream_401", status_code=401)
+    monkeypatch.setattr(auth_router, "fetch_bootstrap", AsyncMock(side_effect=bootstrap_exc))
+    stale_bootstrap = {
+        "workspaces": [
+            {"workspace_id": "ws-target", "app_enabled": True, "role": "member"},
+        ],
+    }
+    monkeypatch.setattr(
+        auth_router,
+        "peek_last_bootstrap_within_grace",
+        AsyncMock(return_value=stale_bootstrap),
+    )
+    update_ws = Mock()
+    monkeypatch.setattr(auth_router, "update_bff_workspace", update_ws)
+
+    request = _request_with_cookie_header("session=x")
+    body = WorkspaceSelectRequest(workspace_id="ws-target")
+    result = await auth_router.post_auth_workspace(request, body)
+
+    assert result["workspace_id"] == "ws-target"
+    assert result["status"] == "ok"
+    assert result.get("stale") is True
+    update_ws.assert_called_once_with(request, "ws-target")
+
+
+@pytest.mark.asyncio
+async def test_post_auth_workspace_401_without_stale_bootstrap_still_denies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No stale cache → workspace switch still bounces the user out."""
+    import time
+    from unittest.mock import Mock
+
+    from app.auth.bff_session import BffSession
+    from app.routers import auth as auth_router
+    from app.services.teamver_bootstrap import TeamverBootstrapError
+    from app.routers.auth import WorkspaceSelectRequest
+    from fastapi import HTTPException
+
+    session = BffSession(
+        user_id="user-2",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id=None,
+        aud="teamver-design",
+        scope=["design"],
+    )
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    bootstrap_exc = TeamverBootstrapError("upstream_401", status_code=401)
+    monkeypatch.setattr(auth_router, "fetch_bootstrap", AsyncMock(side_effect=bootstrap_exc))
+    monkeypatch.setattr(
+        auth_router,
+        "peek_last_bootstrap_within_grace",
+        AsyncMock(return_value=None),
+    )
+    update_ws = Mock()
+    monkeypatch.setattr(auth_router, "update_bff_workspace", update_ws)
+
+    request = _request_with_cookie_header("session=x")
+    body = WorkspaceSelectRequest(workspace_id="ws-target")
+    with pytest.raises(HTTPException) as excinfo:
+        await auth_router.post_auth_workspace(request, body)
+
+    assert excinfo.value.status_code == 401
+    update_ws.assert_not_called()

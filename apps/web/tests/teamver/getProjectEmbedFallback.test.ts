@@ -6,6 +6,12 @@ vi.mock('../../src/teamver/designApiBase', () => ({
 
 vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
   fetchTeamverDaemon: vi.fn(),
+  TeamverDaemonUnauthorizedError: class TeamverDaemonUnauthorizedError extends Error {
+    constructor(message?: string) {
+      super(message);
+      this.name = "TeamverDaemonUnauthorizedError";
+    }
+  },
 }));
 
 vi.mock('../../src/teamver/projectRegistry', () => ({

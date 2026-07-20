@@ -29,6 +29,8 @@ vi.mock("../src/teamver/designBffClient", () => ({
   // 803f70262 added `...TEAMVER_BFF_REQUEST_OPTIONS` at every BFF call site —
   // spreading `undefined` throws before `postMock` is invoked.
   TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true, skipAuthRecovery: true },
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
+  isDesignAuthRefreshDeclineHard: vi.fn(() => false),
 }));
 
 const assertAppEnabledMock = vi.fn(async (_workspaceId: string) => undefined);

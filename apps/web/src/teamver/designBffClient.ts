@@ -201,12 +201,18 @@ function resolveDesignBffSessionProbeUrl(): string {
 
 /**
  * Read-only session check for sticky-decline / re-login gates.
- * Prefers `/auth/session-probe` (no ensure/refresh). Falls back to `/auth/session`
- * JSON when probe is unavailable (older nginx without the public location).
+ * Uses `/auth/session-probe` ONLY (no ensure/refresh side effects).
  *
  * WARNING: When access is past absolute expiry, probe returns false even if
  * refresh_token can still revive the session. Soft-sticky recovery must escalate
  * to {@link ensureDesignBffSessionAuthenticated} / POST refresh — not probe alone.
+ *
+ * When the probe endpoint returns 404 (older/misconfigured nginx without the
+ * public `session-probe` location) we deliberately return `false` instead of
+ * falling back to `/auth/session`: that fallback triggers `ensure_bff_session`
+ * on design-api, which can rotate cookies via a Main `/auth/refresh` call —
+ * defeating the purpose of a read-only probe and causing cross-tab HA rotation
+ * races when the caller was gating on "is the session still alive".
  */
 export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
   try {
@@ -227,16 +233,10 @@ export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
       }
     }
 
-    // Older deploys may 404 the public probe location — fall back to session JSON.
-    if (probeResponse.status !== 404) return false;
-
-    const response = await fetch(resolveDesignBffSessionUrl(), {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) return false;
-    const body = (await response.json()) as { authenticated?: unknown };
-    return body.authenticated === true;
+    // 404 / other unknown status → treat as "cannot confirm alive" without
+    // triggering ensure. Callers that need to actually refresh will escalate
+    // to ensureDesignBffSessionAuthenticated on the next ladder rung.
+    return false;
   } catch {
     return false;
   }

@@ -267,6 +267,29 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
                 retryable=True,
             )
         if exc.status_code == 401:
+            # HA race parity with GET /auth/session: if a stale-grace bootstrap
+            # for THIS workspace_id is still cached and grants membership, honor
+            # it before bouncing the user to Main login. Prevents a transient
+            # Main hiccup from denying an otherwise valid workspace switch.
+            stale = await peek_last_bootstrap_within_grace(
+                user_id=session.user_id,
+                workspace_id=platform_ws,
+            )
+            stale_entry = (
+                find_workspace_entry(stale, platform_ws) if stale is not None else None
+            )
+            if (
+                stale is not None
+                and stale_entry is not None
+                and stale_entry.get("app_enabled", False)
+            ):
+                update_bff_workspace(request, platform_ws)
+                logger.info(
+                    "[auth/workspace] bootstrap 401 retained via stale grace user=%s workspace=%s",
+                    session.user_id,
+                    platform_ws,
+                )
+                return {"workspace_id": platform_ws, "status": "ok", "stale": True}
             raise_auth_http(
                 401,
                 code="token_expired",

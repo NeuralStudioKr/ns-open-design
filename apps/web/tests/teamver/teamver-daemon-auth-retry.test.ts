@@ -14,10 +14,12 @@ vi.mock("../../src/teamver/teamverEmbedSession", () => ({
 
 const refreshMock = vi.fn(async () => true);
 const probeSessionMock = vi.fn(async () => false);
+const ensureSessionMock = vi.fn(async () => false);
 const clearDeclineMock = vi.fn();
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
   probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
+  ensureDesignBffSessionAuthenticated: (...args: unknown[]) => ensureSessionMock(...args),
   clearDesignAuthRefreshDecline: (...args: unknown[]) => clearDeclineMock(...args),
 }));
 
@@ -37,7 +39,7 @@ vi.mock("../../src/teamver/teamverProjectS3PrefixResolve", () => ({
 import { fetchTeamverDaemon } from "../../src/teamver/teamverDaemonHeaders";
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "../../src/teamver/designApiBase";
 
-const DAEMON_AUTH_RETRY_DELAY_MS = 150;
+const DAEMON_AUTH_RETRY_DELAY_MS = 400;
 
 describe("fetchTeamverDaemon embed auth recovery", () => {
   beforeEach(() => {
@@ -46,6 +48,8 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     refreshMock.mockResolvedValue(true);
     probeSessionMock.mockReset();
     probeSessionMock.mockResolvedValue(false);
+    ensureSessionMock.mockReset();
+    ensureSessionMock.mockResolvedValue(false);
     clearDeclineMock.mockClear();
     passiveUnauthorizedMock.mockClear();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
