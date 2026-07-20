@@ -2478,9 +2478,12 @@ function scanRunEventsForRetrySideEffects(events) {
     }
     const data = rec?.data;
     if (!data || typeof data !== 'object') continue;
-    if (data.type === 'text_delta' || data.type === 'thinking_delta') {
+    if (data.type === 'text_delta') {
+      // Thinking-only / whitespace-only must not block silent retry — otherwise
+      // mid-stream UPSTREAM after extended thinking never auto-recovers and the
+      // FE shows 「AI 서비스에 연결하지 못했습니다」.
       const delta = typeof data.delta === 'string' ? data.delta : '';
-      if (delta.length > 0) sideEffects.userVisibleOutputSeen = true;
+      if (delta.trim().length > 0) sideEffects.userVisibleOutputSeen = true;
     }
     if (data.type === 'tool_use') sideEffects.toolCallSeen = true;
     if (data.type === 'artifact') sideEffects.artifactWriteSeen = true;
@@ -8693,11 +8696,28 @@ export async function startServer({
     }
 
     try {
-      const row = db.prepare(
+      const byEntry = db.prepare(
         `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,
       ).get(id) as { id?: unknown } | undefined;
-      if (row && typeof row.id === 'string') {
-        return getInstalledPlugin(db, row.id);
+      if (byEntry && typeof byEntry.id === 'string') {
+        return getInstalledPlugin(db, byEntry.id);
+      }
+      // FE may send bare manifest name while provenance stores
+      // `open-design/<name>` (or the reverse).
+      if (normalized) {
+        const byEntrySuffix = db.prepare(
+          `SELECT id FROM installed_plugins
+           WHERE source_marketplace_entry_name = ?
+              OR source_marketplace_entry_name LIKE ?
+              OR json_extract(manifest_json, '$.name') = ?`,
+        ).get(
+          `open-design/${normalized}`,
+          `%/${normalized}`,
+          normalized,
+        ) as { id?: unknown } | undefined;
+        if (byEntrySuffix && typeof byEntrySuffix.id === 'string') {
+          return getInstalledPlugin(db, byEntrySuffix.id);
+        }
       }
     } catch {
       // Old dev databases may not have marketplace provenance columns.

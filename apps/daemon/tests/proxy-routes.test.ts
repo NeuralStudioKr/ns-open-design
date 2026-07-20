@@ -233,6 +233,34 @@ describe('API proxy routes', () => {
     expect(text.indexOf('event: usage')).toBeLessThan(text.indexOf('event: end'));
   });
 
+  it('treats Gemini STOP finishReason as successful end even without visible text', async () => {
+    const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      return Promise.resolve(sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":0}}',
+        '',
+      ].join('\n')));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/google/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        apiKey: 'google-key',
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+
+    const text = await res.text();
+    expect(text).toContain('event: end');
+    expect(text).not.toContain('UPSTREAM_UNAVAILABLE');
+    expect(text).not.toContain('Upstream stream ended before any content');
+  });
+
   it('forwards Ollama final-chunk eval counts as proxy usage SSE before end', async () => {
     const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
       const url = String(input);

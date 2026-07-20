@@ -183,6 +183,14 @@ describe('run retry analytics helpers', () => {
       toolCallSeen: true,
       liveArtifactSeen: true,
     });
+
+    // Thinking / whitespace-only text must not block silent retry.
+    expect(__forTestScanRunEventsForRetrySideEffects([
+      { event: 'agent', data: { type: 'thinking_delta', delta: 'plan…' } },
+      { event: 'agent', data: { type: 'text_delta', delta: '\n' } },
+    ])).toMatchObject({
+      userVisibleOutputSeen: false,
+    });
   });
 
   it('derives retry final result from terminal status and attempt count', () => {

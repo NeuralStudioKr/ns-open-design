@@ -164,8 +164,9 @@ async function streamProxyEndpointOnce(
 ): Promise<'ok' | 'aborted' | { error: Error & { code?: string; retryable?: boolean } }> {
   const managed = shouldUseManagedProxyApiKey(cfg);
   let acc = '';
-  /** Substantive (non-whitespace) assistant text — soft-retry gate. */
   let receivedSubstantiveDelta = false;
+  /** Thinking frames already painted — soft-retry would duplicate the thinking UI. */
+  let receivedThinkingDelta = false;
   let sawEndEvent = false;
 
   try {
@@ -283,7 +284,10 @@ async function streamProxyEndpointOnce(
 
         if (parsed.event === 'thinking_delta') {
           const thinking = String(parsed.data.delta ?? '');
-          if (thinking) handlers.onThinkingDelta?.(thinking);
+          if (thinking) {
+            receivedThinkingDelta = true;
+            handlers.onThinkingDelta?.(thinking);
+          }
           continue;
         }
 
@@ -304,8 +308,9 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          // Do not soft-retry after substantive tokens were streamed (would duplicate UI).
-          if (receivedSubstantiveDelta) err.retryable = false;
+          // Do not soft-retry after substantive tokens or thinking were streamed
+          // (would duplicate UI).
+          if (receivedSubstantiveDelta || receivedThinkingDelta) err.retryable = false;
           return { error: err };
         }
 
@@ -368,7 +373,10 @@ async function streamProxyEndpointOnce(
           }
         } else if (parsed.event === 'thinking_delta') {
           const thinking = String(parsed.data.delta ?? '');
-          if (thinking) handlers.onThinkingDelta?.(thinking);
+          if (thinking) {
+            receivedThinkingDelta = true;
+            handlers.onThinkingDelta?.(thinking);
+          }
         } else if (parsed.event === 'error') {
           const err = new Error(proxyErrorMessage(parsed.data)) as Error & {
             code?: string;
@@ -386,7 +394,7 @@ async function streamProxyEndpointOnce(
           if (typeof retryableCandidate === 'boolean') {
             err.retryable = retryableCandidate;
           }
-          if (receivedSubstantiveDelta) err.retryable = false;
+          if (receivedSubstantiveDelta || receivedThinkingDelta) err.retryable = false;
           return { error: err };
         } else if (parsed.event === 'usage') {
           const inputTokens = Number(parsed.data.input_tokens ?? parsed.data.inputTokens ?? 0);
@@ -411,8 +419,8 @@ async function streamProxyEndpointOnce(
     }
 
     // Graceful EOF without `end`: empty/pre-token drops are retryable; partial
-    // content keeps historical onDone behavior.
-    if (!sawEndEvent && !receivedSubstantiveDelta) {
+    // content (text or thinking) keeps historical onDone behavior.
+    if (!sawEndEvent && !receivedSubstantiveDelta && !receivedThinkingDelta) {
       const err = new Error('Upstream stream ended before any content') as Error & {
         code?: string;
         retryable?: boolean;

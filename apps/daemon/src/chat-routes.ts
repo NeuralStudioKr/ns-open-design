@@ -783,6 +783,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   };
 
   const benignGeminiFinishReasons = new Set(['', 'STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED']);
+  /** Terminal success markers only — do not treat UNSPECIFIED/empty as end-of-stream. */
+  const geminiTerminalOkFinishReasons = new Set(['STOP', 'MAX_TOKENS']);
   const extractGeminiBlockMessage = (data: any) => {
     const feedback = data?.promptFeedback;
     if (typeof feedback?.blockReason === 'string' && feedback.blockReason) {
@@ -1204,6 +1206,18 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
             fallbackCode: 'BAD_REQUEST',
             forceNonRetryable: true,
           });
+          ended = true;
+          return true;
+        }
+        // Gemini has no [DONE]/message_stop — a benign finishReason is the
+        // terminal success signal. Without this, empty/whitespace-only
+        // completions fall into finalizeProxyUpstreamIfIncomplete → false
+        // UPSTREAM_UNAVAILABLE ("AI 서비스에 연결하지 못했습니다").
+        const finishReason = data?.candidates?.[0]?.finishReason;
+        if (typeof finishReason === 'string' && geminiTerminalOkFinishReasons.has(finishReason)) {
+          guard.flushThinkTag();
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
+          sse.send('end', {});
           ended = true;
           return true;
         }
