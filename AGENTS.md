@@ -1,3 +1,10 @@
+# teamver Design Guide
+## 1. 기획,설계,구현 진행 정책
+기획 문서를 지정한 경우에는 그 문서번호에 sub-number를 붙여서 각각 붙여서 설계 문서와 구현 현황 문서를 작성하라.
+구현 현황 문서에는 각 구현 항목을 정리하고, 구현 여부(checked)를 표시 및 업데이트하라.
+
+-----
+
 # Directory guide
 
 This file is the single source of truth for agents entering this repository. Read this file first; after entering `apps/`, `packages/`, `tools/`, or `e2e/`, read that layer's `AGENTS.md` for module-level details. Do not copy module details back into the root file; root stays focused on cross-repository boundaries, workflow, and commands.
