@@ -24,14 +24,8 @@ function isUnauthorizedWorkspaceError(err: unknown): boolean {
 /**
  * Server-side workspace switch with cookie-recovery ladder.
  *
- * Historic behaviour was raw fetch + swallow-all-errors, which let the local
- * `workspaceStore` drift ahead of the BFF cookie when a transient 401 hit —
- * subsequent Drive / registry calls then sent an inconsistent
- * `X-Workspace-Id`. Recover once via refresh, then ensure `/auth/session`
- * (which can Set-Cookie a fresh access), and retry the POST. If both refresh
- * and ensure decline, surface the last unauthorized so the caller can fall
- * back to local-only update — a fourth POST after two "session dead" signals
- * would only add another 401 round-trip.
+ * If both refresh and ensure decline, do **not** advance the local store —
+ * keeping the previous active workspace avoids X-Workspace-Id drift (§13).
  */
 async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise<void> {
   try {
@@ -49,17 +43,9 @@ async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise
     }
   }
   if (await ensureDesignBffSessionAuthenticated()) {
-    // ensure() can Set-Cookie a fresh access on its response body — the
-    // next daemon fetch clears nginx auth_request. If the retry still 401s,
-    // let it bubble so the caller keeps local store in sync via the outer
-    // catch (rather than pretending the switch succeeded).
     await postDesignAuthWorkspace(workspaceId);
     return;
   }
-  // Both refresh and ensure said no. Surface the unauthorized status so
-  // `setActiveTeamverWorkspace`'s outer catch decides whether to still
-  // update local store — do not fire a wasted 4th POST that will only
-  // re-emit the same 401.
   const err = new Error("workspace_switch_bff_unauthorized") as Error & { status?: number };
   err.status = 401;
   throw err;
@@ -75,11 +61,13 @@ export async function setActiveTeamverWorkspace(
   if (isBootstrapAuthMode()) {
     try {
       await postDesignAuthWorkspaceWithRecovery(trimmed);
-    } catch {
-      // Even after refresh + ensure the server refused. Keep local store in
-      // sync with the user's intent — the next full-page boot or explicit
-      // retry will reconcile server-side; we do not want an empty active
-      // workspace UI while the user is actively switching.
+    } catch (err) {
+      if (
+        isUnauthorizedWorkspaceError(err)
+        || (err instanceof Error && err.message === "workspace_switch_bff_unauthorized")
+      ) {
+        return;
+      }
     }
   }
 

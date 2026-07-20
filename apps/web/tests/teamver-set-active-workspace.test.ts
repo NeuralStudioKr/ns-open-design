@@ -101,7 +101,7 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-3");
   });
 
-  it("keeps local store in sync even if server refuses after all recovery attempts", async () => {
+  it("does not advance local store when server refuses after all recovery attempts", async () => {
     const { setActiveTeamverWorkspace } = await import(
       "../src/teamver/setActiveTeamverWorkspace"
     );
@@ -111,12 +111,10 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
 
     await setActiveTeamverWorkspace("ws-4");
 
-    // Both refresh and ensure declined — no wasted 4th POST after two
-    // "session dead" signals; the outer catch keeps the local store in
-    // sync so the UI does not blank out during a transient BFF failure.
+    // Auth ladder exhausted — no 4th POST; local store must not drift.
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(1);
-    expect(workspaceStoreSet).toHaveBeenCalledWith("ws-4");
-    expect(dispatchWorkspaceChanged).toHaveBeenCalledWith("ws-4");
+    expect(workspaceStoreSet).not.toHaveBeenCalled();
+    expect(dispatchWorkspaceChanged).not.toHaveBeenCalled();
   });
 
   it("skips the BFF POST entirely when not in bootstrap auth mode", async () => {

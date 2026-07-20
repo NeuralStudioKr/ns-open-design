@@ -325,7 +325,9 @@ async def test_post_auth_workspace_force_refreshes_when_cookie_suppressed(
     body = WorkspaceSelectRequest(workspace_id="ws-target")
     result = await auth_router.post_auth_workspace(request, body)
 
-    assert result == {"workspace_id": "ws-target", "status": "ok"}
+    assert result["workspace_id"] == "ws-target"
+    assert result["status"] == "ok"
+    assert result.get("cookie_updated") is True
     update_ws.assert_called_once_with(request, "ws-target")
     assert SUPPRESS_SESSION_COOKIE_SCOPE_KEY not in request.scope
 
