@@ -90,7 +90,10 @@ const PSEUDO_TOOL_TAG_NAMES = [
 const INTERNAL_PLANNING_TAG_NAMES = [
   "thinking",
   "think",
-  "system-reminder",
+  // `system-reminder` intentionally NOT here: closed blocks stay in the prose so
+  // AssistantMessage's `splitSystemReminders` can render them as the
+  // "Possible prompt injection" chip. Open/streaming forms are stripped via
+  // `stripTrailingOpenInternalMarkup`'s explicit handling below.
   "redacted_thinking",
   "scratchpad",
   "reflection",
@@ -377,8 +380,11 @@ function escapeRegExp(value: string): string {
 function closedTagRe(tagName: string): RegExp {
   let re = closedTagRes.get(tagName);
   if (!re) {
+    // Same delimiter guard as openTagRe — prevents `<todo\b` from swallowing
+    // `<todo-list>` and stealing the outer strip's close-tag search when a
+    // hyphenated variant of the same prefix appears in the stream.
     re = new RegExp(
-      `<${escapeRegExp(tagName)}\\b[^>]*>[\\s\\S]*?</${escapeRegExp(tagName)}>`,
+      `<${escapeRegExp(tagName)}(?=[\\s>/])[^>]*>[\\s\\S]*?</${escapeRegExp(tagName)}\\s*>`,
       "gi",
     );
     closedTagRes.set(tagName, re);
@@ -389,7 +395,11 @@ function closedTagRe(tagName: string): RegExp {
 function openTagRe(tagName: string): RegExp {
   let re = openTagRes.get(tagName);
   if (!re) {
-    re = new RegExp(`<${escapeRegExp(tagName)}\\b[^>]*>`, "i");
+    // Require an explicit delimiter after the tag name — plain `\b` treats
+    // `-` as a word boundary and would let `<system\b` accidentally match
+    // `<system-reminder>` (then `[^>]*` gobbles `-reminder`), stealing the
+    // longer tag's close-search from the openTag chain.
+    re = new RegExp(`<${escapeRegExp(tagName)}(?=[\\s>/])[^>]*>`, "i");
     openTagRes.set(tagName, re);
   }
   return re;
@@ -515,6 +525,10 @@ function isInternalMarkupTagName(name: string): boolean {
     || lower.startsWith("gemini:")
     || lower === "question-form"
     || lower === "ask-question"
+    // Hold back partial `<system-remi…` mid-stream tokens so the injected
+    // prompt doesn't briefly render as bare prose before the closing tag
+    // arrives (which turns the block into the prompt-injection chip).
+    || (lower.length >= 3 && "system-reminder".startsWith(lower))
   ) {
     return true;
   }
@@ -666,6 +680,9 @@ export function stripTrailingOpenInternalMarkup(
     // Open discovery forms flash raw JSON mid-stream; closed forms stay for UI.
     { re: openTagRe("question-form"), name: "question-form" },
     { re: openTagRe("ask-question"), name: "ask-question" },
+    // Open system-reminder mid-stream: hide the injected prompt while it streams;
+    // once closed, sanitize keeps the block so AssistantMessage can chip-render it.
+    { re: openTagRe("system-reminder"), name: "system-reminder" },
   ];
 
   let text = input;

@@ -38,6 +38,23 @@ describe('prompt injection chip', () => {
     expect(screen.getByText('Possible prompt injection')).toBeTruthy();
   });
 
+  it('renders attributed system-reminder tags as a chip instead of raw markup', () => {
+    const { container } = render(
+      <AssistantMessage
+        message={makeMessage(
+          `Plan.\n\n<system-reminder data-source="tool">\n${INJECTION_TEXT}\n</system-reminder>\n\nDone.`,
+        )}
+        streaming={false}
+        projectId="proj-1"
+        onFeedback={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.system-reminder-block.injection')).not.toBeNull();
+    expect(container.textContent).not.toContain('<system-reminder');
+    expect(container.textContent).not.toContain('</system-reminder>');
+  });
+
   it('the injection chip has the injection CSS class', () => {
     const { container } = render(
       <AssistantMessage

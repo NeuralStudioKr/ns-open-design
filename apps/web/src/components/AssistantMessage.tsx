@@ -2889,7 +2889,7 @@ function buildBlocks(events: AgentEvent[]): Block[] {
 type ProseSegment = { kind: "text" | "reminder"; text: string };
 
 function splitSystemReminders(input: string): ProseSegment[] {
-  const re = /<system-reminder>([\s\S]*?)<\/system-reminder>/g;
+  const re = /<system-reminder\b[^>]*>([\s\S]*?)<\/system-reminder>/g;
   const out: ProseSegment[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -2908,7 +2908,7 @@ function splitSystemReminders(input: string): ProseSegment[] {
   return out
     .map((seg) =>
       seg.kind === "text"
-        ? { ...seg, text: seg.text.replace(/<\/?system-reminder>/g, "") }
+        ? { ...seg, text: seg.text.replace(/<system-reminder\b[^>]*>|<\/system-reminder>/g, "") }
         : seg
     )
     .filter((seg) => seg.kind === "reminder" || seg.text.trim().length > 0);
