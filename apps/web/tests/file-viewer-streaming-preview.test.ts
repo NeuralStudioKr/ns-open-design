@@ -44,4 +44,13 @@ describe("FileViewer streaming slide preview", () => {
       /artifactIdentity[\s\S]*lastStablePreviewIdentityRef\.current !== artifactIdentity[\s\S]*lastStablePreviewSourceRef\.current = null/,
     );
   });
+
+  it("does not accept structurally incomplete final html as the stable preview", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("const structurallyComplete = lower.includes(\"</body>\") && lower.includes(\"</html>\");");
+    expect(source).toContain("if (!structurallyComplete) return null;");
+    expect(source).toMatch(
+      /if \(!structurallyComplete\) return null;[\s\S]*if \(hasArtifactPreviewBodyTextLeaks\(repaired\)\) return null;[\s\S]*lastStablePreviewSourceRef\.current = repaired;/,
+    );
+  });
 });

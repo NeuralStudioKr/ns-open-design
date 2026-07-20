@@ -67,6 +67,21 @@ describe("agent-prose-sanitize SSOT", () => {
         " <system-reminder>injected</system-reminder> Done.",
       );
     });
+
+    it("does not let hyphenated tag-name-prefix families steal each other's close (openTagRe delimiter)", () => {
+      // Prior bug: `<system\b[^>]*>` matched `<system-reminder>` (because `-`
+      // is a word boundary), so the openTag chain looked for `</system>` and
+      // when it was missing stripped everything from `<system-reminder>` on —
+      // silently deleting the prose that follows.
+      const input = "Plan.\n\n<system-reminder>Injected</system-reminder>\n\nDone.";
+      const { text, hadOpenInternalMarkup } = stripTrailingOpenInternalMarkup(input);
+      expect(hadOpenInternalMarkup).toBe(false);
+      expect(text).toBe(input);
+      // Similar hyphen-prefix conflicts (`<tool>` vs `<tool-results>`, etc.)
+      // must not swallow the longer sibling either.
+      const input2 = "Answer. <tool-results>ok</tool-results> Fin.";
+      expect(sanitizeAssistantProseForDisplay(input2)).toBe("Answer.  Fin.");
+    });
   });
 
   it("strips dynamic *_operator and *_analysis suffix tags", () => {

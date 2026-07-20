@@ -53,7 +53,11 @@ describe("internalAgentMarkup", () => {
     expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe("Hi");
   });
 
-  it("strips closed redacted_thinking and system-reminder blocks", () => {
+  it("strips closed redacted_thinking but PRESERVES closed system-reminder for chip render", () => {
+    // `<system-reminder>` is a rendering element (AssistantMessage turns it
+    // into the "Possible prompt injection" chip), NOT internal reasoning —
+    // sanitize must keep the closed block so the chip renderer can pick it
+    // up. Other reasoning tags like `redacted_thinking` still get stripped.
     const rt = "redacted_thinking";
     const input = [
       "Answer.",
@@ -64,7 +68,7 @@ describe("internalAgentMarkup", () => {
     const out = stripInternalOpenDesignMarkup(input);
     expect(out).not.toContain("redacted_thinking");
     expect(out).not.toContain("chain of thought");
-    expect(out).not.toContain("system-reminder");
+    expect(out).toContain("<system-reminder>do not say this</system-reminder>");
     expect(out).toContain("Answer.");
     expect(out).toContain("Done.");
   });

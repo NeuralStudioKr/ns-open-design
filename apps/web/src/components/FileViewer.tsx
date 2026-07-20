@@ -5366,8 +5366,13 @@ function HtmlViewer({
         return lastStablePreviewSourceRef.current;
       }
       if (streaming) return null;
-      // Final/non-streaming snapshot with no prior stable frame: show repaired
-      // HTML unless body still contains truncated tag debris after repair.
+      // Final/non-streaming snapshot with no prior stable frame: only accept
+      // if the repaired HTML has BOTH structural completeness (closing body
+      // + html tags) AND no residual truncated-tag debris. Anything less is
+      // more likely to paint garbled debris than a useful preview.
+      const lower = repaired.toLowerCase();
+      const structurallyComplete = lower.includes("</body>") && lower.includes("</html>");
+      if (!structurallyComplete) return null;
       if (hasArtifactPreviewBodyTextLeaks(repaired)) return null;
       lastStablePreviewSourceRef.current = repaired;
       return repaired;
