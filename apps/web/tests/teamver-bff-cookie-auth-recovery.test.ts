@@ -68,7 +68,8 @@ describe("withDesignBffCookieAuthRecovery", () => {
 
     await expect(pending).resolves.toBe("ok");
     expect(request).toHaveBeenCalledTimes(2);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    // refresh 401 → /auth/session probe (+ delayed probe) before soft-retry
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
   });
 
   it("recovers from SDK AuthenticationError (real HTTP 401 mapping)", async () => {
@@ -107,6 +108,34 @@ describe("withDesignBffCookieAuthRecovery", () => {
     await expect(pending).resolves.toBe("ok");
 
     expect(isDesignAuthRefreshDeclined()).toBe(false);
+  });
+
+  it("does not sticky-decline refresh when /auth/session is still authenticated after 401", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "session_expired" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
+      await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(true);
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
+    expect(fetchMock).toHaveBeenCalled();
   });
 });
 

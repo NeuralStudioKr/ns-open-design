@@ -143,6 +143,28 @@ async function postAuthRefresh(
   }
 }
 
+function resolveDesignBffSessionUrl(): string {
+  return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session");
+}
+
+/**
+ * Raw GET /auth/session — used after a losing-node refresh 401 to decide whether
+ * sticky decline / re-login is warranted. Avoids TeamverClient onAuthExpired.
+ */
+export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
+  try {
+    const response = await fetch(resolveDesignBffSessionUrl(), {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { authenticated?: unknown };
+    return body.authenticated === true;
+  } catch {
+    return false;
+  }
+}
+
 let authRefreshDeclinedForSession = false;
 let unauthenticatedRefreshAttempted = false;
 /** Allows BFF refresh retry on sign-in return. */
@@ -266,7 +288,32 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       resetDesignAuthRefreshDeclined();
       return true;
     }
-    if (bffResult.status === 400 || bffResult.status === 401) {
+    if (bffResult.status === 401) {
+      // HA rotation race: losing node returns 401 while access is still usable
+      // and a sibling may already have Set-Cookie'd a fresh session. Probe
+      // before sticky-declining — otherwise every later call skips refresh and
+      // the UI escalates to re-login for a recoverable blip.
+      if (await probeDesignBffSessionAuthenticated()) {
+        resetDesignAuthRefreshDeclined();
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+      if (await probeDesignBffSessionAuthenticated()) {
+        resetDesignAuthRefreshDeclined();
+        return true;
+      }
+      authRefreshDeclinedForSession = true;
+      if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
+        console.info(
+          '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
+          { status: bffResult.status },
+        );
+        void clearOrphanTeamverAuthCookies();
+      }
+      return false;
+    }
+    if (bffResult.status === 400) {
+      // Account missing / malformed refresh — sticky decline without HA soft-retry.
       authRefreshDeclinedForSession = true;
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
         console.info(

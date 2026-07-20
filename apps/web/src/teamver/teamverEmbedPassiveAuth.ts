@@ -1,9 +1,13 @@
-import { isBootstrapAuthMode, isTeamverEmbedMode, resolveDesignBffRefreshUrl } from "./designApiBase";
+import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
 import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { hasTeamverEmbedActiveWork } from "./teamverEmbedActiveWork";
 import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
-import { prepareDesignAuthSessionReload, refreshDesignAuthCookie } from "./designBffClient";
+import {
+  prepareDesignAuthSessionReload,
+  probeDesignBffSessionAuthenticated,
+  refreshDesignAuthCookie,
+} from "./designBffClient";
 
 function shouldDeferPassiveAuthRedirect(): boolean {
   return hasTeamverEmbedActiveWork() || hasTeamverEmbedBackgroundRuns();
@@ -11,12 +15,16 @@ function shouldDeferPassiveAuthRedirect(): boolean {
 
 export const TEAMVER_EMBED_PASSIVE_AUTH_EVENT = "teamver:embed-passive-auth-required";
 
-/** Require this many consecutive unrecovered 401s before scheduling login. */
-const PASSIVE_AUTH_FAILURE_THRESHOLD = 2;
+/**
+ * Prefer silent recovery over login redirect. Key-refresh (Apps JWT) failures
+ * are often HA rotation races — re-login / "close the tab" is last resort only
+ * after consecutive unrecovered failures AND a final session probe.
+ */
+const PASSIVE_AUTH_FAILURE_THRESHOLD = 3;
 /** Window that counts consecutive failures (tab-return blips are usually single). */
-const PASSIVE_AUTH_FAILURE_WINDOW_MS = 45_000;
+const PASSIVE_AUTH_FAILURE_WINDOW_MS = 60_000;
 /** Delay before navigating away after confirmed session loss. */
-const PASSIVE_AUTH_REDIRECT_DELAY_MS = 2_500;
+const PASSIVE_AUTH_REDIRECT_DELAY_MS = 4_000;
 
 let passiveAuthRedirectTimer: ReturnType<typeof setTimeout> | null = null;
 let passiveAuthRecoveryInflight: Promise<boolean> | null = null;
@@ -83,7 +91,13 @@ function schedulePassiveLoginRedirect(): void {
         notePassiveRecoverySuccess();
         return;
       }
-      if (await probeBffSessionAuthenticated()) {
+      if (await probeDesignBffSessionAuthenticated()) {
+        notePassiveRecoverySuccess();
+        return;
+      }
+      // One more delayed probe — cookie from a sibling tab/node may land late.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (await probeDesignBffSessionAuthenticated()) {
         notePassiveRecoverySuccess();
         return;
       }
@@ -91,28 +105,6 @@ function schedulePassiveLoginRedirect(): void {
       redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
     })();
   }, PASSIVE_AUTH_REDIRECT_DELAY_MS);
-}
-
-function resolveDesignBffSessionUrl(): string {
-  return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session");
-}
-
-/**
- * Raw session probe — avoids TeamverClient onAuthExpired recursion when a
- * prior 401 already entered passive recovery.
- */
-async function probeBffSessionAuthenticated(): Promise<boolean> {
-  try {
-    const response = await fetch(resolveDesignBffSessionUrl(), {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) return false;
-    const body = (await response.json()) as { authenticated?: unknown };
-    return body.authenticated === true;
-  } catch {
-    return false;
-  }
 }
 
 function claimPassiveRecoveryFailure(): number | null {
@@ -130,7 +122,7 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
         if (refreshed) return true;
         // POST /auth/refresh can 401 while the BFF cookie is still usable
         // (refresh-token race; access retained). Confirm before logout redirect.
-        return await probeBffSessionAuthenticated();
+        return await probeDesignBffSessionAuthenticated();
       } finally {
         passiveAuthRecoveryInflight = null;
       }

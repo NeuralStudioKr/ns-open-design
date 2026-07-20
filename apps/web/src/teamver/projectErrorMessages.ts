@@ -165,7 +165,9 @@ export function formatProjectRunErrorForUser(err: unknown): string {
     return "서버 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";
   }
   if (code === "MANAGED_KEY_UNAVAILABLE") {
-    return "서버 API 인증 정보를 확인하지 못했습니다. 다시 로그인한 뒤 시도하세요.";
+    // Identity header / managed-mode misconfig — usually recovered by session
+    // refresh or ops, not by "close the tab and re-login".
+    return "서버 API 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
   }
   if (code === "PROJECT_STORAGE_UNAVAILABLE") {
     return "프로젝트 저장소를 준비하지 못했습니다. 잠시 후 다시 시도하세요.";

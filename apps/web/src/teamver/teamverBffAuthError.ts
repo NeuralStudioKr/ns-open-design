@@ -59,6 +59,14 @@ export function classifyTeamverBffAuthFailure(err: unknown): TeamverBffAuthFailu
 export const TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE =
   "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
 
+/**
+ * Auth UX priority (embed):
+ * 1) Prevent refresh races (BFF probe read-only, Set-Cookie suppress, HA coalesce)
+ * 2) Silent recovery (refresh + session probe + soft-retry)
+ * 3) In-place "다시 시도" — never ask users to close the tab for a refresh blip
+ * 4) Re-login only after confirmed session loss (probe authenticated:false)
+ */
+
 /** Pick retry-first vs re-login copy based on embed session memory. */
 export function formatTeamverEmbedAuthRequiredMessage(
   logoutMessage: string,
