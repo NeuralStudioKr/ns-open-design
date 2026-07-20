@@ -3,34 +3,53 @@ import type { RuntimeAgentDef, RuntimePromptBudgetError } from './types.js';
 function promptArgvBudgetMessage(
   def: RuntimeAgentDef,
   bytes: number,
+  limit: number,
 ): string {
   if (def.id === 'deepseek') {
     return (
-      `${def.name} currently accepts prompts only as a command-line argument, and this run's composed prompt exceeds the safe size (${bytes} > ${def.maxPromptArgBytes} bytes). ` +
+      `${def.name} currently accepts prompts only as a command-line argument, and this run's composed prompt exceeds the safe size (${bytes} > ${limit} bytes). ` +
       'Reduce the selected skills/design-system context or conversation length, or use DeepSeek through an API/provider model connection for large contexts. Pick a stdin-capable adapter when the prompt must include large local context.'
     );
   }
   return (
-    `${def.name} requires the prompt as a command-line argument and this run's composed prompt exceeds the safe size (${bytes} > ${def.maxPromptArgBytes} bytes). ` +
+    `${def.name} requires the prompt as a command-line argument and this run's composed prompt exceeds the safe size (${bytes} > ${limit} bytes). ` +
     'Reduce the selected skills/design-system context, shorten the conversation, or pick an adapter with stdin support.'
   );
+}
+
+// `maxPromptArgBytes` is sized for Windows' ~32 KB CreateProcess
+// command-line limit. POSIX hosts allow larger per-arg buffers, and the
+// Windows-specific post-buildArgs guards still enforce the real Windows cap.
+// Keep a larger POSIX guard so normal skill/design-system prompts do not fail
+// early with a misleading prompt-too-large error, while runaway prompts still
+// fail before spawning a process.
+const POSIX_ARGV_PROMPT_BUDGET = 120_000;
+
+function resolveArgvPromptBudget(
+  maxPromptArgBytes: number,
+  platform: NodeJS.Platform,
+): number {
+  if (platform === 'win32') return maxPromptArgBytes;
+  return Math.max(maxPromptArgBytes, POSIX_ARGV_PROMPT_BUDGET);
 }
 
 export function checkPromptArgvBudget(
   def: RuntimeAgentDef | null | undefined,
   composed: unknown,
+  platform: NodeJS.Platform = process.platform,
 ): RuntimePromptBudgetError | null {
   if (!def || typeof def.maxPromptArgBytes !== 'number') return null;
   const bytes = Buffer.byteLength(
     typeof composed === 'string' ? composed : '',
     'utf8',
   );
-  if (bytes <= def.maxPromptArgBytes) return null;
+  const limit = resolveArgvPromptBudget(def.maxPromptArgBytes, platform);
+  if (bytes <= limit) return null;
   return {
     code: 'AGENT_PROMPT_TOO_LARGE',
-    message: promptArgvBudgetMessage(def, bytes),
+    message: promptArgvBudgetMessage(def, bytes, limit),
     bytes,
-    limit: def.maxPromptArgBytes,
+    limit,
   };
 }
 

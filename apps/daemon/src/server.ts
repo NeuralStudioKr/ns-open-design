@@ -2888,9 +2888,24 @@ function runSseEventToPersistedAgentEvent(event, data) {
   return daemonAgentPayloadToPersistedAgentEvent(data);
 }
 
+export function __forTestRunSseEventToPersistedAgentEvent(event, data) {
+  return runSseEventToPersistedAgentEvent(event, data);
+}
+
+// ACP protocol-internal status labels carry no user-visible detail. Suppress
+// them before DB persistence so history replay doesn't render empty process
+// rows and long tool loops don't write avoidable message events.
+const TRANSIENT_ACP_PERSISTED_STATUS_LABELS = new Set([
+  'waiting_for_first_output',
+  'tool_call',
+  'tool_call_update',
+  'session_update',
+]);
+
 function daemonAgentPayloadToPersistedAgentEvent(data) {
   const type = data?.type;
   if (type === 'status' && typeof data.label === 'string') {
+    if (TRANSIENT_ACP_PERSISTED_STATUS_LABELS.has(data.label)) return null;
     const detail =
       typeof data.detail === 'string'
         ? data.detail

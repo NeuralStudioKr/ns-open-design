@@ -67,7 +67,7 @@ test('deepseek declares a conservative argv-byte budget for the prompt', () => {
 // real spawn would surface a generic ENAMETOOLONG / E2BIG.
 test('checkPromptArgvBudget flags oversized DeepSeek prompts and lets short prompts through', () => {
   const oversized = 'x'.repeat(deepseekMaxPromptArgBytes + 1);
-  const flagged = checkPromptArgvBudget(deepseek, oversized);
+  const flagged = checkPromptArgvBudget(deepseek, oversized, 'win32');
   assert.ok(flagged, 'oversized prompts must trip the argv-byte guard');
   assert.equal(flagged.code, 'AGENT_PROMPT_TOO_LARGE');
   assert.equal(flagged.limit, deepseekMaxPromptArgBytes);
@@ -78,12 +78,12 @@ test('checkPromptArgvBudget flags oversized DeepSeek prompts and lets short prom
 
   // Normal-sized prompts must not trip the guard; the chat happy path
   // depends on this returning null so it can proceed to spawn.
-  assert.equal(checkPromptArgvBudget(deepseek, 'hello'), null);
+  assert.equal(checkPromptArgvBudget(deepseek, 'hello', 'win32'), null);
 
   // The exact-budget edge: a prompt right at the limit must pass; the
   // guard fires only when the byte count strictly exceeds the budget.
   const atLimit = 'x'.repeat(deepseekMaxPromptArgBytes);
-  assert.equal(checkPromptArgvBudget(deepseek, atLimit), null);
+  assert.equal(checkPromptArgvBudget(deepseek, atLimit, 'win32'), null);
 
   // A multi-byte UTF-8 prompt (e.g. CJK characters) is measured in
   // bytes, not code points — pin that so a 3-byte-per-char prompt
@@ -91,14 +91,14 @@ test('checkPromptArgvBudget flags oversized DeepSeek prompts and lets short prom
   const cjkOversized = '汉'.repeat(
     Math.ceil(deepseekMaxPromptArgBytes / 3) + 1,
   );
-  const cjkFlagged = checkPromptArgvBudget(deepseek, cjkOversized);
+  const cjkFlagged = checkPromptArgvBudget(deepseek, cjkOversized, 'win32');
   assert.ok(cjkFlagged, 'byte-counted UTF-8 prompts must also trip the guard');
   assert.equal(cjkFlagged.code, 'AGENT_PROMPT_TOO_LARGE');
 });
 
 test('checkPromptArgvBudget gives DeepSeek-specific guidance for large contexts', () => {
   const oversized = 'x'.repeat(deepseekMaxPromptArgBytes + 1);
-  const flagged = checkPromptArgvBudget(deepseek, oversized);
+  const flagged = checkPromptArgvBudget(deepseek, oversized, 'win32');
 
   assert.ok(flagged, 'oversized DeepSeek prompts must return a diagnostic');
   assert.match(flagged.message, /DeepSeek TUI/);
@@ -111,7 +111,7 @@ test('Kimi prompt mode declares and enforces an argv-byte budget', () => {
   assert.equal(kimi.maxPromptArgBytes, 30_000);
 
   const oversized = 'x'.repeat(kimi.maxPromptArgBytes + 1);
-  const flagged = checkPromptArgvBudget(kimi, oversized);
+  const flagged = checkPromptArgvBudget(kimi, oversized, 'win32');
   assert.ok(flagged, 'oversized Kimi prompts must trip the argv-byte guard');
   assert.equal(flagged.code, 'AGENT_PROMPT_TOO_LARGE');
   assert.equal(flagged.limit, kimi.maxPromptArgBytes);
@@ -120,7 +120,19 @@ test('Kimi prompt mode declares and enforces an argv-byte budget', () => {
   assert.match(flagged.message, /command-line argument/);
   assert.match(flagged.message, /stdin support/);
 
-  assert.equal(checkPromptArgvBudget(kimi, 'hello'), null);
+  assert.equal(checkPromptArgvBudget(kimi, 'hello', 'win32'), null);
+});
+
+test('checkPromptArgvBudget uses a larger POSIX budget for argv adapters', () => {
+  const normalPosixPrompt = 'x'.repeat(deepseekMaxPromptArgBytes + 1);
+  assert.equal(checkPromptArgvBudget(deepseek, normalPosixPrompt, 'linux'), null);
+
+  const oversizedPosixPrompt = 'x'.repeat(120_001);
+  const flagged = checkPromptArgvBudget(deepseek, oversizedPosixPrompt, 'linux');
+  assert.ok(flagged, 'runaway POSIX argv prompts must still fail fast');
+  assert.equal(flagged.code, 'AGENT_PROMPT_TOO_LARGE');
+  assert.equal(flagged.limit, 120_000);
+  assert.equal(flagged.bytes, 120_001);
 });
 
 test('checkPromptArgvBudget is a no-op for Grok Build because it uses prompt files', () => {
