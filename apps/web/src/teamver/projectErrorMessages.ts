@@ -178,8 +178,14 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   if (code === "RATE_LIMITED") {
     return "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
   }
-  if (code === "UPSTREAM_UNAVAILABLE" || code === "INTERNAL_ERROR") {
+  if (code === "UPSTREAM_UNAVAILABLE") {
     return "AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요.";
+  }
+  if (code === "BAD_REQUEST") {
+    return "요청을 처리하지 못했습니다. 내용을 확인한 뒤 다시 시도하세요.";
+  }
+  if (code === "INTERNAL_ERROR") {
+    return "실행 중 내부 오류가 발생했습니다. 다시 시도하세요.";
   }
   if (messageImpliesMissingApiKey(err)) {
     return "서버 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";

@@ -367,6 +367,13 @@ export async function verifyTeamverProjectAccess(
   if (!teamverProjectAccessCheckUrl(projectId)) return { ok: true, s3Prefix: null };
 
   let outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
+  // Transient BFF / network blip: one immediate soft retry before surfacing
+  // UPSTREAM_UNAVAILABLE to the FE (intermittent "AI 연결 실패" adjacent failures
+  // on messages/files during a chat turn).
+  if (outcome.kind === 'failed' || (outcome.kind === 'upstream' && outcome.httpStatus >= 500)) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    outcome = await fetchProjectAccessFromDesignApi(projectId, identity);
+  }
   // 404 = "no design-api row yet". This is the common race after a fresh
   // create: FE has spawned daemon POST /api/projects and design-api
   // registration POST in parallel and the FE-driven subroute (e.g. GET

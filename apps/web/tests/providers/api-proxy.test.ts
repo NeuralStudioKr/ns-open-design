@@ -8,6 +8,7 @@ import {
 import {
   buildProxyMessages,
   buildProxyResponseError,
+  shouldSoftRetryProxyFailure,
   streamProxyEndpoint,
 } from '../../src/providers/api-proxy';
 import type { ChatMessage } from '../../src/types';
@@ -534,5 +535,32 @@ describe('buildProxyResponseError', () => {
     expect(err.code).toBe('PROJECT_STORAGE_UNAVAILABLE');
     expect(err.message).toContain('PROJECT_STORAGE_UNAVAILABLE');
     expect(err.message).toContain('project storage unavailable');
+  });
+});
+
+describe('shouldSoftRetryProxyFailure', () => {
+  it('retries UPSTREAM_UNAVAILABLE and explicit retryable', () => {
+    const upstream = new Error('upstream') as Error & { code?: string; retryable?: boolean };
+    upstream.code = 'UPSTREAM_UNAVAILABLE';
+    expect(shouldSoftRetryProxyFailure(upstream)).toBe(true);
+
+    const flagged = new Error('x') as Error & { retryable?: boolean };
+    flagged.retryable = true;
+    expect(shouldSoftRetryProxyFailure(flagged)).toBe(true);
+  });
+
+  it('retries nginx HTML 502 without structured code', () => {
+    expect(
+      shouldSoftRetryProxyFailure(new Error('proxy 502: <html>Bad Gateway</html>')),
+    ).toBe(true);
+  });
+
+  it('does not retry auth / bad request', () => {
+    const unauthorized = new Error('proxy 401') as Error & { code?: string };
+    unauthorized.code = 'UNAUTHORIZED';
+    expect(shouldSoftRetryProxyFailure(unauthorized)).toBe(false);
+    const bad = new Error('proxy 400') as Error & { code?: string };
+    bad.code = 'BAD_REQUEST';
+    expect(shouldSoftRetryProxyFailure(bad)).toBe(false);
   });
 });

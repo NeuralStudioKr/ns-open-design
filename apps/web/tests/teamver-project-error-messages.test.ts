@@ -126,6 +126,13 @@ describe("project conversation error messages", () => {
     managedKeyErr.code = "MANAGED_KEY_UNAVAILABLE";
     expect(formatProjectRunErrorForUser(managedKeyErr)).toContain("다시 시도");
     expect(formatProjectRunErrorForUser(managedKeyErr)).not.toContain("다시 로그인");
+    const upstreamErr = new Error("fetch failed") as Error & { code?: string };
+    upstreamErr.code = "UPSTREAM_UNAVAILABLE";
+    expect(formatProjectRunErrorForUser(upstreamErr)).toContain("AI 서비스에 연결");
+    const internalErr = new Error("bug") as Error & { code?: string };
+    internalErr.code = "INTERNAL_ERROR";
+    expect(formatProjectRunErrorForUser(internalErr)).toContain("내부 오류");
+    expect(formatProjectRunErrorForUser(internalErr)).not.toContain("AI 서비스");
     expect(
       formatProjectRunErrorForUser(
         new Error("Your authentication token has expired. Please sign in again."),

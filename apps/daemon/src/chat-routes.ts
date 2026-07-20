@@ -58,6 +58,11 @@ import {
 } from './byok-proxy-abort.js';
 import { tryAcquireWorkspaceProxySlot } from './byok-proxy-workspace-limit.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import {
+  classifyProxyCatchError,
+  proxyHttpErrorCode,
+  proxyHttpRetryable,
+} from './proxy-error-classification.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -581,13 +586,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     return validateBaseUrlResolved(baseUrl);
   };
 
-  const proxyErrorCode = (status: number) => {
-    if (status === 401) return 'UNAUTHORIZED';
-    if (status === 403) return 'FORBIDDEN';
-    if (status === 404) return 'NOT_FOUND';
-    if (status === 429) return 'RATE_LIMITED';
-    return 'UPSTREAM_UNAVAILABLE';
-  };
+  const proxyErrorCode = (status: number) => proxyHttpErrorCode(status);
 
   const sendProxyError = (sse: any, message: string, init: any = {}) => {
     sse.send('error', {
@@ -599,6 +598,26 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         ...(init.retryable === undefined ? {} : { retryable: init.retryable }),
       },
     });
+  };
+
+  const sendProxyCatchError = (
+    sse: any,
+    err: unknown,
+    logTag: string,
+    flushUsage: () => void,
+  ) => {
+    const classified = classifyProxyCatchError(err);
+    if (classified.silent) {
+      sse.end();
+      return;
+    }
+    console.error(`[${logTag}] ${classified.code}: ${classified.message}`);
+    flushUsage();
+    sendProxyError(sse, classified.message, {
+      code: classified.code,
+      retryable: classified.retryable,
+    });
+    sse.end();
   };
 
   const providerStreamErrorCode = (data: any, fallback = 'UPSTREAM_UNAVAILABLE') => {
@@ -971,7 +990,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return sse.end();
       }
@@ -1037,13 +1056,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
       sse.end();
     } catch (err: any) {
-      console.error(`[${opts.logTag}] internal error: ${err.message}`);
-      // Network drop or dispatcher error mid-stream: same rationale as the
-      // upstream-error branch above. If message_start already populated the
-      // accumulators, the user was already charged for input_tokens.
-      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
+      sendProxyCatchError(sse, err, opts.logTag, () => {
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+      });
     } finally {
       await proxyDispatcher?.close();
     }
@@ -1109,7 +1124,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return sse.end();
       }
@@ -1121,7 +1136,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
-          sendProxyError(sse, `Gemini error: ${streamError}`, { details: data });
+          sendProxyError(sse, `Gemini error: ${streamError}`, {
+            code: providerStreamErrorCode(data),
+            details: data,
+            retryable: false,
+          });
           ended = true;
           return true;
         }
@@ -1153,7 +1172,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const blockMessage = extractGeminiBlockMessage(data);
         if (blockMessage) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
-          sendProxyError(sse, blockMessage, { details: data });
+          sendProxyError(sse, blockMessage, {
+            code: providerStreamErrorCode(data, 'BAD_REQUEST'),
+            details: data,
+            retryable: false,
+          });
           ended = true;
           return true;
         }
@@ -1166,10 +1189,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
       sse.end();
     } catch (err: any) {
-      console.error(`[${opts.logTag}] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
+      sendProxyCatchError(sse, err, opts.logTag, () => {
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
+      });
     } finally {
       await proxyDispatcher?.close();
     }
@@ -1407,7 +1429,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return sse.end();
       }
@@ -1426,7 +1448,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-          sendProxyError(sse, `Provider error: ${streamError}`, { details: data });
+          sendProxyError(sse, `Provider error: ${streamError}`, {
+            code: providerStreamErrorCode(data),
+            details: data,
+            retryable: false,
+          });
           ended = true;
           return true;
         }
@@ -1454,10 +1480,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
       sse.end();
     } catch (err: any) {
-      console.error(`[proxy:openai] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
+      sendProxyCatchError(sse, err, 'proxy:openai', () => {
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
+      });
     } finally {
       await proxyDispatcher?.close();
     }
@@ -1592,7 +1617,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           sendProxyError(sse, `Upstream error: ${response.status}`, {
             code: proxyErrorCode(response.status),
             details: errorText,
-            retryable: response.status === 429 || response.status >= 500,
+            retryable: proxyHttpRetryable(response.status),
           });
           return sse.end();
         }
@@ -1612,7 +1637,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
           sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-          sendProxyError(sse, `Azure error: ${streamError}`, { details: data });
+          sendProxyError(sse, `Azure error: ${streamError}`, {
+            code: providerStreamErrorCode(data),
+            details: data,
+            retryable: false,
+          });
           ended = true;
           return true;
         }
@@ -1639,10 +1668,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
       sse.end();
     } catch (err: any) {
-      console.error(`[proxy:azure] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
+      sendProxyCatchError(sse, err, 'proxy:azure', () => {
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
+      });
     } finally {
       await proxyDispatcher?.close();
     }
@@ -1752,7 +1780,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return sse.end();
       }
@@ -1797,10 +1825,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       }
       sse.end();
     } catch (err: any) {
-      console.error(`[proxy:ollama] internal error: ${err.message}`);
-      sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
+      sendProxyCatchError(sse, err, 'proxy:ollama', () => {
+        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
+      });
     } finally {
       await proxyDispatcher?.close();
     }
@@ -2044,7 +2071,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return { kind: 'error' };
       }
@@ -2139,7 +2166,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           model,
         );
         sendProxyError(sse, `Provider error: ${providerError}`, {
+          code: providerStreamErrorCode(
+            typeof providerError === 'object' ? providerError : { message: providerError },
+          ),
           details: providerError,
+          retryable: false,
         });
         return { kind: 'error' };
       }
@@ -2281,7 +2312,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return { kind: 'error' };
       }
@@ -2349,7 +2380,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           anthTurnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Provider error: ${providerError}`, { details: providerError });
+        sendProxyError(sse, `Provider error: ${providerError}`, {
+          code: providerStreamErrorCode(
+            typeof providerError === 'object' ? providerError : { message: providerError },
+          ),
+          details: providerError,
+          retryable: false,
+        });
         return { kind: 'error' };
       }
       const toolBlocks = Object.keys(blocks)
@@ -2438,20 +2475,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sse.send('end', {});
         return sse.end();
       } catch (err: any) {
-        console.error(`[${opts.logTag}] internal error: ${err.message}`);
-        // Catch covers network drops / dispatcher rejections / executeOneTool
-        // throws. Flush accumulated turn usage before the error frame so
-        // api-proxy.ts records what the user was actually billed for.
-        sendProxyUsageIfPresent(
-          res,
+      sendProxyCatchError(sse, err, opts.logTag, () => {
+        sendProxyUsageIfPresent(res,
           sse,
           anthTurnUsage.inputTokens,
           anthTurnUsage.outputTokens,
-          model,
-        );
-        sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-        sse.end();
-      } finally {
+          model,);
+      });
+    } finally {
         await proxyDispatcher?.close();
       }
     };
@@ -2510,7 +2541,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sendProxyError(sse, `Upstream error: ${response.status}`, {
           code: proxyErrorCode(response.status),
           details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
+          retryable: proxyHttpRetryable(response.status),
         });
         return { kind: 'error' };
       }
@@ -2585,7 +2616,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           geminiTurnUsage.outputTokens,
           model,
         );
-        sendProxyError(sse, `Gemini error: ${providerError}`, { details: providerError });
+        sendProxyError(sse, `Gemini error: ${providerError}`, {
+          code: providerStreamErrorCode(
+            typeof providerError === 'object' ? providerError : { message: providerError },
+          ),
+          details: providerError,
+          retryable: false,
+        });
         return { kind: 'error' };
       }
       if (functionCalls.length > 0) {
@@ -2664,20 +2701,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         sse.send('end', {});
         return sse.end();
       } catch (err: any) {
-        console.error(`[${opts.logTag}] internal error: ${err.message}`);
-        // Catch covers network drops / dispatcher rejections / executeOneTool
-        // throws. Emit accumulated usage before the error frame so
-        // api-proxy.ts records what the user was billed for upstream.
-        sendProxyUsageIfPresent(
-          res,
+      sendProxyCatchError(sse, err, opts.logTag, () => {
+        sendProxyUsageIfPresent(res,
           sse,
           geminiTurnUsage.inputTokens,
           geminiTurnUsage.outputTokens,
-          model,
-        );
-        sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-        sse.end();
-      } finally {
+          model,);
+      });
+    } finally {
         await proxyDispatcher?.close();
       }
     };
@@ -2837,20 +2868,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.send('end', {});
       return sse.end();
     } catch (err: any) {
-      console.error(`[${opts.logTag}] internal error: ${err.message}`);
-      // Catch covers network drops, dispatcher rejections, and unexpected
-      // throws inside executeOneTool. Any turns that completed before the
-      // throw already consumed tokens — emit them before the error frame
-      // so api-proxy.ts records the usage on its way to onError.
-      sendProxyUsageIfPresent(
-        res,
+      sendProxyCatchError(sse, err, opts.logTag, () => {
+        sendProxyUsageIfPresent(res,
         sse,
         turnUsage.inputTokens,
         turnUsage.outputTokens,
-        model,
-      );
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
+        model,);
+      });
     } finally {
       await proxyDispatcher?.close();
     }

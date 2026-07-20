@@ -69,8 +69,81 @@ export async function streamProxyEndpoint(
     return;
   }
 
+  // Embed: one soft retry for transient LLM/network failures before tokens
+  // stream (mirrors export soft-retry). Standalone keeps single-shot.
+  const maxAttempts = isTeamverEmbedMode() ? 2 : 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (signal.aborted) return;
+    const outcome = await streamProxyEndpointOnce(
+      endpoint,
+      cfg,
+      system,
+      history,
+      signal,
+      handlers,
+      context,
+    );
+    if (outcome === 'ok' || outcome === 'aborted') return;
+    const canRetry =
+      attempt < maxAttempts - 1
+      && !signal.aborted
+      && shouldSoftRetryProxyFailure(outcome.error);
+    if (!canRetry) {
+      handlers.onError(outcome.error);
+      return;
+    }
+    try {
+      await delayMs(PROXY_SOFT_RETRY_DELAY_MS, signal);
+    } catch {
+      return;
+    }
+  }
+}
+
+const PROXY_SOFT_RETRY_DELAY_MS = 600;
+
+function delayMs(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** @internal vitest */
+export function shouldSoftRetryProxyFailure(
+  err: Error & { code?: string; retryable?: boolean },
+): boolean {
+  if (err.retryable === true) return true;
+  const code = (err.code || '').trim().toUpperCase();
+  if (code === 'UPSTREAM_UNAVAILABLE' || code === 'RATE_LIMITED') return true;
+  if (/^proxy (502|503|504):/i.test(err.message)) return true;
+  if (/fetch failed|networkerror|failed to fetch/i.test(err.message)) return true;
+  return false;
+}
+
+async function streamProxyEndpointOnce(
+  endpoint: string,
+  cfg: AppConfig,
+  system: string,
+  history: ChatMessage[],
+  signal: AbortSignal,
+  handlers: StreamHandlers,
+  context?: ProxyContext,
+): Promise<'ok' | 'aborted' | { error: Error & { code?: string; retryable?: boolean } }> {
   const managed = shouldUseManagedProxyApiKey(cfg);
   let acc = '';
+  let receivedDelta = false;
 
   try {
     const messages = await buildProxyMessages(endpoint, history, context);
@@ -109,8 +182,14 @@ export async function streamProxyEndpoint(
 
     if (!resp.ok || !resp.body) {
       const text = await resp.text().catch(() => '');
-      handlers.onError(buildProxyResponseError(resp.status, text));
-      return;
+      const err = buildProxyResponseError(resp.status, text) as Error & {
+        code?: string;
+        retryable?: boolean;
+      };
+      if (resp.status === 429 || resp.status === 408 || resp.status >= 500) {
+        err.retryable = true;
+      }
+      return { error: err };
     }
 
     // Embed BYOK cancellation policy (PR1 §3.5): the daemon hands us a
@@ -166,6 +245,7 @@ export async function streamProxyEndpoint(
         if (parsed.event === 'delta') {
           const text = String(parsed.data.delta ?? parsed.data.text ?? '');
           if (text) {
+            receivedDelta = true;
             acc += text;
             handlers.onDelta(text);
           }
@@ -179,15 +259,23 @@ export async function streamProxyEndpoint(
         }
 
         if (parsed.event === 'error') {
-          const err = new Error(proxyErrorMessage(parsed.data)) as Error & { code?: string };
+          const err = new Error(proxyErrorMessage(parsed.data)) as Error & {
+            code?: string;
+            retryable?: boolean;
+          };
           const codeCandidate =
             (parsed.data as { code?: unknown }).code
             ?? (parsed.data as { error?: { code?: unknown } }).error?.code;
           if (typeof codeCandidate === 'string' && codeCandidate.trim()) {
             err.code = codeCandidate.trim();
           }
-          handlers.onError(err);
-          return;
+          const retryableCandidate =
+            (parsed.data as { retryable?: unknown }).retryable
+            ?? (parsed.data as { error?: { retryable?: unknown } }).error?.retryable;
+          if (retryableCandidate === true) err.retryable = true;
+          // Do not soft-retry after tokens were already streamed (would duplicate UI).
+          if (receivedDelta) err.retryable = false;
+          return { error: err };
         }
 
         if (parsed.event === 'usage') {
@@ -228,15 +316,20 @@ export async function streamProxyEndpoint(
 
         if (parsed.event === 'end') {
           handlers.onDone(acc);
-          return;
+          return 'ok';
         }
       }
     }
 
     handlers.onDone(acc);
+    return 'ok';
   } catch (err) {
-    if ((err as Error).name === 'AbortError') return;
-    handlers.onError(err instanceof Error ? err : new Error(String(err)));
+    if ((err as Error).name === 'AbortError') return 'aborted';
+    const error = (err instanceof Error ? err : new Error(String(err))) as Error & {
+      code?: string;
+      retryable?: boolean;
+    };
+    return { error };
   }
 }
 
