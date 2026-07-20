@@ -332,6 +332,46 @@ describe("useTeamverEmbed", () => {
     expect(designAuthFlow.redirectToTeamverLoginPreservingRoute).not.toHaveBeenCalled();
   });
 
+  it("clears session_unreachable when passive auth recovery succeeds", async () => {
+    const { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } = await import(
+      "../src/teamver/teamverEmbedPassiveAuth"
+    );
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      });
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ force: true });
+    });
+    expect(result.current.error).toBe("session_unreachable");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT));
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeNull();
+    });
+  });
+
   it("auto-retries session_unreachable with a 5s backoff while the tab is visible", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

@@ -22,6 +22,7 @@ import {
   handleEmbedPassiveUnauthorized,
   resetEmbedPassiveAuthForTests,
   TEAMVER_EMBED_PASSIVE_AUTH_EVENT,
+  TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT,
 } from "../../src/teamver/teamverEmbedPassiveAuth";
 
 vi.mock("../../src/teamver/designApiBase", () => ({
@@ -51,9 +52,13 @@ vi.mock("../../src/teamver/designAuthFlow", () => ({
 
 vi.mock("../../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+  setTeamverEmbedSessionAuthenticated: vi.fn(),
 }));
 
-import { isTeamverEmbedSessionAuthenticated } from "../../src/teamver/teamverEmbedSession";
+import {
+  isTeamverEmbedSessionAuthenticated,
+  setTeamverEmbedSessionAuthenticated,
+} from "../../src/teamver/teamverEmbedSession";
 
 describe("mergeActiveRunsIntoMessages", () => {
   it("synthesizes a recoverable assistant stub for active runs missing from listMessages", () => {
@@ -93,6 +98,7 @@ describe("teamverEmbedPassiveAuth", () => {
     ensureSessionMock.mockReset();
     ensureSessionMock.mockResolvedValue(false);
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+    vi.mocked(setTeamverEmbedSessionAuthenticated).mockClear();
     resetEmbedPassiveAuthForTests();
     resetActiveWork();
     resetTeamverEmbedSessionActiveRunProjectIdsForTests();
@@ -120,10 +126,18 @@ describe("teamverEmbedPassiveAuth", () => {
 
   it("does not redirect when cookie refresh recovers the session", async () => {
     refreshMock.mockResolvedValue(true);
+    const recovered: string[] = [];
+    const onRecovered = () => {
+      recovered.push("ok");
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
     handleEmbedPassiveUnauthorized("bff");
     await vi.runAllTimersAsync();
     expect(redirectMock).not.toHaveBeenCalled();
     expect(prepareReloadMock).not.toHaveBeenCalled();
+    expect(recovered).toEqual(["ok"]);
+    expect(setTeamverEmbedSessionAuthenticated).toHaveBeenCalledWith(true, { forceEvent: true });
+    window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
   });
 
   it("does not redirect when refresh fails but /auth/session ensure recovers", async () => {

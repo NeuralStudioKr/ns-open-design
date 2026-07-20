@@ -9,13 +9,19 @@ import {
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
-import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import {
+  isTeamverEmbedSessionAuthenticated,
+  setTeamverEmbedSessionAuthenticated,
+} from "./teamverEmbedSession";
 
 function shouldDeferPassiveAuthRedirect(): boolean {
   return hasTeamverEmbedActiveWork() || hasTeamverEmbedBackgroundRuns();
 }
 
 export const TEAMVER_EMBED_PASSIVE_AUTH_EVENT = "teamver:embed-passive-auth-required";
+/** Fired when cookie/ensure recovery succeeds — clears "연결 확인 중…" chip. */
+export const TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT =
+  "teamver:embed-passive-auth-recovered";
 
 /**
  * Prefer silent recovery over login redirect. Key-refresh (Apps JWT) failures
@@ -56,10 +62,19 @@ function cancelPassiveLoginRedirect(): void {
   passiveAuthRedirectTimer = null;
 }
 
+function dispatchPassiveAuthRecovered(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT));
+}
+
 function notePassiveRecoverySuccess(): void {
   consecutivePassiveFailures = 0;
   lastPassiveFailureAt = 0;
   cancelPassiveLoginRedirect();
+  // Keep embed memory authenticated and wake App/banner subscribers even when
+  // the flag was already true throughout the outage (forceEvent).
+  setTeamverEmbedSessionAuthenticated(true, { forceEvent: true });
+  dispatchPassiveAuthRecovered();
 }
 
 function notePassiveRecoveryFailure(): number {

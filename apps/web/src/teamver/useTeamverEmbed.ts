@@ -54,6 +54,7 @@ import {
 import {
   handleEmbedPassiveUnauthorized,
   TEAMVER_EMBED_PASSIVE_AUTH_EVENT,
+  TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT,
 } from "./teamverEmbedPassiveAuth";
 import {
   peekEmbedBootstrapSession,
@@ -565,17 +566,21 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       lastCookieHintRef.current = cookieHintNow;
+      // While unreachable, rely on the dedicated backoff timer — but still
+      // allow pageshow/bfcache and cookie-hint recoveries through the focus path.
       if (
         stateRef.current.error === "session_unreachable"
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
         && !focusSignals.pageshowPersisted
+        && !focusSignals.cookieHintAppeared
       ) {
         return;
       }
       scheduleFocusSessionRefresh({
         bypassThrottle:
           shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
-          || focusSignals.pageshowPersisted,
+          || focusSignals.pageshowPersisted
+          || focusSignals.cookieHintAppeared,
         focusSignals,
       });
     };
@@ -620,11 +625,25 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         return { ...prev, error: "session_unreachable" };
       });
     };
+    const onPassiveAuthRecovered = () => {
+      setState((prev) => {
+        if (prev.error !== "session_unreachable") return prev;
+        return { ...prev, error: null, loading: false };
+      });
+      // Reconcile workspaces/user after cookie revive — silent so the bar
+      // does not flash loading while already showing the user chip.
+      void refresh({ force: true, silent: true });
+    };
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onPassiveAuthRecovered);
     return () => {
       window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
+      window.removeEventListener(
+        TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT,
+        onPassiveAuthRecovered,
+      );
     };
-  }, [enabled]);
+  }, [enabled, refresh]);
 
   // C1: auto-backoff retry for `session_unreachable`. A single BFF hiccup
   // used to leave the embed banner stuck until the user changed tabs,
@@ -652,9 +671,14 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         retryTimer = null;
         if (cancelled) return;
         // First two attempts stay silent; escalate so passive recovery / login
-        // can run if the session is truly gone.
+        // can run if the session is truly gone. After repeated failures, clear
+        // sticky refresh-decline so HA cookie revive can POST /auth/refresh again.
         const escalate = attempt >= 2;
-        void refresh({ force: true, silent: !escalate });
+        void refresh({
+          force: true,
+          silent: !escalate,
+          resetRefreshState: attempt >= 3,
+        });
       }, delay);
     };
 
