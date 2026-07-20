@@ -144,10 +144,129 @@ viewport=width=device-width, initial-scale=1" />
     expect(isArtifactHtmlStableForPreview(repaired)).toBe(true);
   });
 
+  it("detects truncated font tails left inside <head> after tag strip", () => {
+    const leaked = `<!doctype html><html><head>
+googleapis.com/css2?family=Newsreader&display=swap" />
+<title>Deck</title>
+</head><body><section class="slide active">A</section></body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).not.toMatch(/googleapis\.com/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("strips short googleapis.com void tails without css2 path", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+googleapis.com" />
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/googleapis\.com/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("strips mid-head orphan CDN tails without mutilating intact font links", () => {
+    const leaked = `<!doctype html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader&display=swap" rel="stylesheet" />
+googleapis.com" />
+<title>Deck</title>
+</head><body><section class="slide active">A</section></body></html>`;
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).toContain('href="https://fonts.googleapis.com/css2?family=Newsreader&display=swap"');
+    expect(out).not.toMatch(/<\/link>[\s\S]*googleapis\.com"\s*\/>/i);
+    expect(out.replace(/<link\b[^>]*>/gi, "")).not.toMatch(/googleapis\.com"\s*\/>/i);
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("detects and strips truncated Google Fonts link tails from body", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+googleapis.com/css2?family=Newsreader:ital,wght@0,400;1,300&display=swap" />
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/googleapis\.com/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("strips bunny/typekit/fontshare and jsdelivr script tails from body", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+fonts.bunny.net/css?family=Inter" />
+use.typekit.net/abc1def.css" />
+cdn.jsdelivr.net/npm/chart.js@4"></script>
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/bunny\.net|typekit|jsdelivr/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("strips leaked external CDN <script src> tags from body", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<section class="slide active">A</section>
+</body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/<script[^>]*jsdelivr/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("repairs head/body when only a fonts.googleapis.com void-tag tail remains", () => {
+    const leaked = `<!doctype html><html><head>
+fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600&display=swap" rel="stylesheet" />
+<title>Deck</title></head><body>
+rel="stylesheet" />
+<div class="deck-shell"><section class="slide active">OK</section></div>
+</body></html>`;
+    const out = repairArtifactDocumentHead(leaked);
+    expect(out).not.toMatch(/googleapis\.com/i);
+    expect(out).not.toMatch(/rel="stylesheet"\s*\/>/);
+    expect(out).toContain('<section class="slide active">OK</section>');
+    expect(out).toContain('<meta name="viewport"');
+    expect(hasArtifactPreviewBodyTextLeaks(out)).toBe(false);
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("blocks stability when body is only orphan CDN/link debris", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+cdn.jsdelivr.net/npm/foo@1/bar.css" />
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+  });
+
+  it("strips leaked head <link stylesheet> tags from body", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter&display=swap" />
+<section class="slide active">A</section>
+</body></html>`;
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/<link[^>]*stylesheet/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
+  it("preserves intact Google Fonts <link> tags inside <head>", () => {
+    const html = `<!doctype html><html><head>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader&display=swap" rel="stylesheet" />
+<title>Deck</title></head><body><section class="slide active">A</section></body></html>`;
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain('href="https://fonts.googleapis.com/css2?family=Newsreader&display=swap"');
+    expect(out).toContain('rel="preconnect"');
+    expect(hasArtifactPreviewBodyTextLeaks(out)).toBe(false);
+  });
+
   it("ships shared DOM leak guard/strip scripts for preview and export", () => {
     const guard = buildArtifactPreviewDomLeakGuardScript();
     const strip = buildArtifactPreviewDomLeakStripScript();
     expect(guard).toContain("isLeakedMetaElement");
+    expect(guard).toContain("orphanHeadVoidLeak");
+    expect(guard).toContain("isLeakedLinkElement");
     expect(guard).toContain("MutationObserver");
     expect(strip).toContain("stripLeakedNodes(document.body)");
     expect(strip).not.toContain("MutationObserver");

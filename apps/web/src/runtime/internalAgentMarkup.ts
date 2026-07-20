@@ -6,6 +6,9 @@ export {
   sanitizeAssistantProseForDisplay,
   sanitizeLeakedAgentProse,
   stripTrailingOpenInternalMarkup,
+  stripIncompleteTrailingMarkupToken,
+  stripAssistantCodeFencesForDisplay,
+  createStreamingAssistantProseGuard,
 } from "@open-design/contracts";
 
 import { sanitizeLeakedAgentProse } from "@open-design/contracts";

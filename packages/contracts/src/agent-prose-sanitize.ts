@@ -20,6 +20,21 @@ const FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES = [
   "delete",
   "path",
   "diff",
+  "multi_edit",
+  "notebook_edit",
+  "create_file",
+  "delete_file",
+  "list_dir",
+  "grep",
+  "glob",
+  "bash",
+  "shell",
+  "run_terminal_cmd",
+  "run_terminal",
+  "execute",
+  "browser",
+  "web_search",
+  "web_fetch",
 ] as const;
 
 /** Pseudo-tool XML the model narrates when CLI tools are unavailable. Strip outer tags first. */
@@ -32,26 +47,40 @@ const PSEUDO_TOOL_TAG_NAMES = [
   "tool_results",
   "tool-use",
   "tool_use",
+  "tool-call",
+  "tool_call",
+  "tool_call_chunk",
+  "tool_result",
+  "tool_request",
+  "tool_response",
+  "toolrequest",
+  "toolresponse",
   "function_calls",
+  "function_call",
+  "function_results",
+  "function_result",
+  "function",
   "invoke",
   "parameter",
   "parameters",
   "arguments",
   "args",
-  "function_results",
-  "function_result",
-  "function",
   "todo",
   "todos",
   "todo_write",
   "todo_update",
   "todo-list",
   "todo_list",
+  "todo_items",
   "task_list",
-  "tool-call",
-  "tool_call",
-  "tool_result",
-  "function_call",
+  "task",
+  "tasks",
+  "mcp",
+  "mcp_tool",
+  "mcp_call",
+  "output",
+  "stdout",
+  "stderr",
   "result",
   "results",
   "info",
@@ -69,6 +98,7 @@ const INTERNAL_PLANNING_TAG_NAMES = [
   "chain_of_thought",
   "chain-of-thought",
   "reasoning",
+  "reasoning_trace",
   "plan",
   "action",
   "answer_operator",
@@ -88,6 +118,9 @@ const INTERNAL_PLANNING_TAG_NAMES = [
   "thoughts",
   "draft",
   "instructions",
+  "internal_notes",
+  "system",
+  "assistant_scratchpad",
 ] as const;
 
 export const LEAKED_AGENT_PROSE_TAG_NAMES = [
@@ -104,7 +137,7 @@ const OPEN_SUFFIX_OPERATOR_RE = /<([a-z][a-z0-9_]*_operator)\b[^>]*>/gi;
 const CLOSED_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const OPEN_SUFFIX_ANALYSIS_RE = /<([a-z][a-z0-9_]*_analysis)\b[^>]*>/gi;
 const INTERNAL_MARKUP_KEYWORDS =
-  "thinking|thought|reasoning|analysis|scratchpad|reflection|todo|task|tool|function|operator|workflow|plan|planning|internal|hidden|private|meta|note|instruction|trace";
+  "thinking|thought|reasoning|analysis|scratchpad|reflection|todo|task|tool|function|invoke|parameter|argument|operator|workflow|plan|planning|internal|hidden|private|meta|note|instruction|trace|bash|shell|mcp|output|stdout|stderr|execute|browser|minimax|redacted|patch|grep|glob";
 const INTERNAL_MARKUP_NAME_PART_RE =
   `(?:[a-z][a-z0-9_-]*[-_])?(?:${INTERNAL_MARKUP_KEYWORDS})[a-z0-9_-]*`;
 const CLOSED_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
@@ -120,10 +153,19 @@ const ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE = new RegExp(
   "gi",
 );
 
+/** Namespaced vendor markup (`antml:…`, `minimax:…`) — strip closed + trailing open. */
+const CLOSED_NAMESPACED_INTERNAL_RE =
+  /<((?:antml|minimax|claude|openai|gemini):[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1>/gi;
+const OPEN_NAMESPACED_INTERNAL_RE =
+  /<((?:antml|minimax|claude|openai|gemini):[a-z][\w:-]*)\b[^>]*>/gi;
+const ORPHAN_CLOSE_NAMESPACED_INTERNAL_RE =
+  /<\/(?:antml|minimax|claude|openai|gemini):[a-z][\w:-]*\s*>/gi;
+
 const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
 const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
 
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
+const OPEN_ANTML_RE = /<antml:[^>\n]+>/gi;
 
 function isLikelyInternalMarkupLine(line: string): boolean {
   const trimmed = line.trim();
@@ -186,14 +228,16 @@ function stripTrailingOpenArtifact(
   return { text: merged.trim(), hadOpenInternalMarkup: true };
 }
 
-const CLOSED_MARKDOWN_TOOL_FENCE_RE = /```(?:tool_call|tool)\s*\n[\s\S]*?```/gi;
-const OPEN_MARKDOWN_TOOL_FENCE_RE = /```(?:tool_call|tool)\s*\n/i;
+const CLOSED_MARKDOWN_TOOL_FENCE_RE =
+  /```(?:tool_call|tool_use|tool|function_call|function|xml)\s*\n[\s\S]*?```/gi;
+const OPEN_MARKDOWN_TOOL_FENCE_RE =
+  /```(?:tool_call|tool_use|tool|function_call|function|xml)\s*\n/i;
 
 const KNOWN_TOOL_JSON_NAMES =
-  "TodoWrite|TodoUpdate|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate|ApplyPatch|MultiEdit|NotebookEdit";
+  "TodoWrite|TodoUpdate|Read|Write|Edit|Bash|WebFetch|WebSearch|Grep|Glob|Task|Shell|write_todos|TaskCreate|TaskUpdate|ApplyPatch|MultiEdit|NotebookEdit|Delete|SearchReplace|run_terminal_cmd|mcp_call";
 
 const FAKE_TOOL_NARRATION_RE = new RegExp(
-  `\\[(?:正在调用|calling|invoking)\\s+(?:${KNOWN_TOOL_JSON_NAMES})[^\\]]*\\]`,
+  `\\[(?:正在调用|calling|invoking|Using tool|Running tool|Tool call)\\s+(?:${KNOWN_TOOL_JSON_NAMES})[^\\]]*\\]`,
   "gi",
 );
 
@@ -413,6 +457,70 @@ function stripTrailingOpenDynamicTag(
   return { text: input, hadOpenInternalMarkup: false };
 }
 
+function stripTrailingOpenAntml(
+  input: string,
+): { text: string; hadOpenInternalMarkup: boolean } {
+  OPEN_ANTML_RE.lastIndex = 0;
+  let lastOpen: RegExpExecArray | null = null;
+  let match: RegExpExecArray | null;
+  const re = new RegExp(OPEN_ANTML_RE.source, "gi");
+  while ((match = re.exec(input)) !== null) {
+    lastOpen = match;
+  }
+  if (!lastOpen || lastOpen.index === undefined) {
+    return { text: input, hadOpenInternalMarkup: false };
+  }
+  const openStart = lastOpen.index;
+  const openEnd = openStart + lastOpen[0].length;
+  // Best-effort close: </antml:anything>
+  const closeIdx = input.slice(openEnd).search(/<\/antml:[^>]+>/i);
+  if (closeIdx !== -1) {
+    return { text: input, hadOpenInternalMarkup: false };
+  }
+  return { text: input.slice(0, openStart).trimEnd(), hadOpenInternalMarkup: true };
+}
+
+function isInternalMarkupTagName(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (!lower) return false;
+  // Exact / longer prefix matches against the known registry.
+  if (
+    LEAKED_AGENT_PROSE_TAG_NAMES.some((tag) => {
+      const t = tag.toLowerCase();
+      if (t === lower || lower.startsWith(t)) return true;
+      // Hold incomplete tokens like "thi"→thinking, but avoid eating real HTML
+      // prefixes (`<p`, `<a`, `<i`) via very short reverse prefix matches.
+      if (lower.length >= 3 && t.startsWith(lower)) return true;
+      return false;
+    })
+  ) {
+    return true;
+  }
+  if (
+    new RegExp(`^(?:[a-z][a-z0-9_-]*[-_])?(?:${INTERNAL_MARKUP_KEYWORDS})`, "i").test(lower)
+    || (lower.length >= 3
+      && INTERNAL_MARKUP_KEYWORDS.split("|").some(
+        (keyword) => keyword.startsWith(lower) || lower.startsWith(keyword),
+      ))
+  ) {
+    return true;
+  }
+  if (
+    lower === "artifact"
+    || lower.startsWith("od")
+    || lower.startsWith("antml")
+    || lower.startsWith("minimax")
+    || lower.startsWith("claude:")
+    || lower.startsWith("openai:")
+    || lower.startsWith("gemini:")
+    || lower === "question-form"
+    || lower === "ask-question"
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function stripTrailingOpenMarkdownToolFence(
   input: string,
 ): { text: string; hadOpenInternalMarkup: boolean } {
@@ -492,12 +600,20 @@ function stripOrphanCloseTagFamilies(input: string, tagNames: readonly string[])
 }
 
 /** Single-pass sanitizer for known leaked agent / pseudo-tool markup in assistant prose. */
-export function sanitizeLeakedAgentProse(input: string): string {
+export function sanitizeLeakedAgentProse(
+  input: string,
+  options: { preserveClosedArtifact?: boolean } = {},
+): string {
   if (!input) return input;
   let out = input;
   out = stripClosedTagFamilies(out, PSEUDO_TOOL_TAG_NAMES);
-  out = out.replace(CLOSED_ARTIFACT_RE, "");
+  // While streaming, keep closed <artifact> blocks so the live HTML parser can
+  // receive the final body bytes + </artifact>. Display layers strip them.
+  if (!options.preserveClosedArtifact) {
+    out = out.replace(CLOSED_ARTIFACT_RE, "");
+  }
   out = out.replace(CLOSED_ANTML_RE, "");
+  out = out.replace(CLOSED_NAMESPACED_INTERNAL_RE, "");
   out = out.replace(CLOSED_MARKDOWN_TOOL_FENCE_RE, "");
   out = out.replace(CLOSED_OD_TAG_RE, "");
   out = stripClosedTagFamilies(out, INTERNAL_PLANNING_TAG_NAMES);
@@ -515,6 +631,7 @@ export function sanitizeLeakedAgentProse(input: string): string {
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
   out = out.replace(ORPHAN_CLOSE_INTERNAL_MARKUP_FAMILY_RE, "");
+  out = out.replace(ORPHAN_CLOSE_NAMESPACED_INTERNAL_RE, "");
   const bareTail = out.match(new RegExp(`${BARE_TOOL_JSON_OPEN_RE.source}[\\s\\S]*$`));
   if (bareTail?.index !== undefined) {
     out = out.slice(0, bareTail.index).trimEnd();
@@ -546,6 +663,9 @@ export function stripTrailingOpenInternalMarkup(
   const openTagChain: Array<{ re: RegExp; name: string }> = [
     ...PSEUDO_TOOL_TAG_NAMES.map((name) => ({ re: openTagRe(name), name })),
     ...INTERNAL_PLANNING_TAG_NAMES.map((name) => ({ re: openTagRe(name), name })),
+    // Open discovery forms flash raw JSON mid-stream; closed forms stay for UI.
+    { re: openTagRe("question-form"), name: "question-form" },
+    { re: openTagRe("ask-question"), name: "ask-question" },
   ];
 
   let text = input;
@@ -570,6 +690,18 @@ export function stripTrailingOpenInternalMarkup(
   if (internalFamily.hadOpenInternalMarkup) {
     hadOpenInternalMarkup = true;
     text = internalFamily.text;
+  }
+
+  const namespaced = stripTrailingOpenDynamicTag(text, OPEN_NAMESPACED_INTERNAL_RE);
+  if (namespaced.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = namespaced.text;
+  }
+
+  const antml = stripTrailingOpenAntml(text);
+  if (antml.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = antml.text;
   }
 
   const markdownFence = stripTrailingOpenMarkdownToolFence(text);
@@ -601,13 +733,127 @@ export function stripTrailingOpenInternalMarkup(
   return { text, hadOpenInternalMarkup };
 }
 
+/**
+ * Hold incomplete trailing markup tokens so chunk boundaries like
+ * `"<thi"` + `"nking>…"` or `"<invoke name=\"Todo"` cannot paint partial tags.
+ */
+export function stripIncompleteTrailingMarkupToken(input: string): string {
+  if (!input) return input;
+  const lt = input.lastIndexOf("<");
+  if (lt === -1) return input;
+  const after = input.slice(lt + 1);
+  if (after.includes(">")) return input;
+
+  // Bare `<` / `<!` / `<!DOCTYPE…` / `</` prefixes mid-stream.
+  if (after === "" || after === "/" || after === "!" || /^\/?!?(?:DOCTYPE\s*html?)?$/i.test(after)) {
+    return input.slice(0, lt).trimEnd();
+  }
+
+  // Tag name only, or tag name + partial attributes (no closing `>` yet).
+  const nameMatch = after.match(/^(\/?[a-zA-Z][a-zA-Z0-9_:-]*)/);
+  if (!nameMatch) return input;
+  const rawName = (nameMatch[1] ?? "").replace(/^\//, "");
+  if (isInternalMarkupTagName(rawName)) {
+    return input.slice(0, lt).trimEnd();
+  }
+  return input;
+}
+
+const CLOSED_DISPLAY_CODE_FENCE_RE =
+  /```(?:html|HTML|js|javascript|css|tsx|jsx|ts|typescript|json)?[^\n]*\n[\s\S]*?```/g;
+const OPEN_DISPLAY_CODE_FENCE_RE =
+  /```(?:html|HTML|js|javascript|css|tsx|jsx|ts|typescript|json)?[^\n]*\n[\s\S]*$/;
+
+/** Strip fenced code blocks that should not appear in user-facing chat bubbles. */
+export function stripAssistantCodeFencesForDisplay(input: string): string {
+  if (!input) return input;
+  let out = input.replace(CLOSED_DISPLAY_CODE_FENCE_RE, "");
+  OPEN_DISPLAY_CODE_FENCE_RE.lastIndex = 0;
+  const open = OPEN_DISPLAY_CODE_FENCE_RE.exec(out);
+  if (open && open.index !== undefined) {
+    out = out.slice(0, open.index).trimEnd();
+  }
+  // Incomplete fence opener: trailing ``` or ```ht…
+  const partialFence = out.match(/```[a-zA-Z0-9_-]*$/);
+  if (partialFence && partialFence.index !== undefined) {
+    out = out.slice(0, partialFence.index).trimEnd();
+  }
+  return collapseExtraBlankLines(out);
+}
+
+export type SanitizeAssistantProseOptions = {
+  streaming?: boolean;
+  /** Hide ```html/js/… fences (Teamver embed / hide-thinking surfaces). */
+  stripCodeFences?: boolean;
+  /** Keep closed `<artifact>` blocks (defaults to true while `streaming`). */
+  preserveClosedArtifact?: boolean;
+};
+
 /** Combined display sanitizer for assistant prose (history + live stream). */
 export function sanitizeAssistantProseForDisplay(
   input: string,
-  options: { streaming?: boolean } = {},
+  options: SanitizeAssistantProseOptions = {},
 ): string {
-  const closed = sanitizeLeakedAgentProse(input);
-  return stripTrailingOpenInternalMarkup(closed, {
-    preserveOpenArtifact: options.streaming ?? false,
+  const streaming = options.streaming ?? false;
+  const closed = sanitizeLeakedAgentProse(input, {
+    // Live HTML parser feeds onContentDelta from this sanitized stream — keep
+    // closed artifacts until the turn settles (display strips via stripArtifact).
+    preserveClosedArtifact: streaming || options.preserveClosedArtifact === true,
+  });
+  let text = stripTrailingOpenInternalMarkup(closed, {
+    preserveOpenArtifact: streaming,
   }).text;
+  if (streaming) {
+    text = stripIncompleteTrailingMarkupToken(text);
+  }
+  if (options.stripCodeFences) {
+    text = stripAssistantCodeFencesForDisplay(text);
+  }
+  return text;
+}
+
+/**
+ * Stateful streaming guard: reassembles deltas, sanitizes the full buffer, and
+ * only emits monotonic visible growth. Prevents per-chunk strip from splitting
+ * tags across SSE boundaries.
+ */
+export function createStreamingAssistantProseGuard(
+  options: Omit<SanitizeAssistantProseOptions, "streaming"> = {},
+): {
+  feed: (delta: string) => string;
+  flush: () => string;
+} {
+  let buffer = "";
+  let emitted = "";
+  const sanitize = (value: string) =>
+    sanitizeAssistantProseForDisplay(value, { ...options, streaming: true });
+
+  const emitGrowth = (visible: string): string => {
+    if (visible.startsWith(emitted)) {
+      const growth = visible.slice(emitted.length);
+      emitted = visible;
+      return growth;
+    }
+    // Non-monotonic after a late closed-tag strip: do not re-send prior text.
+    emitted = visible;
+    return "";
+  };
+
+  return {
+    feed(delta: string) {
+      if (!delta) return "";
+      buffer += delta;
+      return emitGrowth(sanitize(buffer));
+    },
+    flush() {
+      if (!buffer && !emitted) return "";
+      const visible = sanitizeAssistantProseForDisplay(buffer, {
+        ...options,
+        streaming: false,
+      });
+      const growth = emitGrowth(visible);
+      buffer = "";
+      return growth;
+    },
+  };
 }

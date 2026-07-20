@@ -1036,6 +1036,7 @@ export function ProjectView({
     hideHandoffButton,
     hideLocalWorkspaceControls,
     hideExternalShareSurfaces,
+    hideAssistantThinkingDetails,
     slideOnlyMvp,
     enabled: teamverEmbedEnabled,
   } = useTeamverBranding();
@@ -3402,7 +3403,6 @@ export function ProjectView({
         let parsedArtifact: Artifact | null = null;
         let liveHtml = '';
         let replayedContent = needsFullReplay ? '' : message.content;
-        let replayedEvents: AgentEvent[] = needsFullReplay ? [] : [...(message.events ?? [])];
         const applyContentDelta = (delta: string) => {
           for (const ev of parser.feed(delta)) {
             if (ev.type === 'artifact:start') {
@@ -3452,6 +3452,7 @@ export function ProjectView({
           persistSoon,
           flushAndPersistNow: () => persistNow({ keepalive: true }),
           onContentDelta: applyContentDelta,
+          stripCodeFences: hideAssistantThinkingDetails,
         });
         reattachTextBuffersRef.current.add(textBuffer);
         const unregisterTextBuffer = () => {
@@ -3481,7 +3482,6 @@ export function ProjectView({
               textBuffer.appendContent(delta);
             },
             onAgentEvent: (ev) => {
-              replayedEvents = [...replayedEvents, ev];
               textBuffer.appendEvent(ev);
             },
             onDone: () => {
@@ -3518,8 +3518,10 @@ export function ProjectView({
                 message.id,
                 (prev) => ({
                   ...prev,
-                  content: needsFullReplay ? replayedContent : prev.content,
-                  events: needsFullReplay ? replayedEvents : prev.events,
+                  // Keep buffer-sanitized content/events — never overwrite with
+                  // raw replay bytes (would re-expose thinking/tool XML).
+                  content: prev.content,
+                  events: prev.events,
                   runStatus: resolveSucceededRunStatus(prev.runStatus),
                   endedAt: prev.endedAt ?? Date.now(),
                 }),
@@ -4634,6 +4636,7 @@ export function ProjectView({
         persistSoon: persistAssistantSoon,
         flushAndPersistNow: persistAssistantNowKeepalive,
         onContentDelta: applyContentDelta,
+        stripCodeFences: hideAssistantThinkingDetails,
       });
       sendTextBufferRef.current = textBuffer;
       const releaseOwnTextBuffer = () => {
@@ -7756,6 +7759,7 @@ export function createBufferedTextUpdates({
   persistSoon,
   flushAndPersistNow,
   onContentDelta,
+  stripCodeFences = false,
 }: {
   updateMessage: (updater: (prev: ChatMessage) => ChatMessage) => void;
   persistSoon: () => void;
@@ -7764,6 +7768,8 @@ export function createBufferedTextUpdates({
   // last buffered chunk isn't lost when the user reloads mid-stream.
   flushAndPersistNow?: () => void;
   onContentDelta?: (delta: string) => void;
+  /** Teamver embed: also strip ```html/js fences from the live text channel. */
+  stripCodeFences?: boolean;
 }) {
   let pendingContentDelta = '';
   let pendingTextEventDelta = '';
@@ -7777,6 +7783,8 @@ export function createBufferedTextUpdates({
   let needsFlush = false;
   const hasDocument = typeof document !== 'undefined';
   const hasWindow = typeof window !== 'undefined';
+  const sanitizeStreaming = (text: string) =>
+    stripLeakedPseudoToolXml(text, { stripCodeFences });
 
   const cancelScheduledFlush = () => {
     if (flushFrame !== null) {
@@ -7787,6 +7795,20 @@ export function createBufferedTextUpdates({
       clearTimeout(flushTimer);
       flushTimer = null;
     }
+  };
+
+  const replaceTrailingTextEvents = (
+    events: ChatMessage['events'],
+    nextText: string,
+  ): NonNullable<ChatMessage['events']> => {
+    const list = [...(events ?? [])];
+    while (list.length > 0 && list[list.length - 1]?.kind === 'text') {
+      list.pop();
+    }
+    if (nextText) {
+      list.push({ kind: 'text', text: nextText });
+    }
+    return list;
   };
 
   const flush = () => {
@@ -7805,7 +7827,6 @@ export function createBufferedTextUpdates({
     pendingTextEventDelta = '';
     try {
       let sanitizedContentDelta = '';
-      let sanitizedTextEventDelta = '';
       updateMessage((prev) => {
         const prevContent = prev.content ?? '';
         if (contentDelta && rawContentForSanitize === null) {
@@ -7815,25 +7836,32 @@ export function createBufferedTextUpdates({
           rawContentForSanitize = `${rawContentForSanitize ?? prevContent}${contentDelta}`;
         }
         const nextContent = contentDelta
-          ? stripLeakedPseudoToolXml(rawContentForSanitize ?? prevContent)
+          ? sanitizeStreaming(rawContentForSanitize ?? prevContent)
           : prevContent;
         sanitizedContentDelta = nextContent.startsWith(prevContent)
           ? nextContent.slice(prevContent.length)
           : '';
+        let nextEvents = prev.events;
         if (textEventDelta) {
           rawTextEventForSanitize += textEventDelta;
-          const nextTextEvent = stripLeakedPseudoToolXml(rawTextEventForSanitize);
-          sanitizedTextEventDelta = nextTextEvent.startsWith(sanitizedTextEventSent)
-            ? nextTextEvent.slice(sanitizedTextEventSent.length)
-            : nextTextEvent;
-          sanitizedTextEventSent = nextTextEvent;
+          const nextTextEvent = sanitizeStreaming(rawTextEventForSanitize);
+          if (nextTextEvent.startsWith(sanitizedTextEventSent)) {
+            const delta = nextTextEvent.slice(sanitizedTextEventSent.length);
+            sanitizedTextEventSent = nextTextEvent;
+            if (delta) {
+              nextEvents = [...(prev.events ?? []), { kind: 'text', text: delta }];
+            }
+          } else {
+            // Sanitize shrank or rewrote the run — replace trailing text events
+            // so stale fragments like `Hello <think` cannot remain visible.
+            sanitizedTextEventSent = nextTextEvent;
+            nextEvents = replaceTrailingTextEvents(prev.events, nextTextEvent);
+          }
         }
         return {
           ...prev,
           content: nextContent,
-          events: sanitizedTextEventDelta
-            ? [...(prev.events ?? []), { kind: 'text', text: sanitizedTextEventDelta }]
-            : prev.events,
+          events: nextEvents,
         };
       });
       persistSoon();
@@ -7880,6 +7908,10 @@ export function createBufferedTextUpdates({
       return;
     }
     flush();
+    // Start a fresh text-run sanitize buffer after non-text events so a later
+    // rewrite cannot paste earlier runs into the trailing text slot.
+    rawTextEventForSanitize = '';
+    sanitizedTextEventSent = '';
     updateMessage((prev) => ({ ...prev, events: [...(prev.events ?? []), ev] }));
     persistSoon();
   };

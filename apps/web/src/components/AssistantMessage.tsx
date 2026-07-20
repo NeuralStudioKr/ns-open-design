@@ -455,6 +455,7 @@ function AssistantMessageImpl({
       stripInternalMarkupFromProseBlocks(
         suppressDuplicateQuestionForms(rawBlocks),
         streaming,
+        hideAssistantThinkingDetails,
       ),
     );
     const visible = placeConversationTodoCard(sanitized, {
@@ -676,7 +677,8 @@ function AssistantMessageImpl({
               <ProseBlock
                 key={i}
                 text={b.text}
-                hideRecoveredHtmlFallback={(teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude") && !streaming}
+                hideRecoveredHtmlFallback={teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude"}
+                hideStreamingCodeFences={hideAssistantThinkingDetails}
                 assistantMessageId={message.id}
                 isLastAssistant={!!isLast}
                 streaming={streaming}
@@ -1951,6 +1953,7 @@ function hasPluginFinalActionHint(content: string): boolean {
 function ProseBlock({
   text,
   hideRecoveredHtmlFallback,
+  hideStreamingCodeFences = false,
   assistantMessageId,
   isLastAssistant,
   streaming,
@@ -1964,6 +1967,7 @@ function ProseBlock({
 }: {
   text: string;
   hideRecoveredHtmlFallback?: boolean;
+  hideStreamingCodeFences?: boolean;
   assistantMessageId: string;
   isLastAssistant: boolean;
   streaming: boolean;
@@ -1980,8 +1984,11 @@ function ProseBlock({
   const cleaned = useMemo(() => {
     const stripped = stripAllClosedArtifacts(text);
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
-    return sanitizeAssistantProseForDisplay(base, { streaming });
-  }, [hideRecoveredHtmlFallback, streaming, text]);
+    return sanitizeAssistantProseForDisplay(base, {
+      streaming,
+      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+    });
+  }, [hideAssistantThinkingDetails, hideRecoveredHtmlFallback, hideStreamingCodeFences, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,
   // drop the partial `<question-form>{…` markup from the prose so the chat
   // doesn't flash raw JSON; we surface a banner for it instead. The actual
@@ -2747,12 +2754,16 @@ function placeConversationTodoCard(
   });
 }
 
-function stripInternalMarkupFromProseBlocks(blocks: Block[], streaming = false): Block[] {
+function stripInternalMarkupFromProseBlocks(
+  blocks: Block[],
+  streaming = false,
+  stripCodeFences = false,
+): Block[] {
   return blocks.map((block) => {
     if (block.kind !== "text" && block.kind !== "thinking") return block;
     return {
       ...block,
-      text: sanitizeAssistantProseForDisplay(block.text, { streaming }),
+      text: sanitizeAssistantProseForDisplay(block.text, { streaming, stripCodeFences }),
     };
   });
 }

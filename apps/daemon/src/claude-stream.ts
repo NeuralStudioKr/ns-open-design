@@ -20,10 +20,11 @@
  */
 
 import { createRoleMarkerGuard, type RoleMarkerGuard } from './role-marker-guard.js';
-import { stripLeakedPseudoToolXml } from './think-tag-splitter.js';
+import { createStreamingProseDeltaGuard } from './think-tag-splitter.js';
 
 type StreamEvent = Record<string, unknown>;
 type EventSink = (event: StreamEvent) => void;
+type ProseDeltaGuard = ReturnType<typeof createStreamingProseDeltaGuard>;
 type BlockState = {
   type?: unknown;
   name?: unknown;
@@ -74,6 +75,7 @@ export function createClaudeStreamHandler(
   let currentMessageStreamedThinking = false;
   // Per-message role-marker guards for cross-chunk detection (#3247).
   const roleGuards = new Map<string, RoleMarkerGuard>();
+  const proseGuards = new Map<string, ProseDeltaGuard>();
   const runtimeTasks = new Map<string, RuntimeTask>();
   const canonicalTaskToolUseIds = new Set<string>();
   let nextRuntimeTaskId = 1;
@@ -212,7 +214,13 @@ export function createClaudeStreamHandler(
   function emitSafeText(msgId: string | null, text: string, eventType: string = 'text_delta') {
     if (eventType === 'text_delta') {
       text = stripDuplicateArtifactText(text);
-      text = stripLeakedPseudoToolXml(text);
+      const proseKey = msgId ?? 'anon';
+      let proseGuard = proseGuards.get(proseKey);
+      if (!proseGuard) {
+        proseGuard = createStreamingProseDeltaGuard();
+        proseGuards.set(proseKey, proseGuard);
+      }
+      text = proseGuard.feed(text);
       if (!text) return;
     }
     if (eventType !== 'text_delta' || !msgId) {
@@ -530,8 +538,26 @@ export function createClaudeStreamHandler(
   function handleStreamEvent(ev: Record<string, unknown>) {
     if (ev.type === 'message_start') {
       flushPendingArtifactText();
-      // Clean up per-message role-marker guard from the previous message.
-      if (currentMessageId) roleGuards.delete(currentMessageId);
+      // Flush then clean up per-message guards from the previous message.
+      if (currentMessageId) {
+        const prevProse = proseGuards.get(currentMessageId);
+        if (prevProse) {
+          const tail = prevProse.flush();
+          if (tail) {
+            let guard = roleGuards.get(currentMessageId);
+            if (!guard) {
+              guard = createRoleMarkerGuard(currentMessageId);
+              roleGuards.set(currentMessageId, guard);
+            }
+            if (!guard.contaminated) {
+              const safe = guard.feedText(tail);
+              if (safe.length > 0) onEvent({ type: 'text_delta', delta: safe });
+            }
+          }
+        }
+        roleGuards.delete(currentMessageId);
+        proseGuards.delete(currentMessageId);
+      }
       currentMessageId = isRecord(ev.message) && typeof ev.message.id === 'string' ? ev.message.id : null;
       currentMessageStreamedText = false;
       currentMessageStreamedThinking = false;

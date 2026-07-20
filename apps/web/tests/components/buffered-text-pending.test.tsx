@@ -114,4 +114,39 @@ describe('createBufferedTextUpdates pending text accounting', () => {
 
     buf.cancel();
   });
+
+  it('rewrites trailing text events when sanitize shrinks a partial think tag', () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+
+    let msg = {
+      content: '',
+      events: [],
+    } as unknown as ChatMessage;
+    const buf = createBufferedTextUpdates({
+      updateMessage: (u) => {
+        msg = u(msg);
+      },
+      persistSoon: () => {},
+    });
+
+    // Without incomplete-token hold this used to commit `Hello <think` as a
+    // text event; the next flush then appended the full sanitized string.
+    buf.appendTextEvent('Hello <thi');
+    buf.flush();
+    expect(JSON.stringify(msg.events)).not.toContain('<thi');
+    expect(msg.events).toEqual([{ kind: 'text', text: 'Hello' }]);
+
+    buf.appendTextEvent('nking>secret</thinking> World');
+    buf.flush();
+    expect(JSON.stringify(msg.events)).not.toContain('secret');
+    expect(JSON.stringify(msg.events)).not.toContain('<think');
+    const joined = (msg.events ?? [])
+      .filter((e) => e.kind === 'text')
+      .map((e) => (e as { kind: 'text'; text: string }).text)
+      .join('');
+    expect(joined.replace(/\s+/g, ' ').trim()).toBe('Hello World');
+
+    buf.cancel();
+  });
 });

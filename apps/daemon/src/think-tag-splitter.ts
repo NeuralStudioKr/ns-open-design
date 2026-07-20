@@ -1,6 +1,7 @@
 import {
   sanitizeAssistantProseForDisplay,
   sanitizeLeakedAgentProse,
+  createStreamingAssistantProseGuard,
 } from "@open-design/contracts";
 
 /** Remove CLI-style pseudo-tool XML leaked into BYOK/API chat deltas (#313).
@@ -12,6 +13,16 @@ export function stripLeakedPseudoToolXml(text: string): string {
 /** History / complete-message sanitizer (no open-artifact preserve). */
 export function stripLeakedPseudoToolXmlComplete(text: string): string {
   return sanitizeLeakedAgentProse(text);
+}
+
+/** Stateful delta sanitizer — safe across chunk boundaries. */
+export function createStreamingProseDeltaGuard(
+  options: { stripCodeFences?: boolean } = {},
+): {
+  feed: (delta: string) => string;
+  flush: () => string;
+} {
+  return createStreamingAssistantProseGuard(options);
 }
 
 const REDACTED_THINKING_TAG = "redacted_thinking";

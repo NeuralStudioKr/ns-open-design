@@ -5,6 +5,7 @@ import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './
 import {
   buildSocialSharePayload,
   OPEN_DESIGN_GITHUB_REPO_URL,
+  hasArtifactPreviewBodyTextLeaks,
   isArtifactHtmlStableForPreview,
   repairArtifactDocumentHead,
   type SocialShareRequest,
@@ -176,6 +177,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { buildManualEditCommentFastPath } from './manualEditCommentFastPath';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
@@ -5355,15 +5357,20 @@ function HtmlViewer({
       if (candidate == null) return null;
       const repaired = repairArtifactDocumentHead(candidate);
       const stable = isArtifactHtmlStableForPreview(repaired);
-      if (!streaming) {
-        if (stable) lastStablePreviewSourceRef.current = repaired;
-        return repaired;
-      }
       if (stable) {
         lastStablePreviewSourceRef.current = repaired;
         return repaired;
       }
-      return lastStablePreviewSourceRef.current;
+      // Prefer the last stable frame over painting leak debris.
+      if (lastStablePreviewSourceRef.current) {
+        return lastStablePreviewSourceRef.current;
+      }
+      if (streaming) return null;
+      // Final/non-streaming snapshot with no prior stable frame: show repaired
+      // HTML unless body still contains truncated tag debris after repair.
+      if (hasArtifactPreviewBodyTextLeaks(repaired)) return null;
+      lastStablePreviewSourceRef.current = repaired;
+      return repaired;
     };
     if (liveHtml !== undefined) {
       sourceFileKeyRef.current = sourceFileKey;
@@ -7453,6 +7460,62 @@ function HtmlViewer({
     return { ...target, slideIndex: slideState.active };
   }
 
+  async function applyManualEditCommentFastPathAttachments(
+    attachments: ChatCommentAttachment[],
+  ): Promise<{ appliedIds: Set<string>; remaining: ChatCommentAttachment[] }> {
+    const appliedIds = new Set<string>();
+    const remaining: ChatCommentAttachment[] = [];
+    if (!canUseManualEditCommentFastPath()) {
+      return { appliedIds, remaining: attachments };
+    }
+    for (const attachment of attachments) {
+      if (attachment.filePath !== file.name) {
+        remaining.push(attachment);
+        continue;
+      }
+      const currentStyles = readManualEditStyles(sourceRef.current ?? '', attachment.elementId);
+      const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
+      if (!fastPath) {
+        remaining.push(attachment);
+        continue;
+      }
+      let applied = true;
+      for (const patch of fastPath.patches) {
+        const ok = await applyManualEdit(
+          patch,
+          embedUiLabel(fastPath.label, '댓글 빠른 편집'),
+        );
+        if (!ok) {
+          applied = false;
+          break;
+        }
+      }
+      if (applied) {
+        appliedIds.add(attachment.id);
+      } else {
+        remaining.push(attachment);
+      }
+    }
+    if (appliedIds.size > 0) {
+      setCommentSavedToast(embedUiLabel('Applied quick edit.', '빠른 편집을 적용했습니다.'));
+    }
+    return { appliedIds, remaining };
+  }
+
+  function canUseManualEditCommentFastPath(): boolean {
+    if (sourceRef.current == null) return false;
+    const manifestKind = file.artifactManifest?.kind ?? file.artifactKind ?? null;
+    const manifestRenderer = file.artifactManifest?.renderer ?? null;
+    return (
+      file.kind === 'html' ||
+      file.kind === 'presentation' ||
+      manifestKind === 'deck' ||
+      manifestKind === 'html' ||
+      manifestRenderer === 'deck-html' ||
+      manifestRenderer === 'html'
+    );
+  }
+
   async function sendBoardBatch() {
     if (!activeCommentTarget || !onSendBoardCommentAttachments) return;
     const nextNotes = [...queuedBoardNotes];
@@ -7462,7 +7525,11 @@ function HtmlViewer({
       if (existingComment) {
         setSendingBoardBatch(true);
         try {
-          await onSendBoardCommentAttachments(commentsToAttachments([existingComment]));
+          const attachments = commentsToAttachments([existingComment]);
+          const fastPath = await applyManualEditCommentFastPathAttachments(attachments);
+          if (fastPath.remaining.length > 0) {
+            await onSendBoardCommentAttachments(fastPath.remaining);
+          }
           clearBoardComposer();
         } catch (err) {
           setCommentErrorToast(err instanceof Error ? err.message : t('chat.annotationUploadFailed'));
@@ -7485,10 +7552,16 @@ function HtmlViewer({
           ? { ...attachment, imageAttachments: existingAttachments }
           : attachment
       ));
-      const accepted = await onSendBoardCommentAttachments(
-        attachments,
-        boardImages,
-      );
+      let attachmentsToSend = attachments;
+      let fastPathApplied = false;
+      if (boardImages.length === 0) {
+        const fastPath = await applyManualEditCommentFastPathAttachments(attachments);
+        attachmentsToSend = fastPath.remaining;
+        fastPathApplied = fastPath.appliedIds.size > 0;
+      }
+      const accepted = attachmentsToSend.length > 0 || boardImages.length > 0
+        ? await onSendBoardCommentAttachments(attachmentsToSend, boardImages)
+        : fastPathApplied;
       if (accepted === false) return;
       clearBoardComposer();
     } catch (err) {
@@ -8452,11 +8525,18 @@ function HtmlViewer({
         const sentIds = new Set(selected.map((comment) => comment.id));
         setSendingBoardBatch(true);
         try {
-          const accepted = await onSendBoardCommentAttachments(commentsToAttachments(selected));
+          const fastPath = await applyManualEditCommentFastPathAttachments(commentsToAttachments(selected));
+          const sentOrAppliedIds = new Set([
+            ...Array.from(sentIds).filter((id) => fastPath.appliedIds.has(id)),
+          ]);
+          const accepted = fastPath.remaining.length > 0
+            ? await onSendBoardCommentAttachments(fastPath.remaining)
+            : fastPath.appliedIds.size > 0;
           if (accepted !== false) {
+            for (const attachment of fastPath.remaining) sentOrAppliedIds.add(attachment.id);
             setSelectedSideCommentIds(new Set());
-            setCommentOrderIds((current) => current.filter((id) => !sentIds.has(id)));
-            setActivePreviewCommentId((current) => current && sentIds.has(current) ? null : current);
+            setCommentOrderIds((current) => current.filter((id) => !sentOrAppliedIds.has(id)));
+            setActivePreviewCommentId((current) => current && sentOrAppliedIds.has(current) ? null : current);
           }
         } finally {
           setSendingBoardBatch(false);

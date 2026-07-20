@@ -4,6 +4,7 @@ import {
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE,
   repairMangledDeckFrameworkScript,
   stripArtifactPreviewBodyTextLeaks,
+  stripOrphanVoidTailsFromHeadInner,
 } from "./artifactPreviewTextLeaks.js";
 
 /**
@@ -16,12 +17,25 @@ const CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE =
 const HEAD_VIEWPORT_FRAGMENT_RE =
   /^\s*(?:(?:viewport\s*=\s*width\s*=\s*device-width|device-width|-width)\s*,\s*initial-scale=[^<\n]+"?\s*\/?>|name\s*=\s*["']viewport["']\s+content\s*=\s*["'][^"']*["']\s*\/?>)\s*/im;
 
+/**
+ * Truncated font/CDN/link tails immediately after `<head>` (same class of
+ * corruption as Hermes viewport leaks — opening `<link href="https://fonts.`
+ * is lost and `googleapis.com…" />` paints as text).
+ */
+const HEAD_ORPHAN_VOID_FRAGMENT_RE =
+  /^\s*(?:(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com(?:\/(?:css2?|icon)[^<\n]*)?|fonts\.gstatic\.com[^<\n]*|cdn\.jsdelivr\.net\/[^<\n]*|unpkg\.com\/[^<\n]*|cdnjs\.cloudflare\.com\/[^<\n]*|fonts\.bunny\.net\/[^<\n]*|api\.fontshare\.com\/[^<\n]*|use\.typekit\.net\/[^<\n]*|(?:kit\.)?fontawesome\.com\/[^<\n]*)|family=[A-Za-z0-9_+:;,=%&.\-]+(?:&amp;|&)?display=swap[^<\n]*|rel\s*=\s*["'](?:stylesheet|preconnect|preload)["'][^<\n]{0,120}|crossorigin(?:\s*=\s*["']anonymous["'])?[^<\n]{0,80}|charset\s*=\s*["'][^"']*["'][^<\n]{0,40})\s*"?\s*\/?>\s*/im;
+
 const BODY_VIEWPORT_FRAGMENT_RE =
   /(<body[^>]*>)\s*(?:(?:viewport\s*=\s*width\s*=\s*device-width|device-width|-width)\s*,\s*initial-scale=[^<\n]+"?\s*\/?>|name\s*=\s*["']viewport["']\s+content\s*=\s*["'][^"']*["']\s*\/?>)\s*/gi;
 
+const BODY_ORPHAN_VOID_FRAGMENT_RE =
+  /(<body[^>]*>)\s*(?:(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com(?:\/(?:css2?|icon)[^<\n]*)?|fonts\.gstatic\.com[^<\n]*|cdn\.jsdelivr\.net\/[^<\n]*|unpkg\.com\/[^<\n]*|cdnjs\.cloudflare\.com\/[^<\n]*|fonts\.bunny\.net\/[^<\n]*|api\.fontshare\.com\/[^<\n]*|use\.typekit\.net\/[^<\n]*)|family=[A-Za-z0-9_+:;,=%&.\-]+(?:&amp;|&)?display=swap[^<\n]*|rel\s*=\s*["'](?:stylesheet|preconnect|preload)["'][^<\n]{0,120})\s*"?\s*\/?>\s*/gi;
+
 function stripLeakedViewportFragments(doc: string): string {
   let out = doc.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
+  out = out.replace(HEAD_ORPHAN_VOID_FRAGMENT_RE, "");
   out = out.replace(BODY_VIEWPORT_FRAGMENT_RE, "$1");
+  out = out.replace(BODY_ORPHAN_VOID_FRAGMENT_RE, "$1");
   ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE.lastIndex = 0;
   out = out.replace(ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE, (match) => (match.startsWith(">") ? ">" : ""));
   return out;
@@ -40,9 +54,13 @@ export function repairArtifactDocumentHead(html: string): string {
   );
 
   doc = doc.replace(/<head([^>]*)>([\s\S]*?)<\/head>/i, (_match, attrs, inner) => {
-    let headInner = inner.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
+    let headInner = String(inner).replace(HEAD_VIEWPORT_FRAGMENT_RE, "");
+    headInner = headInner.replace(HEAD_ORPHAN_VOID_FRAGMENT_RE, "");
     ARTIFACT_VIEWPORT_TEXT_LEAK_RE.lastIndex = 0;
     headInner = headInner.replace(ARTIFACT_VIEWPORT_TEXT_LEAK_RE, "");
+    // Scrub orphan CDN/link tails anywhere between intact head tags — never
+    // run void-strip across whole head raw (would mutilate intact font links).
+    headInner = stripOrphanVoidTailsFromHeadInner(headInner);
     if (!/<meta\s+charset/i.test(headInner)) {
       headInner = `\n  <meta charset="utf-8" />${headInner}`;
     }

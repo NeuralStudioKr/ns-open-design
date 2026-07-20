@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   LEAKED_AGENT_PROSE_TAG_NAMES,
+  createStreamingAssistantProseGuard,
   sanitizeAssistantProseForDisplay,
   sanitizeLeakedAgentProse,
   stripTrailingOpenInternalMarkup,
@@ -518,7 +519,99 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(streamingRead, { streaming: true })).toBe("Working…");
 
     const historyArtifact =
-      'Done.\n<artifact identifier="deck" type="text/html">\n<html></html>\n<edit>\n<path>x</path>';
+      'Done.\n<artifact identifier="deck" type="text/html">\n<html></html>\n</artifact>\n<edit>\n<path>x</path>';
     expect(sanitizeAssistantProseForDisplay(historyArtifact)).toBe("Done.");
+  });
+
+  it("preserves closed artifacts while streaming so live HTML parsers receive the final body", () => {
+    const closed =
+      'Intro\n<artifact identifier="deck" type="text/html">\n<section class="slide">A</section>\n</artifact>\nDone';
+    const streaming = sanitizeAssistantProseForDisplay(closed, { streaming: true });
+    expect(streaming).toContain("<section class=\"slide\">A</section>");
+    expect(streaming).toContain("</artifact>");
+    expect(streaming).toContain("Done");
+    expect(sanitizeAssistantProseForDisplay(closed)).toBe("Intro\n\nDone");
+  });
+
+  it("does not hold incomplete legitimate HTML tag prefixes like <p or <a", () => {
+    expect(sanitizeAssistantProseForDisplay("Text <p", { streaming: true })).toBe("Text <p");
+    expect(sanitizeAssistantProseForDisplay("Text <a", { streaming: true })).toBe("Text <a");
+  });
+
+  it("strips trailing open question-form while streaming", () => {
+    const input = 'Ask:\n<question-form>\n{"questions":[{"id":"1"}]';
+    expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe("Ask:");
+  });
+
+  it("holds incomplete trailing open-tag tokens while streaming", () => {
+    expect(sanitizeAssistantProseForDisplay("Hello <thi", { streaming: true })).toBe("Hello");
+    expect(sanitizeAssistantProseForDisplay("Hello <thinking", { streaming: true })).toBe("Hello");
+    expect(
+      sanitizeAssistantProseForDisplay("Hello <thinking>secret</thinking> World", { streaming: true }),
+    ).toBe("Hello  World");
+  });
+
+  it("strips code fences when stripCodeFences is enabled", () => {
+    const input = "Intro\n```html\n<!doctype html><html></html>\n```\nOutro";
+    expect(
+      sanitizeAssistantProseForDisplay(input, { stripCodeFences: true }),
+    ).toBe("Intro\n\nOutro");
+    expect(
+      sanitizeAssistantProseForDisplay("Visible\n```js\nconsole.log(1)\n", {
+        streaming: true,
+        stripCodeFences: true,
+      }),
+    ).toBe("Visible");
+  });
+
+  it("emits only monotonic visible growth across chunk boundaries", () => {
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("Hello <thi")).toBe("Hello");
+    expect(guard.feed("nking>secret</thinking> World")).toBe("  World");
+    expect(guard.flush()).toBe("");
+  });
+
+  it("holds incomplete tool/invoke tokens including partial attributes", () => {
+    expect(sanitizeAssistantProseForDisplay("Go\n<inv", { streaming: true })).toBe("Go");
+    expect(sanitizeAssistantProseForDisplay('Go\n<invoke name="TodoWrite"', { streaming: true })).toBe("Go");
+    expect(sanitizeAssistantProseForDisplay("Go\n<too", { streaming: true })).toBe("Go");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        'Go\n<tool_call>\n{"name":"Write","arguments":{}}\n</tool_call>\nDone',
+        { streaming: true },
+      ),
+    ).toBe("Go\n\nDone");
+  });
+
+  it("strips bash/shell/mcp and antml/minimax namespaced tool markup", () => {
+    const input = [
+      "Working.",
+      "<bash>ls</bash>",
+      "<mcp_call>hidden</mcp_call>",
+      "<antml:invoke name=\"Read\">secret</antml:invoke>",
+      "<minimax:tool_call>secret</minimax:tool_call>",
+      "Visible.",
+    ].join("\n");
+    expect(sanitizeLeakedAgentProse(input)).toBe("Working.\n\nVisible.");
+  });
+
+  it("strips trailing open antml/tool fences across streaming chunks via guard", () => {
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("Hi\n<tool_c")).toBe("Hi");
+    expect(guard.feed('all>\n{"name":"Write"}\n</tool_call>\nDone')).toBe("\n\nDone");
+  });
+
+  it("strips ```tool_use / ```function_call fences", () => {
+    const input = [
+      "Intro",
+      "```tool_use",
+      '{"name":"Bash"}',
+      "```",
+      "```function_call",
+      '{"name":"Read"}',
+      "```",
+      "Outro",
+    ].join("\n");
+    expect(sanitizeLeakedAgentProse(input)).toBe("Intro\n\nOutro");
   });
 });

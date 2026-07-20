@@ -57,6 +57,13 @@ import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjec
 import { fetchTeamverProject } from '../teamver/projectRegistry';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 
+function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
+  const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
+  return sanitizeChatMessageLeakedPseudoTool(message, {
+    stripCodeFences: hideInternal,
+    dropThinkingEvents: hideInternal,
+  });
+}
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
 
@@ -763,7 +770,7 @@ export async function listMessages(
     throwIfDaemonUnauthorized(resp);
     if (!resp.ok) return [];
     const json = (await resp.json()) as { messages: ChatMessage[] };
-    return (json.messages ?? []).map(sanitizeChatMessageLeakedPseudoTool);
+    return (json.messages ?? []).map(sanitizeChatMessageForPersist);
   } catch (err) {
     if (err instanceof TeamverDaemonUnauthorizedError) throw err;
     return [];
@@ -836,7 +843,7 @@ export async function saveMessage(
   options: SaveMessageOptions = {},
 ): Promise<void> {
   try {
-    const savedMessage = sanitizeChatMessageLeakedPseudoTool(
+    const savedMessage = sanitizeChatMessageForPersist(
       options.telemetryFinalized
         ? { ...message, telemetryFinalized: true }
         : message,

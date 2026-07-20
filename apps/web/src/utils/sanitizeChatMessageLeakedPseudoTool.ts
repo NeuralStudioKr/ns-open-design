@@ -2,24 +2,6 @@ import type { AgentEvent, ChatMessage } from "../types";
 import { stripAllClosedArtifacts } from "../artifacts/strip";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 
-function sanitizeProseChunk(text: string): string {
-  return sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(text));
-}
-
-function sanitizeEvent(event: AgentEvent): AgentEvent {
-  if (event.kind === "text" && typeof event.text === "string") {
-    const text = sanitizeProseChunk(event.text);
-    if (text === event.text) return event;
-    return { ...event, text };
-  }
-  if (event.kind === "thinking" && typeof event.text === "string") {
-    const text = sanitizeProseChunk(event.text);
-    if (text === event.text) return event;
-    return { ...event, text };
-  }
-  return event;
-}
-
 function dropEmptyProseEvents(events: AgentEvent[]): AgentEvent[] {
   return events.filter((event) => {
     if (event.kind === "text" || event.kind === "thinking") {
@@ -29,24 +11,52 @@ function dropEmptyProseEvents(events: AgentEvent[]): AgentEvent[] {
   });
 }
 
+export type SanitizeChatMessageOptions = {
+  /** Hide ```html/js fences (Teamver embed). */
+  stripCodeFences?: boolean;
+  /** Drop structured thinking events entirely (Teamver embed). */
+  dropThinkingEvents?: boolean;
+};
+
 /** Strip leaked CLI pseudo-tool XML from persisted assistant/user message bodies. */
-export function sanitizeChatMessageLeakedPseudoTool(message: ChatMessage): ChatMessage {
+export function sanitizeChatMessageLeakedPseudoTool(
+  message: ChatMessage,
+  options: SanitizeChatMessageOptions = {},
+): ChatMessage {
   let changed = false;
 
   const content = message.content ?? "";
-  const nextContent = sanitizeProseChunk(content);
+  const nextContent = sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(content), {
+    stripCodeFences: options.stripCodeFences,
+  });
   if (nextContent !== content) changed = true;
 
   let nextEvents = message.events;
   if (message.events?.length) {
-    const mapped = message.events.map(sanitizeEvent);
+    const mapped = message.events
+      .map((event) => {
+        if (options.dropThinkingEvents && event.kind === "thinking") {
+          changed = true;
+          return null;
+        }
+        if ((event.kind === "text" || event.kind === "thinking") && typeof event.text === "string") {
+          const text = sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(event.text), {
+            stripCodeFences: options.stripCodeFences,
+          });
+          if (text === event.text) return event;
+          changed = true;
+          return { ...event, text };
+        }
+        return event;
+      })
+      .filter((event): event is AgentEvent => event != null);
     const filtered = dropEmptyProseEvents(mapped);
-    if (filtered.length !== message.events.length) {
+    if (
+      filtered.length !== message.events.length
+      || filtered.some((event, index) => event !== message.events![index])
+    ) {
       changed = true;
       nextEvents = filtered;
-    } else if (mapped.some((event, index) => event !== message.events![index])) {
-      changed = true;
-      nextEvents = mapped;
     }
   }
 

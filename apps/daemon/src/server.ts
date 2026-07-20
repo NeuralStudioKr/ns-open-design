@@ -230,6 +230,7 @@ import {
 import { ingestRoutineConnectorEvolution } from './automation-routine-evolution.js';
 import { createClaudeStreamHandler } from './claude-stream.js';
 import { createRoleMarkerGuard } from './role-marker-guard.js';
+import { createStreamingProseDeltaGuard } from './think-tag-splitter.js';
 import { diagnoseClaudeCliFailure } from './claude-diagnostics.js';
 import { loadCritiqueConfigFromEnv } from './critique/config.js';
 import { reconcileStaleRuns } from './critique/persistence.js';
@@ -14196,18 +14197,35 @@ export async function startServer({
       }
     };
 
-    // Per-run role-marker guard for non-Claude structured streams (#3247).
+    // Per-run role-marker + prose guards for non-Claude structured streams (#3247).
     // Claude has its own per-message guards in claude-stream.ts.
     const runGuard = createRoleMarkerGuard('run');
+    const runProseGuard = createStreamingProseDeltaGuard();
     let runWarned = false;
+    /** Which SSE channel last consumed the shared prose guard. */
+    let proseEmitMode: 'agent' | 'stdout' = 'agent';
 
     function guardTextDelta(delta) {
-      return runGuard.feedText(delta);
+      return runGuard.feedText(runProseGuard.feed(delta));
+    }
+
+    function flushRunProseGuard() {
+      const growth = runProseGuard.flush();
+      if (!growth) return;
+      const safe = runGuard.feedText(growth);
+      if (!safe) return;
+      noteFirstTokenAt();
+      if (proseEmitMode === 'stdout') {
+        send('stdout', { chunk: safe });
+      } else {
+        send('agent', { type: 'text_delta', delta: safe });
+      }
     }
 
     // Shared helper for emitting guarded text deltas across all agent
     // stream handlers (sendAgentEvent, copilot, ACP).
     function emitGuardedTextDelta(delta: string) {
+      proseEmitMode = 'agent';
       const safe = guardTextDelta(delta);
       if (safe.length > 0) {
         send('agent', { type: 'text_delta', delta: safe });
@@ -14555,6 +14573,7 @@ export async function startServer({
       // Plain / BYOK mode: guard raw stdout chunks (#3247).
       child.stdout.on('data', (chunk) => {
         noteAgentActivity();
+        proseEmitMode = 'stdout';
         const text = typeof chunk === 'string' ? chunk : String(chunk);
         const safe = guardTextDelta(text);
         if (safe.length > 0) {
@@ -14590,6 +14609,7 @@ export async function startServer({
     });
     child.on('close', async (code, signal) => {
       try {
+      flushRunProseGuard();
       clearInactivityWatchdog();
       clearForcedChildShutdown();
       flushVisibleAgentStderr();

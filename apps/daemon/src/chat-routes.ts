@@ -41,7 +41,7 @@ import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { proxyDispatcherRequestInit, validateBaseUrlResolved } from './connectionTest.js';
 import { googleStreamGenerateContentUrl } from './google-models.js';
 import { createRoleMarkerGuard } from './role-marker-guard.js';
-import { createThinkTagSplitter, stripLeakedPseudoToolXml } from './think-tag-splitter.js';
+import { createThinkTagSplitter, createStreamingProseDeltaGuard } from './think-tag-splitter.js';
 import {
   readProxyBodyProjectId,
   type ByokProxyMaterializationHooks,
@@ -789,11 +789,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const thinkSplitter = createThinkTagSplitter((chunk) => {
       sse.send('thinking_delta', { delta: chunk });
     });
+    const proseGuard = createStreamingProseDeltaGuard();
     return {
       sendDelta(text: string) {
         if (guard.contaminated || !text) return;
         const { visible } = thinkSplitter.feed(text);
-        const cleaned = stripLeakedPseudoToolXml(visible);
+        const cleaned = proseGuard.feed(visible);
         const safe = guard.feedText(cleaned);
         if (safe.length > 0) {
           sse.send('delta', { delta: safe });
@@ -812,7 +813,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           sse.send('thinking_delta', { delta: tail.thinking });
         }
         if (tail.visible.length > 0) {
-          const safe = guard.feedText(stripLeakedPseudoToolXml(tail.visible));
+          const cleaned = proseGuard.feed(tail.visible);
+          const safe = guard.feedText(cleaned);
+          if (safe.length > 0) sse.send('delta', { delta: safe });
+        }
+        const proseTail = proseGuard.flush();
+        if (proseTail.length > 0) {
+          const safe = guard.feedText(proseTail);
           if (safe.length > 0) sse.send('delta', { delta: safe });
         }
       },

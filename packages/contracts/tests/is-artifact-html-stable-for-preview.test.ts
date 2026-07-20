@@ -34,4 +34,30 @@ describe("isArtifactHtmlStableForPreview", () => {
 <section class="slide">A</section></body></html>`),
     ).toBe(false);
   });
+
+  it("rejects documents whose body is only truncated CDN tag debris", () => {
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+googleapis.com" />
+</body></html>`),
+    ).toBe(false);
+  });
+
+  it("rejects documents with unclosed svg, math, or HTML comments", () => {
+    expect(
+      isArtifactHtmlStableForPreview(
+        `<!doctype html><html><head></head><body><svg><circle/><section class="slide">A</section></body></html>`,
+      ),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(
+        `<!doctype html><html><head></head><body><math><mi>x</mi><section class="slide">A</section></body></html>`,
+      ),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(
+        `<!doctype html><html><head></head><body><!-- note<section class="slide">A</section></body></html>`,
+      ),
+    ).toBe(false);
+  });
 });

@@ -10,7 +10,7 @@
  *                 non-zero (tail appended to the error message).
  */
 import type { AgentEvent, ChatCommentAttachment, ChatMessage } from '../types';
-import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
+
 import type { AmrEntryAttribution } from '../analytics/amr-attribution';
 import type {
   ChatAnalyticsHints,
@@ -1040,7 +1040,9 @@ async function consumeDaemonRun({
           const event = parsed as unknown as ChatSseEvent;
 
           if (event.event === 'stdout') {
-            const chunk = stripLeakedPseudoToolXml(String(event.data.chunk ?? ''));
+            // Do not sanitize per-chunk here — createBufferedTextUpdates reassembles
+            // raw deltas and runs the SSOT sanitizer on the full buffer.
+            const chunk = String(event.data.chunk ?? '');
             if (!chunk) continue;
             acc += chunk;
             handlers.onDelta(chunk);
@@ -1089,7 +1091,8 @@ async function consumeDaemonRun({
             const translated = translateAgentEvent(event.data);
             if (!translated) continue;
             if (translated.kind === 'text') {
-              const text = stripLeakedPseudoToolXml(translated.text);
+              // Raw text deltas — buffer-side sanitize rebuilds across chunk boundaries.
+              const text = translated.text;
               if (!text) continue;
               acc += text;
               handlers.onDelta(text);
