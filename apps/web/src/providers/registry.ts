@@ -1794,7 +1794,7 @@ export async function fetchProjectFilePreview(
 export async function fetchProjectFileText(
   projectId: string,
   name: string,
-  options?: { cache?: RequestCache; cacheBustKey?: string | number },
+  options?: { cache?: RequestCache; cacheBustKey?: string | number; signal?: AbortSignal },
 ): Promise<string | null> {
   const url = projectFileUrl(projectId, name);
   const cacheBustKey = options?.cacheBustKey;
@@ -1804,6 +1804,7 @@ export async function fetchProjectFileText(
       : `${url}${url.includes('?') ? '&' : '?'}cacheBust=${encodeURIComponent(String(cacheBustKey))}`;
   const init: RequestInit = {};
   if (options?.cache) init.cache = options.cache;
+  if (options?.signal) init.signal = options.signal;
 
   try {
     const resp = await fetchTeamverDaemon(requestUrl, init);
@@ -1819,6 +1820,7 @@ export async function fetchProjectFileText(
     }
     return await resp.text();
   } catch (err) {
+    if (options?.signal?.aborted) return null;
     console.warn('[fetchProjectFileText] failed:', {
       error: err,
       name,
