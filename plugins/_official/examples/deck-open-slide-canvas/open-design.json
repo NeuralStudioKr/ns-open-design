@@ -74,6 +74,7 @@
     "kind": "scenario",
     "taskKind": "new-generation",
     "mode": "deck",
+    "content_locale": "zh-CN",
     "scenario": "design",
     "surface": "web",
     "featured": 0.17,

@@ -18,6 +18,7 @@ example_tagline: "7 张幻灯片讲清产品"
 example_desc: "苹果 Keynote 风格的产品介绍, ←/→ 切换"
 od:
   mode: deck
+  content_locale: zh-CN
   surface: web
   scenario: marketing
   upstream: "https://github.com/nexu-io/html-anything"

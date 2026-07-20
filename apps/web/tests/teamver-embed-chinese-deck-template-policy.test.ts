@@ -110,6 +110,26 @@ describe('pluginsForSlideOnlyMvp chinese deck gate', () => {
     ).toEqual(['example-simple-deck']);
   });
 
+  it('drops open-slide and ppt-keynote chinese deck plugins from community listing', () => {
+    const plugins = [
+      {
+        id: 'example-deck-open-slide-canvas',
+        manifest: { name: 'example-deck-open-slide-canvas', version: '1.0.0', od: { mode: 'deck' } },
+      },
+      {
+        id: 'example-ppt-keynote',
+        manifest: { name: 'example-ppt-keynote', version: '1.0.0', od: { mode: 'deck' } },
+      },
+      {
+        id: 'example-simple-deck',
+        manifest: { name: 'example-simple-deck', version: '1.0.0', od: { mode: 'deck' } },
+      },
+    ];
+    expect(
+      pluginsForSlideOnlyMvp(plugins as never[], { slideOnlyMvp: true }).map((p) => p.id),
+    ).toEqual(['example-simple-deck']);
+  });
+
   it('drops plugins with zh-CN od.content_locale on manifest', () => {
     const plugins = [
       {

@@ -40,6 +40,10 @@ describe('embed-chinese-deck-policy', () => {
     expect(
       isChinesePrimaryDeckTemplate({ id: 'html-ppt-xhs-white-editorial', contentLocale: 'zh-CN' }),
     ).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'deck-open-slide-canvas' })).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'example-deck-open-slide-canvas' })).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'ppt-keynote' })).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'example-ppt-keynote' })).toBe(true);
     expect(isChinesePrimaryDeckTemplate({ id: 'simple-deck', contentLocale: 'en' })).toBe(false);
   });
 

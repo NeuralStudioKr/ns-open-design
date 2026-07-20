@@ -21,6 +21,7 @@ example_source_url: "https://github.com/1weiho/open-slide"
 example_source_label: "1weiho/open-slide"
 od:
   mode: deck
+  content_locale: zh-CN
   surface: web
   scenario: design
   featured: 0.17

@@ -38,7 +38,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 | S-4 | `EntryShell` openNewProject | 기본 탭 `prototype` → embed `deck` | `defaultNewProjectTab` | ✅ |
 | S-4b | `EntryShell` `handlePluginLoopSubmit` 메타데이터 `kind` 정규화 | 자유 입력은 `payload.projectKind=other` / 미설정으로 들어와 daemon 시스템 프롬프트의 non-slide discovery 라디오를 깨움. embed `slideOnlyMvp` 시 payload 와 무관하게 `deck`로 고정(`resolvePluginLoopProjectKind` early-return), 그 외는 기존 `payload.projectKind ?? payload.projectMetadata?.kind ?? 'prototype'` 폴백 유지 | `slideOnlyMvp` (`resolvePluginLoopProjectKind` 헬퍼) + daemon `TEAMVER_SLIDE_ONLY_SCOPE` discovery override (이중 안전선) | ✅ loop 388 |
 | S-5 | `HomeView` 하단 community gallery / Templates | embed: **「커뮤니티」** + deck 플러그인만 + **1차 필터(Prototype·Video…) 숨김** + deck **서브카테고리** 유지. Design templates는 Home/Settings 모두 FE 필터뿐 아니라 daemon listing도 `/api/design-templates?mode=deck`으로 축소; standalone: 풀 카탈로그 | `hideCommunityGallery` + `slideOnlyMvp` + `communityGalleryFacetUi` + daemon `mode=deck` | ✅ loop 152+ · loop 385 · loop 386 |
-| S-5c | 중국어 deck 템플릿 비노출 | embed: preview·썸네일 중국어 중심 deck **12개 denylist + guizang family** — daemon `/api/design-templates`·`/api/plugins` 응답에서 제외 + web 이중 필터. `od.content_locale: zh-CN` 메타 + denylist | `OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN` + `embed-chinese-deck-policy` (contracts) | ✅ [13_1](./13_1_embed_중국어_deck_템플릿_비노출.md) |
+| S-5c | 중국어 deck 템플릿 비노출 | embed: preview·썸네일 중국어 중심 deck **14개 denylist + guizang family** — daemon `/api/design-templates`·`/api/plugins` 응답에서 제외 + web 이중 필터. `od.content_locale: zh-CN` 메타 + denylist + catalog guard | `OD_DESIGN_TEMPLATES_EXCLUDE_ZH_CN` + `embed-chinese-deck-policy` (contracts) | ✅ [13_1](./13_1_embed_중국어_deck_템플릿_비노출.md) |
 
 ### 2.2 P0 — Composer / + 메뉴 / 슬래시 (전수)
 

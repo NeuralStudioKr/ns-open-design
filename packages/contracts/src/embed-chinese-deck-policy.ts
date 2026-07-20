@@ -6,6 +6,10 @@ export const EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS = new Set([
   'magazine-web-ppt',
   // Plugin-only guizang editorial variant (Community card: "Guizang 에디토리얼 E-Ink 덱").
   'deck-guizang-editorial',
+  // Plugin/skill-only — Community card: "Open-Slide 1920 캔버스 덱" (zh-CN preview).
+  'deck-open-slide-canvas',
+  // Plugin/skill-only — Keynote-style deck with zh-CN product-intro demo.
+  'ppt-keynote',
   'html-ppt-xhs-white-editorial',
   'html-ppt-presenter-mode',
   'html-ppt-testing-safety-alert',
