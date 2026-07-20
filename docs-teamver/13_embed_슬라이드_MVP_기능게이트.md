@@ -131,7 +131,7 @@ loop 351: embed empty chat은 composer만 노출(import folder artifacts 경로 
 | Sh-5 | `NextStepActions` "Share to Open Design" → `SHARE_TO_COMMUNITY_PROMPT` (community contribute) | OD 공개 카탈로그에 plugin scaffold + PR | tenant 위반 + agent 자동 packaging | **hide** | `ProjectView` `onShareToOpenDesign` callback gating |
 | Sh-6 | `Handoff` (open-design.ai) | 외부 도메인 핸드오프 | tenant 위반 | **hide** | `hideHandoffButton` (기존) |
 | Sh-7 | `PluginShareMenu` (plugin GitHub publish + 카탈로그 PR) | plugin 공개 마켓플레이스 | tenant 위반 | **hide** | `hidePluginRegistry` (기존) |
-| Sh-8 | `FileViewer` chrome **download** menu — PDF / PPTX / Image / HTML / Markdown / ZIP / Save as template | 사용자 OS 다운로드 | 낮음 (로컬) | **유지** | — |
+| Sh-8 | `FileViewer` chrome **download** menu — PDF / Image / HTML / Markdown / ZIP / Save as template (+ **PPTX는 opt-in**) | 사용자 OS 다운로드 | 낮음 (로컬) | **유지** (PPTX: stg only) | `VITE_TEAMVER_PPTX_EXPORT_ENABLE` |
 | Sh-9 | `TeamverPublishDriveMenuItem` / Drive Publish | Teamver workspace tenant (S3 + Drive 권한) | 낮음 — Teamver-native | **유지** (정식 channel) | — |
 | Sh-10 | `ReactComponentViewer` Share menu — Export JSX / HTML / ZIP | 사용자 OS 다운로드 | 낮음 | **유지** | — |
 

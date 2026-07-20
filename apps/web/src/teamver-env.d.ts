@@ -16,6 +16,8 @@ interface ImportMetaEnv {
   readonly VITE_TEAMVER_NAV_MARK_URL?: string;
   readonly VITE_TEAMVER_HERO_TITLE?: string;
   readonly VITE_TEAMVER_HERO_SUBTITLE?: string;
+  /** Opt-in PPTX export in Teamver embed (prd default off). */
+  readonly VITE_TEAMVER_PPTX_EXPORT_ENABLE?: string;
   /** BYOK streaming daemon message PUT throttle (ms). Set at Docker build via deploy .env. */
   readonly VITE_MESSAGE_PERSIST_THROTTLE_MS?: string;
   readonly DEV: boolean;

@@ -35,6 +35,7 @@ import { TeamverExportMenu, type ShareExportFormat } from '../teamver/components
 import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import {
@@ -7580,7 +7581,10 @@ function HtmlViewer({
   const canShare = source !== null && isShareableArtifact;
   const canDownload = source !== null && (isShareableArtifact || isMarkdownArtifact);
   const canPptx = canShare && effectiveDeck && !streaming;
-  const showPptxExport = canShare && effectiveDeck;
+  const showPptxExport =
+    canShare &&
+    effectiveDeck &&
+    isTeamverPptxExportEnabled({ embed: isTeamverEmbedMode() });
   const showMarkdownExport = source !== null && isMarkdownArtifact;
   const showImageExport = canShare && !isTeamverEmbedMode();
   const showExternalShareMenu = canShare && !hideExternalShareSurfaces;
@@ -9449,7 +9453,9 @@ function HtmlViewer({
         artifactFile={file.name}
         exportTitle={exportTitle}
         deck={effectiveDeck}
-        allowPptx={effectiveDeck}
+        allowPptx={
+          effectiveDeck && isTeamverPptxExportEnabled({ embed: isTeamverEmbedMode() })
+        }
         initialFormat={drivePublishInitialFormat}
         focusTargetSelectNonce={drivePublishFocusNonce}
         onClose={() => {

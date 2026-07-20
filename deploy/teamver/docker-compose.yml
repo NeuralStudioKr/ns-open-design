@@ -22,6 +22,8 @@ services:
         VITE_MESSAGE_PERSIST_THROTTLE_MS: ${VITE_MESSAGE_PERSIST_THROTTLE_MS:-5000}
         VITE_TEAMVER_MAIN_LOGIN_URL: ${VITE_TEAMVER_MAIN_LOGIN_URL:-https://stg.teamver.com/auth/signin}
         VITE_TEAMVER_SITE_URL: ${VITE_TEAMVER_SITE_URL:-https://design.teamver.com}
+        # Opt-in PPTX export for Teamver embed (prd leaves unset → hidden).
+        VITE_TEAMVER_PPTX_EXPORT_ENABLE: ${VITE_TEAMVER_PPTX_EXPORT_ENABLE:-}
         # Cache-busts the Playwright chromium install RUN layer. deploy.sh
         # sets this to the current git SHA so every deploy rebuilds the
         # download step, preventing stale/broken /ms-playwright payloads
