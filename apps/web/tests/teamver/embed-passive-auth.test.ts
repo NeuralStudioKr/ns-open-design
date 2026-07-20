@@ -35,10 +35,13 @@ const prepareReloadMock = vi.fn();
 const probeSessionMock = vi.fn(async () => false);
 const ensureSessionMock = vi.fn(async () => false);
 vi.mock("../../src/teamver/designBffClient", () => ({
-  refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
-  prepareDesignAuthSessionReload: (...args: unknown[]) => prepareReloadMock(...args),
-  probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
-  ensureDesignBffSessionAuthenticated: (...args: unknown[]) => ensureSessionMock(...args),
+  // All four helpers take no arguments in production; drop the spread so
+  // strict-tsc does not flag `(...args: unknown[]) => fn(...args)` against
+  // a `() => Promise<boolean>` signature.
+  refreshDesignAuthCookie: () => refreshMock(),
+  prepareDesignAuthSessionReload: () => prepareReloadMock(),
+  probeDesignBffSessionAuthenticated: () => probeSessionMock(),
+  ensureDesignBffSessionAuthenticated: () => ensureSessionMock(),
 }));
 
 const redirectMock = vi.fn();

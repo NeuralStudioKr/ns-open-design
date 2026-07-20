@@ -34,10 +34,13 @@ describe("clearTeamverEmbedListCaches", () => {
     expect(clearLatestPublishSummaryCache).toHaveBeenCalledTimes(1);
   });
 
-  it("clears per-project cover and publish caches on delete", () => {
+  it("clears per-project cover and publish caches on delete and refreshes registry", () => {
+    // Registry must also be invalidated so the next home-recent fetch cannot
+    // serve a 15s pre-delete snapshot and resurrect the just-deleted project.
+    // Mirrors clearTeamverEmbedProjectCaches() in src (cac418d52).
     clearTeamverEmbedProjectCaches("p-deleted");
     expect(clearProjectCoverCache).toHaveBeenCalledWith("p-deleted");
     expect(clearLatestPublishSummaryCache).toHaveBeenCalledWith("p-deleted");
-    expect(invalidateTeamverProjectRegistryCaches).not.toHaveBeenCalled();
+    expect(invalidateTeamverProjectRegistryCaches).toHaveBeenCalledTimes(1);
   });
 });
