@@ -341,6 +341,7 @@ async def create_project(
 
 
 @router.get("", response_model=DesignProjectListResponse)
+@router.get("/", response_model=DesignProjectListResponse, include_in_schema=False)
 async def list_projects(
     auth: Annotated[AuthContext, Depends(require_auth)],
     db: AsyncSession = Depends(get_async_session),
