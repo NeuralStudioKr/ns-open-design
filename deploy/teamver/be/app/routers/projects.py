@@ -270,6 +270,7 @@ async def _commit_registry_row_if_needed(
 
 
 @router.post("", response_model=DesignProjectResponse)
+@router.post("/", response_model=DesignProjectResponse, include_in_schema=False)
 async def create_project(
     body: CreateDesignProjectBody,
     auth: Annotated[AuthContext, Depends(require_auth)],

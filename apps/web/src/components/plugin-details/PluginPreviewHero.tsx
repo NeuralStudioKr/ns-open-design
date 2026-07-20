@@ -3,14 +3,14 @@
 // Renders example outputs declared in the manifest's
 // `od.useCase.exampleOutputs[]` as a sandboxed iframe inside a
 // browser-chrome frame, with a tab pill row when more than one
-// example exists. The daemon serves each example via
-// `/api/plugins/:id/example/:name` with the §9.2 CSP +
-// `sandbox="allow-scripts"` envelope, so the preview is safe to
-// embed inline. When the plugin ships no examples we render
-// nothing (the modal hides the hero entirely).
+// example exists. HTML is parent-fetched (authenticated) into srcDoc —
+// bare sandboxed `src=/api/plugins/.../example` omits cookies and paints
+// session_expired JSON as the preview in Teamver embed.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../Icon';
+import { fetchPluginExampleHtml } from '../../providers/registry';
+import { pluginPreviewSrcDoc } from '../../runtime/authenticatedHtmlSrcDoc';
 
 export interface PluginExampleEntry {
   path: string;
@@ -38,10 +38,33 @@ export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
   const [activeKey, setActiveKey] = useState<string | null>(
     items[0]?.key ?? null,
   );
+  const [srcDoc, setSrcDoc] = useState<string | null>(null);
 
-  if (items.length === 0) return null;
+  const active = items.find((it) => it.key === activeKey) ?? items[0] ?? null;
 
-  const active = items.find((it) => it.key === activeKey) ?? items[0]!;
+  useEffect(() => {
+    if (!active) {
+      setSrcDoc(null);
+      return;
+    }
+    let cancelled = false;
+    setSrcDoc(null);
+    const href = active.href;
+    const stem = active.stem;
+    void fetchPluginExampleHtml(pluginId, stem).then((result) => {
+      if (cancelled) return;
+      if (!('html' in result) || !result.html) {
+        setSrcDoc(null);
+        return;
+      }
+      setSrcDoc(pluginPreviewSrcDoc(result.html, href));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pluginId, active?.key, active?.stem, active?.href]);
+
+  if (items.length === 0 || !active) return null;
 
   return (
     <section
@@ -111,15 +134,23 @@ export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
             <span>Open</span>
           </a>
         </div>
-        <iframe
-          key={active.key}
-          title={`${pluginTitle} — ${active.name}`}
-          src={active.href}
-          sandbox="allow-scripts"
-          loading="lazy"
-          className="plugin-details-modal__hero-iframe"
-          data-testid="plugin-details-hero-iframe"
-        />
+        {srcDoc ? (
+          <iframe
+            key={active.key}
+            title={`${pluginTitle} — ${active.name}`}
+            srcDoc={srcDoc}
+            sandbox="allow-scripts"
+            loading="lazy"
+            className="plugin-details-modal__hero-iframe"
+            data-testid="plugin-details-hero-iframe"
+          />
+        ) : (
+          <div
+            className="plugin-details-modal__hero-iframe"
+            data-testid="plugin-details-hero-loading"
+            aria-hidden
+          />
+        )}
       </div>
     </section>
   );

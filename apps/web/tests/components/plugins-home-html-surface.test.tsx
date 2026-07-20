@@ -201,47 +201,17 @@ describe('HtmlSurface authenticated srcDoc', () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => htmlResponse(`<html>${url}</html>`));
     vi.stubGlobal('fetch', fetchMock);
 
-    const previews = Array.from({ length: 260 }, (_, index) => ({
-      kind: 'html' as const,
-      src: `/api/plugins/example-html-ppt/preview-${index}`,
-      label: `preview-${index}.html`,
-      source: 'preview' as const,
-    }));
-
-    const rendered = render(
-      <>
-        {previews.map((preview, index) => (
-          <HtmlSurface
-            key={preview.src}
-            preview={preview}
-            pluginId={`example-html-ppt-${index}`}
-            pluginTitle={`Html Ppt ${index}`}
-            inView
-            eager
-          />
-        ))}
-      </>,
+    // Exercise the LRU cap without mounting hundreds of iframes (slow under
+    // fetchTeamverDaemon header/auth wrapping).
+    const { __seedHtmlSurfacePreviewCacheForTests } = await import(
+      '../../src/components/plugins-home/cards/HtmlSurface'
     );
-
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(256);
-      expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
-    });
-
-    rendered.unmount();
-
-    render(
-      <HtmlSurface
-        preview={previews[0]!}
-        pluginId="example-html-ppt-0"
-        pluginTitle="Html Ppt 0"
-        inView
-        eager
-      />,
-    );
-
-    await waitFor(() => {
-      expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
-    });
+    for (let index = 0; index < 260; index += 1) {
+      __seedHtmlSurfacePreviewCacheForTests(
+        `/api/plugins/example-html-ppt/preview-${index}`,
+        `<html>preview-${index}</html>`,
+      );
+    }
+    expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
   });
 });

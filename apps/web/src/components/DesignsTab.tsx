@@ -10,6 +10,7 @@ import {
 } from "../analytics/events";
 import { useT } from "../i18n";
 import { deleteLiveArtifact, fetchLiveArtifacts, liveArtifactPreviewUrl } from "../providers/registry";
+import { AuthenticatedHtmlThumb } from "./AuthenticatedHtmlThumb";
 import type {
 	DesignSystemSummary,
 	LiveArtifactSummary,
@@ -646,13 +647,9 @@ export function DesignsTab({
 										className="design-card-thumb live-artifact-thumb"
 										aria-hidden
 									>
-										<iframe
+										<AuthenticatedHtmlThumb
 											className="thumb-iframe"
 											src={liveArtifactPreviewUrl(p.id, artifact.id)}
-											title=""
-											loading="lazy"
-											sandbox="allow-scripts"
-											tabIndex={-1}
 										/>
 									</div>
 									<div className="design-card-meta-block">

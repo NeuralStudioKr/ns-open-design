@@ -2335,7 +2335,16 @@ export async function fetchDesignSystemShowcase(id: string): Promise<string | nu
       `/api/design-systems/${encodeURIComponent(id)}/showcase`,
     );
     if (!resp.ok) return null;
-    return await resp.text();
+    const text = await resp.text();
+    const contentType = resp.headers.get('content-type');
+    // Reject auth JSON envelopes so callers never mount session_expired as srcDoc.
+    if (
+      (contentType || '').toLowerCase().includes('application/json')
+      || (text.trim().startsWith('{') && /"detail"\s*:/.test(text.slice(0, 200)))
+    ) {
+      return null;
+    }
+    return text;
   } catch {
     return null;
   }
@@ -2357,14 +2366,22 @@ export async function fetchPluginPreviewHtml(
 ): Promise<SkillExampleResult> {
   const apiId = normalizePluginApiId(id);
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/plugins/${encodeURIComponent(apiId)}/preview`,
     );
     if (!resp.ok) {
       if (resp.status === 404) return { unavailable: true, kind: 'html' };
       return { error: `HTTP ${resp.status}` };
     }
-    return { html: await resp.text() };
+    const html = await resp.text();
+    const contentType = resp.headers.get('content-type');
+    if (
+      (contentType || '').toLowerCase().includes('application/json')
+      || (html.trim().startsWith('{') && /"detail"\s*:/.test(html.slice(0, 200)))
+    ) {
+      return { error: 'HTTP 401' };
+    }
+    return { html };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'network error';
     return { error: message };
@@ -2380,14 +2397,22 @@ export async function fetchPluginExampleHtml(
 ): Promise<SkillExampleResult> {
   const apiId = normalizePluginApiId(pluginId);
   try {
-    const resp = await fetch(
+    const resp = await fetchTeamverDaemon(
       `/api/plugins/${encodeURIComponent(apiId)}/example/${encodeURIComponent(stem)}`,
     );
     if (!resp.ok) {
       if (resp.status === 404) return { unavailable: true, kind: 'html' };
       return { error: `HTTP ${resp.status}` };
     }
-    return { html: await resp.text() };
+    const html = await resp.text();
+    const contentType = resp.headers.get('content-type');
+    if (
+      (contentType || '').toLowerCase().includes('application/json')
+      || (html.trim().startsWith('{') && /"detail"\s*:/.test(html.slice(0, 200)))
+    ) {
+      return { error: 'HTTP 401' };
+    }
+    return { html };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'network error';
     return { error: message };

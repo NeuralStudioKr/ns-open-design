@@ -401,6 +401,7 @@ describe('fetchPluginPreviewHtml', () => {
     ).resolves.toEqual({ unavailable: true, kind: 'html' });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/plugins/example-live-artifact/preview',
+      expect.objectContaining({ credentials: expect.any(String) }),
     );
   });
 
@@ -439,6 +440,7 @@ describe('fetchPluginPreviewHtml', () => {
     ).resolves.toEqual({ html: '<html><body>preview</body></html>' });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/plugins/example-html-ppt-zhangzara-creative-mode/preview',
+      expect.objectContaining({ credentials: expect.any(String) }),
     );
   });
 });
@@ -460,6 +462,7 @@ describe('fetchPluginExampleHtml', () => {
     ).resolves.toEqual({ unavailable: true, kind: 'html' });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/plugins/example-live-artifact/example/index',
+      expect.objectContaining({ credentials: expect.any(String) }),
     );
   });
 
@@ -486,6 +489,7 @@ describe('fetchPluginExampleHtml', () => {
     ).resolves.toEqual({ html: '<html><body>example</body></html>' });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/plugins/example-live-artifact/example/index',
+      expect.objectContaining({ credentials: expect.any(String) }),
     );
   });
 });

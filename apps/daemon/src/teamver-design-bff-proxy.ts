@@ -14,11 +14,23 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 }
 
 function buildUpstreamUrl(baseUrl: string, subPath: string, search: string): string | null {
-  const normalized = subPath.replace(/^\/+/, '');
+  // Strip leading and trailing slashes so `/projects/` → `/api/v1/projects`
+  // (not `/api/v1/projects/`). Trailing slash triggers FastAPI redirect_slashes
+  // onto the OD host daemon path → 404 for registry list/create.
+  const normalized = subPath.replace(/^\/+/, '').replace(/\/+$/, '');
   if (!normalized || normalized.includes('..')) return null;
   const url = new URL(`${baseUrl}/api/v1/${normalized}`);
   if (search) url.search = search;
   return url.toString();
+}
+
+/** @internal vitest */
+export function __buildTeamverBffUpstreamUrlForTests(
+  baseUrl: string,
+  subPath: string,
+  search = '',
+): string | null {
+  return buildUpstreamUrl(baseUrl, subPath, search);
 }
 
 function buildUpstreamHeaders(req: Request): Record<string, string> {

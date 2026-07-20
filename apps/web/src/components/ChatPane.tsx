@@ -28,6 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import type { TodoItem } from '../runtime/todos';
 import type { AppliedPluginSnapshot, ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
@@ -364,11 +365,11 @@ function ChatArtifactPreview({
   }
   if (file.kind === 'html') {
     return (
-      <iframe
-        title={file.name}
-        src={url}
-        sandbox="allow-scripts allow-downloads"
-        loading="lazy"
+      <ProjectCardHtmlCover
+        src={projectRawUrl(projectId, file.name)}
+        iframeClassName="chat-design-artifact-html-iframe"
+        deckFrameClassName="chat-design-artifact-html-frame"
+        deckLoadingClassName="chat-design-artifact-html-loading"
       />
     );
   }

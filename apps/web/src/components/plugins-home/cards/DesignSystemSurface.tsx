@@ -2,11 +2,19 @@
 //
 // Most design-system plugins reference an upstream design system in
 // `od.context.designSystem.ref`. When available, reuse the same
-// showcase route as the detail modal so the home grid reads like real
-// website thumbnails rather than synthetic color swatches. The iframe
-// uses native lazy loading so off-screen cards do not eagerly render.
+// showcase HTML as the detail modal so the home grid reads like real
+// website thumbnails rather than synthetic color swatches.
+//
+// Never use a bare sandboxed iframe `src=/api/design-systems/.../showcase`
+// in Teamver embed — cookies are omitted and nginx paints session_expired
+// JSON as the thumb. Parent-fetch + srcDoc instead.
 
 import { useEffect, useState } from 'react';
+import { fetchDesignSystemShowcase } from '../../../providers/registry';
+import {
+  injectHtmlBaseHref,
+  looksLikeHtmlDocument,
+} from '../../../runtime/authenticatedHtmlSrcDoc';
 import { isVisualStabilityMode } from '../../../utils/visualStability';
 import type { DesignPreviewSpec } from '../preview';
 
@@ -17,6 +25,7 @@ interface Props {
 
 export function DesignSystemSurface({ preview, inView }: Props) {
   const [ready, setReady] = useState(() => isVisualStabilityMode());
+  const [srcDoc, setSrcDoc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!preview.designSystemId) return;
@@ -32,14 +41,34 @@ export function DesignSystemSurface({ preview, inView }: Props) {
     return () => window.clearTimeout(id);
   }, [inView, preview.designSystemId]);
 
+  useEffect(() => {
+    if (!preview.designSystemId || !ready) {
+      setSrcDoc(null);
+      return;
+    }
+    let cancelled = false;
+    const url = `/api/design-systems/${encodeURIComponent(preview.designSystemId)}/showcase`;
+    void fetchDesignSystemShowcase(preview.designSystemId).then((html) => {
+      if (cancelled) return;
+      if (!html || !looksLikeHtmlDocument(html)) {
+        setSrcDoc(null);
+        return;
+      }
+      setSrcDoc(injectHtmlBaseHref(html, new URL(url, window.location.href).href));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [preview.designSystemId, ready]);
+
   if (preview.designSystemId) {
     return (
       <div className="plugins-home__design plugins-home__design--showcase">
         <div className="plugins-home__design-showcase">
-          {ready ? (
+          {ready && srcDoc ? (
             <iframe
               title={`${preview.brand} showcase preview`}
-              src={`/api/design-systems/${encodeURIComponent(preview.designSystemId)}/showcase`}
+              srcDoc={srcDoc}
               sandbox="allow-scripts"
               loading="lazy"
               tabIndex={-1}

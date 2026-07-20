@@ -15,6 +15,8 @@ import { useI18n } from '../i18n';
 import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import { useAnalytics } from '../analytics/provider';
 import { trackPluginDetailClick } from '../analytics/events';
+import { fetchPluginPreviewHtml } from '../providers/registry';
+import { pluginPreviewSrcDoc } from '../runtime/authenticatedHtmlSrcDoc';
 
 interface Props {
   pluginId: string;
@@ -181,20 +183,7 @@ export function PluginDetailView(props: Props) {
       {hasPreview ? (
         <section className="plugin-detail__preview" data-testid="plugin-detail-preview-section">
           <h2>Preview</h2>
-          <iframe
-            title={`${localizedTitle} preview`}
-            src={`/api/plugins/${encodeURIComponent(plugin.id)}/preview`}
-            sandbox="allow-scripts"
-            className="plugin-detail__preview-frame"
-            data-testid="plugin-detail-preview-iframe"
-            style={{
-              width: '100%',
-              minHeight: 360,
-              border: '1px solid var(--od-border, #ddd)',
-              borderRadius: 6,
-              background: '#fff',
-            }}
-          />
+          <PluginDetailPreviewFrame pluginId={plugin.id} pluginTitle={localizedTitle} />
         </section>
       ) : null}
 
@@ -261,5 +250,65 @@ export function PluginDetailView(props: Props) {
         ) : null}
       </footer>
     </div>
+  );
+}
+
+function PluginDetailPreviewFrame({
+  pluginId,
+  pluginTitle,
+}: {
+  pluginId: string;
+  pluginTitle: string;
+}) {
+  const [srcDoc, setSrcDoc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const previewUrl = `/api/plugins/${encodeURIComponent(pluginId)}/preview`;
+    void fetchPluginPreviewHtml(pluginId).then((result) => {
+      if (cancelled) return;
+      if (!('html' in result) || !result.html) {
+        setSrcDoc(null);
+        return;
+      }
+      setSrcDoc(pluginPreviewSrcDoc(result.html, previewUrl));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pluginId]);
+
+  if (!srcDoc) {
+    return (
+      <div
+        className="plugin-detail__preview-frame"
+        data-testid="plugin-detail-preview-loading"
+        style={{
+          width: '100%',
+          minHeight: 360,
+          border: '1px solid var(--od-border, #ddd)',
+          borderRadius: 6,
+          background: 'var(--bg-subtle, #f4f5f7)',
+        }}
+        aria-hidden
+      />
+    );
+  }
+
+  return (
+    <iframe
+      title={`${pluginTitle} preview`}
+      srcDoc={srcDoc}
+      sandbox="allow-scripts"
+      className="plugin-detail__preview-frame"
+      data-testid="plugin-detail-preview-iframe"
+      style={{
+        width: '100%',
+        minHeight: 360,
+        border: '1px solid var(--od-border, #ddd)',
+        borderRadius: 6,
+        background: '#fff',
+      }}
+    />
   );
 }

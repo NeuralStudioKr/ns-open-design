@@ -86,4 +86,16 @@ describe('Teamver design BFF proxy', () => {
     expect(upstreamRequests[0]?.headers['x-teamver-user-id']).toBe('user-1');
     expect(upstreamRequests[0]?.headers['x-teamver-workspace-id']).toBe('workspace-1');
   });
+
+  it('strips trailing slash so /teamver-bff/projects/ does not 307 via /api/v1/projects/', async () => {
+    const response = await fetch(`${daemonBaseUrl}/teamver-bff/projects/`, {
+      headers: {
+        Accept: 'application/json',
+        'X-Teamver-User-Id': 'user-1',
+        'X-Teamver-Workspace-Id': 'workspace-1',
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(upstreamRequests[0]?.url).toBe('/api/v1/projects');
+  });
 });

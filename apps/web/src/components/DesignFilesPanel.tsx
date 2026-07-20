@@ -1364,7 +1364,6 @@ function HtmlPreviewThumbnail({
   return (
     <iframe
       title={file.name}
-      src={srcDoc ? undefined : url}
       srcDoc={srcDoc ?? undefined}
       sandbox="allow-scripts allow-downloads"
     />

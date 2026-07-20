@@ -28,6 +28,11 @@
 
 import { useEffect, useState } from 'react';
 import { isVisualStabilityMode } from '../../../utils/visualStability';
+import {
+  isUnauthorizedHtmlBody,
+  looksLikeHtmlDocument,
+  pluginPreviewSrcDoc,
+} from '../../../runtime/authenticatedHtmlSrcDoc';
 import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
 import type { HtmlPreviewSpec } from '../preview';
 
@@ -65,70 +70,13 @@ function rememberUnreachable(url: string): void {
   rememberPreviewHtml(url, '');
 }
 
-/** True when the body is an auth/error JSON envelope, not preview HTML. */
-export function isPluginPreviewUnauthorizedBody(
-  text: string,
-  contentType: string | null | undefined,
-): boolean {
-  const ct = (contentType || '').toLowerCase();
-  if (ct.includes('application/json')) return true;
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('{')) return false;
-  if (/"detail"\s*:\s*"session_expired"/i.test(trimmed)) return true;
-  if (trimmed.length > 800) return false;
-  try {
-    const parsed = JSON.parse(trimmed) as { detail?: unknown };
-    return parsed != null && typeof parsed === 'object' && 'detail' in parsed;
-  } catch {
-    return false;
-  }
-}
-
-export function looksLikePluginPreviewHtml(text: string): boolean {
-  const head = text.slice(0, 512).toLowerCase();
-  return (
-    head.includes('<!doctype')
-    || head.includes('<html')
-    || head.includes('<body')
-    || head.includes('<head')
-    || head.includes('<div')
-    || head.includes('<section')
-  );
-}
-
-/** `<base href>` so relative `/asset/` links resolve under the plugin id. */
-export function resolvePluginPreviewBaseHref(previewSrc: string, origin?: string): string {
-  const baseOrigin = origin ?? (typeof window !== 'undefined' ? window.location.href : 'http://localhost/');
-  const absolute = new URL(previewSrc, baseOrigin);
-  absolute.hash = '';
-  absolute.search = '';
-  absolute.pathname = absolute.pathname.replace(
-    /\/(?:preview|example(?:\/[^/]*)?)\/?$/i,
-    '/',
-  );
-  if (!absolute.pathname.endsWith('/')) absolute.pathname += '/';
-  return absolute.href;
-}
-
-function previewBaseTag(sourceUrl: string): string {
-  const href = resolvePluginPreviewBaseHref(sourceUrl)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  return `<base href="${href}">`;
-}
-
-/** Inject `<base>` so sandboxed srcDoc can still load public plugin assets. */
-export function pluginPreviewSrcDoc(html: string, sourceUrl: string): string {
-  if (/<base\b/i.test(html)) return html;
-  const base = previewBaseTag(sourceUrl);
-  const headClose = html.toLowerCase().lastIndexOf('</head>');
-  if (headClose !== -1) {
-    return `${html.slice(0, headClose)}${base}${html.slice(headClose)}`;
-  }
-  return `${base}${html}`;
-}
+// Re-export helpers for existing tests / callers.
+export {
+  isUnauthorizedHtmlBody as isPluginPreviewUnauthorizedBody,
+  looksLikeHtmlDocument as looksLikePluginPreviewHtml,
+  pluginPreviewSrcDoc,
+} from '../../../runtime/authenticatedHtmlSrcDoc';
+export { resolvePluginPreviewBaseHref } from '../../../runtime/authenticatedHtmlSrcDoc';
 
 async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise<string> {
   const cached = previewHtmlCache.get(url);
@@ -153,7 +101,7 @@ async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise
     }
     const text = await res.text();
     const contentType = res.headers.get('content-type');
-    if (isPluginPreviewUnauthorizedBody(text, contentType) || !looksLikePluginPreviewHtml(text)) {
+    if (isUnauthorizedHtmlBody(text, contentType) || !looksLikeHtmlDocument(text)) {
       throw new Error('plugin_preview_not_html');
     }
     const srcDoc = pluginPreviewSrcDoc(text, url);
@@ -381,4 +329,9 @@ export function __resetHtmlSurfaceProbeCacheForTests(): void {
 
 export function __htmlSurfaceProbeCacheSizeForTests(): number {
   return previewHtmlCache.size;
+}
+
+/** @internal vitest — exercise LRU eviction without mounting iframes. */
+export function __seedHtmlSurfacePreviewCacheForTests(url: string, html: string): void {
+  rememberPreviewHtml(url, html);
 }
