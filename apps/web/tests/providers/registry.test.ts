@@ -513,7 +513,7 @@ describe('fetchProjectFileText', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/projects/project-1/raw/diagram.svg?cacheBust=1710000000-2',
-      { cache: 'no-store' },
+      { cache: 'no-store', credentials: 'same-origin', headers: {} },
     );
   });
 
@@ -582,7 +582,7 @@ describe('fetchProjectDesignSystemPackageAudit', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/projects/ds%20acme/design-system-package-audit',
-      { cache: 'no-store' },
+      { cache: 'no-store', credentials: 'same-origin', headers: {} },
     );
   });
 
@@ -1130,6 +1130,7 @@ describe('deploy provider registry helpers', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/deploy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({
         fileName: 'index.html',
         providerId: CLOUDFLARE_PAGES_PROVIDER_ID,

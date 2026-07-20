@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { loadAuthenticatedHtmlSrcDoc } from "../../runtime/authenticatedHtmlSrcDoc";
+import { loadAuthenticatedHtmlSrcDoc } from "../runtime/authenticatedHtmlSrcDoc";
 
 /** Sandboxed live-artifact / HTML thumb — never bare auth-gated `src=`. */
 export function AuthenticatedHtmlThumb({
