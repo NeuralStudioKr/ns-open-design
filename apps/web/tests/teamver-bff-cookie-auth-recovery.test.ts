@@ -110,6 +110,51 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(isDesignAuthRefreshDeclined()).toBe(false);
   });
 
+  it("clears sticky decline after soft-retry fails when /auth/session is still authenticated", async () => {
+    const fetchMock = vi
+      .fn()
+      // refreshDesignAuthCookie → POST /auth/refresh 401
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "session_expired" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      // refresh path: first session probe → unauthenticated (sticky decline)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      // refresh path: delayed session probe → still false
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      // withDesignBffCookieAuthRecovery catch: session still usable after soft-retry miss
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    const request = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }));
+
+    const pending = withDesignBffCookieAuthRecovery(request);
+    const assertion = expect(pending).rejects.toMatchObject({ status: 401 });
+    await vi.advanceTimersByTimeAsync(300);
+    await assertion;
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
+  });
+
   it("does not sticky-decline refresh when /auth/session is still authenticated after 401", async () => {
     vi.useRealTimers();
     const fetchMock = vi

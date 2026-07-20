@@ -239,11 +239,21 @@ export async function withDesignBffCookieAuthRecovery<T>(
       // browser one short turn to apply that cookie, then retry the original
       // BFF call without issuing another /auth/refresh.
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-      const recovered = await request();
-      // Soft-retry succeeded after a declined refresh — clear sticky decline
-      // so later calls are not permanently stuck after an HA rotation race.
-      resetDesignAuthRefreshDeclined();
-      return recovered;
+      try {
+        const recovered = await request();
+        // Soft-retry succeeded after a declined refresh — clear sticky decline
+        // so later calls are not permanently stuck after an HA rotation race.
+        resetDesignAuthRefreshDeclined();
+        return recovered;
+      } catch (retryErr) {
+        // Soft-retry also failed. If /auth/session is still alive, do not leave
+        // sticky decline locked — that escalates a recoverable blip into
+        // "re-login / close tab" UX. Prefer another silent recovery later.
+        if (await probeDesignBffSessionAuthenticated()) {
+          resetDesignAuthRefreshDeclined();
+        }
+        throw retryErr;
+      }
     }
     throw err;
   }
