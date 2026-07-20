@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.bff_session import load_bff_session, suppress_session_cookie
-from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
+from ..auth.bff_tokens import access_token_not_expired, ensure_bff_session, force_refresh_bff_session
 from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
@@ -73,11 +73,11 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)
         if session is None:
-            # Retention race (access still usable locally): suppress re-sign so
-            # a sibling node's rotated Set-Cookie wins. Hard clear already
-            # emptied the session — leave suppress off so middleware can emit
-            # the delete cookie.
-            if load_bff_session(request) is not None:
+            # Retention race: access still not expired locally → suppress re-sign
+            # so a sibling node's rotated Set-Cookie wins. Hard abandon already
+            # emptied + suppressed — leave as-is (no delete Set-Cookie wipe).
+            remaining = load_bff_session(request)
+            if remaining is not None and access_token_not_expired(remaining):
                 suppress_session_cookie(request)
             raise UnauthorizedError("session_expired")
         return session.access_token

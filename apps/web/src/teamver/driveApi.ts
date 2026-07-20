@@ -4,6 +4,7 @@ import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
+  probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
 import { recoverStaleDriveWorkspace } from "./driveWorkspaceRecovery";
@@ -212,9 +213,17 @@ export function isDriveHaSessionExpiredBody(detail: unknown): boolean {
 }
 
 async function recoverDriveAuthSession(): Promise<boolean> {
-  // Never clear hard sticky from Drive browse — that re-opens 400 refresh spam
-  // for deleted/malformed accounts.
-  if (isDesignAuthRefreshDeclineHard()) return false;
+  // Hard sticky: never clear / never POST refresh (deleted account spam),
+  // but a live probe means Drive can proceed with the existing cookie.
+  if (isDesignAuthRefreshDeclineHard()) {
+    if (await probeDesignBffSessionAuthenticated()) return true;
+    try {
+      const session = await fetchDesignAuthSession({ force: true });
+      return Boolean(session?.authenticated);
+    } catch {
+      return false;
+    }
+  }
 
   const refreshed = await refreshDesignAuthCookie();
   if (refreshed) return true;

@@ -28,6 +28,7 @@ import {
   acquireBffRefreshLeader,
   awaitLeaderResult,
   releaseBffRefreshLeader,
+  remainingBffRefreshLeaderLockMs,
 } from "./teamverBffRefreshLeader";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
@@ -148,6 +149,9 @@ async function postAuthRefresh(
   }
 }
 
+/** Match daemon / Drive HA Set-Cookie settle delay. */
+const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 400;
+
 /**
  * Cross-tab-coordinated POST /auth/refresh.
  *
@@ -169,21 +173,35 @@ async function postAuthRefreshCoordinated(
 ): Promise<{ ok: boolean; status: number; bodyText: string }> {
   const role = acquireBffRefreshLeader();
   if (role === "follower") {
-    const observed = await awaitLeaderResult();
-    if (observed) {
+    const applyObserved = async (
+      observed: { ok: boolean; status: number },
+    ): Promise<{ ok: boolean; status: number; bodyText: string } | null> => {
       if (observed.ok) {
+        // Peer Set-Cookie may still be settling across ALB — brief delay before
+        // probe/ensure so we do not fall through into a duplicate POST.
+        await new Promise((resolve) =>
+          setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
+        );
         if (
           (await probeDesignBffSessionAuthenticated())
           || (await ensureDesignBffSessionAuthenticated())
         ) {
           return { ok: true, status: observed.status || 200, bodyText: "" };
         }
-        // Peer reported success but our tab cannot observe the cookie yet
-        // — fall through to our own POST (BE 30s coalesce still de-dupes).
-      } else if (observed.status === 400) {
-        // Leader hard-failed, but this tab may still hold a live cookie
-        // (partial/orphan state on the leader only). Confirm locally before
-        // locking into hard sticky decline.
+        await new Promise((resolve) =>
+          setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
+        );
+        if (
+          (await probeDesignBffSessionAuthenticated())
+          || (await ensureDesignBffSessionAuthenticated())
+        ) {
+          return { ok: true, status: observed.status || 200, bodyText: "" };
+        }
+        // Peer already rotated Main refresh — do not POST again; soft sticky
+        // + later probe/ensure will pick up the sibling cookie.
+        return { ok: false, status: 401, bodyText: "" };
+      }
+      if (observed.status === 400) {
         if (
           (await probeDesignBffSessionAuthenticated())
           || (await ensureDesignBffSessionAuthenticated())
@@ -192,8 +210,26 @@ async function postAuthRefreshCoordinated(
         }
         return { ok: false, status: 400, bodyText: "" };
       }
+      return null;
+    };
+
+    let observed = await awaitLeaderResult();
+    if (observed) {
+      const applied = await applyObserved(observed);
+      if (applied) return applied;
+      // Peer ok but cookie not visible yet — fall through only if lock gone.
     }
-    // Timeout / non-terminal peer failure. Fall through to our own POST.
+    // Primary wait timed out (or peer ok unverifiable). If lock still held,
+    // extend once for the remaining TTL instead of racing Main refresh.
+    const remaining = remainingBffRefreshLeaderLockMs();
+    if (remaining > 50) {
+      observed = await awaitLeaderResult(Math.min(remaining + 200, 1_500));
+      if (observed) {
+        const applied = await applyObserved(observed);
+        if (applied) return applied;
+      }
+    }
+    // Lock expired / no broadcast — fall through to our own POST.
   }
   const result = await postAuthRefresh(url);
   releaseBffRefreshLeader({ ok: result.ok, status: result.status });
@@ -282,8 +318,6 @@ let authRecoveryRefreshActive = false;
 let embedAuthRecoveryLoadUsed = false;
 /** Coalesce parallel refreshDesignAuthCookie() from Drive modal burst. */
 let inFlightAuthRefresh: Promise<boolean> | null = null;
-/** Wait for sibling Set-Cookie before soft-sticky (HA rotation race). */
-const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 400;
 /**
  * After refresh 401 + live session, suppress further POST /auth/refresh briefly
  * so HA races do not rotate tokens in a loop. Probe/ensure still allowed; if
@@ -509,9 +543,15 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
 
   const run = (async (): Promise<boolean> => {
     // Soft sticky (401) must not be terminal for the tab lifetime.
-    // Hard sticky (400) stays closed until explicit resetRefreshState / sign-in.
+    // Hard sticky (400): never POST again, but a live probe/ensure means the
+    // cookie still works (HA false-400 / sibling winner) — treat as recovered
+    // without clearing hard until explicit reset (avoids 400 spam).
     if (authRefreshDeclinedForSession) {
-      if (authRefreshDeclineKind === "hard") return false;
+      if (authRefreshDeclineKind === "hard") {
+        if (await probeDesignBffSessionAuthenticated()) return true;
+        if (await ensureDesignBffSessionAuthenticated()) return true;
+        return false;
+      }
       return await trySoftStickyRecovery();
     }
 

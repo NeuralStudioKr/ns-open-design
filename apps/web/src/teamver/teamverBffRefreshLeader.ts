@@ -28,9 +28,15 @@ import { postTeamverEmbedBroadcast, subscribeTeamverEmbedBroadcast } from "./tea
 
 const LOCK_KEY = "teamver_bff_refresh_lock_v1";
 const LOCK_TTL_MS = 4_000;
-/** Match lock TTL — shorter waits caused followers to POST while the leader's
- * Main refresh was still in flight, doubling rotation races. */
+/** Must stay strictly below LOCK_TTL so followers wait out a live leader
+ * before POSTing. Equal values still raced Main refresh in the last ~0.5s. */
 const LEADER_WAIT_MS = 3_500;
+
+/** @internal test — exported for LEADER_WAIT < LOCK_TTL regression assert. */
+export const BFF_REFRESH_LEADER_TIMING = {
+  lockTtlMs: LOCK_TTL_MS,
+  leaderWaitMs: LEADER_WAIT_MS,
+} as const;
 
 type LockEntry = {
   tabId: string;
@@ -183,6 +189,24 @@ export function awaitLeaderResult(timeoutMs: number = LEADER_WAIT_MS): Promise<R
       resolve(null);
     }, timeoutMs);
   });
+}
+
+/** True while another tab still holds a non-expired refresh lock. */
+export function isBffRefreshLeaderLockHeld(): boolean {
+  const held = readLock();
+  if (!held) return false;
+  return held.tabId !== readTabId();
+}
+
+/**
+ * After the primary wait times out, if the lock is still held give the leader
+ * one short extension (remaining TTL, capped) before the follower POSTs.
+ */
+export function remainingBffRefreshLeaderLockMs(): number {
+  const held = readLock();
+  if (!held) return 0;
+  if (held.tabId === readTabId()) return 0;
+  return Math.max(0, LOCK_TTL_MS - Math.abs(Date.now() - held.at));
 }
 
 /**

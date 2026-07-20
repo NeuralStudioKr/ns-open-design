@@ -24,8 +24,10 @@ function isUnauthorizedWorkspaceError(err: unknown): boolean {
 /**
  * Server-side workspace switch with cookie-recovery ladder.
  *
- * If both refresh and ensure decline, do **not** advance the local store —
- * keeping the previous active workspace avoids X-Workspace-Id drift (§13).
+ * Returns `true` only after the BFF accepted the switch (or bootstrap mode is
+ * off). On any BFF failure — auth ladder exhausted **or** non-auth errors —
+ * returns `false` without advancing local store so `X-Workspace-Id` cannot
+ * drift ahead of the cookie (§13 / §14).
  */
 async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise<void> {
   try {
@@ -51,29 +53,28 @@ async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise
   throw err;
 }
 
+/**
+ * @returns `true` when local store (and callers' UI) may advance to `workspaceId`.
+ */
 export async function setActiveTeamverWorkspace(
   workspaceId: string,
   userId?: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const trimmed = workspaceId.trim();
-  if (!trimmed) return;
+  if (!trimmed) return false;
 
   if (isBootstrapAuthMode()) {
     try {
       await postDesignAuthWorkspaceWithRecovery(trimmed);
-    } catch (err) {
-      if (
-        isUnauthorizedWorkspaceError(err)
-        || (err instanceof Error && err.message === "workspace_switch_bff_unauthorized")
-      ) {
-        return;
-      }
+    } catch {
+      // Auth ladder failure or non-auth BFF error — keep prior local workspace.
+      return false;
     }
   }
 
   const client = getDesignBffClient();
   const store = client?.workspaceStore as LocalStorageWorkspaceStore | null | undefined;
-  if (!store) return;
+  if (!store) return true;
 
   await store.set(trimmed);
   bumpTeamverWorkspaceStoreRevision();
@@ -81,4 +82,5 @@ export async function setActiveTeamverWorkspace(
     store.setLastForUser(userId.trim(), trimmed);
   }
   dispatchTeamverWorkspaceChanged(trimmed);
+  return true;
 }

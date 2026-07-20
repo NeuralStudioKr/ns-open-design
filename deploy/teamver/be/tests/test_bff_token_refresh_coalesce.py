@@ -124,9 +124,12 @@ async def test_refresh_unreachable_retains_session_without_clearing(
 
 
 @pytest.mark.asyncio
-async def test_refresh_auth_failure_clears_session_when_access_expired(
+async def test_refresh_auth_failure_abandons_memory_without_delete_cookie_when_expired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Past absolute expiry: drop in-memory session but suppress delete Set-Cookie
+    so a late HA-loser response cannot wipe a sibling winner cookie.
+    """
     refresh_mock = AsyncMock(
         side_effect=AppsTokenRefreshError("teamver_http_error", status_code=401),
     )
@@ -142,6 +145,29 @@ async def test_refresh_auth_failure_clears_session_when_access_expired(
 
     assert result is None
     assert "teamver_bff_v1" not in request.session
+    assert request.scope.get("teamver_suppress_session_cookie") is True
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_unreachable_returns_none_when_not_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """force_refresh must not treat unreachable as success (POST /auth/refresh 200)."""
+    refresh_mock = AsyncMock(side_effect=AppsTokenRefreshError("teamver_unreachable"))
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    _seed_expiring_session(request)
+    before = request.session.get("teamver_bff_v1")
+
+    result = await force_refresh_bff_session(request)
+
+    assert result is None
+    assert request.session.get("teamver_bff_v1") == before
+    assert request.scope.get("teamver_suppress_session_cookie") is True
 
 
 @pytest.mark.asyncio

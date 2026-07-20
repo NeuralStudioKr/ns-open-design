@@ -8,6 +8,7 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from app.auth.bff_session import (
     SUPPRESS_SESSION_COOKIE_SCOPE_KEY,
+    abandon_bff_session_keep_browser_cookie,
     clear_bff_session,
     save_bff_session,
     suppress_session_cookie,
@@ -105,3 +106,18 @@ def test_update_bff_workspace_mutates_when_not_suppressed() -> None:
     )
     assert update_bff_workspace(request, "ws-new") is True
     assert request.session["teamver_bff_v1"]["workspace_id"] == "ws-new"
+
+
+def test_abandon_bff_session_keeps_suppress_for_delete_omit() -> None:
+    request = _request()
+    save_bff_session(
+        request,
+        user_id="u1",
+        access_token="a0",
+        expires_in=600,
+        refresh_token="rt",
+        workspace_id="ws-1",
+    )
+    abandon_bff_session_keep_browser_cookie(request)
+    assert "teamver_bff_v1" not in request.session
+    assert request.scope.get(SUPPRESS_SESSION_COOKIE_SCOPE_KEY) is True

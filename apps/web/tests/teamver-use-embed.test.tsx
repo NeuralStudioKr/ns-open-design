@@ -6,6 +6,7 @@ import { useTeamverEmbed } from "../src/teamver/useTeamverEmbed";
 import * as designApiBase from "../src/teamver/designApiBase";
 import * as designAuthFlow from "../src/teamver/designAuthFlow";
 import * as designBffClient from "../src/teamver/designBffClient";
+import * as designAuthClient from "../src/teamver/designAuthClient";
 import * as teamverEmbedSession from "../src/teamver/teamverEmbedSession";
 import * as teamverAuthCookieHints from "../src/teamver/teamverAuthCookieHints";
 import * as teamverAuthReturn from "../src/teamver/teamverAuthReturn";
@@ -61,6 +62,10 @@ vi.mock("../src/teamver/designBffClient", () => ({
   clearDesignAuthRefreshDecline: vi.fn(),
 }));
 
+vi.mock("../src/teamver/designAuthClient", () => ({
+  postDesignAuthWorkspace: vi.fn(async () => undefined),
+}));
+
 vi.mock("../src/teamver/teamverEmbedPassiveAuth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/teamver/teamverEmbedPassiveAuth")>();
   return {
@@ -99,6 +104,10 @@ describe("useTeamverEmbed", () => {
     vi.mocked(designBffClient.prepareDesignAuthSessionReload).mockClear();
     vi.mocked(designBffClient.probeDesignBffSessionAuthenticated).mockReset();
     vi.mocked(designBffClient.probeDesignBffSessionAuthenticated).mockResolvedValue(false);
+    vi.mocked(designBffClient.refreshDesignAuthCookie).mockResolvedValue(true);
+    vi.mocked(designBffClient.ensureDesignBffSessionAuthenticated).mockResolvedValue(false);
+    vi.mocked(designAuthClient.postDesignAuthWorkspace).mockReset();
+    vi.mocked(designAuthClient.postDesignAuthWorkspace).mockResolvedValue(undefined);
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
     vi.mocked(teamverAuthReturn.peekTeamverAuthReturnPending).mockReturnValue(false);
     vi.mocked(teamverAuthReturn.consumeTeamverAuthReturnPending).mockReturnValue(false);
@@ -154,6 +163,45 @@ describe("useTeamverEmbed", () => {
     expect(store.set).toHaveBeenLastCalledWith("WS-2");
     expect(store.setLastForUser).toHaveBeenLastCalledWith("user-1", "WS-2");
     expect(teamverWorkspaceEvents.dispatchTeamverWorkspaceChanged).toHaveBeenCalledWith("WS-2");
+  });
+
+  it("does not advance UI when BFF workspace switch auth ladder fails", async () => {
+    const store = {
+      get: vi.fn(async () => "WS-1"),
+      set: vi.fn(async () => undefined),
+      setLastForUser: vi.fn(),
+    };
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: store,
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+    vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
+      authenticated: true,
+      user: { userId: "user-1", email: "u1@example.com" },
+      defaultWorkspaceId: "WS-1",
+      workspaces: [
+        { id: "WS-1", name: "Alpha", role: "owner", isAccountDefaultWorkspace: true },
+        { id: "WS-2", name: "Beta Team", role: "member" },
+      ],
+    });
+    vi.mocked(designAuthClient.postDesignAuthWorkspace).mockRejectedValue({ status: 401 });
+    vi.mocked(designBffClient.refreshDesignAuthCookie).mockResolvedValue(false);
+    vi.mocked(designBffClient.ensureDesignBffSessionAuthenticated).mockResolvedValue(false);
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+      expect(result.current.activeWorkspaceId).toBe("WS-1");
+    });
+    store.set.mockClear();
+
+    await act(async () => {
+      await result.current.switchWorkspace("WS-2");
+    });
+
+    expect(result.current.activeWorkspaceId).toBe("WS-1");
+    expect(result.current.activeWorkspaceLabel).toBe("Alpha");
+    expect(store.set).not.toHaveBeenCalled();
   });
 
   it("does not re-dispatch workspace-changed on focus refresh when store already had the id", async () => {

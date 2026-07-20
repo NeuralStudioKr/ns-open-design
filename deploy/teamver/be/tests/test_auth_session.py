@@ -215,6 +215,68 @@ async def test_post_auth_workspace_retains_via_stale_bootstrap_on_main_401(
 
 
 @pytest.mark.asyncio
+async def test_post_auth_workspace_stale_grace_cookie_updated_false_when_suppressed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """force_refresh retain leaves suppress on — update is no-op, FE uses header."""
+    import time
+    from unittest.mock import Mock
+
+    from app.auth.bff_session import BffSession, SUPPRESS_SESSION_COOKIE_SCOPE_KEY
+    from app.routers import auth as auth_router
+    from app.services.teamver_bootstrap import TeamverBootstrapError
+    from app.routers.auth import WorkspaceSelectRequest
+
+    session = BffSession(
+        user_id="user-1",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id="ws-old",
+        aud="teamver-design",
+        scope=["design"],
+    )
+
+    async def force_refresh_retain_suppress(request):
+        request.scope[SUPPRESS_SESSION_COOKIE_SCOPE_KEY] = True
+        return None
+
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    monkeypatch.setattr(auth_router, "access_token_not_expired", lambda _s: True)
+    monkeypatch.setattr(
+        auth_router, "force_refresh_bff_session", force_refresh_retain_suppress
+    )
+    monkeypatch.setattr(
+        auth_router,
+        "fetch_bootstrap",
+        AsyncMock(side_effect=TeamverBootstrapError("upstream_401", status_code=401)),
+    )
+    monkeypatch.setattr(
+        auth_router,
+        "peek_last_bootstrap_within_grace",
+        AsyncMock(
+            return_value={
+                "workspaces": [
+                    {"workspace_id": "ws-target", "app_enabled": True, "role": "member"},
+                ],
+            }
+        ),
+    )
+    update_ws = Mock(return_value=False)
+    monkeypatch.setattr(auth_router, "update_bff_workspace", update_ws)
+
+    request = _request_with_cookie_header("session=x")
+    body = WorkspaceSelectRequest(workspace_id="ws-target")
+    result = await auth_router.post_auth_workspace(request, body)
+
+    assert result["status"] == "ok"
+    assert result.get("stale") is True
+    assert result.get("cookie_updated") is False
+    update_ws.assert_called_once_with(request, "ws-target")
+
+
+@pytest.mark.asyncio
 async def test_post_auth_workspace_401_without_stale_bootstrap_still_denies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

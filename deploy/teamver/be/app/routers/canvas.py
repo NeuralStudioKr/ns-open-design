@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 
 from ..auth.bff_session import load_bff_session, suppress_session_cookie
-from ..auth.bff_tokens import force_refresh_bff_session
+from ..auth.bff_tokens import access_token_not_expired, force_refresh_bff_session
 from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
 from ..auth_context import AuthContext, require_auth
 from ..errors import UnauthorizedError
@@ -30,7 +30,8 @@ async def _resolve_main_access_token(request: Request, auth: AuthContext) -> str
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)
         if session is None:
-            if load_bff_session(request) is not None:
+            remaining = load_bff_session(request)
+            if remaining is not None and access_token_not_expired(remaining):
                 suppress_session_cookie(request)
             raise UnauthorizedError("session_expired")
         return session.access_token

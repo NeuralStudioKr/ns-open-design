@@ -12,6 +12,7 @@ from starlette.requests import Request
 
 from .bff_session import (
     BffSession,
+    abandon_bff_session_keep_browser_cookie,
     clear_bff_session,
     load_bff_session,
     save_bff_session,
@@ -168,7 +169,9 @@ async def _refresh_bff_session_core(
             # ALB node's freshly rotated Set-Cookie with our unchanged session.
             suppress_session_cookie(request)
             return session if return_usable_on_refresh_failure else None
-        clear_bff_session(request)
+        # Expired + no refresh: drop memory but do not emit delete Set-Cookie
+        # (HA loser must not wipe a sibling winner).
+        abandon_bff_session_keep_browser_cookie(request)
         return None
     try:
         data = await _refresh_apps_tokens_coalesced(refresh, bypass_cache=bypass_cache)
@@ -178,9 +181,17 @@ async def _refresh_bff_session_core(
             if cached is not None:
                 return _apply_refresh_payload(request, session, cached)
         if exc.code == "teamver_unreachable":
-            logger.warning("[bff] refresh unreachable; retaining existing session user=%s", session.user_id)
-            suppress_session_cookie(request)
-            return session
+            # Same not_expired + force→None contract as auth-failure (SSOT §13).
+            logger.warning(
+                "[bff] refresh unreachable; retaining unexpired session user=%s return_usable=%s",
+                session.user_id,
+                return_usable_on_refresh_failure,
+            )
+            if access_token_not_expired(session):
+                suppress_session_cookie(request)
+                return session if return_usable_on_refresh_failure else None
+            abandon_bff_session_keep_browser_cookie(request)
+            return None
         if access_token_not_expired(session):
             logger.warning(
                 "[bff] refresh failed (%s); keeping cookie while access not expired user=%s return_usable=%s",
@@ -192,10 +203,11 @@ async def _refresh_bff_session_core(
             # the same refresh_token and rotated it. Re-signing our stale
             # session on the response would overwrite the sibling's new cookie
             # and cascade to session_expired on the next refresh attempt.
-            # Clear only when JWT is past absolute expiry (same bar as probe).
             suppress_session_cookie(request)
             return session if return_usable_on_refresh_failure else None
-        clear_bff_session(request)
+        # Past absolute expiry: abandon memory without delete Set-Cookie so a
+        # late HA-loser response cannot wipe a sibling's rotated winner.
+        abandon_bff_session_keep_browser_cookie(request)
         return None
     return _apply_refresh_payload(request, session, data)
 

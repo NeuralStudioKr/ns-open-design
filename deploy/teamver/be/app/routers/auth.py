@@ -16,6 +16,7 @@ from ..auth.bff_tokens import (
     probe_bff_session,
 )
 from ..auth.bff_session import (
+    abandon_bff_session_keep_browser_cookie,
     bff_enabled,
     bff_session_public_view,
     clear_bff_session,
@@ -148,7 +149,9 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                 view = bff_session_public_view(remaining)
                 view["user"] = {"user_id": remaining.user_id}
                 return view
-            clear_bff_session(request)
+            # Truly dead on this node — drop memory but do not emit delete
+            # Set-Cookie (HA loser must not wipe a sibling winner).
+            abandon_bff_session_keep_browser_cookie(request)
             login_url = teamver_main_login_url_for_design()
             return JSONResponse(
                 status_code=401,

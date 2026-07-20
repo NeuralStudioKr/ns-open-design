@@ -10,8 +10,8 @@ from fastapi.responses import JSONResponse, Response
 from starlette.datastructures import QueryParams
 
 from ..auth.bff_session import (
+    abandon_bff_session_keep_browser_cookie,
     bff_enabled,
-    clear_bff_session,
     load_bff_session,
     suppress_session_cookie,
 )
@@ -219,8 +219,9 @@ async def proxy_drive(
                     path,
                 )
                 return _session_expired_response()
-            # Truly unusable session — allow middleware to emit delete Set-Cookie.
-            clear_bff_session(request)
+            # Truly unusable on this node — drop memory without delete Set-Cookie
+            # so a late HA-loser response cannot wipe a sibling winner cookie.
+            abandon_bff_session_keep_browser_cookie(request)
             return _session_expired_response()
 
     emit_drive_proxy_marker(

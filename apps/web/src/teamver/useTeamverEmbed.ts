@@ -512,7 +512,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     );
     if (!target) return;
 
-    await setActiveTeamverWorkspace(trimmed, stateRef.current.userId);
+    const advanced = await setActiveTeamverWorkspace(trimmed, stateRef.current.userId);
+    if (!advanced) {
+      // BFF refused — keep prior activeWorkspaceId / design-access snapshot
+      // so UI cannot drift ahead of cookie + X-Workspace-Id (§14).
+      return;
+    }
     snapshotFromWorkspace(trimmed, target);
     setState((prev) => ({
       ...prev,

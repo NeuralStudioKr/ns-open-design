@@ -51,19 +51,19 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not attempt refresh recovery on non-auth failures", async () => {
+  it("does not advance local store on non-auth BFF failures", async () => {
     const { setActiveTeamverWorkspace } = await import(
       "../src/teamver/setActiveTeamverWorkspace"
     );
     postDesignAuthWorkspaceMock.mockRejectedValue({ status: 500, detail: "boom" });
 
-    await setActiveTeamverWorkspace("ws-1");
+    const ok = await setActiveTeamverWorkspace("ws-1");
 
+    expect(ok).toBe(false);
     expect(refreshDesignAuthCookieMock).not.toHaveBeenCalled();
     expect(ensureDesignBffSessionAuthenticatedMock).not.toHaveBeenCalled();
-    // Local store still updates so the switch is visible in the UI.
-    expect(workspaceStoreSet).toHaveBeenCalledWith("ws-1");
-    expect(dispatchWorkspaceChanged).toHaveBeenCalledWith("ws-1");
+    expect(workspaceStoreSet).not.toHaveBeenCalled();
+    expect(dispatchWorkspaceChanged).not.toHaveBeenCalled();
   });
 
   it("retries after refresh when workspace POST returns 401", async () => {
@@ -75,8 +75,9 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
       .mockResolvedValueOnce(undefined);
     refreshDesignAuthCookieMock.mockResolvedValue(true);
 
-    await setActiveTeamverWorkspace("ws-2");
+    const ok = await setActiveTeamverWorkspace("ws-2");
 
+    expect(ok).toBe(true);
     expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(2);
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-2");
@@ -93,8 +94,9 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     refreshDesignAuthCookieMock.mockResolvedValue(true);
     ensureDesignBffSessionAuthenticatedMock.mockResolvedValue(true);
 
-    await setActiveTeamverWorkspace("ws-3");
+    const ok = await setActiveTeamverWorkspace("ws-3");
 
+    expect(ok).toBe(true);
     expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
     expect(ensureDesignBffSessionAuthenticatedMock).toHaveBeenCalledTimes(1);
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(3);
@@ -109,8 +111,9 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     refreshDesignAuthCookieMock.mockResolvedValue(false);
     ensureDesignBffSessionAuthenticatedMock.mockResolvedValue(false);
 
-    await setActiveTeamverWorkspace("ws-4");
+    const ok = await setActiveTeamverWorkspace("ws-4");
 
+    expect(ok).toBe(false);
     // Auth ladder exhausted — no 4th POST; local store must not drift.
     expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(1);
     expect(workspaceStoreSet).not.toHaveBeenCalled();
@@ -123,8 +126,9 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
       "../src/teamver/setActiveTeamverWorkspace"
     );
 
-    await setActiveTeamverWorkspace("ws-5");
+    const ok = await setActiveTeamverWorkspace("ws-5");
 
+    expect(ok).toBe(true);
     expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-5");
   });

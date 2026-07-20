@@ -103,11 +103,26 @@ def is_session_cookie_suppressed(request: Request) -> bool:
 def clear_bff_session(request: Request) -> None:
     """Drop the BFF session and allow middleware to emit a delete Set-Cookie.
 
-    Clears any prior ``suppress_session_cookie`` flag: hard expiry / logout must
-    win over HA retain races so the browser does not keep a dead cookie.
+    Clears any prior ``suppress_session_cookie`` flag: explicit logout / hard
+    sign-out must win so the browser does not keep a dead cookie.
+
+    Do **not** use this on refresh-auth-failure / HA-loser paths — a late
+    delete Set-Cookie can wipe a sibling node's winner cookie. Prefer
+    ``abandon_bff_session_keep_browser_cookie`` there.
     """
     request.session.pop(_BFF_KEY, None)
     request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
+
+
+def abandon_bff_session_keep_browser_cookie(request: Request) -> None:
+    """Drop in-memory BFF session but suppress Set-Cookie (including delete).
+
+    Refresh auth failure after absolute expiry used to call ``clear_bff_session``,
+    which emits delete Set-Cookie. On ALB multi-node that late delete can race
+    past a sibling's rotated winner cookie and force ``session_expired``.
+    """
+    request.session.pop(_BFF_KEY, None)
+    suppress_session_cookie(request)
 
 
 def suppress_session_cookie(request: Request) -> None:
@@ -118,8 +133,9 @@ def suppress_session_cookie(request: Request) -> None:
     Re-signing that stale session would overwrite a sibling's newer Set-Cookie
     and leave the browser stuck on Main ``Invalid token``.
 
-    Only call this when the in-memory session is being *retained*. After
-    ``clear_bff_session``, delete Set-Cookie must still be allowed to ship.
+    Also used by ``abandon_bff_session_keep_browser_cookie`` so expired-clear
+    paths omit delete Set-Cookie. Explicit ``clear_bff_session`` (logout) still
+    pops suppress so delete can ship.
     """
     request.scope[SUPPRESS_SESSION_COOKIE_SCOPE_KEY] = True
 
