@@ -182,6 +182,75 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(isDesignAuthRefreshDeclined()).toBe(false);
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  it("recovers from sticky decline when a later /auth/session probe is authenticated", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi
+      .fn()
+      // First refresh: 401 + two failed session probes → soft sticky decline
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "session_expired" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      // Second refresh while soft-sticky: session probe only (no POST refresh)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ authenticated: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
+      await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(true);
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
+    // 1 refresh POST + 2 probes + 1 sticky re-probe (no second POST)
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
+  });
+
+  it("keeps hard sticky after 400 and does not re-probe /auth/session", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "invalid_refresh" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
+      await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("refreshTeamverEmbedAuthBeforeMutating", () => {

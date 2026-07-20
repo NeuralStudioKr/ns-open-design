@@ -5,6 +5,7 @@ import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
+  probeDesignBffSessionAuthenticated,
   resetDesignAuthBareRefreshAttempt,
   resetDesignAuthRefreshState,
   type DesignAuthSession,
@@ -388,6 +389,24 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         lastCookieHintRef.current = readAuthCookieHint();
         setState((prev) => ({ ...prev, loading: false }));
         if (resetRefreshState) {
+          // Explicit "다시 시도" — confirm session is gone before bouncing login.
+          // Key-refresh / HA blips must not force Main sign-in while the UI still
+          // looks authenticated.
+          let probeAlive = await probeDesignBffSessionAuthenticated();
+          if (!probeAlive) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            probeAlive = await probeDesignBffSessionAuthenticated();
+          }
+          if (probeAlive || isTeamverEmbedSessionAuthenticated() || hadEmbedSession()) {
+            resetDesignAuthRefreshState();
+            handleEmbedPassiveUnauthorized("bff");
+            setState((prev) => ({
+              ...prev,
+              authenticated: prev.authenticated || probeAlive,
+              error: probeAlive ? null : "session_unreachable",
+            }));
+            return;
+          }
           prepareDesignAuthSessionReload();
           await clearTeamverEmbedSessionState();
           redirectToTeamverLoginPreservingRoute({

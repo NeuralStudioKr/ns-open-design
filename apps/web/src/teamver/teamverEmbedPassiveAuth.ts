@@ -8,6 +8,7 @@ import {
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 function shouldDeferPassiveAuthRedirect(): boolean {
   return hasTeamverEmbedActiveWork() || hasTeamverEmbedBackgroundRuns();
@@ -99,6 +100,12 @@ function schedulePassiveLoginRedirect(): void {
       await new Promise((resolve) => setTimeout(resolve, 500));
       if (await probeDesignBffSessionAuthenticated()) {
         notePassiveRecoverySuccess();
+        return;
+      }
+      // Embed memory still says signed-in — keep in-place recovery; never bounce
+      // to Main login for a refresh/probe blip while the UI looks authenticated.
+      if (isTeamverEmbedSessionAuthenticated()) {
+        dispatchPassiveAuthRequired("bff");
         return;
       }
       prepareDesignAuthSessionReload();

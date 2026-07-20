@@ -166,6 +166,11 @@ export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
 }
 
 let authRefreshDeclinedForSession = false;
+/**
+ * soft (401): HA race — later GET /auth/session may recover without POST refresh.
+ * hard (400): account/malformed — do not keep probing session (ensure can re-hit Main).
+ */
+let authRefreshDeclineKind: "none" | "soft" | "hard" = "none";
 let unauthenticatedRefreshAttempted = false;
 /** Allows BFF refresh retry on sign-in return. */
 let authRecoveryRefreshActive = false;
@@ -178,6 +183,7 @@ const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 150;
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRefreshDeclinedForSession = false;
+  authRefreshDeclineKind = "none";
   unauthenticatedRefreshAttempted = false;
   authRecoveryRefreshActive = false;
   embedAuthRecoveryLoadUsed = false;
@@ -204,6 +210,17 @@ function setAuthRecoveryRefreshActive(active: boolean): void {
 
 function resetDesignAuthRefreshDeclined(): void {
   authRefreshDeclinedForSession = false;
+  authRefreshDeclineKind = "none";
+}
+
+function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
+  authRefreshDeclinedForSession = true;
+  authRefreshDeclineKind = kind;
+}
+
+/** Public clear for daemon/Drive soft-retry recovery paths. */
+export function clearDesignAuthRefreshDecline(): void {
+  resetDesignAuthRefreshDeclined();
 }
 
 function shouldAttemptCookieRefresh(): boolean {
@@ -283,6 +300,18 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (inFlightAuthRefresh) return inFlightAuthRefresh;
 
   const run = (async (): Promise<boolean> => {
+    // Soft sticky (401) must not be terminal for the tab lifetime — a sibling
+    // Set-Cookie can land later. Re-probe via GET /auth/session only (no POST).
+    // Hard sticky (400) stays closed until explicit resetRefreshState / sign-in.
+    if (authRefreshDeclinedForSession) {
+      if (authRefreshDeclineKind === "hard") return false;
+      if (await probeDesignBffSessionAuthenticated()) {
+        resetDesignAuthRefreshDeclined();
+        return true;
+      }
+      return false;
+    }
+
     if (!shouldAttemptCookieRefresh()) return false;
 
     const isBareAttempt =
@@ -312,7 +341,7 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
         resetDesignAuthRefreshDeclined();
         return true;
       }
-      authRefreshDeclinedForSession = true;
+      markAuthRefreshDeclined("soft");
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
         console.info(
           '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
@@ -323,8 +352,9 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       return false;
     }
     if (bffResult.status === 400) {
-      // Account missing / malformed refresh — sticky decline without HA soft-retry.
-      authRefreshDeclinedForSession = true;
+      // Account missing / malformed refresh — hard sticky without HA soft-retry.
+      // Explicit resetRefreshState / sign-in return clears this; do not re-probe.
+      markAuthRefreshDeclined("hard");
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
         console.info(
           '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
@@ -357,7 +387,7 @@ export function prepareDesignAuthSessionReload(): void {
  * underlying account is missing/deleted.
  */
 export function resetDesignAuthRefreshState(): void {
-  authRefreshDeclinedForSession = false;
+  resetDesignAuthRefreshDeclined();
   unauthenticatedRefreshAttempted = false;
   embedAuthRecoveryLoadUsed = false;
 }

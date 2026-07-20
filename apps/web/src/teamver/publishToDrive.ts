@@ -167,6 +167,7 @@ export function formatPublishErrorCodeForUser(code: string): string {
   if (trimmed.startsWith("drive_upload_failed_401")) {
     return formatTeamverEmbedAuthRequiredMessage(
       "Drive 세션이 만료되었습니다 — Teamver에 다시 로그인한 뒤 발행을 재시도하세요.",
+      "Drive 연결을 확인하지 못했습니다 — 잠시 후 발행을 다시 시도하세요.",
     );
   }
   if (

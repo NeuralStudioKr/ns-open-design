@@ -7,6 +7,7 @@ import {
 } from "./designBffClient";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
+import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import type { TeamverDriveImportedAsset } from "./importDriveAssets";
 
 export type TeamverCanvasImportRequest = {
@@ -94,7 +95,10 @@ export function formatCanvasImportErrorForUser(code: string): string {
     teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
     teamver_design_client_unavailable:
       "teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
-    session_expired: "로그인이 만료되었습니다. 다시 로그인한 뒤 시도하세요.",
+    session_expired: formatTeamverEmbedAuthRequiredMessage(
+      "로그인이 만료되었습니다. 다시 로그인한 뒤 시도하세요.",
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+    ),
     canvas_import_failed: "캔버스를 가져오지 못했습니다 — 잠시 후 다시 시도하세요.",
     canvas_import_busy: "지금 가져오기 요청이 많습니다 — 잠시 후 다시 시도하세요.",
     canvas_session_required: "캔버스 세션 정보가 없습니다.",

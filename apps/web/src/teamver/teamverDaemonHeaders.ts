@@ -1,6 +1,10 @@
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
-import { refreshDesignAuthCookie } from "./designBffClient";
+import {
+  clearDesignAuthRefreshDecline,
+  probeDesignBffSessionAuthenticated,
+  refreshDesignAuthCookie,
+} from "./designBffClient";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
@@ -147,6 +151,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
   if (refreshed) {
     resp = await fetch(input, init);
     if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+      clearDesignAuthRefreshDecline();
       return resp;
     }
   }
@@ -154,7 +159,15 @@ async function fetchDaemonWithEmbedAuthRecovery(
   // Another tab/node may have rotated cookies while this request saw 401.
   await delayDaemonAuthRetry();
   resp = await fetch(input, init);
-  if (shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    clearDesignAuthRefreshDecline();
+    return resp;
+  }
+  // Soft-retry still 401 — if session is alive, unlock sticky decline so the
+  // next call can recover instead of escalating to re-login UX.
+  if (await probeDesignBffSessionAuthenticated()) {
+    clearDesignAuthRefreshDecline();
+  } else {
     noteEmbedDaemonUnauthorized(input, resp);
   }
   return resp;

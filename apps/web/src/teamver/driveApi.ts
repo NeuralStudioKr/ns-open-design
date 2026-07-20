@@ -1,7 +1,12 @@
 import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
-import { fetchDesignAuthSession, refreshDesignAuthCookie } from "./designBffClient";
+import {
+  fetchDesignAuthSession,
+  isDesignAuthRefreshDeclined,
+  refreshDesignAuthCookie,
+} from "./designBffClient";
 import { recoverStaleDriveWorkspace } from "./driveWorkspaceRecovery";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 export function teamverDriveApiUrl(path: string): string {
   const suffix = path.replace(/^\//, "");
@@ -245,12 +250,23 @@ async function teamverDriveFetch(
     }
 
     if (shouldSkipDriveAuthRefresh(detail)) {
-      // Soft retry only: Apps /auth/refresh cannot revive Main HS256 SSO
-      // (`teamver_access_token`) that Drive proxy forwards. Another sibling may
-      // have just written cookies — wait briefly once, then surface 401.
+      // Soft retry first: Apps /auth/refresh cannot revive Main HS256 SSO that
+      // Drive proxy forwards. Another sibling may have just written cookies.
       await delay(DRIVE_AUTH_RETRY_DELAY_MS, signal);
       throwIfDriveAborted(signal);
-      return doFetch();
+      const softRetried = await doFetch();
+      if (softRetried.status !== 401 && softRetried.status !== 403) {
+        return softRetried;
+      }
+      // Soft-retry still 401: if embed memory says signed-in or sticky-decline
+      // left refresh locked, one recover clears HA sticky / sibling cookies.
+      // True Main SSO loss still fails after recover (authenticated:false).
+      if (isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined()) {
+        const recovered = await recoverDriveAuthSession();
+        throwIfDriveAborted(signal);
+        if (recovered) return doFetch();
+      }
+      return softRetried;
     }
 
     // Prefer not to recover on bare 403 — Apps refresh never grants Main ACL.
