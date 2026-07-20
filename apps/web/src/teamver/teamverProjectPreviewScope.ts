@@ -7,8 +7,10 @@ const TTL_MS = 50 * 60 * 1000;
 const prefixByProject = new Map<string, { prefix: string; expiresAt: number }>();
 const inflight = new Map<string, Promise<string | null>>();
 
-function previewPrefixFromUrl(url: string): string | null {
-  const match = /^(\/api\/projects\/[^/]+\/preview\/[^/]+)/u.exec(url.trim());
+function previewPrefixFromUrl(url: unknown): string | null {
+  const raw = typeof url === "string" ? url.trim() : "";
+  if (!raw) return null;
+  const match = /^(\/api\/projects\/[^/]+\/preview\/[^/]+)/u.exec(raw);
   return match?.[1] ?? null;
 }
 
@@ -35,11 +37,21 @@ export async function resolveTeamverProjectPreviewPrefix(
         const qs = entryFile
           ? `?file=${encodeURIComponent(entryFile)}`
           : "";
-        const resp = await fetchTeamverDaemon(
-          `/api/projects/${encodeURIComponent(id)}/preview-url${qs}`,
-        );
+        let resp: Response;
+        try {
+          resp = await fetchTeamverDaemon(
+            `/api/projects/${encodeURIComponent(id)}/preview-url${qs}`,
+          );
+        } catch {
+          return null;
+        }
         if (!resp.ok) return null;
-        const body = (await resp.json()) as ProjectPreviewUrlResponse;
+        let body: ProjectPreviewUrlResponse;
+        try {
+          body = (await resp.json()) as ProjectPreviewUrlResponse;
+        } catch {
+          return null;
+        }
         const prefix = previewPrefixFromUrl(body.url);
         if (!prefix) return null;
         prefixByProject.set(id, { prefix, expiresAt: Date.now() + TTL_MS });

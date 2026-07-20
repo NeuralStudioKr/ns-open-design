@@ -5530,7 +5530,6 @@ function HtmlViewer({
       if (cancelled) return;
       setEmbedPreviewPrefix(prefix);
       setEmbedPreviewPrefixResolved(true);
-      if (!prefix) setSourceLoadFailed(true);
     });
     return () => {
       cancelled = true;
