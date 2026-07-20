@@ -324,6 +324,18 @@ describe('composeSystemPrompt', () => {
     })).toBe('deck');
   });
 
+  it('pins chart and mermaid discipline inside the deck framework', () => {
+    const prompt = composeSystemPrompt({ skillMode: 'deck' });
+
+    expect(prompt).toContain('## Data chart discipline');
+    expect(prompt).toContain('calc(var(--v) / var(--max)');
+    expect(prompt).toContain('visible category label AND value label');
+    expect(prompt).toContain('## Mermaid diagram theme discipline');
+    expect(prompt).toContain("theme: 'dark'");
+    expect(prompt).toContain('themeVariables');
+    expect(prompt).toContain('dark-on-dark labels');
+  });
+
   describe('artifact handoff no-emit clauses (#1143)', () => {
     it('drops the absolute "non-negotiable" framing in favor of conditional language', () => {
       const prompt = composeSystemPrompt({});

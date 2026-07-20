@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 5. `bdc66c978`, `ebada4cac` deck framework prompt 품질 보강을 daemon/contracts 양쪽에 수동 포팅했다. 데이터 차트는 실제 값 기반 `--v`/`--max` 계산을 요구하고, Mermaid는 다크 덱에서 theme/themeVariables를 명시하도록 고정해 슬라이드 결과물 품질 회귀를 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 4. `c110e40e8` frontmatter parser 안정화를 현재 Teamver parser 경로(`apps/daemon/src/frontmatter.ts`, `packages/plugin-runtime/src/parsers/frontmatter.ts`)에 수동 포팅했다. flush-left YAML sequence, quoted inline array, deep block scalar를 안정적으로 읽어 template/design-system metadata 누락을 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 3. `5f411466b` QuestionsPanel submit lock 핵심을 Teamver의 단순화된 form 구조에 맞춰 수동 포팅했다. Continue/Skip/auto countdown이 같은 form occurrence에서 중복 제출을 만들지 않도록 첫 submit 직후 UI와 chokepoint를 잠근다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 2. `21f25cde5` composer placeholder carousel caret 보정은 CSS 한정 변경이라 안전하게 수동 포팅했다. 빈 composer에서 decorative caret와 native caret가 동시에 깜박이는 UX 노이즈를 줄인다.
@@ -25,6 +26,7 @@
 | `21f25cde5` | composer placeholder carousel native caret 숨김 | **2026-07-20 선별 반영.** CSS 한정 변경. 빈 composer placeholder animation 중 native caret가 함께 깜박이는 시각적 노이즈를 줄인다. |
 | `5f411466b` | QuestionsPanel Continue 중복 제출 방지 | **2026-07-20 선별 반영.** Teamver `QuestionsPanel` 구조에 맞춰 submit lock만 포팅했다. 질문 form 답변 제출 직후 버튼을 즉시 disabled/busy로 바꿔 중복 run enqueue와 사용자의 stuck 오해를 줄인다. |
 | `c110e40e8` | frontmatter parser 안정화 | **2026-07-20 선별 반영.** flush-left sequence, quoted inline array, block scalar indentation을 daemon/runtime parser 양쪽에 수동 포팅했다. 템플릿/디자인 시스템 metadata 파싱 누락을 줄인다. |
+| `bdc66c978` / `ebada4cac` | deck data-chart / Mermaid dark-theme prompt discipline | **2026-07-20 선별 반영.** prompt-only 품질 보강. 차트 비율/라벨 누락과 다크 덱 Mermaid 대비 문제를 줄인다. |
 | `a1b0dd0d7` 계열 | POSIX argv prompt budget 보정 | **2026-07-20 선별 반영.** Linux/macOS에서 Windows용 30KB prompt argv 제한을 그대로 적용하는 false-positive를 줄인다. runaway prompt는 120KB에서 fail-fast 유지. |
 | `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **2026-07-20 부분 반영.** 전체 slim charter/core prompt 전환은 계속 보류. 단, 비미디어 프로젝트에 주입되던 긴 media dispatcher Bash loop 예시를 축약하고, zh-CN quick brief의 broad non-deck 선택지 예시를 scope-neutral 문구로 교체했다. Teamver deck-only UX와 background/comment 패치에 닿는 구조 변경은 반영하지 않음. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |

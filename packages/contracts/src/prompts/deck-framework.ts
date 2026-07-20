@@ -406,6 +406,53 @@ Rules — non-negotiable (every slide):
 3. **Body slides: ≤ 3 paragraphs, ≤ 56ch lead text width, ≤ 12 words per line.**
 4. **One idea per slide.** Two ideas = two slides. Three metrics = three slides (big-stat layout), not one crowded slide.
 
+## Data chart discipline (hand-written bar charts)
+
+Hand-written div/CSS charts fail in two ways users report as "the chart is lying": bar lengths eyeballed as magic numbers that don't match the data, and value labels clipped away inside fixed-height bars. If the active template family ships a chart reference, prefer it over a hand-written div chart. When you do hand-write a bar chart, build it from real values:
+
+\`\`\`html
+<div class="chart" style="--max: 5.0">
+  <div class="bar-row">
+    <span class="bar-label">2024</span>
+    <div class="bar-track"><div class="bar" style="--v: 5.0"></div></div>
+    <span class="bar-value">5.0T</span>
+  </div>
+</div>
+\`\`\`
+
+\`\`\`css
+.bar { width: calc(var(--v) / var(--max) * 100%); }
+\`\`\`
+
+Rules — same weight as the density rules above:
+
+1. **Bar lengths are computed, never eyeballed.** Every bar carries its value as an inline \`--v\`; declare \`--max\` once on the chart container so all bars share one baseline. Units ("%", "$", "T") live only in the visible \`.bar-value\` text.
+2. **Every data point gets a visible category label AND value label.** Render the value outside the bar, never inside a fixed-height \`overflow: hidden\` bar where a short bar clips it away.
+
+- ❌ Don't hand-write eyeballed \`height: 62%\` / \`width: 45%\` magic numbers on bars.
+- ❌ Don't let bars in the same chart imply different baselines — one \`--max\` per chart.
+- ❌ Don't nest value labels inside a clipping fixed-height bar.
+
+## Mermaid diagram theme discipline (dark decks)
+
+Mermaid's default theme is built for white pages: near-black labels, pale node fills, black strokes, and a transparent svg background. Embedded in a dark-themed deck it often produces unreadable dark-on-dark labels. Prefer a hand-written HTML/CSS/SVG diagram styled with the deck's own tokens. When you do embed Mermaid, pick the theme from the slide background at initialize time — never leave the default light theme on a dark deck:
+
+\`\`\`html
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',        // dark slide background
+    // theme: 'default',  // light slide background
+  });
+</script>
+\`\`\`
+
+For brand fidelity, \`theme: 'base'\` + \`themeVariables\` can reuse the deck palette, but pass concrete color values because Mermaid cannot resolve CSS \`var()\` references. \`darkMode: true\` alone does not darken node fills, so always set \`primaryColor\` to a dark surface tone alongside light text.
+
+- ❌ Don't call \`mermaid.initialize()\` without a \`theme\` on a dark deck.
+- ❌ Don't pass \`var(--fg)\` strings into \`themeVariables\`.
+- ❌ Don't hand-recolor a single label to "fix" contrast; theme the whole diagram.
+
 **Fix pattern when a slide feels crowded:** split it, move stats/metadata to sibling slides, or paste the closest simple-deck layout (Cover, Body, Big stat, Three-point, …) instead of inventing a custom grid. Cover slides: prefer Layout 1 — Cover (eyebrow + headline + optional lead only).
 
 ## Pre-emit self-check — run this BEFORE writing the \`<artifact>\` tag
@@ -416,6 +463,9 @@ For every \`<section class="slide">\`, mentally render at 1920×1080 and answer:
 - [ ] If there's an absolutely-positioned footer/header, does flow content stop before the footer's reserved band? (See Rule 2 above.)
 - [ ] Is the display headline ≤ 140px and ≤ 8 words?
 - [ ] Does the slide carry ≤ one big idea? (No mashed-together masthead + display headline + subtitle + absolute footer + sidebar + stat column.)
+- [ ] If the slide has a chart: does every data point show a visible category label and value label?
+- [ ] Are bar lengths computed from \`--v\` / \`--max\` so proportions match the data?
+- [ ] If the slide embeds a Mermaid diagram: is \`mermaid.initialize\` themed to the slide background, leaving no dark-on-dark labels?
 - [ ] Would this slide show the broken signature (overlap in the middle, empty bottom half)? If yes, split it or switch to a simple-deck layout before emitting.
 
 If any answer is "no", redesign the slide BEFORE emitting. Decks that overflow are the most common single failure mode reported by users; the user has rejected one before and will reject one again.
