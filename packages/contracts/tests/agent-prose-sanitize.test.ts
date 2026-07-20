@@ -584,6 +584,34 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay("Text <a", { streaming: true })).toBe("Text <a");
   });
 
+  it("holds incomplete head/document skeleton tags mid-stream so CDN debris cannot paint", () => {
+    expect(sanitizeAssistantProseForDisplay("Plan. <lin", { streaming: true })).toBe("Plan.");
+    expect(sanitizeAssistantProseForDisplay("Plan. <script", { streaming: true })).toBe("Plan.");
+    expect(sanitizeAssistantProseForDisplay("Plan. <meta", { streaming: true })).toBe("Plan.");
+    expect(sanitizeAssistantProseForDisplay("Plan. <html", { streaming: true })).toBe("Plan.");
+  });
+
+  it("strips orphan CDN / viewport debris from chat prose", () => {
+    const input = 'Done.\n\ngoogleapis.com/css2?family=Inter" />\n\nNext.';
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("Done.\n\nNext.");
+    expect(
+      sanitizeAssistantProseForDisplay('Hi\ndevice-width, initial-scale=1" />\nBye'),
+    ).toBe("Hi\n\nBye");
+  });
+
+  it("does not strip stylesheet <link> tags inside preserved streaming artifacts", () => {
+    const closed =
+      'Intro\n<artifact identifier="deck" type="text/html">\n'
+      + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">\n'
+      + '<section class="slide">A</section>\n</artifact>\nDone';
+    const streaming = sanitizeAssistantProseForDisplay(closed, { streaming: true });
+    expect(streaming).toContain('fonts.googleapis.com');
+    expect(streaming).toContain('<section class="slide">A</section>');
+    // History/display path (artifacts stripped) must drop the head link debris.
+    expect(sanitizeAssistantProseForDisplay(closed)).not.toContain("fonts.googleapis.com");
+    expect(sanitizeAssistantProseForDisplay(closed)).toBe("Intro\n\nDone");
+  });
+
   it("strips trailing open question-form while streaming", () => {
     const input = 'Ask:\n<question-form>\n{"questions":[{"id":"1"}]';
     expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe("Ask:");

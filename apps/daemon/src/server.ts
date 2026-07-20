@@ -14972,9 +14972,27 @@ export async function startServer({
       if (plaintextStdoutBuffer.length > 0 && firstBufferedStdoutAt !== null) {
         noteFirstTokenAt(firstBufferedStdoutAt);
       }
+      // Same prose + role-marker guards as the plain-stdout path — antigravity
+      // buffers until close for the OAuth-prompt classifier, but residual
+      // plaintext must not bypass sanitization (thinking/tool XML, fabricated
+      // role markers) on the final flush.
       for (const chunk of plaintextStdoutBuffer) {
-        send('stdout', { chunk: chunk.text });
+        proseEmitMode = 'stdout';
+        const safe = guardTextDelta(chunk.text);
+        if (safe.length > 0) {
+          send('stdout', { chunk: safe });
+        }
+        if (runGuard.contaminated && !runWarned) {
+          runWarned = true;
+          const warn = runGuard.warningEvent();
+          if (warn) {
+            send('agent', warn);
+            abortForRoleMarker(warn.marker);
+          }
+        }
       }
+      plaintextStdoutBuffer.length = 0;
+      flushRunProseGuard();
       // Capture the pi session file path for conversational continuity.
       // The session path is discovered by attachPiRpcSession when it
       // processes agent_end; persist it under (conversationId, agentId) so

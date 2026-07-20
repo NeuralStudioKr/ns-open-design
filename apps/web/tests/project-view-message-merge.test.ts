@@ -72,6 +72,38 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.content).toBe("All done!");
     expect(merged[0]?.runStatus).toBe("running");
   });
+
+  it("prefers shorter sanitized local content when terminal server row still has leak residue", () => {
+    // FE streaming buffer can shrink after closed-tag strip; daemon append-only
+    // persist cannot. On refresh, prefer the cleaned local when the server
+    // content is a strict extension (leak residue appended after the clean text).
+    const local: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "Hello",
+      createdAt: 1,
+      runStatus: "succeeded",
+      runId: "run-1",
+      endedAt: 2,
+      events: [{ kind: "text", text: "Hello" }],
+    };
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "Hello <thinking>secret chain</thinking>",
+      createdAt: 1,
+      runStatus: "succeeded",
+      runId: "run-1",
+      endedAt: 2,
+      events: [
+        { kind: "text", text: "Hello" },
+        { kind: "text", text: " <thinking>secret chain</thinking>" },
+      ],
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.content).toBe("Hello");
+    expect(merged[0]?.events).toEqual([{ kind: "text", text: "Hello" }]);
+  });
 });
 
 describe("mergeMissingActiveRunAssistantMessages", () => {

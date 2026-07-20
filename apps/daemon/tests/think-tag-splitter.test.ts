@@ -34,7 +34,7 @@ describe('createThinkTagSplitter', () => {
     expect(thinking.join('')).toBe('tail only');
   });
 
-  it('force-flushes an unclosed think block after 64KB without a close tag', () => {
+  it('caps an unclosed think block at 64KB and does NOT leak overflow into visible', () => {
     const thinking: string[] = [];
     const splitter = createThinkTagSplitter((chunk) => thinking.push(chunk));
     const huge = 'x'.repeat(65 * 1024);
@@ -43,7 +43,8 @@ describe('createThinkTagSplitter', () => {
 
     expect(thinking.join('').length).toBeGreaterThan(0);
     expect(thinking.join('').length).toBeLessThanOrEqual(64 * 1024);
-    expect(result.visible.length).toBeGreaterThan(0);
+    // Overflow must be dropped — never painted as assistant chat prose.
+    expect(result.visible).toBe('');
     expect(result.thinking).toBe('');
   });
 });

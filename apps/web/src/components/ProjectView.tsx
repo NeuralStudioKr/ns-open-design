@@ -363,9 +363,9 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   // During an in-flight turn the daemon persist throttle can lag behind the
   // live SSE buffer. Reattach recovery must not replace a streamed
   // `<question-form>` (or any partial assistant text) with a stale server row.
+  const localContent = local.content ?? '';
+  const serverContent = server.content ?? '';
   if (messageHasInFlightRunFields(local) && !isTerminalRunStatus(server.runStatus)) {
-    const localContent = local.content ?? '';
-    const serverContent = server.content ?? '';
     if (localContent.length > serverContent.length) {
       merged.content = localContent;
     }
@@ -374,6 +374,16 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
     if (localEventCount > serverEventCount && local.events) {
       merged.events = local.events;
     }
+  } else if (
+    // Daemon append-only persist cannot shrink after the FE streaming buffer
+    // strips closed markup. Prefer the shorter, already-sanitized local when
+    // the server row is a strict extension of it (leak residue appended).
+    localContent.length > 0
+    && localContent.length < serverContent.length
+    && serverContent.startsWith(localContent)
+  ) {
+    merged.content = localContent;
+    if (local.events) merged.events = local.events;
   }
   return merged;
 }

@@ -9,6 +9,18 @@
  * fixture matrix in `packages/contracts/tests/agent-prose-sanitize.test.ts`.
  */
 
+import {
+  ARTIFACT_LEAKED_EXTERNAL_SCRIPT_TAG_RE,
+  ARTIFACT_LEAKED_HEAD_LINK_TAG_RE,
+  ARTIFACT_LEAKED_META_CHARSET_TAG_RE,
+  ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE,
+  ARTIFACT_ORPHAN_HEAD_VOID_TAIL_RE,
+  ARTIFACT_ORPHAN_LINK_ATTR_LEAK_RE,
+  ARTIFACT_ORPHAN_SCRIPT_SRC_TAIL_RE,
+  ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE,
+  ARTIFACT_VIEWPORT_TEXT_LEAK_RE,
+} from "./html/artifactPreviewTextLeaks.js";
+
 /** Pseudo file-operation XML emitted when CLI tools (Read/Write/Edit) are unavailable. */
 const FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES = [
   "read",
@@ -168,7 +180,28 @@ const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
 const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
 
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
-const OPEN_ANTML_RE = /<antml:[^>\n]+>/gi;
+// Allow newlines inside attributes — agents sometimes break long antml tags
+// across lines (`<antml:invoke\n name="…">`).
+const OPEN_ANTML_RE = /<antml:[^>]+>/gi;
+
+/**
+ * Document / head skeleton tags that must never paint as chat prose mid-stream
+ * (or as truncated debris). Distinct from internal agent markup — these are
+ * legitimate HTML that belongs only inside `<artifact>` bodies / the preview
+ * iframe, not the assistant bubble.
+ */
+const HEAD_SKELETON_TAG_NAMES = [
+  "html",
+  "head",
+  "body",
+  "link",
+  "meta",
+  "script",
+  "style",
+  "base",
+  "title",
+  "noscript",
+] as const;
 
 function isLikelyInternalMarkupLine(line: string): boolean {
   const trimmed = line.trim();
@@ -532,6 +565,18 @@ function isInternalMarkupTagName(name: string): boolean {
   ) {
     return true;
   }
+  // Hold incomplete document/head skeleton tags (`<lin`, `<script`, `<meta`)
+  // so truncated CDN/font debris never paints in the chat bubble. Require
+  // ≥3 chars for reverse-prefix matches to avoid eating `<st` from "start".
+  if (
+    HEAD_SKELETON_TAG_NAMES.some((tag) => {
+      if (tag === lower || lower.startsWith(tag)) return true;
+      if (lower.length >= 3 && tag.startsWith(lower)) return true;
+      return false;
+    })
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -651,6 +696,67 @@ export function sanitizeLeakedAgentProse(
     out = out.slice(0, bareTail.index).trimEnd();
   }
   return collapseExtraBlankLines(out);
+}
+
+/**
+ * Strip truncated head/CDN debris that agents stream as chat prose
+ * (`googleapis.com" />`, orphan viewport meta tails, leaked `<link rel=stylesheet>`).
+ * Reuses the preview leak patterns so chat and iframe stay in sync.
+ *
+ * When `preserveArtifactBodies` is true, debris scrubbing is applied only
+ * outside closed `<artifact>…</artifact>` blocks so stylesheet URLs inside
+ * the live HTML body survive until the preview parser consumes them.
+ */
+export function stripChatProseHtmlDebris(
+  input: string,
+  options: { includeFullHeadTags?: boolean; preserveArtifactBodies?: boolean } = {},
+): string {
+  if (!input) return input;
+  const orphanPatterns = [
+    ARTIFACT_VIEWPORT_TEXT_LEAK_RE,
+    ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE,
+    ARTIFACT_ORPHAN_LINK_ATTR_LEAK_RE,
+    ARTIFACT_ORPHAN_HEAD_VOID_TAIL_RE,
+    ARTIFACT_ORPHAN_SCRIPT_SRC_TAIL_RE,
+  ];
+  const fullTagPatterns = [
+    ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE,
+    ARTIFACT_LEAKED_META_CHARSET_TAG_RE,
+    ARTIFACT_LEAKED_HEAD_LINK_TAG_RE,
+    ARTIFACT_LEAKED_EXTERNAL_SCRIPT_TAG_RE,
+  ];
+  const patterns =
+    options.includeFullHeadTags === false
+      ? orphanPatterns
+      : [...orphanPatterns, ...fullTagPatterns];
+
+  const scrub = (segment: string): string => {
+    let out = segment;
+    for (const re of patterns) {
+      re.lastIndex = 0;
+      out = out.replace(re, "");
+    }
+    return out;
+  };
+
+  if (!options.preserveArtifactBodies) {
+    return collapseExtraBlankLines(scrub(input));
+  }
+
+  // Split around closed artifacts so stylesheet CDN URLs inside the body
+  // are not treated as chat-prose debris mid-stream.
+  const parts: string[] = [];
+  let cursor = 0;
+  CLOSED_ARTIFACT_RE.lastIndex = 0;
+  let match: RegExpExecArray | null = CLOSED_ARTIFACT_RE.exec(input);
+  while (match) {
+    parts.push(scrub(input.slice(cursor, match.index)));
+    parts.push(match[0]);
+    cursor = match.index + match[0].length;
+    match = CLOSED_ARTIFACT_RE.exec(input);
+  }
+  parts.push(scrub(input.slice(cursor)));
+  return collapseExtraBlankLines(parts.join(""));
 }
 
 /** While streaming or loading history, drop trailing unclosed internal blocks. */
@@ -826,6 +932,15 @@ export function sanitizeAssistantProseForDisplay(
   if (options.stripCodeFences) {
     text = stripAssistantCodeFencesForDisplay(text);
   }
+  // Orphan CDN/viewport debris is always scrubbed outside artifact bodies.
+  // Full head tags only when closed artifacts are gone — otherwise stylesheet
+  // `<link>` inside an artifact body would be deleted before the live HTML
+  // panel receives it.
+  const preservingArtifacts = streaming || options.preserveClosedArtifact === true;
+  text = stripChatProseHtmlDebris(text, {
+    includeFullHeadTags: !preservingArtifacts,
+    preserveArtifactBodies: preservingArtifacts,
+  });
   return text;
 }
 

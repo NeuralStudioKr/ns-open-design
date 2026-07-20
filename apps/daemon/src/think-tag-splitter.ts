@@ -100,11 +100,13 @@ export function createThinkTagSplitter(
 
         const chunkBytes = Buffer.byteLength(chunk, 'utf8');
         if (thinkOpenBytes + chunkBytes > OPEN_THINK_CAP_BYTES) {
+          // Cap overflow: keep the budgeted thinking bytes, then DROP the
+          // remainder. Emitting overflow into `visible` would leak the
+          // reasoning body into chat once a close tag never arrives.
           const budget = Math.max(0, OPEN_THINK_CAP_BYTES - thinkOpenBytes);
-          const { head, tail } = sliceUtf8ByBytes(chunk, budget);
+          const { head } = sliceUtf8ByBytes(chunk, budget);
           thinking += head;
           if (onThinkingChunk && head) onThinkingChunk(head);
-          visible += tail + held;
           inThink = false;
           thinkOpenBytes = 0;
           buffer = '';
