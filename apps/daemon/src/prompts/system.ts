@@ -93,16 +93,7 @@ function renderUiLocalePrompt(locale: string | undefined): string {
   if (normalized === 'zh-CN') {
     lines.push(
       '',
-      'For the default quick brief in Simplified Chinese, use copy like:',
-      '- title: `快速简报 — 30 秒`',
-      '- description: `开始生成前我会先确认这些信息。不适用的可以跳过，我会补上默认值。`',
-      '- output label/options: `我们要做什么？` / `幻灯片 / 路演稿`, `单页网页原型 / 落地页`, `多屏应用原型`, `数据看板 / 工具界面`, `编辑式 / 营销页面`, `其他 — 我来描述`',
-      '- platform label/options: `目标平台` / `响应式网页`, `桌面网页`, `iOS 应用`, `Android 应用`, `平板应用`, `桌面应用`, `固定画布 (1920×1080)`',
-      '- audience label/placeholder: `目标用户` / `例如：早期投资人、开发者工具采购者、内部高管评审`',
-      '- tone label/options: `视觉调性` / `编辑 / 杂志感`, `现代极简`, `活泼 / 插画感`, `科技 / 工具型`, `奢华 / 精致`, `粗野 / 实验性`, `人性化 / 亲切`',
-      '- brand label/options: `品牌背景` / `帮我选一个方向`, `我有品牌规范 — 稍后分享`, `参考网站 / 截图 — 稍后附上`',
-      '- scale label/placeholder: `大概需要多少内容？` / `例如：8 页幻灯片、1 个落地页 + 3 个子页面、4 个移动端界面`',
-      '- constraints label/placeholder: `还有什么需要知道的吗？` / `真实文案、必须使用的字体、需要避免的内容、截止时间…`',
+      'For the default quick brief in Simplified Chinese, localize naturally and keep the form compact: title `快速确认 · 30秒`; include only genuinely missing questions; preserve machine values such as `pick_direction`, `brand_spec`, and `reference_match`; do not copy broad non-deck option examples when the project scope says slides only.',
     );
   }
   return lines.join('\n');
@@ -301,50 +292,27 @@ const MEDIA_DISPATCH_HINT = `
 
 ## Media generation (if asked)
 
-If the user asks you to generate an image, video, or audio file — regardless of which provider or model they mention (fal, Replicate, OpenAI, etc.) — use the daemon dispatcher via your **Bash tool**. Do NOT call provider REST APIs directly.
+If the user asks you to generate an image, video, or audio file — regardless of which provider or model they mention (fal, Replicate, OpenAI, etc.) — use the daemon dispatcher via your **Bash tool**. Do NOT call provider REST APIs directly, and never ask the user for API keys.
 
 The daemon injects these env vars into your shell (**POSIX bash — not PowerShell**):
 
-- \`OD_NODE_BIN\`   — absolute path to the Node runtime
-- \`OD_BIN\`        — absolute path to the OD CLI script
-- \`OD_PROJECT_ID\` — the active project id
+- \`OD_NODE_BIN\`
+- \`OD_BIN\`
+- \`OD_PROJECT_ID\`
 
-**Always use the generate→wait loop below.** \`media generate\` always exits 0 — either with \`{"file":{...}}\` if done within ~25s, or with \`{"taskId":"..."}\` as a handoff for slow models (flux-pro-ultra ~60–180s, veo-3-fal longer). Whenever the output contains a \`taskId\`, keep polling with \`media wait\` until exit 0 (done) or exit 5 (failed).
+Use POSIX \`$VAR\` syntax only. Start jobs with:
+\`"$OD_NODE_BIN" "$OD_BIN" media generate --project "$OD_PROJECT_ID" --surface <image|video|audio> --model <model> --prompt "..."\`
 
-Use **POSIX \`$VAR\` syntax** — do NOT translate to PowerShell (\`$env:VAR\`, \`&\` operator). Uses \`python3\` for JSON parsing (do NOT use \`jq\`):
+\`media generate\` returns either \`{"file":{...}}\` when complete or \`{"taskId":"...","nextSince":...}\` for slow models. If it returns a \`taskId\`, continue with:
+\`"$OD_NODE_BIN" "$OD_BIN" media wait <taskId> --since <nextSince>\`
+until the CLI reports done or failed. Follow the CLI's next wait details rather than writing provider-specific polling code.
 
-\`\`\`bash
-# POSIX bash — do NOT convert to PowerShell
-out=\$("$OD_NODE_BIN" "$OD_BIN" media generate \\
-  --project "$OD_PROJECT_ID" \\
-  --surface image \\
-  --model flux-pro-ultra \\
-  --prompt "..." \\
-  --aspect 16:9)
-ec=\$?
-if [ "\$ec" -ne 0 ]; then echo "\$out" >&2; exit "\$ec"; fi
-last=\$(printf '%s\\n' "\$out" | tail -1)
-task_id=\$(printf '%s\\n' "\$last" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('taskId',''))" 2>/dev/null)
-since=\$(printf '%s\\n' "\$last" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('nextSince',0))" 2>/dev/null)
-since="\${since:-0}"
-while [ -n "\$task_id" ]; do
-  out=\$("$OD_NODE_BIN" "$OD_BIN" media wait "\$task_id" --since "\$since")
-  ec=\$?
-  last=\$(printf '%s\\n' "\$out" | tail -1)
-  since=\$(printf '%s\\n' "\$last" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('nextSince',\$since))" 2>/dev/null)
-  since="\${since:-0}"
-  if [ "\$ec" -eq 0 ]; then
-    task_id=""
-  elif [ "\$ec" -ne 2 ]; then
-    echo "\$out" >&2; exit "\$ec"
-  fi
-done
-printf '%s\\n' "\$last"
-\`\`\`
-
-**Never ask the user for an API key.** The daemon reads provider credentials from its config; keys are never passed through the shell. If the provider returns an auth error, tell the user to open Settings → AI Providers and confirm the key is configured there.
-
-For the best fal image model use \`--model flux-pro-ultra\`. For video use \`--model veo-3-fal\` or \`--model wan-2.1-t2v\`. Always pass \`--surface\` explicitly (\`image\`, \`video\`, or \`audio\`). Any \`fal-ai/*\` path (e.g. \`fal-ai/flux/schnell\`, \`fal-ai/wan-i2v\`) is also a valid \`--model\` value for image/video — pass it through as-is without substitution.`;
+Rules:
+- Use \`python3\` for JSON parsing if needed; do not rely on \`jq\`.
+- Always pass \`--surface\` explicitly (\`image\`, \`video\`, or \`audio\`).
+- For fal image default prefer \`flux-pro-ultra\`; for video use \`veo-3-fal\` or \`wan-2.1-t2v\`.
+- Any \`fal-ai/*\` path is a valid image/video \`--model\` value; pass it through as-is.
+- Provider auth/config is daemon-owned. On auth errors tell the user to check Settings → AI Providers.`;
 
 const CLAUDE_FILESYSTEM_ARTIFACT_HANDOFF_OVERRIDE = `
 

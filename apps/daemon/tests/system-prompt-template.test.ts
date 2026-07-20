@@ -219,7 +219,7 @@ describe('composeSystemPrompt — metadata.promptTemplate', () => {
 
     expect(out).toContain('## Media generation (if asked)');
     expect(out).toContain('fal-ai/*');
-    expect(out).toContain('pass it through as-is without substitution');
+    expect(out).toContain('pass it through as-is');
   });
 
   it('renders without source attribution when the source field is missing', () => {
@@ -447,6 +447,38 @@ describe('composeSystemPrompt — metadata.promptTemplate', () => {
     expect(out).toContain('`"$OD_NODE_BIN" "$OD_BIN" media generate` exits `0`');
     expect(out).toContain('either `file` or `taskId`');
     expect(out).toContain('`2` from `media wait` is not a failure');
+  });
+
+  it('keeps the non-media dispatcher hint compact', () => {
+    const out = composeSystemPrompt({
+      metadata: {
+        kind: 'deck',
+      },
+      mediaExecution: { mode: 'enabled' },
+    });
+
+    expect(out).toContain('## Media generation (if asked)');
+    expect(out).toContain('media generate --project "$OD_PROJECT_ID" --surface <image|video|audio>');
+    expect(out).toContain('media wait <taskId> --since <nextSince>');
+    expect(out).not.toContain('Always use the generate→wait loop below');
+    expect(out).not.toContain('while [ -n "$task_id" ]');
+    expect(out).not.toContain('tail -1');
+  });
+
+  it('keeps zh-CN quick brief guidance compact and scope-neutral', () => {
+    const out = composeSystemPrompt({
+      metadata: {
+        kind: 'deck',
+      },
+      locale: 'zh-CN',
+      mediaExecution: { mode: 'disabled' },
+    });
+
+    expect(out).toContain('title `快速确认 · 30秒`');
+    expect(out).toContain('do not copy broad non-deck option examples');
+    expect(out).not.toContain('单页网页原型 / 落地页');
+    expect(out).not.toContain('数据看板 / 工具界面');
+    expect(out).not.toContain('iOS 应用');
   });
 
   it('surfaces ElevenLabs voice options for project discovery when no voice was preselected', () => {

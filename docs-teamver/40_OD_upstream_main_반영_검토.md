@@ -1,7 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
-**반영 갱신:** 2026-07-20 — `origin/main` 최신 `3447f60a3 fix packaged payload desktop handoff (#5678)` 기준으로 속도·프롬프트 관련 후보를 재검토했다. 전체 merge 금지 원칙은 유지한다.
+**반영 갱신:** 2026-07-20 — `origin/main` 최신 `3447f60a3 fix packaged payload desktop handoff (#5678)` 기준으로 속도·프롬프트 관련 후보를 재검토했다. 전체 merge 금지 원칙은 유지한다. 보류했던 `4b660237c`는 문구 단위로 다시 검토해 안전한 축약 문구만 수동 포팅했다.
 **반영 갱신:** 2026-07-16 — `git fetch origin main` 후 `origin/main` 최신 상태를 재확인했다. Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, background run, 다운로드 안정화 패치가 계속 누적되어 있으므로 전체 merge 위험도는 여전히 높다.
 **비교 기준:** `staging` (`10b0ba491 fix(export): prefer screenshot pptx fidelity by default`) ↔ `origin/main` (`94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`).
 **결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. Teamver 기존 동작을 깨지 않도록, 필요한 커밋만 수동 포팅한다.
@@ -16,7 +16,7 @@
 |------|------|-----------|
 | `ed48a7d22` | `fix(daemon): filter transient ACP status events at persistence time` | **2026-07-20 선별 반영.** staging에는 별도 `chat-run-messages.ts`가 없어 `server.ts` 내 persistence 함수에 수동 포팅. 빈 process row와 불필요한 DB event write를 줄인다. |
 | `a1b0dd0d7` 계열 | POSIX argv prompt budget 보정 | **2026-07-20 선별 반영.** Linux/macOS에서 Windows용 30KB prompt argv 제한을 그대로 적용하는 false-positive를 줄인다. runaway prompt는 120KB에서 fail-fast 유지. |
-| `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **보류.** 46개 파일·3천 줄 이상이며 question-form/live-artifact/i18n까지 함께 변경한다. Teamver deck-only UX와 background/comment 패치 충돌 가능성이 높아 전체 cherry-pick 금지. 필요한 prompt charter 일부만 별도 diff로 최소 포팅 검토. |
+| `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **2026-07-20 부분 반영.** 전체 slim charter/core prompt 전환은 계속 보류. 단, 비미디어 프로젝트에 주입되던 긴 media dispatcher Bash loop 예시를 축약하고, zh-CN quick brief의 broad non-deck 선택지 예시를 scope-neutral 문구로 교체했다. Teamver deck-only UX와 background/comment 패치에 닿는 구조 변경은 반영하지 않음. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |
 
 `origin/main`은 현재 `94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`까지 반영되어 있다. `staging...origin/main` divergence는 `703 / 586`으로, 2026-07-15 기준 `665 / 410`보다 더 벌어졌다. 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.
@@ -33,7 +33,7 @@
 | `05cb03c8a` | `fix(web): sandbox the speaker-notes presenter deck iframes` | **P2 보안/격리 후보.** presenter notes 경로를 Teamver가 노출하지 않는다면 후순위. |
 | `167db9de2` / `c67048516` | preview delivery status feedback/polish | **P2 UX 후보.** Teamver의 생성 중 이탈/재진입 UX와 맞닿지만, 먼저 background run 안정성 회귀 여부를 확인한 뒤 선별한다. |
 
-**현재 바로 추진 추천:** 전체 merge 대신 `24c7876b3` in-place HTML edit delivery 보존, Community preview runtime fallback 잔여, slim prompt 평가 루프 순서로 검토한다. 보안/preview freeze/thumbnail은 실제 서비스 구동과 사용자 신뢰에 직접 영향을 주며, AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
+**현재 바로 추진 추천:** 전체 merge 대신 `24c7876b3` in-place HTML edit delivery 보존, Community preview runtime fallback 잔여, intent signal latch(`04236af50`)를 순서대로 검토한다. `4b660237c` slim prompt는 문구 축약만 반영했으므로, full slim charter 전환은 실제 슬라이드 품질/댓글 수정/background 재진입 회귀 샘플을 확보한 뒤 판단한다. AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
 
 ---
 
