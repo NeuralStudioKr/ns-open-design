@@ -77,7 +77,8 @@ def test_save_bff_session_clears_suppress_flag() -> None:
     assert request.session["teamver_bff_v1"]["access_token"] == "a1"
 
 
-def test_update_bff_workspace_clears_suppress_flag() -> None:
+
+def test_update_bff_workspace_refuses_while_suppressed() -> None:
     request = _request()
     save_bff_session(
         request,
@@ -88,8 +89,19 @@ def test_update_bff_workspace_clears_suppress_flag() -> None:
         workspace_id="ws-old",
     )
     suppress_session_cookie(request)
+    assert update_bff_workspace(request, "ws-new") is False
+    assert request.session["teamver_bff_v1"]["workspace_id"] == "ws-old"
 
-    update_bff_workspace(request, "ws-new")
 
+def test_update_bff_workspace_mutates_when_not_suppressed() -> None:
+    request = _request()
+    save_bff_session(
+        request,
+        user_id="u1",
+        access_token="a0",
+        expires_in=600,
+        refresh_token="rt",
+        workspace_id="ws-old",
+    )
+    assert update_bff_workspace(request, "ws-new") is True
     assert request.session["teamver_bff_v1"]["workspace_id"] == "ws-new"
-    assert SUPPRESS_SESSION_COOKIE_SCOPE_KEY not in request.scope

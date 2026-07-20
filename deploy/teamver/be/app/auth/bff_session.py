@@ -78,19 +78,22 @@ def save_bff_session(
     request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
 
 
-def update_bff_workspace(request: Request, workspace_id: str) -> None:
+def update_bff_workspace(request: Request, workspace_id: str) -> bool:
     """Mutate workspace_id and allow Set-Cookie so the change reaches the browser.
 
-    Callers must not invoke this while holding a *stale* retained session that
-    was suppress'd after a lost refresh race — re-signing those tokens would
-    overwrite a sibling node's newer cookie. Ensure a writable (non-suppressed
-    or freshly refreshed) session first; see ``post_auth_workspace``.
+    Returns False (no mutation) when the cookie is suppress'd after a lost
+    refresh race — re-signing those tokens would overwrite a sibling node's
+    newer cookie. Callers must force_refresh to a writable session first, or
+    honor membership without mutating the cookie (stale grace + FE header).
     """
+    if is_session_cookie_suppressed(request):
+        return False
     raw = request.session.get(_BFF_KEY)
-    if isinstance(raw, dict):
-        raw["workspace_id"] = workspace_id
-        request.session[_BFF_KEY] = raw
-        request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
+    if not isinstance(raw, dict):
+        return False
+    raw["workspace_id"] = workspace_id
+    request.session[_BFF_KEY] = raw
+    return True
 
 
 def is_session_cookie_suppressed(request: Request) -> bool:

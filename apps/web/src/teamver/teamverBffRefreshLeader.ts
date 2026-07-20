@@ -30,7 +30,7 @@ const LOCK_KEY = "teamver_bff_refresh_lock_v1";
 const LOCK_TTL_MS = 4_000;
 /** Match lock TTL — shorter waits caused followers to POST while the leader's
  * Main refresh was still in flight, doubling rotation races. */
-const LEADER_WAIT_MS = 4_000;
+const LEADER_WAIT_MS = 3_500;
 
 type LockEntry = {
   tabId: string;

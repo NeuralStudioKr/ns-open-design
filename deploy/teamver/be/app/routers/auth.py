@@ -10,7 +10,7 @@ from starlette.responses import Response
 from teamver_app_sdk.errors import AuthenticationError, TeamverAPIError
 
 from ..auth.bff_tokens import (
-    access_token_is_usable,
+    access_token_not_expired,
     ensure_bff_session,
     force_refresh_bff_session,
     probe_bff_session,
@@ -88,11 +88,12 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
     except TeamverBootstrapError as exc:
         if exc.status_code == 401:
             # Transient Main bootstrap 401 / HA token mismatch must not wipe a
-            # still-usable BFF cookie — deleting it races sibling Set-Cookie and
+            # still-alive BFF cookie — deleting it races sibling Set-Cookie and
             # cascades to session_expired on the next probe.
-            if access_token_is_usable(session):
+            # Retain bar = probe / bff_tokens absolute expiry (not 30s usable buffer).
+            if access_token_not_expired(session):
                 logger.warning(
-                    "[auth/session] bootstrap 401; retaining usable BFF session user=%s",
+                    "[auth/session] bootstrap 401; retaining unexpired BFF session user=%s",
                     session.user_id,
                 )
                 suppress_session_cookie(request)
@@ -134,6 +135,19 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                         view = bff_session_public_view(refreshed)
                         view["user"] = {"user_id": refreshed.user_id}
                         return view
+            # force_refresh None may still leave a not-expired retained cookie.
+            remaining = load_bff_session(request)
+            if remaining is not None and access_token_not_expired(remaining):
+                suppress_session_cookie(request)
+                stale = await peek_last_bootstrap_within_grace(
+                    user_id=remaining.user_id,
+                    workspace_id=remaining.workspace_id,
+                )
+                if stale is not None:
+                    return _session_from_bootstrap_payload(stale, auth_source="bff")
+                view = bff_session_public_view(remaining)
+                view["user"] = {"user_id": remaining.user_id}
+                return view
             clear_bff_session(request)
             login_url = teamver_main_login_url_for_design()
             return JSONResponse(
@@ -277,6 +291,7 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
         )
 
     async def _try_stale_grace(*, user_id: str) -> dict[str, Any] | None:
+        """Honor cached membership; mutate cookie only when Set-Cookie is safe."""
         stale = await peek_last_bootstrap_within_grace(
             user_id=user_id,
             workspace_id=platform_ws,
@@ -289,13 +304,20 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
             and stale_entry is not None
             and stale_entry.get("app_enabled", False)
         ):
-            update_bff_workspace(request, platform_ws)
+            cookie_updated = update_bff_workspace(request, platform_ws)
             logger.info(
-                "[auth/workspace] bootstrap 401 retained via stale grace user=%s workspace=%s",
+                "[auth/workspace] bootstrap 401 retained via stale grace "
+                "user=%s workspace=%s cookie_updated=%s",
                 user_id,
                 platform_ws,
+                cookie_updated,
             )
-            return {"workspace_id": platform_ws, "status": "ok", "stale": True}
+            return {
+                "workspace_id": platform_ws,
+                "status": "ok",
+                "stale": True,
+                "cookie_updated": cookie_updated,
+            }
         return None
 
     def _raise_token_expired() -> None:
@@ -323,15 +345,8 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
         if exc.status_code != 401:
             raise HTTPException(status_code=502, detail={"code": "bootstrap_failed"}) from exc
 
-        # Parity with GET /auth/session: stale grace → force_refresh → retry →
-        # stale again → 401. Avoid bouncing workspace switch on a single Main
-        # hiccup when the BFF cookie is still alive.
-        if access_token_is_usable(session):
-            suppress_session_cookie(request)
-            stale_ok = await _try_stale_grace(user_id=session.user_id)
-            if stale_ok is not None:
-                return stale_ok
-
+        # Order: force_refresh → retry → stale grace → 401.
+        # Do not suppress-then-stale-first (would re-sign HA-loser tokens).
         refreshed = await force_refresh_bff_session(request)
         if refreshed is not None and not is_session_cookie_suppressed(request):
             try:
@@ -356,9 +371,10 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
                     status_code=502, detail={"code": "bootstrap_failed"}
                 ) from retry_exc
         else:
-            stale_ok = await _try_stale_grace(user_id=session.user_id)
-            if stale_ok is not None:
-                return stale_ok
+            if access_token_not_expired(session):
+                stale_ok = await _try_stale_grace(user_id=session.user_id)
+                if stale_ok is not None:
+                    return stale_ok
             _raise_token_expired()
 
     if bootstrap is None:
@@ -377,8 +393,14 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
             code="app_not_enabled",
             message="Design is not enabled for this workspace",
         )
-    update_bff_workspace(request, platform_ws)
-    return {"workspace_id": platform_ws, "status": "ok"}
+    if not update_bff_workspace(request, platform_ws):
+        raise_auth_http(
+            401,
+            code="token_expired",
+            message="Session expired",
+            login_url=teamver_main_login_url_for_design(),
+        )
+    return {"workspace_id": platform_ws, "status": "ok", "cookie_updated": True}
 
 
 @router.post("/auth/refresh", response_model=None)

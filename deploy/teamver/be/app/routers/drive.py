@@ -15,7 +15,7 @@ from ..auth.bff_session import (
     load_bff_session,
     suppress_session_cookie,
 )
-from ..auth.bff_tokens import access_token_is_usable, force_refresh_bff_session
+from ..auth.bff_tokens import access_token_not_expired, force_refresh_bff_session
 from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
 from ..auth_context import AuthContext, require_auth, require_workspace_context
@@ -195,7 +195,7 @@ async def proxy_drive(
         if status == 401:
             remaining = load_bff_session(request)
             auth_failure = _upstream_auth_failure(content)
-            if remaining is not None and access_token_is_usable(remaining) and not auth_failure:
+            if remaining is not None and access_token_not_expired(remaining) and not auth_failure:
                 if refreshed is None:
                     # Losing ALB node after refresh rotation — never re-sign stale cookie.
                     suppress_session_cookie(request)
@@ -207,7 +207,7 @@ async def proxy_drive(
                 )
                 media_type = headers.get("content-type") or headers.get("Content-Type")
                 return Response(content=content, status_code=status, headers=headers, media_type=media_type)
-            if remaining is not None and access_token_is_usable(remaining) and auth_failure:
+            if remaining is not None and access_token_not_expired(remaining) and auth_failure:
                 if refreshed is None:
                     # Keep sibling node's rotated Set-Cookie; do not re-sign stale session.
                     suppress_session_cookie(request)
