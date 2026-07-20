@@ -137,6 +137,9 @@ async def test_post_auth_workspace_retains_via_stale_bootstrap_on_main_401(
     )
     monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
     monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    monkeypatch.setattr(
+        auth_router, "force_refresh_bff_session", AsyncMock(return_value=None)
+    )
     bootstrap_exc = TeamverBootstrapError("upstream_401", status_code=401)
     monkeypatch.setattr(auth_router, "fetch_bootstrap", AsyncMock(side_effect=bootstrap_exc))
     stale_bootstrap = {
@@ -187,6 +190,9 @@ async def test_post_auth_workspace_401_without_stale_bootstrap_still_denies(
     )
     monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
     monkeypatch.setattr(auth_router, "ensure_bff_session", AsyncMock(return_value=session))
+    monkeypatch.setattr(
+        auth_router, "force_refresh_bff_session", AsyncMock(return_value=None)
+    )
     bootstrap_exc = TeamverBootstrapError("upstream_401", status_code=401)
     monkeypatch.setattr(auth_router, "fetch_bootstrap", AsyncMock(side_effect=bootstrap_exc))
     monkeypatch.setattr(
@@ -204,3 +210,118 @@ async def test_post_auth_workspace_401_without_stale_bootstrap_still_denies(
 
     assert excinfo.value.status_code == 401
     update_ws.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_post_auth_workspace_force_refreshes_when_cookie_suppressed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HA retain sets suppress; workspace mutation must force_refresh before
+    claiming ok so Set-Cookie can carry the new workspace_id.
+    """
+    import time
+    from unittest.mock import Mock
+
+    from app.auth.bff_session import BffSession, SUPPRESS_SESSION_COOKIE_SCOPE_KEY
+    from app.routers import auth as auth_router
+    from app.routers.auth import WorkspaceSelectRequest
+
+    session = BffSession(
+        user_id="user-1",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id="ws-old",
+        aud="teamver-design",
+        scope=["design"],
+    )
+    refreshed = BffSession(
+        user_id="user-1",
+        access_token="apps-access-2",
+        refresh_token="apps-refresh-2",
+        access_expires_at=time.time() + 600,
+        workspace_id="ws-old",
+        aud="teamver-design",
+        scope=["design"],
+    )
+
+    async def ensure_with_suppress(request):
+        request.scope[SUPPRESS_SESSION_COOKIE_SCOPE_KEY] = True
+        return session
+
+    async def force_refresh_clears_suppress(request):
+        request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
+        return refreshed
+
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", ensure_with_suppress)
+    monkeypatch.setattr(
+        auth_router, "force_refresh_bff_session", force_refresh_clears_suppress
+    )
+    monkeypatch.setattr(
+        auth_router,
+        "fetch_bootstrap",
+        AsyncMock(
+            return_value={
+                "workspaces": [
+                    {"workspace_id": "ws-target", "app_enabled": True, "role": "member"},
+                ],
+            }
+        ),
+    )
+    update_ws = Mock()
+    monkeypatch.setattr(auth_router, "update_bff_workspace", update_ws)
+
+    request = _request_with_cookie_header("session=x")
+    body = WorkspaceSelectRequest(workspace_id="ws-target")
+    result = await auth_router.post_auth_workspace(request, body)
+
+    assert result == {"workspace_id": "ws-target", "status": "ok"}
+    update_ws.assert_called_once_with(request, "ws-target")
+    assert SUPPRESS_SESSION_COOKIE_SCOPE_KEY not in request.scope
+
+
+@pytest.mark.asyncio
+async def test_post_auth_workspace_401_when_suppress_and_force_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+    from unittest.mock import Mock
+
+    from app.auth.bff_session import BffSession, SUPPRESS_SESSION_COOKIE_SCOPE_KEY
+    from app.routers import auth as auth_router
+    from app.routers.auth import WorkspaceSelectRequest
+    from fastapi import HTTPException
+
+    session = BffSession(
+        user_id="user-1",
+        access_token="apps-access",
+        refresh_token="apps-refresh",
+        access_expires_at=time.time() + 600,
+        workspace_id="ws-old",
+        aud="teamver-design",
+        scope=["design"],
+    )
+
+    async def ensure_with_suppress(request):
+        request.scope[SUPPRESS_SESSION_COOKIE_SCOPE_KEY] = True
+        return session
+
+    monkeypatch.setattr(auth_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(auth_router, "ensure_bff_session", ensure_with_suppress)
+    monkeypatch.setattr(
+        auth_router, "force_refresh_bff_session", AsyncMock(return_value=None)
+    )
+    update_ws = Mock()
+    monkeypatch.setattr(auth_router, "update_bff_workspace", update_ws)
+    fetch_mock = AsyncMock()
+    monkeypatch.setattr(auth_router, "fetch_bootstrap", fetch_mock)
+
+    request = _request_with_cookie_header("session=x")
+    body = WorkspaceSelectRequest(workspace_id="ws-target")
+    with pytest.raises(HTTPException) as excinfo:
+        await auth_router.post_auth_workspace(request, body)
+
+    assert excinfo.value.status_code == 401
+    update_ws.assert_not_called()
+    fetch_mock.assert_not_called()

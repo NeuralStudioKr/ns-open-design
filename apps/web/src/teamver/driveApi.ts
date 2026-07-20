@@ -186,7 +186,8 @@ function enqueueDriveFetch<T>(run: () => Promise<T>, signal?: AbortSignal): Prom
   })();
 }
 
-const DRIVE_AUTH_RETRY_DELAY_MS = 150;
+/** Match BFF/daemon HA Set-Cookie settle delay (DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS). */
+const DRIVE_AUTH_RETRY_DELAY_MS = 400;
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   throwIfDriveAborted(signal);

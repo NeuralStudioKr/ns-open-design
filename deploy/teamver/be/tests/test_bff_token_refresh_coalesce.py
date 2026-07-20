@@ -228,6 +228,43 @@ async def test_force_refresh_failure_returns_none_but_keeps_usable_cookie(
 
 
 @pytest.mark.asyncio
+async def test_refresh_auth_failure_retains_inside_usable_buffer_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HA race inside the 30s usable buffer must NOT clear — probe still
+    considers the JWT alive, and a delete Set-Cookie would wipe the sibling
+    winner's cookie.
+    """
+    refresh_mock = AsyncMock(
+        side_effect=AppsTokenRefreshError("teamver_http_error", status_code=401),
+    )
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    # 15s left: past the 30s usable buffer, but still within absolute expiry.
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="old-access",
+        expires_in=15,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+        aud="teamver-design",
+    )
+    before = request.session.get("teamver_bff_v1")
+
+    result = await ensure_bff_session(request)
+
+    assert result is not None
+    assert result.access_token == "old-access"
+    assert request.session.get("teamver_bff_v1") == before
+    assert request.scope.get("teamver_suppress_session_cookie") is True
+
+
+@pytest.mark.asyncio
 async def test_probe_skips_refresh_when_access_still_valid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

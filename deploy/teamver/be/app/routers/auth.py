@@ -19,6 +19,7 @@ from ..auth.bff_session import (
     bff_enabled,
     bff_session_public_view,
     clear_bff_session,
+    is_session_cookie_suppressed,
     load_bff_session,
     suppress_session_cookie,
     update_bff_workspace,
@@ -250,13 +251,66 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
             message="Apps session required",
             login_url=teamver_main_login_url_for_design(),
         )
+    # HA retain path sets suppress so we do not re-sign stale tokens. Workspace
+    # mutation *must* Set-Cookie, so force one refresh first. If that also
+    # loses the rotation race, bounce the FE ladder (401) rather than claiming
+    # ok while the browser cookie's workspace_id stays unchanged.
+    if is_session_cookie_suppressed(request):
+        refreshed = await force_refresh_bff_session(request)
+        if refreshed is None or is_session_cookie_suppressed(request):
+            raise_auth_http(
+                401,
+                code="token_expired",
+                message="Session expired",
+                login_url=teamver_main_login_url_for_design(),
+            )
+        session = refreshed
+
     platform_ws = body.workspace_id.strip()
-    try:
-        bootstrap = await fetch_bootstrap(
-            bearer_token=session.access_token,
-            user_id=session.user_id,
+
+    async def _bootstrap_for_workspace(*, bearer: str, user_id: str) -> dict[str, Any]:
+        return await fetch_bootstrap(
+            bearer_token=bearer,
+            user_id=user_id,
             workspace_id=platform_ws,
             force_refresh=True,
+        )
+
+    async def _try_stale_grace(*, user_id: str) -> dict[str, Any] | None:
+        stale = await peek_last_bootstrap_within_grace(
+            user_id=user_id,
+            workspace_id=platform_ws,
+        )
+        stale_entry = (
+            find_workspace_entry(stale, platform_ws) if stale is not None else None
+        )
+        if (
+            stale is not None
+            and stale_entry is not None
+            and stale_entry.get("app_enabled", False)
+        ):
+            update_bff_workspace(request, platform_ws)
+            logger.info(
+                "[auth/workspace] bootstrap 401 retained via stale grace user=%s workspace=%s",
+                user_id,
+                platform_ws,
+            )
+            return {"workspace_id": platform_ws, "status": "ok", "stale": True}
+        return None
+
+    def _raise_token_expired() -> None:
+        raise_auth_http(
+            401,
+            code="token_expired",
+            message="Session expired",
+            login_url=teamver_main_login_url_for_design(),
+        )
+
+    bootstrap: dict[str, Any] | None = None
+    try:
+        bootstrap = await _bootstrap_for_workspace(
+            bearer=session.access_token,
+            user_id=session.user_id,
         )
     except TeamverBootstrapError as exc:
         if exc.code == "teamver_unreachable":
@@ -266,37 +320,49 @@ async def post_auth_workspace(request: Request, body: WorkspaceSelectRequest) ->
                 message="Teamver is temporarily unavailable",
                 retryable=True,
             )
-        if exc.status_code == 401:
-            # HA race parity with GET /auth/session: if a stale-grace bootstrap
-            # for THIS workspace_id is still cached and grants membership, honor
-            # it before bouncing the user to Main login. Prevents a transient
-            # Main hiccup from denying an otherwise valid workspace switch.
-            stale = await peek_last_bootstrap_within_grace(
-                user_id=session.user_id,
-                workspace_id=platform_ws,
-            )
-            stale_entry = (
-                find_workspace_entry(stale, platform_ws) if stale is not None else None
-            )
-            if (
-                stale is not None
-                and stale_entry is not None
-                and stale_entry.get("app_enabled", False)
-            ):
-                update_bff_workspace(request, platform_ws)
-                logger.info(
-                    "[auth/workspace] bootstrap 401 retained via stale grace user=%s workspace=%s",
-                    session.user_id,
-                    platform_ws,
+        if exc.status_code != 401:
+            raise HTTPException(status_code=502, detail={"code": "bootstrap_failed"}) from exc
+
+        # Parity with GET /auth/session: stale grace → force_refresh → retry →
+        # stale again → 401. Avoid bouncing workspace switch on a single Main
+        # hiccup when the BFF cookie is still alive.
+        if access_token_is_usable(session):
+            suppress_session_cookie(request)
+            stale_ok = await _try_stale_grace(user_id=session.user_id)
+            if stale_ok is not None:
+                return stale_ok
+
+        refreshed = await force_refresh_bff_session(request)
+        if refreshed is not None and not is_session_cookie_suppressed(request):
+            try:
+                bootstrap = await _bootstrap_for_workspace(
+                    bearer=refreshed.access_token,
+                    user_id=refreshed.user_id,
                 )
-                return {"workspace_id": platform_ws, "status": "ok", "stale": True}
-            raise_auth_http(
-                401,
-                code="token_expired",
-                message="Session expired",
-                login_url=teamver_main_login_url_for_design(),
-            )
-        raise HTTPException(status_code=502, detail={"code": "bootstrap_failed"}) from exc
+            except TeamverBootstrapError as retry_exc:
+                if retry_exc.code == "teamver_unreachable":
+                    raise_auth_http(
+                        503,
+                        code="main_unavailable",
+                        message="Teamver is temporarily unavailable",
+                        retryable=True,
+                    )
+                if retry_exc.status_code == 401:
+                    stale_ok = await _try_stale_grace(user_id=refreshed.user_id)
+                    if stale_ok is not None:
+                        return stale_ok
+                    _raise_token_expired()
+                raise HTTPException(
+                    status_code=502, detail={"code": "bootstrap_failed"}
+                ) from retry_exc
+        else:
+            stale_ok = await _try_stale_grace(user_id=session.user_id)
+            if stale_ok is not None:
+                return stale_ok
+            _raise_token_expired()
+
+    if bootstrap is None:
+        _raise_token_expired()
 
     ws_entry = find_workspace_entry(bootstrap, platform_ws)
     if ws_entry is None:

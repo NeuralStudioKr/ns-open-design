@@ -181,6 +181,15 @@ async function postAuthRefreshCoordinated(
         // Peer reported success but our tab cannot observe the cookie yet
         // — fall through to our own POST (BE 30s coalesce still de-dupes).
       } else if (observed.status === 400) {
+        // Leader hard-failed, but this tab may still hold a live cookie
+        // (partial/orphan state on the leader only). Confirm locally before
+        // locking into hard sticky decline.
+        if (
+          (await probeDesignBffSessionAuthenticated())
+          || (await ensureDesignBffSessionAuthenticated())
+        ) {
+          return { ok: true, status: 200, bodyText: "" };
+        }
         return { ok: false, status: 400, bodyText: "" };
       }
     }

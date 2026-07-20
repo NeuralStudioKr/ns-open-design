@@ -11,6 +11,7 @@ from app.auth.bff_session import (
     clear_bff_session,
     save_bff_session,
     suppress_session_cookie,
+    update_bff_workspace,
 )
 
 
@@ -52,4 +53,43 @@ def test_clear_bff_session_clears_suppress_flag() -> None:
     clear_bff_session(request)
 
     assert "teamver_bff_v1" not in request.session
+    assert SUPPRESS_SESSION_COOKIE_SCOPE_KEY not in request.scope
+
+
+def test_save_bff_session_clears_suppress_flag() -> None:
+    """Successful token write owns Set-Cookie — suppress from a prior retain
+    on the same request must not block the rotated cookie.
+    """
+    request = _request()
+    suppress_session_cookie(request)
+    assert request.scope.get(SUPPRESS_SESSION_COOKIE_SCOPE_KEY) is True
+
+    save_bff_session(
+        request,
+        user_id="u1",
+        access_token="a1",
+        expires_in=600,
+        refresh_token="rt1",
+        workspace_id="ws1",
+    )
+
+    assert SUPPRESS_SESSION_COOKIE_SCOPE_KEY not in request.scope
+    assert request.session["teamver_bff_v1"]["access_token"] == "a1"
+
+
+def test_update_bff_workspace_clears_suppress_flag() -> None:
+    request = _request()
+    save_bff_session(
+        request,
+        user_id="u1",
+        access_token="a0",
+        expires_in=600,
+        refresh_token="rt",
+        workspace_id="ws-old",
+    )
+    suppress_session_cookie(request)
+
+    update_bff_workspace(request, "ws-new")
+
+    assert request.session["teamver_bff_v1"]["workspace_id"] == "ws-new"
     assert SUPPRESS_SESSION_COOKIE_SCOPE_KEY not in request.scope

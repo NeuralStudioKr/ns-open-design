@@ -158,8 +158,12 @@ async def _refresh_bff_session_core(
     """
     refresh = (session.refresh_token or "").strip()
     if not refresh:
-        if access_token_is_usable(session):
-            logger.warning("[bff] missing refresh token; retaining usable access user=%s", session.user_id)
+        # Align clear with probe: keep the cookie while JWT is still within
+        # absolute expiry. The 30s ``access_token_is_usable`` buffer is for
+        # proactive refresh only — clearing inside that window on a lost HA
+        # race emits delete Set-Cookie and can wipe a sibling's winner cookie.
+        if access_token_not_expired(session):
+            logger.warning("[bff] missing refresh token; retaining unexpired access user=%s", session.user_id)
             # No refresh performed on this request — do not clobber a sibling
             # ALB node's freshly rotated Set-Cookie with our unchanged session.
             suppress_session_cookie(request)
@@ -177,9 +181,9 @@ async def _refresh_bff_session_core(
             logger.warning("[bff] refresh unreachable; retaining existing session user=%s", session.user_id)
             suppress_session_cookie(request)
             return session
-        if access_token_is_usable(session):
+        if access_token_not_expired(session):
             logger.warning(
-                "[bff] refresh failed (%s); keeping cookie while access still valid user=%s return_usable=%s",
+                "[bff] refresh failed (%s); keeping cookie while access not expired user=%s return_usable=%s",
                 exc.code,
                 session.user_id,
                 return_usable_on_refresh_failure,
@@ -188,6 +192,7 @@ async def _refresh_bff_session_core(
             # the same refresh_token and rotated it. Re-signing our stale
             # session on the response would overwrite the sibling's new cookie
             # and cascade to session_expired on the next refresh attempt.
+            # Clear only when JWT is past absolute expiry (same bar as probe).
             suppress_session_cookie(request)
             return session if return_usable_on_refresh_failure else None
         clear_bff_session(request)

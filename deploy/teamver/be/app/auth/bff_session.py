@@ -73,13 +73,28 @@ def save_bff_session(
         "aud": aud,
         "scope": scope or [],
     }
+    # Successful token write owns this response's Set-Cookie. Clear any prior
+    # HA-retain suppress so middleware can emit the rotated cookie.
+    request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
 
 
 def update_bff_workspace(request: Request, workspace_id: str) -> None:
+    """Mutate workspace_id and allow Set-Cookie so the change reaches the browser.
+
+    Callers must not invoke this while holding a *stale* retained session that
+    was suppress'd after a lost refresh race — re-signing those tokens would
+    overwrite a sibling node's newer cookie. Ensure a writable (non-suppressed
+    or freshly refreshed) session first; see ``post_auth_workspace``.
+    """
     raw = request.session.get(_BFF_KEY)
     if isinstance(raw, dict):
         raw["workspace_id"] = workspace_id
         request.session[_BFF_KEY] = raw
+        request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
+
+
+def is_session_cookie_suppressed(request: Request) -> bool:
+    return bool(request.scope.get(SUPPRESS_SESSION_COOKIE_SCOPE_KEY))
 
 
 def clear_bff_session(request: Request) -> None:
