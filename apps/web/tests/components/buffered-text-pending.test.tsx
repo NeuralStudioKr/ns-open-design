@@ -149,4 +149,43 @@ describe('createBufferedTextUpdates pending text accounting', () => {
 
     buf.cancel();
   });
+
+  it('calls onContentRewrite with the full sanitized snapshot when content shrinks', () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+
+    let msg = {
+      content: 'Intro',
+      events: [],
+    } as unknown as ChatMessage;
+    const contentDeltas: string[] = [];
+    const contentRewrites: string[] = [];
+    const buf = createBufferedTextUpdates({
+      updateMessage: (u) => {
+        msg = u(msg);
+      },
+      persistSoon: () => {},
+      onContentDelta: (delta) => contentDeltas.push(delta),
+      onContentRewrite: (full) => contentRewrites.push(full),
+    });
+
+    // First flush emits growth that includes a host held incompletely… if the
+    // host somehow lands in content then a later void scrub shrinks it.
+    // Force a shrink by feeding a closed tool block that arrives mid-stream.
+    buf.appendContent('\n<tool_call>secret');
+    buf.flush();
+    expect(msg.content).toBe('Intro');
+    expect(contentDeltas).toEqual([]);
+
+    buf.appendContent('</tool_call>\nVisible');
+    buf.flush();
+    expect(msg.content).toBe('Intro\n\nVisible');
+    // Non-monotonic path may rewrite or emit growth depending on hold timing;
+    // either way live parsers must learn about "Visible" without keeping secret.
+    expect(msg.content).not.toContain('secret');
+    expect([...contentDeltas, ...contentRewrites].join('')).toContain('Visible');
+    expect(JSON.stringify(contentRewrites)).not.toContain('secret');
+
+    buf.cancel();
+  });
 });

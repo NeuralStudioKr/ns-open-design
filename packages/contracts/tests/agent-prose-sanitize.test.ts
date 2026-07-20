@@ -606,6 +606,31 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(guard.flush()).toBe("");
   });
 
+  it("holds fonts.googleapis.com (most common truncated host) across chunks", () => {
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("Done.\n\nfonts.googleapis.com")).toBe("Done.");
+    expect(guard.feed('/css2?family=Inter" />\nNext.')).toBe("\n\nNext.");
+    expect(guard.flush()).toBe("");
+  });
+
+  it("holds short CDN stems like fonts.goo / googlea across chunks", () => {
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("X\n\nfonts.goo")).toBe("X");
+    expect(guard.feed("gleapis.com")).toBe("");
+    expect(guard.flush()).toBe("");
+
+    const guard2 = createStreamingAssistantProseGuard();
+    expect(guard2.feed("Plan.\n\ngooglea")).toBe("Plan.");
+    expect(guard2.feed("pis.com")).toBe("");
+    expect(guard2.flush()).toBe("");
+  });
+
+  it("strips bare CDN host lines from history even without a void terminator", () => {
+    expect(
+      sanitizeAssistantProseForDisplay("Done.\n\nfonts.googleapis.com\n\nNext."),
+    ).toBe("Done.\n\nNext.");
+  });
+
   it("does not promote unterminated CDN debris out of an open artifact on history sanitize", () => {
     const input = [
       "Intro",

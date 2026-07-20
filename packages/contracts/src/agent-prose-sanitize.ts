@@ -217,15 +217,36 @@ function isLikelyInternalMarkupLine(line: string): boolean {
 
 /** Host / attr fragments that belong to truncated head tags, not chat copy. */
 const HTML_DEBRIS_HOST_FRAGMENTS = [
-  "googleapis.com",
+  // Longer / more-specific hosts first so reverse-prefix matching prefers them.
+  "fonts.googleapis.com",
   "fonts.gstatic.com",
   "cdn.jsdelivr.net",
-  "unpkg.com",
   "cdnjs.cloudflare.com",
   "fonts.bunny.net",
   "api.fontshare.com",
   "use.typekit.net",
+  "googleapis.com",
   "fontawesome.com",
+  "unpkg.com",
+  "esm.sh",
+] as const;
+
+/** Short stems held while a CDN host is still being typed across chunks. */
+const HTML_DEBRIS_HOST_STEMS = [
+  "fonts.googleapis.com",
+  "fonts.gstatic.com",
+  "googleapis.com",
+  "fonts.google",
+  "fonts.goo",
+  "fonts.g",
+  "googleapis",
+  "googleap",
+  "googlea",
+  "cdn.jsdelivr",
+  "cdn.js",
+  "cdnjs.cloudflare",
+  "unpkg.com",
+  "unpkg",
   "esm.sh",
 ] as const;
 
@@ -248,7 +269,14 @@ function looksLikeHtmlDebrisLine(line: string): boolean {
   ) {
     return true;
   }
+  // Bare host-only lines (no void terminator) — never valid chat copy.
+  if (isBareCdnHostLine(lower)) return true;
   return false;
+}
+
+function isBareCdnHostLine(lower: string): boolean {
+  const withoutProto = lower.replace(/^https?:\/\//, "").replace(/\/$/, "").trim();
+  return HTML_DEBRIS_HOST_FRAGMENTS.some((host) => withoutProto === host);
 }
 
 /**
@@ -302,8 +330,18 @@ function looksLikeIncompleteHtmlDebrisLine(line: string): boolean {
     ) {
       return true;
     }
-    // Reverse prefix while the host is still being typed (`googleapis`, `fonts.g`).
-    if (withoutProto.length >= 8 && host.startsWith(withoutProto)) return true;
+    // Reverse prefix while the host is still being typed.
+    // Floor at 6 so `googlea` / `fonts.` hold; stems cover shorter cases.
+    if (withoutProto.length >= 6 && host.startsWith(withoutProto)) return true;
+  }
+  for (const stem of HTML_DEBRIS_HOST_STEMS) {
+    if (withoutProto === stem) return true;
+    if (withoutProto.length >= 4 && stem.startsWith(withoutProto)) return true;
+    if (withoutProto.startsWith(stem) && withoutProto.length <= stem.length + 8) {
+      // `fonts.google` + partial continuation still incomplete host typing
+      const rest = withoutProto.slice(stem.length);
+      if (!rest || /^[a-z0-9.-]*$/i.test(rest)) return true;
+    }
   }
 
   // Truncated `https://fonts.` / `https://cdn.` with no host completion yet.
@@ -836,6 +874,13 @@ export function stripChatProseHtmlDebris(
       re.lastIndex = 0;
       out = out.replace(re, "");
     }
+    // Bare host-only lines (no `"/>` terminator) — e.g. a mid-stream host that
+    // never received its void-tag tail. stripIncompleteTrailingHtmlDebris only
+    // sees the *last* line; this catches hosts stuck earlier in the buffer.
+    out = out.replace(
+      /(^|\n)[ \t]*(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)\/?[ \t]*(?=\n|$)/gi,
+      "$1",
+    );
     return out;
   };
 

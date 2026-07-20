@@ -3423,7 +3423,7 @@ export function ProjectView({
           textBuffer.flush();
           persistScheduler.persistNow(options);
         };
-        const parser = createArtifactParser();
+        let parser = createArtifactParser();
         let parsedArtifact: Artifact | null = null;
         let liveHtml = '';
         let replayedContent = needsFullReplay ? '' : message.content;
@@ -3468,6 +3468,15 @@ export function ProjectView({
             }
           }
         };
+        const rewriteLiveContent = (fullContent: string) => {
+          // Sanitize shrank previously emitted bytes — reset the artifact
+          // parser and replay the full cleaned snapshot so CDN/host debris
+          // cannot stick in liveHtml.
+          parser = createArtifactParser();
+          liveHtml = '';
+          parsedArtifact = null;
+          applyContentDelta(fullContent);
+        };
         if (!needsFullReplay && message.content) {
           applyContentDelta(message.content);
         }
@@ -3476,6 +3485,7 @@ export function ProjectView({
           persistSoon,
           flushAndPersistNow: () => persistNow({ keepalive: true }),
           onContentDelta: applyContentDelta,
+          onContentRewrite: rewriteLiveContent,
           stripCodeFences: hideAssistantThinkingDetails,
         });
         reattachTextBuffersRef.current.add(textBuffer);
@@ -4432,7 +4442,7 @@ export function ProjectView({
       // as download chips on the assistant message.
       const beforeFileNames = new Set(preTurnFileNames);
 
-      const parser = createArtifactParser();
+      let parser = createArtifactParser();
       let parsedArtifact: Artifact | null = null;
       let liveHtml = '';
       let streamedText = '';
@@ -4655,11 +4665,19 @@ export function ProjectView({
         }
       };
 
+      const rewriteLiveContent = (fullContent: string) => {
+        parser = createArtifactParser();
+        liveHtml = '';
+        parsedArtifact = null;
+        applyContentDelta(fullContent);
+      };
+
       const textBuffer = createBufferedTextUpdates({
         updateMessage: updateAssistant,
         persistSoon: persistAssistantSoon,
         flushAndPersistNow: persistAssistantNowKeepalive,
         onContentDelta: applyContentDelta,
+        onContentRewrite: rewriteLiveContent,
         stripCodeFences: hideAssistantThinkingDetails,
       });
       sendTextBufferRef.current = textBuffer;
@@ -7783,6 +7801,7 @@ export function createBufferedTextUpdates({
   persistSoon,
   flushAndPersistNow,
   onContentDelta,
+  onContentRewrite,
   stripCodeFences = false,
 }: {
   updateMessage: (updater: (prev: ChatMessage) => ChatMessage) => void;
@@ -7792,6 +7811,12 @@ export function createBufferedTextUpdates({
   // last buffered chunk isn't lost when the user reloads mid-stream.
   flushAndPersistNow?: () => void;
   onContentDelta?: (delta: string) => void;
+  /**
+   * Called when sanitize shrinks/rewrites previously emitted content
+   * (non-monotonic). Live artifact parsers must reset and replay the full
+   * sanitized snapshot — append-only `onContentDelta` cannot retract bytes.
+   */
+  onContentRewrite?: (fullContent: string) => void;
   /** Teamver embed: also strip ```html/js fences from the live text channel. */
   stripCodeFences?: boolean;
 }) {
@@ -7851,6 +7876,7 @@ export function createBufferedTextUpdates({
     pendingTextEventDelta = '';
     try {
       let sanitizedContentDelta = '';
+      let rewrittenFullContent: string | null = null;
       updateMessage((prev) => {
         const prevContent = prev.content ?? '';
         if (contentDelta && rawContentForSanitize === null) {
@@ -7862,9 +7888,19 @@ export function createBufferedTextUpdates({
         const nextContent = contentDelta
           ? sanitizeStreaming(rawContentForSanitize ?? prevContent)
           : prevContent;
-        sanitizedContentDelta = nextContent.startsWith(prevContent)
-          ? nextContent.slice(prevContent.length)
-          : '';
+        if (contentDelta) {
+          if (nextContent.startsWith(prevContent)) {
+            sanitizedContentDelta = nextContent.slice(prevContent.length);
+          } else {
+            // Non-monotonic scrub (closed-tag / CDN debris removed mid-stream).
+            // Growth is empty for the append-only channel; rewrite notifies
+            // live HTML parsers to reset + replay the full sanitized snapshot.
+            sanitizedContentDelta = '';
+            if (nextContent !== prevContent) {
+              rewrittenFullContent = nextContent;
+            }
+          }
+        }
         let nextEvents = prev.events;
         if (textEventDelta) {
           rawTextEventForSanitize += textEventDelta;
@@ -7889,7 +7925,11 @@ export function createBufferedTextUpdates({
         };
       });
       persistSoon();
-      if (sanitizedContentDelta) onContentDelta?.(sanitizedContentDelta);
+      if (rewrittenFullContent !== null) {
+        onContentRewrite?.(rewrittenFullContent);
+      } else if (sanitizedContentDelta) {
+        onContentDelta?.(sanitizedContentDelta);
+      }
     } finally {
       flushing = false;
     }

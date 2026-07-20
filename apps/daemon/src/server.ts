@@ -15,6 +15,7 @@ import os from 'node:os';
 import net from 'node:net';
 import {
   defaultScenarioPluginIdForProjectMetadata,
+  sanitizeAssistantProseForDisplay,
   type OpenDesignDiscordPresenceResponse,
   type OpenDesignGithubLatestReleaseResponse,
   type OpenDesignGithubRepoResponse,
@@ -2849,6 +2850,48 @@ function persistRunEventToAssistantMessage(db, run, event, data) {
     appendMessageAgentEvent(db, run.assistantMessageId, persisted);
   } catch (err) {
     console.warn('[runs] message event persistence failed', err);
+  }
+}
+
+/**
+ * Append-only SSE persist cannot retract bytes after a late closed-tag / CDN
+ * scrub. At turn end, rewrite the assistant row with the full non-streaming
+ * sanitizer so bare hosts / incomplete markup cannot survive in DB history.
+ */
+function rewritePersistedAssistantProseAtTurnEnd(db, run) {
+  if (!run?.assistantMessageId || !run?.conversationId) return;
+  try {
+    const messages = listMessages(db, run.conversationId);
+    const msg = Array.isArray(messages)
+      ? messages.find((row) => row?.id === run.assistantMessageId)
+      : null;
+    if (!msg || msg.role !== 'assistant') return;
+    const content = typeof msg.content === 'string' ? msg.content : '';
+    const cleanedContent = sanitizeAssistantProseForDisplay(content, { streaming: false });
+    const events = Array.isArray(msg.events)
+      ? msg.events.map((ev) => {
+          if (ev && ev.kind === 'text' && typeof ev.text === 'string') {
+            return {
+              ...ev,
+              text: sanitizeAssistantProseForDisplay(ev.text, { streaming: false }),
+            };
+          }
+          return ev;
+        })
+      : msg.events;
+    if (
+      cleanedContent === content
+      && JSON.stringify(events ?? null) === JSON.stringify(msg.events ?? null)
+    ) {
+      return;
+    }
+    upsertMessage(db, run.conversationId, {
+      ...msg,
+      content: cleanedContent,
+      events,
+    });
+  } catch (err) {
+    console.warn('[runs] turn-end prose rewrite failed', err);
   }
 }
 
@@ -13046,6 +13089,7 @@ export async function startServer({
         ...(signal ? { signal } : {}),
       });
       pendingRpcCloseReason = null;
+      rewritePersistedAssistantProseAtTurnEnd(db, run);
       design.runs.finish(run, status, code, signal);
       return false;
     };
