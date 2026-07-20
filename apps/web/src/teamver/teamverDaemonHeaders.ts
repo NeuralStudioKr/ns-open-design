@@ -186,10 +186,19 @@ async function fetchDaemonWithEmbedAuthRecovery(
 }
 
 async function finalizeDaemonFetch(
-  input: RequestInfo | URL,
+  _input: RequestInfo | URL,
   resp: Response,
+  options: { clone?: boolean } = {},
 ): Promise<Response> {
-  return resp.clone();
+  // Dedupe cache-hit callers each need their own Response (a single body can
+  // only be read once). Non-cache callers own the response outright and
+  // cloning would (a) waste memory and (b) break streaming test mocks that
+  // omit `clone()` on the plain-object stub. Default to no-clone; the cache
+  // hit path opts in explicitly.
+  if (options.clone && typeof (resp as Response).clone === "function") {
+    return (resp as Response).clone();
+  }
+  return resp;
 }
 
 /** Embed active workspace for daemon `/api/*` — aligns run usage/billing with BFF headers. */
@@ -235,12 +244,15 @@ export async function fetchTeamverDaemon(
     return finalizeDaemonFetch(input, resp);
   }
   const existing = daemonGetInflight.get(dedupeKey);
-  if (existing) return existing.then((resp) => finalizeDaemonFetch(input, resp));
+  if (existing) return existing.then((resp) => finalizeDaemonFetch(input, resp, { clone: true }));
   const promise = fetchDaemonWithEmbedAuthRecovery(input, nextInit);
   daemonGetInflight.set(dedupeKey, promise);
   try {
     const resp = await promise;
-    return finalizeDaemonFetch(input, resp);
+    // Clone here too: `promise` stays in the cache long enough for a sibling
+    // read to consume its body before we release the map entry in `finally`,
+    // and both readers must be able to drain the response independently.
+    return finalizeDaemonFetch(input, resp, { clone: true });
   } finally {
     daemonGetInflight.delete(dedupeKey);
   }

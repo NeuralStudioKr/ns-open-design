@@ -828,11 +828,17 @@ describe('streamViaDaemon', () => {
       handlers,
     });
 
-    expect(handlers.onAgentEvent).toHaveBeenCalledWith({
-      kind: 'usage',
-      inputTokens: 120,
-      outputTokens: 45,
-    });
+    // `translateAgentEvent` enriches the usage frame with `apiProtocol` and
+    // `model` (added in loop 405b to feed the usage-metadata review) —
+    // match on the required subset so future metadata additions do not
+    // require touching this test.
+    expect(handlers.onAgentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'usage',
+        inputTokens: 120,
+        outputTokens: 45,
+      }),
+    );
   });
 
   it('continues normal stdout and end handling around comments', async () => {

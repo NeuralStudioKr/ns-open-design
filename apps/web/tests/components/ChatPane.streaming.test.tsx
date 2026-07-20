@@ -604,7 +604,12 @@ describe('ChatPane streaming state', () => {
       />,
     );
 
-    expect(screen.getByText('Annotation')).toBeTruthy();
+    // vitest's jsdom runs on localhost with `import.meta.env.DEV === true`, so
+    // `isTeamverEmbedMode()` auto-detects embed mode and `commentTargetDisplayName`
+    // returns the Korean fallback (`주석`) instead of the English default
+    // (`Annotation`). Accept either — the assertion here is that the internal
+    // `path-…` id is not surfaced as visible text.
+    expect(screen.getByText(/^(?:Annotation|주석)$/)).toBeTruthy();
     expect(screen.getByText('222')).toBeTruthy();
     expect(screen.queryByText('path-0-0-0-0-1')).toBeNull();
   });

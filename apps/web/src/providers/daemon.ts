@@ -199,7 +199,11 @@ export function sanitizePriorAssistantTurnForTranscript(
   // trips the 12K cap. Uses markdown-aware detection so a literal
   // `<artifact>` recited in a code fence survives.
   sanitized = summarizeArtifactsForTranscript(sanitized, persistedArtifactFiles);
-  return stripInternalOpenDesignMarkup(sanitized);
+  // Preserve closed <artifact> blocks so the summarizer's decisions stand —
+  // unconfirmed-save artifacts must survive verbatim, and fenced-code-block
+  // recitations of `<artifact>` (which the summarizer intentionally left in
+  // place) must not be stripped by the internal-markup SSOT strip here.
+  return stripInternalOpenDesignMarkup(sanitized, { preserveClosedArtifact: true });
 }
 
 // producedFiles → the persistence evidence summarizeArtifactsForTranscript

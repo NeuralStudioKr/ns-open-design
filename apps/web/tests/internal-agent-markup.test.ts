@@ -155,6 +155,33 @@ describe("internalAgentMarkup", () => {
     expect(sanitizeLeakedAgentProse(input)).toBe(input);
   });
 
+  it("optionally preserves closed <artifact> blocks for transcript summarization", () => {
+    // `sanitizePriorAssistantTurnForTranscript` calls this after
+    // `summarizeArtifactsForTranscript` has already handled confirmed-save
+    // artifacts (summarized) and left unconfirmed ones intact. Stripping
+    // closed `<artifact>` again here would silently discard those unconfirmed
+    // bodies — the transcript would then reach the next turn with no source
+    // to inspect or repair. The `preserveClosedArtifact` opt-in is what keeps
+    // that contract intact.
+    const input = [
+      "Build summary below.",
+      '<artifact identifier="deck" type="text/html" title="Pitch deck">',
+      "<html><body>only surviving copy</body></html>",
+      "</artifact>",
+    ].join("\n");
+
+    expect(stripInternalOpenDesignMarkup(input)).not.toContain("<artifact");
+    expect(stripInternalOpenDesignMarkup(input, { preserveClosedArtifact: true })).toContain(
+      "<artifact identifier=\"deck\"",
+    );
+    expect(stripInternalOpenDesignMarkup(input, { preserveClosedArtifact: true })).toContain(
+      "only surviving copy",
+    );
+    expect(stripInternalOpenDesignMarkup(input, { preserveClosedArtifact: true })).toContain(
+      "</artifact>",
+    );
+  });
+
   it("routes stripLeakedPseudoToolXml through the shared sanitizer", () => {
     const input = "<info>TodoWrite called with 3 tasks</info>\n\n본문";
     expect(stripLeakedPseudoToolXml(input)).toBe("본문");

@@ -678,8 +678,8 @@ function AppInner() {
     };
   }, []);
 
-  // Re-fetch design-api `runtime-config` after workspace switch / pageshow so
-  // BE env rotations propagate without a full reload. Skips persist/state when
+  // Re-fetch design-api `runtime-config` after workspace switch / session restore
+  // so BE env rotations propagate without a full reload. Skips persist/state when
   // the merge is a no-op (same key/protocol/baseUrl/model).
   const reloadTeamverRuntimeConfig = useCallback(async (options?: { force?: boolean }) => {
     if (!isTeamverEmbedMode()) return;
