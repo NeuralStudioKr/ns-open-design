@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { historyWithApiAttachmentContext } from '../../src/api-attachment-context';
 import {
+  commentsToAttachments,
+  historyWithCommentAttachmentContext,
+} from '../../src/comments';
+import {
   buildProxyMessages,
   buildProxyResponseError,
   streamProxyEndpoint,
@@ -317,6 +321,66 @@ describe('buildProxyMessages', () => {
         ],
       },
     ]);
+  });
+
+  it('never forwards empty Anthropic user messages after comment history enrichment', async () => {
+    const attachments = commentsToAttachments([
+      {
+        id: 'c1',
+        projectId: 'project-1',
+        conversationId: 'conversation-1',
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h1.hero-title',
+        text: 'Current title',
+        position: { x: 1, y: 2, width: 3, height: 4 },
+        htmlHint: '<h1 data-od-id="hero-title">',
+        note: 'Shorten this title',
+        status: 'open',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const history = historyWithCommentAttachmentContext([
+      {
+        id: 'old',
+        role: 'user',
+        content: '',
+        createdAt: 1,
+        commentAttachments: attachments,
+      },
+      userMessage('Follow up on the title'),
+    ]);
+
+    const messages = await buildProxyMessages('/api/proxy/anthropic/stream', history, {
+      projectId: 'project-1',
+    });
+
+    expect(messages[0]?.role).toBe('user');
+    expect(typeof messages[0]?.content).toBe('string');
+    expect(String(messages[0]?.content).trim().length).toBeGreaterThan(0);
+    expect(String(messages[0]?.content)).toContain('<attached-preview-comments>');
+    expect(String(messages[1]?.content)).toBe('Follow up on the title');
+  });
+
+  it('replaces blank Anthropic user strings without mutating OpenAI payloads', async () => {
+    const blankUser: ChatMessage = {
+      id: 'blank',
+      role: 'user',
+      content: '   ',
+      createdAt: 1,
+    };
+
+    await expect(
+      buildProxyMessages('/api/proxy/anthropic/stream', [blankUser], { projectId: 'project-1' }),
+    ).resolves.toEqual([
+      { role: 'user', content: '(No extra typed instruction.)' },
+    ]);
+
+    await expect(
+      buildProxyMessages('/api/proxy/openai/stream', [blankUser], { projectId: 'project-1' }),
+    ).resolves.toEqual([{ role: 'user', content: '   ' }]);
   });
 
   it('does not send preview-unavailable text alongside sketch raster image blocks', async () => {

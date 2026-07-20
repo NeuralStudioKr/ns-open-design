@@ -17,6 +17,7 @@ import {
   usesServerManagedChatApiKey,
 } from '../teamver/chatApiCredentials';
 import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
+import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 
 /**
  * Optional per-request context that some protocols thread into the
@@ -244,18 +245,47 @@ export async function buildProxyMessages(
   history: ChatMessage[],
   context?: ProxyContext,
 ): Promise<ProxyMessage[]> {
-  if (!usesAnthropicMessagesPayload(endpoint) || !context?.projectId) {
-    return history.map((m) => ({ role: m.role, content: m.content }));
+  const anthropic = usesAnthropicMessagesPayload(endpoint);
+  if (!anthropic || !context?.projectId) {
+    return history.map((message) => ({
+      role: message.role,
+      // Anthropic rejects empty user content even when projectId is missing
+      // (image blocks skipped). Other protocols keep historical behavior.
+      content:
+        anthropic && message.role === 'user'
+          ? ensureNonEmptyAnthropicUserContent(message.content)
+          : message.content,
+    }));
   }
 
   const out: ProxyMessage[] = [];
   for (const message of history) {
+    let content = await buildAnthropicMessageContent(message, context.projectId);
+    if (message.role === 'user') {
+      content = ensureNonEmptyAnthropicUserContent(content);
+    }
     out.push({
       role: message.role,
-      content: await buildAnthropicMessageContent(message, context.projectId),
+      content,
     });
   }
   return out;
+}
+
+function ensureNonEmptyAnthropicUserContent(content: ProxyMessageContent): ProxyMessageContent {
+  if (typeof content === 'string') {
+    return content.trim().length > 0 ? content : COMMENT_ONLY_USER_PLACEHOLDER;
+  }
+  if (Array.isArray(content)) {
+    const hasSubstance = content.some((block) => {
+      if (!block || typeof block !== 'object') return false;
+      if (block.type === 'text') return String(block.text ?? '').trim().length > 0;
+      if (block.type === 'image') return true;
+      return true;
+    });
+    return hasSubstance ? content : COMMENT_ONLY_USER_PLACEHOLDER;
+  }
+  return COMMENT_ONLY_USER_PLACEHOLDER;
 }
 
 function usesAnthropicMessagesPayload(endpoint: string): boolean {

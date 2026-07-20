@@ -5017,7 +5017,6 @@ export function ProjectView({
           historyWithApiWebFetchContext(
             historyWithCommentAttachmentContext(
               historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
-              userMsg.id,
             ),
             userMsg.id,
             webFetchContexts,

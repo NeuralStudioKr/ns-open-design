@@ -455,7 +455,7 @@ describe('preview comment attachment helpers', () => {
     expect(content).toContain('ask the user before proceeding');
   });
 
-  it('adds hidden comment context only to the current user message sent to API providers', () => {
+  it('adds hidden comment context to every user message sent to API providers', () => {
     const attachments = commentsToAttachments([
       comment({ id: 'c1', elementId: 'hero-title', note: 'Make it bolder' }),
     ]);
@@ -483,13 +483,20 @@ describe('preview comment attachment helpers', () => {
       },
     ];
 
-    const next = historyWithCommentAttachmentContext(history, 'u1');
+    const next = historyWithCommentAttachmentContext(history);
 
-    expect(next[0]?.content).toBe('Previous request');
+    expect(next[0]?.content).toContain('Previous request');
+    expect(next[0]?.content).toContain('<attached-preview-comments>');
+    expect(next[1]?.content).toContain('(No extra typed instruction.)');
     expect(next[1]?.content).toContain('<attached-preview-comments>');
     expect(next[1]?.content).toContain('comment: Make it bolder');
     expect(next[2]?.content).toBe('Ready');
     expect(history[1]?.content).toBe('');
+
+    // Idempotent: already-enriched turns are left alone.
+    const again = historyWithCommentAttachmentContext(next);
+    expect(again[0]?.content).toBe(next[0]?.content);
+    expect(again[1]?.content).toBe(next[1]?.content);
   });
 });
 

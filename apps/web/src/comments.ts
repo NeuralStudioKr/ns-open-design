@@ -361,12 +361,14 @@ function sanitizeVisualAttachmentId(value: string): string {
   return id || 'mark';
 }
 
+export const COMMENT_ONLY_USER_PLACEHOLDER = '(No extra typed instruction.)';
+
 export function messageContentWithCommentAttachments(
   content: string,
   commentAttachments: ChatCommentAttachment[],
 ): string {
   if (commentAttachments.length === 0) return content;
-  const visibleContent = content.trim() || '(No extra typed instruction.)';
+  const visibleContent = content.trim() || COMMENT_ONLY_USER_PLACEHOLDER;
   return `${visibleContent}${renderCommentAttachmentContext(commentAttachments)}`;
 }
 
@@ -411,11 +413,20 @@ export function chatAttachmentsFromPreviewCommentFiles(
 
 export function historyWithCommentAttachmentContext(
   history: ChatMessage[],
-  messageId: string,
 ): ChatMessage[] {
   return history.map((message) => {
     const commentAttachments = message.commentAttachments ?? [];
-    if (message.id !== messageId || message.role !== 'user' || commentAttachments.length === 0) return message;
+    // Enrich every comment-bearing user turn for API providers. Persisted
+    // messages store prompt text only; prior comment-only turns often keep
+    // content "" and would otherwise hit Anthropic's non-empty user rule.
+    // Skip when the scope block is already present (idempotent if re-run).
+    if (
+      message.role !== 'user'
+      || commentAttachments.length === 0
+      || message.content.includes('<attached-preview-comments>')
+    ) {
+      return message;
+    }
     return {
       ...message,
       content: messageContentWithCommentAttachments(message.content, commentAttachments),
