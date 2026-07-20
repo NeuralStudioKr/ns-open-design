@@ -10,9 +10,11 @@
 - HTML preview는 streaming 중 마지막 stable frame을 유지하되, 최종 snapshot이 구조적으로 불완전하면 새 stable preview로 채택하지 않는다.
 - 채팅 prose의 CDN/viewport 잔해(`googleapis.com" />` 등)도 프리뷰와 동일한 패턴으로 scrub한다. 스트리밍 중 닫힌 `<artifact>` 본문은 보존한다.
 - 미완성 CDN host(`googleapis.com` / `fonts.googleapis.com` / `fonts.goo`…)는 chunk 경계에서 hold 후, 종결자(`"/>`)가 오면 scrub한다.
+- same-line trailing host(`Done. fonts.googleapis.com`)도 hold/scrub한다. mid-sentence 언급(`See fonts.googleapis.com for docs`)은 유지한다.
 - bare host 전용 줄(void terminator 없음)도 history scrub에서 제거한다.
 - sanitize가 content를 줄이면 live artifact parser는 `onContentRewrite`로 reset+replay한다.
-- daemon turn-end에 assistant message를 non-streaming sanitize로 rewrite해 append-only 잔여를 DB에서 회수한다.
+- daemon `design.runs.finish` wrapper에서 turn-end rewrite를 수행해 resume/critique 등 모든 finish 경로를 커버한다.
+- preview는 body의 bare CDN host / 절단 `<link|meta|script`도 unstable로 본다.
 
 ## 2026-07-20 적용 / 보강 요약
 
@@ -21,8 +23,9 @@
 - head skeleton hold, orphan CDN scrub, incomplete markup history strip
 - merge prefer cleaned local (prefix + mid-string scrub)
 - `fonts.googleapis.com` / short stem hold, bare host line scrub
-- `createBufferedTextUpdates` `onContentRewrite` + parser reset/replay
-- daemon `rewritePersistedAssistantProseAtTurnEnd`
+- same-line trailing CDN hold/scrub + preview bare-host gate
+- `createBufferedTextUpdates` `onContentRewrite` + Strict Mode double-append 방지
+- daemon finish wrapper `rewritePersistedAssistantProseAtTurnEnd`
 
 ## 검증
 
@@ -32,5 +35,5 @@
 
 ## 다음 추천 작업
 
-1. BYOK chat-routes persist 경로에도 turn-end rewrite를 동일하게 적용하는지 확인한다.
-2. same-line prose + CDN (`Done. googleapis.com`) 정책(hold vs 허용)을 제품 관점에서 확정한다.
+1. BYOK chat-routes persist 경로에도 daemon과 동등한 turn-end rewrite를 명시적으로 확인한다.
+2. URL-only host 줄 / 짧은 stem(`googlea`) false-positive 허용 범위를 제품 관점에서 재검토한다.

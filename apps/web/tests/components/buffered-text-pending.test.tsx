@@ -188,4 +188,32 @@ describe('createBufferedTextUpdates pending text accounting', () => {
 
     buf.cancel();
   });
+
+  it('does not double-append content when updateMessage invokes the updater twice (Strict Mode)', () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+
+    let msg = {
+      content: 'Intro',
+      events: [],
+    } as unknown as ChatMessage;
+    const buf = createBufferedTextUpdates({
+      updateMessage: (u) => {
+        // Simulate React Strict Mode double-invoke of the state updater.
+        const once = u(msg);
+        const twice = u(once);
+        msg = twice;
+      },
+      persistSoon: () => {},
+    });
+
+    buf.appendContent('\nHello');
+    buf.appendTextEvent('World');
+    buf.flush();
+
+    expect(msg.content).toBe('Intro\nHello');
+    expect(msg.events).toEqual([{ kind: 'text', text: 'World' }]);
+
+    buf.cancel();
+  });
 });

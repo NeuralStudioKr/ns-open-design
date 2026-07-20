@@ -53,6 +53,19 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
     ) {
       return false;
     }
+    // Bare CDN host lines inside an otherwise complete body still paint as
+    // visible text — reject until they are scrubbed or the document settles.
+    if (
+      /(?:^|\n)\s*(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)\s*(?:\n|$)/im.test(
+        bodyWithoutBlocks,
+      )
+    ) {
+      return false;
+    }
+    // Truncated head tags that never received `>` (e.g. `<link …fonts.google`).
+    if (/<(?:link|meta|base|script)\b[^>\n]*$/im.test(bodyWithoutBlocks.trimEnd())) {
+      return false;
+    }
   }
 
   return true;

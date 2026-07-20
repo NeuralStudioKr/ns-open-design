@@ -6275,7 +6275,14 @@ export async function startServer({
     }
   }
   const baseFinishRun = design.runs.finish.bind(design.runs);
-  design.runs.finish = projectMaterialization.wrapFinish(baseFinishRun);
+  // Every finish path (retry decision, resume fail, critique, etc.) must
+  // rewrite assistant prose before materialization — append-only SSE persist
+  // cannot retract late CDN/markup scrubs on its own.
+  const finishWithProseRewrite = (run, status, code, signal) => {
+    rewritePersistedAssistantProseAtTurnEnd(db, run);
+    return baseFinishRun(run, status, code, signal);
+  };
+  design.runs.finish = projectMaterialization.wrapFinish(finishWithProseRewrite);
   const projectStorageHooks = createProjectStorageAccessHooks(projectMaterialization, db);
   const byokProxyMaterialization = createByokProxyMaterializationHooks(projectMaterialization);
 
@@ -13093,7 +13100,6 @@ export async function startServer({
         ...(signal ? { signal } : {}),
       });
       pendingRpcCloseReason = null;
-      rewritePersistedAssistantProseAtTurnEnd(db, run);
       design.runs.finish(run, status, code, signal);
       return false;
     };

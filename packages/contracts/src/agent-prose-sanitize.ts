@@ -285,8 +285,8 @@ function isBareCdnHostLine(lower: string): boolean {
  * `feed('/css2?…" />')` scrubs non-monotonically and growth is `""` — leaving
  * the already-emitted host stuck in append-only daemon persist.
  *
- * Only holds lines that are *themselves* debris fragments (host/URL/attr),
- * not prose that merely mentions a CDN host mid-sentence.
+ * Also holds same-line trailing hosts (`Done. fonts.googleapis.com`) while
+ * still allowing mid-sentence mentions (`See fonts.googleapis.com for docs`).
  */
 export function stripIncompleteTrailingHtmlDebris(input: string): string {
   if (!input) return input;
@@ -304,7 +304,45 @@ export function stripIncompleteTrailingHtmlDebris(input: string): string {
   if (looksLikeIncompleteHtmlDebrisLine(trimmed)) {
     return input.slice(0, lineStart).trimEnd();
   }
+
+  // Same-line trailing CDN token: "Done. fonts.googleapis.com"
+  const trailingCut = findTrailingSameLineCdnDebrisCut(line);
+  if (trailingCut !== null) {
+    return input.slice(0, lineStart + trailingCut).trimEnd();
+  }
   return input;
+}
+
+/**
+ * If the line ends with a CDN host/path token (optional scheme), return the
+ * character index where that token begins (including leading whitespace).
+ * Returns null when the trailing token is ordinary prose.
+ */
+function findTrailingSameLineCdnDebrisCut(line: string): number | null {
+  const m = line.match(/^(.*?)(\s+)(\S+)\s*$/);
+  if (!m || m[1] === undefined || m[3] === undefined) return null;
+  const trailing = m[3];
+  // Completed void tails are handled by the full debris scrubber.
+  if (/["']?\s*\/?\s*>\s*$/.test(trailing) && looksLikeHtmlDebrisLine(trailing)) {
+    return null;
+  }
+  if (!isTrailingCdnDebrisToken(trailing)) return null;
+  // Cut at the whitespace before the host so "Done." stays intact.
+  return m[1].length;
+}
+
+function isTrailingCdnDebrisToken(token: string): boolean {
+  if (looksLikeIncompleteHtmlDebrisLine(token)) return true;
+  const lower = token.toLowerCase().replace(/^https?:\/\//, "");
+  if (isBareCdnHostLine(lower.replace(/\/$/, ""))) return true;
+  return HTML_DEBRIS_HOST_FRAGMENTS.some(
+    (host) =>
+      lower === host
+      || lower.startsWith(`${host}/`)
+      || lower.startsWith(`${host}?`)
+      || lower.startsWith(`${host}"`)
+      || lower.startsWith(`${host}'`),
+  );
 }
 
 function looksLikeIncompleteHtmlDebrisLine(line: string): boolean {
@@ -880,6 +918,14 @@ export function stripChatProseHtmlDebris(
     out = out.replace(
       /(^|\n)[ \t]*(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)\/?[ \t]*(?=\n|$)/gi,
       "$1",
+    );
+    // Same-line trailing bare host/path: "Done. fonts.googleapis.com" or
+    // "Done. https://fonts.googleapis.com/css2?family=Inter" without a void
+    // terminator. Mid-sentence mentions (`See fonts.googleapis.com for docs`)
+    // keep the host because it is not at end-of-line.
+    out = out.replace(
+      /(\s)(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?(?=\s*(?:\n|$))/gi,
+      "",
     );
     return out;
   };

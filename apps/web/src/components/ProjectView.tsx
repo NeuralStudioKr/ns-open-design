@@ -7877,13 +7877,17 @@ export function createBufferedTextUpdates({
     try {
       let sanitizedContentDelta = '';
       let rewrittenFullContent: string | null = null;
+      // Strict Mode / double updater invocation must not append deltas twice.
+      let contentAppendedThisFlush = false;
+      let textAppendedThisFlush = false;
       updateMessage((prev) => {
         const prevContent = prev.content ?? '';
-        if (contentDelta && rawContentForSanitize === null) {
-          rawContentForSanitize = prevContent;
-        }
-        if (contentDelta) {
+        if (contentDelta && !contentAppendedThisFlush) {
+          if (rawContentForSanitize === null) {
+            rawContentForSanitize = prevContent;
+          }
           rawContentForSanitize = `${rawContentForSanitize ?? prevContent}${contentDelta}`;
+          contentAppendedThisFlush = true;
         }
         const nextContent = contentDelta
           ? sanitizeStreaming(rawContentForSanitize ?? prevContent)
@@ -7903,7 +7907,10 @@ export function createBufferedTextUpdates({
         }
         let nextEvents = prev.events;
         if (textEventDelta) {
-          rawTextEventForSanitize += textEventDelta;
+          if (!textAppendedThisFlush) {
+            rawTextEventForSanitize += textEventDelta;
+            textAppendedThisFlush = true;
+          }
           const nextTextEvent = sanitizeStreaming(rawTextEventForSanitize);
           if (nextTextEvent.startsWith(sanitizedTextEventSent)) {
             const delta = nextTextEvent.slice(sanitizedTextEventSent.length);

@@ -631,6 +631,23 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("Done.\n\nNext.");
   });
 
+  it("holds and strips same-line trailing CDN hosts (prose + host on one line)", () => {
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("Done. fonts.googleapis.com")).toBe("Done.");
+    const growth = guard.feed('/css2?family=Inter" />\nNext.');
+    expect(growth).toContain("Next.");
+    expect(growth).not.toContain("googleapis");
+    expect(guard.flush()).toBe("");
+    expect(sanitizeAssistantProseForDisplay("Done. fonts.googleapis.com")).toBe("Done.");
+    expect(
+      sanitizeAssistantProseForDisplay("Done. https://fonts.googleapis.com/css2?family=Inter"),
+    ).toBe("Done.");
+    // Mid-sentence mentions must survive (host is not end-of-line).
+    expect(
+      sanitizeAssistantProseForDisplay("See fonts.googleapis.com for docs."),
+    ).toBe("See fonts.googleapis.com for docs.");
+  });
+
   it("does not promote unterminated CDN debris out of an open artifact on history sanitize", () => {
     const input = [
       "Intro",

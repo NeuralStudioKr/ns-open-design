@@ -43,6 +43,21 @@ googleapis.com" />
     ).toBe(false);
   });
 
+  it("rejects complete documents with bare CDN host lines or truncated head tags in body", () => {
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+fonts.googleapis.com
+</body></html>`),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+<link rel="stylesheet" href="https://fonts.google
+</body></html>`),
+    ).toBe(false);
+  });
+
   it("rejects documents with unclosed svg, math, or HTML comments", () => {
     expect(
       isArtifactHtmlStableForPreview(
