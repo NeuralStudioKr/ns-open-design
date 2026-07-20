@@ -581,7 +581,7 @@ export const ARTIFACT_PREVIEW_DOM_LEAK_DETECTION_JS = `
   function isLeakedExternalScriptElement(node){
     if (!node || !node.getAttribute) return false;
     var src = node.getAttribute('src') || '';
-    return fontCdnLeak.test(src) || /(?:jsdelivr|unpkg|cdnjs\\.cloudflare|esm\\.sh)/i.test(src);
+    return fontCdnLeak.test(src);
   }
   function stripLeakedNodes(root){
     if (!root) return;

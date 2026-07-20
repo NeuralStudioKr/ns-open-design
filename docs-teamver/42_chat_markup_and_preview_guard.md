@@ -11,11 +11,11 @@
 ## 재발 방지 원칙 (강제)
 
 1. **진입 함수 SSOT**: `sanitizeAssistantProseForDisplay` / `createStreamingAssistantProseGuard` (chat·daemon·FE 공유).
-2. **호스트 SSOT**: `packages/contracts/src/html/artifactCdnHosts.ts`의 `ARTIFACT_CDN_HOSTS` — **새 CDN은 여기만 추가**.
+2. **호스트 SSOT**: `packages/contracts/src/html/artifactCdnHosts.ts`의 `ARTIFACT_CDN_HOSTS` — **새 CDN은 여기만 추가**. alternation/stem/heuristic는 배열에서 **생성**된다.
 3. **불변식 테스트**: `tests/artifact-cdn-host-invariants.test.ts`
    - stem ⊆ host
    - chat scrub ↔ preview bare-host 동등
-   - derived alternation이 모든 host를 포함
+   - derived alternation이 모든 host를 포함 (하드코딩 병렬 목록 금지)
    - full-tag-before-orphan (`<link` 잔해 없음)
 4. **적대 corpus**: 새 누수 스크린샷이 오면 **먼저 테스트 추가** 후 SSOT 수정.
 5. **레이어 방어**: streaming hold → scrub → turn-end rewrite → FE persist → preview stable gate.

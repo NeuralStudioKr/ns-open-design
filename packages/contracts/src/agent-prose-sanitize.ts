@@ -26,6 +26,7 @@ import {
   artifactCdnImportUrlTokenAlternation,
   artifactBareCdnHostLineSource,
   artifactCdnHostAlternation,
+  artifactCdnHeuristicTokenAlternation,
 } from "./html/artifactCdnHosts.js";
 
 /** Pseudo file-operation XML emitted when CLI tools (Read/Write/Edit) are unavailable. */
@@ -232,8 +233,9 @@ function looksLikeHtmlDebrisLine(line: string): boolean {
   const lower = line.toLowerCase().trim();
   if (!lower) return false;
   if (HTML_DEBRIS_HOST_FRAGMENTS.some((host) => lower.includes(host))) return true;
-  if (/^(?:https?:\/\/)?(?:fonts\.|cdn\.|kit\.)?/i.test(lower)
-    && /(?:googleapis|gstatic|jsdelivr|unpkg|cdnjs|bunny\.net|fontshare|typekit|fontawesome|esm\.sh)/i.test(lower)
+  if (
+    /^(?:https?:\/\/)?(?:fonts\.|cdn\.|kit\.)?/i.test(lower)
+    && new RegExp(`(?:${artifactCdnHeuristicTokenAlternation()})`, "i").test(lower)
   ) {
     return true;
   }
@@ -242,8 +244,10 @@ function looksLikeHtmlDebrisLine(line: string): boolean {
   if (/^(?:rel|charset|integrity|crossorigin|name)\s*=/i.test(lower)) return true;
   if (/name\s*=\s*["']?viewport/i.test(lower) && /content\s*=/i.test(lower)) return true;
   // Completed orphan void tails (`…" />`) — still debris, not prose.
-  if (/["']?\s*\/?\s*>\s*$/.test(lower)
-    && /(?:googleapis|gstatic|jsdelivr|unpkg|cdnjs|device-width|initial-scale|stylesheet|preconnect|family=)/i.test(lower)
+  if (
+    /["']?\s*\/?\s*>\s*$/.test(lower)
+    && (new RegExp(`(?:${artifactCdnHeuristicTokenAlternation()})`, "i").test(lower)
+      || /device-width|initial-scale|stylesheet|preconnect|family=/i.test(lower))
   ) {
     return true;
   }

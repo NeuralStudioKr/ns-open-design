@@ -92,6 +92,24 @@ describe("artifact CDN host SSOT invariants", () => {
     }
   });
 
+  it("alternation helpers are derived from ARTIFACT_CDN_HOSTS (no parallel hardcoding)", () => {
+    // Adding a synthetic check: every non-special host's escaped FQDN appears
+    // in the bare alternation (googleapis/fontawesome use special forms).
+    const bare = artifactCdnHostAlternation();
+    for (const host of ARTIFACT_CDN_HOSTS) {
+      if (host === "googleapis.com") continue;
+      if (host === "fonts.googleapis.com") {
+        expect(bare).toContain("googleapis");
+        continue;
+      }
+      if (host === "fontawesome.com") {
+        expect(bare).toContain("fontawesome");
+        continue;
+      }
+      expect(bare).toContain(host.replace(/\./g, "\\."));
+    }
+  });
+
   it("chat scrub and preview gate agree on bare-host lines for every host", () => {
     for (const host of ARTIFACT_CDN_HOSTS) {
       const prose = `Done.\n${host}\nNext.`;

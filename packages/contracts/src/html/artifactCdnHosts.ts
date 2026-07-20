@@ -2,9 +2,8 @@
  * Single source of truth for CDN hosts used by chat prose scrub and artifact
  * preview leak detection.
  *
- * Add new hosts HERE ONLY. Invariant tests assert chat scrub, preview gate,
- * DOM detectors, and head repair all consume this module — do not re-list
- * FQDNs in call sites.
+ * Add new hosts to `ARTIFACT_CDN_HOSTS` ONLY. Alternations / stems / heuristics
+ * are derived from that array — invariant tests fail if a consumer drifts.
  */
 
 /** Longer hosts first so `includes` / reverse-prefix matching prefer them. */
@@ -24,109 +23,151 @@ export const ARTIFACT_CDN_HOSTS = [
 
 export type ArtifactCdnHost = (typeof ARTIFACT_CDN_HOSTS)[number];
 
-/**
- * Short stems held while a CDN host is still being typed across stream chunks.
- * Every stem must be a prefix of (or equal to) an entry in ARTIFACT_CDN_HOSTS
- * — enforced by invariant tests.
- */
-export const ARTIFACT_CDN_HOST_STEMS = [
-  "fonts.googleapis.com",
-  "fonts.gstatic.com",
-  "googleapis.com",
-  "fonts.google",
-  "fonts.goo",
+/** Covered by the `fonts.googleapis.com` special pattern — do not emit twice. */
+const COVERED_BY_SPECIAL = new Set<string>(["googleapis.com"]);
+
+/** Hosts commonly used as `<script src>` CDNs. */
+const SCRIPT_SRC_HOSTS = new Set<string>([
   "cdn.jsdelivr.net",
-  "cdn.jsdelivr",
-  "jsdelivr",
   "unpkg.com",
+  "cdnjs.cloudflare.com",
   "esm.sh",
-  "fonts.bunny",
-  "fonts.bunny.net",
-  "api.fontshare",
-  "api.fontshare.com",
-  "use.typekit",
-  "use.typekit.net",
-  "fontawesome",
-  "fontawesome.com",
-] as const;
+]);
 
 export function escapeRegExpLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function bareHostPattern(host: ArtifactCdnHost): string | null {
+  if (COVERED_BY_SPECIAL.has(host)) return null;
+  if (host === "fonts.googleapis.com") return "(?:fonts\\.)?googleapis\\.com";
+  if (host === "fontawesome.com") return "(?:(?:kit|use)\\.)?fontawesome\\.com";
+  return escapeRegExpLiteral(host);
+}
+
 /**
- * Host(+path) alternation for orphan void tails:
- * `(?:fonts\.)?googleapis\.com(?:/(?:css2?|icon)…)?|fonts\.gstatic\.com…|…`
+ * Short stems held while a CDN host is still being typed across stream chunks.
+ * Derived from canonical hosts + a few mid-label shortcuts (jsdelivr, fonts.goo).
+ */
+export const ARTIFACT_CDN_HOST_STEMS: readonly string[] = (() => {
+  const stems = new Set<string>();
+  for (const host of ARTIFACT_CDN_HOSTS) {
+    stems.add(host);
+    const labels = host.split(".");
+    // Progressive left prefixes for fonts.* (floor 6 to avoid holding "font").
+    if (labels[0] === "fonts" && labels.length >= 2) {
+      const base = `fonts.${labels[1]}`;
+      stems.add(base);
+      for (let n = 6; n < base.length; n += 1) stems.add(base.slice(0, n));
+    }
+    if (host.includes("jsdelivr")) {
+      stems.add("cdn.jsdelivr");
+      stems.add("jsdelivr");
+    }
+    if (host.includes("fontshare")) stems.add("api.fontshare");
+    if (host.includes("typekit")) stems.add("use.typekit");
+    if (host.includes("fontawesome")) stems.add("fontawesome");
+    if (host.includes("bunny")) stems.add("fonts.bunny");
+  }
+  return [...stems];
+})();
+
+/** Bare host (no required path) for line detectors. */
+export function artifactCdnHostAlternation(): string {
+  return ARTIFACT_CDN_HOSTS.map(bareHostPattern).filter((p): p is string => p !== null).join("|");
+}
+
+/**
+ * Host(+path) alternation for orphan void tails.
+ * googleapis keeps optional `/css2|icon` path; others require `/…` or allow trailing junk.
  */
 export function artifactCdnHostWithOptionalPathAlternation(): string {
-  return [
-    "(?:fonts\\.)?googleapis\\.com(?:\\/(?:css2?|icon)[^<\\n]*)?",
-    "fonts\\.gstatic\\.com[^<\\n]*",
-    "cdn\\.jsdelivr\\.net\\/[^<\\n]*",
-    "unpkg\\.com\\/[^<\\n]*",
-    "cdnjs\\.cloudflare\\.com\\/[^<\\n]*",
-    "fonts\\.bunny\\.net\\/[^<\\n]*",
-    "api\\.fontshare\\.com\\/[^<\\n]*",
-    "use\\.typekit\\.net\\/[^<\\n]*",
-    "(?:(?:kit|use)\\.)?fontawesome\\.com\\/[^<\\n]*",
-    "esm\\.sh\\/[^<\\n]*",
-  ].join("|");
-}
-
-/** Bare host (no required path) for line detectors / script src tails. */
-export function artifactCdnHostAlternation(): string {
-  return [
-    "(?:fonts\\.)?googleapis\\.com",
-    "fonts\\.gstatic\\.com",
-    "cdn\\.jsdelivr\\.net",
-    "unpkg\\.com",
-    "cdnjs\\.cloudflare\\.com",
-    "fonts\\.bunny\\.net",
-    "api\\.fontshare\\.com",
-    "use\\.typekit\\.net",
-    "(?:(?:kit|use)\\.)?fontawesome\\.com",
-    "esm\\.sh",
-  ].join("|");
+  const parts: string[] = [];
+  for (const host of ARTIFACT_CDN_HOSTS) {
+    if (COVERED_BY_SPECIAL.has(host)) continue;
+    if (host === "fonts.googleapis.com") {
+      parts.push("(?:fonts\\.)?googleapis\\.com(?:\\/(?:css2?|icon)[^<\\n]*)?");
+      continue;
+    }
+    if (host === "fontawesome.com") {
+      parts.push("(?:(?:kit|use)\\.)?fontawesome\\.com\\/[^<\\n]*");
+      continue;
+    }
+    if (host === "fonts.gstatic.com") {
+      // Historic: allow any trailing junk after gstatic host.
+      parts.push(`${escapeRegExpLiteral(host)}[^<\\n]*`);
+      continue;
+    }
+    parts.push(`${escapeRegExpLiteral(host)}\\/[^<\\n]*`);
+  }
+  return parts.join("|");
 }
 
 /**
- * Tokens matched inside `href="https://…TOKEN…"`.
- * Shorter than FQDNs so `fonts.googleapis` catches the common truncate point.
+ * Tokens matched inside `href="https://…TOKEN…"` / `@import url(…)`.
+ * Derived per host so a newly added FQDN contributes a searchable token.
  */
 export function artifactCdnHrefTokenAlternation(): string {
-  return [
-    "fonts\\.googleapis",
-    "fonts\\.gstatic",
-    "jsdelivr",
-    "unpkg",
-    "cdnjs",
-    "fonts\\.bunny",
-    "fontshare",
-    "typekit",
-    "fontawesome",
-    "esm\\.sh",
-  ].join("|");
+  const tokens = new Set<string>();
+  for (const host of ARTIFACT_CDN_HOSTS) {
+    if (host === "googleapis.com" || host === "fonts.googleapis.com") {
+      tokens.add("fonts\\.googleapis");
+      continue;
+    }
+    if (host === "fonts.gstatic.com") {
+      tokens.add("fonts\\.gstatic");
+      continue;
+    }
+    if (host === "cdn.jsdelivr.net") {
+      tokens.add("jsdelivr");
+      tokens.add("cdn\\.jsdelivr");
+      continue;
+    }
+    if (host === "cdnjs.cloudflare.com") {
+      tokens.add("cdnjs");
+      continue;
+    }
+    if (host === "fonts.bunny.net") {
+      tokens.add("fonts\\.bunny");
+      continue;
+    }
+    if (host === "api.fontshare.com") {
+      tokens.add("fontshare");
+      continue;
+    }
+    if (host === "use.typekit.net") {
+      tokens.add("typekit");
+      continue;
+    }
+    if (host === "fontawesome.com") {
+      tokens.add("fontawesome");
+      continue;
+    }
+    if (host === "unpkg.com") {
+      tokens.add("unpkg");
+      continue;
+    }
+    if (host === "esm.sh") {
+      tokens.add("esm\\.sh");
+      continue;
+    }
+    const labels = host.split(".");
+    tokens.add(
+      escapeRegExpLiteral(labels.length >= 2 ? labels.slice(0, 2).join(".") : host),
+    );
+  }
+  return [...tokens].join("|");
 }
 
 /** Script-src CDN hosts (external module CDNs). */
 export function artifactCdnScriptSrcHostAlternation(): string {
-  return [
-    "cdn\\.jsdelivr\\.net",
-    "unpkg\\.com",
-    "cdnjs\\.cloudflare\\.com",
-    "esm\\.sh",
-  ].join("|");
+  return ARTIFACT_CDN_HOSTS.filter((h) => SCRIPT_SRC_HOSTS.has(h)).map(escapeRegExpLiteral).join("|");
 }
 
-/**
- * Source for DOM `fontCdnLeak` / head CDN detectors.
- * Derived from the same host set as void tails (no path suffixes).
- */
 export function artifactHeadCdnHostSource(): string {
   return artifactCdnHostAlternation();
 }
 
-/** Bare host or host+path on its own line (optional scheme). */
 export function artifactBareCdnHostLineSource(): string {
   return `(?:https?:\\/\\/)?(?:${artifactCdnHostAlternation()})(?:\\/[^\\s<>]*)?`;
 }
@@ -136,18 +177,11 @@ export const ARTIFACT_BARE_CDN_HOST_LINE_RE = new RegExp(
   "im",
 );
 
-/** Chat `@import url(CDN)` / bare `url(CDN)` token alternation. */
 export function artifactCdnImportUrlTokenAlternation(): string {
-  return [
-    "fonts\\.googleapis",
-    "fonts\\.gstatic",
-    "cdn\\.jsdelivr",
-    "unpkg",
-    "cdnjs",
-    "fonts\\.bunny",
-    "fontshare",
-    "typekit",
-    "fontawesome",
-    "esm\\.sh",
-  ].join("|");
+  return artifactCdnHrefTokenAlternation();
+}
+
+/** Informal debris-line heuristic tokens (chat hold). */
+export function artifactCdnHeuristicTokenAlternation(): string {
+  return artifactCdnHrefTokenAlternation();
 }
