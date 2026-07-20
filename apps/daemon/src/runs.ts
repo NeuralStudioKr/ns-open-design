@@ -23,6 +23,54 @@ function extractErrorDetails(data) {
   };
 }
 
+function isTodoWriteToolName(name) {
+  return (
+    name === 'TodoWrite' ||
+    name === 'todowrite' ||
+    name === 'todo_write' ||
+    name === 'update_plan'
+  );
+}
+
+function todoSnapshotHasUnfinishedWork(input) {
+  if (!input || typeof input !== 'object') return false;
+  const todos = Array.isArray(input.todos)
+    ? input.todos
+    : Array.isArray(input.plan)
+      ? input.plan
+      : [];
+  return todos.some((todo) => {
+    if (!todo || typeof todo !== 'object') return false;
+    return todo.status !== 'completed';
+  });
+}
+
+export function runEndedWithUnfinishedWork(events) {
+  let latestTodoInput = null;
+  let truncatedByMaxTokens = false;
+  for (const record of events ?? []) {
+    const data = record?.data;
+    if (!data || typeof data !== 'object') continue;
+    if (
+      record.event === 'agent' &&
+      data.type === 'tool_use' &&
+      typeof data.name === 'string' &&
+      isTodoWriteToolName(data.name)
+    ) {
+      latestTodoInput = data.input ?? null;
+      continue;
+    }
+    if (
+      record.event === 'agent' &&
+      data.type === 'usage' &&
+      data.stopReason === 'max_tokens'
+    ) {
+      truncatedByMaxTokens = true;
+    }
+  }
+  return truncatedByMaxTokens || todoSnapshotHasUnfinishedWork(latestTodoInput);
+}
+
 export function createChatRunService({
   createSseResponse,
   createSseErrorPayload,
@@ -177,6 +225,7 @@ export function createChatRunService({
     error: run.error ?? null,
     errorCode: run.errorCode ?? null,
     resumable: run.resumable ?? false,
+    endedWithUnfinishedWork: run.endedWithUnfinishedWork ?? false,
     eventsLogPath: run.eventsLogPath ?? null,
     mediaExecution: run.mediaExecution ?? normalizeMediaExecutionPolicyForRun(null),
     toolBundle: summarizeRunToolBundle(run.toolBundle),
@@ -188,8 +237,16 @@ export function createChatRunService({
     run.status = status;
     run.exitCode = code;
     run.signal = signal;
+    run.endedWithUnfinishedWork =
+      status === 'succeeded' ? runEndedWithUnfinishedWork(run.events) : false;
     run.updatedAt = Date.now();
-    emit(run, 'end', { code, signal, status, resumable: run.resumable ?? false });
+    emit(run, 'end', {
+      code,
+      signal,
+      status,
+      resumable: run.resumable ?? false,
+      endedWithUnfinishedWork: run.endedWithUnfinishedWork ?? false,
+    });
     for (const sse of run.clients) sse.end();
     run.clients.clear();
     for (const waiter of run.waiters) waiter(statusBody(run));

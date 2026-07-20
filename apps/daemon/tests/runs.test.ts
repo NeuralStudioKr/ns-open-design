@@ -6,9 +6,71 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createChatRunService } from '../src/runs.js';
+import { createChatRunService, runEndedWithUnfinishedWork } from '../src/runs.js';
 
 describe('chat run service shutdown', () => {
+  it('flags succeeded runs that end with unfinished TodoWrite work', async () => {
+    const runs = createRuns();
+    const run = runs.create({ projectId: 'project-1', conversationId: 'conv-1' });
+
+    const wait = runs.wait(run);
+    runs.emit(run, 'agent', {
+      type: 'tool_use',
+      id: 'todo-1',
+      name: 'TodoWrite',
+      input: {
+        todos: [
+          { content: 'Draft slide', status: 'completed' },
+          { content: 'Polish export', status: 'in_progress' },
+        ],
+      },
+    });
+    runs.finish(run, 'succeeded', 0, null);
+
+    expect(runs.statusBody(run)).toMatchObject({
+      status: 'succeeded',
+      endedWithUnfinishedWork: true,
+    });
+    expect(run.events.at(-1)).toMatchObject({
+      event: 'end',
+      data: { endedWithUnfinishedWork: true },
+    });
+    await expect(wait).resolves.toMatchObject({
+      status: 'succeeded',
+      endedWithUnfinishedWork: true,
+    });
+  });
+
+  it('does not flag succeeded runs whose latest TodoWrite snapshot is complete', () => {
+    expect(runEndedWithUnfinishedWork([
+      {
+        event: 'agent',
+        data: {
+          type: 'tool_use',
+          name: 'TodoWrite',
+          input: { todos: [{ content: 'Draft slide', status: 'in_progress' }] },
+        },
+      },
+      {
+        event: 'agent',
+        data: {
+          type: 'tool_use',
+          name: 'TodoWrite',
+          input: { todos: [{ content: 'Draft slide', status: 'completed' }] },
+        },
+      },
+    ])).toBe(false);
+  });
+
+  it('flags max_tokens truncation as unfinished work', () => {
+    expect(runEndedWithUnfinishedWork([
+      {
+        event: 'agent',
+        data: { type: 'usage', usage: { input_tokens: 1 }, stopReason: 'max_tokens' },
+      },
+    ])).toBe(true);
+  });
+
   it('retains structured error details on failed run status bodies', async () => {
     const runs = createRuns();
     const run = runs.create({ projectId: 'project-1', conversationId: 'conv-1' });

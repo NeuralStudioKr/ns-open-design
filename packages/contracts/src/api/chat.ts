@@ -302,6 +302,10 @@ export interface ChatRunStatusResponse {
    *  conversation resumes the persisted session. Absent/false on success,
    *  non-resumable failures, and runtimes without CLI session resume. */
   resumable?: boolean;
+  /** True when a terminal succeeded run ended with declared work unfinished,
+   * such as pending/in-progress TodoWrite items or a max_tokens truncation.
+   * Older daemons omit this field, so absent/false means finished. */
+  endedWithUnfinishedWork?: boolean;
   /** Absolute path to the per-run JSONL event log the daemon mirrors
    *  the SSE stream to (see runs.ts `runsLogDir`). Null when the
    *  daemon was launched without event persistence configured. */
