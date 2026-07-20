@@ -88,6 +88,7 @@ import {
 } from './integrations/vela-errors.js';
 import { amrModelLoadingCache } from './runtimes/amr-model-cache.js';
 import { classifyAmrModelProbeError } from './amr-model-probe-error.js';
+import { pipeVelaProxyStreamWithGuard } from './vela-proxy-stream.js';
 import {
   fetchVelaPresetModels,
   fetchVelaRemoteModelsWithRetry,
@@ -7265,7 +7266,13 @@ export async function startServer({
         for (const [key, value] of Object.entries(upstreamRes.headers)) {
           if (value !== undefined) res.setHeader(key, value);
         }
-        upstreamRes.pipe(res);
+        pipeVelaProxyStreamWithGuard(upstreamRes, res, (err) => {
+          if (!res.headersSent) {
+            res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
+          } else {
+            res.destroy();
+          }
+        });
       },
     );
     upstream.setTimeout(30_000, () => upstream.destroy(new Error('AMR API proxy timed out')));
@@ -7278,7 +7285,7 @@ export async function startServer({
     });
     if (body) upstream.write(body);
     if (streamBody) {
-      req.pipe(upstream);
+      pipeVelaProxyStreamWithGuard(req, upstream, () => upstream.destroy());
     } else {
       upstream.end();
     }

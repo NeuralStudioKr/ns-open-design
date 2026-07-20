@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 10. `cfc6ae089` AMR/Vela API proxy pipe error guard를 현재 Teamver `server.ts` 구조에 맞춰 수동 포팅했다. upstream response reset 또는 client upload abort가 source stream `error`로 발생해도 unhandled exception으로 daemon이 죽지 않도록, 양방향 pipe에 명시적 error listener를 붙이는 helper와 회귀 테스트를 추가했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 9. `443e31319` host-tool launch `shell:true` 제거 패치를 수동 포팅했다. 프로젝트 폴더를 로컬 editor/파일관리자로 여는 host-tool 경로에서 Windows shell metacharacter가 해석되지 않도록 `createCommandInvocation`을 사용하고, launch helper를 테스트 가능하게 분리했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 8. `88b411efd`의 same-run retry process group reap 핵심을 Teamver 구조(`apps/daemon/src/runs.ts`, `apps/daemon/src/server.ts`)에 수동 포팅했다. retry/cancel/shutdown에서 direct child가 이미 종료된 뒤에도 process group에 남은 descendant를 신호할 수 있게 하고, same-run retry 시작 전 실패 시도의 process group을 정리해 orphan process 누적과 서버 부하를 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 7. `c23e158d8`, `489fda899`의 Claude stream false-success 방지 핵심을 Teamver daemon 구조(`apps/daemon/src/claude-stream.ts`, `apps/daemon/src/server.ts`)에 수동 포팅했다. Claude `is_error` result frame과 Task sub-agent `turn_end`를 성공 종료로 오인하지 않게 해 “작업은 끝난 것처럼 보이지만 결과/미리보기가 없는” 문제를 줄인다.
@@ -36,6 +37,7 @@
 | `489fda899` | Task sub-agent `turn_end`를 main turn 완료로 오인하지 않음 | **2026-07-20 선별 반영.** `parent_tool_use_id`가 있는 assistant wrapper에서는 `turn_end`를 내보내지 않는다. sub-agent 내부 종료 때문에 main run stdin이 닫히거나 실패가 성공 처리되는 문제를 막는다. |
 | `88b411efd` | same-run retry 실패 시도 process group 정리 | **2026-07-20 선별 반영.** retry/cancel/shutdown에서 descendant process가 orphan으로 남아 서버 자원을 누적 소모하지 않도록 process group signaling/reap을 보강했다. |
 | `443e31319` | host-tool launch `shell:true` 제거 | **2026-07-20 선별 반영.** Windows에서 project-derived path가 shell metacharacter로 해석되는 command injection 가능성을 줄인다. |
+| `cfc6ae089` | AMR/Vela proxy pipe error guard | **2026-07-20 선별 반영.** current staging은 AMR proxy가 `server.ts`에 통합되어 있어 helper/test 방식으로 수동 포팅했다. upstream/client stream error가 daemon crash로 이어지지 않도록 양방향 pipe를 guard한다. |
 | `5c4907add` | system prompt dedup / on-demand injection / per-turn input curbs | **이미 반영 확인.** direction library 조건부 주입, shared frames 조건부 주입, 파일 재읽기/렌더 반복 제한, responsive breakpoint 정합성이 staging에 존재한다. 작업 속도와 token 비용 절감 핵심 패치이므로 유지한다. |
 | `2133796cd` | prior-turn artifact HTML transcript 요약 | **이미 반영 확인.** persisted artifact는 transcript에 전체 HTML 대신 저장 파일명/metadata 요약만 보내도록 되어 있어 후속 수정 turn의 input token 폭증을 줄인다. |
 | `5643d6431` | frontmatter closing delimiter/body 보존 강화 | **이미 반영 확인.** plugin-runtime parser에 partial block 보존, delimiter 검증, newline body 보존 테스트가 존재한다. |
