@@ -104,6 +104,29 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.content).toBe("Hello");
     expect(merged[0]?.events).toEqual([{ kind: "text", text: "Hello" }]);
   });
+
+  it("prefers local when mid-string CDN scrub cleaned server content to match", () => {
+    const local: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "Done.\n\nNext.",
+      createdAt: 1,
+      runStatus: "succeeded",
+      runId: "run-1",
+      endedAt: 2,
+    };
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: 'Done.\n\ngoogleapis.com/css2?family=Inter" />\n\nNext.',
+      createdAt: 1,
+      runStatus: "succeeded",
+      runId: "run-1",
+      endedAt: 2,
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.content).toBe("Done.\n\nNext.");
+  });
 });
 
 describe("mergeMissingActiveRunAssistantMessages", () => {

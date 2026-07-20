@@ -236,6 +236,7 @@ import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
+import { sanitizeAssistantProseForDisplay } from '../runtime/internalAgentMarkup';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -376,14 +377,27 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
     }
   } else if (
     // Daemon append-only persist cannot shrink after the FE streaming buffer
-    // strips closed markup. Prefer the shorter, already-sanitized local when
-    // the server row is a strict extension of it (leak residue appended).
+    // strips closed markup / CDN debris. Prefer the shorter, already-sanitized
+    // local when the server row is a strict extension OR when sanitizing the
+    // server content yields the local text (mid-string scrub).
     localContent.length > 0
     && localContent.length < serverContent.length
-    && serverContent.startsWith(localContent)
   ) {
-    merged.content = localContent;
-    if (local.events) merged.events = local.events;
+    if (serverContent.startsWith(localContent)) {
+      merged.content = localContent;
+      if (local.events) merged.events = local.events;
+    } else {
+      const cleanedServer = sanitizeAssistantProseForDisplay(serverContent, {
+        stripCodeFences: true,
+      });
+      if (
+        cleanedServer === localContent
+        || cleanedServer.trimEnd() === localContent.trimEnd()
+      ) {
+        merged.content = localContent;
+        if (local.events) merged.events = local.events;
+      }
+    }
   }
   return merged;
 }

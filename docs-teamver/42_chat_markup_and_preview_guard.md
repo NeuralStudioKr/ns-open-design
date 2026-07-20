@@ -9,6 +9,7 @@
 - 열린 `<system-reminder>` 또는 streaming chunk 경계의 부분 태그는 raw prose로 노출하지 않는다.
 - HTML preview는 streaming 중 마지막 stable frame을 유지하되, 최종 snapshot이 구조적으로 불완전하면 새 stable preview로 채택하지 않는다.
 - 채팅 prose의 CDN/viewport 잔해(`googleapis.com" />` 등)도 프리뷰와 동일한 패턴으로 scrub한다. 스트리밍 중 닫힌 `<artifact>` 본문은 보존한다.
+- 미완성 CDN host(`googleapis.com`만 도착)는 chunk 경계에서 hold 후, 종결자(`"/>`)가 오면 scrub한다 — append-only persist에 host만 남는 것을 막는다.
 
 ## 2026-07-20 적용
 
@@ -22,14 +23,17 @@
 - MiniMax `redacted_thinking` 64KB cap overflow는 visible로 내보내지 않고 drop.
 - 채팅 prose에 head skeleton 미완성 태그(`<link`/`<script`/`<meta`…) hold + orphan CDN/viewport debris scrub.
 - terminal merge 시 daemon append-only 잔여 leak보다 FE에서 이미 줄어든 local content를 우선.
+- incomplete CDN host chunk-boundary hold (`stripIncompleteTrailingHtmlDebris`).
+- history sanitize에서 incomplete markup token(`<thi`/`<lin`) 상시 제거 + open artifact에서 CDN 줄을 prose로 승격하지 않음.
+- merge: mid-string scrub 결과 local과 일치하면 local 우선.
 
 ## 검증
 
 - `pnpm --filter @open-design/contracts exec vitest run`
 - `pnpm --filter @open-design/daemon exec vitest run tests/think-tag-splitter tests/strip-leaked-pseudo-tool-xml tests/claude-stream tests/chat-routes tests/role-marker`
-- `pnpm --dir apps/web exec vitest run -c vitest.config.ts tests/project-view-message-merge.test.ts tests/internal-agent-markup.test.ts tests/providers/sse.test.ts tests/components/prompt-injection-chip.test.tsx tests/file-viewer-streaming-preview.test.ts tests/components/ChatPane.streaming.test.tsx`
+- `pnpm --dir apps/web exec vitest run -c vitest.config.ts tests/project-view-message-merge.test.ts tests/internal-agent-markup.test.ts tests/providers/sse.test.ts tests/components/prompt-injection-chip.test.tsx tests/file-viewer-streaming-preview.test.ts tests/components/ChatPane.streaming.test.tsx tests/components/buffered-text-pending.test.ts`
 
 ## 다음 추천 작업
 
-1. 완료된 과거 프로젝트 재진입 시 deck navigation tail이 채팅 prose로 남지 않는지 실제 히스토리로 확인한다.
-2. daemon turn-end에 message content를 `sanitizeAssistantProseForDisplay(streaming:false)`로 rewrite해 append-only 잔여를 DB에서도 제거한다.
+1. daemon turn-end에 message content를 `sanitizeAssistantProseForDisplay(streaming:false)`로 rewrite해 append-only 잔여를 DB에서도 제거한다.
+2. live HTML parser가 content shrink 시 rewind/reset 하도록 보강한다.

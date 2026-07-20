@@ -209,6 +209,106 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^<[a-zA-Z!?/]/.test(trimmed)) return true;
   if (/^<!doctype\b/i.test(trimmed)) return true;
   if (trimmed.includes("<<<<<<< SEARCH")) return true;
+  // CDN / viewport / head-attr debris — never promote out of an open artifact
+  // as "user-facing prose" (history stripTrailingOpenArtifact path).
+  if (looksLikeHtmlDebrisLine(trimmed)) return true;
+  return false;
+}
+
+/** Host / attr fragments that belong to truncated head tags, not chat copy. */
+const HTML_DEBRIS_HOST_FRAGMENTS = [
+  "googleapis.com",
+  "fonts.gstatic.com",
+  "cdn.jsdelivr.net",
+  "unpkg.com",
+  "cdnjs.cloudflare.com",
+  "fonts.bunny.net",
+  "api.fontshare.com",
+  "use.typekit.net",
+  "fontawesome.com",
+  "esm.sh",
+] as const;
+
+function looksLikeHtmlDebrisLine(line: string): boolean {
+  const lower = line.toLowerCase().trim();
+  if (!lower) return false;
+  if (HTML_DEBRIS_HOST_FRAGMENTS.some((host) => lower.includes(host))) return true;
+  if (/^(?:https?:\/\/)?(?:fonts\.|cdn\.|kit\.)?/i.test(lower)
+    && /(?:googleapis|gstatic|jsdelivr|unpkg|cdnjs|bunny\.net|fontshare|typekit|fontawesome|esm\.sh)/i.test(lower)
+  ) {
+    return true;
+  }
+  if (/^(?:device-width|-width\b|viewport\s*=)/i.test(lower)) return true;
+  if (/^family=[a-z0-9_+:;,=%&.\-]+/i.test(lower)) return true;
+  if (/^(?:rel|charset|integrity|crossorigin|name)\s*=/i.test(lower)) return true;
+  if (/name\s*=\s*["']?viewport/i.test(lower) && /content\s*=/i.test(lower)) return true;
+  // Completed orphan void tails (`…" />`) — still debris, not prose.
+  if (/["']?\s*\/?\s*>\s*$/.test(lower)
+    && /(?:googleapis|gstatic|jsdelivr|unpkg|cdnjs|device-width|initial-scale|stylesheet|preconnect|family=)/i.test(lower)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Hold incomplete trailing CDN/viewport/head-attr debris across chunk
+ * boundaries. Without this, `feed("googleapis.com")` emits the host, then
+ * `feed('/css2?…" />')` scrubs non-monotonically and growth is `""` — leaving
+ * the already-emitted host stuck in append-only daemon persist.
+ *
+ * Only holds lines that are *themselves* debris fragments (host/URL/attr),
+ * not prose that merely mentions a CDN host mid-sentence.
+ */
+export function stripIncompleteTrailingHtmlDebris(input: string): string {
+  if (!input) return input;
+  const lastNl = input.lastIndexOf("\n");
+  const lineStart = lastNl === -1 ? 0 : lastNl + 1;
+  const line = input.slice(lineStart);
+  const trimmed = line.trim();
+  if (!trimmed) return input;
+
+  // Fully terminated void tail — leave for stripChatProseHtmlDebris.
+  if (/["']?\s*\/?\s*>\s*$/.test(trimmed) && looksLikeHtmlDebrisLine(trimmed)) {
+    return input;
+  }
+
+  if (looksLikeIncompleteHtmlDebrisLine(trimmed)) {
+    return input.slice(0, lineStart).trimEnd();
+  }
+  return input;
+}
+
+function looksLikeIncompleteHtmlDebrisLine(line: string): boolean {
+  const lower = line.toLowerCase().trim();
+  if (!lower) return false;
+  // Already has a void-tag terminator — not incomplete.
+  if (/["']?\s*\/?\s*>\s*$/.test(lower)) return false;
+
+  // Attribute-only / viewport-only fragments.
+  if (/^(?:device-width|-width\b|viewport\s*=)/i.test(lower)) return true;
+  if (/^family=[a-z0-9_+:;,=%&.\-]*$/i.test(lower)) return true;
+  if (/^(?:rel|charset|integrity|crossorigin|href|name)\s*=/i.test(lower)) return true;
+
+  // Line is essentially a CDN host / URL (optional scheme), not surrounding prose.
+  const withoutProto = lower.replace(/^https?:\/\//, "");
+  for (const host of HTML_DEBRIS_HOST_FRAGMENTS) {
+    if (
+      withoutProto === host
+      || withoutProto.startsWith(`${host}/`)
+      || withoutProto.startsWith(`${host}?`)
+      || withoutProto.startsWith(`${host}"`)
+      || withoutProto.startsWith(`${host}'`)
+    ) {
+      return true;
+    }
+    // Reverse prefix while the host is still being typed (`googleapis`, `fonts.g`).
+    if (withoutProto.length >= 8 && host.startsWith(withoutProto)) return true;
+  }
+
+  // Truncated `https://fonts.` / `https://cdn.` with no host completion yet.
+  if (/^https?:\/\/(?:fonts\.|cdn\.|kit\.)?[a-z0-9.-]*$/i.test(lower)) return true;
+
   return false;
 }
 
@@ -926,9 +1026,12 @@ export function sanitizeAssistantProseForDisplay(
   let text = stripTrailingOpenInternalMarkup(closed, {
     preserveOpenArtifact: streaming,
   }).text;
-  if (streaming) {
-    text = stripIncompleteTrailingMarkupToken(text);
-  }
+  // Always strip incomplete trailing markup tokens — history/listMessages
+  // must not leave `<thi` / `<lin` fragments from dirty persisted rows.
+  text = stripIncompleteTrailingMarkupToken(text);
+  // Hold incomplete CDN/viewport debris mid-stream; also drop unterminated
+  // debris tails from history so open-artifact promotion cannot resurface them.
+  text = stripIncompleteTrailingHtmlDebris(text);
   if (options.stripCodeFences) {
     text = stripAssistantCodeFencesForDisplay(text);
   }

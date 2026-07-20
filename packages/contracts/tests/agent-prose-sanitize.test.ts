@@ -599,6 +599,29 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("Hi\n\nBye");
   });
 
+  it("holds incomplete CDN host across streaming chunk boundaries (no append-only residue)", () => {
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("Done.\n\ngoogleapis.com")).toBe("Done.");
+    expect(guard.feed('/css2?family=Inter" />\nNext.')).toBe("\n\nNext.");
+    expect(guard.flush()).toBe("");
+  });
+
+  it("does not promote unterminated CDN debris out of an open artifact on history sanitize", () => {
+    const input = [
+      "Intro",
+      '<artifact identifier="deck" type="text/html">',
+      "googleapis.com",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).not.toContain("googleapis");
+    expect(out).toBe("Intro");
+  });
+
+  it("strips incomplete trailing markup tokens from history (not only streaming)", () => {
+    expect(sanitizeAssistantProseForDisplay("Hello <thi")).toBe("Hello");
+    expect(sanitizeAssistantProseForDisplay("Plan. <lin")).toBe("Plan.");
+  });
+
   it("does not strip stylesheet <link> tags inside preserved streaming artifacts", () => {
     const closed =
       'Intro\n<artifact identifier="deck" type="text/html">\n'
