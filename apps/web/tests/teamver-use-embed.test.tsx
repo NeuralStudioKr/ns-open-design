@@ -56,7 +56,17 @@ vi.mock("../src/teamver/designBffClient", () => ({
   resetDesignAuthRefreshState: vi.fn(),
   resetDesignAuthBareRefreshAttempt: vi.fn(),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
+  probeDesignBffSessionAuthenticated: vi.fn(async () => false),
+  clearDesignAuthRefreshDecline: vi.fn(),
 }));
+
+vi.mock("../src/teamver/teamverEmbedPassiveAuth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/teamver/teamverEmbedPassiveAuth")>();
+  return {
+    ...actual,
+    handleEmbedPassiveUnauthorized: vi.fn(),
+  };
+});
 
 vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
   hasProbableTeamverAuthCookie: vi.fn(() => false),
@@ -86,6 +96,8 @@ describe("useTeamverEmbed", () => {
     vi.mocked(designBffClient.resetDesignAuthBareRefreshAttempt).mockClear();
     vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
     vi.mocked(designBffClient.prepareDesignAuthSessionReload).mockClear();
+    vi.mocked(designBffClient.probeDesignBffSessionAuthenticated).mockReset();
+    vi.mocked(designBffClient.probeDesignBffSessionAuthenticated).mockResolvedValue(false);
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
     vi.mocked(teamverAuthReturn.peekTeamverAuthReturnPending).mockReturnValue(false);
     vi.mocked(teamverAuthReturn.consumeTeamverAuthReturnPending).mockReturnValue(false);
