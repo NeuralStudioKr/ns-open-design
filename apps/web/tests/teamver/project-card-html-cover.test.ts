@@ -19,6 +19,18 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).not.toContain("<script");
   });
 
+  it("strips canvas CSP base-uri none so card thumbs do not violate CSP", () => {
+    const srcDoc = pagePreviewSrcDoc(
+      `<html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self'; script-src 'none'; base-uri 'none'; form-action 'none'"/>
+</head><body><img src="data:image/gif;base64,xx"></body></html>`,
+      "/api/projects/p1/raw/refs/drive/canvas.html?v=1",
+    );
+    expect(srcDoc).toContain('<base href="/api/projects/p1/raw/refs/drive/canvas.html?v=1">');
+    expect(srcDoc).not.toMatch(/base-uri\s+'none'/i);
+    expect(srcDoc).toContain("img-src data:");
+  });
+
   it("does not add a duplicate base tag for deck previews", () => {
     const srcDoc = deckPreviewSrcDoc(
       '<html><head><base href="/already/"><script>bad()</script></head><body></body></html>',

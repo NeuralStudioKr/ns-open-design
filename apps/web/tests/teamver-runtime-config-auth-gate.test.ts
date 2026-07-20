@@ -107,6 +107,35 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("opportunistic visibility reload does not run cookie auth recovery", async () => {
+    const { NetworkError } = await import("@teamver/app-sdk");
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      fetchTeamverRuntimeConfig,
+      resetTeamverRuntimeConfigCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const refreshFetch = vi.fn();
+    vi.stubGlobal("fetch", refreshFetch);
+    httpGet.mockRejectedValueOnce(
+      new NetworkError({ status: 401, message: "session_expired" }),
+    );
+
+    expect(await fetchTeamverRuntimeConfig()).toBeNull();
+    expect(httpGet).toHaveBeenCalledTimes(1);
+    expect(refreshFetch).not.toHaveBeenCalled();
+
+    // Backoff: no second opportunistic GET.
+    expect(await fetchTeamverRuntimeConfig()).toBeNull();
+    expect(httpGet).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
   it("recovers runtime-config after transient 401 when HA sibling cookie lands", async () => {
     const { NetworkError } = await import("@teamver/app-sdk");
     const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =

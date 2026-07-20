@@ -21,6 +21,7 @@ import {
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
+import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -778,15 +779,16 @@ function injectBeforeBodyEnd(doc: string, payload: string): string {
 }
 
 function injectBaseHref(doc: string, baseHref: string): string {
+  const prepared = stripConflictingSrcDocCspBaseUri(doc);
   const safeHref = escapeAttr(baseHref);
   const tag = `<base href="${safeHref}">`;
-  if (/<head[^>]*>/i.test(doc)) {
-    return doc.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
+  if (/<head[^>]*>/i.test(prepared)) {
+    return prepared.replace(/<head[^>]*>/i, (m) => `${m}${tag}`);
   }
-  if (/<html[^>]*>/i.test(doc)) {
-    return doc.replace(/<html[^>]*>/i, (m) => `${m}<head>${tag}</head>`);
+  if (/<html[^>]*>/i.test(prepared)) {
+    return prepared.replace(/<html[^>]*>/i, (m) => `${m}<head>${tag}</head>`);
   }
-  return tag + doc;
+  return tag + prepared;
 }
 
 function escapeAttr(value: string): string {

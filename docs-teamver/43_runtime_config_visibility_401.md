@@ -98,9 +98,9 @@ sequenceDiagram
 
 | 시점 | force | 조건 |
 |------|-------|------|
-| embed boot (authenticated) | false | 세션 확정 후 |
-| workspace switch / session restored | true | authenticated |
-| pageshow/visibility | false | authenticated **and** not auth-blocked |
+| embed boot (authenticated) | true/false | 세션 확정 후 — **cookie auth recovery 허용** |
+| workspace switch / session restored | true | authenticated — HA sibling cookie recovery |
+| pageshow/visibility | false | authenticated **and** not auth-blocked — **recovery 없이 1회 GET만** (죽은 쿠키면 1×401 후 backoff) |
 
 ---
 
@@ -112,7 +112,9 @@ sequenceDiagram
 2. `runtimeConfigAuthBlocked && !force` → 네트워크 생략.
 3. HTTP 성공 → `runtimeConfigAuthBlocked = false`, 캐시 갱신.
 4. `NetworkError` status `401` → `runtimeConfigAuthBlocked = true`, `null`.
-5. 백오프 해제:
+5. **`force=false`(visibility)**: cookie auth recovery **생략** — 죽은 세션에서 `/runtime-config`·`/auth/refresh` 연쇄 401 방지.
+6. **`force=true`**: `withDesignBffCookieAuthRecovery` 유지 (HA sibling cookie).
+7. 백오프 해제:
    - `setTeamverEmbedSessionAuthenticated(true)` (이미 true여도 해제 — stale true + 죽은 쿠키 복구).
    - cross-tab `embed-session-changed` authenticated=true 릴레이 (재broadcast 없이 `clearTeamverRuntimeConfigAuthBlock`만).
 

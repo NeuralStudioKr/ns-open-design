@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
+import { injectHtmlBaseHref } from "../../runtime/authenticatedHtmlSrcDoc";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
 
 const DECK_PREVIEW_WIDTH = 1280;
@@ -239,18 +240,10 @@ export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
   return injectPreviewHead(withoutScripts, sourceUrl, style);
 }
 
-function previewBaseTag(source: string, sourceUrl: string): string {
-  if (/<base\b/i.test(source)) return "";
-  const escaped = sourceUrl
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `<base href="${escaped}">`;
-}
-
 function injectPreviewHead(source: string, sourceUrl: string, style: string): string {
-  return injectBefore(source, "</head>", `${previewBaseTag(source, sourceUrl)}${style}`);
+  // Shared base inject also strips canvas CSP `base-uri 'none'` so srcDoc
+  // thumbs do not spam DevTools (see injectHtmlBaseHref).
+  return injectBefore(injectHtmlBaseHref(source, sourceUrl), "</head>", style);
 }
 
 function injectBefore(source: string, marker: string, addition: string): string {

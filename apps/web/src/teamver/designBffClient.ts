@@ -868,11 +868,18 @@ export async function fetchTeamverRuntimeConfig(
 
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
-      const value = await withDesignBffCookieAuthRecovery(() =>
-        client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-          ...TEAMVER_BFF_REQUEST_OPTIONS,
-        }),
-      );
+      // Opportunistic (visibility) reloads: one GET only — auth recovery would
+      // spam /runtime-config + /auth/refresh 401s when the cookie is dead.
+      // force=true (boot / workspace / re-login) keeps HA cookie recovery.
+      const value = force
+        ? await withDesignBffCookieAuthRecovery(() =>
+            client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
+              ...TEAMVER_BFF_REQUEST_OPTIONS,
+            }),
+          )
+        : await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
+            ...TEAMVER_BFF_REQUEST_OPTIONS,
+          });
       runtimeConfigAuthBlocked = false;
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;

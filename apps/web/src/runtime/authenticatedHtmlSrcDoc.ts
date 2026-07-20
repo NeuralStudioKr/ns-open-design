@@ -53,19 +53,44 @@ export function resolvePluginPreviewBaseHref(previewSrc: string, origin?: string
   return absolute.href;
 }
 
+/**
+ * Teamver canvas HTML embeds CSP meta with `base-uri 'none'` (download hardening).
+ * srcDoc thumbs/previews must inject `<base href>` for relative assets; that
+ * violates the meta and floods DevTools. Drop only the conflicting directive
+ * (keep default-src / script-src / etc.).
+ */
+export function stripConflictingSrcDocCspBaseUri(html: string): string {
+  return html.replace(/<meta\b[^>]*>/gi, (tag) => {
+    if (!/\bhttp-equiv\s*=\s*(["']?)Content-Security-Policy\1/i.test(tag)
+      && !/\bhttp-equiv\s*=\s*Content-Security-Policy\b/i.test(tag)) {
+      return tag;
+    }
+    return tag.replace(/\bcontent\s*=\s*(["'])([\s\S]*?)\1/i, (_m, quote: string, content: string) => {
+      const next = content
+        .replace(/\bbase-uri\s+'none'\s*;?/gi, '')
+        .replace(/\bbase-uri\s*"none"\s*;?/gi, '')
+        .replace(/;\s*;+/g, ';')
+        .replace(/^(?:\s*;\s*)+|(?:\s*;\s*)+$/g, '')
+        .trim();
+      return `content=${quote}${next}${quote}`;
+    });
+  });
+}
+
 export function injectHtmlBaseHref(html: string, baseHref: string): string {
-  if (/<base\b/i.test(html)) return html;
+  const prepared = stripConflictingSrcDocCspBaseUri(html);
+  if (/<base\b/i.test(prepared)) return prepared;
   const escaped = baseHref
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
   const base = `<base href="${escaped}">`;
-  const headClose = html.toLowerCase().lastIndexOf('</head>');
+  const headClose = prepared.toLowerCase().lastIndexOf('</head>');
   if (headClose !== -1) {
-    return `${html.slice(0, headClose)}${base}${html.slice(headClose)}`;
+    return `${prepared.slice(0, headClose)}${base}${prepared.slice(headClose)}`;
   }
-  return `${base}${html}`;
+  return `${base}${prepared}`;
 }
 
 export function pluginPreviewSrcDoc(html: string, sourceUrl: string): string {
