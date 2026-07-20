@@ -119,8 +119,12 @@
   justify-content: center;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-muted) 92%, white), var(--bg-muted));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-muted) 88%, var(--bg-elevated)),
+    var(--bg-muted)
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-strong) 8%, transparent);
   color: var(--text-strong);
   font-weight: 600;
   line-height: 1;
@@ -190,9 +194,41 @@
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
+.teamver-workspace-trigger:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 4px 14px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.teamver-workspace-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 6px 18px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .teamver-workspace-trigger:disabled {
   opacity: 0.65;
   cursor: default;
+}
+
+.teamver-workspace-trigger--pending {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--bg-subtle) 85%, var(--bg-elevated));
+  box-shadow: none;
+  cursor: progress;
+}
+
+.teamver-workspace-trigger--pending .teamver-workspace-trigger__label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.teamver-workspace-switcher--static .teamver-workspace-trigger:not(.teamver-workspace-trigger--pending) {
+  box-shadow: none;
 }
 
 .teamver-workspace-trigger__label {
@@ -204,18 +240,24 @@
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.teamver-workspace-switcher:not(.teamver-workspace-switcher--static)
+  .teamver-workspace-trigger__label {
   color: var(--accent-strong);
 }
 
 .teamver-workspace-trigger__chevron {
   flex-shrink: 0;
-  opacity: 0.72;
-  color: var(--text-muted);
-  transition: transform 140ms ease;
+  opacity: 0.85;
+  color: var(--text);
+  transition: transform 140ms ease, color 140ms ease;
 }
 
 .teamver-workspace-trigger__chevron.is-open {
   transform: rotate(180deg);
+  color: var(--accent-strong);
 }
 
 .teamver-workspace-menu {
@@ -223,9 +265,20 @@
   max-width: min(20rem, 80vw);
   padding: 0.45rem;
   border-radius: 0.85rem;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bg-elevated) 92%, var(--accent) 8%) 0%,
+      var(--bg-elevated) 42%,
+      var(--bg-elevated) 100%
+    );
+  color: var(--text-strong);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--border-strong) 70%, transparent) transparent;
 }
 
 .teamver-workspace-menu--floating {
@@ -237,10 +290,53 @@
   min-width: 0;
   max-width: none;
   z-index: 1000;
+  transform-origin: top left;
+  animation: teamver-workspace-menu-in 140ms ease-out;
+}
+
+.teamver-workspace-menu--floating[data-placement="above"] {
+  transform-origin: bottom left;
+  animation-name: teamver-workspace-menu-in-up;
+}
+
+@keyframes teamver-workspace-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes teamver-workspace-menu-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teamver-workspace-menu--floating {
+    animation: none;
+  }
+
+  .teamver-workspace-trigger,
+  .teamver-workspace-trigger__chevron,
+  .teamver-workspace-menu__item {
+    transition: none;
+  }
 }
 
 .teamver-workspace-menu__heading {
-  margin: 0.15rem 0.45rem 0.35rem;
+  margin: 0.15rem 0.55rem 0.45rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -257,31 +353,77 @@
   border: 0;
   border-radius: 0.55rem;
   background: transparent;
-  color: inherit;
+  color: var(--text-strong);
   text-align: left;
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
-.teamver-workspace-menu__item:hover,
-.teamver-workspace-menu__item.is-active {
+.teamver-workspace-menu__item:hover:not(:disabled),
+.teamver-workspace-menu__item:focus-visible {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-subtle));
+  outline: none;
+}
+
+.teamver-workspace-menu__item:focus-visible {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.teamver-workspace-menu__item.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-subtle));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 78%, transparent);
+  color: var(--accent-strong);
+}
+
+.teamver-workspace-menu__item.is-active:hover:not(:disabled),
+.teamver-workspace-menu__item.is-active:focus-visible {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-subtle));
+}
+
+.teamver-workspace-menu__item.is-active:focus-visible {
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, var(--accent) 78%, transparent),
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.teamver-workspace-menu__item.is-active .teamver-workspace-menu__label {
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .teamver-workspace-menu__item.is-disabled {
-  opacity: 0.62;
+  opacity: 0.55;
   cursor: not-allowed;
+  color: var(--text-muted);
 }
 
 .teamver-workspace-menu__item.is-disabled .teamver-workspace-menu__label {
   font-style: italic;
+  color: var(--text-muted);
 }
 
 .teamver-workspace-menu__label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-strong);
+}
+
+.teamver-workspace-menu__check,
+.teamver-workspace-menu__check-slot {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.teamver-workspace-menu__check {
+  color: var(--accent-strong);
+  opacity: 0.95;
 }
 
 @media (max-width: 720px) {
