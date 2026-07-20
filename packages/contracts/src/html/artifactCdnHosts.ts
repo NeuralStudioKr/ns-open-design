@@ -153,9 +153,13 @@ export function artifactCdnHrefTokenAlternation(): string {
       tokens.add("esm\\.sh");
       continue;
     }
-    const labels = host.split(".");
+    // Every current ARTIFACT_CDN_HOSTS entry is handled above, so TS narrows
+    // `host` to `never` here. Keep a string fallthrough so a newly added host
+    // still contributes a searchable token without an immediate special case.
+    const hostName = host as string;
+    const labels = hostName.split(".");
     tokens.add(
-      escapeRegExpLiteral(labels.length >= 2 ? labels.slice(0, 2).join(".") : host),
+      escapeRegExpLiteral(labels.length >= 2 ? labels.slice(0, 2).join(".") : hostName),
     );
   }
   return [...tokens].join("|");
