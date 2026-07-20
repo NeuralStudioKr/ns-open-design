@@ -20,6 +20,13 @@ import {
   ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE,
   ARTIFACT_VIEWPORT_TEXT_LEAK_RE,
 } from "./html/artifactPreviewTextLeaks.js";
+import {
+  ARTIFACT_CDN_HOSTS,
+  ARTIFACT_CDN_HOST_STEMS,
+  artifactCdnImportUrlTokenAlternation,
+  artifactBareCdnHostLineSource,
+  artifactCdnHostAlternation,
+} from "./html/artifactCdnHosts.js";
 
 /** Pseudo file-operation XML emitted when CLI tools (Read/Write/Edit) are unavailable. */
 const FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES = [
@@ -215,40 +222,11 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   return false;
 }
 
-/** Host / attr fragments that belong to truncated head tags, not chat copy. */
-const HTML_DEBRIS_HOST_FRAGMENTS = [
-  // Longer / more-specific hosts first so reverse-prefix matching prefers them.
-  "fonts.googleapis.com",
-  "fonts.gstatic.com",
-  "cdn.jsdelivr.net",
-  "cdnjs.cloudflare.com",
-  "fonts.bunny.net",
-  "api.fontshare.com",
-  "use.typekit.net",
-  "googleapis.com",
-  "fontawesome.com",
-  "unpkg.com",
-  "esm.sh",
-] as const;
+/** @deprecated alias — use ARTIFACT_CDN_HOSTS (SSOT in artifactCdnHosts.ts). */
+const HTML_DEBRIS_HOST_FRAGMENTS = ARTIFACT_CDN_HOSTS;
 
-/** Short stems held while a CDN host is still being typed across chunks. */
-const HTML_DEBRIS_HOST_STEMS = [
-  "fonts.googleapis.com",
-  "fonts.gstatic.com",
-  "googleapis.com",
-  "fonts.google",
-  "fonts.goo",
-  "fonts.g",
-  "googleapis",
-  "googleap",
-  "googlea",
-  "cdn.jsdelivr",
-  "cdn.js",
-  "cdnjs.cloudflare",
-  "unpkg.com",
-  "unpkg",
-  "esm.sh",
-] as const;
+/** @deprecated alias — use ARTIFACT_CDN_HOST_STEMS. */
+const HTML_DEBRIS_HOST_STEMS = ARTIFACT_CDN_HOST_STEMS;
 
 function looksLikeHtmlDebrisLine(line: string): boolean {
   const lower = line.toLowerCase().trim();
@@ -887,7 +865,7 @@ export function sanitizeLeakedAgentProse(
  */
 export function stripChatProseHtmlDebris(
   input: string,
-  options: { includeFullHeadTags?: boolean; preserveArtifactBodies?: boolean } = {},
+  options: { preserveArtifactBodies?: boolean } = {},
 ): string {
   if (!input) return input;
   const orphanPatterns = [
@@ -906,10 +884,8 @@ export function stripChatProseHtmlDebris(
   // Full head tags MUST run before orphan attr/void patterns. Otherwise
   // `rel="stylesheet"` carves the middle out of an intact `<link …>` and
   // leaves a `<link` residue in chat.
-  const fullScrubPatterns =
-    options.includeFullHeadTags === false
-      ? orphanPatterns
-      : [...fullTagPatterns, ...orphanPatterns];
+  // Full head tags MUST run before orphan attr/void patterns (invariant).
+  const fullScrubPatterns = [...fullTagPatterns, ...orphanPatterns];
 
   const scrubSegment = (
     segment: string,
@@ -933,21 +909,33 @@ export function stripChatProseHtmlDebris(
         .replace(/<!doctype\s+html[^>]*>/gi, "");
       // Leaked CSS @import / url() font CDN lines — never chat copy.
       out = out.replace(
-        /@import\s+url\s*\(\s*['"]?https?:\/\/[^)'"]*(?:fonts\.googleapis|fonts\.gstatic|fonts\.bunny|fontshare|typekit|fontawesome)[^)'"]*['"]?\s*\)\s*;?/gi,
+        new RegExp(
+          `@import\\s+url\\s*\\(\\s*['"]?https?:\\/\\/[^)'"]*(?:${artifactCdnImportUrlTokenAlternation()})[^)'"]*['"]?\\s*\\)\\s*;?`,
+          "gi",
+        ),
         "",
       );
       out = out.replace(
-        /(^|\n)[ \t]*url\s*\(\s*['"]?https?:\/\/[^)'"]*(?:fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg|cdnjs|fonts\.bunny|fontshare|typekit|fontawesome|esm\.sh)[^)'"]*['"]?\s*\)\s*;?[ \t]*(?=\n|$)/gi,
+        new RegExp(
+          `(^|\\n)[ \\t]*url\\s*\\(\\s*['"]?https?:\\/\\/[^)'"]*(?:${artifactCdnImportUrlTokenAlternation()})[^)'"]*['"]?\\s*\\)\\s*;?[ \\t]*(?=\\n|$)`,
+          "gi",
+        ),
         "$1",
       );
       // Bare host or host+path lines (no `"/>` terminator) — chat prose only.
       out = out.replace(
-        /(^|\n)[ \t]*(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?[ \t]*(?=\n|$)/gi,
+        new RegExp(
+          `(^|\\n)[ \\t]*${artifactBareCdnHostLineSource()}[ \\t]*(?=\\n|$)`,
+          "gi",
+        ),
         "$1",
       );
       // Same-line trailing bare host/path.
       out = out.replace(
-        /(\s)(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?(?=\s*(?:\n|$))/gi,
+        new RegExp(
+          `(\\s)(?:https?:\\/\\/)?(?:${artifactCdnHostAlternation()})(?:\\/[^\\s<>]*)?(?=\\s*(?:\\n|$))`,
+          "gi",
+        ),
         "",
       );
       // family=/css2?family= lines (display=swap optional; void optional).
@@ -960,9 +948,7 @@ export function stripChatProseHtmlDebris(
   };
 
   const fullScrub = (segment: string): string =>
-    scrubSegment(segment, fullScrubPatterns, {
-      stripDocumentBlocks: options.includeFullHeadTags !== false,
-    });
+    scrubSegment(segment, fullScrubPatterns, { stripDocumentBlocks: true });
   const lightScrub = (segment: string): string =>
     scrubSegment(segment, orphanPatterns, { stripDocumentBlocks: false });
 
@@ -1205,7 +1191,6 @@ export function sanitizeAssistantProseForDisplay(
   // artifact bodies keep their stylesheets for the live HTML panel.
   const preservingArtifacts = streaming || options.preserveClosedArtifact === true;
   text = stripChatProseHtmlDebris(text, {
-    includeFullHeadTags: true,
     preserveArtifactBodies: preservingArtifacts,
   });
   // Debris scrub can leave a truncated tag name (`<link`); strip it now.

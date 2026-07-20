@@ -1,6 +1,5 @@
 import {
   sanitizeAssistantProseForDisplay,
-  sanitizeLeakedAgentProse,
   createStreamingAssistantProseGuard,
 } from "@open-design/contracts";
 
@@ -12,7 +11,7 @@ export function stripLeakedPseudoToolXml(text: string): string {
 
 /** History / complete-message sanitizer (no open-artifact preserve). */
 export function stripLeakedPseudoToolXmlComplete(text: string): string {
-  return sanitizeLeakedAgentProse(text);
+  return sanitizeAssistantProseForDisplay(text, { streaming: false });
 }
 
 /** Stateful delta sanitizer — safe across chunk boundaries. */

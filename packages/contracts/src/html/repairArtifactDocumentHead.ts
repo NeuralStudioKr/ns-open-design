@@ -6,6 +6,10 @@ import {
   stripArtifactPreviewBodyTextLeaks,
   stripOrphanVoidTailsFromHeadInner,
 } from "./artifactPreviewTextLeaks.js";
+import {
+  artifactCdnHostWithOptionalPathAlternation,
+  artifactCdnHrefTokenAlternation,
+} from "./artifactCdnHosts.js";
 
 /**
  * Repair common agent-emitted `<head>` corruption where a truncated viewport
@@ -21,15 +25,20 @@ const HEAD_VIEWPORT_FRAGMENT_RE =
  * Truncated font/CDN/link tails immediately after `<head>` (same class of
  * corruption as Hermes viewport leaks — opening `<link href="https://fonts.`
  * is lost and `googleapis.com…" />` paints as text).
+ * Host list comes from `artifactCdnHosts.ts`.
  */
-const HEAD_ORPHAN_VOID_FRAGMENT_RE =
-  /^\s*(?:(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com(?:\/(?:css2?|icon)[^<\n]*)?|fonts\.gstatic\.com[^<\n]*|cdn\.jsdelivr\.net\/[^<\n]*|unpkg\.com\/[^<\n]*|cdnjs\.cloudflare\.com\/[^<\n]*|fonts\.bunny\.net\/[^<\n]*|api\.fontshare\.com\/[^<\n]*|use\.typekit\.net\/[^<\n]*|(?:kit\.)?fontawesome\.com\/[^<\n]*|esm\.sh\/[^<\n]*)|(?:css2\?)?family=[A-Za-z0-9_+:;,=%&.@\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\-]*)*|href\s*=\s*["']https?:\/\/[^"']*(?:fonts\.googleapis|fonts\.gstatic|jsdelivr|unpkg|cdnjs|fonts\.bunny|fontshare|typekit|fontawesome|esm\.sh)[^"']*["'][^<\n]{0,80}|rel\s*=\s*["'](?:stylesheet|preconnect|preload)["'][^<\n]{0,120}|crossorigin(?:\s*=\s*["']anonymous["'])?[^<\n]{0,80}|charset\s*=\s*["'][^"']*["'][^<\n]{0,40})\s*"?\s*\/?>\s*/im;
+const HEAD_ORPHAN_VOID_FRAGMENT_RE = new RegExp(
+  `^\\s*(?:(?:https?:\\/\\/)?(?:${artifactCdnHostWithOptionalPathAlternation()})|(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*|href\\s*=\\s*["']https?:\\/\\/[^"']*(?:${artifactCdnHrefTokenAlternation()})[^"']*["'][^<\\n]{0,80}|rel\\s*=\\s*["'](?:stylesheet|preconnect|preload)["'][^<\\n]{0,120}|crossorigin(?:\\s*=\\s*["']anonymous["'])?[^<\\n]{0,80}|charset\\s*=\\s*["'][^"']*["'][^<\\n]{0,40})\\s*"?\\s*\\/?>\\s*`,
+  "im",
+);
 
 const BODY_VIEWPORT_FRAGMENT_RE =
   /(<body[^>]*>)\s*(?:(?:viewport\s*=\s*width\s*=\s*device-width|device-width|-width)\s*,\s*initial-scale=[^<\n]+"?\s*\/?>|name\s*=\s*["']viewport["']\s+content\s*=\s*["'][^"']*["']\s*\/?>)\s*/gi;
 
-const BODY_ORPHAN_VOID_FRAGMENT_RE =
-  /(<body[^>]*>)\s*(?:(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com(?:\/(?:css2?|icon)[^<\n]*)?|fonts\.gstatic\.com[^<\n]*|cdn\.jsdelivr\.net\/[^<\n]*|unpkg\.com\/[^<\n]*|cdnjs\.cloudflare\.com\/[^<\n]*|fonts\.bunny\.net\/[^<\n]*|api\.fontshare\.com\/[^<\n]*|use\.typekit\.net\/[^<\n]*|esm\.sh\/[^<\n]*)|(?:css2\?)?family=[A-Za-z0-9_+:;,=%&.@\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\-]*)*|href\s*=\s*["']https?:\/\/[^"']*(?:fonts\.googleapis|fonts\.gstatic|jsdelivr|unpkg|cdnjs|fonts\.bunny|fontshare|typekit|fontawesome|esm\.sh)[^"']*["'][^<\n]{0,80}|rel\s*=\s*["'](?:stylesheet|preconnect|preload)["'][^<\n]{0,120})\s*"?\s*\/?>\s*/gi;
+const BODY_ORPHAN_VOID_FRAGMENT_RE = new RegExp(
+  `(<body[^>]*>)\\s*(?:(?:https?:\\/\\/)?(?:${artifactCdnHostWithOptionalPathAlternation()})|(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*|href\\s*=\\s*["']https?:\\/\\/[^"']*(?:${artifactCdnHrefTokenAlternation()})[^"']*["'][^<\\n]{0,80}|rel\\s*=\\s*["'](?:stylesheet|preconnect|preload)["'][^<\\n]{0,120})\\s*"?\\s*\\/?>\\s*`,
+  "gi",
+);
 
 function stripLeakedViewportFragments(doc: string): string {
   let out = doc.replace(HEAD_VIEWPORT_FRAGMENT_RE, "");

@@ -45,6 +45,7 @@ export * from './critique.js';
 export * from './embed-chinese-deck-policy.js';
 export * from './plugins/index.js';
 export * from './agent-prose-sanitize.js';
+export * from './html/artifactCdnHosts.js';
 export * from './html/repairArtifactDocumentHead.js';
 export * from './html/artifactPreviewTextLeaks.js';
 export * from './html/isArtifactHtmlStableForPreview.js';

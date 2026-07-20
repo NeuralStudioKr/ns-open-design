@@ -1,4 +1,8 @@
 import { hasArtifactPreviewBodyTextLeaks } from "./artifactPreviewTextLeaks.js";
+import {
+  ARTIFACT_BARE_CDN_HOST_LINE_RE,
+  artifactCdnImportUrlTokenAlternation,
+} from "./artifactCdnHosts.js";
 
 function countTagBalance(html: string, openRe: RegExp, closeRe: RegExp): boolean {
   const opens = (html.match(openRe) ?? []).length;
@@ -47,19 +51,16 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
       || /<(?:main|article|h1|h2|p|img|canvas)\b/i.test(bodyWithoutBlocks);
     if (
       !hasSlideOrRoot
-      && /(?:fonts\.)?googleapis\.com|fonts\.gstatic|fonts\.bunny|fontshare|typekit|fontawesome|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare|esm\.sh|initial-scale\s*=|integrity\s*=\s*["']sha|rel\s*=\s*["'](?:stylesheet|preconnect|preload)["']|type\s*=\s*["']module["']\s*\/?>/i.test(
-        bodyWithoutBlocks,
-      )
+      && new RegExp(
+        `(?:${artifactCdnImportUrlTokenAlternation()})|initial-scale\\s*=|integrity\\s*=\\s*["']sha|rel\\s*=\\s*["'](?:stylesheet|preconnect|preload)["']|type\\s*=\\s*["']module["']\\s*\\/?>`,
+        "i",
+      ).test(bodyWithoutBlocks)
     ) {
       return false;
     }
     // Bare CDN host or host+path lines inside an otherwise complete body still
     // paint as visible text — reject until they are scrubbed or the document settles.
-    if (
-      /(?:^|\n)\s*(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?\s*(?:\n|$)/im.test(
-        bodyWithoutBlocks,
-      )
-    ) {
+    if (ARTIFACT_BARE_CDN_HOST_LINE_RE.test(bodyWithoutBlocks)) {
       return false;
     }
     // Truncated head tags that never received `>` (e.g. `<link …fonts.google`).
