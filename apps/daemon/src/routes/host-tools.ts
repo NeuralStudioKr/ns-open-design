@@ -16,6 +16,7 @@
 import { spawn } from 'node:child_process';
 import { access, constants as fsConstants } from 'node:fs/promises';
 import path from 'node:path';
+import { createCommandInvocation } from '@open-design/platform';
 import type { Express } from 'express';
 import type {
   HostEditor,
@@ -218,6 +219,26 @@ export async function resolveHostToolLaunchPlan(
   };
 }
 
+export function launchHostTool(
+  command: string,
+  args: string[],
+): { ok: true } {
+  const invocation = createCommandInvocation({ command, args });
+  const child = spawn(invocation.command, invocation.args, {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: process.platform === 'win32',
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+  });
+  child.on('error', () => {
+    // Swallow — best-effort; the client will see ok:true but the OS
+    // might still have refused (e.g. quarantine). Real diagnostic
+    // path is `od project open-in --debug`.
+  });
+  child.unref();
+  return { ok: true };
+}
+
 function applicableForPlatform(entry: CatalogueEntry, platform: Platform): boolean {
   if (platform === 'unknown') return false;
   if (entry.platforms && !entry.platforms.includes(platform)) return false;
@@ -310,17 +331,7 @@ export function registerHostToolsRoutes(app: Express, ctx: RegisterHostToolsRout
       // shape paseo uses. Each catalogue entry turns the project dir into
       // the native argument shape it expects (CLI shim, `open -a`, Explorer,
       // xdg-open, etc.).
-      const child = spawn(launchPlan.command, launchPlan.args, {
-        detached: true,
-        stdio: 'ignore',
-        shell: process.platform === 'win32',
-      });
-      child.on('error', () => {
-        // Swallow — best-effort; the client will see ok:true but the OS
-        // might still have refused (e.g. quarantine). Real diagnostic
-        // path is `od project open-in --debug`.
-      });
-      child.unref();
+      launchHostTool(launchPlan.command, launchPlan.args);
       const body: OpenProjectInEditorResponse = {
         ok: true,
         editorId,
