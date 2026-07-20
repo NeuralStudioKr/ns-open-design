@@ -2,13 +2,14 @@ import type { PetTaskSummary } from "../components/pet/PetOverlay";
 import type { Project } from "../types";
 import { navigateExtrasForBackgroundRun } from "./backgroundRunNavigate";
 import { projectOpenOptionsFromPreviewCover } from "./projectPreviewFile";
+import type { EmbedBackgroundRunNoticeStatus } from "./teamverEmbedRunTracking";
 
 export type EmbedBackgroundRunNotice = {
   runId: string;
   projectId: string;
   projectName: string;
   conversationId: string | null;
-  status: "succeeded" | "failed";
+  status: EmbedBackgroundRunNoticeStatus;
   reopenExtras: { conversationId?: string | null; fileName?: string | null };
 };
 
@@ -31,7 +32,10 @@ export function patchEmbedBackgroundRunNoticeForProject(
 ): EmbedBackgroundRunNotice | null {
   if (!notice || notice.projectId !== project.id) return notice;
   const reopenExtras = navigateExtrasForBackgroundRun(
-    { status: notice.status, conversationId: notice.conversationId },
+    {
+      status: notice.status === "incomplete" ? "succeeded" : notice.status,
+      conversationId: notice.conversationId,
+    },
     project,
   );
   if (

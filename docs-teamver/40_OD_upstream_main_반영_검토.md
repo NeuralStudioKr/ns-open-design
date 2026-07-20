@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 12. loop 11에서 daemon이 노출한 `endedWithUnfinishedWork`를 Teamver embed background completion surface에서 소비하도록 FE 최소 경로를 보강했다. succeeded run이라도 unfinished 신호가 있으면 toast/desktop notification을 “완료”가 아닌 “확인 필요/미완료 항목 있음”으로 표시하고, 성공음·성공 톤으로 오인하지 않게 했다. preview deep-link는 유지해 사용자가 생성된 결과물과 남은 작업을 바로 확인할 수 있다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 11. `bc5b6f058`의 전체 project-status/UI/DB 변경은 계속 보류하되, 핵심 run completeness 신호만 현재 Teamver run service에 수동 포팅했다. TodoWrite 최신 snapshot에 미완료 항목이 있거나 usage `stopReason=max_tokens`로 끝난 succeeded run은 `/api/runs` status와 terminal `end` event에 `endedWithUnfinishedWork:true`를 싣는다. 기존 `status:succeeded`는 유지해 호환성을 지키면서, background/re-entry UI가 “완료처럼 보이지만 실제로는 미완료” 상태를 구분할 수 있는 기반을 만든다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 10-A. `24c7876b3` in-place HTML edit delivery 보존 패치는 현재 Teamver `ProjectView` 구조와 직접 대응되지 않아 코드 포팅하지 않았다. upstream은 `computeTraceObjectFiles`/agent touched file path 기반인데, staging은 해당 경로가 제거되고 content match 기반 artifact recovery를 사용한다. 이후 댓글 수정 실패가 재현되면 Teamver의 `findSameTurnHtmlWriteForRecoveredArtifact`/preview comment attachment 경로에서 별도 보강한다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 10. `cfc6ae089` AMR/Vela API proxy pipe error guard를 현재 Teamver `server.ts` 구조에 맞춰 수동 포팅했다. upstream response reset 또는 client upload abort가 source stream `error`로 발생해도 unhandled exception으로 daemon이 죽지 않도록, 양방향 pipe에 명시적 error listener를 붙이는 helper와 회귀 테스트를 추가했다.
@@ -49,6 +50,7 @@
 | `2192a7f6b` | incomplete BYOK configuration preflight | **보류.** daemon/web/settings/contracts 40개 파일 규모로, Teamver managed key/API key 비노출 정책과 충돌 가능성이 있다. 실사용 BYOK 설정 화면 회귀 테스트를 확보한 뒤 별도 검토한다. |
 | `4ddfc6e44` | transient image generation response retry | **보류.** media route/analytics/contracts 대형 변경이며 현재 AI Design slide 기본 기능보다 후순위다. image generation을 product scope에 다시 올릴 때 검토한다. |
 | `bc5b6f058` | unfinished work run을 completed로 표시하지 않음 | **2026-07-20 부분 반영.** 전체 DB/project-status/UI/i18n 포팅은 보류. run service가 TodoWrite 미완료 또는 `max_tokens` truncation을 감지해 `endedWithUnfinishedWork`를 status/end event에 싣는 최소 신호만 반영했다. |
+| `bc5b6f058` FE 후속 | unfinished work background completion 표시 | **2026-07-20 부분 반영.** Teamver embed background toast/desktop notification이 `endedWithUnfinishedWork`를 `incomplete` notice로 매핑한다. 성공 preview 링크는 유지하되 완료 문구·성공음·성공 톤은 피한다. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |
 
 `origin/main`은 현재 `94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`까지 반영되어 있다. `staging...origin/main` divergence는 `703 / 586`으로, 2026-07-15 기준 `665 / 410`보다 더 벌어졌다. 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.

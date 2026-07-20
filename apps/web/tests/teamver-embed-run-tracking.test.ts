@@ -8,6 +8,7 @@ import {
   shouldNotifyEmbedBackgroundRunCompletion,
   buildEmbedKnownProjectIds,
   filterRunsForEmbedKnownProjects,
+  noticeStatusForBackgroundRun,
   pruneSessionActiveRunProjectIds,
   buildEmbedActiveRunAllowMissingIds,
 } from "../src/teamver/teamverEmbedRunTracking";
@@ -119,6 +120,23 @@ describe("processEmbedBackgroundRunCompletions", () => {
     const toastRun = processEmbedBackgroundRunCompletions(completed, projects, true, refs);
     expect(toastRun?.id).toBe("r2");
     expect(refs.notifiedBackgroundRunIds.current).toEqual(new Set(["r2", "r1"]));
+  });
+});
+
+describe("noticeStatusForBackgroundRun", () => {
+  it("maps succeeded unfinished runs to incomplete notices", () => {
+    expect(noticeStatusForBackgroundRun({
+      status: "succeeded",
+      endedWithUnfinishedWork: true,
+    })).toBe("incomplete");
+    expect(noticeStatusForBackgroundRun({
+      status: "succeeded",
+      endedWithUnfinishedWork: false,
+    })).toBe("succeeded");
+    expect(noticeStatusForBackgroundRun({
+      status: "failed",
+      endedWithUnfinishedWork: true,
+    })).toBe("failed");
   });
 });
 

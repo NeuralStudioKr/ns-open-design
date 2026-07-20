@@ -28,6 +28,15 @@ export type LocallyDeletedProjectIds =
   | ReadonlyMap<string, unknown>
   | ReadonlySet<string>;
 
+export type EmbedBackgroundRunNoticeStatus = "succeeded" | "failed" | "incomplete";
+
+export function noticeStatusForBackgroundRun(
+  run: Pick<ChatRunStatusResponse, "status"> & { endedWithUnfinishedWork?: boolean },
+): EmbedBackgroundRunNoticeStatus {
+  if (run.status === "succeeded" && run.endedWithUnfinishedWork) return "incomplete";
+  return run.status === "failed" ? "failed" : "succeeded";
+}
+
 function isLocallyDeletedProjectId(
   id: string,
   locallyDeletedProjectIds?: LocallyDeletedProjectIds,

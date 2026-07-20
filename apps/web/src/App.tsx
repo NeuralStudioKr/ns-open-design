@@ -109,7 +109,7 @@ import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
-import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds } from './teamver/teamverEmbedRunTracking';
+import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun } from './teamver/teamverEmbedRunTracking';
 import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
 import { loadProjectListPage, loadProjectListSafe, loadProjectsForWorkspaceSwitch, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { formatProjectGetErrorForUser } from './teamver/projectErrorMessages';
@@ -2814,7 +2814,7 @@ function AppInner() {
         }
         if (!inSameProject && !locallyDeletedProjectIdsRef.current.has(completedRun.projectId)) {
           const resolvedProjectName = completedProject?.name ?? 'teamver Design';
-          const status = completedRun.status as 'succeeded' | 'failed';
+          const status = noticeStatusForBackgroundRun(completedRun);
           const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
           setBackgroundRunNotice({
             runId: completedRun.id,
@@ -2832,11 +2832,15 @@ function AppInner() {
               : notifications.failureSoundId);
           }
           if (notifications.desktopEnabled) {
-            const shouldInterrupt = status === 'failed' || document.hidden || !document.hasFocus();
+            const shouldInterrupt = status !== 'succeeded' || document.hidden || !document.hasFocus();
             if (shouldInterrupt) {
               void showCompletionNotification({
-                status,
-                title: status === 'succeeded' ? '슬라이드 작업 완료' : '슬라이드 작업 실패',
+                status: status === 'succeeded' ? 'succeeded' : 'failed',
+                title: status === 'succeeded'
+                  ? '슬라이드 작업 완료'
+                  : status === 'incomplete'
+                    ? '슬라이드 작업 확인 필요'
+                    : '슬라이드 작업 실패',
                 body: resolvedProjectName,
                 onClick: () => {
                   window.focus();
@@ -3809,10 +3813,16 @@ function AppInner() {
           key={backgroundRunNotice.runId}
           message={backgroundRunNotice.status === 'succeeded'
             ? `${backgroundRunNotice.projectName} 슬라이드 작업이 완료되었습니다.`
-            : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
-          details={backgroundRunNotice.status === 'succeeded' && backgroundRunNotice.reopenExtras.fileName
-            ? '미리보기 후 보내기 메뉴에서 Drive에 발행할 수 있습니다.'
-            : undefined}
+            : backgroundRunNotice.status === 'incomplete'
+              ? `${backgroundRunNotice.projectName} 슬라이드 작업에 미완료 항목이 남았습니다.`
+              : `${backgroundRunNotice.projectName} 슬라이드 작업에 실패했습니다.`}
+          details={
+            backgroundRunNotice.status === 'succeeded' && backgroundRunNotice.reopenExtras.fileName
+              ? '미리보기 후 보내기 메뉴에서 Drive에 발행할 수 있습니다.'
+              : backgroundRunNotice.status === 'incomplete'
+                ? '프로젝트를 열어 결과물과 남은 작업을 확인하세요.'
+                : undefined
+          }
           actionLabel={
             backgroundRunNotice.status === 'succeeded' && backgroundRunNotice.reopenExtras.fileName
               ? '미리보기 · Drive 발행'
@@ -3829,7 +3839,7 @@ function AppInner() {
             }
             void navigateToProject(notice.projectId, notice.reopenExtras);
           }}
-          tone={backgroundRunNotice.status === 'succeeded' ? 'success' : 'error'}
+          tone={backgroundRunNotice.status === 'succeeded' ? 'success' : backgroundRunNotice.status === 'failed' ? 'error' : 'default'}
           role={backgroundRunNotice.status === 'failed' ? 'alert' : 'status'}
           ttlMs={8000}
           onDismiss={() => setBackgroundRunNotice(null)}
