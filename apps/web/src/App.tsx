@@ -102,7 +102,6 @@ import {
 } from './teamver/importDriveAssets';
 import {
   canvasImportedToChatAttachments,
-  formatTeamverCanvasImportErrorMessage,
   importTeamverCanvas,
 } from './teamver/importCanvas';
 import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
@@ -2229,6 +2228,9 @@ function AppInner() {
               ...(input.pendingCanvasHandoff.revision?.trim()
                 ? { revision: input.pendingCanvasHandoff.revision.trim() }
                 : {}),
+              ...(input.pendingCanvasHandoff.title?.trim()
+                ? { filename: `${input.pendingCanvasHandoff.title.trim()}.html` }
+                : {}),
             }
           : null;
       // Flip the project onto the user-picked working directory BEFORE
@@ -2330,7 +2332,9 @@ function AppInner() {
         } catch (err) {
           canvasImportFailed = true;
           console.warn('Home Canvas import-canvas failed for new project', err);
-          setWorkingDirError(formatTeamverCanvasImportErrorMessage(err));
+          // Do not navigate as success or consume handoff — HomeView one-confirm
+          // must keep the modal + URL so the user can retry.
+          throw err instanceof Error ? err : new Error(String(err));
         }
       }
       trackProjectCreateResult(

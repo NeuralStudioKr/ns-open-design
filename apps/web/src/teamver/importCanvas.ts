@@ -34,20 +34,30 @@ export function extractCanvasImportErrorCode(err: unknown): string {
     if (body && typeof body === "object") {
       const nested = (body as { error?: { message?: string; code?: string } }).error;
       const message = nested?.message?.trim();
-      if (message?.startsWith("canvas_") || message?.startsWith("teamver_")) {
+      if (message && isStableCanvasImportToken(message)) {
         return message;
       }
       const code = nested?.code?.trim();
-      if (code?.startsWith("canvas_") || code?.startsWith("teamver_")) {
+      if (code && isStableCanvasImportToken(code)) {
         return code;
       }
     }
-    if (err.status === 403 || err.status === 401) return "canvas_export_forbidden";
+    // Missing Main SSO cookie → BFF UnauthorizedError("session_expired").
+    // Do not map bare 401 to canvas_export_forbidden (wrong "no access" copy).
+    if (err.status === 401) return "session_expired";
+    if (err.status === 403) return "canvas_export_forbidden";
     if (err.status === 404) return "canvas_export_not_found";
     if (err.status === 413) return "canvas_export_too_large";
     if (err.status === 429) return "canvas_import_busy";
     if (err.status === 504) return "canvas_export_timeout";
-    if ((err.status ?? 0) >= 500) return "canvas_export_failed";
+    if ((err.status ?? 0) >= 500) {
+      if (body && typeof body === "object") {
+        const nested = (body as { error?: { message?: string } }).error;
+        const message = nested?.message?.trim();
+        if (message && isStableCanvasImportToken(message)) return message;
+      }
+      return "canvas_export_failed";
+    }
     if (body && typeof body === "object") {
       const nested = (body as { error?: { message?: string } }).error;
       const message = nested?.message?.trim();
@@ -61,6 +71,15 @@ export function extractCanvasImportErrorCode(err: unknown): string {
   return String(err);
 }
 
+function isStableCanvasImportToken(value: string): boolean {
+  return (
+    value.startsWith("canvas_")
+    || value.startsWith("teamver_")
+    || value.startsWith("od_daemon_")
+    || value === "session_expired"
+  );
+}
+
 /** Korean / code messages for Canvas T2 import (align with Drive import UX). */
 export function formatCanvasImportErrorForUser(code: string): string {
   const trimmed = code.trim();
@@ -70,6 +89,7 @@ export function formatCanvasImportErrorForUser(code: string): string {
     teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
     teamver_design_client_unavailable:
       "teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
+    session_expired: "로그인이 만료되었습니다. 다시 로그인한 뒤 시도하세요.",
     canvas_import_failed: "캔버스를 가져오지 못했습니다 — 잠시 후 다시 시도하세요.",
     canvas_import_busy: "지금 가져오기 요청이 많습니다 — 잠시 후 다시 시도하세요.",
     canvas_session_required: "캔버스 세션 정보가 없습니다.",
@@ -85,6 +105,8 @@ export function formatCanvasImportErrorForUser(code: string): string {
   if (trimmed.startsWith("teamver_main_fetch_failed:403")) return exact.canvas_export_forbidden!;
   if (trimmed.startsWith("teamver_main_fetch_failed:404")) return exact.canvas_export_not_found!;
   if (trimmed.startsWith("teamver_main_fetch_failed:")) return exact.canvas_export_failed!;
+  if (trimmed.startsWith("od_daemon_")) return exact.od_daemon_import_failed!;
+  if (/^HTTP\s+401$/i.test(trimmed)) return exact.session_expired!;
   if (/^HTTP\s+403$/i.test(trimmed)) return exact.canvas_export_forbidden!;
   if (/^HTTP\s+404$/i.test(trimmed)) return exact.canvas_export_not_found!;
   if (/^HTTP\s+429$/i.test(trimmed)) return exact.canvas_import_busy!;

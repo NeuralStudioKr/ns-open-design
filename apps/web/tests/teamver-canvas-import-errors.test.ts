@@ -29,6 +29,28 @@ describe("extractCanvasImportErrorCode / formatTeamverCanvasImportErrorMessage",
     expect(formatTeamverCanvasImportErrorMessage(err)).toContain("권한");
   });
 
+  it("maps session_expired / 401 to re-login copy, not canvas forbidden", () => {
+    const err = new NetworkError({
+      message: "HTTP 401",
+      status: 401,
+      responseBody: { error: { code: "unauthorized", message: "session_expired" } },
+    });
+    expect(extractCanvasImportErrorCode(err)).toBe("session_expired");
+    expect(formatTeamverCanvasImportErrorMessage(err)).toContain("로그인");
+  });
+
+  it("maps od_daemon_import_failed from 502 body message", () => {
+    const err = new NetworkError({
+      message: "HTTP 502",
+      status: 502,
+      responseBody: {
+        error: { code: "od_daemon_import_failed", message: "od_daemon_import_failed" },
+      },
+    });
+    expect(extractCanvasImportErrorCode(err)).toBe("od_daemon_import_failed");
+    expect(formatTeamverCanvasImportErrorMessage(err)).toContain("Design");
+  });
+
   it("falls back to status when body lacks canvas_* token", () => {
     const err = new NetworkError({
       message: "HTTP 403",

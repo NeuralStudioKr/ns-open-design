@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from ..config import settings
-from ..errors import BadGatewayError
+from ..errors import ApiError, BadGatewayError
 
 logger = logging.getLogger(__name__)
 
@@ -469,7 +469,7 @@ class OdDaemonClient:
                 response.status_code,
                 (response.text or "")[:300],
             )
-            raise BadGatewayError("od_daemon_import_failed")
+            raise ApiError(502, "od_daemon_import_failed", code="od_daemon_import_failed")
         try:
             body = response.json()
         except ValueError as exc:
