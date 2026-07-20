@@ -12,7 +12,7 @@ Teamver Design embed 모드에서 HTML 미리보기는 `/api/projects/{id}/previ
 - `teamverProjectPreviewScope`에서 preview-url fetch 예외를 `null` fallback으로 처리한다.
 - preview-url 응답이 JSON이 아니거나 `url` 필드가 누락된 경우에도 throw하지 않고 `null`을 반환한다.
 - `FileViewer`는 preview scope prefix를 못 받았다는 이유만으로 `sourceLoadFailed`를 켜지 않는다. URL iframe 최적화가 불가능한 경우에도 raw/srcDoc 미리보기 경로로 계속 내려갈 수 있게 한다.
-- 단위 테스트에 malformed JSON shape, non-JSON 응답 케이스를 추가했다.
+- 단위 테스트에 malformed JSON shape, non-JSON 응답, fetch reject 케이스를 추가했다.
 
 ## 검증
 

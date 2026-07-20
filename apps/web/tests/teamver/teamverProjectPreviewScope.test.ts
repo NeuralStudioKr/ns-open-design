@@ -71,6 +71,13 @@ describe('teamverProjectPreviewScope', () => {
     await expect(resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html')).resolves.toBeNull();
   });
 
+  it('treats preview-url fetch failures as unavailable without throwing', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(fetchTeamverDaemon).mockRejectedValue(new TypeError('network failed'));
+
+    await expect(resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html')).resolves.toBeNull();
+  });
+
   it('builds scoped asset URLs from the minted prefix', () => {
     const url = projectScopedPreviewUrl('/api/projects/p1/preview/s1', 'assets/logo.png');
     expect(url).toBe('/api/projects/p1/preview/s1/assets/logo.png');
