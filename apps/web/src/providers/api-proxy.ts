@@ -69,9 +69,9 @@ export async function streamProxyEndpoint(
     return;
   }
 
-  // One soft retry for transient LLM/network/access failures before tokens
-  // stream (mirrors export soft-retry). Avoids intermittent hard failures.
-  const maxAttempts = 2;
+  // Soft-retry transient LLM/network/access failures before substantive
+  // tokens stream (mirrors export soft-retry). Avoids intermittent hard failures.
+  const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal.aborted) return;
     const outcome = await streamProxyEndpointOnce(
@@ -93,7 +93,7 @@ export async function streamProxyEndpoint(
       return;
     }
     try {
-      await delayMs(PROXY_SOFT_RETRY_DELAY_MS, signal);
+      await delayMs(PROXY_SOFT_RETRY_DELAY_MS * (attempt + 1), signal);
     } catch {
       return;
     }
@@ -126,8 +126,18 @@ export function shouldSoftRetryProxyFailure(
 ): boolean {
   // Explicit false wins (e.g. after tokens streamed — do not duplicate UI).
   if (err.retryable === false) return false;
-  if (err.retryable === true) return true;
   const code = (err.code || '').trim().toUpperCase();
+  // Config / auth failures are not transient — don't burn soft-retry budget.
+  if (
+    code === 'MANAGED_API_KEY_MISSING'
+    || code === 'API_KEY_REQUIRED'
+    || code === 'UNAUTHORIZED'
+    || code === 'FORBIDDEN'
+    || code === 'BAD_REQUEST'
+  ) {
+    return false;
+  }
+  if (err.retryable === true) return true;
   if (
     code === 'UPSTREAM_UNAVAILABLE'
     || code === 'RATE_LIMITED'
@@ -154,7 +164,9 @@ async function streamProxyEndpointOnce(
 ): Promise<'ok' | 'aborted' | { error: Error & { code?: string; retryable?: boolean } }> {
   const managed = shouldUseManagedProxyApiKey(cfg);
   let acc = '';
-  let receivedDelta = false;
+  /** Substantive (non-whitespace) assistant text — soft-retry gate. */
+  let receivedSubstantiveDelta = false;
+  let sawEndEvent = false;
 
   try {
     const messages = await buildProxyMessages(endpoint, history, context);
@@ -197,7 +209,11 @@ async function streamProxyEndpointOnce(
         code?: string;
         retryable?: boolean;
       };
-      if (resp.status === 429 || resp.status === 408 || resp.status >= 500) {
+      if (
+        err.code !== 'MANAGED_API_KEY_MISSING'
+        && err.code !== 'API_KEY_REQUIRED'
+        && (resp.status === 429 || resp.status === 408 || resp.status >= 500)
+      ) {
         err.retryable = true;
       }
       return { error: err };
@@ -256,7 +272,9 @@ async function streamProxyEndpointOnce(
         if (parsed.event === 'delta') {
           const text = String(parsed.data.delta ?? parsed.data.text ?? '');
           if (text) {
-            receivedDelta = true;
+            // Whitespace-only first frames must not kill soft-retry (providers
+            // often emit a leading `\n` before a mid-stream overload/drop).
+            if (text.trim().length > 0) receivedSubstantiveDelta = true;
             acc += text;
             handlers.onDelta(text);
           }
@@ -283,9 +301,11 @@ async function streamProxyEndpointOnce(
           const retryableCandidate =
             (parsed.data as { retryable?: unknown }).retryable
             ?? (parsed.data as { error?: { retryable?: unknown } }).error?.retryable;
-          if (retryableCandidate === true) err.retryable = true;
-          // Do not soft-retry after tokens were already streamed (would duplicate UI).
-          if (receivedDelta) err.retryable = false;
+          if (typeof retryableCandidate === 'boolean') {
+            err.retryable = retryableCandidate;
+          }
+          // Do not soft-retry after substantive tokens were streamed (would duplicate UI).
+          if (receivedSubstantiveDelta) err.retryable = false;
           return { error: err };
         }
 
@@ -326,12 +346,81 @@ async function streamProxyEndpointOnce(
         }
 
         if (parsed.event === 'end') {
+          sawEndEvent = true;
           handlers.onDone(acc);
           return 'ok';
         }
       }
     }
 
+    // Some producers omit the final blank line on the last SSE frame; flush
+    // the trailing buffer the same way daemon `streamUpstreamSse` does.
+    const tail = buf.trim();
+    if (tail) {
+      const parsed = parseSseFrame(tail);
+      if (parsed?.kind === 'event') {
+        if (parsed.event === 'delta') {
+          const text = String(parsed.data.delta ?? parsed.data.text ?? '');
+          if (text) {
+            if (text.trim().length > 0) receivedSubstantiveDelta = true;
+            acc += text;
+            handlers.onDelta(text);
+          }
+        } else if (parsed.event === 'thinking_delta') {
+          const thinking = String(parsed.data.delta ?? '');
+          if (thinking) handlers.onThinkingDelta?.(thinking);
+        } else if (parsed.event === 'error') {
+          const err = new Error(proxyErrorMessage(parsed.data)) as Error & {
+            code?: string;
+            retryable?: boolean;
+          };
+          const codeCandidate =
+            (parsed.data as { code?: unknown }).code
+            ?? (parsed.data as { error?: { code?: unknown } }).error?.code;
+          if (typeof codeCandidate === 'string' && codeCandidate.trim()) {
+            err.code = codeCandidate.trim();
+          }
+          const retryableCandidate =
+            (parsed.data as { retryable?: unknown }).retryable
+            ?? (parsed.data as { error?: { retryable?: unknown } }).error?.retryable;
+          if (typeof retryableCandidate === 'boolean') {
+            err.retryable = retryableCandidate;
+          }
+          if (receivedSubstantiveDelta) err.retryable = false;
+          return { error: err };
+        } else if (parsed.event === 'usage') {
+          const inputTokens = Number(parsed.data.input_tokens ?? parsed.data.inputTokens ?? 0);
+          const outputTokens = Number(parsed.data.output_tokens ?? parsed.data.outputTokens ?? 0);
+          const model =
+            typeof parsed.data.model === 'string' && parsed.data.model.trim()
+              ? parsed.data.model.trim()
+              : undefined;
+          if (Number.isFinite(inputTokens) && Number.isFinite(outputTokens)) {
+            handlers.onUsage?.({
+              inputTokens: Math.max(0, inputTokens),
+              outputTokens: Math.max(0, outputTokens),
+              model,
+            });
+          }
+        } else if (parsed.event === 'end') {
+          sawEndEvent = true;
+          handlers.onDone(acc);
+          return 'ok';
+        }
+      }
+    }
+
+    // Graceful EOF without `end`: empty/pre-token drops are retryable; partial
+    // content keeps historical onDone behavior.
+    if (!sawEndEvent && !receivedSubstantiveDelta) {
+      const err = new Error('Upstream stream ended before any content') as Error & {
+        code?: string;
+        retryable?: boolean;
+      };
+      err.code = 'UPSTREAM_UNAVAILABLE';
+      err.retryable = true;
+      return { error: err };
+    }
     handlers.onDone(acc);
     return 'ok';
   } catch (err) {
@@ -558,7 +647,13 @@ export function buildProxyResponseError(
   };
   if (parsed?.code) err.code = parsed.code;
   if (parsed?.retryable === true) err.retryable = true;
-  else if (status === 429 || status === 408 || status >= 500) err.retryable = true;
+  else if (
+    parsed?.code !== 'MANAGED_API_KEY_MISSING'
+    && parsed?.code !== 'API_KEY_REQUIRED'
+    && (status === 429 || status === 408 || status >= 500)
+  ) {
+    err.retryable = true;
+  }
   return err;
 }
 

@@ -562,6 +562,13 @@ describe('shouldSoftRetryProxyFailure', () => {
     expect(shouldSoftRetryProxyFailure(new Error('TypeError: Failed to fetch'))).toBe(true);
   });
 
+  it('does not retry managed-key / auth config failures', () => {
+    const missing = new Error('proxy 503') as Error & { code?: string; retryable?: boolean };
+    missing.code = 'MANAGED_API_KEY_MISSING';
+    missing.retryable = true;
+    expect(shouldSoftRetryProxyFailure(missing)).toBe(false);
+  });
+
   it('does not retry when retryable was explicitly cleared after deltas', () => {
     const afterDelta = new Error('upstream') as Error & { code?: string; retryable?: boolean };
     afterDelta.code = 'UPSTREAM_UNAVAILABLE';

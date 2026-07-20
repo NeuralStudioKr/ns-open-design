@@ -813,21 +813,27 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.send('thinking_delta', { delta: chunk });
     });
     const proseGuard = createStreamingProseDeltaGuard();
+    let visibleChars = 0;
+    let substantiveChars = 0;
+    const emitVisible = (text: string) => {
+      if (!text) return;
+      visibleChars += text.length;
+      if (text.trim().length > 0) substantiveChars += text.trim().length;
+      sse.send('delta', { delta: text });
+    };
     return {
       sendDelta(text: string) {
         if (guard.contaminated || !text) return;
         const { visible } = thinkSplitter.feed(text);
         const cleaned = proseGuard.feed(visible);
         const safe = guard.feedText(cleaned);
-        if (safe.length > 0) {
-          sse.send('delta', { delta: safe });
-        }
+        if (safe.length > 0) emitVisible(safe);
         if (guard.contaminated) {
           const warn = guard.warningEvent();
           const markerText = warn?.marker ?? '## user';
-          sse.send('delta', {
-            delta: `\n\n---\n⚠️ **Security warning:** The model attempted to emit a fabricated role marker (\`${markerText}\`). Response was truncated to prevent unauthorized instruction injection. See issue #3247.\n`,
-          });
+          emitVisible(
+            `\n\n---\n⚠️ **Security warning:** The model attempted to emit a fabricated role marker (\`${markerText}\`). Response was truncated to prevent unauthorized instruction injection. See issue #3247.\n`,
+          );
         }
       },
       flushThinkTag() {
@@ -838,19 +844,44 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (tail.visible.length > 0) {
           const cleaned = proseGuard.feed(tail.visible);
           const safe = guard.feedText(cleaned);
-          if (safe.length > 0) sse.send('delta', { delta: safe });
+          if (safe.length > 0) emitVisible(safe);
         }
         const proseTail = proseGuard.flush();
         if (proseTail.length > 0) {
           const safe = guard.feedText(proseTail);
-          if (safe.length > 0) sse.send('delta', { delta: safe });
+          if (safe.length > 0) emitVisible(safe);
         }
       },
       get contaminated() {
         return guard.contaminated;
       },
+      /** True once non-whitespace assistant text was forwarded to the client. */
+      get hasVisibleDelta() {
+        return substantiveChars > 0;
+      },
+      get visibleCharCount() {
+        return visibleChars;
+      },
     };
   }
+
+  /** Upstream closed without message_stop/[DONE]/error — empty streams are retryable drops. */
+  const finalizeProxyUpstreamIfIncomplete = (
+    sse: any,
+    guard: ReturnType<typeof createDeltaGuard>,
+    flushUsage: () => void,
+  ) => {
+    guard.flushThinkTag();
+    flushUsage();
+    if (guard.hasVisibleDelta) {
+      sse.send('end', {});
+      return;
+    }
+    sendProxyError(sse, 'Upstream stream ended before any content', {
+      code: 'UPSTREAM_UNAVAILABLE',
+      retryable: true,
+    });
+  };
 
   const sendProxyUsageIfPresent = (
     res: Response,
@@ -1051,9 +1082,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
-        guard.flushThinkTag();
-        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
-        sse.send('end', {});
+        finalizeProxyUpstreamIfIncomplete(sse, guard, () => {
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.payload?.model, anthropicUsageExtras());
+        });
       }
       sse.end();
     } catch (err: any) {
@@ -1179,9 +1210,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
-        guard.flushThinkTag();
-        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
-        sse.send('end', {});
+        finalizeProxyUpstreamIfIncomplete(sse, guard, () => {
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, opts.model);
+        });
       }
       sse.end();
     } catch (err: any) {
@@ -1466,9 +1497,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
-        guard.flushThinkTag();
-        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-        sse.send('end', {});
+        finalizeProxyUpstreamIfIncomplete(sse, guard, () => {
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
+        });
       }
       sse.end();
     } catch (err: any) {
@@ -1650,9 +1681,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
-        guard.flushThinkTag();
-        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-        sse.send('end', {});
+        finalizeProxyUpstreamIfIncomplete(sse, guard, () => {
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
+        });
       }
       sse.end();
     } catch (err: any) {
@@ -1807,9 +1838,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         return false;
       });
       if (!ended) {
-        guard.flushThinkTag();
-        sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
-        sse.send('end', {});
+        finalizeProxyUpstreamIfIncomplete(sse, guard, () => {
+          sendProxyUsageIfPresent(res, sse, inputTokens, outputTokens, model);
+        });
       }
       sse.end();
     } catch (err: any) {
