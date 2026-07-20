@@ -9,6 +9,9 @@
 **Terraform SSOT:** `ns-teamver-devops/terraform/services/teamver-design/`  
 **배포 SSOT:** `ns-open-design/deploy/teamver/deploy.sh`
 
+> **대기 중 (2026-07-20):** auth / FE sticky / **nginx public `session-probe`** 는 staging만 반영.  
+> production 배포 시 체크리스트 → [39_10 §10](./39_10_HA_세션쿠키_경합_해결.md#10-production-배포-대기--auth--session-probe-2026-07-20) (`deploy.sh` 후 **nginx apply 필수**).
+
 ---
 
 ## 1. 현재 Production (Phase 0) — 1 EC2
