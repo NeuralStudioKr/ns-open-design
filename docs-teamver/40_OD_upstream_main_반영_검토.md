@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 8. `88b411efd`의 same-run retry process group reap 핵심을 Teamver 구조(`apps/daemon/src/runs.ts`, `apps/daemon/src/server.ts`)에 수동 포팅했다. retry/cancel/shutdown에서 direct child가 이미 종료된 뒤에도 process group에 남은 descendant를 신호할 수 있게 하고, same-run retry 시작 전 실패 시도의 process group을 정리해 orphan process 누적과 서버 부하를 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 7. `c23e158d8`, `489fda899`의 Claude stream false-success 방지 핵심을 Teamver daemon 구조(`apps/daemon/src/claude-stream.ts`, `apps/daemon/src/server.ts`)에 수동 포팅했다. Claude `is_error` result frame과 Task sub-agent `turn_end`를 성공 종료로 오인하지 않게 해 “작업은 끝난 것처럼 보이지만 결과/미리보기가 없는” 문제를 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 6. `4b4c7f402` empty agent output guidance를 수동 포팅했다. 빈 출력으로 run이 종료될 때 단순 로그 확인 안내에서 그치지 않고 재인증, 쿼터 확인, 모델 전환까지 다음 액션을 명시해 실패 후 재시도 판단을 빠르게 한다. 같은 루프에서 `5c4907add`, `2133796cd`, `5643d6431`은 이미 staging에 반영되어 있음을 재확인했고, `2192a7f6b`, `4ddfc6e44`, `bc5b6f058`은 변경 범위가 커 production 직전 수동 포팅 대상으로 보류했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 5. `bdc66c978`, `ebada4cac` deck framework prompt 품질 보강을 daemon/contracts 양쪽에 수동 포팅했다. 데이터 차트는 실제 값 기반 `--v`/`--max` 계산을 요구하고, Mermaid는 다크 덱에서 theme/themeVariables를 명시하도록 고정해 슬라이드 결과물 품질 회귀를 줄인다.
@@ -32,6 +33,7 @@
 | `4b4c7f402` | empty agent output guidance 개선 | **2026-07-20 선별 반영.** 빈 출력 종료 시 재인증/쿼터/모델 전환까지 안내해 사용자가 원인 진단 없이 같은 실패를 반복하는 시간을 줄인다. |
 | `c23e158d8` | Claude `is_error` result termination 표면화 | **2026-07-20 선별 반영.** `is_error:true` result frame을 usage+terminal error로 전달하고, bookkeeping에서는 stdin만 닫되 clean completion으로 표시하지 않는다. CLI가 실패했는데 run이 성공처럼 보이는 false-success를 줄인다. |
 | `489fda899` | Task sub-agent `turn_end`를 main turn 완료로 오인하지 않음 | **2026-07-20 선별 반영.** `parent_tool_use_id`가 있는 assistant wrapper에서는 `turn_end`를 내보내지 않는다. sub-agent 내부 종료 때문에 main run stdin이 닫히거나 실패가 성공 처리되는 문제를 막는다. |
+| `88b411efd` | same-run retry 실패 시도 process group 정리 | **2026-07-20 선별 반영.** retry/cancel/shutdown에서 descendant process가 orphan으로 남아 서버 자원을 누적 소모하지 않도록 process group signaling/reap을 보강했다. |
 | `5c4907add` | system prompt dedup / on-demand injection / per-turn input curbs | **이미 반영 확인.** direction library 조건부 주입, shared frames 조건부 주입, 파일 재읽기/렌더 반복 제한, responsive breakpoint 정합성이 staging에 존재한다. 작업 속도와 token 비용 절감 핵심 패치이므로 유지한다. |
 | `2133796cd` | prior-turn artifact HTML transcript 요약 | **이미 반영 확인.** persisted artifact는 transcript에 전체 HTML 대신 저장 파일명/metadata 요약만 보내도록 되어 있어 후속 수정 turn의 input token 폭증을 줄인다. |
 | `5643d6431` | frontmatter closing delimiter/body 보존 강화 | **이미 반영 확인.** plugin-runtime parser에 partial block 보존, delimiter 검증, newline body 보존 테스트가 존재한다. |

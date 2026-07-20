@@ -12908,20 +12908,25 @@ export async function startServer({
       destroyStream(child.stdin);
     };
     const restartSameRunAfterRetry = () => {
+      const priorChild = run.child;
+      const priorProcessGroupId = run.processGroupId;
       // Release the previous child's stdio streams before letting the
       // reference drop — see destroyChildStdio for rationale.
-      destroyChildStdio(run.child);
+      destroyChildStdio(priorChild);
+      const reaped = design.runs.reapProcessGroup(priorProcessGroupId);
       if (
-        run.child &&
-        typeof run.child.kill === 'function' &&
-        run.child.exitCode === null &&
-        !run.child.killed
+        !reaped &&
+        priorChild &&
+        typeof priorChild.kill === 'function' &&
+        priorChild.exitCode === null &&
+        !priorChild.killed
       ) {
-        try { run.child.kill('SIGTERM'); } catch {}
+        try { priorChild.kill('SIGTERM'); } catch {}
       }
       run.status = 'queued';
       run.updatedAt = Date.now();
       run.child = null;
+      run.processGroupId = null;
       run.acpSession = null;
       run.exitCode = null;
       run.signal = null;

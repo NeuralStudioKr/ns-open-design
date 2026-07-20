@@ -285,8 +285,30 @@ export function createChatRunService({
     return Number.isFinite(raw) && raw > 0 ? raw : 500;
   };
 
+  const signalProcessGroup = (processGroupId, signal) => {
+    if (process.platform === 'win32' || !Number.isInteger(processGroupId)) return false;
+    try {
+      process.kill(-processGroupId, signal);
+    } catch {
+      // ESRCH/EPERM: the group is gone or cannot be signaled. The group signal
+      // was still the correct action for descendants that outlive the direct child.
+    }
+    return true;
+  };
+
+  const reapProcessGroup = (processGroupId) => {
+    if (!signalProcessGroup(processGroupId, 'SIGTERM')) return false;
+    const timer = setTimeout(() => {
+      signalProcessGroup(processGroupId, 'SIGKILL');
+    }, cancelGraceMs());
+    timer.unref?.();
+    return true;
+  };
+
   const killChild = (run, signal) => {
-    if (!run.child || childHasExited(run.child)) return false;
+    if (!run.child || childHasExited(run.child)) {
+      return signalProcessGroup(run.processGroupId, signal);
+    }
     if (process.platform !== 'win32' && Number.isInteger(run.processGroupId)) {
       try {
         process.kill(-run.processGroupId, signal);
@@ -426,6 +448,8 @@ export function createChatRunService({
     fail,
     drop,
     signalChild: killChild,
+    reapProcessGroup,
+    signalProcessGroup,
     statusBody,
     isTerminal(status) {
       return TERMINAL_RUN_STATUSES.has(status);
