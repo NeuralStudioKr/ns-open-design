@@ -927,8 +927,19 @@ export function stripChatProseHtmlDebris(
       out = out
         .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
         .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-        .replace(/<\/?(?:html|head|body|title|noscript|base)\b[^>]*>/gi, "")
+        .replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi, "")
+        .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, "")
+        .replace(/<\/?(?:html|head|body|base)\b[^>]*>/gi, "")
         .replace(/<!doctype\s+html[^>]*>/gi, "");
+      // Leaked CSS @import / url() font CDN lines — never chat copy.
+      out = out.replace(
+        /@import\s+url\s*\(\s*['"]?https?:\/\/[^)'"]*(?:fonts\.googleapis|fonts\.gstatic|fonts\.bunny|fontshare|typekit|fontawesome)[^)'"]*['"]?\s*\)\s*;?/gi,
+        "",
+      );
+      out = out.replace(
+        /(^|\n)[ \t]*url\s*\(\s*['"]?https?:\/\/[^)'"]*(?:fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg|cdnjs|fonts\.bunny|fontshare|typekit|fontawesome|esm\.sh)[^)'"]*['"]?\s*\)\s*;?[ \t]*(?=\n|$)/gi,
+        "$1",
+      );
       // Bare host or host+path lines (no `"/>` terminator) — chat prose only.
       out = out.replace(
         /(^|\n)[ \t]*(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?[ \t]*(?=\n|$)/gi,
@@ -939,9 +950,9 @@ export function stripChatProseHtmlDebris(
         /(\s)(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?(?=\s*(?:\n|$))/gi,
         "",
       );
-      // family=/css2?family= lines without a host prefix (void or bare).
+      // family=/css2?family= lines (display=swap optional; void optional).
       out = out.replace(
-        /(^|\n)[ \t]*(?:css2\?)?family=[A-Za-z0-9_+:;,=%&.@\-]+(?:&amp;|&)?display=swap[^\n]*?(?:["']?\s*\/?\s*>)?[ \t]*(?=\n|$)/gi,
+        /(^|\n)[ \t]*(?:css2\?)?family=[A-Za-z0-9_+:;,=%&.@\-]+(?:(?:&amp;|&)[^\n]*)?[ \t]*(?:["']?\s*\/?\s*>)?[ \t]*(?=\n|$)/gi,
         "$1",
       );
     }
@@ -978,6 +989,32 @@ export function stripChatProseHtmlDebris(
   }
   parts.push(scrubOutsideOpenArtifact(input.slice(cursor)));
   return collapseExtraBlankLines(parts.join(""));
+}
+
+
+/**
+ * Hold unclosed <style>/<script>/<title>/<noscript> in chat prose so CSS/JS
+ * bodies cannot paint mid-stream. Skips the open-<artifact> suffix so the live
+ * HTML panel still receives stylesheet blocks inside the artifact.
+ */
+function stripTrailingOpenDocumentBlocks(
+  input: string,
+): { text: string; hadOpenInternalMarkup: boolean } {
+  const openArt = input.search(/<artifact\b/i);
+  const closeArt = input.toLowerCase().lastIndexOf("</artifact>");
+  const hasOpenArtifact = openArt !== -1 && (closeArt === -1 || closeArt < openArt);
+  const head = hasOpenArtifact ? input.slice(0, openArt) : input;
+  const tail = hasOpenArtifact ? input.slice(openArt) : "";
+  let text = head;
+  let hadOpenInternalMarkup = false;
+  for (const name of ["style", "script", "title", "noscript"] as const) {
+    const next = stripTrailingOpenTag(text, openTagRe(name), name);
+    if (next.hadOpenInternalMarkup) {
+      hadOpenInternalMarkup = true;
+      text = next.text;
+    }
+  }
+  return { text: text + tail, hadOpenInternalMarkup };
 }
 
 /** While streaming or loading history, drop trailing unclosed internal blocks. */
@@ -1064,6 +1101,12 @@ export function stripTrailingOpenInternalMarkup(
   if (deckScript.hadOpenInternalMarkup) {
     hadOpenInternalMarkup = true;
     text = deckScript.text;
+  }
+
+  const docBlocks = stripTrailingOpenDocumentBlocks(text);
+  if (docBlocks.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = docBlocks.text;
   }
 
   if (!options.preserveOpenArtifact) {

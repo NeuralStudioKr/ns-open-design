@@ -60,15 +60,17 @@ export const ARTIFACT_ORPHAN_HEAD_VOID_TAIL_RE = new RegExp(
     + "|api\\.fontshare\\.com\\/[^<\\n]*"
     + "|use\\.typekit\\.net\\/[^<\\n]*"
     + "|(?:kit\\.)?fontawesome\\.com\\/[^<\\n]*"
+    + "|esm\\.sh\\/[^<\\n]*"
     + ")\\s*\"?\\s*\\/?>"
-    // Google Fonts query tails (`family=Inter:wght@400…` / `css2?family=…`).
-    // `@` is required for variable-axis URLs; without it the match stops at `@`.
-    + "|(?<![\\w=\"/.-])(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:&amp;|&)?display=swap[^<\\n]*\\s*\"?\\s*\\/?>"
+    // Google Fonts query tails. `display=swap` is optional — agents often
+    // truncate before it (`family=Inter" />` / `family=Inter:wght@400" />`).
+    + "|(?<![\\w=\"/.-])(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*\\s*\"?\\s*\\/?>"
     // Attribute-only orphans must start at BOL / after newline / after a closed
     // tag `>`. Otherwise `rel="stylesheet"` carves the middle out of an intact
     // `<link …>` and leaves a `<link` residue in chat.
     + "|(?:^|(?<=\\n)|(?<=>))\\s*(?:"
-    + "rel\\s*=\\s*[\"'](?:stylesheet|preconnect|preload|dns-prefetch|modulepreload|icon)[\"'][^<\\n]{0,120}"
+    + "href\\s*=\\s*[\"']https?:\\/\\/[^\"']*(?:fonts\\.googleapis|fonts\\.gstatic|jsdelivr|unpkg|cdnjs|fonts\\.bunny|fontshare|typekit|fontawesome|esm\\.sh)[^\"']*[\"'][^<\\n]{0,80}"
+    + "|rel\\s*=\\s*[\"'](?:stylesheet|preconnect|preload|dns-prefetch|modulepreload|icon)[\"'][^<\\n]{0,120}"
     + "|crossorigin(?:\\s*=\\s*[\"']anonymous[\"'])?[^<\\n]{0,80}"
     + "|charset\\s*=\\s*[\"'][^\"']*[\"'][^<\\n]{0,40}"
     + "|type\\s*=\\s*[\"']module[\"'][^<\\n]{0,80}"
@@ -84,7 +86,7 @@ export const ARTIFACT_ORPHAN_SCRIPT_SRC_TAIL_RE =
 
 /** Attribute-only link fragments without the opening `<link` tag. */
 export const ARTIFACT_ORPHAN_LINK_ATTR_LEAK_RE =
-  /(?:^|>)\s*(?:href\s*=\s*["']https?:\/\/[^"']*(?:fonts\.googleapis|fonts\.gstatic|jsdelivr|unpkg|cdnjs|fonts\.bunny|fontshare|typekit|fontawesome)[^"']*["']\s*)?(?:rel\s*=\s*["'](?:stylesheet|preconnect|preload)["']\s*)+(?:crossorigin(?:\s*=\s*["'][^"']*["'])?\s*)?\/?>\s*/gim;
+  /(?:^|>)\s*(?:href\s*=\s*["']https?:\/\/[^"']*(?:fonts\.googleapis|fonts\.gstatic|jsdelivr|unpkg|cdnjs|fonts\.bunny|fontshare|typekit|fontawesome|esm\.sh)[^"']*["']\s*)?(?:rel\s*=\s*["'](?:stylesheet|preconnect|preload)["']\s*)+(?:crossorigin(?:\s*=\s*["'][^"']*["'])?\s*)?\/?>\s*/gim;
 
 /** Full `<link …>` tags that only belong in `<head>` but leaked into body text/HTML. */
 export const ARTIFACT_LEAKED_HEAD_LINK_TAG_RE =
@@ -109,10 +111,10 @@ export const ARTIFACT_VIEWPORT_DOM_TEXT_LEAK_SOURCE =
 
 /** DOM text-node patterns for orphaned font/CDN/link/script tails (single-node match). */
 export const ARTIFACT_ORPHAN_HEAD_VOID_DOM_TEXT_LEAK_SOURCE =
-  '^\\s*(?:(?:https?:\\/\\/)?(?:(?:fonts\\.)?googleapis\\.com(?:\\/(?:css2?|icon)\\S*)?|fonts\\.gstatic\\.com\\S*|cdn\\.jsdelivr\\.net\\/\\S*|unpkg\\.com\\/\\S*|cdnjs\\.cloudflare\\.com\\/\\S*|fonts\\.bunny\\.net\\/\\S*|api\\.fontshare\\.com\\/\\S*|use\\.typekit\\.net\\/\\S*|(?:kit\\.)?fontawesome\\.com\\/\\S*)|(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:&amp;|&)?display=swap\\S*|rel\\s*=\\s*["\'](?:stylesheet|preconnect|preload)["\'][^<]{0,120}|crossorigin(?:\\s*=\\s*["\']anonymous["\'])?[^<]{0,80}|charset\\s*=\\s*["\'][^"\']*["\'][^<]{0,40}|type\\s*=\\s*["\']module["\'][^<]{0,80}|integrity\\s*=\\s*["\']sha\\d+-[^"\']+["\'][^<]{0,40})\\s*"?\\s*\\/?>\\s*$'
+  '^\\s*(?:(?:https?:\\/\\/)?(?:(?:fonts\\.)?googleapis\\.com(?:\\/(?:css2?|icon)\\S*)?|fonts\\.gstatic\\.com\\S*|cdn\\.jsdelivr\\.net\\/\\S*|unpkg\\.com\\/\\S*|cdnjs\\.cloudflare\\.com\\/\\S*|fonts\\.bunny\\.net\\/\\S*|api\\.fontshare\\.com\\/\\S*|use\\.typekit\\.net\\/\\S*|(?:kit\\.)?fontawesome\\.com\\/\\S*|esm\\.sh\\/\\S*)|(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*\\S*|href\\s*=\\s*["\']https?:\\/\\/[^"\']*(?:fonts\\.googleapis|fonts\\.gstatic|jsdelivr|unpkg|cdnjs|fonts\\.bunny|fontshare|typekit|fontawesome|esm\\.sh)[^"\']*["\'][^<]{0,80}|rel\\s*=\\s*["\'](?:stylesheet|preconnect|preload)["\'][^<]{0,120}|crossorigin(?:\\s*=\\s*["\']anonymous["\'])?[^<]{0,80}|charset\\s*=\\s*["\'][^"\']*["\'][^<]{0,40}|type\\s*=\\s*["\']module["\'][^<]{0,80}|integrity\\s*=\\s*["\']sha\\d+-[^"\']+["\'][^<]{0,40})\\s*"?\\s*\\/?>\\s*$'
   + '|^\\s*(?:(?:https?:\\/\\/)?(?:cdn\\.jsdelivr\\.net|unpkg\\.com|cdnjs\\.cloudflare\\.com|esm\\.sh)\\/\\S*)\\s*"?\\s*>\\s*(?:<\\/script>)?\\s*$'
   // Bare CDN host+path lines (no void terminator) still paint as body text.
-  + '|^\\s*(?:https?:\\/\\/)?(?:(?:fonts\\.)?googleapis\\.com|fonts\\.gstatic\\.com|cdn\\.jsdelivr\\.net|unpkg\\.com|cdnjs\\.cloudflare\\.com)(?:\\/\\S*)?\\s*$';
+  + '|^\\s*(?:https?:\\/\\/)?(?:(?:fonts\\.)?googleapis\\.com|fonts\\.gstatic\\.com|cdn\\.jsdelivr\\.net|unpkg\\.com|cdnjs\\.cloudflare\\.com|fonts\\.bunny\\.net|api\\.fontshare\\.com|use\\.typekit\\.net|(?:kit\\.)?fontawesome\\.com|esm\\.sh)(?:\\/\\S*)?\\s*$';
 
 /** Remove closed style/script blocks so body scans ignore legitimate CSS/JS. */
 export function stripClosedStyleAndScriptBlocks(html: string): string {
@@ -183,7 +185,7 @@ export function hasArtifactOrphanHeadVoidTextLeak(html: string): boolean {
   if (resetAndTest(ARTIFACT_LEAKED_HEAD_LINK_TAG_RE, bodyScan)) return true;
   if (resetAndTest(ARTIFACT_LEAKED_META_CHARSET_TAG_RE, bodyScan)) return true;
   // Bare CDN host or host+path lines without a void terminator.
-  return /(?:^|\n)\s*(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)(?:\/[^\s<>]*)?\s*(?:\n|$)/im.test(
+  return /(?:^|\n)\s*(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?\s*(?:\n|$)/im.test(
     bodyScan,
   );
 }

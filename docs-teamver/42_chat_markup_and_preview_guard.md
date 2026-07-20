@@ -31,9 +31,9 @@
 - Antigravity / MiniMax / Claude stream guards
 - CDN host/stem hold, bare host, same-line trailing scrub
 - orphan `rel=`가 intact `<link>`를 깨지 않도록 가드 + full-tag-first 순서
-- `family=` / `css2?family=` + `@` wght 축 orphan scrub
-- preview: host+path / family@ void unstable
-- streaming prose에서 artifact 밖 CDN script/link + closed style/html skeleton strip
+- `family=` / `css2?family=` (+ optional display=swap) / `href=` CDN orphan scrub
+- preview bare-host 목록을 chat과 정렬 (bunny/fontshare/typekit/fontawesome/esm)
+- streaming open `<style|script>` hold + `@import`/`url()` font scrub
 - Strict Mode double-append 방지, finish-path rewrite
 
 ## 적대적 corpus (최소 세트 — 테스트에 고정)
@@ -42,12 +42,16 @@
 |---|---|
 | `googleapis.com" />` | chat scrub + preview unstable |
 | `fonts.googleapis.com` (줄 단독 / same-line trailing) | hold/scrub; mid-sentence 유지 |
-| `family=Inter:wght@400…&display=swap" />` | scrub |
-| `css2?family=…@…&display=swap" />` | scrub |
+| `family=Inter" />` / `family=Inter:wght@400" />` (display=swap 없음) | scrub |
+| `family=…&display=swap" />` / `css2?family=…@…` | scrub |
+| `href="https://fonts…css2" />` (rel 없음) | scrub |
 | `fonts.googleapis.com/css2?family=Inter` (void 없음) | chat scrub + preview unstable |
+| `fonts.bunny.net` / `esm.sh/foo` / fontshare/typekit bare | preview unstable (= chat) |
 | `Before <link rel="stylesheet" href="https://fonts…"> After` | `<link` 잔해 없이 제거 |
 | streaming prose `<script src="https://cdn.jsdelivr…">` | artifact 밖에서 제거 |
-| closed `<style>` / `<html><body>` in prose | 제거 |
+| open `<style>` / `<script>` body mid-stream | hold until close |
+| `@import url('https://fonts…')` / bare `url('https://fonts…')` | chat scrub |
+| closed `<style>` / `<title>` / `<html><body>` in prose | 제거 |
 | open/closed `<artifact>` 내부 stylesheet | streaming 보존 |
 
 ## 검증

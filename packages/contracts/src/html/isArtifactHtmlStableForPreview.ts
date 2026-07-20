@@ -56,7 +56,7 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
     // Bare CDN host or host+path lines inside an otherwise complete body still
     // paint as visible text — reject until they are scrubbed or the document settles.
     if (
-      /(?:^|\n)\s*(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)(?:\/[^\s<>]*)?\s*(?:\n|$)/im.test(
+      /(?:^|\n)\s*(?:https?:\/\/)?(?:(?:fonts\.)?googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?\s*(?:\n|$)/im.test(
         bodyWithoutBlocks,
       )
     ) {

@@ -685,6 +685,46 @@ describe("agent-prose-sanitize SSOT", () => {
     );
   });
 
+  it("holds open style/script bodies mid-stream outside artifacts", () => {
+    expect(sanitizeAssistantProseForDisplay("Hi <style>.x{color:red", { streaming: true })).toBe(
+      "Hi",
+    );
+    expect(sanitizeAssistantProseForDisplay("Hi <script>alert(1)", { streaming: true })).toBe(
+      "Hi",
+    );
+    const guard = createStreamingAssistantProseGuard();
+    expect(guard.feed("Hi <sty")).toBe("Hi");
+    expect(guard.feed("le>.x{color:red")).toBe("");
+    expect(guard.feed("</style> Bye")).toBe("  Bye");
+  });
+
+  it("strips family=/href= orphans without display=swap or rel", () => {
+    expect(
+      sanitizeAssistantProseForDisplay('Done.\nfamily=Inter" />\nNext.'),
+    ).toBe("Done.\n\nNext.");
+    expect(
+      sanitizeAssistantProseForDisplay('Done.\nfamily=Inter:wght@400" />\nNext.'),
+    ).toBe("Done.\n\nNext.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        'Done.\nhref="https://fonts.googleapis.com/css2?family=Inter" />\nNext.',
+      ),
+    ).toBe("Done.\n\nNext.");
+  });
+
+  it("strips @import url() font CDN lines from chat prose", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(
+        "Done.\n@import url('https://fonts.googleapis.com/css2');\nNext.",
+      ),
+    ).toBe("Done.\n\nNext.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        "Done.\nurl('https://fonts.googleapis.com/css2')\nNext.",
+      ),
+    ).toBe("Done.\n\nNext.");
+  });
+
   it("keeps stylesheet link inside an open streaming artifact for the live panel", () => {
     const input =
       'Intro\n<artifact identifier="deck" type="text/html">\n'

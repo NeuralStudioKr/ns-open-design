@@ -79,6 +79,33 @@ family=Inter:wght@400;700&display=swap" />
     ).toBe(false);
   });
 
+  it("rejects bunny/fontshare/esm bare hosts and href=/family= orphans in body", () => {
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+fonts.bunny.net
+</body></html>`),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+esm.sh/foo
+</body></html>`),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+href="https://fonts.googleapis.com/css2" />
+</body></html>`),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+family=Inter" />
+</body></html>`),
+    ).toBe(false);
+  });
+
   it("rejects documents with unclosed svg, math, or HTML comments", () => {
     expect(
       isArtifactHtmlStableForPreview(
