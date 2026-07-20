@@ -82,8 +82,19 @@ export function subscribeTeamverEmbedSessionChanged(
   return () => window.removeEventListener(TEAMVER_EMBED_SESSION_CHANGED_EVENT, handler);
 }
 
-/** Updated by embed boot + `useTeamverEmbed` refresh — gates daemon project lists. */
-export function setTeamverEmbedSessionAuthenticated(authenticated: boolean): void {
+/**
+ * Updated by embed boot + `useTeamverEmbed` refresh — gates daemon project lists.
+ *
+ * `forceEvent: true` re-dispatches session-changed even when the flag was
+ * already the same value. Used by explicit "다시 시도" recovery so the App
+ * subscriber (project list + runtime-config force reload) runs after a
+ * session_unreachable → authenticated recovery, where the memory flag stayed
+ * `true` throughout the outage.
+ */
+export function setTeamverEmbedSessionAuthenticated(
+  authenticated: boolean,
+  options?: { forceEvent?: boolean },
+): void {
   const next = Boolean(authenticated);
   const changed = embedSessionAuthenticated !== next;
   embedSessionAuthenticated = next;
@@ -92,7 +103,7 @@ export function setTeamverEmbedSessionAuthenticated(authenticated: boolean): voi
   if (next) {
     clearTeamverRuntimeConfigAuthBlock();
   }
-  if (changed) {
+  if (changed || options?.forceEvent) {
     dispatchTeamverEmbedSessionChanged(next);
   }
 }

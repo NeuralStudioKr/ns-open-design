@@ -4,6 +4,10 @@ import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
+import {
+  isDesignAuthRefreshDeclined,
+  isDesignAuthRefreshDeclineHard,
+} from "./designBffClient";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 function isSdkHttpUnauthorized(err: unknown): boolean {
@@ -52,7 +56,11 @@ export type TeamverBffAuthFailureKind = "none" | "transient" | "relogin";
 /** Distinguish recoverable auth blips from confirmed logout for embed UI. */
 export function classifyTeamverBffAuthFailure(err: unknown): TeamverBffAuthFailureKind {
   if (!isTeamverBffUnauthorizedError(err)) return "none";
-  return isTeamverEmbedSessionAuthenticated() ? "transient" : "relogin";
+  if (isTeamverEmbedSessionAuthenticated()) return "transient";
+  // Soft sticky means we still believe HA recovery may succeed — do not escalate
+  // Drive/publish UI to re-login CTA from memory alone.
+  if (isDesignAuthRefreshDeclined() && !isDesignAuthRefreshDeclineHard()) return "transient";
+  return "relogin";
 }
 
 /** Retry-first copy while embed session memory still says authenticated. */
@@ -62,9 +70,9 @@ export const TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE =
 /**
  * Auth UX priority (embed):
  * 1) Prevent refresh races (BFF probe read-only, Set-Cookie suppress, HA coalesce)
- * 2) Silent recovery (refresh + session probe + soft-retry)
+ * 2) Silent recovery (refresh + ensure session + soft-retry; soft sticky can force POST)
  * 3) In-place "다시 시도" — never ask users to close the tab for a refresh blip
- * 4) Re-login only after confirmed session loss (probe authenticated:false)
+ * 4) Re-login only after confirmed session loss (ensure/probe authenticated:false)
  */
 
 /** Pick retry-first vs re-login copy based on embed session memory. */
@@ -73,7 +81,9 @@ export function formatTeamverEmbedAuthRequiredMessage(
   transientMessage = TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 ): string {
   if (!isTeamverEmbedMode()) return logoutMessage;
-  return isTeamverEmbedSessionAuthenticated() ? transientMessage : logoutMessage;
+  if (isTeamverEmbedSessionAuthenticated()) return transientMessage;
+  if (isDesignAuthRefreshDeclined() && !isDesignAuthRefreshDeclineHard()) return transientMessage;
+  return logoutMessage;
 }
 
 export function isTeamverDaemonUnauthorizedError(err: unknown): err is TeamverDaemonUnauthorizedError {

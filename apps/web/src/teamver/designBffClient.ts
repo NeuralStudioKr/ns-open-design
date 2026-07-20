@@ -24,6 +24,11 @@ import {
   peekTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
 } from "./teamverAuthReturn";
+import {
+  acquireBffRefreshLeader,
+  awaitLeaderResult,
+  releaseBffRefreshLeader,
+} from "./teamverBffRefreshLeader";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -143,6 +148,49 @@ async function postAuthRefresh(
   }
 }
 
+/**
+ * Cross-tab-coordinated POST /auth/refresh.
+ *
+ * `_refresh_apps_tokens_coalesced` on the BE is a single-process cache; two
+ * tabs on the same origin can each race Main `/api/apps/auth/refresh` with
+ * the same rotating refresh_token — one wins the rotation, the other lands
+ * in soft sticky decline. We elect a leader via
+ * `acquireBffRefreshLeader()` (`localStorage` + `BroadcastChannel`):
+ *
+ * - **Leader** — POSTs `/auth/refresh` and broadcasts the outcome.
+ * - **Follower** — waits `LEADER_WAIT_MS` for the leader's broadcast. On
+ *   success it verifies via `probe` / `ensure` and reuses the sibling's
+ *   Set-Cookie. On hard 400 it stops early. On timeout / unverifiable
+ *   success it falls back to its own POST so a stuck leader cannot
+ *   permanently block recovery.
+ */
+async function postAuthRefreshCoordinated(
+  url: string,
+): Promise<{ ok: boolean; status: number; bodyText: string }> {
+  const role = acquireBffRefreshLeader();
+  if (role === "follower") {
+    const observed = await awaitLeaderResult();
+    if (observed) {
+      if (observed.ok) {
+        if (
+          (await probeDesignBffSessionAuthenticated())
+          || (await ensureDesignBffSessionAuthenticated())
+        ) {
+          return { ok: true, status: observed.status || 200, bodyText: "" };
+        }
+        // Peer reported success but our tab cannot observe the cookie yet
+        // — fall through to our own POST (BE 30s coalesce still de-dupes).
+      } else if (observed.status === 400) {
+        return { ok: false, status: 400, bodyText: "" };
+      }
+    }
+    // Timeout / non-terminal peer failure. Fall through to our own POST.
+  }
+  const result = await postAuthRefresh(url);
+  releaseBffRefreshLeader({ ok: result.ok, status: result.status });
+  return result;
+}
+
 function resolveDesignBffSessionUrl(): string {
   return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session");
 }
@@ -155,6 +203,10 @@ function resolveDesignBffSessionProbeUrl(): string {
  * Read-only session check for sticky-decline / re-login gates.
  * Prefers `/auth/session-probe` (no ensure/refresh). Falls back to `/auth/session`
  * JSON when probe is unavailable (older nginx without the public location).
+ *
+ * WARNING: When access is past absolute expiry, probe returns false even if
+ * refresh_token can still revive the session. Soft-sticky recovery must escalate
+ * to {@link ensureDesignBffSessionAuthenticated} / POST refresh — not probe alone.
  */
 export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
   try {
@@ -190,6 +242,24 @@ export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
   }
 }
 
+/**
+ * GET `/auth/session` — runs `ensure_bff_session` on design-api so near/past-skew
+ * access can refresh with Set-Cookie on the main response (unlike session-probe).
+ */
+export async function ensureDesignBffSessionAuthenticated(): Promise<boolean> {
+  try {
+    const response = await fetch(resolveDesignBffSessionUrl(), {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { authenticated?: unknown };
+    return body.authenticated === true;
+  } catch {
+    return false;
+  }
+}
+
 let authRefreshDeclinedForSession = false;
 /**
  * soft (401): HA race — later GET /auth/session may recover without POST refresh.
@@ -203,13 +273,22 @@ let authRecoveryRefreshActive = false;
 let embedAuthRecoveryLoadUsed = false;
 /** Coalesce parallel refreshDesignAuthCookie() from Drive modal burst. */
 let inFlightAuthRefresh: Promise<boolean> | null = null;
-const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 150;
+/** Wait for sibling Set-Cookie before soft-sticky (HA rotation race). */
+const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 400;
 /**
  * After refresh 401 + live session, suppress further POST /auth/refresh briefly
- * so HA races do not rotate tokens in a loop. Session probe still allowed.
+ * so HA races do not rotate tokens in a loop. Probe/ensure still allowed; if
+ * those fail, suppress is broken so one POST can revive expired access.
  */
 const DESIGN_BFF_REFRESH_POST_SUPPRESS_MS = 30_000;
 let authRefreshPostSuppressedUntil = 0;
+/**
+ * Soft sticky must not permanently block POST when access is expired but
+ * refresh_token is valid (nginx auth_request returns 401 until FE refreshes).
+ * Cooldown limits Main refresh spam while session is truly dead.
+ */
+const DESIGN_BFF_SOFT_FORCE_POST_COOLDOWN_MS = 15_000;
+let authRefreshSoftForcePostAt = 0;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
@@ -220,6 +299,7 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   embedAuthRecoveryLoadUsed = false;
   inFlightAuthRefresh = null;
   authRefreshPostSuppressedUntil = 0;
+  authRefreshSoftForcePostAt = 0;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -289,31 +369,68 @@ export async function withDesignBffCookieAuthRecovery<T>(
   try {
     return await request();
   } catch (err) {
-    if (isDesignBffUnauthorizedStatus(err)) {
-      const refreshed = await refreshDesignAuthCookie();
-      if (refreshed) return await request();
-      // In HA, a sibling request may have already rotated and Set-Cookie'd the
-      // BFF session while this request observed the losing-node 401. Give the
-      // browser one short turn to apply that cookie, then retry the original
-      // BFF call without issuing another /auth/refresh.
-      await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+    if (!isDesignBffUnauthorizedStatus(err)) throw err;
+
+    const refreshed = await refreshDesignAuthCookie();
+    if (refreshed) {
       try {
-        const recovered = await request();
-        // Soft-retry succeeded after a declined refresh — clear sticky decline
-        // so later calls are not permanently stuck after an HA rotation race.
-        resetDesignAuthRefreshDeclined();
-        return recovered;
-      } catch (retryErr) {
-        // Soft-retry also failed. If /auth/session is still alive, do not leave
-        // sticky decline locked — that escalates a recoverable blip into
-        // "re-login / close tab" UX. Prefer another silent recovery later.
-        if (await probeDesignBffSessionAuthenticated()) {
-          resetDesignAuthRefreshDeclined();
+        return await request();
+      } catch (postRefreshErr) {
+        // Refresh succeeded but nginx auth_request/handler still 401. Access
+        // may have been rotated on the losing ALB node — give the browser a
+        // beat to apply the sibling Set-Cookie, then retry once more.
+        if (!isDesignBffUnauthorizedStatus(postRefreshErr)) throw postRefreshErr;
+        await new Promise((resolve) =>
+          setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
+        );
+        try {
+          return await request();
+        } catch (secondErr) {
+          // Second retry after refresh still failed. If ensure /auth/session
+          // now returns authenticated (Set-Cookie on main response revived
+          // access), give the request one final shot before giving up.
+          if (!isDesignBffUnauthorizedStatus(secondErr)) throw secondErr;
+          if (await ensureDesignBffSessionAuthenticated()) {
+            resetDesignAuthRefreshDeclined();
+            noteAuthRefreshPostSuppressed();
+            return await request();
+          }
+          throw secondErr;
         }
-        throw retryErr;
       }
     }
-    throw err;
+
+    // Refresh declined (soft-sticky or bare-attempt guard). Wait for a sibling
+    // Set-Cookie and retry once; if still 401, ensure /auth/session to try
+    // reviving absolute-expired access on the main response.
+    await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+    try {
+      const recovered = await request();
+      resetDesignAuthRefreshDeclined();
+      return recovered;
+    } catch (retryErr) {
+      if (!isDesignBffUnauthorizedStatus(retryErr)) throw retryErr;
+      // Access-expired case: session-probe alone cannot revive access, but
+      // ensure_bff_session on GET /auth/session can Set-Cookie a fresh access
+      // on the main response. Try that before surfacing a hard 401 to callers.
+      if (await ensureDesignBffSessionAuthenticated()) {
+        resetDesignAuthRefreshDeclined();
+        noteAuthRefreshPostSuppressed();
+        try {
+          return await request();
+        } catch (postEnsureErr) {
+          if (!isDesignBffUnauthorizedStatus(postEnsureErr)) throw postEnsureErr;
+          throw postEnsureErr;
+        }
+      }
+      // ensure failed too. If /auth/session-probe reports alive (sibling
+      // Set-Cookie in flight, or BFF session is valid but this particular
+      // BFF call hit a stale acl), clear sticky so later calls recover.
+      if (await probeDesignBffSessionAuthenticated()) {
+        resetDesignAuthRefreshDeclined();
+      }
+      throw retryErr;
+    }
   }
 }
 
@@ -336,26 +453,68 @@ export async function refreshTeamverEmbedAuthBeforeMutating(options?: {
   await refreshDesignAuthCookie();
 }
 
+async function trySoftStickyRecovery(): Promise<boolean> {
+  // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
+  if (await probeDesignBffSessionAuthenticated()) {
+    resetDesignAuthRefreshDeclined();
+    return true;
+  }
+  await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+  if (await probeDesignBffSessionAuthenticated()) {
+    resetDesignAuthRefreshDeclined();
+    return true;
+  }
+
+  // 2) ensure via GET /auth/session — can refresh + Set-Cookie on the main response.
+  //    session-probe alone cannot revive absolute-expired access.
+  if (await ensureDesignBffSessionAuthenticated()) {
+    resetDesignAuthRefreshDeclined();
+    noteAuthRefreshPostSuppressed();
+    return true;
+  }
+
+  // 3) One POST /auth/refresh under cooldown — required when nginx auth_request
+  //    already blocks /api/* because access expired and ensure also failed.
+  const now = Date.now();
+  if (now - authRefreshSoftForcePostAt < DESIGN_BFF_SOFT_FORCE_POST_COOLDOWN_MS) {
+    return false;
+  }
+  authRefreshSoftForcePostAt = now;
+  const bffResult = await postAuthRefreshCoordinated(resolveDesignBffRefreshUrl());
+  if (bffResult.ok) {
+    resetDesignAuthRefreshDeclined();
+    authRefreshPostSuppressedUntil = 0;
+    return true;
+  }
+  if (await ensureDesignBffSessionAuthenticated()) {
+    resetDesignAuthRefreshDeclined();
+    noteAuthRefreshPostSuppressed();
+    return true;
+  }
+  return false;
+}
+
 /** BFF silent refresh via design-api (Apps JWT stored server-side). */
 export async function refreshDesignAuthCookie(): Promise<boolean> {
   if (inFlightAuthRefresh) return inFlightAuthRefresh;
 
   const run = (async (): Promise<boolean> => {
-    // Soft sticky (401) must not be terminal for the tab lifetime — a sibling
-    // Set-Cookie can land later. Re-probe via GET /auth/session only (no POST).
+    // Soft sticky (401) must not be terminal for the tab lifetime.
     // Hard sticky (400) stays closed until explicit resetRefreshState / sign-in.
     if (authRefreshDeclinedForSession) {
       if (authRefreshDeclineKind === "hard") return false;
-      if (await probeDesignBffSessionAuthenticated()) {
-        resetDesignAuthRefreshDeclined();
-        return true;
-      }
-      return false;
+      return await trySoftStickyRecovery();
     }
 
     // Refresh 401 + live session: suppress POST spam while access still works.
+    // If probe fails (access expired during suppress), break suppress and POST.
     if (authRefreshPostSuppressedUntil > Date.now()) {
-      return await probeDesignBffSessionAuthenticated();
+      if (await probeDesignBffSessionAuthenticated()) return true;
+      if (await ensureDesignBffSessionAuthenticated()) {
+        noteAuthRefreshPostSuppressed();
+        return true;
+      }
+      authRefreshPostSuppressedUntil = 0;
     }
 
     if (!shouldAttemptCookieRefresh()) return false;
@@ -368,7 +527,7 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       unauthenticatedRefreshAttempted = true;
     }
 
-    const bffResult = await postAuthRefresh(resolveDesignBffRefreshUrl());
+    const bffResult = await postAuthRefreshCoordinated(resolveDesignBffRefreshUrl());
     if (bffResult.ok) {
       resetDesignAuthRefreshDeclined();
       authRefreshPostSuppressedUntil = 0;
@@ -376,15 +535,18 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     }
     if (bffResult.status === 401) {
       // HA rotation race: losing node returns 401 while access is still usable
-      // and a sibling may already have Set-Cookie'd a fresh session. Probe
-      // before sticky-declining — otherwise every later call skips refresh and
-      // the UI escalates to re-login for a recoverable blip.
+      // and a sibling may already have Set-Cookie'd a fresh session. Probe /
+      // ensure before sticky-declining.
       if (await probeDesignBffSessionAuthenticated()) {
         noteAuthRefreshPostSuppressed();
         return true;
       }
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
       if (await probeDesignBffSessionAuthenticated()) {
+        noteAuthRefreshPostSuppressed();
+        return true;
+      }
+      if (await ensureDesignBffSessionAuthenticated()) {
         noteAuthRefreshPostSuppressed();
         return true;
       }
@@ -438,6 +600,7 @@ export function resetDesignAuthRefreshState(): void {
   unauthenticatedRefreshAttempted = false;
   embedAuthRecoveryLoadUsed = false;
   authRefreshPostSuppressedUntil = 0;
+  authRefreshSoftForcePostAt = 0;
 }
 
 /** Sticky 400 from `/teamver-bff/auth/refresh` — UI may offer explicit retry. */

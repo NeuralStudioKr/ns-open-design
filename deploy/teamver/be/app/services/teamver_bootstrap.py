@@ -131,3 +131,27 @@ def find_workspace_entry(bootstrap: dict[str, Any], platform_workspace_id: str) 
         if isinstance(ws, dict) and str(ws.get("workspace_id") or "") == platform_workspace_id:
             return ws
     return None
+
+
+async def peek_last_bootstrap_within_grace(
+    *,
+    user_id: str,
+    workspace_id: str | None,
+) -> dict[str, Any] | None:
+    """Return a stale-grace bootstrap body without hitting Main.
+
+    Used by ``/auth/session`` bootstrap 401 retention (HA races / Main
+    hiccup): the BFF cookie is still usable and we already have a
+    workspaces/user slice cached for this user — surface it instead of
+    returning an empty view that would blank the workspace switcher and
+    trigger a false-positive logout in the FE.
+    """
+    app_key = settings.teamver_app_key or "design"
+    key = bootstrap_cache_key(app_key=app_key, user_id=user_id, workspace_id=workspace_id)
+    async with _cache_lock:
+        entry = _cache.get(key)
+        if entry is None:
+            return None
+        if time.monotonic() > entry.stale_until:
+            return None
+        return entry.body

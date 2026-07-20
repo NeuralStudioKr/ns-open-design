@@ -2,6 +2,7 @@ import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   clearDesignAuthRefreshDecline,
+  ensureDesignBffSessionAuthenticated,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
@@ -9,8 +10,8 @@ import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
 
-/** HA sibling Set-Cookie race — mirror BFF/Drive soft retry delay. */
-const DAEMON_AUTH_RETRY_DELAY_MS = 150;
+/** HA sibling Set-Cookie race — mirror BFF/Drive soft retry delay (400ms). */
+const DAEMON_AUTH_RETRY_DELAY_MS = 400;
 
 /** Thrown when embed daemon `/api/*` still returns 401 after cookie recovery. */
 export class TeamverDaemonUnauthorizedError extends Error {
@@ -163,8 +164,19 @@ async function fetchDaemonWithEmbedAuthRecovery(
     clearDesignAuthRefreshDecline();
     return resp;
   }
-  // Soft-retry still 401 — if session is alive, unlock sticky decline so the
-  // next call can recover instead of escalating to re-login UX.
+  // Refresh + soft-wait still 401. When the access token has passed absolute
+  // expiry and nginx auth_request keeps blocking, session-probe alone cannot
+  // revive it — GET /auth/session (ensure_bff_session) can Set-Cookie a fresh
+  // access on the main response so the next daemon fetch clears auth_request.
+  if (await ensureDesignBffSessionAuthenticated()) {
+    clearDesignAuthRefreshDecline();
+    resp = await fetch(input, init);
+    if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+      return resp;
+    }
+  }
+  // Ensure failed. If session-probe still says alive (sibling in-flight),
+  // unlock sticky decline so the next call can recover instead of escalating.
   if (await probeDesignBffSessionAuthenticated()) {
     clearDesignAuthRefreshDecline();
   } else {

@@ -78,6 +78,30 @@ def _session_expired_response() -> JSONResponse:
     )
 
 
+def _main_sso_required_response() -> JSONResponse:
+    """Main HS256 SSO expired/missing — Apps refresh cannot fix this.
+
+    Drive proxy forwards Main's ``teamver_access_token`` cookie which the
+    Main platform verifies with HS256. When it expires the browser has to
+    re-authenticate on ``teamver.com`` (parent-domain login). Signalling
+    ``session_expired`` here (as we did before) let the FE spin the BFF
+    Apps refresh loop forever — Apps JWT never satisfies Main Drive.
+
+    The distinct ``main_sso_required`` code + ``re_login_scope="main"``
+    tells the FE to skip BFF refresh and prompt the user to re-log into
+    Main directly.
+    """
+    return JSONResponse(
+        status_code=401,
+        content={
+            "detail": "main_sso_required",
+            "code": "main_sso_required",
+            "re_login_scope": "main",
+            "login_url": teamver_main_login_url_for_design(),
+        },
+    )
+
+
 def _query_string(params: QueryParams) -> str:
     return urlencode(list(params.multi_items())) if params else ""
 
@@ -122,7 +146,7 @@ async def proxy_drive(
             auth.user_id,
             path,
         )
-        return _session_expired_response()
+        return _main_sso_required_response()
     token, token_source = resolved
     workspace_id = require_workspace_context(auth)
     body = await request.body()
@@ -150,7 +174,7 @@ async def proxy_drive(
                 workspace_id or "",
                 path,
             )
-            return _session_expired_response()
+            return _main_sso_required_response()
         # Non-auth-shaped 401 (e.g. per-folder ACL). Pass through so FE can
         # tell "access denied to that folder" apart from "session expired".
         media_type = headers.get("content-type") or headers.get("Content-Type")

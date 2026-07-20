@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import { NetworkError } from "@teamver/app-sdk";
 import {
+  ensureDesignBffSessionAuthenticated,
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
@@ -396,8 +397,33 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
             await new Promise((resolve) => setTimeout(resolve, 500));
             probeAlive = await probeDesignBffSessionAuthenticated();
           }
+          // Probe cannot revive absolute-expired access; ensure /auth/session
+          // runs ensure_bff_session which can Set-Cookie a fresh access token
+          // on the main response and unlock nginx auth_request.
+          if (!probeAlive) {
+            probeAlive = await ensureDesignBffSessionAuthenticated();
+          }
           if (probeAlive) {
             resetDesignAuthRefreshState();
+            // Re-fetch full session so workspaces/user restore in-place. Any
+            // failure here falls back to the transient authenticated banner
+            // — subsequent auto-refresh (visibility/focus) will reconcile.
+            setTeamverEmbedSessionAuthenticated(true, { forceEvent: true });
+            try {
+              const revived = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
+              if (revived?.authenticated) {
+                const workspaces = normalizeWorkspaceList(revived.workspaces);
+                const activeWorkspaceId = await syncTeamverWorkspaceFromSession(revived, workspaces, {
+                  preserveStoredWorkspace: true,
+                });
+                setState({
+                  ...applySessionToEmbedState(revived, activeWorkspaceId),
+                });
+                return;
+              }
+            } catch {
+              // fall through to transient authenticated banner
+            }
             setState((prev) => ({
               ...prev,
               authenticated: true,

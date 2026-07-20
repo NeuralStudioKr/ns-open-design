@@ -116,7 +116,7 @@ describe("fetchDesignAuthSession", () => {
     const pending = fetchDesignAuthSession({ force: true, resetRefreshState: true });
     // Flush microtasks so refresh schedules its HA soft-retry timer, then advance.
     await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(1_200);
     const session = await pending;
 
     expect(fetchMock).toHaveBeenCalled();

@@ -59,6 +59,10 @@ export function formatDriveImportErrorForUser(code: string): string {
     drive_download_failed: "Teamver Drive에서 다운로드할 수 없습니다.",
     od_daemon_import_failed: "Design 프로젝트에 저장할 수 없습니다.",
     invalid_filename: "파일 이름이 올바르지 않습니다.",
+    // Main HS256 SSO expired — parent-domain re-login is the only recovery.
+    // Apps refresh (BFF) never satisfies Main Drive's HS256 verifier.
+    teamver_drive_main_sso_required:
+      "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 시도하세요.",
   };
   if (exact[trimmed]) return exact[trimmed];
 

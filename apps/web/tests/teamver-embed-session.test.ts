@@ -23,6 +23,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: () => ({
     workspaceStore: { clear: workspaceClear },
   }),
+  clearTeamverRuntimeConfigAuthBlock: vi.fn(),
 }));
 
 describe("teamverEmbedSession", () => {

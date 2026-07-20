@@ -4,10 +4,12 @@ import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { hasTeamverEmbedActiveWork } from "./teamverEmbedActiveWork";
 import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
 import {
+  ensureDesignBffSessionAuthenticated,
   prepareDesignAuthSessionReload,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
+import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 function shouldDeferPassiveAuthRedirect(): boolean {
   return hasTeamverEmbedActiveWork() || hasTeamverEmbedBackgroundRuns();
@@ -95,14 +97,27 @@ function schedulePassiveLoginRedirect(): void {
         notePassiveRecoverySuccess();
         return;
       }
+      // ensure can revive expired access that session-probe rejects.
+      if (await ensureDesignBffSessionAuthenticated()) {
+        notePassiveRecoverySuccess();
+        return;
+      }
       // One more delayed probe — cookie from a sibling tab/node may land late.
       await new Promise((resolve) => setTimeout(resolve, 500));
       if (await probeDesignBffSessionAuthenticated()) {
         notePassiveRecoverySuccess();
         return;
       }
-      // Probe confirmed unauthenticated after threshold — allow Main login even
-      // if embed memory is stale (policy: re-login only after authenticated:false).
+      if (await ensureDesignBffSessionAuthenticated()) {
+        notePassiveRecoverySuccess();
+        return;
+      }
+      // Embed memory still says signed-in — keep in-place recovery; never bounce
+      // to Main login for a refresh/probe blip while the UI looks authenticated.
+      if (isTeamverEmbedSessionAuthenticated()) {
+        dispatchPassiveAuthRequired("bff");
+        return;
+      }
       prepareDesignAuthSessionReload();
       redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
     })();
@@ -122,8 +137,8 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
       try {
         const refreshed = await refreshDesignAuthCookie();
         if (refreshed) return true;
-        // POST /auth/refresh can 401 while the BFF cookie is still usable
-        // (refresh-token race; access retained). Confirm before logout redirect.
+        // POST /auth/refresh can 401 while ensure can still revive access.
+        if (await ensureDesignBffSessionAuthenticated()) return true;
         return await probeDesignBffSessionAuthenticated();
       } finally {
         passiveAuthRecoveryInflight = null;

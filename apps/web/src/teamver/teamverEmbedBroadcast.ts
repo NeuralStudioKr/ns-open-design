@@ -37,7 +37,8 @@ const incomingHandlers = new Set<IncomingHandler>();
 
 export type EmbedBroadcastMessage =
   | { kind: "workspace-changed"; workspaceId: string; sourceId: string; postedAt: number }
-  | { kind: "embed-session-changed"; authenticated: boolean; sourceId: string; postedAt: number };
+  | { kind: "embed-session-changed"; authenticated: boolean; sourceId: string; postedAt: number }
+  | { kind: "bff-refresh-result"; ok: boolean; status: number; sourceId: string; postedAt: number };
 
 /**
  * Distributive Omit — non-distributive `Omit<Union, K>` collapses the

@@ -256,10 +256,14 @@ async def test_proxy_drive_prefers_main_hs256_cookie_over_bff_apps_jwt(
 
 
 @pytest.mark.asyncio
-async def test_proxy_drive_main_cookie_401_auth_failure_maps_to_session_expired(
+async def test_proxy_drive_main_cookie_401_auth_failure_maps_to_main_sso_required(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When Main HS256 cookie is rejected, do NOT try BFF refresh (Apps JWT is unrelated)."""
+    """Main HS256 cookie rejected → distinct ``main_sso_required`` body.
+
+    BFF Apps refresh cannot revive Main HS256 SSO; the FE must route the user
+    to Main parent-domain sign-in instead of spinning the BFF refresh loop.
+    """
     forward = AsyncMock(
         return_value=(401, {"content-type": "application/json"}, b'{"detail":"Invalid token"}'),
     )
@@ -285,7 +289,9 @@ async def test_proxy_drive_main_cookie_401_auth_failure_maps_to_session_expired(
     )
 
     assert response.status_code == 401
-    assert b"session_expired" in response.body
+    assert b"main_sso_required" in response.body
+    assert b'"re_login_scope":"main"' in response.body
+    assert b"login_url" in response.body
     assert forward.await_count == 1
 
 
@@ -353,7 +359,7 @@ async def test_proxy_drive_falls_back_to_bff_when_main_cookie_absent(
 async def test_proxy_drive_hosted_requires_main_sso_cookie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """staging/production: missing Main SSO cookie → session_expired + login_url (no Apps fallback)."""
+    """staging/production: missing Main SSO cookie → main_sso_required + login_url (no Apps fallback)."""
     monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
     monkeypatch.setattr(drive_router, "hosted_requires_main_sso", lambda: True)
     monkeypatch.setattr(
@@ -369,7 +375,7 @@ async def test_proxy_drive_hosted_requires_main_sso_cookie(
     )
 
     assert response.status_code == 401
-    assert b"session_expired" in response.body
+    assert b"main_sso_required" in response.body
     assert b"login_url" in response.body
 
 

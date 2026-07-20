@@ -82,6 +82,24 @@ export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
   if (normalized === "error.forbidden") return true;
   if (normalized.includes("error.workspace")) return true;
   if (normalized.includes("error.forbidden")) return true;
+  // Main HS256 SSO expired — Apps refresh cannot revive it; only Main
+  // parent-domain re-login can. Skip BFF refresh and surface immediately.
+  if (normalized === "main_sso_required") return true;
+  return false;
+}
+
+/**
+ * True when Drive 401 body says Main HS256 SSO has expired and only a
+ * parent-domain re-login can fix it. FE must not spin BFF refresh — Apps
+ * JWT never satisfies Main Drive's HS256 verifier.
+ */
+export function isDriveMainSsoRequiredBody(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const record = body as Record<string, unknown>;
+  if (record.code === "main_sso_required") return true;
+  if (record.re_login_scope === "main") return true;
+  const detail = record.detail;
+  if (typeof detail === "string" && detail.trim().toLowerCase() === "main_sso_required") return true;
   return false;
 }
 
@@ -260,6 +278,12 @@ async function teamverDriveFetch(
     }
 
     if (shouldSkipDriveAuthRefresh(detail)) {
+      // Main HS256 SSO expiry cannot be soft-retried — parent-domain re-login
+      // is the only recovery. Surface immediately so the FE modal switches to
+      // the Main sign-in CTA instead of spinning BFF refresh.
+      if (isDriveMainSsoRequiredBody(body)) {
+        return response;
+      }
       // Soft retry first: Apps /auth/refresh cannot revive Main HS256 SSO that
       // Drive proxy forwards. Another sibling may have just written cookies.
       await delay(DRIVE_AUTH_RETRY_DELAY_MS, signal);
@@ -299,6 +323,27 @@ export type TeamverDriveFetchOptions = {
   signal?: AbortSignal;
 };
 
+async function readDriveErrorBody(response: Response): Promise<unknown> {
+  try {
+    return await response.clone().json();
+  } catch {
+    return null;
+  }
+}
+
+function driveErrorCodeForStatus(status: number, body: unknown): string {
+  if (status === 401 && isDriveMainSsoRequiredBody(body)) {
+    return "teamver_drive_main_sso_required";
+  }
+  return `teamver_drive_fetch_failed:${status}`;
+}
+
+/** True when a Drive fetch error was raised because Main HS256 SSO expired. */
+export function isTeamverDriveMainSsoRequiredError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.message === "teamver_drive_main_sso_required";
+}
+
 export async function getTeamverDriveJson(
   path: string,
   workspaceId?: string | null,
@@ -310,7 +355,8 @@ export async function getTeamverDriveJson(
     workspaceId,
   );
   if (!response.ok) {
-    throw new Error(`teamver_drive_fetch_failed:${response.status}`);
+    const body = await readDriveErrorBody(response);
+    throw new Error(driveErrorCodeForStatus(response.status, body));
   }
   const raw = await response.json();
   return snakeToCamelDeep(raw);
@@ -333,7 +379,8 @@ export async function postTeamverDriveJson(
     workspaceId,
   );
   if (!response.ok) {
-    throw new Error(`teamver_drive_fetch_failed:${response.status}`);
+    const errBody = await readDriveErrorBody(response);
+    throw new Error(driveErrorCodeForStatus(response.status, errBody));
   }
   const raw = await response.json();
   return snakeToCamelDeep(raw);

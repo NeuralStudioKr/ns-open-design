@@ -40,6 +40,31 @@ import {
 } from "../src/teamver/designBffClient";
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 
+function refresh401(): Response {
+  return new Response(JSON.stringify({ detail: "session_expired" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function sessionJson(authenticated: boolean): Response {
+  return new Response(JSON.stringify({ authenticated }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function sessionProbe204(): Response {
+  return new Response(null, { status: 204 });
+}
+
+function sessionProbe401(): Response {
+  return new Response(JSON.stringify({ detail: "session_expired" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("withDesignBffCookieAuthRecovery", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -52,129 +77,82 @@ describe("withDesignBffCookieAuthRecovery", () => {
   });
 
   it("retries the original BFF request once after refresh declines, allowing HA sibling cookie recovery", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ error: { code: "session_expired" } }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }))
       .mockResolvedValueOnce("ok");
 
     const pending = withDesignBffCookieAuthRecovery(request);
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(1_200);
 
     await expect(pending).resolves.toBe("ok");
     expect(request).toHaveBeenCalledTimes(2);
-    // refresh 401 → /auth/session probe (+ delayed probe) before soft-retry
-    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+    // refresh 401 → probe + delayed probe + ensure before soft-retry
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
   });
 
   it("recovers from SDK AuthenticationError (real HTTP 401 mapping)", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ detail: "session_expired" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
       .mockResolvedValueOnce("ok");
 
     const pending = withDesignBffCookieAuthRecovery(request);
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(1_200);
 
     await expect(pending).resolves.toBe("ok");
     expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("clears sticky refresh decline after a successful HA soft-retry", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ detail: "session_expired" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
       .mockResolvedValueOnce("ok");
 
     const pending = withDesignBffCookieAuthRecovery(request);
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(1_200);
     await expect(pending).resolves.toBe("ok");
 
     expect(isDesignAuthRefreshDeclined()).toBe(false);
   });
 
   it("clears sticky decline after soft-retry fails when /auth/session is still authenticated", async () => {
+    // After refresh 401 + probe misses, the recovery layer calls ensure
+    // /auth/session in the catch path. Ensure returning authenticated=true
+    // must clear sticky decline even if the final request retry still 401s.
     const fetchMock = vi
       .fn()
-      // refreshDesignAuthCookie → POST /auth/refresh 401
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ detail: "session_expired" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      // refresh path: first session probe → unauthenticated (sticky decline)
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: false }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      // refresh path: delayed session probe → still false
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: false }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      // withDesignBffCookieAuthRecovery catch: session still usable after soft-retry miss
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false)) // ensure inside refresh: not yet alive
+      .mockResolvedValueOnce(sessionJson(true)); // catch: ensure now reports alive
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
     const request = vi
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
       .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }));
 
     const pending = withDesignBffCookieAuthRecovery(request);
     const assertion = expect(pending).rejects.toMatchObject({ status: 401 });
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(1_200);
     await assertion;
     expect(isDesignAuthRefreshDeclined()).toBe(false);
   });
 
-  it("does not sticky-decline refresh when /auth/session is still authenticated after 401", async () => {
+  it("does not sticky-decline refresh when session-probe is still valid after 401", async () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ detail: "session_expired" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      // Second refresh while POST-suppressed: session-probe only
-      .mockResolvedValueOnce(
-        new Response(null, { status: 204 }),
-      );
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe204())
+      .mockResolvedValueOnce(sessionProbe204());
     vi.stubGlobal("fetch", fetchMock);
 
     const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
@@ -185,40 +163,23 @@ describe("withDesignBffCookieAuthRecovery", () => {
     await expect(refreshDesignAuthCookie()).resolves.toBe(true);
     expect(isDesignAuthRefreshDeclined()).toBe(false);
     await expect(refreshDesignAuthCookie()).resolves.toBe(true);
-    // 1 refresh POST + 1 probe + 1 suppressed probe (no second POST)
+    // 1 refresh POST + probe + suppressed probe (no second POST)
     expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
   });
 
-  it("recovers from sticky decline when a later /auth/session probe is authenticated", async () => {
+  it("soft-sticky recovery uses ensure /auth/session when probe says expired", async () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
-      // First refresh: 401 + two failed session probes → soft sticky decline
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ detail: "session_expired" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: false }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: false }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      // Second refresh while soft-sticky: session probe only (no POST refresh)
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authenticated: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      // First refresh: 401 + probe/probe/ensure miss → soft sticky
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false))
+      // Soft-sticky recovery: probe miss, delayed probe miss, ensure hits
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(true));
     vi.stubGlobal("fetch", fetchMock);
 
     const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
@@ -231,8 +192,36 @@ describe("withDesignBffCookieAuthRecovery", () => {
 
     await expect(refreshDesignAuthCookie()).resolves.toBe(true);
     expect(isDesignAuthRefreshDeclined()).toBe(false);
-    // 1 refresh POST + 2 probes + 1 sticky re-probe (no second POST)
     expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session"))).toBe(true);
+  });
+
+  it("soft-sticky force-POSTs refresh when ensure also fails (expired access window)", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false))
+      // Soft recovery: probes + ensure fail, then force POST succeeds
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
+      await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(true);
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(2);
   });
 
   it("keeps hard sticky after 400 and does not re-probe /auth/session", async () => {

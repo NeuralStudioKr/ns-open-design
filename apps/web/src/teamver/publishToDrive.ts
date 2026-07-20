@@ -158,6 +158,11 @@ export function formatPublishErrorCodeForUser(code: string): string {
     teamver_workspace_pending: "Teamver 작업공간 연결 중입니다 — 기본 위치로 발행됩니다.",
     drive_publish_targets_failed: "Drive 폴더 목록을 불러오지 못했습니다 — 찾아보기 또는 다시 시도하세요.",
     outputs_fetch_failed: "Drive 발행 이력을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.",
+    // Main HS256 SSO expired — parent-domain re-login is the only recovery.
+    teamver_drive_main_sso_required:
+      "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 발행을 재시도하세요.",
+    main_sso_required:
+      "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 발행을 재시도하세요.",
   };
   if (exact[trimmed]) return exact[trimmed];
 

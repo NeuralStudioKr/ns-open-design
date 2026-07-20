@@ -33,16 +33,24 @@ vi.mock("../../src/teamver/designApiBase", () => ({
 const refreshMock = vi.fn(async () => true);
 const prepareReloadMock = vi.fn();
 const probeSessionMock = vi.fn(async () => false);
+const ensureSessionMock = vi.fn(async () => false);
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
   prepareDesignAuthSessionReload: (...args: unknown[]) => prepareReloadMock(...args),
   probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
+  ensureDesignBffSessionAuthenticated: (...args: unknown[]) => ensureSessionMock(...args),
 }));
 
 const redirectMock = vi.fn();
 vi.mock("../../src/teamver/designAuthFlow", () => ({
   redirectToTeamverLoginPreservingRoute: (...args: unknown[]) => redirectMock(...args),
 }));
+
+vi.mock("../../src/teamver/teamverEmbedSession", () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+}));
+
+import { isTeamverEmbedSessionAuthenticated } from "../../src/teamver/teamverEmbedSession";
 
 describe("mergeActiveRunsIntoMessages", () => {
   it("synthesizes a recoverable assistant stub for active runs missing from listMessages", () => {
@@ -79,6 +87,9 @@ describe("teamverEmbedPassiveAuth", () => {
     refreshMock.mockResolvedValue(true);
     probeSessionMock.mockReset();
     probeSessionMock.mockResolvedValue(false);
+    ensureSessionMock.mockReset();
+    ensureSessionMock.mockResolvedValue(false);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
     resetEmbedPassiveAuthForTests();
     resetActiveWork();
     resetTeamverEmbedSessionActiveRunProjectIdsForTests();
@@ -108,6 +119,32 @@ describe("teamverEmbedPassiveAuth", () => {
     refreshMock.mockResolvedValue(true);
     handleEmbedPassiveUnauthorized("bff");
     await vi.runAllTimersAsync();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect when refresh fails but /auth/session ensure recovers", async () => {
+    refreshMock.mockResolvedValue(false);
+    probeSessionMock.mockResolvedValue(false);
+    ensureSessionMock.mockResolvedValue(true);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.runAllTimersAsync();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not redirect when embed memory still says authenticated after probes fail", async () => {
+    refreshMock.mockResolvedValue(false);
+    probeSessionMock.mockResolvedValue(false);
+    ensureSessionMock.mockResolvedValue(false);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(redirectMock).not.toHaveBeenCalled();
     expect(prepareReloadMock).not.toHaveBeenCalled();
   });

@@ -1,4 +1,8 @@
-import { fetchDesignAuthSession } from "./designBffClient";
+import {
+  clearDesignAuthRefreshDecline,
+  fetchDesignAuthSession,
+  isDesignAuthRefreshDeclineHard,
+} from "./designBffClient";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 
 /**
@@ -34,9 +38,15 @@ export async function recoverStaleDriveWorkspace(
 ): Promise<string | null> {
   const current = (currentWorkspaceId ?? "").trim() || null;
 
+  // ACL recovery must not unlock hard sticky (deleted-account 400 spam), but may
+  // clear a soft sticky so ensure/session can run after HA blips.
+  if (!isDesignAuthRefreshDeclineHard()) {
+    clearDesignAuthRefreshDecline();
+  }
+
   let session;
   try {
-    session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
+    session = await fetchDesignAuthSession({ force: true });
   } catch {
     return null;
   }

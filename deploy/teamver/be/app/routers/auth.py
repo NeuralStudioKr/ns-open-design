@@ -9,14 +9,20 @@ from pydantic import BaseModel, Field
 from starlette.responses import Response
 from teamver_app_sdk.errors import AuthenticationError, TeamverAPIError
 
+from ..auth.bff_tokens import (
+    access_token_is_usable,
+    ensure_bff_session,
+    force_refresh_bff_session,
+    probe_bff_session,
+)
 from ..auth.bff_session import (
     bff_enabled,
     bff_session_public_view,
     clear_bff_session,
     load_bff_session,
+    suppress_session_cookie,
     update_bff_workspace,
 )
-from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session, probe_bff_session
 from ..auth.errors import raise_auth_http
 from ..auth.login_hint import teamver_main_login_url_for_design
 from ..auth.metrics import snapshot as metrics_snapshot
@@ -27,6 +33,7 @@ from ..services.teamver_bootstrap import (
     fetch_bootstrap,
     find_workspace_entry,
     invalidate_bootstrap_cache,
+    peek_last_bootstrap_within_grace,
 )
 from ..teamver_sdk import (
     auth_source_for_request,
@@ -79,6 +86,53 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
         )
     except TeamverBootstrapError as exc:
         if exc.status_code == 401:
+            # Transient Main bootstrap 401 / HA token mismatch must not wipe a
+            # still-usable BFF cookie — deleting it races sibling Set-Cookie and
+            # cascades to session_expired on the next probe.
+            if access_token_is_usable(session):
+                logger.warning(
+                    "[auth/session] bootstrap 401; retaining usable BFF session user=%s",
+                    session.user_id,
+                )
+                suppress_session_cookie(request)
+                stale = await peek_last_bootstrap_within_grace(
+                    user_id=session.user_id,
+                    workspace_id=session.workspace_id,
+                )
+                if stale is not None:
+                    # Serve the last-known-good bootstrap slice so the FE
+                    # workspace switcher / user chip do not blank out during
+                    # a Main hiccup while the BFF cookie is still usable.
+                    return _session_from_bootstrap_payload(stale, auth_source="bff")
+                view = bff_session_public_view(session)
+                view["user"] = {"user_id": session.user_id}
+                return view
+            refreshed = await force_refresh_bff_session(request)
+            if refreshed is not None:
+                try:
+                    bootstrap = await fetch_bootstrap(
+                        bearer_token=refreshed.access_token,
+                        user_id=refreshed.user_id,
+                        workspace_id=refreshed.workspace_id,
+                    )
+                    return _session_from_bootstrap_payload(bootstrap, auth_source="bff")
+                except TeamverBootstrapError as retry_exc:
+                    if retry_exc.status_code != 401:
+                        logger.warning(
+                            "[auth/session] bootstrap failed after refresh code=%s",
+                            retry_exc.code,
+                        )
+                        stale = await peek_last_bootstrap_within_grace(
+                            user_id=refreshed.user_id,
+                            workspace_id=refreshed.workspace_id,
+                        )
+                        if stale is not None:
+                            return _session_from_bootstrap_payload(
+                                stale, auth_source="bff"
+                            )
+                        view = bff_session_public_view(refreshed)
+                        view["user"] = {"user_id": refreshed.user_id}
+                        return view
             clear_bff_session(request)
             login_url = teamver_main_login_url_for_design()
             return JSONResponse(
@@ -86,6 +140,12 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                 content={"detail": "session_expired", "login_url": login_url},
             )
         logger.warning("[auth/session] bootstrap failed code=%s", exc.code)
+        stale = await peek_last_bootstrap_within_grace(
+            user_id=session.user_id,
+            workspace_id=session.workspace_id,
+        )
+        if stale is not None:
+            return _session_from_bootstrap_payload(stale, auth_source="bff")
         view = bff_session_public_view(session)
         view["user"] = {"user_id": session.user_id}
         return view
