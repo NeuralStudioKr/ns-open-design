@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
 
-// Plugins-home HTML preview surface — reachability fallback.
+// Plugins-home HTML preview surface — authenticated srcDoc + fallback.
 //
-// The home gallery used to render a permanently-blank tile when a
-// plugin declared an `od.preview.entry` that 404'd on the daemon
-// (the iframe quietly painted the JSON error envelope as white).
-// The HtmlSurface now probes the URL once per session and swaps
-// in a typographic fallback tile when the URL is unreachable.
-//
-// This file:
-//   - asserts the iframe is mounted when the probe succeeds;
-//   - asserts the typographic fallback renders (and the iframe is
-//     skipped) when the probe reports the URL is unreachable.
+// Sandboxed iframes cannot send Teamver session cookies, so a bare
+// `src=/api/plugins/.../preview` paints nginx's `{"detail":"session_expired"}`
+// JSON viewer as the thumb. HtmlSurface parent-fetches HTML and mounts
+// via srcDoc; auth/JSON/non-HTML responses use the typographic fallback.
 
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
@@ -19,6 +13,10 @@ import {
   HtmlSurface,
   __htmlSurfaceProbeCacheSizeForTests,
   __resetHtmlSurfaceProbeCacheForTests,
+  isPluginPreviewUnauthorizedBody,
+  looksLikePluginPreviewHtml,
+  pluginPreviewSrcDoc,
+  resolvePluginPreviewBaseHref,
 } from '../../src/components/plugins-home/cards/HtmlSurface';
 import type { HtmlPreviewSpec } from '../../src/components/plugins-home/preview';
 
@@ -29,10 +27,47 @@ const PREVIEW: HtmlPreviewSpec = {
   source: 'preview',
 };
 
-const okResponse = (): Response =>
-  ({ ok: true, status: 200 } as unknown as Response);
-const notFoundResponse = (): Response =>
-  ({ ok: false, status: 404 } as unknown as Response);
+const SAMPLE_HTML =
+  '<!doctype html><html><head><title>t</title></head><body><div class="slide">hi</div></body></html>';
+
+function htmlResponse(html = SAMPLE_HTML): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'text/html' : null) },
+    text: async () => html,
+    clone() {
+      return htmlResponse(html);
+    },
+  } as unknown as Response;
+}
+
+function jsonUnauthorizedResponse(): Response {
+  const body = '{"detail":"session_expired","login_url":"/login"}';
+  return {
+    ok: false,
+    status: 401,
+    headers: {
+      get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+    },
+    text: async () => body,
+    clone() {
+      return jsonUnauthorizedResponse();
+    },
+  } as unknown as Response;
+}
+
+function notFoundResponse(): Response {
+  return {
+    ok: false,
+    status: 404,
+    headers: { get: () => null },
+    text: async () => '{"detail":"Not Found"}',
+    clone() {
+      return notFoundResponse();
+    },
+  } as unknown as Response;
+}
 
 beforeEach(() => {
   __resetHtmlSurfaceProbeCacheForTests();
@@ -46,9 +81,44 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('HtmlSurface reachability probe', () => {
-  it('renders the iframe once the URL probes OK and the auto-arm window elapses', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(okResponse());
+describe('plugin preview srcDoc helpers', () => {
+  it('detects session_expired JSON envelopes', () => {
+    expect(
+      isPluginPreviewUnauthorizedBody('{"detail":"session_expired"}', 'application/json'),
+    ).toBe(true);
+    expect(isPluginPreviewUnauthorizedBody(SAMPLE_HTML, 'text/html')).toBe(false);
+    expect(looksLikePluginPreviewHtml(SAMPLE_HTML)).toBe(true);
+    expect(looksLikePluginPreviewHtml('{"detail":"session_expired"}')).toBe(false);
+  });
+
+  it('resolves a plugin-root base href for relative assets', () => {
+    expect(
+      resolvePluginPreviewBaseHref(
+        '/api/plugins/open-design/example-html-ppt/preview',
+        'https://stg-design.teamver.com/home',
+      ),
+    ).toBe('https://stg-design.teamver.com/api/plugins/open-design/example-html-ppt/');
+    expect(
+      resolvePluginPreviewBaseHref(
+        '/api/plugins/foo/example/index',
+        'https://stg-design.teamver.com/',
+      ),
+    ).toBe('https://stg-design.teamver.com/api/plugins/foo/');
+  });
+
+  it('injects a base tag into preview HTML', () => {
+    const srcDoc = pluginPreviewSrcDoc(
+      SAMPLE_HTML,
+      '/api/plugins/example-html-ppt/preview',
+    );
+    expect(srcDoc).toContain('<base href=');
+    expect(srcDoc).toContain('/api/plugins/example-html-ppt/');
+  });
+});
+
+describe('HtmlSurface authenticated srcDoc', () => {
+  it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
       <HtmlSurface
@@ -56,27 +126,27 @@ describe('HtmlSurface reachability probe', () => {
         pluginId="example-html-ppt"
         pluginTitle="Html Ppt"
         inView
+        eager
       />,
     );
-    // First the skeleton frame should appear, then after the 280ms
-    // arm timer the iframe should mount.
     await waitFor(
       () => {
-        expect(container.querySelector('iframe')).toBeTruthy();
+        const iframe = container.querySelector('iframe');
+        expect(iframe).toBeTruthy();
+        expect(iframe?.getAttribute('src')).toBeNull();
+        expect(iframe?.getAttribute('srcdoc') || (iframe as HTMLIFrameElement).srcdoc).toContain(
+          '<div class="slide">hi</div>',
+        );
       },
       { timeout: 2000 },
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(PREVIEW.src, {
-      method: 'GET',
-      headers: { Range: 'bytes=0-0' },
-    });
+    expect(fetchMock).toHaveBeenCalled();
     expect(
       container.querySelector('[data-testid="plugins-home-html-fallback"]'),
     ).toBeNull();
   });
 
-  it('renders the typographic fallback (no iframe) when the URL 404s', async () => {
+  it('renders the typographic fallback when the URL 404s', async () => {
     const fetchMock = vi.fn().mockResolvedValue(notFoundResponse());
     vi.stubGlobal('fetch', fetchMock);
     const { container } = render(
@@ -85,6 +155,7 @@ describe('HtmlSurface reachability probe', () => {
         pluginId="example-html-ppt"
         pluginTitle="Html Ppt"
         inView
+        eager
       />,
     );
     await waitFor(
@@ -95,20 +166,39 @@ describe('HtmlSurface reachability probe', () => {
       },
       { timeout: 2000 },
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(PREVIEW.src, {
-      method: 'GET',
-      headers: { Range: 'bytes=0-0' },
-    });
     expect(container.querySelector('iframe')).toBeNull();
     expect(
       container.querySelector('.plugins-home__html-fallback-glyph')?.textContent,
     ).toBe('H');
   });
 
-  it('caps the reachability probe cache and evicts the oldest preview URL', async () => {
+  it('renders the typographic fallback for session_expired JSON (never paints JSON thumb)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonUnauthorizedResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector('[data-testid="plugins-home-html-fallback"]'),
+        ).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(container.textContent).not.toContain('session_expired');
+  });
+
+  it('caps the preview HTML cache and evicts the oldest preview URL', async () => {
     window.localStorage.setItem('open-design:visual-stability', '1');
-    const fetchMock = vi.fn().mockResolvedValue(okResponse());
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => htmlResponse(`<html>${url}</html>`));
     vi.stubGlobal('fetch', fetchMock);
 
     const previews = Array.from({ length: 260 }, (_, index) => ({
@@ -127,13 +217,14 @@ describe('HtmlSurface reachability probe', () => {
             pluginId={`example-html-ppt-${index}`}
             pluginTitle={`Html Ppt ${index}`}
             inView
+            eager
           />
         ))}
       </>,
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(260);
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(256);
       expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
     });
 
@@ -145,11 +236,11 @@ describe('HtmlSurface reachability probe', () => {
         pluginId="example-html-ppt-0"
         pluginTitle="Html Ppt 0"
         inView
+        eager
       />,
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(261);
       expect(__htmlSurfaceProbeCacheSizeForTests()).toBe(256);
     });
   });

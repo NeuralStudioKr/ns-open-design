@@ -11,19 +11,24 @@
 // as a thumbnail without needing a server-rendered screenshot. The
 // daemon already enforces a strict CSP on the asset response.
 //
-// Reachability probe
-// ------------------
-// Some bundled plugins declare an `od.preview.entry` that doesn't
-// resolve on disk (the daemon falls back to assets/*.html, but if
-// nothing in the curated list exists the route 404s and the iframe
-// renders the JSON error envelope as a blank white tile). To avoid
-// blank cards in the home gallery, we issue a single ranged GET
-// before mounting the iframe and swap in a typographic fallback
-// when the URL is unreachable. Results are cached per-URL so
-// scrolling doesn't re-probe the same plugin.
+// Authenticated fetch + srcDoc
+// ----------------------------
+// Never mount a bare iframe `src=/api/plugins/.../preview|example` in
+// Teamver embed (or any auth-gated preview). Sandboxed iframes cannot
+// send identity cookies, so nginx returns `{"detail":"session_expired"}`
+// and Chrome paints that JSON as a black "pretty print" thumb. Parent
+// fetch (credentials + embed recovery) loads the HTML, then we inject a
+// `<base href>` so public `/asset/` subresources still resolve.
+//
+// Reachability
+// ------------
+// The same authenticated GET doubles as the reachability probe: 404 /
+// 401 / JSON error envelopes swap in a typographic fallback instead of
+// leaving a blank or JSON-viewer tile. Results are cached per-URL.
 
 import { useEffect, useState } from 'react';
 import { isVisualStabilityMode } from '../../../utils/visualStability';
+import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
 import type { HtmlPreviewSpec } from '../preview';
 
 interface Props {
@@ -39,47 +44,127 @@ interface Props {
   instantMount?: boolean;
 }
 
-type ProbeState = 'idle' | 'probing' | 'ok' | 'unreachable';
+type LoadState = 'idle' | 'loading' | 'ok' | 'unreachable';
 
-const PROBE_CACHE_LIMIT = 256;
-const probeCache = new Map<string, 'ok' | 'unreachable'>();
-const inflight = new Map<string, Promise<'ok' | 'unreachable'>>();
+const PREVIEW_CACHE_LIMIT = 256;
+const previewHtmlCache = new Map<string, string>();
+const previewInflight = new Map<string, Promise<string>>();
 
-function rememberProbeResult(url: string, result: 'ok' | 'unreachable'): void {
-  probeCache.delete(url);
-  probeCache.set(url, result);
-  while (probeCache.size > PROBE_CACHE_LIMIT) {
-    const oldest = probeCache.keys().next().value;
+function rememberPreviewHtml(url: string, html: string): void {
+  previewHtmlCache.delete(url);
+  previewHtmlCache.set(url, html);
+  while (previewHtmlCache.size > PREVIEW_CACHE_LIMIT) {
+    const oldest = previewHtmlCache.keys().next().value;
     if (!oldest) break;
-    probeCache.delete(oldest);
+    previewHtmlCache.delete(oldest);
   }
 }
 
-async function probe(url: string): Promise<'ok' | 'unreachable'> {
-  const cached = probeCache.get(url);
-  if (cached) return cached;
-  const existing = inflight.get(url);
+function rememberUnreachable(url: string): void {
+  // Negative cache uses empty string sentinel distinct from real HTML.
+  rememberPreviewHtml(url, '');
+}
+
+/** True when the body is an auth/error JSON envelope, not preview HTML. */
+export function isPluginPreviewUnauthorizedBody(
+  text: string,
+  contentType: string | null | undefined,
+): boolean {
+  const ct = (contentType || '').toLowerCase();
+  if (ct.includes('application/json')) return true;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{')) return false;
+  if (/"detail"\s*:\s*"session_expired"/i.test(trimmed)) return true;
+  if (trimmed.length > 800) return false;
+  try {
+    const parsed = JSON.parse(trimmed) as { detail?: unknown };
+    return parsed != null && typeof parsed === 'object' && 'detail' in parsed;
+  } catch {
+    return false;
+  }
+}
+
+export function looksLikePluginPreviewHtml(text: string): boolean {
+  const head = text.slice(0, 512).toLowerCase();
+  return (
+    head.includes('<!doctype')
+    || head.includes('<html')
+    || head.includes('<body')
+    || head.includes('<head')
+    || head.includes('<div')
+    || head.includes('<section')
+  );
+}
+
+/** `<base href>` so relative `/asset/` links resolve under the plugin id. */
+export function resolvePluginPreviewBaseHref(previewSrc: string, origin?: string): string {
+  const baseOrigin = origin ?? (typeof window !== 'undefined' ? window.location.href : 'http://localhost/');
+  const absolute = new URL(previewSrc, baseOrigin);
+  absolute.hash = '';
+  absolute.search = '';
+  absolute.pathname = absolute.pathname.replace(
+    /\/(?:preview|example(?:\/[^/]*)?)\/?$/i,
+    '/',
+  );
+  if (!absolute.pathname.endsWith('/')) absolute.pathname += '/';
+  return absolute.href;
+}
+
+function previewBaseTag(sourceUrl: string): string {
+  const href = resolvePluginPreviewBaseHref(sourceUrl)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<base href="${href}">`;
+}
+
+/** Inject `<base>` so sandboxed srcDoc can still load public plugin assets. */
+export function pluginPreviewSrcDoc(html: string, sourceUrl: string): string {
+  if (/<base\b/i.test(html)) return html;
+  const base = previewBaseTag(sourceUrl);
+  const headClose = html.toLowerCase().lastIndexOf('</head>');
+  if (headClose !== -1) {
+    return `${html.slice(0, headClose)}${base}${html.slice(headClose)}`;
+  }
+  return `${base}${html}`;
+}
+
+async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise<string> {
+  const cached = previewHtmlCache.get(url);
+  if (cached !== undefined) {
+    if (!cached) throw new Error('plugin_preview_unreachable');
+    return cached;
+  }
+
+  const existing = !signal ? previewInflight.get(url) : undefined;
   if (existing) return existing;
+
   const run = (async () => {
-    try {
-      // The daemon preview routes are GET-first, and some deployments
-      // log HEAD 404 probes even when the GET preview can render. A
-      // single ranged GET keeps the check tiny without the noisy extra
-      // request.
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { Range: 'bytes=0-0' },
-      });
-      return res.ok || res.status === 206 ? ('ok' as const) : ('unreachable' as const);
-    } catch {
-      return 'unreachable' as const;
+    const res = await fetchTeamverDaemon(url, {
+      method: 'GET',
+      signal: signal ?? new AbortController().signal,
+    });
+    if (!res.ok) {
+      // Only sticky-cache missing assets. Auth failures must remain retryable
+      // after cookie recovery / soft sticky clear.
+      if (res.status === 404) rememberUnreachable(url);
+      throw new Error(`plugin_preview_http_${res.status}`);
     }
-  })();
-  inflight.set(url, run);
-  const result = await run;
-  rememberProbeResult(url, result);
-  inflight.delete(url);
-  return result;
+    const text = await res.text();
+    const contentType = res.headers.get('content-type');
+    if (isPluginPreviewUnauthorizedBody(text, contentType) || !looksLikePluginPreviewHtml(text)) {
+      throw new Error('plugin_preview_not_html');
+    }
+    const srcDoc = pluginPreviewSrcDoc(text, url);
+    rememberPreviewHtml(url, srcDoc);
+    return srcDoc;
+  })().finally(() => {
+    previewInflight.delete(url);
+  });
+
+  if (!signal) previewInflight.set(url, run);
+  return run;
 }
 
 export function HtmlSurface({
@@ -91,60 +176,88 @@ export function HtmlSurface({
   instantMount = false,
 }: Props) {
   const [armed, setArmed] = useState(() => instantMount);
-  const [shouldProbe, setShouldProbe] = useState(() => isVisualStabilityMode() || instantMount);
-  const [probeState, setProbeState] = useState<ProbeState>(() => {
-    const cached = probeCache.get(preview.src);
-    if (cached) return cached;
-    return instantMount ? 'ok' : 'idle';
+  const [shouldLoad, setShouldLoad] = useState(() => isVisualStabilityMode() || instantMount);
+  const [loadState, setLoadState] = useState<LoadState>(() => {
+    const cached = previewHtmlCache.get(preview.src);
+    if (cached === undefined) return instantMount ? 'loading' : 'idle';
+    return cached ? 'ok' : 'unreachable';
+  });
+  const [srcDoc, setSrcDoc] = useState<string | null>(() => {
+    const cached = previewHtmlCache.get(preview.src);
+    return cached || null;
   });
 
   useEffect(() => {
     setArmed(instantMount);
-    setShouldProbe(isVisualStabilityMode() || instantMount);
-    const cached = probeCache.get(preview.src);
-    setProbeState(cached ?? (instantMount ? 'ok' : 'idle'));
+    setShouldLoad(isVisualStabilityMode() || instantMount);
+    const cached = previewHtmlCache.get(preview.src);
+    if (cached === undefined) {
+      setSrcDoc(null);
+      setLoadState(instantMount ? 'loading' : 'idle');
+      return;
+    }
+    if (cached) {
+      setSrcDoc(cached);
+      setLoadState('ok');
+    } else {
+      setSrcDoc(null);
+      setLoadState('unreachable');
+    }
   }, [preview.src, instantMount]);
 
   useEffect(() => {
     if (!inView || instantMount) return;
     if (isVisualStabilityMode()) {
-      setShouldProbe(true);
+      setShouldLoad(true);
       return;
     }
-    if (probeCache.has(preview.src)) {
-      setShouldProbe(true);
+    if (previewHtmlCache.has(preview.src)) {
+      setShouldLoad(true);
       return;
     }
-    const id = window.setTimeout(() => setShouldProbe(true), eager ? 60 : 520);
+    const id = window.setTimeout(() => setShouldLoad(true), eager ? 60 : 520);
     return () => window.clearTimeout(id);
   }, [inView, preview.src, eager, instantMount]);
 
-  // Kick off the probe on first in-view. We deliberately keep this
-  // effect's deps narrow (just `inView` + `preview.src`) so the
-  // subsequent `setProbeState(result)` does not cancel the in-flight
-  // promise via a re-run cleanup. The module-level cache also makes
-  // the probe a no-op if another tile already resolved the same URL.
   useEffect(() => {
-    if (!shouldProbe || instantMount) return;
-    if (probeCache.has(preview.src)) {
-      setProbeState(probeCache.get(preview.src)!);
+    if (!shouldLoad) return;
+    const cached = previewHtmlCache.get(preview.src);
+    if (cached !== undefined) {
+      if (cached) {
+        setSrcDoc(cached);
+        setLoadState('ok');
+      } else {
+        setSrcDoc(null);
+        setLoadState('unreachable');
+      }
       return;
     }
+
     let cancelled = false;
-    setProbeState('probing');
-    probe(preview.src).then((result) => {
-      if (!cancelled) setProbeState(result);
-    });
+    const abort = new AbortController();
+    setLoadState('loading');
+    loadPluginPreviewHtml(preview.src, abort.signal)
+      .then((html) => {
+        if (cancelled) return;
+        setSrcDoc(html);
+        setLoadState('ok');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSrcDoc(null);
+        setLoadState('unreachable');
+      });
     return () => {
       cancelled = true;
+      abort.abort();
     };
-  }, [preview.src, shouldProbe, instantMount]);
+  }, [preview.src, shouldLoad]);
 
   // Arm the iframe after a short visibility window so the user can
   // scroll past tiles without paying for an iframe per tile, but tiles
   // that linger get the live preview without requiring hover.
   useEffect(() => {
-    if (probeState !== 'ok') return;
+    if (loadState !== 'ok') return;
     if (isVisualStabilityMode()) {
       if (inView) setArmed(true);
       return;
@@ -157,9 +270,9 @@ export function HtmlSurface({
       if (inView) setArmed(true);
     }, 720);
     return () => window.clearTimeout(id);
-  }, [inView, probeState, eager, instantMount]);
+  }, [inView, loadState, eager, instantMount]);
 
-  if (probeState === 'unreachable') {
+  if (loadState === 'unreachable') {
     return (
       <UnreachableFallback
         pluginId={pluginId}
@@ -175,15 +288,15 @@ export function HtmlSurface({
       className="plugins-home__html"
       data-plugin-id={pluginId}
       onMouseEnter={() => {
-        setShouldProbe(true);
-        if (probeState === 'ok') setArmed(true);
+        setShouldLoad(true);
+        if (loadState === 'ok') setArmed(true);
       }}
     >
       <div className="plugins-home__html-frame">
-        {armed ? (
+        {armed && srcDoc ? (
           <iframe
             title={`${pluginTitle} preview`}
-            src={preview.src}
+            srcDoc={srcDoc}
             sandbox="allow-scripts"
             loading="lazy"
             tabIndex={-1}
@@ -259,13 +372,13 @@ function UnreachableFallback({ pluginId, pluginTitle, preview, eager = false }: 
   );
 }
 
-// Test seam — exposed so unit tests can reset the probe cache between
+// Test seam — exposed so unit tests can reset the preview cache between
 // scenarios without leaking state across files.
 export function __resetHtmlSurfaceProbeCacheForTests(): void {
-  probeCache.clear();
-  inflight.clear();
+  previewHtmlCache.clear();
+  previewInflight.clear();
 }
 
 export function __htmlSurfaceProbeCacheSizeForTests(): number {
-  return probeCache.size;
+  return previewHtmlCache.size;
 }
