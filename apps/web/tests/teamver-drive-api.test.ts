@@ -201,12 +201,11 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("does not recover session_expired under hard sticky when probe and session are dead", async () => {
+  it("does not recover session_expired under hard sticky when survival ladder fails", async () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
     mockedHardDecline.mockReturnValue(true);
-    mockedProbe.mockResolvedValue(false);
-    mockedFetchSession.mockResolvedValue({ authenticated: false } as never);
+    mockedRefresh.mockResolvedValue(false);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
@@ -215,17 +214,17 @@ describe("getTeamverDriveJson", () => {
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
-    expect(mockedRefresh).not.toHaveBeenCalled();
-    expect(mockedProbe).toHaveBeenCalled();
-    expect(mockedFetchSession).toHaveBeenCalled();
+    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(mockedProbe).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("recovers session_expired under hard sticky when probe shows a live cookie", async () => {
+  it("recovers session_expired under hard sticky when survival ladder revives cookies", async () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
     mockedHardDecline.mockReturnValue(true);
-    mockedProbe.mockResolvedValue(true);
+    mockedRefresh.mockResolvedValue(true);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
@@ -235,8 +234,9 @@ describe("getTeamverDriveJson", () => {
     const pending = getTeamverDriveJson("/api/foo");
     await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toEqual({ ok: true });
-    expect(mockedRefresh).not.toHaveBeenCalled();
-    expect(mockedProbe).toHaveBeenCalled();
+    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(mockedProbe).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 

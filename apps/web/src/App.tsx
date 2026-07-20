@@ -55,7 +55,7 @@ import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } f
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from './teamver/teamverEmbedSession';
-import { isDesignAuthRefreshDeclined } from './teamver/designBffClient';
+import { isTeamverRuntimeConfigAuthBlocked } from './teamver/designBffClient';
 import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
@@ -1778,7 +1778,9 @@ function AppInner() {
     const handler = () => {
       if (document.visibilityState !== "visible") return;
       if (!isTeamverEmbedSessionAuthenticated()) return;
-      if (isDesignAuthRefreshDeclined()) return;
+      // Soft-sticky / prior runtime-config 401: cookie is dead for nginx
+      // auth_request even if the in-memory embed flag is still true.
+      if (isTeamverRuntimeConfigAuthBlocked()) return;
       void reloadTeamverRuntimeConfig();
     };
     window.addEventListener("pageshow", handler);

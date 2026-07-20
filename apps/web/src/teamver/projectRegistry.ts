@@ -6,6 +6,7 @@ import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   fetchDesignAuthSession,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
   type DesignAuthSession,
 } from "./designBffClient";
@@ -14,6 +15,7 @@ import { readTeamverViteEnv } from "./teamverViteEnv";
 import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
 import { waitForTeamverEmbedBoot } from "./teamverEmbedBoot";
+import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { isTeamverProjectCollectionRouteSlug } from "./teamverProjectCollectionRouteSlugs";
 import {
   clearTeamverProjectS3Prefix,
@@ -131,6 +133,7 @@ function readSessionUserId(session: DesignAuthSession): string | null {
 }
 
 async function resolveRegistryUserId(): Promise<string | null> {
+  if (shouldSkipTeamverBffAuthCalls()) return null;
   try {
     const session = await fetchDesignAuthSession();
     if (!session?.authenticated) return null;
@@ -138,6 +141,10 @@ async function resolveRegistryUserId(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function isTeamverBffUnauthorizedError(err: unknown): boolean {
+  return err instanceof Error && (err as { status?: unknown }).status === 401;
 }
 
 function feAccessCacheKey(workspaceId: string, projectId: string, userId: string): string {
@@ -252,6 +259,9 @@ export async function registerTeamverProjectIfNeeded(
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (isTeamverProjectCollectionRouteSlug(project.id)) return;
+  if (shouldSkipTeamverBffAuthCalls()) {
+    throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
+  }
   if (!options?.skipBootWait) {
     await waitForEmbedBootIfNeeded();
   }
@@ -302,6 +312,10 @@ export async function registerTeamverProjectIfNeeded(
         await delay(delayMs);
         continue;
       }
+      if (isTeamverBffUnauthorizedError(err)) {
+        handleEmbedPassiveUnauthorized("bff");
+        throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
+      }
       console.warn("[teamver] project registry sync failed", err);
       throw new TeamverProjectRegistryError("teamver_project_registry_sync_failed");
     }
@@ -347,6 +361,7 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
 export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (!legacyRegistryMigrationEnabled()) return;
+  if (shouldSkipTeamverBffAuthCalls()) return;
   // Called during embed boot before completeTeamverEmbedBoot — must not wait on boot gate.
 
   const client = getDesignBffClient();
@@ -407,6 +422,7 @@ async function fetchRegistryProjectsFromBff(): Promise<{
   projects: TeamverRegisteredProject[];
 } | null> {
   if (!isTeamverEmbedMode()) return null;
+  if (shouldSkipTeamverBffAuthCalls()) return null;
   await waitForEmbedBootIfNeeded();
 
   const client = getDesignBffClient();
@@ -463,6 +479,10 @@ async function fetchRegistryProjectsFromBff(): Promise<{
     }
     return { workspaceId, userId, projects };
   } catch (err) {
+    if (isTeamverBffUnauthorizedError(err)) {
+      handleEmbedPassiveUnauthorized("bff");
+      return null;
+    }
     console.warn("[teamver] project registry list failed", err);
     return null;
   }
@@ -558,6 +578,12 @@ async function fetchTeamverProjectAccessOutcome(
   if (!trimmedRef) return { status: "denied" };
   if (isTeamverProjectCollectionRouteSlug(trimmedRef)) return { status: "denied" };
 
+  // Dead cookie / sticky decline: C1 owns recovery. Hitting /projects here only
+  // re-triggers withDesignBffCookieAuthRecovery → session-probe 401 spam.
+  if (shouldSkipTeamverBffAuthCalls()) {
+    return { status: "unavailable" };
+  }
+
   const client = getDesignBffClient();
   if (!client) return { status: "unavailable" };
 
@@ -578,6 +604,15 @@ async function fetchTeamverProjectAccessOutcome(
   } catch (err) {
     if (err instanceof NetworkError && (err.status === 403 || err.status === 404)) {
       return { status: "denied" };
+    }
+    // SDK maps HTTP 401 → AuthenticationError; duck-type so we do not
+    // console.warn on every dead-cookie deep-link while C1 recovers.
+    if (
+      err instanceof Error
+      && (err as { status?: unknown }).status === 401
+    ) {
+      handleEmbedPassiveUnauthorized("bff");
+      return { status: "unavailable" };
     }
     console.warn("[teamver] project fetch failed", err);
     return { status: "unavailable" };
@@ -699,6 +734,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return true;
+  if (shouldSkipTeamverBffAuthCalls()) return false;
 
   const client = getDesignBffClient();
   if (!client) return false;
@@ -725,6 +761,10 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
       invalidateRegisteredIdsCache();
       if (workspaceId) invalidateFeAccessCache(trimmedId, workspaceId);
       return true;
+    }
+    if (isTeamverBffUnauthorizedError(err)) {
+      handleEmbedPassiveUnauthorized("bff");
+      return false;
     }
     console.warn("[teamver] project registry delete failed", err);
     return false;

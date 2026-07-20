@@ -76,7 +76,17 @@ vi.mock('../src/teamver/designBffClient', () => ({
   })),
   readCachedDesignAuthSessionMeta: vi.fn(() => ({ fetchedAt: 1_000 })),
   withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
   invalidateDesignAuthSessionCache: vi.fn(),
+}));
+
+vi.mock('../src/teamver/teamverEmbedSession', () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => true),
+}));
+
+vi.mock('../src/teamver/teamverEmbedPassiveAuth', () => ({
+  handleEmbedPassiveUnauthorized: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -93,6 +103,7 @@ beforeEach(() => {
   vi.mocked(designBffClient.withDesignBffCookieAuthRecovery).mockImplementation(
     (request: () => Promise<unknown>) => request(),
   );
+  vi.mocked(designBffClient.shouldSkipTeamverBffAuthCalls).mockReturnValue(false);
 });
 
 describe('Teamver project registry payload', () => {
@@ -725,6 +736,19 @@ describe('Teamver project registry delete', () => {
       workspaceId: 'ws1',
       ...designBffClient.TEAMVER_BFF_REQUEST_OPTIONS,
     });
+  });
+
+  it('skips DELETE while sticky auth decline is active', async () => {
+    const del = vi.fn(async () => undefined);
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(designBffClient.shouldSkipTeamverBffAuthCalls).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: { delete: del },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(unregisterTeamverProjectFromRegistryIfNeeded('p-del')).resolves.toBe(false);
+    expect(del).not.toHaveBeenCalled();
   });
 
   it('treats registry DELETE 404 as success (already removed)', async () => {

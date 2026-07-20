@@ -21,6 +21,7 @@ vi.mock("../../src/teamver/designBffClient", () => ({
   probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
   ensureDesignBffSessionAuthenticated: (...args: unknown[]) => ensureSessionMock(...args),
   clearDesignAuthRefreshDecline: (...args: unknown[]) => clearDeclineMock(...args),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
 }));
 
 const passiveUnauthorizedMock = vi.fn();
@@ -38,6 +39,7 @@ vi.mock("../../src/teamver/teamverProjectS3PrefixResolve", () => ({
 
 import { fetchTeamverDaemon } from "../../src/teamver/teamverDaemonHeaders";
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "../../src/teamver/designApiBase";
+import { isDesignAuthRefreshDeclined } from "../../src/teamver/designBffClient";
 
 const DAEMON_AUTH_RETRY_DELAY_MS = 400;
 
@@ -54,6 +56,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     passiveUnauthorizedMock.mockClear();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(isBootstrapAuthMode).mockReturnValue(true);
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -132,7 +135,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
   });
 
-  it("clears sticky decline when soft-retry fails but session probe is still alive", async () => {
+  it("does not clear sticky decline on probe-alive alone when daemon fetch stays 401", async () => {
     refreshMock.mockResolvedValue(false);
     probeSessionMock.mockResolvedValue(true);
     const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
@@ -147,8 +150,28 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     const resp = await pending;
 
     expect(resp.status).toBe(401);
-    expect(clearDeclineMock).toHaveBeenCalled();
-    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
+    // Probe-alive without a successful daemon retry must not unlock soft sticky.
+    expect(clearDeclineMock).not.toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+  });
+
+  it("skips recovery ladder when soft sticky already declined", async () => {
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(true);
+    refreshMock.mockResolvedValue(false);
+    const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/projects/project-1/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "deck.html", content: "<html></html>" }),
+    });
+
+    expect(resp.status).toBe(401);
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(probeSessionMock).not.toHaveBeenCalled();
+    expect(ensureSessionMock).not.toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
   });
 
   it("does not refresh on non-embed mode", async () => {

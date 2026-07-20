@@ -61,6 +61,11 @@ import {
   type EmbedBootstrapSessionSnapshot,
 } from "./embedBootstrapSession";
 
+export type TeamverEmbedRefreshResult =
+  | "authenticated"
+  | "unreachable"
+  | "not_authenticated";
+
 export type TeamverEmbedState = {
   loading: boolean;
   authenticated: boolean;
@@ -80,8 +85,14 @@ export type TeamverEmbedState = {
    * - `resetRefreshState` — also clear sticky 400/401 decline markers so a previously
    *   declined `/teamver-bff/auth/refresh` is retried. Reserve for explicit user
    *   retry (Banner button) or events that prove auth state changed.
+   * Returns a stable outcome so C1 backoff does not re-read a stale React ref
+   * before the matching setState commits.
    */
-  refresh: (options?: { force?: boolean; resetRefreshState?: boolean; silent?: boolean }) => Promise<void>;
+  refresh: (options?: {
+    force?: boolean;
+    resetRefreshState?: boolean;
+    silent?: boolean;
+  }) => Promise<TeamverEmbedRefreshResult>;
 };
 
 const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
@@ -136,6 +147,8 @@ const FOCUS_SESSION_REFRESH_MIN_INTERVAL_MS = 5 * 60_000;
  * user coming back to the tab does not have to hit refresh manually.
  */
 const SESSION_UNREACHABLE_BACKOFF_MS: readonly number[] = [5_000, 15_000, 60_000];
+/** After this many C1 attempts without recovery, stop probing and require login. */
+const SESSION_UNREACHABLE_MAX_ATTEMPTS = 5;
 
 function pickSessionUnreachableDelayMs(attempt: number): number {
   const clamped = Math.max(0, attempt);
@@ -252,10 +265,14 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     return recovery;
   }, []);
 
-  const refresh = useCallback(async (options?: { force?: boolean; resetRefreshState?: boolean; silent?: boolean }) => {
+  const refresh = useCallback(async (options?: {
+    force?: boolean;
+    resetRefreshState?: boolean;
+    silent?: boolean;
+  }): Promise<TeamverEmbedRefreshResult> => {
     if (!enabled || !isTeamverEmbedMode()) {
       setState(INITIAL);
-      return;
+      return "not_authenticated";
     }
 
     const force = options?.force ?? false;
@@ -311,16 +328,16 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
             loading: false,
             error: "not_authenticated",
           });
-          return;
+          return "not_authenticated";
         }
         if (hadPriorAuthenticatedUi) {
           // Keep unreachable so backoff retries continue.
           setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
-          return;
+          return "unreachable";
         }
         await clearTeamverEmbedSessionState();
         setState({ ...INITIAL, loading: false, error: "session_unreachable" });
-        return;
+        return "unreachable";
       }
 
       if (!session.authenticated) {
@@ -335,16 +352,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
             cookieHint,
           })
         ) {
-          if (silent && hadPriorAuthenticatedUi) {
-            setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
-            return;
-          }
           setState((prev) => ({
             ...prev,
             loading: false,
             error: "session_unreachable",
           }));
-          return;
+          return "unreachable";
         }
         // Definitive unauthenticated — drop the auth-return defer shield so
         // redirectToDesignLoginIfBffMissing is not a no-op.
@@ -361,7 +374,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           loading: false,
           error: "not_authenticated",
         });
-        return;
+        return "not_authenticated";
       }
 
       setTeamverEmbedSessionAuthenticated(true);
@@ -409,6 +422,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       setState({
         ...applySessionToEmbedState(session, activeWorkspaceId),
       });
+      return "authenticated";
     } catch (err) {
       if (isSessionExpiredError(err)) {
         lastCookieHintRef.current = readAuthCookieHint();
@@ -429,13 +443,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           }
           if (probeAlive) {
             resetDesignAuthRefreshState();
-            // Re-fetch full session so workspaces/user restore in-place. Any
-            // failure here falls back to the transient authenticated banner
-            // — subsequent auto-refresh (visibility/focus) will reconcile.
-            setTeamverEmbedSessionAuthenticated(true, { forceEvent: true });
             try {
               const revived = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
               if (revived?.authenticated) {
+                setTeamverEmbedSessionAuthenticated(true, { forceEvent: true });
                 const workspaces = normalizeWorkspaceList(revived.workspaces);
                 const activeWorkspaceId = await syncTeamverWorkspaceFromSession(revived, workspaces, {
                   preserveStoredWorkspace: true,
@@ -443,17 +454,20 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
                 setState({
                   ...applySessionToEmbedState(revived, activeWorkspaceId),
                 });
-                return;
+                return "authenticated";
               }
             } catch {
-              // fall through to transient authenticated banner
+              // fall through — probe said alive but session hydrate failed
             }
+            // Do NOT forceEvent / clear error: that reloads runtime-config and
+            // looks "signed in" while C1 must keep recovering.
             setState((prev) => ({
               ...prev,
               authenticated: true,
-              error: null,
+              loading: false,
+              error: "session_unreachable",
             }));
-            return;
+            return "unreachable";
           }
           prepareDesignAuthSessionReload();
           await clearTeamverEmbedSessionState();
@@ -466,28 +480,41 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
                   )
                 : null,
           });
-        } else {
-          // Silent probes must still enter passive recovery — otherwise
-          // session_unreachable backoff never escalates to login.
+          // Always converge React state — redirect may be deferred (active run),
+          // but C1 must stop hammering refresh/probe 401s.
+          setState({
+            ...INITIAL,
+            loading: false,
+            error: "not_authenticated",
+          });
+          return "not_authenticated";
+        }
+        // C1 silent retries already run fetchDesignAuthSession (refresh/probe).
+        // Skip a second passive ladder that would duplicate 401 spam; only
+        // surface the soft event when we are not already in the backoff loop.
+        const alreadyUnreachable = stateRef.current.error === "session_unreachable";
+        if (!silent || !alreadyUnreachable) {
           handleEmbedPassiveUnauthorized("bff");
+        }
+        if (hadEmbedSession() || stateRef.current.authenticated) {
           setState((prev) => ({
             ...prev,
-            error: hadEmbedSession() || prev.authenticated
-              ? "session_unreachable"
-              : "not_authenticated",
+            error: "session_unreachable",
           }));
+          return "unreachable";
         }
-        return;
+        setState((prev) => ({
+          ...prev,
+          error: "not_authenticated",
+        }));
+        return "not_authenticated";
       }
       if (hadEmbedSession() || stateRef.current.authenticated) {
-        if (silent) {
-          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
-          return;
-        }
         setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
-        return;
+        return "unreachable";
       }
       setState({ ...INITIAL, loading: false, error: "session_unreachable" });
+      return "unreachable";
     }
   }, [enabled]);
 
@@ -594,12 +621,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       }
 
       lastCookieHintRef.current = cookieHintNow;
-      // While unreachable, rely on the dedicated backoff timer — but still
-      // allow pageshow/bfcache and cookie-hint recoveries through the focus path.
+      // While unreachable, rely on the dedicated C1 backoff — including bfcache
+      // pageshow. Dead cookies + force focus refresh only duplicate 401 spam;
+      // cookie-hint / auth-return still bypass so real sign-in returns recover.
       if (
         stateRef.current.error === "session_unreachable"
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
-        && !focusSignals.pageshowPersisted
         && !focusSignals.cookieHintAppeared
       ) {
         return;
@@ -654,13 +681,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       });
     };
     const onPassiveAuthRecovered = () => {
-      setState((prev) => {
-        if (prev.error !== "session_unreachable") return prev;
-        return { ...prev, error: null, loading: false };
+      // Do not clear session_unreachable before refresh confirms auth — clearing
+      // early resets the C1 attempt counter and re-opens 5s refresh/probe spam.
+      void refresh({ force: true, silent: true }).then((outcome) => {
+        if (outcome !== "authenticated") return;
+        setState((prev) => {
+          if (prev.error !== "session_unreachable") return prev;
+          return { ...prev, error: null, loading: false };
+        });
       });
-      // Reconcile workspaces/user after cookie revive — silent so the bar
-      // does not flash loading while already showing the user chip.
-      void refresh({ force: true, silent: true });
     };
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, onPassiveAuthRequired);
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onPassiveAuthRecovered);
@@ -683,40 +712,82 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   // Important: chain the next attempt from the refresh `.finally` — do not
   // clear `session_unreachable` at refresh start (that used to reset the
   // attempt counter every 5s and spam /auth/refresh + session-probe 401).
+  // Cap attempts so a permanently dead cookie converges to not_authenticated.
   const sessionUnreachableAttemptRef = useRef(0);
+  const sessionUnreachableInFlightRef = useRef(false);
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
     if (state.error !== "session_unreachable") {
       sessionUnreachableAttemptRef.current = 0;
+      sessionUnreachableInFlightRef.current = false;
       return;
     }
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const scheduleRetry = () => {
+    const finalizeDeadSession = async () => {
+      consumeTeamverAuthReturnPending();
+      prepareDesignAuthSessionReload();
+      await clearTeamverEmbedSessionState();
+      redirectToDesignLoginIfBffMissing({
+        returnTo: resolveEmbedAuthReturnPath(
+          window.location.pathname,
+          window.location.search,
+        ),
+      });
+      if (!cancelled) {
+        setState({
+          ...INITIAL,
+          loading: false,
+          error: "not_authenticated",
+        });
+      }
+    };
+
+    const scheduleRetry = (options?: { immediate?: boolean }) => {
       if (cancelled) return;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (sessionUnreachableInFlightRef.current) return;
       const attempt = sessionUnreachableAttemptRef.current;
-      const delay = pickSessionUnreachableDelayMs(attempt);
-      sessionUnreachableAttemptRef.current = attempt + 1;
+      if (attempt >= SESSION_UNREACHABLE_MAX_ATTEMPTS) {
+        void finalizeDeadSession();
+        return;
+      }
+      const delay = options?.immediate ? 0 : pickSessionUnreachableDelayMs(attempt);
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (cancelled) return;
-        // First two attempts stay silent; escalate so passive recovery / login
-        // can run if the session is truly gone. After repeated failures, clear
-        // sticky refresh-decline so HA cookie revive can POST /auth/refresh again.
-        // Only reset sticky once (attempt === 3); further failures escalate via
-        // shouldClearEmbedSessionOnUnauthenticated → not_authenticated.
-        const escalate = attempt >= 2;
+        if (sessionUnreachableInFlightRef.current) return;
+        // Increment only when the attempt actually starts — visibility
+        // reschedules must not burn the max-attempt budget.
+        const startedAttempt = sessionUnreachableAttemptRef.current;
+        if (startedAttempt >= SESSION_UNREACHABLE_MAX_ATTEMPTS) {
+          void finalizeDeadSession();
+          return;
+        }
+        sessionUnreachableAttemptRef.current = startedAttempt + 1;
+        // First two attempts stay silent; escalate so login can run if the
+        // session is truly gone. attempt === 3 clears sticky once for HA revive.
+        const escalate = startedAttempt >= 2;
+        sessionUnreachableInFlightRef.current = true;
         void refresh({
           force: true,
           silent: !escalate,
-          resetRefreshState: attempt === 3,
-        }).finally(() => {
+          resetRefreshState: startedAttempt === 3,
+        }).then((outcome) => {
+          // Clear in-flight before chaining — otherwise scheduleRetry no-ops
+          // and C1 stops after the first backoff tick.
+          sessionUnreachableInFlightRef.current = false;
           if (cancelled) return;
-          if (stateRef.current.error === "session_unreachable") {
+          if (outcome === "unreachable") {
             scheduleRetry();
           }
+        }, () => {
+          sessionUnreachableInFlightRef.current = false;
         });
       }, delay);
     };
@@ -726,13 +797,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     const onVisibilityChange = () => {
       if (cancelled) return;
       if (document.visibilityState !== "visible") return;
-      // Tab returned to foreground during backoff — attempt immediately
-      // rather than waiting out the timer to feel responsive.
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-        retryTimer = null;
-      }
-      scheduleRetry();
+      // Tab returned during in-flight recovery — do not stack another refresh.
+      if (sessionUnreachableInFlightRef.current) return;
+      // Reschedule immediately with the same attempt index (not yet consumed).
+      scheduleRetry({ immediate: true });
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 

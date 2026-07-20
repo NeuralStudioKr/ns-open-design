@@ -1,4 +1,4 @@
-import { clearTeamverRuntimeConfigAuthBlock, getDesignBffClient } from "./designBffClient";
+import { clearTeamverRuntimeConfigAuthBlock, getDesignBffClient, isDesignAuthRefreshDeclined } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { clearEmbedAuthSnapshot } from "./embedAuthSnapshot";
 import { clearTeamverEmbedListCaches } from "./teamverEmbedListCaches";
@@ -33,7 +33,9 @@ function ensureCrossTabRelayInstalled(): void {
     embedSessionAuthenticated = nextAuthenticated;
     // Mirror setTeamverEmbedSessionAuthenticated(true): peer login must lift
     // `/runtime-config` 401 backoff without re-broadcasting (avoid loop).
-    clearTeamverRuntimeConfigAuthBlock();
+    if (!isDesignAuthRefreshDeclined()) {
+      clearTeamverRuntimeConfigAuthBlock();
+    }
     if (changed) {
       window.dispatchEvent(
         new CustomEvent<TeamverEmbedSessionChangedDetail>(
@@ -100,7 +102,9 @@ export function setTeamverEmbedSessionAuthenticated(
   embedSessionAuthenticated = next;
   // Re-allow `/runtime-config` after re-login even when the flag was already true
   // (stale true + dead cookie → 401 backoff → fresh probe confirms auth).
-  if (next) {
+  // Skip while sticky decline still says the cookie is dead — otherwise a
+  // stale authenticated=true flip re-opens runtime-config 401 spam.
+  if (next && !isDesignAuthRefreshDeclined()) {
     clearTeamverRuntimeConfigAuthBlock();
   }
   if (changed || options?.forceEvent) {

@@ -2,9 +2,7 @@ import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
 import {
   fetchDesignAuthSession,
-  isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
-  probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
 import { recoverStaleDriveWorkspace } from "./driveWorkspaceRecovery";
@@ -213,23 +211,17 @@ export function isDriveHaSessionExpiredBody(detail: unknown): boolean {
 }
 
 async function recoverDriveAuthSession(): Promise<boolean> {
-  // Hard sticky: never clear / never POST refresh (deleted account spam),
-  // but a live probe means Drive can proceed with the existing cookie.
-  if (isDesignAuthRefreshDeclineHard()) {
-    if (await probeDesignBffSessionAuthenticated()) return true;
-    try {
-      const session = await fetchDesignAuthSession({ force: true });
-      return Boolean(session?.authenticated);
-    } catch {
-      return false;
-    }
+  // Soft or hard sticky: only the shared refresh ladder (survival cooldown +
+  // soft force-POST). Direct probe/force `/auth/session` here bypasses §17
+  // cooldowns and re-opens ensure storms on every Drive 401.
+  if (isDesignAuthRefreshDeclined()) {
+    return refreshDesignAuthCookie();
   }
 
   const refreshed = await refreshDesignAuthCookie();
   if (refreshed) return true;
 
-  // Soft sticky / sibling Set-Cookie: force one session read without resetRefreshState
-  // (hard decline stays locked; soft may already be cleared by refresh probe).
+  // Sibling Set-Cookie may land without sticky — one force session read.
   try {
     const session = await fetchDesignAuthSession({ force: true });
     return Boolean(session?.authenticated);

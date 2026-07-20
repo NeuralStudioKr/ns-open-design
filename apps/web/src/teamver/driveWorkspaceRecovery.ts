@@ -1,7 +1,7 @@
 import {
-  clearDesignAuthRefreshDecline,
   fetchDesignAuthSession,
-  isDesignAuthRefreshDeclineHard,
+  isDesignAuthRefreshDeclined,
+  refreshDesignAuthCookie,
 } from "./designBffClient";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 
@@ -38,10 +38,11 @@ export async function recoverStaleDriveWorkspace(
 ): Promise<string | null> {
   const current = (currentWorkspaceId ?? "").trim() || null;
 
-  // ACL recovery must not unlock hard sticky (deleted-account 400 spam), but may
-  // clear a soft sticky so ensure/session can run after HA blips.
-  if (!isDesignAuthRefreshDeclineHard()) {
-    clearDesignAuthRefreshDecline();
+  // Soft/hard sticky: do not clear decline up-front (resets §17 cooldowns).
+  // Only continue after the shared survival/soft ladder revives cookies.
+  if (isDesignAuthRefreshDeclined()) {
+    const revived = await refreshDesignAuthCookie();
+    if (!revived) return null;
   }
 
   let session;

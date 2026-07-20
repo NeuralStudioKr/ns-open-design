@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const batchPostMock = vi.fn();
 const listOutputsMock = vi.fn();
-const isEmbedMock = vi.fn(() => true);
+const { isEmbedMock } = vi.hoisted(() => ({
+  isEmbedMock: vi.fn(() => true),
+}));
 
 vi.mock('../src/teamver/designApiBase', () => ({
   isTeamverEmbedMode: () => isEmbedMock(),
@@ -17,6 +19,9 @@ vi.mock('../src/teamver/designBffClient', () => ({
     },
     workspaceStore: { get: vi.fn(async () => 'ws-1') },
   })),
+  withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
   // 803f70262 spreads `TEAMVER_BFF_REQUEST_OPTIONS` into every BFF call.
   // Batch/list-outputs helpers pull it from this mock, so it must be defined.
   TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true, skipAuthRecovery: true },

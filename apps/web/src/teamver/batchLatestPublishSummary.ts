@@ -2,6 +2,7 @@ import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspac
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from "./designApiBase";
@@ -43,6 +44,8 @@ export async function batchFetchLatestPublishSummaries(
   projectIds: string[],
 ): Promise<BatchFetchLatestPublishResult> {
   if (!isTeamverEmbedMode()) return { status: "skipped" };
+  // Dead cookie / sticky: home chip batch must not re-enter cookie recovery.
+  if (shouldSkipTeamverBffAuthCalls()) return { status: "skipped" };
 
   const ids = [...new Set(projectIds.map((id) => id.trim()).filter(Boolean))].slice(
     0,

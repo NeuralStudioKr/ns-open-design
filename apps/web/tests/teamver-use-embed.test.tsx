@@ -498,7 +498,54 @@ describe("useTeamverEmbed", () => {
     expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalled();
   });
 
-  it("keeps session_unreachable visibility return on backoff instead of immediate auth probing", async () => {
+  it("gives up session_unreachable after max C1 attempts", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+      vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+      vi.mocked(designBffClient.fetchDesignAuthSession)
+        .mockResolvedValueOnce({
+          authenticated: true,
+          user: { userId: "user-1", email: "u1@example.com" },
+          defaultWorkspaceId: "WS-1",
+          workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+        })
+        .mockResolvedValue(null);
+
+      const { result } = renderHook(() => useTeamverEmbed(true));
+
+      await vi.waitFor(() => {
+        expect(result.current.authenticated).toBe(true);
+      });
+
+      await act(async () => {
+        await result.current.refresh({ force: true });
+      });
+      expect(result.current.error).toBe("session_unreachable");
+
+      // 5s + 15s + 60s×N covers silent → escalate → reset → max-attempt finalize.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+        await vi.advanceTimersByTimeAsync(15_000);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+
+      await vi.waitFor(() => {
+        expect(result.current.error).toBe("not_authenticated");
+      });
+      expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps focus-path visibility from double-probing while C1 owns backoff", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       Object.defineProperty(document, "visibilityState", {
@@ -533,12 +580,14 @@ describe("useTeamverEmbed", () => {
       expect(result.current.error).toBe("session_unreachable");
       const callsAfterFail = vi.mocked(designBffClient.fetchDesignAuthSession).mock.calls.length;
 
+      // Focus-path must not force-refresh; C1 may run one immediate attempt.
       document.dispatchEvent(new Event("visibilitychange"));
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.advanceTimersByTimeAsync(0);
       });
-
-      expect(vi.mocked(designBffClient.fetchDesignAuthSession)).toHaveBeenCalledTimes(callsAfterFail);
+      const callsAfterVisibility = vi.mocked(designBffClient.fetchDesignAuthSession).mock.calls.length;
+      expect(callsAfterVisibility).toBeLessThanOrEqual(callsAfterFail + 1);
+      expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(16_000);

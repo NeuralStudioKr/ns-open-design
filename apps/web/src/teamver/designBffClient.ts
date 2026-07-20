@@ -332,6 +332,17 @@ let authRefreshPostSuppressedUntil = 0;
  */
 const DESIGN_BFF_SOFT_FORCE_POST_COOLDOWN_MS = 15_000;
 let authRefreshSoftForcePostAt = 0;
+/**
+ * After soft/hard sticky, survival probe/ensure ladders must not re-run on every
+ * C1/passive/daemon 401 — that spams GET /auth/session-probe. Soft `mark…Declined`
+ * seeds attempts=1 (decline-time ladder already probed); hard leaves attempts=0
+ * so the first `tryHardStickySurvival` still probes. Later calls within this
+ * cooldown skip the ladder (soft may still force-POST under its own cooldown).
+ */
+const DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS = 60_000;
+let authRefreshStickySurvivalProbeAt = 0;
+let authRefreshStickySurvivalLastOk = false;
+let authRefreshStickySurvivalAttempts = 0;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
@@ -343,6 +354,9 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   inFlightAuthRefresh = null;
   authRefreshPostSuppressedUntil = 0;
   authRefreshSoftForcePostAt = 0;
+  authRefreshStickySurvivalProbeAt = 0;
+  authRefreshStickySurvivalLastOk = false;
+  authRefreshStickySurvivalAttempts = 0;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -366,6 +380,11 @@ function setAuthRecoveryRefreshActive(active: boolean): void {
 function resetDesignAuthRefreshDeclined(): void {
   authRefreshDeclinedForSession = false;
   authRefreshDeclineKind = "none";
+  authRefreshStickySurvivalProbeAt = 0;
+  authRefreshStickySurvivalLastOk = false;
+  authRefreshStickySurvivalAttempts = 0;
+  // Sticky clear means a recovery path may succeed — allow runtime-config again.
+  runtimeConfigAuthBlocked = false;
 }
 
 function noteAuthRefreshPostSuppressed(): void {
@@ -375,6 +394,27 @@ function noteAuthRefreshPostSuppressed(): void {
 function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   authRefreshDeclinedForSession = true;
   authRefreshDeclineKind = kind;
+  // Dead refresh credentials: never probe nginx-gated runtime-config until
+  // sticky is cleared. Do not wait for a 401 on /runtime-config itself.
+  runtimeConfigAuthBlocked = true;
+  if (kind === "soft") {
+    // Soft 401 path already ran probe×2+ensure (+ the failing POST). Seed both
+    // survival and force-POST cooldowns so the next soft recovery (daemon,
+    // registry, Drive, passive) does not immediately re-spam refresh/probe.
+    authRefreshStickySurvivalProbeAt = Date.now();
+    authRefreshStickySurvivalLastOk = false;
+    authRefreshStickySurvivalAttempts = 1;
+    authRefreshSoftForcePostAt = Date.now();
+  }
+  // Hard 400: no prior probe ladder — leave survival counters at 0 so the
+  // first tryHardStickySurvival can still detect a sibling Set-Cookie.
+}
+
+/** True when sticky decline or logged-out memory should skip BFF/daemon auth ladders. */
+export function shouldSkipTeamverBffAuthCalls(): boolean {
+  if (authRefreshDeclinedForSession) return true;
+  if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) return true;
+  return false;
 }
 
 /** Public clear for daemon/Drive soft-retry recovery paths. */
@@ -414,6 +454,22 @@ export async function withDesignBffCookieAuthRecovery<T>(
   } catch (err) {
     if (!isDesignBffUnauthorizedStatus(err)) throw err;
 
+    // Parallel project/registry/Drive 401s after soft/hard sticky must not each
+    // re-run ensure + session-probe (DevTools 401 storms). Soft recovery still
+    // runs under its own cooldown inside refreshDesignAuthCookie.
+    if (authRefreshDeclinedForSession) {
+      const revived = await refreshDesignAuthCookie();
+      if (revived) {
+        try {
+          return await request();
+        } catch (postReviveErr) {
+          if (!isDesignBffUnauthorizedStatus(postReviveErr)) throw postReviveErr;
+          throw postReviveErr;
+        }
+      }
+      throw err;
+    }
+
     const refreshed = await refreshDesignAuthCookie();
     if (refreshed) {
       try {
@@ -443,9 +499,9 @@ export async function withDesignBffCookieAuthRecovery<T>(
       }
     }
 
-    // Refresh declined (soft-sticky or bare-attempt guard). Wait for a sibling
-    // Set-Cookie and retry once; if still 401, ensure /auth/session to try
-    // reviving absolute-expired access on the main response.
+    // Refresh failed (often soft-sticky now). One delayed sibling retry — HA
+    // winner may have Set-Cookie'd while we probed. If soft sticky owns
+    // recovery, do not call ensure again (already ran inside refresh).
     await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
     try {
       const recovered = await request();
@@ -453,9 +509,8 @@ export async function withDesignBffCookieAuthRecovery<T>(
       return recovered;
     } catch (retryErr) {
       if (!isDesignBffUnauthorizedStatus(retryErr)) throw retryErr;
-      // Access-expired case: session-probe alone cannot revive access, but
-      // ensure_bff_session on GET /auth/session can Set-Cookie a fresh access
-      // on the main response. Try that before surfacing a hard 401 to callers.
+      if (authRefreshDeclinedForSession) throw retryErr;
+      // Access-expired case (no sticky yet): ensure /auth/session can Set-Cookie.
       if (await ensureDesignBffSessionAuthenticated()) {
         resetDesignAuthRefreshDeclined();
         noteAuthRefreshPostSuppressed();
@@ -465,12 +520,6 @@ export async function withDesignBffCookieAuthRecovery<T>(
           if (!isDesignBffUnauthorizedStatus(postEnsureErr)) throw postEnsureErr;
           throw postEnsureErr;
         }
-      }
-      // ensure failed too. If /auth/session-probe reports alive (sibling
-      // Set-Cookie in flight, or BFF session is valid but this particular
-      // BFF call hit a stale acl), clear sticky so later calls recover.
-      if (await probeDesignBffSessionAuthenticated()) {
-        resetDesignAuthRefreshDeclined();
       }
       throw retryErr;
     }
@@ -490,6 +539,9 @@ export async function refreshTeamverEmbedAuthBeforeMutating(options?: {
 }): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (!isBootstrapAuthMode() && !isTeamverEmbedSessionAuthenticated()) return;
+  // Soft/hard sticky: C1 / explicit retry owns recovery — do not POST from
+  // every long-turn mutating daemon call.
+  if (authRefreshDeclinedForSession) return;
   const minAgeMs = options?.minAgeMs ?? TEAMVER_EMBED_PROACTIVE_AUTH_REFRESH_MS;
   const startedAt = options?.activityStartedAt;
   if (startedAt != null && Date.now() - startedAt < minAgeMs) return;
@@ -497,23 +549,37 @@ export async function refreshTeamverEmbedAuthBeforeMutating(options?: {
 }
 
 async function trySoftStickyRecovery(): Promise<boolean> {
-  // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
-  if (await probeDesignBffSessionAuthenticated()) {
-    resetDesignAuthRefreshDeclined();
-    return true;
-  }
-  await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-  if (await probeDesignBffSessionAuthenticated()) {
-    resetDesignAuthRefreshDeclined();
-    return true;
-  }
+  authRefreshStickySurvivalAttempts += 1;
+  const skipProbeLadder =
+    authRefreshStickySurvivalAttempts > 1
+    && Date.now() - authRefreshStickySurvivalProbeAt
+      < DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS
+    && !authRefreshStickySurvivalLastOk;
 
-  // 2) ensure via GET /auth/session — can refresh + Set-Cookie on the main response.
-  //    session-probe alone cannot revive absolute-expired access.
-  if (await ensureDesignBffSessionAuthenticated()) {
-    resetDesignAuthRefreshDeclined();
-    noteAuthRefreshPostSuppressed();
-    return true;
+  if (!skipProbeLadder) {
+    authRefreshStickySurvivalProbeAt = Date.now();
+    // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
+    if (await probeDesignBffSessionAuthenticated()) {
+      authRefreshStickySurvivalLastOk = true;
+      resetDesignAuthRefreshDeclined();
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+    if (await probeDesignBffSessionAuthenticated()) {
+      authRefreshStickySurvivalLastOk = true;
+      resetDesignAuthRefreshDeclined();
+      return true;
+    }
+
+    // 2) ensure via GET /auth/session — can refresh + Set-Cookie on the main response.
+    //    session-probe alone cannot revive absolute-expired access.
+    if (await ensureDesignBffSessionAuthenticated()) {
+      authRefreshStickySurvivalLastOk = true;
+      resetDesignAuthRefreshDeclined();
+      noteAuthRefreshPostSuppressed();
+      return true;
+    }
+    authRefreshStickySurvivalLastOk = false;
   }
 
   // 3) One POST /auth/refresh under cooldown — required when nginx auth_request
@@ -525,15 +591,42 @@ async function trySoftStickyRecovery(): Promise<boolean> {
   authRefreshSoftForcePostAt = now;
   const bffResult = await postAuthRefreshCoordinated(resolveDesignBffRefreshUrl());
   if (bffResult.ok) {
+    authRefreshStickySurvivalLastOk = true;
     resetDesignAuthRefreshDeclined();
     authRefreshPostSuppressedUntil = 0;
     return true;
   }
   if (await ensureDesignBffSessionAuthenticated()) {
+    authRefreshStickySurvivalLastOk = true;
     resetDesignAuthRefreshDeclined();
     noteAuthRefreshPostSuppressed();
     return true;
   }
+  // Force-POST already failed and ensure just failed — do not leave a stale
+  // "try ensure again" expectation for the next 15s window.
+  authRefreshStickySurvivalLastOk = false;
+  return false;
+}
+
+async function tryHardStickySurvival(): Promise<boolean> {
+  authRefreshStickySurvivalAttempts += 1;
+  const skipProbe =
+    authRefreshStickySurvivalAttempts > 1
+    && Date.now() - authRefreshStickySurvivalProbeAt
+      < DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS
+    && !authRefreshStickySurvivalLastOk;
+  if (skipProbe) return false;
+
+  authRefreshStickySurvivalProbeAt = Date.now();
+  if (await probeDesignBffSessionAuthenticated()) {
+    authRefreshStickySurvivalLastOk = true;
+    return true;
+  }
+  if (await ensureDesignBffSessionAuthenticated()) {
+    authRefreshStickySurvivalLastOk = true;
+    return true;
+  }
+  authRefreshStickySurvivalLastOk = false;
   return false;
 }
 
@@ -548,9 +641,7 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     // without clearing hard until explicit reset (avoids 400 spam).
     if (authRefreshDeclinedForSession) {
       if (authRefreshDeclineKind === "hard") {
-        if (await probeDesignBffSessionAuthenticated()) return true;
-        if (await ensureDesignBffSessionAuthenticated()) return true;
-        return false;
+        return await tryHardStickySurvival();
       }
       return await trySoftStickyRecovery();
     }
@@ -873,6 +964,11 @@ export function clearTeamverRuntimeConfigAuthBlock(): void {
   runtimeConfigAuthBlocked = false;
 }
 
+/** True after /runtime-config 401 or sticky refresh decline. */
+export function isTeamverRuntimeConfigAuthBlocked(): boolean {
+  return runtimeConfigAuthBlocked || isDesignAuthRefreshDeclined();
+}
+
 /** @internal vitest */
 export function resetTeamverRuntimeConfigCacheForTests(): void {
   runtimeConfigInflight = null;
@@ -890,8 +986,10 @@ export async function fetchTeamverRuntimeConfig(
     return null;
   }
 
-  // 401 backoff: cookie expired while UI still thought it was signed in.
-  if (!force && runtimeConfigAuthBlocked) {
+  // Dead cookie / sticky decline: never hit nginx or cookie recovery ladders
+  // (including force=true from App session-changed) until sticky is cleared by
+  // a successful auth path — otherwise workspace/re-login spam keeps 401ing.
+  if (runtimeConfigAuthBlocked || isDesignAuthRefreshDeclined()) {
     return cachedRuntimeConfig?.value ?? null;
   }
 
@@ -911,7 +1009,8 @@ export async function fetchTeamverRuntimeConfig(
     try {
       // Opportunistic (visibility) reloads: one GET only — auth recovery would
       // spam /runtime-config + /auth/refresh 401s when the cookie is dead.
-      // force=true (boot / workspace / re-login) keeps HA cookie recovery.
+      // force=true (boot / workspace / re-login) keeps HA cookie recovery only
+      // when sticky decline is clear (gated above).
       const value = force
         ? await withDesignBffCookieAuthRecovery(() =>
             client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
@@ -956,6 +1055,8 @@ export type TeamverWorkspacePermissions = {
 export async function fetchTeamverWorkspacePermissions(
   workspaceId: string,
 ): Promise<TeamverWorkspacePermissions | null> {
+  // Sticky / logged-out memory: permissions polls must not 401-storm.
+  if (shouldSkipTeamverBffAuthCalls()) return null;
   const client = getDesignBffClient();
   if (!client) return null;
   const trimmed = workspaceId.trim();

@@ -1,8 +1,9 @@
-import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
+import { isTeamverEmbedMode } from "./designApiBase";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   clearDesignAuthRefreshDecline,
   ensureDesignBffSessionAuthenticated,
+  isDesignAuthRefreshDeclined,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
@@ -108,7 +109,13 @@ function daemonGetInflightKey(
 
 function embedDaemonAuthRecoveryEnabled(): boolean {
   if (!isTeamverEmbedMode()) return false;
-  return isBootstrapAuthMode() || isTeamverEmbedSessionAuthenticated();
+  // Only recover while the embed UI believes it is signed in. Bootstrap alone
+  // used to keep probing refresh/session after logout / dead-cookie clear.
+  if (!isTeamverEmbedSessionAuthenticated()) return false;
+  // Soft/hard sticky: C1 + banner own recovery. Every daemon /api/* 401 used
+  // to re-enter refresh → ensure → session-probe (DevTools storms).
+  if (isDesignAuthRefreshDeclined()) return false;
+  return true;
 }
 
 function shouldRecoverEmbedDaemonUnauthorized(
@@ -123,7 +130,13 @@ function shouldRecoverEmbedDaemonUnauthorized(
 }
 
 function noteEmbedDaemonUnauthorized(input: RequestInfo | URL, resp: Response): void {
-  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) return;
+  // Notify even when recovery is disabled (hard sticky / logged-out memory) so
+  // the session banner can still offer "다시 시도". Recovery itself stays gated
+  // by embedDaemonAuthRecoveryEnabled inside fetchDaemonWithEmbedAuthRecovery.
+  if (resp.status !== 401) return;
+  if (!isTeamverEmbedMode()) return;
+  if (!isLikelyDaemonApiRequest(input)) return;
+  if (!isTeamverEmbedSessionAuthenticated()) return;
   handleEmbedPassiveUnauthorized("daemon");
 }
 
@@ -145,6 +158,8 @@ async function fetchDaemonWithEmbedAuthRecovery(
 ): Promise<Response> {
   let resp = await fetch(input, init);
   if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    // Hard sticky / unauthenticated: still surface the banner without probing.
+    noteEmbedDaemonUnauthorized(input, resp);
     return resp;
   }
 
@@ -155,6 +170,13 @@ async function fetchDaemonWithEmbedAuthRecovery(
       clearDesignAuthRefreshDecline();
       return resp;
     }
+  }
+
+  // Soft sticky may have been marked during refresh — stop here so we do not
+  // stack ensure/probe on top of the ladder that just declined.
+  if (isDesignAuthRefreshDeclined()) {
+    noteEmbedDaemonUnauthorized(input, resp);
+    return resp;
   }
 
   // Another tab/node may have rotated cookies while this request saw 401.
@@ -175,13 +197,16 @@ async function fetchDaemonWithEmbedAuthRecovery(
       return resp;
     }
   }
-  // Ensure failed. If session-probe still says alive (sibling in-flight),
-  // unlock sticky decline so the next call can recover instead of escalating.
+  // Ensure failed. Only clear sticky when the next daemon fetch would succeed;
+  // probe-alive alone used to unlock soft sticky and re-open POST storms.
   if (await probeDesignBffSessionAuthenticated()) {
-    clearDesignAuthRefreshDecline();
-  } else {
-    noteEmbedDaemonUnauthorized(input, resp);
+    resp = await fetch(input, init);
+    if (resp.status !== 401) {
+      clearDesignAuthRefreshDecline();
+      return resp;
+    }
   }
+  noteEmbedDaemonUnauthorized(input, resp);
   return resp;
 }
 

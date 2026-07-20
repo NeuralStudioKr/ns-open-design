@@ -2,6 +2,7 @@ import { resolveActiveTeamverWorkspaceIdForEmbed } from "./activeTeamverWorkspac
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
@@ -26,6 +27,7 @@ export async function listTeamverProjectOutputs(
   projectId: string,
 ): Promise<TeamverProjectOutputsResult | null> {
   if (!isTeamverEmbedMode()) return null;
+  if (shouldSkipTeamverBffAuthCalls()) return null;
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return null;

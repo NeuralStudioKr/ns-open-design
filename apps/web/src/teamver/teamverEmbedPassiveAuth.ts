@@ -5,6 +5,7 @@ import { hasTeamverEmbedActiveWork } from "./teamverEmbedActiveWork";
 import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
 import {
   ensureDesignBffSessionAuthenticated,
+  isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
@@ -104,6 +105,16 @@ function schedulePassiveLoginRedirect(): void {
     // Re-check recovery + session right before leaving — a later 401 may have
     // recovered, or a concurrent call may still be refreshing.
     void (async () => {
+      // Soft/hard sticky: do not re-run probe×2+ensure here — C1 / banner own it.
+      if (isDesignAuthRefreshDeclined()) {
+        if (isTeamverEmbedSessionAuthenticated()) {
+          dispatchPassiveAuthRequired("bff");
+          return;
+        }
+        prepareDesignAuthSessionReload();
+        redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
+        return;
+      }
       if (await tryPassiveAuthRecovery()) {
         notePassiveRecoverySuccess();
         return;
@@ -152,6 +163,9 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
       try {
         const refreshed = await refreshDesignAuthCookie();
         if (refreshed) return true;
+        // Refresh just soft/hard-sticky declined — do not stack ensure/probe
+        // (C1 owns backoff; banner already surfaces via required event).
+        if (isDesignAuthRefreshDeclined()) return false;
         // POST /auth/refresh can 401 while ensure can still revive access.
         if (await ensureDesignBffSessionAuthenticated()) return true;
         return await probeDesignBffSessionAuthenticated();
@@ -175,6 +189,13 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
  */
 export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
   if (!isTeamverEmbedMode() || !isBootstrapAuthMode()) return;
+  // Soft/hard sticky already ran the survival ladder recently — do not start
+  // another refresh/probe burst from every parallel 401 waiter. Surface the
+  // soft event so the banner can show "다시 시도".
+  if (isDesignAuthRefreshDeclined()) {
+    dispatchPassiveAuthRequired(reason);
+    return;
+  }
   void (async () => {
     const recovered = await tryPassiveAuthRecovery();
     if (recovered) {

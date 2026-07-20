@@ -31,6 +31,7 @@ vi.mock('../src/teamver/designBffClient', () => ({
   getDesignBffClient: vi.fn(() => null),
   fetchDesignAuthSession: vi.fn(async () => null),
   readCachedDesignAuthSessionMeta: vi.fn(() => null),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
 }));
 
 describe('activeTeamverWorkspace', () => {
@@ -39,6 +40,7 @@ describe('activeTeamverWorkspace', () => {
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue(null);
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue(null);
     vi.mocked(designBffClient.readCachedDesignAuthSessionMeta).mockReturnValue(null);
+    vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(false);
     storeGetMock.mockReset();
     storeGetMock.mockResolvedValue(null);
     localStorage.clear();
@@ -116,6 +118,20 @@ describe('activeTeamverWorkspace', () => {
 
     await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-persisted');
     expect(vi.mocked(syncTeamverWorkspaceFromSession)).not.toHaveBeenCalled();
+  });
+
+  it('skips session fetch while sticky decline is active', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    storeGetMock.mockResolvedValue('ws-sticky');
+    vi.mocked(designBffClient.isDesignAuthRefreshDeclined).mockReturnValue(true);
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: storeGetMock },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    const fetchSession = vi.mocked(designBffClient.fetchDesignAuthSession);
+    const callsBefore = fetchSession.mock.calls.length;
+    await expect(resolveActiveTeamverWorkspaceId()).resolves.toBe('ws-sticky');
+    expect(fetchSession.mock.calls.length).toBe(callsBefore);
   });
 
   it('throws teamver_workspace_required when unresolved', async () => {

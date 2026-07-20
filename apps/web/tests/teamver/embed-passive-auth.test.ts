@@ -43,6 +43,7 @@ vi.mock("../../src/teamver/designBffClient", () => ({
   prepareDesignAuthSessionReload: () => prepareReloadMock(),
   probeDesignBffSessionAuthenticated: () => probeSessionMock(),
   ensureDesignBffSessionAuthenticated: () => ensureSessionMock(),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
 }));
 
 const redirectMock = vi.fn();
