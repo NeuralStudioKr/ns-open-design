@@ -995,4 +995,51 @@ describe('structured agent stream fixtures', () => {
       stopReason: null,
     });
   });
+
+  it('surfaces Claude Code is_error result frames as terminal errors', () => {
+    const events: unknown[] = [];
+    const handler = createClaudeStreamHandler((event: unknown) => events.push(event));
+    handler.feed(`${JSON.stringify({
+      type: 'result',
+      is_error: true,
+      subtype: 'error_during_execution',
+      errors: ['model execution failed'],
+      usage: { input_tokens: 12, output_tokens: 3 },
+      stop_reason: null,
+    })}\n`);
+    handler.flush();
+
+    expect(events).toContainEqual({
+      type: 'usage',
+      usage: { input_tokens: 12, output_tokens: 3 },
+      costUsd: null,
+      durationMs: null,
+      stopReason: null,
+      isError: true,
+    });
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'model execution failed',
+      code: 'error_during_execution',
+      terminal: true,
+    });
+  });
+
+  it('does not emit main-turn end for Claude Task sub-agent assistant wrappers', () => {
+    const events: unknown[] = [];
+    const handler = createClaudeStreamHandler((event: unknown) => events.push(event));
+    handler.feed(`${JSON.stringify({
+      type: 'assistant',
+      parent_tool_use_id: 'toolu_parent',
+      message: {
+        id: 'msg-subagent',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'sub-agent note' }],
+      },
+    })}\n`);
+    handler.flush();
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'sub-agent note' });
+    expect(events).not.toContainEqual({ type: 'turn_end', stopReason: 'end_turn' });
+  });
 });

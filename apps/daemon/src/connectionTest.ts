@@ -1714,7 +1714,11 @@ function attachAgentStreamHandlers(
   child.stdout?.setEncoding('utf8');
   child.stderr?.setEncoding('utf8');
   if (def.streamFormat === 'claude-stream-json') {
-    const claude = createClaudeStreamHandler((ev: unknown) => send('agent', ev));
+    const claude = createClaudeStreamHandler((ev: unknown) => {
+      const data = (ev ?? {}) as { type?: unknown; terminal?: unknown };
+      if (data.type === 'error' && data.terminal === true) return;
+      send('agent', ev);
+    });
     child.stdout?.on('data', (chunk: string) => {
       appendRawStdout?.(chunk);
       claude.feed(chunk);

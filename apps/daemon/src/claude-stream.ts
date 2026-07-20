@@ -475,7 +475,7 @@ export function createClaudeStreamHandler(
       // assistant message has been emitted, so the daemon's stdin-close
       // handler sees the final `stop_reason` before deciding whether to
       // close stream-json input stdin.
-      if (stopReason) {
+      if (stopReason && obj.parent_tool_use_id == null) {
         onEvent({ type: 'turn_end', stopReason });
         if (stopReason !== 'tool_use') {
           recentWriteContents.length = 0;
@@ -512,6 +512,7 @@ export function createClaudeStreamHandler(
     }
 
     if (obj.type === 'result') {
+      const isError = obj.is_error === true;
       let usage: Record<string, unknown> | null =
         isRecord(obj.usage) ? obj.usage : null;
       if (!usage && isRecord(obj.stats)) {
@@ -537,9 +538,30 @@ export function createClaudeStreamHandler(
               ? obj.stats.duration_ms
               : null,
         stopReason: obj.stop_reason ?? null,
+        ...(isError ? { isError: true } : {}),
       });
+      if (isError) {
+        onEvent({
+          type: 'error',
+          message: errorResultMessage(obj),
+          code: typeof obj.subtype === 'string' && obj.subtype ? obj.subtype : 'result_error',
+          terminal: true,
+        });
+      }
       return;
     }
+  }
+
+  function errorResultMessage(obj: Record<string, unknown>): string {
+    if (Array.isArray(obj.errors)) {
+      const parts = obj.errors.filter(
+        (entry): entry is string => typeof entry === 'string' && entry.length > 0,
+      );
+      if (parts.length > 0) return parts.join('\n');
+    }
+    if (typeof obj.result === 'string' && obj.result.trim()) return obj.result;
+    if (typeof obj.subtype === 'string' && obj.subtype) return `Claude run failed: ${obj.subtype}`;
+    return 'Claude run failed';
   }
 
   function assistantText(content: unknown[]): string {

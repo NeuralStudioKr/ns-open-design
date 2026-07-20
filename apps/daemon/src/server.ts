@@ -4883,21 +4883,25 @@ export function applyClaudeStreamJsonRunBookkeeping(
     name?: unknown;
     id?: unknown;
     stopReason?: unknown;
+    isError?: unknown;
   };
 
-  const cleanTerminalTurn =
+  const terminalTurn =
     (event.type === 'turn_end' &&
       // `stop_reason: tool_use` means the model paused to wait for tool
       // execution (claude-code is about to run an internal tool). The
       // conversation is still in flight.
       event.stopReason !== 'tool_use') ||
     (event.type === 'usage' && event.stopReason !== 'tool_use');
-  if (!cleanTerminalTurn) return;
+  if (!terminalTurn) return;
 
-  // Record clean completion even if stdin was already closed. The
-  // close-status classifier reads this to ignore late SessionEnd hook
-  // failures after the final assistant turn completed.
-  run.turnCompletedCleanly = true;
+  const errorTermination = event.type === 'usage' && event.isError === true;
+  if (!errorTermination) {
+    // Record clean completion even if stdin was already closed. The
+    // close-status classifier reads this to ignore late SessionEnd hook
+    // failures after the final assistant turn completed.
+    run.turnCompletedCleanly = true;
+  }
   if (run.stdinOpen) {
     if (run.child?.stdin && !run.child.stdin.destroyed) {
       try { run.child.stdin.end(); } catch {}
