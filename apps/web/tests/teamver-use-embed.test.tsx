@@ -95,6 +95,8 @@ describe("useTeamverEmbed", () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designApiBase.isBootstrapAuthMode).mockReturnValue(true);
     vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+    vi.mocked(teamverEmbedSession.clearTeamverEmbedSessionState).mockClear();
+    vi.mocked(teamverEmbedSession.setTeamverEmbedSessionAuthenticated).mockClear();
     vi.mocked(designBffClient.fetchDesignAuthSession).mockReset();
     vi.mocked(designBffClient.getDesignBffClient).mockReset();
     vi.mocked(designBffClient.invalidateDesignAuthSessionCache).mockClear();
@@ -469,6 +471,31 @@ describe("useTeamverEmbed", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("escalates null session with resetRefreshState to not_authenticated (stops 401 spam)", async () => {
+    vi.mocked(teamverEmbedSession.isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(designBffClient.fetchDesignAuthSession)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1", email: "u1@example.com" },
+        defaultWorkspaceId: "WS-1",
+        workspaces: [{ id: "WS-1", name: "Alpha", role: "owner" }],
+      })
+      .mockResolvedValue(null);
+
+    const { result } = renderHook(() => useTeamverEmbed(true));
+
+    await vi.waitFor(() => {
+      expect(result.current.authenticated).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ force: true, resetRefreshState: true });
+    });
+
+    expect(result.current.error).toBe("not_authenticated");
+    expect(teamverEmbedSession.clearTeamverEmbedSessionState).toHaveBeenCalled();
   });
 
   it("keeps session_unreachable visibility return on backoff instead of immediate auth probing", async () => {

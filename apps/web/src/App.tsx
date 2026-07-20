@@ -55,6 +55,7 @@ import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } f
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from './teamver/teamverEmbedSession';
+import { isDesignAuthRefreshDeclined } from './teamver/designBffClient';
 import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
@@ -1769,11 +1770,15 @@ function AppInner() {
   // and pick up BE runtime-config changes (rotated keys, model swap, base url).
   // Skip when embed session is known-unauthenticated so we do not spam
   // GET /teamver-bff/runtime-config → 401 session_expired (docs-teamver/43).
+  // Also skip while soft-sticky refresh decline is set: cookie is dead for
+  // nginx auth_request even if the in-memory embed flag is still true
+  // (session_unreachable banner window).
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     const handler = () => {
       if (document.visibilityState !== "visible") return;
       if (!isTeamverEmbedSessionAuthenticated()) return;
+      if (isDesignAuthRefreshDeclined()) return;
       void reloadTeamverRuntimeConfig();
     };
     window.addEventListener("pageshow", handler);

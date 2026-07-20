@@ -265,6 +265,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     const bootHydrated = bootSnapshot?.session.authenticated === true;
     // Routine tab-focus refresh should not blank the session bar — only the
     // initial boot and explicit auth recovery need the loading affordance.
+    // Never clear `session_unreachable` here — clearing it reset the C1 attempt
+    // counter (effect saw "recovered") and spammed /auth/refresh + probe 401
+    // every 5s. Success / not_authenticated paths clear the error explicitly.
     setState((prev) => ({
       ...prev,
       loading:
@@ -273,7 +276,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           : (prev.authenticated || bootHydrated) && !resetRefreshState && !force
             ? prev.loading
             : true,
-      error: null,
+      error:
+        prev.error === "session_unreachable"
+          ? "session_unreachable"
+          : null,
     }));
     try {
       // App boot runs the first session probe + registry sync — avoid racing refresh/clear.
@@ -283,15 +289,32 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
       const session = await fetchDesignAuthSession({ force, resetRefreshState });
       if (!session) {
+        const hadPriorAuthenticatedUi =
+          hadEmbedSession() || stateRef.current.authenticated;
         if (
-          silent
-          && (hadEmbedSession() || stateRef.current.authenticated)
+          shouldClearEmbedSessionOnUnauthenticated({
+            resetRefreshState,
+            hadPriorAuthenticatedUi,
+          })
         ) {
-          // Keep unreachable so backoff retries continue (error is cleared at start).
-          setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
+          // Definitive dead session after escalate/reset — stop 401 spam.
+          consumeTeamverAuthReturnPending();
+          await clearTeamverEmbedSessionState();
+          redirectToDesignLoginIfBffMissing({
+            returnTo: resolveEmbedAuthReturnPath(
+              window.location.pathname,
+              window.location.search,
+            ),
+          });
+          setState({
+            ...INITIAL,
+            loading: false,
+            error: "not_authenticated",
+          });
           return;
         }
-        if (hadEmbedSession() || stateRef.current.authenticated) {
+        if (hadPriorAuthenticatedUi) {
+          // Keep unreachable so backoff retries continue.
           setState((prev) => ({ ...prev, loading: false, error: "session_unreachable" }));
           return;
         }
@@ -656,6 +679,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   // We now retry with 5s → 15s → 60s while the tab is visible, resetting
   // the counter on any non-unreachable state. Hidden tabs skip the timer
   // and pick up on the next visibilityStatechange.
+  //
+  // Important: chain the next attempt from the refresh `.finally` — do not
+  // clear `session_unreachable` at refresh start (that used to reset the
+  // attempt counter every 5s and spam /auth/refresh + session-probe 401).
   const sessionUnreachableAttemptRef = useRef(0);
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
@@ -678,11 +705,18 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         // First two attempts stay silent; escalate so passive recovery / login
         // can run if the session is truly gone. After repeated failures, clear
         // sticky refresh-decline so HA cookie revive can POST /auth/refresh again.
+        // Only reset sticky once (attempt === 3); further failures escalate via
+        // shouldClearEmbedSessionOnUnauthenticated → not_authenticated.
         const escalate = attempt >= 2;
         void refresh({
           force: true,
           silent: !escalate,
-          resetRefreshState: attempt >= 3,
+          resetRefreshState: attempt === 3,
+        }).finally(() => {
+          if (cancelled) return;
+          if (stateRef.current.error === "session_unreachable") {
+            scheduleRetry();
+          }
         });
       }, delay);
     };
