@@ -8,6 +8,8 @@ export const EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS = new Set([
   'deck-guizang-editorial',
   // Plugin/skill-only — Community card: "Open-Slide 1920 캔버스 덱" (zh-CN preview).
   'deck-open-slide-canvas',
+  // Guizang Style B — EN chrome + Chinese body/KPI copy (hover shows Chinese).
+  'deck-swiss-international',
   // Plugin/skill-only — Keynote-style deck with zh-CN product-intro demo.
   'ppt-keynote',
   'html-ppt-xhs-white-editorial',
@@ -22,11 +24,16 @@ export const EMBED_HIDDEN_CHINESE_PRIMARY_DECK_TEMPLATE_IDS = new Set([
   'html-ppt-tech-sharing',
 ]);
 
-/** Bundled example plugin id → canonical design-template id. */
-const EXAMPLE_PLUGIN_TO_TEMPLATE_ID: Record<string, string> = {
+/**
+ * Bundled example / folder id → canonical denylist template id.
+ * Includes both `example-*` plugin names and bare design-template folder names.
+ */
+const TEMPLATE_ID_ALIASES: Record<string, string> = {
   'example-guizang-ppt': 'magazine-web-ppt',
+  'guizang-ppt': 'magazine-web-ppt',
   'example-deck-guizang-editorial': 'deck-guizang-editorial',
   'example-html-ppt-presenter-mode-reveal': 'html-ppt-presenter-mode',
+  'html-ppt-presenter-mode-reveal': 'html-ppt-presenter-mode',
 };
 
 /** Guizang-origin deck family — preview demos are Chinese-centric (magazine-web-ppt fork). */
@@ -50,7 +57,7 @@ export function resolveChineseDeckTemplateId(id: string): string {
   if (!trimmed) return trimmed;
   const slash = trimmed.lastIndexOf('/');
   const base = slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
-  if (EXAMPLE_PLUGIN_TO_TEMPLATE_ID[base]) return EXAMPLE_PLUGIN_TO_TEMPLATE_ID[base];
+  if (TEMPLATE_ID_ALIASES[base]) return TEMPLATE_ID_ALIASES[base];
   if (base.startsWith('example-')) return base.slice('example-'.length);
   return base;
 }

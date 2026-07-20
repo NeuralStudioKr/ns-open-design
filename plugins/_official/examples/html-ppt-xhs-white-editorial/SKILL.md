@@ -10,6 +10,7 @@ triggers:
   - "editorial deck"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: marketing
   featured: 27
   upstream: "https://github.com/lewislulu/html-ppt-skill"

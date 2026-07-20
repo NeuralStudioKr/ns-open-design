@@ -10,6 +10,7 @@ triggers:
   - "engineering whitepaper"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: engineering
   featured: 29
   upstream: "https://github.com/lewislulu/html-ppt-skill"

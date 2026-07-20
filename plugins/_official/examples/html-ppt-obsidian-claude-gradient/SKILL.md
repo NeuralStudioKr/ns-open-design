@@ -10,6 +10,7 @@ triggers:
   - "changelog deck"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: engineering
   featured: 31
   upstream: "https://github.com/lewislulu/html-ppt-skill"

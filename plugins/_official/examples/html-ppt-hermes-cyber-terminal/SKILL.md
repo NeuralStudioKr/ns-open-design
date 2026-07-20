@@ -10,6 +10,7 @@ triggers:
   - "测评"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: engineering
   featured: 30
   upstream: "https://github.com/lewislulu/html-ppt-skill"

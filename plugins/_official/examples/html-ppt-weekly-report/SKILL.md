@@ -10,6 +10,7 @@ triggers:
   - "wbr"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: operations
   featured: 23
   upstream: "https://github.com/lewislulu/html-ppt-skill"

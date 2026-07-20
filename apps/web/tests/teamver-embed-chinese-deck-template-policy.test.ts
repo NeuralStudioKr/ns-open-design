@@ -20,6 +20,9 @@ describe('embedChineseDeckTemplatePolicy', () => {
     expect(resolveChineseDeckTemplateId('example-html-ppt-presenter-mode-reveal')).toBe(
       'html-ppt-presenter-mode',
     );
+    expect(resolveChineseDeckTemplateId('html-ppt-presenter-mode-reveal')).toBe(
+      'html-ppt-presenter-mode',
+    );
     expect(resolveChineseDeckTemplateId('open-design/example-html-ppt-tech-sharing')).toBe(
       'html-ppt-tech-sharing',
     );
@@ -110,11 +113,19 @@ describe('pluginsForSlideOnlyMvp chinese deck gate', () => {
     ).toEqual(['example-simple-deck']);
   });
 
-  it('drops open-slide and ppt-keynote chinese deck plugins from community listing', () => {
+  it('drops open-slide, swiss, and ppt-keynote chinese deck plugins from community listing', () => {
     const plugins = [
       {
         id: 'example-deck-open-slide-canvas',
         manifest: { name: 'example-deck-open-slide-canvas', version: '1.0.0', od: { mode: 'deck' } },
+      },
+      {
+        id: 'example-deck-swiss-international',
+        manifest: {
+          name: 'example-deck-swiss-international',
+          version: '1.0.0',
+          od: { mode: 'deck' },
+        },
       },
       {
         id: 'example-ppt-keynote',

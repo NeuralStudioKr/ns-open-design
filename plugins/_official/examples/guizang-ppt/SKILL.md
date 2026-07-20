@@ -18,6 +18,7 @@ triggers:
   - "分享 PPT"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: marketing
   featured: 9
   default_for: deck

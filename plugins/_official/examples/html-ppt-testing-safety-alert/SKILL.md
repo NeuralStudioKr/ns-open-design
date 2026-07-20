@@ -11,6 +11,7 @@ triggers:
   - "policy as code"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: engineering
   featured: 32
   upstream: "https://github.com/lewislulu/html-ppt-skill"

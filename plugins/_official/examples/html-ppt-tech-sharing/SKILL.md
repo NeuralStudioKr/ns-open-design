@@ -10,6 +10,7 @@ triggers:
   - "dev talk"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: engineering
   featured: 22
   upstream: "https://github.com/lewislulu/html-ppt-skill"

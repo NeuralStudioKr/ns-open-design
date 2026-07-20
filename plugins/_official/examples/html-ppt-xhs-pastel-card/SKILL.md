@@ -11,6 +11,7 @@ triggers:
   - "个人成长"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: personal
   featured: 33
   upstream: "https://github.com/lewislulu/html-ppt-skill"

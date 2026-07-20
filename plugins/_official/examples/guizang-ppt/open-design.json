@@ -78,6 +78,7 @@
     "kind": "scenario",
     "taskKind": "new-generation",
     "mode": "deck",
+    "content_locale": "zh-CN",
     "scenario": "marketing",
     "surface": "web",
     "preview": {

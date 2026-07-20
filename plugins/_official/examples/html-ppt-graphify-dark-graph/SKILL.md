@@ -10,6 +10,7 @@ triggers:
   - "data viz launch"
 od:
   mode: deck
+  content_locale: zh-CN
   scenario: engineering
   featured: 28
   upstream: "https://github.com/lewislulu/html-ppt-skill"

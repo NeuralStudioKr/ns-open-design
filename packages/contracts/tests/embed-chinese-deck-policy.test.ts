@@ -10,8 +10,12 @@ import {
 describe('embed-chinese-deck-policy', () => {
   it('resolves example plugin ids', () => {
     expect(resolveChineseDeckTemplateId('example-guizang-ppt')).toBe('magazine-web-ppt');
+    expect(resolveChineseDeckTemplateId('guizang-ppt')).toBe('magazine-web-ppt');
     expect(resolveChineseDeckTemplateId('example-deck-guizang-editorial')).toBe(
       'deck-guizang-editorial',
+    );
+    expect(resolveChineseDeckTemplateId('html-ppt-presenter-mode-reveal')).toBe(
+      'html-ppt-presenter-mode',
     );
     expect(resolveChineseDeckTemplateId('open-design/example-html-ppt-tech-sharing')).toBe(
       'html-ppt-tech-sharing',
@@ -42,6 +46,9 @@ describe('embed-chinese-deck-policy', () => {
     ).toBe(true);
     expect(isChinesePrimaryDeckTemplate({ id: 'deck-open-slide-canvas' })).toBe(true);
     expect(isChinesePrimaryDeckTemplate({ id: 'example-deck-open-slide-canvas' })).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'deck-swiss-international' })).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'example-deck-swiss-international' })).toBe(true);
+    expect(isChinesePrimaryDeckTemplate({ id: 'html-ppt-presenter-mode-reveal' })).toBe(true);
     expect(isChinesePrimaryDeckTemplate({ id: 'ppt-keynote' })).toBe(true);
     expect(isChinesePrimaryDeckTemplate({ id: 'example-ppt-keynote' })).toBe(true);
     expect(isChinesePrimaryDeckTemplate({ id: 'simple-deck', contentLocale: 'en' })).toBe(false);
