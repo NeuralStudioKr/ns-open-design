@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 13. loop 11~12의 `endedWithUnfinishedWork` 신호를 pet/task center 최근 작업 요약까지 연결했다. succeeded run이라도 미완료 항목이 남아 있으면 최근 완료 목록에서 `incomplete` 상태로 보존하고 warning dot으로 표시해, background 작업 센터가 “완료됨”처럼 오인되는 경로를 줄였다. 기존 active running/queued grouping과 preview deep-link 흐름은 변경하지 않았다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 12. loop 11에서 daemon이 노출한 `endedWithUnfinishedWork`를 Teamver embed background completion surface에서 소비하도록 FE 최소 경로를 보강했다. succeeded run이라도 unfinished 신호가 있으면 toast/desktop notification을 “완료”가 아닌 “확인 필요/미완료 항목 있음”으로 표시하고, 성공음·성공 톤으로 오인하지 않게 했다. preview deep-link는 유지해 사용자가 생성된 결과물과 남은 작업을 바로 확인할 수 있다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 11. `bc5b6f058`의 전체 project-status/UI/DB 변경은 계속 보류하되, 핵심 run completeness 신호만 현재 Teamver run service에 수동 포팅했다. TodoWrite 최신 snapshot에 미완료 항목이 있거나 usage `stopReason=max_tokens`로 끝난 succeeded run은 `/api/runs` status와 terminal `end` event에 `endedWithUnfinishedWork:true`를 싣는다. 기존 `status:succeeded`는 유지해 호환성을 지키면서, background/re-entry UI가 “완료처럼 보이지만 실제로는 미완료” 상태를 구분할 수 있는 기반을 만든다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 10-A. `24c7876b3` in-place HTML edit delivery 보존 패치는 현재 Teamver `ProjectView` 구조와 직접 대응되지 않아 코드 포팅하지 않았다. upstream은 `computeTraceObjectFiles`/agent touched file path 기반인데, staging은 해당 경로가 제거되고 content match 기반 artifact recovery를 사용한다. 이후 댓글 수정 실패가 재현되면 Teamver의 `findSameTurnHtmlWriteForRecoveredArtifact`/preview comment attachment 경로에서 별도 보강한다.

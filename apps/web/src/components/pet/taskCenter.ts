@@ -35,7 +35,7 @@ export function buildPetTaskCenter(
       recentByProject.set(run.projectId, {
         projectId: run.projectId,
         projectName: project.name,
-        status: run.status as PetRecentTaskSummary['status'],
+        status: recentTaskStatusForRun(run),
         updatedAt: run.updatedAt,
       });
     }
@@ -49,6 +49,11 @@ export function buildPetTaskCenter(
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 3),
   };
+}
+
+function recentTaskStatusForRun(run: ChatRunStatusResponse): PetRecentTaskSummary['status'] {
+  if (run.status === 'succeeded' && run.endedWithUnfinishedWork) return 'incomplete';
+  return run.status as PetRecentTaskSummary['status'];
 }
 
 /** Prefer a running run's conversation; else the latest queued/running run with conversationId. */

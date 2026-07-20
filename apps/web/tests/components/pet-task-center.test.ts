@@ -41,10 +41,10 @@ describe('buildPetTaskCenter', () => {
     ]);
 
     expect(center.running).toEqual([
-      { projectId: 'p1', projectName: 'Landing Page', status: 'running', count: 2 },
+      { projectId: 'p1', projectName: 'Landing Page', status: 'running', count: 2, conversationId: null },
     ]);
     expect(center.queued).toEqual([
-      { projectId: 'p2', projectName: 'Brand Deck', status: 'queued', count: 1 },
+      { projectId: 'p2', projectName: 'Brand Deck', status: 'queued', count: 1, conversationId: null },
     ]);
     expect(center.recent).toEqual([]);
   });
@@ -59,6 +59,17 @@ describe('buildPetTaskCenter', () => {
     expect(center.recent).toEqual([
       { projectId: 'p1', projectName: 'Landing Page', status: 'failed', updatedAt: 20 },
       { projectId: 'p2', projectName: 'Brand Deck', status: 'succeeded', updatedAt: 15 },
+    ]);
+  });
+
+  it('surfaces succeeded runs with unfinished work as incomplete', () => {
+    const incompleteRun = run('unfinished', 'p1', 'succeeded', 30);
+    incompleteRun.endedWithUnfinishedWork = true;
+
+    const center = buildPetTaskCenter(projects, [incompleteRun]);
+
+    expect(center.recent).toEqual([
+      { projectId: 'p1', projectName: 'Landing Page', status: 'incomplete', updatedAt: 30 },
     ]);
   });
 });

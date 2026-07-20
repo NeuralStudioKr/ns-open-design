@@ -32,7 +32,7 @@ export interface PetTaskSummary {
 export interface PetRecentTaskSummary {
   projectId: string;
   projectName: string;
-  status: 'succeeded' | 'failed' | 'canceled';
+  status: 'succeeded' | 'failed' | 'canceled' | 'incomplete';
   updatedAt: number;
 }
 
