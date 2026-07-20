@@ -507,3 +507,31 @@ async def test_fresh_session_skips_main_refresh(monkeypatch: pytest.MonkeyPatch)
     assert result is not None
     assert result.access_token == "fresh-access"
     refresh_mock.assert_not_awaited()
+
+
+def test_apply_refresh_payload_empty_access_abandons_without_delete() -> None:
+    """Empty access in apply must not clear→delete Set-Cookie (HA wipe landmine)."""
+    from app.auth import bff_tokens as bff_tokens_mod
+    from app.auth.bff_session import load_bff_session
+
+    request = _request_with_session({})
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token="old-access",
+        expires_in=600,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+    )
+    session = load_bff_session(request)
+    assert session is not None
+
+    result = bff_tokens_mod._apply_refresh_payload(
+        request,
+        session,
+        {"access_token": "", "expires_in": 600},
+    )
+
+    assert result is None
+    assert "teamver_bff_v1" not in request.session
+    assert request.scope.get("teamver_suppress_session_cookie") is True

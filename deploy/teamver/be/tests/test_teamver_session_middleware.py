@@ -303,3 +303,43 @@ def test_session_middleware_suppresses_set_cookie_when_flag_set() -> None:
     messages = asyncio.run(_call_middleware(middleware))
 
     assert _set_cookie_headers(messages) == []
+
+
+def test_session_middleware_abandon_omits_delete_set_cookie() -> None:
+    """HA-loser abandon must not emit delete Set-Cookie (sibling winner wipe)."""
+    from app.auth.bff_session import abandon_bff_session_keep_browser_cookie
+    from starlette.requests import Request
+
+    async def seed_app(scope: dict[str, Any], _receive: Any, send: Any) -> None:
+        scope["session"]["teamver_bff_v1"] = {"user_id": "u1", "access_token": "a0"}
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    seed_middleware = TeamverSessionMiddleware(
+        app=seed_app,
+        secret_key="test-secret",
+        session_cookie="teamver_design_bff_session",
+        legacy_session_cookies=("session",),
+    )
+    seeded = _cookie_value(_set_cookie_headers(asyncio.run(_call_middleware(seed_middleware)))[0])
+
+    async def abandon_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        request = Request(scope, receive)
+        abandon_bff_session_keep_browser_cookie(request)
+        await send({"type": "http.response.start", "status": 401, "headers": []})
+        await send({"type": "http.response.body", "body": b"expired"})
+
+    middleware = TeamverSessionMiddleware(
+        app=abandon_app,
+        secret_key="test-secret",
+        session_cookie="teamver_design_bff_session",
+        legacy_session_cookies=("session",),
+    )
+    messages = asyncio.run(
+        _call_middleware(
+            middleware,
+            cookie_header=f"teamver_design_bff_session={seeded}",
+        )
+    )
+
+    assert _set_cookie_headers(messages) == []

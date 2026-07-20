@@ -13,7 +13,6 @@ from starlette.requests import Request
 from .bff_session import (
     BffSession,
     abandon_bff_session_keep_browser_cookie,
-    clear_bff_session,
     load_bff_session,
     save_bff_session,
     suppress_session_cookie,
@@ -263,7 +262,9 @@ def _session_needs_refresh(session: BffSession) -> bool:
 def _apply_refresh_payload(request: Request, session: BffSession, data: dict[str, Any]) -> BffSession | None:
     access = str(data.get("access_token") or "").strip()
     if not access:
-        clear_bff_session(request)
+        # Never emit delete Set-Cookie from a refresh payload landmine — a late
+        # HA-loser response must not wipe a sibling winner (§14.1 #6).
+        abandon_bff_session_keep_browser_cookie(request)
         return None
     expires_in = int(data.get("expires_in") or 600)
     refresh = str(data.get("refresh_token") or session.refresh_token or "").strip() or None

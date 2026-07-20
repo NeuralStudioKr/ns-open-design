@@ -224,14 +224,24 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(2);
   });
 
-  it("keeps hard sticky after 400 and does not re-probe /auth/session", async () => {
+  it("keeps hard sticky after 400 but allows probe/ensure survival without POST", async () => {
     vi.useRealTimers();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "invalid_refresh" }), {
-        status: 400,
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/refresh")) {
+        return new Response(JSON.stringify({ detail: "invalid_refresh" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/auth/session-probe")) {
+        return new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify({ authenticated: false }), {
+        status: 401,
         headers: { "Content-Type": "application/json" },
-      }),
-    );
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
@@ -241,10 +251,13 @@ describe("withDesignBffCookieAuthRecovery", () => {
 
     await expect(refreshDesignAuthCookie()).resolves.toBe(false);
     expect(isDesignAuthRefreshDeclined()).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
 
-    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Second call: hard sticky — probe may succeed without another POST.
+    await expect(refreshDesignAuthCookie()).resolves.toBe(true);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe"))).toBe(true);
   });
 });
 

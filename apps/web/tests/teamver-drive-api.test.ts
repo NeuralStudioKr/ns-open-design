@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
   refreshDesignAuthCookie: vi.fn(),
+  probeDesignBffSessionAuthenticated: vi.fn(async () => false),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
   isDesignAuthRefreshDeclineHard: vi.fn(() => false),
 }));
@@ -31,6 +32,7 @@ import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
+  probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "../src/teamver/designBffClient";
 import { recoverStaleDriveWorkspace } from "../src/teamver/driveWorkspaceRecovery";
@@ -38,6 +40,7 @@ import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedS
 
 const mockedRefresh = vi.mocked(refreshDesignAuthCookie);
 const mockedFetchSession = vi.mocked(fetchDesignAuthSession);
+const mockedProbe = vi.mocked(probeDesignBffSessionAuthenticated);
 const mockedRecoverWorkspace = vi.mocked(recoverStaleDriveWorkspace);
 const mockedEmbedAuthed = vi.mocked(isTeamverEmbedSessionAuthenticated);
 const mockedDeclined = vi.mocked(isDesignAuthRefreshDeclined);
@@ -89,6 +92,8 @@ describe("getTeamverDriveJson", () => {
     vi.restoreAllMocks();
     mockedRefresh.mockReset();
     mockedFetchSession.mockReset();
+    mockedProbe.mockReset();
+    mockedProbe.mockResolvedValue(false);
     mockedRecoverWorkspace.mockReset();
     mockedRecoverWorkspace.mockResolvedValue(null);
     mockedEmbedAuthed.mockReset();
@@ -142,7 +147,7 @@ describe("getTeamverDriveJson", () => {
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
     const pending = getTeamverDriveJson("/api/foo");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toEqual({ ok: true });
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
@@ -156,7 +161,7 @@ describe("getTeamverDriveJson", () => {
 
     const pending = getTeamverDriveJson("/api/drive/folder?shallow_tree=true");
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     await expectation;
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
@@ -174,7 +179,7 @@ describe("getTeamverDriveJson", () => {
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
     const pending = getTeamverDriveJson("/api/foo");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toEqual({ ok: true });
     expect(mockedRefresh).toHaveBeenCalledTimes(1);
     expect(mockedFetchSession).toHaveBeenCalledTimes(1);
@@ -189,28 +194,50 @@ describe("getTeamverDriveJson", () => {
 
     const pending = getTeamverDriveJson("/api/foo");
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     await expectation;
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("does not recover session_expired when hard sticky is set", async () => {
+  it("does not recover session_expired under hard sticky when probe and session are dead", async () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
     mockedHardDecline.mockReturnValue(true);
+    mockedProbe.mockResolvedValue(false);
+    mockedFetchSession.mockResolvedValue({ authenticated: false } as never);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
 
     const pending = getTeamverDriveJson("/api/foo");
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     await expectation;
     expect(mockedRefresh).not.toHaveBeenCalled();
-    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(mockedProbe).toHaveBeenCalled();
+    expect(mockedFetchSession).toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers session_expired under hard sticky when probe shows a live cookie", async () => {
+    mockedEmbedAuthed.mockReturnValue(true);
+    mockedDeclined.mockReturnValue(true);
+    mockedHardDecline.mockReturnValue(true);
+    mockedProbe.mockResolvedValue(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    const pending = getTeamverDriveJson("/api/foo");
+    await vi.advanceTimersByTimeAsync(400);
+    await expect(pending).resolves.toEqual({ ok: true });
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedProbe).toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it("soft-retries Invalid token once before /auth/refresh", async () => {
@@ -222,7 +249,7 @@ describe("getTeamverDriveJson", () => {
     });
 
     const pending = getTeamverDriveJson("/api/v2/shared-drive");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     const json = await pending;
     expect(json).toEqual({ items: [] });
     expect(mockedRefresh).not.toHaveBeenCalled();
@@ -236,7 +263,7 @@ describe("getTeamverDriveJson", () => {
 
     const pending = getTeamverDriveJson("/api/foo");
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(400);
     await expectation;
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();

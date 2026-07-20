@@ -305,10 +305,11 @@ async function teamverDriveFetch(
       // Only session_expired is an HA-recoverable skip body. Invalid token /
       // unauthorized / missing_access_token must NOT POST /auth/refresh again
       // (rotation races) — soft-retry only, then surface 401.
+      // session_expired may still recover via probe/ensure under hard sticky
+      // (HA false-400); recoverDriveAuthSession never POSTs while hard.
       if (
         isDriveHaSessionExpiredBody(detail)
         && (isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined())
-        && !isDesignAuthRefreshDeclineHard()
       ) {
         const recovered = await recoverDriveAuthSession();
         throwIfDriveAborted(signal);
