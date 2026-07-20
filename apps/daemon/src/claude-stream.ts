@@ -382,6 +382,23 @@ export function createClaudeStreamHandler(
       }
     }
     flushPendingArtifactText();
+    // Drain each per-message prose guard so any held-back partial markup
+    // (e.g. `Hello <thi` waiting to see if `<think>` closes) is emitted as
+    // safe visible text once the stream ends — otherwise the tail would be
+    // silently dropped on child close.
+    for (const [msgId, guard] of proseGuards) {
+      const tail = guard.flush();
+      if (!tail) continue;
+      let roleGuard = roleGuards.get(msgId);
+      if (!roleGuard) {
+        roleGuard = createRoleMarkerGuard(msgId);
+        roleGuards.set(msgId, roleGuard);
+      }
+      if (roleGuard.contaminated) continue;
+      const safe = roleGuard.feedText(tail);
+      if (safe.length > 0) onEvent({ type: 'text_delta', delta: safe });
+    }
+    proseGuards.clear();
   }
 
   function handleObject(obj: unknown) {

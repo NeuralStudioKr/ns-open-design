@@ -120,6 +120,39 @@ describe('claude-stream role-marker guard scope', () => {
     expect(text).toContain('Done.');
   });
 
+  it('drains held-back partial prose markup at end-of-stream flush()', () => {
+    // Regression: on child close, claude-stream.flush() must drain each
+    // per-message prose guard so the last message's tail (e.g. `Hello <thi`
+    // held back waiting for `<think>` to close) is emitted as safe text.
+    const { events, sink } = collect();
+    const handler = createClaudeStreamHandler(sink);
+
+    feedJsonl(handler, [
+      { type: 'message_start', message: { id: 'msg-final-1' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello <thi' } },
+    ]);
+
+    // Before flush(): the '<thi' tail is held back — only 'Hello' should
+    // have been emitted on the text channel.
+    const midStream = events
+      .filter((e) => e.type === 'text_delta')
+      .map((e) => e.delta)
+      .join('');
+    expect(midStream).toBe('Hello');
+
+    handler.flush();
+
+    // After flush(): the guard resolves the incomplete '<thi' token as
+    // untrusted markup and drops it. The visible text stays 'Hello' —
+    // no partial `<thi` fragment leaks to the client on close.
+    const final = events
+      .filter((e) => e.type === 'text_delta')
+      .map((e) => e.delta)
+      .join('');
+    expect(final).toBe('Hello');
+    expect(final).not.toContain('<thi');
+  });
+
   it('emits an error event when Claude Code marks an assistant message as authentication_failed', () => {
     const { events, sink } = collect();
     const handler = createClaudeStreamHandler(sink);

@@ -847,9 +847,14 @@ export function createStreamingAssistantProseGuard(
     },
     flush() {
       if (!buffer && !emitted) return "";
+      // Use streaming-mode sanitize even at flush time so that any trailing
+      // partial internal-markup token (e.g. `<thi` waiting for `<think>`) is
+      // still dropped instead of being emitted as visible text when the
+      // stream ends without a closing `>`. Closed artifacts stay preserved
+      // because the live HTML panel parses them from the delta stream.
       const visible = sanitizeAssistantProseForDisplay(buffer, {
         ...options,
-        streaming: false,
+        streaming: true,
       });
       const growth = emitGrowth(visible);
       buffer = "";
