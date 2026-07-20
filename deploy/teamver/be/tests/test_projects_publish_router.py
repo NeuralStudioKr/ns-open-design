@@ -296,10 +296,13 @@ async def test_publish_router_suppresses_stale_cookie_when_bff_refresh_fails(
 
 
 @pytest.mark.asyncio
-async def test_publish_router_allows_delete_cookie_when_bff_session_cleared(
+async def test_publish_router_does_not_suppress_when_bff_session_already_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Hard expiry: session already cleared — do not suppress delete Set-Cookie."""
+    """force_refresh None + empty session: leave suppress unset (nothing to wipe).
+
+    Distinct from HA-loser abandon (which sets suppress to omit delete Set-Cookie).
+    """
     row = _project_row()
     db = AsyncMock()
     monkeypatch.setattr(

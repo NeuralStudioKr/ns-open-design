@@ -610,8 +610,9 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       return false;
     }
     if (bffResult.status === 400) {
-      // Account missing / malformed refresh — hard sticky without HA soft-retry.
-      // Explicit resetRefreshState / sign-in return clears this; do not re-probe.
+      // Account missing / malformed refresh — hard sticky without POST spam.
+      // Later refreshDesignAuthCookie calls may probe/ensure for survival (§14 M3)
+      // but must not POST /auth/refresh until resetRefreshState / sign-in.
       markAuthRefreshDeclined("hard");
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
         console.info(

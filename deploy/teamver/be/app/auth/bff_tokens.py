@@ -30,7 +30,8 @@ _REFRESH_COALESCE_CACHE_SECONDS = 30
 # nginx auth_request subrequest and each design-api handler runs
 # ensure_bff_session independently. When the access token is inside the skew
 # window, every caller used to POST Main /api/apps/auth/refresh with the same
-# refresh_token; rotation invalidates siblings → clear_bff_session → 401 burst.
+# refresh_token; rotation invalidates siblings → HA races / soft sticky (not
+# hard clear — clear is logout-only after §14).
 _refresh_inflight: dict[str, asyncio.Task[dict[str, Any]]] = {}
 _refresh_result_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
@@ -120,10 +121,10 @@ def _access_expires_at(session: BffSession) -> float:
 
 
 def access_token_is_usable(session: BffSession, *, now: float | None = None) -> bool:
-    """True when BOTH session clock and JWT exp (when present) still have headroom.
+    """True when BOTH session clock and JWT exp still have >30s headroom.
 
-    Using only one clock would let ensure_bff_session skip refresh when
-    access_expires_at drifts ahead of JWT exp (or the reverse).
+    **Not** used for cookie clear/retain (that is ``access_token_not_expired``).
+    Kept for proactive skew diagnostics; do not reintroduce as a clear bar.
     """
     ts = time.time() if now is None else now
     return _access_expires_at(session) - ts > _ACCESS_USABLE_BUFFER_SECONDS
@@ -219,8 +220,9 @@ async def force_refresh_bff_session(request: Request) -> BffSession | None:
     survive a client-initiated recovery after Main returns 401 Invalid token.
 
     On Main refresh auth failure: returns None (caller treats as failed refresh)
-    but does not clear a still-usable BFF cookie — avoids login wipe from
-    rotation races while preventing FE from treating the call as success.
+    but does not delete a still not-expired BFF cookie (abandon/suppress) —
+    avoids login wipe from rotation races while preventing FE from treating
+    the call as success.
     """
     session = load_bff_session(request)
     if session is None:

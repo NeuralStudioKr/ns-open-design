@@ -1,10 +1,10 @@
 import { resolveTeamverMainApiBaseUrl } from "./designApiBase";
 
 /**
- * JWT signature/exp is valid (nginx session-check 204) but user_id is absent from
- * the current Main BE DB — refresh 400 `user_not_found`, bootstrap 401
- * `error.token.user_not_in_database`. Typical on staging after prod cookie bleed,
- * DB reset, or deleted accounts.
+ * JWT signature/exp is valid (BFF session-probe / ensure can still pass) but
+ * user_id is absent from the current Main BE DB — refresh 400 `user_not_found`,
+ * bootstrap 401 `error.token.user_not_in_database`. Typical on staging after
+ * prod cookie bleed, DB reset, or deleted accounts.
  */
 export function isOrphanTeamverJwtAuthFailure(status: number, bodyText: string): boolean {
   if (status !== 400 && status !== 401) return false;

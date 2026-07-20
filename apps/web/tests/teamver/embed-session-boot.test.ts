@@ -55,6 +55,7 @@ describe("teamver embed session boot", () => {
     expect(boot).toContain("persistEmbedAuthSnapshot");
     expect(boot).toContain("consumeTeamverAuthReturnPending");
     expect(boot).toContain("shouldDeferEmbedLoginRedirect");
+    expect(boot).toContain("setActiveTeamverWorkspace");
   });
 
   it("client-app prefetches auth while the App chunk loads", () => {

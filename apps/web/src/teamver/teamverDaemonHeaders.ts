@@ -229,10 +229,11 @@ export async function fetchTeamverDaemon(
     headersInitToRecord(requestInit.headers),
     projectId ? { projectId } : undefined,
   );
-  // Embed `/api/*` routes pass nginx auth_request → Main BE session-check.
-  // Match BFF cookie SSO (`credentials: include`) so teamver_access_token
-  // is always forwarded — same-origin default is usually enough, but explicit
-  // include avoids sporadic 302 signin on background polls like GET /api/runs.
+  // Embed `/api/*` routes pass nginx auth_request → BFF session-probe
+  // (`/_teamver_bff_session`). Match BFF cookie SSO (`credentials: include`) so
+  // teamver_access_token is always forwarded — same-origin default is usually
+  // enough, but explicit include avoids sporadic 302 signin on background
+  // polls like GET /api/runs.
   const credentials =
     requestInit.credentials ?? (isTeamverEmbedMode() ? "include" : "same-origin");
   const redirect =

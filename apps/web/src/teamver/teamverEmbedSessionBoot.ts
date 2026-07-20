@@ -21,6 +21,7 @@ import {
   isTeamverEmbedBootComplete,
 } from "./teamverEmbedBoot";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
+import { setActiveTeamverWorkspace } from "./setActiveTeamverWorkspace";
 import {
   ensureTeamverProjectRegisteredById,
   syncAllDaemonProjectsToRegistry,
@@ -76,11 +77,22 @@ export async function runTeamverEmbedSessionBoot(
     if (session?.authenticated) {
       setTeamverEmbedSessionAuthenticated(true);
       const launchWorkspaceId = readLaunchWorkspaceIdFromBrowserUrl();
-      activeWorkspaceId = await syncTeamverWorkspaceFromSession(
-        session,
-        undefined,
-        launchWorkspaceId ? { preferredIdOverride: launchWorkspaceId } : undefined,
-      );
+      let activeWorkspaceId: string | null = null;
+      if (launchWorkspaceId) {
+        // Launch URL override must go through BFF workspace POST + recovery
+        // ladder — local-only store seed drifts X-Workspace-Id vs cookie (§16).
+        const advanced = await setActiveTeamverWorkspace(
+          launchWorkspaceId,
+          session.user?.userId,
+        );
+        activeWorkspaceId = await syncTeamverWorkspaceFromSession(
+          session,
+          undefined,
+          advanced ? { preferredIdOverride: launchWorkspaceId } : undefined,
+        );
+      } else {
+        activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+      }
       if (deps.isCancelled()) return null;
 
       seedEmbedBootstrapSession({

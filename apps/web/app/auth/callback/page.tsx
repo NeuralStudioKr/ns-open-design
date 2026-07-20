@@ -13,10 +13,10 @@ import {
   invalidateDesignAuthSessionCache,
   prepareDesignAuthSessionReload,
 } from '@/src/teamver/designBffClient';
-import { postDesignAuthWorkspace } from '@/src/teamver/designAuthClient';
 import { EmbedLoadingShell } from '@/src/components/EmbedLoadingShell';
 import { seedEmbedBootstrapSession } from '@/src/teamver/embedBootstrapSession';
 import { setTeamverEmbedSessionAuthenticated } from '@/src/teamver/teamverEmbedSession';
+import { setActiveTeamverWorkspace } from '@/src/teamver/setActiveTeamverWorkspace';
 import { syncTeamverWorkspaceFromSession } from '@/src/teamver/syncTeamverWorkspace';
 import {
   finishEmbedAuthNavigation,
@@ -51,18 +51,27 @@ function AuthCallbackInner() {
         const redirectUrl = buildAuthCallbackRedirectUrl('/auth/callback');
         const ws = searchParams.get('workspace_id') || searchParams.get('workspace');
         await exchangeAuthCodeForDesignSession(code, redirectUrl, ws);
-        if (ws?.trim()) {
-          try {
-            await postDesignAuthWorkspace(ws.trim());
-          } catch {
-            // workspace selection can happen on next boot
-          }
-        }
         invalidateDesignAuthSessionCache();
         const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
         if (session?.authenticated) {
           setTeamverEmbedSessionAuthenticated(true);
-          const activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+          const preferred = ws?.trim() || null;
+          let activeWorkspaceId: string | null = null;
+          if (preferred) {
+            // Use recovery ladder + boolean contract — raw POST swallow drifted
+            // local store ahead of BFF cookie (§16).
+            const advanced = await setActiveTeamverWorkspace(
+              preferred,
+              session.user?.userId,
+            );
+            activeWorkspaceId = await syncTeamverWorkspaceFromSession(
+              session,
+              undefined,
+              advanced ? { preferredIdOverride: preferred } : undefined,
+            );
+          } else {
+            activeWorkspaceId = await syncTeamverWorkspaceFromSession(session);
+          }
           // finishEmbedAuthNavigation replaces the page below, so this snapshot
           // is a defensive seed for any future SPA navigation path — the fresh
           // module instance on the destination page cannot see it. The main
