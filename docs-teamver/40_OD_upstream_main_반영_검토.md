@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 6. `4b4c7f402` empty agent output guidance를 수동 포팅했다. 빈 출력으로 run이 종료될 때 단순 로그 확인 안내에서 그치지 않고 재인증, 쿼터 확인, 모델 전환까지 다음 액션을 명시해 실패 후 재시도 판단을 빠르게 한다. 같은 루프에서 `5c4907add`, `2133796cd`, `5643d6431`은 이미 staging에 반영되어 있음을 재확인했고, `2192a7f6b`, `4ddfc6e44`, `bc5b6f058`은 변경 범위가 커 production 직전 수동 포팅 대상으로 보류했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 5. `bdc66c978`, `ebada4cac` deck framework prompt 품질 보강을 daemon/contracts 양쪽에 수동 포팅했다. 데이터 차트는 실제 값 기반 `--v`/`--max` 계산을 요구하고, Mermaid는 다크 덱에서 theme/themeVariables를 명시하도록 고정해 슬라이드 결과물 품질 회귀를 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 4. `c110e40e8` frontmatter parser 안정화를 현재 Teamver parser 경로(`apps/daemon/src/frontmatter.ts`, `packages/plugin-runtime/src/parsers/frontmatter.ts`)에 수동 포팅했다. flush-left YAML sequence, quoted inline array, deep block scalar를 안정적으로 읽어 template/design-system metadata 누락을 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 3. `5f411466b` QuestionsPanel submit lock 핵심을 Teamver의 단순화된 form 구조에 맞춰 수동 포팅했다. Continue/Skip/auto countdown이 같은 form occurrence에서 중복 제출을 만들지 않도록 첫 submit 직후 UI와 chokepoint를 잠근다.
@@ -27,8 +28,16 @@
 | `5f411466b` | QuestionsPanel Continue 중복 제출 방지 | **2026-07-20 선별 반영.** Teamver `QuestionsPanel` 구조에 맞춰 submit lock만 포팅했다. 질문 form 답변 제출 직후 버튼을 즉시 disabled/busy로 바꿔 중복 run enqueue와 사용자의 stuck 오해를 줄인다. |
 | `c110e40e8` | frontmatter parser 안정화 | **2026-07-20 선별 반영.** flush-left sequence, quoted inline array, block scalar indentation을 daemon/runtime parser 양쪽에 수동 포팅했다. 템플릿/디자인 시스템 metadata 파싱 누락을 줄인다. |
 | `bdc66c978` / `ebada4cac` | deck data-chart / Mermaid dark-theme prompt discipline | **2026-07-20 선별 반영.** prompt-only 품질 보강. 차트 비율/라벨 누락과 다크 덱 Mermaid 대비 문제를 줄인다. |
+| `4b4c7f402` | empty agent output guidance 개선 | **2026-07-20 선별 반영.** 빈 출력 종료 시 재인증/쿼터/모델 전환까지 안내해 사용자가 원인 진단 없이 같은 실패를 반복하는 시간을 줄인다. |
+| `5c4907add` | system prompt dedup / on-demand injection / per-turn input curbs | **이미 반영 확인.** direction library 조건부 주입, shared frames 조건부 주입, 파일 재읽기/렌더 반복 제한, responsive breakpoint 정합성이 staging에 존재한다. 작업 속도와 token 비용 절감 핵심 패치이므로 유지한다. |
+| `2133796cd` | prior-turn artifact HTML transcript 요약 | **이미 반영 확인.** persisted artifact는 transcript에 전체 HTML 대신 저장 파일명/metadata 요약만 보내도록 되어 있어 후속 수정 turn의 input token 폭증을 줄인다. |
+| `5643d6431` | frontmatter closing delimiter/body 보존 강화 | **이미 반영 확인.** plugin-runtime parser에 partial block 보존, delimiter 검증, newline body 보존 테스트가 존재한다. |
 | `a1b0dd0d7` 계열 | POSIX argv prompt budget 보정 | **2026-07-20 선별 반영.** Linux/macOS에서 Windows용 30KB prompt argv 제한을 그대로 적용하는 false-positive를 줄인다. runaway prompt는 120KB에서 fail-fast 유지. |
 | `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **2026-07-20 부분 반영.** 전체 slim charter/core prompt 전환은 계속 보류. 단, 비미디어 프로젝트에 주입되던 긴 media dispatcher Bash loop 예시를 축약하고, zh-CN quick brief의 broad non-deck 선택지 예시를 scope-neutral 문구로 교체했다. Teamver deck-only UX와 background/comment 패치에 닿는 구조 변경은 반영하지 않음. |
+| `c6241ecad` | BYOK media defaults를 dispatch hint에 반영 | **보류.** upstream은 `ByokMediaDefaults` 기반 prompt composer 구조인데 staging의 media dispatch prompt는 Teamver용 단순화 버전이다. 미디어/이미지 경로는 현재 slide MVP 핵심보다 낮고, 구조 추가가 동반되어 이번 루프에서는 적용하지 않는다. |
+| `2192a7f6b` | incomplete BYOK configuration preflight | **보류.** daemon/web/settings/contracts 40개 파일 규모로, Teamver managed key/API key 비노출 정책과 충돌 가능성이 있다. 실사용 BYOK 설정 화면 회귀 테스트를 확보한 뒤 별도 검토한다. |
+| `4ddfc6e44` | transient image generation response retry | **보류.** media route/analytics/contracts 대형 변경이며 현재 AI Design slide 기본 기능보다 후순위다. image generation을 product scope에 다시 올릴 때 검토한다. |
+| `bc5b6f058` | unfinished work run을 completed로 표시하지 않음 | **보류.** UX 가치는 높지만 DB/run completeness/contracts/web 표시 전반을 건드린다. background 재진입/중지 요청 경로와 충돌 가능성이 있어 별도 통합 테스트 후 판단한다. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |
 
 `origin/main`은 현재 `94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`까지 반영되어 있다. `staging...origin/main` divergence는 `703 / 586`으로, 2026-07-15 기준 `665 / 410`보다 더 벌어졌다. 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.
@@ -228,4 +237,5 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 1. **P0:** `cdffb1b63` library ingest SSRF 차단을 먼저 검토한다. web-fetch/사이트 분석 기능을 출시하려면 외부 URL 접근 안전장치가 선행되어야 한다.
 2. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
 3. **P1:** `04236af50` user-authored text only intent latch는 memory/run DB 경로 변경이 커서 바로 적용하지 말고, background/comment 재진입 회귀 테스트와 함께 별도 검토한다.
-4. **P1/P2:** slim system prompt/token 절약 패치는 별도 품질 평가 루프를 먼저 만든다. 프롬프트 축소는 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.
+4. **P1:** `bc5b6f058` unfinished work completion 표시 보정은 “작업 완료처럼 보이지만 결과가 없는” 불만과 연결되므로, run completeness contract를 Teamver background run과 대조한 뒤 최소 포팅 가능성을 확인한다.
+5. **P1/P2:** slim system prompt/token 절약 패치는 추가 문구 단위 포팅만 허용한다. 전체 slim charter 전환은 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.
