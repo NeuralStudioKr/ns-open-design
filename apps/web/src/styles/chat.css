@@ -1044,6 +1044,9 @@
   caret-color: var(--accent);
   -webkit-user-modify: read-write-plaintext-only; /* paste-as-plain-text guard */
 }
+.composer-input-editor:has(~ .home-hero__carousel) [contenteditable='true'] {
+  caret-color: transparent;
+}
 .composer.composer-active-file-mode .composer-input-editor [contenteditable='true'],
 .composer.composer-active-file-mode .composer-input-editor .composer-editable {
   min-height: clamp(150px, 20vh, 210px);
