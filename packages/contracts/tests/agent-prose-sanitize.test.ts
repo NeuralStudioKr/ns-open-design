@@ -648,6 +648,53 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("See fonts.googleapis.com for docs.");
   });
 
+  it("does not leave <link residue when scrubbing a full stylesheet tag in prose", () => {
+    const input =
+      'Before <link rel="stylesheet" href="https://fonts.googleapis.com/css2"> After';
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("Before  After");
+    expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe("Before  After");
+  });
+
+  it("strips family=/css2? wght@ orphan void tails from chat", () => {
+    expect(
+      sanitizeAssistantProseForDisplay(
+        'Done.\nfamily=Inter:wght@400;700&display=swap" />\nNext.',
+      ),
+    ).toBe("Done.\n\nNext.");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        'Done.\ncss2?family=Inter:wght@400;700&display=swap" />\nNext.',
+      ),
+    ).toBe("Done.\n\nNext.");
+  });
+
+  it("strips CDN script tags from streaming prose outside artifacts", () => {
+    const input =
+      'Note:\n<script src="https://cdn.jsdelivr.net/npm/foo"></script>\nDone';
+    expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe("Note:\n\nDone");
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("Note:\n\nDone");
+  });
+
+  it("strips closed style/script/html skeleton from chat prose", () => {
+    expect(sanitizeAssistantProseForDisplay("Hi <style>.x{color:red}</style> Bye")).toBe(
+      "Hi  Bye",
+    );
+    expect(sanitizeAssistantProseForDisplay("Hi <script>alert(1)</script> Bye")).toBe("Hi  Bye");
+    expect(sanitizeAssistantProseForDisplay("Hi <html><body>x</body></html> Bye")).toBe(
+      "Hi x Bye",
+    );
+  });
+
+  it("keeps stylesheet link inside an open streaming artifact for the live panel", () => {
+    const input =
+      'Intro\n<artifact identifier="deck" type="text/html">\n'
+      + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">\n'
+      + '<section class="slide">A';
+    const streaming = sanitizeAssistantProseForDisplay(input, { streaming: true });
+    expect(streaming).toContain('fonts.googleapis.com');
+    expect(streaming).toContain('<section class="slide">A');
+  });
+
   it("does not promote unterminated CDN debris out of an open artifact on history sanitize", () => {
     const input = [
       "Intro",

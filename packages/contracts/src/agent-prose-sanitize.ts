@@ -260,7 +260,7 @@ function looksLikeHtmlDebrisLine(line: string): boolean {
     return true;
   }
   if (/^(?:device-width|-width\b|viewport\s*=)/i.test(lower)) return true;
-  if (/^family=[a-z0-9_+:;,=%&.\-]+/i.test(lower)) return true;
+  if (/^family=[a-z0-9_+:;,=%&.@\-]+/i.test(lower)) return true;
   if (/^(?:rel|charset|integrity|crossorigin|name)\s*=/i.test(lower)) return true;
   if (/name\s*=\s*["']?viewport/i.test(lower) && /content\s*=/i.test(lower)) return true;
   // Completed orphan void tails (`…" />`) — still debris, not prose.
@@ -353,7 +353,7 @@ function looksLikeIncompleteHtmlDebrisLine(line: string): boolean {
 
   // Attribute-only / viewport-only fragments.
   if (/^(?:device-width|-width\b|viewport\s*=)/i.test(lower)) return true;
-  if (/^family=[a-z0-9_+:;,=%&.\-]*$/i.test(lower)) return true;
+  if (/^(?:css2\?)?family=[a-z0-9_+:;,=%&.@\-]*$/i.test(lower)) return true;
   if (/^(?:rel|charset|integrity|crossorigin|href|name)\s*=/i.test(lower)) return true;
 
   // Line is essentially a CDN host / URL (optional scheme), not surrounding prose.
@@ -882,6 +882,8 @@ export function sanitizeLeakedAgentProse(
  * When `preserveArtifactBodies` is true, debris scrubbing is applied only
  * outside closed `<artifact>…</artifact>` blocks so stylesheet URLs inside
  * the live HTML body survive until the preview parser consumes them.
+ * Open (unclosed) artifact regions also skip full-tag scrub so mid-stream
+ * `<link>` / `<script src>` inside the artifact still reach the live panel.
  */
 export function stripChatProseHtmlDebris(
   input: string,
@@ -901,52 +903,80 @@ export function stripChatProseHtmlDebris(
     ARTIFACT_LEAKED_HEAD_LINK_TAG_RE,
     ARTIFACT_LEAKED_EXTERNAL_SCRIPT_TAG_RE,
   ];
-  const patterns =
+  // Full head tags MUST run before orphan attr/void patterns. Otherwise
+  // `rel="stylesheet"` carves the middle out of an intact `<link …>` and
+  // leaves a `<link` residue in chat.
+  const fullScrubPatterns =
     options.includeFullHeadTags === false
       ? orphanPatterns
-      : [...orphanPatterns, ...fullTagPatterns];
+      : [...fullTagPatterns, ...orphanPatterns];
 
-  const scrub = (segment: string): string => {
+  const scrubSegment = (
+    segment: string,
+    patterns: RegExp[],
+    scrubOpts: { stripDocumentBlocks?: boolean } = {},
+  ): string => {
     let out = segment;
     for (const re of patterns) {
       re.lastIndex = 0;
       out = out.replace(re, "");
     }
-    // Bare host-only lines (no `"/>` terminator) — e.g. a mid-stream host that
-    // never received its void-tag tail. stripIncompleteTrailingHtmlDebris only
-    // sees the *last* line; this catches hosts stuck earlier in the buffer.
-    out = out.replace(
-      /(^|\n)[ \t]*(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)\/?[ \t]*(?=\n|$)/gi,
-      "$1",
-    );
-    // Same-line trailing bare host/path: "Done. fonts.googleapis.com" or
-    // "Done. https://fonts.googleapis.com/css2?family=Inter" without a void
-    // terminator. Mid-sentence mentions (`See fonts.googleapis.com for docs`)
-    // keep the host because it is not at end-of-line.
-    out = out.replace(
-      /(\s)(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?(?=\s*(?:\n|$))/gi,
-      "",
-    );
+    // Closed document/CSS/JS blocks never belong in chat prose. Never apply
+    // inside open-artifact light scrub — the live HTML panel needs them.
+    if (scrubOpts.stripDocumentBlocks) {
+      out = out
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<\/?(?:html|head|body|title|noscript|base)\b[^>]*>/gi, "")
+        .replace(/<!doctype\s+html[^>]*>/gi, "");
+      // Bare host or host+path lines (no `"/>` terminator) — chat prose only.
+      out = out.replace(
+        /(^|\n)[ \t]*(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?[ \t]*(?=\n|$)/gi,
+        "$1",
+      );
+      // Same-line trailing bare host/path.
+      out = out.replace(
+        /(\s)(?:https?:\/\/)?(?:fonts\.googleapis\.com|fonts\.gstatic\.com|googleapis\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.bunny\.net|api\.fontshare\.com|use\.typekit\.net|(?:kit\.)?fontawesome\.com|esm\.sh)(?:\/[^\s<>]*)?(?=\s*(?:\n|$))/gi,
+        "",
+      );
+      // family=/css2?family= lines without a host prefix (void or bare).
+      out = out.replace(
+        /(^|\n)[ \t]*(?:css2\?)?family=[A-Za-z0-9_+:;,=%&.@\-]+(?:&amp;|&)?display=swap[^\n]*?(?:["']?\s*\/?\s*>)?[ \t]*(?=\n|$)/gi,
+        "$1",
+      );
+    }
     return out;
   };
 
+  const fullScrub = (segment: string): string =>
+    scrubSegment(segment, fullScrubPatterns, {
+      stripDocumentBlocks: options.includeFullHeadTags !== false,
+    });
+  const lightScrub = (segment: string): string =>
+    scrubSegment(segment, orphanPatterns, { stripDocumentBlocks: false });
+
+  /** Full-scrub prose, but leave an open `<artifact` region lightly scrubbed. */
+  const scrubOutsideOpenArtifact = (segment: string): string => {
+    const openArt = segment.search(/<artifact\b/i);
+    if (openArt === -1) return fullScrub(segment);
+    return fullScrub(segment.slice(0, openArt)) + lightScrub(segment.slice(openArt));
+  };
+
   if (!options.preserveArtifactBodies) {
-    return collapseExtraBlankLines(scrub(input));
+    return collapseExtraBlankLines(fullScrub(input));
   }
 
-  // Split around closed artifacts so stylesheet CDN URLs inside the body
-  // are not treated as chat-prose debris mid-stream.
   const parts: string[] = [];
   let cursor = 0;
   CLOSED_ARTIFACT_RE.lastIndex = 0;
   let match: RegExpExecArray | null = CLOSED_ARTIFACT_RE.exec(input);
   while (match) {
-    parts.push(scrub(input.slice(cursor, match.index)));
+    parts.push(scrubOutsideOpenArtifact(input.slice(cursor, match.index)));
     parts.push(match[0]);
     cursor = match.index + match[0].length;
     match = CLOSED_ARTIFACT_RE.exec(input);
   }
-  parts.push(scrub(input.slice(cursor)));
+  parts.push(scrubOutsideOpenArtifact(input.slice(cursor)));
   return collapseExtraBlankLines(parts.join(""));
 }
 
@@ -1127,14 +1157,16 @@ export function sanitizeAssistantProseForDisplay(
     text = stripAssistantCodeFencesForDisplay(text);
   }
   // Orphan CDN/viewport debris is always scrubbed outside artifact bodies.
-  // Full head tags only when closed artifacts are gone — otherwise stylesheet
-  // `<link>` inside an artifact body would be deleted before the live HTML
-  // panel receives it.
+  // Full head tags run on prose (and before open `<artifact` regions) so chat
+  // never keeps CDN `<script>` / `<link>` while streaming; closed + open
+  // artifact bodies keep their stylesheets for the live HTML panel.
   const preservingArtifacts = streaming || options.preserveClosedArtifact === true;
   text = stripChatProseHtmlDebris(text, {
-    includeFullHeadTags: !preservingArtifacts,
+    includeFullHeadTags: true,
     preserveArtifactBodies: preservingArtifacts,
   });
+  // Debris scrub can leave a truncated tag name (`<link`); strip it now.
+  text = stripIncompleteTrailingMarkupToken(text);
   return text;
 }
 

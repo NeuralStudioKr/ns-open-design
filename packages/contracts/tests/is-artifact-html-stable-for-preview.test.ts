@@ -58,6 +58,27 @@ fonts.googleapis.com
     ).toBe(false);
   });
 
+  it("rejects complete documents with CDN host+path or family@ void debris in body", () => {
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+fonts.googleapis.com/css2?family=Inter
+</body></html>`),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+cdn.jsdelivr.net/npm/foo
+</body></html>`),
+    ).toBe(false);
+    expect(
+      isArtifactHtmlStableForPreview(`<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+family=Inter:wght@400;700&display=swap" />
+</body></html>`),
+    ).toBe(false);
+  });
+
   it("rejects documents with unclosed svg, math, or HTML comments", () => {
     expect(
       isArtifactHtmlStableForPreview(
