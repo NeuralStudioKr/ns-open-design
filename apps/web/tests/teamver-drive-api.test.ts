@@ -45,6 +45,12 @@ describe("shouldSkipDriveAuthRefresh", () => {
     expect(shouldSkipDriveAuthRefresh({ message: "Invalid token" })).toBe(true);
   });
 
+  it("reads DesignDomainError nested error.message as session_expired", () => {
+    const body = { error: { code: "unauthorized", message: "session_expired" } };
+    expect(extractDriveAuthBodyText(body)).toBe("session_expired");
+    expect(shouldSkipDriveAuthRefresh(extractDriveAuthBodyText(body))).toBe(true);
+  });
+
   it("skips Main ACL / workspace forbid bodies (no Apps refresh)", () => {
     expect(shouldSkipDriveAuthRefresh("forbidden")).toBe(true);
     expect(shouldSkipDriveAuthRefresh("error.forbidden")).toBe(true);

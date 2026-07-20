@@ -219,6 +219,11 @@ async def require_auth(
         x_workspace_id=x_workspace_id,
     )
     if proxy_ctx is not None:
+        # nginx auth_request probe is read-only (no Set-Cookie). Refresh the BFF
+        # session on the main response while access is still inside the skew
+        # window so the browser receives the rotated cookie.
+        if bff_enabled():
+            await ensure_bff_session(request)
         token = extract_request_access_token(request) or _extract_bearer(authorization)
         if token:
             return proxy_ctx.model_copy(

@@ -110,18 +110,34 @@ def _effective_access_expires_at(*, now: float, expires_in: int, access_token: s
     return candidate
 
 
-def access_token_is_usable(session: BffSession, *, now: float | None = None) -> bool:
-    """True when BOTH session clock and JWT exp (when present) still have headroom.
-
-    Using only one clock would let probe_bff_session skip refresh when
-    access_expires_at drifts ahead of JWT exp (or the reverse).
-    """
-    ts = time.time() if now is None else now
+def _access_expires_at(session: BffSession) -> float:
+    """Effective access expiry — min(session clock, JWT exp when present)."""
     expires_at = session.access_expires_at
     jwt_exp = _access_token_jwt_exp_unverified(session.access_token)
     if jwt_exp is not None:
-        expires_at = min(expires_at, jwt_exp)
-    return expires_at - ts > _ACCESS_USABLE_BUFFER_SECONDS
+        return min(expires_at, jwt_exp)
+    return expires_at
+
+
+def access_token_is_usable(session: BffSession, *, now: float | None = None) -> bool:
+    """True when BOTH session clock and JWT exp (when present) still have headroom.
+
+    Using only one clock would let ensure_bff_session skip refresh when
+    access_expires_at drifts ahead of JWT exp (or the reverse).
+    """
+    ts = time.time() if now is None else now
+    return _access_expires_at(session) - ts > _ACCESS_USABLE_BUFFER_SECONDS
+
+
+def access_token_not_expired(session: BffSession, *, now: float | None = None) -> bool:
+    """True while access is still within its absolute expiry (no usable buffer).
+
+    Used by ``probe_bff_session`` so nginx auth_request can pass a near-expiry
+    session through to the main handler, which owns Set-Cookie via ensure/force
+    refresh. Probe must never rotate refresh tokens itself.
+    """
+    ts = time.time() if now is None else now
+    return _access_expires_at(session) > ts
 
 
 async def _refresh_bff_session_core(
@@ -134,7 +150,7 @@ async def _refresh_bff_session_core(
     """Refresh Apps tokens; on auth failure optionally keep a still-usable access.
 
     ``return_usable_on_refresh_failure``:
-      - True (ensure/probe): return the existing session so parallel callers do
+      - True (ensure): return the existing session so parallel callers do
         not wipe a login when refresh rotation races.
       - False (force_refresh): return None so callers know refresh failed, but
         still keep the cookie when access remains locally usable. POST
@@ -254,18 +270,20 @@ def _apply_refresh_payload(request: Request, session: BffSession, data: dict[str
 
 
 async def probe_bff_session(request: Request) -> BffSession | None:
-    """nginx auth_request — avoid proactive refresh when access is still valid."""
+    """nginx auth_request — read-only; never refresh.
+
+    nginx ``auth_request`` subresponses do not forward ``Set-Cookie`` to the
+    browser. Refreshing here used to rotate Main's one-time refresh_token while
+    the browser kept the old cookie → sibling refresh failures →
+    ``session_expired``. Refresh belongs on the main request
+    (``ensure_bff_session`` / ``force_refresh_bff_session`` / ``POST /auth/refresh``).
+    """
     session = load_bff_session(request)
     if session is None:
         return None
-    if access_token_is_usable(session):
+    if access_token_not_expired(session):
         return session
-    return await _refresh_bff_session_core(
-        request,
-        session,
-        bypass_cache=False,
-        return_usable_on_refresh_failure=True,
-    )
+    return None
 
 
 async def ensure_bff_session(request: Request) -> BffSession | None:

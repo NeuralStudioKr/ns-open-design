@@ -1,4 +1,4 @@
-import { NetworkError } from "@teamver/app-sdk";
+import { AuthenticationError, NetworkError } from "@teamver/app-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -33,6 +33,7 @@ vi.mock("../src/teamver/teamverAuthReturn", () => ({
 }));
 
 import {
+  isDesignAuthRefreshDeclined,
   refreshTeamverEmbedAuthBeforeMutating,
   resetDesignAuthRefreshDeclinedForTests,
   withDesignBffCookieAuthRecovery,
@@ -68,6 +69,44 @@ describe("withDesignBffCookieAuthRecovery", () => {
     await expect(pending).resolves.toBe("ok");
     expect(request).toHaveBeenCalledTimes(2);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers from SDK AuthenticationError (real HTTP 401 mapping)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "session_expired" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const request = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
+      .mockResolvedValueOnce("ok");
+
+    const pending = withDesignBffCookieAuthRecovery(request);
+    await vi.advanceTimersByTimeAsync(300);
+
+    await expect(pending).resolves.toBe("ok");
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears sticky refresh decline after a successful HA soft-retry", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "session_expired" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const request = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
+      .mockResolvedValueOnce("ok");
+
+    const pending = withDesignBffCookieAuthRecovery(request);
+    await vi.advanceTimersByTimeAsync(300);
+    await expect(pending).resolves.toBe("ok");
+
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
   });
 });
 

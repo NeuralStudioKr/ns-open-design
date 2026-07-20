@@ -255,10 +255,10 @@ async def test_probe_skips_refresh_when_access_still_valid(
 
 
 @pytest.mark.asyncio
-async def test_probe_refreshes_when_jwt_exp_ahead_of_session_clock(
+async def test_probe_does_not_refresh_when_jwt_near_expiry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """access_expires_at can drift ahead of JWT exp — probe must still refresh."""
+    """Near-expiry access must pass probe without rotating refresh (Set-Cookie lost on auth_request)."""
     import jwt as pyjwt
 
     refresh_mock = AsyncMock(
@@ -294,8 +294,44 @@ async def test_probe_refreshes_when_jwt_exp_ahead_of_session_clock(
     result = await probe_bff_session(request)
 
     assert result is not None
-    assert result.access_token == "new-access"
-    refresh_mock.assert_awaited_once()
+    assert result.access_token == stale_access
+    refresh_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_probe_rejects_fully_expired_access_without_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fully expired access → probe None; FE/main handler owns refresh."""
+    import jwt as pyjwt
+
+    refresh_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.auth.bff_tokens.refresh_apps_tokens_with_main",
+        refresh_mock,
+    )
+
+    request = _request_with_session({})
+    past_exp = int(time.time()) - 5
+    expired_access = pyjwt.encode(
+        {"sub": "user-1", "exp": past_exp},
+        "test-secret",
+        algorithm="HS256",
+    )
+    save_bff_session(
+        request,
+        user_id="user-1",
+        access_token=expired_access,
+        expires_in=1,
+        refresh_token="refresh-shared",
+        workspace_id="ws-1",
+        access_expires_at=float(past_exp),
+    )
+
+    result = await probe_bff_session(request)
+
+    assert result is None
+    refresh_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

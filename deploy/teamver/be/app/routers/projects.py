@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.bff_session import load_bff_session, suppress_session_cookie
 from ..auth.bff_tokens import ensure_bff_session, force_refresh_bff_session
+from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
@@ -41,7 +42,7 @@ from ..services.drive_import_service import import_drive_assets
 from ..services.canvas_import_service import import_canvas_html
 from ..services.od_daemon_client import OdDaemonClient, OdDaemonIdentity
 from ..services.publish_service import publish_project
-from ..teamver_sdk import extract_request_access_token, get_teamver_client
+from ..teamver_sdk import get_teamver_client
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 logger = logging.getLogger(__name__)
@@ -57,24 +58,17 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
     JWTs are rejected with ``Invalid token``.
 
     Design pages run on ``*.teamver.com`` parent-domain SSO, so the browser
-    holds Main's ``teamver_access_token`` HS256 cookie. Prefer that. Only fall
-    back to the BFF Apps refresh path when the SSO cookie is missing — that
-    path will 401 on Main, but it preserves the previous behaviour for local
-    dev / non-embed callers.
+    holds Main's ``teamver_access_token`` HS256 cookie. Prefer that. Hosted
+    staging/production: missing SSO cookie → ``session_expired`` (Apps JWT
+    always fails Main ``/api/asset/*``). Local/dev may still fall back to the
+    BFF Apps refresh path for clearer misconfig diagnosis.
     """
-    main_cookie_token: str | None
-    try:
-        main_cookie_token = extract_request_access_token(request)
-    except RuntimeError:
-        main_cookie_token = None
-    if not main_cookie_token:
-        # Explicit fallback for early-boot / test harnesses where the SDK
-        # client is not yet installed. Design hosted envs pin the cookie name.
-        raw = (request.cookies.get("teamver_access_token") or "").strip()
-        if raw:
-            main_cookie_token = raw
+    main_cookie_token = read_main_sso_cookie(request)
     if main_cookie_token:
         return main_cookie_token
+
+    if hosted_requires_main_sso():
+        raise UnauthorizedError("session_expired")
 
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)

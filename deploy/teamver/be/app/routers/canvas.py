@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from ..auth.bff_session import load_bff_session, suppress_session_cookie
 from ..auth.bff_tokens import force_refresh_bff_session
+from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
 from ..auth_context import AuthContext, require_auth
 from ..errors import UnauthorizedError
 from ..schemas.canvas_preview import CanvasPreviewResponse
 from ..services.canvas_preview_service import fetch_canvas_preview
-from ..teamver_sdk import extract_request_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +20,12 @@ router = APIRouter(prefix="/api/v1", tags=["canvas"])
 
 async def _resolve_main_access_token(request: Request, auth: AuthContext) -> str:
     """Prefer Main SSO cookie (HS256) — same contract as Drive / import-canvas."""
-    main_cookie_token: str | None
-    try:
-        main_cookie_token = extract_request_access_token(request)
-    except RuntimeError:
-        main_cookie_token = None
-    if not main_cookie_token:
-        raw = (request.cookies.get("teamver_access_token") or "").strip()
-        if raw:
-            main_cookie_token = raw
+    main_cookie_token = read_main_sso_cookie(request)
     if main_cookie_token:
         return main_cookie_token
+
+    if hosted_requires_main_sso():
+        raise UnauthorizedError("session_expired")
 
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)

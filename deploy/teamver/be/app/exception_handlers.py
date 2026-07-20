@@ -12,7 +12,8 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
-from .errors import DesignDomainError, status_code_to_error_code
+from .auth.login_hint import teamver_main_login_url_for_design
+from .errors import DesignDomainError, UnauthorizedError, status_code_to_error_code
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,16 @@ def _domain_error_handler(request: Request, exc: DesignDomainError) -> JSONRespo
             exc.code,
             exc.status_code,
             exc.details,
+        )
+    # Align session_expired with Drive browse body so FE recovery / login_url
+    # matching works for publish, canvas, and other UnauthorizedError paths.
+    if isinstance(exc, UnauthorizedError) and exc.message == "session_expired":
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": "session_expired",
+                "login_url": teamver_main_login_url_for_design(),
+            },
         )
     return JSONResponse(status_code=exc.status_code, content=exc.to_response_content())
 

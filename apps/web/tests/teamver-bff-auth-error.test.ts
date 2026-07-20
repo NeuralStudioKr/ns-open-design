@@ -82,6 +82,13 @@ describe("isTeamverBffUnauthorizedError", () => {
     expect(isTeamverBffUnauthorizedError(new Error("session_expired"))).toBe(true);
   });
 
+  it("matches SDK AuthenticationError status 401", async () => {
+    const { AuthenticationError } = await import("@teamver/app-sdk");
+    expect(
+      isTeamverBffUnauthorizedError(new AuthenticationError({ status: 401, message: "session_expired" })),
+    ).toBe(true);
+  });
+
   it("does not match unrelated drive 4xx/5xx codes", () => {
     expect(
       isTeamverBffUnauthorizedError(new Error("teamver_drive_fetch_failed:403")),

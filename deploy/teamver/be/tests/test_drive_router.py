@@ -330,12 +330,13 @@ async def test_proxy_drive_main_cookie_401_non_auth_passes_through(
 async def test_proxy_drive_falls_back_to_bff_when_main_cookie_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No Main SSO cookie → use BFF Apps JWT (legacy path, so misconfig still 401s clearly)."""
+    """Local/dev: no Main SSO cookie → use BFF Apps JWT (misconfig still surfaces clearly)."""
     forward = AsyncMock(
         return_value=(200, {"content-type": "application/json"}, b'{"items":[]}'),
     )
     monkeypatch.setattr(drive_router, "forward_drive_request", forward)
     monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "hosted_requires_main_sso", lambda: False)
 
     response = await drive_router.proxy_drive(
         "api/drive/folder",
@@ -346,6 +347,30 @@ async def test_proxy_drive_falls_back_to_bff_when_main_cookie_absent(
     assert response.status_code == 200
     forward.assert_awaited_once()
     assert forward.await_args.kwargs["access_token"] == "apps-rs256-jwt"
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_hosted_requires_main_sso_cookie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """staging/production: missing Main SSO cookie → session_expired + login_url (no Apps fallback)."""
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "hosted_requires_main_sso", lambda: True)
+    monkeypatch.setattr(
+        drive_router,
+        "forward_drive_request",
+        AsyncMock(side_effect=AssertionError("must not call Main without HS256 cookie")),
+    )
+
+    response = await drive_router.proxy_drive(
+        "api/drive/folder",
+        _drive_request(path="api/drive/folder"),
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 401
+    assert b"session_expired" in response.body
+    assert b"login_url" in response.body
 
 
 @pytest.mark.asyncio

@@ -17,10 +17,10 @@ from ..auth.bff_session import (
 )
 from ..auth.bff_tokens import access_token_is_usable, force_refresh_bff_session
 from ..auth.login_hint import teamver_main_login_url_for_design
+from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..errors import UnauthorizedError
 from ..services.drive_proxy import emit_drive_proxy_marker, forward_drive_request
-from ..teamver_sdk import extract_request_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -40,32 +40,9 @@ def _require_access_token(auth: AuthContext) -> str:
     return token
 
 
-def _read_main_sso_cookie(request: Request) -> str | None:
-    """Best-effort read of Main ``teamver_access_token`` HS256 cookie.
-
-    ``extract_request_access_token`` needs ``TeamverAppClient`` initialised
-    (production lifespan). Fall back to raw header parsing so pytest fixtures
-    without the SDK client still exercise the cookie-forwarding path.
-    """
-    try:
-        token = extract_request_access_token(request)
-        if token:
-            return token
-    except RuntimeError:
-        pass
-    # Explicit fallback: check the well-known cookie name directly. Design host
-    # config always sets TEAMVER_AUTH_COOKIE_NAME=teamver_access_token in
-    # hosted envs; keeping this literal in sync avoids a bootstrap race where
-    # settings import fails before we can answer a drive proxy call.
-    fallback = request.cookies.get("teamver_access_token")
-    if fallback and fallback.strip():
-        return fallback.strip()
-    return None
-
-
 async def _resolve_drive_access_token(
     request: Request, auth: AuthContext
-) -> tuple[str, DriveTokenSource]:
+) -> tuple[str, DriveTokenSource] | None:
     """Pick a Bearer Main Drive will actually accept.
 
     Main ``/api/drive/*`` and ``/api/v2/shared-drive/*`` verify **HS256 platform
@@ -78,13 +55,16 @@ async def _resolve_drive_access_token(
     it via ``proxy_set_header Cookie $http_cookie``; forward that to Main and
     the Drive verify path succeeds without any BFF refresh dance.
 
-    Fall back to the BFF Apps JWT only when the Main SSO cookie is absent so a
-    misconfigured host (missing ``AUTH_COOKIE_DOMAIN=.teamver.com``) still
-    surfaces a definitive 401 instead of a silent request drop.
+    Hosted (staging/production): missing Main SSO cookie → ``None`` so the
+    router can return the canonical ``session_expired`` + ``login_url`` body
+    (Apps JWT fallback always fails on Main Drive). Local/dev may still fall
+    back to the BFF Apps JWT so misconfig surfaces a clear 401.
     """
-    main_cookie_token = _read_main_sso_cookie(request)
+    main_cookie_token = read_main_sso_cookie(request)
     if main_cookie_token:
         return main_cookie_token, "main_cookie"
+    if hosted_requires_main_sso():
+        return None
     return _require_access_token(auth), "bff"
 
 
@@ -135,7 +115,15 @@ async def proxy_drive(
     auth: Annotated[AuthContext, Depends(require_auth)],
 ) -> Any:
     """Proxy Main BE Drive browse/search/thumbnail APIs for embed same-origin BFF."""
-    token, token_source = await _resolve_drive_access_token(request, auth)
+    resolved = await _resolve_drive_access_token(request, auth)
+    if resolved is None:
+        logger.warning(
+            "[drive] missing Main HS256 SSO cookie user=%s path=%s",
+            auth.user_id,
+            path,
+        )
+        return _session_expired_response()
+    token, token_source = resolved
     workspace_id = require_workspace_context(auth)
     body = await request.body()
     content_type = request.headers.get("content-type")

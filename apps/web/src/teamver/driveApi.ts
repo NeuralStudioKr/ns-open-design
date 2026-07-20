@@ -37,6 +37,11 @@ function normalizeDriveAuthDetail(detail: unknown): string | null {
     if (typeof record.detail === "string") return record.detail;
     if (typeof record.code === "string") return record.code;
     if (typeof record.error === "string") return record.error;
+    if (record.error && typeof record.error === "object") {
+      const nested = record.error as Record<string, unknown>;
+      if (typeof nested.message === "string") return nested.message;
+      if (typeof nested.code === "string") return nested.code;
+    }
   }
   return null;
 }
@@ -48,6 +53,12 @@ export function extractDriveAuthBodyText(body: unknown): unknown {
   if ("detail" in record && record.detail != null) return record.detail;
   if (typeof record.message === "string") return record.message;
   if (typeof record.error === "string") return record.error;
+  // DesignDomainError shape: { error: { code, message } }
+  if (record.error && typeof record.error === "object") {
+    const nested = record.error as Record<string, unknown>;
+    if (typeof nested.message === "string") return nested.message;
+    if (typeof nested.code === "string") return nested.code;
+  }
   return body;
 }
 

@@ -193,6 +193,15 @@ function shouldAttemptCookieRefresh(): boolean {
   return !unauthenticatedRefreshAttempted;
 }
 
+function isDesignBffUnauthorizedStatus(err: unknown): boolean {
+  // SDK maps HTTP 401 → AuthenticationError (status:401). NetworkError is for
+  // transport failures; tests may still throw NetworkError({ status: 401 }).
+  // Duck-type on `status` so partial SDK mocks (missing AuthenticationError
+  // export) still recover correctly.
+  if (!(err instanceof Error)) return false;
+  return (err as { status?: unknown }).status === 401;
+}
+
 /** Cookie-only SSO: retry a BFF request once after refresh (tokenStore is null). */
 export async function withDesignBffCookieAuthRecovery<T>(
   request: () => Promise<T>,
@@ -200,7 +209,7 @@ export async function withDesignBffCookieAuthRecovery<T>(
   try {
     return await request();
   } catch (err) {
-    if (err instanceof NetworkError && err.status === 401) {
+    if (isDesignBffUnauthorizedStatus(err)) {
       const refreshed = await refreshDesignAuthCookie();
       if (refreshed) return await request();
       // In HA, a sibling request may have already rotated and Set-Cookie'd the
@@ -208,7 +217,11 @@ export async function withDesignBffCookieAuthRecovery<T>(
       // browser one short turn to apply that cookie, then retry the original
       // BFF call without issuing another /auth/refresh.
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-      return await request();
+      const recovered = await request();
+      // Soft-retry succeeded after a declined refresh — clear sticky decline
+      // so later calls are not permanently stuck after an HA rotation race.
+      resetDesignAuthRefreshDeclined();
+      return recovered;
     }
     throw err;
   }

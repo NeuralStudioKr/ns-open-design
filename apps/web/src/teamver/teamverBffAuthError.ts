@@ -6,14 +6,26 @@ import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
+function isSdkHttpUnauthorized(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = (err as { status?: unknown }).status;
+  if (status !== 401) return false;
+  // AuthenticationError / NetworkError / TeamverApiError all carry `status`.
+  const name = (err as { name?: unknown }).name;
+  if (typeof name === "string" && /Error$/.test(name)) return true;
+  return err instanceof NetworkError;
+}
+
 /**
  * True when an error thrown from a teamver Design BFF call represents an
  * expired / missing HttpOnly session (HTTP 401).
  *
- * Two shapes are recognized:
+ * Recognized shapes:
  *
- *  - `NetworkError` from `@teamver/app-sdk` — every call that goes through
- *    `getDesignBffClient().http.*` throws this on non-2xx.
+ *  - SDK `AuthenticationError` / `TeamverApiError` / `NetworkError` with
+ *    ``status === 401`` — `@teamver/app-sdk` maps HTTP 401 to
+ *    ``AuthenticationError`` via ``mapHttpErrorBody``; transport failures use
+ *    ``NetworkError``.
  *
  *  - `Error("teamver_drive_fetch_failed:<status>")` — plain fetch helpers in
  *    `driveApi.ts` (`GET /teamver-bff/drive/api/…`) do not use the SDK
@@ -25,7 +37,7 @@ import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
  * recover on retry while the embed session flag is still true.
  */
 export function isTeamverBffUnauthorizedError(err: unknown): boolean {
-  if (err instanceof NetworkError && err.status === 401) return true;
+  if (isSdkHttpUnauthorized(err)) return true;
   if (err instanceof Error) {
     const message = err.message || "";
     if (/teamver_drive_fetch_failed:\s*401\b/.test(message)) return true;
