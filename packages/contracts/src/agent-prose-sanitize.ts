@@ -270,7 +270,10 @@ function isBareCdnHostLine(lower: string): boolean {
  * Also holds same-line trailing hosts (`Done. fonts.googleapis.com`) while
  * still allowing mid-sentence mentions (`See fonts.googleapis.com for docs`).
  */
-export function stripIncompleteTrailingHtmlDebris(input: string): string {
+export function stripIncompleteTrailingHtmlDebris(
+  input: string,
+  options: { allowSameLineTrailingCut?: boolean } = {},
+): string {
   if (!input) return input;
   const lastNl = input.lastIndexOf("\n");
   const lineStart = lastNl === -1 ? 0 : lastNl + 1;
@@ -287,10 +290,13 @@ export function stripIncompleteTrailingHtmlDebris(input: string): string {
     return input.slice(0, lineStart).trimEnd();
   }
 
-  // Same-line trailing CDN token: "Done. fonts.googleapis.com"
-  const trailingCut = findTrailingSameLineCdnDebrisCut(line);
-  if (trailingCut !== null) {
-    return input.slice(0, lineStart + trailingCut).trimEnd();
+  // Same-line trailing CDN hold is streaming-only. History must not destroy
+  // advisory mentions like `Docs at fonts.googleapis.com`.
+  if (options.allowSameLineTrailingCut) {
+    const trailingCut = findTrailingSameLineCdnDebrisCut(line);
+    if (trailingCut !== null) {
+      return input.slice(0, lineStart + trailingCut).trimEnd();
+    }
   }
   return input;
 }
@@ -303,7 +309,9 @@ export function stripIncompleteTrailingHtmlDebris(input: string): string {
 function findTrailingSameLineCdnDebrisCut(line: string): number | null {
   const m = line.match(/^(.*?)(\s+)(\S+)\s*$/);
   if (!m || m[1] === undefined || m[3] === undefined) return null;
-  const trailing = m[3];
+  // Strip trailing sentence punctuation glued to the token (`host.`).
+  const trailing = m[3].replace(/[.,;:!?]+$/g, "");
+  if (!trailing) return null;
   // Completed void tails are handled by the full debris scrubber.
   if (/["']?\s*\/?\s*>\s*$/.test(trailing) && looksLikeHtmlDebrisLine(trailing)) {
     return null;
@@ -314,8 +322,21 @@ function findTrailingSameLineCdnDebrisCut(line: string): number | null {
 }
 
 function isTrailingCdnDebrisToken(token: string): boolean {
-  if (looksLikeIncompleteHtmlDebrisLine(token)) return true;
   const lower = token.toLowerCase().replace(/^https?:\/\//, "");
+  // Bare stems (`jsdelivr`, `unpkg`) are ordinary words — never same-line cut.
+  // Require a hostname dot, a path/query, or attr/query debris forms.
+  if (
+    !lower.includes(".")
+    && !lower.includes("/")
+    && !lower.includes("?")
+    && !/^(?:css2\?)?family=/i.test(lower)
+    && !/^(?:rel|href|charset|integrity|crossorigin)=/i.test(lower)
+  ) {
+    return false;
+  }
+  if (looksLikeIncompleteHtmlDebrisLine(token) || looksLikeIncompleteHtmlDebrisLine(lower)) {
+    return true;
+  }
   if (isBareCdnHostLine(lower.replace(/\/$/, ""))) return true;
   return HTML_DEBRIS_HOST_FRAGMENTS.some(
     (host) =>
@@ -934,10 +955,11 @@ export function stripChatProseHtmlDebris(
         ),
         "$1",
       );
-      // Same-line trailing bare host/path.
+      // Same-line trailing host WITH path/query only (truncate debris).
+      // Bare FQDN advice (`Docs at fonts.googleapis.com`) is preserved.
       out = out.replace(
         new RegExp(
-          `(\\s)(?:https?:\\/\\/)?(?:${artifactCdnHostAlternation()})(?:\\/[^\\s<>]*)?(?=\\s*(?:\\n|$))`,
+          `(\\s)(?:https?:\\/\\/)?(?:${artifactCdnHostAlternation()})(?:\\/[^\\s<>]+|\\?[^\\s<>]+)(?=\\s*(?:\\n|$))`,
           "gi",
         ),
         "",
@@ -1183,9 +1205,11 @@ export function sanitizeAssistantProseForDisplay(
   // Always strip incomplete trailing markup tokens — history/listMessages
   // must not leave `<thi` / `<lin` fragments from dirty persisted rows.
   text = stripIncompleteTrailingMarkupToken(text);
-  // Hold incomplete CDN/viewport debris mid-stream; also drop unterminated
-  // debris tails from history so open-artifact promotion cannot resurface them.
-  text = stripIncompleteTrailingHtmlDebris(text);
+  // Hold incomplete CDN/viewport debris. Same-line trailing host cut is
+  // streaming-only so history keeps advisory FQDN mentions.
+  text = stripIncompleteTrailingHtmlDebris(text, {
+    allowSameLineTrailingCut: streaming,
+  });
   if (options.stripCodeFences) {
     text = stripAssistantCodeFencesForDisplay(text);
   }

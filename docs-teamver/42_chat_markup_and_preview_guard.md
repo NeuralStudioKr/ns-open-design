@@ -25,7 +25,8 @@
 - 내부 tool/thinking/pseudo-tool/deck navigation tail은 사용자 prose에서 제거한다.
 - 닫힌 `<system-reminder>`는 prompt-injection chip으로 넘긴다.
 - CDN/viewport 잔해는 chat과 preview가 **동일 호스트 SSOT**로 scrub/reject한다.
-- same-line trailing host는 hold/scrub, mid-sentence 언급은 유지한다.
+- same-line trailing host는 **streaming hold**만 적용한다. history에서는 bare FQDN 조언(`Docs at fonts.googleapis.com`)을 유지하고, path/query가 붙은 truncate 잔해만 scrub한다.
+- bare host 전용 줄·void orphan·full head tag는 history에서도 scrub한다.
 - streaming 중 열린/닫힌 `<artifact>` 본문 stylesheet는 live panel용으로 보존하고, artifact 밖 prose의 CDN `<link|script>` / `@import` / open `<style|script>`는 제거·hold한다.
 - daemon `design.runs.finish` wrapper에서 turn-end rewrite로 append-only 잔여를 회수한다.
 - BYOK는 streaming guard + FE persist sanitize에 의존 (SSOT 회귀 = BYOK 회귀).

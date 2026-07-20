@@ -631,14 +631,23 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("Done.\n\nNext.");
   });
 
-  it("holds and strips same-line trailing CDN hosts (prose + host on one line)", () => {
+  it("holds same-line trailing CDN hosts while streaming; history keeps advisory FQDNs", () => {
     const guard = createStreamingAssistantProseGuard();
     expect(guard.feed("Done. fonts.googleapis.com")).toBe("Done.");
     const growth = guard.feed('/css2?family=Inter" />\nNext.');
     expect(growth).toContain("Next.");
     expect(growth).not.toContain("googleapis");
     expect(guard.flush()).toBe("");
-    expect(sanitizeAssistantProseForDisplay("Done. fonts.googleapis.com")).toBe("Done.");
+    // History: bare FQDN advice is kept; path-bearing truncate tails are scrubbed.
+    expect(sanitizeAssistantProseForDisplay("Done. fonts.googleapis.com")).toBe(
+      "Done. fonts.googleapis.com",
+    );
+    expect(sanitizeAssistantProseForDisplay("Docs at fonts.googleapis.com")).toBe(
+      "Docs at fonts.googleapis.com",
+    );
+    expect(sanitizeAssistantProseForDisplay("Prefer jsdelivr over unpkg")).toBe(
+      "Prefer jsdelivr over unpkg",
+    );
     expect(
       sanitizeAssistantProseForDisplay("Done. https://fonts.googleapis.com/css2?family=Inter"),
     ).toBe("Done.");

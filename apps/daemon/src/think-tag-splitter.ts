@@ -9,11 +9,6 @@ export function stripLeakedPseudoToolXml(text: string): string {
   return sanitizeAssistantProseForDisplay(text, { streaming: true });
 }
 
-/** History / complete-message sanitizer (no open-artifact preserve). */
-export function stripLeakedPseudoToolXmlComplete(text: string): string {
-  return sanitizeAssistantProseForDisplay(text, { streaming: false });
-}
-
 /** Stateful delta sanitizer — safe across chunk boundaries. */
 export function createStreamingProseDeltaGuard(
   options: { stripCodeFences?: boolean } = {},

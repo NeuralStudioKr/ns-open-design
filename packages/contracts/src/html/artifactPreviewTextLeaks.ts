@@ -99,7 +99,7 @@ export const ARTIFACT_LEAKED_META_CHARSET_TAG_RE =
 export const ARTIFACT_LEAKED_EXTERNAL_SCRIPT_TAG_RE = new RegExp(
   "<script\\s+[^>]*\\bsrc\\s*=\\s*[\"']https?:\\/\\/[^\"']*(?:"
     + artifactCdnScriptSrcHostAlternation()
-    + "|googleapis\\.com)[^\"']*[\"'][^>]*>\\s*<\\/script>",
+    + ")[^\"']*[\"'][^>]*>\\s*<\\/script>",
   "gi",
 );
 

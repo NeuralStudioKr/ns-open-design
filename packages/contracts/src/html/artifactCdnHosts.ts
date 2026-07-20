@@ -26,13 +26,13 @@ export type ArtifactCdnHost = (typeof ARTIFACT_CDN_HOSTS)[number];
 /** Covered by the `fonts.googleapis.com` special pattern — do not emit twice. */
 const COVERED_BY_SPECIAL = new Set<string>(["googleapis.com"]);
 
-/** Hosts commonly used as `<script src>` CDNs. */
-const SCRIPT_SRC_HOSTS = new Set<string>([
+/** Hosts commonly used as `<script src>` CDNs (must be ⊆ ARTIFACT_CDN_HOSTS). */
+export const ARTIFACT_CDN_SCRIPT_SRC_HOSTS = [
   "cdn.jsdelivr.net",
   "unpkg.com",
   "cdnjs.cloudflare.com",
   "esm.sh",
-]);
+] as const;
 
 export function escapeRegExpLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -159,9 +159,10 @@ export function artifactCdnHrefTokenAlternation(): string {
   return [...tokens].join("|");
 }
 
-/** Script-src CDN hosts (external module CDNs). */
+/** Script-src CDN hosts (external module CDNs) + Google script/font hosts. */
 export function artifactCdnScriptSrcHostAlternation(): string {
-  return ARTIFACT_CDN_HOSTS.filter((h) => SCRIPT_SRC_HOSTS.has(h)).map(escapeRegExpLiteral).join("|");
+  const script = ARTIFACT_CDN_SCRIPT_SRC_HOSTS.map(escapeRegExpLiteral).join("|");
+  return `${script}|(?:fonts\\.)?googleapis\\.com`;
 }
 
 export function artifactHeadCdnHostSource(): string {
