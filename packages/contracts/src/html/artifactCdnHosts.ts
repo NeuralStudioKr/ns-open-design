@@ -79,7 +79,8 @@ export function artifactCdnHostAlternation(): string {
 
 /**
  * Host(+path) alternation for orphan void tails.
- * googleapis keeps optional `/css2|icon` path; others require `/…` or allow trailing junk.
+ * googleapis keeps optional `/css2|icon` path. Other hosts allow path-less
+ * `cdn.jsdelivr.net" />` debris as well as `host/…` tails (chat/preview parity).
  */
 export function artifactCdnHostWithOptionalPathAlternation(): string {
   const parts: string[] = [];
@@ -90,6 +91,7 @@ export function artifactCdnHostWithOptionalPathAlternation(): string {
       continue;
     }
     if (host === "fontawesome.com") {
+      // kit/use hosts almost always carry a path; keep required `/…`.
       parts.push("(?:(?:kit|use)\\.)?fontawesome\\.com\\/[^<\\n]*");
       continue;
     }
@@ -98,7 +100,7 @@ export function artifactCdnHostWithOptionalPathAlternation(): string {
       parts.push(`${escapeRegExpLiteral(host)}[^<\\n]*`);
       continue;
     }
-    parts.push(`${escapeRegExpLiteral(host)}\\/[^<\\n]*`);
+    parts.push(`${escapeRegExpLiteral(host)}(?:\\/[^<\\n]*)?`);
   }
   return parts.join("|");
 }

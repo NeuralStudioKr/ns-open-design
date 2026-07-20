@@ -30,20 +30,26 @@
 - same-line trailing host는 **streaming hold**만 적용한다. history에서는 bare FQDN 조언(`Docs at fonts.googleapis.com`)을 유지하고, path/query가 붙은 truncate 잔해만 scrub한다.
 - bare stem(`jsdelivr`, `unpkg`)은 ordinary word로 취급 — same-line cut 대상이 **아니다**.
 - bare host 전용 줄·void orphan·full head tag는 history에서도 scrub한다.
+- path-less void (`cdn.jsdelivr.net" />`)도 orphan alternation에서 잡는다 (`(?:\/…)?`).
 - full head tag scrub는 orphan attr 패턴 **앞**에서 실행한다 (`<link` 잔해 방지).
 - streaming 중 열린/닫힌 `<artifact>` 본문 stylesheet는 live panel용으로 보존하고, artifact 밖 prose의 CDN `<link|script>` / `@import` / open `<style|script>`는 제거·hold한다.
 - daemon `design.runs.finish` wrapper에서 turn-end rewrite로 append-only 잔여를 회수한다.
 - BYOK는 streaming guard + FE persist sanitize에 의존 (SSOT 회귀 = BYOK 회귀). daemon turn-end rewrite는 BYOK에 없다(의도).
 
-## Preview (HtmlViewer) 정책
+## Preview (HtmlViewer / FileWorkspace) 정책
 
-- `acceptPreviewHtmlCandidate`: `repairArtifactDocumentHead` → `isArtifactHtmlStableForPreview`. stable이면 last-stable로 고정.
-- streaming 중 unstable이면 last-stable 유지; 없으면 `null`(live) 또는 disk fallthrough.
+- `acceptPreviewHtmlCandidate`: `repair` → `isArtifactHtmlStableForPreview`만 채택. unstable이면 last-stable만 반환 (느슨한 `</body></html>`+leak-only fallback **금지**).
 - **liveHtml apply와 disk fetch는 effect를 분리**한다. live 토큰 매 청크가 disk debounce를 cancel하면 sticky `"loading…"`가 난다.
 - disk debounce `HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS` (200) ≤ ProjectView file-changed coalesce `maxWait` (250).
-- hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s) 후 `sourceLoadFailed`.
+- hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s). wall은 **artifact identity당 1회** arm — `filesRefreshKey`/mtime churn에 리셋하지 않는다.
 - incomplete disk HTML + no stable frame → unavailable (streaming이어도 loading에 고정하지 않음).
-- empty unavailable 문구는 url-load embed prefix 실패에만 추가 게이트 (`useUrlLoadPreview && embedPreviewPrefixResolved && embed && prefix == null`). deck `srcDoc` 경로와 섞지 않는다.
+- embed `resolveTeamverProjectPreviewPrefix(..., { signal })` — 8s fetch timeout + caller abort는 shared inflight를 취소하지 않고 null race.
+- empty unavailable 문구는 url-load embed prefix 실패에만 추가 게이트 (`useUrlLoadPreview && embedPreviewPrefixResolved && embed && prefix == null`).
+- FileWorkspace pending tab: streaming이 끝나지 않아도 12s grace 후 unavailable/retarget (무한 loading 방지).
+
+## href token 참고
+
+`artifactCdnHrefTokenAlternation()`은 host별 특수 토큰 + 미지 host fallback(라벨 2개)이다. “완전 기계 파생”이 아니라 **새 host는 fallback으로 커버**된다. 불변식은 알려진 token 목록을 잠근다.
 
 ## 검증
 
@@ -54,14 +60,10 @@ pnpm --filter @open-design/contracts exec vitest run \
   tests/is-artifact-html-stable-for-preview.test.ts \
   tests/artifact-preview-text-leaks.test.ts
 
-pnpm --filter @open-design/daemon exec vitest run \
-  tests/think-tag-splitter tests/strip-leaked-pseudo-tool-xml \
-  tests/claude-stream tests/role-marker
-
 pnpm --dir apps/web exec vitest run -c vitest.config.ts \
   tests/file-viewer-streaming-preview.test.ts \
-  tests/sanitize-chat-message-leaked-pseudo-tool.test.ts \
-  tests/internal-agent-markup.test.ts
+  tests/file-workspace-preview-bootstrap.test.ts \
+  tests/teamver/teamverProjectPreviewScope.test.ts
 ```
 
 ## 호스트 추가 체크리스트
@@ -74,8 +76,8 @@ pnpm --dir apps/web exec vitest run -c vitest.config.ts \
 
 ## 커밋 위생 (필수)
 
-- **이 스레드에 넣을 것**: contracts sanitizer/preview SSOT·테스트, daemon streaming guard/finish rewrite, FE buffered text / persist sanitize, `FileViewer`/`ProjectView` preview sticky·debounce, 본 문서(`42_…`), 필요 시 `00_구현_내역_누적.md` 한 줄.
-- **넣지 말 것**: PluginsHome / i18n 대량 변경, HA 세션쿠키 문서(`39_10_…`), teamver embed/auth/BFF WIP, `.env`·credentials, 셸 리다이렉트 사고 파일(`packages/contracts/nNext…` 등 probe junk).
-- probe/실험 커맨드로 생긴 빈·깨진 untracked 파일은 **즉시 삭제**하고 stage하지 않는다.
-- `sanitizeLeakedAgentProse` 단독은 CDN scrub를 하지 않는다 — 호출부는 display sanitize를 써야 한다.
-- SSOT 밖 CDN은 의도적으로 미차단이다. 필요하면 호스트를 SSOT에 추가한다.
+- **이 스레드에 넣을 것**: contracts sanitizer/preview SSOT·테스트, `FileViewer`/`FileWorkspace`/`ProjectView` sticky·debounce·wall, `teamverProjectPreviewScope` signal/timeout, 본 문서(`42_…`), 필요 시 `00_구현_내역_누적.md`.
+- **넣지 말 것**: PluginsHome / i18n, HA 세션쿠키(`39_10_…`), embed auth/BFF sticky WIP(`teamverDaemonHeaders` 등), `.env`·credentials, probe junk.
+- probe/실험으로 생긴 빈·깨진 untracked 파일은 **즉시 삭제**.
+- `sanitizeLeakedAgentProse` 단독은 CDN scrub를 하지 않는다.
+- SSOT 밖 CDN은 의도적으로 미차단이다.

@@ -92,4 +92,17 @@ describe("FileViewer streaming slide preview", () => {
     expect(maxWaitMatch?.[1]).toBeTruthy();
     expect(Number(debounceMatch![1])).toBeLessThanOrEqual(Number(maxWaitMatch![1]));
   });
+
+  it("arms disk wall once per artifact identity (not on refresh churn)", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("previewSourceWallIdentityRef");
+    expect(source).toContain("previewSourceWallTimerRef");
+    expect(source).toContain(
+      "Intentionally leave previewSourceWallTimerRef armed across refresh churn",
+    );
+    expect(source).toContain(
+      "acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef)",
+    );
+    expect(source).not.toContain("structurallyComplete");
+  });
 });

@@ -1593,8 +1593,21 @@ export function FileWorkspace({
 
   // Drop or retarget ghost tabs once loading settles and the file still isn't
   // on disk — avoids stranding users on "Open a file from Design Files".
+  // Also unbound infinite "loading…" when streaming stays true without a file:
+  // after a grace window, treat as settled so unavailable / retarget can run.
+  const [streamingPreviewGraceElapsed, setStreamingPreviewGraceElapsed] = useState(false);
   useEffect(() => {
-    if (!pendingPreviewTab || streaming || previewTabPending) return;
+    if (!pendingPreviewTab || !streaming) {
+      setStreamingPreviewGraceElapsed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setStreamingPreviewGraceElapsed(true), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingPreviewTab, streaming, activeTab]);
+
+  useEffect(() => {
+    if (!pendingPreviewTab || previewTabPending) return;
+    if (streaming && !streamingPreviewGraceElapsed) return;
     if (ghostResolveTimerRef.current !== null) {
       window.clearTimeout(ghostResolveTimerRef.current);
     }
@@ -1628,6 +1641,7 @@ export function FileWorkspace({
   }, [
     pendingPreviewTab,
     streaming,
+    streamingPreviewGraceElapsed,
     previewTabPending,
     activeTab,
     visibleFiles,
@@ -2433,7 +2447,7 @@ export function FileWorkspace({
           />
         ) : pendingPreviewTab ? (
           <div className="viewer-empty">
-            {streaming || previewTabPending
+            {(streaming && !streamingPreviewGraceElapsed) || previewTabPending
               ? t('fileViewer.loading')
               : t('fileViewer.previewUnavailable')}
           </div>

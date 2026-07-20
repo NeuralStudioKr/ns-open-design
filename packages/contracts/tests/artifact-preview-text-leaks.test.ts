@@ -168,6 +168,19 @@ googleapis.com" />
     expect(out).toContain('<section class="slide active">A</section>');
   });
 
+  it("strips path-less jsdelivr/unpkg void tails (chat/preview parity)", () => {
+    const leaked = `<!doctype html><html><head><title>T</title></head><body>
+cdn.jsdelivr.net" />
+unpkg.com" />
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+    const out = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(out).not.toMatch(/jsdelivr|unpkg\.com/i);
+    expect(out).toContain('<section class="slide active">A</section>');
+  });
+
   it("strips mid-head orphan CDN tails without mutilating intact font links", () => {
     const leaked = `<!doctype html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader&display=swap" rel="stylesheet" />

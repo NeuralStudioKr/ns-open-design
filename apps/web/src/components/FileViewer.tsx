@@ -5,7 +5,6 @@ import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './
 import {
   buildSocialSharePayload,
   OPEN_DESIGN_GITHUB_REPO_URL,
-  hasArtifactPreviewBodyTextLeaks,
   isArtifactHtmlStableForPreview,
   repairArtifactDocumentHead,
   type SocialShareRequest,
@@ -4190,33 +4189,16 @@ const HTML_PREVIEW_SOURCE_WALL_MS = 12_000;
 
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
-  options: {
-    streaming: boolean;
-    lastStableRef: { current: string | null };
-  },
+  lastStableRef: { current: string | null },
 ): string | null {
   if (candidate == null) return null;
   const repaired = repairArtifactDocumentHead(candidate);
-  const stable = isArtifactHtmlStableForPreview(repaired);
-  if (stable) {
-    options.lastStableRef.current = repaired;
+  if (isArtifactHtmlStableForPreview(repaired)) {
+    lastStableRef.current = repaired;
     return repaired;
   }
-  // Prefer the last stable frame over painting leak debris.
-  if (options.lastStableRef.current) {
-    return options.lastStableRef.current;
-  }
-  if (options.streaming) return null;
-  // Final/non-streaming snapshot with no prior stable frame: only accept
-  // if the repaired HTML has BOTH structural completeness (closing body
-  // + html tags) AND no residual truncated-tag debris. Anything less is
-  // more likely to paint garbled debris than a useful preview.
-  const lower = repaired.toLowerCase();
-  const structurallyComplete = lower.includes('</body>') && lower.includes('</html>');
-  if (!structurallyComplete) return null;
-  if (hasArtifactPreviewBodyTextLeaks(repaired)) return null;
-  options.lastStableRef.current = repaired;
-  return repaired;
+  // Prefer the last stable frame over painting leak debris / unbalanced tags.
+  return lastStableRef.current;
 }
 
 function ReactComponentViewer({
@@ -5113,6 +5095,9 @@ function HtmlViewer({
   const sourceRef = useRef<string | null>(source);
   const sourceFileKeyRef = useRef<string | null>(null);
   const previewSourceFetchGenerationRef = useRef(0);
+  /** Wall deadline is per artifact identity — must not reset on filesRefresh churn. */
+  const previewSourceWallIdentityRef = useRef<string | null>(null);
+  const previewSourceWallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const templateNameId = useId();
   const templateDescriptionId = useId();
   const imageExportTitleId = useId();
@@ -5423,27 +5408,22 @@ function HtmlViewer({
 
     const sourceFileKey = `${artifactIdentity}\0live`;
     sourceFileKeyRef.current = sourceFileKey;
-    const accepted = acceptPreviewHtmlCandidate(liveHtml, {
-      streaming,
-      lastStableRef: lastStablePreviewSourceRef,
-    });
+    const accepted = acceptPreviewHtmlCandidate(liveHtml, lastStablePreviewSourceRef);
     if (accepted != null) {
       setSource(accepted);
       sourceRef.current = accepted;
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
-      return;
-    }
-    if (lastStablePreviewSourceRef.current) {
-      setSource(lastStablePreviewSourceRef.current);
-      sourceRef.current = lastStablePreviewSourceRef.current;
-      setLiveHtmlPaintsPreview(true);
+      if (previewSourceWallTimerRef.current != null) {
+        clearTimeout(previewSourceWallTimerRef.current);
+        previewSourceWallTimerRef.current = null;
+      }
       return;
     }
     // Unstable live stream with no prior stable frame: fall through to disk
     // fetch so re-entry / auth-slow tabs are not stuck on "loading…".
     setLiveHtmlPaintsPreview(false);
-  }, [liveHtml, streaming, projectId, file.name]);
+  }, [liveHtml, projectId, file.name]);
 
   // Disk / raw fetch — independent of liveHtml token identity.
   useEffect(() => {
@@ -5471,9 +5451,28 @@ function HtmlViewer({
 
     let cancelled = false;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let wallTimer: ReturnType<typeof setTimeout> | null = null;
     const requestGeneration = ++previewSourceFetchGenerationRef.current;
     const abort = new AbortController();
+
+    const clearPreviewSourceWall = () => {
+      if (previewSourceWallTimerRef.current != null) {
+        clearTimeout(previewSourceWallTimerRef.current);
+        previewSourceWallTimerRef.current = null;
+      }
+    };
+
+    if (previewSourceWallIdentityRef.current !== artifactIdentity) {
+      clearPreviewSourceWall();
+      previewSourceWallIdentityRef.current = artifactIdentity;
+    }
+    // Arm wall once per identity while source is empty. Do not reset on
+    // filesRefreshKey / mtime churn or unavailable can be delayed forever.
+    if (sourceRef.current == null && previewSourceWallTimerRef.current == null) {
+      previewSourceWallTimerRef.current = setTimeout(() => {
+        previewSourceWallTimerRef.current = null;
+        if (sourceRef.current == null) setSourceLoadFailed(true);
+      }, HTML_PREVIEW_SOURCE_WALL_MS);
+    }
 
     const runFetch = () => {
       // Cache-bust the fetch on every mtime / reload / files-refresh bump.
@@ -5497,27 +5496,21 @@ function HtmlViewer({
           if (lastStablePreviewSourceRef.current) {
             setSource(lastStablePreviewSourceRef.current);
             sourceRef.current = lastStablePreviewSourceRef.current;
+            clearPreviewSourceWall();
           }
           return;
         }
         setSourceLoadFailed(false);
-        const accepted = acceptPreviewHtmlCandidate(text, {
-          streaming,
-          lastStableRef: lastStablePreviewSourceRef,
-        });
+        const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef);
         if (accepted == null) {
-          if (lastStablePreviewSourceRef.current) {
-            setSource(lastStablePreviewSourceRef.current);
-            sourceRef.current = lastStablePreviewSourceRef.current;
-          } else {
-            // Incomplete disk HTML with no stable frame — surface unavailable
-            // even while streaming so we never stick on "loading…".
-            setSourceLoadFailed(true);
-          }
+          // Incomplete disk HTML with no stable frame — surface unavailable
+          // even while streaming so we never stick on "loading…".
+          setSourceLoadFailed(true);
           return;
         }
         setSource(accepted);
         sourceRef.current = accepted;
+        clearPreviewSourceWall();
       });
     };
 
@@ -5525,16 +5518,12 @@ function HtmlViewer({
     // raw GET before the next files poll aborts it (sticky loading). Keep
     // ≤ ProjectView coalesce maxWait (250) so write storms cannot starve.
     debounceTimer = setTimeout(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS);
-    wallTimer = setTimeout(() => {
-      if (cancelled) return;
-      if (sourceRef.current == null) setSourceLoadFailed(true);
-    }, HTML_PREVIEW_SOURCE_WALL_MS);
 
     return () => {
       cancelled = true;
       abort.abort();
       if (debounceTimer != null) clearTimeout(debounceTimer);
-      if (wallTimer != null) clearTimeout(wallTimer);
+      // Intentionally leave previewSourceWallTimerRef armed across refresh churn.
     };
   }, [
     hasLiveHtml,
@@ -5544,8 +5533,14 @@ function HtmlViewer({
     file.mtime,
     reloadKey,
     filesRefreshKey,
-    streaming,
   ]);
+
+  useEffect(() => () => {
+    if (previewSourceWallTimerRef.current != null) {
+      clearTimeout(previewSourceWallTimerRef.current);
+      previewSourceWallTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

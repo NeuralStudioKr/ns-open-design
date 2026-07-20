@@ -16,4 +16,13 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toContain("resolvedPreviewFile");
     expect(source).toMatch(/resolvedPreviewFile \? \([\s\S]*<FileViewer/);
   });
+
+  it("bounds infinite pending-tab loading while streaming stays true", () => {
+    const source = readSource("src/components/FileWorkspace.tsx");
+    expect(source).toContain("streamingPreviewGraceElapsed");
+    expect(source).toContain("setTimeout(() => setStreamingPreviewGraceElapsed(true), 12_000)");
+    expect(source).toContain(
+      "(streaming && !streamingPreviewGraceElapsed) || previewTabPending",
+    );
+  });
 });
