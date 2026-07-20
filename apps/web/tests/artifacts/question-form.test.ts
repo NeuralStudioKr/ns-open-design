@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   formatFormAnswers,
@@ -108,9 +108,108 @@ describe('splitOnQuestionForms', () => {
     expect(out.map((s) => s.kind)).toEqual(['text']);
   });
 
-  it('keeps malformed JSON bodies as raw text', () => {
+  it('unwinds a false-positive open tag mentioned in prose and re-parses the real form', () => {
+    const input =
+      `my first output should be \`<question-form id="discovery">\`.\n\n` +
+      `Let me write a custom form:\n\n` +
+      `<question-form id="discovery" title="Quick brief">${VALID_BODY}</question-form>\n\n` +
+      `Now I'll proceed.`;
+    const out = splitOnQuestionForms(input);
+    expect(out.map((s) => s.kind)).toEqual(['text', 'text', 'form', 'text']);
+    if (out[2]?.kind === 'form') {
+      expect(out[2].form.id).toBe('discovery');
+      expect(out[2].form.questions).toHaveLength(1);
+    }
+    const reconstructed = out
+      .map((s) => (s.kind === 'form' ? s.raw : s.text))
+      .join('');
+    expect(reconstructed).toBe(input);
+  });
+
+  it('unwinds a tag-name mismatch before a real form', () => {
+    const input =
+      `In your output you'll see \`<ask-question>\` tags.\n\n` +
+      `<question-form id="real" title="Brief">${VALID_BODY}</question-form>\n\n` +
+      `Done.`;
+    const out = splitOnQuestionForms(input);
+    expect(out.map((s) => s.kind)).toEqual(['text', 'text', 'form', 'text']);
+    if (out[2]?.kind === 'form') {
+      expect(out[2].form.id).toBe('real');
+      expect(out[2].form.questions).toHaveLength(1);
+    }
+    const reconstructed = out
+      .map((s) => (s.kind === 'form' ? s.raw : s.text))
+      .join('');
+    expect(reconstructed).toBe(input);
+  });
+
+  it('parses array payloads emitted as the question-form body', () => {
+    const input = [
+      '先选一下输出偏好:',
+      '<question-form>',
+      JSON.stringify([
+        {
+          id: 'deliveryFormat',
+          prompt: '导出格式？',
+          type: 'radio',
+          options: [
+            { id: 'mov', label: 'MOV（透明背景）' },
+            { id: 'webm', label: 'WebM（透明背景）' },
+          ],
+        },
+        {
+          id: 'container',
+          prompt: '对话外壳？',
+          options: [
+            { id: 'none', label: '不要外壳' },
+            { id: 'phone', label: '手机聊天界面' },
+          ],
+        },
+      ]),
+      '</question-form>',
+    ].join('\n');
+
+    const out = splitOnQuestionForms(input);
+    expect(out.map((s) => s.kind)).toEqual(['text', 'form']);
+    const form = out[1]?.kind === 'form' ? out[1].form : null;
+    expect(form?.questions.map((q) => [q.id, q.label, q.type])).toEqual([
+      ['deliveryFormat', '导出格式？', 'radio'],
+      ['container', '对话外壳？', 'radio'],
+    ]);
+    expect(form?.questions[0]?.options?.map((option) => option.value)).toEqual(['mov', 'webm']);
+  });
+
+  it('normalizes partially missing question fields instead of dropping the form', () => {
+    const out = splitOnQuestionForms(
+      `<question-form>${JSON.stringify([
+        { prompt: 'Pick one', options: ['A', 'B'] },
+        { id: 'notes', type: 'textarea' },
+      ])}</question-form>`,
+    );
+
+    expect(out.map((s) => s.kind)).toEqual(['form']);
+    const form = out[0]?.kind === 'form' ? out[0].form : null;
+    expect(form?.questions).toMatchObject([
+      { id: 'q1', label: 'Pick one', type: 'radio' },
+      { id: 'notes', label: 'notes', type: 'textarea' },
+    ]);
+  });
+
+  it('replaces malformed JSON bodies with a safe fallback and diagnostics', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const out = splitOnQuestionForms(`<ask-question>not json</ask-question>`);
     expect(out.map((s) => s.kind)).toEqual(['text']);
+    expect(out[0]).toMatchObject({
+      kind: 'text',
+      text: 'The assistant sent a question form that could not be rendered. Please ask it to resend the questions.',
+    });
+    expect(out[0]?.kind === 'text' ? out[0].text : '').not.toContain('<ask-question>');
+    expect(out[0]?.kind === 'text' ? out[0].text : '').not.toContain('not json');
+    expect(warn).toHaveBeenCalledWith(
+      '[question-form] failed to render inline question form',
+      expect.objectContaining({ reason: 'invalid-json', tagName: 'ask-question' }),
+    );
+    warn.mockRestore();
   });
 
   it('keeps unterminated tags as prose without swallowing trailing text', () => {

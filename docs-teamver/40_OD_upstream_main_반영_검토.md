@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 1. `3e5725e54`, `188ae72f8` question-form parser 안정화는 Teamver 채팅 마크업 비노출 이슈와 직접 연결되어 수동 포팅했다. 반면 `cdffb1b63` library ingest SSRF 차단은 현재 Teamver staging에 동일 library ingest route가 활성 경로로 존재하지 않아 이번 루프에서는 적용하지 않았다.
 **반영 갱신:** 2026-07-20 — 로컬 `upstream/main` 최신 `f13ed2cb7 landing-page: enrich and redesign the codex-design page (#5872)` 기준으로 prompt/cache·작업 속도 후보를 추가 재검토했다. `9b5cdd843`의 connected-MCP directive cache 분리는 Teamver run 구조에 맞춰 수동 포팅했다. `ed48a7d22` transient ACP persistence filter는 이미 Teamver `server.ts` 경로에 반영되어 있어 중복 적용하지 않았다.
 **반영 갱신:** 2026-07-20 — `origin/main` 최신 `3447f60a3 fix packaged payload desktop handoff (#5678)` 기준으로 속도·프롬프트 관련 후보를 재검토했다. 전체 merge 금지 원칙은 유지한다. 보류했던 `4b660237c`는 문구 단위로 다시 검토해 안전한 축약 문구만 수동 포팅했다.
 **반영 갱신:** 2026-07-16 — `git fetch origin main` 후 `origin/main` 최신 상태를 재확인했다. Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, background run, 다운로드 안정화 패치가 계속 누적되어 있으므로 전체 merge 위험도는 여전히 높다.
@@ -17,6 +18,7 @@
 |------|------|-----------|
 | `ed48a7d22` | `fix(daemon): filter transient ACP status events at persistence time` | **2026-07-20 선별 반영.** staging에는 별도 `chat-run-messages.ts`가 없어 `server.ts` 내 persistence 함수에 수동 포팅. 빈 process row와 불필요한 DB event write를 줄인다. |
 | `9b5cdd843` | `fix(daemon): move connected-MCP directive out of the cached system prompt` | **2026-07-20 선별 반영.** 연결된 외부 MCP 서버 목록은 OAuth token/live connection state에 따라 바뀌므로 cacheable system prompt에서 제거하고 run instruction slice에만 주입하도록 수동 포팅했다. 큰 system prompt cache invalidation을 줄여 재시도/연속 작업의 시작 지연과 token overhead를 낮춘다. |
+| `3e5725e54` / `188ae72f8` | question-form false-positive open tag 복구 / array payload 렌더 | **2026-07-20 선별 반영.** 채팅 prose 안의 `<question-form>` 언급이 실제 form을 삼키는 문제와 배열형 payload가 raw JSON으로 보이는 문제를 막는다. malformed completed block은 raw markup 대신 안전 fallback으로 대체한다. |
 | `a1b0dd0d7` 계열 | POSIX argv prompt budget 보정 | **2026-07-20 선별 반영.** Linux/macOS에서 Windows용 30KB prompt argv 제한을 그대로 적용하는 false-positive를 줄인다. runaway prompt는 120KB에서 fail-fast 유지. |
 | `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **2026-07-20 부분 반영.** 전체 slim charter/core prompt 전환은 계속 보류. 단, 비미디어 프로젝트에 주입되던 긴 media dispatcher Bash loop 예시를 축약하고, zh-CN quick brief의 broad non-deck 선택지 예시를 scope-neutral 문구로 교체했다. Teamver deck-only UX와 background/comment 패치에 닿는 구조 변경은 반영하지 않음. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |

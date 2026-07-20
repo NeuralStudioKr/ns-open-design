@@ -92,6 +92,9 @@ export type FormSegment =
   | { kind: 'text'; text: string }
   | { kind: 'form'; form: QuestionForm; raw: string };
 
+const INVALID_QUESTION_FORM_FALLBACK =
+  'The assistant sent a question form that could not be rendered. Please ask it to resend the questions.';
+
 // `question-form` is the canonical tag; `ask-question` is an alias the
 // model occasionally drifts to (issue #1194). The close tag must match
 // the open tag name, so each match captures the name and computes its
@@ -103,8 +106,9 @@ export function splitOnQuestionForms(input: string): FormSegment[] {
   const out: FormSegment[] = [];
   let cursor = 0;
   // Scan repeatedly for question-form / ask-question opens; for each,
-  // locate the matching close tag and try to parse the JSON body.
-  // Anything that doesn't parse cleanly stays in the prose stream.
+  // locate the matching close tag and try to parse the JSON body. Complete
+  // protocol blocks that fail parsing render a safe fallback instead of
+  // leaking their raw JSON into prose.
   while (cursor < input.length) {
     const slice = input.slice(cursor);
     const m = OPEN_RE.exec(slice);
@@ -118,7 +122,22 @@ export function splitOnQuestionForms(input: string): FormSegment[] {
     const openEnd = openStart + m[0].length;
     const closeIdx = findCloseTag(input, openEnd, closeTag);
     if (closeIdx === -1) {
-      // Unterminated — leave the rest as prose so we don't swallow it.
+      // No matching close tag found for this open tag name. The body may
+      // contain an open tag of the other name (e.g. prose mentioned
+      // <ask-question> but the real form uses <question-form>). Try to
+      // unwind to an inner open before giving up.
+      const remainder = input.slice(openEnd);
+      const nestedOpen = OPEN_RE.exec(remainder);
+      if (nestedOpen) {
+        const resumeAt = openEnd + nestedOpen.index;
+        if (openStart > cursor) {
+          out.push({ kind: 'text', text: input.slice(cursor, openStart) });
+        }
+        out.push({ kind: 'text', text: input.slice(openStart, resumeAt) });
+        cursor = resumeAt;
+        continue;
+      }
+      // Genuinely unterminated — leave the rest as prose.
       out.push({ kind: 'text', text: slice });
       break;
     }
@@ -127,15 +146,28 @@ export function splitOnQuestionForms(input: string): FormSegment[] {
     }
     const body = input.slice(openEnd, closeIdx);
     const attrs = parseAttrs(m[2] ?? '');
-    const form = tryParseForm(body, attrs);
+    const parseResult = parseForm(body, attrs);
     const blockEnd = closeIdx + closeTag.length;
-    if (form) {
-      out.push({ kind: 'form', form, raw: input.slice(openStart, blockEnd) });
+    if (parseResult.form) {
+      out.push({ kind: 'form', form: parseResult.form, raw: input.slice(openStart, blockEnd) });
+      cursor = blockEnd;
     } else {
-      // Malformed — keep raw text so the user can still see it.
-      out.push({ kind: 'text', text: input.slice(openStart, blockEnd) });
+      // The body between this open tag and the matched close tag isn't valid
+      // JSON. If the body itself contains another question-form / ask-question
+      // open tag, the outer match was a false positive (e.g. the model
+      // mentioned the tag name inside backtick-quoted prose). Unwind to the
+      // nested open so it gets a clean parse on the next iteration.
+      const nestedOpen = OPEN_RE.exec(body);
+      if (nestedOpen) {
+        const resumeAt = openEnd + nestedOpen.index;
+        out.push({ kind: 'text', text: input.slice(openStart, resumeAt) });
+        cursor = resumeAt;
+      } else {
+        recordQuestionFormParseFailure(parseResult.reason, tagName, body);
+        out.push({ kind: 'text', text: INVALID_QUESTION_FORM_FALLBACK });
+        cursor = blockEnd;
+      }
     }
-    cursor = blockEnd;
   }
   return out;
 }
@@ -204,9 +236,20 @@ function parseAttrs(raw: string): Record<string, string> {
   return out;
 }
 
-function tryParseForm(body: string, attrs: Record<string, string>): QuestionForm | null {
+type FormParseFailureReason =
+  | 'empty-body'
+  | 'invalid-json'
+  | 'unsupported-payload'
+  | 'empty-questions';
+
+interface FormParseResult {
+  form: QuestionForm | null;
+  reason?: FormParseFailureReason;
+}
+
+function parseForm(body: string, attrs: Record<string, string>): FormParseResult {
   const trimmed = body.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return { form: null, reason: 'empty-body' };
   // Allow the JSON to be wrapped in a fenced ```json block — common when
   // the model echoes its own indented body.
   const stripped = trimmed
@@ -217,29 +260,35 @@ function tryParseForm(body: string, attrs: Record<string, string>): QuestionForm
   try {
     data = JSON.parse(stripped);
   } catch {
-    return null;
+    return { form: null, reason: 'invalid-json' };
   }
-  if (!data || typeof data !== 'object') return null;
-  const obj = data as Record<string, unknown>;
-  const rawQuestions = Array.isArray(obj.questions) ? obj.questions : null;
-  if (!rawQuestions) return null;
+  if (!data || typeof data !== 'object') return { form: null, reason: 'unsupported-payload' };
+  const obj = Array.isArray(data) ? {} : (data as Record<string, unknown>);
+  const rawQuestions = Array.isArray(data)
+    ? data
+    : Array.isArray(obj.questions)
+      ? obj.questions
+      : null;
+  if (!rawQuestions) return { form: null, reason: 'unsupported-payload' };
   const questions: FormQuestion[] = [];
   rawQuestions.forEach((q, i) => {
     const mapped = mapRawQuestion(q, i);
     if (mapped) questions.push(mapped);
   });
-  if (questions.length === 0) return null;
+  if (questions.length === 0) return { form: null, reason: 'empty-questions' };
   const id = attrs.id ?? (typeof obj.id === 'string' ? obj.id : 'discovery');
   const title =
     attrs.title ?? (typeof obj.title === 'string' ? obj.title : 'A few quick questions');
   const description = typeof obj.description === 'string' ? obj.description : undefined;
   const submitLabel = typeof obj.submitLabel === 'string' ? obj.submitLabel : undefined;
   return {
-    id,
-    title,
-    questions,
-    ...(description ? { description } : {}),
-    ...(submitLabel ? { submitLabel } : {}),
+    form: {
+      id,
+      title,
+      questions,
+      ...(description ? { description } : {}),
+      ...(submitLabel ? { submitLabel } : {}),
+    },
   };
 }
 
@@ -248,9 +297,14 @@ function mapRawQuestion(q: unknown, index: number): FormQuestion | null {
   const qo = q as Record<string, unknown>;
   const id =
     typeof qo.id === 'string' && qo.id.trim().length > 0 ? qo.id.trim() : `q${index + 1}`;
-  const label = typeof qo.label === 'string' ? qo.label : id;
-  const type = normalizeType(qo.type);
   const options = parseOptions(qo.options);
+  const label =
+    typeof qo.label === 'string'
+      ? qo.label
+      : typeof qo.prompt === 'string'
+        ? qo.prompt
+        : id;
+  const type = normalizeType(qo.type, options);
   const placeholder = typeof qo.placeholder === 'string' ? qo.placeholder : undefined;
   const help = typeof qo.help === 'string' ? qo.help : undefined;
   const required = qo.required === true;
@@ -511,8 +565,8 @@ function extractBalancedObject(s: string, start: number): string | null {
   return null;
 }
 
-function normalizeType(raw: unknown): QuestionType {
-  if (typeof raw !== 'string') return 'text';
+function normalizeType(raw: unknown, options?: FormOption[]): QuestionType {
+  if (typeof raw !== 'string') return options && options.length > 0 ? 'radio' : 'text';
   const lower = raw.toLowerCase().trim();
   if (lower === 'radio' || lower === 'single' || lower === 'choice') return 'radio';
   if (lower === 'checkbox' || lower === 'multi' || lower === 'multiple') return 'checkbox';
@@ -526,6 +580,18 @@ function normalizeType(raw: unknown): QuestionType {
   )
     return 'direction-cards';
   return 'text';
+}
+
+function recordQuestionFormParseFailure(
+  reason: FormParseFailureReason | undefined,
+  tagName: string,
+  body: string,
+): void {
+  console.warn('[question-form] failed to render inline question form', {
+    reason: reason ?? 'unsupported-payload',
+    tagName,
+    bodyLength: body.length,
+  });
 }
 
 function parseOptions(raw: unknown): FormOption[] | undefined {
@@ -548,6 +614,8 @@ function parseOption(raw: unknown): FormOption | null {
   const value =
     typeof obj.value === 'string' && obj.value.trim().length > 0
       ? obj.value.trim()
+      : typeof obj.id === 'string' && obj.id.trim().length > 0
+        ? obj.id.trim()
       : label;
   const description =
     typeof obj.description === 'string' && obj.description.trim().length > 0
