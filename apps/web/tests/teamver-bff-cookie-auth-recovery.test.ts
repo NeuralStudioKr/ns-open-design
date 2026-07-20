@@ -170,6 +170,10 @@ describe("withDesignBffCookieAuthRecovery", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
+      )
+      // Second refresh while POST-suppressed: session-probe only
+      .mockResolvedValueOnce(
+        new Response(null, { status: 204 }),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -180,7 +184,9 @@ describe("withDesignBffCookieAuthRecovery", () => {
 
     await expect(refreshDesignAuthCookie()).resolves.toBe(true);
     expect(isDesignAuthRefreshDeclined()).toBe(false);
-    expect(fetchMock).toHaveBeenCalled();
+    await expect(refreshDesignAuthCookie()).resolves.toBe(true);
+    // 1 refresh POST + 1 probe + 1 suppressed probe (no second POST)
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
   });
 
   it("recovers from sticky decline when a later /auth/session probe is authenticated", async () => {

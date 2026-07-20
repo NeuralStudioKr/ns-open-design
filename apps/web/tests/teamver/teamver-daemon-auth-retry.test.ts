@@ -13,8 +13,12 @@ vi.mock("../../src/teamver/teamverEmbedSession", () => ({
 }));
 
 const refreshMock = vi.fn(async () => true);
+const probeSessionMock = vi.fn(async () => false);
+const clearDeclineMock = vi.fn();
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
+  probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
+  clearDesignAuthRefreshDecline: (...args: unknown[]) => clearDeclineMock(...args),
 }));
 
 const passiveUnauthorizedMock = vi.fn();
@@ -40,6 +44,9 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     vi.useFakeTimers();
     refreshMock.mockReset();
     refreshMock.mockResolvedValue(true);
+    probeSessionMock.mockReset();
+    probeSessionMock.mockResolvedValue(false);
+    clearDeclineMock.mockClear();
     passiveUnauthorizedMock.mockClear();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(isBootstrapAuthMode).mockReturnValue(true);
@@ -70,6 +77,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(resp.status).toBe(200);
+    expect(clearDeclineMock).toHaveBeenCalled();
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
@@ -96,11 +104,13 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(resp.status).toBe(200);
+    expect(clearDeclineMock).toHaveBeenCalled();
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
   it("delegates to passive auth after refresh and soft retry both fail", async () => {
     refreshMock.mockResolvedValue(false);
+    probeSessionMock.mockResolvedValue(false);
     const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -114,7 +124,27 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(resp.status).toBe(401);
+    expect(probeSessionMock).toHaveBeenCalled();
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+  });
+
+  it("clears sticky decline when soft-retry fails but session probe is still alive", async () => {
+    refreshMock.mockResolvedValue(false);
+    probeSessionMock.mockResolvedValue(true);
+    const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = fetchTeamverDaemon("/api/projects/project-1/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "deck.html", content: "<html></html>" }),
+    });
+    await vi.advanceTimersByTimeAsync(DAEMON_AUTH_RETRY_DELAY_MS);
+    const resp = await pending;
+
+    expect(resp.status).toBe(401);
+    expect(clearDeclineMock).toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
   it("does not refresh on non-embed mode", async () => {

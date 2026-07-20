@@ -2,6 +2,7 @@ import { snakeToCamelDeep } from "@teamver/app-sdk";
 import { resolveTeamverDriveBffBase } from "./designApiBase";
 import {
   fetchDesignAuthSession,
+  isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   refreshDesignAuthCookie,
 } from "./designBffClient";
@@ -184,16 +185,25 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** True when Drive 401 is the HA/session_expired shape we may soft-recover. */
+export function isDriveHaSessionExpiredBody(detail: unknown): boolean {
+  const text = normalizeDriveAuthDetail(detail);
+  if (!text) return false;
+  return text.trim().toLowerCase() === "session_expired";
+}
+
 async function recoverDriveAuthSession(): Promise<boolean> {
+  // Never clear hard sticky from Drive browse — that re-opens 400 refresh spam
+  // for deleted/malformed accounts.
+  if (isDesignAuthRefreshDeclineHard()) return false;
+
   const refreshed = await refreshDesignAuthCookie();
   if (refreshed) return true;
 
-  // Drive modal open is an explicit user action. If a previous background
-  // refresh left the BFF client in sticky-decline state, force one fresh session
-  // probe before surfacing "Drive session expired". This also covers HA cases
-  // where another response already Set-Cookie'd a usable BFF session.
+  // Soft sticky / sibling Set-Cookie: force one session read without resetRefreshState
+  // (hard decline stays locked; soft may already be cleared by refresh probe).
   try {
-    const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
+    const session = await fetchDesignAuthSession({ force: true });
     return Boolean(session?.authenticated);
   } catch {
     return false;
@@ -258,10 +268,14 @@ async function teamverDriveFetch(
       if (softRetried.status !== 401 && softRetried.status !== 403) {
         return softRetried;
       }
-      // Soft-retry still 401: if embed memory says signed-in or sticky-decline
-      // left refresh locked, one recover clears HA sticky / sibling cookies.
-      // True Main SSO loss still fails after recover (authenticated:false).
-      if (isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined()) {
+      // Only session_expired is an HA-recoverable skip body. Invalid token /
+      // unauthorized / missing_access_token must NOT POST /auth/refresh again
+      // (rotation races) — soft-retry only, then surface 401.
+      if (
+        isDriveHaSessionExpiredBody(detail)
+        && (isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined())
+        && !isDesignAuthRefreshDeclineHard()
+      ) {
         const recovered = await recoverDriveAuthSession();
         throwIfDriveAborted(signal);
         if (recovered) return doFetch();

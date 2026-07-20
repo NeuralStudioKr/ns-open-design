@@ -147,12 +147,37 @@ function resolveDesignBffSessionUrl(): string {
   return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session");
 }
 
+function resolveDesignBffSessionProbeUrl(): string {
+  return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session-probe");
+}
+
 /**
- * Raw GET /auth/session — used after a losing-node refresh 401 to decide whether
- * sticky decline / re-login is warranted. Avoids TeamverClient onAuthExpired.
+ * Read-only session check for sticky-decline / re-login gates.
+ * Prefers `/auth/session-probe` (no ensure/refresh). Falls back to `/auth/session`
+ * JSON when probe is unavailable (older nginx without the public location).
  */
 export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
   try {
+    const probeResponse = await fetch(resolveDesignBffSessionProbeUrl(), {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    // design-api session-probe: 204 = valid BFF session, 401 = expired.
+    if (probeResponse.status === 204) return true;
+    if (probeResponse.status === 401 || probeResponse.status === 403) return false;
+    if (probeResponse.ok) {
+      // Tests / transitional proxies may return JSON; prefer authenticated flag.
+      const body = (await probeResponse.json().catch(() => null)) as {
+        authenticated?: unknown;
+      } | null;
+      if (body && typeof body === "object" && "authenticated" in body) {
+        return body.authenticated === true;
+      }
+    }
+
+    // Older deploys may 404 the public probe location — fall back to session JSON.
+    if (probeResponse.status !== 404) return false;
+
     const response = await fetch(resolveDesignBffSessionUrl(), {
       credentials: "include",
       headers: { Accept: "application/json" },
@@ -179,6 +204,12 @@ let embedAuthRecoveryLoadUsed = false;
 /** Coalesce parallel refreshDesignAuthCookie() from Drive modal burst. */
 let inFlightAuthRefresh: Promise<boolean> | null = null;
 const DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS = 150;
+/**
+ * After refresh 401 + live session, suppress further POST /auth/refresh briefly
+ * so HA races do not rotate tokens in a loop. Session probe still allowed.
+ */
+const DESIGN_BFF_REFRESH_POST_SUPPRESS_MS = 30_000;
+let authRefreshPostSuppressedUntil = 0;
 
 /** @internal vitest */
 export function resetDesignAuthRefreshDeclinedForTests(): void {
@@ -188,6 +219,7 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRecoveryRefreshActive = false;
   embedAuthRecoveryLoadUsed = false;
   inFlightAuthRefresh = null;
+  authRefreshPostSuppressedUntil = 0;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -213,6 +245,10 @@ function resetDesignAuthRefreshDeclined(): void {
   authRefreshDeclineKind = "none";
 }
 
+function noteAuthRefreshPostSuppressed(): void {
+  authRefreshPostSuppressedUntil = Date.now() + DESIGN_BFF_REFRESH_POST_SUPPRESS_MS;
+}
+
 function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   authRefreshDeclinedForSession = true;
   authRefreshDeclineKind = kind;
@@ -221,6 +257,11 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
 /** Public clear for daemon/Drive soft-retry recovery paths. */
 export function clearDesignAuthRefreshDecline(): void {
   resetDesignAuthRefreshDeclined();
+}
+
+/** True when sticky decline is hard (400) — Drive must not resetRefreshState. */
+export function isDesignAuthRefreshDeclineHard(): boolean {
+  return authRefreshDeclinedForSession && authRefreshDeclineKind === "hard";
 }
 
 function shouldAttemptCookieRefresh(): boolean {
@@ -312,6 +353,11 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       return false;
     }
 
+    // Refresh 401 + live session: suppress POST spam while access still works.
+    if (authRefreshPostSuppressedUntil > Date.now()) {
+      return await probeDesignBffSessionAuthenticated();
+    }
+
     if (!shouldAttemptCookieRefresh()) return false;
 
     const isBareAttempt =
@@ -325,6 +371,7 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
     const bffResult = await postAuthRefresh(resolveDesignBffRefreshUrl());
     if (bffResult.ok) {
       resetDesignAuthRefreshDeclined();
+      authRefreshPostSuppressedUntil = 0;
       return true;
     }
     if (bffResult.status === 401) {
@@ -333,12 +380,12 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       // before sticky-declining — otherwise every later call skips refresh and
       // the UI escalates to re-login for a recoverable blip.
       if (await probeDesignBffSessionAuthenticated()) {
-        resetDesignAuthRefreshDeclined();
+        noteAuthRefreshPostSuppressed();
         return true;
       }
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
       if (await probeDesignBffSessionAuthenticated()) {
-        resetDesignAuthRefreshDeclined();
+        noteAuthRefreshPostSuppressed();
         return true;
       }
       markAuthRefreshDeclined("soft");
@@ -390,6 +437,7 @@ export function resetDesignAuthRefreshState(): void {
   resetDesignAuthRefreshDeclined();
   unauthenticatedRefreshAttempted = false;
   embedAuthRecoveryLoadUsed = false;
+  authRefreshPostSuppressedUntil = 0;
 }
 
 /** Sticky 400 from `/teamver-bff/auth/refresh` — UI may offer explicit retry. */

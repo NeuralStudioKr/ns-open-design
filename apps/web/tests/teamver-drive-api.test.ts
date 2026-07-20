@@ -4,6 +4,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   fetchDesignAuthSession: vi.fn(),
   refreshDesignAuthCookie: vi.fn(),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
+  isDesignAuthRefreshDeclineHard: vi.fn(() => false),
 }));
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -28,6 +29,7 @@ import {
 } from "../src/teamver/driveApi";
 import {
   fetchDesignAuthSession,
+  isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   refreshDesignAuthCookie,
 } from "../src/teamver/designBffClient";
@@ -39,6 +41,7 @@ const mockedFetchSession = vi.mocked(fetchDesignAuthSession);
 const mockedRecoverWorkspace = vi.mocked(recoverStaleDriveWorkspace);
 const mockedEmbedAuthed = vi.mocked(isTeamverEmbedSessionAuthenticated);
 const mockedDeclined = vi.mocked(isDesignAuthRefreshDeclined);
+const mockedHardDecline = vi.mocked(isDesignAuthRefreshDeclineHard);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -92,6 +95,8 @@ describe("getTeamverDriveJson", () => {
     mockedEmbedAuthed.mockReturnValue(false);
     mockedDeclined.mockReset();
     mockedDeclined.mockReturnValue(false);
+    mockedHardDecline.mockReset();
+    mockedHardDecline.mockReturnValue(false);
     resetTeamverDriveFetchQueueForTests();
     vi.useFakeTimers();
   });
@@ -176,6 +181,38 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
+  it("does not recover Invalid token after soft retry (no Apps refresh rotation)", async () => {
+    mockedEmbedAuthed.mockReturnValue(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ detail: "Invalid token" }, 401));
+
+    const pending = getTeamverDriveJson("/api/foo");
+    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
+    await vi.advanceTimersByTimeAsync(300);
+    await expectation;
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not recover session_expired when hard sticky is set", async () => {
+    mockedEmbedAuthed.mockReturnValue(true);
+    mockedDeclined.mockReturnValue(true);
+    mockedHardDecline.mockReturnValue(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
+
+    const pending = getTeamverDriveJson("/api/foo");
+    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
+    await vi.advanceTimersByTimeAsync(300);
+    await expectation;
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("soft-retries Invalid token once before /auth/refresh", async () => {
     let callCount = 0;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
@@ -217,7 +254,7 @@ describe("getTeamverDriveJson", () => {
       "teamver_drive_fetch_failed:401",
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(mockedFetchSession).toHaveBeenCalledWith({ force: true, resetRefreshState: true });
+    expect(mockedFetchSession).toHaveBeenCalledWith({ force: true });
   });
 
   it("surfaces Main ACL 403 without /auth/refresh when reconciliation cannot fix it", async () => {
