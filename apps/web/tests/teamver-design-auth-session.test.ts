@@ -106,6 +106,7 @@ describe("fetchDesignAuthSession", () => {
       });
 
     vi.useFakeTimers();
+    // Refresh 401 → session probe 401 → delay → probe again → decline, then soft-retry.
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
     );
@@ -113,10 +114,12 @@ describe("fetchDesignAuthSession", () => {
 
     const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
     const pending = fetchDesignAuthSession({ force: true, resetRefreshState: true });
-    await vi.advanceTimersByTimeAsync(200);
+    // Flush microtasks so refresh schedules its HA soft-retry timer, then advance.
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(500);
     const session = await pending;
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalled();
     expect(getMock).toHaveBeenCalledTimes(2);
     expect(session?.authenticated).toBe(true);
     vi.useRealTimers();

@@ -122,6 +122,10 @@ describe("project conversation error messages", () => {
     expect(
       formatProjectRunErrorForUser(new Error("Missing API key — open Settings and paste one in.")),
     ).toContain("서버 API 키");
+    const managedKeyErr = new Error("managed key unavailable") as Error & { code?: string };
+    managedKeyErr.code = "MANAGED_KEY_UNAVAILABLE";
+    expect(formatProjectRunErrorForUser(managedKeyErr)).toContain("다시 시도");
+    expect(formatProjectRunErrorForUser(managedKeyErr)).not.toContain("다시 로그인");
     expect(
       formatProjectRunErrorForUser(
         new Error("Your authentication token has expired. Please sign in again."),

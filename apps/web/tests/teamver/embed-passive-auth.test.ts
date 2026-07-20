@@ -32,9 +32,11 @@ vi.mock("../../src/teamver/designApiBase", () => ({
 
 const refreshMock = vi.fn(async () => true);
 const prepareReloadMock = vi.fn();
+const probeSessionMock = vi.fn(async () => false);
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
   prepareDesignAuthSessionReload: (...args: unknown[]) => prepareReloadMock(...args),
+  probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
 }));
 
 const redirectMock = vi.fn();
@@ -75,23 +77,15 @@ describe("teamverEmbedPassiveAuth", () => {
     prepareReloadMock.mockClear();
     refreshMock.mockReset();
     refreshMock.mockResolvedValue(true);
+    probeSessionMock.mockReset();
+    probeSessionMock.mockResolvedValue(false);
     resetEmbedPassiveAuthForTests();
     resetActiveWork();
     resetTeamverEmbedSessionActiveRunProjectIdsForTests();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ authenticated: false }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllGlobals();
   });
 
   it("defers login redirect while embed work is active", async () => {
@@ -120,15 +114,7 @@ describe("teamverEmbedPassiveAuth", () => {
 
   it("does not redirect when refresh fails but /auth/session is still authenticated", async () => {
     refreshMock.mockResolvedValue(false);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ authenticated: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
+    probeSessionMock.mockResolvedValue(true);
     handleEmbedPassiveUnauthorized("daemon");
     await vi.runAllTimersAsync();
     expect(redirectMock).not.toHaveBeenCalled();
@@ -156,25 +142,32 @@ describe("teamverEmbedPassiveAuth", () => {
     handleEmbedPassiveUnauthorized("bff");
     await vi.advanceTimersByTimeAsync(0);
     await vi.runAllTimersAsync();
-    // One shared recovery → one failure credit → below threshold.
+    // One shared recovery → one failure credit → below threshold (3).
     expect(redirectMock).not.toHaveBeenCalled();
     expect(prepareReloadMock).not.toHaveBeenCalled();
   });
 
-  it("schedules login redirect after consecutive unrecovered passive 401s", async () => {
+  it("schedules login redirect only after confirmed consecutive unrecovered failures", async () => {
     refreshMock.mockResolvedValue(false);
+    probeSessionMock.mockResolvedValue(false);
     handleEmbedPassiveUnauthorized("daemon");
     await vi.advanceTimersByTimeAsync(0);
-    // Second call after the first recovery settles → second failure credit.
     handleEmbedPassiveUnauthorized("daemon");
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(3_000);
+    // Threshold is 3 — second failure must not redirect.
+    expect(redirectMock).not.toHaveBeenCalled();
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(prepareReloadMock).toHaveBeenCalledTimes(1);
     expect(redirectMock).toHaveBeenCalledTimes(1);
   });
 
   it("cancels pending redirect when a later recovery succeeds", async () => {
     refreshMock.mockResolvedValue(false);
+    probeSessionMock.mockResolvedValue(false);
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
     handleEmbedPassiveUnauthorized("daemon");
     await vi.advanceTimersByTimeAsync(0);
     handleEmbedPassiveUnauthorized("daemon");
@@ -183,7 +176,7 @@ describe("teamverEmbedPassiveAuth", () => {
     refreshMock.mockResolvedValue(true);
     handleEmbedPassiveUnauthorized("daemon");
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(redirectMock).not.toHaveBeenCalled();
     expect(prepareReloadMock).not.toHaveBeenCalled();
   });
