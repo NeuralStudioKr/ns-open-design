@@ -125,4 +125,45 @@ describe('parseFrontmatter', () => {
     const raw2 = '---\nname: foo\n---foo\nbody';
     expect(parseFrontmatter(raw2)).toEqual({ data: {}, body: raw2 });
   });
+
+  it('parses a flush-left block sequence', () => {
+    const { data } = parseFrontmatter('---\ntags:\n- a\n- b\n---\n');
+    expect(data['tags']).toEqual(['a', 'b']);
+  });
+
+  it('parses a nested flush-left sequence without dropping enclosing keys', () => {
+    const { data } = parseFrontmatter('---\nod:\n  craft:\n    requires:\n    - alpha\n    - beta\n---\n');
+    expect(data['od']).toEqual({ craft: { requires: ['alpha', 'beta'] } });
+  });
+
+  it('parses a flush-left sequence of single-line objects', () => {
+    const { data } = parseFrontmatter('---\nitems:\n- k: 1\n  v: 2\n- k: 3\n---\n');
+    expect(data['items']).toEqual([{ k: 1, v: 2 }, { k: 3 }]);
+  });
+
+  it('returns to the parent level for a key following a flush-left sequence', () => {
+    const { data } = parseFrontmatter('---\ntags:\n- a\n- b\nname: foo\n---\n');
+    expect(data).toEqual({ tags: ['a', 'b'], name: 'foo' });
+  });
+
+  it('does not split inline-array elements on commas inside quotes', () => {
+    const { data } = parseFrontmatter('---\na: ["a,b", "c"]\nb: [\'x, y\', z]\n---\n');
+    expect(data['a']).toEqual(['a,b', 'c']);
+    expect(data['b']).toEqual(['x, y', 'z']);
+  });
+
+  it('treats an apostrophe inside an unquoted inline-array element as literal', () => {
+    const { data } = parseFrontmatter("---\ntags: [don't, stop]\n---\n");
+    expect(data['tags']).toEqual(["don't", 'stop']);
+  });
+
+  it('strips a block scalar to its own base indentation', () => {
+    const { data } = parseFrontmatter('---\ntext: |\n    line one\n    line two\n---\n');
+    expect(data['text']).toBe('line one\nline two');
+  });
+
+  it('preserves relative indentation inside a block scalar', () => {
+    const { data } = parseFrontmatter('---\ntext: |\n  a\n    b\n---\n');
+    expect(data['text']).toBe('a\n  b');
+  });
 });
