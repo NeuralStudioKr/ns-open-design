@@ -111,7 +111,10 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
 
     await setActiveTeamverWorkspace("ws-4");
 
-    // Local UI must not blank out on a transient BFF failure.
+    // Both refresh and ensure declined — no wasted 4th POST after two
+    // "session dead" signals; the outer catch keeps the local store in
+    // sync so the UI does not blank out during a transient BFF failure.
+    expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(1);
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-4");
     expect(dispatchWorkspaceChanged).toHaveBeenCalledWith("ws-4");
   });

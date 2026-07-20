@@ -28,8 +28,10 @@ function isUnauthorizedWorkspaceError(err: unknown): boolean {
  * `workspaceStore` drift ahead of the BFF cookie when a transient 401 hit —
  * subsequent Drive / registry calls then sent an inconsistent
  * `X-Workspace-Id`. Recover once via refresh, then ensure `/auth/session`
- * (which can Set-Cookie a fresh access), and retry the POST before falling
- * back to local-only update.
+ * (which can Set-Cookie a fresh access), and retry the POST. If both refresh
+ * and ensure decline, surface the last unauthorized so the caller can fall
+ * back to local-only update — a fourth POST after two "session dead" signals
+ * would only add another 401 round-trip.
  */
 async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise<void> {
   try {
@@ -47,10 +49,20 @@ async function postDesignAuthWorkspaceWithRecovery(workspaceId: string): Promise
     }
   }
   if (await ensureDesignBffSessionAuthenticated()) {
+    // ensure() can Set-Cookie a fresh access on its response body — the
+    // next daemon fetch clears nginx auth_request. If the retry still 401s,
+    // let it bubble so the caller keeps local store in sync via the outer
+    // catch (rather than pretending the switch succeeded).
     await postDesignAuthWorkspace(workspaceId);
     return;
   }
-  await postDesignAuthWorkspace(workspaceId);
+  // Both refresh and ensure said no. Surface the unauthorized status so
+  // `setActiveTeamverWorkspace`'s outer catch decides whether to still
+  // update local store — do not fire a wasted 4th POST that will only
+  // re-emit the same 401.
+  const err = new Error("workspace_switch_bff_unauthorized") as Error & { status?: number };
+  err.status = 401;
+  throw err;
 }
 
 export async function setActiveTeamverWorkspace(
