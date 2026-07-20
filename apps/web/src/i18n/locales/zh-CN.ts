@@ -2414,6 +2414,7 @@ export const zhCN: Dict = {
   'questions.bannerAnswered': '已回答这些问题',
   'questions.continue': '继续',
   'questions.generating': '正在生成问题…',
+  'questions.submitting': '正在提交…',
   'questions.skipAll': '一键跳过',
   'questions.autoSkipHint': '倒计时结束后将自动继续',
   'sketch.toolSelect': '选择（占位）',

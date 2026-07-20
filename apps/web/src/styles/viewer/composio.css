@@ -1249,6 +1249,10 @@
   cursor: default;
 }
 .questions-continue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: 1px solid transparent;
   color: #fff;
   background: var(--accent);
@@ -1263,6 +1267,17 @@
   box-shadow: none;
   opacity: 0.5;
   cursor: default;
+}
+.questions-continue-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: questions-continue-spin 700ms linear infinite;
+}
+@keyframes questions-continue-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Design-system preview modal */

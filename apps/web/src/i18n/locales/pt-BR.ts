@@ -2414,6 +2414,7 @@ export const ptBR: Dict = {
   'questions.bannerAnswered': 'Perguntas respondidas',
   'questions.continue': 'Continuar',
   'questions.generating': 'Gerando perguntas…',
+  'questions.submitting': 'Enviando…',
   'questions.skipAll': 'Pular tudo',
   'questions.autoSkipHint': 'Continua automaticamente quando o cronômetro termina',
   'sketch.toolSelect': 'Selecionar (sem ação)',

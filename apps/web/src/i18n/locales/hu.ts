@@ -2414,6 +2414,7 @@ export const hu: Dict = {
   'questions.bannerAnswered': 'Kérdések megválaszolva',
   'questions.continue': 'Folytatás',
   'questions.generating': 'Kérdések generálása…',
+  'questions.submitting': 'Küldés…',
   'questions.skipAll': 'Összes kihagyása',
   'questions.autoSkipHint': 'Automatikusan folytatódik az időzítő lejártakor',
   'sketch.toolSelect': 'Kijelölés (nem aktív)',

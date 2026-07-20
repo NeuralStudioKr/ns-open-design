@@ -2414,6 +2414,7 @@ export const fr: Dict = {
   'questions.bannerAnswered': 'Questions traitées',
   'questions.continue': 'Continuer',
   'questions.generating': 'Génération des questions…',
+  'questions.submitting': 'Envoi…',
   'questions.skipAll': 'Tout ignorer',
   'questions.autoSkipHint': 'Continue automatiquement quand le minuteur se termine',
   'sketch.toolSelect': 'Sélection (sans effet)',

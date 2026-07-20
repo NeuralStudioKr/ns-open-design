@@ -2414,6 +2414,7 @@ export const zhTW: Dict = {
   'questions.bannerAnswered': '已回答這些問題',
   'questions.continue': '繼續',
   'questions.generating': '正在產生問題…',
+  'questions.submitting': '正在提交…',
   'questions.skipAll': '全部略過',
   'questions.autoSkipHint': '計時器結束時自動繼續',
   'sketch.toolSelect': '選擇（佔位）',

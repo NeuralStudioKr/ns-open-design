@@ -2414,6 +2414,7 @@ export const ja: Dict = {
   'questions.bannerAnswered': '質問に回答済み',
   'questions.continue': '続ける',
   'questions.generating': '質問を生成中…',
+  'questions.submitting': '送信中…',
   'questions.skipAll': 'すべてスキップ',
   'questions.autoSkipHint': 'タイマー終了時に自動で続行します',
   'sketch.toolSelect': '選択（操作なし）',

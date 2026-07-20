@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 추가 포팅 루프 3. `5f411466b` QuestionsPanel submit lock 핵심을 Teamver의 단순화된 form 구조에 맞춰 수동 포팅했다. Continue/Skip/auto countdown이 같은 form occurrence에서 중복 제출을 만들지 않도록 첫 submit 직후 UI와 chokepoint를 잠근다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 2. `21f25cde5` composer placeholder carousel caret 보정은 CSS 한정 변경이라 안전하게 수동 포팅했다. 빈 composer에서 decorative caret와 native caret가 동시에 깜박이는 UX 노이즈를 줄인다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 1. `3e5725e54`, `188ae72f8` question-form parser 안정화는 Teamver 채팅 마크업 비노출 이슈와 직접 연결되어 수동 포팅했다. 반면 `cdffb1b63` library ingest SSRF 차단은 현재 Teamver staging에 동일 library ingest route가 활성 경로로 존재하지 않아 이번 루프에서는 적용하지 않았다.
 **반영 갱신:** 2026-07-20 — 로컬 `upstream/main` 최신 `f13ed2cb7 landing-page: enrich and redesign the codex-design page (#5872)` 기준으로 prompt/cache·작업 속도 후보를 추가 재검토했다. `9b5cdd843`의 connected-MCP directive cache 분리는 Teamver run 구조에 맞춰 수동 포팅했다. `ed48a7d22` transient ACP persistence filter는 이미 Teamver `server.ts` 경로에 반영되어 있어 중복 적용하지 않았다.
@@ -21,6 +22,7 @@
 | `9b5cdd843` | `fix(daemon): move connected-MCP directive out of the cached system prompt` | **2026-07-20 선별 반영.** 연결된 외부 MCP 서버 목록은 OAuth token/live connection state에 따라 바뀌므로 cacheable system prompt에서 제거하고 run instruction slice에만 주입하도록 수동 포팅했다. 큰 system prompt cache invalidation을 줄여 재시도/연속 작업의 시작 지연과 token overhead를 낮춘다. |
 | `3e5725e54` / `188ae72f8` | question-form false-positive open tag 복구 / array payload 렌더 | **2026-07-20 선별 반영.** 채팅 prose 안의 `<question-form>` 언급이 실제 form을 삼키는 문제와 배열형 payload가 raw JSON으로 보이는 문제를 막는다. malformed completed block은 raw markup 대신 안전 fallback으로 대체한다. |
 | `21f25cde5` | composer placeholder carousel native caret 숨김 | **2026-07-20 선별 반영.** CSS 한정 변경. 빈 composer placeholder animation 중 native caret가 함께 깜박이는 시각적 노이즈를 줄인다. |
+| `5f411466b` | QuestionsPanel Continue 중복 제출 방지 | **2026-07-20 선별 반영.** Teamver `QuestionsPanel` 구조에 맞춰 submit lock만 포팅했다. 질문 form 답변 제출 직후 버튼을 즉시 disabled/busy로 바꿔 중복 run enqueue와 사용자의 stuck 오해를 줄인다. |
 | `a1b0dd0d7` 계열 | POSIX argv prompt budget 보정 | **2026-07-20 선별 반영.** Linux/macOS에서 Windows용 30KB prompt argv 제한을 그대로 적용하는 false-positive를 줄인다. runaway prompt는 120KB에서 fail-fast 유지. |
 | `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **2026-07-20 부분 반영.** 전체 slim charter/core prompt 전환은 계속 보류. 단, 비미디어 프로젝트에 주입되던 긴 media dispatcher Bash loop 예시를 축약하고, zh-CN quick brief의 broad non-deck 선택지 예시를 scope-neutral 문구로 교체했다. Teamver deck-only UX와 background/comment 패치에 닿는 구조 변경은 반영하지 않음. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |

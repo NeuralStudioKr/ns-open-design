@@ -2414,6 +2414,7 @@ export const esES: Dict = {
   'questions.bannerAnswered': 'Preguntas respondidas',
   'questions.continue': 'Continuar',
   'questions.generating': 'Generando preguntas…',
+  'questions.submitting': 'Enviando…',
   'questions.skipAll': 'Omitir todo',
   'questions.autoSkipHint': 'Continúa automáticamente cuando termina el temporizador',
   'sketch.toolSelect': 'Seleccionar (sin acción)',

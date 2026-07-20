@@ -2414,6 +2414,7 @@ export const ko: Dict = {
   'questions.bannerAnswered': '질문에 답변함',
   'questions.continue': '계속',
   'questions.generating': '질문 생성 중…',
+  'questions.submitting': '제출 중…',
   'questions.skipAll': '모두 건너뛰기',
   'questions.autoSkipHint': '타이머가 종료되면 자동으로 계속됩니다',
   'sketch.toolSelect': '선택',

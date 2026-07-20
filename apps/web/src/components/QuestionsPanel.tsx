@@ -82,6 +82,12 @@ export function QuestionsPanel({
   // the single submit chokepoint can label the click event.
   const submitSourceRef = useRef<'continue' | 'skip_button' | 'countdown'>('continue');
   const [ready, setReady] = useState(false);
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  const releaseSubmitLock = useCallback(() => {
+    submittingRef.current = false;
+    setSubmitting(false);
+  }, []);
   const [draftAnswers, setDraftAnswers] = useState<QuestionFormAnswers | undefined>(() =>
     readQuestionFormDraft(formKey),
   );
@@ -148,6 +154,9 @@ export function QuestionsPanel({
   // here, so the submit/skip click is reported exactly once.
   const submitAndClearDraft = useCallback(
     (text: string, answers: QuestionFormAnswers) => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
+      setSubmitting(true);
       const source = submitSourceRef.current;
       submitSourceRef.current = 'continue';
       if (form && projectId) {
@@ -218,9 +227,13 @@ export function QuestionsPanel({
   // Submission needs the form present, active, fully revealed, and not blocked
   // by a busy/streaming turn. Required-field readiness is tracked separately by
   // `ready` (from QuestionForm) and gates Continue via `canContinue`.
-  const canSubmit = !!form && interactive && !building && !submitDisabled;
+  const canSubmit = !!form && interactive && !building && !submitDisabled && !submitting;
   const canContinue = canSubmit && ready;
   const canSkip = canSubmit;
+
+  useEffect(() => {
+    if (submitting && (submitDisabled || answered)) releaseSubmitLock();
+  }, [submitting, submitDisabled, answered, releaseSubmitLock]);
 
   // Auto-skip countdown. It only runs while the form is actionable; pausing
   // (busy turn, re-stream) resets it so we never auto-submit a half-ready form.
@@ -289,9 +302,11 @@ export function QuestionsPanel({
         <span className="questions-panel-status">
           {building
             ? t('questions.generating')
-            : canSkip
-              ? t('questions.autoSkipHint')
-              : null}
+            : submitting
+              ? t('questions.submitting')
+              : canSkip
+                ? t('questions.autoSkipHint')
+                : null}
         </span>
         <button
           type="button"
@@ -309,12 +324,20 @@ export function QuestionsPanel({
           type="button"
           className="questions-continue"
           disabled={!canContinue}
+          aria-busy={submitting ? 'true' : undefined}
           onClick={() => {
             submitSourceRef.current = 'continue';
             formRef.current?.submit();
           }}
         >
-          {t('questions.continue')}
+          {submitting ? (
+            <>
+              <span className="questions-continue-spinner" aria-hidden />
+              {t('questions.submitting')}
+            </>
+          ) : (
+            t('questions.continue')
+          )}
         </button>
       </div>
     </div>

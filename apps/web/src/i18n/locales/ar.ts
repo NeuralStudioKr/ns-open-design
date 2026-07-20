@@ -2414,6 +2414,7 @@ export const ar: Dict = {
   'questions.bannerAnswered': 'تمت الإجابة عن الأسئلة',
   'questions.continue': 'متابعة',
   'questions.generating': 'جارٍ إنشاء الأسئلة…',
+  'questions.submitting': 'جارٍ الإرسال…',
   'questions.skipAll': 'تخطّي الكل',
   'questions.autoSkipHint': 'يتابع تلقائيًا عند انتهاء المؤقّت',
   'sketch.toolSelect': 'تحديد (لا إجراء)',

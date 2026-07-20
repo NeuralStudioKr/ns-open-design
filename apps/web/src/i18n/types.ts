@@ -3050,6 +3050,7 @@ export interface Dict {
   'questions.bannerAnswered': string;
   'questions.continue': string;
   'questions.generating': string;
+  'questions.submitting': string;
   'questions.skipAll': string;
   'questions.autoSkipHint': string;
 

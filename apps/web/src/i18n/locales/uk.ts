@@ -2414,6 +2414,7 @@ export const uk: Dict = {
   'questions.bannerAnswered': 'На запитання дано відповідь',
   'questions.continue': 'Продовжити',
   'questions.generating': 'Генерація запитань…',
+  'questions.submitting': 'Надсилання…',
   'questions.skipAll': 'Пропустити все',
   'questions.autoSkipHint': 'Автоматично продовжується після завершення таймера',
   'sketch.toolSelect': 'Виділення (без ефекту)',

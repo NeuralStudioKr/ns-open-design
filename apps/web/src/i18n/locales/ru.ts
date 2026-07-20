@@ -2414,6 +2414,7 @@ export const ru: Dict = {
   'questions.bannerAnswered': 'На вопросы дан ответ',
   'questions.continue': 'Продолжить',
   'questions.generating': 'Генерация вопросов…',
+  'questions.submitting': 'Отправка…',
   'questions.skipAll': 'Пропустить всё',
   'questions.autoSkipHint': 'Автоматически продолжается по истечении таймера',
   'sketch.toolSelect': 'Выбор (без действий)',

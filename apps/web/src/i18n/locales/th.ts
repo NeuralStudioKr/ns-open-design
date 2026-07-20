@@ -2414,6 +2414,7 @@ export const th: Dict = {
   'questions.bannerAnswered': 'ตอบคำถามแล้ว',
   'questions.continue': 'ดำเนินการต่อ',
   'questions.generating': 'กำลังสร้างคำถาม…',
+  'questions.submitting': 'กำลังส่ง…',
   'questions.skipAll': 'ข้ามทั้งหมด',
   'questions.autoSkipHint': 'ดำเนินการต่อโดยอัตโนมัติเมื่อหมดเวลา',
   'sketch.toolSelect': 'จิ้มเลือกตัวสิ่งของ',

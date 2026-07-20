@@ -2414,6 +2414,7 @@ export const pl: Dict = {
   'questions.bannerAnswered': 'Pytania uzupełnione',
   'questions.continue': 'Kontynuuj',
   'questions.generating': 'Generowanie pytań…',
+  'questions.submitting': 'Wysyłanie…',
   'questions.skipAll': 'Pomiń wszystkie',
   'questions.autoSkipHint': 'Automatycznie kontynuuje po upływie czasu',
   'sketch.toolSelect': 'Wybierz (brak akcji)',

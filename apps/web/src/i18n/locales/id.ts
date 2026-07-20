@@ -2414,6 +2414,7 @@ export const id: Dict = {
   'questions.bannerAnswered': 'Questions answered',
   'questions.continue': 'Continue',
   'questions.generating': 'Generating questions…',
+  'questions.submitting': 'Submitting…',
   'questions.skipAll': 'Skip all',
   'questions.autoSkipHint': 'Auto-continues when the timer ends',
   'sketch.toolSelect': 'Pilih',

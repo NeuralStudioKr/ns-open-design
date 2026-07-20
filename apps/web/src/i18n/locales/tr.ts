@@ -2414,6 +2414,7 @@ export const tr: Dict = {
   'questions.bannerAnswered': 'Sorular yanıtlandı',
   'questions.continue': 'Devam et',
   'questions.generating': 'Sorular oluşturuluyor…',
+  'questions.submitting': 'Gönderiliyor…',
   'questions.skipAll': 'Tümünü atla',
   'questions.autoSkipHint': 'Zamanlayıcı bittiğinde otomatik olarak devam eder',
   'sketch.toolSelect': 'Seç (işlem yok)',

@@ -2414,6 +2414,7 @@ export const fa: Dict = {
   'questions.bannerAnswered': 'به پرسش‌ها پاسخ داده شد',
   'questions.continue': 'ادامه',
   'questions.generating': 'در حال تولید سؤالات…',
+  'questions.submitting': 'در حال ارسال…',
   'questions.skipAll': 'رد کردن همه',
   'questions.autoSkipHint': 'با پایان تایمر به‌طور خودکار ادامه می‌یابد',
   'sketch.toolSelect': 'انتخاب (غیرفعال)',
