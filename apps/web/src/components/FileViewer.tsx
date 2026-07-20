@@ -4179,6 +4179,46 @@ function ReactModulePointer({
   );
 }
 
+/**
+ * Disk preview debounce must stay ≤ ProjectView file-changed coalesce
+ * `maxWait` (250ms). A longer debounce lets write storms cancel every
+ * scheduled fetch before it runs → sticky "loading…".
+ */
+const HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS = 200;
+/** Wall-clock deadline so hung GETs cannot leave "loading…" forever. */
+const HTML_PREVIEW_SOURCE_WALL_MS = 12_000;
+
+function acceptPreviewHtmlCandidate(
+  candidate: string | null,
+  options: {
+    streaming: boolean;
+    lastStableRef: { current: string | null };
+  },
+): string | null {
+  if (candidate == null) return null;
+  const repaired = repairArtifactDocumentHead(candidate);
+  const stable = isArtifactHtmlStableForPreview(repaired);
+  if (stable) {
+    options.lastStableRef.current = repaired;
+    return repaired;
+  }
+  // Prefer the last stable frame over painting leak debris.
+  if (options.lastStableRef.current) {
+    return options.lastStableRef.current;
+  }
+  if (options.streaming) return null;
+  // Final/non-streaming snapshot with no prior stable frame: only accept
+  // if the repaired HTML has BOTH structural completeness (closing body
+  // + html tags) AND no residual truncated-tag debris. Anything less is
+  // more likely to paint garbled debris than a useful preview.
+  const lower = repaired.toLowerCase();
+  const structurallyComplete = lower.includes('</body>') && lower.includes('</html>');
+  if (!structurallyComplete) return null;
+  if (hasArtifactPreviewBodyTextLeaks(repaired)) return null;
+  options.lastStableRef.current = repaired;
+  return repaired;
+}
+
 function ReactComponentViewer({
   projectId,
   file,
@@ -4204,11 +4244,17 @@ function ReactComponentViewer({
   useEffect(() => {
     setSource(null);
     let cancelled = false;
+    const wallTimer = window.setTimeout(() => {
+      if (!cancelled) setSource('');
+    }, HTML_PREVIEW_SOURCE_WALL_MS);
     void fetchProjectFileText(projectId, file.name).then((text) => {
-      if (!cancelled) setSource(text ?? '');
+      if (cancelled) return;
+      window.clearTimeout(wallTimer);
+      setSource(text ?? '');
     });
     return () => {
       cancelled = true;
+      window.clearTimeout(wallTimer);
     };
   }, [projectId, file.name, file.mtime, reloadKey]);
 
@@ -4465,14 +4511,20 @@ function DocumentPreviewViewer({
     let cancelled = false;
     setLoading(true);
     setPreview(null);
+    const wallTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setPreview(null);
+      setLoading(false);
+    }, HTML_PREVIEW_SOURCE_WALL_MS);
     void fetchProjectFilePreview(projectId, file.name).then((next) => {
-      if (!cancelled) {
-        setPreview(next);
-        setLoading(false);
-      }
+      if (cancelled) return;
+      window.clearTimeout(wallTimer);
+      setPreview(next);
+      setLoading(false);
     });
     return () => {
       cancelled = true;
+      window.clearTimeout(wallTimer);
     };
   }, [projectId, file.name, file.mtime]);
 
@@ -4797,6 +4849,14 @@ function HtmlViewer({
       : null,
   );
   const lastStablePreviewIdentityRef = useRef<string | null>(null);
+  // When liveHtml is present and paints (stable or last-stable fallback),
+  // skip disk fetch. Token churn must NOT cancel an in-flight disk debounce.
+  const [liveHtmlPaintsPreview, setLiveHtmlPaintsPreview] = useState(() => {
+    if (liveHtml == null) return false;
+    const repaired = repairArtifactDocumentHead(liveHtml);
+    return isArtifactHtmlStableForPreview(repaired);
+  });
+  const hasLiveHtml = liveHtml !== undefined;
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5052,6 +5112,7 @@ function HtmlViewer({
   const manualEditPreviewVersionRef = useRef(0);
   const sourceRef = useRef<string | null>(source);
   const sourceFileKeyRef = useRef<string | null>(null);
+  const previewSourceFetchGenerationRef = useRef(0);
   const templateNameId = useId();
   const templateDescriptionId = useId();
   const imageExportTitleId = useId();
@@ -5346,49 +5407,54 @@ function HtmlViewer({
     liveCommentTargetsRef.current = liveCommentTargets;
   }, [liveCommentTargets]);
 
+  // Live stream apply — must NOT share deps with disk fetch. Every liveHtml
+  // token used to cancel the 280ms disk debounce, so fallthrough never ran.
   useEffect(() => {
     const artifactIdentity = `${projectId}\0${file.name}`;
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
     }
-    const sourceFileKey = `${artifactIdentity}\0${liveHtml === undefined ? 'raw' : 'live'}`;
-    const acceptCandidate = (candidate: string | null): string | null => {
-      if (candidate == null) return null;
-      const repaired = repairArtifactDocumentHead(candidate);
-      const stable = isArtifactHtmlStableForPreview(repaired);
-      if (stable) {
-        lastStablePreviewSourceRef.current = repaired;
-        return repaired;
-      }
-      // Prefer the last stable frame over painting leak debris.
-      if (lastStablePreviewSourceRef.current) {
-        return lastStablePreviewSourceRef.current;
-      }
-      if (streaming) return null;
-      // Final/non-streaming snapshot with no prior stable frame: only accept
-      // if the repaired HTML has BOTH structural completeness (closing body
-      // + html tags) AND no residual truncated-tag debris. Anything less is
-      // more likely to paint garbled debris than a useful preview.
-      const lower = repaired.toLowerCase();
-      const structurallyComplete = lower.includes("</body>") && lower.includes("</html>");
-      if (!structurallyComplete) return null;
-      if (hasArtifactPreviewBodyTextLeaks(repaired)) return null;
-      lastStablePreviewSourceRef.current = repaired;
-      return repaired;
-    };
-    if (liveHtml !== undefined) {
-      sourceFileKeyRef.current = sourceFileKey;
-      const accepted = acceptCandidate(liveHtml);
-      if (accepted != null) {
-        setSource(accepted);
-        sourceRef.current = accepted;
-      } else if (lastStablePreviewSourceRef.current) {
-        setSource(lastStablePreviewSourceRef.current);
-        sourceRef.current = lastStablePreviewSourceRef.current;
-      }
+
+    if (liveHtml === undefined) {
+      setLiveHtmlPaintsPreview(false);
       return;
     }
+
+    const sourceFileKey = `${artifactIdentity}\0live`;
+    sourceFileKeyRef.current = sourceFileKey;
+    const accepted = acceptPreviewHtmlCandidate(liveHtml, {
+      streaming,
+      lastStableRef: lastStablePreviewSourceRef,
+    });
+    if (accepted != null) {
+      setSource(accepted);
+      sourceRef.current = accepted;
+      setSourceLoadFailed(false);
+      setLiveHtmlPaintsPreview(true);
+      return;
+    }
+    if (lastStablePreviewSourceRef.current) {
+      setSource(lastStablePreviewSourceRef.current);
+      sourceRef.current = lastStablePreviewSourceRef.current;
+      setLiveHtmlPaintsPreview(true);
+      return;
+    }
+    // Unstable live stream with no prior stable frame: fall through to disk
+    // fetch so re-entry / auth-slow tabs are not stuck on "loading…".
+    setLiveHtmlPaintsPreview(false);
+  }, [liveHtml, streaming, projectId, file.name]);
+
+  // Disk / raw fetch — independent of liveHtml token identity.
+  useEffect(() => {
+    if (hasLiveHtml && liveHtmlPaintsPreview) return;
+
+    const artifactIdentity = `${projectId}\0${file.name}`;
+    if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
+      lastStablePreviewIdentityRef.current = artifactIdentity;
+      lastStablePreviewSourceRef.current = null;
+    }
+    const sourceFileKey = `${artifactIdentity}\0raw`;
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
     sourceFileKeyRef.current = sourceFileKey;
     if (fileChanged) {
@@ -5402,45 +5468,84 @@ function HtmlViewer({
         sourceRef.current = null;
       }
     }
+
     let cancelled = false;
-    // Cache-bust the fetch on every mtime / reload / files-refresh bump.
-    // Without this, an agent edit during Comment mode (srcDoc path) gets
-    // stale HTML from the browser HTTP cache — the source state ends up
-    // identical to the previous value, srcDoc is byte-equal to the last
-    // activated HTML, canActivateSrcDocTransport bails on the dedupe
-    // check, and the preview only refreshes when Comment closes and the
-    // url-load iframe takes over with its own ?v=mtime cache-bust.
-    void fetchProjectFileText(projectId, file.name, {
-      cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}`,
-    }).then((text) => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let wallTimer: ReturnType<typeof setTimeout> | null = null;
+    const requestGeneration = ++previewSourceFetchGenerationRef.current;
+    const abort = new AbortController();
+
+    const runFetch = () => {
+      // Cache-bust the fetch on every mtime / reload / files-refresh bump.
+      // Without this, an agent edit during Comment mode (srcDoc path) gets
+      // stale HTML from the browser HTTP cache — the source state ends up
+      // identical to the previous value, srcDoc is byte-equal to the last
+      // activated HTML, canActivateSrcDocTransport bails on the dedupe
+      // check, and the preview only refreshes when Comment closes and the
+      // url-load iframe takes over with its own ?v=mtime cache-bust.
+      void fetchProjectFileText(projectId, file.name, {
+        cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}`,
+        signal: abort.signal,
+      }).then((text) => {
+        if (cancelled) return;
+        if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
+        // Chokidar emits agent rewrites as unlink+add+change bursts; a
+        // transient null mid-burst would blank source → srcDoc empty →
+        // shell stays on prior frame. Keep the last good text instead.
+        if (text == null) {
+          setSourceLoadFailed(true);
+          if (lastStablePreviewSourceRef.current) {
+            setSource(lastStablePreviewSourceRef.current);
+            sourceRef.current = lastStablePreviewSourceRef.current;
+          }
+          return;
+        }
+        setSourceLoadFailed(false);
+        const accepted = acceptPreviewHtmlCandidate(text, {
+          streaming,
+          lastStableRef: lastStablePreviewSourceRef,
+        });
+        if (accepted == null) {
+          if (lastStablePreviewSourceRef.current) {
+            setSource(lastStablePreviewSourceRef.current);
+            sourceRef.current = lastStablePreviewSourceRef.current;
+          } else {
+            // Incomplete disk HTML with no stable frame — surface unavailable
+            // even while streaming so we never stick on "loading…".
+            setSourceLoadFailed(true);
+          }
+          return;
+        }
+        setSource(accepted);
+        sourceRef.current = accepted;
+      });
+    };
+
+    // Debounce refresh-key churn so soft-sticky auth recovery can finish a
+    // raw GET before the next files poll aborts it (sticky loading). Keep
+    // ≤ ProjectView coalesce maxWait (250) so write storms cannot starve.
+    debounceTimer = setTimeout(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS);
+    wallTimer = setTimeout(() => {
       if (cancelled) return;
-      // Chokidar emits agent rewrites as unlink+add+change bursts; a
-      // transient null mid-burst would blank source → srcDoc empty →
-      // shell stays on prior frame. Keep the last good text instead.
-      if (text == null) {
-        setSourceLoadFailed(true);
-        if (lastStablePreviewSourceRef.current) {
-          setSource(lastStablePreviewSourceRef.current);
-          sourceRef.current = lastStablePreviewSourceRef.current;
-        }
-        return;
-      }
-      setSourceLoadFailed(false);
-      const accepted = acceptCandidate(text);
-      if (accepted == null) {
-        if (lastStablePreviewSourceRef.current) {
-          setSource(lastStablePreviewSourceRef.current);
-          sourceRef.current = lastStablePreviewSourceRef.current;
-        }
-        return;
-      }
-      setSource(accepted);
-      sourceRef.current = accepted;
-    });
+      if (sourceRef.current == null) setSourceLoadFailed(true);
+    }, HTML_PREVIEW_SOURCE_WALL_MS);
+
     return () => {
       cancelled = true;
+      abort.abort();
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      if (wallTimer != null) clearTimeout(wallTimer);
     };
-  }, [projectId, file.name, file.mtime, liveHtml, reloadKey, filesRefreshKey, streaming]);
+  }, [
+    hasLiveHtml,
+    liveHtmlPaintsPreview,
+    projectId,
+    file.name,
+    file.mtime,
+    reloadKey,
+    filesRefreshKey,
+    streaming,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5525,14 +5630,25 @@ function HtmlViewer({
       return;
     }
     let cancelled = false;
+    const abort = new AbortController();
     setEmbedPreviewPrefixResolved(false);
-    void resolveTeamverProjectPreviewPrefix(projectId, file.name).then((prefix) => {
+    const failOpenTimer = window.setTimeout(() => {
       if (cancelled) return;
+      // Auth/sticky delays must not leave the empty state on "loading…" forever.
+      setEmbedPreviewPrefixResolved(true);
+    }, 8_000);
+    void resolveTeamverProjectPreviewPrefix(projectId, file.name, {
+      signal: abort.signal,
+    }).then((prefix) => {
+      if (cancelled) return;
+      window.clearTimeout(failOpenTimer);
       setEmbedPreviewPrefix(prefix);
       setEmbedPreviewPrefixResolved(true);
     });
     return () => {
       cancelled = true;
+      abort.abort();
+      window.clearTimeout(failOpenTimer);
     };
   }, [file.name, projectId, teamverEmbedPreviewMode]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
@@ -8265,12 +8381,14 @@ function HtmlViewer({
   const boardAvailable = mode === 'preview' && source !== null;
   const showPreviewToolbarControls = mode === 'preview';
   const showPreviewViewportControls = showPreviewToolbarControls && !effectiveDeck;
-  const showStreamingPreviewVeil = Boolean(
+  const liveHtmlUnstableForPreview = Boolean(
     streaming
-    && source == null
     && liveHtml?.trim()
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
+  // Empty branch used to never render the veil (it lived under source !== null).
+  const showStreamingEmptyVeil = liveHtmlUnstableForPreview && source == null && !sourceLoadFailed;
+  const showStreamingPreviewVeil = liveHtmlUnstableForPreview && source != null;
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
     localCommentSideDockActive ? 'comment-preview-layer-with-side-dock' : '',
@@ -9019,13 +9137,38 @@ function HtmlViewer({
         </>)}
       <div className="viewer-body" ref={previewBodyRef}>
         {source === null ? (
-          <div className="viewer-empty">
-            {embedPreviewPrefixResolved
-              && (sourceLoadFailed
-                || (isTeamverEmbedMode() && embedPreviewPrefix == null))
-              ? t('fileViewer.previewUnavailable')
-              : t('fileViewer.loading')}
-          </div>
+          showStreamingEmptyVeil ? (
+            <div
+              className="viewer-empty artifact-preview-streaming-veil-host"
+              role="status"
+              aria-live="polite"
+              data-testid="artifact-preview-streaming-veil"
+            >
+              <div className="artifact-preview-streaming-veil">
+                <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                <div className="artifact-preview-streaming-veil__card">
+                  <Icon
+                    name="spinner"
+                    size={18}
+                    className="artifact-preview-streaming-veil__icon"
+                  />
+                  <span className="artifact-preview-streaming-veil__label">
+                    {t('fileViewer.updatingPreview')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="viewer-empty">
+              {sourceLoadFailed
+                || (useUrlLoadPreview
+                  && embedPreviewPrefixResolved
+                  && isTeamverEmbedMode()
+                  && embedPreviewPrefix == null)
+                ? t('fileViewer.previewUnavailable')
+                : t('fileViewer.loading')}
+            </div>
+          )
         ) : mode === 'preview' ? (
           <div
             className={`${manualEditMode ? 'manual-edit-workspace' : commentPreviewLayoutClass} preview-viewport preview-viewport-${previewViewport}${drawOverlayOpen ? ' preview-draw-active' : ''}`}

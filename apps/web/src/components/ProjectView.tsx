@@ -2399,6 +2399,8 @@ export function ProjectView({
   // and FileWorkspace's "tab no longer on disk" path then drops the user
   // out of their preview. A short trailing wait absorbs the burst; the
   // maxWait cap stops a sustained edit storm from starving the UI.
+  // Keep maxWait ≥ HtmlViewer `HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS` (200)
+  // so refresh-key churn cannot cancel every scheduled disk preview fetch.
   const refreshFilesAndDesignMd = useCallback(() => {
     setFilesRefresh((n) => n + 1);
     // Round 7 (mrcfps): file mutations are the dominant staleness signal

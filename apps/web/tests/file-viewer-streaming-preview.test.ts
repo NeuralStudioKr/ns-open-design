@@ -25,7 +25,8 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("data-testid=\"artifact-preview-streaming-veil\"");
     expect(source).toContain("is-streaming-unstable");
     expect(source).toContain("fileViewer.updatingPreview");
-    expect(source).toContain("&& source == null");
+    expect(source).toContain("showStreamingEmptyVeil");
+    expect(source).toContain("showStreamingPreviewVeil");
   });
 
   it("keeps last stable preview during disk refresh instead of blanking source", () => {
@@ -45,12 +46,50 @@ describe("FileViewer streaming slide preview", () => {
     );
   });
 
-  it("does not accept structurally incomplete final html as the stable preview", () => {
+  it("splits liveHtml apply from disk fetch so token churn cannot cancel debounce", () => {
     const source = readSource("src/components/FileViewer.tsx");
-    expect(source).toContain("const structurallyComplete = lower.includes(\"</body>\") && lower.includes(\"</html>\");");
-    expect(source).toContain("if (!structurallyComplete) return null;");
-    expect(source).toMatch(
-      /if \(!structurallyComplete\) return null;[\s\S]*if \(hasArtifactPreviewBodyTextLeaks\(repaired\)\) return null;[\s\S]*lastStablePreviewSourceRef\.current = repaired;/,
+    expect(source).toContain("liveHtmlPaintsPreview");
+    expect(source).toContain("hasLiveHtml");
+    expect(source).toContain("acceptPreviewHtmlCandidate");
+    expect(source).toContain("HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS");
+    expect(source).toContain("HTML_PREVIEW_SOURCE_WALL_MS");
+    expect(source).toContain(
+      "Unstable live stream with no prior stable frame: fall through to disk",
     );
+    expect(source).toContain("previewSourceFetchGenerationRef");
+    expect(source).toContain("Debounce refresh-key churn so soft-sticky auth recovery");
+    // Disk effect must not list liveHtml itself — only the paint gate.
+    expect(source).toMatch(
+      /hasLiveHtml,\s*\n\s*liveHtmlPaintsPreview,\s*\n\s*projectId,/,
+    );
+    expect(source).toMatch(/setTimeout\(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS\)/);
+  });
+
+  it("marks incomplete disk HTML unavailable even while streaming", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain(
+      "Incomplete disk HTML with no stable frame — surface unavailable",
+    );
+    expect(source).toContain("even while streaming so we never stick on \"loading…\"");
+  });
+
+  it("gates empty unavailable on url-load prefix, not deck srcDoc", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("useUrlLoadPreview");
+    expect(source).toMatch(
+      /sourceLoadFailed\s*\n\s*\|\|\s*\(useUrlLoadPreview/,
+    );
+  });
+
+  it("keeps disk debounce at or under ProjectView file-changed coalesce maxWait", () => {
+    const viewer = readSource("src/components/FileViewer.tsx");
+    const projectView = readSource("src/components/ProjectView.tsx");
+    const debounceMatch = viewer.match(
+      /const HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS = (\d+)/,
+    );
+    const maxWaitMatch = projectView.match(/maxWait:\s*(\d+)/);
+    expect(debounceMatch?.[1]).toBeTruthy();
+    expect(maxWaitMatch?.[1]).toBeTruthy();
+    expect(Number(debounceMatch![1])).toBeLessThanOrEqual(Number(maxWaitMatch![1]));
   });
 });
