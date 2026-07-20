@@ -23,6 +23,7 @@ import {
 import {
   composeSystemPrompt,
   renderCodexImagegenOverride,
+  renderConnectedExternalMcpDirective,
   resolveCodexImagegenModelId,
   resolveExclusiveSurface,
   shouldRenderCodexImagegenOverride,
@@ -11984,9 +11985,6 @@ export async function startServer({
       sessionMode: normalizeConversationSessionMode(sessionMode),
       mediaExecution,
       streamFormat,
-      connectedExternalMcp: Array.isArray(connectedExternalMcp)
-        ? connectedExternalMcp
-        : undefined,
       ...(pluginBlock ? { pluginBlock } : {}),
       ...(activeStageBlocks ? { activeStageBlocks } : {}),
       userInstructions,
@@ -12624,9 +12622,21 @@ export async function startServer({
       currentStableHash,
     );
     const browserUsePromptGuard = renderBrowserUseUnavailablePrompt(run.browserUse ?? null);
+    const mcpConnectedDirective = renderConnectedExternalMcpDirective(connectedExternalMcp);
     const clientInstructionParts = includeStableInstructions
-      ? [researchCommandContract, runContextPrompt, browserUsePromptGuard, systemPrompt]
-      : [researchCommandContract, runContextPrompt, browserUsePromptGuard];
+      ? [
+          researchCommandContract,
+          runContextPrompt,
+          browserUsePromptGuard,
+          mcpConnectedDirective,
+          systemPrompt,
+        ]
+      : [
+          researchCommandContract,
+          runContextPrompt,
+          browserUsePromptGuard,
+          mcpConnectedDirective,
+        ];
     const clientInstructionPrompt = clientInstructionParts
       .map((part) => (typeof part === 'string' ? part.trim() : ''))
       .filter(Boolean)

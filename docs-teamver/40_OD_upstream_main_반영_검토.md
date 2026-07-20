@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-20 현재.
+**반영 갱신:** 2026-07-20 — 로컬 `upstream/main` 최신 `f13ed2cb7 landing-page: enrich and redesign the codex-design page (#5872)` 기준으로 prompt/cache·작업 속도 후보를 추가 재검토했다. `9b5cdd843`의 connected-MCP directive cache 분리는 Teamver run 구조에 맞춰 수동 포팅했다. `ed48a7d22` transient ACP persistence filter는 이미 Teamver `server.ts` 경로에 반영되어 있어 중복 적용하지 않았다.
 **반영 갱신:** 2026-07-20 — `origin/main` 최신 `3447f60a3 fix packaged payload desktop handoff (#5678)` 기준으로 속도·프롬프트 관련 후보를 재검토했다. 전체 merge 금지 원칙은 유지한다. 보류했던 `4b660237c`는 문구 단위로 다시 검토해 안전한 축약 문구만 수동 포팅했다.
 **반영 갱신:** 2026-07-16 — `git fetch origin main` 후 `origin/main` 최신 상태를 재확인했다. Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, background run, 다운로드 안정화 패치가 계속 누적되어 있으므로 전체 merge 위험도는 여전히 높다.
 **비교 기준:** `staging` (`10b0ba491 fix(export): prefer screenshot pptx fidelity by default`) ↔ `origin/main` (`94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`).
@@ -15,6 +16,7 @@
 | 커밋 | 내용 | 현재 판단 |
 |------|------|-----------|
 | `ed48a7d22` | `fix(daemon): filter transient ACP status events at persistence time` | **2026-07-20 선별 반영.** staging에는 별도 `chat-run-messages.ts`가 없어 `server.ts` 내 persistence 함수에 수동 포팅. 빈 process row와 불필요한 DB event write를 줄인다. |
+| `9b5cdd843` | `fix(daemon): move connected-MCP directive out of the cached system prompt` | **2026-07-20 선별 반영.** 연결된 외부 MCP 서버 목록은 OAuth token/live connection state에 따라 바뀌므로 cacheable system prompt에서 제거하고 run instruction slice에만 주입하도록 수동 포팅했다. 큰 system prompt cache invalidation을 줄여 재시도/연속 작업의 시작 지연과 token overhead를 낮춘다. |
 | `a1b0dd0d7` 계열 | POSIX argv prompt budget 보정 | **2026-07-20 선별 반영.** Linux/macOS에서 Windows용 30KB prompt argv 제한을 그대로 적용하는 false-positive를 줄인다. runaway prompt는 120KB에서 fail-fast 유지. |
 | `4b660237c` | `feat(prompts): land the slim system-prompt line as the default charter` | **2026-07-20 부분 반영.** 전체 slim charter/core prompt 전환은 계속 보류. 단, 비미디어 프로젝트에 주입되던 긴 media dispatcher Bash loop 예시를 축약하고, zh-CN quick brief의 broad non-deck 선택지 예시를 scope-neutral 문구로 교체했다. Teamver deck-only UX와 background/comment 패치에 닿는 구조 변경은 반영하지 않음. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |
@@ -195,7 +197,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 1. **P0:** `cdffb1b63`의 library ingest SSRF 차단을 Teamver daemon에 수동 포팅할 수 있는지 검토한다. URL 기반 분석/web-fetch/라이브러리 ingest는 외부 URL을 다루므로, 출시 전 보안 방어가 우선이다.
 2. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정/재진입/background run 패치와 대조한다. `ProjectView.tsx` 전체 cherry-pick은 금지하고, delivery 보존에 필요한 최소 변경만 검토한다.
-3. **P1/P2:** `4b660237c` slim system prompt/token 절약 패치는 바로 적용하지 않는다. 실제 슬라이드 생성 품질, 블록 비노출, Teamver managed key 흐름, 질문 form UX를 샘플로 검증한 뒤 별도 루프로 판단한다.
+3. **P1/P2:** `4b660237c` slim system prompt/token 절약 패치는 전체 전환하지 않는다. 이미 안전한 문구 축약과 `9b5cdd843` prompt-cache 안정화는 반영했으므로, 남은 full slim charter 전환은 실제 슬라이드 생성 품질, 블록 비노출, Teamver managed key 흐름, 질문 form UX를 샘플로 검증한 뒤 별도 루프로 판단한다.
 4. PPTX는 일반 다운로드 screenshot 기본 정책을 유지한다. editable PPTX는 별도 메뉴/고급 옵션을 만들기 전까지 일반 사용자 경로에 노출하지 않는다.
 5. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
 
@@ -215,4 +217,5 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 1. **P0:** `cdffb1b63` library ingest SSRF 차단을 먼저 검토한다. web-fetch/사이트 분석 기능을 출시하려면 외부 URL 접근 안전장치가 선행되어야 한다.
 2. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
-3. **P1/P2:** slim system prompt/token 절약 패치는 별도 품질 평가 루프를 먼저 만든다. 프롬프트 축소는 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.
+3. **P1:** `04236af50` user-authored text only intent latch는 memory/run DB 경로 변경이 커서 바로 적용하지 말고, background/comment 재진입 회귀 테스트와 함께 별도 검토한다.
+4. **P1/P2:** slim system prompt/token 절약 패치는 별도 품질 평가 루프를 먼저 만든다. 프롬프트 축소는 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.
