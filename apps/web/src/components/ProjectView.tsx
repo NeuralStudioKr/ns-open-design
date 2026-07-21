@@ -1795,17 +1795,33 @@ export function ProjectView({
       messagesConversationIdRef.current = null;
     }
     (async () => {
+      const safeFetchPreviewComments = async () => {
+        try {
+          return await fetchPreviewComments(project.id, activeConversationId);
+        } catch (err) {
+          console.debug('[project] preview comments load skipped', err);
+          return [];
+        }
+      };
+      const safeListActiveChatRuns = async () => {
+        if (config.mode !== 'daemon') return [];
+        try {
+          return await listActiveChatRuns(project.id, activeConversationId);
+        } catch (err) {
+          console.debug('[project] active daemon runs load skipped', err);
+          return [];
+        }
+      };
       const loadMessagesWithRetry = async () => {
         let lastError: unknown;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            return await Promise.all([
-              listMessages(project.id, activeConversationId),
-              fetchPreviewComments(project.id, activeConversationId),
-              config.mode === 'daemon'
-                ? listActiveChatRuns(project.id, activeConversationId)
-                : Promise.resolve([]),
+            const list = await listMessages(project.id, activeConversationId);
+            const [comments, activeRuns] = await Promise.all([
+              safeFetchPreviewComments(),
+              safeListActiveChatRuns(),
             ]);
+            return [list, comments, activeRuns] as const;
           } catch (err) {
             lastError = err;
             // Soft sticky / HA cookie race: mirror conversation-list recovery
@@ -3226,7 +3242,12 @@ export function ProjectView({
     };
 
     const attachRecoverableRuns = async () => {
-      const activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
+      let activeRuns: Awaited<ReturnType<typeof listActiveChatRuns>> = [];
+      try {
+        activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
+      } catch (err) {
+        console.debug('[project] active daemon runs reattach probe skipped', err);
+      }
       let messagesSnapshot = messages;
       if ((activeRuns?.length ?? 0) > 0) {
         try {
@@ -3263,7 +3284,10 @@ export function ProjectView({
 
       const missingRunIdMessages = recoverableMessages.filter((m) => !m.runId);
       const historicalRuns = missingRunIdMessages.length > 0
-        ? (await listProjectRuns()).filter(
+        ? (await listProjectRuns().catch((err) => {
+            console.debug('[project] daemon run history reattach probe skipped', err);
+            return [];
+          })).filter(
             (run) => run.projectId === project.id && run.conversationId === reattachConversationId,
           )
         : [];
@@ -3794,17 +3818,22 @@ export function ProjectView({
     if (streaming && abortRef.current) return;
     if (findInFlightAssistantMessages(messages).length > 0) return;
     let cancelled = false;
+    let retryTimer: number | null = null;
     const recoveryConversationId = activeConversationId;
     void (async () => {
       let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
       try {
         activeStreams = await listActiveByokProxyStreams(project.id);
       } catch (err) {
-        console.warn('[teamver] api background recovery stream probe failed', {
+        console.debug('[teamver] api background recovery stream probe skipped', {
           projectId: project.id,
           conversationId: recoveryConversationId,
           error: err,
         });
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          if (!cancelled) setReattachNonce((value) => value + 1);
+        }, BYOK_BACKGROUND_RECOVERY_POLL_MS);
         return;
       }
       if (cancelled) return;
@@ -3834,6 +3863,7 @@ export function ProjectView({
     })();
     return () => {
       cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [
     config.mode,
@@ -3843,6 +3873,7 @@ export function ProjectView({
     inFlightAssistantSignature,
     messages,
     project.id,
+    reattachNonce,
   ]);
 
   // Embed BYOK (`mode=api`) has no daemon run row — after page detach the
