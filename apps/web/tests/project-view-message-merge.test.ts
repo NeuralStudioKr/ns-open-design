@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   mergeMissingActiveRunAssistantMessages,
   mergeServerMessagesIntoConversation,
+  orderConversationMessages,
 } from "../src/components/ProjectView";
 import type { ChatMessage } from "../src/types";
 
@@ -126,6 +127,70 @@ describe("mergeServerMessagesIntoConversation", () => {
     };
     const merged = mergeServerMessagesIntoConversation([local], [server]);
     expect(merged[0]?.content).toBe("Done.\n\nNext.");
+  });
+});
+
+describe("orderConversationMessages / merge order", () => {
+  it("keeps local user→assistant order when the server returns the pair flipped", () => {
+    const user: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "기업이 업무에 AI 도입했을 때의 효과에 대해서 설명하는 프레젠테이션 생성.",
+      createdAt: 100,
+    };
+    const assistant: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "기업 AI 도입 효과에 대한 프레젠테이션을 바로 제작하겠습니다.",
+      createdAt: 101,
+      runStatus: "succeeded",
+      endedAt: 200,
+    };
+    // Server position race / failed user PUT left assistant first.
+    const merged = mergeServerMessagesIntoConversation(
+      [user, assistant],
+      [assistant, user],
+    );
+    expect(merged.map((m) => m.id)).toEqual(["u1", "a1"]);
+  });
+
+  it("places a local-only user message before the server assistant after a failed user PUT", () => {
+    const user: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "슬라이드 만들어줘",
+      createdAt: 100,
+    };
+    const assistant: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "만들겠습니다",
+      createdAt: 101,
+      runStatus: "succeeded",
+      endedAt: 200,
+    };
+    // Server only has the assistant (user save 401'd); naive append put user last.
+    const merged = mergeServerMessagesIntoConversation([user, assistant], [assistant]);
+    expect(merged.map((m) => m.id)).toEqual(["u1", "a1"]);
+  });
+
+  it("tie-breaks same createdAt with user before assistant", () => {
+    const user: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "hi",
+      createdAt: 50,
+    };
+    const assistant: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "hello",
+      createdAt: 50,
+    };
+    expect(orderConversationMessages([assistant, user]).map((m) => m.id)).toEqual([
+      "u1",
+      "a1",
+    ]);
   });
 });
 

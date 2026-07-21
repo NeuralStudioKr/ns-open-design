@@ -226,7 +226,7 @@ describe("ProjectView message loading", () => {
   it("keeps the no-produced-HTML terminal path quiet in the browser console", () => {
     const source = readSource("src/components/ProjectView.tsx");
 
-    expect(source).toContain(
+    expect(source).not.toContain(
       "[teamver] artifact write skipped as incomplete document shell",
     );
     expect(source).not.toContain(
@@ -251,7 +251,7 @@ describe("ProjectView message loading", () => {
       persistStart,
     );
     expect(shellStart).toBeGreaterThan(persistStart);
-    const shellBlock = source.slice(shellStart, shellStart + 900);
+    const shellBlock = source.slice(shellStart, shellStart + 520);
     expect(shellBlock).toContain("kind: 'skipped-incomplete'");
     expect(shellBlock).not.toContain("setError(");
     expect(shellBlock).not.toContain("formatProjectArtifactRejectedError(");

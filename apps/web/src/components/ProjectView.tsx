@@ -433,6 +433,41 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   return merged;
 }
 
+/**
+ * Stable chat display order after a server merge.
+ *
+ * Prefer the local conversation order whenever it still contains every id —
+ * that matches what the user watched stream in (user then assistant). Falling
+ * back to createdAt + user-before-assistant on ties covers the case where a
+ * concurrent upsert raced position assignment and the server returned the
+ * pair flipped, or where a failed user-message PUT left the local user row
+ * as "local-only" and the naive append put it after the assistant.
+ */
+export function orderConversationMessages(
+  messages: ChatMessage[],
+  preferredOrder?: readonly ChatMessage[],
+): ChatMessage[] {
+  if (messages.length <= 1) return messages;
+  if (preferredOrder && preferredOrder.length > 0) {
+    const preferredIndex = new Map(preferredOrder.map((m, i) => [m.id, i]));
+    if (messages.every((m) => preferredIndex.has(m.id))) {
+      return [...messages].sort(
+        (a, b) => (preferredIndex.get(a.id) ?? 0) - (preferredIndex.get(b.id) ?? 0),
+      );
+    }
+  }
+  return [...messages].sort((a, b) => {
+    const aTime = typeof a.createdAt === 'number' ? a.createdAt : 0;
+    const bTime = typeof b.createdAt === 'number' ? b.createdAt : 0;
+    if (aTime !== bTime) return aTime - bTime;
+    if (a.role !== b.role) {
+      if (a.role === 'user') return -1;
+      if (b.role === 'user') return 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export function mergeServerMessagesIntoConversation(
   current: ChatMessage[],
   serverMessages: ChatMessage[],
@@ -445,7 +480,7 @@ export function mergeServerMessagesIntoConversation(
   for (const message of current) {
     if (!serverIds.has(message.id)) merged.push(message);
   }
-  return merged;
+  return orderConversationMessages(merged, current);
 }
 
 function synthesizeAssistantMessageForActiveRun(run: {
@@ -1059,13 +1094,11 @@ type ArtifactPersistResult =
   | { kind: 'auth-replay-queued'; fileName: string };
 
 function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
-  // Hotfix: do not turn content-shape validation misses into terminal run
-  // failures. The stricter incomplete-output gate introduced after the
-  // 2026-07-16 stable build caused slide generation to finish as failed even
-  // when the model/daemon had completed a turn and the normal recovery/open
-  // paths still had a chance to resolve files. Only real persistence failures
-  // should fail the run here.
-  return result?.kind === 'save-failed';
+  // Only a real write failure or an actually-opened-but-truncated HTML shell
+  // should move the run into the recovery path. Do not synthesize failures from
+  // plan-only prose, but do not silently succeed on 40-byte "<head>" shells.
+  return result?.kind === 'skipped-incomplete'
+    || result?.kind === 'save-failed';
 }
 
 export function ProjectView({
@@ -2580,15 +2613,7 @@ export function ProjectView({
           // owns user-facing messaging (deliverable-missing banner and/or
           // the automatic-continue notice). Flashing 「저장을 거부했습니다:
           // incomplete HTML document shell」 mid/end-turn contradicted the
-          // auto-continue banner and looked like a product failure during
-          // demos. Console warn stays for triage.
-          console.warn('[teamver] artifact write skipped as incomplete document shell', {
-            projectId: project.id,
-            identifier: art.identifier,
-            fileName,
-            htmlLength: artifactToPersist.html.length,
-            head: artifactToPersist.html.slice(0, 256),
-          });
+          // auto-continue banner and looked like a product failure during demos.
           return { kind: 'skipped-incomplete', fileName };
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
@@ -5061,7 +5086,9 @@ export function ProjectView({
         agentId: assistantAgentId,
         agentName: assistantAgentName,
         events: [],
-        createdAt: startedAt,
+        // +1ms so createdAt tie-breaks never put the assistant above its
+        // triggering user message after a server merge / position race.
+        createdAt: startedAt + 1,
         runStatus: config.mode === 'daemon' ? 'running' : undefined,
         startedAt,
         preTurnFileNames,
@@ -8726,13 +8753,9 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   finalText: string,
   options: { slideOnlyMvp: boolean },
 ): boolean {
-  // Hotfix: restore the 2026-07-16 behavior for demo stability. A plan-only or
-  // artifact-less answer must not be force-marked as a failed run by the web
-  // shell; doing so triggered the incomplete_output loop reported in
-  // production. Prompting can still encourage HTML, but the UI should not
-  // synthesize a terminal failure from message text alone.
-  return false;
-
+  // Plan-only / "바로 제작하겠습니다" turns with no HTML on disk used to
+  // flash "완료됨" while the preview stayed empty (demo-breaking). Cap
+  // auto-continue handles recovery; marking these as failed is correct.
   if (!options.slideOnlyMvp) return false;
   const text = finalText.trim();
   if (!text) return false;
@@ -8757,10 +8780,10 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   finalText: string;
   terminalArtifactPersistFailed: boolean;
 }): boolean {
-  // See shouldFailSlideRunWithoutHtmlDeliverable. Missing produced HTML should
-  // not force the run into failed/incomplete_output during generation.
-  return false;
-
+  // When persist already failed (skipped-incomplete / rejected / save-failed),
+  // the caller has already set terminalArtifactPersistFailed — don't double
+  // count. Otherwise a slide-only turn with no previewable HTML on disk must
+  // fail so we never paint "완료됨" over an empty preview panel.
   if (options.terminalArtifactPersistFailed) return false;
   if (!options.slideOnlyMvp || options.producedHtmlToOpen) return false;
 
