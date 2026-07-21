@@ -637,6 +637,82 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('saveMessage retries once on transient 5xx before conceding', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    )
+      .mockResolvedValueOnce(new Response('bad gateway', { status: 502 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const { saveMessage } = await import('../../src/state/projects');
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-1',
+      role: 'assistant',
+      content: 'hi',
+      createdAt: Date.now(),
+    });
+
+    expect(fetchDaemonSpy).toHaveBeenCalledTimes(2);
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('saveMessage retries once when the first PUT throws', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    )
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const { saveMessage } = await import('../../src/state/projects');
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-2',
+      role: 'assistant',
+      content: 'hi',
+      createdAt: Date.now(),
+    });
+
+    expect(fetchDaemonSpy).toHaveBeenCalledTimes(2);
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('saveMessage does not retry keepalive PUTs', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValueOnce(new Response('bad gateway', { status: 502 }));
+    const { saveMessage } = await import('../../src/state/projects');
+
+    await saveMessage(
+      'project-1',
+      'conv-1',
+      { id: 'msg-3', role: 'assistant', content: 'hi', createdAt: Date.now() },
+      { keepalive: true },
+    );
+
+    expect(fetchDaemonSpy).toHaveBeenCalledTimes(1);
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('saveMessage does not retry non-transient 4xx statuses', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValueOnce(new Response('bad request', { status: 400 }));
+    const { saveMessage } = await import('../../src/state/projects');
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-4',
+      role: 'assistant',
+      content: 'hi',
+      createdAt: Date.now(),
+    });
+
+    expect(fetchDaemonSpy).toHaveBeenCalledTimes(1);
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('getProjectFailSoft returns null on daemon 401', async () => {
     const fetchDaemonSpy = vi.spyOn(
       await import('../../src/teamver/teamverDaemonHeaders'),

@@ -836,133 +836,125 @@ function projectKeepaliveEssentials(message: ChatMessage): ChatMessage {
   return trimmed;
 }
 
+/**
+ * Non-keepalive saves survive refresh — a silent failure here is what makes
+ * a "완료됨" chat wipe on reload. Retry once on transient 5xx / network
+ * shapes before conceding. Keepalive PUTs (pagehide path) don't retry: the
+ * document is tearing down and a second in-flight fetch can be cancelled
+ * mid-way anyway.
+ */
+const MESSAGE_SAVE_RETRY_DELAY_MS = 350;
+
+function isTransientMessageSaveStatus(status: number): boolean {
+  return status >= 500 && status < 600;
+}
+
 export async function saveMessage(
   projectId: string,
   conversationId: string,
   message: ChatMessage,
   options: SaveMessageOptions = {},
 ): Promise<void> {
-  try {
-    const savedMessage = sanitizeChatMessageForPersist(
-      options.telemetryFinalized
-        ? { ...message, telemetryFinalized: true }
-        : message,
-    );
-    let body = JSON.stringify(savedMessage);
-    let truncated = false;
-    if (options.keepalive) {
-      const originalSize = byteLengthUtf8(body);
-      if (originalSize > KEEPALIVE_PAYLOAD_MAX_BYTES) {
-        const essentials = projectKeepaliveEssentials(savedMessage);
-        const trimmedBody = JSON.stringify(essentials);
-        const trimmedSize = byteLengthUtf8(trimmedBody);
-        console.warn(
-          '[teamver] chat-save: keepalive payload exceeded 56KiB cap; retrying with essential fields only',
-          {
-            projectId,
-            conversationId,
-            messageId: message.id,
-            originalBytes: originalSize,
-            trimmedBytes: trimmedSize,
-            withinCap: trimmedSize <= KEEPALIVE_PAYLOAD_MAX_BYTES,
-          },
-        );
-        if (trimmedSize <= KEEPALIVE_PAYLOAD_MAX_BYTES) {
-          body = trimmedBody;
-          truncated = true;
-        } else {
-          // Even the essentials-only projection blew the cap (huge
-          // content field). Abandon the keepalive send and log — the
-          // next visible session refresh triggers a full PUT via the
-          // finalization effect in ProjectView.
-          console.warn(
-            '[teamver] chat-save: essentials-only projection still over cap; skipping keepalive PUT',
-            { projectId, conversationId, messageId: message.id },
-          );
-          return;
-        }
-      }
-    }
-    const putOnce = () =>
-      fetchTeamverDaemon(
-        `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
+  const savedMessage = sanitizeChatMessageForPersist(
+    options.telemetryFinalized
+      ? { ...message, telemetryFinalized: true }
+      : message,
+  );
+  let body = JSON.stringify(savedMessage);
+  let truncated = false;
+  if (options.keepalive) {
+    const originalSize = byteLengthUtf8(body);
+    if (originalSize > KEEPALIVE_PAYLOAD_MAX_BYTES) {
+      const essentials = projectKeepaliveEssentials(savedMessage);
+      const trimmedBody = JSON.stringify(essentials);
+      const trimmedSize = byteLengthUtf8(trimmedBody);
+      console.warn(
+        '[teamver] chat-save: keepalive payload exceeded 56KiB cap; retrying with essential fields only',
         {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          ...(options.keepalive ? { keepalive: true } : {}),
-        },
-      );
-
-    let resp = await putOnce();
-    // Non-keepalive finalization is what survives refresh. Soft-retry once
-    // on transient 5xx / network-shaped failures so a mid-run storage blip
-    // does not leave the chat looking "완료됨" in memory and empty after reload.
-    if (!options.keepalive && resp.status >= 500 && resp.status < 600) {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      resp = await putOnce();
-    }
-    if (!resp.ok) {
-      console.warn('[teamver] chat-save: PUT non-ok', {
-        projectId,
-        conversationId,
-        messageId: message.id,
-        status: resp.status,
-        truncated,
-        keepalive: Boolean(options.keepalive),
-      });
-    }
-    // Usage reporting is decoupled from message PUT success — BYOK embed has
-    // no daemon fallback, so a failed save must not drop the ledger row.
-    void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
-  } catch (err) {
-    if (!options.keepalive) {
-      // One soft retry when the first attempt throws (network / soft sticky).
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 350));
-        const savedMessage = sanitizeChatMessageForPersist(
-          options.telemetryFinalized
-            ? { ...message, telemetryFinalized: true }
-            : message,
-        );
-        const body = JSON.stringify(savedMessage);
-        const resp = await fetchTeamverDaemon(
-          `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body,
-          },
-        );
-        if (!resp.ok) {
-          console.warn('[teamver] chat-save: PUT non-ok after retry', {
-            projectId,
-            conversationId,
-            messageId: message.id,
-            status: resp.status,
-          });
-        } else {
-          void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
-          return;
-        }
-      } catch (retryErr) {
-        console.warn('[teamver] chat-save: PUT threw after retry', {
           projectId,
           conversationId,
           messageId: message.id,
-          error: retryErr instanceof Error ? retryErr.message : String(retryErr),
-        });
+          originalBytes: originalSize,
+          trimmedBytes: trimmedSize,
+          withinCap: trimmedSize <= KEEPALIVE_PAYLOAD_MAX_BYTES,
+        },
+      );
+      if (trimmedSize <= KEEPALIVE_PAYLOAD_MAX_BYTES) {
+        body = trimmedBody;
+        truncated = true;
+      } else {
+        // Even the essentials-only projection blew the cap (huge
+        // content field). Abandon the keepalive send and log — the
+        // next visible session refresh triggers a full PUT via the
+        // finalization effect in ProjectView.
+        console.warn(
+          '[teamver] chat-save: essentials-only projection still over cap; skipping keepalive PUT',
+          { projectId, conversationId, messageId: message.id },
+        );
+        return;
       }
     }
+  }
+
+  const url = `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`;
+  const putOnce = () =>
+    fetchTeamverDaemon(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      ...(options.keepalive ? { keepalive: true } : {}),
+    });
+
+  type AttemptOutcome =
+    | { kind: 'response'; status: number; ok: boolean }
+    | { kind: 'error'; err: unknown };
+  const attemptOnce = async (): Promise<AttemptOutcome> => {
+    try {
+      const resp = await putOnce();
+      return { kind: 'response', status: resp.status, ok: resp.ok };
+    } catch (err) {
+      return { kind: 'error', err };
+    }
+  };
+  const shouldRetry = (outcome: AttemptOutcome): boolean => {
+    if (options.keepalive) return false;
+    if (outcome.kind === 'error') return true;
+    return isTransientMessageSaveStatus(outcome.status);
+  };
+
+  let outcome = await attemptOnce();
+  if (shouldRetry(outcome)) {
+    // Soft sticky / HA cookie race / daemon storage blip — one retry
+    // matches the conversation-list recovery path in ProjectView.
+    await new Promise((resolve) => setTimeout(resolve, MESSAGE_SAVE_RETRY_DELAY_MS));
+    outcome = await attemptOnce();
+  }
+
+  if (outcome.kind === 'error') {
     console.warn('[teamver] chat-save: PUT threw', {
       projectId,
       conversationId,
       messageId: message.id,
       keepalive: Boolean(options.keepalive),
-      error: err instanceof Error ? err.message : String(err),
+      error: outcome.err instanceof Error ? outcome.err.message : String(outcome.err),
     });
     // best-effort persistence — UI keeps the message in-memory either way
+    return;
   }
+  if (!outcome.ok) {
+    console.warn('[teamver] chat-save: PUT non-ok', {
+      projectId,
+      conversationId,
+      messageId: message.id,
+      status: outcome.status,
+      truncated,
+      keepalive: Boolean(options.keepalive),
+    });
+  }
+
+  // Usage reporting is decoupled from message PUT status — BYOK embed has
+  // no daemon fallback, so a soft failure must not drop the ledger row.
+  void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
 }
 
 // ---------- terminals ----------
