@@ -48,6 +48,9 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("setReattachNonce((value) => value + 1)");
     expect(block).toContain("if (retryTimer !== null) window.clearTimeout(retryTimer)");
     expect(block).toContain("reattachNonce");
+    expect(source).toContain("BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = 15_000");
+    expect(source).toContain("err instanceof ActiveByokProxyAuthTransientError");
+    expect(source).toContain("? BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS");
   });
 
   it("recovers an existing edited HTML output when produced-file diff is empty", () => {

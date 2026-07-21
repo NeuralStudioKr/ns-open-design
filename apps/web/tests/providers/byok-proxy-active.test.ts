@@ -5,7 +5,10 @@ vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
 }));
 
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
-import { listActiveByokProxyStreams } from '../../src/providers/byokProxyActive';
+import {
+  ActiveByokProxyAuthTransientError,
+  listActiveByokProxyStreams,
+} from '../../src/providers/byokProxyActive';
 
 describe('listActiveByokProxyStreams', () => {
   beforeEach(() => {
@@ -49,6 +52,19 @@ describe('listActiveByokProxyStreams', () => {
     vi.mocked(fetchTeamverDaemon).mockResolvedValue(new Response('not found', { status: 404 }));
 
     await expect(listActiveByokProxyStreams('project-1')).resolves.toEqual([]);
+  });
+
+  it('throws a typed transient auth error for session-expired 401', async () => {
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'session_expired' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
   });
 
   it('throws on transient failures so recovery callers do not treat them as drained', async () => {

@@ -29,7 +29,10 @@ import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
 import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from '../providers/proxyAbort';
-import { listActiveByokProxyStreams } from '../providers/byokProxyActive';
+import {
+  ActiveByokProxyAuthTransientError,
+  listActiveByokProxyStreams,
+} from '../providers/byokProxyActive';
 import {
   fetchChatRunStatus,
   fetchVelaLoginStatus,
@@ -303,6 +306,7 @@ type ProjectChatSendMeta = ChatSendMeta & {
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
 const DAEMON_REATTACH_MISSING_RUN_RETRY_MS = 2_000;
+const BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = 15_000;
 
 export function mergeSavedPreviewComment(current: PreviewComment[], saved: PreviewComment): PreviewComment[] {
   const existingIndex = current.findIndex((comment) => comment.id === saved.id);
@@ -3837,10 +3841,13 @@ export function ProjectView({
           conversationId: recoveryConversationId,
           error: err,
         });
+        const retryDelay = err instanceof ActiveByokProxyAuthTransientError
+          ? BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS
+          : BYOK_BACKGROUND_RECOVERY_POLL_MS;
         retryTimer = window.setTimeout(() => {
           retryTimer = null;
           if (!cancelled) setReattachNonce((value) => value + 1);
-        }, BYOK_BACKGROUND_RECOVERY_POLL_MS);
+        }, retryDelay);
         return;
       }
       if (cancelled) return;
@@ -3981,11 +3988,11 @@ export function ProjectView({
       clearPollTimer();
     };
 
-    const scheduleNextPoll = () => {
+    const scheduleNextPoll = (delayMs = BYOK_BACKGROUND_RECOVERY_POLL_MS) => {
       clearPollTimer();
       pollTimer = window.setTimeout(() => {
         void pollRecovery();
-      }, BYOK_BACKGROUND_RECOVERY_POLL_MS);
+      }, delayMs);
     };
 
     const pollRecovery = async () => {
@@ -3994,12 +4001,18 @@ export function ProjectView({
       try {
         activeStreams = await listActiveByokProxyStreams(project.id);
       } catch (err) {
-        console.warn('[teamver] api background recovery stream poll failed', {
+        const isAuthTransient = err instanceof ActiveByokProxyAuthTransientError;
+        const log = isAuthTransient ? console.debug : console.warn;
+        log('[teamver] api background recovery stream poll failed', {
           projectId: project.id,
           conversationId: recoveryConversationId,
           error: err,
         });
-        scheduleNextPoll();
+        scheduleNextPoll(
+          isAuthTransient
+            ? BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS
+            : BYOK_BACKGROUND_RECOVERY_POLL_MS,
+        );
         return;
       }
       if (cancelled) return;

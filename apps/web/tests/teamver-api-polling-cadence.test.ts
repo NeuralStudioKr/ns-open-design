@@ -36,4 +36,13 @@ describe("Teamver embed API polling cadence", () => {
     expect(source).toContain("handleRunsVisibilityChange");
     expect(source).not.toContain("window.setInterval(refresh, 2000)");
   });
+
+  it("treats BYOK proxy active 401 as quiet transient auth during background polling", () => {
+    const source = readSource("src/App.tsx");
+
+    expect(source).toContain("ActiveByokProxyAuthTransientError");
+    expect(source).toContain("err instanceof ActiveByokProxyAuthTransientError");
+    expect(source).toContain("? console.debug");
+    expect(source).toContain(": console.warn");
+  });
 });

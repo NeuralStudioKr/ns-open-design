@@ -132,7 +132,10 @@ import { isTeamverSessionTrustedProject } from './teamver/sessionTrustedProjects
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { mergeByokBackgroundRunSummaries, reconcileByokBackgroundChatsAfterPoll, syntheticByokRunsForTaskCenter } from './teamver/backgroundChatRecovery';
 import { subscribeTeamverBackgroundChat } from './teamver/teamverBackgroundChatEvents';
-import { listActiveByokProxyStreams } from './providers/byokProxyActive';
+import {
+  ActiveByokProxyAuthTransientError,
+  listActiveByokProxyStreams,
+} from './providers/byokProxyActive';
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
 import { warmEmbedProjectListCaches } from './teamver/warmEmbedProjectListCaches';
@@ -2798,7 +2801,10 @@ function AppInner() {
               streamsByProjectId.set(projectId, streams);
             } catch (err) {
               streamPollFailed = true;
-              console.warn("[teamver] byok background stream poll failed", {
+              const log = err instanceof ActiveByokProxyAuthTransientError
+                ? console.debug
+                : console.warn;
+              log("[teamver] byok background stream poll failed", {
                 projectId,
                 error: err,
               });
