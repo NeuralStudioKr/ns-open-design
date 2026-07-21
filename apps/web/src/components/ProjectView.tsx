@@ -219,6 +219,7 @@ import {
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
+  formatProjectRunDeliverableMissingError,
   extractProjectRunErrorCode,
   formatProjectRunErrorForUser,
   formatProjectForkConversationError,
@@ -3961,7 +3962,6 @@ export function ProjectView({
                         true,
                         { telemetryFinalized: true },
                       );
-                      updateConversationLatestRun('failed', endedAt);
                       return;
                     }
                     nextFiles = await refreshProjectFiles();
@@ -4848,18 +4848,28 @@ export function ProjectView({
 
       const scheduleStreamRunHtmlAutoOpen = (fullText: string, delayMs = 0) => {
         const execute = () => {
-          const alreadyClaimed = htmlAutoOpenClaimedRef.current.has(assistantId);
-          if (!alreadyClaimed) {
+          if (delayMs === 0 && htmlAutoOpenTimerRef.current !== null) {
+            window.clearTimeout(htmlAutoOpenTimerRef.current);
+            htmlAutoOpenTimerRef.current = null;
+          }
+          const firstClaim = !htmlAutoOpenClaimedRef.current.has(assistantId);
+          if (firstClaim) {
             htmlAutoOpenClaimedRef.current.add(assistantId);
           }
           void (async () => {
-            if (!alreadyClaimed) {
-              let nextFiles = await refreshProjectFiles();
-              const finalText = streamedText || fullText;
-              const artifactToPersist = parsedArtifact?.html
-                ? parsedArtifact
-                : artifactFromStandaloneHtml(finalText);
-              let terminalArtifactPersistFailed = false;
+            let nextFiles = await refreshProjectFiles();
+            const finalText = streamedText || fullText;
+            let terminalArtifactPersistFailed = false;
+            const hadIncompleteParsedArtifact = Boolean(
+              parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
+            );
+
+            if (firstClaim) {
+              const artifactToPersist = resolveTerminalArtifactToPersist(
+                parsedArtifact,
+                finalText,
+                artifactFromStandaloneHtml,
+              );
               if (artifactToPersist?.html) {
                 const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                 const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
@@ -4868,12 +4878,12 @@ export function ProjectView({
                   readProjectHtml,
                   allowAnyHtmlWrite: assistantAgentId === 'claude',
                 });
-                  if (sameTurnHtmlWrite) {
-                    savedArtifactRef.current = sameTurnHtmlWrite.name;
-                    if (runIsVisible()) {
-                      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
-                      requestOpenFile(sameTurnHtmlWrite.name);
-                    }
+                if (sameTurnHtmlWrite) {
+                  savedArtifactRef.current = sameTurnHtmlWrite.name;
+                  if (runIsVisible()) {
+                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
+                    requestOpenFile(sameTurnHtmlWrite.name);
+                  }
                 } else {
                   const persistResult = await persistArtifact(
                     artifactToPersist,
@@ -4885,47 +4895,64 @@ export function ProjectView({
                   nextFiles = await refreshProjectFiles();
                 }
               }
-              const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-              const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
-                ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
-                  branding: { slideOnlyMvp },
-                });
-              if (producedHtmlToOpen && runIsVisible()) {
-                maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
-                requestOpenFile(producedHtmlToOpen);
-              } else if (!producedHtmlToOpen) {
-                // Terminal run left no auto-openable HTML: either no artifact
-                // was persisted (silent-skip / no Write) or the touched file
-                // could not be surfaced. Log so the demo has a breadcrumb
-                // when "완료됨" lands with an empty preview.
-                console.warn('[teamver] stream terminal auto-open produced no HTML', {
-                  projectId: project.id,
-                  conversationId: runConversationId,
-                  assistantId,
-                  hadParsedArtifact: Boolean(parsedArtifact?.html),
-                  parsedArtifactBytes: parsedArtifact?.html?.length ?? 0,
-                  producedCount: produced.length,
-                  eventCount: latestAssistantMsg.events?.length ?? 0,
-                });
-              }
-              updateAssistant((prev) => {
-                if (!terminalArtifactPersistFailed) return { ...prev, producedFiles: produced };
-                return {
-                  ...prev,
-                  producedFiles: produced,
-                  runStatus: 'failed',
-                  resumable: true,
-                  endedAt: prev.endedAt ?? Date.now(),
-                };
-              });
-              if (terminalArtifactPersistFailed) {
-                updateConversationLatestRun('failed', latestAssistantMsg.endedAt ?? Date.now());
-              }
             }
-            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
-              telemetryFinalized: true,
-            });
-            if (!alreadyClaimed) {
+
+            const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+            const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+              ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
+                branding: { slideOnlyMvp },
+              });
+
+            if (
+              !producedHtmlToOpen
+              && hadIncompleteParsedArtifact
+              && !terminalArtifactPersistFailed
+            ) {
+              terminalArtifactPersistFailed = true;
+            }
+
+            if (producedHtmlToOpen && firstClaim && runIsVisible()) {
+              maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
+              requestOpenFile(producedHtmlToOpen);
+            } else if (!producedHtmlToOpen && firstClaim) {
+              console.warn('[teamver] stream terminal auto-open produced no HTML', {
+                projectId: project.id,
+                conversationId: runConversationId,
+                assistantId,
+                hadParsedArtifact: Boolean(parsedArtifact?.html),
+                parsedArtifactBytes: parsedArtifact?.html?.length ?? 0,
+                producedCount: produced.length,
+                eventCount: latestAssistantMsg.events?.length ?? 0,
+              });
+            }
+
+            if (terminalArtifactPersistFailed) {
+              const deliverableError = formatProjectRunDeliverableMissingError();
+              if (runIsVisible()) setError(deliverableError);
+              updateAssistant((prev) => ({
+                ...appendErrorStatusEvent(prev, deliverableError, 'incomplete_output'),
+                producedFiles: produced,
+                runStatus: 'failed',
+                resumable: true,
+                endedAt: prev.endedAt ?? Date.now(),
+              }));
+              updateConversationLatestRun('failed', latestAssistantMsg.endedAt ?? Date.now());
+            } else if (firstClaim) {
+              updateAssistant((prev) => ({
+                ...prev,
+                producedFiles: produced,
+                runStatus: resolveSucceededRunStatus(prev.runStatus),
+              }));
+              updateConversationLatestRun(
+                resolveSucceededRunStatus(latestAssistantMsg.runStatus) ?? 'succeeded',
+                latestAssistantMsg.endedAt ?? Date.now(),
+              );
+            }
+
+            if (firstClaim) {
+              void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+                telemetryFinalized: true,
+              });
               await auditDesignSystemWorkspaceAfterRun(assistantId);
             }
           })();
@@ -5231,15 +5258,10 @@ export function ProjectView({
             return;
           }
           const endedAt = Date.now();
-          let finalRunStatus: ChatMessage['runStatus'] = 'succeeded';
-          updateAssistant((prev) => {
-            finalRunStatus = resolveSucceededRunStatus(prev.runStatus);
-            return {
-              ...prev,
-              endedAt,
-              runStatus: finalRunStatus,
-            };
-          });
+          updateAssistant((prev) => ({
+            ...prev,
+            endedAt,
+          }));
           if (runCommentAttachments.length > 0) {
             void patchAttachedStatuses(runCommentAttachments, 'needs_review');
           }
@@ -5248,7 +5270,10 @@ export function ProjectView({
             controller,
             cancelController,
           );
-          if (ownsCurrentRun) updateConversationLatestRun(finalRunStatus ?? 'succeeded', endedAt);
+          if (ownsCurrentRun) {
+            // Defer succeeded/failed to scheduleStreamRunHtmlAutoOpen — an
+            // incomplete streamed artifact shell must not show "완료됨".
+          }
           if (config.mode === 'api') {
             dispatchTeamverBackgroundChat({
               projectId: project.id,
@@ -8172,6 +8197,29 @@ export {
 
 export function resolveSucceededRunStatus(status: ChatMessage['runStatus']): ChatMessage['runStatus'] {
   return status === 'failed' || status === 'canceled' ? status : 'succeeded';
+}
+
+/** Pick the best HTML artifact candidate for terminal persist / auto-open. */
+export function resolveTerminalArtifactToPersist(
+  parsedArtifact: Artifact | null,
+  finalText: string,
+  fromStandalone: (sourceText: string) => Artifact | null,
+): Artifact | null {
+  const standalone = fromStandalone(finalText);
+  const parsed = parsedArtifact?.html ? parsedArtifact : null;
+
+  if (parsed?.html && isIncompleteHtmlDocumentShell(parsed.html)) {
+    if (
+      standalone?.html
+      && !isIncompleteHtmlDocumentShell(standalone.html)
+      && validateHtmlArtifact(standalone.html).ok
+    ) {
+      return standalone;
+    }
+    return parsed;
+  }
+  if (parsed?.html) return parsed;
+  return standalone;
 }
 
 export { computeProducedFiles } from '../produced-files';
