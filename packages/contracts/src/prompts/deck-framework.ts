@@ -482,3 +482,51 @@ ${DECK_SKELETON_HTML}
 
 When the brief is "make me a deck", your output is this skeleton with theme tokens tuned, per-deck classes added, and \`<section class="slide">\` blocks filled in — nothing more, nothing less. Skill-specific guidance (typography, theme presets, layout vocabulary) layers *on top of* this framework, not in place of it.
 `;
+
+/**
+ * Compact deck contract for API / BYOK plain streamFormat runs.
+ *
+ * The full `DECK_FRAMEWORK_DIRECTIVE` embeds ~11KB of literal skeleton HTML and
+ * tells the model to copy it verbatim. In Messages-API mode that burns most of
+ * the output budget on chrome CSS/JS, so the stream dies mid-artifact
+ * (`</html>` never arrives) and Teamver shows auto_continue_incomplete_output
+ * forever. API mode only needs the structural contract — the host viewer
+ * tolerates a simpler static deck better than an empty preview.
+ */
+export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
+
+You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying scale-to-fit JS, print CSS, or chrome counters first.
+
+Emit ONE \`<artifact type="text/html" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**.
+
+Minimal structure (fill every slide with real Korean/English copy — never leave SLOT comments):
+
+\`\`\`html
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>…</title>
+  <style>
+    html, body { margin: 0; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
+    .slide { min-height: 100vh; padding: 64px 72px; box-sizing: border-box; background: #fff; page-break-after: always; }
+    .slide h1 { font-size: 48px; margin: 0 0 16px; }
+    .slide h2 { font-size: 32px; margin: 0 0 12px; }
+    .slide p, .slide li { font-size: 20px; max-width: 48rem; }
+  </style>
+</head>
+<body>
+  <section class="slide">…real cover content…</section>
+  <section class="slide">…real body content…</section>
+  <!-- 6–12 slides total -->
+</body>
+</html>
+\`\`\`
+
+Rules:
+1. Start the artifact as soon as you can — at most one short sentence of prose before it.
+2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
+3. Prefer 6–12 slides over a giant framework. Skip keyboard nav / transform scale scripts if they risk truncating the document.
+4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A truncated head-only document is worse than a short static deck.
+`;

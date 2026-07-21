@@ -865,7 +865,7 @@ export function ChatPane({
   // The failed run's error event lives on the (persisted) assistant message, so
   // the error card + AMR card survive a reload — unlike the ephemeral global
   // `error` state. Drive both off this event.
-  const failedRunErrorEvent = (() => {
+  const latestFailedRunErrorEvent = (() => {
     const evs = retryAssistant?.events ?? [];
     for (let i = evs.length - 1; i >= 0; i--) {
       const ev = evs[i];
@@ -873,12 +873,24 @@ export function ChatPane({
     }
     return null;
   })();
+  // AUTO_CONTINUE_STATUS_CODE is a transient recovery notice, not a final
+  // user-facing error. Keep the latest event for suppressing manual retry
+  // affordances, but exclude it from the chat error card and diagnostics.
+  const autoContinueScheduled =
+    latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE;
+  const failedRunErrorEvent = autoContinueScheduled ? null : latestFailedRunErrorEvent;
   const diagnosticRunErrorEvent = (() => {
     if (failedRunErrorEvent) return failedRunErrorEvent;
     const evs = diagnosticAssistant?.events ?? [];
     for (let i = evs.length - 1; i >= 0; i--) {
       const ev = evs[i];
-      if (ev?.kind === 'status' && ev.label === 'error') return ev;
+      if (
+        ev?.kind === 'status'
+        && ev.label === 'error'
+        && ev.code !== AUTO_CONTINUE_STATUS_CODE
+      ) {
+        return ev;
+      }
     }
     return null;
   })();
@@ -894,8 +906,6 @@ export function ChatPane({
   // this specifically covers the auto-continue path without accidentally
   // gating the NON_RETRYABLE_CODES cases (which have their own already-none
   // return path but still want the copy button).
-  const autoContinueScheduled =
-    failedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE;
   // Offer Continue (resume) when the failed run is resumable AND the active
   // agent still matches the agent that produced it. The daemon stores a
   // resumable session per (conversation, agent); after an agent switch the new
@@ -956,7 +966,7 @@ export function ChatPane({
   // duplicate); other failed turns — older history, or once a follow-up makes
   // this no longer the last assistant — keep their pill so the error survives.
   const errorCardOwnerId =
-    retryAssistant && failedRunErrorEvent ? retryAssistant.id : null;
+    retryAssistant && latestFailedRunErrorEvent ? retryAssistant.id : null;
   // AMR promotion card payload (only the non-AMR model/auth/quota case).
   const amrSwitchPayload =
     runFailureUi?.showSwitchCard

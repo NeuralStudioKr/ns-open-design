@@ -41,11 +41,13 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '이 대화에 이미 있는 요청·목차만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
   '출력 형식은 반드시 하나의 `<artifact type="text/html" identifier="...">...</artifact>` ' +
   '블록이며, 그 내부에 `<!doctype html>`부터 `</html>`까지 자체 완결형(self-contained) HTML이 들어가야 합니다. ' +
-  '외부 파일 참조, 스켈레톤 복사, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
-  '이 대화에 슬라이드 목차가 없다면 임원 대상 12슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
+  '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
+  '길게 만들다가 끊기지 않도록 6~8장 사이의 간결한 HTML 덱으로 작성하세요. ' +
+  '각 슬라이드는 제목과 2~4개의 실제 문장/불릿을 가져야 하며 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
+  '이 대화에 슬라이드 목차가 없다면 임원 대상 6슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
   'The previous turn in THIS chat produced no usable slide deck — emit one complete self-contained ' +
-  'HTML deck inside a single `<artifact type="text/html">...</artifact>` block now, with no planning or tool calls.)';
+  'HTML deck of 6-8 concise slides inside a single `<artifact type="text/html">...</artifact>` block now, with no planning, no framework skeleton, no SLOT comments, and no tool calls.)';
 
 /** True when a user-message body is the automatic-continue recovery prompt. */
 export function isAutoContinueIncompleteOutputPrompt(content: string | null | undefined): boolean {
@@ -132,12 +134,18 @@ export function buildAutoContinueIncompleteOutputPrompt(
   if (partial && attempt >= 2 && isIncompleteHtmlDocumentShell(partial)) {
     partial = null;
   }
-  if (partial) {
+  if (partial && partial.length >= 128) {
     parts.push(
       '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
         + '```html\n'
         + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
         + '\n```',
+    );
+  } else if (partial) {
+    parts.push(
+      '\n\n[이전 HTML은 빈 document shell에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
+        + partial.slice(0, 160)
+        + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 6~8장으로 즉시 작성하세요.',
     );
   }
 

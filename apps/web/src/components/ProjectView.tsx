@@ -26,6 +26,7 @@ import {
 import {
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
+  salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
 import { createArtifactParser } from '../artifacts/parser';
 import {
@@ -1097,10 +1098,11 @@ type ArtifactPersistResult =
   | { kind: 'auth-replay-queued'; fileName: string };
 
 function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
-  // Only a real write failure or an actually-opened-but-truncated HTML shell
-  // should move the run into the recovery path. Do not synthesize failures from
-  // plan-only prose, but do not silently succeed on 40-byte "<head>" shells.
+  // A truncated shell, a structural refusal, or a real write failure must
+  // move the run into the recovery path. Auth-replay-queued keeps the run
+  // as succeeded visually because memory preview + replay own that case.
   return result?.kind === 'skipped-incomplete'
+    || result?.kind === 'rejected'
     || result?.kind === 'save-failed';
 }
 
@@ -1501,6 +1503,23 @@ export function ProjectView({
   const conversationAutoContinueCountRef = useRef<Map<string, number>>(new Map());
   /** Pending automatic-continue timer; cleared on project/conversation switch / unmount. */
   const autoContinueTimerRef = useRef<number | null>(null);
+  /** Conversation id that owns the pending auto-continue timer (for cap rollback). */
+  const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
+
+  const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
+    if (autoContinueTimerRef.current === null) {
+      pendingAutoContinueConversationIdRef.current = null;
+      return;
+    }
+    window.clearTimeout(autoContinueTimerRef.current);
+    autoContinueTimerRef.current = null;
+    const scheduledId = pendingAutoContinueConversationIdRef.current;
+    pendingAutoContinueConversationIdRef.current = null;
+    if (options?.rollback && scheduledId) {
+      rollbackAutoContinueCount(conversationAutoContinueCountRef.current, scheduledId);
+    }
+  }, []);
+
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
     htmlAutoOpenGenerationRef.current.clear();
@@ -1510,36 +1529,26 @@ export function ProjectView({
       window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
     }
-    if (autoContinueTimerRef.current !== null) {
-      window.clearTimeout(autoContinueTimerRef.current);
-      autoContinueTimerRef.current = null;
-    }
+    clearPendingAutoContinueTimer();
     return () => {
       if (htmlAutoOpenTimerRef.current !== null) {
         window.clearTimeout(htmlAutoOpenTimerRef.current);
         htmlAutoOpenTimerRef.current = null;
       }
-      if (autoContinueTimerRef.current !== null) {
-        window.clearTimeout(autoContinueTimerRef.current);
-        autoContinueTimerRef.current = null;
-      }
+      clearPendingAutoContinueTimer();
     };
-  }, [project.id]);
+  }, [project.id, clearPendingAutoContinueTimer]);
 
   // Abort a pending automatic-continue when the user switches chats inside
   // the same project — otherwise a late timer can inject into the new chat.
+  // Rollback the consumed retry slot so the previous conversation can still
+  // recover if the user switches back.
   useEffect(() => {
-    if (autoContinueTimerRef.current !== null) {
-      window.clearTimeout(autoContinueTimerRef.current);
-      autoContinueTimerRef.current = null;
-    }
+    clearPendingAutoContinueTimer({ rollback: true });
     return () => {
-      if (autoContinueTimerRef.current !== null) {
-        window.clearTimeout(autoContinueTimerRef.current);
-        autoContinueTimerRef.current = null;
-      }
+      clearPendingAutoContinueTimer({ rollback: true });
     };
-  }, [activeConversationId]);
+  }, [activeConversationId, clearPendingAutoContinueTimer]);
 
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
@@ -2075,7 +2084,11 @@ export function ProjectView({
                 && message.runStatus === 'failed'
                 && message.resumable === true
                 && message.events?.some((event) =>
-                  event.kind === 'status' && event.code === 'incomplete_output',
+                  event.kind === 'status'
+                  && (
+                    event.code === 'incomplete_output'
+                    || event.code === AUTO_CONTINUE_STATUS_CODE
+                  ),
                 ),
               );
             if (!incompleteAssistant) return;
@@ -2102,8 +2115,10 @@ export function ProjectView({
             }
             const scheduledProjectId = project.id;
             const scheduledConversationId = activeConversationId;
+            pendingAutoContinueConversationIdRef.current = scheduledConversationId;
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
+              pendingAutoContinueConversationIdRef.current = null;
               if (project.id !== scheduledProjectId) {
                 rollbackAutoContinueCount(
                   conversationAutoContinueCountRef.current,
@@ -2578,7 +2593,7 @@ export function ProjectView({
         identifier: art.identifier,
         sourceText,
       });
-      const artifactToPersist = recoveredHtml ? { ...art, html: recoveredHtml } : art;
+      let artifactToPersist = recoveredHtml ? { ...art, html: recoveredHtml } : art;
       const baseName = artifactBaseNameFor(art);
       const ext = artifactExtensionFor(art);
       const currentProjectFiles = projectFilesSnapshot ?? projectFilesRef.current;
@@ -2608,6 +2623,15 @@ export function ProjectView({
       // when only Edit-tool changes happened this turn. Without this guard,
       // such content lands as a phantom HTML file in the project panel.
       if (ext === '.html') {
+        // Mid-stream truncation (max_tokens) often leaves a multi-KB deck
+        // with real <section class="slide"> content but no </html>. Closing
+        // the document here salvages a previewable file instead of skipping
+        // the write and burning an auto-continue turn that usually truncates
+        // again the same way.
+        const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html);
+        if (salvaged) {
+          artifactToPersist = { ...artifactToPersist, html: salvaged };
+        }
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
@@ -4644,7 +4668,11 @@ export function ProjectView({
               && message.runStatus === 'failed'
               && message.resumable === true
               && message.events?.some((event) =>
-                event.kind === 'status' && event.code === 'incomplete_output',
+                event.kind === 'status'
+                && (
+                  event.code === 'incomplete_output'
+                  || event.code === AUTO_CONTINUE_STATUS_CODE
+                ),
               ),
             );
           if (incompleteAssistant) {
@@ -4672,8 +4700,10 @@ export function ProjectView({
             }
             const scheduledProjectId = project.id;
             const scheduledConversationId = recoveryConversationId;
+            pendingAutoContinueConversationIdRef.current = scheduledConversationId;
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
+              pendingAutoContinueConversationIdRef.current = null;
               if (project.id !== scheduledProjectId) {
                 rollbackAutoContinueCount(
                   conversationAutoContinueCountRef.current,
@@ -4966,7 +4996,7 @@ export function ProjectView({
       meta?: ProjectChatSendMeta,
       baseMessages?: ChatMessage[],
     ) => {
-      if (embedSubmitDisabled) {
+      if (embedSubmitDisabled && meta?.entryFrom !== AUTO_CONTINUE_ENTRY_FROM) {
         onEmbedSubmitBlocked?.();
         return false;
       }
@@ -5389,8 +5419,10 @@ export function ProjectView({
                 }
                 const scheduledProjectId = project.id;
                 const scheduledConversationId = runConversationId;
+                pendingAutoContinueConversationIdRef.current = scheduledConversationId;
                 autoContinueTimerRef.current = window.setTimeout(() => {
                   autoContinueTimerRef.current = null;
+                  pendingAutoContinueConversationIdRef.current = null;
                   // Abort if the user switched projects/conversations — otherwise
                   // a late timer from project A would inject the recovery prompt
                   // into project B's brand-new chat.
@@ -5662,14 +5694,22 @@ export function ProjectView({
             // passes the incomplete-shell gate; among those, the longer wins.
             try {
               const candidate = parsedArtifact;
+              const salvagedHtml = candidate?.html
+                ? salvageTruncatedHtmlDocument(candidate.html)
+                : null;
+              const effective = salvagedHtml && candidate
+                ? { ...candidate, html: salvagedHtml }
+                : candidate;
               const candidateOk =
-                !!candidate?.html && !isIncompleteHtmlDocumentShell(candidate.html);
+                !!effective?.html && !isIncompleteHtmlDocumentShell(effective.html);
               const bestOk =
                 !!bestArtifactSoFar?.html
                 && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
-              if (candidateOk && (!bestOk || (candidate?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
-                bestArtifactSoFar = candidate;
-              } else if (!bestArtifactSoFar) {
+              if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
+                bestArtifactSoFar = effective;
+              } else if (!bestArtifactSoFar && effective) {
+                bestArtifactSoFar = effective;
+              } else if (!bestArtifactSoFar && candidate) {
                 bestArtifactSoFar = candidate;
               }
             } catch { /* defensive — never throw from stream handling */ }
@@ -5771,6 +5811,31 @@ export function ProjectView({
               if (runIsVisible()) {
                 setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
               }
+              // Same best-artifact tracking as mid-stream artifact:end —
+              // unclosed blocks only land here via flush(), and without
+              // this the trailing truncated deck is invisible to
+              // resolveTerminalArtifactToPersist's bestArtifactSoFar fallback.
+              try {
+                const candidate = parsedArtifact;
+                const salvagedHtml = candidate?.html
+                  ? salvageTruncatedHtmlDocument(candidate.html)
+                  : null;
+                const effective = salvagedHtml && candidate
+                  ? { ...candidate, html: salvagedHtml }
+                  : candidate;
+                const candidateOk =
+                  !!effective?.html && !isIncompleteHtmlDocumentShell(effective.html);
+                const bestOk =
+                  !!bestArtifactSoFar?.html
+                  && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
+                if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
+                  bestArtifactSoFar = effective;
+                } else if (!bestArtifactSoFar && effective) {
+                  bestArtifactSoFar = effective;
+                } else if (!bestArtifactSoFar && candidate) {
+                  bestArtifactSoFar = candidate;
+                }
+              } catch { /* defensive — never throw from stream handling */ }
             }
           }
           const emptyApiResponse =
@@ -8824,6 +8889,10 @@ export function resolveTerminalArtifactToPersist(
   const parsed = parsedArtifact?.html ? parsedArtifact : null;
 
   if (parsed?.html && isIncompleteHtmlDocumentShell(parsed.html)) {
+    const salvaged = salvageTruncatedHtmlDocument(parsed.html);
+    if (salvaged && !isIncompleteHtmlDocumentShell(salvaged) && validateHtmlArtifact(salvaged).ok) {
+      return { ...parsed, html: salvaged };
+    }
     if (
       standalone?.html
       && !isIncompleteHtmlDocumentShell(standalone.html)

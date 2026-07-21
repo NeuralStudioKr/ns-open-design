@@ -68,7 +68,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
   it('threads partial HTML and plan outline into the auto-continue prompt', () => {
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,
-      partialHtml: '<!doctype html><html><head>',
+      partialHtml:
+        '<!doctype html><html><head><title>Deck</title></head><body><section class="slide"><h1>Partial</h1><p>Started content that is long enough to continue safely.</p></section>',
       planOutline: '슬라이드 구성:\n01 표지',
     });
     expect(prompt).toContain('```html');
@@ -86,7 +87,10 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       attempt: 2,
       partialHtml: shell,
     });
-    expect(first).toContain('```html');
+    // Tiny shells are never fenced as "continue this HTML" — they get a
+    // discard notice on attempt 1 and are omitted entirely on attempt 2+.
+    expect(first).not.toContain('```html');
+    expect(first).toContain('빈 document shell');
     expect(second).not.toContain('```html');
   });
 
@@ -96,6 +100,17 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       truncatedByMaxTokens: true,
     });
     expect(prompt).toMatch(/token limit|max_tokens/i);
+  });
+
+  it('tells the model to discard tiny empty HTML shells instead of continuing them', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html><head>',
+      planOutline: '슬라이드 구성:\n01 표지',
+    });
+    expect(prompt).toContain('빈 document shell');
+    expect(prompt).toContain('버리세요');
+    expect(prompt).not.toContain('```html');
   });
 });
 

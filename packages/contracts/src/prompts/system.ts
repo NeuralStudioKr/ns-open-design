@@ -34,7 +34,7 @@ import type { MediaExecutionPolicy } from '../api/media.js';
 import type { ProjectMetadata, ProjectTemplate } from '../api/projects.js';
 import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
 import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
-import { DECK_FRAMEWORK_DIRECTIVE } from './deck-framework.js';
+import { DECK_FRAMEWORK_DIRECTIVE, DECK_FRAMEWORK_DIRECTIVE_COMPACT } from './deck-framework.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
@@ -434,8 +434,13 @@ export function composeSystemPrompt({
   const isFreeformProject = !skillMode && (!metadata || metadata.kind === 'other');
   const hasSkillSeed =
     !!skillBody && /assets\/template\.html/.test(skillBody);
+  // API/BYOK plain mode must NOT receive the ~11KB verbatim skeleton — copying
+  // it burns the output budget and truncates before </html>, which is the
+  // dominant Teamver slide failure mode (auto_continue_incomplete_output loop).
+  const deckDirective =
+    streamFormat === 'plain' ? DECK_FRAMEWORK_DIRECTIVE_COMPACT : DECK_FRAMEWORK_DIRECTIVE;
   if (isDeckProject && !hasSkillSeed) {
-    parts.push(`\n\n---\n\n${DECK_FRAMEWORK_DIRECTIVE}`);
+    parts.push(`\n\n---\n\n${deckDirective}`);
     if (isTeamverSlideOnly && streamFormat === 'plain') {
       parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
     }
@@ -450,7 +455,7 @@ export function composeSystemPrompt({
     // adopts it when the brief actually is a deck — otherwise the
     // directive is read as background reference and ignored.
     parts.push(
-      `\n\n---\n\n## If this brief is a slide deck / keynote / presentation\n\nThe user did not pre-select a "Slide deck" surface, but their request may still call for one. **If — and only if — the brief reads as slides, keynote, presentation, deck, PPT, or 讲解, follow the framework below.** Otherwise ignore everything in this section and continue with the freeform output you would have written anyway.\n\n${DECK_FRAMEWORK_DIRECTIVE}`,
+      `\n\n---\n\n## If this brief is a slide deck / keynote / presentation\n\nThe user did not pre-select a "Slide deck" surface, but their request may still call for one. **If — and only if — the brief reads as slides, keynote, presentation, deck, PPT, or 讲解, follow the framework below.** Otherwise ignore everything in this section and continue with the freeform output you would have written anyway.\n\n${deckDirective}`,
     );
     if (isTeamverSlideOnly && streamFormat === 'plain') {
       parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
@@ -511,8 +516,10 @@ The deck framework workflow above assumes TodoWrite and filesystem copies. **In 
 
 - Do NOT open \`<artifact type="text/html">\` until the complete filled deck is ready in one shot.
 - Do NOT emit a head-only scaffold (\`<!doctype html><html><head>\` with no body slides) and stop — that is always rejected.
+- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS — use the compact static \`.slide { min-height:100vh }\` structure from the API compact contract above.
 - Your response should contain exactly ONE \`<artifact type="text/html" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
 - Prefer starting directly with \`<artifact type="text/html"\` (at most one short sentence before it).
+- The artifact MUST end with \`</html>\` and \`</artifact>\` in this same turn.
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)

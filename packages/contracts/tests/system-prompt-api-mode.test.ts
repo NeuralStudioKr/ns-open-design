@@ -142,6 +142,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('You may include at most one short sentence before the artifact');
       expect(prompt).toContain('Teamver API — deck framework emission override');
       expect(prompt).toContain('Do NOT open `<artifact type="text/html">` until the complete filled deck is ready');
+      // API mode must use the compact deck contract — the full ~11KB skeleton
+      // copy workflow truncates Messages-API output before </html>.
+      expect(prompt).toContain('API compact contract');
+      expect(prompt).toContain('Do NOT paste or recreate a large framework skeleton');
+      expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must

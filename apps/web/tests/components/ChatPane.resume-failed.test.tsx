@@ -192,6 +192,8 @@ describe('ChatPane resume-on-failure', () => {
 
     expect(screen.queryByText('chat.resumeRunCta')).toBeNull();
     expect(screen.queryByText('promptTemplates.retry')).toBeNull();
+    expect(screen.queryByText('Deliverable is incomplete — trying an automatic continue…')).toBeNull();
+    expect(screen.queryByLabelText('chat.copyErrorDiagnostic')).toBeNull();
     expect(onResumeRun).not.toHaveBeenCalled();
     expect(onRetry).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
