@@ -42,6 +42,21 @@ describe("extractCanvasImportErrorCode / formatTeamverCanvasImportErrorMessage",
     expect(formatTeamverCanvasImportErrorMessage(err)).toContain("로그인");
   });
 
+  it("maps AuthenticationError main_sso_user_mismatch from responseBody", async () => {
+    const { AuthenticationError } = await import("@teamver/app-sdk");
+    const err = new AuthenticationError({
+      message: "HTTP 401",
+      status: 401,
+      responseBody: {
+        detail: "main_sso_user_mismatch",
+        code: "main_sso_user_mismatch",
+        re_login_scope: "main",
+      },
+    });
+    expect(extractCanvasImportErrorCode(err)).toBe("main_sso_user_mismatch");
+    expect(formatTeamverCanvasImportErrorMessage(err)).toContain("계정");
+  });
+
   it("maps session_expired / 401 to re-login copy, not canvas forbidden", () => {
     const err = new NetworkError({
       message: "HTTP 401",

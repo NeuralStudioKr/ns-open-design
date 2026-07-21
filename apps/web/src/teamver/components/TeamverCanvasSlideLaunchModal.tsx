@@ -18,6 +18,8 @@ type Props = {
   source: TeamverCanvasSlideLaunchSource;
   confirming?: boolean;
   errorMessage?: string | null;
+  /** When set with an error, show Main re-login CTA (Main SSO gate). */
+  onRelogin?: (() => void) | null;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
 };
@@ -52,6 +54,7 @@ export function TeamverCanvasSlideLaunchModal({
   source,
   confirming = false,
   errorMessage = null,
+  onRelogin = null,
   onConfirm,
   onClose,
 }: Props) {
@@ -226,6 +229,20 @@ export function TeamverCanvasSlideLaunchModal({
               data-testid="teamver-canvas-slide-launch-error"
             >
               {errorMessage}
+              {onRelogin ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="teamver-drive-picker-empty__login"
+                    data-testid="teamver-canvas-slide-launch-login"
+                    disabled={confirming}
+                    onClick={onRelogin}
+                  >
+                    다시 로그인
+                  </button>
+                </>
+              ) : null}
             </p>
           ) : null}
         </div>

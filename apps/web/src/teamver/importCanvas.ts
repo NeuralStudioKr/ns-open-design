@@ -9,6 +9,7 @@ import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import type { TeamverDriveImportedAsset } from "./importDriveAssets";
+import { extractMainSsoGateCodeFromError } from "./teamverMainSsoGate";
 
 export type TeamverCanvasImportRequest = {
   sessionId: string;
@@ -28,52 +29,67 @@ type CanvasImportResponse = {
   errorCode?: string;
 };
 
-/** Prefer stable BFF `error.code` / `error.message` tokens over raw "HTTP 403". */
+/** Prefer stable BFF `error.code` / `error.message` / Drive-shaped `detail` over raw "HTTP 403". */
 export function extractCanvasImportErrorCode(err: unknown): string {
-  if (err instanceof NetworkError) {
-    const body = err.responseBody;
-    if (body && typeof body === "object") {
-      const nested = (body as { error?: { message?: string; code?: string } }).error;
-      const message = nested?.message?.trim();
-      if (message && isStableCanvasImportToken(message)) {
-        return message;
-      }
-      const code = nested?.code?.trim();
-      if (code && isStableCanvasImportToken(code)) {
-        return code;
-      }
-      // Drive-shaped UnauthorizedError(session_expired) body: { detail, login_url }
-      const detail = (body as { detail?: unknown }).detail;
-      if (typeof detail === "string" && isStableCanvasImportToken(detail.trim())) {
-        return detail.trim();
-      }
+  // Main SSO gate — AuthenticationError often has message "HTTP 401" with the
+  // real token only in responseBody (same shape as Drive / publish).
+  const mainSso = extractMainSsoGateCodeFromError(err);
+  if (mainSso) return mainSso;
+
+  const body =
+    err && typeof err === "object"
+      ? (err as { responseBody?: unknown }).responseBody
+      : null;
+  const status =
+    err && typeof err === "object" && typeof (err as { status?: unknown }).status === "number"
+      ? (err as { status: number }).status
+      : null;
+
+  if (body && typeof body === "object") {
+    const nested = (body as { error?: { message?: string; code?: string } }).error;
+    const message = nested?.message?.trim();
+    if (message && isStableCanvasImportToken(message)) {
+      return message;
     }
-    // Missing Main SSO cookie → BFF UnauthorizedError("session_expired").
-    // Do not map bare 401 to canvas_export_forbidden (wrong "no access" copy).
-    if (err.status === 401) return "session_expired";
-    if (err.status === 403) return "canvas_export_forbidden";
-    if (err.status === 404) return "canvas_export_not_found";
-    if (err.status === 413) return "canvas_export_too_large";
-    if (err.status === 429) return "canvas_import_busy";
-    if (err.status === 504) return "canvas_export_timeout";
-    if ((err.status ?? 0) >= 500) {
-      if (body && typeof body === "object") {
-        const nested = (body as { error?: { message?: string } }).error;
-        const message = nested?.message?.trim();
-        if (message && isStableCanvasImportToken(message)) return message;
-      }
-      return "canvas_export_failed";
+    const code = nested?.code?.trim();
+    if (code && isStableCanvasImportToken(code)) {
+      return code;
     }
+    const detail = (body as { detail?: unknown }).detail;
+    if (typeof detail === "string" && isStableCanvasImportToken(detail.trim())) {
+      return detail.trim();
+    }
+  }
+
+  // Bare 401 without Main SSO token → treat as Design session expiry.
+  // Do not map to canvas_export_forbidden (wrong "no access" copy).
+  if (status === 401) return "session_expired";
+  if (status === 403) return "canvas_export_forbidden";
+  if (status === 404) return "canvas_export_not_found";
+  if (status === 413) return "canvas_export_too_large";
+  if (status === 429) return "canvas_import_busy";
+  if (status === 504) return "canvas_export_timeout";
+  if (status != null && status >= 500) {
     if (body && typeof body === "object") {
       const nested = (body as { error?: { message?: string } }).error;
       const message = nested?.message?.trim();
-      if (message) return message;
+      if (message && isStableCanvasImportToken(message)) return message;
     }
+    return "canvas_export_failed";
+  }
+
+  if (body && typeof body === "object") {
+    const nested = (body as { error?: { message?: string } }).error;
+    const message = nested?.message?.trim();
+    if (message) return message;
+  }
+
+  if (err instanceof NetworkError || err instanceof Error) {
     const fallback = err.message.trim();
     if (fallback && !/^HTTP\s+\d+/i.test(fallback)) return fallback;
-    return "canvas_import_failed";
+    if (err instanceof NetworkError) return "canvas_import_failed";
+    return err.message;
   }
-  if (err instanceof Error) return err.message;
   return String(err);
 }
 

@@ -187,7 +187,7 @@ Secret 공유 / Apps가 platform JWT 위조 = 15_2 L4·M9 위반. **후보에서
 
 1. Drive browse proxy(`routers/drive.py`): Main SSO 쿠키 우선 → 없을 때만 BFF Apps JWT 폴백(폴백은 로컬/오구성용, hosted에서는 보통 401).
 2. Drive publish/import(`routers/projects.py`): 동일.
-3. Main HS256 401(auth-shaped) → **Apps refresh로 복구하지 않음** → `session_expired` + Main login_url.
+3. Main HS256 401(auth-shaped) → **Apps refresh로 복구하지 않음** → `main_sso_required` + `re_login_scope=main` + Main `login_url`. 쿠키 user ≠ Design user → `main_sso_user_mismatch` (proxy 전).
 4. HA BFF Set-Cookie 정책([39_10](./39_10_HA_세션쿠키_경합_해결.md) §1~§7)은 **BFF 세션 경로**용으로 계속 유지.
 
 ### 4.2 중기 (플랫폼 합의 후)
@@ -231,7 +231,8 @@ Secret 공유 / Apps가 platform JWT 위조 = 15_2 L4·M9 위반. **후보에서
 2. Design host = `*.teamver.com` (stg-design / design).
 3. 로그인 후 DevTools → Cookies에 Domain=`.teamver.com` 인 `teamver_access_token` 존재.
 4. Network: Drive folder/shared-drive **200**. `/auth/refresh`와 독립적으로 성공해야 함.
-5. Main SSO 쿠키만 지우고 Drive 호출 → `session_expired` + login_url (정상).
+5. Main SSO 쿠키만 지우고 Drive 호출 → `main_sso_required` + `re_login_scope=main` + `login_url` (정상; Apps refresh 금지).
+6. Main SSO 쿠키 user ≠ Design 세션 user → `main_sso_user_mismatch` + 재로그인 CTA (41 §6.3).
 
 ### 6.2 여전히 401이면
 

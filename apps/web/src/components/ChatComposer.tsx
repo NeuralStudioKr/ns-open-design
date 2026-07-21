@@ -85,6 +85,10 @@ import {
   formatTeamverCanvasImportErrorMessage,
   importTeamverCanvas,
 } from '../teamver/importCanvas';
+import {
+  redirectToTeamverLoginFromEmbed,
+} from '../teamver/teamverBffAuthError';
+import { isMainSsoGateError } from '../teamver/teamverMainSsoGate';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
@@ -495,6 +499,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [slashIndex, setSlashIndex] = useState(0);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const [uploadAuthRelogin, setUploadAuthRelogin] = useState(false);
     const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
     const [designAccessTick, setDesignAccessTick] = useState(0);
     const [driveImportOpen, setDriveImportOpen] = useState(false);
@@ -504,6 +509,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverCanvasSlideLaunchSource | null>(null);
     const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
     const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
+    const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
@@ -1592,6 +1598,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setDriveImportBusy(true);
       if (!(slideOnlyMvp && blocked.length > 0)) {
         setUploadError(null);
+        setUploadAuthRelogin(false);
       }
       const orderStart = Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged));
       try {
@@ -1613,6 +1620,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             failures,
           });
           setUploadError(null);
+          setUploadAuthRelogin(false);
           return;
         }
         setDriveImportPartial(null);
@@ -1622,6 +1630,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
       } catch (err) {
         setUploadError(formatTeamverDriveImportErrorMessage(err));
+        setUploadAuthRelogin(isMainSsoGateError(err));
       } finally {
         setDriveImportBusy(false);
       }
@@ -1643,6 +1652,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
       setCanvasSlideLaunchBusy(true);
       setCanvasSlideLaunchError(null);
+      setCanvasSlideLaunchAuthRelogin(false);
       setUploadError(null);
       try {
         if (canvasSlideLaunch.kind === "canvas") {
@@ -1728,6 +1738,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             ? formatTeamverCanvasImportErrorMessage(err)
             : formatTeamverDriveImportErrorMessage(err);
         setCanvasSlideLaunchError(message);
+        setCanvasSlideLaunchAuthRelogin(isMainSsoGateError(err));
       } finally {
         setCanvasSlideLaunchBusy(false);
       }
@@ -2887,7 +2898,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             />
           </div>
         ) : null}
-        {uploadError ? <span className="composer-hint">{uploadError}</span> : null}
+        {uploadError ? (
+          <span className="composer-hint" role="status">
+            {uploadError}
+            {uploadAuthRelogin ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="teamver-drive-picker-empty__login"
+                  data-testid="composer-drive-import-login"
+                  onClick={redirectToTeamverLoginFromEmbed}
+                >
+                  다시 로그인
+                </button>
+              </>
+            ) : null}
+          </span>
+        ) : null}
         {detailsRecord ? (
           <PluginDetailsModal
             record={detailsRecord}
@@ -2906,6 +2934,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             source={canvasSlideLaunch}
             confirming={canvasSlideLaunchBusy}
             errorMessage={canvasSlideLaunchError}
+            onRelogin={
+              canvasSlideLaunchAuthRelogin ? redirectToTeamverLoginFromEmbed : null
+            }
             onClose={() => {
               if (!canvasSlideLaunchBusy) {
                 if (canvasSlideLaunch.kind === "canvas") {
@@ -2913,6 +2944,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
                 setCanvasSlideLaunch(null);
                 setCanvasSlideLaunchError(null);
+                setCanvasSlideLaunchAuthRelogin(false);
               }
             }}
             onConfirm={confirmCanvasSlideLaunch}
