@@ -13,6 +13,7 @@ import {
   fetchProjectFiles,
   patchPreviewCommentStatus,
   writeProjectTextFile,
+  writeProjectTextFileDetailed,
 } from '../../src/providers/registry';
 import { listMessages, saveMessage } from '../../src/state/projects';
 import { playSound } from '../../src/utils/notifications';
@@ -57,6 +58,7 @@ vi.mock('../../src/providers/byokProxyActive', () => ({
   },
   BYOK_PROXY_AUTH_BACKOFF_MS: 60_000,
   listActiveByokProxyStreams: vi.fn().mockResolvedValue([]),
+  shouldSkipByokProxyActivePoll: vi.fn(() => false),
 }));
 
 vi.mock('../../src/providers/project-events', () => ({
@@ -90,6 +92,7 @@ vi.mock('../../src/providers/registry', async () => {
     patchPreviewCommentStatus: vi.fn(),
     upsertPreviewComment: vi.fn(),
     writeProjectTextFile: vi.fn(),
+    writeProjectTextFileDetailed: vi.fn(),
   };
 });
 
@@ -198,6 +201,7 @@ const mockedFetchProjectFiles = vi.mocked(fetchProjectFiles);
 const mockedListMessages = vi.mocked(listMessages);
 const mockedSaveMessage = vi.mocked(saveMessage);
 const mockedWriteProjectTextFile = vi.mocked(writeProjectTextFile);
+const mockedWriteProjectTextFileDetailed = vi.mocked(writeProjectTextFileDetailed);
 const mockedPatchPreviewCommentStatus = vi.mocked(patchPreviewCommentStatus);
 const mockedPlaySound = vi.mocked(playSound);
 
@@ -271,6 +275,17 @@ describe('ProjectView API empty response handling', () => {
       size: 1,
       mtime: 1,
     });
+    mockedWriteProjectTextFileDetailed.mockImplementation(async (_projectId, name) => ({
+      ok: true,
+      file: {
+        name,
+        path: name,
+        kind: 'html',
+        mime: 'text/html',
+        size: 1,
+        mtime: 1,
+      },
+    }));
     mockedListMessages.mockClear();
     mockedSaveMessage.mockClear();
     mockedPatchPreviewCommentStatus.mockClear();
@@ -338,7 +353,7 @@ describe('ProjectView API empty response handling', () => {
 
     await sendTestPrompt();
 
-    await waitFor(() => expect(screen.getByText('model crashed')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('failed')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'retry' }));
 
     await waitFor(() => expect(mockedStreamMessage).toHaveBeenCalledTimes(2));
@@ -563,7 +578,7 @@ describe('ProjectView API empty response handling', () => {
     await waitFor(() => {
       expect(hasSavedAssistantMessage((message) => message.runStatus === 'succeeded')).toBe(true);
     });
-    await waitFor(() => expect(mockedWriteProjectTextFile).toHaveBeenCalled());
+    await waitFor(() => expect(mockedWriteProjectTextFileDetailed).toHaveBeenCalled());
     expect(screen.queryByText(/provider ended the request/i)).toBeNull();
     expect(screen.queryByText('empty_response:deepseek-chat')).toBeNull();
   });
@@ -603,6 +618,7 @@ describe('ProjectView API empty response handling', () => {
       expect(screen.getByTestId('file-workspace').dataset.openRequestName).toBe('worker-edition-v2.html');
     });
     expect(mockedWriteProjectTextFile).not.toHaveBeenCalled();
+    expect(mockedWriteProjectTextFileDetailed).not.toHaveBeenCalled();
     expect(screen.queryByText(/Refused to save artifact/i)).toBeNull();
   });
 

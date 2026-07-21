@@ -22,9 +22,10 @@ export function resolveHtmlPointerArtifactTarget(
   if (!match) return null;
 
   const target = normalizeTarget(match[1] ?? '');
-  if (!target || target === input.candidateFileName || !isSafeHtmlTarget(target)) {
+  if (!target || !isSafeHtmlTarget(target)) {
     return null;
   }
+  if (target === input.candidateFileName) return target;
 
   const projectFileNames = input.projectFiles
     .map((file) => file.path || file.name)

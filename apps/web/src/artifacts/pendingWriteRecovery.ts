@@ -175,6 +175,9 @@ export function listPendingArtifactWrites(projectId: string): PendingArtifactWri
       }
       continue;
     }
+    if (parsed.projectId !== trimmed) {
+      continue;
+    }
     if (now - parsed.stashedAt > PENDING_WRITE_TTL_MS) {
       try {
         storage.removeItem(key);
@@ -230,7 +233,10 @@ export function clearProjectPendingArtifactWrites(projectId: string): void {
   }
   for (const key of keys) {
     try {
-      storage.removeItem(key);
+      const parsed = safeParse(storage.getItem(key));
+      if (!parsed || parsed.projectId === trimmed) {
+        storage.removeItem(key);
+      }
     } catch {
       /* ignore */
     }

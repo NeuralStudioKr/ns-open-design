@@ -2406,6 +2406,12 @@ export function ProjectView({
             htmlLength: artifactToPersist.html.length,
             head: artifactToPersist.html.slice(0, 256),
           });
+          setError(
+            formatProjectArtifactRejectedError(
+              art.identifier || art.title || fileName,
+              'incomplete HTML document shell',
+            ),
+          );
           return { kind: 'skipped-incomplete', fileName };
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);

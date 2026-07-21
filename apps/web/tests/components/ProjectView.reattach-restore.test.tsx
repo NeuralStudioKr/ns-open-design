@@ -78,6 +78,7 @@ vi.mock('../../src/providers/registry', () => ({
   patchPreviewCommentStatus: vi.fn(),
   upsertPreviewComment: vi.fn(),
   writeProjectTextFile: vi.fn(),
+  writeProjectTextFileDetailed: vi.fn(),
 }));
 
 vi.mock('../../src/providers/project-events', () => ({

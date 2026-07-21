@@ -35,6 +35,7 @@ const patchConversation = vi.fn();
 const patchProject = vi.fn();
 const saveTabs = vi.fn();
 const writeProjectTextFile = vi.fn();
+const writeProjectTextFileDetailed = vi.fn();
 
 const replayArtifact: Artifact = {
   identifier: 'real-daemon-smoke',
@@ -114,6 +115,7 @@ vi.mock('../../src/providers/registry', () => ({
   patchPreviewCommentStatus: vi.fn(),
   upsertPreviewComment: vi.fn(),
   writeProjectTextFile: (...args: unknown[]) => writeProjectTextFile(...args),
+  writeProjectTextFileDetailed: (...args: unknown[]) => writeProjectTextFileDetailed(...args),
 }));
 
 vi.mock('../../src/providers/project-events', () => ({

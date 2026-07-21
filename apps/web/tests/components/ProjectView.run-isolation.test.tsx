@@ -30,6 +30,7 @@ const listProjectRuns = vi.fn();
 const reattachDaemonRun = vi.fn();
 const fetchVelaLoginStatus = vi.fn();
 const launchAntigravityOauth = vi.fn();
+const listActiveByokProxyStreams = vi.fn();
 const streamViaDaemon = vi.fn();
 const streamMessage = vi.fn();
 const saveMessage = vi.fn();
@@ -63,6 +64,16 @@ vi.mock('../../src/providers/daemon', () => ({
   streamViaDaemon: (...args: unknown[]) => streamViaDaemon(...args),
 }));
 
+vi.mock('../../src/providers/byokProxyActive', () => ({
+  ActiveByokProxyAuthTransientError: class ActiveByokProxyAuthTransientError extends Error {
+    readonly code = 'ACTIVE_BYOK_PROXY_AUTH_TRANSIENT';
+    readonly status = 401;
+  },
+  BYOK_PROXY_AUTH_BACKOFF_MS: 60_000,
+  listActiveByokProxyStreams: (...args: unknown[]) => listActiveByokProxyStreams(...args),
+  shouldSkipByokProxyActivePoll: vi.fn(() => false),
+}));
+
 vi.mock('../../src/providers/project-events', () => ({
   useProjectFileEvents: vi.fn(),
 }));
@@ -83,6 +94,7 @@ vi.mock('../../src/providers/registry', () => ({
   patchPreviewCommentStatus: (...args: unknown[]) => patchPreviewCommentStatus(...args),
   upsertPreviewComment: vi.fn(),
   writeProjectTextFile: vi.fn(),
+  writeProjectTextFileDetailed: vi.fn(),
 }));
 
 vi.mock('../../src/router', () => ({
@@ -560,6 +572,7 @@ describe('ProjectView conversation run isolation', () => {
     fetchDesignSystem.mockResolvedValue(null);
     getTemplate.mockResolvedValue(null);
     listActiveChatRuns.mockResolvedValue([]);
+    listActiveByokProxyStreams.mockResolvedValue([]);
     listProjectRuns.mockResolvedValue([]);
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-a',
