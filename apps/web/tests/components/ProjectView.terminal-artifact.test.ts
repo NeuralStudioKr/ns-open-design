@@ -103,16 +103,35 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
     ).toBe(true);
   });
 
-  it("does not double-fail when persist already marked the run failed", () => {
+  it("does not fail when an HTML file was produced", () => {
+    expect(
+      shouldFailSlideRunForMissingHtmlDeliverable({
+        slideOnlyMvp: true,
+        producedHtmlToOpen: "deck.html",
+        parsedArtifact: { html: INCOMPLETE_SHELL },
+        liveHtml: INCOMPLETE_SHELL,
+        finalText: "슬라이드 구성 계획",
+        terminalArtifactPersistFailed: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("fails when validation rejects the streamed artifact and nothing landed on disk", () => {
     expect(
       shouldFailSlideRunForMissingHtmlDeliverable({
         slideOnlyMvp: true,
         producedHtmlToOpen: null,
-        parsedArtifact: { html: INCOMPLETE_SHELL },
-        liveHtml: INCOMPLETE_SHELL,
-        finalText: "슬라이드 구성 계획",
-        terminalArtifactPersistFailed: true,
+        parsedArtifact: {
+          // Document-shaped but too short / empty body — incomplete shell
+          // path already covers this; also cover prose-as-html rejection via
+          // the same gate by using a body that starts with doctype but is
+          // empty enough to fail the shell check.
+          html: "<!doctype html><html><head></head><body></body></html>",
+        },
+        liveHtml: "",
+        finalText: "슬라이드 완성",
+        terminalArtifactPersistFailed: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

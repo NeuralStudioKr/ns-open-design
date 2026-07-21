@@ -61,3 +61,50 @@ export const AUTO_CONTINUE_STATUS_CODE = 'auto_continue_incomplete_output';
 // (manual button) so the demo dashboard can measure how often the automatic
 // recovery fires and whether it actually salvages the deliverable.
 export const AUTO_CONTINUE_ENTRY_FROM = 'auto_continue_incomplete_output';
+
+export type AutoContinuePersistResultKind =
+  | 'skipped-incomplete'
+  | 'rejected'
+  | 'save-failed'
+  | 'persisted'
+  | 'pointer'
+  | 'skipped-duplicate'
+  | 'auth-replay-queued'
+  | null;
+
+/**
+ * Pure gate for the capped automatic continue. Kept outside ProjectView so
+ * unit tests can pin the decision table without mounting the chat surface.
+ *
+ * Only content-incompleteness qualifies: a rejected shell, a validation
+ * refusal, or a slide-only turn that finished with no HTML on disk. Infra
+ * save failures (`save-failed`) must NOT auto-continue — regenerating the
+ * same deliverable would just hit the same write path again.
+ */
+export function shouldAutoContinueForIncompleteOutput(options: {
+  runIsVisible: boolean;
+  autoContinueCount: number;
+  maxPerConversation?: number;
+  terminalPersistResultKind: AutoContinuePersistResultKind;
+  hadIncompleteParsedArtifact: boolean;
+  shouldFailMissingSlideHtml: boolean;
+}): boolean {
+  if (!options.runIsVisible) return false;
+  const max = options.maxPerConversation ?? AUTO_CONTINUE_MAX_PER_CONVERSATION;
+  if (options.autoContinueCount >= max) return false;
+
+  const kind = options.terminalPersistResultKind;
+  if (kind === 'skipped-incomplete' || kind === 'rejected') return true;
+  if (kind !== null) return false;
+  return options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml;
+}
+
+/** Roll back one consumed auto-continue slot when the fire path aborts. */
+export function rollbackAutoContinueCount(
+  counts: Map<string, number>,
+  conversationId: string,
+): number {
+  const next = Math.max(0, (counts.get(conversationId) ?? 1) - 1);
+  counts.set(conversationId, next);
+  return next;
+}

@@ -172,10 +172,51 @@ describe("ProjectView message loading", () => {
       "messagesConversationIdRef.current !== activeConversationId",
     );
     expect(block).toContain("autoOpenRecoveredHtmlOutput(");
+    expect(block).toContain("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
+    expect(block).toContain("if (openedRecoveredHtml) return");
     // Ordering matters — autoOpenRecoveredHtmlOutput short-circuits on the
     // first match so the newest completion must be tried first.
     expect(block).toContain(".slice()");
     expect(block).toContain(".reverse()");
+  });
+
+  it("auto-continues a recovered incomplete-output row after reload when no HTML exists", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 4200);
+
+    expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
+    expect(block).toContain("conversationAutoContinueCountRef.current.set(activeConversationId");
+    expect(block).toContain("nextAutoContinueCount >= AUTO_CONTINUE_MAX_PER_CONVERSATION");
+    expect(block).toContain("message.runStatus === 'failed'");
+    expect(block).toContain("message.resumable === true");
+    expect(block).toContain("event.code === 'incomplete_output'");
+    expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
+    expect(block).toContain("appendErrorStatusEvent(");
+    expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
+    expect(block).toContain("handleSendRef.current");
+    expect(block).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
+    expect(block).toContain("AUTO_CONTINUE_ENTRY_FROM");
+  });
+
+  it("auto-continues a background-recovered incomplete-output row once proxy streams drain", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
+    const secondStart = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(", start + 1);
+    expect(secondStart).toBeGreaterThan(0);
+    const block = source.slice(secondStart, secondStart + 4600);
+
+    expect(block).toContain("const proxyStillActive = matchingActiveStreams.length > 0");
+    expect(block).toContain("!openedRecoveredHtml && !stillInflight && !proxyStillActive");
+    expect(block).toContain("trackedAssistantIds.has(message.id)");
+    expect(block).toContain("event.code === 'incomplete_output'");
+    expect(block).toContain("AUTO_CONTINUE_MAX_PER_CONVERSATION");
+    expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
+    expect(block).toContain("saveMessage(project.id, recoveryConversationId, updatedAssistant");
+    expect(block).toContain("finishRecovery()");
+    expect(block).toContain("handleSendRef.current");
+    expect(block).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
   });
 
   it("keeps the no-produced-HTML terminal path quiet in the browser console", () => {
@@ -198,7 +239,18 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
+    // Validation refusals still surface a refusal banner; incomplete shells
+    // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
+    const shellStart = source.indexOf(
+      "if (isIncompleteHtmlDocumentShell(artifactToPersist.html))",
+      persistStart,
+    );
+    expect(shellStart).toBeGreaterThan(persistStart);
+    const shellBlock = source.slice(shellStart, shellStart + 900);
+    expect(shellBlock).toContain("kind: 'skipped-incomplete'");
+    expect(shellBlock).not.toContain("setError(");
+    expect(shellBlock).not.toContain("formatProjectArtifactRejectedError(");
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
@@ -214,11 +266,14 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");
-    expect(autoOpenBlock).toContain("AUTO_CONTINUE_MAX_PER_CONVERSATION");
+    expect(autoOpenBlock).toContain("shouldAutoContinueForIncompleteOutput({");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");
+    expect(autoOpenBlock).toContain("rollbackAutoContinueCount(conversationAutoContinueCountRef.current");
+    expect(autoOpenBlock).toContain("autoContinueTimerRef.current = window.setTimeout");
+    expect(autoOpenBlock).toContain("if (runIsVisible() && !canAutoContinue) setError(deliverableError)");
     // Keep this path quiet in production DevTools. The user-facing assistant
     // status event is the observable signal; console noise made previous demo
     // failures look scarier than they were.

@@ -125,6 +125,8 @@ import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
+  rollbackAutoContinueCount,
+  shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
@@ -1455,18 +1457,29 @@ export function ProjectView({
    * pass a per-assistant dedup — that is exactly the loop we want to prevent.
    */
   const conversationAutoContinueCountRef = useRef<Map<string, number>>(new Map());
+  /** Pending automatic-continue timer; cleared on project switch / unmount. */
+  const autoContinueTimerRef = useRef<number | null>(null);
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
+    htmlAutoOpenGenerationRef.current.clear();
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
       window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
     }
+    if (autoContinueTimerRef.current !== null) {
+      window.clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
     return () => {
       if (htmlAutoOpenTimerRef.current !== null) {
         window.clearTimeout(htmlAutoOpenTimerRef.current);
         htmlAutoOpenTimerRef.current = null;
+      }
+      if (autoContinueTimerRef.current !== null) {
+        window.clearTimeout(autoContinueTimerRef.current);
+        autoContinueTimerRef.current = null;
       }
     };
   }, [project.id]);
@@ -1973,11 +1986,83 @@ export function ProjectView({
               : await refreshProjectFiles().catch(() => [] as ProjectFile[]);
             if (cancelled) return;
             if (messagesConversationIdRef.current !== activeConversationId) return;
-            autoOpenRecoveredHtmlOutput(
+            const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(
               mergedMessages,
               terminalAssistantIds,
               filesForRecovery,
             );
+            if (openedRecoveredHtml) return;
+            const autoContinueAttempts = mergedMessages.reduce((count, message) => {
+              const attempted = message.events?.some((event) =>
+                event.kind === 'status' && event.code === AUTO_CONTINUE_STATUS_CODE,
+              );
+              return attempted ? count + 1 : count;
+            }, 0);
+            const currentAutoContinueCount =
+              conversationAutoContinueCountRef.current.get(activeConversationId) ?? 0;
+            const nextAutoContinueCount = Math.max(currentAutoContinueCount, autoContinueAttempts);
+            conversationAutoContinueCountRef.current.set(activeConversationId, nextAutoContinueCount);
+            if (nextAutoContinueCount >= AUTO_CONTINUE_MAX_PER_CONVERSATION) return;
+            const incompleteAssistant = mergedMessages
+              .slice()
+              .reverse()
+              .find((message) =>
+                message.role === 'assistant'
+                && message.runStatus === 'failed'
+                && message.resumable === true
+                && message.events?.some((event) =>
+                  event.kind === 'status' && event.code === 'incomplete_output',
+                ),
+              );
+            if (!incompleteAssistant) return;
+            conversationAutoContinueCountRef.current.set(
+              activeConversationId,
+              nextAutoContinueCount + 1,
+            );
+            const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+            const updatedAssistant = appendErrorStatusEvent(
+              incompleteAssistant,
+              autoContinueNotice,
+              AUTO_CONTINUE_STATUS_CODE,
+            );
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === updatedAssistant.id ? updatedAssistant : message,
+              ),
+            );
+            void saveMessage(project.id, activeConversationId, updatedAssistant, {
+              telemetryFinalized: true,
+            });
+            if (autoContinueTimerRef.current !== null) {
+              window.clearTimeout(autoContinueTimerRef.current);
+            }
+            autoContinueTimerRef.current = window.setTimeout(() => {
+              autoContinueTimerRef.current = null;
+              if (messagesConversationIdRef.current !== activeConversationId) {
+                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                return;
+              }
+              if (streamingConversationIdRef.current !== null) {
+                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                return;
+              }
+              const sendNow = handleSendRef.current;
+              if (!sendNow) {
+                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                return;
+              }
+              const started = sendNow(
+                AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+                [],
+                [],
+                { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+              );
+              void Promise.resolve(started).then((ok) => {
+                if (ok === false) {
+                  rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                }
+              });
+            }, 600);
           })();
         }
       } catch (err) {
@@ -2419,11 +2504,12 @@ export function ProjectView({
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
         if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
-          // Surface WHY the preview stayed empty after a successful-looking
-          // run. The shell check is intentionally quiet on the happy path,
-          // so any hit here is the failure mode we want to see — otherwise
-          // the demo shows "완료됨 · 15757 출력" with no artifact and no
-          // signal at all in the console or network tab.
+          // Quiet skip — do NOT setError here. The terminal auto-open path
+          // owns user-facing messaging (deliverable-missing banner and/or
+          // the automatic-continue notice). Flashing 「저장을 거부했습니다:
+          // incomplete HTML document shell」 mid/end-turn contradicted the
+          // auto-continue banner and looked like a product failure during
+          // demos. Console warn stays for triage.
           console.warn('[teamver] artifact write skipped as incomplete document shell', {
             projectId: project.id,
             identifier: art.identifier,
@@ -2431,12 +2517,6 @@ export function ProjectView({
             htmlLength: artifactToPersist.html.length,
             head: artifactToPersist.html.slice(0, 256),
           });
-          setError(
-            formatProjectArtifactRejectedError(
-              art.identifier || art.title || fileName,
-              'incomplete HTML document shell',
-            ),
-          );
           return { kind: 'skipped-incomplete', fileName };
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
@@ -4430,9 +4510,91 @@ export function ProjectView({
         return;
       }
       if (cancelled) return;
-      autoOpenRecoveredHtmlOutput(mergedMessages, trackedAssistantIds, nextFiles);
+      const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(
+        mergedMessages,
+        trackedAssistantIds,
+        nextFiles,
+      );
 
       const proxyStillActive = matchingActiveStreams.length > 0;
+      if (!openedRecoveredHtml && !stillInflight && !proxyStillActive) {
+        const autoContinueAttempts = mergedMessages.reduce((count, message) => {
+          const attempted = message.events?.some((event) =>
+            event.kind === 'status' && event.code === AUTO_CONTINUE_STATUS_CODE,
+          );
+          return attempted ? count + 1 : count;
+        }, 0);
+        const currentAutoContinueCount =
+          conversationAutoContinueCountRef.current.get(recoveryConversationId) ?? 0;
+        const nextAutoContinueCount = Math.max(currentAutoContinueCount, autoContinueAttempts);
+        conversationAutoContinueCountRef.current.set(recoveryConversationId, nextAutoContinueCount);
+        if (nextAutoContinueCount < AUTO_CONTINUE_MAX_PER_CONVERSATION) {
+          const incompleteAssistant = mergedMessages
+            .slice()
+            .reverse()
+            .find((message) =>
+              trackedAssistantIds.has(message.id)
+              && message.role === 'assistant'
+              && message.runStatus === 'failed'
+              && message.resumable === true
+              && message.events?.some((event) =>
+                event.kind === 'status' && event.code === 'incomplete_output',
+              ),
+            );
+          if (incompleteAssistant) {
+            conversationAutoContinueCountRef.current.set(
+              recoveryConversationId,
+              nextAutoContinueCount + 1,
+            );
+            const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+            const updatedAssistant = appendErrorStatusEvent(
+              incompleteAssistant,
+              autoContinueNotice,
+              AUTO_CONTINUE_STATUS_CODE,
+            );
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === updatedAssistant.id ? updatedAssistant : message,
+              ),
+            );
+            void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
+              telemetryFinalized: true,
+            });
+            finishRecovery();
+            if (autoContinueTimerRef.current !== null) {
+              window.clearTimeout(autoContinueTimerRef.current);
+            }
+            autoContinueTimerRef.current = window.setTimeout(() => {
+              autoContinueTimerRef.current = null;
+              if (messagesConversationIdRef.current !== recoveryConversationId) {
+                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                return;
+              }
+              if (streamingConversationIdRef.current !== null) {
+                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                return;
+              }
+              const sendNow = handleSendRef.current;
+              if (!sendNow) {
+                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                return;
+              }
+              const started = sendNow(
+                AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+                [],
+                [],
+                { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+              );
+              void Promise.resolve(started).then((ok) => {
+                if (ok === false) {
+                  rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                }
+              });
+            }, 600);
+            return;
+          }
+        }
+      }
       if (trackedAssistantIds.size === 0 && !proxyStillActive) {
         finishRecovery();
         return;
@@ -4976,7 +5138,6 @@ export function ProjectView({
             const endedAt = Date.now();
             if (terminalArtifactPersistFailed) {
               const deliverableError = formatProjectRunDeliverableMissingError();
-              if (runIsVisible()) setError(deliverableError);
               // Decide whether to fire the capped automatic continue BEFORE
               // we finalize the assistant card, so the status event we append
               // matches the branch we actually take. Both branches leave the
@@ -4986,30 +5147,19 @@ export function ProjectView({
               // error).
               const autoContinueCount =
                 conversationAutoContinueCountRef.current.get(runConversationId) ?? 0;
-              // Only auto-continue for CONTENT-incompleteness — a shell that
-              // pre-write rejected, an HTML validation refusal, or a slide
-              // turn that finished without producing any HTML at all. When
-              // the model's content was fine but the *save* failed (5xx,
-              // network, stash-fallback save-failed), a fresh model turn
-              // would just regenerate the same deliverable and hit the same
-              // infra issue — the correct recovery is a manual "다시 시도"
-              // once the save path is working again, so we leave that
-              // branch out of the auto path.
-              const failureIsContentIncompleteness =
-                terminalPersistResultKind === 'skipped-incomplete'
-                || terminalPersistResultKind === 'rejected'
-                // No persistResult means the persist branch never ran (no
-                // artifact recovered from the stream). In that case the
-                // trip through terminalArtifactPersistFailed came from the
-                // downstream "!producedHtmlToOpen && (hadIncompleteParsed
-                // Artifact || shouldFailMissingSlideHtml)" gate — those
-                // are, by definition, content-incompleteness signals.
-                || (terminalPersistResultKind === null
-                  && (hadIncompleteParsedArtifact || shouldFailMissingSlideHtml));
-              const canAutoContinue =
-                runIsVisible()
-                && autoContinueCount < AUTO_CONTINUE_MAX_PER_CONVERSATION
-                && failureIsContentIncompleteness;
+              const canAutoContinue = shouldAutoContinueForIncompleteOutput({
+                runIsVisible: runIsVisible(),
+                autoContinueCount,
+                terminalPersistResultKind,
+                hadIncompleteParsedArtifact,
+                shouldFailMissingSlideHtml,
+              });
+              // When auto-continue is armed, suppress the top-of-page
+              // "결과물이 생성되지 않았습니다" banner — it contradicts the
+              // assistant-card "이어쓰기 시도 중" notice and trains the user
+              // to think a manual retry is required. Cap-exhausted / infra
+              // failures still surface the deliverable error.
+              if (runIsVisible() && !canAutoContinue) setError(deliverableError);
               if (canAutoContinue) {
                 conversationAutoContinueCountRef.current.set(
                   runConversationId,
@@ -5034,36 +5184,42 @@ export function ProjectView({
               }
               updateConversationLatestRun('failed', endedAt);
               if (canAutoContinue) {
-                // Fire the automatic continue on the next macrotask so the
-                // saveMessage() below (which finalizes the failed assistant
-                // row on disk) lands before we start a *new* run in the same
-                // conversation. Without this ordering, handleSend's
-                // messagesConversationIdRef guard can race with our
-                // updateAssistant setState and see a phantom "still-active"
-                // stream, refusing to start the continue.
-                //
-                // A longer delay (600ms) beats a bare setTimeout(0): the
-                // updateAssistant flush that sets runStatus:'failed' /
-                // endedAt must commit BEFORE handleSend samples
-                // `currentConversationHasActiveRun` — otherwise the message
-                // still counts as in-flight, `currentConversationBusy` is
-                // true, and handleSend silently queues the auto-continue
-                // instead of starting it (see line 4696). 600ms is
-                // conservative given the failure-notice paint we just
-                // triggered; the user sees the "이어쓰기 시도 중" notice
-                // before the next stream starts.
-                window.setTimeout(() => {
+                // Fire the automatic continue after the failed-assistant
+                // row commits. Without this delay, handleSend samples
+                // `currentConversationHasActiveRun` while the message still
+                // looks in-flight and silently QUEUES the continue (burning
+                // a retry slot). 600ms is conservative given the notice paint.
+                if (autoContinueTimerRef.current !== null) {
+                  window.clearTimeout(autoContinueTimerRef.current);
+                }
+                autoContinueTimerRef.current = window.setTimeout(() => {
+                  autoContinueTimerRef.current = null;
                   const conversationStillActive =
                     messagesConversationIdRef.current === runConversationId;
+                  // Another stream already running (reattach / supersede) —
+                  // do not queue-and-burn the slot; roll the counter back.
+                  const stillStreamingElsewhere =
+                    streamingConversationIdRef.current !== null;
                   const sendNow = handleSendRef.current;
-                  if (!conversationStillActive) return;
-                  if (!sendNow) return;
-                  void sendNow(
+                  if (!conversationStillActive || stillStreamingElsewhere || !sendNow) {
+                    rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
+                    return;
+                  }
+                  const started = sendNow(
                     AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
                     [],
                     [],
                     { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
                   );
+                  void Promise.resolve(started).then((ok) => {
+                    // handleSend returns false when it queues (busy) or
+                    // rejects (embed disabled / conversation mismatch).
+                    // Restore the slot so a later idle flush or manual
+                    // retry still gets its auto-continue attempts.
+                    if (ok === false) {
+                      rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
+                    }
+                  });
                 }, 600);
               }
             } else {
