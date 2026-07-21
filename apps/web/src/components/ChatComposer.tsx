@@ -87,8 +87,10 @@ import {
 } from '../teamver/importCanvas';
 import {
   redirectToTeamverLoginFromEmbed,
+  TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from '../teamver/teamverBffAuthError';
-import { isMainSsoGateError } from '../teamver/teamverMainSsoGate';
+import { isMainSsoRequiredError, isMainSsoUserMismatchError } from '../teamver/teamverMainSsoGate';
+import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
@@ -1629,8 +1631,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setDriveLaunchAssets([]);
         }
       } catch (err) {
-        setUploadError(formatTeamverDriveImportErrorMessage(err));
-        setUploadAuthRelogin(isMainSsoGateError(err));
+        if (isMainSsoUserMismatchError(err)) {
+          void beginMainSsoMismatchRecovery();
+          setUploadError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+          setUploadAuthRelogin(false);
+        } else {
+          setUploadError(formatTeamverDriveImportErrorMessage(err));
+          setUploadAuthRelogin(isMainSsoRequiredError(err));
+        }
       } finally {
         setDriveImportBusy(false);
       }
@@ -1733,12 +1741,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             },
           });
         }      } catch (err) {
-        const message =
-          canvasSlideLaunch.kind === "canvas"
-            ? formatTeamverCanvasImportErrorMessage(err)
-            : formatTeamverDriveImportErrorMessage(err);
-        setCanvasSlideLaunchError(message);
-        setCanvasSlideLaunchAuthRelogin(isMainSsoGateError(err));
+        if (isMainSsoUserMismatchError(err)) {
+          void beginMainSsoMismatchRecovery();
+          setCanvasSlideLaunchError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+          setCanvasSlideLaunchAuthRelogin(false);
+        } else {
+          const message =
+            canvasSlideLaunch.kind === "canvas"
+              ? formatTeamverCanvasImportErrorMessage(err)
+              : formatTeamverDriveImportErrorMessage(err);
+          setCanvasSlideLaunchError(message);
+          setCanvasSlideLaunchAuthRelogin(isMainSsoRequiredError(err));
+        }
       } finally {
         setCanvasSlideLaunchBusy(false);
       }

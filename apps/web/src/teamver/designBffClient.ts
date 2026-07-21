@@ -455,8 +455,9 @@ export async function withDesignBffCookieAuthRecovery<T>(
   } catch (err) {
     if (!isDesignBffUnauthorizedStatus(err)) throw err;
 
-    // Main HS256 SSO gate (missing cookie or wrong Main account vs Design).
-    // Apps /auth/refresh cannot fix this — rethrow immediately (41 §6.3).
+    // Main HS256 SSO gate — Apps refresh cannot mint/fix Main cookies.
+    // Mismatch recovery is started by driveApi / handleTeamverDriveAuthFailure /
+    // callers; do not Apps-refresh here.
     if (isMainSsoGateError(err)) throw err;
 
     // Parallel project/registry/Drive 401s after soft/hard sticky must not each

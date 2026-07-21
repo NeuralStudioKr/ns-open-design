@@ -10,9 +10,11 @@ import {
 } from "./designBffClient";
 import {
   isTeamverDriveMainSsoGateError,
+  isTeamverDriveMainSsoRequiredError,
   isTeamverDriveMainSsoUserMismatchError,
 } from "./driveApi";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import { beginMainSsoMismatchRecovery } from "./mainSsoMismatchRecovery";
 
 function isSdkHttpUnauthorized(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
@@ -178,24 +180,30 @@ export function handleTeamverBffAuthFailure(
 }
 
 /**
- * Drive browse/publish catch helper: Main SSO gate (missing cookie or wrong
- * Main account) first, then Design BFF session auth failure.
+ * Drive browse/publish catch helper: Main SSO gate first, then Design BFF auth.
+ *
+ * ``main_sso_user_mismatch`` silently rebinds via Main logout + cold start
+ * (no operator-facing "accounts differ" copy). ``main_sso_required`` still
+ * surfaces the normal re-login CTA.
  */
 export function handleTeamverDriveAuthFailure(
   err: unknown,
   handlers: {
-    onRelogin: (opts?: { userMismatch?: boolean }) => void;
+    onRelogin: () => void;
     onTransient: () => void;
   },
 ): boolean {
-  if (isTeamverDriveMainSsoGateError(err)) {
-    handlers.onRelogin({
-      userMismatch: isTeamverDriveMainSsoUserMismatchError(err),
-    });
+  if (isTeamverDriveMainSsoUserMismatchError(err)) {
+    void beginMainSsoMismatchRecovery();
+    handlers.onTransient();
+    return true;
+  }
+  if (isTeamverDriveMainSsoRequiredError(err) || isTeamverDriveMainSsoGateError(err)) {
+    handlers.onRelogin();
     return true;
   }
   return handleTeamverBffAuthFailure(err, {
-    onRelogin: () => handlers.onRelogin(),
+    onRelogin: handlers.onRelogin,
     onTransient: handlers.onTransient,
   });
 }

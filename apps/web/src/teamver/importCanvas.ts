@@ -9,7 +9,8 @@ import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
 import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import type { TeamverDriveImportedAsset } from "./importDriveAssets";
-import { extractMainSsoGateCodeFromError } from "./teamverMainSsoGate";
+import { extractMainSsoGateCodeFromError, isMainSsoUserMismatchError } from "./teamverMainSsoGate";
+import { beginMainSsoMismatchRecovery } from "./mainSsoMismatchRecovery";
 
 export type TeamverCanvasImportRequest = {
   sessionId: string;
@@ -119,8 +120,10 @@ export function formatCanvasImportErrorForUser(code: string): string {
     ),
     main_sso_required:
       "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 시도하세요.",
-    main_sso_user_mismatch:
-      "Teamver Main 로그인 계정과 Design 세션 계정이 다릅니다 — 같은 계정으로 다시 로그인한 뒤 시도하세요.",
+    main_sso_user_mismatch: formatTeamverEmbedAuthRequiredMessage(
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+    ),
     canvas_import_failed: "캔버스를 가져오지 못했습니다 — 잠시 후 다시 시도하세요.",
     canvas_import_busy: "지금 가져오기 요청이 많습니다 — 잠시 후 다시 시도하세요.",
     canvas_session_required: "캔버스 세션 정보가 없습니다.",
@@ -170,33 +173,32 @@ export async function importTeamverCanvas(
 
   await assertTeamverDesignAppEnabled(workspaceId);
 
-  const response = await withDesignBffCookieAuthRecovery(() =>
-    client.http.post<CanvasImportResponse>(
-      `/projects/${encodeURIComponent(projectId)}/import-canvas`,
-      {
-        sessionId,
-        artifactId,
-        revision: request.revision?.trim() || undefined,
-        filename: request.filename?.trim() || undefined,
-      },
-      {
-        workspaceId,
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
-    ),
-  );
-
-  if (response.errorCode) {
-    throw new Error(response.errorCode);
+  try {
+    const response = await withDesignBffCookieAuthRecovery(() =>
+      client.http.post<CanvasImportResponse>(
+        `/projects/${encodeURIComponent(projectId)}/import-canvas`,
+        {
+          sessionId,
+          artifactId,
+          revision: request.revision?.trim() || undefined,
+          filename: request.filename?.trim() || undefined,
+        },
+        {
+          workspaceId,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
+    );
+    const project = response.projectId?.trim() || projectId;
+    const imported = response.imported ?? [];
+    if (imported.length === 0) {
+      throw new Error(response.errorCode?.trim() || "canvas_import_failed");
+    }
+    return { projectId: project, imported };
+  } catch (err) {
+    if (isMainSsoUserMismatchError(err)) void beginMainSsoMismatchRecovery();
+    throw err;
   }
-  const imported = response.imported ?? [];
-  if (imported.length === 0) {
-    throw new Error("canvas_import_failed");
-  }
-  return {
-    projectId: response.projectId ?? projectId,
-    imported,
-  };
 }
 
 export function canvasImportedToChatAttachments(

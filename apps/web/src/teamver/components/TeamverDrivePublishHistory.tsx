@@ -92,7 +92,6 @@ export function TeamverDrivePublishHistory({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
-  const [authUserMismatch, setAuthUserMismatch] = useState(false);
   const [result, setResult] = useState<TeamverProjectOutputsResult | null>(null);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hasRequested, setHasRequested] = useState(!defaultCollapsed);
@@ -106,7 +105,6 @@ export function TeamverDrivePublishHistory({
     if (!hasRowsRef.current) setLoading(true);
     setError(null);
     setAuthRequired(false);
-    setAuthUserMismatch(false);
     try {
       const next = await listTeamverProjectOutputs(projectId);
       if (seq !== fetchSeqRef.current) return;
@@ -124,13 +122,11 @@ export function TeamverDrivePublishHistory({
       if (seq !== fetchSeqRef.current) return;
       if (
         handleTeamverDriveAuthFailure(err, {
-          onRelogin: (opts) => {
+          onRelogin: () => {
             setAuthRequired(true);
-            setAuthUserMismatch(opts?.userMismatch === true);
           },
           onTransient: () => {
             setAuthRequired(false);
-            setAuthUserMismatch(false);
             setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
           },
         })
@@ -221,7 +217,7 @@ export function TeamverDrivePublishHistory({
           aria-live="polite"
           data-testid="teamver-drive-history-auth-required"
         >
-          {formatTeamverDrivePanelReloginMessage({ userMismatch: authUserMismatch })}{" "}
+          {formatTeamverDrivePanelReloginMessage()}{" "}
           <button
             type="button"
             className="teamver-drive-history__login"

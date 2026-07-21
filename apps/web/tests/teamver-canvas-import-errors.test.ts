@@ -54,7 +54,7 @@ describe("extractCanvasImportErrorCode / formatTeamverCanvasImportErrorMessage",
       },
     });
     expect(extractCanvasImportErrorCode(err)).toBe("main_sso_user_mismatch");
-    expect(formatTeamverCanvasImportErrorMessage(err)).toContain("계정");
+    expect(formatTeamverCanvasImportErrorMessage(err)).toContain("연결");
   });
 
   it("maps session_expired / 401 to re-login copy, not canvas forbidden", () => {

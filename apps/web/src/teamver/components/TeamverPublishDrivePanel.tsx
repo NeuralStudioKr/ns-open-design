@@ -111,7 +111,6 @@ export function TeamverPublishDrivePanel({
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [targetsError, setTargetsError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
-  const [authUserMismatch, setAuthUserMismatch] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [targets, setTargets] = useState<TeamverDrivePublishTarget[]>(() => [
     DEFAULT_PUBLISH_TARGET,
@@ -165,7 +164,6 @@ export function TeamverPublishDrivePanel({
     const seq = ++fetchSeqRef.current;
     setTargetsError(null);
     setAuthRequired(false);
-    setAuthUserMismatch(false);
     try {
       const ws = (await readActiveTeamverWorkspaceId())?.trim() || null;
       if (seq !== fetchSeqRef.current) return;
@@ -215,13 +213,11 @@ export function TeamverPublishDrivePanel({
       setLastTargetRestore("none");
       if (
         handleTeamverDriveAuthFailure(err, {
-          onRelogin: (opts) => {
+          onRelogin: () => {
             setAuthRequired(true);
-            setAuthUserMismatch(opts?.userMismatch === true);
           },
           onTransient: () => {
             setAuthRequired(false);
-            setAuthUserMismatch(false);
             setTargetsError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
           },
         })
@@ -305,7 +301,6 @@ export function TeamverPublishDrivePanel({
       });
       setTargetsError(null);
       setAuthRequired(false);
-      setAuthUserMismatch(false);
     },
     [workspaceId],
   );
@@ -387,13 +382,11 @@ export function TeamverPublishDrivePanel({
         setSelectedFormat("html");
       }
       const authHandled = handleTeamverDriveAuthFailure(err, {
-        onRelogin: (opts) => {
+        onRelogin: () => {
           setAuthRequired(true);
-          setAuthUserMismatch(opts?.userMismatch === true);
         },
         onTransient: () => {
           setAuthRequired(false);
-          setAuthUserMismatch(false);
           onError?.(new Error(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE));
         },
       });
@@ -549,7 +542,7 @@ export function TeamverPublishDrivePanel({
           aria-live="polite"
           data-testid="teamver-drive-panel-auth-required"
         >
-          {formatTeamverDrivePanelReloginMessage({ userMismatch: authUserMismatch })}{" "}
+          {formatTeamverDrivePanelReloginMessage()}{" "}
           <button
             type="button"
             className="teamver-drive-target-hint__login"

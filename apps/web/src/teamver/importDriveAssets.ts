@@ -8,6 +8,8 @@ import {
 import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { assertTeamverDesignAppEnabled } from "./teamverDesignAccess";
+import { isMainSsoUserMismatchError } from "./teamverMainSsoGate";
+import { beginMainSsoMismatchRecovery } from "./mainSsoMismatchRecovery";
 
 export type TeamverDriveImportAsset = {
   assetId: string;
@@ -65,10 +67,17 @@ export function formatDriveImportErrorForUser(code: string): string {
       "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 시도하세요.",
     main_sso_required:
       "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 시도하세요.",
-    teamver_drive_main_sso_user_mismatch:
-      "Teamver Main 로그인 계정과 Design 세션 계정이 다릅니다 — 같은 계정으로 teamver.com에서 다시 로그인한 뒤 시도하세요.",
-    main_sso_user_mismatch:
-      "Teamver Main 로그인 계정과 Design 세션 계정이 다릅니다 — 같은 계정으로 teamver.com에서 다시 로그인한 뒤 시도하세요.",
+    // Mismatch recovers silently (Main logout + cold start) — never show
+    // operator "accounts differ" copy. Fall through to transient if recovery
+    // has not navigated away yet.
+    teamver_drive_main_sso_user_mismatch: formatTeamverEmbedAuthRequiredMessage(
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+    ),
+    main_sso_user_mismatch: formatTeamverEmbedAuthRequiredMessage(
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+      "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+    ),
   };
   if (exact[trimmed]) return exact[trimmed];
 
@@ -169,21 +178,26 @@ export async function importTeamverDriveAssets(
 
   await assertTeamverDesignAppEnabled(workspaceId);
 
-  const response = await withDesignBffCookieAuthRecovery(() =>
-    client.http.post<DriveImportResponse>(
-      `/projects/${encodeURIComponent(projectId)}/import-drive`,
-      { assets },
-      {
-        workspaceId,
-        ...TEAMVER_BFF_REQUEST_OPTIONS,
-      },
-    ),
-  );
-  const result = normalizeDriveImportResponse(response, projectId);
-  if (result.imported.length === 0 && result.failed.length > 0) {
-    throw new Error(result.failed[0]?.errorCode ?? "drive_import_failed");
+  try {
+    const response = await withDesignBffCookieAuthRecovery(() =>
+      client.http.post<DriveImportResponse>(
+        `/projects/${encodeURIComponent(projectId)}/import-drive`,
+        { assets },
+        {
+          workspaceId,
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        },
+      ),
+    );
+    const result = normalizeDriveImportResponse(response, projectId);
+    if (result.imported.length === 0 && result.failed.length > 0) {
+      throw new Error(result.failed[0]?.errorCode ?? "drive_import_failed");
+    }
+    return result;
+  } catch (err) {
+    if (isMainSsoUserMismatchError(err)) void beginMainSsoMismatchRecovery();
+    throw err;
   }
-  return result;
 }
 
 export function driveImportToAttachmentPath(imported: TeamverDriveImportedAsset): string {

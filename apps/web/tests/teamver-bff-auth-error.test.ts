@@ -37,7 +37,12 @@ vi.mock("../src/teamver/teamverEmbedPassiveAuth", () => ({
   handleEmbedPassiveUnauthorized: passiveAuthMock,
 }));
 
+vi.mock("../src/teamver/mainSsoMismatchRecovery", () => ({
+  beginMainSsoMismatchRecovery: vi.fn(() => Promise.resolve()),
+}));
+
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
+import { beginMainSsoMismatchRecovery } from "../src/teamver/mainSsoMismatchRecovery";
 import { TeamverDaemonUnauthorizedError } from "../src/teamver/teamverDaemonHeaders";
 import {
   formatTeamverEmbedOperationFailureMessage,
@@ -140,7 +145,7 @@ describe("classifyTeamverBffAuthFailure", () => {
     expect(onRelogin).not.toHaveBeenCalled();
   });
 
-  it("handleTeamverDriveAuthFailure treats Main SSO mismatch as relogin even while embed memory is authenticated", () => {
+  it("handleTeamverDriveAuthFailure silently recovers Main SSO mismatch without relogin CTA", () => {
     const onRelogin = vi.fn();
     const onTransient = vi.fn();
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
@@ -151,8 +156,9 @@ describe("classifyTeamverBffAuthFailure", () => {
         onTransient,
       }),
     ).toBe(true);
-    expect(onRelogin).toHaveBeenCalledWith({ userMismatch: true });
-    expect(onTransient).not.toHaveBeenCalled();
+    expect(beginMainSsoMismatchRecovery).toHaveBeenCalledTimes(1);
+    expect(onTransient).toHaveBeenCalledTimes(1);
+    expect(onRelogin).not.toHaveBeenCalled();
   });
 
   it("formatTeamverEmbedAuthRequiredMessage prefers transient copy while authenticated", () => {

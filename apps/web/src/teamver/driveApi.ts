@@ -11,6 +11,7 @@ import {
   extractMainSsoGateCodeFromBody,
   extractMainSsoGateCodeFromError,
 } from "./teamverMainSsoGate";
+import { beginMainSsoMismatchRecovery } from "./mainSsoMismatchRecovery";
 
 export function teamverDriveApiUrl(path: string): string {
   const suffix = path.replace(/^\//, "");
@@ -291,7 +292,11 @@ async function teamverDriveFetch(
     if (shouldSkipDriveAuthRefresh(detail)) {
       // Main HS256 SSO gate cannot be soft-retried — parent-domain re-login
       // is the only recovery (missing cookie, expired cookie, or wrong Main
-      // account vs Design BFF). Surface immediately — no BFF refresh.
+      // account vs Design BFF). Mismatch triggers silent session rebind.
+      if (isDriveMainSsoUserMismatchBody(body)) {
+        void beginMainSsoMismatchRecovery();
+        return response;
+      }
       if (isDriveMainSsoGateBody(body)) {
         return response;
       }

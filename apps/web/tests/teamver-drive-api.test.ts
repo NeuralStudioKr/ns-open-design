@@ -20,6 +20,10 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
 }));
 
+vi.mock("../src/teamver/mainSsoMismatchRecovery", () => ({
+  beginMainSsoMismatchRecovery: vi.fn(() => Promise.resolve()),
+}));
+
 import {
   extractDriveAuthBodyText,
   driveErrorCodeForStatus,
@@ -35,6 +39,7 @@ import {
   resetTeamverDriveFetchQueueForTests,
   shouldSkipDriveAuthRefresh,
 } from "../src/teamver/driveApi";
+import { beginMainSsoMismatchRecovery } from "../src/teamver/mainSsoMismatchRecovery";
 import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
@@ -249,6 +254,7 @@ describe("getTeamverDriveJson", () => {
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(beginMainSsoMismatchRecovery).toHaveBeenCalled();
   });
 
   it("does not recover session_expired under hard sticky when survival ladder fails", async () => {
@@ -368,6 +374,7 @@ describe("getTeamverDriveJson", () => {
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(beginMainSsoMismatchRecovery).toHaveBeenCalled();
   });
 
   it("surfaces main_sso_required immediately without BFF refresh", async () => {

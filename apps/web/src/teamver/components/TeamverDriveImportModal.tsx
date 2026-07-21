@@ -200,7 +200,6 @@ export function TeamverDriveImportModal({
   const [scopesHydrated, setScopesHydrated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
-  const [authUserMismatch, setAuthUserMismatch] = useState(false);
   const [actionHint, setActionHint] = useState<string | null>(null);
   const {
     query,
@@ -291,7 +290,6 @@ export function TeamverDriveImportModal({
           });
           if (seq !== browseFetchSeqRef.current) return;
           setAuthRequired(false);
-          setAuthUserMismatch(false);
           setRecentRows([]);
           setRows(searchRows.filter((row) => importRowMatchesScope(row, activeScope)));
           setBrowseHasMore(false);
@@ -383,7 +381,6 @@ export function TeamverDriveImportModal({
         if (seq !== browseFetchSeqRef.current) return;
 
         setAuthRequired(false);
-        setAuthUserMismatch(false);
         const nextRows = rowsFromBrowseCache(entry);
         setBrowseHasMore(entry.hasMore);
         setBrowseNextCursor(entry.nextCursor);
@@ -408,14 +405,12 @@ export function TeamverDriveImportModal({
         setBrowseNextCursor(null);
         if (
           handleTeamverDriveAuthFailure(err, {
-            onRelogin: (opts) => {
+            onRelogin: () => {
               setAuthRequired(true);
-              setAuthUserMismatch(opts?.userMismatch === true);
               setError(null);
             },
             onTransient: () => {
               setAuthRequired(false);
-              setAuthUserMismatch(false);
               setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
             },
           })
@@ -423,7 +418,6 @@ export function TeamverDriveImportModal({
           // handled
         } else {
           setAuthRequired(false);
-          setAuthUserMismatch(false);
           setError(formatTeamverDriveImportErrorMessage(err));
         }
       } finally {
@@ -462,7 +456,6 @@ export function TeamverDriveImportModal({
     setRecentRows([]);
     setError(null);
     setAuthRequired(false);
-    setAuthUserMismatch(false);
     setActionHint(null);
     setBrowseNextCursor(null);
     setBrowseHasMore(false);
@@ -482,13 +475,11 @@ export function TeamverDriveImportModal({
         if (!cancelled) {
           if (
             handleTeamverDriveAuthFailure(err, {
-              onRelogin: (opts) => {
+              onRelogin: () => {
                 setAuthRequired(true);
-                setAuthUserMismatch(opts?.userMismatch === true);
               },
               onTransient: () => {
                 setAuthRequired(false);
-                setAuthUserMismatch(false);
                 setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
               },
             })
@@ -906,7 +897,7 @@ export function TeamverDriveImportModal({
               aria-live="polite"
               data-testid="teamver-drive-import-auth-required"
             >
-              {formatTeamverDriveBrowseReloginMessage({ userMismatch: authUserMismatch })}{" "}
+              {formatTeamverDriveBrowseReloginMessage()}{" "}
               <button
                 type="button"
                 className="teamver-drive-picker-empty__login"
