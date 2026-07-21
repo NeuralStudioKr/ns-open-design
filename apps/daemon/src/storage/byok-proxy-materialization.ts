@@ -63,6 +63,35 @@ function byokProxyFailOnBeginEnabled(): boolean {
   return true;
 }
 
+function isTransientByokBeginFailure(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return (
+    /teamver_project_s3_prefix_required/i.test(message)
+    || /teamver_project_identity_required/i.test(message)
+    || /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|fetch failed|socket hang up|premature close/i.test(
+      message,
+    )
+  );
+}
+
+function byokBeginRetryAttempts(): number {
+  const raw = (process.env.OD_BYOK_PROXY_BEGIN_RETRIES ?? '').trim();
+  if (!raw) return 2;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(Math.floor(parsed), 5) : 2;
+}
+
+function byokBeginRetryDelayMs(): number {
+  const raw = (process.env.OD_BYOK_PROXY_BEGIN_RETRY_MS ?? '').trim();
+  if (!raw) return 250;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 250;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function parseProxyProjectId(projectId: string | undefined | null): string | null {
   const trimmed = typeof projectId === 'string' ? projectId.trim() : '';
   if (!trimmed || !isSafeProjectId(trimmed)) return null;
@@ -144,7 +173,26 @@ export function createByokProxyMaterializationHooks(
 
     let session: ByokProxyMaterializationSession | null = null;
     try {
-      session = await beginByokProxyStream(req, trimmedId);
+      const maxAttempts = 1 + byokBeginRetryAttempts();
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          session = await beginByokProxyStream(req, trimmedId);
+          lastErr = undefined;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (attempt >= maxAttempts || !isTransientByokBeginFailure(err)) {
+            throw err;
+          }
+          console.warn(
+            `[byok-proxy-materialization] begin retry ${attempt}/${maxAttempts - 1} for ${trimmedId}:`,
+            err instanceof Error ? err.message : err,
+          );
+          await sleep(byokBeginRetryDelayMs() * attempt);
+        }
+      }
+      if (lastErr) throw lastErr;
     } catch (err) {
       // Sync-down failed. The legacy behaviour was to silently warn and let
       // the stream proceed without any hook, which produced the catastrophic
@@ -174,6 +222,7 @@ export function createByokProxyMaterializationHooks(
             error: {
               code: 'PROJECT_STORAGE_UNAVAILABLE',
               message: `project storage unavailable: ${detail}`,
+              retryable: true,
             },
           });
         }

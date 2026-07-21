@@ -190,4 +190,36 @@ describe('byok-proxy-materialization', () => {
     expect(json).toHaveBeenCalled();
     expect(afterSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('retries transient begin failures before fail-fast 502', async () => {
+    vi.stubEnv('OD_BYOK_PROXY_BEGIN_RETRIES', '2');
+    vi.stubEnv('OD_BYOK_PROXY_BEGIN_RETRY_MS', '0');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    let beginCalls = 0;
+    const beforeSpy = vi.spyOn(runtime, 'beforeChatRun').mockImplementation(async () => {
+      beginCalls += 1;
+      if (beginCalls === 1) {
+        throw new Error('teamver_project_s3_prefix_required');
+      }
+    });
+    const afterSpy = vi.spyOn(runtime, 'afterChatRun').mockResolvedValue();
+    const hooks = createByokProxyMaterializationHooks(runtime);
+
+    const req = mockReq();
+    const { res, emitFinish } = mockRes();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await hooks!.attachByokProxyStreamMaterialization(req, res, 'p-byok');
+    expect(result).toEqual({ ok: true });
+    expect(beforeSpy).toHaveBeenCalledTimes(2);
+    emitFinish();
+    await new Promise((r) => setImmediate(r));
+    expect(afterSpy).toHaveBeenCalledTimes(2); // rollback after first fail + finish
+    warnSpy.mockRestore();
+  });
 });

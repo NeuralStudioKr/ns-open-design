@@ -25,8 +25,9 @@ import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { formatTeamverEmbedAuthRequiredMessage } from '../teamver/teamverBffAuthError';
-import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
-import { resolveTeamverProjectS3PrefixForDaemon } from '../teamver/teamverProjectS3PrefixResolve';
+import {
+  waitForTeamverProjectStoragePrefix,
+} from '../teamver/teamverProjectS3PrefixResolve';
 import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
@@ -225,39 +226,7 @@ export function isTeamverProjectStoragePrefixRequiredError(
   return err instanceof TeamverProjectStoragePrefixRequiredError;
 }
 
-const TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS = [0, 400, 900, 1500] as const;
-
-/**
- * Best-effort — resolves the workspace tenant S3 prefix so the next daemon
- * request carries `X-Teamver-S3-Prefix` even before design-api /access
- * warms the daemon-side cache. Returns `null` when embed mode is off (native
- * OD) or when the prefix cannot be determined within the poll window; the
- * caller must still send the request (the daemon will resolve on its own).
- *
- * `opts.quick=true` skips the polling delays entirely and just consults
- * cache / issues one registry read. Callers that already spent a full
- * poll window (e.g. between PDF export retries) use this to avoid stacking
- * multi-second warm-ups on top of the retry backoff.
- */
-export async function waitForTeamverProjectStoragePrefix(
-  projectId: string,
-  opts: { quick?: boolean } = {},
-): Promise<string | null> {
-  if (!isTeamverEmbedMode()) return null;
-  const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
-  if (!workspaceId) return null;
-  const steps = opts.quick ? [0] : TEAMVER_STORAGE_PREFIX_WAIT_STEPS_MS;
-  for (const wait of steps) {
-    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    try {
-      const prefix = await resolveTeamverProjectS3PrefixForDaemon(workspaceId, projectId);
-      if (prefix) return prefix;
-    } catch {
-      // Registry can transiently fail during workspace switch — keep polling.
-    }
-  }
-  return null;
-}
+export { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 
 async function consumeDaemonExportDownload(
   resp: Response,
