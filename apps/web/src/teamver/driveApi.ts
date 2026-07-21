@@ -221,15 +221,14 @@ export function isDriveHaSessionExpiredBody(detail: unknown): boolean {
 }
 
 async function recoverDriveAuthSession(): Promise<boolean> {
-  // Soft or hard sticky: only the shared refresh ladder (survival cooldown +
-  // soft force-POST). Direct probe/force `/auth/session` here bypasses §17
-  // cooldowns and re-opens ensure storms on every Drive 401.
+  // Soft/hard sticky: survival only (no force-POST). Drive list/modal 401 bursts
+  // used to re-POST /auth/refresh every 15s. Explicit 「다시 시도」 owns force POST.
   if (isDesignAuthRefreshDeclined()) {
-    // Drive UI open is intentional — allow one soft force-POST under cooldown.
-    return refreshDesignAuthCookie({ allowSoftForcePost: true });
+    return refreshDesignAuthCookie();
   }
 
-  const refreshed = await refreshDesignAuthCookie({ allowSoftForcePost: true });
+  // Pre-sticky HA session_expired: one coordinated refresh (may soft-decline).
+  const refreshed = await refreshDesignAuthCookie();
   if (refreshed) return true;
 
   // Sibling Set-Cookie may land without sticky — one force session read.

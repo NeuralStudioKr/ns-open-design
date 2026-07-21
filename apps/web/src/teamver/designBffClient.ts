@@ -939,6 +939,54 @@ export async function fetchDesignAuthSession(
 
   setAuthRecoveryRefreshActive(recoveryLoad);
 
+  // Soft/hard sticky + no explicit reset (C1 / focus): never hydrate via
+  // GET /auth/session (ensure_bff_session) on every backoff tick — that re-opens
+  // Main refresh storms. Cheap session-probe only; soft sticky clears on live
+  // probe then hydrates once. Hard sticky hydrates without clearing decline.
+  if (authRefreshDeclinedForSession) {
+    if (inFlightSession) {
+      return inFlightSession;
+    }
+    const runStickyQuiet = async (): Promise<DesignAuthSession | null> => {
+      try {
+        if (!(await probeDesignBffSessionAuthenticated())) {
+          cachedSession = null;
+          return null;
+        }
+        if (authRefreshDeclineKind === "soft") {
+          resetDesignAuthRefreshDeclined();
+          const value = await loadDesignAuthSessionOnce();
+          if (value?.authenticated) {
+            cachedSession = { value, at: Date.now() };
+          } else {
+            cachedSession = null;
+          }
+          return value;
+        }
+        const client = getDesignBffClient();
+        if (!client) return null;
+        const value = await probeDesignAuthSession(client);
+        if (value?.authenticated) {
+          cachedSession = { value, at: Date.now() };
+        } else {
+          cachedSession = null;
+        }
+        return value;
+      } catch (err) {
+        const stale = peekAuthenticatedSessionCache(STALE_SESSION_GRACE_MS);
+        if (stale && isTransientSessionProbeError(err)) {
+          return stale;
+        }
+        throw err;
+      }
+    };
+    inFlightSession = runStickyQuiet().finally(() => {
+      inFlightSession = null;
+      setAuthRecoveryRefreshActive(false);
+    });
+    return inFlightSession;
+  }
+
   if (force) {
     invalidateDesignAuthSessionCache();
     if (inFlightSession) {
@@ -1114,8 +1162,9 @@ export type TeamverWorkspacePermissions = {
 export async function fetchTeamverWorkspacePermissions(
   workspaceId: string,
 ): Promise<TeamverWorkspacePermissions | null> {
-  // Sticky / logged-out memory: permissions polls must not 401-storm.
-  if (shouldSkipTeamverBffAuthCalls()) return null;
+  // Hard sticky / logged-out via shouldSkip…. Soft sticky must also skip —
+  // permissions GET + recovery retry used to 401-storm beside C1.
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return null;
   const client = getDesignBffClient();
   if (!client) return null;
   const trimmed = workspaceId.trim();

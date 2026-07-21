@@ -202,6 +202,26 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
   });
 
+  it("does not clear sticky on ensure-alive alone when daemon fetch stays 401", async () => {
+    refreshMock.mockResolvedValue(false);
+    ensureSessionMock.mockResolvedValue(true);
+    const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = fetchTeamverDaemon("/api/projects/project-1/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "deck.html", content: "<html></html>" }),
+    });
+    await vi.advanceTimersByTimeAsync(DAEMON_AUTH_RETRY_DELAY_MS);
+    const resp = await pending;
+
+    expect(resp.status).toBe(401);
+    expect(ensureSessionMock).toHaveBeenCalled();
+    expect(clearDeclineMock).not.toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+  });
+
   it("runs soft-sticky survival refresh instead of skipping daemon recovery", async () => {
     declinedMock.mockReturnValue(true);
     hardDeclineMock.mockReturnValue(false);
@@ -216,10 +236,10 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     });
 
     expect(resp.status).toBe(401);
-    // Soft sticky mutations still attempt cooldown-gated survival refresh
-    // (allowSoftForcePost) so conversation save / artifact write can revive.
+    // Soft sticky mutations may attempt survival refresh (no force-POST) so a
+    // sibling cookie can revive without re-opening 15s POST /auth/refresh storms.
     expect(refreshMock).toHaveBeenCalledTimes(1);
-    expect(refreshMock).toHaveBeenCalledWith({ allowSoftForcePost: true });
+    expect(refreshMock).toHaveBeenCalledWith();
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");

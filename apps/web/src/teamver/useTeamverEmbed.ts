@@ -3,9 +3,11 @@ import type { WorkspaceListItem } from "@teamver/app-sdk";
 import {
   ensureDesignBffSessionAuthenticated,
   fetchDesignAuthSession,
+  isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   prepareDesignAuthSessionReload,
   probeDesignBffSessionAuthenticated,
+  refreshDesignAuthCookie,
   resetDesignAuthBareRefreshAttempt,
   resetDesignAuthRefreshState,
   type DesignAuthSession,
@@ -785,13 +787,24 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         // session is truly gone. Never auto-clear sticky (resetRefreshState) —
         // that re-opened POST /auth/refresh + probe×2 storms every C1 cycle.
         // Sticky clear is owned by explicit 「다시 시도」 / auth-return only.
+        // Escalated soft sticky: one cooldown-gated force POST without clearing
+        // decline first (fetchDesignAuthSession stays probe-only while sticky).
         const escalate = startedAttempt >= 2;
         sessionUnreachableInFlightRef.current = true;
-        void refresh({
-          force: true,
-          silent: !escalate,
-          resetRefreshState: false,
-        }).then((outcome) => {
+        void (async () => {
+          if (
+            escalate
+            && isDesignAuthRefreshDeclined()
+            && !isDesignAuthRefreshDeclineHard()
+          ) {
+            await refreshDesignAuthCookie({ allowSoftForcePost: true });
+          }
+          return refresh({
+            force: true,
+            silent: !escalate,
+            resetRefreshState: false,
+          });
+        })().then((outcome) => {
           // Clear in-flight before chaining — otherwise scheduleRetry no-ops
           // and C1 stops after the first backoff tick.
           sessionUnreachableInFlightRef.current = false;

@@ -3,6 +3,7 @@ import {
   getDesignBffClient,
   refreshDesignAuthCookie,
   ensureDesignBffSessionAuthenticated,
+  isDesignAuthRefreshDeclined,
   shouldSkipTeamverBffAuthCalls,
 } from "./designBffClient";
 import { isBootstrapAuthMode } from "./designApiBase";
@@ -64,9 +65,9 @@ export async function setActiveTeamverWorkspace(
   const trimmed = workspaceId.trim();
   if (!trimmed) return false;
 
-  // Sticky / logged-out memory: do not POST /auth/workspace or re-enter soft
-  // sticky recovery (refresh + probe×2) from every switch attempt.
-  if (shouldSkipTeamverBffAuthCalls()) return false;
+  // Hard sticky / logged-out: shouldSkip…. Soft sticky must also skip — otherwise
+  // workspace switch re-enters refresh + ensure while C1 owns recovery.
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return false;
 
   if (isBootstrapAuthMode()) {
     try {

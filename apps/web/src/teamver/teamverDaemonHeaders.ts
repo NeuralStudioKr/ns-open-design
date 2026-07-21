@@ -186,7 +186,9 @@ async function fetchDaemonWithEmbedAuthRecovery(
     return resp;
   }
 
-  const refreshed = await refreshDesignAuthCookie({ allowSoftForcePost: true });
+  // Survival / first refresh only — never force-POST from every mutation 401
+  // (15s soft force-POST cooldown used to re-open refresh storms with C1).
+  const refreshed = await refreshDesignAuthCookie();
   if (refreshed) {
     resp = await fetch(input, init);
     if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
@@ -209,14 +211,16 @@ async function fetchDaemonWithEmbedAuthRecovery(
     clearDesignAuthRefreshDecline();
     return resp;
   }
-  // Refresh + soft-wait still 401. When the access token has passed absolute
+  // Refresh + delayed-wait still 401. When the access token has passed absolute
   // expiry and nginx auth_request keeps blocking, session-probe alone cannot
   // revive it — GET /auth/session (ensure_bff_session) can Set-Cookie a fresh
   // access on the main response so the next daemon fetch clears auth_request.
+  // Clear sticky only after daemon fetch is non-401 (same as probe path) —
+  // ensure-alive alone used to unlock soft sticky while nginx still blocked.
   if (await ensureDesignBffSessionAuthenticated()) {
-    clearDesignAuthRefreshDecline();
     resp = await fetch(input, init);
     if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
+      clearDesignAuthRefreshDecline();
       return resp;
     }
   }

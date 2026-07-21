@@ -38,8 +38,9 @@ export async function recoverStaleDriveWorkspace(
 ): Promise<string | null> {
   const current = (currentWorkspaceId ?? "").trim() || null;
 
-  // Soft/hard sticky: do not clear decline up-front (resets §17 cooldowns).
-  // Only continue after the shared survival/soft ladder revives cookies.
+  // Soft/hard sticky: survival only (no force-POST). Do not force-hydrate
+  // /auth/session while decline owns recovery — that re-opens ensure storms
+  // on Drive ACL 403 retries.
   if (isDesignAuthRefreshDeclined()) {
     const revived = await refreshDesignAuthCookie();
     if (!revived) return null;

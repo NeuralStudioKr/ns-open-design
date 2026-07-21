@@ -6,6 +6,7 @@ const postDesignAuthWorkspaceMock = vi.fn();
 const refreshDesignAuthCookieMock = vi.fn();
 const ensureDesignBffSessionAuthenticatedMock = vi.fn();
 const shouldSkipTeamverBffAuthCallsMock = vi.fn(() => false);
+const isDesignAuthRefreshDeclinedMock = vi.fn(() => false);
 const isBootstrapAuthModeMock = vi.fn(() => true);
 const workspaceStoreSet = vi.fn();
 const dispatchWorkspaceChanged = vi.fn();
@@ -24,6 +25,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: () => refreshDesignAuthCookieMock(),
   ensureDesignBffSessionAuthenticated: () => ensureDesignBffSessionAuthenticatedMock(),
   shouldSkipTeamverBffAuthCalls: () => shouldSkipTeamverBffAuthCallsMock(),
+  isDesignAuthRefreshDeclined: () => isDesignAuthRefreshDeclinedMock(),
 }));
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -45,6 +47,8 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     ensureDesignBffSessionAuthenticatedMock.mockReset();
     shouldSkipTeamverBffAuthCallsMock.mockReset();
     shouldSkipTeamverBffAuthCallsMock.mockReturnValue(false);
+    isDesignAuthRefreshDeclinedMock.mockReset();
+    isDesignAuthRefreshDeclinedMock.mockReturnValue(false);
     workspaceStoreSet.mockReset();
     dispatchWorkspaceChanged.mockReset();
     bumpRevision.mockReset();
@@ -144,6 +148,21 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     );
 
     const ok = await setActiveTeamverWorkspace("ws-6");
+
+    expect(ok).toBe(false);
+    expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
+    expect(refreshDesignAuthCookieMock).not.toHaveBeenCalled();
+    expect(workspaceStoreSet).not.toHaveBeenCalled();
+  });
+
+  it("skips workspace switch while soft sticky owns recovery", async () => {
+    isDesignAuthRefreshDeclinedMock.mockReturnValue(true);
+    shouldSkipTeamverBffAuthCallsMock.mockReturnValue(false);
+    const { setActiveTeamverWorkspace } = await import(
+      "../src/teamver/setActiveTeamverWorkspace"
+    );
+
+    const ok = await setActiveTeamverWorkspace("ws-7");
 
     expect(ok).toBe(false);
     expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
