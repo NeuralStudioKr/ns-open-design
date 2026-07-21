@@ -416,11 +416,11 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
 
 /** True when sticky decline or logged-out memory should skip BFF/daemon auth ladders. */
 export function shouldSkipTeamverBffAuthCalls(): boolean {
-  // Hard sticky (400): never probe/POST from background callers.
-  // Soft sticky must NOT skip — otherwise registry S3-prefix reads fail,
-  // `X-Teamver-S3-Prefix` is omitted, and BYOK proxy begin 502s with
-  // PROJECT_STORAGE_UNAVAILABLE while the user still looks signed-in.
-  if (isDesignAuthRefreshDeclineHard()) return true;
+  // Soft + hard sticky: C1 / 「다시 시도」 own recovery. Soft used to stay open
+  // for S3-prefix BFF reads, but that re-opened withDesignBffCookieAuthRecovery
+  // 401×2 storms (usage/publish/preview/billing). Prefix is cache-only while
+  // declined; miss fails soft until sticky clears.
+  if (isDesignAuthRefreshDeclined()) return true;
   if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) return true;
   return false;
 }
@@ -467,20 +467,11 @@ export async function withDesignBffCookieAuthRecovery<T>(
     // callers; do not Apps-refresh here.
     if (isMainSsoGateError(err)) throw err;
 
-    // Soft/hard sticky owns recovery via C1 / explicit fetchDesignAuthSession /
-    // refreshDesignAuthCookie — not every Drive/usage/publish 401. Calling
-    // refreshDesignAuthCookie here re-ran trySoftStickyRecovery (POST refresh +
-    // probe×2) from high-frequency callers after the 15s cooldown.
+    // Soft/hard sticky owns recovery via C1 / explicit retry. Do not
+    // delay-retry the sibling GET — that doubled 401 noise on every usage /
+    // publish / preview caller that missed shouldSkipTeamverBffAuthCalls.
     if (authRefreshDeclinedForSession) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
-      );
-      try {
-        return await request();
-      } catch (retryErr) {
-        if (!isDesignBffUnauthorizedStatus(retryErr)) throw retryErr;
-        throw err;
-      }
+      throw err;
     }
 
     const refreshed = await refreshDesignAuthCookie();

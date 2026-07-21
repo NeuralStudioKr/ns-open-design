@@ -2530,6 +2530,9 @@ export function ProjectView({
     );
 
     const replay = async () => {
+      // Soft/hard sticky: C1 owns recovery. Replaying PUTs here only floods
+      // daemon 401s until the user clicks 「다시 시도」 / escalate clears decline.
+      if (isDesignAuthRefreshDeclined()) return;
       const pending = listPendingArtifactWrites(projectId);
       if (pending.length === 0) return;
       let anySucceeded = false;

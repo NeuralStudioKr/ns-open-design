@@ -403,10 +403,10 @@ describe("withDesignBffCookieAuthRecovery", () => {
     const probesAfterRecover = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/auth/session-probe"),
     ).length;
-    // Sticky path only delayed-retries the sibling GET — no soft ladder /
+    // Sticky path fails fast — no delayed sibling retry / no soft ladder /
     // no extra session-probe / no second POST refresh.
     expect(probesAfterRecover).toBe(probesAfterSticky);
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(1);
     const refreshAfterSticky = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/auth/refresh"),
     ).length;
@@ -450,6 +450,35 @@ describe("withDesignBffCookieAuthRecovery", () => {
     // Sticky quiet path must not hydrate via ensure /auth/session.
     expect(sessionGetsAfter).toBe(sessionGetsBefore);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe"))).toBe(true);
+  });
+});
+
+describe("shouldSkipTeamverBffAuthCalls", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("skips BFF ladders for soft sticky as well as hard sticky", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      refreshDesignAuthCookie,
+      shouldSkipTeamverBffAuthCalls,
+      resetDesignAuthRefreshDeclinedForTests,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    expect(shouldSkipTeamverBffAuthCalls()).toBe(false);
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(shouldSkipTeamverBffAuthCalls()).toBe(true);
   });
 });
 

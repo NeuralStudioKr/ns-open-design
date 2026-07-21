@@ -3,7 +3,6 @@ import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   clearDesignAuthRefreshDecline,
   ensureDesignBffSessionAuthenticated,
-  isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
@@ -121,20 +120,15 @@ function daemonGetInflightKey(
   return `${url}\n${headerKey}`;
 }
 
-function embedDaemonAuthRecoveryEnabled(init?: RequestInit): boolean {
+function embedDaemonAuthRecoveryEnabled(_init?: RequestInit): boolean {
   if (!isTeamverEmbedMode()) return false;
   // Only recover while the embed UI believes it is signed in. Bootstrap alone
   // used to keep probing refresh/session after logout / dead-cookie clear.
   if (!isTeamverEmbedSessionAuthenticated()) return false;
-  // Hard sticky (400): C1 + banner own recovery — never POST from daemon 401s.
-  if (isDesignAuthRefreshDeclineHard()) return false;
-  // Soft sticky: GET/HEAD polls must not re-enter refresh/probe. Mutations
-  // (POST/PUT/PATCH/DELETE) may still try soft survival (conversation save,
-  // artifact write). Project re-entry listConversations calls refresh explicitly.
-  if (isDesignAuthRefreshDeclined()) {
-    const method = (init?.method || "GET").toUpperCase();
-    return method !== "GET" && method !== "HEAD";
-  }
+  // Soft + hard sticky: C1 / banner own recovery. Soft mutations used to call
+  // refreshDesignAuthCookie() (no-op network after force-POST gate) but still
+  // raced C1; skip all daemon recovery while declined.
+  if (isDesignAuthRefreshDeclined()) return false;
   return true;
 }
 

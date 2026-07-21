@@ -222,7 +222,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
   });
 
-  it("runs soft-sticky survival refresh instead of skipping daemon recovery", async () => {
+  it("skips all daemon recovery while soft sticky owns the tab", async () => {
     declinedMock.mockReturnValue(true);
     hardDeclineMock.mockReturnValue(false);
     refreshMock.mockResolvedValue(false);
@@ -236,10 +236,8 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     });
 
     expect(resp.status).toBe(401);
-    // Soft sticky mutations may attempt survival refresh (no force-POST) so a
-    // sibling cookie can revive without re-opening 15s POST /auth/refresh storms.
-    expect(refreshMock).toHaveBeenCalledTimes(1);
-    expect(refreshMock).toHaveBeenCalledWith();
+    // Soft sticky: C1 owns recovery — mutation must not re-enter refresh.
+    expect(refreshMock).not.toHaveBeenCalled();
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
