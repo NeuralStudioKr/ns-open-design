@@ -18,6 +18,7 @@ import {
 } from '../teamver/chatApiCredentials';
 import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
 import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
+import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 
 /**
  * Optional per-request context that some protocols thread into the
@@ -74,6 +75,13 @@ export async function streamProxyEndpoint(
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal.aborted) return;
+    // Warm X-Teamver-S3-Prefix before BYOK materialization so daemon sync-down
+    // does not 502 PROJECT_STORAGE_UNAVAILABLE on a registry/access race.
+    if (context?.projectId && isTeamverEmbedMode()) {
+      await waitForTeamverProjectStoragePrefix(context.projectId, {
+        quick: attempt > 0,
+      }).catch(() => null);
+    }
     const outcome = await streamProxyEndpointOnce(
       endpoint,
       cfg,

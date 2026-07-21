@@ -416,7 +416,11 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
 
 /** True when sticky decline or logged-out memory should skip BFF/daemon auth ladders. */
 export function shouldSkipTeamverBffAuthCalls(): boolean {
-  if (authRefreshDeclinedForSession) return true;
+  // Hard sticky (400): never probe/POST from background callers.
+  // Soft sticky must NOT skip — otherwise registry S3-prefix reads fail,
+  // `X-Teamver-S3-Prefix` is omitted, and BYOK proxy begin 502s with
+  // PROJECT_STORAGE_UNAVAILABLE while the user still looks signed-in.
+  if (isDesignAuthRefreshDeclineHard()) return true;
   if (isTeamverEmbedMode() && !isTeamverEmbedSessionAuthenticated()) return true;
   return false;
 }

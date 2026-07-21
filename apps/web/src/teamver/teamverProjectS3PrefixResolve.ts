@@ -2,8 +2,12 @@ import {
   readTeamverProjectS3Prefix,
   rememberTeamverProjectS3Prefix,
 } from "./teamverProjectS3PrefixCache";
+import { isTeamverEmbedMode } from "./designApiBase";
+import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 
 const inflight = new Map<string, Promise<string | undefined>>();
+
+const PREFIX_WAIT_STEPS_MS = [0, 400, 900, 1500] as const;
 
 /**
  * Embed — resolve tenant S3 prefix for daemon `X-Teamver-S3-Prefix`.
@@ -39,6 +43,30 @@ export async function resolveTeamverProjectS3PrefixForDaemon(
     inflight.set(key, pending);
   }
   return pending;
+}
+
+/**
+ * Best-effort warm of `X-Teamver-S3-Prefix` before BYOK proxy / export.
+ * Returns null outside embed or when the prefix cannot be resolved in time.
+ */
+export async function waitForTeamverProjectStoragePrefix(
+  projectId: string,
+  opts: { quick?: boolean } = {},
+): Promise<string | null> {
+  if (!isTeamverEmbedMode()) return null;
+  const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
+  if (!workspaceId) return null;
+  const steps = opts.quick ? [0] : PREFIX_WAIT_STEPS_MS;
+  for (const wait of steps) {
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    try {
+      const prefix = await resolveTeamverProjectS3PrefixForDaemon(workspaceId, projectId);
+      if (prefix) return prefix;
+    } catch {
+      // Registry can transiently fail during workspace switch — keep polling.
+    }
+  }
+  return null;
 }
 
 /** @internal vitest only */
