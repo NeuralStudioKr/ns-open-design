@@ -5226,6 +5226,28 @@ export function ProjectView({
             return true;
           }
         }
+        if (isTeamverEmbedMode()) {
+          try {
+            const accessResponse = await fetchTeamverDaemon(
+              `/api/projects/${encodeURIComponent(project.id)}`,
+              {
+                cache: 'no-store',
+                teamverProjectId: project.id,
+              },
+            );
+            if (accessResponse.status === 401) {
+              handlers.onError(new TeamverDaemonUnauthorizedError());
+              return true;
+            }
+          } catch (err) {
+            if (err instanceof TeamverDaemonUnauthorizedError) {
+              handlers.onError(err);
+              return true;
+            }
+            // Non-auth preflight failures are not treated as terminal here.
+            // The actual artifact write still reports the concrete cause.
+          }
+        }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const systemPrompt = await composedSystemPrompt(runSessionMode, effectiveDesignSystemId);
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);

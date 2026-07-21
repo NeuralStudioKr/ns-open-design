@@ -90,6 +90,23 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain("fetch('/api/memory/extract'");
   });
 
+  it("preflights embed API runs through daemon project access before starting the model stream", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const memoryStart = source.indexOf("fetchTeamverDaemon('/api/memory/extract'");
+    expect(memoryStart).toBeGreaterThan(0);
+    const streamStart = source.indexOf("void streamMessage(config", memoryStart);
+    expect(streamStart).toBeGreaterThan(memoryStart);
+    const block = source.slice(memoryStart, streamStart);
+
+    expect(block).toContain("fetchTeamverDaemon(");
+    expect(block).toContain("`/api/projects/${encodeURIComponent(project.id)}`");
+    expect(block).toContain("cache: 'no-store'");
+    expect(block).toContain("teamverProjectId: project.id");
+    expect(block).toContain("accessResponse.status === 401");
+    expect(block).toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
+    expect(block).toContain("return true");
+  });
+
   it("runs auto-open recovery after message load so refresh restores the last completed HTML preview", () => {
     const source = readSource("src/components/ProjectView.tsx");
 
