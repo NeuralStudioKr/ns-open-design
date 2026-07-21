@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-21 현재.
+**반영 갱신:** 2026-07-21 — 추가 포팅 루프 18. `b86537483` floating composer clamp는 현재 Teamver `PreviewDrawOverlay` 구조와 대조한 결과 직접 포팅하지 않았다. upstream의 `computePreviewDrawDockLayout` 기반 floating dock 함수가 staging에는 존재하지 않고, 현재 Teamver는 portal toolbar/inline overlay 구조로 이미 달라져 있어 cherry-pick/재구현 시 오히려 회귀 위험이 크다. 대신 직전 `ComposerPlusMenu` search flyout 보정이 Escape/outside-click 닫힘을 깨지 않는지 회귀 테스트를 추가했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 17. `4d2fb936e` plugin flyout search 안정화 패치를 Teamver `ComposerPlusMenu` 구조에 맞춰 수동 포팅했다. 프로젝트 상세 composer의 `+ > 플러그인` 검색 중 목록 reflow가 synthetic `mouseleave`를 만들면 submenu close timer가 검색창과 preview column을 닫을 수 있었다. 이제 flyout 내부 search input이 focus를 가진 동안에는 hover-close를 무시하고, outside click/Escape/선택으로만 닫히도록 보정했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 16. Community preview runtime fallback 잔여를 Teamver 구조 기준으로 재검토했다. daemon `/preview` fallback chain은 이미 exampleOutputs와 shallow HTML discovery를 포함하므로 서버 대형 포팅은 하지 않았다. 대신 FE가 `examples/<name>/index.html`을 `/example/index`로 요청하던 모호성을 줄여 parent folder stem(`/example/<name>`)을 사용하도록 보정했고, Teamver embed에서 로컬 Open Design 실행 안내처럼 보이던 preview error body를 서비스형 문구로 정리했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 15. `cdffb1b63` library ingest SSRF 패치는 Teamver staging의 활성 web-fetch 경로와 대조했다. daemon `/api/tools/web-fetch`는 이미 `assertExternalAssetUrl` 기반 SSRF guard + redirect 차단을 사용하므로 route-level 대형 포팅은 불필요했다. 대신 실제 사용자 요청인 `teamver.com` / `www.teamver.com` 참고 요청이 fetch되지 않던 FE URL 추출 구멍을 수정해 bare 도메인을 `https://`로 정규화하고, 한국어 조사/문장이 URL path에 붙지 않도록 ASCII URL token만 인식한다. 이메일과 `.html` 파일명 오인은 테스트로 막았다. 같은 루프에서 web-fetch User-Agent의 OpenDesign 잔재를 Teamver 명칭으로 교체했다.
@@ -215,7 +216,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 | 커밋 | 내용 | 판단 |
 |------|------|------|
 | `4d2fb936e` | `Fix plugins flyout closing while typing in its search box` | **2026-07-21 선별 반영.** search input focus 중 synthetic `mouseleave`로 plugin flyout이 닫히지 않도록 최소 포팅했다. |
-| `b86537483` | `fix(web): clamp floating composer within scrolled preview bounds` | 작은 UI 보정. 현재 Teamver 핵심 장애보다 우선순위 낮음. |
+| `b86537483` | `fix(web): clamp floating composer within scrolled preview bounds` | **2026-07-21 검토 후 보류.** upstream 전제 함수가 현재 Teamver `PreviewDrawOverlay`에 없어 직접 포팅 대상이 아니다. 현재 toolbar/portal 구조에서 재현되면 별도 Teamver 경로로 수정한다. |
 
 ---
 

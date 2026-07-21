@@ -131,6 +131,24 @@ describe('ComposerPlusMenu pick-row caret protection', () => {
     }
   });
 
+  it('still closes a focused plugin search flyout with Escape or outside click', () => {
+    renderMenu();
+    fireEvent.click(screen.getByTestId('plus-trigger'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Plugins/i }));
+
+    const search = screen.getByPlaceholderText('Plugins') as HTMLInputElement;
+    search.focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByPlaceholderText('Plugins')).toBeNull();
+    expect(screen.getByRole('menu')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Plugins/i }));
+    const nextSearch = screen.getByPlaceholderText('Plugins') as HTMLInputElement;
+    nextSearch.focus();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('portals the menu and constrains it to the available viewport height', async () => {
     const originalInnerWidth = window.innerWidth;
     const originalInnerHeight = window.innerHeight;
