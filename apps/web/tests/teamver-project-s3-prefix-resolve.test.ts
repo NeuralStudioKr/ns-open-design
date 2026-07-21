@@ -12,6 +12,10 @@ vi.mock("../src/teamver/designApiBase", () => ({
   isTeamverEmbedMode: vi.fn(() => true),
 }));
 
+vi.mock("../src/teamver/designBffClient", () => ({
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
+}));
+
 vi.mock("../src/teamver/projectRegistry", () => ({
   fetchTeamverProject: vi.fn(),
 }));
@@ -40,5 +44,16 @@ describe("resolveTeamverProjectS3PrefixForDaemon", () => {
     await expect(first).resolves.toBe("design/ws1/user_u1/proj_dedupe/");
     await expect(second).resolves.toBe("design/ws1/user_u1/proj_dedupe/");
     expect(fetchTeamverProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips BFF fetch while soft/hard sticky owns recovery", async () => {
+    const { isDesignAuthRefreshDeclined } = await import("../src/teamver/designBffClient");
+    const { fetchTeamverProject } = await import("../src/teamver/projectRegistry");
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(true);
+
+    await expect(
+      resolveTeamverProjectS3PrefixForDaemon("ws-1", "p-sticky"),
+    ).resolves.toBeUndefined();
+    expect(fetchTeamverProject).not.toHaveBeenCalled();
   });
 });

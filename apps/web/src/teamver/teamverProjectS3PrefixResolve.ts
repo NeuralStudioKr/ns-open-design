@@ -3,6 +3,7 @@ import {
   rememberTeamverProjectS3Prefix,
 } from "./teamverProjectS3PrefixCache";
 import { isTeamverEmbedMode } from "./designApiBase";
+import { isDesignAuthRefreshDeclined } from "./designBffClient";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 
 const inflight = new Map<string, Promise<string | undefined>>();
@@ -25,6 +26,8 @@ export async function resolveTeamverProjectS3PrefixForDaemon(
 
   const cached = readTeamverProjectS3Prefix(ws, id);
   if (cached) return cached;
+  // Soft/hard sticky: registry BFF is skipped — do not poll/fetch and spam 401.
+  if (isDesignAuthRefreshDeclined()) return undefined;
 
   const key = `${ws}:${id}`;
   let pending = inflight.get(key);
@@ -54,6 +57,12 @@ export async function waitForTeamverProjectStoragePrefix(
   opts: { quick?: boolean } = {},
 ): Promise<string | null> {
   if (!isTeamverEmbedMode()) return null;
+  // Sticky: one cache read only — multi-step wait used to re-hit registry 401s.
+  if (isDesignAuthRefreshDeclined()) {
+    const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
+    if (!workspaceId) return null;
+    return readTeamverProjectS3Prefix(workspaceId, projectId.trim()) ?? null;
+  }
   const workspaceId = (await readActiveTeamverWorkspaceId())?.trim();
   if (!workspaceId) return null;
   const steps = opts.quick ? [0] : PREFIX_WAIT_STEPS_MS;

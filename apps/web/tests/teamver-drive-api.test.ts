@@ -270,30 +270,30 @@ describe("getTeamverDriveJson", () => {
     const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
     await expectation;
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    // Sticky: fail-fast — no refresh/survival ladder (C1 owns recovery).
+    expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedProbe).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("recovers session_expired under hard sticky when survival ladder revives cookies", async () => {
+  it("does not recover session_expired under sticky even if refresh would revive", async () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
     mockedHardDecline.mockReturnValue(true);
     mockedRefresh.mockResolvedValue(true);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+      .mockResolvedValue(jsonResponse({ detail: "session_expired", login_url: "https://x" }, 401));
 
     const pending = getTeamverDriveJson("/api/foo");
+    const expectation = expect(pending).rejects.toThrow("teamver_drive_fetch_failed:401");
     await vi.advanceTimersByTimeAsync(400);
-    await expect(pending).resolves.toEqual({ ok: true });
-    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    await expectation;
+    expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedProbe).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("soft-retries Invalid token once before /auth/refresh", async () => {

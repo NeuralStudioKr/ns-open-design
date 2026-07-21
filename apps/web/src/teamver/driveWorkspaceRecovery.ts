@@ -1,7 +1,6 @@
 import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclined,
-  refreshDesignAuthCookie,
 } from "./designBffClient";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
 
@@ -38,12 +37,10 @@ export async function recoverStaleDriveWorkspace(
 ): Promise<string | null> {
   const current = (currentWorkspaceId ?? "").trim() || null;
 
-  // Soft/hard sticky: survival only (no force-POST). Do not force-hydrate
-  // /auth/session while decline owns recovery — that re-opens ensure storms
-  // on Drive ACL 403 retries.
+  // Soft/hard sticky: C1 owns recovery. Do not refresh/hydrate here — soft
+  // survival without force-POST is a no-op and force session re-opens ensure.
   if (isDesignAuthRefreshDeclined()) {
-    const revived = await refreshDesignAuthCookie();
-    if (!revived) return null;
+    return null;
   }
 
   let session;

@@ -41,6 +41,7 @@ import {
   ActiveByokProxyAuthTransientError,
   BYOK_PROXY_AUTH_BACKOFF_MS,
   listActiveByokProxyStreams,
+  shouldSkipByokProxyActivePoll,
 } from '../providers/byokProxyActive';
 import {
   fetchChatRunStatus,
@@ -2479,6 +2480,13 @@ export function ProjectView({
           });
           if (stashed) {
             setPendingRecoveryPreview({ fileName, html: htmlBody });
+            // Punch the workspace onto the (still-nonexistent) file tab so
+            // FileWorkspace's memoryOnlyPreview branch actually renders.
+            // Otherwise a user who answered a question form stays on the
+            // Questions tab after "완료됨" and never sees the fallback iframe
+            // — the recovery is invisible to them because our fallback sits
+            // inside the preview-file tab slot in the render ladder.
+            requestOpenFile(fileName);
           } else {
             console.warn('[teamver] failed to stash artifact for auth-recovery replay', {
               projectId: project.id,
@@ -3382,6 +3390,9 @@ export function ProjectView({
     let cancelled = false;
     const poll = async () => {
       if (cancelled) return;
+      // Soft/hard sticky: C1 owns recovery. Stale-run status GETs only add
+      // nginx 401 noise while declined.
+      if (isDesignAuthRefreshDeclined()) return;
       const targets = findInFlightAssistantMessages(messages).filter((message) =>
         shouldPollStaleDaemonRun(message),
       );
@@ -4042,6 +4053,13 @@ export function ProjectView({
     let retryTimer: number | null = null;
     const recoveryConversationId = activeConversationId;
     void (async () => {
+      if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          if (!cancelled) setReattachNonce((value) => value + 1);
+        }, BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS);
+        return;
+      }
       let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
       try {
         activeStreams = await listActiveByokProxyStreams(project.id);
@@ -4207,6 +4225,12 @@ export function ProjectView({
 
     const pollRecovery = async () => {
       if (cancelled) return;
+      // Soft/hard sticky / BYOK auth backoff: do not keep hitting proxy/active
+      // + listMessages while C1 owns recovery.
+      if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
+        scheduleNextPoll(BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS);
+        return;
+      }
       let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
       try {
         activeStreams = await listActiveByokProxyStreams(project.id);
