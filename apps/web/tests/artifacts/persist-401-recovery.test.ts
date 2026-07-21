@@ -96,6 +96,15 @@ describe("ProjectView persist-401 recovery", () => {
       /if \(stashed\) \{[\s\S]{0,1500}requestOpenFile\(fileName\);/,
     );
   });
+
+  it("does not show the generic save-failed error when automatic replay is armed", () => {
+    expect(source).toMatch(
+      /let stashedForAutoRetry = false;[\s\S]{0,1800}stashedForAutoRetry = true;/,
+    );
+    expect(source).toMatch(
+      /if \(!stashedForAutoRetry\) \{[\s\S]{0,500}formatProjectArtifactSaveFailedError/,
+    );
+  });
 });
 
 describe("FileWorkspace memory-only preview fallback", () => {

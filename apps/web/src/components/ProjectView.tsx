@@ -2462,6 +2462,11 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
       } else {
+        // Clear the saved-artifact ref so the streaming layer can retry
+        // the write (idempotent by fileName) once auth or the daemon
+        // recovers, regardless of which failure branch we take below.
+        savedArtifactRef.current = '';
+        let stashedForAutoRetry = false;
         if (result.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
           // Session expired between stream completion and this write. The
@@ -2479,6 +2484,7 @@ export function ProjectView({
             artifactManifest: manifest ?? undefined,
           });
           if (stashed) {
+            stashedForAutoRetry = true;
             setPendingRecoveryPreview({ fileName, html: htmlBody });
             // Punch the workspace onto the (still-nonexistent) file tab so
             // FileWorkspace's memoryOnlyPreview branch actually renders.
@@ -2495,21 +2501,28 @@ export function ProjectView({
             });
           }
         }
-        // Surface an error banner keyed on the actual failure — access
-        // denied vs project-not-found vs upstream vs network — instead of
-        // a generic "check the daemon logs" message. The structured
-        // status/code from writeProjectTextFileDetailed is what makes
-        // per-cause messaging possible; the raw daemon marker still lives
-        // in the error object for ops via the diagnostic copy button.
-        // Clear the saved-artifact ref so the user can retry.
-        savedArtifactRef.current = '';
-        setError(
-          formatProjectArtifactSaveFailedError(fileName, {
-            status: result.status,
-            code: result.code,
-            message: result.message,
-          }),
-        );
+        // When we already stashed the payload for automatic replay AND put
+        // up the memory-preview banner ("세션 만료 — 다시 로그인하면 자동
+        // 재시도"), do not additionally set a top-of-page "저장 실패, 다시
+        // 로그인한 뒤 시도하세요" error. The two banners contradict each
+        // other and would train the user to think a manual retry is
+        // required when the recovery loop is already armed. The passive
+        // auth banner (via notifyTeamverEmbedAuthFailureIfNeeded) still
+        // fires so the user knows the session lapsed.
+        //
+        // All other failure classes (403 permission, 404 gone, 5xx, network,
+        // stash-failure fallback) still surface the actionable error, since
+        // they either require a manual action or indicate no recovery is
+        // scheduled.
+        if (!stashedForAutoRetry) {
+          setError(
+            formatProjectArtifactSaveFailedError(fileName, {
+              status: result.status,
+              code: result.code,
+              message: result.message,
+            }),
+          );
+        }
       }
     },
     [project.id, project.designSystemId, project.skillId, requestOpenFile],
