@@ -388,7 +388,21 @@ describe('composeSystemPrompt', () => {
       // path explicitly here.
       const deckPrompt = composeSystemPrompt({ skillMode: 'deck' });
       expect(deckPrompt).not.toMatch(/^7\.\s+Emit single <artifact>\s*$/m);
-      expect(deckPrompt).toMatch(/Emit single <artifact> if a new canonical deck HTML/i);
+      expect(deckPrompt).toMatch(/Finish with a real deck deliverable/i);
+      expect(deckPrompt).toMatch(/Never finish with plan-only text/i);
+    });
+
+    it('pins Teamver slide-only turns to file-or-complete-artifact deliverables', () => {
+      const prompt = composeSystemPrompt({
+        metadata: { teamverEmbed: true } as any,
+        mediaExecution: { mode: 'disabled' } as any,
+      });
+
+      expect(prompt).toContain('### Slide deliverable contract');
+      expect(prompt).toContain('previewable HTML deck in the project workspace');
+      expect(prompt).toContain('if filesystem tools are unavailable or the file write did not happen');
+      expect(prompt).toContain('Do not finish a slide request with only a plan');
+      expect(prompt).toContain('truncated deck navigation script');
     });
   });
 

@@ -4912,10 +4912,14 @@ export function ProjectView({
               ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
                 branding: { slideOnlyMvp },
               });
+            const shouldFailMissingSlideHtml = shouldFailSlideRunWithoutHtmlDeliverable(
+              finalText,
+              { slideOnlyMvp },
+            );
 
             if (
               !producedHtmlToOpen
-              && hadIncompleteParsedArtifact
+              && (hadIncompleteParsedArtifact || shouldFailMissingSlideHtml)
               && !terminalArtifactPersistFailed
             ) {
               terminalArtifactPersistFailed = true;
@@ -4931,6 +4935,7 @@ export function ProjectView({
                 assistantId,
                 hadParsedArtifact: Boolean(parsedArtifact?.html),
                 parsedArtifactBytes: parsedArtifact?.html?.length ?? 0,
+                shouldFailMissingSlideHtml,
                 producedCount: produced.length,
                 eventCount: latestAssistantMsg.events?.length ?? 0,
               });
@@ -8207,6 +8212,26 @@ export {
 
 export function resolveSucceededRunStatus(status: ChatMessage['runStatus']): ChatMessage['runStatus'] {
   return status === 'failed' || status === 'canceled' ? status : 'succeeded';
+}
+
+/** Slide generation/edit turns must not be finalized as "succeeded" without a previewable HTML deck. */
+export function shouldFailSlideRunWithoutHtmlDeliverable(
+  finalText: string,
+  options: { slideOnlyMvp: boolean },
+): boolean {
+  if (!options.slideOnlyMvp) return false;
+  const text = finalText.trim();
+  if (!text) return false;
+
+  const deckIntent =
+    /\b(deck|slide|slides|presentation|ppt|keynote|html)\b/i.test(text)
+    || /(슬라이드|발표\s*자료|프레젠테이션|피피티|덱|HTML)/i.test(text);
+  if (!deckIntent) return false;
+
+  return (
+    /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|will create|will build|I'll|I will)/i.test(text)
+    || /(만들겠|작성하겠|생성하겠|수정하겠|반영하겠|완료|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠)/i.test(text)
+  );
 }
 
 /** Pick the best HTML artifact candidate for terminal persist / auto-open. */

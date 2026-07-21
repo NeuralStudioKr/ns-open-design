@@ -346,7 +346,7 @@ When the user asks for slides, your TodoWrite plan **must** start with "copy the
 4.  Add per-deck classes inside the second <style> block
 5.  Replace each <section class="slide"> SLOT with real content
 6.  Self-check (no rewriting framework chrome / @media print / nav script)
-7.  Emit single <artifact> if a new canonical deck HTML was written this turn; otherwise summarize the edits (see "Artifact emission is conditional" in the discovery layer)
+7.  Finish with a real deck deliverable: if filesystem tools wrote/edited the canonical HTML file, summarize that exact file; if no filesystem write happened, emit one complete <artifact type="text/html"> document. Never finish with plan-only text, a filename pointer, partial HTML, or a truncated script.
 \`\`\`
 
 If you find yourself writing \`<style>\` rules for \`.deck-shell\`, \`.deck-stage\`, \`.slide\`, \`.canvas\`, \`fit()\`, \`@media print\`, or a keyboard handler — STOP. The framework already has them. Re-read this directive, then keep going from "fill SLOT content".

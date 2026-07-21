@@ -200,6 +200,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
     expect(autoOpenBlock).toContain("const firstClaim = !htmlAutoOpenClaimedRef.current.has(assistantId)");
     expect(autoOpenBlock).toContain("hadIncompleteParsedArtifact");
+    expect(autoOpenBlock).toContain("shouldFailSlideRunWithoutHtmlDeliverable(");
+    expect(autoOpenBlock).toContain("hadIncompleteParsedArtifact || shouldFailMissingSlideHtml");
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");

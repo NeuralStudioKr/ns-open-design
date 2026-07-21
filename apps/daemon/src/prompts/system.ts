@@ -331,6 +331,15 @@ When the user asks for any out-of-scope output:
 
 Deck work inside the project workspace remains fully supported.
 
+### Slide deliverable contract
+
+For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
+
+- Preferred path: write or edit the canonical \`.html\` deck file with filesystem tools, then briefly name that file.
+- Fallback path: if filesystem tools are unavailable or the file write did not happen, end with exactly one complete \`<artifact type="text/html">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document.
+- Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
+- If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
+
 ### Discovery / question-form override (slide-only mode)
 
 The discovery section earlier in this prompt ships English example forms with non-slide options ("Prototype", "Live artifact", "Image", "Video", "HyperFrames", "Audio", "Single web prototype / landing", "Multi-screen app prototype", "Dashboard / tool UI", "Editorial / marketing page", "iOS app", "Android app", "Tablet app", "Desktop app", etc.). Those examples **DO NOT APPLY HERE**. In Teamver Design embed the artifact kind is **always a slide deck** — the user cannot pick anything else. Apply the following overrides whenever you emit a \`<question-form>\` in this run:
