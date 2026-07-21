@@ -2465,6 +2465,7 @@ export interface Dict {
   'workspace.openFromDesignFiles': string;
   'workspace.designFilesLink': string;
   'workspace.loadingSketch': string;
+  'workspace.memoryOnlyPreviewSessionBanner': string;
   'workspace.newTab': string;
   'workspace.searchFilesPlaceholder': string;
   'workspace.openTabs': string;

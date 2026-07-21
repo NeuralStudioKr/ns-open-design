@@ -1841,6 +1841,7 @@ export const hu: Dict = {
   'workspace.openFromDesignFiles': 'Nyiss meg egy fájlt innen:',
   'workspace.designFilesLink': 'Designfájlok',
   'workspace.loadingSketch': 'Vázlat betöltése…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'A munkamenet lejárt — ez az előnézet csak a memóriában él. Újbóli bejelentkezés után automatikusan mentésre kerül.',
   'workspace.newTab': 'Új lap',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'Megnyitott lapok',

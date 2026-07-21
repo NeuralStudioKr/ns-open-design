@@ -1841,6 +1841,7 @@ export const ko: Dict = {
   'workspace.openFromDesignFiles': '디자인 파일에서',
   'workspace.designFilesLink': '파일을 선택하세요',
   'workspace.loadingSketch': '스케치 불러오는 중…',
+  'workspace.memoryOnlyPreviewSessionBanner': '세션이 만료되었어요 — 이 미리보기는 메모리에만 있어요. 다시 로그인하면 자동으로 저장을 재시도합니다.',
   'workspace.newTab': '새 탭',
   'workspace.searchFilesPlaceholder': '파일 검색…',
   'workspace.openTabs': '열린 탭',

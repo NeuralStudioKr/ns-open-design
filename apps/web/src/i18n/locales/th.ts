@@ -1841,6 +1841,7 @@ export const th: Dict = {
   'workspace.openFromDesignFiles': 'เปิดไฟล์จาก',
   'workspace.designFilesLink': 'หน้าไฟล์งาน',
   'workspace.loadingSketch': 'กำลังโหลดกระดานวาด…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'เซสชันหมดอายุ — พรีวิวนี้อยู่ในหน่วยความจำเท่านั้น ระบบจะบันทึกใหม่โดยอัตโนมัติหลังจากคุณเข้าสู่ระบบอีกครั้ง',
   'workspace.newTab': 'แท็บใหม่',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'แท็บที่เปิดอยู่',

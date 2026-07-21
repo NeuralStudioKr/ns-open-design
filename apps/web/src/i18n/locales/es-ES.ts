@@ -1841,6 +1841,7 @@ export const esES: Dict = {
   'workspace.openFromDesignFiles': 'Abre un archivo desde',
   'workspace.designFilesLink': 'Archivos de diseño',
   'workspace.loadingSketch': 'Cargando boceto…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Sesión caducada — esta vista previa está solo en memoria. Se guardará automáticamente cuando vuelvas a iniciar sesión.',
   'workspace.newTab': 'Nueva pestaña',
   'workspace.searchFilesPlaceholder': 'Buscar archivos…',
   'workspace.openTabs': 'Abrir pestañas',

@@ -1841,6 +1841,7 @@ export const zhCN: Dict = {
   'workspace.openFromDesignFiles': '请从',
   'workspace.designFilesLink': '设计文件',
   'workspace.loadingSketch': '正在加载草图…',
+  'workspace.memoryOnlyPreviewSessionBanner': '会话已过期 — 此预览仅在内存中。重新登录后将自动保存。',
   'workspace.newTab': '新建标签页',
   'workspace.searchFilesPlaceholder': '搜索标签页或文件…',
   'workspace.openTabs': '打开标签页',

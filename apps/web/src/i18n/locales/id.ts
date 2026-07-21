@@ -1841,6 +1841,7 @@ export const id: Dict = {
   'workspace.openFromDesignFiles': 'Buka file dari',
   'workspace.designFilesLink': 'File desain',
   'workspace.loadingSketch': 'Memuat sketsa...',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Sesi berakhir — pratinjau ini hanya di memori. Akan disimpan otomatis setelah Anda masuk kembali.',
   'workspace.newTab': 'New tab',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'Tab terbuka',

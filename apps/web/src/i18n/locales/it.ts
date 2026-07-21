@@ -1841,6 +1841,7 @@ export const it: Dict = {
   'workspace.openFromDesignFiles': 'Apri un file da',
   'workspace.designFilesLink': 'File di design',
   'workspace.loadingSketch': 'Caricamento dello schizzo…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Sessione scaduta — questa anteprima è solo in memoria. Verrà salvata automaticamente dopo il nuovo accesso.',
   'workspace.newTab': 'Nuova scheda',
   'workspace.searchFilesPlaceholder': 'Cerca file…',
   'workspace.openTabs': 'Schede aperte',

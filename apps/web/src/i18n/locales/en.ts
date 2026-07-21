@@ -1841,6 +1841,7 @@ export const en: Dict = {
   'workspace.openFromDesignFiles': 'Open a file from',
   'workspace.designFilesLink': 'Design Files',
   'workspace.loadingSketch': 'Loading sketch…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Session expired — this preview is in memory only. It will be re-saved automatically after you sign back in.',
   'workspace.newTab': 'New tab',
   'workspace.searchFilesPlaceholder': 'Search tabs or files…',
   'workspace.openTabs': 'Open tabs',

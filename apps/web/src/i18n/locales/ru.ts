@@ -1841,6 +1841,7 @@ export const ru: Dict = {
   'workspace.openFromDesignFiles': 'Открыть файл из',
   'workspace.designFilesLink': 'Файлы дизайна',
   'workspace.loadingSketch': 'Загрузка эскиза…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Сессия истекла — этот предпросмотр только в памяти. Он будет сохранён автоматически после повторного входа.',
   'workspace.newTab': 'Новая вкладка',
   'workspace.searchFilesPlaceholder': 'Поиск файлов…',
   'workspace.openTabs': 'Открыть вкладки',

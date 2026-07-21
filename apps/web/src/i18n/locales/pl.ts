@@ -1841,6 +1841,7 @@ export const pl: Dict = {
   'workspace.openFromDesignFiles': 'Otwórz plik z',
   'workspace.designFilesLink': 'Pliki projektu',
   'workspace.loadingSketch': 'Ładowanie szkicu…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Sesja wygasła — ten podgląd znajduje się tylko w pamięci. Zostanie zapisany automatycznie po ponownym zalogowaniu.',
   'workspace.newTab': 'Nowa karta',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'Otwarte karty',

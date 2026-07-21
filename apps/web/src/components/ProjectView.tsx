@@ -13,8 +13,16 @@ import {
 } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { createHtmlArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
+import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
+import {
+  clearPendingArtifactWrite,
+  clearProjectPendingArtifactWrites,
+  listPendingArtifactWrites,
+  peekLatestPendingArtifactWrite,
+  stashPendingArtifactWrite,
+} from '../artifacts/pendingWriteRecovery';
 import { recoverHtmlArtifactFromPrecedingDocument, recoverHtmlDocumentFromMarkdownFence, recoverStandaloneHtmlDocument } from '../artifacts/recover';
 import { createArtifactParser } from '../artifacts/parser';
 import {
@@ -198,6 +206,7 @@ import {
 } from '../teamver/designBffClient';
 import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
 import { fetchTeamverDaemon, TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
+import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
 import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
@@ -1184,6 +1193,22 @@ export function ProjectView({
   const [error, setError] = useState<string | null>(null);
   const [audioVoiceOptionsError, setAudioVoiceOptionsError] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
+  // Post-refresh recovery snapshot for the memory-only preview fallback.
+  // Seeded from sessionStorage when a previous run's persistArtifact hit a
+  // daemon 401 and stashed the payload; kept in state so FileWorkspace can
+  // render the deck while the auth-recovery replay retries the write. Cleared
+  // by the replay effect on successful write (or by the user starting a new
+  // run, which drops `artifact` state; see §persistArtifact + §replay effect).
+  const [pendingRecoveryPreview, setPendingRecoveryPreview] = useState<{
+    fileName: string;
+    html: string;
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    // NOTE: `project.id` is not stable across re-renders during the boot
+    // pass; useState initializer runs once, so we seed lazily inside a
+    // dedicated effect below to key off the current project id.
+    return null;
+  });
   const [filesRefresh, setFilesRefresh] = useState(0);
   // True while a working-dir replace is reindexing the new folder. Surfaced
   // to the Design Files panel so the file list shows a loading state instead
@@ -2414,6 +2439,13 @@ export function ProjectView({
       );
       if (result.ok) {
         const file = result.file;
+        // A newer successful write supersedes any stashed replay for this
+        // exact filename — the file the user is looking at is now the one
+        // on disk, not the pre-401 in-memory snapshot.
+        clearPendingArtifactWrite(project.id, file.name);
+        setPendingRecoveryPreview((prev) =>
+          prev && prev.fileName === file.name ? null : prev,
+        );
         setFilesRefresh((n) => n + 1);
         // Surface the daemon's stub-guard warning when it fires in `warn`
         // mode (the default). Without this the warning would land in the
@@ -2431,6 +2463,29 @@ export function ProjectView({
       } else {
         if (result.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+          // Session expired between stream completion and this write. The
+          // model has already produced the deck (we just watched it stream
+          // in) and re-running the turn wastes minutes of tokens. Stash the
+          // exact payload so the auth-recovery listener can PUT the same
+          // bytes once the cookie is refreshed / the user re-authenticates.
+          // FileWorkspace also reads `pendingRecoveryPreview` to render a
+          // memory-only preview so the user is not staring at an empty
+          // panel while the retry ladder runs in the background.
+          const stashed = stashPendingArtifactWrite({
+            projectId: project.id,
+            fileName,
+            htmlBody,
+            artifactManifest: manifest ?? undefined,
+          });
+          if (stashed) {
+            setPendingRecoveryPreview({ fileName, html: htmlBody });
+          } else {
+            console.warn('[teamver] failed to stash artifact for auth-recovery replay', {
+              projectId: project.id,
+              fileName,
+              htmlLength: htmlBody.length,
+            });
+          }
         }
         // Surface an error banner keyed on the actual failure — access
         // denied vs project-not-found vs upstream vs network — instead of
@@ -2451,6 +2506,95 @@ export function ProjectView({
     },
     [project.id, project.designSystemId, project.skillId, requestOpenFile],
   );
+
+  // Auth-recovery replay: when the embed cookie is refreshed after a session
+  // outage that left an HTML artifact stranded in memory (§persistArtifact 401
+  // path), retry the exact write we stashed so the deck the user just watched
+  // stream in lands on daemon disk without asking the model to regenerate it.
+  //
+  // The replay is idempotent by fileName: writeProjectTextFileDetailed clears
+  // the stash on 2xx, so a subsequent recovery event does nothing. If the
+  // retry itself 401s (a rare double-outage), persistArtifact's stash path
+  // simply re-runs and the entry stays queued for the next recovery.
+  //
+  // Also seeds `pendingRecoveryPreview` on mount / project switch so the
+  // memory-only preview fallback (FileWorkspace) can show the deck even after
+  // a hard refresh that dropped `artifact` state.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    const projectId = project.id;
+    const seed = peekLatestPendingArtifactWrite(projectId);
+    setPendingRecoveryPreview(
+      seed ? { fileName: seed.fileName, html: seed.htmlBody } : null,
+    );
+
+    const replay = async () => {
+      const pending = listPendingArtifactWrites(projectId);
+      if (pending.length === 0) return;
+      let anySucceeded = false;
+      let anyRemaining = false;
+      for (const entry of pending) {
+        if (cancelled) return;
+        try {
+          const result = await writeProjectTextFileDetailed(
+            entry.projectId,
+            entry.fileName,
+            entry.htmlBody,
+            {
+              artifactManifest: (entry.artifactManifest as ArtifactManifest | undefined),
+            },
+          );
+          if (cancelled) return;
+          if (result.ok) {
+            anySucceeded = true;
+            clearPendingArtifactWrite(entry.projectId, entry.fileName);
+            savedArtifactRef.current = result.file.name;
+            requestOpenFile(result.file.name);
+          } else if (result.status !== 401) {
+            // Non-auth failure — the retry will never help; drop the stash.
+            clearPendingArtifactWrite(entry.projectId, entry.fileName);
+            console.warn('[teamver] pending artifact replay failed non-401; dropping', {
+              projectId: entry.projectId,
+              fileName: entry.fileName,
+              status: result.status,
+              code: result.code,
+            });
+          } else {
+            anyRemaining = true;
+          }
+        } catch (err) {
+          if (cancelled) return;
+          anyRemaining = true;
+          console.warn('[teamver] pending artifact replay threw', {
+            projectId: entry.projectId,
+            fileName: entry.fileName,
+            err,
+          });
+        }
+      }
+      if (cancelled) return;
+      if (anySucceeded) setFilesRefresh((n) => n + 1);
+      // Once every stashed replay lands, the memory-only fallback would
+      // double-render the same bytes the FileViewer just picked up from
+      // disk — clear it so we do not confuse the user with a duplicate
+      // banner over their now-persistent deck.
+      if (!anyRemaining) setPendingRecoveryPreview(null);
+    };
+    // Some recovery paths land the fresh cookie via a probe/ensure that
+    // does not fire the passive-auth event (e.g. explicit sign-in return).
+    // A one-shot mount replay covers that case; subsequent recoveries wait
+    // for the event.
+    void replay();
+    const onRecovered = () => {
+      void replay();
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+    };
+  }, [project.id, requestOpenFile]);
 
   const artifactFromStandaloneHtml = useCallback((sourceText: string): Artifact | null => {
     const html = recoverStandaloneHtmlDocument(sourceText)
@@ -4524,6 +4668,11 @@ export function ProjectView({
       }
       updateConversationLatestRun(config.mode === 'daemon' ? 'running' : 'queued');
       setArtifact(null);
+      // A fresh run supersedes the previous run's stranded-in-memory deck;
+      // dropping the fallback here prevents the memory-only preview from
+      // ghosting the new turn while it streams.
+      clearProjectPendingArtifactWrites(project.id);
+      setPendingRecoveryPreview(null);
       savedArtifactRef.current = null;
       onTouchProject();
       if (!retryTarget) persistMessage(userMsg);
@@ -7444,6 +7593,7 @@ export function ProjectView({
           onWorkspaceContextsChange={handleWorkspaceContextsChange}
           messages={messages}
           artifactHtml={artifact?.html}
+          pendingArtifactRecovery={pendingRecoveryPreview}
           conversationError={error}
           onRetry={handleRetry}
           onAuthorizeAndRetry={handleSwitchToAmrAndRetry}

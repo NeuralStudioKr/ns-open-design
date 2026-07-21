@@ -1841,6 +1841,7 @@ export const uk: Dict = {
   'workspace.openFromDesignFiles': 'Відкрити файл з',
   'workspace.designFilesLink': 'Файли дизайну',
   'workspace.loadingSketch': 'Завантаження ескізу…',
+  'workspace.memoryOnlyPreviewSessionBanner': "Сесія завершилась — цей попередній перегляд лише в пам'яті. Він буде збережений автоматично після повторного входу.",
   'workspace.newTab': 'Нова вкладка',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'Відкриті вкладки',

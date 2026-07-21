@@ -71,6 +71,7 @@ import {
   type ProjectFolder,
 } from '../types';
 import type { ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
+import { isArtifactHtmlStableForPreview } from '@open-design/contracts';
 import { createTerminal, killTerminal } from '../state/projects';
 import type { QuestionForm } from '../artifacts/question-form';
 import { DesignFilesPanel, type DesignFilesNavState } from './DesignFilesPanel';
@@ -202,6 +203,12 @@ interface Props {
   onWorkspaceContextsChange?: (contexts: WorkspaceContextItem[]) => void;
   messages?: ChatMessage[];
   artifactHtml?: string | null;
+  // Session-scoped fallback preview. Populated by ProjectView when a run's
+  // HTML artifact could not be persisted (daemon 401 mid-run) — carries the
+  // exact bytes so the workspace can render an iframe instead of an empty
+  // panel while the auth-recovery replay retries the write. Cleared once
+  // the replay lands and the FileViewer picks up the file from disk.
+  pendingArtifactRecovery?: { fileName: string; html: string } | null;
   conversationError?: string | null;
   onRetry?: (message: ChatMessage) => void;
   // Contextual failure recovery, mirrored from the chat error card so the
@@ -441,6 +448,7 @@ export function FileWorkspace({
   onWorkspaceContextsChange,
   messages = [],
   artifactHtml = null,
+  pendingArtifactRecovery = null,
   conversationId,
   headerActions,
   questionForm = null,
@@ -1575,6 +1583,37 @@ export function FileWorkspace({
 
   const resolvedPreviewFile = previewFile ?? stalePreviewBootstrapFile;
 
+  // Memory-only preview fallback for post-completion sessions where no file
+  // landed on disk. Two feeders:
+  //   1) `pendingArtifactRecovery` — sessionStorage-backed snapshot of a run
+  //      whose write hit a daemon 401 (see ProjectView.persistArtifact).
+  //      Survives hard refresh; primary source of truth during the outage.
+  //   2) `artifactHtml` — the current run's in-memory HTML from streaming.
+  //      Only surfaced when we are on a preview-file tab with no file (e.g.
+  //      the write is still pending) so it never fights an intentionally
+  //      opened, unrelated file the user is viewing.
+  // Only paints when the HTML is stable enough for a preview iframe so we
+  // never flash truncated CDN URLs / mid-stream debris as the fallback.
+  const memoryOnlyPreview = useMemo<{
+    html: string;
+    fileName: string | null;
+    reason: 'session' | 'streaming';
+  } | null>(() => {
+    if (pendingArtifactRecovery?.html && isArtifactHtmlStableForPreview(pendingArtifactRecovery.html)) {
+      return {
+        html: pendingArtifactRecovery.html,
+        fileName: pendingArtifactRecovery.fileName,
+        reason: 'session',
+      };
+    }
+    if (!isPreviewFileTab) return null;
+    if (resolvedPreviewFile) return null;
+    const trimmed = artifactHtml?.trim();
+    if (!trimmed) return null;
+    if (!isArtifactHtmlStableForPreview(trimmed)) return null;
+    return { html: trimmed, fileName: null, reason: 'streaming' };
+  }, [pendingArtifactRecovery, isPreviewFileTab, resolvedPreviewFile, artifactHtml]);
+
   // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
   // bump (chokidar bursts would otherwise remount FileViewer as "loading").
   useEffect(() => {
@@ -2449,6 +2488,33 @@ export function FileWorkspace({
             )}
             liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}
           />
+        ) : memoryOnlyPreview ? (
+          // Memory-only fallback. The run completed and we have a stable HTML
+          // document in memory (either from the current `artifact` state or a
+          // sessionStorage stash left by a daemon-401 persist), but no file
+          // exists on disk yet (write failed / file list unreadable). Render
+          // the HTML directly so the user is not staring at an empty panel
+          // after 3 minutes of streaming; the ProjectView replay effect will
+          // retry the write once the cookie recovers and this branch will
+          // fall through to the FileViewer once the file lands.
+          <div className="viewer-memory-preview" data-testid="viewer-memory-preview">
+            {memoryOnlyPreview.reason === 'session' ? (
+              <div
+                className="viewer-memory-preview__banner"
+                role="status"
+                data-testid="viewer-memory-preview-banner"
+              >
+                {t('workspace.memoryOnlyPreviewSessionBanner')}
+              </div>
+            ) : null}
+            <iframe
+              key={memoryOnlyPreview.fileName ?? 'memory-preview'}
+              className="viewer-memory-preview__frame"
+              srcDoc={memoryOnlyPreview.html}
+              sandbox="allow-scripts"
+              title={memoryOnlyPreview.fileName ?? 'preview'}
+            />
+          </div>
         ) : pendingPreviewTab ? (
           <div className="viewer-empty">
             {/* Keep loading until ghost resolve retargets/closes — never flash

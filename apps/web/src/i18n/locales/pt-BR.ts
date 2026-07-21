@@ -1841,6 +1841,7 @@ export const ptBR: Dict = {
   'workspace.openFromDesignFiles': 'Abra um arquivo em',
   'workspace.designFilesLink': 'Arquivos de design',
   'workspace.loadingSketch': 'Carregando esboço…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Sessão expirou — esta prévia está apenas na memória. Será salva automaticamente após você entrar novamente.',
   'workspace.newTab': 'Nova aba',
   'workspace.searchFilesPlaceholder': 'Pesquisar arquivos…',
   'workspace.openTabs': 'Abrir abas',

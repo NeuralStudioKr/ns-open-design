@@ -1841,6 +1841,7 @@ export const tr: Dict = {
   'workspace.openFromDesignFiles': 'bir dosya aç',
   'workspace.designFilesLink': 'Tasarım Dosyaları',
   'workspace.loadingSketch': 'Taslak yükleniyor…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Oturum sona erdi — bu önizleme yalnızca bellekte. Yeniden oturum açtığınızda otomatik olarak kaydedilir.',
   'workspace.newTab': 'Yeni sekme',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'Sekmeleri aç',

@@ -1841,6 +1841,7 @@ export const zhTW: Dict = {
   'workspace.openFromDesignFiles': '請從',
   'workspace.designFilesLink': '設計檔案',
   'workspace.loadingSketch': '正在載入草圖…',
+  'workspace.memoryOnlyPreviewSessionBanner': '工作階段已過期 — 此預覽僅存於記憶體中。重新登入後將自動儲存。',
   'workspace.newTab': '新增分頁',
   'workspace.searchFilesPlaceholder': '搜尋分頁或檔案…',
   'workspace.openTabs': '開啟分頁',

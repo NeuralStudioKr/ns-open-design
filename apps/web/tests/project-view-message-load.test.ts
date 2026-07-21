@@ -107,6 +107,41 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("return true");
   });
 
+  it("replays stashed artifact writes without shifting write arguments", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const replay = async () =>");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 2600);
+
+    expect(block).toContain("const pending = listPendingArtifactWrites(projectId)");
+    expect(block).toContain("writeProjectTextFileDetailed(");
+    expect(block).toContain("entry.projectId,\n            entry.fileName,\n            entry.htmlBody");
+    expect(block).not.toContain("entry.projectId,\n            entry.projectId,\n            entry.fileName");
+    expect(block).toContain("clearPendingArtifactWrite(entry.projectId, entry.fileName)");
+  });
+
+  it("clears pending write recovery state when a fresh run starts", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const marker = source.indexOf("updateConversationLatestRun(config.mode === 'daemon' ? 'running' : 'queued')");
+    expect(marker).toBeGreaterThan(0);
+    const start = source.indexOf("setArtifact(null);", marker);
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 500);
+
+    expect(block).toContain("clearProjectPendingArtifactWrites(project.id)");
+    expect(block).toContain("setPendingRecoveryPreview(null)");
+  });
+
+  it("passes pending artifact recovery into the workspace preview fallback", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("<FileWorkspace");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 6000);
+
+    expect(block).toContain("artifactHtml={artifact?.html}");
+    expect(block).toContain("pendingArtifactRecovery={pendingRecoveryPreview}");
+  });
+
   it("runs auto-open recovery after message load so refresh restores the last completed HTML preview", () => {
     const source = readSource("src/components/ProjectView.tsx");
 

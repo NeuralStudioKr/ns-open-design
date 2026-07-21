@@ -1841,6 +1841,7 @@ export const de: Dict = {
   'workspace.openFromDesignFiles': 'Datei öffnen aus',
   'workspace.designFilesLink': 'Design-Dateien',
   'workspace.loadingSketch': 'Sketch wird geladen…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Sitzung abgelaufen — Vorschau nur im Speicher. Nach erneuter Anmeldung wird der Speichervorgang automatisch wiederholt.',
   'workspace.newTab': 'Neuer Tab',
   'workspace.searchFilesPlaceholder': 'Dateien suchen…',
   'workspace.openTabs': 'Tabs öffnen',

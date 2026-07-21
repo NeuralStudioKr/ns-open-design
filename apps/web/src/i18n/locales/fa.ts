@@ -1841,6 +1841,7 @@ export const fa: Dict = {
   'workspace.openFromDesignFiles': 'باز کردن یک فایل از',
   'workspace.designFilesLink': 'فایل‌های طراحی',
   'workspace.loadingSketch': 'در حال بارگذاری طرح…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'جلسه منقضی شد — این پیش‌نمایش تنها در حافظه است. پس از ورود مجدد به‌طور خودکار ذخیره می‌شود.',
   'workspace.newTab': 'زبانه جدید',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'زبانه‌های باز',

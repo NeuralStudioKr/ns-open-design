@@ -1841,6 +1841,7 @@ export const ar: Dict = {
   'workspace.openFromDesignFiles': 'فتح ملف من',
   'workspace.designFilesLink': 'ملفات التصميم',
   'workspace.loadingSketch': 'جاري تحميل الرسم...',
+  'workspace.memoryOnlyPreviewSessionBanner': 'انتهت الجلسة — لا تزال المعاينة في الذاكرة. سنعيد المحاولة تلقائيًا بعد تسجيل الدخول مرة أخرى.',
   'workspace.newTab': 'علامة تبويب جديدة',
   'workspace.searchFilesPlaceholder': 'Search files…',
   'workspace.openTabs': 'علامات التبويب المفتوحة',

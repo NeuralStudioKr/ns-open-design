@@ -1841,6 +1841,7 @@ export const ja: Dict = {
   'workspace.openFromDesignFiles': 'ファイルを開く: ',
   'workspace.designFilesLink': 'デザインファイル',
   'workspace.loadingSketch': 'スケッチを読み込み中…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'セッションが切れました — このプレビューはメモリ上にのみあります。再ログイン後に自動で保存されます。',
   'workspace.newTab': '新しいタブ',
   'workspace.searchFilesPlaceholder': 'ファイルを検索…',
   'workspace.openTabs': '開いているタブ',

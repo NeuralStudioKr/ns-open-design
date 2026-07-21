@@ -1841,6 +1841,7 @@ export const fr: Dict = {
   'workspace.openFromDesignFiles': 'Ouvrir un fichier depuis',
   'workspace.designFilesLink': 'Fichiers de design',
   'workspace.loadingSketch': 'Chargement du croquis…',
+  'workspace.memoryOnlyPreviewSessionBanner': 'Session expirée — cet aperçu est uniquement en mémoire. Il sera réenregistré automatiquement après votre reconnexion.',
   'workspace.newTab': 'Nouvel onglet',
   'workspace.searchFilesPlaceholder': 'Rechercher des fichiers…',
   'workspace.openTabs': 'Onglets ouverts',
