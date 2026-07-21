@@ -23,6 +23,7 @@ import {
 } from '@open-design/contracts';
 import {
   composeSystemPrompt,
+  extractUserAuthoredSignalText,
   renderCodexImagegenOverride,
   renderConnectedExternalMcpDirective,
   resolveCodexImagegenModelId,
@@ -683,7 +684,7 @@ export function resolveResearchCommandContract(research, message) {
   const researchQuery =
     typeof research.query === 'string' && research.query.trim()
       ? research.query
-      : message;
+      : extractUserAuthoredSignalText(message);
   return renderResearchCommandContract({
     query: researchQuery,
     maxSources:

@@ -234,6 +234,74 @@ export function resolveExclusiveSurface(args: {
     ?? (composedSurfaceModes.length === 1 ? composedSurfaceModes[0] ?? null : null);
 }
 
+const TRANSCRIPT_USER_MARKER = '## user';
+const TRANSCRIPT_ASSISTANT_MARKER = '## assistant';
+const TRANSCRIPT_CONTEXT_WARNING_MARKER = '## context warning';
+
+function isPackedTranscriptShape(lines: string[]): boolean {
+  if (!lines.includes(TRANSCRIPT_USER_MARKER)) return false;
+  const firstContent = lines.find((line) => line.trim().length > 0);
+  return (
+    firstContent === TRANSCRIPT_USER_MARKER ||
+    firstContent === TRANSCRIPT_ASSISTANT_MARKER ||
+    firstContent === TRANSCRIPT_CONTEXT_WARNING_MARKER
+  );
+}
+
+const FORM_ANSWERS_HEADER = /^\s*\[form answers(?:\s*[—\-:]\s*[^\]]+)?\]\s*$/i;
+const FORM_ANSWERS_ANSWER_LINE = /^\s*-\s+[^:]*:\s*(.*)$/;
+
+function narrowFormAnswerSignalText(body: string): string {
+  const lines = body.split('\n');
+  const firstContent = lines.find((line) => line.trim().length > 0);
+  if (!firstContent || !FORM_ANSWERS_HEADER.test(firstContent)) return body;
+  return lines
+    .map((line) => {
+      if (FORM_ANSWERS_HEADER.test(line)) return '';
+      const answer = FORM_ANSWERS_ANSWER_LINE.exec(line);
+      return answer ? answer[1] ?? '' : line;
+    })
+    .join('\n');
+}
+
+/**
+ * Reduce a packed daemon transcript to text authored by the user. Assistant
+ * turns often include discovery form option copy, generated code, or tool
+ * echoes; those should not become fallback research queries or future intent
+ * signals.
+ */
+export function extractUserAuthoredSignalText(
+  message: string | null | undefined,
+): string {
+  if (typeof message !== 'string' || message.length === 0) return '';
+  const lines = message.split('\n').map((line) =>
+    line.endsWith('\r') ? line.slice(0, -1) : line,
+  );
+  if (!isPackedTranscriptShape(lines)) {
+    return narrowFormAnswerSignalText(message);
+  }
+  const userSections: string[][] = [];
+  let currentUserSection: string[] | null = null;
+  for (const line of lines) {
+    if (line === TRANSCRIPT_USER_MARKER) {
+      currentUserSection = [];
+      userSections.push(currentUserSection);
+      continue;
+    }
+    if (
+      line === TRANSCRIPT_ASSISTANT_MARKER ||
+      line === TRANSCRIPT_CONTEXT_WARNING_MARKER
+    ) {
+      currentUserSection = null;
+      continue;
+    }
+    currentUserSection?.push(line);
+  }
+  return userSections
+    .map((sectionLines) => narrowFormAnswerSignalText(sectionLines.join('\n')))
+    .join('\n\n');
+}
+
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
 
 export const SKIP_DISCOVERY_BRIEF_OVERRIDE = `# Automated project mode — skip discovery form

@@ -2687,6 +2687,41 @@ describe('chat prompt helpers', () => {
     expect(prompt).toContain('the first tool action must be the research command');
   });
 
+  it('narrows implicit research queries to user-authored transcript text', () => {
+    const prompt = resolveResearchCommandContract(
+      { enabled: true },
+      [
+        '## user',
+        'teamver.com 사이트 분석해서 발표자료 만들어줘',
+        '',
+        '## assistant',
+        '<question-form id="discovery">',
+        '{ "options": ["Slide deck / pitch", "iOS / Android / responsive"] }',
+        '</question-form>',
+      ].join('\n'),
+    );
+
+    expect(prompt).toContain('Canonical query for this run:');
+    expect(prompt).toContain('teamver.com 사이트 분석해서 발표자료 만들어줘');
+    expect(prompt).not.toContain('Slide deck / pitch');
+    expect(prompt).not.toContain('iOS / Android');
+  });
+
+  it('uses form answer values, not echoed labels, for implicit research queries', () => {
+    const prompt = resolveResearchCommandContract(
+      { enabled: true },
+      [
+        '## user',
+        '[form answers — discovery]',
+        '- For slide decks, include speaker notes?: (skipped)',
+        '- Website to research: teamver.com',
+      ].join('\n'),
+    );
+
+    expect(prompt).toContain('teamver.com');
+    expect(prompt).not.toContain('For slide decks');
+  });
+
   it('resolves only the narrow Codex generated_images allowlist for known gpt-image image projects', () => {
     expect(
       resolveCodexGeneratedImagesDir(

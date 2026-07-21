@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-21 현재.
+**반영 갱신:** 2026-07-21 — 추가 포팅 루프 19. `04236af50` intent signal latch는 전체 포팅하지 않았다. 현재 Teamver `composeSystemPrompt`는 upstream의 per-turn intent-gated stable blocks(`freeformDeckSignal` 등)를 쓰지 않고, `metadata.kind='deck'` + slide-only override + freeform conditional deck framework로 이미 다른 구조다. DB `intent_signals_json` migration/latch를 그대로 넣으면 background/session/cache 경로를 넓게 흔들 수 있어 보류했다. 대신 안전한 공통 부분인 `extractUserAuthoredSignalText`를 수동 포팅해, Research canonical query fallback이 packed transcript 전체(assistant discovery form/options/generated code)가 아니라 사용자 작성 텍스트만 사용하도록 좁혔다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 18. `b86537483` floating composer clamp는 현재 Teamver `PreviewDrawOverlay` 구조와 대조한 결과 직접 포팅하지 않았다. upstream의 `computePreviewDrawDockLayout` 기반 floating dock 함수가 staging에는 존재하지 않고, 현재 Teamver는 portal toolbar/inline overlay 구조로 이미 달라져 있어 cherry-pick/재구현 시 오히려 회귀 위험이 크다. 대신 직전 `ComposerPlusMenu` search flyout 보정이 Escape/outside-click 닫힘을 깨지 않는지 회귀 테스트를 추가했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 17. `4d2fb936e` plugin flyout search 안정화 패치를 Teamver `ComposerPlusMenu` 구조에 맞춰 수동 포팅했다. 프로젝트 상세 composer의 `+ > 플러그인` 검색 중 목록 reflow가 synthetic `mouseleave`를 만들면 submenu close timer가 검색창과 preview column을 닫을 수 있었다. 이제 flyout 내부 search input이 focus를 가진 동안에는 hover-close를 무시하고, outside click/Escape/선택으로만 닫히도록 보정했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 16. Community preview runtime fallback 잔여를 Teamver 구조 기준으로 재검토했다. daemon `/preview` fallback chain은 이미 exampleOutputs와 shallow HTML discovery를 포함하므로 서버 대형 포팅은 하지 않았다. 대신 FE가 `examples/<name>/index.html`을 `/example/index`로 요청하던 모호성을 줄여 parent folder stem(`/example/<name>`)을 사용하도록 보정했고, Teamver embed에서 로컬 Open Design 실행 안내처럼 보이던 preview error body를 서비스형 문구로 정리했다.
@@ -57,7 +58,7 @@
 | `4ddfc6e44` | transient image generation response retry | **보류.** media route/analytics/contracts 대형 변경이며 현재 AI Design slide 기본 기능보다 후순위다. image generation을 product scope에 다시 올릴 때 검토한다. |
 | `bc5b6f058` | unfinished work run을 completed로 표시하지 않음 | **2026-07-20 부분 반영.** 전체 DB/project-status/UI/i18n 포팅은 보류. run service가 TodoWrite 미완료 또는 `max_tokens` truncation을 감지해 `endedWithUnfinishedWork`를 status/end event에 싣는 최소 신호만 반영했다. |
 | `bc5b6f058` FE 후속 | unfinished work background completion 표시 | **2026-07-20 부분 반영.** Teamver embed background toast/desktop notification이 `endedWithUnfinishedWork`를 `incomplete` notice로 매핑한다. 성공 preview 링크는 유지하되 완료 문구·성공음·성공 톤은 피한다. |
-| `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **P1 후보.** 의도 감지/프롬프트 안정성에 도움 가능성이 있으나 DB/server run state 변경이 커서 background/comment run 회귀 테스트 확보 후 검토. |
+| `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **2026-07-21 부분 반영.** DB latch/intent-gated stable block은 Teamver 구조와 맞지 않아 보류. 사용자 작성 텍스트 extractor만 포팅해 Research fallback query 오염을 차단했다. |
 
 `origin/main`은 현재 `94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`까지 반영되어 있다. `staging...origin/main` divergence는 `703 / 586`으로, 2026-07-15 기준 `665 / 410`보다 더 벌어졌다. 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.
 
@@ -255,6 +256,6 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 1. **P0:** `cdffb1b63` library ingest SSRF 차단을 먼저 검토한다. web-fetch/사이트 분석 기능을 출시하려면 외부 URL 접근 안전장치가 선행되어야 한다.
 2. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
-3. **P1:** `04236af50` user-authored text only intent latch는 memory/run DB 경로 변경이 커서 바로 적용하지 말고, background/comment 재진입 회귀 테스트와 함께 별도 검토한다.
+3. **P1:** `04236af50` user-authored text only intent latch는 extractor만 적용했다. DB latch는 memory/run DB 경로 변경이 커서 바로 적용하지 말고, background/comment 재진입 회귀 테스트와 함께 별도 검토한다.
 4. **P1:** `bc5b6f058` unfinished work completion 표시 보정은 “작업 완료처럼 보이지만 결과가 없는” 불만과 연결되므로, run completeness contract를 Teamver background run과 대조한 뒤 최소 포팅 가능성을 확인한다.
 5. **P1/P2:** slim system prompt/token 절약 패치는 추가 문구 단위 포팅만 허용한다. 전체 slim charter 전환은 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.
