@@ -6,6 +6,8 @@ import {
   AUTO_CONTINUE_PROMPT_SENTINEL,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
+  buildAutoContinueIncompleteOutputPrompt,
+  extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
   rollbackAutoContinueCount,
@@ -19,8 +21,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT.length).toBeGreaterThan(0);
   });
 
-  it('scopes the auto-continue cap to two retries per conversation', () => {
-    expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBe(2);
+  it('scopes the auto-continue cap to three retries per conversation', () => {
+    expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBe(3);
     expect(Number.isInteger(AUTO_CONTINUE_MAX_PER_CONVERSATION)).toBe(true);
     expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBeGreaterThanOrEqual(1);
   });
@@ -50,6 +52,37 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       ),
     ).toBe(true);
     expect(isAutoContinueIncompleteOutputPrompt('새 프로젝트에서 슬라이드 만들어줘')).toBe(false);
+  });
+
+  it('escalates the prompt on later automatic-continue attempts', () => {
+    const first = buildAutoContinueIncompleteOutputPrompt({ attempt: 1 });
+    const second = buildAutoContinueIncompleteOutputPrompt({ attempt: 2 });
+    expect(first).toContain('앞선 응답이 슬라이드 결과물을');
+    expect(second).toContain('FINAL RETRY');
+    expect(second).not.toEqual(first);
+  });
+
+  it('threads partial HTML and plan outline into the auto-continue prompt', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: '<!doctype html><html><head>',
+      planOutline: '슬라이드 구성:\n01 표지',
+    });
+    expect(prompt).toContain('```html');
+    expect(prompt).toContain('<!doctype html>');
+    expect(prompt).toContain('슬라이드 구성');
+  });
+});
+
+describe('extractAutoContinueContextFromAssistant', () => {
+  it('recovers partial artifact HTML and prose outline from assistant text', () => {
+    const recovered = extractAutoContinueContextFromAssistant({
+      content:
+        '슬라이드 구성:\n01 표지\n<artifact type="text/html">\n<!doctype html><html><head>\n',
+      events: [],
+    });
+    expect(recovered.planOutline).toContain('슬라이드 구성');
+    expect(recovered.partialHtml).toContain('<!doctype html>');
   });
 });
 

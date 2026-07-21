@@ -1,3 +1,5 @@
+import type { ChatMessage } from '../types';
+
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
 // (conversation, agent) and seeds only this turn (skipTranscript), so the agent
@@ -55,14 +57,60 @@ export function isAutoContinueIncompleteOutputPrompt(content: string | null | un
   return false;
 }
 
-// Cap on automatic continue attempts inside a single conversation. Two retries
-// is the sweet spot from demo observation: one retry salvages "cut off"
-// runs; a second retry catches the "the model produced a plan-then-shell
-// pattern twice" case that the stricter fallback prompt is specifically
-// written for. A third attempt would exceed reasonable token spend for a
-// genuinely broken turn where the model can't recover. Manual retry stays
-// available beyond the cap via the existing failed-run "다시 시도" button.
-export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 2;
+const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
+  '[FINAL RETRY] 이전 자동 이어쓰기도 사용 가능한 슬라이드 덱을 만들지 못했습니다. ' +
+  '이번 응답은 반드시 `<artifact type="text/html" identifier="...">`로 시작해서 `</artifact>`로 끝나야 합니다. ' +
+  '인사, 사과, 계획, 목차 나열, "만들겠습니다" 약속, question-form은 금지입니다. ' +
+  '응답 전체가 하나의 완전한 `<!doctype html>…</html>` 덱이어야 하며 최소 10장 이상 실제 슬라이드 콘텐츠를 포함하세요. ' +
+  '(English: Output ONLY one complete HTML deck artifact — no prose before or after it.)';
+
+const AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT = 4000;
+const AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT = 2000;
+
+export type AutoContinuePromptContext = {
+  /** 1-based attempt index for this automatic continue fire. */
+  attempt: number;
+  partialHtml?: string | null;
+  planOutline?: string | null;
+};
+
+// Cap on automatic continue attempts inside a single conversation. Three
+// retries covers plan-only → partial shell → truncated head patterns
+// observed in Teamver embed API runs without burning unbounded tokens.
+// Manual retry stays available beyond the cap via the failed-run affordance.
+export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 3;
+
+/** Build the user prompt for a capped automatic incomplete-output continue. */
+export function buildAutoContinueIncompleteOutputPrompt(
+  context: AutoContinuePromptContext = { attempt: 1 },
+): string {
+  const attempt = Math.max(1, Math.floor(context.attempt));
+  const parts: string[] = [
+    attempt >= 2
+      ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
+      : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+  ];
+
+  const outline = context.planOutline?.trim();
+  if (outline) {
+    parts.push(
+      '\n\n[이전 응답의 슬라이드 목차/방향 — 그대로 사용하고 다시 설명하지 마세요:]\n'
+        + outline.slice(0, AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT),
+    );
+  }
+
+  const partial = context.partialHtml?.trim();
+  if (partial) {
+    parts.push(
+      '\n\n[이전에 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
+        + '```html\n'
+        + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
+        + '\n```',
+    );
+  }
+
+  return parts.join('');
+}
 
 // Error status-event code used for the "결과물이 완성되지 않아 이어쓰기를
 // 시도합니다" notice we drop into the assistant card just before the
@@ -135,4 +183,56 @@ export function rollbackAutoContinueCount(
   const next = Math.max(0, (counts.get(conversationId) ?? 1) - 1);
   counts.set(conversationId, next);
   return next;
+}
+
+const ARTIFACT_BODY_RE = /<artifact\b[^>]*>([\s\S]*?)<\/artifact>/gi;
+const DOCTYPE_SNIPPET_RE = /<!doctype\s+html[\s\S]*/i;
+
+/** Recover partial HTML / plan outline from a failed assistant row for auto-continue. */
+export function extractAutoContinueContextFromAssistant(
+  message: Pick<ChatMessage, 'content' | 'events'>,
+  overrides?: { partialHtml?: string | null; planOutline?: string | null },
+): Pick<AutoContinuePromptContext, 'partialHtml' | 'planOutline'> {
+  let partialHtml = overrides?.partialHtml?.trim() || null;
+  let planOutline = overrides?.planOutline?.trim() || null;
+
+  const textParts: string[] = [];
+  if (message.content?.trim()) textParts.push(message.content);
+  for (const event of message.events ?? []) {
+    if ((event.kind === 'text' || event.kind === 'thinking') && typeof event.text === 'string') {
+      textParts.push(event.text);
+    }
+  }
+  const combined = textParts.join('\n');
+
+  if (!partialHtml && combined) {
+    for (const match of combined.matchAll(ARTIFACT_BODY_RE)) {
+      const body = match[1]?.trim();
+      if (body && /<!doctype\s+html|<html\b/i.test(body)) {
+        partialHtml = body;
+        break;
+      }
+    }
+    if (!partialHtml) {
+      const openIdx = combined.search(/<artifact\b[^>]*>/i);
+      if (openIdx >= 0) {
+        const tail = combined.slice(openIdx).replace(/<artifact\b[^>]*>/i, '').trim();
+        if (/<!doctype\s+html|<html\b/i.test(tail)) partialHtml = tail;
+      }
+    }
+    if (!partialHtml) {
+      const docMatch = combined.match(DOCTYPE_SNIPPET_RE);
+      if (docMatch?.[0]) partialHtml = docMatch[0].trim();
+    }
+  }
+
+  if (!planOutline && combined.trim()) {
+    const stripped = combined
+      .replace(ARTIFACT_BODY_RE, '')
+      .replace(/<artifact\b[\s\S]*$/i, '')
+      .trim();
+    if (stripped.length > 0) planOutline = stripped;
+  }
+
+  return { partialHtml, planOutline };
 }

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   formatFormAnswers,
+  isAllFormAnswersSkipped,
+  SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE,
   splitOnQuestionForms,
   parsePartialQuestionForm,
 } from '../../src/artifacts/question-form';
@@ -77,6 +79,21 @@ describe('splitOnQuestionForms', () => {
     );
 
     expect(text).toContain('- Primary surface: Mobile (iOS/Android) [value: mobile]');
+  });
+
+  it('appends a slide deliverable directive when every answer was skipped', () => {
+    const form = {
+      id: 'discovery',
+      title: 'Quick brief',
+      questions: [
+        { id: 'platform', label: 'Primary surface', type: 'radio' as const, options: ['Mobile', 'Desktop'] },
+        { id: 'audience', label: 'Audience', type: 'text' as const },
+      ],
+    };
+    expect(isAllFormAnswersSkipped(form, {})).toBe(true);
+    const text = formatFormAnswers(form, {}, { appendSlideDeliverableDirective: true });
+    expect(text).toContain('(skipped)');
+    expect(text).toContain(SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE);
   });
 
   it('parses the canonical <question-form> tag', () => {
