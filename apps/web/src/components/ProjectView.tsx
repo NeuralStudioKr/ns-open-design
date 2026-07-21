@@ -125,6 +125,7 @@ import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
+  isLiveLocalStreamBlockingAutoContinue,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
@@ -2042,7 +2043,22 @@ export function ProjectView({
                 rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
                 return;
               }
-              if (streamingConversationIdRef.current !== null) {
+              if (!abortRef.current) {
+                if (apiBackgroundRecoveryRef.current) {
+                  apiBackgroundRecoveryRef.current = false;
+                  clearApiBackgroundRecoveryBanner();
+                }
+                if (streamingConversationIdRef.current === activeConversationId) {
+                  clearStreamingMarker(activeConversationId);
+                }
+              }
+              if (
+                isLiveLocalStreamBlockingAutoContinue({
+                  abortController: abortRef.current,
+                  streamingConversationId: streamingConversationIdRef.current,
+                  targetConversationId: activeConversationId,
+                })
+              ) {
                 rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
                 return;
               }
@@ -4572,7 +4588,13 @@ export function ProjectView({
                 rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
                 return;
               }
-              if (streamingConversationIdRef.current !== null) {
+              if (
+                isLiveLocalStreamBlockingAutoContinue({
+                  abortController: abortRef.current,
+                  streamingConversationId: streamingConversationIdRef.current,
+                  targetConversationId: recoveryConversationId,
+                })
+              ) {
                 rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
                 return;
               }
@@ -4875,7 +4897,13 @@ export function ProjectView({
         });
         return false;
       }
-      if (currentConversationBusy) {
+      // Automatic continue must bypass a phantom-busy state (BYOK background
+      // recovery / stale reattach marker) when no real local abort is active.
+      // Without this, the setTimeout(600ms) that fires the auto-continue burns
+      // its slot on a false-positive busy signal and the user is stuck with an
+      // incomplete assistant row despite the "이어쓰기 시도 중" notice.
+      const bypassBusyForAutoContinue = meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current;
+      if (currentConversationBusy && !bypassBusyForAutoContinue) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
           prompt,
@@ -5214,12 +5242,29 @@ export function ProjectView({
                   autoContinueTimerRef.current = null;
                   const conversationStillActive =
                     messagesConversationIdRef.current === runConversationId;
-                  // Another stream already running (reattach / supersede) —
-                  // do not queue-and-burn the slot; roll the counter back.
-                  const stillStreamingElsewhere =
-                    streamingConversationIdRef.current !== null;
+                  if (!conversationStillActive) {
+                    rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
+                    return;
+                  }
+                  // Drop phantom BYOK recovery "streaming" so React-state
+                  // busy does not queue this send. Real local streams keep
+                  // abortRef and are blocked below.
+                  if (!abortRef.current) {
+                    if (apiBackgroundRecoveryRef.current) {
+                      apiBackgroundRecoveryRef.current = false;
+                      clearApiBackgroundRecoveryBanner();
+                    }
+                    if (streamingConversationIdRef.current === runConversationId) {
+                      clearStreamingMarker(runConversationId);
+                    }
+                  }
+                  const liveStreamBlocking = isLiveLocalStreamBlockingAutoContinue({
+                    abortController: abortRef.current,
+                    streamingConversationId: streamingConversationIdRef.current,
+                    targetConversationId: runConversationId,
+                  });
                   const sendNow = handleSendRef.current;
-                  if (!conversationStillActive || stillStreamingElsewhere || !sendNow) {
+                  if (liveStreamBlocking || !sendNow) {
                     rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
                     return;
                   }

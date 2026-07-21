@@ -4,6 +4,8 @@
 // its own module so ChatPane / ProjectView / AssistantMessage can import it
 // without a circular dependency.
 
+import { AUTO_CONTINUE_STATUS_CODE } from './resume';
+
 // AMR model-gateway console wallet (account, balance, recharge).
 // `source=open_design` tags the landing page_view so vela analytics can
 // attribute the visit to Open Design (per-product revenue/traffic attribution).
@@ -115,6 +117,18 @@ export function resolveRunFailureUi(
   agentId: string | null | undefined,
 ): RunFailureUi {
   if (code && NON_RETRYABLE_CODES.has(code)) {
+    return {
+      primaryAction: 'none',
+      messageKey: null,
+      secondaryRetry: false,
+      showSwitchCard: false,
+    };
+  }
+  // Auto-continue in flight: an automatic follow-up run has already been
+  // scheduled by ProjectView (setTimeout 600ms). Suppress the manual Retry /
+  // Continue affordance so the user cannot double-fire while the auto path is
+  // racing to start — the assistant-card notice is the source of truth here.
+  if (code === AUTO_CONTINUE_STATUS_CODE) {
     return {
       primaryAction: 'none',
       messageKey: null,

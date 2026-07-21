@@ -84,18 +84,45 @@ export function validateHtmlArtifact(content: string): HtmlArtifactValidationRes
 const INCOMPLETE_SHELL_BODY_CHECK_MAX = 2048;
 
 /**
+ * Above this length, we still enforce structural closure (`</html>` present)
+ * because a mid-KB artifact that starts with `<!doctype html>` but has no
+ * closing tag was mid-stream truncated by the model and is not a valid
+ * deliverable. Uncapped below this so a tiny hand-crafted embed
+ * (e.g. an inline SVG snippet wrapped in an html shell) still passes even
+ * without a formal `</html>` if it has real body content.
+ */
+const STRUCTURAL_CLOSURE_CHECK_MIN = 128;
+const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
+
+/**
  * Empty / scaffold HTML the model emits before real slide content.
  * Persist callers should skip silently — do not flash a refusal banner.
  *
- * Covers both the classic too-short shell (39–63 chars) and longer
- * doctype+meta scaffolds whose `<body>` still has no visible content
- * (e.g. charset-only heads that pass the 64-char length gate).
+ * Covers three failure modes observed in demos:
+ *   1. classic too-short shell (39–63 chars),
+ *   2. longer doctype+meta scaffolds whose `<body>` still has no visible
+ *      content (charset-only heads that pass the 64-char length gate),
+ *   3. mid-stream truncation where the model emitted a few KB of
+ *      `<head>` / `<style>` / partial `<body>` content but never reached
+ *      `</html>` — an artifact:end fired by parser.flush() on an unclosed
+ *      `<artifact>` block. Rendering that in the iframe shows a blank page
+ *      because most rendering engines wait for the closing tag; the run
+ *      should be flagged as incomplete so auto-continue kicks in.
  */
 export function isIncompleteHtmlDocumentShell(content: string): boolean {
   const trimmed = content.replace(/^﻿/, '').trim();
   if (trimmed.length === 0) return false;
   if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
   if (trimmed.length < MIN_HTML_LENGTH) return true;
+  // Truncation gate: any doctype-anchored artifact large enough to be a
+  // real deliverable must carry `</html>`. Missing closer = mid-stream
+  // truncation, regardless of how much prose/CSS the head accumulated.
+  if (
+    trimmed.length >= STRUCTURAL_CLOSURE_CHECK_MIN
+    && !HAS_HTML_CLOSE_RE.test(trimmed)
+  ) {
+    return true;
+  }
   if (trimmed.length > INCOMPLETE_SHELL_BODY_CHECK_MAX) return false;
   return isEffectivelyEmptyHtmlBody(trimmed);
 }

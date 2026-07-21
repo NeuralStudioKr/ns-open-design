@@ -99,6 +99,20 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   return options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml;
 }
 
+/** True when a live local AbortController (or another conversation's stream)
+ * must block the automatic-continue fire. Same-conversation "streaming"
+ * without abortRef is the BYOK background-recovery phantom and must NOT block. */
+export function isLiveLocalStreamBlockingAutoContinue(options: {
+  abortController: AbortController | null;
+  streamingConversationId: string | null;
+  targetConversationId: string;
+}): boolean {
+  if (options.abortController) return true;
+  const streaming = options.streamingConversationId;
+  if (!streaming) return false;
+  return streaming !== options.targetConversationId;
+}
+
 /** Roll back one consumed auto-continue slot when the fire path aborts. */
 export function rollbackAutoContinueCount(
   counts: Map<string, number>,

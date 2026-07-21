@@ -22,6 +22,13 @@ export const MAX_MAX_TOKENS = 200000;
 const LITELLM_MODELS = litellmData.models as Record<string, number>;
 
 const OVERRIDES: Record<string, number> = {
+  // Teamver/runtime model pickers use short Anthropic aliases that LiteLLM may
+  // not track under the bare id. Keep these above the generic fallback so deck
+  // HTML is not clipped at 8192 tokens and misreported as incomplete_output.
+  'claude-sonnet-4': 64000,
+  'claude-opus-4': 32000,
+  'claude-opus-4-8': 128000,
+
   // LiteLLM lists MiMo via OpenRouter and Novita aliases (16k / 32k) but
   // not the canonical `mimo-v2.5-pro` id we hand to Xiaomi's direct API.
   // 32k matches what issue #29 reports as the working ceiling.

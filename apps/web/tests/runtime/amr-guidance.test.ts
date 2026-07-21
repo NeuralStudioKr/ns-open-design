@@ -142,4 +142,21 @@ describe('resolveRunFailureUi', () => {
       expect(ui.secondaryRetry).toBe(false);
     }
   });
+
+  // Auto-continue is scheduled by ProjectView with a 600ms setTimeout. During
+  // that race window the failed assistant card must NOT surface a manual
+  // Retry/Continue button — a user click would double-fire the recovery and
+  // the streaming/rollback guards would then eat the auto-continue slot for
+  // no reason. Hide all recovery affordances until the auto-continue lands or
+  // is rolled back; the assistant-card "이어쓰기 시도 중" notice is the sole
+  // status surface.
+  it('hides retry/continue while an auto-continue turn is scheduled', () => {
+    for (const agent of ['claude', 'codex', 'amr', 'antigravity', null]) {
+      const ui = resolveRunFailureUi('auto_continue_incomplete_output', agent);
+      expect(ui.primaryAction).toBe('none');
+      expect(ui.secondaryRetry).toBe(false);
+      expect(ui.showSwitchCard).toBe(false);
+      expect(ui.messageKey).toBeNull();
+    }
+  });
 });

@@ -5,6 +5,7 @@ import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
+  isLiveLocalStreamBlockingAutoContinue,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../../src/runtime/resume';
@@ -120,6 +121,48 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
 
   it('does NOT fire when nothing indicates content incompleteness', () => {
     expect(shouldAutoContinueForIncompleteOutput(base)).toBe(false);
+  });
+});
+
+describe('isLiveLocalStreamBlockingAutoContinue', () => {
+  it('blocks when a local AbortController is active', () => {
+    expect(
+      isLiveLocalStreamBlockingAutoContinue({
+        abortController: new AbortController(),
+        streamingConversationId: 'c1',
+        targetConversationId: 'c1',
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT block same-conversation phantom streaming without abort', () => {
+    expect(
+      isLiveLocalStreamBlockingAutoContinue({
+        abortController: null,
+        streamingConversationId: 'c1',
+        targetConversationId: 'c1',
+      }),
+    ).toBe(false);
+  });
+
+  it('blocks when a different conversation is streaming', () => {
+    expect(
+      isLiveLocalStreamBlockingAutoContinue({
+        abortController: null,
+        streamingConversationId: 'other',
+        targetConversationId: 'c1',
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT block when nothing is streaming', () => {
+    expect(
+      isLiveLocalStreamBlockingAutoContinue({
+        abortController: null,
+        streamingConversationId: null,
+        targetConversationId: 'c1',
+      }),
+    ).toBe(false);
   });
 });
 

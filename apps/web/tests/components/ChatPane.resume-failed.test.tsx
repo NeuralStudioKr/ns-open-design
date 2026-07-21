@@ -68,15 +68,42 @@ function resumableFailedMessage(): ChatMessage {
   };
 }
 
+// Failed run whose last error event is the auto-continue notice ProjectView
+// appends right before it fires the 600ms setTimeout. The message is still
+// `resumable: true` so it participates in the persisted-recovery path on
+// reload, but the assistant card MUST NOT surface a manual Continue/Retry
+// button while the automatic follow-up is in-flight or scheduled — a double
+// click would race with the setTimeout fire and burn a slot for no reason.
+function autoContinueScheduledMessage(): ChatMessage {
+  return {
+    id: 'msg-auto-continue',
+    role: 'assistant',
+    content: 'The previous turn stopped after a plan; auto-continue is scheduled.',
+    createdAt: 2,
+    runStatus: 'failed',
+    resumable: true,
+    agentId: 'claude',
+    events: [
+      {
+        kind: 'status',
+        label: 'error',
+        detail: 'Deliverable is incomplete — trying an automatic continue…',
+        code: 'auto_continue_incomplete_output',
+      },
+    ],
+  };
+}
+
 function renderChat(opts: {
   onResumeRun?: (m: ChatMessage) => void;
   onRetry: (m: ChatMessage) => void;
   onSend?: (...args: unknown[]) => void;
   activeAgentId?: string;
+  messages?: ChatMessage[];
 }) {
   return render(
     <ChatPane
-      messages={[resumableFailedMessage()]}
+      messages={opts.messages ?? [resumableFailedMessage()]}
       streaming={false}
       error={null}
       projectId="project-1"
@@ -143,5 +170,29 @@ describe('ChatPane resume-on-failure', () => {
 
     expect(screen.queryByText('chat.resumeRunCta')).toBeNull();
     expect(screen.getByText('promptTemplates.retry')).toBeTruthy();
+  });
+
+  it('hides Continue and Retry while an auto-continue turn is scheduled', () => {
+    // ProjectView appends an AUTO_CONTINUE_STATUS_CODE error event and then
+    // schedules a fresh handleSend via setTimeout(600ms). During that race
+    // window the manual recovery buttons must be suppressed — otherwise a
+    // user click double-fires (manual send + auto setTimeout) and the
+    // streaming guard on the auto path burns a slot silently.
+    const onResumeRun = vi.fn();
+    const onRetry = vi.fn();
+    const onSend = vi.fn();
+    renderChat({
+      onResumeRun,
+      onRetry,
+      onSend,
+      activeAgentId: 'claude',
+      messages: [autoContinueScheduledMessage()],
+    });
+
+    expect(screen.queryByText('chat.resumeRunCta')).toBeNull();
+    expect(screen.queryByText('promptTemplates.retry')).toBeNull();
+    expect(onResumeRun).not.toHaveBeenCalled();
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
   });
 });

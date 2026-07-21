@@ -27,7 +27,9 @@
  *
  * - Full-page auth return (pending flag or Main FE /auth/* referrer)
  * - resetRefreshState: true (banner 「다시 시도」)
- * - Visible cookie newly appeared (cross-tab login on Main FE)
+ * - NOT a visible Main cookie hint by itself. Main cookies prove only that
+ *   Main FE has a browser-visible session; Design still needs its own BFF
+ *   HttpOnly session/exchange.
  *
  * bfcache `pageshow` alone must NOT reset decline — that re-opens sticky 400
  * refresh loops and feels like a spontaneous re-auth after tab restore.

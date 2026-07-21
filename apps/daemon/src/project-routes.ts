@@ -1935,8 +1935,18 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
 
   // ---- Messages -------------------------------------------------------------
 
-  app.get('/api/projects/:id/conversations/:cid/messages', (req, res) => {
-    const conv = getConversation(db, req.params.cid);
+  app.get('/api/projects/:id/conversations/:cid/messages', async (req, res) => {
+    // Mirror PUT: on Teamver managed hosts a conversation may exist in the
+    // client (and eventually in S3) before this node has a local row — e.g.
+    // HA sticky miss, fresh pod, or a race where the first write has not
+    // landed yet. Returning 404 here makes background recovery spam the
+    // browser console and skip server merges forever; recovering a stub
+    // (empty messages) matches PUT's recoverTeamverConversationForWrite
+    // so subsequent saves attach to a real conversation.
+    let conv = getConversation(db, req.params.cid);
+    if (!conv) {
+      conv = await recoverTeamverConversationForWrite(req.params.id, req.params.cid);
+    }
     if (!conv || conv.projectId !== req.params.id) {
       return res.status(404).json({ error: 'conversation not found' });
     }

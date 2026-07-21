@@ -153,7 +153,10 @@ describe('fetchSkills', () => {
 
     const { fetchSkills } = await import('../../src/providers/registry');
     await expect(fetchSkills()).resolves.toEqual([{ id: 'deck-skill', mode: 'deck' }]);
-    expect(fetchMock).toHaveBeenCalledWith('/api/skills?catalog=slide');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/skills?catalog=slide',
+      expect.objectContaining({ credentials: 'include', redirect: 'manual' }),
+    );
     embedSpy.mockRestore();
     brandingSpy.mockRestore();
   });
@@ -169,7 +172,10 @@ describe('fetchSkills', () => {
       [{ id: 'deck-skill', mode: 'deck' }],
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('/api/skills?catalog=slide');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/skills?catalog=slide',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
 
     await expect(fetchSkills({ slideOnly: true })).resolves.toEqual([{ id: 'deck-skill', mode: 'deck' }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -191,7 +197,10 @@ describe('fetchDesignTemplates', () => {
 
     await expect(fetchDesignTemplates()).resolves.toEqual([]);
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/design-templates');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/design-templates',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
   });
 
   it('passes a server-side mode filter when requested', async () => {
@@ -206,7 +215,10 @@ describe('fetchDesignTemplates', () => {
       { id: 'deck-1', mode: 'deck' },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/design-templates?mode=deck');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/design-templates?mode=deck',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
   });
 
   it('passes design-template search and pagination to the daemon', async () => {
@@ -224,6 +236,7 @@ describe('fetchDesignTemplates', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/design-templates?mode=deck&q=terminal+deck&limit=24&offset=48',
+      expect.objectContaining({ credentials: 'same-origin' }),
     );
   });
 
@@ -241,7 +254,10 @@ describe('fetchDesignTemplates', () => {
       [{ id: 'deck-1', mode: 'deck' }],
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('/api/design-templates?mode=deck&q=terminal+deck&limit=24');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/design-templates?mode=deck&q=terminal+deck&limit=24',
+      expect.objectContaining({ credentials: 'same-origin' }),
+    );
 
     await expect(fetchDesignTemplates(options)).resolves.toEqual([{ id: 'deck-1', mode: 'deck' }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);

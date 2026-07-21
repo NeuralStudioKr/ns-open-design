@@ -36,23 +36,18 @@ describe('BYOK terminal message PUT hooks', () => {
     expect(matches ?? []).toHaveLength(0);
   });
 
-  it('limits missing-conversation write recovery to Teamver managed projects', () => {
+  it('recovers missing conversations on message GET the same way as PUT', () => {
     const source = readFileSync(
       new URL('../src/project-routes.ts', import.meta.url),
       'utf8',
     );
-    const helperIndex = source.indexOf('function recoverTeamverConversationForWrite');
-    expect(helperIndex).toBeGreaterThanOrEqual(0);
-    const helper = source.slice(helperIndex, helperIndex + 1_400);
-
-    expect(helper).toContain('isTeamverDesignManaged()');
-    expect(helper).toContain('isSafeId(projectId)');
-    expect(helper).toContain('isSafeId(conversationId)');
-    expect(
-      helper.includes('getProject(db, projectId)')
-      || helper.includes('getProjectAsync(db, projectId)'),
-    ).toBe(true);
-    expect(helper).toContain('insertConversation(db');
-    expect(helper).toContain('teamver_conversation_recovered_for_write');
+    const getIndex = source.indexOf(
+      "app.get('/api/projects/:id/conversations/:cid/messages'",
+    );
+    expect(getIndex).toBeGreaterThanOrEqual(0);
+    const handler = source.slice(getIndex, getIndex + 1_200);
+    expect(handler).toContain('async (req, res)');
+    expect(handler).toContain('recoverTeamverConversationForWrite');
+    expect(handler).toContain("res.json({ messages: listMessages(db, req.params.cid) })");
   });
 });

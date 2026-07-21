@@ -316,6 +316,32 @@ describe('ChatPane streaming state', () => {
     expect(copied).toContain('json-rpc id 4: Connection reset by server');
   });
 
+  it('formats run error diagnostics with a distinct run id when present', () => {
+    expect(buildRunErrorDiagnosticText({
+      message: 'Service unavailable. Try again.',
+      rawMessage: 'json-rpc id 4: Connection reset by server',
+      errorCode: 'UPSTREAM_UNAVAILABLE',
+      traceId: 'run-abc',
+      runId: 'run-real-123',
+      projectId: 'project-1',
+      conversationId: 'conv-1',
+      assistantMessageId: 'assistant-1',
+      agentId: 'amr',
+    })).toContain('run_id: run-real-123');
+  });
+
+  it('falls back to trace id for legacy diagnostics without a run id', () => {
+    const diagnostic = buildRunErrorDiagnosticText({
+      message: 'Run failed.',
+      traceId: 'legacy-run-id',
+      projectId: 'project-1',
+      conversationId: 'conv-1',
+    });
+
+    expect(diagnostic).toContain('trace_id: legacy-run-id');
+    expect(diagnostic).toContain('run_id: legacy-run-id');
+  });
+
   it('formats run error diagnostics with a raw error when guidance copy differs', () => {
     expect(buildRunErrorDiagnosticText({
       message: 'Service unavailable. Try again.',

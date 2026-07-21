@@ -45,7 +45,7 @@ import { commentTargetDisplayName, commentsToAttachments, simplePositionLabel } 
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
-import { RESUME_CONTINUE_PROMPT } from '../runtime/resume';
+import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import {
   ChatComposer,
   type ChatComposerHandle,
@@ -623,6 +623,7 @@ interface RunErrorDiagnosticInput {
   rawMessage?: string | null;
   errorCode?: string;
   traceId?: string;
+  runId?: string | null;
   projectId?: string | null;
   conversationId?: string | null;
   assistantMessageId?: string;
@@ -851,6 +852,16 @@ export function ChatPane({
     (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus),
   );
   const retryAssistant = retryableAssistantMessage(messages, lastAssistantId, streaming);
+  const diagnosticAssistant = useMemo(() => {
+    if (retryAssistant) return retryAssistant;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message?.role === 'assistant' && message.runStatus === 'failed') {
+        return message;
+      }
+    }
+    return null;
+  }, [messages, retryAssistant]);
   // The failed run's error event lives on the (persisted) assistant message, so
   // the error card + AMR card survive a reload — unlike the ephemeral global
   // `error` state. Drive both off this event.
@@ -862,11 +873,29 @@ export function ChatPane({
     }
     return null;
   })();
+  const diagnosticRunErrorEvent = (() => {
+    if (failedRunErrorEvent) return failedRunErrorEvent;
+    const evs = diagnosticAssistant?.events ?? [];
+    for (let i = evs.length - 1; i >= 0; i--) {
+      const ev = evs[i];
+      if (ev?.kind === 'status' && ev.label === 'error') return ev;
+    }
+    return null;
+  })();
   // Per-case failure UI (button + copy + whether to promote AMR). Only
   // meaningful for a failed run (retryAssistant present).
   const runFailureUi = retryAssistant
     ? resolveRunFailureUi(failedRunErrorEvent?.code, retryAssistant.agentId)
     : null;
+  // When the last error event on the failed run is the auto-continue notice,
+  // ProjectView has already scheduled a fresh run (setTimeout 600ms) — hide
+  // ALL manual recovery affordances so the user cannot double-fire in the
+  // race window. Distinct from `runFailureUi.primaryAction === 'none'` so
+  // this specifically covers the auto-continue path without accidentally
+  // gating the NON_RETRYABLE_CODES cases (which have their own already-none
+  // return path but still want the copy button).
+  const autoContinueScheduled =
+    failedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE;
   // Offer Continue (resume) when the failed run is resumable AND the active
   // agent still matches the agent that produced it. The daemon stores a
   // resumable session per (conversation, agent); after an agent switch the new
@@ -881,22 +910,24 @@ export function ChatPane({
   const canResumeFailedRun =
     !!retryAssistant?.resumable &&
     !!retryAssistant?.agentId &&
-    retryAssistant.agentId === config?.agentId;
+    retryAssistant.agentId === config?.agentId &&
+    !autoContinueScheduled;
   // Prefer a case-specific message (AMR auth / balance) over the raw upstream
   // string; fall back to the live global error (also covers conversation-load
   // / audio errors) then the persisted run error so a reload still shows it.
-  const rawError = error ?? failedRunErrorEvent?.detail ?? null;
+  const rawError = error ?? failedRunErrorEvent?.detail ?? diagnosticRunErrorEvent?.detail ?? null;
   const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
         message: displayError,
         rawMessage: rawError,
-        errorCode: failedRunErrorEvent?.code,
-        traceId: retryAssistant?.runId,
+        errorCode: failedRunErrorEvent?.code ?? diagnosticRunErrorEvent?.code,
+        traceId: diagnosticAssistant?.runId,
+        runId: diagnosticAssistant?.runId,
         projectId,
         conversationId: activeConversationId,
-        assistantMessageId: retryAssistant?.id,
-        agentId: retryAssistant?.agentId,
+        assistantMessageId: diagnosticAssistant?.id,
+        agentId: diagnosticAssistant?.agentId,
       })
     : null;
   const [copiedErrorDiagnostic, setCopiedErrorDiagnostic] = useState(false);
@@ -3112,7 +3143,7 @@ export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): str
   const lines = [
     'Open Design run error diagnostics',
     `trace_id: ${input.traceId ?? 'n/a'}`,
-    `run_id: ${input.traceId ?? 'n/a'}`,
+    `run_id: ${input.runId ?? input.traceId ?? 'n/a'}`,
     `error_code: ${input.errorCode ?? 'n/a'}`,
     `project_id: ${input.projectId ?? 'n/a'}`,
     `conversation_id: ${input.conversationId ?? 'n/a'}`,

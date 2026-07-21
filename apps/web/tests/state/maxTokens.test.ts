@@ -18,6 +18,14 @@ describe('modelMaxTokensDefault', () => {
     expect(modelMaxTokensDefault('claude-haiku-4-5')).toBe(64000);
   });
 
+  it('keeps Teamver short Anthropic aliases above the fallback cap', () => {
+    expect((litellmData.models as Record<string, number>)['claude-sonnet-4']).toBeUndefined();
+    expect((litellmData.models as Record<string, number>)['claude-opus-4-8']).toBeUndefined();
+    expect(modelMaxTokensDefault('claude-sonnet-4')).toBe(64000);
+    expect(modelMaxTokensDefault('claude-opus-4')).toBe(32000);
+    expect(modelMaxTokensDefault('claude-opus-4-8')).toBe(128000);
+  });
+
   it('lets OVERRIDES win over LiteLLM data', () => {
     // mimo-v2.5-pro is not in LiteLLM, so this asserts the OVERRIDES path
     // (not the LiteLLM path) supplied the answer.

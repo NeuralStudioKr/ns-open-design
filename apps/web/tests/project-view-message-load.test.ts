@@ -270,10 +270,17 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
+    expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
+    expect(autoOpenBlock).toContain("clearStreamingMarker(runConversationId)");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");
     expect(autoOpenBlock).toContain("rollbackAutoContinueCount(conversationAutoContinueCountRef.current");
     expect(autoOpenBlock).toContain("autoContinueTimerRef.current = window.setTimeout");
     expect(autoOpenBlock).toContain("if (runIsVisible() && !canAutoContinue) setError(deliverableError)");
+    // The 600ms auto-continue fire path must clear phantom BYOK recovery
+    // streaming and only block on a live AbortController / other conversation.
+    expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
+    expect(autoOpenBlock).toContain("clearStreamingMarker(runConversationId)");
+    expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current");
     // Keep this path quiet in production DevTools. The user-facing assistant
     // status event is the observable signal; console noise made previous demo
     // failures look scarier than they were.

@@ -52,6 +52,54 @@ describe('validateHtmlArtifact', () => {
     expect(isIncompleteHtmlDocumentShell(large)).toBe(false);
   });
 
+  it('classifies a mid-stream truncated doctype+head+style artifact as an incomplete shell', () => {
+    // Simulates parser.flush() over an unclosed <artifact> tag: the model
+    // produced multiple KB of CSS inside <head> before the response was cut
+    // by max_tokens (or an SSE disconnect), so no </html> ever arrived. The
+    // preview iframe cannot render a deck from this; the run must fall
+    // through to auto-continue instead of being counted as "완료됨".
+    const paddedStyle = '.card{padding:1rem;color:#333;}'.repeat(200);
+    const truncated =
+      `<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>${paddedStyle}</style></head>`
+      + `<body><section class="slide active"><h1>Cover</h1></section>`;
+    expect(truncated.length).toBeGreaterThan(2048);
+    expect(truncated.includes('</html>')).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(truncated)).toBe(true);
+  });
+
+  it('classifies a mid-KB head-only truncation as an incomplete shell', () => {
+    // Head-only truncation between the classic 40-byte scaffold and the
+    // multi-KB density (e.g. 700–1500 bytes of `<meta>` / `<style>` prose
+    // with no `<body>` and no `</html>`). The 2048-byte body-emptiness
+    // window catches this alongside the closure gate above so both slices
+    // reject uniformly.
+    const shortishTrunc =
+      `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>Deck</title>`
+      + `<style>${'body{margin:0;}'.repeat(30)}</style>`;
+    expect(shortishTrunc.length).toBeGreaterThan(128);
+    expect(shortishTrunc.length).toBeLessThan(2048);
+    expect(shortishTrunc.includes('</html>')).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(shortishTrunc)).toBe(true);
+  });
+
+  it('accepts a short doctype+body document that omits an explicit </html> close', () => {
+    // Below the 128-byte structural-closure floor, still allow browsers'
+    // implicit-close behavior — a tiny embed snippet without </html> that
+    // meets the length + doctype + structural-body gates should not be
+    // flagged as truncated. This keeps the truncation heuristic from
+    // over-firing on hand-crafted one-liner shells shorter than any
+    // realistic deck deliverable.
+    const nearFloor =
+      '<!doctype html><html><body><p>ok, this content is real deliverable text.</p></body>';
+    expect(nearFloor.length).toBeGreaterThanOrEqual(64);
+    expect(nearFloor.length).toBeLessThan(128);
+    expect(nearFloor.includes('</html>')).toBe(false);
+    // Structural closure gate does not fire below the 128-byte floor; the
+    // body check still passes because <p> is a structural tag with text
+    // content inside it.
+    expect(isIncompleteHtmlDocumentShell(nearFloor)).toBe(false);
+  });
+
   it('does not treat slide-shaped empty sections as incomplete shells', () => {
     const shell =
       '<!doctype html><html><head><meta charset="utf-8"></head><body><section class="slide"></section></body></html>';
