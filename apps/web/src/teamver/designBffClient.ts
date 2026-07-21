@@ -576,29 +576,31 @@ async function trySoftStickyRecovery(options?: {
       < DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS
     && !authRefreshStickySurvivalLastOk;
 
+  const clearSoftAfterEnsure = async (): Promise<boolean> => {
+    // Probe-alone must not clear sticky — clear-before-hydrate re-opened
+    // POST /auth/refresh + probe storms when ensure/hydrate then failed.
+    if (!(await ensureDesignBffSessionAuthenticated())) return false;
+    authRefreshStickySurvivalLastOk = true;
+    resetDesignAuthRefreshDeclined();
+    noteAuthRefreshPostSuppressed();
+    return true;
+  };
+
   if (!skipProbeLadder) {
     authRefreshStickySurvivalProbeAt = Date.now();
     // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
     if (await probeDesignBffSessionAuthenticated()) {
-      authRefreshStickySurvivalLastOk = true;
-      resetDesignAuthRefreshDeclined();
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-    if (await probeDesignBffSessionAuthenticated()) {
-      authRefreshStickySurvivalLastOk = true;
-      resetDesignAuthRefreshDeclined();
-      return true;
+      if (await clearSoftAfterEnsure()) return true;
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
+      if (await probeDesignBffSessionAuthenticated()) {
+        if (await clearSoftAfterEnsure()) return true;
+      }
     }
 
     // 2) ensure via GET /auth/session — can refresh + Set-Cookie on the main response.
     //    session-probe alone cannot revive absolute-expired access.
-    if (await ensureDesignBffSessionAuthenticated()) {
-      authRefreshStickySurvivalLastOk = true;
-      resetDesignAuthRefreshDeclined();
-      noteAuthRefreshPostSuppressed();
-      return true;
-    }
+    if (await clearSoftAfterEnsure()) return true;
     authRefreshStickySurvivalLastOk = false;
   }
 
@@ -610,17 +612,14 @@ async function trySoftStickyRecovery(options?: {
   authRefreshSoftForcePostAt = now;
   const bffResult = await postAuthRefreshCoordinated(resolveDesignBffRefreshUrl());
   if (bffResult.ok) {
-    authRefreshStickySurvivalLastOk = true;
-    resetDesignAuthRefreshDeclined();
-    authRefreshPostSuppressedUntil = 0;
-    return true;
+    if (await clearSoftAfterEnsure()) {
+      authRefreshPostSuppressedUntil = 0;
+      return true;
+    }
+    authRefreshStickySurvivalLastOk = false;
+    return false;
   }
-  if (await ensureDesignBffSessionAuthenticated()) {
-    authRefreshStickySurvivalLastOk = true;
-    resetDesignAuthRefreshDeclined();
-    noteAuthRefreshPostSuppressed();
-    return true;
-  }
+  if (await clearSoftAfterEnsure()) return true;
   // Force-POST already failed and ensure just failed — do not leave a stale
   // "try ensure again" expectation for the next 15s window.
   authRefreshStickySurvivalLastOk = false;
@@ -637,11 +636,8 @@ async function tryHardStickySurvival(): Promise<boolean> {
   if (skipProbe) return false;
 
   authRefreshStickySurvivalProbeAt = Date.now();
+  // Hard sticky: probe only — ensure /auth/session can re-hit Main refresh.
   if (await probeDesignBffSessionAuthenticated()) {
-    authRefreshStickySurvivalLastOk = true;
-    return true;
-  }
-  if (await ensureDesignBffSessionAuthenticated()) {
     authRefreshStickySurvivalLastOk = true;
     return true;
   }
@@ -653,7 +649,7 @@ export type RefreshDesignAuthCookieOptions = {
   /**
    * Soft sticky: allow one cooldown-gated POST /auth/refresh.
    * Default false — background polls must not re-open refresh/probe storms.
-   * Pass true from mutations, explicit user retry, and project re-entry.
+   * Pass true from C1 escalate and explicit 「다시 시도」 only.
    */
   allowSoftForcePost?: boolean;
 };
@@ -939,9 +935,10 @@ export async function fetchDesignAuthSession(
   setAuthRecoveryRefreshActive(recoveryLoad);
 
   // Soft/hard sticky + no explicit reset (C1 / focus): never hydrate via
-  // GET /auth/session (ensure_bff_session) on every backoff tick — that re-opens
-  // Main refresh storms. Cheap session-probe only; soft sticky clears on live
-  // probe then hydrates once. Hard sticky hydrates without clearing decline.
+  // loadDesignAuthSessionOnce (cookie recovery) while declined — clearing soft
+  // before hydrate re-opened POST /auth/refresh storms. Probe first; bare GET
+  // /auth/session hydrate; soft clears only after authenticated===true. Hard
+  // keeps decline.
   if (authRefreshDeclinedForSession) {
     if (inFlightSession) {
       return inFlightSession;
@@ -952,24 +949,24 @@ export async function fetchDesignAuthSession(
           cachedSession = null;
           return null;
         }
-        if (authRefreshDeclineKind === "soft") {
-          resetDesignAuthRefreshDeclined();
-          const value = await loadDesignAuthSessionOnce();
-          if (value?.authenticated) {
-            cachedSession = { value, at: Date.now() };
-          } else {
-            cachedSession = null;
-          }
-          return value;
-        }
         const client = getDesignBffClient();
         if (!client) return null;
-        const value = await probeDesignAuthSession(client);
-        if (value?.authenticated) {
-          cachedSession = { value, at: Date.now() };
-        } else {
+        let value: DesignAuthSession;
+        try {
+          // Bare ensure hydrate — no withDesignBffCookieAuthRecovery.
+          value = await probeDesignAuthSession(client);
+        } catch {
           cachedSession = null;
+          return null;
         }
+        if (!value.authenticated) {
+          cachedSession = null;
+          return value;
+        }
+        if (authRefreshDeclineKind === "soft") {
+          resetDesignAuthRefreshDeclined();
+        }
+        cachedSession = { value, at: Date.now() };
         return value;
       } catch (err) {
         const stale = peekAuthenticatedSessionCache(STALE_SESSION_GRACE_MS);

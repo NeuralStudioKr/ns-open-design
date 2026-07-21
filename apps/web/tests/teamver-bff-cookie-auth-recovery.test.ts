@@ -226,7 +226,9 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
       // allowSoftForcePost after cooldown: skip probe ladder; successful force POST
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
+      // then ensure must confirm before soft sticky clears.
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "ok" }), { status: 200 }))
+      .mockResolvedValueOnce(sessionJson(true));
     vi.stubGlobal("fetch", fetchMock);
 
     const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
@@ -273,7 +275,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     ).toBe(refreshCallsAfterDecline);
   });
 
-  it("keeps hard sticky after 400 but allows probe/ensure survival without POST", async () => {
+  it("keeps hard sticky after 400 but allows probe-only survival without POST", async () => {
     vi.useRealTimers();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -412,7 +414,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(refreshAfterSticky).toBe(1);
   });
 
-  it("fetchDesignAuthSession while sticky uses session-probe only (no ensure hydrate)", async () => {
+  it("fetchDesignAuthSession while sticky skips hydrate when session-probe is dead", async () => {
     vi.useRealTimers();
     const fetchMock = vi
       .fn()
@@ -420,7 +422,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
-      // C1 sticky quiet path
+      // C1 sticky quiet path — dead probe, no ensure hydrate
       .mockResolvedValueOnce(sessionProbe401());
     vi.stubGlobal("fetch", fetchMock);
 
@@ -446,9 +448,53 @@ describe("withDesignBffCookieAuthRecovery", () => {
       const url = String(c[0]);
       return url.includes("/auth/session") && !url.includes("session-probe");
     }).length;
-    // Sticky quiet path must not hydrate via ensure /auth/session.
+    // Dead probe: no ensure /auth/session hydrate and no recovery ladder.
     expect(sessionGetsAfter).toBe(sessionGetsBefore);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe"))).toBe(true);
+  });
+
+  it("soft sticky quiet clears decline only after authenticated hydrate", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false))
+      // Quiet: live probe then unauthenticated hydrate — sticky must remain.
+      .mockResolvedValueOnce(sessionProbe204())
+      .mockResolvedValueOnce(sessionJson(false))
+      // Quiet again: live probe + authenticated hydrate — soft clears.
+      .mockResolvedValueOnce(sessionProbe204())
+      .mockResolvedValueOnce(sessionJson(true));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      refreshDesignAuthCookie,
+      fetchDesignAuthSession,
+      isDesignAuthRefreshDeclined,
+      resetDesignAuthRefreshDeclinedForTests,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+
+    const failed = await fetchDesignAuthSession({ force: true });
+    expect(failed?.authenticated).toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    const refreshCount = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/auth/refresh"),
+    ).length;
+    expect(refreshCount).toBe(1);
+
+    const recovered = await fetchDesignAuthSession({ force: true });
+    expect(recovered?.authenticated).toBe(true);
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(1);
   });
 });
 

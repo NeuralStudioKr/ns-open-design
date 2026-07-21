@@ -5,7 +5,6 @@ import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
-  prepareDesignAuthSessionReload,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
   resetDesignAuthBareRefreshAttempt,
@@ -473,7 +472,8 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
             }));
             return "unreachable";
           }
-          prepareDesignAuthSessionReload();
+          // Clear session memory before sticky reset — prepareDesignAuthSessionReload
+          // first left a race that re-opened refresh ladders when redirect deferred.
           await clearTeamverEmbedSessionState();
           redirectToTeamverLoginPreservingRoute({
             returnTo:
@@ -745,7 +745,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
 
     const finalizeDeadSession = async () => {
       consumeTeamverAuthReturnPending();
-      prepareDesignAuthSessionReload();
+      // Clear embed memory first. prepareDesignAuthSessionReload() clears sticky
+      // before logout and races authenticated-looking UI back into refresh ladders
+      // when login redirect is deferred. Sticky clear belongs to auth-return /
+      // explicit 「다시 시도」.
       await clearTeamverEmbedSessionState();
       redirectToDesignLoginIfBffMissing({
         returnTo: resolveEmbedAuthReturnPath(

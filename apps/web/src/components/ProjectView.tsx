@@ -3521,6 +3521,8 @@ export function ProjectView({
 
   useEffect(() => {
     if (config.mode !== 'daemon' || !daemonLive || !activeConversationId || streaming) return;
+    // Soft/hard sticky: C1 owns recovery — reattach daemon GETs only add 401 noise.
+    if (isDesignAuthRefreshDeclined()) return;
     let cancelled = false;
     const reattachConversationId = activeConversationId;
 
@@ -3529,12 +3531,14 @@ export function ProjectView({
       if (missingRunLookupRetryTimersRef.current.has(key)) return;
       const retryTimer = window.setTimeout(() => {
         missingRunLookupRetryTimersRef.current.delete(key);
-        if (!cancelled) setReattachNonce((value) => value + 1);
+        if (cancelled || isDesignAuthRefreshDeclined()) return;
+        setReattachNonce((value) => value + 1);
       }, DAEMON_REATTACH_MISSING_RUN_RETRY_MS);
       missingRunLookupRetryTimersRef.current.set(key, retryTimer);
     };
 
     const attachRecoverableRuns = async () => {
+      if (isDesignAuthRefreshDeclined()) return;
       let activeRuns: Awaited<ReturnType<typeof listActiveChatRuns>> = [];
       try {
         activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
