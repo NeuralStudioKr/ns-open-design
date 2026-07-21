@@ -1583,36 +1583,38 @@ export function FileWorkspace({
 
   const resolvedPreviewFile = previewFile ?? stalePreviewBootstrapFile;
 
-  // Memory-only preview fallback for post-completion sessions where no file
-  // landed on disk. Two feeders:
-  //   1) `pendingArtifactRecovery` — sessionStorage-backed snapshot of a run
-  //      whose write hit a daemon 401 (see ProjectView.persistArtifact).
-  //      Survives hard refresh; primary source of truth during the outage.
-  //   2) `artifactHtml` — the current run's in-memory HTML from streaming.
-  //      Only surfaced when we are on a preview-file tab with no file (e.g.
-  //      the write is still pending) so it never fights an intentionally
-  //      opened, unrelated file the user is viewing.
-  // Only paints when the HTML is stable enough for a preview iframe so we
-  // never flash truncated CDN URLs / mid-stream debris as the fallback.
+  // Memory-only preview fallback for the daemon-401 recovery scenario.
+  //
+  // Only feeder is `pendingArtifactRecovery`, a sessionStorage-backed snapshot
+  // of a run whose write got 401'd (see ProjectView.persistArtifact 401 path).
+  // It survives a hard refresh, so a user who reloads mid-outage still sees
+  // the deck they just watched stream in.
+  //
+  // We intentionally do NOT use in-memory `artifactHtml` alone as a feeder:
+  // the streaming case is already handled by FileViewer.liveHtml when a file
+  // is present, and using it as a standalone fallback would risk painting an
+  // unrelated run's HTML on top of a deleted/differently-named tab. The stash
+  // has a concrete fileName tie-in via ProjectView.requestOpenFile, so we
+  // know the fallback is being shown on the right tab.
+  //
+  // isArtifactHtmlStableForPreview guards against a partial/streaming stash
+  // being surfaced — the persistArtifact path only stashes after the model's
+  // artifact block closes, but the defensive check catches edge cases like
+  // a mid-stream 401 rehearsal or a stash written by an older FE build.
   const memoryOnlyPreview = useMemo<{
     html: string;
     fileName: string | null;
-    reason: 'session' | 'streaming';
+    reason: 'session';
   } | null>(() => {
-    if (pendingArtifactRecovery?.html && isArtifactHtmlStableForPreview(pendingArtifactRecovery.html)) {
-      return {
-        html: pendingArtifactRecovery.html,
-        fileName: pendingArtifactRecovery.fileName,
-        reason: 'session',
-      };
-    }
-    if (!isPreviewFileTab) return null;
-    if (resolvedPreviewFile) return null;
-    const trimmed = artifactHtml?.trim();
-    if (!trimmed) return null;
-    if (!isArtifactHtmlStableForPreview(trimmed)) return null;
-    return { html: trimmed, fileName: null, reason: 'streaming' };
-  }, [pendingArtifactRecovery, isPreviewFileTab, resolvedPreviewFile, artifactHtml]);
+    if (!pendingArtifactRecovery?.html) return null;
+    if (!previewFileMatchesTab({ name: pendingArtifactRecovery.fileName }, activeTab)) return null;
+    if (!isArtifactHtmlStableForPreview(pendingArtifactRecovery.html)) return null;
+    return {
+      html: pendingArtifactRecovery.html,
+      fileName: pendingArtifactRecovery.fileName,
+      reason: 'session',
+    };
+  }, [pendingArtifactRecovery, activeTab]);
 
   // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
   // bump (chokidar bursts would otherwise remount FileViewer as "loading").
@@ -2489,24 +2491,22 @@ export function FileWorkspace({
             liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}
           />
         ) : memoryOnlyPreview ? (
-          // Memory-only fallback. The run completed and we have a stable HTML
-          // document in memory (either from the current `artifact` state or a
-          // sessionStorage stash left by a daemon-401 persist), but no file
-          // exists on disk yet (write failed / file list unreadable). Render
-          // the HTML directly so the user is not staring at an empty panel
-          // after 3 minutes of streaming; the ProjectView replay effect will
-          // retry the write once the cookie recovers and this branch will
-          // fall through to the FileViewer once the file lands.
+          // Memory-only fallback for the daemon-401 recovery path. The run
+          // finished streaming and produced a stable HTML document, but the
+          // write returned 401 because the BFF cookie died mid-flight, so
+          // nothing landed on disk. Render the stashed bytes directly so the
+          // user is not staring at an empty panel after minutes of streaming;
+          // ProjectView's auth-recovery listener retries the write when the
+          // cookie recovers and this branch falls through to the FileViewer
+          // once the file lands.
           <div className="viewer-memory-preview" data-testid="viewer-memory-preview">
-            {memoryOnlyPreview.reason === 'session' ? (
-              <div
-                className="viewer-memory-preview__banner"
-                role="status"
-                data-testid="viewer-memory-preview-banner"
-              >
-                {t('workspace.memoryOnlyPreviewSessionBanner')}
-              </div>
-            ) : null}
+            <div
+              className="viewer-memory-preview__banner"
+              role="status"
+              data-testid="viewer-memory-preview-banner"
+            >
+              {t('workspace.memoryOnlyPreviewSessionBanner')}
+            </div>
             <iframe
               key={memoryOnlyPreview.fileName ?? 'memory-preview'}
               className="viewer-memory-preview__frame"

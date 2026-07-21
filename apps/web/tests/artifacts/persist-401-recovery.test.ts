@@ -62,6 +62,12 @@ describe("ProjectView persist-401 recovery", () => {
     expect(source).toContain("writeProjectTextFileDetailed(\n            entry.projectId");
   });
 
+  it("does not replay stashed writes while auth refresh is sticky-declined", () => {
+    expect(source).toMatch(
+      /const replay = async \(\) => \{[\s\S]{0,300}if \(isDesignAuthRefreshDeclined\(\)\) return;/,
+    );
+  });
+
   it("drops the stash on non-401 replay failures so the listener does not loop", () => {
     expect(source).toMatch(
       /else if \(result\.status !== 401\)[\s\S]{0,200}clearPendingArtifactWrite\(entry\.projectId, entry\.fileName\)/,
@@ -77,6 +83,17 @@ describe("ProjectView persist-401 recovery", () => {
     // does not ghost the fresh turn while it streams.
     expect(source).toMatch(
       /setArtifact\(null\);[\s\S]{0,400}setPendingRecoveryPreview\(null\)/,
+    );
+  });
+
+  it("switches the workspace onto the (yet-nonexistent) file tab on stash so the fallback renders", () => {
+    // Without this, a user answering questions and hitting 401 on write
+    // stays on QUESTIONS_TAB after "완료됨" and never sees the fallback iframe.
+    // FileWorkspace.memoryOnlyPreview only fires inside a preview-file tab
+    // slot in the render ladder, so we need to punch the activeTab across
+    // to the file name that lives only in the stash.
+    expect(source).toMatch(
+      /if \(stashed\) \{[\s\S]{0,1500}requestOpenFile\(fileName\);/,
     );
   });
 });
@@ -98,6 +115,12 @@ describe("FileWorkspace memory-only preview fallback", () => {
     );
   });
 
+  it("only paints the fallback on the tab that matches the stashed fileName", () => {
+    expect(source).toContain(
+      "previewFileMatchesTab({ name: pendingArtifactRecovery.fileName }, activeTab)",
+    );
+  });
+
   it("renders the fallback iframe with a session-scoped banner between the FileViewer and pendingPreviewTab branches", () => {
     // Order matters: fallback sits AFTER resolvedPreviewFile (so a real file
     // still wins) and BEFORE pendingPreviewTab (so the fallback beats the
@@ -111,12 +134,16 @@ describe("FileWorkspace memory-only preview fallback", () => {
     );
   });
 
-  it("suppresses the streaming fallback outside of preview-file tabs", () => {
-    // The Design Files / Design System / Questions / browser tabs must
-    // keep their own content; the fallback only kicks in on a preview tab
-    // that has no resolved file.
+  it("only feeds the fallback from the stash (never from bare artifactHtml)", () => {
+    // Deliberately narrow: `artifactHtml` alone must not populate the
+    // fallback, otherwise a previous run's in-memory HTML could paint on
+    // top of an unrelated tab whose file was deleted. The stash carries
+    // the concrete fileName tied to persistArtifact + requestOpenFile.
     expect(source).toMatch(
-      /if \(!isPreviewFileTab\) return null;[\s\S]{0,120}if \(resolvedPreviewFile\) return null;/,
+      /const memoryOnlyPreview = useMemo[\s\S]{0,400}if \(!pendingArtifactRecovery\?\.html\) return null;/,
+    );
+    expect(source).not.toMatch(
+      /memoryOnlyPreview = useMemo[\s\S]{0,600}artifactHtml\?\.trim/,
     );
   });
 });

@@ -63,6 +63,7 @@ vi.mock('../../src/providers/byokProxyActive', () => ({
   },
   BYOK_PROXY_AUTH_BACKOFF_MS: 60_000,
   listActiveByokProxyStreams: (...args: unknown[]) => listActiveByokProxyStreams(...args),
+  shouldSkipByokProxyActivePoll: vi.fn(() => false),
 }));
 
 vi.mock('../../src/providers/registry', () => ({
