@@ -184,7 +184,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 4200);
+    const block = source.slice(start, start + 5200);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(block).toContain("conversationAutoContinueCountRef.current.set(activeConversationId");
@@ -196,7 +196,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("appendErrorStatusEvent(");
     expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
     expect(block).toContain("handleSendRef.current");
-    expect(block).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
+    expect(block).toContain("buildAutoContinueIncompleteOutputPrompt");
     expect(block).toContain("AUTO_CONTINUE_ENTRY_FROM");
   });
 
@@ -216,7 +216,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("saveMessage(project.id, recoveryConversationId, updatedAssistant");
     expect(block).toContain("finishRecovery()");
     expect(block).toContain("handleSendRef.current");
-    expect(block).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
+    expect(block).toContain("buildAutoContinueIncompleteOutputPrompt");
   });
 
   it("keeps the no-produced-HTML terminal path quiet in the browser console", () => {
@@ -269,7 +269,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("shouldAutoContinueForIncompleteOutput({");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
-    expect(autoOpenBlock).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
+    expect(autoOpenBlock).toContain("buildAutoContinueIncompleteOutputPrompt");
+    expect(autoOpenBlock).toContain("extractAutoContinueContextFromAssistant");
     expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
     expect(autoOpenBlock).toContain("clearStreamingMarker(runConversationId)");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");

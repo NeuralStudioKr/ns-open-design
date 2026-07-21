@@ -23,6 +23,8 @@ interface Props {
   // never reach it). Lets the Questions tab host track chip picks.
   onAnswerChange?: (questionId: string, value: string | string[]) => void;
   onSubmit?: (text: string, answers: Record<string, string | string[]>) => void;
+  /** Teamver slide-only embed: require an HTML deck when every answer is skipped. */
+  appendSlideDeliverableDirective?: boolean;
 }
 
 // Lets a parent (the Questions tab Continue button) trigger submission.
@@ -44,6 +46,7 @@ export const QuestionFormView = forwardRef<QuestionFormHandle, Props>(function Q
     onDraftChange,
     onAnswerChange,
     onSubmit,
+    appendSlideDeliverableDirective = false,
   },
   ref,
 ) {
@@ -102,13 +105,19 @@ export const QuestionFormView = forwardRef<QuestionFormHandle, Props>(function Q
     // skipAll() is the only path that intentionally bypasses this (the new
     // Questions-tab Skip button / countdown).
     if (!ready) return;
-    onSubmit(formatFormAnswers(form, answers), answers);
+    onSubmit(
+      formatFormAnswers(form, answers, { appendSlideDeliverableDirective }),
+      answers,
+    );
   }
 
   function handleSkipAll() {
     if (locked || !onSubmit) return;
     const empty: Record<string, string | string[]> = {};
-    onSubmit(formatFormAnswers(form, empty), empty);
+    onSubmit(
+      formatFormAnswers(form, empty, { appendSlideDeliverableDirective }),
+      empty,
+    );
   }
 
   // Per-question checkbox selection caps must hold.

@@ -26,6 +26,7 @@ const OVERRIDES: Record<string, number> = {
   // not track under the bare id. Keep these above the generic fallback so deck
   // HTML is not clipped at 8192 tokens and misreported as incomplete_output.
   'claude-sonnet-4': 64000,
+  'claude-sonnet-4-6': 64000,
   'claude-opus-4': 32000,
   'claude-opus-4-8': 128000,
 
