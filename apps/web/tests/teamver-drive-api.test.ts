@@ -377,7 +377,8 @@ describe("getTeamverDriveJson", () => {
     expect(beginMainSsoMismatchRecovery).toHaveBeenCalled();
   });
 
-  it("surfaces main_sso_required immediately without BFF refresh", async () => {
+  it("surfaces main_sso_required without BFF refresh when Design session memory is logged out", async () => {
+    mockedEmbedAuthed.mockReturnValue(false);
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(
         {
@@ -394,6 +395,39 @@ describe("getTeamverDriveJson", () => {
     );
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("delay-retries main_sso_required when Design session memory is still authenticated", async () => {
+    mockedEmbedAuthed.mockReturnValue(true);
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            detail: "main_sso_required",
+            code: "main_sso_required",
+            re_login_scope: "main",
+          },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            detail: "main_sso_required",
+            code: "main_sso_required",
+            re_login_scope: "main",
+          },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({ drives: [] }));
+
+    const pending = getTeamverDriveJson("/api/v2/shared-drive");
+    await vi.advanceTimersByTimeAsync(400);
+    await vi.advanceTimersByTimeAsync(400);
+    await expect(pending).resolves.toEqual({ drives: [] });
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it("recovers Main ACL 403 by reconciling stale workspace_id and retrying once", async () => {

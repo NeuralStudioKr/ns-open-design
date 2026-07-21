@@ -290,11 +290,25 @@ async function teamverDriveFetch(
     }
 
     if (shouldSkipDriveAuthRefresh(detail)) {
-      // Main HS256 SSO gate cannot be soft-retried — parent-domain re-login
-      // is the only recovery (missing cookie, expired cookie, or wrong Main
-      // account vs Design BFF). Mismatch triggers silent session rebind.
+      // Main HS256 SSO gate cannot be revived by Apps /auth/refresh.
+      // Mismatch → silent Main rebind. Required + live Design memory → HA
+      // sibling may still deliver teamver_access_token; delay-retry only.
       if (isDriveMainSsoUserMismatchBody(body)) {
         void beginMainSsoMismatchRecovery();
+        return response;
+      }
+      if (isDriveMainSsoRequiredBody(body)) {
+        if (isTeamverEmbedSessionAuthenticated()) {
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            await delay(DRIVE_AUTH_RETRY_DELAY_MS, signal);
+            throwIfDriveAborted(signal);
+            const softRetried = await doFetch();
+            if (softRetried.status !== 401 && softRetried.status !== 403) {
+              return softRetried;
+            }
+            response = softRetried;
+          }
+        }
         return response;
       }
       if (isDriveMainSsoGateBody(body)) {

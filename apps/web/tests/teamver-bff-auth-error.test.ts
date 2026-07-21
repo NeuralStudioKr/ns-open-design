@@ -161,6 +161,36 @@ describe("classifyTeamverBffAuthFailure", () => {
     expect(onRelogin).not.toHaveBeenCalled();
   });
 
+  it("handleTeamverDriveAuthFailure prefers retry when Main SSO required but Design still authenticated", () => {
+    const onRelogin = vi.fn();
+    const onTransient = vi.fn();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    expect(
+      handleTeamverDriveAuthFailure(new Error("teamver_drive_main_sso_required"), {
+        onRelogin,
+        onTransient,
+      }),
+    ).toBe(true);
+    expect(onTransient).toHaveBeenCalledTimes(1);
+    expect(onRelogin).not.toHaveBeenCalled();
+  });
+
+  it("handleTeamverDriveAuthFailure escalates Main SSO required to relogin when Design is logged out", () => {
+    const onRelogin = vi.fn();
+    const onTransient = vi.fn();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+
+    expect(
+      handleTeamverDriveAuthFailure(new Error("teamver_drive_main_sso_required"), {
+        onRelogin,
+        onTransient,
+      }),
+    ).toBe(true);
+    expect(onRelogin).toHaveBeenCalledTimes(1);
+    expect(onTransient).not.toHaveBeenCalled();
+  });
+
   it("formatTeamverEmbedAuthRequiredMessage prefers transient copy while authenticated", () => {
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
     expect(

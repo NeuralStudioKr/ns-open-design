@@ -199,7 +199,18 @@ export function handleTeamverDriveAuthFailure(
     // "연결을 확인하지 못했습니다" error UI that looks like a hard failure.
     return true;
   }
-  if (isTeamverDriveMainSsoRequiredError(err) || isTeamverDriveMainSsoGateError(err)) {
+  // Main SSO missing/expired: while Design embed still looks signed-in this is
+  // usually an HA cookie race — prefer in-place retry, not 「다시 로그인」.
+  // Relogin CTA only after Design memory also says logged out.
+  if (isTeamverDriveMainSsoRequiredError(err)) {
+    if (isTeamverEmbedSessionAuthenticated()) {
+      handlers.onTransient();
+      return true;
+    }
+    handlers.onRelogin();
+    return true;
+  }
+  if (isTeamverDriveMainSsoGateError(err)) {
     handlers.onRelogin();
     return true;
   }
