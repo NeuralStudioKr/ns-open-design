@@ -1423,6 +1423,8 @@ export function ProjectView({
   const savedArtifactRef = useRef<string | null>(null);
   /** Dedupe stream onDone vs onRunStatus terminal HTML auto-open for the same assistant row. */
   const htmlAutoOpenClaimedRef = useRef<Set<string>>(new Set());
+  /** Last-wins generation per assistant row — early onRunStatus timers must not finalize before onDone flush. */
+  const htmlAutoOpenGenerationRef = useRef<Map<string, number>>(new Map());
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
   /**
    * Gates the message-load auto-open recovery to the first load per
@@ -4861,78 +4863,78 @@ export function ProjectView({
         messagesConversationIdRef.current === runConversationId;
 
       const scheduleStreamRunHtmlAutoOpen = (fullText: string, delayMs = 0) => {
+        const generation = (htmlAutoOpenGenerationRef.current.get(assistantId) ?? 0) + 1;
+        htmlAutoOpenGenerationRef.current.set(assistantId, generation);
+        const isLatestTerminalAutoOpen = () =>
+          htmlAutoOpenGenerationRef.current.get(assistantId) === generation;
+
         const execute = () => {
           if (delayMs === 0 && htmlAutoOpenTimerRef.current !== null) {
             window.clearTimeout(htmlAutoOpenTimerRef.current);
             htmlAutoOpenTimerRef.current = null;
           }
-          const firstClaim = !htmlAutoOpenClaimedRef.current.has(assistantId);
-          if (firstClaim) {
-            htmlAutoOpenClaimedRef.current.add(assistantId);
-          }
           void (async () => {
+            if (!isLatestTerminalAutoOpen()) return;
             let nextFiles = await refreshProjectFiles();
-            const finalText = streamedText || fullText;
+            const finalText = latestAssistantMsg.content?.trim()
+              ? latestAssistantMsg.content
+              : (streamedText || fullText);
             let terminalArtifactPersistFailed = false;
-            const hadIncompleteParsedArtifact = Boolean(
-              parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
-            );
 
-            if (firstClaim) {
-              const artifactToPersist = resolveTerminalArtifactToPersist(
-                parsedArtifact,
-                finalText,
-                artifactFromStandaloneHtml,
-              );
-              if (artifactToPersist?.html) {
-                const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-                const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
-                  artifactHtml: artifactToPersist.html,
-                  producedFiles: producedBeforeFallback,
-                  readProjectHtml,
-                  allowAnyHtmlWrite: assistantAgentId === 'claude',
-                });
-                if (sameTurnHtmlWrite) {
-                  savedArtifactRef.current = sameTurnHtmlWrite.name;
-                  if (runIsVisible()) {
-                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
-                    requestOpenFile(sameTurnHtmlWrite.name);
-                  }
-                } else {
-                  const persistResult = await persistArtifact(
-                    artifactToPersist,
-                    nextFiles,
-                    finalText,
-                    startedAt,
-                  );
-                  terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
-                  nextFiles = await refreshProjectFiles();
+            const artifactToPersist = resolveTerminalArtifactToPersist(
+              parsedArtifact,
+              finalText,
+              artifactFromStandaloneHtml,
+            );
+            if (artifactToPersist?.html) {
+              const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+              const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
+                artifactHtml: artifactToPersist.html,
+                producedFiles: producedBeforeFallback,
+                readProjectHtml,
+                allowAnyHtmlWrite: assistantAgentId === 'claude',
+              });
+              if (sameTurnHtmlWrite) {
+                savedArtifactRef.current = sameTurnHtmlWrite.name;
+                if (runIsVisible()) {
+                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
+                  requestOpenFile(sameTurnHtmlWrite.name);
                 }
+              } else {
+                const persistResult = await persistArtifact(
+                  artifactToPersist,
+                  nextFiles,
+                  finalText,
+                  startedAt,
+                );
+                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
+                nextFiles = await refreshProjectFiles();
               }
             }
+
+            if (!isLatestTerminalAutoOpen()) return;
 
             const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
             const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
               ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
                 branding: { slideOnlyMvp },
               });
-            const shouldFailMissingSlideHtml = shouldFailSlideRunWithoutHtmlDeliverable(
+            const shouldFailMissingSlideHtml = shouldFailSlideRunForMissingHtmlDeliverable({
+              slideOnlyMvp,
+              producedHtmlToOpen,
+              parsedArtifact,
+              liveHtml,
               finalText,
-              { slideOnlyMvp },
-            );
-
-            if (
-              !producedHtmlToOpen
-              && (hadIncompleteParsedArtifact || shouldFailMissingSlideHtml)
-              && !terminalArtifactPersistFailed
-            ) {
+              terminalArtifactPersistFailed,
+            });
+            if (shouldFailMissingSlideHtml) {
               terminalArtifactPersistFailed = true;
             }
 
-            if (producedHtmlToOpen && firstClaim && runIsVisible()) {
+            if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
               requestOpenFile(producedHtmlToOpen);
-            } else if (!producedHtmlToOpen && firstClaim) {
+            } else if (!producedHtmlToOpen) {
               console.warn('[teamver] stream terminal auto-open produced no HTML', {
                 projectId: project.id,
                 conversationId: runConversationId,
@@ -4942,9 +4944,13 @@ export function ProjectView({
                 shouldFailMissingSlideHtml,
                 producedCount: produced.length,
                 eventCount: latestAssistantMsg.events?.length ?? 0,
+                autoOpenGeneration: generation,
               });
             }
 
+            if (!isLatestTerminalAutoOpen()) return;
+
+            const endedAt = Date.now();
             if (terminalArtifactPersistFailed) {
               const deliverableError = formatProjectRunDeliverableMissingError();
               if (runIsVisible()) setError(deliverableError);
@@ -4953,27 +4959,26 @@ export function ProjectView({
                 producedFiles: produced,
                 runStatus: 'failed',
                 resumable: true,
-                endedAt: prev.endedAt ?? Date.now(),
+                endedAt,
               }));
-              updateConversationLatestRun('failed', latestAssistantMsg.endedAt ?? Date.now());
-            } else if (firstClaim) {
+              updateConversationLatestRun('failed', endedAt);
+            } else {
               updateAssistant((prev) => ({
                 ...prev,
                 producedFiles: produced,
                 runStatus: resolveSucceededRunStatus(prev.runStatus),
+                endedAt: prev.endedAt ?? endedAt,
               }));
               updateConversationLatestRun(
                 resolveSucceededRunStatus(latestAssistantMsg.runStatus) ?? 'succeeded',
-                latestAssistantMsg.endedAt ?? Date.now(),
+                endedAt,
               );
             }
 
-            if (firstClaim) {
-              void saveMessage(project.id, runConversationId, latestAssistantMsg, {
-                telemetryFinalized: true,
-              });
-              await auditDesignSystemWorkspaceAfterRun(assistantId);
-            }
+            void saveMessage(project.id, runConversationId, latestAssistantMsg, {
+              telemetryFinalized: true,
+            });
+            await auditDesignSystemWorkspaceAfterRun(assistantId);
           })();
         };
         if (delayMs > 0) {
@@ -5276,11 +5281,6 @@ export function ProjectView({
             releaseOwnedDaemonRun();
             return;
           }
-          const endedAt = Date.now();
-          updateAssistant((prev) => ({
-            ...prev,
-            endedAt,
-          }));
           if (runCommentAttachments.length > 0) {
             void patchAttachedStatuses(runCommentAttachments, 'needs_review');
           }
@@ -5290,8 +5290,8 @@ export function ProjectView({
             cancelController,
           );
           if (ownsCurrentRun) {
-            // Defer succeeded/failed to scheduleStreamRunHtmlAutoOpen — an
-            // incomplete streamed artifact shell must not show "완료됨".
+            // Defer endedAt / succeeded / failed to scheduleStreamRunHtmlAutoOpen
+            // so slide-only runs never flash "완료됨" before deliverable checks.
           }
           if (config.mode === 'api') {
             dispatchTeamverBackgroundChat({
@@ -5446,14 +5446,18 @@ export function ProjectView({
             const endedAt = isTerminalRunStatus(runStatus) ? Date.now() : undefined;
             const runMayFinalize =
               !supersededRunsRef.current.has(controller);
+            const deferredTerminalSuccess =
+              slideOnlyMvp && runStatus === 'succeeded';
             updateAssistant(
               (prev) => ({
                 ...prev,
-                runStatus,
-                endedAt: endedAt === undefined ? prev.endedAt : prev.endedAt ?? endedAt,
+                runStatus: deferredTerminalSuccess ? 'running' : runStatus,
+                endedAt: endedAt === undefined || deferredTerminalSuccess
+                  ? prev.endedAt
+                  : prev.endedAt ?? endedAt,
               }),
             );
-            if (isTerminalRunStatus(runStatus)) {
+            if (isTerminalRunStatus(runStatus) && !deferredTerminalSuccess) {
               assistantPersist.persistNow(
                 runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
               );
@@ -5461,14 +5465,11 @@ export function ProjectView({
               assistantPersist.persistSoon();
             }
             if (!runMayFinalize) return;
-            updateConversationLatestRun(runStatus, endedAt);
+            if (!deferredTerminalSuccess) {
+              updateConversationLatestRun(runStatus, endedAt);
+            }
             if (isTerminalRunStatus(runStatus)) {
               clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-              if (runStatus === 'succeeded') {
-                // Terminal status can arrive before onDone when SSE drops early —
-                // defer so Write tool results land before auto-open.
-                scheduleStreamRunHtmlAutoOpen(streamedText, 400);
-              }
               scheduleConversationMessageRefresh(runConversationId);
             }
           },
@@ -8234,8 +8235,32 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
 
   return (
     /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|will create|will build|I'll|I will)/i.test(text)
-    || /(만들겠|작성하겠|생성하겠|수정하겠|반영하겠|완료|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠)/i.test(text)
+    || /(만들겠|작성하겠|생성하겠|수정하겠|반영하겠|제작하|결정하겠|확정|채우|출력|완료|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠)/i.test(text)
   );
+}
+
+/** Terminal slide-only run with no previewable HTML on disk must fail (last-wins auto-open). */
+export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
+  slideOnlyMvp: boolean;
+  producedHtmlToOpen: string | null;
+  parsedArtifact: { html?: string } | null;
+  liveHtml: string;
+  finalText: string;
+  terminalArtifactPersistFailed: boolean;
+}): boolean {
+  if (options.terminalArtifactPersistFailed) return false;
+  if (!options.slideOnlyMvp || options.producedHtmlToOpen) return false;
+
+  const artifactHtml = options.parsedArtifact?.html ?? options.liveHtml;
+  if (artifactHtml) {
+    if (isIncompleteHtmlDocumentShell(artifactHtml)) return true;
+    const validation = validateHtmlArtifact(artifactHtml);
+    if (!validation.ok) return true;
+  }
+
+  return shouldFailSlideRunWithoutHtmlDeliverable(options.finalText, {
+    slideOnlyMvp: true,
+  });
 }
 
 /** Pick the best HTML artifact candidate for terminal persist / auto-open. */

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
 import {
   resolveTerminalArtifactToPersist,
+  shouldFailSlideRunForMissingHtmlDeliverable,
   shouldFailSlideRunWithoutHtmlDeliverable,
 } from "../../src/components/ProjectView";
 
@@ -73,6 +74,45 @@ describe("shouldFailSlideRunWithoutHtmlDeliverable", () => {
         "Created the presentation deck.",
         { slideOnlyMvp: false },
       ),
+    ).toBe(false);
+  });
+
+  it("fails plan-only Korean slide outlines that promise output", () => {
+    expect(
+      shouldFailSlideRunWithoutHtmlDeliverable(
+        "모두 건너뛰셨군요 — 제가 최선의 방향으로 직접 결정하겠습니다.\n슬라이드 구성:\n01 표지",
+        { slideOnlyMvp: true },
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
+  it("fails when an incomplete artifact shell streamed but no HTML file landed", () => {
+    expect(
+      shouldFailSlideRunForMissingHtmlDeliverable({
+        slideOnlyMvp: true,
+        producedHtmlToOpen: null,
+        parsedArtifact: {
+          html: INCOMPLETE_SHELL,
+        },
+        liveHtml: INCOMPLETE_SHELL,
+        finalText: "슬라이드 구성 계획",
+        terminalArtifactPersistFailed: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not double-fail when persist already marked the run failed", () => {
+    expect(
+      shouldFailSlideRunForMissingHtmlDeliverable({
+        slideOnlyMvp: true,
+        producedHtmlToOpen: null,
+        parsedArtifact: { html: INCOMPLETE_SHELL },
+        liveHtml: INCOMPLETE_SHELL,
+        finalText: "슬라이드 구성 계획",
+        terminalArtifactPersistFailed: true,
+      }),
     ).toBe(false);
   });
 });

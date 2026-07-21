@@ -593,8 +593,10 @@ function AssistantMessageImpl({
     (e) => e.kind === "status" && e.label === "empty_response"
   );
   const unfinishedTodos = streaming ? [] : unfinishedTodosFromEvents(events);
+  const runFailed = !streaming && message.runStatus === "failed";
   const runSucceeded =
     !streaming &&
+    !runFailed &&
     (message.runStatus === "succeeded" || (!message.runStatus && !!message.endedAt));
   const canContinueTodos =
     !streaming &&
@@ -1076,6 +1078,8 @@ function AssistantFooter({
             : t("assistant.workingLabel")
           : hasEmptyResponse
           ? t("assistant.emptyResponseLabel")
+          : runFailed
+          ? t("designs.status.failed")
           : hasUnfinishedTodos
           ? t("assistant.unfinishedLabel")
           : t("assistant.doneLabel")}
