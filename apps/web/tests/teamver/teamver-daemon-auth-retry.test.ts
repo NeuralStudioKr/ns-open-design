@@ -69,6 +69,22 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     vi.unstubAllGlobals();
   });
 
+  it("skips soft-sticky refresh ladder when skipEmbedAuthRecovery is set", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/proxy/active?projectId=p1", {
+      teamverProjectId: "p1",
+      skipEmbedAuthRecovery: true,
+    });
+
+    expect(resp.status).toBe(401);
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(passiveUnauthorizedMock).toHaveBeenCalled();
+  });
+
   it("retries artifact save once after refresh recovers an expired session", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("unauthorized", { status: 401 }))

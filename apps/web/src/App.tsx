@@ -135,6 +135,7 @@ import { subscribeTeamverBackgroundChat } from './teamver/teamverBackgroundChatE
 import {
   ActiveByokProxyAuthTransientError,
   listActiveByokProxyStreams,
+  shouldSkipByokProxyActivePoll,
 } from './providers/byokProxyActive';
 import { armTeamverPublishMenuOnProjectOpen } from './teamver/teamverPostRunNavigation';
 import { prefetchDesignsTabViewport } from './teamver/prefetchDesignsTabViewport';
@@ -2789,37 +2790,41 @@ function AppInner() {
         ? filterRunsForEmbedKnownProjects(runs, knownProjectIds)
         : runs;
       if (isTeamverEmbedMode() && byokBackgroundChatsRef.current.size > 0) {
-        const streamsByProjectId = new Map<
-          string,
-          Awaited<ReturnType<typeof listActiveByokProxyStreams>>
-        >();
-        let streamPollFailed = false;
-        await Promise.all(
-          [...byokBackgroundChatsRef.current.keys()].map(async (projectId) => {
-            try {
-              const streams = await listActiveByokProxyStreams(projectId);
-              streamsByProjectId.set(projectId, streams);
-            } catch (err) {
-              streamPollFailed = true;
-              const log = err instanceof ActiveByokProxyAuthTransientError
-                ? console.debug
-                : console.warn;
-              log("[teamver] byok background stream poll failed", {
-                projectId,
-                error: err,
-              });
-            }
-          }),
-        );
-        if (cancelled) return;
-        if (!streamPollFailed) {
-          const removed = reconcileByokBackgroundChatsAfterPoll(
-            byokBackgroundChatsRef.current,
-            byokProxyIdlePollsRef.current,
-            streamsByProjectId,
+        // Dead BFF cookie / soft-sticky: C1 owns recovery. Do not poll
+        // /api/proxy/active (each 401 used to re-enter refresh→probe×2).
+        if (!shouldSkipByokProxyActivePoll()) {
+          const streamsByProjectId = new Map<
+            string,
+            Awaited<ReturnType<typeof listActiveByokProxyStreams>>
+          >();
+          let streamPollFailed = false;
+          await Promise.all(
+            [...byokBackgroundChatsRef.current.keys()].map(async (projectId) => {
+              try {
+                const streams = await listActiveByokProxyStreams(projectId);
+                streamsByProjectId.set(projectId, streams);
+              } catch (err) {
+                streamPollFailed = true;
+                const log = err instanceof ActiveByokProxyAuthTransientError
+                  ? console.debug
+                  : console.warn;
+                log("[teamver] byok background stream poll failed", {
+                  projectId,
+                  error: err,
+                });
+              }
+            }),
           );
-          for (const projectId of removed) {
-            sessionActiveRunProjectIdsRef.current.delete(projectId);
+          if (cancelled) return;
+          if (!streamPollFailed) {
+            const removed = reconcileByokBackgroundChatsAfterPoll(
+              byokBackgroundChatsRef.current,
+              byokProxyIdlePollsRef.current,
+              streamsByProjectId,
+            );
+            for (const projectId of removed) {
+              sessionActiveRunProjectIdsRef.current.delete(projectId);
+            }
           }
         }
       }
