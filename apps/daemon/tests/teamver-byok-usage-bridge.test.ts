@@ -7,6 +7,7 @@ import {
   reportByokTeamverUsageAndBillingFromDaemon,
   resetByokBillingStagingForTests,
   resetByokInFlightReportsForTests,
+  shouldPersistByokProjectStorageFromMessage,
   shouldReportByokUsageFromMessage,
   sweepExpiredByokBillingStagesForTests,
   peekBillingOrphanAdminQueueForTests,
@@ -21,17 +22,28 @@ describe('teamver-byok-usage-bridge', () => {
   });
 
   it('shouldReportByokUsageFromMessage requires assistant terminal BYOK message', () => {
+    const terminalByokAssistant = {
+      id: 'm1',
+      role: 'assistant',
+      runStatus: 'succeeded',
+      events: [],
+    } as const;
+    expect(shouldPersistByokProjectStorageFromMessage(terminalByokAssistant)).toBe(true);
+    expect(shouldReportByokUsageFromMessage(terminalByokAssistant)).toBe(false);
     expect(
       shouldReportByokUsageFromMessage(
-        {
-          id: 'm1',
-          role: 'assistant',
-          runStatus: 'succeeded',
-          events: [],
-        },
+        terminalByokAssistant,
         { telemetryFinalized: true },
       ),
     ).toBe(true);
+    expect(
+      shouldPersistByokProjectStorageFromMessage({
+        id: 'm2',
+        role: 'assistant',
+        runId: 'run-1',
+        runStatus: 'succeeded',
+      }),
+    ).toBe(false);
     expect(
       shouldReportByokUsageFromMessage(
         { id: 'm2', role: 'assistant', runId: 'run-1', runStatus: 'succeeded' },

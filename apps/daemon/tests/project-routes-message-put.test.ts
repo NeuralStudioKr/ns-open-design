@@ -14,10 +14,14 @@ describe('BYOK terminal message PUT hooks', () => {
     expect(putIndex).toBeGreaterThanOrEqual(0);
     const handler = source.slice(putIndex, putIndex + 3_500);
     expect(handler).toContain('recoverTeamverConversationForWrite');
+    expect(handler).toContain('shouldPersistByokProjectStorageFromMessage(saved)');
     expect(handler).toContain('shouldReportByokUsageFromMessage(saved, m)');
     expect(handler).toContain('reportByokTeamverUsageAndBillingFromDaemon');
     expect(handler).toContain('scheduleProjectStoragePersistAfterResponse');
     expect(handler).toContain('ctx.projectStorageHooks');
+    expect(handler.indexOf('shouldPersistByokProjectStorageFromMessage(saved)')).toBeLessThan(
+      handler.indexOf('shouldReportByokUsageFromMessage(saved, m)'),
+    );
     expect(handler).toContain("res.json({ ok: true, id: saved.id })");
   });
 

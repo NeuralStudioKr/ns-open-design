@@ -48,6 +48,7 @@ import {
 } from './storage/lazy-project-materialization.js';
 import { scheduleTeamverProjectDaemonStateExport } from './teamver-project-daemon-state.js';
 import {
+  shouldPersistByokProjectStorageFromMessage,
   shouldReportByokUsageFromMessage,
   reportByokTeamverUsageAndBillingFromDaemon,
 } from './teamver-byok-usage-bridge.js';
@@ -1985,6 +1986,14 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     // The server-side proxy materialization hooks
     // (`byok-proxy-materialization.ts`) act as a second safety net for sync,
     // but billing finalize lives only here.
+    if (shouldPersistByokProjectStorageFromMessage(saved) && ctx.projectStorageHooks) {
+      scheduleProjectStoragePersistAfterResponse(
+        ctx.projectStorageHooks,
+        req,
+        res,
+        req.params.id,
+      );
+    }
     if (shouldReportByokUsageFromMessage(saved, m) && ctx.reportedRuns) {
       const identity = readTeamverIdentityFromRequest(req);
       if (identity) {
@@ -2004,14 +2013,6 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
             messageId: saved.id,
             runStatus: saved.runStatus ?? null,
           }),
-        );
-      }
-      if (ctx.projectStorageHooks) {
-        scheduleProjectStoragePersistAfterResponse(
-          ctx.projectStorageHooks,
-          req,
-          res,
-          req.params.id,
         );
       }
     }

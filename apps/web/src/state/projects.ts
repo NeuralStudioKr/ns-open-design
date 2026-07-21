@@ -653,18 +653,18 @@ export { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders'
 export async function listConversations(
   projectId: string,
 ): Promise<Conversation[]> {
-  try {
-    const resp = await fetchTeamverDaemon(
-      `/api/projects/${encodeURIComponent(projectId)}/conversations`,
-    );
-    throwIfDaemonUnauthorized(resp);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { conversations: Conversation[] };
-    return json.conversations ?? [];
-  } catch (err) {
-    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
-    return [];
+  // Throw on failure so ProjectView's load-with-retry + soft-sticky recovery
+  // can run. Returning [] looked like "no conversations" after a transient
+  // daemon/auth blip and wiped the sidebar on re-entry.
+  const resp = await fetchTeamverDaemon(
+    `/api/projects/${encodeURIComponent(projectId)}/conversations`,
+  );
+  throwIfDaemonUnauthorized(resp);
+  if (!resp.ok) {
+    throw new Error(`Failed to list conversations (${resp.status})`);
   }
+  const json = (await resp.json()) as { conversations: Conversation[] };
+  return json.conversations ?? [];
 }
 
 export async function createConversation(
@@ -763,18 +763,18 @@ export async function listMessages(
   projectId: string,
   conversationId: string,
 ): Promise<ChatMessage[]> {
-  try {
-    const resp = await fetchTeamverDaemon(
-      `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages`,
-    );
-    throwIfDaemonUnauthorized(resp);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { messages: ChatMessage[] };
-    return (json.messages ?? []).map(sanitizeChatMessageForPersist);
-  } catch (err) {
-    if (err instanceof TeamverDaemonUnauthorizedError) throw err;
-    return [];
+  // Must throw on transport / non-OK responses. Returning [] made
+  // ProjectView treat a failed reload as an empty conversation — the chat
+  // wiped on refresh while the in-memory run still looked "완료됨".
+  const resp = await fetchTeamverDaemon(
+    `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages`,
+  );
+  throwIfDaemonUnauthorized(resp);
+  if (!resp.ok) {
+    throw new Error(`Failed to list messages (${resp.status})`);
   }
+  const json = (await resp.json()) as { messages: ChatMessage[] };
+  return (json.messages ?? []).map(sanitizeChatMessageForPersist);
 }
 
 export interface SaveMessageOptions {
@@ -883,36 +883,84 @@ export async function saveMessage(
         }
       }
     }
-    const resp = await fetchTeamverDaemon(
-      `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        ...(options.keepalive ? { keepalive: true } : {}),
-      },
-    );
-    if (!resp.ok && options.keepalive) {
-      console.warn('[teamver] chat-save: keepalive PUT non-ok', {
+    const putOnce = () =>
+      fetchTeamverDaemon(
+        `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          ...(options.keepalive ? { keepalive: true } : {}),
+        },
+      );
+
+    let resp = await putOnce();
+    // Non-keepalive finalization is what survives refresh. Soft-retry once
+    // on transient 5xx / network-shaped failures so a mid-run storage blip
+    // does not leave the chat looking "완료됨" in memory and empty after reload.
+    if (!options.keepalive && resp.status >= 500 && resp.status < 600) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      resp = await putOnce();
+    }
+    if (!resp.ok) {
+      console.warn('[teamver] chat-save: PUT non-ok', {
         projectId,
         conversationId,
         messageId: message.id,
         status: resp.status,
         truncated,
+        keepalive: Boolean(options.keepalive),
       });
     }
     // Usage reporting is decoupled from message PUT success — BYOK embed has
     // no daemon fallback, so a failed save must not drop the ledger row.
     void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
   } catch (err) {
-    if (options.keepalive) {
-      console.warn('[teamver] chat-save: keepalive PUT threw', {
-        projectId,
-        conversationId,
-        messageId: message.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    if (!options.keepalive) {
+      // One soft retry when the first attempt throws (network / soft sticky).
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const savedMessage = sanitizeChatMessageForPersist(
+          options.telemetryFinalized
+            ? { ...message, telemetryFinalized: true }
+            : message,
+        );
+        const body = JSON.stringify(savedMessage);
+        const resp = await fetchTeamverDaemon(
+          `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+          },
+        );
+        if (!resp.ok) {
+          console.warn('[teamver] chat-save: PUT non-ok after retry', {
+            projectId,
+            conversationId,
+            messageId: message.id,
+            status: resp.status,
+          });
+        } else {
+          void maybeReportTeamverUsageAfterSave(projectId, savedMessage, options);
+          return;
+        }
+      } catch (retryErr) {
+        console.warn('[teamver] chat-save: PUT threw after retry', {
+          projectId,
+          conversationId,
+          messageId: message.id,
+          error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+        });
+      }
     }
+    console.warn('[teamver] chat-save: PUT threw', {
+      projectId,
+      conversationId,
+      messageId: message.id,
+      keepalive: Boolean(options.keepalive),
+      error: err instanceof Error ? err.message : String(err),
+    });
     // best-effort persistence — UI keeps the message in-memory either way
   }
 }

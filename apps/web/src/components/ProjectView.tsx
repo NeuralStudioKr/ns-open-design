@@ -1808,6 +1808,15 @@ export function ProjectView({
             ]);
           } catch (err) {
             lastError = err;
+            // Soft sticky / HA cookie race: mirror conversation-list recovery
+            // so a transient 401 does not land as an empty chat after refresh.
+            if (
+              err instanceof TeamverDaemonUnauthorizedError
+              && !isDesignAuthRefreshDeclineHard()
+              && attempt < 2
+            ) {
+              await refreshDesignAuthCookie();
+            }
             if (attempt < 2) {
               await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
             }

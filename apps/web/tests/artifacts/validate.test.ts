@@ -43,6 +43,15 @@ describe('validateHtmlArtifact', () => {
     expect(isIncompleteHtmlDocumentShell(shell)).toBe(true);
   });
 
+  it('does not treat large div-only documents as incomplete shells', () => {
+    const pad = 'x'.repeat(2200);
+    const large =
+      `<!doctype html><html><head><meta charset="utf-8"><style>.a{content:"${pad}"}</style></head>`
+      + `<body><div id="root"></div></body></html>`;
+    expect(large.length).toBeGreaterThan(2048);
+    expect(isIncompleteHtmlDocumentShell(large)).toBe(false);
+  });
+
   it('does not treat slide-shaped empty sections as incomplete shells', () => {
     const shell =
       '<!doctype html><html><head><meta charset="utf-8"></head><body><section class="slide"></section></body></html>';

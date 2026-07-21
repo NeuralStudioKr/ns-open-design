@@ -75,6 +75,15 @@ export function validateHtmlArtifact(content: string): HtmlArtifactValidationRes
 }
 
 /**
+ * Empty-body heuristic only applies to *small* scaffolds. Larger documents
+ * (multi-KB decks built from `<div>` wrappers, inline CSS, or JS shells)
+ * must never be classified as incomplete — a false positive here silently
+ * skips `persistArtifact` and leaves the preview panel empty after a
+ * successful-looking run ("완료됨 … 출력").
+ */
+const INCOMPLETE_SHELL_BODY_CHECK_MAX = 2048;
+
+/**
  * Empty / scaffold HTML the model emits before real slide content.
  * Persist callers should skip silently — do not flash a refusal banner.
  *
@@ -87,6 +96,7 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
   if (trimmed.length === 0) return false;
   if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
   if (trimmed.length < MIN_HTML_LENGTH) return true;
+  if (trimmed.length > INCOMPLETE_SHELL_BODY_CHECK_MAX) return false;
   return isEffectivelyEmptyHtmlBody(trimmed);
 }
 

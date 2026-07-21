@@ -1074,18 +1074,23 @@ export function DesignSystemDetailView({
     }
     let cancelled = false;
     async function loadWorkspaceConversation() {
-      const existing = await listConversations(projectId);
-      if (cancelled) return;
-      if (existing.length > 0) {
-        setConversations(existing);
-        setActiveConversationId(existing[0]!.id);
-        return;
-      }
-      const fresh = await createConversation(projectId, 'Design system');
-      if (cancelled) return;
-      if (fresh) {
-        setConversations([fresh]);
-        setActiveConversationId(fresh.id);
+      try {
+        const existing = await listConversations(projectId);
+        if (cancelled) return;
+        if (existing.length > 0) {
+          setConversations(existing);
+          setActiveConversationId(existing[0]!.id);
+          return;
+        }
+        const fresh = await createConversation(projectId, 'Design system');
+        if (cancelled) return;
+        if (fresh) {
+          setConversations([fresh]);
+          setActiveConversationId(fresh.id);
+        }
+      } catch {
+        // Transient daemon/auth blip — leave conversation unset; next
+        // workspaceProjectId change or remount retries.
       }
     }
     void loadWorkspaceConversation();
@@ -1115,10 +1120,16 @@ export function DesignSystemDetailView({
       return undefined;
     }
     let cancelled = false;
-    void listMessages(workspaceProjectId, activeConversationId).then((messages) => {
-      if (cancelled) return;
-      setProjectChatMessages(messages);
-    });
+    void listMessages(workspaceProjectId, activeConversationId).then(
+      (messages) => {
+        if (cancelled) return;
+        setProjectChatMessages(messages);
+      },
+      () => {
+        if (cancelled) return;
+        setProjectChatMessages([]);
+      },
+    );
     return () => {
       cancelled = true;
     };

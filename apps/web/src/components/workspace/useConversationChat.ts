@@ -103,10 +103,18 @@ export function useConversationChat(
     setMessages([]);
     setError(null);
     void (async () => {
-      const list = await listMessages(projectId, conversationId);
-      if (cancelled) return;
-      setMessages(list);
-      setLoading(false);
+      try {
+        const list = await listMessages(projectId, conversationId);
+        if (cancelled) return;
+        setMessages(list);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        setMessages([]);
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;

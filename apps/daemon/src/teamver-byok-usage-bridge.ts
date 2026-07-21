@@ -187,12 +187,20 @@ export function shouldReportByokUsageFromMessage(
   body: { telemetryFinalized?: boolean } = {},
 ): boolean {
   return Boolean(
+    shouldPersistByokProjectStorageFromMessage(saved) &&
+      body?.telemetryFinalized === true,
+  );
+}
+
+export function shouldPersistByokProjectStorageFromMessage(
+  saved: PersistedAssistantMessage | null | undefined,
+): boolean {
+  return Boolean(
     saved &&
       saved.role === 'assistant' &&
       !saved.runId?.trim() &&
       typeof saved.runStatus === 'string' &&
-      TERMINAL_RUN_STATUSES.has(saved.runStatus) &&
-      body?.telemetryFinalized === true,
+      TERMINAL_RUN_STATUSES.has(saved.runStatus),
   );
 }
 

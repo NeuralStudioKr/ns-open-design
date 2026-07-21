@@ -591,6 +591,28 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('listMessages throws on non-OK responses instead of returning []', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('upstream', { status: 502 }));
+    const { listMessages } = await import('../../src/state/projects');
+
+    await expect(listMessages('project-1', 'conv-1')).rejects.toThrow(/Failed to list messages \(502\)/);
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('listConversations throws on non-OK responses instead of returning []', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(new Response('upstream', { status: 503 }));
+    const { listConversations } = await import('../../src/state/projects');
+
+    await expect(listConversations('project-1')).rejects.toThrow(/Failed to list conversations \(503\)/);
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('getProject rethrows TeamverDaemonUnauthorizedError instead of registry fallback', async () => {
     const fetchDaemonSpy = vi.spyOn(
       await import('../../src/teamver/teamverDaemonHeaders'),
