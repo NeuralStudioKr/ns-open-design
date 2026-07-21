@@ -41,6 +41,34 @@ def test_session_expired_unauthorized_maps_to_detail_and_login_url(
     assert b'"error"' not in response.body
 
 
+def test_main_sso_user_mismatch_maps_to_drive_shaped_body(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.exception_handlers.teamver_main_login_url_for_design",
+        lambda: "https://stg.teamver.com/auth/signin",
+    )
+    response = _domain_error_handler(_request(), UnauthorizedError("main_sso_user_mismatch"))
+    assert response.status_code == 401
+    body = response.body.replace(b" ", b"")
+    assert b'"detail":"main_sso_user_mismatch"' in body
+    assert b'"code":"main_sso_user_mismatch"' in body
+    assert b'"re_login_scope":"main"' in body
+    assert b"login_url" in response.body
+    assert b'"error"' not in response.body
+
+
+def test_main_sso_required_maps_to_drive_shaped_body(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.exception_handlers.teamver_main_login_url_for_design",
+        lambda: "https://stg.teamver.com/auth/signin",
+    )
+    response = _domain_error_handler(_request(), UnauthorizedError("main_sso_required"))
+    assert response.status_code == 401
+    body = response.body.replace(b" ", b"")
+    assert b'"detail":"main_sso_required"' in body
+    assert b'"re_login_scope":"main"' in body
+    assert b'"error"' not in response.body
+
+
 def test_other_unauthorized_keeps_design_domain_error_shape() -> None:
     response = _domain_error_handler(_request(), UnauthorizedError("missing_access_token"))
     assert response.status_code == 401

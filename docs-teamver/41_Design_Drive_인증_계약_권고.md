@@ -253,8 +253,8 @@ Secret 공유 / Apps가 platform JWT 위조 = 15_2 L4·M9 위반. **후보에서
 
 | 측 | 동작 |
 |----|------|
-| BFF Drive / publish / canvas | Main 쿠키 JWT의 `user_id`가 디코드되고 Design `auth.user_id`와 다르면 **proxy 전에** `401` `{ detail/code: main_sso_user_mismatch, re_login_scope: "main", login_url }` |
-| FE | Apps `/auth/refresh` **금지**. 에러 코드 `teamver_drive_main_sso_user_mismatch` → “계정이 달라 … 같은 계정으로 다시 로그인” + Main 재로그인 CTA |
+| BFF Drive / publish / canvas | Main 쿠키 JWT의 `user_id`가 디코드되고 Design `auth.user_id`와 다르면 **proxy 전에** `401` `{ detail/code: main_sso_user_mismatch, re_login_scope: "main", login_url }` (`UnauthorizedError`도 exception handler가 동일 Drive형 body로 변환) |
+| FE | Apps `/auth/refresh` **금지** (`teamverDriveFetch` + `withDesignBffCookieAuthRecovery`). 에러 코드 `teamver_drive_main_sso_user_mismatch` / nested `responseBody` → “계정이 달라 …” + Main 재로그인 CTA |
 | 디코드 불가 opaque 쿠키 | mismatch로 오판하지 않음 → 기존 Main 401/`main_sso_required` 경로 |
 
 **사용자 조치:** Design에 쓰는 것과 **같은 계정**으로 Main(teamver.com)에 다시 로그인하거나, 어긋난 `teamver_access_token`을 지운 뒤 재로그인.

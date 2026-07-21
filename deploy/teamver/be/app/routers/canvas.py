@@ -31,7 +31,7 @@ async def _resolve_main_access_token(request: Request, auth: AuthContext) -> str
         return main_cookie_token
 
     if hosted_requires_main_sso():
-        raise UnauthorizedError("session_expired")
+        raise UnauthorizedError("main_sso_required")
 
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)

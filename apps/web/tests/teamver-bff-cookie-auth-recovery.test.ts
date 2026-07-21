@@ -106,6 +106,24 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
+  it("does not Apps-refresh on Main SSO user mismatch 401", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const mismatch = new AuthenticationError({
+      status: 401,
+      message: "HTTP 401",
+      responseBody: {
+        detail: "main_sso_user_mismatch",
+        code: "main_sso_user_mismatch",
+        re_login_scope: "main",
+      },
+    });
+    const request = vi.fn<() => Promise<string>>().mockRejectedValueOnce(mismatch);
+
+    await expect(withDesignBffCookieAuthRecovery(request)).rejects.toBe(mismatch);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("clears sticky refresh decline after a successful HA soft-retry", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi

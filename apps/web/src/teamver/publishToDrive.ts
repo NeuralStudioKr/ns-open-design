@@ -208,6 +208,8 @@ export function formatTeamverDesignErrorMessage(
 ): string {
   const from502 = parsePublishFailureFromError(err);
   if (from502) return formatPublishErrorCodeForUser(resolvePublishErrorCode(from502));
+  const fromBody = extractPublishAuthErrorCode(err);
+  if (fromBody) return formatPublishErrorCodeForUser(fromBody);
   if (err instanceof Error) {
     const message = err.message.trim();
     if (message && message !== "publish_failed") {
@@ -215,6 +217,27 @@ export function formatTeamverDesignErrorMessage(
     }
   }
   return fallback;
+}
+
+/** Prefer Main SSO / DesignDomainError tokens over raw ``HTTP 401``. */
+function extractPublishAuthErrorCode(err: unknown): string | null {
+  if (!err || typeof err !== "object") return null;
+  const body = (err as { responseBody?: unknown }).responseBody;
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  if (typeof record.detail === "string" && record.detail.trim()) {
+    return record.detail.trim();
+  }
+  if (typeof record.code === "string" && record.code.trim()) {
+    return record.code.trim();
+  }
+  if (record.error && typeof record.error === "object") {
+    const nested = record.error as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) {
+      return nested.message.trim();
+    }
+  }
+  return null;
 }
 
 /** @deprecated alias — use formatTeamverDesignErrorMessage */

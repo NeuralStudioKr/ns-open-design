@@ -30,6 +30,7 @@ import {
   releaseBffRefreshLeader,
   remainingBffRefreshLeaderLockMs,
 } from "./teamverBffRefreshLeader";
+import { isMainSsoGateError } from "./teamverMainSsoGate";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -453,6 +454,10 @@ export async function withDesignBffCookieAuthRecovery<T>(
     return await request();
   } catch (err) {
     if (!isDesignBffUnauthorizedStatus(err)) throw err;
+
+    // Main HS256 SSO gate (missing cookie or wrong Main account vs Design).
+    // Apps /auth/refresh cannot fix this — rethrow immediately (41 §6.3).
+    if (isMainSsoGateError(err)) throw err;
 
     // Parallel project/registry/Drive 401s after soft/hard sticky must not each
     // re-run ensure + session-probe (DevTools 401 storms). Soft recovery still

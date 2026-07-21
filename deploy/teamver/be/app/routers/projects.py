@@ -63,7 +63,7 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
 
     Design pages run on ``*.teamver.com`` parent-domain SSO, so the browser
     holds Main's ``teamver_access_token`` HS256 cookie. Prefer that. Hosted
-    staging/production: missing SSO cookie → ``session_expired`` (Apps JWT
+    staging/production: missing SSO cookie → ``main_sso_required`` (Apps JWT
     always fails Main ``/api/asset/*``). Local/dev may still fall back to the
     BFF Apps refresh path for clearer misconfig diagnosis.
     """
@@ -74,7 +74,7 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
         return main_cookie_token
 
     if hosted_requires_main_sso():
-        raise UnauthorizedError("session_expired")
+        raise UnauthorizedError("main_sso_required")
 
     if auth.auth_source == "bff":
         session = await force_refresh_bff_session(request)

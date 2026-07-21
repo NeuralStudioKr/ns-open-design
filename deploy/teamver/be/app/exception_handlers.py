@@ -92,13 +92,33 @@ def _domain_error_handler(request: Request, exc: DesignDomainError) -> JSONRespo
             exc.status_code,
             exc.details,
         )
-    # Align session_expired with Drive browse body so FE recovery / login_url
-    # matching works for publish, canvas, and other UnauthorizedError paths.
+    # Align session_expired / Main SSO gate with Drive browse body so FE
+    # recovery / login_url matching works for publish, canvas, and import.
     if isinstance(exc, UnauthorizedError) and exc.message == "session_expired":
         return JSONResponse(
             status_code=401,
             content={
                 "detail": "session_expired",
+                "login_url": teamver_main_login_url_for_design(),
+            },
+        )
+    if isinstance(exc, UnauthorizedError) and exc.message == "main_sso_required":
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": "main_sso_required",
+                "code": "main_sso_required",
+                "re_login_scope": "main",
+                "login_url": teamver_main_login_url_for_design(),
+            },
+        )
+    if isinstance(exc, UnauthorizedError) and exc.message == "main_sso_user_mismatch":
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": "main_sso_user_mismatch",
+                "code": "main_sso_user_mismatch",
+                "re_login_scope": "main",
                 "login_url": teamver_main_login_url_for_design(),
             },
         )

@@ -7,6 +7,10 @@ import {
 } from "./designBffClient";
 import { recoverStaleDriveWorkspace } from "./driveWorkspaceRecovery";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import {
+  extractMainSsoGateCodeFromBody,
+  extractMainSsoGateCodeFromError,
+} from "./teamverMainSsoGate";
 
 export function teamverDriveApiUrl(path: string): string {
   const suffix = path.replace(/^\//, "");
@@ -90,16 +94,7 @@ export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
 
 /** True when Design BFF session user and Main SSO cookie user disagree. */
 export function isDriveMainSsoUserMismatchBody(body: unknown): boolean {
-  if (!body || typeof body !== "object") return false;
-  const record = body as Record<string, unknown>;
-  if (record.code === "main_sso_user_mismatch") return true;
-  if (typeof record.error === "string"
-    && record.error.trim().toLowerCase() === "main_sso_user_mismatch") {
-    return true;
-  }
-  const detail = record.detail;
-  return typeof detail === "string"
-    && detail.trim().toLowerCase() === "main_sso_user_mismatch";
+  return extractMainSsoGateCodeFromBody(body) === "main_sso_user_mismatch";
 }
 
 /**
@@ -108,19 +103,12 @@ export function isDriveMainSsoUserMismatchBody(body: unknown): boolean {
  * Distinct from ``main_sso_user_mismatch`` (wrong Main account vs Design).
  */
 export function isDriveMainSsoRequiredBody(body: unknown): boolean {
-  if (!body || typeof body !== "object") return false;
-  if (isDriveMainSsoUserMismatchBody(body)) return false;
-  const record = body as Record<string, unknown>;
-  if (record.code === "main_sso_required") return true;
-  if (record.re_login_scope === "main") return true;
-  const detail = record.detail;
-  if (typeof detail !== "string") return false;
-  return detail.trim().toLowerCase() === "main_sso_required";
+  return extractMainSsoGateCodeFromBody(body) === "main_sso_required";
 }
 
 /** Main SSO gate: missing/expired cookie OR wrong Main account vs Design. */
 export function isDriveMainSsoGateBody(body: unknown): boolean {
-  return isDriveMainSsoRequiredBody(body) || isDriveMainSsoUserMismatchBody(body);
+  return extractMainSsoGateCodeFromBody(body) != null;
 }
 
 /** True when the body is workspace ACL forbid (not SSO expiry). */
@@ -368,27 +356,17 @@ export function driveErrorCodeForStatus(status: number, body: unknown): string {
 
 /** True when a Drive fetch error was raised because Main HS256 SSO expired. */
 export function isTeamverDriveMainSsoRequiredError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const message = err.message.trim();
-  return (
-    message === "teamver_drive_main_sso_required"
-    || message === "main_sso_required"
-  );
+  return extractMainSsoGateCodeFromError(err) === "main_sso_required";
 }
 
 /** True when Main SSO JWT user ≠ Design BFF session user. */
 export function isTeamverDriveMainSsoUserMismatchError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const message = err.message.trim();
-  return (
-    message === "teamver_drive_main_sso_user_mismatch"
-    || message === "main_sso_user_mismatch"
-  );
+  return extractMainSsoGateCodeFromError(err) === "main_sso_user_mismatch";
 }
 
 /** Main SSO gate that needs parent-domain re-login (expired or wrong account). */
 export function isTeamverDriveMainSsoGateError(err: unknown): boolean {
-  return isTeamverDriveMainSsoRequiredError(err) || isTeamverDriveMainSsoUserMismatchError(err);
+  return extractMainSsoGateCodeFromError(err) != null;
 }
 
 export async function getTeamverDriveJson(
