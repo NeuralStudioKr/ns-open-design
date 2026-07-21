@@ -1,4 +1,3 @@
-import { NetworkError } from "@teamver/app-sdk";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
@@ -77,8 +76,10 @@ export async function fetchTeamverCanvasPreview(
       ...(response.updatedAt?.trim() ? { updatedAt: response.updatedAt.trim() } : {}),
     };
   } catch (err) {
-    if (err instanceof NetworkError && (err.status === 401 || err.status === 403)) {
-      return null;
+    // SDK maps 401→AuthenticationError, 403→ForbiddenError — duck-type status.
+    if (err instanceof Error) {
+      const status = Number((err as { status?: unknown }).status);
+      if (status === 401 || status === 403) return null;
     }
     return null;
   }
