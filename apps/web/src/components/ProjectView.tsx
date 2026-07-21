@@ -195,7 +195,6 @@ import {
   refreshDesignAuthCookie,
   refreshTeamverEmbedAuthBeforeMutating,
   isDesignAuthRefreshDeclined,
-  isDesignAuthRefreshDeclineHard,
 } from '../teamver/designBffClient';
 import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
 import { fetchTeamverDaemon, TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';

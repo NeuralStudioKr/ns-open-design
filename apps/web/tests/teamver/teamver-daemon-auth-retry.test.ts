@@ -216,9 +216,27 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     });
 
     expect(resp.status).toBe(401);
-    // Soft sticky still attempts cooldown-gated survival refresh so project
-    // re-entry (conversation list) can recover without a hard relogin banner.
+    // Soft sticky mutations still attempt cooldown-gated survival refresh
+    // (allowSoftForcePost) so conversation save / artifact write can revive.
     expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(refreshMock).toHaveBeenCalledWith({ allowSoftForcePost: true });
+    expect(probeSessionMock).not.toHaveBeenCalled();
+    expect(ensureSessionMock).not.toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+  });
+
+  it("skips soft-sticky recovery on GET/HEAD polls", async () => {
+    declinedMock.mockReturnValue(true);
+    hardDeclineMock.mockReturnValue(false);
+    const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/projects/project-1/files?name=deck.html", {
+      method: "GET",
+    });
+
+    expect(resp.status).toBe(401);
+    expect(refreshMock).not.toHaveBeenCalled();
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");

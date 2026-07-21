@@ -225,10 +225,11 @@ async function recoverDriveAuthSession(): Promise<boolean> {
   // soft force-POST). Direct probe/force `/auth/session` here bypasses §17
   // cooldowns and re-opens ensure storms on every Drive 401.
   if (isDesignAuthRefreshDeclined()) {
-    return refreshDesignAuthCookie();
+    // Drive UI open is intentional — allow one soft force-POST under cooldown.
+    return refreshDesignAuthCookie({ allowSoftForcePost: true });
   }
 
-  const refreshed = await refreshDesignAuthCookie();
+  const refreshed = await refreshDesignAuthCookie({ allowSoftForcePost: true });
   if (refreshed) return true;
 
   // Sibling Set-Cookie may land without sticky — one force session read.
