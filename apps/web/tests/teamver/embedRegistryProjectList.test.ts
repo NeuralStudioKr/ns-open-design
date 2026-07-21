@@ -35,6 +35,27 @@ describe("embedRegistryProjectList", () => {
     ).toBe("Custom");
   });
 
+  it("keeps registry title over daemon uuid, generic, or artifact slug names", () => {
+    expect(
+      resolveProjectDisplayName(
+        {
+          id: "77610df3-5878-41ed-a10f-2d388ac495f3",
+          name: "77610df3-5878-41ed-a10f-2d388ac495f3",
+        },
+        "AI 도입 발표 자료",
+      ),
+    ).toBe("AI 도입 발표 자료");
+    expect(
+      resolveProjectDisplayName({ id: "p1", name: "design" }, "AI 도입 발표 자료"),
+    ).toBe("AI 도입 발표 자료");
+    expect(
+      resolveProjectDisplayName({ id: "p1", name: "ai-adoption-deck" }, "AI 도입 발표 자료"),
+    ).toBe("AI 도입 발표 자료");
+    expect(
+      resolveProjectDisplayName({ id: "p1", name: "landing page" }, "AI 도입 발표 자료"),
+    ).toBe("landing page");
+  });
+
   it("maps registry rows to Project shape", () => {
     const project = mapRegistryRowToProject({
       odProjectId: "p-1",
@@ -139,8 +160,38 @@ describe("embedRegistryProjectList", () => {
     expect(merged[0]?.status?.value).toBe("not_started");
     expect(merged[1]).toMatchObject({
       id: "shared",
+      name: "Shared",
       status: { value: "succeeded" },
       metadata: { kind: "deck", entryFile: "index.html" },
+      updatedAt: 25,
+    });
+  });
+
+  it("does not let daemon artifact slugs replace registry names in lists", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "shared",
+        title: "AI 도입 발표 자료",
+        updatedAt: 20,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "shared",
+        name: "ai-adoption-deck",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 25,
+        status: { value: "succeeded" as const },
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged[0]).toMatchObject({
+      id: "shared",
+      name: "AI 도입 발표 자료",
+      status: { value: "succeeded" },
       updatedAt: 25,
     });
   });
