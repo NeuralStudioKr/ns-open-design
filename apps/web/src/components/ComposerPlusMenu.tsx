@@ -244,8 +244,14 @@ export function ComposerPlusMenu({
   function scheduleCloseSubmenu() {
     cancelSubmenuClose();
     submenuCloseTimer.current = setTimeout(() => {
-      setSubmenu(null);
       submenuCloseTimer.current = null;
+      // Filtering can reflow rows under a stationary cursor and synthesize a
+      // mouseleave. Do not close the flyout while its own search field is focused.
+      const active = document.activeElement;
+      if (active && popupRef.current?.contains(active) && active.tagName === 'INPUT') {
+        return;
+      }
+      setSubmenu(null);
     }, 200);
   }
 

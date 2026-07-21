@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
 import { ComposerPlusMenu } from '../../src/components/ComposerPlusMenu';
@@ -100,6 +100,35 @@ describe('ComposerPlusMenu pick-row caret protection', () => {
     const mcpSearch = screen.getByPlaceholderText('MCP') as HTMLInputElement;
     expect(mcpSearch.value).toBe('');
     expect(screen.getByText('Linear')).toBeTruthy();
+  });
+
+  it('keeps the plugin flyout open when search filtering triggers a mouseleave', () => {
+    vi.useFakeTimers();
+    try {
+      renderMenu({
+        plugins: [
+          PLUGIN,
+          { id: 'p2', title: 'Slide Builder', manifest: {} } as never,
+        ],
+      });
+      fireEvent.click(screen.getByTestId('plus-trigger'));
+      fireEvent.click(screen.getByRole('menuitem', { name: /Plugins/i }));
+
+      const search = screen.getByPlaceholderText('Plugins') as HTMLInputElement;
+      search.focus();
+      fireEvent.change(search, { target: { value: 'deck' } });
+      const flyout = document.querySelector('.plus-menu__flyout') as HTMLElement;
+      fireEvent.mouseLeave(flyout);
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(screen.queryByPlaceholderText('Plugins')).not.toBeNull();
+      expect(screen.getByRole('menuitem', { name: /Deck Maker/i })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('portals the menu and constrains it to the available viewport height', async () => {
