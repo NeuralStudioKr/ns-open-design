@@ -107,6 +107,19 @@ describe('proxy-error-classification', () => {
     ).toEqual({ code: 'UPSTREAM_UNAVAILABLE', retryable: true });
   });
 
+  it('maps missing API key messages to non-retryable UNAUTHORIZED', () => {
+    expect(
+      classifyProviderStreamError({
+        error: { message: 'API key required' },
+      }),
+    ).toEqual({ code: 'UNAUTHORIZED', retryable: false });
+    expect(
+      classifyProviderStreamError({
+        error: { message: 'No API key provided' },
+      }),
+    ).toEqual({ code: 'UNAUTHORIZED', retryable: false });
+  });
+
   it('defaults unknown provider mid-stream errors to retryable UPSTREAM', () => {
     expect(classifyProviderStreamError({ error: { message: 'weird blip' } })).toEqual({
       code: 'UPSTREAM_UNAVAILABLE',

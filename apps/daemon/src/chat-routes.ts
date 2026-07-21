@@ -827,8 +827,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   // thinking_delta so the chat surface stays clean (see docs 09-thinking-suppression).
   function createDeltaGuard(sse: any) {
     const guard = createRoleMarkerGuard('proxy');
-    const thinkSplitter = createThinkTagSplitter((chunk) => {
+    let thinkingChars = 0;
+    const emitThinking = (chunk: string) => {
+      if (!chunk) return;
+      thinkingChars += chunk.length;
       sse.send('thinking_delta', { delta: chunk });
+    };
+    const thinkSplitter = createThinkTagSplitter((chunk) => {
+      emitThinking(chunk);
     });
     const proseGuard = createStreamingProseDeltaGuard();
     let visibleChars = 0;
@@ -854,10 +860,13 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           );
         }
       },
+      sendThinking(text: string) {
+        emitThinking(text);
+      },
       flushThinkTag() {
         const tail = thinkSplitter.flush();
         if (tail.thinking.length > 0) {
-          sse.send('thinking_delta', { delta: tail.thinking });
+          emitThinking(tail.thinking);
         }
         if (tail.visible.length > 0) {
           const cleaned = proseGuard.feed(tail.visible);
@@ -877,6 +886,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       get hasVisibleDelta() {
         return substantiveChars > 0;
       },
+      /** True once any thinking_delta was forwarded (blocks soft-retry duplication). */
+      get hasThinkingDelta() {
+        return thinkingChars > 0;
+      },
       get visibleCharCount() {
         return visibleChars;
       },
@@ -895,9 +908,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       sse.send('end', {});
       return;
     }
+    // Thinking already painted on the client — soft-retry would duplicate it.
+    // Match FE gate (receivedThinkingDelta → retryable false).
     sendProxyError(sse, 'Upstream stream ended before any content', {
       code: 'UPSTREAM_UNAVAILABLE',
-      retryable: true,
+      retryable: !guard.hasThinkingDelta,
     });
   };
 
@@ -1207,7 +1222,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         const thinking = extractGeminiThinkingText(data);
         if (thinking) {
-          sse.send('thinking_delta', { delta: thinking });
+          guard.sendThinking(thinking);
         }
         const delta = extractGeminiVisibleText(data);
         if (delta) {
@@ -2630,7 +2645,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           for (const part of parts) {
             if (typeof part?.text === 'string' && part.text) {
               if (part.thought === true) {
-                sse.send('thinking_delta', { delta: part.text });
+                guard.sendThinking(part.text);
               } else {
                 guard.sendDelta(part.text);
                 if (guard.contaminated) {

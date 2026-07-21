@@ -111,7 +111,7 @@ const TRANSIENT_PROVIDER_HINT =
   /overloaded|rate.?limit|too many requests|timeout|timed out|temporar|unavailable|capacity|service.?unavailable|bad gateway|gateway timeout|internal.?server|server.?error|try.?again|please.?retry|econnreset|fetch failed|connection.?reset|premature close|other side closed|socket hang up|529|503|502|500\b/i;
 
 const NON_RETRYABLE_PROVIDER_HINT =
-  /invalid.?request|authentication|unauthorized|forbidden|permission|not.?found|content.?filter|safety|blocked|policy|insufficient.?quota|payment.?required|billing.?hard|incorrect.?api.?key|api.?key.?invalid|invalid.?api.?key|api.?key.?disabled|api.?key.has.been.disabled|x-api-key|context.?length|max.?tokens|prompt.?too.?long|unsupported/i;
+  /invalid.?request|authentication|unauthorized|forbidden|permission|not.?found|content.?filter|safety|blocked|policy|insufficient.?quota|payment.?required|billing.?hard|incorrect.?api.?key|api.?key.?invalid|invalid.?api.?key|api.?key.?disabled|api.?key.has.been.disabled|api.?key.?required|no.?api.?key|missing.?api.?key|api.?key.?missing|x-api-key|context.?length|max.?tokens|prompt.?too.?long|unsupported/i;
 
 const TRANSIENT_PROVIDER_CODES = new Set([
   'OVERLOADED',

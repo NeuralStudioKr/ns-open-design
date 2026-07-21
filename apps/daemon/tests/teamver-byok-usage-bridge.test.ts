@@ -508,6 +508,41 @@ describe('teamver-byok-usage-bridge', () => {
     expect(finalizeBody.run_status).toBe('failed');
   });
 
+  it('preserves staged tokens when soft-retry re-seeds the same assistantMessageId', () => {
+    vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
+    vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');
+
+    const req = {
+      headers: {
+        'x-teamver-user-id': 'user-1',
+        'x-teamver-workspace-id': 'ws-1',
+      },
+    } as import('express').Request;
+
+    const stager = createByokProxyUsageBillingStager(req, {
+      assistantMessageId: 'assistant-msg-retry',
+      projectId: 'od-1',
+      model: 'claude-sonnet-4-5',
+    });
+    stager!({ inputTokens: 42, outputTokens: 7, model: 'claude-sonnet-4-5' });
+    expect(peekStagedByokProxyUsageForTests('assistant-msg-retry')).toMatchObject({
+      inputTokens: 42,
+      outputTokens: 7,
+    });
+
+    // Soft-retry creates a new stager for the same message id.
+    createByokProxyUsageBillingStager(req, {
+      assistantMessageId: 'assistant-msg-retry',
+      projectId: 'od-1',
+      model: 'claude-sonnet-4-5',
+    });
+    expect(peekStagedByokProxyUsageForTests('assistant-msg-retry')).toMatchObject({
+      inputTokens: 42,
+      outputTokens: 7,
+      model: 'claude-sonnet-4-5',
+    });
+  });
+
   it('emits od_byok_billing_orphan_usage when staged usage TTL expires', async () => {
     vi.stubEnv('TEAMVER_DESIGN_API_URL', 'http://design-api:16000');
     vi.stubEnv('TEAMVER_INTERNAL_API_KEY', 'secret-key');

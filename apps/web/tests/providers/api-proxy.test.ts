@@ -590,3 +590,100 @@ describe('shouldSoftRetryProxyFailure', () => {
     expect(shouldSoftRetryProxyFailure(bad)).toBe(false);
   });
 });
+
+describe('streamProxyEndpoint soft-retry gates', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('treats thinking-only EOF without end as non-retryable upstream error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'event: thinking_delta\ndata: {"delta":"planning"}\n\n',
+              ),
+            );
+            controller.close();
+          },
+        }),
+      }),
+    );
+
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/openai/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://example.com',
+        model: 'gpt-test',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta: vi.fn(), onDone, onError, onThinkingDelta: vi.fn() },
+    );
+
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const err = onError.mock.calls[0]?.[0] as Error & { code?: string; retryable?: boolean };
+    expect(err.code).toBe('UPSTREAM_UNAVAILABLE');
+    expect(err.retryable).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not soft-retry after thinking when the reader throws', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader() {
+            let step = 0;
+            return {
+              read() {
+                step += 1;
+                if (step === 1) {
+                  return Promise.resolve({
+                    done: false,
+                    value: new TextEncoder().encode(
+                      'event: thinking_delta\ndata: {"delta":"plan"}\n\n',
+                    ),
+                  });
+                }
+                return Promise.reject(new TypeError('Failed to fetch'));
+              },
+              releaseLock() {},
+              cancel() {},
+            };
+          },
+        },
+      }),
+    );
+
+    const onError = vi.fn();
+    await streamProxyEndpoint(
+      '/api/proxy/openai/stream',
+      {
+        apiKey: 'test-api-key',
+        baseUrl: 'https://example.com',
+        model: 'gpt-test',
+      } as any,
+      'System',
+      [{ id: 'm1', role: 'user', content: 'hi', createdAt: 1 }],
+      new AbortController().signal,
+      { onDelta: vi.fn(), onDone: vi.fn(), onError, onThinkingDelta: vi.fn() },
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const err = onError.mock.calls[0]?.[0] as Error & { retryable?: boolean };
+    expect(err.retryable).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});

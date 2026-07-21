@@ -405,13 +405,17 @@ export function createByokProxyUsageBillingStager(
   // Seed intended model before any usage SSE — embed BYOK runs that fail
   // during materialization (502 before upstream) still need a real
   // model_name in ai_model_token_usages instead of `unknown`.
+  // Soft-retry re-POSTs with the same assistantMessageId: preserve any
+  // tokens already staged from a prior attempt so a second failure before
+  // usage does not wipe billed amounts to 0.
   if (modelFromBody) {
     ensureByokBillingStageReaper();
+    const existing = stagedByokProxyUsage.get(messageId);
     stagedByokProxyUsage.set(messageId, {
       projectId,
       identity,
-      inputTokens: 0,
-      outputTokens: 0,
+      inputTokens: existing?.inputTokens ?? 0,
+      outputTokens: existing?.outputTokens ?? 0,
       model: modelFromBody,
       ts: Date.now(),
     });

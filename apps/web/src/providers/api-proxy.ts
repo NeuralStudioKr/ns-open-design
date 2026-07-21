@@ -422,15 +422,16 @@ async function streamProxyEndpointOnce(
       }
     }
 
-    // Graceful EOF without `end`: empty/pre-token drops are retryable; partial
-    // content (text or thinking) keeps historical onDone behavior.
-    if (!sawEndEvent && !receivedSubstantiveDelta && !receivedThinkingDelta) {
+    // Graceful EOF without `end`: empty/pre-token drops are retryable.
+    // Thinking-only incomplete matches daemon finalize (retryable:false — soft-retry
+    // would duplicate thinking UI). Substantive text keeps historical onDone.
+    if (!sawEndEvent && !receivedSubstantiveDelta) {
       const err = new Error('Upstream stream ended before any content') as Error & {
         code?: string;
         retryable?: boolean;
       };
       err.code = 'UPSTREAM_UNAVAILABLE';
-      err.retryable = true;
+      err.retryable = !receivedThinkingDelta;
       return { error: err };
     }
     handlers.onDone(acc);
@@ -451,6 +452,11 @@ async function streamProxyEndpointOnce(
     ) {
       error.code = 'UPSTREAM_UNAVAILABLE';
       error.retryable = true;
+    }
+    // Same gate as SSE error frames — soft-retry after painted tokens/thinking
+    // would duplicate UI content across attempts.
+    if (receivedSubstantiveDelta || receivedThinkingDelta) {
+      error.retryable = false;
     }
     return { error };
   }
