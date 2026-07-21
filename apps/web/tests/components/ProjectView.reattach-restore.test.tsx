@@ -57,6 +57,11 @@ vi.mock('../../src/providers/daemon', () => ({
 }));
 
 vi.mock('../../src/providers/byokProxyActive', () => ({
+  ActiveByokProxyAuthTransientError: class ActiveByokProxyAuthTransientError extends Error {
+    readonly code = 'ACTIVE_BYOK_PROXY_AUTH_TRANSIENT';
+    readonly status = 401;
+  },
+  BYOK_PROXY_AUTH_BACKOFF_MS: 60_000,
   listActiveByokProxyStreams: (...args: unknown[]) => listActiveByokProxyStreams(...args),
 }));
 

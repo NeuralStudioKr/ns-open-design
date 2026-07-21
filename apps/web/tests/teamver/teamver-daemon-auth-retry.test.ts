@@ -32,8 +32,9 @@ vi.mock("../../src/teamver/teamverEmbedPassiveAuth", () => ({
   handleEmbedPassiveUnauthorized: (...args: unknown[]) => passiveUnauthorizedMock(...args),
 }));
 
+const readActiveWorkspaceMock = vi.fn(async () => null);
 vi.mock("../../src/teamver/activeTeamverWorkspace", () => ({
-  readActiveTeamverWorkspaceId: vi.fn(async () => null),
+  readActiveTeamverWorkspaceId: (...args: unknown[]) => readActiveWorkspaceMock(...args),
 }));
 
 vi.mock("../../src/teamver/teamverProjectS3PrefixResolve", () => ({
@@ -60,6 +61,8 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     hardDeclineMock.mockReset();
     hardDeclineMock.mockReturnValue(false);
     passiveUnauthorizedMock.mockClear();
+    readActiveWorkspaceMock.mockClear();
+    readActiveWorkspaceMock.mockResolvedValue(null);
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(isBootstrapAuthMode).mockReturnValue(true);
   });
@@ -107,6 +110,29 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(resp.status).toBe(200);
     expect(clearDeclineMock).toHaveBeenCalled();
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
+  });
+
+  it("can recover daemon auth without active workspace preflight for best-effort endpoints", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("unauthorized", { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/memory/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      teamverProjectId: "project-1",
+      skipTeamverWorkspaceHeaders: true,
+      body: JSON.stringify({ userMessage: "hello" }),
+    });
+
+    expect(resp.status).toBe(200);
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(readActiveWorkspaceMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("soft-retries once after refresh declines when a sibling may have set cookies", async () => {

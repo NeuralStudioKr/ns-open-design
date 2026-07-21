@@ -89,4 +89,41 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("return true");
     expect(source).not.toContain("fetch('/api/memory/extract'");
   });
+
+  it("runs auto-open recovery after message load so refresh restores the last completed HTML preview", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+
+    expect(source).toContain("conversationRecoveryAttemptedRef");
+    expect(source).toContain("conversationRecoveryAttemptedRef.current.clear()");
+    expect(source).toContain("conversationRecoveryAttemptedRef.current.has(activeConversationId)");
+    expect(source).toContain("conversationRecoveryAttemptedRef.current.add(activeConversationId)");
+
+    const start = source.indexOf(
+      "conversationRecoveryAttemptedRef.current.add(activeConversationId)",
+    );
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1500);
+    expect(block).toContain("!isInFlightAssistantMessage(m)");
+    expect(block).toContain("refreshProjectFiles().catch");
+    expect(block).toContain(
+      "messagesConversationIdRef.current !== activeConversationId",
+    );
+    expect(block).toContain("autoOpenRecoveredHtmlOutput(");
+    // Ordering matters — autoOpenRecoveredHtmlOutput short-circuits on the
+    // first match so the newest completion must be tried first.
+    expect(block).toContain(".slice()");
+    expect(block).toContain(".reverse()");
+  });
+
+  it("logs the silent-skip and no-produced-HTML paths so a completed run with an empty preview has a breadcrumb", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+
+    expect(source).toContain(
+      "[teamver] artifact write skipped as incomplete document shell",
+    );
+    expect(source).toContain(
+      "[teamver] stream terminal auto-open produced no HTML",
+    );
+    expect(source).toContain("hadParsedArtifact: Boolean(parsedArtifact?.html)");
+  });
 });

@@ -1383,8 +1383,16 @@ export function ProjectView({
   /** Dedupe stream onDone vs onRunStatus terminal HTML auto-open for the same assistant row. */
   const htmlAutoOpenClaimedRef = useRef<Set<string>>(new Set());
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
+  /**
+   * Gates the message-load auto-open recovery to the first load per
+   * conversation within a mount. Once the user has seen the recovery
+   * (or a manual tab pick has settled), a subsequent conversation-switch
+   * back must not override their choice.
+   */
+  const conversationRecoveryAttemptedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
+    conversationRecoveryAttemptedRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
       window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
@@ -1685,10 +1693,12 @@ export function ProjectView({
           // hard sticky is not owning the tab.
           if (
             err instanceof TeamverDaemonUnauthorizedError
-            && !isDesignAuthRefreshDeclineHard()
+            && !isDesignAuthRefreshDeclined()
             && attempt < 2
           ) {
-            await refreshDesignAuthCookie();
+            // Before sticky: one soft revive. Once soft/hard sticky owns the
+            // tab, C1 / 「다시 시도」 own recovery — do not POST refresh here.
+            await refreshDesignAuthCookie({ allowSoftForcePost: true });
           }
           if (attempt < 2) {
             await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
@@ -1868,6 +1878,40 @@ export function ProjectView({
         messagesConversationIdRef.current = activeConversationId;
         setMessagesConversationId(activeConversationId);
         setFailedMessagesConversationId(null);
+        // Refresh preview after a completed run survives a reload / cross-tab
+        // switch. autoOpenRecoveredHtmlOutput previously only fired from the
+        // API background recovery loop, so a refresh AFTER onRunStatus
+        // 'succeeded' left the workspace on whatever tab was persisted
+        // regardless of the new deck.html. The claim ref short-circuits
+        // re-opens for messages an in-session stream already handled, and
+        // conversationRecoveryAttemptedRef gates to the first load per
+        // conversation so a subsequent manual tab pick is never overridden.
+        if (!conversationRecoveryAttemptedRef.current.has(activeConversationId)) {
+          conversationRecoveryAttemptedRef.current.add(activeConversationId);
+          void (async () => {
+            // autoOpenRecoveredHtmlOutput short-circuits on the first match,
+            // so pass the terminal assistant ids in newest→oldest order to
+            // prioritize the most recent completed HTML output.
+            const terminalAssistantIds = new Set<string>(
+              mergedMessages
+                .filter((m) => m.role === 'assistant' && !isInFlightAssistantMessage(m))
+                .slice()
+                .reverse()
+                .map((m) => m.id),
+            );
+            if (terminalAssistantIds.size === 0) return;
+            const filesForRecovery = projectFilesRef.current.length > 0
+              ? projectFilesRef.current
+              : await refreshProjectFiles().catch(() => [] as ProjectFile[]);
+            if (cancelled) return;
+            if (messagesConversationIdRef.current !== activeConversationId) return;
+            autoOpenRecoveredHtmlOutput(
+              mergedMessages,
+              terminalAssistantIds,
+              filesForRecovery,
+            );
+          })();
+        }
       } catch (err) {
         if (cancelled) return;
         const message = formatProjectConversationErrorForUser(err, formatProjectMessagesLoadError());
@@ -2305,6 +2349,18 @@ export function ProjectView({
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
         if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
+          // Surface WHY the preview stayed empty after a successful-looking
+          // run. The shell check is intentionally quiet on the happy path,
+          // so any hit here is the failure mode we want to see — otherwise
+          // the demo shows "완료됨 · 15757 출력" with no artifact and no
+          // signal at all in the console or network tab.
+          console.warn('[teamver] artifact write skipped as incomplete document shell', {
+            projectId: project.id,
+            identifier: art.identifier,
+            fileName,
+            htmlLength: artifactToPersist.html.length,
+            head: artifactToPersist.html.slice(0, 256),
+          });
           return;
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
@@ -4574,6 +4630,20 @@ export function ProjectView({
               if (producedHtmlToOpen && runIsVisible()) {
                 maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
                 requestOpenFile(producedHtmlToOpen);
+              } else if (!producedHtmlToOpen) {
+                // Terminal run left no auto-openable HTML: either no artifact
+                // was persisted (silent-skip / no Write) or the touched file
+                // could not be surfaced. Log so the demo has a breadcrumb
+                // when "완료됨" lands with an empty preview.
+                console.warn('[teamver] stream terminal auto-open produced no HTML', {
+                  projectId: project.id,
+                  conversationId: runConversationId,
+                  assistantId,
+                  hadParsedArtifact: Boolean(parsedArtifact?.html),
+                  parsedArtifactBytes: parsedArtifact?.html?.length ?? 0,
+                  producedCount: produced.length,
+                  eventCount: latestAssistantMsg.events?.length ?? 0,
+                });
               }
               updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
             }

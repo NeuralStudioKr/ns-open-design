@@ -121,27 +121,31 @@ function daemonGetInflightKey(
   return `${url}\n${headerKey}`;
 }
 
-function embedDaemonAuthRecoveryEnabled(): boolean {
+function embedDaemonAuthRecoveryEnabled(init?: RequestInit): boolean {
   if (!isTeamverEmbedMode()) return false;
   // Only recover while the embed UI believes it is signed in. Bootstrap alone
   // used to keep probing refresh/session after logout / dead-cookie clear.
   if (!isTeamverEmbedSessionAuthenticated()) return false;
   // Hard sticky (400): C1 + banner own recovery — never POST from daemon 401s.
-  // Soft sticky must still run refreshDesignAuthCookie → trySoftStickyRecovery
-  // (cooldown-gated). Blocking soft here made project re-entry show
-  // 「대화 목록을 불러오는 중 연결을 확인하지 못했습니다」 while memory still
-  // looked signed-in.
   if (isDesignAuthRefreshDeclineHard()) return false;
+  // Soft sticky: GET/HEAD polls must not re-enter refresh/probe. Mutations
+  // (POST/PUT/PATCH/DELETE) may still try soft survival (conversation save,
+  // artifact write). Project re-entry listConversations calls refresh explicitly.
+  if (isDesignAuthRefreshDeclined()) {
+    const method = (init?.method || "GET").toUpperCase();
+    return method !== "GET" && method !== "HEAD";
+  }
   return true;
 }
 
 function shouldRecoverEmbedDaemonUnauthorized(
   input: RequestInfo | URL,
   resp: Response,
+  init?: RequestInit,
 ): boolean {
   return (
     resp.status === 401
-    && embedDaemonAuthRecoveryEnabled()
+    && embedDaemonAuthRecoveryEnabled(init)
     && isLikelyDaemonApiRequest(input)
   );
 }
@@ -175,17 +179,17 @@ async function fetchDaemonWithEmbedAuthRecovery(
   options?: { skipAuthRecovery?: boolean },
 ): Promise<Response> {
   let resp = await fetch(input, init);
-  if (options?.skipAuthRecovery || !shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+  if (options?.skipAuthRecovery || !shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
     // Hard sticky / unauthenticated / explicit skip: surface banner without
     // probing. Background polls must take the skip path.
     noteEmbedDaemonUnauthorized(input, resp);
     return resp;
   }
 
-  const refreshed = await refreshDesignAuthCookie();
+  const refreshed = await refreshDesignAuthCookie({ allowSoftForcePost: true });
   if (refreshed) {
     resp = await fetch(input, init);
-    if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
       clearDesignAuthRefreshDecline();
       return resp;
     }
@@ -201,7 +205,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
   // Another tab/node may have rotated cookies while this request saw 401.
   await delayDaemonAuthRetry();
   resp = await fetch(input, init);
-  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
     clearDesignAuthRefreshDecline();
     return resp;
   }
@@ -212,7 +216,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
   if (await ensureDesignBffSessionAuthenticated()) {
     clearDesignAuthRefreshDecline();
     resp = await fetch(input, init);
-    if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    if (!shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
       return resp;
     }
   }

@@ -50,6 +50,15 @@ vi.mock('../../src/providers/daemon', () => ({
   streamViaDaemon: vi.fn(),
 }));
 
+vi.mock('../../src/providers/byokProxyActive', () => ({
+  ActiveByokProxyAuthTransientError: class ActiveByokProxyAuthTransientError extends Error {
+    readonly code = 'ACTIVE_BYOK_PROXY_AUTH_TRANSIENT';
+    readonly status = 401;
+  },
+  BYOK_PROXY_AUTH_BACKOFF_MS: 60_000,
+  listActiveByokProxyStreams: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock('../../src/providers/project-events', () => ({
   useProjectFileEvents: vi.fn(),
 }));
