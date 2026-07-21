@@ -240,10 +240,11 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(refreshMock).not.toHaveBeenCalled();
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
-    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+    // Banner already owned by sticky/C1 — do not re-dispatch from every 401.
+    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
-  it("skips soft-sticky recovery on GET/HEAD polls", async () => {
+  it("fail-fasts sticky GET/HEAD without hitting nginx", async () => {
     declinedMock.mockReturnValue(true);
     hardDeclineMock.mockReturnValue(false);
     const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
@@ -254,10 +255,12 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     });
 
     expect(resp.status).toBe(401);
+    expect(await resp.json()).toEqual({ detail: "session_expired" });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
-    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
   it("skips recovery ladder when hard sticky already declined", async () => {
@@ -277,7 +280,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(refreshMock).not.toHaveBeenCalled();
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
-    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+    expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
   it("does not refresh on non-embed mode", async () => {

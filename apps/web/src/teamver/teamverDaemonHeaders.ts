@@ -152,6 +152,9 @@ function noteEmbedDaemonUnauthorized(input: RequestInfo | URL, resp: Response): 
   if (!isTeamverEmbedMode()) return;
   if (!isLikelyDaemonApiRequest(input)) return;
   if (!isTeamverEmbedSessionAuthenticated()) return;
+  // Soft/hard sticky: C1 / banner already own recovery. Do not re-dispatch
+  // passive-required from every background GET 401 (or synthetic fail-fast).
+  if (isDesignAuthRefreshDeclined()) return;
   handleEmbedPassiveUnauthorized("daemon");
 }
 
@@ -159,6 +162,23 @@ function delayDaemonAuthRetry(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, DAEMON_AUTH_RETRY_DELAY_MS);
   });
+}
+
+const STICKY_DAEMON_UNAUTHORIZED_BODY = JSON.stringify({ detail: "session_expired" });
+
+function stickyDaemonUnauthorizedResponse(): Response {
+  return new Response(STICKY_DAEMON_UNAUTHORIZED_BODY, {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** Background GET/HEAD while sticky — no nginx hit (DevTools 401 spam). */
+function shouldFailFastDaemonGetWhileSticky(init: RequestInit): boolean {
+  if (!isTeamverEmbedMode()) return false;
+  if (!isDesignAuthRefreshDeclined()) return false;
+  const method = (init.method || "GET").toUpperCase();
+  return method === "GET" || method === "HEAD";
 }
 
 /**
@@ -172,6 +192,13 @@ async function fetchDaemonWithEmbedAuthRecovery(
   init: RequestInit,
   options?: { skipAuthRecovery?: boolean },
 ): Promise<Response> {
+  // Soft/hard sticky: skip doomed background GETs entirely. Mutations still
+  // hit the network once so callers get a definitive 401 for UX, without
+  // re-entering the refresh/probe ladder (recovery gated below).
+  if (shouldFailFastDaemonGetWhileSticky(init)) {
+    return stickyDaemonUnauthorizedResponse();
+  }
+
   let resp = await fetch(input, init);
   if (options?.skipAuthRecovery || !shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
     // Hard sticky / unauthenticated / explicit skip: surface banner without

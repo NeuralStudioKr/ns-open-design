@@ -509,9 +509,13 @@ export async function withDesignBffCookieAuthRecovery<T>(
       }
     }
 
-    // Refresh failed (often soft-sticky now). One delayed sibling retry — HA
-    // winner may have Set-Cookie'd while we probed. If soft sticky owns
-    // recovery, do not call ensure again (already ran inside refresh).
+    // Refresh failed (often soft-sticky now). Soft sticky owns recovery via C1 —
+    // do not delay-retry the doomed sibling GET (extra nginx 401). HA sibling
+    // cookies are picked up by sticky-quiet probe / explicit retry instead.
+    if (authRefreshDeclinedForSession) {
+      throw err;
+    }
+
     await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
     try {
       const recovered = await request();

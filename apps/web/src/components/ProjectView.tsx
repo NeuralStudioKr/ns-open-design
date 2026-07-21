@@ -4252,10 +4252,8 @@ export function ProjectView({
     const recoveryConversationId = activeConversationId;
     void (async () => {
       if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
-        retryTimer = window.setTimeout(() => {
-          retryTimer = null;
-          if (!cancelled) setReattachNonce((value) => value + 1);
-        }, BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS);
+        // Do not bump reattachNonce while sticky — that re-entered the effect
+        // every auth-retry interval and kept scheduling daemon work.
         return;
       }
       let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
@@ -4426,7 +4424,8 @@ export function ProjectView({
       // Soft/hard sticky / BYOK auth backoff: do not keep hitting proxy/active
       // + listMessages while C1 owns recovery.
       if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
-        scheduleNextPoll(BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS);
+        // Pause until auth recovers — infinite auth-retry timers only burned
+        // CPU while C1 owned recovery. Session-changed / reattachNonce resume.
         return;
       }
       let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
@@ -4698,6 +4697,22 @@ export function ProjectView({
       }
     });
   }, [detachLocalRunStreamConsumers, project.id]);
+
+  // Sticky-paused reattach / BYOK recovery effects resume when auth returns
+  // (session-changed forceEvent or passive recovered) without sticky timers.
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const resume = () => setReattachNonce((value) => value + 1);
+    const onRecovered = () => resume();
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+    const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (authenticated) resume();
+    });
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+      unsubscribe();
+    };
+  }, []);
 
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
     const next = [...queuedChatSendsRef.current, item];

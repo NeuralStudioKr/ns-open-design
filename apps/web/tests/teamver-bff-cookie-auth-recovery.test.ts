@@ -76,34 +76,32 @@ describe("withDesignBffCookieAuthRecovery", () => {
     vi.useRealTimers();
   });
 
-  it("retries the original BFF request once after refresh declines, allowing HA sibling cookie recovery", async () => {
+  it("fails fast after soft sticky instead of delayed sibling BFF retry", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi
       .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }))
-      .mockResolvedValueOnce("ok");
+      .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }));
 
     const pending = withDesignBffCookieAuthRecovery(request);
+    const assertion = expect(pending).rejects.toMatchObject({ status: 401 });
     await vi.advanceTimersByTimeAsync(1_200);
-
-    await expect(pending).resolves.toBe("ok");
-    expect(request).toHaveBeenCalledTimes(2);
-    // refresh 401 → probe + delayed probe + ensure before soft-retry
-    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+    await assertion;
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
   });
 
-  it("recovers from SDK AuthenticationError (real HTTP 401 mapping)", async () => {
+  it("fails fast on AuthenticationError after soft sticky (no delayed sibling)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi
       .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
-      .mockResolvedValueOnce("ok");
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }));
 
     const pending = withDesignBffCookieAuthRecovery(request);
+    const assertion = expect(pending).rejects.toMatchObject({ status: 401 });
     await vi.advanceTimersByTimeAsync(1_200);
-
-    await expect(pending).resolves.toBe("ok");
-    expect(request).toHaveBeenCalledTimes(2);
+    await assertion;
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
   });
 
   it("does not Apps-refresh on Main SSO user mismatch 401", async () => {
@@ -124,24 +122,23 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("clears sticky refresh decline after a successful HA soft-retry", async () => {
+  it("keeps soft sticky after refresh decline without delayed sibling clear", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(refresh401());
     const request = vi
       .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
-      .mockResolvedValueOnce("ok");
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }));
 
     const pending = withDesignBffCookieAuthRecovery(request);
+    const assertion = expect(pending).rejects.toMatchObject({ status: 401 });
     await vi.advanceTimersByTimeAsync(1_200);
-    await expect(pending).resolves.toBe("ok");
+    await assertion;
 
-    expect(isDesignAuthRefreshDeclined()).toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("clears sticky decline after soft-retry fails when /auth/session is still authenticated", async () => {
-    // After refresh 401 + probe misses → soft sticky. Sibling delayed request
-    // still 401: do not trailing-ensure (already ran inside refresh). Sticky
-    // stays set so parallel callers skip probe spam.
+  it("keeps soft sticky when refresh ladder exhausts without sibling retry", async () => {
+    // After refresh 401 + probe misses → soft sticky. No delayed sibling GET.
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(refresh401())
@@ -152,7 +149,6 @@ describe("withDesignBffCookieAuthRecovery", () => {
 
     const request = vi
       .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }))
       .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }));
 
     const pending = withDesignBffCookieAuthRecovery(request);
@@ -160,6 +156,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     await vi.advanceTimersByTimeAsync(1_200);
     await assertion;
     expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("does not sticky-decline refresh when session-probe is still valid after 401", async () => {
