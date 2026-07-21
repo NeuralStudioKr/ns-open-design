@@ -5,6 +5,7 @@ import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   fetchDesignAuthSession,
   getDesignBffClient,
+  isDesignAuthRefreshDeclined,
   shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
   type DesignAuthSession,
@@ -139,7 +140,7 @@ function readSessionUserId(session: DesignAuthSession): string | null {
 }
 
 async function resolveRegistryUserId(): Promise<string | null> {
-  if (shouldSkipTeamverBffAuthCalls()) return null;
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return null;
   try {
     const session = await fetchDesignAuthSession();
     if (!session?.authenticated) return null;
@@ -265,7 +266,7 @@ export async function registerTeamverProjectIfNeeded(
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (isTeamverProjectCollectionRouteSlug(project.id)) return;
-  if (shouldSkipTeamverBffAuthCalls()) {
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) {
     throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
   }
   if (!options?.skipBootWait) {
@@ -370,7 +371,7 @@ export async function ensureTeamverProjectRegisteredById(projectId: string): Pro
 export async function syncAllDaemonProjectsToRegistry(): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (!legacyRegistryMigrationEnabled()) return;
-  if (shouldSkipTeamverBffAuthCalls()) return;
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return;
   // Called during embed boot before completeTeamverEmbedBoot — must not wait on boot gate.
 
   const client = getDesignBffClient();
@@ -431,7 +432,7 @@ async function fetchRegistryProjectsFromBff(): Promise<{
   projects: TeamverRegisteredProject[];
 } | null> {
   if (!isTeamverEmbedMode()) return null;
-  if (shouldSkipTeamverBffAuthCalls()) return null;
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return null;
   await waitForEmbedBootIfNeeded();
 
   const client = getDesignBffClient();
@@ -587,9 +588,10 @@ async function fetchTeamverProjectAccessOutcome(
   if (!trimmedRef) return { status: "denied" };
   if (isTeamverProjectCollectionRouteSlug(trimmedRef)) return { status: "denied" };
 
-  // Dead cookie / sticky decline: C1 owns recovery. Hitting /projects here only
-  // re-triggers withDesignBffCookieAuthRecovery → session-probe 401 spam.
-  if (shouldSkipTeamverBffAuthCalls()) {
+  // Dead cookie / soft+hard sticky: C1 owns recovery. Hitting /projects here
+  // re-triggers withDesignBffCookieAuthRecovery → 401 spam (soft used to stay open
+  // for S3 prefix; cache miss now fails soft until sticky clears).
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) {
     return { status: "unavailable" };
   }
 
@@ -741,7 +743,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return true;
-  if (shouldSkipTeamverBffAuthCalls()) return false;
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return false;
 
   const client = getDesignBffClient();
   if (!client) return false;

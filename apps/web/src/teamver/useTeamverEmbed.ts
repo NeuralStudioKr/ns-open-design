@@ -696,6 +696,9 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
     const onPassiveAuthRecovered = () => {
       // Do not clear session_unreachable before refresh confirms auth — clearing
       // early resets the C1 attempt counter and re-opens 5s refresh/probe spam.
+      // Soft/hard sticky: C1 owns hydrate (probe-only while declined). A force
+      // session fetch here used to double-hit ensure beside the backoff loop.
+      if (isDesignAuthRefreshDeclined()) return;
       void refresh({ force: true, silent: true }).then((outcome) => {
         if (outcome !== "authenticated") return;
         setState((prev) => {

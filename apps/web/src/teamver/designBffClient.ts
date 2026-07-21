@@ -562,9 +562,16 @@ export async function refreshTeamverEmbedAuthBeforeMutating(options?: {
 }
 
 async function trySoftStickyRecovery(options?: {
-  /** When false (default for soft-sticky background), skip force POST /auth/refresh. */
+  /** When false (default for soft-sticky background), skip all survival network. */
   allowForcePost?: boolean;
 }): Promise<boolean> {
+  // Background callers (Drive/daemon refresh without allowSoftForcePost): C1
+  // sticky-quiet probe and explicit escalate/「다시 시도」 own recovery. Do not
+  // re-open probe×2+ensure after the 60s survival window from every refresh().
+  if (!options?.allowForcePost) {
+    return false;
+  }
+
   authRefreshStickySurvivalAttempts += 1;
   const skipProbeLadder =
     authRefreshStickySurvivalAttempts > 1
@@ -598,12 +605,7 @@ async function trySoftStickyRecovery(options?: {
     authRefreshStickySurvivalLastOk = false;
   }
 
-  // 3) One POST /auth/refresh under cooldown — only for explicit callers
-  //    (mutation recovery / user retry). Background soft-sticky must not
-  //    re-POST every 15s (proxy polls / C1 used to re-open the storm).
-  if (!options?.allowForcePost) {
-    return false;
-  }
+  // 3) One POST /auth/refresh under cooldown (allowForcePost already required).
   const now = Date.now();
   if (now - authRefreshSoftForcePostAt < DESIGN_BFF_SOFT_FORCE_POST_COOLDOWN_MS) {
     return false;
