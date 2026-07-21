@@ -3006,6 +3006,9 @@ export function ProjectView({
         config.mode === 'api'
           ? byokChatToolNamesForProtocol(config.apiProtocol)
           : undefined,
+      mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata, {
+        slideOnlyMvp,
+      }),
       sessionMode: sessionModeOverride,
       locale,
       userInstructions: config.customInstructions,
@@ -3021,6 +3024,7 @@ export function ProjectView({
     config.apiProtocol,
     config.customInstructions,
     activeSessionMode,
+    slideOnlyMvp,
     locale,
   ]);
 

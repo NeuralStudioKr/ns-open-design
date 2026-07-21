@@ -107,6 +107,17 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("return true");
   });
 
+  it("passes Teamver slide-only media policy into API-mode system prompts", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("return composeSystemPrompt({");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1800);
+
+    expect(block).toContain("mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata");
+    expect(block).toContain("slideOnlyMvp");
+    expect(block).toContain("streamFormat: config.mode === 'api' ? 'plain' : undefined");
+  });
+
   it("replays stashed artifact writes without shifting write arguments", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const replay = async () =>");

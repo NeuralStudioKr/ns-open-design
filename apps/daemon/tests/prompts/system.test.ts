@@ -404,6 +404,18 @@ describe('composeSystemPrompt', () => {
       expect(prompt).toContain('Do not finish a slide request with only a plan');
       expect(prompt).toContain('truncated deck navigation script');
     });
+
+    it('tells plain API slide runs that a plan is not the deliverable', () => {
+      const prompt = composeSystemPrompt({
+        skillMode: 'deck',
+        streamFormat: 'plain',
+      });
+
+      expect(prompt).toContain('API mode — no tools available');
+      expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
+      expect(prompt).toContain('the plan is not the deliverable');
+      expect(prompt).toContain('include the complete HTML deck artifact in this same response');
+    });
   });
 
   describe('connectedExternalMcp directive', () => {

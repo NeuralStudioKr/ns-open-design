@@ -146,7 +146,7 @@ export function formatProjectArtifactStubWarning(fileName: string, message: stri
 /** Terminal run finished but no previewable HTML deck landed on disk. */
 export function formatProjectRunDeliverableMissingError(): string {
   return isTeamverEmbedMode()
-    ? "슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼을 수 있습니다. 잠시 후 다시 시도하세요."
+    ? "슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요."
     : "The slide deliverable was not created. The response may have been cut off — please try again.";
 }
 
