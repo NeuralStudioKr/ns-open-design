@@ -22,7 +22,19 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toContain("streamingPreviewGraceElapsed");
     expect(source).toContain("setTimeout(() => setStreamingPreviewGraceElapsed(true), 12_000)");
     expect(source).toContain(
-      "(streaming && !streamingPreviewGraceElapsed) || previewTabPending",
+      "Always re-arm on tab/stream change so a previous ghost's elapsed grace",
     );
+    // Pending tab shows loading only — ghost resolve retargets/closes; do not
+    // flash previewUnavailable while the file list is still catching up.
+    expect(source).toMatch(/pendingPreviewTab \? \([\s\S]*fileViewer\.loading/);
+    expect(source).not.toMatch(
+      /pendingPreviewTab \? \([\s\S]*fileViewer\.previewUnavailable/,
+    );
+  });
+
+  it("keeps liveHtml after streaming ends until artifact html is cleared", () => {
+    const source = readSource("src/components/FileWorkspace.tsx");
+    expect(source).toContain("liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}");
+    expect(source).not.toContain("liveHtml={streaming && artifactHtml ? artifactHtml : undefined}");
   });
 });

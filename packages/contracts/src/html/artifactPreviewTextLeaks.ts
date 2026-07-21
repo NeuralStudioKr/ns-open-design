@@ -1,5 +1,6 @@
 import {
   ARTIFACT_BARE_CDN_HOST_LINE_RE,
+  ARTIFACT_CDN_ORPHAN_VOID_ENDING,
   artifactBareCdnHostLineSource,
   artifactCdnHrefTokenAlternation,
   artifactCdnHostWithOptionalPathAlternation,
@@ -42,17 +43,19 @@ export const ARTIFACT_HEAD_CDN_HOST_SOURCE = artifactHeadCdnHostSource();
  * lose the opening `<link href="https://fonts.` — the browser then paints the
  * remainder as body text (`googleapis.com" />`), blanking the slide preview.
  *
- * Require a void-tag-like ending (`/>` or trailing `"` + `>`) so real slide
- * copy that merely mentions Google Fonts is not stripped.
+ * Require a void-tag-like ending (`/>` or quoted `">` / `"/>`) so advisory
+ * prose like `Docs at fonts.googleapis.com>` is not stripped.
  */
 export const ARTIFACT_ORPHAN_HEAD_VOID_TAIL_RE = new RegExp(
   "(?:"
     // CDN host/path tails. Lookbehind avoids matching inside href="https://…".
     + "(?<![\\w=\"/.-])(?:https?:\\/\\/)?(?:"
     + artifactCdnHostWithOptionalPathAlternation()
-    + ")\\s*\"?\\s*\\/?>"
+    + ")"
+    + ARTIFACT_CDN_ORPHAN_VOID_ENDING
     // Google Fonts query tails. display=swap optional.
-    + "|(?<![\\w=\"/.-])(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*\\s*\"?\\s*\\/?>"
+    + "|(?<![\\w=\"/.-])(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*"
+    + ARTIFACT_CDN_ORPHAN_VOID_ENDING
     + "|(?:^|(?<=\\n)|(?<=>))\\s*(?:"
     + "href\\s*=\\s*[\"']https?:\\/\\/[^\"']*(?:"
     + artifactCdnHrefTokenAlternation()
@@ -62,7 +65,8 @@ export const ARTIFACT_ORPHAN_HEAD_VOID_TAIL_RE = new RegExp(
     + "|charset\\s*=\\s*[\"'][^\"']*[\"'][^<\\n]{0,40}"
     + "|type\\s*=\\s*[\"']module[\"'][^<\\n]{0,80}"
     + "|integrity\\s*=\\s*[\"']sha\\d+-[^\"']+[\"'][^<\\n]{0,40}"
-    + ")\\s*\"?\\s*\\/?>"
+    + ")"
+    + ARTIFACT_CDN_ORPHAN_VOID_ENDING
     + ")",
   "gi",
 );
@@ -118,7 +122,9 @@ export const ARTIFACT_ORPHAN_HEAD_VOID_DOM_TEXT_LEAK_SOURCE =
   + artifactCdnHostWithOptionalPathAlternation()
   + ")|(?:css2\\?)?family=[A-Za-z0-9_+:;,=%&.@\\-]+(?:(?:&amp;|&)[A-Za-z0-9_+:;,=%&.@\\-]*)*\\S*|href\\s*=\\s*[\"']https?:\\/\\/[^\"']*(?:"
   + artifactCdnHrefTokenAlternation()
-  + ")[^\"']*[\"'][^<]{0,80}|rel\\s*=\\s*[\"'](?:stylesheet|preconnect|preload)[\"'][^<]{0,120}|crossorigin(?:\\s*=\\s*[\"']anonymous[\"'])?[^<]{0,80}|charset\\s*=\\s*[\"'][^\"']*[\"'][^<]{0,40}|type\\s*=\\s*[\"']module[\"'][^<]{0,80}|integrity\\s*=\\s*[\"']sha\\d+-[^\"']+[\"'][^<]{0,40})\\s*\"?\\s*\\/?>\\s*$"
+  + ")[^\"']*[\"'][^<]{0,80}|rel\\s*=\\s*[\"'](?:stylesheet|preconnect|preload)[\"'][^<]{0,120}|crossorigin(?:\\s*=\\s*[\"']anonymous[\"'])?[^<]{0,80}|charset\\s*=\\s*[\"'][^\"']*[\"'][^<]{0,40}|type\\s*=\\s*[\"']module[\"'][^<]{0,80}|integrity\\s*=\\s*[\"']sha\\d+-[^\"']+[\"'][^<]{0,40})"
+  + ARTIFACT_CDN_ORPHAN_VOID_ENDING
+  + "\\s*$"
   + "|^\\s*(?:(?:https?:\\/\\/)?(?:"
   + artifactCdnScriptSrcHostAlternation()
   + ")\\/\\S*)\\s*\"?\\s*>\\s*(?:<\\/script>)?\\s*$"

@@ -38,6 +38,13 @@ export function escapeRegExpLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Void-tag-like ending for orphan CDN/link debris.
+ * Matches `/>` or quoted `">` / `"/>` — never bare `host>` (advisory prose).
+ */
+export const ARTIFACT_CDN_ORPHAN_VOID_ENDING = String.raw`\s*(?:\/\s*>|["']\s*\/?\s*>)`;
+
+
 function bareHostPattern(host: ArtifactCdnHost): string | null {
   if (COVERED_BY_SPECIAL.has(host)) return null;
   if (host === "fonts.googleapis.com") return "(?:fonts\\.)?googleapis\\.com";
@@ -81,6 +88,8 @@ export function artifactCdnHostAlternation(): string {
  * Host(+path) alternation for orphan void tails.
  * googleapis keeps optional `/css2|icon` path. Other hosts allow path-less
  * `cdn.jsdelivr.net" />` debris as well as `host/…` tails (chat/preview parity).
+ * Callers must append {@link ARTIFACT_CDN_ORPHAN_VOID_ENDING} so bare `host>`
+ * advisory text is not scrubbed.
  */
 export function artifactCdnHostWithOptionalPathAlternation(): string {
   const parts: string[] = [];

@@ -71,11 +71,15 @@ describe("FileViewer streaming slide preview", () => {
       "Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip",
     );
     expect(source).toContain(
-      "while liveHtml is still flowing) keep veil/loading",
+      "Wall-clock owns escalation",
     );
     expect(source).toContain("if (streaming) setSourceLoadFailed(false)");
     expect(source).not.toContain(
       "Incomplete disk HTML with no stable frame — surface unavailable",
+    );
+    // Post-stream incomplete must not immediately setSourceLoadFailed(true).
+    expect(source).not.toMatch(
+      /acceptPreviewHtmlCandidate\(text, lastStablePreviewSourceRef\)[\s\S]{0,280}setSourceLoadFailed\(true\)/,
     );
   });
 
@@ -121,5 +125,9 @@ describe("FileViewer streaming slide preview", () => {
       "acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef)",
     );
     expect(source).not.toContain("structurallyComplete");
+    expect(source).toContain("previewSourceWallIdentityRef.current = null");
+    expect(source).toMatch(
+      /lastStablePreviewIdentityRef\.current !== artifactIdentity[\s\S]*setSource\(null\)[\s\S]*setLiveHtmlPaintsPreview\(false\)/,
+    );
   });
 });

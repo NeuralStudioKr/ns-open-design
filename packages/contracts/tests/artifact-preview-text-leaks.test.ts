@@ -181,6 +181,19 @@ unpkg.com" />
     expect(out).toContain('<section class="slide active">A</section>');
   });
 
+  it("does not treat bare host> advisory prose as void debris", () => {
+    const advisory = `<!doctype html><html><head><title>T</title></head><body>
+<p>Docs at fonts.googleapis.com></p>
+<p>See https://cdn.jsdelivr.net></p>
+<section class="slide active">A</section>
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(advisory)).toBe(false);
+    expect(isArtifactHtmlStableForPreview(advisory)).toBe(true);
+    const out = stripArtifactPreviewBodyTextLeaks(advisory);
+    expect(out).toContain("fonts.googleapis.com>");
+    expect(out).toContain("cdn.jsdelivr.net>");
+  });
+
   it("strips mid-head orphan CDN tails without mutilating intact font links", () => {
     const leaked = `<!doctype html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader&display=swap" rel="stylesheet" />

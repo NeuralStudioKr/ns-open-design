@@ -31,6 +31,7 @@
 - bare stem(`jsdelivr`, `unpkg`)은 ordinary word로 취급 — same-line cut 대상이 **아니다**.
 - bare host 전용 줄·void orphan·full head tag는 history에서도 scrub한다.
 - path-less void (`cdn.jsdelivr.net" />`)도 orphan alternation에서 잡는다 (`(?:\/…)?`).
+- void 종료는 `ARTIFACT_CDN_ORPHAN_VOID_ENDING` — `/>` 또는 quoted `">`/`"/>`만. bare `host>` 자문 문구는 scrub하지 않는다.
 - full head tag scrub는 orphan attr 패턴 **앞**에서 실행한다 (`<link` 잔해 방지).
 - streaming 중 열린/닫힌 `<artifact>` 본문 stylesheet는 live panel용으로 보존하고, artifact 밖 prose의 CDN `<link|script>` / `@import` / open `<style|script>`는 제거·hold한다.
 - daemon `design.runs.finish` wrapper에서 turn-end rewrite로 append-only 잔여를 회수한다.
@@ -44,7 +45,8 @@
 - hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s). wall은 **artifact identity당 1회** arm — `filesRefreshKey`/mtime churn에 리셋하지 않는다. **streaming 중에는 wall을 arm하지 않는다** (스트림 종료 시 effect 재실행으로 arm).
 - incomplete disk / transient null fetch는 **streaming·liveHtml 활성 중 unavailable로 올리지 않는다** (veil/loading 유지). null은 abort 무시 + soft-retry 1회 후 wall에 맡긴다.
 - empty unavailable 문구는 **`sourceLoadFailed`만** (embed prefix null을 unavailable로 강제하지 않음 — prefix 실패 시 srcDoc fallback, [44](./44_preview_scope_fallback_안정화.md)).
-- FileWorkspace pending tab: streaming이 끝나지 않아도 12s grace 후 unavailable/retarget (무한 loading 방지).
+- FileWorkspace pending tab: streaming이 끝나지 않아도 12s grace 후 unavailable/retarget (무한 loading 방지). **탭/stream 변경 시 grace를 반드시 false로 재arm**한다.
+- artifact identity 전환 시 live effect가 `source` / paints / wall을 즉시 비운다 (이전 탭 HTML 잔상 방지).
 
 ## href token 참고
 

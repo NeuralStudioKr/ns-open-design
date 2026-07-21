@@ -655,6 +655,13 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(
       sanitizeAssistantProseForDisplay("See fonts.googleapis.com for docs."),
     ).toBe("See fonts.googleapis.com for docs.");
+    // Bare `host>` must not be mistaken for a void-tag ending.
+    expect(
+      sanitizeAssistantProseForDisplay("Docs at fonts.googleapis.com>"),
+    ).toBe("Docs at fonts.googleapis.com>");
+    expect(
+      sanitizeAssistantProseForDisplay('cdn.jsdelivr.net" />'),
+    ).not.toContain("jsdelivr");
   });
 
   it("does not leave <link residue when scrubbing a full stylesheet tag in prose", () => {

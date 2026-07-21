@@ -5406,6 +5406,15 @@ function HtmlViewer({
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
+      sourceRef.current = null;
+      setSource(null);
+      setLiveHtmlPaintsPreview(false);
+      setSourceLoadFailed(false);
+      if (previewSourceWallTimerRef.current != null) {
+        clearTimeout(previewSourceWallTimerRef.current);
+        previewSourceWallTimerRef.current = null;
+      }
+      previewSourceWallIdentityRef.current = null;
     }
 
     if (liveHtml === undefined) {
@@ -5446,6 +5455,15 @@ function HtmlViewer({
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
+      sourceRef.current = null;
+      setSource(null);
+      setLiveHtmlPaintsPreview(false);
+      setSourceLoadFailed(false);
+      if (previewSourceWallTimerRef.current != null) {
+        clearTimeout(previewSourceWallTimerRef.current);
+        previewSourceWallTimerRef.current = null;
+      }
+      previewSourceWallIdentityRef.current = null;
     }
     const sourceFileKey = `${artifactIdentity}\0raw`;
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
@@ -5533,11 +5551,10 @@ function HtmlViewer({
         setSourceLoadFailed(false);
         const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef);
         if (accepted == null) {
-          // Incomplete/leaky disk with no stable frame. During streaming (or
-          // while liveHtml is still flowing) keep veil/loading — flipping to
-          // unavailable hid the streaming veil (!sourceLoadFailed gate).
-          if (streamingRef.current || liveHtmlActiveRef.current) return;
-          setSourceLoadFailed(true);
+          // Incomplete/leaky disk with no stable frame. Keep loading / veil —
+          // do NOT flip unavailable here. Stream-end races (liveHtml cut +
+          // turn-end scrub still writing) used to paint embed
+          // previewUnavailable immediately. Wall-clock owns escalation.
           return;
         }
         setSource(accepted);

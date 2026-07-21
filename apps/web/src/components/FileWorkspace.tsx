@@ -1594,13 +1594,17 @@ export function FileWorkspace({
   // Drop or retarget ghost tabs once loading settles and the file still isn't
   // on disk — avoids stranding users on "Open a file from Design Files".
   // Also unbound infinite "loading…" when streaming stays true without a file:
-  // after a grace window, treat as settled so unavailable / retarget can run.
+  // after a grace window, treat as settled so ghost resolve / retarget can run.
+  // Pending UI stays on loading (never previewUnavailable) until retarget/close.
   const [streamingPreviewGraceElapsed, setStreamingPreviewGraceElapsed] = useState(false);
   useEffect(() => {
     if (!pendingPreviewTab || !streaming) {
       setStreamingPreviewGraceElapsed(false);
       return;
     }
+    // Always re-arm on tab/stream change so a previous ghost's elapsed grace
+    // cannot immediately unavailable the next pending tab.
+    setStreamingPreviewGraceElapsed(false);
     const timer = window.setTimeout(() => setStreamingPreviewGraceElapsed(true), 12_000);
     return () => window.clearTimeout(timer);
   }, [pendingPreviewTab, streaming, activeTab]);
@@ -2443,13 +2447,13 @@ export function FileWorkspace({
               resolvedPreviewFile.name,
               slideNavDeliverableNonce,
             )}
-            liveHtml={streaming && artifactHtml ? artifactHtml : undefined}
+            liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}
           />
         ) : pendingPreviewTab ? (
           <div className="viewer-empty">
-            {(streaming && !streamingPreviewGraceElapsed) || previewTabPending
-              ? t('fileViewer.loading')
-              : t('fileViewer.previewUnavailable')}
+            {/* Keep loading until ghost resolve retargets/closes — never flash
+                embed previewUnavailable while the file list is still catching up. */}
+            {t('fileViewer.loading')}
           </div>
         ) : (
           <div className="viewer-empty">
