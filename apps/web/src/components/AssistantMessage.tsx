@@ -813,6 +813,7 @@ function AssistantMessageImpl({
                   usage,
                   hasUnfinishedTodos: unfinishedTodos.length > 0,
                   hasEmptyResponse,
+                  runFailed,
                   preparing,
                   todoProgress: hideAssistantThinkingDetails ? streamingTodoProgress : null,
                   copyMarkdown,
@@ -830,6 +831,7 @@ function AssistantMessageImpl({
                 usage={usage}
                 hasUnfinishedTodos={unfinishedTodos.length > 0}
                 hasEmptyResponse={hasEmptyResponse}
+                runFailed={runFailed}
                 preparing={preparing}
                 todoProgress={hideAssistantThinkingDetails ? streamingTodoProgress : null}
                 copyMarkdown={copyMarkdown}
@@ -1011,6 +1013,13 @@ interface AssistantFooterProps {
   usage: Extract<AgentEvent, { kind: "usage" }> | undefined;
   hasUnfinishedTodos: boolean;
   hasEmptyResponse: boolean;
+  // Whether the run terminated in a failed state (auto-continue path or
+  // manual retry-recoverable failure). Threaded from the parent because the
+  // footer must swap its label to "designs.status.failed" instead of the
+  // default "done" — without this, a failed slide run silently reads as
+  // "완료됨 · 15757 출력" and the empty preview looks like a save regression
+  // rather than the run failure it actually is.
+  runFailed: boolean;
   // Pre-output phase: streaming but nothing rendered yet. The label shimmers
   // "Preparing…"; once content lands it flips to "Working".
   preparing?: boolean;
@@ -1034,6 +1043,7 @@ function AssistantFooter({
   usage,
   hasUnfinishedTodos,
   hasEmptyResponse,
+  runFailed,
   preparing = false,
   todoProgress = null,
   copyMarkdown,
