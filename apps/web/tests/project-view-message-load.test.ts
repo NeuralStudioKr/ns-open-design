@@ -184,7 +184,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 5200);
+    const block = source.slice(start, start + 7000);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(block).toContain("conversationAutoContinueCountRef.current.set(");
@@ -258,7 +258,7 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 12000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 16000);
 
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");

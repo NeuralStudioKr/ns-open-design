@@ -64,8 +64,19 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   '다른 프로젝트·다른 대화의 슬라이드를 이어 쓰지 마세요. ' +
   '이번 응답은 반드시 `<artifact type="text/html" identifier="...">`로 시작해서 `</artifact>`로 끝나야 합니다. ' +
   '인사, 사과, 계획, 목차 나열, "만들겠습니다" 약속, question-form은 금지입니다. ' +
-  '응답 전체가 하나의 완전한 `<!doctype html>…</html>` 덱이어야 하며 최소 10장 이상 실제 슬라이드 콘텐츠를 포함하세요. ' +
-  '(English: Use ONLY this conversation. Output ONLY one complete HTML deck artifact — no prose before or after it.)';
+  '응답 전체가 하나의 완전한 `<!doctype html>…</html>` 덱이어야 합니다. ' +
+  // Token-budget escape hatch: previous full-scope attempts likely died at
+  // max_tokens mid-artifact. Cut inline styles/scripts and slide count to
+  // fit inside the output budget so at least a minimal previewable deck
+  // lands. Deleting the framework <script> is acceptable here since the
+  // deliverable-missing failure is worse than a static (non-navigable) deck.
+  '실제 슬라이드는 6장 이상이면 되고, ' +
+  '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트 콘텐츠(제목·본문·목록)가 반드시 들어가야 합니다. ' +
+  '인라인 CSS는 최소한만 쓰고, 필요하면 프레임워크 스크립트를 생략해도 좋습니다 — 빈 덱보다 스크롤로 넘기는 정적 덱이 낫습니다. ' +
+  '`<!-- SLOT: ... -->` 형태의 주석 자리표시자를 그대로 남기는 것은 금지입니다. ' +
+  '(English: Output ONE complete HTML deck artifact — no prose. ' +
+  'At least 6 slides, real text in every <section class="slide"> (never the SLOT comment). ' +
+  'Minimize inline CSS; skip the framework <script> if needed — a static deck beats an empty artifact.)';
 
 const AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT = 4000;
 const AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT = 2000;

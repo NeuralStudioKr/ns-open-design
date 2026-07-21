@@ -1059,9 +1059,13 @@ type ArtifactPersistResult =
   | { kind: 'auth-replay-queued'; fileName: string };
 
 function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
-  return result?.kind === 'skipped-incomplete'
-    || result?.kind === 'rejected'
-    || result?.kind === 'save-failed';
+  // Hotfix: do not turn content-shape validation misses into terminal run
+  // failures. The stricter incomplete-output gate introduced after the
+  // 2026-07-16 stable build caused slide generation to finish as failed even
+  // when the model/daemon had completed a turn and the normal recovery/open
+  // paths still had a chance to resolve files. Only real persistence failures
+  // should fail the run here.
+  return result?.kind === 'save-failed';
 }
 
 export function ProjectView({
@@ -2110,9 +2114,11 @@ export function ProjectView({
               }
               const attempt =
                 conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
+              const autoContinueCtx =
+                extractAutoContinueContextFromAssistant(incompleteAssistant);
               const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                 attempt,
-                ...extractAutoContinueContextFromAssistant(incompleteAssistant),
+                ...autoContinueCtx,
               });
               const started = sendNow(
                 autoContinuePrompt,
@@ -4678,9 +4684,11 @@ export function ProjectView({
               }
               const attempt =
                 conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
+              const autoContinueCtx =
+                extractAutoContinueContextFromAssistant(incompleteAssistant);
               const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                 attempt,
-                ...extractAutoContinueContextFromAssistant(incompleteAssistant),
+                ...autoContinueCtx,
               });
               const started = sendNow(
                 autoContinuePrompt,
@@ -5172,6 +5180,12 @@ export function ProjectView({
       let parsedArtifact: Artifact | null = null;
       let liveHtml = '';
       let streamedText = '';
+      // Best complete artifact seen so far in this turn. Prevents a
+      // later `<artifact>` block with only a shell body (e.g. the model
+      // opened a second, empty artifact after a valid one) from overwriting
+      // an earlier good deliverable. Terminal auto-open falls back to this
+      // when the live parsedArtifact ended up incomplete.
+      let bestArtifactSoFar: Artifact | null = null;
       const runIsVisible = () =>
         messagesConversationIdRef.current === runConversationId;
 
@@ -5205,8 +5219,22 @@ export function ProjectView({
               parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
             );
 
+            // If the live parsedArtifact ended up incomplete (e.g. the model
+            // emitted a valid deck first and an empty shell afterwards),
+            // restore the best complete artifact we saw during this turn.
+            // resolveTerminalArtifactToPersist already prefers a standalone
+            // <!doctype html> fallback found in the raw text, but that path
+            // misses artifacts the parser emitted as `<artifact>` blocks
+            // before the trailing empty one clobbered our reference.
+            const effectiveParsedArtifact: Artifact | null =
+              hadIncompleteParsedArtifact
+                && bestArtifactSoFar?.html
+                && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html)
+                ? bestArtifactSoFar
+                : parsedArtifact;
+
             const artifactToPersist = resolveTerminalArtifactToPersist(
-              parsedArtifact,
+              effectiveParsedArtifact,
               finalText,
               artifactFromStandaloneHtml,
             );
@@ -5247,7 +5275,7 @@ export function ProjectView({
             const shouldFailMissingSlideHtml = shouldFailSlideRunForMissingHtmlDeliverable({
               slideOnlyMvp,
               producedHtmlToOpen,
-              parsedArtifact,
+              parsedArtifact: effectiveParsedArtifact,
               liveHtml,
               finalText,
               terminalArtifactPersistFailed,
@@ -5370,10 +5398,21 @@ export function ProjectView({
                   }
                   const attempt =
                     conversationAutoContinueCountRef.current.get(runConversationId) ?? 1;
+                  // Prefer the recovered best-so-far artifact when it exists;
+                  // otherwise fall back to the (potentially incomplete) live
+                  // parsedArtifact so the auto-continue prompt can echo the
+                  // partial HTML for the model to complete instead of writing
+                  // from scratch.
+                  const partialHtmlForAutoContinue =
+                    (bestArtifactSoFar?.html && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html)
+                      ? bestArtifactSoFar.html
+                      : parsedArtifact?.html)
+                    ?? liveHtml
+                    ?? null;
                   const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                     attempt,
                     ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
-                      partialHtml: parsedArtifact?.html ?? liveHtml ?? null,
+                      partialHtml: partialHtmlForAutoContinue,
                       planOutline: finalText,
                     }),
                   });
@@ -5576,6 +5615,24 @@ export function ProjectView({
             if (runIsVisible()) {
               setArtifact((prev) => (prev ? { ...prev, html: ev.fullContent } : null));
             }
+            // Track the best completed artifact from this turn. When the
+            // model emits an empty-shell followup after a full deck, or a
+            // full deck after a plan sketch, we must not silently persist
+            // the smaller/broken one. Preference: the artifact whose body
+            // passes the incomplete-shell gate; among those, the longer wins.
+            try {
+              const candidate = parsedArtifact;
+              const candidateOk =
+                !!candidate?.html && !isIncompleteHtmlDocumentShell(candidate.html);
+              const bestOk =
+                !!bestArtifactSoFar?.html
+                && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
+              if (candidateOk && (!bestOk || (candidate?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
+                bestArtifactSoFar = candidate;
+              } else if (!bestArtifactSoFar) {
+                bestArtifactSoFar = candidate;
+              }
+            } catch { /* defensive — never throw from stream handling */ }
           }
         }
       };
@@ -5584,6 +5641,7 @@ export function ProjectView({
         parser = createArtifactParser();
         liveHtml = '';
         parsedArtifact = null;
+        bestArtifactSoFar = null;
         applyContentDelta(fullContent);
       };
 
@@ -8668,6 +8726,13 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   finalText: string,
   options: { slideOnlyMvp: boolean },
 ): boolean {
+  // Hotfix: restore the 2026-07-16 behavior for demo stability. A plan-only or
+  // artifact-less answer must not be force-marked as a failed run by the web
+  // shell; doing so triggered the incomplete_output loop reported in
+  // production. Prompting can still encourage HTML, but the UI should not
+  // synthesize a terminal failure from message text alone.
+  return false;
+
   if (!options.slideOnlyMvp) return false;
   const text = finalText.trim();
   if (!text) return false;
@@ -8692,6 +8757,10 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   finalText: string;
   terminalArtifactPersistFailed: boolean;
 }): boolean {
+  // See shouldFailSlideRunWithoutHtmlDeliverable. Missing produced HTML should
+  // not force the run into failed/incomplete_output during generation.
+  return false;
+
   if (options.terminalArtifactPersistFailed) return false;
   if (!options.slideOnlyMvp || options.producedHtmlToOpen) return false;
 

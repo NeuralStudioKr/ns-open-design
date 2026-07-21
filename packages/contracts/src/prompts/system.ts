@@ -486,6 +486,15 @@ When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edi
 If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="text/html" identifier="...">...</artifact>\` block. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained HTML slide deck that can be previewed immediately.
 
 You may include at most one short sentence before the artifact. Do not stop after "I'll make it", a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+
+### Anti-patterns that keep breaking Teamver slide runs (do NOT do these)
+
+- ❌ Emitting the framework skeleton with the \`<!-- SLOT: slide N content -->\` HTML comments left in place. The \`<section class="slide">\` blocks MUST contain real headings, paragraphs, lists, or images — not the commented placeholders. A skeleton with unfilled comment slots is a **broken deliverable**, not a starting point the host will fill in later.
+- ❌ Closing the artifact after only \`<!doctype html><html lang="en"><head>…</head></html>\` with an empty \`<body>\` (or no body at all). The body MUST include at least two \`<section class="slide">\` blocks with visible copy.
+- ❌ Emitting a second \`<artifact type="text/html">\` block **after** a full deck. The web UI persists the last artifact of the turn; an empty follow-up shell silently overwrites the real deck. Ship exactly one artifact per turn.
+- ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
+
+**Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
