@@ -18,22 +18,35 @@ vi.mock("../src/teamver/teamverEmbedAuthNavigation", () => ({
   resolveEmbedAuthReturnPath: () => "/p/demo",
 }));
 
+vi.mock("../src/teamver/teamverUiToast", () => ({
+  showTeamverUiToast: vi.fn(),
+}));
+
 import {
   beginMainSsoMismatchRecovery,
+  MAIN_SSO_MISMATCH_RECOVERY_TOAST_MESSAGE,
   resetMainSsoMismatchRecoveryForTests,
   wasMainSsoMismatchRecoverAttemptedRecently,
 } from "../src/teamver/mainSsoMismatchRecovery";
+import { showTeamverUiToast } from "../src/teamver/teamverUiToast";
 
 describe("mainSsoMismatchRecovery", () => {
   beforeEach(() => {
     clearCookies.mockClear();
     clearSession.mockClear();
     redirect.mockClear();
+    vi.mocked(showTeamverUiToast).mockClear();
     resetMainSsoMismatchRecoveryForTests();
   });
 
   it("clears Main + Design sessions then redirects with returnTo", async () => {
     await beginMainSsoMismatchRecovery();
+    expect(showTeamverUiToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: MAIN_SSO_MISMATCH_RECOVERY_TOAST_MESSAGE,
+        tone: "loading",
+      }),
+    );
     expect(clearCookies).toHaveBeenCalledTimes(1);
     expect(clearSession).toHaveBeenCalledTimes(1);
     expect(redirect).toHaveBeenCalledWith({ returnTo: "/p/demo" });
@@ -58,8 +71,15 @@ describe("mainSsoMismatchRecovery", () => {
     await beginMainSsoMismatchRecovery();
     clearCookies.mockClear();
     redirect.mockClear();
+    vi.mocked(showTeamverUiToast).mockClear();
     await beginMainSsoMismatchRecovery();
     expect(clearCookies).not.toHaveBeenCalled();
+    expect(showTeamverUiToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: MAIN_SSO_MISMATCH_RECOVERY_TOAST_MESSAGE,
+        tone: "loading",
+      }),
+    );
     expect(redirect).toHaveBeenCalledWith({ returnTo: "/p/demo" });
   });
 });

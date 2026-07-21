@@ -4,6 +4,8 @@
  * Parent-domain `teamver_access_token` was overwritten (e.g. another tab logged
  * into Main as a different account). Showing "accounts differ" is operator
  * jargon — clear both cookies and cold-start login so one account owns both.
+ * A short friendly toast explains the brief navigation so it does not look
+ * like a hard error / unexplained refresh.
  */
 
 import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
@@ -12,11 +14,23 @@ import {
   clearDesignAuthSessionFull,
   redirectToTeamverLoginPreservingRoute,
 } from "./designAuthFlow";
+import { showTeamverUiToast } from "./teamverUiToast";
 
 const RECOVER_FLAG = "teamver_main_sso_mismatch_recover";
 const RECOVER_COOLDOWN_MS = 45_000;
+/** Let the toast paint before navigation so the refresh is explained. */
+const TOAST_BEFORE_REDIRECT_MS = 450;
+
+export const MAIN_SSO_MISMATCH_RECOVERY_TOAST_MESSAGE =
+  "로그인 상태를 맞추고 있습니다. 잠시만 기다려 주세요.";
 
 let recoverInflight: Promise<void> | null = null;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 function readRecoverStamp(): number {
   if (typeof sessionStorage === "undefined") return 0;
@@ -50,6 +64,14 @@ export function beginMainSsoMismatchRecovery(): Promise<void> {
 
   recoverInflight = (async () => {
     const alreadyAttempted = wasMainSsoMismatchRecoverAttemptedRecently();
+    // Always explain the brief navigation — cooldown only skips cookie clear.
+    showTeamverUiToast({
+      message: MAIN_SSO_MISMATCH_RECOVERY_TOAST_MESSAGE,
+      tone: "loading",
+      ttlMs: 8_000,
+      role: "status",
+    });
+    await sleep(TOAST_BEFORE_REDIRECT_MS);
     if (!alreadyAttempted) {
       writeRecoverStamp(Date.now());
       try {

@@ -4839,13 +4839,10 @@ function HtmlViewer({
     return isArtifactHtmlStableForPreview(repaired);
   });
   const hasLiveHtml = liveHtml !== undefined;
-  // Disk-fetch callbacks must not re-subscribe on every liveHtml token; read
-  // streaming / live presence via refs so incomplete-disk never flips the
-  // empty state to "unavailable" mid-stream.
+  // Disk-fetch callbacks read streaming via ref so soft-retry / wall decisions
+  // stay correct without re-subscribing on every liveHtml token.
   const streamingRef = useRef(streaming);
   streamingRef.current = streaming;
-  const liveHtmlActiveRef = useRef(Boolean(liveHtml?.trim()));
-  liveHtmlActiveRef.current = Boolean(liveHtml?.trim());
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5448,8 +5445,10 @@ function HtmlViewer({
   }, [streaming]);
 
   // Disk / raw fetch — independent of liveHtml token identity.
+  // While streaming, a stable live paint can skip disk. After stream ends,
+  // always allow disk so turn-end scrubbed HTML can replace a stale live frame.
   useEffect(() => {
-    if (hasLiveHtml && liveHtmlPaintsPreview) return;
+    if (streaming && hasLiveHtml && liveHtmlPaintsPreview) return;
 
     const artifactIdentity = `${projectId}\0${file.name}`;
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
@@ -5494,25 +5493,29 @@ function HtmlViewer({
       }
     };
 
-    if (previewSourceWallIdentityRef.current !== artifactIdentity) {
-      clearPreviewSourceWall();
-      previewSourceWallIdentityRef.current = artifactIdentity;
-    }
-    // Arm wall once per identity while source is empty and we are not
-    // mid-stream. Streaming incomplete disk is expected — the wall arms when
-    // streaming ends (this effect re-runs). Do not reset on filesRefreshKey.
-    if (
-      !streaming
-      && sourceRef.current == null
-      && previewSourceWallTimerRef.current == null
-    ) {
+    const armPreviewSourceWall = () => {
+      if (previewSourceWallIdentityRef.current !== artifactIdentity) {
+        clearPreviewSourceWall();
+        previewSourceWallIdentityRef.current = artifactIdentity;
+      }
+      // Arm while empty and not mid-stream. Re-arm after soft-retry / late
+      // incomplete responses so wall→clear→loading cannot stick forever.
+      if (
+        streamingRef.current
+        || sourceRef.current != null
+        || previewSourceWallTimerRef.current != null
+      ) {
+        return;
+      }
       previewSourceWallTimerRef.current = setTimeout(() => {
         previewSourceWallTimerRef.current = null;
         if (sourceRef.current == null && !streamingRef.current) {
           setSourceLoadFailed(true);
         }
       }, HTML_PREVIEW_SOURCE_WALL_MS);
-    }
+    };
+
+    armPreviewSourceWall();
 
     const runFetch = () => {
       // Cache-bust the fetch on every mtime / reload / files-refresh bump.
@@ -5522,6 +5525,8 @@ function HtmlViewer({
       // activated HTML, canActivateSrcDocTransport bails on the dedupe
       // check, and the preview only refreshes when Comment closes and the
       // url-load iframe takes over with its own ?v=mtime cache-bust.
+      // Clear sticky unavailable for this attempt so refresh shows loading.
+      setSourceLoadFailed(false);
       void fetchProjectFileText(projectId, file.name, {
         cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}`,
         signal: abort.signal,
@@ -5543,22 +5548,32 @@ function HtmlViewer({
           // on loading — wall (non-streaming) owns unavailable escalation.
           if (!softRetried && !streamingRef.current) {
             softRetried = true;
+            setSourceLoadFailed(false);
+            armPreviewSourceWall();
             softRetryTimer = setTimeout(runFetch, 400);
             return;
           }
+          armPreviewSourceWall();
           return;
         }
-        setSourceLoadFailed(false);
         const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef);
         if (accepted == null) {
-          // Incomplete/leaky disk with no stable frame. Keep loading / veil —
-          // do NOT flip unavailable here. Stream-end races (liveHtml cut +
-          // turn-end scrub still writing) used to paint embed
-          // previewUnavailable immediately. Wall-clock owns escalation.
+          // Incomplete/leaky disk with no stable frame. Soft-retry once after
+          // stream (turn-end scrub race), then keep loading — wall escalates.
+          // Do NOT flip unavailable here.
+          if (!softRetried && !streamingRef.current) {
+            softRetried = true;
+            setSourceLoadFailed(false);
+            armPreviewSourceWall();
+            softRetryTimer = setTimeout(runFetch, 400);
+            return;
+          }
+          armPreviewSourceWall();
           return;
         }
         setSource(accepted);
         sourceRef.current = accepted;
+        setSourceLoadFailed(false);
         clearPreviewSourceWall();
       });
     };

@@ -84,7 +84,8 @@ import {
   clampTeamverEmbedRoute,
   teamverEmbedRouteChanged,
 } from './teamver/clampTeamverEmbedRoute';
-import { subscribeTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
+import { subscribeTeamverWorkspaceChanged, dispatchTeamverWorkspaceChanged } from './teamver/teamverWorkspaceEvents';
+import { subscribeTeamverUiToast } from './teamver/teamverUiToast';
 import {
   assertTeamverProjectAccessIfNeeded,
   ensureTeamverProjectRegisteredById,
@@ -101,6 +102,8 @@ import {
   formatTeamverDriveImportErrorMessage,
   importTeamverDriveAssets,
 } from './teamver/importDriveAssets';
+import { isMainSsoUserMismatchError } from './teamver/teamverMainSsoGate';
+import { beginMainSsoMismatchRecovery } from './teamver/mainSsoMismatchRecovery';
 import {
   canvasImportedToChatAttachments,
   importTeamverCanvas,
@@ -499,6 +502,15 @@ function AppInner() {
   // this the failure was swallowed and the user believed their folder was in
   // effect while the project actually stayed in the managed root.
   const [workingDirError, setWorkingDirError] = useState<string | null>(null);
+  const [teamverUiToast, setTeamverUiToast] = useState<{
+    key: number;
+    message: string;
+    details?: string;
+    tone: 'default' | 'success' | 'error' | 'loading';
+    ttlMs: number;
+    role: 'status' | 'alert';
+  } | null>(null);
+  const teamverUiToastSeqRef = useRef(0);
   const [embedDesignAppEnabled, setEmbedDesignAppEnabled] = useState(true);
   const [embedWorkspaceId, setEmbedWorkspaceId] = useState<string | null>(null);
   const [settingsWelcome, setSettingsWelcome] = useState(false);
@@ -545,6 +557,8 @@ function AppInner() {
   >(new Map());
   const byokProxyIdlePollsRef = useRef<Map<string, number>>(new Map());
   const embedActiveWorkspaceIdRef = useRef<string | null>(null);
+  /** Workspace id changed before embed boot finished — flush after boot. */
+  const pendingWorkspaceSwitchIdRef = useRef<string | null>(null);
   const workspaceSwitchReconcilingRef = useRef(false);
   const preWorkspaceSwitchTrustedProjectsRef = useRef<Set<string>>(new Set());
   const projectsRef = useRef<Project[]>(projects);
@@ -1523,6 +1537,21 @@ function AppInner() {
     isTeamverEmbedMode() && (!embedDesignAppEnabled || !embedWorkspaceId);
 
   useEffect(() => {
+    return subscribeTeamverUiToast((detail) => {
+      // Recovery / status toasts must not sit behind workingDirError alerts.
+      setWorkingDirError(null);
+      setTeamverUiToast({
+        key: ++teamverUiToastSeqRef.current,
+        message: detail.message,
+        details: detail.details,
+        tone: detail.tone ?? 'default',
+        ttlMs: detail.ttlMs ?? 4000,
+        role: detail.role ?? 'status',
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     if (!isTeamverEmbedMode()) {
       setEmbedWorkspaceId(null);
       return;
@@ -1535,12 +1564,26 @@ function AppInner() {
       if (!cancelled) {
         embedActiveWorkspaceIdRef.current = id;
         setEmbedWorkspaceId(id);
+        const pending = pendingWorkspaceSwitchIdRef.current?.trim() || null;
+        if (pending) {
+          pendingWorkspaceSwitchIdRef.current = null;
+          // Boot may have dropped the original switch event. Store can already
+          // equal `pending`, so poison the skip guard once then re-dispatch.
+          if (embedActiveWorkspaceIdRef.current === pending) {
+            embedActiveWorkspaceIdRef.current = `\0boot-flush:${pending}`;
+          }
+          dispatchTeamverWorkspaceChanged(pending);
+        }
       }
     };
     void syncWorkspace();
     const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
       const trimmed = workspaceId.trim() || null;
-      embedActiveWorkspaceIdRef.current = trimmed;
+      // UI label only. Do NOT write embedActiveWorkspaceIdRef here — the
+      // switch side-effects listener below owns the ref so
+      // shouldSkipWorkspaceSwitchSideEffects can still see A→B. Updating
+      // the ref first made every real switch look like a no-op and left
+      // the home recent list on the previous workspace.
       setEmbedWorkspaceId(trimmed);
     });
     const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
@@ -1663,9 +1706,12 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {
-      if (!isTeamverEmbedBootComplete()) return;
       const trimmed = workspaceId.trim();
       if (!trimmed) return;
+      if (!isTeamverEmbedBootComplete()) {
+        pendingWorkspaceSwitchIdRef.current = trimmed;
+        return;
+      }
       if (shouldSkipWorkspaceSwitchSideEffects(embedActiveWorkspaceIdRef.current, trimmed)) {
         embedActiveWorkspaceIdRef.current = trimmed;
         return;
@@ -1709,10 +1755,14 @@ function AppInner() {
           }
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
-          const onHome = routeRef.current.kind === 'home';
+          const routeNow = routeRef.current;
           // Home recent rail uses registry-window + status-hints; projects tab
-          // uses paginated registry. Match the surface the user is looking at.
-          const result = await loadProjectsForWorkspaceSwitch({ homeRecent: onHome });
+          // (`kind:home` + `view:projects`) uses paginated registry. Do not use
+          // homeRecent on /projects — it marks the page loaded with hasMore:false
+          // and leaves Designs stuck on the short recent window.
+          const homeRecent =
+            routeNow.kind === 'home' && routeNow.view !== 'projects';
+          const result = await loadProjectsForWorkspaceSwitch({ homeRecent });
           if (isStaleProjectListWorkspace(request)) {
             return;
           }
@@ -2324,7 +2374,12 @@ function AppInner() {
           }
         } catch (err) {
           console.warn('Home Drive import failed for new project', err);
-          setWorkingDirError(formatTeamverDriveImportErrorMessage(err));
+          if (isMainSsoUserMismatchError(err)) {
+            void beginMainSsoMismatchRecovery();
+            setWorkingDirError(null);
+          } else {
+            setWorkingDirError(formatTeamverDriveImportErrorMessage(err));
+          }
         }
       }
       let canvasImportFailed = false;
@@ -2337,6 +2392,12 @@ function AppInner() {
           // re-open one-confirm while auto-send is queued.
           consumeTeamverCanvasLaunchHandoff();
         } catch (err) {
+          if (isMainSsoUserMismatchError(err)) {
+            // importTeamverCanvas already started silent rebind; do not delete
+            // the new project or surface a hard failure while redirecting.
+            setWorkingDirError(null);
+            return false;
+          }
           canvasImportFailed = true;
           console.warn('Home Canvas import-canvas failed for new project', err);
           trackProjectCreateResult(
@@ -3803,14 +3864,23 @@ function AppInner() {
       ) : null}
       </AnimatePresence>
       <MemoryToast onOpenMemory={() => openSettings('memory')} />
-      {workingDirError ? (
+      {teamverUiToast ? (
+        <Toast
+          key={teamverUiToast.key}
+          message={teamverUiToast.message}
+          details={teamverUiToast.details}
+          tone={teamverUiToast.tone}
+          role={teamverUiToast.role}
+          ttlMs={teamverUiToast.ttlMs}
+          onDismiss={() => setTeamverUiToast(null)}
+        />
+      ) : workingDirError ? (
         <Toast
           message={workingDirError}
           role="alert"
           onDismiss={() => setWorkingDirError(null)}
         />
-      ) : null}
-      {backgroundRunNotice && !workingDirError ? (
+      ) : backgroundRunNotice ? (
         <Toast
           key={backgroundRunNotice.runId}
           message={backgroundRunNotice.status === 'succeeded'

@@ -83,11 +83,12 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     );
 
     const pending = fetchTeamverRuntimeConfig({ force: true });
-    // Cover DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS (400ms) plus soft-retry probes.
+    // HA sibling wait only — no POST /auth/refresh ladder.
     await vi.advanceTimersByTimeAsync(2_000);
     expect(await pending).toBeNull();
-    // Initial GET + HA sibling retry after refresh declines.
+    // Initial GET + one HA retry GET. No /auth/refresh or session-probe.
     expect(httpGet).toHaveBeenCalledTimes(2);
+    expect(refreshFetch).not.toHaveBeenCalled();
 
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
     expect(httpGet).toHaveBeenCalledTimes(2);
@@ -103,6 +104,7 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     const recovered = await fetchTeamverRuntimeConfig({ force: true });
     expect(recovered?.model).toBe("claude-sonnet-4-6");
     expect(httpGet).toHaveBeenCalledTimes(3);
+    expect(refreshFetch).not.toHaveBeenCalled();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -150,12 +152,10 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     setTeamverEmbedSessionAuthenticated(true);
 
     vi.useFakeTimers();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
-      ),
+    const refreshFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
     );
+    vi.stubGlobal("fetch", refreshFetch);
 
     httpGet
       .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }))
@@ -166,12 +166,13 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
       });
 
     const pending = fetchTeamverRuntimeConfig({ force: true });
-    // Cover DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS (400ms) plus soft-retry probes.
     await vi.advanceTimersByTimeAsync(2_000);
     const value = await pending;
 
     expect(value?.model).toBe("claude-sonnet-4-6");
     expect(httpGet).toHaveBeenCalledTimes(2);
+    // HA retry must not POST /auth/refresh or probe.
+    expect(refreshFetch).not.toHaveBeenCalled();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });

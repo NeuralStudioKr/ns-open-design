@@ -195,7 +195,8 @@ export function handleTeamverDriveAuthFailure(
 ): boolean {
   if (isTeamverDriveMainSsoUserMismatchError(err)) {
     void beginMainSsoMismatchRecovery();
-    handlers.onTransient();
+    // Recovery shows its own friendly loading toast — do not paint transient
+    // "연결을 확인하지 못했습니다" error UI that looks like a hard failure.
     return true;
   }
   if (isTeamverDriveMainSsoRequiredError(err) || isTeamverDriveMainSsoGateError(err)) {

@@ -112,8 +112,8 @@ sequenceDiagram
 2. `runtimeConfigAuthBlocked && !force` → 네트워크 생략.
 3. HTTP 성공 → `runtimeConfigAuthBlocked = false`, 캐시 갱신.
 4. `NetworkError` status `401` → `runtimeConfigAuthBlocked = true`, `null`.
-5. **`force=false`(visibility)**: cookie auth recovery **생략** — 죽은 세션에서 `/runtime-config`·`/auth/refresh` 연쇄 401 방지.
-6. **`force=true`**: `withDesignBffCookieAuthRecovery` 유지 (HA sibling cookie).
+5. **`force=false`(visibility)**: 첫 GET 401 즉시 백오프 — cookie auth recovery **생략**.
+6. **`force=true`**: `/auth/refresh` 사다리 **금지**. HA sibling 대기(400ms) 후 GET 1회만 재시도. 실패 시 백오프. (이전: `withDesignBffCookieAuthRecovery` → POST refresh + session-probe×2 스톰)
 7. 백오프 해제:
    - `setTeamverEmbedSessionAuthenticated(true)` (이미 true여도 해제 — stale true + 죽은 쿠키 복구).
    - cross-tab `embed-session-changed` authenticated=true 릴레이 (재broadcast 없이 `clearTeamverRuntimeConfigAuthBlock`만).
@@ -157,4 +157,5 @@ void reloadTeamverRuntimeConfig();
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-21 | `force=true`에서도 refresh/probe 사다리 제거 — HA GET retry만. staging `runtime-config→refresh→probe×2` 스톰 차단. |
 | 2026-07-16 | 증상·대안 비교·C+D 채택·구현 SSOT 기록 |

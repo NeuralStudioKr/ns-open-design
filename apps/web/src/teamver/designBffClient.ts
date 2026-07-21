@@ -1013,24 +1013,45 @@ export async function fetchTeamverRuntimeConfig(
 
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
-      // Opportunistic (visibility) reloads: one GET only — auth recovery would
-      // spam /runtime-config + /auth/refresh 401s when the cookie is dead.
-      // force=true (boot / workspace / re-login) keeps HA cookie recovery only
-      // when sticky decline is clear (gated above).
-      const value = force
-        ? await withDesignBffCookieAuthRecovery(() =>
-            client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-              ...TEAMVER_BFF_REQUEST_OPTIONS,
-            }),
-          )
-        : await client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
-            ...TEAMVER_BFF_REQUEST_OPTIONS,
-          });
+      // Never run withDesignBffCookieAuthRecovery here. force=true used to POST
+      // /auth/refresh + session-probe×2 on every dead-cookie reload (workspace /
+      // session-changed), flooding DevTools while sticky was still clear.
+      const getOnce = () =>
+        client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
+          ...TEAMVER_BFF_REQUEST_OPTIONS,
+        });
+
+      let value: TeamverRuntimeConfigResponse;
+      try {
+        value = await getOnce();
+      } catch (firstErr) {
+        if (!isDesignBffUnauthorizedStatus(firstErr)) {
+          throw firstErr;
+        }
+        // force=true (workspace / re-login): one HA sibling wait + retry GET.
+        // Opportunistic visibility: stop after first 401 (docs-teamver/43).
+        if (!force) {
+          runtimeConfigAuthBlocked = true;
+          return null;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
+        );
+        try {
+          value = await getOnce();
+        } catch (retryErr) {
+          if (isDesignBffUnauthorizedStatus(retryErr)) {
+            runtimeConfigAuthBlocked = true;
+            return null;
+          }
+          throw retryErr;
+        }
+      }
       runtimeConfigAuthBlocked = false;
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;
     } catch (err) {
-      if (err instanceof NetworkError && err.status === 401) {
+      if (isDesignBffUnauthorizedStatus(err)) {
         runtimeConfigAuthBlocked = true;
       }
       return null;

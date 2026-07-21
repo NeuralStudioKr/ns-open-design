@@ -1603,7 +1603,7 @@ export function FileWorkspace({
       return;
     }
     // Always re-arm on tab/stream change so a previous ghost's elapsed grace
-    // cannot immediately unavailable the next pending tab.
+    // cannot immediately settle the next pending tab.
     setStreamingPreviewGraceElapsed(false);
     const timer = window.setTimeout(() => setStreamingPreviewGraceElapsed(true), 12_000);
     return () => window.clearTimeout(timer);

@@ -24,6 +24,7 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toContain(
       "Always re-arm on tab/stream change so a previous ghost's elapsed grace",
     );
+    expect(source).toContain("cannot immediately settle the next pending tab");
     // Pending tab shows loading only — ghost resolve retargets/closes; do not
     // flash previewUnavailable while the file list is still catching up.
     expect(source).toMatch(/pendingPreviewTab \? \([\s\S]*fileViewer\.loading/);

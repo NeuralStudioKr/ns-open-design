@@ -87,7 +87,6 @@ import {
 } from '../teamver/importCanvas';
 import {
   redirectToTeamverLoginFromEmbed,
-  TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from '../teamver/teamverBffAuthError';
 import { isMainSsoRequiredError, isMainSsoUserMismatchError } from '../teamver/teamverMainSsoGate';
 import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery';
@@ -1633,7 +1632,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       } catch (err) {
         if (isMainSsoUserMismatchError(err)) {
           void beginMainSsoMismatchRecovery();
-          setUploadError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+          setUploadError(null);
           setUploadAuthRelogin(false);
         } else {
           setUploadError(formatTeamverDriveImportErrorMessage(err));
@@ -1743,7 +1742,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }      } catch (err) {
         if (isMainSsoUserMismatchError(err)) {
           void beginMainSsoMismatchRecovery();
-          setCanvasSlideLaunchError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
+          setCanvasSlideLaunchError(null);
           setCanvasSlideLaunchAuthRelogin(false);
         } else {
           const message =

@@ -9,13 +9,42 @@ function readSource(relativePath: string): string {
 }
 
 describe("embed workspace switch side effects", () => {
+  it("keeps early workspace sync from poisoning the switch skip guard ref", () => {
+    const app = readSource("src/App.tsx");
+    const earlyStart = app.indexOf(
+      "const unsubscribeWorkspace = subscribeTeamverWorkspaceChanged(({ workspaceId }) => {",
+    );
+    expect(earlyStart).toBeGreaterThan(0);
+    const earlyBlock = app.slice(earlyStart, earlyStart + 700);
+    expect(earlyBlock).toContain("setEmbedWorkspaceId(trimmed)");
+    expect(earlyBlock).not.toContain("embedActiveWorkspaceIdRef.current = trimmed");
+
+    const switchStart = app.indexOf(
+      "return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {",
+    );
+    expect(switchStart).toBeGreaterThan(earlyStart);
+    const switchBlock = app.slice(switchStart, switchStart + 4500);
+    expect(switchBlock).toContain("shouldSkipWorkspaceSwitchSideEffects(embedActiveWorkspaceIdRef.current, trimmed)");
+    expect(switchBlock).toContain("embedActiveWorkspaceIdRef.current = trimmed");
+    expect(switchBlock).toContain("loadProjectsForWorkspaceSwitch");
+  });
+
+  it("queues workspace switches that arrive before embed boot completes", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain("pendingWorkspaceSwitchIdRef");
+    expect(app).toContain("pendingWorkspaceSwitchIdRef.current = trimmed");
+    expect(app).toContain("\\0boot-flush:");
+    expect(app).toContain("dispatchTeamverWorkspaceChanged(pending)");
+  });
+
   it("clears stale workingDirError after a successful project list reload", () => {
     const app = readSource("src/App.tsx");
     const start = app.indexOf("return subscribeTeamverWorkspaceChanged(({ workspaceId }) => {");
     expect(start).toBeGreaterThan(0);
-    const block = app.slice(start, start + 4500);
+    const block = app.slice(start, start + 7000);
     expect(block).toContain("loadProjectsForWorkspaceSwitch");
-    expect(block).toContain("homeRecent: onHome");
+    expect(block).toContain("homeRecent");
+    expect(block).toContain("routeNow.view !== 'projects'");
     expect(block).toContain("isStaleProjectListWorkspace(request)");
     expect(block).toContain("setWorkingDirError(null)");
     expect(block).toContain("applyProjectsPageResult");

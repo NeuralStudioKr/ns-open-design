@@ -70,9 +70,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain(
       "Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip",
     );
-    expect(source).toContain(
-      "Wall-clock owns escalation",
-    );
+    expect(source).toContain("Do NOT flip unavailable here");
     expect(source).toContain("if (streaming) setSourceLoadFailed(false)");
     expect(source).not.toContain(
       "Incomplete disk HTML with no stable frame — surface unavailable",
@@ -81,6 +79,18 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).not.toMatch(
       /acceptPreviewHtmlCandidate\(text, lastStablePreviewSourceRef\)[\s\S]{0,280}setSourceLoadFailed\(true\)/,
     );
+  });
+
+  it("soft-retries incomplete disk after stream and re-arms wall", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("armPreviewSourceWall");
+    expect(source).toContain(
+      "Incomplete/leaky disk with no stable frame. Soft-retry once after",
+    );
+    expect(source).toContain(
+      "if (streaming && hasLiveHtml && liveHtmlPaintsPreview) return",
+    );
+    expect(source).toContain("Clear sticky unavailable for this attempt");
   });
 
   it("soft-retries transient null disk fetches without flipping unavailable", () => {

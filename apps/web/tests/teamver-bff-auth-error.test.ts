@@ -157,7 +157,7 @@ describe("classifyTeamverBffAuthFailure", () => {
       }),
     ).toBe(true);
     expect(beginMainSsoMismatchRecovery).toHaveBeenCalledTimes(1);
-    expect(onTransient).toHaveBeenCalledTimes(1);
+    expect(onTransient).not.toHaveBeenCalled();
     expect(onRelogin).not.toHaveBeenCalled();
   });
 
