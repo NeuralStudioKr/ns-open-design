@@ -2875,7 +2875,10 @@ export function ProjectView({
             resolveTurnStartFileBaseline(message.preTurnFileNames, filesSnapshot),
             filesSnapshot,
           ) ?? [];
-      const htmlToOpen = selectAutoOpenProducedHtml(produced);
+      const htmlToOpen = selectAutoOpenProducedHtml(produced)
+        ?? selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot, {
+          branding: { slideOnlyMvp },
+        });
       if (!htmlToOpen) continue;
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
@@ -2891,7 +2894,7 @@ export function ProjectView({
       return true;
     }
     return false;
-  }, [project.id, requestOpenFile, updateMessageById]);
+  }, [project.id, requestOpenFile, slideOnlyMvp, updateMessageById]);
 
   const markStreamingConversation = useCallback((conversationId: string) => {
     streamingConversationIdRef.current = conversationId;
@@ -3662,7 +3665,10 @@ export function ProjectView({
                 }
                 const diff = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                 const produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
-                const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
+                const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+                  ?? selectTouchedHtmlOutputFromEvents(message.events, nextFiles, {
+                    branding: { slideOnlyMvp },
+                  });
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
                   requestOpenFile(producedHtmlToOpen);
@@ -3811,6 +3817,7 @@ export function ProjectView({
     onProjectsRefresh,
     scheduleConversationMessageRefresh,
     reattachNonce,
+    slideOnlyMvp,
   ]);
 
   useEffect(() => {
@@ -4541,7 +4548,10 @@ export function ProjectView({
                 }
               }
               const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-              const producedHtmlToOpen = selectAutoOpenProducedHtml(produced);
+              const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+                ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
+                  branding: { slideOnlyMvp },
+                });
               if (producedHtmlToOpen && runIsVisible()) {
                 maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
                 requestOpenFile(producedHtmlToOpen);
@@ -5244,6 +5254,7 @@ export function ProjectView({
       scheduleConversationMessageRefresh,
       onProjectsRefresh,
       onProjectChange,
+      slideOnlyMvp,
     ],
   );
 
@@ -7802,6 +7813,28 @@ export async function findSameTurnHtmlWriteForRecoveredArtifact({
 function isHtmlProjectFile(file: ProjectFile): boolean {
   const name = (file.path || file.name).toLowerCase();
   return file.kind === 'html' || /\.(?:html?|xhtml)$/u.test(name);
+}
+
+function selectTouchedHtmlOutputFromEvents(
+  events: readonly AgentEvent[] | undefined,
+  filesSnapshot: readonly ProjectFile[],
+  options: Parameters<typeof decideAutoOpenAfterWrite>[2] = {},
+): string | null {
+  if (!events?.length || filesSnapshot.length === 0) return null;
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (!event || event.kind !== 'tool_use') continue;
+    const toolName = String(event.name || '').toLowerCase();
+    if (toolName !== 'write' && toolName !== 'edit') continue;
+    const input = event.input as { file_path?: unknown; filePath?: unknown } | null;
+    const filePath = input?.file_path ?? input?.filePath;
+    if (typeof filePath !== 'string' || filePath.length === 0) continue;
+    const decision = decideAutoOpenAfterWrite(filePath, filesSnapshot, options);
+    if (!decision.shouldOpen || !decision.fileName) continue;
+    const file = filesSnapshot.find((item) => item.name === decision.fileName);
+    if (file && isHtmlProjectFile(file)) return decision.fileName;
+  }
+  return null;
 }
 
 function normalizeHtmlForRecoveredArtifactComparison(value: string | null | undefined): string {

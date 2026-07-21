@@ -49,4 +49,26 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("if (retryTimer !== null) window.clearTimeout(retryTimer)");
     expect(block).toContain("reattachNonce");
   });
+
+  it("recovers an existing edited HTML output when produced-file diff is empty", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const helperStart = source.indexOf("function selectTouchedHtmlOutputFromEvents");
+    expect(helperStart).toBeGreaterThan(0);
+    const helperBlock = source.slice(helperStart, helperStart + 1400);
+    expect(helperBlock).toContain("toolName !== 'write' && toolName !== 'edit'");
+    expect(helperBlock).toContain("decideAutoOpenAfterWrite(filePath, filesSnapshot, options)");
+    expect(helperBlock).toContain("isHtmlProjectFile(file)");
+
+    const autoOpenStart = source.indexOf("const autoOpenRecoveredHtmlOutput = useCallback");
+    expect(autoOpenStart).toBeGreaterThan(0);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 1700);
+    expect(autoOpenBlock).toContain("selectAutoOpenProducedHtml(produced)");
+    expect(autoOpenBlock).toContain("selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot");
+    expect(autoOpenBlock).toContain("branding: { slideOnlyMvp }");
+
+    const fallbackUses = source.match(/selectTouchedHtmlOutputFromEvents\(/g) ?? [];
+    expect(fallbackUses.length).toBeGreaterThanOrEqual(4);
+    expect(source).toContain("selectTouchedHtmlOutputFromEvents(message.events, nextFiles");
+    expect(source).toContain("selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles");
+  });
 });
