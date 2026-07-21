@@ -119,7 +119,13 @@ import { randomUUID } from '../utils/uuid';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import { appendErrorStatusEvent } from '../runtime/chat-events';
-import { RESUME_CONTINUE_PROMPT } from '../runtime/resume';
+import {
+  AUTO_CONTINUE_ENTRY_FROM,
+  AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+  AUTO_CONTINUE_MAX_PER_CONVERSATION,
+  AUTO_CONTINUE_STATUS_CODE,
+  RESUME_CONTINUE_PROMPT,
+} from '../runtime/resume';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -220,6 +226,7 @@ import {
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
   formatProjectRunDeliverableMissingError,
+  formatAutoContinueIncompleteOutputNotice,
   extractProjectRunErrorCode,
   formatProjectRunErrorForUser,
   formatProjectForkConversationError,
@@ -1433,9 +1440,25 @@ export function ProjectView({
    * back must not override their choice.
    */
   const conversationRecoveryAttemptedRef = useRef<Set<string>>(new Set());
+  /**
+   * Counts how many times the automatic "결과물이 완성되지 않아 이어쓰기"
+   * recovery has fired inside a given conversation, keyed by conversationId.
+   *
+   * The recovery is capped at AUTO_CONTINUE_MAX_PER_CONVERSATION so a
+   * genuinely-broken turn (e.g. the model keeps emitting the same
+   * shell-then-stop pattern) cannot loop us into an infinite auto-continue
+   * spend. Manual "다시 시도" via the failed-run card still works past the
+   * cap; only the automatic path stops after the configured cap.
+   *
+   * Scoped per conversation (not per assistant) because a fresh continue-turn
+   * that itself fails would land as a new assistantId and would otherwise
+   * pass a per-assistant dedup — that is exactly the loop we want to prevent.
+   */
+  const conversationAutoContinueCountRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
     conversationRecoveryAttemptedRef.current.clear();
+    conversationAutoContinueCountRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
       window.clearTimeout(htmlAutoOpenTimerRef.current);
       htmlAutoOpenTimerRef.current = null;
@@ -4880,6 +4903,17 @@ export function ProjectView({
               ? latestAssistantMsg.content
               : (streamedText || fullText);
             let terminalArtifactPersistFailed = false;
+            // Track the *kind* of the persist result separately so the
+            // auto-continue gate below can distinguish "content is bad"
+            // (skipped-incomplete / rejected) from "content is fine, save
+            // failed for infra reasons" (save-failed on 5xx/network/etc.).
+            // Auto-continuing on the latter would just waste tokens on a
+            // second identical deliverable that would fail to save the same
+            // way — the retry belongs to the user in that case.
+            let terminalPersistResultKind: ArtifactPersistResult['kind'] | null = null;
+            const hadIncompleteParsedArtifact = Boolean(
+              parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
+            );
 
             const artifactToPersist = resolveTerminalArtifactToPersist(
               parsedArtifact,
@@ -4908,6 +4942,7 @@ export function ProjectView({
                   startedAt,
                 );
                 terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
+                terminalPersistResultKind = persistResult?.kind ?? null;
                 nextFiles = await refreshProjectFiles();
               }
             }
@@ -4934,18 +4969,6 @@ export function ProjectView({
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
               requestOpenFile(producedHtmlToOpen);
-            } else if (!producedHtmlToOpen) {
-              console.warn('[teamver] stream terminal auto-open produced no HTML', {
-                projectId: project.id,
-                conversationId: runConversationId,
-                assistantId,
-                hadParsedArtifact: Boolean(parsedArtifact?.html),
-                parsedArtifactBytes: parsedArtifact?.html?.length ?? 0,
-                shouldFailMissingSlideHtml,
-                producedCount: produced.length,
-                eventCount: latestAssistantMsg.events?.length ?? 0,
-                autoOpenGeneration: generation,
-              });
             }
 
             if (!isLatestTerminalAutoOpen()) return;
@@ -4954,14 +4977,95 @@ export function ProjectView({
             if (terminalArtifactPersistFailed) {
               const deliverableError = formatProjectRunDeliverableMissingError();
               if (runIsVisible()) setError(deliverableError);
-              updateAssistant((prev) => ({
-                ...appendErrorStatusEvent(prev, deliverableError, 'incomplete_output'),
-                producedFiles: produced,
-                runStatus: 'failed',
-                resumable: true,
-                endedAt,
-              }));
+              // Decide whether to fire the capped automatic continue BEFORE
+              // we finalize the assistant card, so the status event we append
+              // matches the branch we actually take. Both branches leave the
+              // run as failed+resumable — the manual "다시 시도" affordance
+              // stays available regardless — but the visible status label
+              // changes (auto-continue notice vs. plain deliverable-missing
+              // error).
+              const autoContinueCount =
+                conversationAutoContinueCountRef.current.get(runConversationId) ?? 0;
+              // Only auto-continue for CONTENT-incompleteness — a shell that
+              // pre-write rejected, an HTML validation refusal, or a slide
+              // turn that finished without producing any HTML at all. When
+              // the model's content was fine but the *save* failed (5xx,
+              // network, stash-fallback save-failed), a fresh model turn
+              // would just regenerate the same deliverable and hit the same
+              // infra issue — the correct recovery is a manual "다시 시도"
+              // once the save path is working again, so we leave that
+              // branch out of the auto path.
+              const failureIsContentIncompleteness =
+                terminalPersistResultKind === 'skipped-incomplete'
+                || terminalPersistResultKind === 'rejected'
+                // No persistResult means the persist branch never ran (no
+                // artifact recovered from the stream). In that case the
+                // trip through terminalArtifactPersistFailed came from the
+                // downstream "!producedHtmlToOpen && (hadIncompleteParsed
+                // Artifact || shouldFailMissingSlideHtml)" gate — those
+                // are, by definition, content-incompleteness signals.
+                || (terminalPersistResultKind === null
+                  && (hadIncompleteParsedArtifact || shouldFailMissingSlideHtml));
+              const canAutoContinue =
+                runIsVisible()
+                && autoContinueCount < AUTO_CONTINUE_MAX_PER_CONVERSATION
+                && failureIsContentIncompleteness;
+              if (canAutoContinue) {
+                conversationAutoContinueCountRef.current.set(
+                  runConversationId,
+                  autoContinueCount + 1,
+                );
+                const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+                updateAssistant((prev) => ({
+                  ...appendErrorStatusEvent(prev, autoContinueNotice, AUTO_CONTINUE_STATUS_CODE),
+                  producedFiles: produced,
+                  runStatus: 'failed',
+                  resumable: true,
+                  endedAt: prev.endedAt ?? endedAt,
+                }));
+              } else {
+                updateAssistant((prev) => ({
+                  ...appendErrorStatusEvent(prev, deliverableError, 'incomplete_output'),
+                  producedFiles: produced,
+                  runStatus: 'failed',
+                  resumable: true,
+                  endedAt: prev.endedAt ?? endedAt,
+                }));
+              }
               updateConversationLatestRun('failed', endedAt);
+              if (canAutoContinue) {
+                // Fire the automatic continue on the next macrotask so the
+                // saveMessage() below (which finalizes the failed assistant
+                // row on disk) lands before we start a *new* run in the same
+                // conversation. Without this ordering, handleSend's
+                // messagesConversationIdRef guard can race with our
+                // updateAssistant setState and see a phantom "still-active"
+                // stream, refusing to start the continue.
+                //
+                // A longer delay (600ms) beats a bare setTimeout(0): the
+                // updateAssistant flush that sets runStatus:'failed' /
+                // endedAt must commit BEFORE handleSend samples
+                // `currentConversationHasActiveRun` — otherwise the message
+                // still counts as in-flight, `currentConversationBusy` is
+                // true, and handleSend silently queues the auto-continue
+                // instead of starting it (see line 4696). 600ms is
+                // conservative given the failure-notice paint we just
+                // triggered; the user sees the "이어쓰기 시도 중" notice
+                // before the next stream starts.
+                window.setTimeout(() => {
+                  const conversationStillActive =
+                    messagesConversationIdRef.current === runConversationId;
+                  const sendNow = handleSendRef.current;
+                  if (!conversationStillActive) return;
+                  if (!sendNow) return;
+                  void sendNow(
+                    AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+                    [],
+                    [],
+                    { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+                  );
+                }, 600);
+              }
             } else {
               updateAssistant((prev) => ({
                 ...prev,
@@ -5702,6 +5806,19 @@ export function ProjectView({
       slideOnlyMvp,
     ],
   );
+
+  // Keep a ref that always points at the latest `handleSend`. The
+  // `scheduleStreamRunHtmlAutoOpen` helper lives inside `handleSend`'s
+  // closure, so it can only reach the *current* `handleSend` via this ref —
+  // referencing the callback directly would either capture the previous
+  // render's copy (stale deps) or introduce a recursive `useCallback`
+  // dependency. The `useLayoutEffect` sync runs before any paint that could
+  // schedule an auto-continue, so the ref is fresh by the time the terminal
+  // auto-open branch fires.
+  const handleSendRef = useRef(handleSend);
+  useLayoutEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
 
   // Cancel every in-flight run for the current conversation (the user's own
   // streaming turn plus any reattached runs), mark their assistant messages

@@ -77,7 +77,14 @@ export type ChatAnalyticsEntryFrom =
   // A turn started by the "Continue the run" affordance on a resumable failed
   // run. Lets run_created / run_finished isolate resume-continuations so the
   // recovery mechanism's usage and success rate are measurable.
-  | 'resume_continue';
+  | 'resume_continue'
+  // A turn started automatically because the previous terminal run produced no
+  // usable HTML deliverable (typically a 40-byte `<!doctype html><html><head>`
+  // shell that pre-write validation had to reject, or planning prose without
+  // an artifact block). Distinct from `resume_continue` (manual button) so the
+  // demo dashboard can measure how often the AUTOMATIC recovery fires and
+  // whether it actually salvages the deliverable.
+  | 'auto_continue_incomplete_output';
 
 export type ChatAnalyticsLengthBucket =
   | '0'

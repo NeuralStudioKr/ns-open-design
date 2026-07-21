@@ -58,6 +58,7 @@ describe("project conversation error messages", () => {
       formatProjectArtifactSaveFailedError,
       formatProjectArtifactStubWarning,
       formatProjectRunDeliverableMissingError,
+      formatAutoContinueIncompleteOutputNotice,
       extractProjectRunErrorCode,
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
@@ -68,6 +69,7 @@ describe("project conversation error messages", () => {
     );
     expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
     expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
+    expect(formatAutoContinueIncompleteOutputNotice()).toContain("자동으로 이어쓰기");
     // Generic fallback must never leak developer / infra jargon to end users.
     const generic = formatProjectArtifactSaveFailedError("deck.html");
     expect(generic).not.toContain("daemon");

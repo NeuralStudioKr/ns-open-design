@@ -30,6 +30,7 @@
  * the Anthropic path sends as `system`.
  */
 import type { ChatSessionMode } from '../api/chat.js';
+import type { MediaExecutionPolicy } from '../api/media.js';
 import type { ProjectMetadata, ProjectTemplate } from '../api/projects.js';
 import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
 import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
@@ -38,6 +39,27 @@ import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
 const ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT = 100;
+
+const TEAMVER_SLIDE_ONLY_SCOPE = `
+
+---
+
+## Teamver embed — slide deck scope only
+
+This workspace is Teamver Design embed with media generation disabled for the 1st launch.
+
+In scope: slide decks / HTML presentations / speaker notes / deck polish on existing project files.
+
+Out of scope: standalone image, video, audio, prototype pages, live artifacts, dashboards, and non-deck web apps. If the user asks for out-of-scope output, reply briefly that Teamver Design currently supports slides only and offer to help as a slide deck instead.
+
+### Slide deliverable contract
+
+For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
+
+- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="text/html">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document.
+- Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
+- If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
+`;
 
 export interface AudioVoiceOption {
   name: string;
@@ -225,6 +247,10 @@ export interface ComposeInput {
    *  set with streamFormat 'plain', swaps API_MODE_OVERRIDE for
    *  BYOK_TOOLS_OVERRIDE so the model knows which server-side tools exist. */
   byokToolNames?: readonly string[] | undefined;
+  /** Run-scoped media policy. Teamver slide-only embed passes disabled here
+   *  so API/BYOK prompts get the same slide deliverable contract as daemon
+   *  runs. */
+  mediaExecution?: MediaExecutionPolicy | undefined;
   // Per-conversation mode. Design mode keeps the artifact-first agent
   // workflow; chat mode keeps the same context/tools but answers like a
   // standard multi-turn assistant unless the user explicitly asks to build.
@@ -255,6 +281,7 @@ export function composeSystemPrompt({
   audioVoiceOptionsError,
   streamFormat,
   byokToolNames,
+  mediaExecution,
   sessionMode,
   locale,
   userInstructions,
@@ -289,6 +316,10 @@ export function composeSystemPrompt({
       parts.push(API_MODE_OVERRIDE);
     }
     parts.push('\n\n---\n\n');
+  }
+
+  if ((mediaExecution?.mode ?? 'enabled') === 'disabled') {
+    parts.push(TEAMVER_SLIDE_ONLY_SCOPE);
   }
 
   if (sessionMode === 'chat') {
@@ -460,6 +491,8 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 - A final \`<artifact type="text/html">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
 
+For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.
+
 If the rules below tell you to plan with TodoWrite, write the plan as prose instead. If they tell you to read skill side files before writing, describe in one sentence which patterns/conventions you're going to apply and proceed. If they tell you to run brand-spec extraction via Bash + Read + WebFetch, ask the user the missing brand questions in the discovery form instead.`;
 
 const BYOK_TOOLS_OVERRIDE = (toolNames: readonly string[]): string => {
@@ -479,7 +512,9 @@ You are running through the Open Design BYOK proxy. The following tools ARE wire
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
 - Real tool calls to the functions listed above (e.g. \`web_fetch\`, \`generate_image\`).
 - A final \`<artifact type="text/html">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
-- \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.`;
+- \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
+
+For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.`;
 };
 
 const CHAT_MODE_OVERRIDE = `# Chat mode — standard conversation (read first — overrides every rule below)

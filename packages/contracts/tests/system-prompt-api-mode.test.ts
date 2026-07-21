@@ -125,6 +125,20 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/<artifact>/);
     });
 
+    it('requires slide API runs to produce the deck artifact, not just a plan', () => {
+      const prompt = composeSystemPrompt({
+        streamFormat: 'plain',
+        skillMode: 'deck',
+        mediaExecution: { mode: 'disabled' },
+      });
+
+      expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
+      expect(prompt).toContain('the plan is not the deliverable');
+      expect(prompt).toContain('include the complete HTML deck artifact in this same response');
+      expect(prompt).toContain('Do not finish a slide request with only a plan');
+    });
+
     // Regression coverage for the unified ask-user flow: API/BYOK mode must
     // route mid-conversation clarification through the same `<question-form>`
     // Questions-tab surface as daemon mode, not fall back to plain-text
@@ -179,6 +193,20 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(overrideIdx).toBeGreaterThanOrEqual(0);
       expect(discoveryIdx).toBeGreaterThanOrEqual(0);
       expect(overrideIdx).toBeLessThan(discoveryIdx);
+    });
+
+    it('requires BYOK slide runs to produce the deck artifact, not just a plan', () => {
+      const prompt = composeSystemPrompt({
+        streamFormat: 'plain',
+        byokToolNames: byokTools,
+        skillMode: 'deck',
+        mediaExecution: { mode: 'disabled' },
+      });
+
+      expect(prompt).toContain('API mode — BYOK tools available');
+      expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
+      expect(prompt).toContain('the plan is not the deliverable');
+      expect(prompt).toContain('include the complete HTML deck artifact in this same response');
     });
   });
 

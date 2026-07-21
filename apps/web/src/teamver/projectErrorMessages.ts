@@ -150,6 +150,20 @@ export function formatProjectRunDeliverableMissingError(): string {
     : "The slide deliverable was not created. The response may have been cut off — please try again.";
 }
 
+/**
+ * Notice injected into the failed assistant card at the exact moment the
+ * capped automatic continue fires. Semantically it is a status-transition
+ * message (not an error), but we reuse `appendErrorStatusEvent` for delivery
+ * so ChatPane's existing failure UI picks it up and shows it just above the
+ * Continue/Retry action row — a follow-up stream will replace this row when
+ * it starts producing text.
+ */
+export function formatAutoContinueIncompleteOutputNotice(): string {
+  return isTeamverEmbedMode()
+    ? "결과물이 완성되지 않아 자동으로 이어쓰기를 시도합니다…"
+    : "The deliverable is incomplete — trying an automatic continue…";
+}
+
 /** Resolve structured proxy/daemon error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";

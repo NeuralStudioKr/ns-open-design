@@ -178,16 +178,15 @@ describe("ProjectView message loading", () => {
     expect(block).toContain(".reverse()");
   });
 
-  it("logs the silent-skip and no-produced-HTML paths so a completed run with an empty preview has a breadcrumb", () => {
+  it("keeps the no-produced-HTML terminal path quiet in the browser console", () => {
     const source = readSource("src/components/ProjectView.tsx");
 
     expect(source).toContain(
       "[teamver] artifact write skipped as incomplete document shell",
     );
-    expect(source).toContain(
+    expect(source).not.toContain(
       "[teamver] stream terminal auto-open produced no HTML",
     );
-    expect(source).toContain("hadParsedArtifact: Boolean(parsedArtifact?.html)");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
@@ -203,7 +202,7 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 5200);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 12000);
 
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
@@ -215,5 +214,23 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");
+    expect(autoOpenBlock).toContain("AUTO_CONTINUE_MAX_PER_CONVERSATION");
+    expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
+    expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
+    expect(autoOpenBlock).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
+    expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");
+    // Keep this path quiet in production DevTools. The user-facing assistant
+    // status event is the observable signal; console noise made previous demo
+    // failures look scarier than they were.
+    expect(autoOpenBlock).not.toContain("[teamver] terminal failure - auto-continue decision");
+    expect(autoOpenBlock).not.toContain("[teamver] auto-continue firing");
+    expect(autoOpenBlock).not.toContain("[teamver] auto-continue was queued or rejected by handleSend");
+    // This recovery is for content incompleteness, not an embed-level submit
+    // permission check. Gating it on the composer button state made the
+    // capped continue silently fail when the UI was still settling.
+    expect(autoOpenBlock).not.toContain("!embedSubmitDisabled");
+    expect(autoOpenBlock).not.toContain("embedSubmitDisabledAtFire: embedSubmitDisabled");
+    expect(source).toContain("const handleSendRef = useRef(handleSend)");
+    expect(source).toContain("handleSendRef.current = handleSend");
   });
 });
