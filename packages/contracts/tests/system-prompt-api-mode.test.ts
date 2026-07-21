@@ -137,6 +137,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
       expect(prompt).toContain('Do not finish a slide request with only a plan');
+      expect(prompt).toContain('Teamver slide-only API deliverable rule');
+      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
+      expect(prompt).toContain('You may include at most one short sentence before the artifact');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must
@@ -207,6 +210,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
+      expect(prompt).toContain('Teamver slide-only API deliverable rule');
+      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
     });
   });
 

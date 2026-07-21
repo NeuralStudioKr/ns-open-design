@@ -309,16 +309,18 @@ export function composeSystemPrompt({
   // events — see #313. Pin this preamble ABOVE DISCOVERY_AND_PHILOSOPHY
   // so it beats the discovery layer's own "these override anything
   // later" header.
+  const isTeamverSlideOnly = (mediaExecution?.mode ?? 'enabled') === 'disabled';
+
   if (streamFormat === 'plain') {
     if (byokToolNames && byokToolNames.length > 0) {
-      parts.push(BYOK_TOOLS_OVERRIDE(byokToolNames));
+      parts.push(BYOK_TOOLS_OVERRIDE(byokToolNames, { teamverSlideOnly: isTeamverSlideOnly }));
     } else {
-      parts.push(API_MODE_OVERRIDE);
+      parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: isTeamverSlideOnly }));
     }
     parts.push('\n\n---\n\n');
   }
 
-  if ((mediaExecution?.mode ?? 'enabled') === 'disabled') {
+  if (isTeamverSlideOnly) {
     parts.push(TEAMVER_SLIDE_ONLY_SCOPE);
   }
 
@@ -475,7 +477,18 @@ export function composeSystemPrompt({
  * The override does NOT block `<artifact>` blocks — those are how the
  * web UI receives finished HTML in API mode.
  */
-const API_MODE_OVERRIDE = `# API mode — no tools available (read first — overrides every rule below)
+const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE = `
+
+## Teamver slide-only API deliverable rule
+
+When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
+
+If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="text/html" identifier="...">...</artifact>\` block. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained HTML slide deck that can be previewed immediately.
+
+You may include at most one short sentence before the artifact. Do not stop after "I'll make it", a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+`;
+
+const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
 
 You are running through a plain Messages API. **No tools are wired through to you.** \`TodoWrite\`, \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, and \`WebFetch\` are unavailable — calls to them will not execute and will not render in the UI.
 
@@ -493,9 +506,12 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 
 For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.
 
-If the rules below tell you to plan with TodoWrite, write the plan as prose instead. If they tell you to read skill side files before writing, describe in one sentence which patterns/conventions you're going to apply and proceed. If they tell you to run brand-spec extraction via Bash + Read + WebFetch, ask the user the missing brand questions in the discovery form instead.`;
+If the rules below tell you to plan with TodoWrite, write the plan as prose instead. If they tell you to read skill side files before writing, describe in one sentence which patterns/conventions you're going to apply and proceed. If they tell you to run brand-spec extraction via Bash + Read + WebFetch, ask the user the missing brand questions in the discovery form instead.${options.teamverSlideOnly ? TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE : ''}`;
 
-const BYOK_TOOLS_OVERRIDE = (toolNames: readonly string[]): string => {
+const BYOK_TOOLS_OVERRIDE = (
+  toolNames: readonly string[],
+  options: { teamverSlideOnly?: boolean } = {},
+): string => {
   const formatted = toolNames.map((n) => `\`${n}\``).join(', ');
   return `# API mode — BYOK tools available (read first — overrides every rule below)
 
@@ -514,7 +530,7 @@ You are running through the Open Design BYOK proxy. The following tools ARE wire
 - A final \`<artifact type="text/html">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
 
-For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.`;
+For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.${options.teamverSlideOnly ? TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE : ''}`;
 };
 
 const CHAT_MODE_OVERRIDE = `# Chat mode — standard conversation (read first — overrides every rule below)

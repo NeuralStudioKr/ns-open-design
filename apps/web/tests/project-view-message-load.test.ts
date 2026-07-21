@@ -184,10 +184,10 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 4200);
+    const block = source.slice(start, start + 5000);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
-    expect(block).toContain("conversationAutoContinueCountRef.current.set(activeConversationId");
+    expect(block).toContain("conversationAutoContinueCountRef.current.set(");
     expect(block).toContain("nextAutoContinueCount >= AUTO_CONTINUE_MAX_PER_CONVERSATION");
     expect(block).toContain("message.runStatus === 'failed'");
     expect(block).toContain("message.resumable === true");
@@ -271,15 +271,21 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT");
     expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
-    expect(autoOpenBlock).toContain("clearStreamingMarker(runConversationId)");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");
-    expect(autoOpenBlock).toContain("rollbackAutoContinueCount(conversationAutoContinueCountRef.current");
+    expect(autoOpenBlock).toContain("rollbackAutoContinueCount(");
+    expect(autoOpenBlock).toContain("conversationAutoContinueCountRef.current");
     expect(autoOpenBlock).toContain("autoContinueTimerRef.current = window.setTimeout");
     expect(autoOpenBlock).toContain("if (runIsVisible() && !canAutoContinue) setError(deliverableError)");
     // The 600ms auto-continue fire path must clear phantom BYOK recovery
     // streaming and only block on a live AbortController / other conversation.
-    expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
-    expect(autoOpenBlock).toContain("clearStreamingMarker(runConversationId)");
+    // Also abort if the user switched projects/conversations so a late timer
+    // from project A cannot inject into project B's brand-new chat.
+    expect(autoOpenBlock).toContain("const scheduledProjectId = project.id");
+    expect(autoOpenBlock).toContain("const scheduledConversationId = runConversationId");
+    expect(autoOpenBlock).toContain("project.id !== scheduledProjectId");
+    expect(autoOpenBlock).toContain("messagesConversationIdRef.current === scheduledConversationId");
+    expect(autoOpenBlock).toContain("clearStreamingMarker(scheduledConversationId)");
+    expect(autoOpenBlock).toContain("targetConversationId: scheduledConversationId");
     expect(source).toContain("meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current");
     // Keep this path quiet in production DevTools. The user-facing assistant
     // status event is the observable signal; console noise made previous demo

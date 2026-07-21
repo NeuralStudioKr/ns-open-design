@@ -5,6 +5,7 @@ import { forwardRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatPane } from '../../src/components/ChatPane';
+import { AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT } from '../../src/runtime/resume';
 import type { AppConfig, ChatMessage } from '../../src/types';
 
 // Red spec for the resume-on-failure affordance: a failed assistant message
@@ -194,5 +195,26 @@ describe('ChatPane resume-on-failure', () => {
     expect(onResumeRun).not.toHaveBeenCalled();
     expect(onRetry).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('does not render the model-facing automatic-continue prompt as a user bubble', () => {
+    const onRetry = vi.fn();
+    renderChat({
+      onRetry,
+      activeAgentId: 'claude',
+      messages: [
+        {
+          id: 'auto-user',
+          role: 'user',
+          content: AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+          createdAt: 1,
+        },
+        autoContinueScheduledMessage(),
+      ],
+    });
+
+    expect(screen.queryByText(/od:auto_continue_incomplete_output/)).toBeNull();
+    expect(screen.queryByText(/직전 모델 응답/)).toBeNull();
+    expect(screen.getByTestId('assistant-msg-auto-continue')).toBeTruthy();
   });
 });

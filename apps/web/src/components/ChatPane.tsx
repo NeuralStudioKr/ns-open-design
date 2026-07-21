@@ -45,7 +45,7 @@ import { commentTargetDisplayName, commentsToAttachments, simplePositionLabel } 
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
-import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT } from '../runtime/resume';
+import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
 import {
   ChatComposer,
   type ChatComposerHandle,
@@ -1031,7 +1031,10 @@ export function ChatPane({
   // plugin is project-scoped so re-stamping it on every reply would be
   // noise. Subsequent messages still run under the same snapshot.
   const firstUserMessageId = useMemo(
-    () => messages.find((m) => m.role === 'user')?.id,
+    () =>
+      messages.find(
+        (m) => m.role === 'user' && !isAutoContinueIncompleteOutputPrompt(m.content),
+      )?.id,
     [messages],
   );
   // Map each assistant message id to the user message that follows it (if any)
@@ -2373,6 +2376,12 @@ function ChatRows({
       forceStreamingMessageIds,
     );
     if (m.role === 'user') {
+      // Automatic-continue recovery prompts are model-facing only. Showing
+      // the long directive as a user bubble made brand-new projects look
+      // like they were continuing another project's deck.
+      if (isAutoContinueIncompleteOutputPrompt(m.content)) {
+        return null;
+      }
       return (
         <UserMessage
           message={m}

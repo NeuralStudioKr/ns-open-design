@@ -1993,6 +1993,10 @@ export function ProjectView({
               filesForRecovery,
             );
             if (openedRecoveredHtml) return;
+            // Sync the per-conversation auto-continue cap from persisted
+            // status events, then fire the same capped recovery as terminal
+            // onDone. ChatPane hides the model-facing prompt, so reentry can
+            // salvage a failed row without leaking the directive as a user bubble.
             const autoContinueAttempts = mergedMessages.reduce((count, message) => {
               const attempted = message.events?.some((event) =>
                 event.kind === 'status' && event.code === AUTO_CONTINUE_STATUS_CODE,
@@ -2002,7 +2006,10 @@ export function ProjectView({
             const currentAutoContinueCount =
               conversationAutoContinueCountRef.current.get(activeConversationId) ?? 0;
             const nextAutoContinueCount = Math.max(currentAutoContinueCount, autoContinueAttempts);
-            conversationAutoContinueCountRef.current.set(activeConversationId, nextAutoContinueCount);
+            conversationAutoContinueCountRef.current.set(
+              activeConversationId,
+              nextAutoContinueCount,
+            );
             if (nextAutoContinueCount >= AUTO_CONTINUE_MAX_PER_CONVERSATION) return;
             const incompleteAssistant = mergedMessages
               .slice()
@@ -4536,6 +4543,8 @@ export function ProjectView({
 
       const proxyStillActive = matchingActiveStreams.length > 0;
       if (!openedRecoveredHtml && !stillInflight && !proxyStillActive) {
+        // Sync the auto-continue budget from persisted events and let tracked
+        // failed rows recover after reentry/background polling.
         const autoContinueAttempts = mergedMessages.reduce((count, message) => {
           const attempted = message.events?.some((event) =>
             event.kind === 'status' && event.code === AUTO_CONTINUE_STATUS_CODE,
@@ -4545,7 +4554,10 @@ export function ProjectView({
         const currentAutoContinueCount =
           conversationAutoContinueCountRef.current.get(recoveryConversationId) ?? 0;
         const nextAutoContinueCount = Math.max(currentAutoContinueCount, autoContinueAttempts);
-        conversationAutoContinueCountRef.current.set(recoveryConversationId, nextAutoContinueCount);
+        conversationAutoContinueCountRef.current.set(
+          recoveryConversationId,
+          nextAutoContinueCount,
+        );
         if (nextAutoContinueCount < AUTO_CONTINUE_MAX_PER_CONVERSATION) {
           const incompleteAssistant = mergedMessages
             .slice()
@@ -5238,12 +5250,27 @@ export function ProjectView({
                 if (autoContinueTimerRef.current !== null) {
                   window.clearTimeout(autoContinueTimerRef.current);
                 }
+                const scheduledProjectId = project.id;
+                const scheduledConversationId = runConversationId;
                 autoContinueTimerRef.current = window.setTimeout(() => {
                   autoContinueTimerRef.current = null;
+                  // Abort if the user switched projects/conversations — otherwise
+                  // a late timer from project A would inject the recovery prompt
+                  // into project B's brand-new chat.
+                  if (project.id !== scheduledProjectId) {
+                    rollbackAutoContinueCount(
+                      conversationAutoContinueCountRef.current,
+                      scheduledConversationId,
+                    );
+                    return;
+                  }
                   const conversationStillActive =
-                    messagesConversationIdRef.current === runConversationId;
+                    messagesConversationIdRef.current === scheduledConversationId;
                   if (!conversationStillActive) {
-                    rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
+                    rollbackAutoContinueCount(
+                      conversationAutoContinueCountRef.current,
+                      scheduledConversationId,
+                    );
                     return;
                   }
                   // Drop phantom BYOK recovery "streaming" so React-state
@@ -5254,18 +5281,21 @@ export function ProjectView({
                       apiBackgroundRecoveryRef.current = false;
                       clearApiBackgroundRecoveryBanner();
                     }
-                    if (streamingConversationIdRef.current === runConversationId) {
-                      clearStreamingMarker(runConversationId);
+                    if (streamingConversationIdRef.current === scheduledConversationId) {
+                      clearStreamingMarker(scheduledConversationId);
                     }
                   }
                   const liveStreamBlocking = isLiveLocalStreamBlockingAutoContinue({
                     abortController: abortRef.current,
                     streamingConversationId: streamingConversationIdRef.current,
-                    targetConversationId: runConversationId,
+                    targetConversationId: scheduledConversationId,
                   });
                   const sendNow = handleSendRef.current;
                   if (liveStreamBlocking || !sendNow) {
-                    rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
+                    rollbackAutoContinueCount(
+                      conversationAutoContinueCountRef.current,
+                      scheduledConversationId,
+                    );
                     return;
                   }
                   const started = sendNow(
@@ -5275,12 +5305,11 @@ export function ProjectView({
                     { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
                   );
                   void Promise.resolve(started).then((ok) => {
-                    // handleSend returns false when it queues (busy) or
-                    // rejects (embed disabled / conversation mismatch).
-                    // Restore the slot so a later idle flush or manual
-                    // retry still gets its auto-continue attempts.
                     if (ok === false) {
-                      rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
+                      rollbackAutoContinueCount(
+                        conversationAutoContinueCountRef.current,
+                        scheduledConversationId,
+                      );
                     }
                   });
                 }, 600);

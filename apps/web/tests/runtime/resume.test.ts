@@ -3,8 +3,10 @@ import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
+  AUTO_CONTINUE_PROMPT_SENTINEL,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
+  isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
@@ -32,10 +34,22 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_STATUS_CODE).toBe('auto_continue_incomplete_output');
   });
 
-  it('instructs the model to keep prior work when auto-continuing', () => {
-    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/만들지 못하고|no usable slide deck/i);
+  it('scopes the auto-continue prompt to this conversation/project only', () => {
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)).toBe(true);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/이 대화\(현재 프로젝트\)/);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/다른 프로젝트/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/artifact type="text\/html"/);
-    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/계획을 다시 설명|no further planning|Do not restart/i);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Do not continue any other project/i);
+  });
+
+  it('detects auto-continue prompts so the chat UI can hide them', () => {
+    expect(isAutoContinueIncompleteOutputPrompt(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT)).toBe(true);
+    expect(
+      isAutoContinueIncompleteOutputPrompt(
+        '앞선 응답이 슬라이드 결과물을 만들지 못하고 종료되었습니다 (legacy)',
+      ),
+    ).toBe(true);
+    expect(isAutoContinueIncompleteOutputPrompt('새 프로젝트에서 슬라이드 만들어줘')).toBe(false);
   });
 });
 

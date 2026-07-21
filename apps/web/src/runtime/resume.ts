@@ -12,34 +12,48 @@ export const RESUME_CONTINUE_PROMPT =
   'request. Inspect the current project files as needed before making ' +
   'further changes.';
 
+/**
+ * Stable sentinel prepended to the automatic-continue model prompt so the
+ * chat UI can hide the message from the user. The model ignores HTML
+ * comments in its instruction text; ChatPane matches on this prefix.
+ */
+export const AUTO_CONTINUE_PROMPT_SENTINEL = '<!--od:auto_continue_incomplete_output-->';
+
 // Prompt used by the capped *automatic* continue that fires when a terminal
 // run finished streaming but produced no usable HTML deliverable — typically a
 // 40-byte `<!doctype html><html…><head>` shell that pre-write validation had
 // to reject, or a turn that emitted planning prose without ever opening the
-// artifact block. In both cases the model already spent minutes producing
-// tokens and the user is staring at an empty preview panel; a from-scratch
-// retry would waste those tokens and duplicate the plan, so we instead nudge
-// the same agent to finish the deliverable it started. Distinct from the
-// manual RESUME_CONTINUE_PROMPT so telemetry can separate the two flows.
+// artifact block.
 //
-// Deliberately DIRECTIVE (not "continue from where you left off") because the
-// observed failure mode is not truncation — it is the model overspending its
-// budget on planning / skeleton-copying tool calls and then emitting an empty
-// scaffold as the deliverable. A "continue" instruction on that state just
-// prints another plan; the fix is to force the model into a single
-// self-contained artifact write with an explicit budget of ONE artifact block
-// and no tool calls before that write.
+// Scoped strictly to THIS conversation / THIS project. Earlier wording
+// ("앞선 응답", "지금까지 결정된 방향") made demos look like the agent was
+// continuing a different project's deck when a brand-new project hit the
+// shell-then-stop failure on its first turn.
 export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
-  '앞선 응답이 슬라이드 결과물을 만들지 못하고 종료되었습니다 (아티팩트가 비어 있거나 뼈대만 있음). ' +
-  '이번 턴에서는 계획을 다시 설명하거나 사용자에게 재확인하지 말고, ' +
-  '지금까지 결정된 방향과 슬라이드 목차를 그대로 사용해서 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
+  `${AUTO_CONTINUE_PROMPT_SENTINEL}\n` +
+  '이 대화(현재 프로젝트)의 직전 모델 응답만 기준으로 하세요. ' +
+  '다른 프로젝트·다른 대화의 슬라이드나 계획을 이어 쓰지 마세요. ' +
+  '직전 응답이 완성된 HTML 슬라이드 덱을 남기지 못했습니다 (빈 뼈대만 있음). ' +
+  '계획을 다시 설명하거나 사용자에게 재확인하지 말고, ' +
+  '이 대화에 이미 있는 요청·목차만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
   '출력 형식은 반드시 하나의 `<artifact type="text/html" identifier="...">...</artifact>` ' +
   '블록이며, 그 내부에 `<!doctype html>`부터 `</html>`까지 자체 완결형(self-contained) HTML이 들어가야 합니다. ' +
   '외부 파일 참조, 스켈레톤 복사, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
-  '만약 문맥에 슬라이드 목차가 없다면 임원 대상 12슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
-  '(English fallback: The previous turn produced no usable slide deck — emit a single, complete, ' +
-  'self-contained HTML deck inside one `<artifact type="text/html">...</artifact>` block right now, ' +
-  'with no further planning or tool calls.)';
+  '이 대화에 슬라이드 목차가 없다면 임원 대상 12슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
+  '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
+  'The previous turn in THIS chat produced no usable slide deck — emit one complete self-contained ' +
+  'HTML deck inside a single `<artifact type="text/html">...</artifact>` block now, with no planning or tool calls.)';
+
+/** True when a user-message body is the automatic-continue recovery prompt. */
+export function isAutoContinueIncompleteOutputPrompt(content: string | null | undefined): boolean {
+  const text = (content ?? '').trimStart();
+  if (!text) return false;
+  if (text.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)) return true;
+  // Legacy bodies that already landed in persisted chats before the sentinel.
+  if (text.startsWith('앞선 응답이 슬라이드 결과물을 만들지 못하고')) return true;
+  if (text.startsWith('이 대화(현재 프로젝트)의 직전 모델 응답만')) return true;
+  return false;
+}
 
 // Cap on automatic continue attempts inside a single conversation. Two retries
 // is the sweet spot from demo observation: one retry salvages "cut off"
