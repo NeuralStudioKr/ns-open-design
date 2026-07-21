@@ -190,6 +190,8 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
+      // allowSoftForcePost after cooldown: survival probe skipped (seeded);
+      // force POST fails then ensure revives session.
       .mockResolvedValueOnce(refresh401())
       .mockResolvedValueOnce(sessionJson(true));
     vi.stubGlobal("fetch", fetchMock);
@@ -203,15 +205,16 @@ describe("withDesignBffCookieAuthRecovery", () => {
     await vi.advanceTimersByTimeAsync(500);
     await expect(first).resolves.toBe(false);
     expect(isDesignAuthRefreshDeclined()).toBe(true);
+    const postsAfterSticky = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/auth/refresh"),
+    ).length;
 
     await vi.advanceTimersByTimeAsync(15_050);
-    // Background soft-sticky must not force-POST even after cooldown.
-    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
-    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
-
     await expect(refreshDesignAuthCookie({ allowSoftForcePost: true })).resolves.toBe(true);
     expect(isDesignAuthRefreshDeclined()).toBe(false);
-    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(
+      postsAfterSticky + 1,
+    );
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session"))).toBe(true);
   });
 
@@ -222,6 +225,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
+      // allowSoftForcePost after cooldown: skip probe ladder; successful force POST
       .mockResolvedValueOnce(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -263,7 +267,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       String(c[0]).includes("/auth/refresh"),
     ).length;
 
-    await expect(refreshDesignAuthCookie()).resolves.toBe(false);
+    await expect(refreshDesignAuthCookie({ allowSoftForcePost: true })).resolves.toBe(false);
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")).length,
     ).toBe(refreshCallsAfterDecline);
@@ -313,7 +317,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
-      // Soft recovery with allowSoftForcePost after cooldown: skip probe; force POST + ensure miss
+      // allowSoftForcePost after cooldown: skip probe; force POST + ensure miss
       .mockResolvedValueOnce(refresh401())
       .mockResolvedValueOnce(sessionJson(false));
     vi.stubGlobal("fetch", fetchMock);
@@ -334,7 +338,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
       String(c[0]).includes("/auth/refresh"),
     ).length;
 
-    // Background soft-sticky (no allowSoftForcePost) must not force-POST.
+    // Background soft-sticky: seeded skipProbeLadder → no fetches, no force POST.
     await expect(refreshDesignAuthCookie()).resolves.toBe(false);
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")).length,
@@ -358,7 +362,6 @@ describe("withDesignBffCookieAuthRecovery", () => {
       String(c[0]).includes("/auth/session-probe"),
     ).length;
     expect(postsAfterForce).toBe(postsAfterSticky + 1);
-    // Force path skips probe ladder.
     expect(probesAfterForce).toBe(probesAfterSticky);
 
     await expect(refreshDesignAuthCookie({ allowSoftForcePost: true })).resolves.toBe(false);
