@@ -774,12 +774,28 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     }
   };
 
-  const extractGeminiText = (data: any) => {
+  const extractGeminiVisibleText = (data: any) => {
     const candidates = data?.candidates;
     if (!Array.isArray(candidates) || candidates.length === 0) return '';
     const parts = candidates[0]?.content?.parts;
     if (!Array.isArray(parts)) return '';
-    return parts.map((part) => part?.text).filter((text) => typeof text === 'string').join('');
+    return parts
+      .filter((part: any) => part?.thought !== true)
+      .map((part: any) => part?.text)
+      .filter((text: unknown) => typeof text === 'string')
+      .join('');
+  };
+
+  const extractGeminiThinkingText = (data: any) => {
+    const candidates = data?.candidates;
+    if (!Array.isArray(candidates) || candidates.length === 0) return '';
+    const parts = candidates[0]?.content?.parts;
+    if (!Array.isArray(parts)) return '';
+    return parts
+      .filter((part: any) => part?.thought === true)
+      .map((part: any) => part?.text)
+      .filter((text: unknown) => typeof text === 'string')
+      .join('');
   };
 
   const benignGeminiFinishReasons = new Set(['', 'STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED']);
@@ -1189,7 +1205,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
             outputTokens = um.candidatesTokenCount;
           }
         }
-        const delta = extractGeminiText(data);
+        const thinking = extractGeminiThinkingText(data);
+        if (thinking) {
+          sse.send('thinking_delta', { delta: thinking });
+        }
+        const delta = extractGeminiVisibleText(data);
         if (delta) {
           guard.sendDelta(delta);
           if (guard.contaminated) {
@@ -2111,7 +2131,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
       const accum: Record<number, AccumulatedToolCall> = {};
       let finishReason = '';
-      let providerError = '';
+      let providerErrorData: unknown = null;
 
       const guard = createDeltaGuard(sse);
       await streamUpstreamSse(response, ({ payload, data }: any) => {
@@ -2120,7 +2140,9 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
         const streamErr = extractStreamErrorMessage(data);
         if (streamErr) {
-          providerError = streamErr;
+          // Keep the raw frame so classifyProviderStreamError sees type/code
+          // (auth vs overload), not only the message string.
+          providerErrorData = data;
           return true;
         }
 
@@ -2185,7 +2207,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
       guard.flushThinkTag();
 
-      if (providerError) {
+      if (providerErrorData) {
         // Usage frame ALWAYS precedes error frame on the SSE wire because
         // api-proxy.ts (FE) short-circuits on `event: error` and skips
         // anything after it. The accumulator already contains tokens from
@@ -2198,11 +2220,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           turnUsage.outputTokens,
           model,
         );
-        sendProviderStreamError(
-          sse,
-          `Provider error: ${providerError}`,
-          typeof providerError === 'object' ? providerError : { message: providerError },
-        );
+        const streamMessage = extractStreamErrorMessage(providerErrorData) || 'provider error';
+        sendProviderStreamError(sse, `Provider error: ${streamMessage}`, providerErrorData);
         return { kind: 'error' };
       }
 
@@ -2351,7 +2370,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // client; input_json_delta concatenates the tool args JSON string.
       const blocks: Record<number, { type: string; id?: string; name?: string; json: string }> = {};
       let stopReason = '';
-      let providerError = '';
+      let providerErrorData: unknown = null;
       // Per-turn usage. Anthropic emits input_tokens in message_start and the
       // FINAL output_tokens in message_delta — we add input once and override
       // output as the stream progresses. Commit to anthTurnUsage at end.
@@ -2361,7 +2380,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       await streamUpstreamSse(response, ({ event, data }: any) => {
         if (!data) return false;
         if (event === 'error' || data.type === 'error') {
-          providerError = data.error?.message || data.message || 'Anthropic upstream error';
+          providerErrorData = data;
           return true;
         }
         if (event === 'message_start' && data.message?.usage) {
@@ -2400,7 +2419,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       anthTurnUsage.inputTokens += Math.max(0, perTurnInput);
       anthTurnUsage.outputTokens += Math.max(0, perTurnOutput);
       guard.flushThinkTag();
-      if (providerError) {
+      if (providerErrorData) {
         // Usage MUST precede error on the wire: api-proxy.ts short-circuits
         // on `event: error`. The accumulator already includes this turn
         // and every prior turn the user was billed for.
@@ -2411,11 +2430,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           anthTurnUsage.outputTokens,
           model,
         );
-        sendProviderStreamError(
-          sse,
-          `Provider error: ${providerError}`,
-          typeof providerError === 'object' ? providerError : { message: providerError },
-        );
+        const message =
+          (providerErrorData as any)?.error?.message
+          || (providerErrorData as any)?.message
+          || 'Anthropic upstream error';
+        sendProviderStreamError(sse, `Provider error: ${message}`, providerErrorData);
         return { kind: 'error' };
       }
       const toolBlocks = Object.keys(blocks)
@@ -2583,7 +2602,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       // that exact part back in the model turn. So we replay the original part
       // object (signature included) rather than reconstructing {functionCall}.
       const functionCallParts: any[] = [];
-      let providerError = '';
+      let providerErrorData: unknown = null;
+      let providerErrorForceNonRetryable = false;
       // Per-turn snapshot of usageMetadata. Gemini reports totals (not deltas)
       // in every chunk, so capture the last non-zero values and commit once.
       let perTurnInput = 0;
@@ -2593,7 +2613,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (!data) return false;
         const streamError = extractStreamErrorMessage(data);
         if (streamError) {
-          providerError = streamError;
+          providerErrorData = data;
           return true;
         }
         if (data.usageMetadata && typeof data.usageMetadata === 'object') {
@@ -2609,10 +2629,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         if (Array.isArray(parts)) {
           for (const part of parts) {
             if (typeof part?.text === 'string' && part.text) {
-              guard.sendDelta(part.text);
-              if (guard.contaminated) {
-                sse.send('end', {});
-                return true;
+              if (part.thought === true) {
+                sse.send('thinking_delta', { delta: part.text });
+              } else {
+                guard.sendDelta(part.text);
+                if (guard.contaminated) {
+                  sse.send('end', {});
+                  return true;
+                }
               }
             }
             if (part?.functionCall && typeof part.functionCall.name === 'string') {
@@ -2626,7 +2650,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         }
         const blockMessage = extractGeminiBlockMessage(data);
         if (blockMessage) {
-          providerError = blockMessage;
+          providerErrorData = data;
+          providerErrorForceNonRetryable = true;
           return true;
         }
         return false;
@@ -2634,7 +2659,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
       geminiTurnUsage.inputTokens += perTurnInput;
       geminiTurnUsage.outputTokens += perTurnOutput;
       guard.flushThinkTag();
-      if (providerError) {
+      if (providerErrorData) {
         // Usage MUST precede error on the wire: api-proxy.ts short-circuits
         // on `event: error`. Accumulator carries this turn + every prior
         // turn the user was billed for.
@@ -2645,10 +2670,17 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           geminiTurnUsage.outputTokens,
           model,
         );
+        const streamMessage =
+          extractStreamErrorMessage(providerErrorData)
+          || extractGeminiBlockMessage(providerErrorData)
+          || 'Gemini error';
         sendProviderStreamError(
           sse,
-          `Gemini error: ${providerError}`,
-          typeof providerError === 'object' ? providerError : { message: providerError },
+          `Gemini error: ${streamMessage}`,
+          providerErrorData,
+          providerErrorForceNonRetryable
+            ? { fallbackCode: 'BAD_REQUEST', forceNonRetryable: true }
+            : undefined,
         );
         return { kind: 'error' };
       }

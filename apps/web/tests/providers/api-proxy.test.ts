@@ -562,6 +562,11 @@ describe('shouldSoftRetryProxyFailure', () => {
     expect(shouldSoftRetryProxyFailure(new Error('TypeError: Failed to fetch'))).toBe(true);
   });
 
+  it('retries premature close / hang-up shapes', () => {
+    expect(shouldSoftRetryProxyFailure(new Error('premature close'))).toBe(true);
+    expect(shouldSoftRetryProxyFailure(new Error('socket hang up'))).toBe(true);
+  });
+
   it('does not retry managed-key / auth config failures', () => {
     const missing = new Error('proxy 503') as Error & { code?: string; retryable?: boolean };
     missing.code = 'MANAGED_API_KEY_MISSING';

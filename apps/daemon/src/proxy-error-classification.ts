@@ -15,7 +15,7 @@ export type ProxyCatchClassification = {
 };
 
 const NETWORK_HINT =
-  /fetch failed|network|econnreset|econnrefused|etimedout|enotfound|epipe|ehostunreach|socket|und_err|tls|cert|ssl|disconnected|connection reset|connection refused|timed out|timeout/i;
+  /fetch failed|network|econnreset|econnrefused|etimedout|enotfound|epipe|ehostunreach|socket|und_err|tls|cert|ssl|disconnected|connection reset|connection refused|timed out|timeout|premature close|other side closed|closed unexpectedly|socket hang up|hang up/i;
 
 function errField(err: unknown, key: string): string {
   if (!err || typeof err !== 'object' || !(key in err)) return '';
@@ -108,10 +108,10 @@ export type ProviderStreamClassification = {
 };
 
 const TRANSIENT_PROVIDER_HINT =
-  /overloaded|rate.?limit|too many requests|timeout|timed out|temporar|unavailable|capacity|service.?unavailable|bad gateway|gateway timeout|internal.?server|server.?error|try.?again|please.?retry|econnreset|fetch failed|connection.?reset|529|503|502|500\b/i;
+  /overloaded|rate.?limit|too many requests|timeout|timed out|temporar|unavailable|capacity|service.?unavailable|bad gateway|gateway timeout|internal.?server|server.?error|try.?again|please.?retry|econnreset|fetch failed|connection.?reset|premature close|other side closed|socket hang up|529|503|502|500\b/i;
 
 const NON_RETRYABLE_PROVIDER_HINT =
-  /invalid.?request|authentication|unauthorized|forbidden|permission|not.?found|content.?filter|safety|blocked|policy|billing|insufficient.?quota|incorrect.?api.?key|api.?key.?invalid|invalid.?api.?key|context.?length|max.?tokens|prompt.?too.?long|unsupported/i;
+  /invalid.?request|authentication|unauthorized|forbidden|permission|not.?found|content.?filter|safety|blocked|policy|insufficient.?quota|payment.?required|billing.?hard|incorrect.?api.?key|api.?key.?invalid|invalid.?api.?key|api.?key.?disabled|api.?key.has.been.disabled|x-api-key|context.?length|max.?tokens|prompt.?too.?long|unsupported/i;
 
 const TRANSIENT_PROVIDER_CODES = new Set([
   'OVERLOADED',
@@ -140,6 +140,8 @@ const NON_RETRYABLE_PROVIDER_CODES = new Set([
   'CONTENT_FILTER',
   'CONTENT_POLICY_VIOLATION',
   'SAFETY',
+  'INVALID_API_KEY',
+  'API_KEY_INVALID',
 ]);
 
 function normalizeProviderCode(raw: string): string {

@@ -85,6 +85,28 @@ describe('proxy-error-classification', () => {
     ).toEqual({ code: 'BAD_REQUEST', retryable: false });
   });
 
+  it('maps premature close / hang-up to retryable network failure', () => {
+    expect(isProxyNetworkFailure(new Error('premature close'))).toBe(true);
+    expect(classifyProxyCatchError(new Error('socket hang up')).retryable).toBe(true);
+    expect(classifyProxyCatchError(new Error('other side closed')).code).toBe('UPSTREAM_UNAVAILABLE');
+  });
+
+  it('maps invalid API key codes to non-retryable UNAUTHORIZED', () => {
+    expect(
+      classifyProviderStreamError({
+        error: { code: 'invalid_api_key', message: 'Incorrect API key provided' },
+      }),
+    ).toEqual({ code: 'UNAUTHORIZED', retryable: false });
+  });
+
+  it('does not treat temporary billing blips as non-retryable auth', () => {
+    expect(
+      classifyProviderStreamError({
+        error: { message: 'billing temporarily unavailable' },
+      }),
+    ).toEqual({ code: 'UPSTREAM_UNAVAILABLE', retryable: true });
+  });
+
   it('defaults unknown provider mid-stream errors to retryable UPSTREAM', () => {
     expect(classifyProviderStreamError({ error: { message: 'weird blip' } })).toEqual({
       code: 'UPSTREAM_UNAVAILABLE',

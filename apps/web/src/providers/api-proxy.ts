@@ -147,7 +147,11 @@ export function shouldSoftRetryProxyFailure(
     return true;
   }
   if (/^proxy (502|503|504):/i.test(err.message)) return true;
-  if (/fetch failed|networkerror|failed to fetch|econnreset|econnrefused|etimedout/i.test(err.message)) {
+  if (
+    /fetch failed|networkerror|failed to fetch|econnreset|econnrefused|etimedout|premature close|other side closed|socket hang up|closed unexpectedly/i.test(
+      err.message,
+    )
+  ) {
     return true;
   }
   return false;
@@ -441,7 +445,7 @@ async function streamProxyEndpointOnce(
     // the browser throws before an SSE error frame (daemon unreachable, TLS, etc.).
     if (
       !error.code
-      && /fetch failed|networkerror|failed to fetch|econnreset|econnrefused|etimedout|network|load failed/i.test(
+      && /fetch failed|networkerror|failed to fetch|econnreset|econnrefused|etimedout|network|load failed|premature close|other side closed|socket hang up|closed unexpectedly/i.test(
         `${error.name} ${error.message}`,
       )
     ) {
@@ -654,8 +658,9 @@ export function buildProxyResponseError(
     retryable?: boolean;
   };
   if (parsed?.code) err.code = parsed.code;
-  if (parsed?.retryable === true) err.retryable = true;
-  else if (
+  if (typeof parsed?.retryable === 'boolean') {
+    err.retryable = parsed.retryable;
+  } else if (
     parsed?.code !== 'MANAGED_API_KEY_MISSING'
     && parsed?.code !== 'API_KEY_REQUIRED'
     && (status === 429 || status === 408 || status >= 500)
@@ -695,16 +700,15 @@ function parseProxyErrorEnvelope(
             : typeof (parsed as { details?: unknown }).details === 'string'
               ? (parsed as { details: string }).details.trim() || undefined
               : undefined;
+    const retryableRaw =
+      nested?.retryable ?? (parsed as { retryable?: unknown }).retryable;
     const retryable =
-      nested?.retryable === true
-      || (parsed as { retryable?: unknown }).retryable === true
-        ? true
-        : undefined;
+      typeof retryableRaw === 'boolean' ? retryableRaw : undefined;
     if (!code && !message && retryable === undefined) return null;
     const out: { code?: string; message?: string; retryable?: boolean } = {};
     if (code) out.code = code;
     if (message) out.message = message;
-    if (retryable) out.retryable = true;
+    if (retryable !== undefined) out.retryable = retryable;
     return out;
   } catch {
     return null;
