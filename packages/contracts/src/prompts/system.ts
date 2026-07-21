@@ -436,6 +436,9 @@ export function composeSystemPrompt({
     !!skillBody && /assets\/template\.html/.test(skillBody);
   if (isDeckProject && !hasSkillSeed) {
     parts.push(`\n\n---\n\n${DECK_FRAMEWORK_DIRECTIVE}`);
+    if (isTeamverSlideOnly && streamFormat === 'plain') {
+      parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
+    }
   } else if (isFreeformProject && !hasSkillSeed) {
     // Freeform / kind=other projects skip the kind picker entirely and
     // land here. If the user's brief is a deck/keynote/slides ("讲解",
@@ -449,6 +452,9 @@ export function composeSystemPrompt({
     parts.push(
       `\n\n---\n\n## If this brief is a slide deck / keynote / presentation\n\nThe user did not pre-select a "Slide deck" surface, but their request may still call for one. **If — and only if — the brief reads as slides, keynote, presentation, deck, PPT, or 讲解, follow the framework below.** Otherwise ignore everything in this section and continue with the freeform output you would have written anyway.\n\n${DECK_FRAMEWORK_DIRECTIVE}`,
     );
+    if (isTeamverSlideOnly && streamFormat === 'plain') {
+      parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
+    }
   }
 
   if (isMediaSurfaceEarly) {
@@ -495,6 +501,18 @@ You may include at most one short sentence before the artifact. Do not stop afte
 - ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
 
 **Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
+`;
+
+const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
+
+## Teamver API — deck framework emission override (read last — overrides daemon workflow above)
+
+The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
+
+- Do NOT open \`<artifact type="text/html">\` until the complete filled deck is ready in one shot.
+- Do NOT emit a head-only scaffold (\`<!doctype html><html><head>\` with no body slides) and stop — that is always rejected.
+- Your response should contain exactly ONE \`<artifact type="text/html" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
+- Prefer starting directly with \`<artifact type="text/html"\` (at most one short sentence before it).
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)

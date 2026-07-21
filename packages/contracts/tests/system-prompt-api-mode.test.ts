@@ -140,6 +140,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
       expect(prompt).toContain('You may include at most one short sentence before the artifact');
+      expect(prompt).toContain('Teamver API — deck framework emission override');
+      expect(prompt).toContain('Do NOT open `<artifact type="text/html">` until the complete filled deck is ready');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must

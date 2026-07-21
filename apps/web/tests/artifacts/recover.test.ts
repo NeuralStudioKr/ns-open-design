@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { recoverHtmlArtifactFromPrecedingDocument, recoverHtmlDocumentFromMarkdownFence, recoverStandaloneHtmlDocument } from '../../src/artifacts/recover';
+import {
+  recoverBestHtmlDocumentFromText,
+  recoverHtmlArtifactFromPrecedingDocument,
+  recoverHtmlDocumentFromMarkdownFence,
+  recoverStandaloneHtmlDocument,
+} from '../../src/artifacts/recover';
 
 const completeHtml = '<!doctype html><html><head><title>Demo</title></head><body><main><h1>Recovered artifact</h1></main></body></html>';
 
@@ -108,5 +113,21 @@ describe('recoverHtmlDocumentFromMarkdownFence', () => {
       completeHtml.replace('Demo', 'Second'),
       '```',
     ].join('\n'))).toBeNull();
+  });
+});
+
+describe('recoverBestHtmlDocumentFromText', () => {
+  it('picks the longest valid complete HTML document in a mixed response', () => {
+    const short = '<!doctype html><html><head><title>S</title></head><body><main><h1>Short deck with enough chars to pass validation gate.</h1></main></body></html>';
+    const long = '<!doctype html><html><head><title>L</title></head><body><main><h1>Longer recovered deck with substantially more visible slide copy for validation.</h1><p>Extra body.</p></main></body></html>';
+    const source = [
+      'plan prose',
+      '<artifact type="text/html">',
+      '\n<!doctype html>\n<html lang="ko">\n<head>',
+      '</artifact>',
+      long,
+    ].join('\n');
+    expect(recoverBestHtmlDocumentFromText(source)).toBe(long);
+    expect(recoverBestHtmlDocumentFromText(short)).toBe(short);
   });
 });

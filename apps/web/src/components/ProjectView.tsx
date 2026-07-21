@@ -23,7 +23,10 @@ import {
   peekLatestPendingArtifactWrite,
   stashPendingArtifactWrite,
 } from '../artifacts/pendingWriteRecovery';
-import { recoverHtmlArtifactFromPrecedingDocument, recoverHtmlDocumentFromMarkdownFence, recoverStandaloneHtmlDocument } from '../artifacts/recover';
+import {
+  recoverBestHtmlDocumentFromText,
+  recoverHtmlArtifactFromPrecedingDocument,
+} from '../artifacts/recover';
 import { createArtifactParser } from '../artifacts/parser';
 import {
   findFirstQuestionForm,
@@ -2873,8 +2876,7 @@ export function ProjectView({
   }, [project.id, requestOpenFile]);
 
   const artifactFromStandaloneHtml = useCallback((sourceText: string): Artifact | null => {
-    const html = recoverStandaloneHtmlDocument(sourceText)
-      ?? recoverHtmlDocumentFromMarkdownFence(sourceText);
+    const html = recoverBestHtmlDocumentFromText(sourceText);
     if (!html) return null;
     return {
       identifier: 'response',
@@ -5222,6 +5224,7 @@ export function ProjectView({
       // an earlier good deliverable. Terminal auto-open falls back to this
       // when the live parsedArtifact ended up incomplete.
       let bestArtifactSoFar: Artifact | null = null;
+      let runStopReason: string | undefined;
       const runIsVisible = () =>
         messagesConversationIdRef.current === runConversationId;
 
@@ -5447,6 +5450,7 @@ export function ProjectView({
                     ?? null;
                   const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                     attempt,
+                    truncatedByMaxTokens: runStopReason === 'max_tokens',
                     ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                       partialHtml: partialHtmlForAutoContinue,
                       planOutline: finalText,
@@ -6111,6 +6115,7 @@ export function ProjectView({
         pushEvent({ kind: 'status', label: 'requesting', detail: config.model });
         let accumulatedAssistantText = '';
         const streamStartedAt = Date.now();
+        runStopReason = undefined;
         void streamMessage(config, systemPrompt, apiHistory, controller.signal, {
           onDelta: (delta) => {
             accumulatedAssistantText += delta;
@@ -6121,6 +6126,7 @@ export function ProjectView({
             handlers.onAgentEvent({ kind: 'thinking', text: delta });
           },
           onUsage: (usage) => {
+            if (usage.stopReason) runStopReason = usage.stopReason;
             pushEvent({
               kind: 'usage',
               inputTokens: usage.inputTokens,
@@ -6138,7 +6144,7 @@ export function ProjectView({
             });
           },
           onDone: () => {
-            handlers.onDone();
+            handlers.onDone(accumulatedAssistantText);
             const assistantText = accumulatedAssistantText.trim();
             if (userText.length === 0 || assistantText.length === 0) return;
             void fetchTeamverDaemon('/api/memory/extract', {

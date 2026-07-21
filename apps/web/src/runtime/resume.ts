@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../types';
+import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
@@ -86,6 +87,8 @@ export type AutoContinuePromptContext = {
   attempt: number;
   partialHtml?: string | null;
   planOutline?: string | null;
+  /** Set when the prior turn ended with stop_reason=max_tokens. */
+  truncatedByMaxTokens?: boolean;
 };
 
 // Cap on automatic continue attempts inside a single conversation. Three
@@ -99,11 +102,21 @@ export function buildAutoContinueIncompleteOutputPrompt(
   context: AutoContinuePromptContext = { attempt: 1 },
 ): string {
   const attempt = Math.max(1, Math.floor(context.attempt));
-  const parts: string[] = [
+  const parts: string[] = [];
+
+  if (context.truncatedByMaxTokens) {
+    parts.push(
+      'The previous response hit the output token limit while the HTML artifact was still streaming. ' +
+        'Continue from the partial HTML below and finish ONE complete `<artifact type="text/html">...</artifact>` deck in this turn. ' +
+        'Do not restart with a new empty `<head>` shell.\n',
+    );
+  }
+
+  parts.push(
     attempt >= 2
       ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
       : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
-  ];
+  );
 
   const outline = context.planOutline?.trim();
   if (outline) {
@@ -113,7 +126,12 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
-  const partial = context.partialHtml?.trim();
+  let partial = context.partialHtml?.trim();
+  // Re-feeding the 40-byte head-only shell on retry anchors the model to
+  // repeat the same failure; omit it from attempt 2+.
+  if (partial && attempt >= 2 && isIncompleteHtmlDocumentShell(partial)) {
+    partial = null;
+  }
   if (partial) {
     parts.push(
       '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'

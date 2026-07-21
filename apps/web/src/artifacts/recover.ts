@@ -89,3 +89,37 @@ export function recoverHtmlDocumentFromMarkdownFence(sourceText: string | null |
   }
   return count === 1 ? recovered : null;
 }
+
+const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
+
+/**
+ * Scan the full assistant text for every complete HTML document (fences,
+ * standalone tail, or embedded doctype blocks inside/outside artifacts) and
+ * return the longest candidate that passes the write gate.
+ */
+export function recoverBestHtmlDocumentFromText(
+  sourceText: string | null | undefined,
+): string | null {
+  const text = String(sourceText || '');
+  if (!text.trim()) return null;
+
+  const candidates: string[] = [];
+  const fenced = recoverHtmlDocumentFromMarkdownFence(text);
+  if (fenced) candidates.push(fenced);
+  const standalone = recoverStandaloneHtmlDocument(text);
+  if (standalone) candidates.push(standalone);
+
+  const withoutArtifacts = text
+    .replace(/<artifact\b[\s\S]*?<\/artifact>/gi, '')
+    .replace(/<artifact\b[\s\S]*$/i, '');
+
+  DOCTYPE_HTML_BLOCK_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = DOCTYPE_HTML_BLOCK_RE.exec(withoutArtifacts)) !== null) {
+    const candidate = (match[0] || '').replace(/^﻿/, '').trim();
+    if (validateHtmlArtifact(candidate).ok) candidates.push(candidate);
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, cur) => (cur.length > best.length ? cur : best));
+}

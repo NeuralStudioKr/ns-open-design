@@ -75,6 +75,28 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('<!doctype html>');
     expect(prompt).toContain('슬라이드 구성');
   });
+
+  it('omits head-only partial shells from escalated retries', () => {
+    const shell = '\n<!doctype html>\n<html lang="ko">\n<head>';
+    const first = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: shell,
+    });
+    const second = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 2,
+      partialHtml: shell,
+    });
+    expect(first).toContain('```html');
+    expect(second).not.toContain('```html');
+  });
+
+  it('prepends truncation guidance when the prior turn hit max_tokens', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      truncatedByMaxTokens: true,
+    });
+    expect(prompt).toMatch(/token limit|max_tokens/i);
+  });
 });
 
 describe('extractAutoContinueContextFromAssistant', () => {
