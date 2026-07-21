@@ -1484,7 +1484,9 @@ export function ProjectView({
         autoContinueTimerRef.current = null;
       }
     };
-  }, [project.id]);
+    // Also clear on conversation switch so a late timer cannot fire into
+    // another chat inside the same ProjectView mount.
+  }, [project.id, activeConversationId]);
 
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
@@ -2045,10 +2047,22 @@ export function ProjectView({
             if (autoContinueTimerRef.current !== null) {
               window.clearTimeout(autoContinueTimerRef.current);
             }
+            const scheduledProjectId = project.id;
+            const scheduledConversationId = activeConversationId;
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
-              if (messagesConversationIdRef.current !== activeConversationId) {
-                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+              if (project.id !== scheduledProjectId) {
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
+                return;
+              }
+              if (messagesConversationIdRef.current !== scheduledConversationId) {
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
                 return;
               }
               if (!abortRef.current) {
@@ -2056,27 +2070,33 @@ export function ProjectView({
                   apiBackgroundRecoveryRef.current = false;
                   clearApiBackgroundRecoveryBanner();
                 }
-                if (streamingConversationIdRef.current === activeConversationId) {
-                  clearStreamingMarker(activeConversationId);
+                if (streamingConversationIdRef.current === scheduledConversationId) {
+                  clearStreamingMarker(scheduledConversationId);
                 }
               }
               if (
                 isLiveLocalStreamBlockingAutoContinue({
                   abortController: abortRef.current,
                   streamingConversationId: streamingConversationIdRef.current,
-                  targetConversationId: activeConversationId,
+                  targetConversationId: scheduledConversationId,
                 })
               ) {
-                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
                 return;
               }
               const sendNow = handleSendRef.current;
               if (!sendNow) {
-                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
                 return;
               }
               const attempt =
-                conversationAutoContinueCountRef.current.get(activeConversationId) ?? 1;
+                conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
               const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                 attempt,
                 ...extractAutoContinueContextFromAssistant(incompleteAssistant),
@@ -2089,7 +2109,10 @@ export function ProjectView({
               );
               void Promise.resolve(started).then((ok) => {
                 if (ok === false) {
-                  rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
+                  rollbackAutoContinueCount(
+                    conversationAutoContinueCountRef.current,
+                    scheduledConversationId,
+                  );
                 }
               });
             }, 600);
@@ -4601,29 +4624,47 @@ export function ProjectView({
             if (autoContinueTimerRef.current !== null) {
               window.clearTimeout(autoContinueTimerRef.current);
             }
+            const scheduledProjectId = project.id;
+            const scheduledConversationId = recoveryConversationId;
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
-              if (messagesConversationIdRef.current !== recoveryConversationId) {
-                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+              if (project.id !== scheduledProjectId) {
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
+                return;
+              }
+              if (messagesConversationIdRef.current !== scheduledConversationId) {
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
                 return;
               }
               if (
                 isLiveLocalStreamBlockingAutoContinue({
                   abortController: abortRef.current,
                   streamingConversationId: streamingConversationIdRef.current,
-                  targetConversationId: recoveryConversationId,
+                  targetConversationId: scheduledConversationId,
                 })
               ) {
-                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
                 return;
               }
               const sendNow = handleSendRef.current;
               if (!sendNow) {
-                rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
                 return;
               }
               const attempt =
-                conversationAutoContinueCountRef.current.get(recoveryConversationId) ?? 1;
+                conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
               const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                 attempt,
                 ...extractAutoContinueContextFromAssistant(incompleteAssistant),
@@ -4636,7 +4677,10 @@ export function ProjectView({
               );
               void Promise.resolve(started).then((ok) => {
                 if (ok === false) {
-                  rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
+                  rollbackAutoContinueCount(
+                    conversationAutoContinueCountRef.current,
+                    scheduledConversationId,
+                  );
                 }
               });
             }, 600);

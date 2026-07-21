@@ -5,7 +5,7 @@ import { forwardRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatPane } from '../../src/components/ChatPane';
-import { AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT } from '../../src/runtime/resume';
+import { AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT, buildAutoContinueIncompleteOutputPrompt } from '../../src/runtime/resume';
 import type { AppConfig, ChatMessage } from '../../src/types';
 
 // Red spec for the resume-on-failure affordance: a failed assistant message
@@ -216,5 +216,24 @@ describe('ChatPane resume-on-failure', () => {
     expect(screen.queryByText(/od:auto_continue_incomplete_output/)).toBeNull();
     expect(screen.queryByText(/직전 모델 응답/)).toBeNull();
     expect(screen.getByTestId('assistant-msg-auto-continue')).toBeTruthy();
+  });
+
+  it('hides escalated automatic-continue prompts as well', () => {
+    const escalated = buildAutoContinueIncompleteOutputPrompt({ attempt: 2 });
+    renderChat({
+      activeAgentId: 'claude',
+      messages: [
+        {
+          id: 'auto-user-2',
+          role: 'user',
+          content: escalated,
+          createdAt: 1,
+        },
+        autoContinueScheduledMessage(),
+      ],
+    });
+
+    expect(screen.queryByText(/FINAL RETRY/)).toBeNull();
+    expect(screen.queryByText(/od:auto_continue_incomplete_output/)).toBeNull();
   });
 });

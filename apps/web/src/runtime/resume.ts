@@ -54,15 +54,18 @@ export function isAutoContinueIncompleteOutputPrompt(content: string | null | un
   // Legacy bodies that already landed in persisted chats before the sentinel.
   if (text.startsWith('앞선 응답이 슬라이드 결과물을 만들지 못하고')) return true;
   if (text.startsWith('이 대화(현재 프로젝트)의 직전 모델 응답만')) return true;
+  if (text.startsWith('[FINAL RETRY]')) return true;
   return false;
 }
 
 const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
-  '[FINAL RETRY] 이전 자동 이어쓰기도 사용 가능한 슬라이드 덱을 만들지 못했습니다. ' +
+  `${AUTO_CONTINUE_PROMPT_SENTINEL}\n` +
+  '[FINAL RETRY] 이 대화(현재 프로젝트)의 이전 자동 이어쓰기도 사용 가능한 슬라이드 덱을 만들지 못했습니다. ' +
+  '다른 프로젝트·다른 대화의 슬라이드를 이어 쓰지 마세요. ' +
   '이번 응답은 반드시 `<artifact type="text/html" identifier="...">`로 시작해서 `</artifact>`로 끝나야 합니다. ' +
   '인사, 사과, 계획, 목차 나열, "만들겠습니다" 약속, question-form은 금지입니다. ' +
   '응답 전체가 하나의 완전한 `<!doctype html>…</html>` 덱이어야 하며 최소 10장 이상 실제 슬라이드 콘텐츠를 포함하세요. ' +
-  '(English: Output ONLY one complete HTML deck artifact — no prose before or after it.)';
+  '(English: Use ONLY this conversation. Output ONLY one complete HTML deck artifact — no prose before or after it.)';
 
 const AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT = 4000;
 const AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT = 2000;
@@ -94,7 +97,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
   const outline = context.planOutline?.trim();
   if (outline) {
     parts.push(
-      '\n\n[이전 응답의 슬라이드 목차/방향 — 그대로 사용하고 다시 설명하지 마세요:]\n'
+      '\n\n[이 대화의 직전 응답 슬라이드 목차/방향 — 그대로 사용하고 다시 설명하지 마세요:]\n'
         + outline.slice(0, AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT),
     );
   }
@@ -102,14 +105,18 @@ export function buildAutoContinueIncompleteOutputPrompt(
   const partial = context.partialHtml?.trim();
   if (partial) {
     parts.push(
-      '\n\n[이전에 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
+      '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
         + '```html\n'
         + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
         + '\n```',
     );
   }
 
-  return parts.join('');
+  // Always keep the hide-sentinel as the first non-whitespace bytes so ChatPane
+  // can suppress every attempt (including escalated + excerpt appends).
+  const joined = parts.join('');
+  if (joined.trimStart().startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)) return joined;
+  return `${AUTO_CONTINUE_PROMPT_SENTINEL}\n${joined}`;
 }
 
 // Error status-event code used for the "결과물이 완성되지 않아 이어쓰기를

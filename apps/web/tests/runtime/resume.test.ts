@@ -57,9 +57,12 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
   it('escalates the prompt on later automatic-continue attempts', () => {
     const first = buildAutoContinueIncompleteOutputPrompt({ attempt: 1 });
     const second = buildAutoContinueIncompleteOutputPrompt({ attempt: 2 });
-    expect(first).toContain('앞선 응답이 슬라이드 결과물을');
+    expect(first).toContain(AUTO_CONTINUE_PROMPT_SENTINEL);
+    expect(first).toContain('이 대화(현재 프로젝트)의 직전 모델 응답만');
+    expect(second.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)).toBe(true);
     expect(second).toContain('FINAL RETRY');
     expect(second).not.toEqual(first);
+    expect(isAutoContinueIncompleteOutputPrompt(second)).toBe(true);
   });
 
   it('threads partial HTML and plan outline into the auto-continue prompt', () => {

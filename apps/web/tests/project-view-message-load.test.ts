@@ -198,6 +198,8 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("handleSendRef.current");
     expect(block).toContain("buildAutoContinueIncompleteOutputPrompt");
     expect(block).toContain("AUTO_CONTINUE_ENTRY_FROM");
+    expect(block).toContain("const scheduledProjectId = project.id");
+    expect(block).toContain("project.id !== scheduledProjectId");
   });
 
   it("auto-continues a background-recovered incomplete-output row once proxy streams drain", () => {
@@ -205,7 +207,7 @@ describe("ProjectView message loading", () => {
     const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
     const secondStart = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(", start + 1);
     expect(secondStart).toBeGreaterThan(0);
-    const block = source.slice(secondStart, secondStart + 4600);
+    const block = source.slice(secondStart, secondStart + 5600);
 
     expect(block).toContain("const proxyStillActive = matchingActiveStreams.length > 0");
     expect(block).toContain("!openedRecoveredHtml && !stillInflight && !proxyStillActive");
@@ -217,6 +219,8 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("finishRecovery()");
     expect(block).toContain("handleSendRef.current");
     expect(block).toContain("buildAutoContinueIncompleteOutputPrompt");
+    expect(block).toContain("const scheduledProjectId = project.id");
+    expect(block).toContain("project.id !== scheduledProjectId");
   });
 
   it("keeps the no-produced-HTML terminal path quiet in the browser console", () => {
