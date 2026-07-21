@@ -5145,14 +5145,23 @@ export function ProjectView({
       setPendingRecoveryPreview(null);
       savedArtifactRef.current = null;
       onTouchProject();
-      if (!retryTarget) persistMessage(userMsg);
-      // Intentionally do NOT persist `assistantMsg` here. In daemon mode it
-      // starts as runStatus='running' with no runId, which the source-level
-      // guard treats as a phantom — the first DB write happens inside
-      // `onRunCreated` (below) once POST /api/runs returns a runId. In API
-      // mode there is no runStatus, and the buffered text path will persist
-      // as soon as the first delta lands.
-      persistMessage(assistantMsg);
+      // Persist user BEFORE assistant so daemon `position` assignment cannot
+      // race the assistant ahead of its trigger. A flipped pair used to make
+      // the chat render AI → user after scheduleConversationMessageRefresh.
+      // Daemon assistant rows without runId are still skipped by persistMessage
+      // (phantom guard); API mode writes the empty assistant shell after the
+      // user row lands. Merge-order repair covers the rare user-PUT failure.
+      if (!retryTarget) {
+        void saveMessage(project.id, runConversationId, userMsg)
+          .then(() => {
+            persistMessage(assistantMsg);
+          })
+          .catch(() => {
+            persistMessage(assistantMsg);
+          });
+      } else {
+        persistMessage(assistantMsg);
+      }
       if (runCommentAttachments.length > 0) {
         void patchAttachedStatuses(runCommentAttachments, 'applying');
         const consumedCommentIds = new Set(runCommentAttachments.map((attachment) => attachment.id));
