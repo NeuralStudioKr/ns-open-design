@@ -84,22 +84,43 @@ export function shouldSkipDriveAuthRefresh(detail: unknown): boolean {
   // Main HS256 SSO expired — Apps refresh cannot revive it; only Main
   // parent-domain re-login can. Skip BFF refresh and surface immediately.
   if (normalized === "main_sso_required") return true;
+  if (normalized === "main_sso_user_mismatch") return true;
   return false;
 }
 
+/** True when Design BFF session user and Main SSO cookie user disagree. */
+export function isDriveMainSsoUserMismatchBody(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const record = body as Record<string, unknown>;
+  if (record.code === "main_sso_user_mismatch") return true;
+  if (typeof record.error === "string"
+    && record.error.trim().toLowerCase() === "main_sso_user_mismatch") {
+    return true;
+  }
+  const detail = record.detail;
+  return typeof detail === "string"
+    && detail.trim().toLowerCase() === "main_sso_user_mismatch";
+}
+
 /**
- * True when Drive 401 body says Main HS256 SSO has expired and only a
- * parent-domain re-login can fix it. FE must not spin BFF refresh — Apps
- * JWT never satisfies Main Drive's HS256 verifier.
+ * True when Drive 401 body says Main HS256 SSO cookie is missing/expired.
+ * FE must not spin BFF refresh — Apps JWT never satisfies Main Drive HS256.
+ * Distinct from ``main_sso_user_mismatch`` (wrong Main account vs Design).
  */
 export function isDriveMainSsoRequiredBody(body: unknown): boolean {
   if (!body || typeof body !== "object") return false;
+  if (isDriveMainSsoUserMismatchBody(body)) return false;
   const record = body as Record<string, unknown>;
   if (record.code === "main_sso_required") return true;
   if (record.re_login_scope === "main") return true;
   const detail = record.detail;
-  if (typeof detail === "string" && detail.trim().toLowerCase() === "main_sso_required") return true;
-  return false;
+  if (typeof detail !== "string") return false;
+  return detail.trim().toLowerCase() === "main_sso_required";
+}
+
+/** Main SSO gate: missing/expired cookie OR wrong Main account vs Design. */
+export function isDriveMainSsoGateBody(body: unknown): boolean {
+  return isDriveMainSsoRequiredBody(body) || isDriveMainSsoUserMismatchBody(body);
 }
 
 /** True when the body is workspace ACL forbid (not SSO expiry). */
@@ -280,10 +301,10 @@ async function teamverDriveFetch(
     }
 
     if (shouldSkipDriveAuthRefresh(detail)) {
-      // Main HS256 SSO expiry cannot be soft-retried — parent-domain re-login
-      // is the only recovery. Surface immediately so the FE modal switches to
-      // the Main sign-in CTA instead of spinning BFF refresh.
-      if (isDriveMainSsoRequiredBody(body)) {
+      // Main HS256 SSO gate cannot be soft-retried — parent-domain re-login
+      // is the only recovery (missing cookie, expired cookie, or wrong Main
+      // account vs Design BFF). Surface immediately — no BFF refresh.
+      if (isDriveMainSsoGateBody(body)) {
         return response;
       }
       // Soft retry first: Apps /auth/refresh cannot revive Main HS256 SSO that
@@ -334,7 +355,11 @@ async function readDriveErrorBody(response: Response): Promise<unknown> {
   }
 }
 
-function driveErrorCodeForStatus(status: number, body: unknown): string {
+/** @internal exported for unit tests */
+export function driveErrorCodeForStatus(status: number, body: unknown): string {
+  if (status === 401 && isDriveMainSsoUserMismatchBody(body)) {
+    return "teamver_drive_main_sso_user_mismatch";
+  }
   if (status === 401 && isDriveMainSsoRequiredBody(body)) {
     return "teamver_drive_main_sso_required";
   }
@@ -344,7 +369,26 @@ function driveErrorCodeForStatus(status: number, body: unknown): string {
 /** True when a Drive fetch error was raised because Main HS256 SSO expired. */
 export function isTeamverDriveMainSsoRequiredError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  return err.message === "teamver_drive_main_sso_required";
+  const message = err.message.trim();
+  return (
+    message === "teamver_drive_main_sso_required"
+    || message === "main_sso_required"
+  );
+}
+
+/** True when Main SSO JWT user ≠ Design BFF session user. */
+export function isTeamverDriveMainSsoUserMismatchError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message.trim();
+  return (
+    message === "teamver_drive_main_sso_user_mismatch"
+    || message === "main_sso_user_mismatch"
+  );
+}
+
+/** Main SSO gate that needs parent-domain re-login (expired or wrong account). */
+export function isTeamverDriveMainSsoGateError(err: unknown): boolean {
+  return isTeamverDriveMainSsoRequiredError(err) || isTeamverDriveMainSsoUserMismatchError(err);
 }
 
 export async function getTeamverDriveJson(

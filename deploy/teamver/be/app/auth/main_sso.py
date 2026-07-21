@@ -6,6 +6,7 @@ from starlette.requests import Request
 
 from ..config import settings
 from ..teamver_sdk import extract_request_access_token
+from .bff_tokens import user_id_from_access_token_unverified
 
 
 def hosted_requires_main_sso() -> bool:
@@ -31,3 +32,27 @@ def read_main_sso_cookie(request: Request) -> str | None:
         if legacy and legacy.strip():
             return legacy.strip()
     return None
+
+
+def read_main_sso_user_id(request: Request) -> str | None:
+    """Unverified ``user_id``/``sub`` from the Main HS256 SSO cookie (best-effort)."""
+    token = read_main_sso_cookie(request)
+    if not token:
+        return None
+    return user_id_from_access_token_unverified(token)
+
+
+def main_sso_user_mismatches_bff(request: Request, bff_user_id: str | None) -> bool:
+    """True when browser Main SSO identity ≠ Design BFF session user.
+
+    Drive forwards Main ``teamver_access_token`` + BFF ``X-Workspace-Id``. If
+    another tab logged into Main as a different user, Main ACL returns opaque
+    ``error.forbidden`` for the Design workspace. Detect before proxying.
+    """
+    design_user = (bff_user_id or "").strip()
+    if not design_user:
+        return False
+    main_user = read_main_sso_user_id(request)
+    if not main_user:
+        return False
+    return main_user.casefold() != design_user.casefold()

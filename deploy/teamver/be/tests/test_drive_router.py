@@ -296,6 +296,40 @@ async def test_proxy_drive_main_cookie_401_auth_failure_maps_to_main_sso_require
 
 
 @pytest.mark.asyncio
+async def test_proxy_drive_main_cookie_user_mismatch_short_circuits_before_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wrong Main account vs Design BFF user → explicit 401 without proxying."""
+    forward = AsyncMock(side_effect=AssertionError("must not proxy mismatched Main SSO"))
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "bff_enabled", lambda: True)
+    monkeypatch.setattr(drive_router, "main_sso_user_mismatches_bff", lambda _request, _user_id: True)
+    monkeypatch.setattr(
+        drive_router,
+        "force_refresh_bff_session",
+        AsyncMock(side_effect=AssertionError("Apps refresh must not run for Main SSO mismatch")),
+    )
+
+    request = _drive_request(
+        path="api/v2/shared-drive",
+        cookie_header="teamver_access_token=other-main-user-jwt",
+    )
+
+    response = await drive_router.proxy_drive(
+        "api/v2/shared-drive",
+        request,
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 401
+    assert b"main_sso_user_mismatch" in response.body
+    assert b'"re_login_scope":"main"' in response.body
+    assert b"login_url" in response.body
+    assert forward.await_count == 0
+
+
+@pytest.mark.asyncio
 async def test_proxy_drive_main_cookie_401_non_auth_passes_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -377,6 +411,77 @@ async def test_proxy_drive_hosted_requires_main_sso_cookie(
     assert response.status_code == 401
     assert b"main_sso_required" in response.body
     assert b"login_url" in response.body
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_main_sso_user_mismatch_rejects_before_forward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Main SSO cookie user ≠ Design BFF user → 401 main_sso_user_mismatch (no Main call).
+
+    Opaque cookies without a decodable user_id must not trigger this path — that
+    is covered by the existing prefer-Main-cookie / Invalid-token tests.
+    """
+    import jwt
+
+    def _unsigned_jwt(user_id: str) -> str:
+        return jwt.encode(
+            {"user_id": user_id},
+            "test-secret-for-main-sso-mismatch",
+            algorithm="HS256",
+        )
+
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "hosted_requires_main_sso", lambda: True)
+    monkeypatch.setattr(
+        drive_router,
+        "forward_drive_request",
+        AsyncMock(side_effect=AssertionError("must not forward mismatched Main SSO")),
+    )
+
+    other_user_jwt = _unsigned_jwt("U-OTHER")
+    response = await drive_router.proxy_drive(
+        "api/v2/shared-drive",
+        _drive_request(
+            path="api/v2/shared-drive",
+            cookie_header=f"teamver_access_token={other_user_jwt}",
+        ),
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(
+            update={"auth_source": "bff", "user_id": "u1"},
+        ),
+    )
+
+    assert response.status_code == 401
+    assert b"main_sso_user_mismatch" in response.body
+    assert b'"re_login_scope":"main"' in response.body
+    assert b"login_url" in response.body
+    assert b"design_user_id" in response.body
+
+
+@pytest.mark.asyncio
+async def test_proxy_drive_opaque_main_cookie_does_not_false_positive_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-JWT Main cookie strings must still forward (no mismatch without user_id)."""
+    forward = AsyncMock(
+        return_value=(200, {"content-type": "application/json"}, b'{"items":[]}'),
+    )
+    monkeypatch.setattr(drive_router, "forward_drive_request", forward)
+    monkeypatch.setattr(drive_router, "emit_drive_proxy_marker", lambda **_kwargs: None)
+    monkeypatch.setattr(drive_router, "hosted_requires_main_sso", lambda: True)
+
+    response = await drive_router.proxy_drive(
+        "api/v2/shared-drive",
+        _drive_request(
+            path="api/v2/shared-drive",
+            cookie_header="teamver_access_token=hs256-main-jwt",
+        ),
+        _auth(token="apps-rs256-jwt", workspace_id="ws-1").model_copy(update={"auth_source": "bff"}),
+    )
+
+    assert response.status_code == 200
+    forward.assert_awaited_once()
+    assert forward.await_args.kwargs["access_token"] == "hs256-main-jwt"
 
 
 @pytest.mark.asyncio

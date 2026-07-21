@@ -57,7 +57,7 @@ import {
   peekTeamverDriveImportScopesCache,
 } from "../driveImportList";
 import {
-  handleTeamverBffAuthFailure,
+  handleTeamverDriveAuthFailure,
   redirectToTeamverLoginFromEmbed,
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
@@ -111,6 +111,7 @@ export function TeamverPublishDrivePanel({
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [targetsError, setTargetsError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
+  const [authUserMismatch, setAuthUserMismatch] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [targets, setTargets] = useState<TeamverDrivePublishTarget[]>(() => [
     DEFAULT_PUBLISH_TARGET,
@@ -164,6 +165,7 @@ export function TeamverPublishDrivePanel({
     const seq = ++fetchSeqRef.current;
     setTargetsError(null);
     setAuthRequired(false);
+    setAuthUserMismatch(false);
     try {
       const ws = (await readActiveTeamverWorkspaceId())?.trim() || null;
       if (seq !== fetchSeqRef.current) return;
@@ -212,10 +214,14 @@ export function TeamverPublishDrivePanel({
       setTargets(ensureDefaultPublishTarget([]));
       setLastTargetRestore("none");
       if (
-        handleTeamverBffAuthFailure(err, {
-          onRelogin: () => setAuthRequired(true),
+        handleTeamverDriveAuthFailure(err, {
+          onRelogin: (opts) => {
+            setAuthRequired(true);
+            setAuthUserMismatch(opts?.userMismatch === true);
+          },
           onTransient: () => {
             setAuthRequired(false);
+            setAuthUserMismatch(false);
             setTargetsError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
           },
         })
@@ -299,6 +305,7 @@ export function TeamverPublishDrivePanel({
       });
       setTargetsError(null);
       setAuthRequired(false);
+      setAuthUserMismatch(false);
     },
     [workspaceId],
   );
@@ -379,10 +386,14 @@ export function TeamverPublishDrivePanel({
         setPdfBlocked(true);
         setSelectedFormat("html");
       }
-      const authHandled = handleTeamverBffAuthFailure(err, {
-        onRelogin: () => setAuthRequired(true),
+      const authHandled = handleTeamverDriveAuthFailure(err, {
+        onRelogin: (opts) => {
+          setAuthRequired(true);
+          setAuthUserMismatch(opts?.userMismatch === true);
+        },
         onTransient: () => {
           setAuthRequired(false);
+          setAuthUserMismatch(false);
           onError?.(new Error(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE));
         },
       });
@@ -538,7 +549,7 @@ export function TeamverPublishDrivePanel({
           aria-live="polite"
           data-testid="teamver-drive-panel-auth-required"
         >
-          {formatTeamverDrivePanelReloginMessage()}{" "}
+          {formatTeamverDrivePanelReloginMessage({ userMismatch: authUserMismatch })}{" "}
           <button
             type="button"
             className="teamver-drive-target-hint__login"

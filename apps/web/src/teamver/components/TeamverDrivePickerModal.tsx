@@ -38,7 +38,7 @@ import {
 } from "../driveBrowsePageCache";
 import { isTeamverDriveAbortError } from "../driveApi";
 import {
-  handleTeamverBffAuthFailure,
+  handleTeamverDriveAuthFailure,
   redirectToTeamverLoginFromEmbed,
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
@@ -162,6 +162,7 @@ export function TeamverDrivePickerModal({
   const [browseLoading, setBrowseLoading] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [browseAuthRequired, setBrowseAuthRequired] = useState(false);
+  const [browseAuthUserMismatch, setBrowseAuthUserMismatch] = useState(false);
   const [browseHasMore, setBrowseHasMore] = useState(false);
   const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
   const [homeRecentTargets, setHomeRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
@@ -409,13 +410,15 @@ export function TeamverDrivePickerModal({
       } catch (err) {
         if (canceled) return;
         if (
-          handleTeamverBffAuthFailure(err, {
-            onRelogin: () => {
+          handleTeamverDriveAuthFailure(err, {
+            onRelogin: (opts) => {
               setBrowseAuthRequired(true);
+              setBrowseAuthUserMismatch(opts?.userMismatch === true);
               setBrowseError(null);
             },
             onTransient: () => {
               setBrowseAuthRequired(false);
+              setBrowseAuthUserMismatch(false);
               setBrowseError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
             },
           })
@@ -585,6 +588,7 @@ export function TeamverDrivePickerModal({
         }
 
         setBrowseAuthRequired(false);
+        setBrowseAuthUserMismatch(false);
         setBrowseTargets(entry.targets);
         setBrowseAssetRows(entry.assets);
         setBrowseHasMore(entry.hasMore);
@@ -598,13 +602,15 @@ export function TeamverDrivePickerModal({
           setBrowseAssetRows([]);
           setRecentAssetRows([]);
           if (
-            handleTeamverBffAuthFailure(err, {
-              onRelogin: () => {
+            handleTeamverDriveAuthFailure(err, {
+              onRelogin: (opts) => {
                 setBrowseAuthRequired(true);
+                setBrowseAuthUserMismatch(opts?.userMismatch === true);
                 setBrowseError(null);
               },
               onTransient: () => {
                 setBrowseAuthRequired(false);
+                setBrowseAuthUserMismatch(false);
                 setBrowseError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
               },
             })
@@ -612,6 +618,7 @@ export function TeamverDrivePickerModal({
             // handled
           } else {
             setBrowseAuthRequired(false);
+            setBrowseAuthUserMismatch(false);
             setBrowseError(
               formatTeamverDriveImportErrorMessage(err) || "드라이브 폴더를 불러오지 못했습니다",
             );
@@ -752,18 +759,21 @@ export function TeamverDrivePickerModal({
         if (canceled || seq !== searchFetchSeqRef.current) return;
         setSearchTargets(results);
         setBrowseAuthRequired(false);
+        setBrowseAuthUserMismatch(false);
       } catch (err) {
         if (canceled || seq !== searchFetchSeqRef.current) return;
         if (isTeamverDriveAbortError(err)) return;
         setSearchTargets([]);
         if (
-          handleTeamverBffAuthFailure(err, {
-            onRelogin: () => {
+          handleTeamverDriveAuthFailure(err, {
+            onRelogin: (opts) => {
               setBrowseAuthRequired(true);
+              setBrowseAuthUserMismatch(opts?.userMismatch === true);
               setSearchError(null);
             },
             onTransient: () => {
               setBrowseAuthRequired(false);
+              setBrowseAuthUserMismatch(false);
               setSearchError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
             },
           })
@@ -967,7 +977,7 @@ export function TeamverDrivePickerModal({
               aria-live="polite"
               data-testid="teamver-drive-picker-auth-required"
             >
-              {formatTeamverDriveBrowseReloginMessage()}{" "}
+              {formatTeamverDriveBrowseReloginMessage({ userMismatch: browseAuthUserMismatch })}{" "}
               <button
                 type="button"
                 className="teamver-drive-picker-empty__login"

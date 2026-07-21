@@ -8,10 +8,11 @@ import {
 } from "../listProjectOutputs";
 import type { TeamverPublishDriveOutput } from "../publishToDrive";
 import {
-  handleTeamverBffAuthFailure,
+  handleTeamverDriveAuthFailure,
   redirectToTeamverLoginFromEmbed,
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
+import { formatTeamverDrivePanelReloginMessage } from "../teamverDriveAuthCopy";
 
 type Props = {
   projectId: string;
@@ -91,6 +92,7 @@ export function TeamverDrivePublishHistory({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
+  const [authUserMismatch, setAuthUserMismatch] = useState(false);
   const [result, setResult] = useState<TeamverProjectOutputsResult | null>(null);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [hasRequested, setHasRequested] = useState(!defaultCollapsed);
@@ -104,6 +106,7 @@ export function TeamverDrivePublishHistory({
     if (!hasRowsRef.current) setLoading(true);
     setError(null);
     setAuthRequired(false);
+    setAuthUserMismatch(false);
     try {
       const next = await listTeamverProjectOutputs(projectId);
       if (seq !== fetchSeqRef.current) return;
@@ -120,10 +123,14 @@ export function TeamverDrivePublishHistory({
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
       if (
-        handleTeamverBffAuthFailure(err, {
-          onRelogin: () => setAuthRequired(true),
+        handleTeamverDriveAuthFailure(err, {
+          onRelogin: (opts) => {
+            setAuthRequired(true);
+            setAuthUserMismatch(opts?.userMismatch === true);
+          },
           onTransient: () => {
             setAuthRequired(false);
+            setAuthUserMismatch(false);
             setError(TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE);
           },
         })
@@ -214,7 +221,7 @@ export function TeamverDrivePublishHistory({
           aria-live="polite"
           data-testid="teamver-drive-history-auth-required"
         >
-          로그인이 만료되어 발행 이력을 불러올 수 없습니다.{" "}
+          {formatTeamverDrivePanelReloginMessage({ userMismatch: authUserMismatch })}{" "}
           <button
             type="button"
             className="teamver-drive-history__login"

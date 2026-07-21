@@ -27,4 +27,9 @@ describe("teamverDriveAuthCopy", () => {
   it("uses transient copy for publish panel relogin hint while authenticated", () => {
     expect(formatTeamverDrivePanelReloginMessage()).toContain("연결");
   });
+
+  it("uses explicit account mismatch copy for browse and publish surfaces", () => {
+    expect(formatTeamverDriveBrowseReloginMessage({ userMismatch: true })).toContain("계정이 달라");
+    expect(formatTeamverDrivePanelReloginMessage({ userMismatch: true })).toContain("계정이 달라");
+  });
 });

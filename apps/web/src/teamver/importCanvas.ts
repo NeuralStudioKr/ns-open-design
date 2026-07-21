@@ -83,6 +83,8 @@ function isStableCanvasImportToken(value: string): boolean {
     || value.startsWith("teamver_")
     || value.startsWith("od_daemon_")
     || value === "session_expired"
+    || value === "main_sso_required"
+    || value === "main_sso_user_mismatch"
   );
 }
 
@@ -99,6 +101,10 @@ export function formatCanvasImportErrorForUser(code: string): string {
       "로그인이 만료되었습니다. 다시 로그인한 뒤 시도하세요.",
       "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
     ),
+    main_sso_required:
+      "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 시도하세요.",
+    main_sso_user_mismatch:
+      "Teamver Main 로그인 계정과 Design 세션 계정이 다릅니다 — 같은 계정으로 다시 로그인한 뒤 시도하세요.",
     canvas_import_failed: "캔버스를 가져오지 못했습니다 — 잠시 후 다시 시도하세요.",
     canvas_import_busy: "지금 가져오기 요청이 많습니다 — 잠시 후 다시 시도하세요.",
     canvas_session_required: "캔버스 세션 정보가 없습니다.",

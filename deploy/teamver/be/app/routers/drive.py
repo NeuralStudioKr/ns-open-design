@@ -17,7 +17,11 @@ from ..auth.bff_session import (
 )
 from ..auth.bff_tokens import access_token_not_expired, force_refresh_bff_session
 from ..auth.login_hint import teamver_main_login_url_for_design
-from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
+from ..auth.main_sso import (
+    hosted_requires_main_sso,
+    main_sso_user_mismatches_bff,
+    read_main_sso_cookie,
+)
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..errors import UnauthorizedError
 from ..services.drive_proxy import emit_drive_proxy_marker, forward_drive_request
@@ -102,6 +106,24 @@ def _main_sso_required_response() -> JSONResponse:
     )
 
 
+def _main_sso_user_mismatch_response(*, design_user_id: str) -> JSONResponse:
+    """Main SSO cookie user ≠ Design BFF session user.
+
+    Forwarding would hit Main ``error.forbidden`` for the Design workspace.
+    Force Main re-login so both cookies belong to the same account.
+    """
+    return JSONResponse(
+        status_code=401,
+        content={
+            "detail": "main_sso_user_mismatch",
+            "code": "main_sso_user_mismatch",
+            "re_login_scope": "main",
+            "login_url": teamver_main_login_url_for_design(),
+            "design_user_id": design_user_id,
+        },
+    )
+
+
 def _query_string(params: QueryParams) -> str:
     return urlencode(list(params.multi_items())) if params else ""
 
@@ -148,6 +170,13 @@ async def proxy_drive(
         )
         return _main_sso_required_response()
     token, token_source = resolved
+    if token_source == "main_cookie" and main_sso_user_mismatches_bff(request, auth.user_id):
+        logger.warning(
+            "[drive] Main SSO user mismatch design_user=%s path=%s",
+            auth.user_id,
+            path,
+        )
+        return _main_sso_user_mismatch_response(design_user_id=auth.user_id)
     workspace_id = require_workspace_context(auth)
     body = await request.body()
     content_type = request.headers.get("content-type")

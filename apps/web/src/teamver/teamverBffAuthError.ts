@@ -8,6 +8,10 @@ import {
   isDesignAuthRefreshDeclined,
   isDesignAuthRefreshDeclineHard,
 } from "./designBffClient";
+import {
+  isTeamverDriveMainSsoGateError,
+  isTeamverDriveMainSsoUserMismatchError,
+} from "./driveApi";
 import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 
 function isSdkHttpUnauthorized(err: unknown): boolean {
@@ -171,6 +175,29 @@ export function handleTeamverBffAuthFailure(
     return true;
   }
   return false;
+}
+
+/**
+ * Drive browse/publish catch helper: Main SSO gate (missing cookie or wrong
+ * Main account) first, then Design BFF session auth failure.
+ */
+export function handleTeamverDriveAuthFailure(
+  err: unknown,
+  handlers: {
+    onRelogin: (opts?: { userMismatch?: boolean }) => void;
+    onTransient: () => void;
+  },
+): boolean {
+  if (isTeamverDriveMainSsoGateError(err)) {
+    handlers.onRelogin({
+      userMismatch: isTeamverDriveMainSsoUserMismatchError(err),
+    });
+    return true;
+  }
+  return handleTeamverBffAuthFailure(err, {
+    onRelogin: () => handlers.onRelogin(),
+    onTransient: handlers.onTransient,
+  });
 }
 
 /**

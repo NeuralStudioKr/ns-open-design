@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from ..auth.bff_session import load_bff_session, suppress_session_cookie
 from ..auth.bff_tokens import access_token_not_expired, force_refresh_bff_session
-from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
+from ..auth.main_sso import (
+    hosted_requires_main_sso,
+    main_sso_user_mismatches_bff,
+    read_main_sso_cookie,
+)
 from ..auth_context import AuthContext, require_auth
 from ..errors import UnauthorizedError
 from ..schemas.canvas_preview import CanvasPreviewResponse
@@ -22,6 +26,8 @@ async def _resolve_main_access_token(request: Request, auth: AuthContext) -> str
     """Prefer Main SSO cookie (HS256) — same contract as Drive / import-canvas."""
     main_cookie_token = read_main_sso_cookie(request)
     if main_cookie_token:
+        if main_sso_user_mismatches_bff(request, auth.user_id):
+            raise UnauthorizedError("main_sso_user_mismatch")
         return main_cookie_token
 
     if hosted_requires_main_sso():

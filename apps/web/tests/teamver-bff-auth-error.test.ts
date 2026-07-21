@@ -20,6 +20,7 @@ import {
   classifyTeamverBffAuthFailure,
   formatTeamverEmbedAuthRequiredMessage,
   handleTeamverBffAuthFailure,
+  handleTeamverDriveAuthFailure,
   isTeamverBffUnauthorizedError,
   redirectToTeamverLoginFromEmbed,
 } from "../src/teamver/teamverBffAuthError";
@@ -137,6 +138,21 @@ describe("classifyTeamverBffAuthFailure", () => {
     ).toBe(true);
     expect(onTransient).toHaveBeenCalledTimes(1);
     expect(onRelogin).not.toHaveBeenCalled();
+  });
+
+  it("handleTeamverDriveAuthFailure treats Main SSO mismatch as relogin even while embed memory is authenticated", () => {
+    const onRelogin = vi.fn();
+    const onTransient = vi.fn();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    expect(
+      handleTeamverDriveAuthFailure(new Error("teamver_drive_main_sso_user_mismatch"), {
+        onRelogin,
+        onTransient,
+      }),
+    ).toBe(true);
+    expect(onRelogin).toHaveBeenCalledWith({ userMismatch: true });
+    expect(onTransient).not.toHaveBeenCalled();
   });
 
   it("formatTeamverEmbedAuthRequiredMessage prefers transient copy while authenticated", () => {

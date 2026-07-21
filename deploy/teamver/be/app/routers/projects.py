@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.bff_session import load_bff_session, suppress_session_cookie
 from ..auth.bff_tokens import access_token_not_expired, ensure_bff_session, force_refresh_bff_session
-from ..auth.main_sso import hosted_requires_main_sso, read_main_sso_cookie
+from ..auth.main_sso import (
+    hosted_requires_main_sso,
+    main_sso_user_mismatches_bff,
+    read_main_sso_cookie,
+)
 from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
@@ -65,6 +69,8 @@ async def _resolve_drive_mutation_access_token(request: Request, auth: AuthConte
     """
     main_cookie_token = read_main_sso_cookie(request)
     if main_cookie_token:
+        if main_sso_user_mismatches_bff(request, auth.user_id):
+            raise UnauthorizedError("main_sso_user_mismatch")
         return main_cookie_token
 
     if hosted_requires_main_sso():

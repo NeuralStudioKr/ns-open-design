@@ -63,6 +63,10 @@ export function formatDriveImportErrorForUser(code: string): string {
     // Apps refresh (BFF) never satisfies Main Drive's HS256 verifier.
     teamver_drive_main_sso_required:
       "Teamver 로그인 세션이 만료되었습니다 — teamver.com에서 다시 로그인한 뒤 시도하세요.",
+    teamver_drive_main_sso_user_mismatch:
+      "Teamver Main 로그인 계정과 Design 세션 계정이 다릅니다 — 같은 계정으로 teamver.com에서 다시 로그인한 뒤 시도하세요.",
+    main_sso_user_mismatch:
+      "Teamver Main 로그인 계정과 Design 세션 계정이 다릅니다 — 같은 계정으로 teamver.com에서 다시 로그인한 뒤 시도하세요.",
   };
   if (exact[trimmed]) return exact[trimmed];
 

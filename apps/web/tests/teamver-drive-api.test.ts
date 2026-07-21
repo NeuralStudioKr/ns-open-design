@@ -22,8 +22,15 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
 
 import {
   extractDriveAuthBodyText,
+  driveErrorCodeForStatus,
   getTeamverDriveJson,
+  isDriveMainSsoGateBody,
+  isDriveMainSsoRequiredBody,
+  isDriveMainSsoUserMismatchBody,
   isDriveWorkspaceForbiddenBody,
+  isTeamverDriveMainSsoGateError,
+  isTeamverDriveMainSsoRequiredError,
+  isTeamverDriveMainSsoUserMismatchError,
   postTeamverDriveJson,
   resetTeamverDriveFetchQueueForTests,
   shouldSkipDriveAuthRefresh,
@@ -80,10 +87,33 @@ describe("shouldSkipDriveAuthRefresh", () => {
     );
   });
 
+  it("skips Main SSO required and user-mismatch bodies", () => {
+    expect(shouldSkipDriveAuthRefresh("main_sso_required")).toBe(true);
+    expect(shouldSkipDriveAuthRefresh("main_sso_user_mismatch")).toBe(true);
+  });
+
   it("does not skip unrelated failures", () => {
     expect(shouldSkipDriveAuthRefresh(null)).toBe(false);
     expect(shouldSkipDriveAuthRefresh({ code: "x" })).toBe(false);
     expect(isDriveWorkspaceForbiddenBody("session_expired")).toBe(false);
+  });
+
+  it("classifies Main SSO user mismatch separately from expired Main SSO", () => {
+    const mismatch = { detail: "main_sso_user_mismatch", code: "main_sso_user_mismatch" };
+    const expired = { detail: "main_sso_required", re_login_scope: "main" };
+
+    expect(shouldSkipDriveAuthRefresh("main_sso_user_mismatch")).toBe(true);
+    expect(isDriveMainSsoUserMismatchBody(mismatch)).toBe(true);
+    expect(isDriveMainSsoRequiredBody(mismatch)).toBe(false);
+    expect(isDriveMainSsoGateBody(mismatch)).toBe(true);
+    expect(isDriveMainSsoUserMismatchBody(expired)).toBe(false);
+    expect(isDriveMainSsoRequiredBody(expired)).toBe(true);
+    expect(isDriveMainSsoGateBody(expired)).toBe(true);
+    expect(driveErrorCodeForStatus(401, mismatch)).toBe("teamver_drive_main_sso_user_mismatch");
+    expect(driveErrorCodeForStatus(401, expired)).toBe("teamver_drive_main_sso_required");
+    expect(isTeamverDriveMainSsoUserMismatchError(new Error("teamver_drive_main_sso_user_mismatch"))).toBe(true);
+    expect(isTeamverDriveMainSsoRequiredError(new Error("teamver_drive_main_sso_required"))).toBe(true);
+    expect(isTeamverDriveMainSsoGateError(new Error("teamver_drive_main_sso_user_mismatch"))).toBe(true);
   });
 });
 
@@ -201,6 +231,26 @@ describe("getTeamverDriveJson", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("surfaces Main SSO user mismatch without BFF refresh or soft retry", async () => {
+    mockedEmbedAuthed.mockReturnValue(true);
+    const body = {
+      detail: "main_sso_user_mismatch",
+      code: "main_sso_user_mismatch",
+      re_login_scope: "main",
+      login_url: "https://stg.teamver.com/auth/signin",
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(body, 401));
+
+    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
+      "teamver_drive_main_sso_user_mismatch",
+    );
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("does not recover session_expired under hard sticky when survival ladder fails", async () => {
     mockedEmbedAuthed.mockReturnValue(true);
     mockedDeclined.mockReturnValue(true);
@@ -296,6 +346,46 @@ describe("getTeamverDriveJson", () => {
     expect(mockedRefresh).not.toHaveBeenCalled();
     expect(mockedFetchSession).not.toHaveBeenCalled();
     expect(mockedRecoverWorkspace).toHaveBeenCalledWith("ws-stale");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces main_sso_user_mismatch immediately without BFF refresh", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(
+        {
+          detail: "main_sso_user_mismatch",
+          code: "main_sso_user_mismatch",
+          re_login_scope: "main",
+          login_url: "https://stg.teamver.com/auth/signin",
+        },
+        401,
+      ),
+    );
+
+    await expect(getTeamverDriveJson("/api/v2/shared-drive", "ws-1")).rejects.toThrow(
+      "teamver_drive_main_sso_user_mismatch",
+    );
+    expect(mockedRefresh).not.toHaveBeenCalled();
+    expect(mockedFetchSession).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces main_sso_required immediately without BFF refresh", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(
+        {
+          detail: "main_sso_required",
+          code: "main_sso_required",
+          re_login_scope: "main",
+        },
+        401,
+      ),
+    );
+
+    await expect(getTeamverDriveJson("/api/v2/shared-drive")).rejects.toThrow(
+      "teamver_drive_main_sso_required",
+    );
+    expect(mockedRefresh).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
