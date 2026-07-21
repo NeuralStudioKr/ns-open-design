@@ -1819,7 +1819,7 @@ export const en: Dict = {
   'preview.closeTitle': 'Close (Esc)',
   'preview.loading': 'Loading {label}…',
   'preview.errorTitle': 'Couldn\'t load this example.',
-  'preview.errorBody': 'The example HTML failed to fetch. Make sure Open Design is running and try again.',
+  'preview.errorBody': 'The preview HTML failed to load. Please try again in a moment.',
   'preview.retry': 'Retry',
   'preview.unavailableTitle': 'No shipped preview for {noun}.',
   'preview.unavailableBody': 'Run the prompt in chat to generate {kind} output.',

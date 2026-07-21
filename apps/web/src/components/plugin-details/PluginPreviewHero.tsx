@@ -163,7 +163,11 @@ function normalize(
 ): NormalizedExample {
   const segments = entry.path.split(/[\\/]/).filter(Boolean);
   const base = segments[segments.length - 1] ?? `${index}`;
-  const stem = base.replace(/\.[^.]+$/, '');
+  const baseStem = base.replace(/\.[^.]+$/, '');
+  const stem =
+    baseStem.toLowerCase() === 'index' && segments.length >= 2
+      ? segments[segments.length - 2]!
+      : baseStem;
   const name = entry.title ?? stem;
   const href = `/api/plugins/${encodeURIComponent(pluginId)}/example/${encodeURIComponent(stem)}`;
   return { key: `${entry.path}-${index}`, name, stem, href };

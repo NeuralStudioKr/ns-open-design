@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-21 현재.
+**반영 갱신:** 2026-07-21 — 추가 포팅 루프 16. Community preview runtime fallback 잔여를 Teamver 구조 기준으로 재검토했다. daemon `/preview` fallback chain은 이미 exampleOutputs와 shallow HTML discovery를 포함하므로 서버 대형 포팅은 하지 않았다. 대신 FE가 `examples/<name>/index.html`을 `/example/index`로 요청하던 모호성을 줄여 parent folder stem(`/example/<name>`)을 사용하도록 보정했고, Teamver embed에서 로컬 Open Design 실행 안내처럼 보이던 preview error body를 서비스형 문구로 정리했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 15. `cdffb1b63` library ingest SSRF 패치는 Teamver staging의 활성 web-fetch 경로와 대조했다. daemon `/api/tools/web-fetch`는 이미 `assertExternalAssetUrl` 기반 SSRF guard + redirect 차단을 사용하므로 route-level 대형 포팅은 불필요했다. 대신 실제 사용자 요청인 `teamver.com` / `www.teamver.com` 참고 요청이 fetch되지 않던 FE URL 추출 구멍을 수정해 bare 도메인을 `https://`로 정규화하고, 한국어 조사/문장이 URL path에 붙지 않도록 ASCII URL token만 인식한다. 이메일과 `.html` 파일명 오인은 테스트로 막았다. 같은 루프에서 web-fetch User-Agent의 OpenDesign 잔재를 Teamver 명칭으로 교체했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 14. `24c7876b3` in-place HTML edit delivery 보존 패치 중 현재 Teamver 구조에 바로 맞는 안전 부분을 수동 반영했다. 기존 Claude 전용 `allowAnyHtmlWrite` blind fallback은 내용이 다른 same-turn HTML 파일도 결과물로 묶을 수 있어 queued/comment 수정 플로우에서 엉뚱한 파일을 열거나 완료로 표시할 위험이 있었다. 이제 같은 turn HTML write는 normalize된 실제 HTML 내용이 일치할 때만 recovered artifact로 인정한다. 호출부 호환성은 유지했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 13. loop 11~12의 `endedWithUnfinishedWork` 신호를 pet/task center 최근 작업 요약까지 연결했다. succeeded run이라도 미완료 항목이 남아 있으면 최근 완료 목록에서 `incomplete` 상태로 보존하고 warning dot으로 표시해, background 작업 센터가 “완료됨”처럼 오인되는 경로를 줄였다. 기존 active running/queued grouping과 preview deep-link 흐름은 변경하지 않았다.
@@ -196,7 +197,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 | 커밋 | 내용 | 판단 |
 |------|------|------|
-| `390fcf88f` | `fix(plugin-previews): keep Community gallery previews in sync with shipped plugins` | 반영 후보. Community template preview stale/missing 문제와 관련 있다. 단, bake pipeline/manifest/CI가 포함되어 런타임에 필요한 부분만 선별한다. |
+| `390fcf88f` | `fix(plugin-previews): keep Community gallery previews in sync with shipped plugins` | **2026-07-21 부분 반영.** daemon fallback chain은 이미 충분해 대형 포팅은 보류. FE example stem 모호성 제거와 Teamver preview error copy 정리만 반영했다. bake pipeline/manifest/CI 전체는 계속 보류. |
 
 **적용 방식:** 전체 cherry-pick 금지. `applyBakedPreviews`, preview manifest lookup, runtime gallery fallback에 필요한 부분만 확인한다.
 

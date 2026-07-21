@@ -157,7 +157,7 @@ describe('inferPluginPreview', () => {
     );
     expect(out.kind).toBe('html');
     if (out.kind !== 'html') return;
-    expect(out.src).toBe('/api/plugins/example-html-ppt/example/index');
+    expect(out.src).toBe('/api/plugins/example-html-ppt/example/demo');
     expect(out.source).toBe('example');
   });
 
@@ -170,7 +170,7 @@ describe('inferPluginPreview', () => {
     );
     expect(out.kind).toBe('html');
     if (out.kind !== 'html') return;
-    expect(out.src).toBe('/api/plugins/wbr/example/index');
+    expect(out.src).toBe('/api/plugins/wbr/example/weekly');
     expect(out.label).toBe('Weekly');
   });
 

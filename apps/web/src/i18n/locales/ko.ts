@@ -1819,7 +1819,7 @@ export const ko: Dict = {
   'preview.closeTitle': '닫기 (Esc)',
   'preview.loading': '{label} 불러오는 중…',
   'preview.errorTitle': '이 예제를 불러오지 못했습니다.',
-  'preview.errorBody': '예제 HTML을 가져오지 못했습니다. Open Design이 실행 중인지 확인하고 다시 시도하세요.',
+  'preview.errorBody': '미리보기 HTML을 불러오지 못했습니다. 잠시 후 다시 시도하세요.',
   'preview.retry': '다시 시도',
   'preview.unavailableTitle': '{noun}에는 함께 제공되는 미리보기가 없습니다.',
   'preview.unavailableBody': '채팅에서 프롬프트를 실행해 {kind} 출력을 생성하세요.',

@@ -165,6 +165,10 @@ function exampleStem(entry: ExampleOutputEntry): string | null {
   const segments = entry.path.split(/[\\/]/).filter(Boolean);
   const base = segments[segments.length - 1] ?? '';
   const stem = base.replace(/\.[^.]+$/, '');
+  if (stem.toLowerCase() === 'index' && segments.length >= 2) {
+    const parent = segments[segments.length - 2];
+    if (parent) return parent;
+  }
   return stem || null;
 }
 
