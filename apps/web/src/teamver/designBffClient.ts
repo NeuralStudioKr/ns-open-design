@@ -463,32 +463,20 @@ export async function withDesignBffCookieAuthRecovery<T>(
     // callers; do not Apps-refresh here.
     if (isMainSsoGateError(err)) throw err;
 
-    // Soft sticky: cooldown-gated survival via refreshDesignAuthCookie.
-    // Hard sticky: one delayed retry only (no POST). Calling refresh on every
-    // Drive/usage 401 after soft used to re-spam; soft recovery is now the
-    // single owner with its own probe/force-POST cooldowns.
+    // Soft/hard sticky owns recovery via C1 / explicit fetchDesignAuthSession /
+    // refreshDesignAuthCookie — not every Drive/usage/publish 401. Calling
+    // refreshDesignAuthCookie here re-ran trySoftStickyRecovery (POST refresh +
+    // probe×2) from high-frequency callers after the 15s cooldown.
     if (authRefreshDeclinedForSession) {
-      if (authRefreshDeclineKind === "hard") {
-        await new Promise((resolve) =>
-          setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
-        );
-        try {
-          return await request();
-        } catch (retryErr) {
-          if (!isDesignBffUnauthorizedStatus(retryErr)) throw retryErr;
-          throw err;
-        }
+      await new Promise((resolve) =>
+        setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
+      );
+      try {
+        return await request();
+      } catch (retryErr) {
+        if (!isDesignBffUnauthorizedStatus(retryErr)) throw retryErr;
+        throw err;
       }
-      const revived = await refreshDesignAuthCookie();
-      if (revived) {
-        try {
-          return await request();
-        } catch (postReviveErr) {
-          if (!isDesignBffUnauthorizedStatus(postReviveErr)) throw postReviveErr;
-          throw postReviveErr;
-        }
-      }
-      throw err;
     }
 
     const refreshed = await refreshDesignAuthCookie();

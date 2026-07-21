@@ -35,6 +35,20 @@ describe('validateHtmlArtifact', () => {
     expect(isIncompleteHtmlDocumentShell('보기만 한 요약입니다.')).toBe(false);
   });
 
+  it('classifies longer charset-only scaffolds as incomplete shells', () => {
+    const shell =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body></body></html>';
+    expect(shell.length).toBeGreaterThan(64);
+    expect(validateHtmlArtifact(shell).ok).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(shell)).toBe(true);
+  });
+
+  it('does not treat slide-shaped empty sections as incomplete shells', () => {
+    const shell =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body><section class="slide"></section></body></html>';
+    expect(isIncompleteHtmlDocumentShell(shell)).toBe(false);
+  });
+
   it('rejects a long prose blob that lacks any HTML structural markers', () => {
     const prose = '这是一段很长的中文总结，'.repeat(20);
     const result = validateHtmlArtifact(prose);

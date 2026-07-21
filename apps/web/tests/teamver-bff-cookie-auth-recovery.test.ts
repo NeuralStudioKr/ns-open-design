@@ -375,10 +375,10 @@ describe("withDesignBffCookieAuthRecovery", () => {
     const probesAfterRecover = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/auth/session-probe"),
     ).length;
-    // Soft sticky recover enters trySoftStickyRecovery, but markAuthRefreshDeclined
-    // already seeded survival + force-POST cooldowns — no extra probe / POST.
+    // Sticky path only delayed-retries the sibling GET — no soft ladder /
+    // no extra session-probe / no second POST refresh.
     expect(probesAfterRecover).toBe(probesAfterSticky);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
     const refreshAfterSticky = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/auth/refresh"),
     ).length;

@@ -2,6 +2,7 @@ import { NetworkError } from "@teamver/app-sdk";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { requireActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
@@ -39,6 +40,7 @@ export async function fetchTeamverCanvasPreview(
 ): Promise<TeamverCanvasPreview | null> {
   const client = getDesignBffClient();
   if (!client) return null;
+  if (shouldSkipTeamverBffAuthCalls()) return null;
 
   const sessionId = handoff.sessionId.trim();
   const artifactId = handoff.artifactId.trim();

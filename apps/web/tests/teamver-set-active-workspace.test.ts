@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const postDesignAuthWorkspaceMock = vi.fn();
 const refreshDesignAuthCookieMock = vi.fn();
 const ensureDesignBffSessionAuthenticatedMock = vi.fn();
+const shouldSkipTeamverBffAuthCallsMock = vi.fn(() => false);
 const isBootstrapAuthModeMock = vi.fn(() => true);
 const workspaceStoreSet = vi.fn();
 const dispatchWorkspaceChanged = vi.fn();
@@ -22,6 +23,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   }),
   refreshDesignAuthCookie: () => refreshDesignAuthCookieMock(),
   ensureDesignBffSessionAuthenticated: () => ensureDesignBffSessionAuthenticatedMock(),
+  shouldSkipTeamverBffAuthCalls: () => shouldSkipTeamverBffAuthCallsMock(),
 }));
 
 vi.mock("../src/teamver/designApiBase", () => ({
@@ -41,6 +43,8 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     postDesignAuthWorkspaceMock.mockReset();
     refreshDesignAuthCookieMock.mockReset();
     ensureDesignBffSessionAuthenticatedMock.mockReset();
+    shouldSkipTeamverBffAuthCallsMock.mockReset();
+    shouldSkipTeamverBffAuthCallsMock.mockReturnValue(false);
     workspaceStoreSet.mockReset();
     dispatchWorkspaceChanged.mockReset();
     bumpRevision.mockReset();
@@ -131,5 +135,19 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     expect(ok).toBe(true);
     expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-5");
+  });
+
+  it("skips workspace switch when sticky / logged-out auth gate is active", async () => {
+    shouldSkipTeamverBffAuthCallsMock.mockReturnValue(true);
+    const { setActiveTeamverWorkspace } = await import(
+      "../src/teamver/setActiveTeamverWorkspace"
+    );
+
+    const ok = await setActiveTeamverWorkspace("ws-6");
+
+    expect(ok).toBe(false);
+    expect(postDesignAuthWorkspaceMock).not.toHaveBeenCalled();
+    expect(refreshDesignAuthCookieMock).not.toHaveBeenCalled();
+    expect(workspaceStoreSet).not.toHaveBeenCalled();
   });
 });

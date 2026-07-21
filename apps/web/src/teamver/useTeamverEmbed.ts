@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceListItem } from "@teamver/app-sdk";
-import { NetworkError } from "@teamver/app-sdk";
 import {
   ensureDesignBffSessionAuthenticated,
   fetchDesignAuthSession,
@@ -110,7 +109,10 @@ const INITIAL: Omit<TeamverEmbedState, "switchWorkspace" | "refresh"> = {
 };
 
 function isSessionExpiredError(err: unknown): boolean {
-  return err instanceof NetworkError && err.status === 401;
+  // SDK maps HTTP 401 → AuthenticationError; duck-type status so explicit
+  // 「다시 시도」 still converges to login on dead cookie.
+  if (!(err instanceof Error)) return false;
+  return Number((err as { status?: unknown }).status) === 401;
 }
 
 function readUserId(user: DesignAuthSessionUser | null | undefined): string | null {
@@ -626,6 +628,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       // cookie-hint / auth-return still bypass so real sign-in returns recover.
       if (
         stateRef.current.error === "session_unreachable"
+        && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+        && !focusSignals.cookieHintAppeared
+      ) {
+        return;
+      }
+      // Soft/hard sticky with still-true memory authenticated: same spam risk as
+      // unreachable — skip opportunistic focus refresh until C1 / auth-return.
+      if (
+        isDesignAuthRefreshDeclined()
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
         && !focusSignals.cookieHintAppeared
       ) {

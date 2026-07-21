@@ -3,6 +3,7 @@ import type { Dict } from "../i18n/types";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
@@ -166,6 +167,9 @@ export async function importTeamverDriveAssets(
   const client = getDesignBffClient();
   if (!client) {
     throw new Error("teamver_design_client_unavailable");
+  }
+  if (shouldSkipTeamverBffAuthCalls()) {
+    throw new Error("session_expired");
   }
 
   const workspaceId = await requireActiveTeamverWorkspaceId();

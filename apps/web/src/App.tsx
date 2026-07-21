@@ -55,7 +55,10 @@ import { applyTeamverEmbedConfigLockIfNeeded, isTeamverExecutionConfigLocked } f
 import { mergeTeamverRuntimeConfigIntoAppConfig, reloadTeamverRuntimeConfigIntoAppConfig } from './teamver/applyTeamverRuntimeConfig';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from './teamver/teamverEmbedSession';
-import { isTeamverRuntimeConfigAuthBlocked } from './teamver/designBffClient';
+import {
+  isDesignAuthRefreshDeclined,
+  isTeamverRuntimeConfigAuthBlocked,
+} from './teamver/designBffClient';
 import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
@@ -1591,6 +1594,9 @@ function AppInner() {
         setEmbedWorkspaceId(null);
         return;
       }
+      // Sticky decline: cookie is dead — skip workspace/session probes that
+      // would re-enter refresh + session-probe 401 storms.
+      if (isDesignAuthRefreshDeclined()) return;
       void syncWorkspace();
     });
     return () => {
@@ -1876,6 +1882,11 @@ function AppInner() {
             );
           })
           .catch(() => {});
+        return;
+      }
+      // Stale authenticated=true + sticky decline must not force reload
+      // /runtime-config or project lists (401 → refresh → probe×2).
+      if (isDesignAuthRefreshDeclined() || isTeamverRuntimeConfigAuthBlocked()) {
         return;
       }
       void (async () => {

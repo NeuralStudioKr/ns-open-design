@@ -77,12 +77,40 @@ export function validateHtmlArtifact(content: string): HtmlArtifactValidationRes
 /**
  * Empty / scaffold HTML the model emits before real slide content.
  * Persist callers should skip silently — do not flash a refusal banner.
+ *
+ * Covers both the classic too-short shell (39–63 chars) and longer
+ * doctype+meta scaffolds whose `<body>` still has no visible content
+ * (e.g. charset-only heads that pass the 64-char length gate).
  */
 export function isIncompleteHtmlDocumentShell(content: string): boolean {
   const trimmed = content.replace(/^﻿/, '').trim();
   if (trimmed.length === 0) return false;
-  if (trimmed.length >= MIN_HTML_LENGTH) return false;
-  return STARTS_WITH_DOCUMENT_RE.test(trimmed);
+  if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
+  if (trimmed.length < MIN_HTML_LENGTH) return true;
+  return isEffectivelyEmptyHtmlBody(trimmed);
+}
+
+function isEffectivelyEmptyHtmlBody(html: string): boolean {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
+  const body = bodyMatch ? bodyMatch[1]! : withoutComments;
+  const withoutNoise = body
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  // Structural / media tags count as real deliverable content even without text.
+  if (
+    /<(img|video|audio|canvas|svg|iframe|picture|object|embed|section|article|main|nav|aside|header|footer|table|ul|ol|dl|h[1-6]|p|pre|blockquote|figure|form|button|a)\b/i
+      .test(withoutNoise)
+  ) {
+    return false;
+  }
+  const text = withoutNoise
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length === 0;
 }
 
 function referencesReservedProjectPath(content: string): boolean {

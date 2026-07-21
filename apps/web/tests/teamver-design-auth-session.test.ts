@@ -42,6 +42,14 @@ vi.mock("@teamver/app-sdk", () => ({
       this.status = opts.status;
     }
   },
+  AuthenticationError: class AuthenticationError extends Error {
+    status: number;
+    constructor(opts: { status: number; message: string }) {
+      super(opts.message);
+      this.name = "AuthenticationError";
+      this.status = opts.status;
+    }
+  },
 }));
 
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
@@ -342,5 +350,39 @@ describe("fetchDesignAuthSession", () => {
     resetDesignAuthBareRefreshAttempt();
     await fetchDesignAuthSession({ force: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not return 15m stale authenticated session on AuthenticationError 401", async () => {
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    const { AuthenticationError } = await import("@teamver/app-sdk");
+    getMock
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { userId: "user-1" },
+        workspaces: [],
+      })
+      .mockRejectedValue(new AuthenticationError({ status: 401, message: "session_expired" }));
+
+    // Refresh ladder will also 401 — session must not fall back to stale cache.
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "session_expired" }), { status: 401 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {
+      fetchDesignAuthSession,
+      resetDesignAuthRefreshDeclinedForTests,
+      resetDesignAuthSessionCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    resetDesignAuthSessionCacheForTests();
+
+    const first = await fetchDesignAuthSession({ force: true });
+    expect(first?.authenticated).toBe(true);
+
+    // force busts 60s cache; 401 must reject (not return 15m stale grace).
+    await expect(fetchDesignAuthSession({ force: true })).rejects.toMatchObject({
+      status: 401,
+    });
   });
 });

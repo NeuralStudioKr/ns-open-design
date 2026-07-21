@@ -157,5 +157,6 @@ void reloadTeamverRuntimeConfig();
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-21 | sticky·AuthenticationError stale grace·session-changed/focus 게이트 추가 — refresh/probe 재스팸 차단. |
 | 2026-07-21 | `force=true`에서도 refresh/probe 사다리 제거 — HA GET retry만. staging `runtime-config→refresh→probe×2` 스톰 차단. |
 | 2026-07-16 | 증상·대안 비교·C+D 채택·구현 SSOT 기록 |

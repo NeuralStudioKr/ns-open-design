@@ -2,6 +2,7 @@ import { NetworkError } from "@teamver/app-sdk";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 
@@ -121,6 +122,7 @@ function emitClientUsageDropMarker(stage: string, event: TeamverUsageEvent, err:
 export async function reportTeamverDesignUsage(event: TeamverUsageEvent): Promise<string | null> {
   const client = getDesignBffClient();
   if (!client) return null;
+  if (shouldSkipTeamverBffAuthCalls()) return null;
 
   try {
     return await withDesignBffCookieAuthRecovery(() => postUsageEvent(client, event));

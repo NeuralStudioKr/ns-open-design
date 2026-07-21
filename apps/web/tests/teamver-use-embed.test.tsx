@@ -57,6 +57,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   resetDesignAuthRefreshState: vi.fn(),
   resetDesignAuthBareRefreshAttempt: vi.fn(),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
   probeDesignBffSessionAuthenticated: vi.fn(async () => false),
   ensureDesignBffSessionAuthenticated: vi.fn(async () => false),
   clearDesignAuthRefreshDecline: vi.fn(),

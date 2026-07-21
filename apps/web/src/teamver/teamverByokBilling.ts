@@ -2,6 +2,7 @@ import { NetworkError } from "@teamver/app-sdk";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { isTeamverBffUnauthorizedError, notifyTeamverEmbedAuthFailureIfNeeded } from "./teamverBffAuthError";
@@ -127,6 +128,7 @@ export async function finalizeTeamverByokBilling(
 ): Promise<ByokBillingFinalizeResult | null> {
   const client = getDesignBffClient();
   if (!client) return null;
+  if (shouldSkipTeamverBffAuthCalls()) return null;
 
   try {
     return await withDesignBffCookieAuthRecovery(() => postFinalizeByokRun(client, input));

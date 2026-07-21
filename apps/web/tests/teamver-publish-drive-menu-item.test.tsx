@@ -70,6 +70,8 @@ vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: vi.fn(() => ({
     workspaceStore: { get: getWorkspaceMock },
   })),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
 }));
 
 vi.mock("../src/teamver/activeTeamverWorkspace", () => ({

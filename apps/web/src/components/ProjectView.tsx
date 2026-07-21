@@ -187,7 +187,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import { refreshDesignAuthCookie, refreshTeamverEmbedAuthBeforeMutating, isDesignAuthRefreshDeclineHard } from '../teamver/designBffClient';
 import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
@@ -1669,6 +1669,17 @@ export function ProjectView({
           return await listConversations(project.id);
         } catch (err) {
           lastError = err;
+          // Soft sticky / HA cookie race: daemon fetch already runs survival
+          // refresh, but conversation list is the project re-entry critical
+          // path — one explicit soft recovery before the next attempt when
+          // hard sticky is not owning the tab.
+          if (
+            err instanceof TeamverDaemonUnauthorizedError
+            && !isDesignAuthRefreshDeclineHard()
+            && attempt < 2
+          ) {
+            await refreshDesignAuthCookie();
+          }
           if (attempt < 2) {
             await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
           }
@@ -2255,15 +2266,14 @@ export function ProjectView({
       // when only Edit-tool changes happened this turn. Without this guard,
       // such content lands as a phantom HTML file in the project panel.
       if (ext === '.html') {
+        // Empty scaffolds can pass the 64-char length gate once a charset
+        // meta is present — still skip silently so we never write phantoms
+        // or flash 「저장을 거부했습니다」 during deck generation.
+        if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
+          return;
+        }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
-          // Empty `<html>…</html>` scaffolds (e.g. 39 chars) are common mid-turn
-          // placeholders — refusing them loudly looks like a hard product failure
-          // during slide creation. Skip quietly; a later complete document will
-          // persist. Prose-as-HTML still surfaces the refusal banner.
-          if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
-            return;
-          }
           setError(
             formatProjectArtifactRejectedError(
               art.identifier || art.title || 'untitled',

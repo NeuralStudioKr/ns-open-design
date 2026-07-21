@@ -24,6 +24,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   })),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
   isDesignAuthRefreshDeclineHard: vi.fn(() => false),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
 }));
 
 const assertAppEnabledMock = vi.fn(async (_workspaceId: string) => undefined);

@@ -2,6 +2,7 @@ import { NetworkError } from "@teamver/app-sdk";
 import {
   TEAMVER_BFF_REQUEST_OPTIONS,
   getDesignBffClient,
+  shouldSkipTeamverBffAuthCalls,
   withDesignBffCookieAuthRecovery,
 } from "./designBffClient";
 import { formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
@@ -267,6 +268,9 @@ export async function publishTeamverDesignToDrive(
   const client = getDesignBffClient();
   if (!client) {
     throw new Error("teamver_design_client_unavailable");
+  }
+  if (shouldSkipTeamverBffAuthCalls()) {
+    throw new Error("session_expired");
   }
 
   const workspaceId = await requireActiveTeamverWorkspaceId();

@@ -23,6 +23,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
   })),
   withDesignBffCookieAuthRecovery: vi.fn((fn: () => Promise<unknown>) => fn()),
   TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true },
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
 }));
 
 vi.mock("../src/teamver/teamverEmbedPassiveAuth", () => ({

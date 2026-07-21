@@ -24,6 +24,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
     workspaceStore: { clear: workspaceClear },
   }),
   clearTeamverRuntimeConfigAuthBlock: vi.fn(),
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
 }));
 
 describe("teamverEmbedSession", () => {

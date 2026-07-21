@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const clearCookies = vi.fn(async () => undefined);
 const clearSession = vi.fn(async () => undefined);
+const clearEmbedSession = vi.fn(async () => undefined);
 const redirect = vi.fn();
 
 vi.mock("../src/teamver/teamverAuthOrphanJwt", () => ({
@@ -12,6 +13,10 @@ vi.mock("../src/teamver/teamverAuthOrphanJwt", () => ({
 vi.mock("../src/teamver/designAuthFlow", () => ({
   clearDesignAuthSessionFull: () => clearSession(),
   redirectToTeamverLoginPreservingRoute: (options?: { returnTo?: string }) => redirect(options),
+}));
+
+vi.mock("../src/teamver/teamverEmbedSession", () => ({
+  clearTeamverEmbedSessionState: () => clearEmbedSession(),
 }));
 
 vi.mock("../src/teamver/teamverEmbedAuthNavigation", () => ({
@@ -34,6 +39,7 @@ describe("mainSsoMismatchRecovery", () => {
   beforeEach(() => {
     clearCookies.mockClear();
     clearSession.mockClear();
+    clearEmbedSession.mockClear();
     redirect.mockClear();
     vi.mocked(showTeamverUiToast).mockClear();
     resetMainSsoMismatchRecoveryForTests();
@@ -49,6 +55,7 @@ describe("mainSsoMismatchRecovery", () => {
     );
     expect(clearCookies).toHaveBeenCalledTimes(1);
     expect(clearSession).toHaveBeenCalledTimes(1);
+    expect(clearEmbedSession).toHaveBeenCalledTimes(1);
     expect(redirect).toHaveBeenCalledWith({ returnTo: "/p/demo" });
     expect(wasMainSsoMismatchRecoverAttemptedRecently()).toBe(true);
   });
@@ -64,6 +71,7 @@ describe("mainSsoMismatchRecovery", () => {
     await first;
     expect(clearCookies).toHaveBeenCalledTimes(1);
     expect(clearSession).toHaveBeenCalledTimes(1);
+    expect(clearEmbedSession).toHaveBeenCalledTimes(1);
     expect(redirect).toHaveBeenCalledTimes(1);
   });
 
