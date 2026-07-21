@@ -41,10 +41,9 @@
 - `acceptPreviewHtmlCandidate`: `repair` → `isArtifactHtmlStableForPreview`만 채택. unstable이면 last-stable만 반환 (느슨한 `</body></html>`+leak-only fallback **금지**).
 - **liveHtml apply와 disk fetch는 effect를 분리**한다. live 토큰 매 청크가 disk debounce를 cancel하면 sticky `"loading…"`가 난다.
 - disk debounce `HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS` (200) ≤ ProjectView file-changed coalesce `maxWait` (250).
-- hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s). wall은 **artifact identity당 1회** arm — `filesRefreshKey`/mtime churn에 리셋하지 않는다.
-- incomplete disk HTML + no stable frame → unavailable (streaming이어도 loading에 고정하지 않음).
-- embed `resolveTeamverProjectPreviewPrefix(..., { signal })` — 8s fetch timeout + caller abort는 shared inflight를 취소하지 않고 null race.
-- empty unavailable 문구는 url-load embed prefix 실패에만 추가 게이트 (`useUrlLoadPreview && embedPreviewPrefixResolved && embed && prefix == null`).
+- hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s). wall은 **artifact identity당 1회** arm — `filesRefreshKey`/mtime churn에 리셋하지 않는다. **streaming 중에는 wall을 arm하지 않는다** (스트림 종료 시 effect 재실행으로 arm).
+- incomplete disk / transient null fetch는 **streaming·liveHtml 활성 중 unavailable로 올리지 않는다** (veil/loading 유지). null은 abort 무시 + soft-retry 1회 후 wall에 맡긴다.
+- empty unavailable 문구는 **`sourceLoadFailed`만** (embed prefix null을 unavailable로 강제하지 않음 — prefix 실패 시 srcDoc fallback, [44](./44_preview_scope_fallback_안정화.md)).
 - FileWorkspace pending tab: streaming이 끝나지 않아도 12s grace 후 unavailable/retarget (무한 loading 방지).
 
 ## href token 참고

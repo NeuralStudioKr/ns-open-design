@@ -4839,6 +4839,13 @@ function HtmlViewer({
     return isArtifactHtmlStableForPreview(repaired);
   });
   const hasLiveHtml = liveHtml !== undefined;
+  // Disk-fetch callbacks must not re-subscribe on every liveHtml token; read
+  // streaming / live presence via refs so incomplete-disk never flips the
+  // empty state to "unavailable" mid-stream.
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
+  const liveHtmlActiveRef = useRef(Boolean(liveHtml?.trim()));
+  liveHtmlActiveRef.current = Boolean(liveHtml?.trim());
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5425,6 +5432,12 @@ function HtmlViewer({
     setLiveHtmlPaintsPreview(false);
   }, [liveHtml, projectId, file.name]);
 
+  // Streaming owns the empty-state veil — never leave a sticky "unavailable"
+  // from a mid-stream incomplete disk read.
+  useEffect(() => {
+    if (streaming) setSourceLoadFailed(false);
+  }, [streaming]);
+
   // Disk / raw fetch — independent of liveHtml token identity.
   useEffect(() => {
     if (hasLiveHtml && liveHtmlPaintsPreview) return;
@@ -5451,8 +5464,10 @@ function HtmlViewer({
 
     let cancelled = false;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let softRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const requestGeneration = ++previewSourceFetchGenerationRef.current;
     const abort = new AbortController();
+    let softRetried = false;
 
     const clearPreviewSourceWall = () => {
       if (previewSourceWallTimerRef.current != null) {
@@ -5465,12 +5480,19 @@ function HtmlViewer({
       clearPreviewSourceWall();
       previewSourceWallIdentityRef.current = artifactIdentity;
     }
-    // Arm wall once per identity while source is empty. Do not reset on
-    // filesRefreshKey / mtime churn or unavailable can be delayed forever.
-    if (sourceRef.current == null && previewSourceWallTimerRef.current == null) {
+    // Arm wall once per identity while source is empty and we are not
+    // mid-stream. Streaming incomplete disk is expected — the wall arms when
+    // streaming ends (this effect re-runs). Do not reset on filesRefreshKey.
+    if (
+      !streaming
+      && sourceRef.current == null
+      && previewSourceWallTimerRef.current == null
+    ) {
       previewSourceWallTimerRef.current = setTimeout(() => {
         previewSourceWallTimerRef.current = null;
-        if (sourceRef.current == null) setSourceLoadFailed(true);
+        if (sourceRef.current == null && !streamingRef.current) {
+          setSourceLoadFailed(true);
+        }
       }, HTML_PREVIEW_SOURCE_WALL_MS);
     }
 
@@ -5486,25 +5508,35 @@ function HtmlViewer({
         cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}`,
         signal: abort.signal,
       }).then((text) => {
-        if (cancelled) return;
+        if (cancelled || abort.signal.aborted) return;
         if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
         // Chokidar emits agent rewrites as unlink+add+change bursts; a
         // transient null mid-burst would blank source → srcDoc empty →
         // shell stays on prior frame. Keep the last good text instead.
         if (text == null) {
-          setSourceLoadFailed(true);
           if (lastStablePreviewSourceRef.current) {
             setSource(lastStablePreviewSourceRef.current);
             sourceRef.current = lastStablePreviewSourceRef.current;
             clearPreviewSourceWall();
+            setSourceLoadFailed(false);
+            return;
+          }
+          // Auth blip / soft-sticky / unlink race: one soft retry, then stay
+          // on loading — wall (non-streaming) owns unavailable escalation.
+          if (!softRetried && !streamingRef.current) {
+            softRetried = true;
+            softRetryTimer = setTimeout(runFetch, 400);
+            return;
           }
           return;
         }
         setSourceLoadFailed(false);
         const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef);
         if (accepted == null) {
-          // Incomplete disk HTML with no stable frame — surface unavailable
-          // even while streaming so we never stick on "loading…".
+          // Incomplete/leaky disk with no stable frame. During streaming (or
+          // while liveHtml is still flowing) keep veil/loading — flipping to
+          // unavailable hid the streaming veil (!sourceLoadFailed gate).
+          if (streamingRef.current || liveHtmlActiveRef.current) return;
           setSourceLoadFailed(true);
           return;
         }
@@ -5523,11 +5555,13 @@ function HtmlViewer({
       cancelled = true;
       abort.abort();
       if (debounceTimer != null) clearTimeout(debounceTimer);
+      if (softRetryTimer != null) clearTimeout(softRetryTimer);
       // Intentionally leave previewSourceWallTimerRef armed across refresh churn.
     };
   }, [
     hasLiveHtml,
     liveHtmlPaintsPreview,
+    streaming,
     projectId,
     file.name,
     file.mtime,
@@ -5615,22 +5649,18 @@ function HtmlViewer({
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
   const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
   const teamverEmbedPreviewMode = isTeamverEmbedMode();
-  const [embedPreviewPrefixResolved, setEmbedPreviewPrefixResolved] = useState(
-    () => !teamverEmbedPreviewMode,
-  );
   useEffect(() => {
     if (!teamverEmbedPreviewMode) {
       setEmbedPreviewPrefix(null);
-      setEmbedPreviewPrefixResolved(true);
       return;
     }
     let cancelled = false;
     const abort = new AbortController();
-    setEmbedPreviewPrefixResolved(false);
+    // Fail-open: if preview-url is slow/sticky, keep prefix null so srcDoc
+    // path can paint once disk/live HTML is ready (do not force unavailable).
     const failOpenTimer = window.setTimeout(() => {
       if (cancelled) return;
-      // Auth/sticky delays must not leave the empty state on "loading…" forever.
-      setEmbedPreviewPrefixResolved(true);
+      abort.abort();
     }, 8_000);
     void resolveTeamverProjectPreviewPrefix(projectId, file.name, {
       signal: abort.signal,
@@ -5638,7 +5668,6 @@ function HtmlViewer({
       if (cancelled) return;
       window.clearTimeout(failOpenTimer);
       setEmbedPreviewPrefix(prefix);
-      setEmbedPreviewPrefixResolved(true);
     });
     return () => {
       cancelled = true;
@@ -8382,7 +8411,9 @@ function HtmlViewer({
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
   // Empty branch used to never render the veil (it lived under source !== null).
-  const showStreamingEmptyVeil = liveHtmlUnstableForPreview && source == null && !sourceLoadFailed;
+  // Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip
+  // failed and replace the veil with "previewUnavailable".
+  const showStreamingEmptyVeil = liveHtmlUnstableForPreview && source == null;
   const showStreamingPreviewVeil = liveHtmlUnstableForPreview && source != null;
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
@@ -9156,10 +9187,6 @@ function HtmlViewer({
           ) : (
             <div className="viewer-empty">
               {sourceLoadFailed
-                || (useUrlLoadPreview
-                  && embedPreviewPrefixResolved
-                  && isTeamverEmbedMode()
-                  && embedPreviewPrefix == null)
                 ? t('fileViewer.previewUnavailable')
                 : t('fileViewer.loading')}
             </div>

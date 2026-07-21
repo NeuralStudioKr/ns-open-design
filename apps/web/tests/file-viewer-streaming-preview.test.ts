@@ -58,27 +58,44 @@ describe("FileViewer streaming slide preview", () => {
     );
     expect(source).toContain("previewSourceFetchGenerationRef");
     expect(source).toContain("Debounce refresh-key churn so soft-sticky auth recovery");
-    // Disk effect must not list liveHtml itself — only the paint gate.
+    // Disk effect must not list liveHtml itself — only paint gate + streaming.
     expect(source).toMatch(
-      /hasLiveHtml,\s*\n\s*liveHtmlPaintsPreview,\s*\n\s*projectId,/,
+      /hasLiveHtml,\s*\n\s*liveHtmlPaintsPreview,\s*\n\s*streaming,\s*\n\s*projectId,/,
     );
     expect(source).toMatch(/setTimeout\(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS\)/);
   });
 
-  it("marks incomplete disk HTML unavailable even while streaming", () => {
+  it("keeps streaming veil over unavailable while live HTML is incomplete", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain(
+      "Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip",
+    );
+    expect(source).toContain(
+      "while liveHtml is still flowing) keep veil/loading",
+    );
+    expect(source).toContain("if (streaming) setSourceLoadFailed(false)");
+    expect(source).not.toContain(
       "Incomplete disk HTML with no stable frame — surface unavailable",
     );
-    expect(source).toContain("even while streaming so we never stick on \"loading…\"");
   });
 
-  it("gates empty unavailable on url-load prefix, not deck srcDoc", () => {
+  it("soft-retries transient null disk fetches without flipping unavailable", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("Auth blip / soft-sticky / unlink race: one soft retry");
+    expect(source).toContain("softRetryTimer");
+    expect(source).toContain("abort.signal.aborted");
+  });
+
+  it("gates empty unavailable on sourceLoadFailed only (not dead prefix check)", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("useUrlLoadPreview");
-    expect(source).toMatch(
-      /sourceLoadFailed\s*\n\s*\|\|\s*\(useUrlLoadPreview/,
-    );
+    const marker = "data-testid=\"artifact-preview-streaming-veil\"";
+    const start = source.indexOf(marker);
+    expect(start).toBeGreaterThan(0);
+    const emptyBranch = source.slice(start, start + 900);
+    expect(emptyBranch).toContain("sourceLoadFailed");
+    expect(emptyBranch).toContain("fileViewer.previewUnavailable");
+    expect(emptyBranch).not.toContain("embedPreviewPrefix == null");
   });
 
   it("keeps disk debounce at or under ProjectView file-changed coalesce maxWait", () => {
