@@ -121,10 +121,11 @@ import type { TodoItem } from '../runtime/todos';
 import { appendErrorStatusEvent } from '../runtime/chat-events';
 import {
   AUTO_CONTINUE_ENTRY_FROM,
-  AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
+  buildAutoContinueIncompleteOutputPrompt,
+  extractAutoContinueContextFromAssistant,
   isLiveLocalStreamBlockingAutoContinue,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
@@ -2067,8 +2068,14 @@ export function ProjectView({
                 rollbackAutoContinueCount(conversationAutoContinueCountRef.current, activeConversationId);
                 return;
               }
+              const attempt =
+                conversationAutoContinueCountRef.current.get(activeConversationId) ?? 1;
+              const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
+                attempt,
+                ...extractAutoContinueContextFromAssistant(incompleteAssistant),
+              });
               const started = sendNow(
-                AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+                autoContinuePrompt,
                 [],
                 [],
                 { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
@@ -4603,8 +4610,14 @@ export function ProjectView({
                 rollbackAutoContinueCount(conversationAutoContinueCountRef.current, recoveryConversationId);
                 return;
               }
+              const attempt =
+                conversationAutoContinueCountRef.current.get(recoveryConversationId) ?? 1;
+              const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
+                attempt,
+                ...extractAutoContinueContextFromAssistant(incompleteAssistant),
+              });
               const started = sendNow(
-                AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+                autoContinuePrompt,
                 [],
                 [],
                 { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
@@ -5268,8 +5281,17 @@ export function ProjectView({
                     rollbackAutoContinueCount(conversationAutoContinueCountRef.current, runConversationId);
                     return;
                   }
+                  const attempt =
+                    conversationAutoContinueCountRef.current.get(runConversationId) ?? 1;
+                  const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
+                    attempt,
+                    ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
+                      partialHtml: parsedArtifact?.html ?? liveHtml ?? null,
+                      planOutline: finalText,
+                    }),
+                  });
                   const started = sendNow(
-                    AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
+                    autoContinuePrompt,
                     [],
                     [],
                     { entryFrom: AUTO_CONTINUE_ENTRY_FROM },

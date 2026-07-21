@@ -673,6 +673,21 @@ function parseDirectionCards(raw: unknown): DirectionCard[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/** Appended when every discovery answer was skipped in slide-only embed. */
+export const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE =
+  '\n\n[Deliverable instruction] All discovery questions were skipped — choose reasonable defaults and emit ONE complete HTML slide deck in this same response inside `<artifact type="text/html" identifier="...">...</artifact>`. Do not stop after a plan, outline, or promise; the deck artifact is required now.';
+
+export function isAllFormAnswersSkipped(
+  form: QuestionForm,
+  answers: Record<string, string | string[]>,
+): boolean {
+  return form.questions.every((q) => {
+    const v = answers[q.id];
+    if (Array.isArray(v)) return v.length === 0;
+    return typeof v !== 'string' || v.trim().length === 0;
+  });
+}
+
 /**
  * Format a finished set of answers into a prose user message that the
  * agent can read on its next turn. The shape is stable enough that the
@@ -682,6 +697,7 @@ function parseDirectionCards(raw: unknown): DirectionCard[] | undefined {
 export function formatFormAnswers(
   form: QuestionForm,
   answers: Record<string, string | string[]>,
+  options?: { appendSlideDeliverableDirective?: boolean },
 ): string {
   const lines: string[] = [];
   lines.push(`[form answers — ${form.id}]`);
@@ -696,7 +712,14 @@ export function formatFormAnswers(
     else display = '(skipped)';
     lines.push(`- ${q.label}: ${display}`);
   }
-  return lines.join('\n');
+  let text = lines.join('\n');
+  if (
+    options?.appendSlideDeliverableDirective
+    && isAllFormAnswersSkipped(form, answers)
+  ) {
+    text += SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE;
+  }
+  return text;
 }
 
 function formOptionDisplayForValue(
