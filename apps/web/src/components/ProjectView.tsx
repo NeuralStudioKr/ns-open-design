@@ -1459,7 +1459,7 @@ export function ProjectView({
    * pass a per-assistant dedup — that is exactly the loop we want to prevent.
    */
   const conversationAutoContinueCountRef = useRef<Map<string, number>>(new Map());
-  /** Pending automatic-continue timer; cleared on project switch / unmount. */
+  /** Pending automatic-continue timer; cleared on project/conversation switch / unmount. */
   const autoContinueTimerRef = useRef<number | null>(null);
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
@@ -1484,9 +1484,22 @@ export function ProjectView({
         autoContinueTimerRef.current = null;
       }
     };
-    // Also clear on conversation switch so a late timer cannot fire into
-    // another chat inside the same ProjectView mount.
-  }, [project.id, activeConversationId]);
+  }, [project.id]);
+
+  // Abort a pending automatic-continue when the user switches chats inside
+  // the same project — otherwise a late timer can inject into the new chat.
+  useEffect(() => {
+    if (autoContinueTimerRef.current !== null) {
+      window.clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+    return () => {
+      if (autoContinueTimerRef.current !== null) {
+        window.clearTimeout(autoContinueTimerRef.current);
+        autoContinueTimerRef.current = null;
+      }
+    };
+  }, [activeConversationId]);
 
   // Pending Write tool invocations: tool_use_id -> destination basename.
   // When the matching tool_result lands we refresh the file list and open
