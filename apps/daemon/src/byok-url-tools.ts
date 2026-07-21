@@ -110,7 +110,7 @@ export async function fetchUrlContent(
       signal: controller.signal,
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (compatible; OpenDesignBot/1.0; +https://open-design.ai)',
+          'Mozilla/5.0 (compatible; TeamverDesignBot/1.0; +https://teamver.com)',
         Accept:
           'text/html,application/xhtml+xml,application/xml,text/plain,application/json;q=0.9,*/*;q=0.5',
       },

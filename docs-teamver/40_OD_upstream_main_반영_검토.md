@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
-**판단 시점:** 2026-07-20 현재.
+**판단 시점:** 2026-07-21 현재.
+**반영 갱신:** 2026-07-21 — 추가 포팅 루프 15. `cdffb1b63` library ingest SSRF 패치는 Teamver staging의 활성 web-fetch 경로와 대조했다. daemon `/api/tools/web-fetch`는 이미 `assertExternalAssetUrl` 기반 SSRF guard + redirect 차단을 사용하므로 route-level 대형 포팅은 불필요했다. 대신 실제 사용자 요청인 `teamver.com` / `www.teamver.com` 참고 요청이 fetch되지 않던 FE URL 추출 구멍을 수정해 bare 도메인을 `https://`로 정규화하고, 한국어 조사/문장이 URL path에 붙지 않도록 ASCII URL token만 인식한다. 이메일과 `.html` 파일명 오인은 테스트로 막았다. 같은 루프에서 web-fetch User-Agent의 OpenDesign 잔재를 Teamver 명칭으로 교체했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 14. `24c7876b3` in-place HTML edit delivery 보존 패치 중 현재 Teamver 구조에 바로 맞는 안전 부분을 수동 반영했다. 기존 Claude 전용 `allowAnyHtmlWrite` blind fallback은 내용이 다른 same-turn HTML 파일도 결과물로 묶을 수 있어 queued/comment 수정 플로우에서 엉뚱한 파일을 열거나 완료로 표시할 위험이 있었다. 이제 같은 turn HTML write는 normalize된 실제 HTML 내용이 일치할 때만 recovered artifact로 인정한다. 호출부 호환성은 유지했다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 13. loop 11~12의 `endedWithUnfinishedWork` 신호를 pet/task center 최근 작업 요약까지 연결했다. succeeded run이라도 미완료 항목이 남아 있으면 최근 완료 목록에서 `incomplete` 상태로 보존하고 warning dot으로 표시해, background 작업 센터가 “완료됨”처럼 오인되는 경로를 줄였다. 기존 active running/queued grouping과 preview deep-link 흐름은 변경하지 않았다.
 **반영 갱신:** 2026-07-20 — 추가 포팅 루프 12. loop 11에서 daemon이 노출한 `endedWithUnfinishedWork`를 Teamver embed background completion surface에서 소비하도록 FE 최소 경로를 보강했다. succeeded run이라도 unfinished 신호가 있으면 toast/desktop notification을 “완료”가 아닌 “확인 필요/미완료 항목 있음”으로 표시하고, 성공음·성공 톤으로 오인하지 않게 했다. preview deep-link는 유지해 사용자가 생성된 결과물과 남은 작업을 바로 확인할 수 있다.

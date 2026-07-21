@@ -19,6 +19,25 @@ describe('api web fetch context', () => {
     ]);
   });
 
+  it('normalizes bare www urls in user prompts to https urls', () => {
+    expect(
+      extractPublicHttpUrls(
+        'www.teamver.com 참고해서 슬라이드 만들고 https://example.com/docs도 같이 확인해줘.',
+      ),
+    ).toEqual([
+      'https://www.teamver.com/',
+      'https://example.com/docs',
+    ]);
+  });
+
+  it('normalizes bare domains without treating emails or html filenames as urls', () => {
+    expect(
+      extractPublicHttpUrls(
+        'teamver.com 사이트 분석하고 contact@example.com 메일과 ai-adoption-deck.html 파일명은 무시해줘.',
+      ),
+    ).toEqual(['https://teamver.com/']);
+  });
+
   it('renders fetched page text as untrusted context', () => {
     const context = renderApiWebFetchContext([
       {
@@ -31,7 +50,7 @@ describe('api web fetch context', () => {
     ]);
 
     expect(context).toContain('<web-fetch-context>');
-    expect(context).toContain('teamver Design pre-fetched');
+    expect(context).toContain('Teamver Design pre-fetched');
     expect(context).toContain('Professional team profile builder');
     expect(context).toContain('</web-fetch-context>');
   });

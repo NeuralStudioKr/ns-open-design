@@ -41,6 +41,14 @@ describe('fetchUrlContent', () => {
     });
     expect(result.text).toContain('World');
     expect(result.text).not.toMatch(/ignore/i);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      'https://example.com/page',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'User-Agent': expect.stringContaining('TeamverDesignBot'),
+        }),
+      }),
+    );
     vi.unstubAllGlobals();
   });
 });
