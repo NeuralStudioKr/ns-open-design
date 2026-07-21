@@ -3,6 +3,9 @@ import {
   fetchDesignAuthSession,
   type FetchDesignAuthSessionOptions,
   fetchTeamverRuntimeConfig,
+  isDesignAuthRefreshDeclined,
+  probeDesignBffSessionAuthenticated,
+  refreshDesignAuthCookie,
 } from "./designBffClient";
 import { seedEmbedBootstrapSession } from "./embedBootstrapSession";
 import type { EmbedProjectDetailRoute } from "./embedProjectListRefresh";
@@ -103,6 +106,21 @@ export async function runTeamverEmbedSessionBoot(
       // Settlement complete — safe to drop the defer shield.
       consumeTeamverAuthReturnPending();
       unlockBootIfNeeded(deps.isCancelled);
+
+      // `/auth/session` may be stale-grace authenticated while nginx auth_request
+      // is already dead. Probe (and at most one refresh) before registry /
+      // runtime-config so boot does not open:
+      // GET /runtime-config 401 → POST /auth/refresh → session-probe×2.
+      let nginxLive = await probeDesignBffSessionAuthenticated();
+      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
+        nginxLive = await refreshDesignAuthCookie();
+        if (!nginxLive) {
+          nginxLive = await probeDesignBffSessionAuthenticated();
+        }
+      }
+      if (!nginxLive || deps.isCancelled()) {
+        return null;
+      }
 
       void syncAllDaemonProjectsToRegistry().catch((err) => {
         console.warn("[teamver] embed boot registry sync failed", err);

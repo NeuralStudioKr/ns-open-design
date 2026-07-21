@@ -32,10 +32,17 @@ vi.mock("../src/teamver/designApiBase", async () => {
   };
 });
 
+function stubSessionProbe(status: number) {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
   beforeEach(() => {
     httpGet.mockReset();
     vi.resetModules();
+    vi.unstubAllGlobals();
     Object.defineProperty(window, "location", {
       configurable: true,
       value: { hostname: "stg-design.teamver.com", href: "https://stg-design.teamver.com/" },
@@ -59,6 +66,35 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     expect(httpGet).not.toHaveBeenCalled();
   });
 
+  it("skips runtime-config GET when session-probe is dead (stale-grace memory)", async () => {
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      fetchTeamverRuntimeConfig,
+      resetTeamverRuntimeConfigCacheForTests,
+      isTeamverRuntimeConfigAuthBlocked,
+      isDesignAuthRefreshDeclined,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const fetchMock = stubSessionProbe(401);
+    expect(await fetchTeamverRuntimeConfig()).toBeNull();
+    expect(httpGet).not.toHaveBeenCalled();
+    expect(isTeamverRuntimeConfigAuthBlocked()).toBe(true);
+    // Probe-miss must not soft-sticky (would seed force-POST cooldown).
+    expect(isDesignAuthRefreshDeclined()).toBe(false);
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toBe(true);
+
+    // Backoff: no second probe/GET while blocked.
+    expect(await fetchTeamverRuntimeConfig({ force: true })).toBeNull();
+    expect(httpGet).not.toHaveBeenCalled();
+  });
+
   it("blocks opportunistic refetch after 401 until session re-auth", async () => {
     const { NetworkError } = await import("@teamver/app-sdk");
     const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
@@ -73,10 +109,7 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     setTeamverEmbedSessionAuthenticated(true);
 
     vi.useFakeTimers();
-    const refreshFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
-    );
-    vi.stubGlobal("fetch", refreshFetch);
+    const refreshFetch = stubSessionProbe(204);
 
     httpGet.mockRejectedValue(
       new NetworkError({ status: 401, message: "session_expired" }),
@@ -86,9 +119,11 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     // HA sibling wait only — no POST /auth/refresh ladder.
     await vi.advanceTimersByTimeAsync(2_000);
     expect(await pending).toBeNull();
-    // Initial GET + one HA retry GET. No /auth/refresh or session-probe.
+    // Initial GET + one HA retry GET. No /auth/refresh.
     expect(httpGet).toHaveBeenCalledTimes(2);
-    expect(refreshFetch).not.toHaveBeenCalled();
+    expect(
+      refreshFetch.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(0);
 
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
     expect(httpGet).toHaveBeenCalledTimes(2);
@@ -104,7 +139,9 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     const recovered = await fetchTeamverRuntimeConfig({ force: true });
     expect(recovered?.model).toBe("claude-sonnet-4-6");
     expect(httpGet).toHaveBeenCalledTimes(3);
-    expect(refreshFetch).not.toHaveBeenCalled();
+    expect(
+      refreshFetch.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(0);
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -122,15 +159,16 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     resetTeamverRuntimeConfigCacheForTests();
     setTeamverEmbedSessionAuthenticated(true);
 
-    const refreshFetch = vi.fn();
-    vi.stubGlobal("fetch", refreshFetch);
+    const refreshFetch = stubSessionProbe(204);
     httpGet.mockRejectedValueOnce(
       new NetworkError({ status: 401, message: "session_expired" }),
     );
 
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
     expect(httpGet).toHaveBeenCalledTimes(1);
-    expect(refreshFetch).not.toHaveBeenCalled();
+    expect(
+      refreshFetch.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(0);
 
     // Backoff: no second opportunistic GET.
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
@@ -152,10 +190,7 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     setTeamverEmbedSessionAuthenticated(true);
 
     vi.useFakeTimers();
-    const refreshFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
-    );
-    vi.stubGlobal("fetch", refreshFetch);
+    const refreshFetch = stubSessionProbe(204);
 
     httpGet
       .mockRejectedValueOnce(new NetworkError({ status: 401, message: "session_expired" }))
@@ -171,8 +206,10 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
 
     expect(value?.model).toBe("claude-sonnet-4-6");
     expect(httpGet).toHaveBeenCalledTimes(2);
-    // HA retry must not POST /auth/refresh or probe.
-    expect(refreshFetch).not.toHaveBeenCalled();
+    // HA retry must not POST /auth/refresh.
+    expect(
+      refreshFetch.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh")),
+    ).toHaveLength(0);
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
