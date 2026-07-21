@@ -260,6 +260,8 @@ Secret 공유 / Apps가 platform JWT 위조 = 15_2 L4·M9 위반. **후보에서
 
 **사용자 경험:** Drive 호출 중 mismatch면 짧게 연결 확인 상태만 보이고, 곧 Main 로그인/콜백으로 돌아와 **한 계정으로 세션이 맞춰진 뒤** 원래 화면으로 복귀한다.
 
+**예방 로드맵:** 위는 “발생 후 복구(Stage 0)”이다. 발생 창을 줄이는 Stage 1–4(exchange 시 `pin_main_user_id`, FE 선제 사용자 비교, 크로스탭 브로드캐스트, Main Drive dual-auth)는 [45 Main SSO ↔ Design BFF 계정 불일치 예방 로드맵](./45_Main_SSO_Design_BFF_계정_불일치_예방_로드맵.md) 참고.
+
 ---
 
 ## 7. FAQ
