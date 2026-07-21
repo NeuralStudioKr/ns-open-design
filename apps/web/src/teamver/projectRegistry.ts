@@ -1,4 +1,3 @@
-import { NetworkError } from "@teamver/app-sdk";
 import type { Project } from "../types";
 import { resolveProjectDisplayName } from "./embedRegistryProjectList";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
@@ -23,6 +22,13 @@ import {
   readTeamverProjectS3Prefix,
   rememberTeamverProjectS3Prefix,
 } from "./teamverProjectS3PrefixCache";
+
+/** SDK maps 403→ForbiddenError, 404→NotFoundError (not NetworkError). */
+function httpStatusOf(err: unknown): number | null {
+  if (!(err instanceof Error)) return null;
+  const status = Number((err as { status?: unknown }).status);
+  return Number.isFinite(status) && status > 0 ? status : null;
+}
 
 async function waitForEmbedBootIfNeeded(): Promise<void> {
   if (!isTeamverEmbedMode()) return;
@@ -297,7 +303,7 @@ export async function registerTeamverProjectIfNeeded(
       assertRegistryS3PrefixCached(workspaceId, project.id);
       return;
     } catch (err) {
-      if (err instanceof NetworkError && err.status === 409) {
+      if (httpStatusOf(err) === 409) {
         if (options?.reactivateIfDeleted === false && isRegistryProjectDeletedConflict(err)) {
           return;
         }
@@ -323,14 +329,17 @@ export async function registerTeamverProjectIfNeeded(
 }
 
 function isRetryableRegistryCreateError(err: unknown): boolean {
-  if (!(err instanceof NetworkError)) return true;
-  if (err.status == null) return true;
-  return err.status === 408 || err.status === 425 || err.status === 429 || err.status >= 500;
+  const status = httpStatusOf(err);
+  // No status → treat as transport/unknown and allow a short retry.
+  if (status == null) return true;
+  // Auth / ACL / not-found must not burn the create retry budget.
+  if (status === 401 || status === 403 || status === 404) return false;
+  return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
 function isRegistryProjectDeletedConflict(err: unknown): boolean {
-  if (!(err instanceof NetworkError) || err.status !== 409) return false;
-  const message = err.message?.toLowerCase() ?? "";
+  if (httpStatusOf(err) !== 409) return false;
+  const message = err instanceof Error ? err.message.toLowerCase() : "";
   return message.includes("project_deleted");
 }
 
@@ -602,15 +611,13 @@ async function fetchTeamverProjectAccessOutcome(
     );
     return { status: "found", project };
   } catch (err) {
-    if (err instanceof NetworkError && (err.status === 403 || err.status === 404)) {
+    const status = httpStatusOf(err);
+    // SDK: 403→ForbiddenError, 404→NotFoundError. workspace_mismatch /
+    // project_owner_mismatch are expected ACL denies — not console.warn noise.
+    if (status === 403 || status === 404) {
       return { status: "denied" };
     }
-    // SDK maps HTTP 401 → AuthenticationError; duck-type so we do not
-    // console.warn on every dead-cookie deep-link while C1 recovers.
-    if (
-      err instanceof Error
-      && (err as { status?: unknown }).status === 401
-    ) {
+    if (status === 401) {
       handleEmbedPassiveUnauthorized("bff");
       return { status: "unavailable" };
     }
@@ -757,7 +764,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
     invalidateFeAccessCache(trimmedId, workspaceId);
     return true;
   } catch (err) {
-    if (err instanceof NetworkError && err.status === 404) {
+    if (httpStatusOf(err) === 404) {
       invalidateRegisteredIdsCache();
       if (workspaceId) invalidateFeAccessCache(trimmedId, workspaceId);
       return true;

@@ -530,6 +530,48 @@ describe('Teamver project registry access', () => {
     await expect(fetchTeamverProject('missing')).resolves.toBeNull();
   });
 
+  it('fetchTeamverProject returns null on ForbiddenError 403 without console.warn', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { ForbiddenError } = await import('@teamver/app-sdk');
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => {
+          throw new ForbiddenError({ message: 'workspace_mismatch', status: 403 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(fetchTeamverProject('c398eb4a-9066-4754-ab86-9c582aafbb90')).resolves.toBeNull();
+    expect(warn).not.toHaveBeenCalledWith(
+      '[teamver] project fetch failed',
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
+
+  it('fetchTeamverProject returns null on NotFoundError 404 without console.warn', async () => {
+    vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { NotFoundError } = await import('@teamver/app-sdk');
+    vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
+      workspaceStore: { get: vi.fn(async () => 'ws1') },
+      http: {
+        get: vi.fn(async () => {
+          throw new NotFoundError({ message: 'project_not_found', status: 404 });
+        }),
+      },
+    } as unknown as ReturnType<typeof designBffClient.getDesignBffClient>);
+
+    await expect(fetchTeamverProject('missing-od')).resolves.toBeNull();
+    expect(warn).not.toHaveBeenCalledWith(
+      '[teamver] project fetch failed',
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
+
   it('listTeamverRegisteredProjectIds primes s3 prefix cache from BFF list', async () => {
     vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(designBffClient.getDesignBffClient).mockReturnValue({
