@@ -703,7 +703,7 @@ describe("useTeamverEmbed", () => {
     );
   });
 
-  it("resets sticky refresh-decline when an auth cookie hint newly appears on focus", async () => {
+  it("does not reset sticky refresh-decline on Main cookie hint alone", async () => {
     vi.mocked(teamverAuthCookieHints.hasProbableTeamverAuthCookie).mockReturnValue(false);
     vi.mocked(designBffClient.fetchDesignAuthSession).mockResolvedValue({
       authenticated: false,
@@ -727,7 +727,8 @@ describe("useTeamverEmbed", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    expect(designBffClient.resetDesignAuthRefreshState).toHaveBeenCalledTimes(1);
+    // Visible Main cookie ≠ live Design BFF — must not clear sticky decline.
+    expect(designBffClient.resetDesignAuthRefreshState).not.toHaveBeenCalled();
     expect(designBffClient.fetchDesignAuthSession).toHaveBeenCalledWith({
       force: true,
       resetRefreshState: false,

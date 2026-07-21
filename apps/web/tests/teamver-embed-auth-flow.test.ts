@@ -69,6 +69,23 @@ describe("teamverEmbedAuthFlow", () => {
     });
   });
 
+  it("does not reset refresh decline on Main cookie hint alone", () => {
+    expect(
+      shouldResetEmbedRefreshDeclineOnFocus({
+        cookieHintAppeared: true,
+        pageshowPersisted: false,
+        authReturnNavigation: false,
+      }),
+    ).toBe(false);
+    expect(
+      resolveEmbedFocusSessionOptions({
+        cookieHintAppeared: true,
+        pageshowPersisted: false,
+        authReturnNavigation: false,
+      }),
+    ).toEqual({ force: true, resetRefreshState: false, silent: true });
+  });
+
   it("resets refresh decline on auth return with quiet recovery", () => {
     const authReturn = {
       cookieHintAppeared: false,

@@ -260,7 +260,7 @@ export async function fetchSkills(options?: { slideOnly?: boolean }): Promise<Sk
   const promise = (async () => {
     try {
       const query = slideOnly ? '?catalog=slide' : '';
-      const resp = await fetch(`/api/skills${query}`);
+      const resp = await fetchTeamverDaemon(`/api/skills${query}`);
       if (!resp.ok) return [];
       const json = (await resp.json()) as { skills: SkillSummary[] };
       let skills = json.skills ?? [];
@@ -314,7 +314,7 @@ export async function fetchDesignTemplates(options?: {
 
   const promise = (async () => {
     try {
-      const resp = await fetch(`/api/design-templates${query}`);
+      const resp = await fetchTeamverDaemon(`/api/design-templates${query}`);
       if (!resp.ok) return [];
       const json = (await resp.json()) as { designTemplates: SkillSummary[] };
       const templates = json.designTemplates ?? [];
@@ -333,7 +333,7 @@ export async function fetchDesignTemplates(options?: {
 
 export async function fetchDesignTemplate(id: string): Promise<SkillDetail | null> {
   try {
-    const resp = await fetch(`/api/design-templates/${encodeURIComponent(id)}`);
+    const resp = await fetchTeamverDaemon(`/api/design-templates/${encodeURIComponent(id)}`);
     if (!resp.ok) return null;
     return (await resp.json()) as SkillDetail;
   } catch {

@@ -3537,6 +3537,9 @@ export function ProjectView({
     const wasHiddenRef = { current: false };
     const bumpReattach = () => {
       if (document.visibilityState !== 'visible' || !wasHiddenRef.current) return;
+      // Soft/hard sticky: C1 owns recovery — visibility must not restart
+      // reattach/BYOK effects that would burst after sticky clears.
+      if (isDesignAuthRefreshDeclined()) return;
       setReattachNonce((value) => value + 1);
     };
     const onVisibilityChange = () => {

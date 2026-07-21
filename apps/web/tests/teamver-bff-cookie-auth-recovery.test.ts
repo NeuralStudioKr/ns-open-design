@@ -180,7 +180,7 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(1);
   });
 
-  it("soft-sticky recovery uses ensure /auth/session after force-POST cooldown", async () => {
+  it("soft-sticky recovery clears only after ensure+probe+hydrate", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(refresh401())
@@ -188,9 +188,11 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
       // allowSoftForcePost after cooldown: survival probe skipped (seeded);
-      // force POST fails then ensure revives session.
+      // force POST fails then ensure + nginx probe + hydrate confirm.
       .mockResolvedValueOnce(refresh401())
-      .mockResolvedValueOnce(sessionJson(true));
+      .mockResolvedValueOnce(sessionJson(true)) // ensure
+      .mockResolvedValueOnce(sessionProbe204()) // nginx live
+      .mockResolvedValueOnce(sessionJson(true)); // hydrate
     vi.stubGlobal("fetch", fetchMock);
 
     const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
@@ -212,7 +214,34 @@ describe("withDesignBffCookieAuthRecovery", () => {
     expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/refresh"))).toHaveLength(
       postsAfterSticky + 1,
     );
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session"))).toBe(true);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe"))).toBe(true);
+  });
+
+  it("soft sticky stays when ensure is live but nginx probe is dead", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionProbe401())
+      .mockResolvedValueOnce(sessionJson(false))
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValueOnce(sessionJson(true)) // ensure stale-grace
+      .mockResolvedValueOnce(sessionProbe401()); // nginx still dead
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
+      await import("../src/teamver/designBffClient");
+    resetDesignAuthRefreshDeclinedForTests();
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+
+    const first = refreshDesignAuthCookie();
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(first).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(15_050);
+    await expect(refreshDesignAuthCookie({ allowSoftForcePost: true })).resolves.toBe(false);
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
   });
 
   it("soft-sticky force-POSTs refresh after cooldown when ensure also fails", async () => {
@@ -223,8 +252,10 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
       // allowSoftForcePost after cooldown: skip probe ladder; successful force POST
-      // then ensure must confirm before soft sticky clears.
+      // then ensure + probe + hydrate before soft sticky clears.
       .mockResolvedValueOnce(new Response(JSON.stringify({ status: "ok" }), { status: 200 }))
+      .mockResolvedValueOnce(sessionJson(true))
+      .mockResolvedValueOnce(sessionProbe204())
       .mockResolvedValueOnce(sessionJson(true));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -316,9 +347,11 @@ describe("withDesignBffCookieAuthRecovery", () => {
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionProbe401())
       .mockResolvedValueOnce(sessionJson(false))
-      // allowSoftForcePost after cooldown: skip probe; force POST + ensure miss
+      // allowSoftForcePost after cooldown: skip probe ladder; force POST +
+      // ensure miss then nginx probe miss (hydrate-gated clear).
       .mockResolvedValueOnce(refresh401())
-      .mockResolvedValueOnce(sessionJson(false));
+      .mockResolvedValueOnce(sessionJson(false))
+      .mockResolvedValueOnce(sessionProbe401());
     vi.stubGlobal("fetch", fetchMock);
 
     const { refreshDesignAuthCookie, isDesignAuthRefreshDeclined, resetDesignAuthRefreshDeclinedForTests } =
@@ -361,7 +394,8 @@ describe("withDesignBffCookieAuthRecovery", () => {
       String(c[0]).includes("/auth/session-probe"),
     ).length;
     expect(postsAfterForce).toBe(postsAfterSticky + 1);
-    expect(probesAfterForce).toBe(probesAfterSticky);
+    // Hydrate-gated clear: one confirmation probe after force POST (ensure miss).
+    expect(probesAfterForce).toBe(probesAfterSticky + 1);
 
     await expect(refreshDesignAuthCookie({ allowSoftForcePost: true })).resolves.toBe(false);
     expect(

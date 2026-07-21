@@ -631,16 +631,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       if (
         stateRef.current.error === "session_unreachable"
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
-        && !focusSignals.cookieHintAppeared
       ) {
         return;
       }
       // Soft/hard sticky with still-true memory authenticated: same spam risk as
       // unreachable — skip opportunistic focus refresh until C1 / auth-return.
+      // Cookie hint alone must not bypass (Main visible cookie ≠ live BFF).
       if (
         isDesignAuthRefreshDeclined()
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
-        && !focusSignals.cookieHintAppeared
       ) {
         return;
       }

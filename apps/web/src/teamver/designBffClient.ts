@@ -580,10 +580,21 @@ async function trySoftStickyRecovery(options?: {
       < DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS
     && !authRefreshStickySurvivalLastOk;
 
-  const clearSoftAfterEnsure = async (): Promise<boolean> => {
-    // Probe-alone must not clear sticky — clear-before-hydrate re-opened
-    // POST /auth/refresh + probe storms when ensure/hydrate then failed.
-    if (!(await ensureDesignBffSessionAuthenticated())) return false;
+  const clearSoftAfterConfirmedSession = async (): Promise<boolean> => {
+    // ensure may Set-Cookie after absolute access expiry, but stale-grace
+    // authenticated:true alone must not clear sticky (nginx still dead →
+    // runtime-config 401 + refresh/probe storm). Match quiet hydrate: probe
+    // live + authenticated session JSON before clear.
+    await ensureDesignBffSessionAuthenticated();
+    if (!(await probeDesignBffSessionAuthenticated())) return false;
+    const client = getDesignBffClient();
+    if (!client) return false;
+    try {
+      const value = await probeDesignAuthSession(client);
+      if (!value.authenticated) return false;
+    } catch {
+      return false;
+    }
     authRefreshStickySurvivalLastOk = true;
     resetDesignAuthRefreshDeclined();
     noteAuthRefreshPostSuppressed();
@@ -594,17 +605,17 @@ async function trySoftStickyRecovery(options?: {
     authRefreshStickySurvivalProbeAt = Date.now();
     // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
     if (await probeDesignBffSessionAuthenticated()) {
-      if (await clearSoftAfterEnsure()) return true;
+      if (await clearSoftAfterConfirmedSession()) return true;
     } else {
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
       if (await probeDesignBffSessionAuthenticated()) {
-        if (await clearSoftAfterEnsure()) return true;
+        if (await clearSoftAfterConfirmedSession()) return true;
       }
     }
 
     // 2) ensure via GET /auth/session — can refresh + Set-Cookie on the main response.
     //    session-probe alone cannot revive absolute-expired access.
-    if (await clearSoftAfterEnsure()) return true;
+    if (await clearSoftAfterConfirmedSession()) return true;
     authRefreshStickySurvivalLastOk = false;
   }
 
@@ -616,14 +627,14 @@ async function trySoftStickyRecovery(options?: {
   authRefreshSoftForcePostAt = now;
   const bffResult = await postAuthRefreshCoordinated(resolveDesignBffRefreshUrl());
   if (bffResult.ok) {
-    if (await clearSoftAfterEnsure()) {
+    if (await clearSoftAfterConfirmedSession()) {
       authRefreshPostSuppressedUntil = 0;
       return true;
     }
     authRefreshStickySurvivalLastOk = false;
     return false;
   }
-  if (await clearSoftAfterEnsure()) return true;
+  if (await clearSoftAfterConfirmedSession()) return true;
   // Force-POST already failed and ensure just failed — do not leave a stale
   // "try ensure again" expectation for the next 15s window.
   authRefreshStickySurvivalLastOk = false;

@@ -67,7 +67,8 @@ export type EmbedFocusRecoverySignals = {
 export function shouldResetEmbedRefreshDeclineOnFocus(
   signals: EmbedFocusRecoverySignals,
 ): boolean {
-  return signals.cookieHintAppeared || signals.authReturnNavigation;
+  // Auth-return only. Cookie hint must not clear Design soft/hard sticky.
+  return signals.authReturnNavigation;
 }
 
 export type EmbedFocusSessionRefreshOptions = FetchDesignAuthSessionOptions & {
