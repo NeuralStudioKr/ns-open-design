@@ -219,8 +219,10 @@ describe('ChatPane resume-on-failure', () => {
   });
 
   it('hides escalated automatic-continue prompts as well', () => {
+    const onRetry = vi.fn();
     const escalated = buildAutoContinueIncompleteOutputPrompt({ attempt: 2 });
     renderChat({
+      onRetry,
       activeAgentId: 'claude',
       messages: [
         {
