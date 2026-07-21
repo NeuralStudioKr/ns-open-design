@@ -196,6 +196,10 @@ describe("ProjectView message loading", () => {
 
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
+    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError()");
+    expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
+    expect(autoOpenBlock).toContain("const firstClaim = !htmlAutoOpenClaimedRef.current.has(assistantId)");
+    expect(autoOpenBlock).toContain("hadIncompleteParsedArtifact");
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");

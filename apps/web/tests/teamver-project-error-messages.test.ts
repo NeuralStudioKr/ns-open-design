@@ -57,6 +57,7 @@ describe("project conversation error messages", () => {
       formatProjectArtifactRejectedError,
       formatProjectArtifactSaveFailedError,
       formatProjectArtifactStubWarning,
+      formatProjectRunDeliverableMissingError,
       extractProjectRunErrorCode,
       formatProjectRunErrorForUser,
       formatProjectConversationErrorForUser,
@@ -66,6 +67,7 @@ describe("project conversation error messages", () => {
       "저장을 거부",
     );
     expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
+    expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
     // Generic fallback must never leak developer / infra jargon to end users.
     const generic = formatProjectArtifactSaveFailedError("deck.html");
     expect(generic).not.toContain("daemon");
