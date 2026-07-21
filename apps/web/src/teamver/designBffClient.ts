@@ -561,7 +561,10 @@ export async function refreshTeamverEmbedAuthBeforeMutating(options?: {
   await refreshDesignAuthCookie();
 }
 
-async function trySoftStickyRecovery(): Promise<boolean> {
+async function trySoftStickyRecovery(options?: {
+  /** When false (default for soft-sticky background), skip force POST /auth/refresh. */
+  allowForcePost?: boolean;
+}): Promise<boolean> {
   authRefreshStickySurvivalAttempts += 1;
   const skipProbeLadder =
     authRefreshStickySurvivalAttempts > 1
@@ -595,8 +598,12 @@ async function trySoftStickyRecovery(): Promise<boolean> {
     authRefreshStickySurvivalLastOk = false;
   }
 
-  // 3) One POST /auth/refresh under cooldown — required when nginx auth_request
-  //    already blocks /api/* because access expired and ensure also failed.
+  // 3) One POST /auth/refresh under cooldown — only for explicit callers
+  //    (mutation recovery / user retry). Background soft-sticky must not
+  //    re-POST every 15s (proxy polls / C1 used to re-open the storm).
+  if (!options?.allowForcePost) {
+    return false;
+  }
   const now = Date.now();
   if (now - authRefreshSoftForcePostAt < DESIGN_BFF_SOFT_FORCE_POST_COOLDOWN_MS) {
     return false;
@@ -643,8 +650,19 @@ async function tryHardStickySurvival(): Promise<boolean> {
   return false;
 }
 
+export type RefreshDesignAuthCookieOptions = {
+  /**
+   * Soft sticky: allow one cooldown-gated POST /auth/refresh.
+   * Default false — background polls must not re-open refresh/probe storms.
+   * Pass true from mutations, explicit user retry, and project re-entry.
+   */
+  allowSoftForcePost?: boolean;
+};
+
 /** BFF silent refresh via design-api (Apps JWT stored server-side). */
-export async function refreshDesignAuthCookie(): Promise<boolean> {
+export async function refreshDesignAuthCookie(
+  options?: RefreshDesignAuthCookieOptions,
+): Promise<boolean> {
   if (inFlightAuthRefresh) return inFlightAuthRefresh;
 
   const run = (async (): Promise<boolean> => {
@@ -656,7 +674,9 @@ export async function refreshDesignAuthCookie(): Promise<boolean> {
       if (authRefreshDeclineKind === "hard") {
         return await tryHardStickySurvival();
       }
-      return await trySoftStickyRecovery();
+      return await trySoftStickyRecovery({
+        allowForcePost: options?.allowSoftForcePost === true,
+      });
     }
 
     // Refresh 401 + live session: suppress POST spam while access still works.

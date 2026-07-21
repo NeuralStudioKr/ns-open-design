@@ -1848,10 +1848,12 @@ export function ProjectView({
             // so a transient 401 does not land as an empty chat after refresh.
             if (
               err instanceof TeamverDaemonUnauthorizedError
-              && !isDesignAuthRefreshDeclineHard()
+              && !isDesignAuthRefreshDeclined()
               && attempt < 2
             ) {
-              await refreshDesignAuthCookie();
+              // Before sticky: one soft revive. Once soft/hard sticky owns the
+              // tab, C1 / 「다시 시도」 own recovery — do not POST refresh here.
+              await refreshDesignAuthCookie({ allowSoftForcePost: true });
             }
             if (attempt < 2) {
               await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));

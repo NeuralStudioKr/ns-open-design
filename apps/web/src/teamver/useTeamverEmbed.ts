@@ -782,13 +782,15 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         }
         sessionUnreachableAttemptRef.current = startedAttempt + 1;
         // First two attempts stay silent; escalate so login can run if the
-        // session is truly gone. attempt === 3 clears sticky once for HA revive.
+        // session is truly gone. Never auto-clear sticky (resetRefreshState) —
+        // that re-opened POST /auth/refresh + probe×2 storms every C1 cycle.
+        // Sticky clear is owned by explicit 「다시 시도」 / auth-return only.
         const escalate = startedAttempt >= 2;
         sessionUnreachableInFlightRef.current = true;
         void refresh({
           force: true,
           silent: !escalate,
-          resetRefreshState: startedAttempt === 3,
+          resetRefreshState: false,
         }).then((outcome) => {
           // Clear in-flight before chaining — otherwise scheduleRetry no-ops
           // and C1 stops after the first backoff tick.
