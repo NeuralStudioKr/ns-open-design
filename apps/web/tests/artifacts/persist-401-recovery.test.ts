@@ -105,6 +105,21 @@ describe("ProjectView persist-401 recovery", () => {
       /if \(!stashedForAutoRetry\) \{[\s\S]{0,500}formatProjectArtifactSaveFailedError/,
     );
   });
+
+  it("also replays on SESSION_CHANGED transitions to authenticated=true (covers manual 다시 시도)", () => {
+    // The passive-auth-recovered event covers background 401 ladder success,
+    // but the manual retry button in TeamverSessionBanner only fires that
+    // event on the isSessionExpiredError branch — the sticky-true recovery
+    // path only flips SESSION_CHANGED. Subscribing to both keeps the replay
+    // robust regardless of which recovery path fires first.
+    expect(source).toContain("subscribeTeamverEmbedSessionChanged");
+    expect(source).toMatch(
+      /subscribeTeamverEmbedSessionChanged\([\s\S]{0,300}if \(authenticated\) void replay\(\);/,
+    );
+    expect(source).toMatch(
+      /unsubscribeSessionChanged\(\);\s*\};/,
+    );
+  });
 });
 
 describe("FileWorkspace memory-only preview fallback", () => {

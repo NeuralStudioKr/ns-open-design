@@ -178,4 +178,26 @@ describe("ProjectView message loading", () => {
     );
     expect(source).toContain("hadParsedArtifact: Boolean(parsedArtifact?.html)");
   });
+
+  it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 4200);
+
+    expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
+    expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
+    expect(persistBlock).toContain("kind: 'skipped-incomplete'");
+    expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
+
+    const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
+    expect(autoOpenStart).toBeGreaterThan(0);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 5200);
+
+    expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
+    expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
+    expect(autoOpenBlock).toContain("runStatus: 'failed'");
+    expect(autoOpenBlock).toContain("resumable: true");
+    expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");
+  });
 });

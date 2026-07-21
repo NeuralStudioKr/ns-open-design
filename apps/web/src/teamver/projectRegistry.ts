@@ -353,6 +353,7 @@ async function delay(ms: number): Promise<void> {
 export async function ensureTeamverProjectRegisteredById(projectId: string): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (!legacyRegistryMigrationEnabled()) return;
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return;
 
   const trimmedId = projectId.trim();
   if (!trimmedId) return;

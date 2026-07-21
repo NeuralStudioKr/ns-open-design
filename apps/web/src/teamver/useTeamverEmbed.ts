@@ -731,11 +731,13 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
   // Cap attempts so a permanently dead cookie converges to not_authenticated.
   const sessionUnreachableAttemptRef = useRef(0);
   const sessionUnreachableInFlightRef = useRef(false);
+  const sessionUnreachableSoftForceUsedRef = useRef(false);
   useEffect(() => {
     if (!enabled || !isTeamverEmbedMode()) return;
     if (state.error !== "session_unreachable") {
       sessionUnreachableAttemptRef.current = 0;
       sessionUnreachableInFlightRef.current = false;
+      sessionUnreachableSoftForceUsedRef.current = false;
       return;
     }
     let cancelled = false;
@@ -790,16 +792,18 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         // session is truly gone. Never auto-clear sticky (resetRefreshState) —
         // that re-opened POST /auth/refresh + probe×2 storms every C1 cycle.
         // Sticky clear is owned by explicit 「다시 시도」 / auth-return only.
-        // Escalated soft sticky: one cooldown-gated force POST without clearing
-        // decline first (fetchDesignAuthSession stays probe-only while sticky).
+        // Escalated soft sticky: at most one cooldown-gated force POST per
+        // unreachable episode (not every escalate tick).
         const escalate = startedAttempt >= 2;
         sessionUnreachableInFlightRef.current = true;
         void (async () => {
           if (
             escalate
+            && !sessionUnreachableSoftForceUsedRef.current
             && isDesignAuthRefreshDeclined()
             && !isDesignAuthRefreshDeclineHard()
           ) {
+            sessionUnreachableSoftForceUsedRef.current = true;
             await refreshDesignAuthCookie({ allowSoftForcePost: true });
           }
           return refresh({

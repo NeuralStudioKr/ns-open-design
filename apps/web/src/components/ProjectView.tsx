@@ -1037,6 +1037,21 @@ function projectEventToAgentEvent(evt: ProjectEvent): LiveArtifactEventItem['eve
   };
 }
 
+type ArtifactPersistResult =
+  | { kind: 'persisted'; fileName: string }
+  | { kind: 'pointer'; fileName: string }
+  | { kind: 'skipped-duplicate'; fileName: string }
+  | { kind: 'skipped-incomplete'; fileName: string }
+  | { kind: 'rejected'; fileName: string; reason: string }
+  | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
+  | { kind: 'auth-replay-queued'; fileName: string };
+
+function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
+  return result?.kind === 'skipped-incomplete'
+    || result?.kind === 'rejected'
+    || result?.kind === 'save-failed';
+}
+
 export function ProjectView({
   project,
   routeFileName,
@@ -2338,7 +2353,7 @@ export function ProjectView({
       projectFilesSnapshot?: ProjectFile[],
       sourceText?: string,
       activityStartedAt?: number,
-    ) => {
+    ): Promise<ArtifactPersistResult> => {
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
         artifactHtml: art.html,
         identifier: art.identifier,
@@ -2360,10 +2375,12 @@ export function ProjectView({
           projectFiles: currentProjectFiles,
         });
         if (pointerTarget) {
-          if (savedArtifactRef.current === pointerTarget) return;
+          if (savedArtifactRef.current === pointerTarget) {
+            return { kind: 'skipped-duplicate', fileName: pointerTarget };
+          }
           savedArtifactRef.current = pointerTarget;
           requestOpenFile(pointerTarget);
-          return;
+          return { kind: 'pointer', fileName: pointerTarget };
         }
       }
       // Pre-write structural gate for HTML artifacts (#50, #1143). Reject
@@ -2388,7 +2405,7 @@ export function ProjectView({
             htmlLength: artifactToPersist.html.length,
             head: artifactToPersist.html.slice(0, 256),
           });
-          return;
+          return { kind: 'skipped-incomplete', fileName };
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
@@ -2398,10 +2415,10 @@ export function ProjectView({
               validation.reason,
             ),
           );
-          return;
+          return { kind: 'rejected', fileName, reason: validation.reason };
         }
       }
-      if (savedArtifactRef.current === fileName) return;
+      if (savedArtifactRef.current === fileName) return { kind: 'skipped-duplicate', fileName };
       savedArtifactRef.current = fileName;
       if (isTeamverEmbedMode()) {
         await refreshTeamverEmbedAuthBeforeMutating({ activityStartedAt });
@@ -2461,6 +2478,7 @@ export function ProjectView({
         // sees it without an extra click. The Write-tool path already does
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
+        return { kind: 'persisted', fileName: file.name };
       } else {
         // Clear the saved-artifact ref so the streaming layer can retry
         // the write (idempotent by fileName) once auth or the daemon
@@ -2523,6 +2541,14 @@ export function ProjectView({
             }),
           );
         }
+        if (stashedForAutoRetry) return { kind: 'auth-replay-queued', fileName };
+        return {
+          kind: 'save-failed',
+          fileName,
+          status: result.status,
+          code: result.code,
+          message: result.message,
+        };
       }
     },
     [project.id, project.designSystemId, project.skillId, requestOpenFile],
@@ -2613,10 +2639,27 @@ export function ProjectView({
     const onRecovered = () => {
       void replay();
     };
+    // `TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT` covers the background 401
+    // ladder in handleEmbedPassiveUnauthorized / schedulePassiveLoginRedirect.
+    // The manual "다시 시도" button in TeamverSessionBanner goes through
+    // useTeamverEmbed.refresh which fires PASSIVE_AUTH_RECOVERED only on the
+    // isSessionExpiredError revive branch — the normal success path only
+    // fires SESSION_CHANGED (and only when embedSessionAuthenticated flipped,
+    // which it did not if the memory flag stayed sticky-true through the
+    // outage). We subscribe to the session-changed helper as a second
+    // trigger so a "flag was already true → refresh confirmed" recovery
+    // still drains our stash. The `authenticated` filter avoids re-running
+    // replay on sign-out transitions.
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+    const unsubscribeSessionChanged = subscribeTeamverEmbedSessionChanged(
+      ({ authenticated }) => {
+        if (authenticated) void replay();
+      },
+    );
     return () => {
       cancelled = true;
       window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+      unsubscribeSessionChanged();
     };
   }, [project.id, requestOpenFile]);
 
@@ -3072,6 +3115,8 @@ export function ProjectView({
   const refreshConversationMessagesFromServer = useCallback(
     async (conversationId: string) => {
       if (messagesConversationIdRef.current !== conversationId) return;
+      // Soft/hard sticky: C1 owns recovery — listMessages GETs only add 401 noise.
+      if (isDesignAuthRefreshDeclined()) return;
       try {
         const serverMessages = await listMessages(project.id, conversationId);
         if (messagesConversationIdRef.current !== conversationId) return;
@@ -3897,7 +3942,28 @@ export function ProjectView({
                       requestOpenFile(recoveredExistingArtifact.name);
                     }
                   } else {
-                    await persistArtifact(artifactToPersist, nextFiles, replayedContent, runStartedAt);
+                    const persistResult = await persistArtifact(
+                      artifactToPersist,
+                      nextFiles,
+                      replayedContent,
+                      runStartedAt,
+                    );
+                    if (shouldFailRunForArtifactPersistResult(persistResult)) {
+                      const endedAt = Date.now();
+                      updateMessageById(
+                        message.id,
+                        (prev) => ({
+                          ...prev,
+                          endedAt: prev.endedAt ?? endedAt,
+                          runStatus: 'failed',
+                          resumable: true,
+                        }),
+                        true,
+                        { telemetryFinalized: true },
+                      );
+                      updateConversationLatestRun('failed', endedAt);
+                      return;
+                    }
                     nextFiles = await refreshProjectFiles();
                   }
                 }
@@ -4793,6 +4859,7 @@ export function ProjectView({
               const artifactToPersist = parsedArtifact?.html
                 ? parsedArtifact
                 : artifactFromStandaloneHtml(finalText);
+              let terminalArtifactPersistFailed = false;
               if (artifactToPersist?.html) {
                 const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                 const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
@@ -4808,7 +4875,13 @@ export function ProjectView({
                       requestOpenFile(sameTurnHtmlWrite.name);
                     }
                 } else {
-                  await persistArtifact(artifactToPersist, nextFiles, finalText, startedAt);
+                  const persistResult = await persistArtifact(
+                    artifactToPersist,
+                    nextFiles,
+                    finalText,
+                    startedAt,
+                  );
+                  terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
                   nextFiles = await refreshProjectFiles();
                 }
               }
@@ -4835,7 +4908,19 @@ export function ProjectView({
                   eventCount: latestAssistantMsg.events?.length ?? 0,
                 });
               }
-              updateAssistant((prev) => ({ ...prev, producedFiles: produced }));
+              updateAssistant((prev) => {
+                if (!terminalArtifactPersistFailed) return { ...prev, producedFiles: produced };
+                return {
+                  ...prev,
+                  producedFiles: produced,
+                  runStatus: 'failed',
+                  resumable: true,
+                  endedAt: prev.endedAt ?? Date.now(),
+                };
+              });
+              if (terminalArtifactPersistFailed) {
+                updateConversationLatestRun('failed', latestAssistantMsg.endedAt ?? Date.now());
+              }
             }
             void saveMessage(project.id, runConversationId, latestAssistantMsg, {
               telemetryFinalized: true,

@@ -2,6 +2,7 @@ import {
   TeamverClient,
   createLocalStorageWorkspaceStore,
   snakeToCamelDeep,
+  AuthenticationError,
   NetworkError,
   type WorkspaceListItem,
 } from "@teamver/app-sdk";
@@ -457,6 +458,11 @@ function isDesignBffUnauthorizedStatus(err: unknown): boolean {
 export async function withDesignBffCookieAuthRecovery<T>(
   request: () => Promise<T>,
 ): Promise<T> {
+  // Soft/hard sticky: do not even hit the BFF — callers that forgot
+  // shouldSkipTeamverBffAuthCalls used to produce one 401 per call.
+  if (authRefreshDeclinedForSession) {
+    throw new AuthenticationError({ status: 401, message: "session_expired" });
+  }
   try {
     return await request();
   } catch (err) {

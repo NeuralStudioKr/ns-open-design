@@ -403,10 +403,9 @@ describe("withDesignBffCookieAuthRecovery", () => {
     const probesAfterRecover = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/auth/session-probe"),
     ).length;
-    // Sticky path fails fast — no delayed sibling retry / no soft ladder /
-    // no extra session-probe / no second POST refresh.
+    // Sticky path fails fast before the request — no BFF hit / no soft ladder.
     expect(probesAfterRecover).toBe(probesAfterSticky);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(0);
     const refreshAfterSticky = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/auth/refresh"),
     ).length;
