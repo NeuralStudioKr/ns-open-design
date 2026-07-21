@@ -48,7 +48,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("setReattachNonce((value) => value + 1)");
     expect(block).toContain("if (retryTimer !== null) window.clearTimeout(retryTimer)");
     expect(block).toContain("reattachNonce");
-    expect(source).toContain("BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = 15_000");
+    expect(source).toContain("BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = BYOK_PROXY_AUTH_BACKOFF_MS");
     expect(source).toContain("err instanceof ActiveByokProxyAuthTransientError");
     expect(source).toContain("? BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS");
   });
@@ -73,5 +73,20 @@ describe("ProjectView message loading", () => {
     expect(fallbackUses.length).toBeGreaterThanOrEqual(4);
     expect(source).toContain("selectTouchedHtmlOutputFromEvents(message.events, nextFiles");
     expect(source).toContain("selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles");
+  });
+
+  it("routes BYOK memory extraction through daemon auth recovery without active workspace preflight", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("fetchTeamverDaemon('/api/memory/extract'");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 1500);
+
+    expect(block).toContain("teamverProjectId: project.id");
+    expect(block).toContain("skipTeamverWorkspaceHeaders: true");
+    expect(block).toContain("preTurnMemoryDaemonUnauthorized = memoryResponse.status === 401");
+    expect(block).toContain("isDesignAuthRefreshDeclined()");
+    expect(block).toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
+    expect(block).toContain("return true");
+    expect(source).not.toContain("fetch('/api/memory/extract'");
   });
 });

@@ -4,15 +4,30 @@ vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
   fetchTeamverDaemon: vi.fn(),
 }));
 
+vi.mock('../../src/teamver/designBffClient', () => ({
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
+}));
+
+vi.mock('../../src/teamver/teamverEmbedSession', () => ({
+  isTeamverEmbedSessionAuthenticated: vi.fn(() => true),
+}));
+
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
+import { isDesignAuthRefreshDeclined } from '../../src/teamver/designBffClient';
+import { isTeamverEmbedSessionAuthenticated } from '../../src/teamver/teamverEmbedSession';
 import {
   ActiveByokProxyAuthTransientError,
   listActiveByokProxyStreams,
+  resetByokProxyActiveAuthBackoffForTests,
+  shouldSkipByokProxyActivePoll,
 } from '../../src/providers/byokProxyActive';
 
 describe('listActiveByokProxyStreams', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetByokProxyActiveAuthBackoffForTests();
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(false);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
   });
 
   it('returns active proxy streams for the project', async () => {
@@ -44,7 +59,7 @@ describe('listActiveByokProxyStreams', () => {
     ]);
     expect(fetchTeamverDaemon).toHaveBeenCalledWith(
       '/api/proxy/active?projectId=project-1',
-      { teamverProjectId: 'project-1' },
+      { teamverProjectId: 'project-1', skipEmbedAuthRecovery: true },
     );
   });
 
@@ -54,7 +69,7 @@ describe('listActiveByokProxyStreams', () => {
     await expect(listActiveByokProxyStreams('project-1')).resolves.toEqual([]);
   });
 
-  it('throws a typed transient auth error for session-expired 401', async () => {
+  it('throws a typed transient auth error for session-expired 401 and backs off', async () => {
     vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(JSON.stringify({ detail: 'session_expired' }), {
         status: 401,
@@ -65,6 +80,20 @@ describe('listActiveByokProxyStreams', () => {
     await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
       ActiveByokProxyAuthTransientError,
     );
+    expect(shouldSkipByokProxyActivePoll()).toBe(true);
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the network call while soft-sticky decline owns recovery', async () => {
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(true);
+
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
   });
 
   it('throws on transient failures so recovery callers do not treat them as drained', async () => {

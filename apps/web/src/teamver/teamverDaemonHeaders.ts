@@ -67,6 +67,19 @@ function headersInitToRecord(headers?: HeadersInit): Record<string, string> {
 export type TeamverDaemonFetchInit = RequestInit & {
   /** When the URL is not `/api/projects/{uuid}/…` (BYOK proxy, `POST /api/runs`). */
   teamverProjectId?: string | null;
+  /**
+   * Background polls (e.g. GET /api/proxy/active) must not enter soft-sticky
+   * refresh/probe ladders — C1 / explicit user retry owns recovery. Without
+   * this, App runs-poll hammers refresh→probe×2 every few seconds while the
+   * cookie is dead.
+   */
+  skipEmbedAuthRecovery?: boolean;
+  /**
+   * Best-effort daemon endpoints such as memory extraction still need cookie
+   * auth recovery, but must not trigger active-workspace BFF lookups before a
+   * chat run starts.
+   */
+  skipTeamverWorkspaceHeaders?: boolean;
 };
 
 function isLikelyDaemonApiRequest(input: RequestInfo | URL): boolean {
@@ -159,10 +172,12 @@ function delayDaemonAuthRetry(): Promise<void> {
 async function fetchDaemonWithEmbedAuthRecovery(
   input: RequestInfo | URL,
   init: RequestInit,
+  options?: { skipAuthRecovery?: boolean },
 ): Promise<Response> {
   let resp = await fetch(input, init);
-  if (!shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
-    // Hard sticky / unauthenticated: still surface the banner without probing.
+  if (options?.skipAuthRecovery || !shouldRecoverEmbedDaemonUnauthorized(input, resp)) {
+    // Hard sticky / unauthenticated / explicit skip: surface banner without
+    // probing. Background polls must take the skip path.
     noteEmbedDaemonUnauthorized(input, resp);
     return resp;
   }
@@ -252,12 +267,20 @@ export async function fetchTeamverDaemon(
   input: RequestInfo | URL,
   init: TeamverDaemonFetchInit = {},
 ): Promise<Response> {
-  const { teamverProjectId, ...requestInit } = init;
+  const {
+    teamverProjectId,
+    skipEmbedAuthRecovery,
+    skipTeamverWorkspaceHeaders,
+    ...requestInit
+  } = init;
   const projectId = teamverProjectId?.trim() || extractDaemonProjectId(input);
-  const headers = await buildTeamverDaemonRequestHeaders(
-    headersInitToRecord(requestInit.headers),
-    projectId ? { projectId } : undefined,
-  );
+  const baseHeaders = headersInitToRecord(requestInit.headers);
+  const headers = skipTeamverWorkspaceHeaders
+    ? baseHeaders
+    : await buildTeamverDaemonRequestHeaders(
+      baseHeaders,
+      projectId ? { projectId } : undefined,
+    );
   // Embed `/api/*` routes pass nginx auth_request → BFF session-probe
   // (`/_teamver_bff_session`). Match BFF cookie SSO (`credentials: include`) so
   // teamver_access_token is always forwarded — same-origin default is usually
@@ -268,14 +291,15 @@ export async function fetchTeamverDaemon(
   const redirect =
     requestInit.redirect ?? (isTeamverEmbedMode() && isLikelyDaemonApiRequest(input) ? "manual" : undefined);
   const nextInit = { ...requestInit, headers, credentials, ...(redirect ? { redirect } : {}) };
+  const recoveryOpts = skipEmbedAuthRecovery ? { skipAuthRecovery: true } : undefined;
   const dedupeKey = daemonGetInflightKey(input, requestInit, headers);
   if (!dedupeKey) {
-    const resp = await fetchDaemonWithEmbedAuthRecovery(input, nextInit);
+    const resp = await fetchDaemonWithEmbedAuthRecovery(input, nextInit, recoveryOpts);
     return finalizeDaemonFetch(input, resp);
   }
   const existing = daemonGetInflight.get(dedupeKey);
   if (existing) return existing.then((resp) => finalizeDaemonFetch(input, resp, { clone: true }));
-  const promise = fetchDaemonWithEmbedAuthRecovery(input, nextInit);
+  const promise = fetchDaemonWithEmbedAuthRecovery(input, nextInit, recoveryOpts);
   daemonGetInflight.set(dedupeKey, promise);
   try {
     const resp = await promise;

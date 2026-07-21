@@ -31,6 +31,7 @@ import { streamMessage } from '../providers/anthropic';
 import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from '../providers/proxyAbort';
 import {
   ActiveByokProxyAuthTransientError,
+  BYOK_PROXY_AUTH_BACKOFF_MS,
   listActiveByokProxyStreams,
 } from '../providers/byokProxyActive';
 import {
@@ -190,9 +191,14 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { refreshDesignAuthCookie, refreshTeamverEmbedAuthBeforeMutating, isDesignAuthRefreshDeclineHard } from '../teamver/designBffClient';
+import {
+  refreshDesignAuthCookie,
+  refreshTeamverEmbedAuthBeforeMutating,
+  isDesignAuthRefreshDeclined,
+  isDesignAuthRefreshDeclineHard,
+} from '../teamver/designBffClient';
 import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
-import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
+import { fetchTeamverDaemon, TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
@@ -306,7 +312,7 @@ type ProjectChatSendMeta = ChatSendMeta & {
 
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
 const DAEMON_REATTACH_MISSING_RUN_RETRY_MS = 2_000;
-const BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = 15_000;
+const BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = BYOK_PROXY_AUTH_BACKOFF_MS;
 
 export function mergeSavedPreviewComment(current: PreviewComment[], saved: PreviewComment): PreviewComment[] {
   const existingIndex = current.findIndex((comment) => comment.id === saved.id);
@@ -5119,11 +5125,14 @@ export function ProjectView({
                     : '',
               }
             : undefined;
+        let preTurnMemoryDaemonUnauthorized = false;
         if (userText.length > 0) {
           try {
-            await fetch('/api/memory/extract', {
+            const memoryResponse = await fetchTeamverDaemon('/api/memory/extract', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              teamverProjectId: project.id,
+              skipTeamverWorkspaceHeaders: true,
               body: JSON.stringify({
                 userMessage: userText,
                 projectId: project.id,
@@ -5131,10 +5140,19 @@ export function ProjectView({
                 chatProvider: byokChatProvider,
               }),
             });
+            preTurnMemoryDaemonUnauthorized = memoryResponse.status === 401;
           } catch {
             // Best-effort: memory extraction must never block the
             // chat. The daemon's SSE bus will catch up the Memory tab
             // on the next event.
+          }
+          if (
+            preTurnMemoryDaemonUnauthorized
+            && isTeamverEmbedMode()
+            && isDesignAuthRefreshDeclined()
+          ) {
+            handlers.onError(new TeamverDaemonUnauthorizedError());
+            return true;
           }
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
@@ -5186,9 +5204,11 @@ export function ProjectView({
             handlers.onDone();
             const assistantText = accumulatedAssistantText.trim();
             if (userText.length === 0 || assistantText.length === 0) return;
-            void fetch('/api/memory/extract', {
+            void fetchTeamverDaemon('/api/memory/extract', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              teamverProjectId: project.id,
+              skipTeamverWorkspaceHeaders: true,
               body: JSON.stringify({
                 userMessage: userText,
                 assistantMessage: accumulatedAssistantText,
