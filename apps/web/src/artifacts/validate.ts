@@ -30,10 +30,13 @@
  *   legitimately save partial drafts.
  *
  * Threshold note: 64 chars rejects minimal empty-body documents like
- * `<!doctype html><html><body></body></html>` (49 chars). That is intentional
- * — AI-emitted artifacts in this product are expected to be non-trivial
- * deliverables, not test fixtures, so the lower bound favors fewer phantom
- * files over preserving fixture-grade empties.
+ * `<!doctype html><html><body></body></html>` (49 chars) and
+ * `<html><head></head><body></body></html>` (39 chars). That is intentional
+ * for *writes* — AI-emitted artifacts in this product are expected to be
+ * non-trivial deliverables. Callers must treat document-shaped shells as a
+ * silent skip (not a user-facing refusal banner): models often emit an empty
+ * scaffold before the real deck lands, and surfacing "저장을 거부했습니다"
+ * mid-turn looks like a product failure during demos.
  */
 
 const MIN_HTML_LENGTH = 64;
@@ -69,6 +72,17 @@ export function validateHtmlArtifact(content: string): HtmlArtifactValidationRes
     return { ok: false, reason: 'content references an internal project storage path such as .live-artifacts, .od, or .tmp' };
   }
   return { ok: true };
+}
+
+/**
+ * Empty / scaffold HTML the model emits before real slide content.
+ * Persist callers should skip silently — do not flash a refusal banner.
+ */
+export function isIncompleteHtmlDocumentShell(content: string): boolean {
+  const trimmed = content.replace(/^﻿/, '').trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed.length >= MIN_HTML_LENGTH) return false;
+  return STARTS_WITH_DOCUMENT_RE.test(trimmed);
 }
 
 function referencesReservedProjectPath(content: string): boolean {

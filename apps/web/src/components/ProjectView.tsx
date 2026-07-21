@@ -14,7 +14,7 @@ import {
 import { AnimatePresence } from 'motion/react';
 import { createHtmlArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
-import { validateHtmlArtifact } from '../artifacts/validate';
+import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import { recoverHtmlArtifactFromPrecedingDocument, recoverHtmlDocumentFromMarkdownFence, recoverStandaloneHtmlDocument } from '../artifacts/recover';
 import { createArtifactParser } from '../artifacts/parser';
 import {
@@ -2257,6 +2257,13 @@ export function ProjectView({
       if (ext === '.html') {
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
+          // Empty `<html>…</html>` scaffolds (e.g. 39 chars) are common mid-turn
+          // placeholders — refusing them loudly looks like a hard product failure
+          // during slide creation. Skip quietly; a later complete document will
+          // persist. Prose-as-HTML still surfaces the refusal banner.
+          if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
+            return;
+          }
           setError(
             formatProjectArtifactRejectedError(
               art.identifier || art.title || 'untitled',

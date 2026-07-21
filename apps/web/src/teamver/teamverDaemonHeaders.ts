@@ -3,6 +3,7 @@ import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   clearDesignAuthRefreshDecline,
   ensureDesignBffSessionAuthenticated,
+  isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
@@ -112,9 +113,12 @@ function embedDaemonAuthRecoveryEnabled(): boolean {
   // Only recover while the embed UI believes it is signed in. Bootstrap alone
   // used to keep probing refresh/session after logout / dead-cookie clear.
   if (!isTeamverEmbedSessionAuthenticated()) return false;
-  // Soft/hard sticky: C1 + banner own recovery. Every daemon /api/* 401 used
-  // to re-enter refresh → ensure → session-probe (DevTools storms).
-  if (isDesignAuthRefreshDeclined()) return false;
+  // Hard sticky (400): C1 + banner own recovery — never POST from daemon 401s.
+  // Soft sticky must still run refreshDesignAuthCookie → trySoftStickyRecovery
+  // (cooldown-gated). Blocking soft here made project re-entry show
+  // 「대화 목록을 불러오는 중 연결을 확인하지 못했습니다」 while memory still
+  // looked signed-in.
+  if (isDesignAuthRefreshDeclineHard()) return false;
   return true;
 }
 

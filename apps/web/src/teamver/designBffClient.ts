@@ -398,6 +398,9 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   // Dead refresh credentials: never probe nginx-gated runtime-config until
   // sticky is cleared. Do not wait for a 401 on /runtime-config itself.
   runtimeConfigAuthBlocked = true;
+  // Drop warm /auth/session cache so focus force:false cannot keep serving
+  // authenticated=true without a live cookie (DevTools 401 storms).
+  cachedSession = null;
   if (kind === "soft") {
     // Soft 401 path already ran probe×2+ensure (+ the failing POST). Seed both
     // survival and force-POST cooldowns so the next soft recovery (daemon,
@@ -460,10 +463,22 @@ export async function withDesignBffCookieAuthRecovery<T>(
     // callers; do not Apps-refresh here.
     if (isMainSsoGateError(err)) throw err;
 
-    // Parallel project/registry/Drive 401s after soft/hard sticky must not each
-    // re-run ensure + session-probe (DevTools 401 storms). Soft recovery still
-    // runs under its own cooldown inside refreshDesignAuthCookie.
+    // Soft sticky: cooldown-gated survival via refreshDesignAuthCookie.
+    // Hard sticky: one delayed retry only (no POST). Calling refresh on every
+    // Drive/usage 401 after soft used to re-spam; soft recovery is now the
+    // single owner with its own probe/force-POST cooldowns.
     if (authRefreshDeclinedForSession) {
+      if (authRefreshDeclineKind === "hard") {
+        await new Promise((resolve) =>
+          setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
+        );
+        try {
+          return await request();
+        } catch (retryErr) {
+          if (!isDesignBffUnauthorizedStatus(retryErr)) throw retryErr;
+          throw err;
+        }
+      }
       const revived = await refreshDesignAuthCookie();
       if (revived) {
         try {
@@ -828,9 +843,14 @@ function peekAuthenticatedSessionCache(maxAgeMs: number): DesignAuthSession | nu
 }
 
 function isTransientSessionProbeError(err: unknown): boolean {
+  // SDK maps HTTP 401 → AuthenticationError (not NetworkError). Duck-type status
+  // so dead-cookie 401s never promote a 15m stale authenticated session.
+  if (err instanceof Error) {
+    const status = Number((err as { status?: unknown }).status);
+    if (status === 401 || status === 403) return false;
+  }
   if (!(err instanceof NetworkError)) return true;
   const status = err.status ?? 0;
-  if (status === 401 || status === 403) return false;
   return status === 0 || status >= 500 || status === 502 || status === 503 || status === 504;
 }
 

@@ -16,12 +16,15 @@ const refreshMock = vi.fn(async () => true);
 const probeSessionMock = vi.fn(async () => false);
 const ensureSessionMock = vi.fn(async () => false);
 const clearDeclineMock = vi.fn();
+const declinedMock = vi.fn(() => false);
+const hardDeclineMock = vi.fn(() => false);
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
   probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
   ensureDesignBffSessionAuthenticated: (...args: unknown[]) => ensureSessionMock(...args),
   clearDesignAuthRefreshDecline: (...args: unknown[]) => clearDeclineMock(...args),
-  isDesignAuthRefreshDeclined: vi.fn(() => false),
+  isDesignAuthRefreshDeclined: (...args: unknown[]) => declinedMock(...args),
+  isDesignAuthRefreshDeclineHard: (...args: unknown[]) => hardDeclineMock(...args),
 }));
 
 const passiveUnauthorizedMock = vi.fn();
@@ -39,7 +42,6 @@ vi.mock("../../src/teamver/teamverProjectS3PrefixResolve", () => ({
 
 import { fetchTeamverDaemon } from "../../src/teamver/teamverDaemonHeaders";
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "../../src/teamver/designApiBase";
-import { isDesignAuthRefreshDeclined } from "../../src/teamver/designBffClient";
 
 const DAEMON_AUTH_RETRY_DELAY_MS = 400;
 
@@ -53,10 +55,13 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     ensureSessionMock.mockReset();
     ensureSessionMock.mockResolvedValue(false);
     clearDeclineMock.mockClear();
+    declinedMock.mockReset();
+    declinedMock.mockReturnValue(false);
+    hardDeclineMock.mockReset();
+    hardDeclineMock.mockReturnValue(false);
     passiveUnauthorizedMock.mockClear();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(isBootstrapAuthMode).mockReturnValue(true);
-    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -155,8 +160,31 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
   });
 
-  it("skips recovery ladder when soft sticky already declined", async () => {
-    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(true);
+  it("runs soft-sticky survival refresh instead of skipping daemon recovery", async () => {
+    declinedMock.mockReturnValue(true);
+    hardDeclineMock.mockReturnValue(false);
+    refreshMock.mockResolvedValue(false);
+    const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/projects/project-1/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "deck.html", content: "<html></html>" }),
+    });
+
+    expect(resp.status).toBe(401);
+    // Soft sticky still attempts cooldown-gated survival refresh so project
+    // re-entry (conversation list) can recover without a hard relogin banner.
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(probeSessionMock).not.toHaveBeenCalled();
+    expect(ensureSessionMock).not.toHaveBeenCalled();
+    expect(passiveUnauthorizedMock).toHaveBeenCalledWith("daemon");
+  });
+
+  it("skips recovery ladder when hard sticky already declined", async () => {
+    declinedMock.mockReturnValue(true);
+    hardDeclineMock.mockReturnValue(true);
     refreshMock.mockResolvedValue(false);
     const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);

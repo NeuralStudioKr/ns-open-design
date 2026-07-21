@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateHtmlArtifact } from '../../src/artifacts/validate';
+import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../../src/artifacts/validate';
 
 describe('validateHtmlArtifact', () => {
   it('rejects an empty string', () => {
@@ -24,6 +24,15 @@ describe('validateHtmlArtifact', () => {
   it('rejects content shorter than the minimum threshold even if it contains angle brackets', () => {
     const result = validateHtmlArtifact('<p>hi</p>');
     expect(result.ok).toBe(false);
+  });
+
+  it('classifies empty document shells so callers can skip without a refusal banner', () => {
+    const shell = '<html><head></head><body></body></html>';
+    expect(shell.length).toBe(39);
+    expect(validateHtmlArtifact(shell).ok).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(shell)).toBe(true);
+    expect(isIncompleteHtmlDocumentShell('<p>hi</p>')).toBe(false);
+    expect(isIncompleteHtmlDocumentShell('보기만 한 요약입니다.')).toBe(false);
   });
 
   it('rejects a long prose blob that lacks any HTML structural markers', () => {
