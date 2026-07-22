@@ -118,6 +118,17 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("streamFormat: config.mode === 'api' ? 'plain' : undefined");
   });
 
+  it("loads selected template snapshots for deck projects when templateId is present", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const tplId = project.metadata?.templateId");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 900);
+
+    expect(block).toContain("if (tplId) {");
+    expect(block).toContain("await getTemplate(tplId)");
+    expect(block).not.toContain("project.metadata?.kind === 'template' && tplId");
+  });
+
   it("replays stashed artifact writes without shifting write arguments", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const replay = async () =>");

@@ -3235,7 +3235,7 @@ export function ProjectView({
     }
     let template: ProjectTemplate | undefined;
     const tplId = project.metadata?.templateId;
-    if (project.metadata?.kind === 'template' && tplId) {
+    if (tplId) {
       const cached = templateCache.current.get(tplId);
       if (cached) {
         template = cached;

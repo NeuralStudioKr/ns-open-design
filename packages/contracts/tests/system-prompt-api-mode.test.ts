@@ -407,8 +407,30 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('font cues: "Pretendard", sans-serif');
       expect(prompt).toContain('class/style cues: slide, capsule, hero');
       expect(prompt).toContain('layout cues: display:grid, grid-template-columns, border-radius, letter-spacing');
+      expect(prompt).toContain('Mandatory: generated slides must visibly match');
       expect(prompt).toContain('Do not copy the full template skeleton');
       expect(prompt).not.toContain('Do not paste this exact headline');
+      expect(prompt.length).toBeLessThan(18_000);
+    });
+
+    it('extracts mandatory visual cues from the selected design-template skill body', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Hermes Cyber Terminal',
+        skillBody:
+          '# Html Ppt Hermes Cyber Terminal\n\n'
+          + '<style>:root{--bg:#0A0C10;--accent:#7ED3A4}'
+          + 'body{font-family:"JetBrains Mono", monospace}'
+          + '.slide{display:grid;letter-spacing:.08em;text-transform:uppercase}'
+          + '</style><section class="slide terminal scanline"></section>',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+
+      expect(prompt).toContain('Selected design template visual signature — Html Ppt Hermes Cyber Terminal');
+      expect(prompt).toContain('palette cues: #0A0C10, #7ED3A4');
+      expect(prompt).toContain('font cues: "JetBrains Mono", monospace');
+      expect(prompt).toContain('class/style cues: slide, terminal, scanline');
+      expect(prompt).toContain('layout cues: display:grid, letter-spacing, text-transform');
+      expect(prompt).toContain('Mandatory: generated slides must visibly match');
       expect(prompt.length).toBeLessThan(18_000);
     });
   });

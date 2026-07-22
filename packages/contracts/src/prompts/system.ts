@@ -193,12 +193,20 @@ function uniqueMatches(value: string, pattern: RegExp, limit: number): string[] 
   return out;
 }
 
-function renderTeamverTemplateVisualSignature(template: ProjectTemplate | undefined): string {
-  if (!template) return '';
-  const files = template.files.slice(0, 2);
-  const combined = files
-    .map((file) => `${file.name}\n${file.content.slice(0, 6000)}`)
-    .join('\n');
+function renderTeamverVisualSignatureBlock({
+  heading,
+  title,
+  description,
+  body,
+  fileNames,
+}: {
+  heading: string;
+  title: string;
+  description?: string;
+  body: string;
+  fileNames?: string[];
+}): string {
+  const combined = body.slice(0, 12_000);
   const colors = uniqueMatches(combined, /(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/g, 10);
   const fonts = uniqueMatches(combined, /font-family\s*:\s*([^;}\n]+)/gi, 5)
     .map((font) => normalizePromptText(font).slice(0, 80));
@@ -213,17 +221,44 @@ function renderTeamverTemplateVisualSignature(template: ProjectTemplate | undefi
     /\b(?:grid-template-columns|display\s*:\s*grid|display\s*:\s*flex|border-radius|letter-spacing|text-transform|backdrop-filter|mix-blend-mode)\b/gi,
     10,
   );
+  if (!description && colors.length === 0 && fonts.length === 0 && classes.length === 0 && layoutHints.length === 0) {
+    return '';
+  }
   const lines = [
-    `## Selected template visual signature — ${template.name}`,
-    template.description ? normalizePromptText(template.description).slice(0, 240) : '',
-    files.length > 0 ? `files: ${files.map((file) => file.name).join(', ')}` : '',
+    `## ${heading} — ${title}`,
+    description ? normalizePromptText(description).slice(0, 240) : '',
+    fileNames?.length ? `files: ${fileNames.join(', ')}` : '',
     colors.length > 0 ? `palette cues: ${colors.join(', ')}` : '',
     fonts.length > 0 ? `font cues: ${fonts.join(' | ')}` : '',
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
-    'Use these as a compact visual signature only. Do not copy the full template skeleton or emit long CSS/head/script blocks.',
+    'Mandatory: generated slides must visibly match this selected template\'s palette, typography mood, density, accent treatment, and composition rhythm.',
+    'Use these cues as the binding visual language. Do not copy the full template skeleton or emit long CSS/head/script blocks.',
   ].filter(Boolean);
   return lines.join('\n');
+}
+
+function renderTeamverTemplateVisualSignature(template: ProjectTemplate | undefined): string {
+  if (!template) return '';
+  const files = template.files.slice(0, 2);
+  return renderTeamverVisualSignatureBlock({
+    heading: 'Selected template visual signature',
+    title: template.name,
+    description: template.description,
+    fileNames: files.map((file) => file.name),
+    body: files
+      .map((file) => `${file.name}\n${file.content.slice(0, 6000)}`)
+      .join('\n'),
+  });
+}
+
+function renderTeamverSkillVisualSignature(skillBody: string | undefined, skillName: string | undefined): string {
+  if (!skillBody?.trim()) return '';
+  return renderTeamverVisualSignatureBlock({
+    heading: 'Selected design template visual signature',
+    title: skillName?.trim() || 'active template',
+    body: skillBody,
+  });
 }
 
 export function formatElevenLabsVoiceOptionsErrorForPrompt(
@@ -1314,6 +1349,11 @@ export function composeTeamverSlideApiPrompt({
   const templateVisualSignature = renderTeamverTemplateVisualSignature(template);
   if (templateVisualSignature) {
     parts.push(templateVisualSignature);
+  }
+
+  const skillVisualSignature = renderTeamverSkillVisualSignature(skillBody, skillName);
+  if (skillVisualSignature) {
+    parts.push(skillVisualSignature);
   }
 
   if (skillBody?.trim()) {
