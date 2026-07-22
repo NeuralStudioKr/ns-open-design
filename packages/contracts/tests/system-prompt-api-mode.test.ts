@@ -149,6 +149,28 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
     });
 
+    it('keeps compact deck + skill-seed override when skillBody mentions template.html', () => {
+      // Teamver often binds simple-deck; hasSkillSeed used to SKIP compact
+      // entirely and leave only "Read assets/template.html" Pre-flight —
+      // the live auto_continue_incomplete_output loop.
+      const prompt = composeSystemPrompt({
+        streamFormat: 'plain',
+        skillMode: 'deck',
+        skillName: 'simple-deck',
+        skillBody:
+          '# simple-deck\n\nCopy assets/template.html and fill SLOT comments.\nSee also references/layouts.md.\n',
+        mediaExecution: { mode: 'disabled' },
+      });
+
+      expect(prompt).toContain('API compact contract');
+      expect(prompt).toContain('Teamver API — deck framework emission override');
+      expect(prompt).toContain('Teamver API — skill seed override');
+      expect(prompt).toContain('API-mode pre-flight');
+      expect(prompt).toContain('Do NOT Read or paste');
+      expect(prompt).not.toContain('Pre-flight (do this before any other tool)');
+      expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
+    });
+
     // Regression coverage for the unified ask-user flow: API/BYOK mode must
     // route mid-conversation clarification through the same `<question-form>`
     // Questions-tab surface as daemon mode, not fall back to plain-text

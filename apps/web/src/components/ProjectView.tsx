@@ -8833,9 +8833,10 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   finalText: string,
   options: { slideOnlyMvp: boolean },
 ): boolean {
-  // Plan-only / "바로 제작하겠습니다" turns with no HTML on disk used to
-  // flash "완료됨" while the preview stayed empty (demo-breaking). Cap
-  // auto-continue handles recovery; marking these as failed is correct.
+  // Plan-only / "바로 제작하겠습니다" / "완성했습니다" turns with no HTML
+  // on disk used to flash "완료됨" while the preview stayed empty
+  // (demo-breaking). Cap auto-continue handles recovery; marking these as
+  // failed is correct.
   if (!options.slideOnlyMvp) return false;
   const text = finalText.trim();
   if (!text) return false;
@@ -8845,9 +8846,14 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
     || /(슬라이드|발표\s*자료|프레젠테이션|피피티|덱|HTML)/i.test(text);
   if (!deckIntent) return false;
 
+  const looksLikeOutline =
+    /슬라이드\s*구성|목차\s*:|구성\s*:/.test(text)
+    || /(?:^|\n)\s*(?:\d{1,2}|0\d)[\.\)\-]\s+\S+/m.test(text);
+
   return (
-    /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|will create|will build|I'll|I will)/i.test(text)
-    || /(만들겠|작성하겠|생성하겠|수정하겠|반영하겠|제작하|결정하겠|확정|채우|출력|완료|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠)/i.test(text)
+    looksLikeOutline
+    || /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|here it is|will create|will build|I'll|I will)/i.test(text)
+    || /(만들겠|작성하겠|생성하겠|수정하겠|반영하겠|제작하|결정하겠|확정|채우|출력|완료|완성|마쳤|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠|올렸|넣었|드렸)/i.test(text)
   );
 }
 

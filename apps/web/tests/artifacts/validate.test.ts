@@ -43,13 +43,22 @@ describe('validateHtmlArtifact', () => {
     expect(isIncompleteHtmlDocumentShell(shell)).toBe(true);
   });
 
-  it('does not treat large div-only documents as incomplete shells', () => {
+  it('does not treat large div-only documents with real text as incomplete shells', () => {
     const pad = 'x'.repeat(2200);
     const large =
       `<!doctype html><html><head><meta charset="utf-8"><style>.a{content:"${pad}"}</style></head>`
-      + `<body><div id="root"></div></body></html>`;
+      + `<body><div id="root">Real deliverable copy lives here for the preview.</div></body></html>`;
     expect(large.length).toBeGreaterThan(2048);
     expect(isIncompleteHtmlDocumentShell(large)).toBe(false);
+  });
+
+  it('classifies large CSS chrome with an empty body as an incomplete shell', () => {
+    const pad = 'x'.repeat(2200);
+    const largeEmpty =
+      `<!doctype html><html><head><meta charset="utf-8"><style>.a{content:"${pad}"}</style></head>`
+      + `<body><div id="root"></div></body></html>`;
+    expect(largeEmpty.length).toBeGreaterThan(2048);
+    expect(isIncompleteHtmlDocumentShell(largeEmpty)).toBe(true);
   });
 
   it('classifies a mid-stream truncated doctype+head+style artifact as an incomplete shell', () => {

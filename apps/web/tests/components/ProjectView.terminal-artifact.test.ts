@@ -18,6 +18,20 @@ describe("shouldFailSlideRunWithoutHtmlDeliverable", () => {
     ).toBe(true);
   });
 
+  it("fails Korean completion claims that previously slipped past the gate", () => {
+    expect(
+      shouldFailSlideRunWithoutHtmlDeliverable("슬라이드를 완성했습니다.", {
+        slideOnlyMvp: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldFailSlideRunWithoutHtmlDeliverable(
+        "모두 건너뛰셨군요 — 슬라이드 구성:\n01 표지\n02 문제",
+        { slideOnlyMvp: true },
+      ),
+    ).toBe(true);
+  });
+
   it("fails English completion claims for decks without HTML", () => {
     expect(
       shouldFailSlideRunWithoutHtmlDeliverable(

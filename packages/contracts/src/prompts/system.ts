@@ -393,7 +393,12 @@ export function composeSystemPrompt({
   }
 
   if (skillBody && skillBody.trim().length > 0) {
-    const preflight = derivePreflight(skillBody);
+    // API/BYOK plain mode has no Read/Bash — the daemon preflight that says
+    // "Read assets/template.html first" causes the model to invent a giant
+    // skeleton paste (or fake `[读取 template.html]`) and truncate before
+    // </html>. Swap in an API-safe preflight that forbids seed copy.
+    const preflight =
+      streamFormat === 'plain' ? deriveApiModePreflight(skillBody) : derivePreflight(skillBody);
     parts.push(
       `\n\n## Active skill${skillName ? ` — ${skillName}` : ''}\n\nFollow this skill's workflow exactly.${preflight}\n\n${skillBody.trim()}`,
     );
@@ -437,13 +442,34 @@ export function composeSystemPrompt({
   // API/BYOK plain mode must NOT receive the ~11KB verbatim skeleton — copying
   // it burns the output budget and truncates before </html>, which is the
   // dominant Teamver slide failure mode (auto_continue_incomplete_output loop).
+  //
+  // Critical: hasSkillSeed must NOT suppress the compact contract in plain
+  // mode. Teamver projects often bind simple-deck (skill body mentions
+  // assets/template.html); skipping compact here was the live failure path
+  // where only Pre-flight "Read template.html" remained and the model
+  // rebuilt a huge skeleton until max_tokens.
   const deckDirective =
     streamFormat === 'plain' ? DECK_FRAMEWORK_DIRECTIVE_COMPACT : DECK_FRAMEWORK_DIRECTIVE;
-  if (isDeckProject && !hasSkillSeed) {
-    parts.push(`\n\n---\n\n${deckDirective}`);
-    if (isTeamverSlideOnly && streamFormat === 'plain') {
-      parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
+  if (streamFormat === 'plain') {
+    const apiDeckSeedProject = hasSkillSeed && (isDeckProject || isTeamverSlideOnly);
+    if (isDeckProject || apiDeckSeedProject) {
+      parts.push(`\n\n---\n\n${deckDirective}`);
+      if (isTeamverSlideOnly) {
+        parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
+      }
+      if (apiDeckSeedProject) {
+        parts.push(TEAMVER_API_SKILL_SEED_OVERRIDE);
+      }
+    } else if (isFreeformProject) {
+      parts.push(
+        `\n\n---\n\n## If this brief is a slide deck / keynote / presentation\n\nThe user did not pre-select a "Slide deck" surface, but their request may still call for one. **If — and only if — the brief reads as slides, keynote, presentation, deck, PPT, or 讲解, follow the framework below.** Otherwise ignore everything in this section and continue with the freeform output you would have written anyway.\n\n${deckDirective}`,
+      );
+      if (isTeamverSlideOnly) {
+        parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
+      }
     }
+  } else if (isDeckProject && !hasSkillSeed) {
+    parts.push(`\n\n---\n\n${deckDirective}`);
   } else if (isFreeformProject && !hasSkillSeed) {
     // Freeform / kind=other projects skip the kind picker entirely and
     // land here. If the user's brief is a deck/keynote/slides ("讲解",
@@ -457,9 +483,6 @@ export function composeSystemPrompt({
     parts.push(
       `\n\n---\n\n## If this brief is a slide deck / keynote / presentation\n\nThe user did not pre-select a "Slide deck" surface, but their request may still call for one. **If — and only if — the brief reads as slides, keynote, presentation, deck, PPT, or 讲解, follow the framework below.** Otherwise ignore everything in this section and continue with the freeform output you would have written anyway.\n\n${deckDirective}`,
     );
-    if (isTeamverSlideOnly && streamFormat === 'plain') {
-      parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE);
-    }
   }
 
   if (isMediaSurfaceEarly) {
@@ -520,6 +543,15 @@ The deck framework workflow above assumes TodoWrite and filesystem copies. **In 
 - Your response should contain exactly ONE \`<artifact type="text/html" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
 - Prefer starting directly with \`<artifact type="text/html"\` (at most one short sentence before it).
 - The artifact MUST end with \`</html>\` and \`</artifact>\` in this same turn.
+`;
+
+const TEAMVER_API_SKILL_SEED_OVERRIDE = `
+
+## Teamver API — skill seed override (read last — beats Active skill Pre-flight)
+
+The active skill mentions \`assets/template.html\`. **In this API run that file is not readable** (no Read/Bash tools). Ignore every instruction to copy, Read, or paste the seed template verbatim.
+
+Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. Prefer 6–8 slides with real copy. Never leave \`<!-- SLOT -->\` placeholders.
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
@@ -948,4 +980,21 @@ function derivePreflight(skillBody: string): string {
   }
   if (refs.length === 0) return '';
   return ` **Pre-flight (do this before any other tool):** Read ${refs.join(', ')} via the path written in the skill-root preamble. If the skill asks for daemon wrapper commands, use the runtime tool environment documented below; it provides the daemon URL and whether a run-scoped tool token is available without exposing token internals. The seed template defines the class system you'll paste into; the layouts file is the only acceptable source of section/screen/slide skeletons; the checklist and live-artifact references are your validation gate before emitting \`<artifact>\` or registering a live artifact. Skipping this step is the #1 reason output regresses to generic AI-slop.`;
+}
+
+/**
+ * API/BYOK counterpart to {@link derivePreflight}. Never tells the model to
+ * Read seed files — those tools are unavailable and the instruction alone
+ * triggers skeleton-paste truncation.
+ */
+function deriveApiModePreflight(skillBody: string): string {
+  if (!/assets\/template\.html|references\/layouts\.md/.test(skillBody)) return '';
+  return (
+    ' **API-mode pre-flight (overrides the skill\'s Read/copy workflow):** '
+    + 'Do NOT Read or paste `assets/template.html` / `references/layouts.md` — '
+    + 'no filesystem tools are available in this run. Infer layout intent from '
+    + 'the skill body text only, then emit ONE compact filled HTML deck artifact '
+    + 'in this same response (prefer 6–8 slides, real copy in every '
+    + '`<section class="slide">`, no SLOT comments, no verbatim skeleton paste).'
+  );
 }

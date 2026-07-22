@@ -75,21 +75,15 @@ export function validateHtmlArtifact(content: string): HtmlArtifactValidationRes
 }
 
 /**
- * Empty-body heuristic only applies to *small* scaffolds. Larger documents
- * (multi-KB decks built from `<div>` wrappers, inline CSS, or JS shells)
- * must never be classified as incomplete — a false positive here silently
- * skips `persistArtifact` and leaves the preview panel empty after a
- * successful-looking run ("완료됨 … 출력").
- */
-const INCOMPLETE_SHELL_BODY_CHECK_MAX = 2048;
-
-/**
- * Above this length, we still enforce structural closure (`</html>` present)
+ * Empty-body heuristic applies to every closed document shell, including
+ * multi-KB CSS chrome. Size alone never proves previewable content — a
+ * 3KB stylesheet wrapping empty / SLOT-only slides used to skip this
+ * check and persist as a blank white "성공" deck.
+ *
+ * Above STRUCTURAL_CLOSURE_CHECK_MIN we still enforce `</html>` present
  * because a mid-KB artifact that starts with `<!doctype html>` but has no
- * closing tag was mid-stream truncated by the model and is not a valid
- * deliverable. Uncapped below this so a tiny hand-crafted embed
- * (e.g. an inline SVG snippet wrapped in an html shell) still passes even
- * without a formal `</html>` if it has real body content.
+ * closing tag was mid-stream truncated. Below that floor, browsers'
+ * implicit-close behavior is allowed for tiny embeds with real body text.
  */
 const STRUCTURAL_CLOSURE_CHECK_MIN = 128;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
@@ -98,7 +92,7 @@ const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
  * Empty / scaffold HTML the model emits before real slide content.
  * Persist callers should skip silently — do not flash a refusal banner.
  *
- * Covers three failure modes observed in demos:
+ * Covers four failure modes observed in demos:
  *   1. classic too-short shell (39–63 chars),
  *   2. longer doctype+meta scaffolds whose `<body>` still has no visible
  *      content (charset-only heads that pass the 64-char length gate),
@@ -107,7 +101,10 @@ const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
  *      `</html>` — an artifact:end fired by parser.flush() on an unclosed
  *      `<artifact>` block. Rendering that in the iframe shows a blank page
  *      because most rendering engines wait for the closing tag; the run
- *      should be flagged as incomplete so auto-continue kicks in.
+ *      should be flagged as incomplete so auto-continue kicks in,
+ *   4. closed multi-KB CSS chrome with empty / SLOT-only `<section class="slide">`
+ *      bodies — previously skipped the emptiness check above 2KB and
+ *      persisted as a "successful" blank white deck.
  */
 export function isIncompleteHtmlDocumentShell(content: string): boolean {
   const trimmed = content.replace(/^﻿/, '').trim();
@@ -123,7 +120,8 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
   ) {
     return true;
   }
-  if (trimmed.length > INCOMPLETE_SHELL_BODY_CHECK_MAX) return false;
+  // Always run the emptiness / SLOT check — size alone never proves the
+  // body has previewable content (large CSS + empty slides was a demo bug).
   return isEffectivelyEmptyHtmlBody(trimmed);
 }
 

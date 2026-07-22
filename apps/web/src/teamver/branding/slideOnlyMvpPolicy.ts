@@ -83,7 +83,7 @@ export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Rec
     deckType: "pitch deck",
     topic,
     audience: "decision makers",
-    slideCount: "10-15 pages",
+    slideCount: "6-8 pages",
     speakerNotes: "no speaker notes",
     designSystem: "the active project design system",
   };
