@@ -38,7 +38,6 @@ import {
   findFirstQuestionForm,
   hasUnterminatedQuestionForm,
   parsePartialQuestionForm,
-  SLIDE_USER_DELIVERABLE_DIRECTIVE,
   type QuestionForm,
 } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
@@ -5073,19 +5072,10 @@ export function ProjectView({
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
-      const slideOnlyUserPrompt = ((): string => {
-        if (retryTarget || meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM) return prompt;
-        if (!slideOnlyMvp) return prompt;
-        const trimmed = prompt.trim();
-        if (!trimmed) return prompt;
-        if (isAutoContinueIncompleteOutputPrompt(trimmed)) return prompt;
-        if (trimmed.includes('[Deliverable instruction]')) return prompt;
-        return `${trimmed}${SLIDE_USER_DELIVERABLE_DIRECTIVE}`;
-      })();
       const userMsg: ChatMessage = retryTarget?.userMsg ?? {
         id: randomUUID(),
         role: 'user',
-        content: slideOnlyUserPrompt,
+        content: prompt,
         createdAt: startedAt,
         sessionMode: runSessionMode,
         ...(meta?.appliedPluginSnapshot

@@ -677,10 +677,6 @@ function parseDirectionCards(raw: unknown): DirectionCard[] | undefined {
 export const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE =
   '\n\n[Deliverable instruction] All discovery questions were skipped — choose reasonable defaults and emit ONE complete HTML slide deck in this same response inside `<artifact type="text/html" identifier="...">...</artifact>`. Do not stop after a plan, outline, or promise; the deck artifact is required now.';
 
-/** Appended to slide-only user prompts so API runs ship a full deck, not a head shell. */
-export const SLIDE_USER_DELIVERABLE_DIRECTIVE =
-  '\n\n[Deliverable instruction] Emit ONE complete HTML slide deck in this same response inside `<artifact type="text/html" identifier="...">...</artifact>`. The artifact body must be a self-contained `<!doctype html>…</html>` document with at least 6 filled `<section class="slide">` blocks. Do not open the artifact until the full deck is ready — never stop after only `<!doctype html><html><head>`.';
-
 export function isAllFormAnswersSkipped(
   form: QuestionForm,
   answers: Record<string, string | string[]>,

@@ -133,7 +133,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
-      expect(prompt).toContain('unified streaming rule');
+      expect(prompt).toContain('turn-1 quick brief');
+      expect(prompt).toContain('Quick brief — 30 seconds');
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
@@ -315,6 +316,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         metadata: { kind: 'deck' },
       });
       expect(prompt).toContain('unified streaming rule');
+      expect(prompt).toContain('Turn 1');
+      expect(prompt).toContain('question-form id="discovery"');
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');

@@ -62,14 +62,15 @@ For every slide deck creation or edit request, the turn is successful only if it
 - **Never open \`<artifact type="text/html">\` until the complete deck is ready to stream in one shot.** Opening the artifact and stopping after \`<head>\` is always rejected — if you cannot finish the deck this turn, do not open the artifact at all.
 `;
 
-const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — skip discovery (read before discovery rules below)
+const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 quick brief (required)
 
-This is a Teamver slide-only workspace. Override every discovery / question-form / TodoWrite rule below:
+This is a Teamver slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
 
-- Do NOT emit \`<question-form>\` on turn 1 or later unless the user explicitly asked a clarification question you cannot infer.
-- Do NOT emit a plan, outline, promise, or "I'll make it" message as the deliverable.
-- Do NOT open \`<artifact type="text/html">\` until the complete \`<!doctype html>…</html>\` deck is ready. Never stream only \`<head>\` and stop.
-- Your successful turn is exactly one complete HTML slide deck artifact with at least 6 filled \`<section class="slide">\` blocks.
+- Emit at most one short line of prose, then exactly one \`<question-form id="discovery" title="Quick brief — 30 seconds">\` block.
+- Omit "What are we making?" / task-type routing — this project is always a slide deck.
+- Do NOT emit a slide deck artifact, plan, outline, or TodoWrite on turn 1.
+
+After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete HTML deck — no second discovery form unless truly blocked.
 `;
 
 export interface AudioVoiceOption {
@@ -1074,17 +1075,19 @@ function summarizeApiModeSkillBody(skillBody: string): string {
  */
 const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — unified streaming rule (READ LAST — beats every rule above)
 
-Your successful response is **exactly one** streaming artifact:
+**Turn 1 (first user message, no prior form answers):** emit the quick-brief \`<question-form id="discovery">\` only. No HTML artifact on turn 1.
+
+**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is **exactly one** streaming artifact:
 
 \`<artifact type="text/html" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
-**How to stream it (non-negotiable):**
+**How to stream the deck (non-negotiable on turn 2+):**
 1. You MAY open \`<artifact type="text/html">\` at the very start (at most one short sentence before it).
 2. The first bytes inside the artifact MUST be \`<!doctype html><html><body><section class="slide">\` with **real slide copy** — never \`<head>\`, never \`<style>\`, never empty scaffolding.
 3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 

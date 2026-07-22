@@ -609,7 +609,6 @@ export function EntryShell({
       ? {
           ...input.metadata,
           kind: 'deck' as const,
-          skipDiscoveryBrief: true,
         }
       : input.metadata;
     const pluginId = resolveSlideOnlyCreatePluginId(
@@ -667,7 +666,6 @@ export function EntryShell({
       // the run reaches the daemon.
       kind: resolvePluginLoopProjectKind(payload),
       nameSource: 'prompt',
-      ...(slideOnlyMvp ? { skipDiscoveryBrief: true } : {}),
       ...(payload.contextPlugins && payload.contextPlugins.length > 0
         ? { contextPlugins: payload.contextPlugins }
         : {}),
