@@ -548,6 +548,13 @@
   font-size: var(--prose-font-size, 15px);
   letter-spacing: -0.01em;
 }
+.assistant-waiting-output {
+  width: fit-content;
+  max-width: 68ch;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
 /* Streaming caret — a blinking block riding the end of the last prose block,
    tracking the final character as tokens arrive (Lobe-style typing cursor). */
 .prose-block[data-stream-cursor="true"] > *:last-child::after {

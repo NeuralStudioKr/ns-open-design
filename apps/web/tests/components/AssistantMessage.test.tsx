@@ -200,6 +200,23 @@ describe('AssistantMessage feedback gate', () => {
     expect(screen.queryByRole('group', { name: 'Feedback' })).toBeNull();
   });
 
+  it('shows a visible waiting message before the first streamed output arrives', () => {
+    render(
+      <AssistantMessage
+        message={baseMessage({
+          content: '',
+          events: [{ kind: 'status', label: 'requesting' } as ChatMessage['events'][number]],
+          runStatus: 'running',
+          endedAt: undefined,
+        })}
+        streaming
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '' }).textContent).toContain('Waiting for first output');
+  });
+
   it('shows the feedback widget when the run failed', () => {
     render(
       <AssistantMessage
@@ -649,4 +666,3 @@ describe('AssistantMessage recovered produced files', () => {
     expect(screen.queryByText('deck-3.html')).toBeNull();
   });
 });
-

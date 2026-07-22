@@ -2643,6 +2643,13 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   color: var(--text-faint);
   font-size: 11px;
 }
+.assistant-waiting-output {
+  width: fit-content;
+  max-width: 68ch;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
 .assistant-footer .assistant-todo-progress {
   display: inline-flex;
   align-items: center;

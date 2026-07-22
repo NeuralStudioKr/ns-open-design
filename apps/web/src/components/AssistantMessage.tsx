@@ -665,6 +665,11 @@ function AssistantMessageImpl({
         <span className="role-name">{roleName}</span>
       </div>
       <div className="assistant-flow">
+        {streaming && !hasContent ? (
+          <div className="assistant-waiting-output shimmer-text shimmer-prepare" role="status">
+            {t("assistant.waitingFirstOutput")}
+          </div>
+        ) : null}
         {fileOps.length > 0 && !(hideAssistantThinkingDetails && streaming) ? (
           <FileOpsSummary
             entries={fileOps}

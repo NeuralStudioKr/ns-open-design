@@ -1081,6 +1081,13 @@
   font-size: var(--prose-font-size, 15px);
   line-height: var(--prose-line-height, 1.75);
 }
+.app .msg.assistant .assistant-waiting-output {
+  width: fit-content;
+  max-width: 68ch;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
 .app .msg.assistant .prose-block .md-p + .md-p {
   margin-top: 14px;
 }
