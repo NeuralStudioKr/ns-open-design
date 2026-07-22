@@ -38,6 +38,7 @@ import {
   findFirstQuestionForm,
   hasUnterminatedQuestionForm,
   parsePartialQuestionForm,
+  SLIDE_USER_DELIVERABLE_DIRECTIVE,
   type QuestionForm,
 } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
@@ -135,6 +136,7 @@ import {
   RESUME_CONTINUE_PROMPT,
   buildAutoContinueIncompleteOutputPrompt,
   extractAutoContinueContextFromAssistant,
+  isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
@@ -5071,10 +5073,19 @@ export function ProjectView({
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
+      const slideOnlyUserPrompt = ((): string => {
+        if (retryTarget || meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM) return prompt;
+        if (!slideOnlyMvp) return prompt;
+        const trimmed = prompt.trim();
+        if (!trimmed) return prompt;
+        if (isAutoContinueIncompleteOutputPrompt(trimmed)) return prompt;
+        if (trimmed.includes('[Deliverable instruction]')) return prompt;
+        return `${trimmed}${SLIDE_USER_DELIVERABLE_DIRECTIVE}`;
+      })();
       const userMsg: ChatMessage = retryTarget?.userMsg ?? {
         id: randomUUID(),
         role: 'user',
-        content: prompt,
+        content: slideOnlyUserPrompt,
         createdAt: startedAt,
         sessionMode: runSessionMode,
         ...(meta?.appliedPluginSnapshot
@@ -5381,11 +5392,10 @@ export function ProjectView({
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
-              if (
-                !canAutoContinue
-                && slideOnlyMvp
-                && !producedHtmlToOpen
-              ) {
+              // Synthesize a previewable deck on the FIRST incomplete turn —
+              // waiting for auto-continue cap exhaustion leaves the canvas
+              // blank through three identical head-shell failures.
+              if (slideOnlyMvp && !producedHtmlToOpen) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
                   : [...historyBase, userMsg, latestAssistantMsg];

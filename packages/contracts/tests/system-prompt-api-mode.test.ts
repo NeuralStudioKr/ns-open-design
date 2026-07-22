@@ -133,6 +133,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
+      expect(prompt).toContain('Teamver slide-only — skip discovery');
+      expect(prompt).not.toContain('# OD core directives');
+      expect(prompt).toContain('Never open `<artifact type="text/html">` until the complete deck is ready');
       expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');

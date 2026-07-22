@@ -59,6 +59,17 @@ For every slide deck creation or edit request, the turn is successful only if it
 - In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="text/html">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
+- **Never open \`<artifact type="text/html">\` until the complete deck is ready to stream in one shot.** Opening the artifact and stopping after \`<head>\` is always rejected — if you cannot finish the deck this turn, do not open the artifact at all.
+`;
+
+const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — skip discovery (read before discovery rules below)
+
+This is a Teamver slide-only workspace. Override every discovery / question-form / TodoWrite rule below:
+
+- Do NOT emit \`<question-form>\` on turn 1 or later unless the user explicitly asked a clarification question you cannot infer.
+- Do NOT emit a plan, outline, promise, or "I'll make it" message as the deliverable.
+- Do NOT open \`<artifact type="text/html">\` until the complete \`<!doctype html>…</html>\` deck is ready. Never stream only \`<head>\` and stop.
+- Your successful turn is exactly one complete HTML slide deck artifact with at least 6 filled \`<section class="slide">\` blocks.
 `;
 
 export interface AudioVoiceOption {
@@ -322,6 +333,7 @@ export function composeSystemPrompt({
 
   if (isTeamverSlideOnly) {
     parts.push(TEAMVER_SLIDE_ONLY_SCOPE);
+    parts.push('\n\n---\n\n', TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE);
   }
 
   if (sessionMode === 'chat') {
@@ -343,7 +355,10 @@ export function composeSystemPrompt({
     parts.push('\n\n---\n\n');
   }
 
-  if (!isMediaSurfaceEarly) {
+  // Slide-only embed runs must not inherit the heavy discovery layer — it
+  // tells the model to question-form / TodoWrite first and routinely causes
+  // plan-only or head-only artifact shells in API mode.
+  if (!isMediaSurfaceEarly && !isTeamverSlideOnly) {
     parts.push(DISCOVERY_AND_PHILOSOPHY, '\n\n---\n\n');
   }
 

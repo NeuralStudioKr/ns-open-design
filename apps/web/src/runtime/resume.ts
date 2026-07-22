@@ -115,8 +115,14 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
+  const partialShellOnly = Boolean(
+    context.partialHtml?.trim()
+    && isIncompleteHtmlDocumentShell(context.partialHtml),
+  );
+  // Head-only shells burn auto-continue slots without progress — escalate
+  // immediately instead of waiting for attempt 2.
   parts.push(
-    attempt >= 2
+    attempt >= 2 || partialShellOnly
       ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
       : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   );

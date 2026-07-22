@@ -128,6 +128,16 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toMatch(/token limit|max_tokens/i);
   });
 
+  it('escalates immediately when the prior partial HTML was a head-only shell', () => {
+    const shell = '<!doctype html>\n<html lang="ko">\n<head>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: shell,
+    });
+    expect(prompt).toContain('FINAL RETRY');
+    expect(prompt).not.toContain('```html');
+  });
+
   it('tells the model to discard tiny empty HTML shells instead of continuing them', () => {
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,
