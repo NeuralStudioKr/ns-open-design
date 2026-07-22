@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import type {
   LiveArtifactRefreshSsePayload,
   LiveArtifactSsePayload,
@@ -176,6 +177,11 @@ export function useProjectFileEvents(
   useEffect(() => {
     if (!enabled || !projectId) return;
     if (typeof window === 'undefined') return;
+    // EventSource cannot attach Teamver workspace/project identity headers.
+    // In embed mode nginx/daemon auth rejects `/events` with 401, which then
+    // reconnects forever. Embed uses run polling + explicit refresh paths
+    // instead of this headerless SSE stream.
+    if (isTeamverEmbedMode()) return;
     const conn = createProjectEventsConnection(
       projectId,
       (evt) => onChangeRef.current(evt),

@@ -91,6 +91,11 @@ function isSameOriginApiCall(url: unknown): boolean {
 }
 
 import { fetchDaemonAppVersion } from '../teamver/daemonAppVersion';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import {
+  isTeamverEmbedSessionAuthenticated,
+  subscribeTeamverEmbedSessionChanged,
+} from '../teamver/teamverEmbedSession';
 
 const APP_VERSION_PLACEHOLDER = '0.0.0';
 
@@ -131,6 +136,9 @@ export function useAppVersion(): string {
 export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const { locale } = useI18n();
   const appVersion = useAppVersion();
+  const [embedAuthReady, setEmbedAuthReady] = useState(() =>
+    !isTeamverEmbedMode() || isTeamverEmbedSessionAuthenticated(),
+  );
   // Identity is computed once on mount; locale flows in as a register update
   // when the user switches locales so subsequent events carry the fresh
   // value without re-initializing the PostHog client.
@@ -149,6 +157,14 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   // server-side captures end up on the same person record.
   const [resolvedAnonId, setResolvedAnonId] = useState<string | null>(null);
   useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverEmbedSessionChanged((detail) => {
+      setEmbedAuthReady(detail.authenticated);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!embedAuthReady) return;
     let cancelled = false;
     void (async () => {
       const resolvedAppVersion = await resolveAppVersionForCapture(appVersion);
@@ -177,7 +193,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [identity, locale, appVersion]);
+  }, [identity, locale, appVersion, embedAuthReady]);
 
   // Wrap window.fetch so every same-origin /api/* request carries the
   // analytics context for the daemon to mirror result events back with the
@@ -217,6 +233,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   // captures carry the right `locale` field without us threading it through
   // every track call site.
   useEffect(() => {
+    if (!embedAuthReady) return;
     let cancelled = false;
     void (async () => {
       const resolvedAppVersion = await resolveAppVersionForCapture(appVersion);
@@ -241,7 +258,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [identity, locale, appVersion]);
+  }, [identity, locale, appVersion, embedAuthReady]);
 
   const track = useCallback<AnalyticsContextValue['track']>(
     (event, properties, options) => {

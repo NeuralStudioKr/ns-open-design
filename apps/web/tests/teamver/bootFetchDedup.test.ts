@@ -27,6 +27,7 @@ vi.mock('../../src/teamver/projectRegistry', () => ({
 
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
+import { isTeamverEmbedSessionAuthenticated } from '../../src/teamver/teamverEmbedSession';
 import { readActiveTeamverWorkspaceId } from '../../src/teamver/activeTeamverWorkspace';
 import { resetDaemonAppVersionCacheForTests, fetchDaemonAppVersion } from '../../src/teamver/daemonAppVersion';
 import {
@@ -58,6 +59,7 @@ describe('boot fetch dedup', () => {
     resetFetchLiveArtifactsInflightForTests();
     vi.stubGlobal('fetch', vi.fn());
     vi.mocked(readActiveTeamverWorkspaceId).mockResolvedValue('ws-1');
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -133,7 +135,7 @@ describe('boot fetch dedup', () => {
   });
 
   it('coalesces concurrent listTemplates calls', async () => {
-    vi.mocked(fetch).mockResolvedValue(
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(JSON.stringify({ templates: [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -143,7 +145,16 @@ describe('boot fetch dedup', () => {
     const first = listTemplates();
     const second = listTemplates();
     await Promise.all([first, second]);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/templates', undefined);
+  });
+
+  it('skips listTemplates network calls before embed auth is ready', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+
+    await expect(listTemplates()).resolves.toEqual([]);
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
   });
 
   it('coalesces concurrent fetchDaemonConfig calls', async () => {
@@ -172,7 +183,10 @@ describe('boot fetch dedup', () => {
     const second = fetchDaemonAppVersion();
     await Promise.all([first, second]);
     expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
-    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/version', { cache: 'no-store' });
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/version', {
+      cache: 'no-store',
+      skipEmbedAuthRecovery: true,
+    });
   });
 
   it('coalesces concurrent fetchLiveArtifacts calls for the same project', async () => {

@@ -538,7 +538,9 @@ export async function listTemplates(): Promise<ProjectTemplate[]> {
   if (listTemplatesInflight) return listTemplatesInflight;
   listTemplatesInflight = (async () => {
     try {
-      const resp = await fetch('/api/templates');
+      const resp = await fetchProjectsListWhenAuthenticated('/api/templates');
+      if (!resp) return [];
+      noteDaemonProjectsListUnauthorized(resp);
       if (!resp.ok) return [];
       const json = (await resp.json()) as { templates: ProjectTemplate[] };
       return json.templates ?? [];
