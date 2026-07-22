@@ -146,7 +146,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // copy workflow truncates Messages-API output before </html>.
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('Do NOT paste or recreate a large framework skeleton');
+      expect(prompt).toContain('avoid `<head>` and `<style>` entirely');
+      expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
+      expect(prompt).not.toContain('<meta charset="utf-8" />');
     });
 
     it('keeps compact deck + skill-seed override when skillBody mentions template.html', () => {
@@ -167,8 +170,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Teamver API — skill seed override');
       expect(prompt).toContain('API-mode pre-flight');
       expect(prompt).toContain('Do NOT Read or paste');
+      expect(prompt).toContain('API-safe skill summary only');
+      expect(prompt).toContain('compact no-head HTML deck artifact');
       expect(prompt).not.toContain('Pre-flight (do this before any other tool)');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
+      expect(prompt).not.toContain('Copy assets/template.html and fill SLOT comments');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must

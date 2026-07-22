@@ -495,38 +495,17 @@ When the brief is "make me a deck", your output is this skeleton with theme toke
  */
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
 
-You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying scale-to-fit JS, print CSS, or chrome counters first.
+You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying \`<head>\`, \`<style>\`, scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or comments first.
 
-Emit ONE \`<artifact type="text/html" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**.
+Emit ONE \`<artifact type="text/html" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
-Minimal structure (fill every slide with real Korean/English copy — never leave SLOT comments):
+Required shape (copy the shape, replace every label with real user-specific copy):
 
-\`\`\`html
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>…</title>
-  <style>
-    html, body { margin: 0; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
-    .slide { min-height: 100vh; padding: 64px 72px; box-sizing: border-box; background: #fff; page-break-after: always; }
-    .slide h1 { font-size: 48px; margin: 0 0 16px; }
-    .slide h2 { font-size: 32px; margin: 0 0 12px; }
-    .slide p, .slide li { font-size: 20px; max-width: 48rem; }
-  </style>
-</head>
-<body>
-  <section class="slide">…real cover content…</section>
-  <section class="slide">…real body content…</section>
-  <!-- 6–12 slides total -->
-</body>
-</html>
-\`\`\`
+\`<artifact type="text/html" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0;background:#0b0c10;color:#111;font:18px/1.5 system-ui,sans-serif"><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><p>실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><ul><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
 1. Start the artifact as soon as you can — at most one short sentence of prose before it.
 2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
-3. Prefer 6–12 slides over a giant framework. Skip keyboard nav / transform scale scripts if they risk truncating the document.
-4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A truncated head-only document is worse than a short static deck.
+3. Prefer 5–7 slides over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
+4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
 `;

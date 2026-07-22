@@ -392,6 +392,12 @@ export function composeSystemPrompt({
     );
   }
 
+  const apiUnsafeSkillSeed =
+    streamFormat === 'plain'
+    && isTeamverSlideOnly
+    && !!skillBody
+    && /assets\/template\.html/.test(skillBody);
+
   if (skillBody && skillBody.trim().length > 0) {
     // API/BYOK plain mode has no Read/Bash — the daemon preflight that says
     // "Read assets/template.html first" causes the model to invent a giant
@@ -399,8 +405,11 @@ export function composeSystemPrompt({
     // </html>. Swap in an API-safe preflight that forbids seed copy.
     const preflight =
       streamFormat === 'plain' ? deriveApiModePreflight(skillBody) : derivePreflight(skillBody);
+    const bodyForPrompt = apiUnsafeSkillSeed
+      ? summarizeApiModeSkillBody(skillBody)
+      : skillBody.trim();
     parts.push(
-      `\n\n## Active skill${skillName ? ` — ${skillName}` : ''}\n\nFollow this skill's workflow exactly.${preflight}\n\n${skillBody.trim()}`,
+      `\n\n## Active skill${skillName ? ` — ${skillName}` : ''}\n\nFollow this skill's workflow exactly.${preflight}\n\n${bodyForPrompt}`,
     );
   }
 
@@ -539,7 +548,7 @@ The deck framework workflow above assumes TodoWrite and filesystem copies. **In 
 
 - Do NOT open \`<artifact type="text/html">\` until the complete filled deck is ready in one shot.
 - Do NOT emit a head-only scaffold (\`<!doctype html><html><head>\` with no body slides) and stop — that is always rejected.
-- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS — use the compact static \`.slide { min-height:100vh }\` structure from the API compact contract above.
+- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. In API mode, avoid \`<head>\` and \`<style>\` entirely unless absolutely necessary; write visible \`<body><section class="slide">...\` content first.
 - Your response should contain exactly ONE \`<artifact type="text/html" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
 - Prefer starting directly with \`<artifact type="text/html"\` (at most one short sentence before it).
 - The artifact MUST end with \`</html>\` and \`</artifact>\` in this same turn.
@@ -551,7 +560,7 @@ const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
 The active skill mentions \`assets/template.html\`. **In this API run that file is not readable** (no Read/Bash tools). Ignore every instruction to copy, Read, or paste the seed template verbatim.
 
-Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. Prefer 6–8 slides with real copy. Never leave \`<!-- SLOT -->\` placeholders.
+Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. Prefer 5–7 slides with real copy. Never leave \`<!-- SLOT -->\` placeholders. Do not start by writing a \`<head>\` block; start the visible \`<body><section class="slide">\` content immediately.
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
@@ -994,7 +1003,31 @@ function deriveApiModePreflight(skillBody: string): string {
     + 'Do NOT Read or paste `assets/template.html` / `references/layouts.md` — '
     + 'no filesystem tools are available in this run. Infer layout intent from '
     + 'the skill body text only, then emit ONE compact filled HTML deck artifact '
-    + 'in this same response (prefer 6–8 slides, real copy in every '
-    + '`<section class="slide">`, no SLOT comments, no verbatim skeleton paste).'
+    + 'in this same response (prefer 5–7 slides, real copy in every '
+    + '`<section class="slide">`, no SLOT comments, no verbatim skeleton paste, '
+    + 'no `<head>`/`<style>`-first output).'
   );
+}
+
+/**
+ * Teamver API slide runs cannot read skill seed files. Passing the raw skill
+ * body still leaves "copy assets/template.html" / SLOT workflow instructions
+ * in the prompt, which pulls Claude into writing a large head/style skeleton
+ * and truncating before body slides. Keep only a tiny visual-intent summary.
+ */
+function summarizeApiModeSkillBody(skillBody: string): string {
+  const lines = skillBody
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) =>
+      !/assets\/template\.html|references\/layouts\.md|SLOT|copy|paste|read|复制|粘贴|读取/i.test(line),
+    )
+    .slice(0, 12);
+  const summary = lines.join('\n');
+  return [
+    'API-safe skill summary only. Ignore the seed/template copy workflow.',
+    summary || 'Use the active deck skill only as broad visual inspiration.',
+    'Output a compact no-head HTML deck artifact with visible slide content first.',
+  ].join('\n');
 }
