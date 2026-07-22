@@ -71,6 +71,11 @@ import {
   shouldPostDaemonActiveContext,
   shouldShowOpenDesignPrivacyConsent,
 } from './teamver/embedDaemonFetchPolicy';
+import {
+  clearTeamverProjectDeletedTombstone,
+  markTeamverProjectDeletedTombstone,
+  readTeamverDeletedProjectIds,
+} from './teamver/deletedProjectTombstones';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
 import {
   subscribeTeamverEmbedSessionChanged,
@@ -575,7 +580,9 @@ function AppInner() {
     projectsRef.current = projects;
   }, [projects]);
   const pendingLocalProjectIdsRef = useRef<Set<string>>(new Set());
-  const locallyDeletedProjectIdsRef = useRef<Map<string, number>>(new Map());
+  const locallyDeletedProjectIdsRef = useRef<Map<string, number>>(
+    new Map([...readTeamverDeletedProjectIds()].map((id) => [id, 0])),
+  );
   const projectListMutationVersionRef = useRef(0);
   const projectListRequestGenerationRef = useRef(0);
   const latestAppliedProjectListGenerationRef = useRef(0);
@@ -664,6 +671,7 @@ function AppInner() {
     if (!trimmed) return;
     pendingLocalProjectIdsRef.current.add(trimmed);
     locallyDeletedProjectIdsRef.current.delete(trimmed);
+    clearTeamverProjectDeletedTombstone(trimmed);
     projectListMutationVersionRef.current += 1;
   }, []);
 
@@ -679,6 +687,7 @@ function AppInner() {
     pendingLocalProjectIdsRef.current.delete(projectId);
     projectListMutationVersionRef.current += 1;
     if (options?.deleted) {
+      markTeamverProjectDeletedTombstone(projectId);
       locallyDeletedProjectIdsRef.current.set(
         projectId,
         projectListMutationVersionRef.current,

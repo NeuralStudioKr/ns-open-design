@@ -19,6 +19,7 @@ import {
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import { PROJECT_LIST_PAGE_SIZE } from "./projectListLimits";
 import type { ProjectsListPageResult } from "../state/projects";
+import { isTeamverProjectDeletedTombstoned } from "./deletedProjectTombstones";
 
 type ProjectListCursor = { updatedAt: number; id: string };
 
@@ -195,7 +196,11 @@ async function loadSortedRegistryProjects(): Promise<Project[]> {
   if (rows === null) {
     throw new TeamverProjectRegistryError("teamver_project_registry_list_failed");
   }
-  return sortRegistryProjects(rows.map(mapRegistryRowToProject));
+  return sortRegistryProjects(
+    rows
+      .map(mapRegistryRowToProject)
+      .filter((project) => !isTeamverProjectDeletedTombstoned(project.id)),
+  );
 }
 
 /** Recent rail + embed list helpers — registry rows only (workspace SSOT). */
