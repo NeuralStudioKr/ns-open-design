@@ -1292,15 +1292,34 @@ function isAppVersionInfo(value: unknown): value is AppVersionInfo {
   );
 }
 
+let cachedAppVersionInfo: AppVersionInfo | null = null;
+let inflightAppVersionInfo: Promise<AppVersionInfo | null> | null = null;
+
 export async function fetchAppVersionInfo(): Promise<AppVersionInfo | null> {
-  try {
-    const resp = await fetch('/api/version');
-    if (!resp.ok) return null;
-    const json = (await resp.json()) as Partial<AppVersionResponse>;
-    return isAppVersionInfo(json.version) ? json.version : null;
-  } catch {
-    return null;
-  }
+  if (cachedAppVersionInfo) return cachedAppVersionInfo;
+  if (inflightAppVersionInfo) return inflightAppVersionInfo;
+
+  inflightAppVersionInfo = (async (): Promise<AppVersionInfo | null> => {
+    try {
+      const resp = await fetch('/api/version', { cache: 'no-store' });
+      if (!resp.ok) return null;
+      const json = (await resp.json()) as Partial<AppVersionResponse>;
+      const next = isAppVersionInfo(json.version) ? json.version : null;
+      if (next) cachedAppVersionInfo = next;
+      return next;
+    } catch {
+      return null;
+    } finally {
+      inflightAppVersionInfo = null;
+    }
+  })();
+
+  return inflightAppVersionInfo;
+}
+
+export function resetAppVersionInfoCacheForTests(): void {
+  cachedAppVersionInfo = null;
+  inflightAppVersionInfo = null;
 }
 
 export type LatestGithubReleaseInfo = {

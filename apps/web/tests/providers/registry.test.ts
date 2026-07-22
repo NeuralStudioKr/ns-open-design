@@ -21,6 +21,7 @@ import {
   fetchProjectFileText,
   fetchSkillExample,
   isDeployProviderId,
+  resetAppVersionInfoCacheForTests,
   resetRegistryCatalogCacheForTests,
   updateDeployConfig,
   uploadProjectFiles,
@@ -103,6 +104,7 @@ describe('fetchAgentsStream', () => {
 
 describe('fetchAppVersionInfo', () => {
   afterEach(() => {
+    resetAppVersionInfoCacheForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -131,6 +133,21 @@ describe('fetchAppVersionInfo', () => {
     );
 
     await expect(fetchAppVersionInfo()).resolves.toBeNull();
+  });
+
+  it('coalesces concurrent requests and caches successful version info', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      version: { version: '1.2.3', channel: 'beta', packaged: true, platform: 'darwin', arch: 'arm64' },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [first, second] = await Promise.all([fetchAppVersionInfo(), fetchAppVersionInfo()]);
+    expect(first).toEqual(second);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/version', { cache: 'no-store' });
+
+    await expect(fetchAppVersionInfo()).resolves.toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

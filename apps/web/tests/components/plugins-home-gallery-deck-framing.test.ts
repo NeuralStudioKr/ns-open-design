@@ -34,11 +34,12 @@ describe('plugins home gallery deck framing', () => {
 
     expect(source).toContain("const odMode = (record.manifest?.od as { mode?: unknown } | undefined)?.mode");
     expect(source).toContain("'data-od-mode': odMode");
+    expect(css).toContain('container-type: inline-size;');
     expect(css).toContain('.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__preview');
     expect(css).toContain('aspect-ratio: 16 / 9;');
     expect(css).toContain('.plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__html-iframe');
-    expect(css).toContain('width: 675%;');
-    expect(css).toContain('height: 675%;');
-    expect(css).toContain('transform: scale(0.1481482);');
+    expect(css).toContain('width: 1920px;');
+    expect(css).toContain('height: 1080px;');
+    expect(css).toContain('transform: scale(calc(100cqw / 1920px));');
   });
 });

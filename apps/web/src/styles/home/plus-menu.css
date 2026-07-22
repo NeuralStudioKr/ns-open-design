@@ -255,6 +255,7 @@
   overflow: hidden;
   background: var(--bg-subtle);
   flex: 0 0 auto;
+  container-type: inline-size;
 }
 .plus-menu__preview-hero .plugins-home__preview {
   border-radius: 0;
@@ -268,9 +269,9 @@
 .plus-menu__preview-hero[data-od-mode="deck"] .plugins-home__html-iframe {
   top: 0;
   left: 0;
-  width: 675%;
-  height: 675%;
-  transform: scale(0.1481482);
+  width: 1920px;
+  height: 1080px;
+  transform: scale(calc(100cqw / 1920px));
   transform-origin: 0 0;
   transition: none;
 }
