@@ -40,7 +40,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)).toBe(true);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/이 대화\(현재 프로젝트\)/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/다른 프로젝트/);
-    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/artifact type="text\/html"/);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/artifact type="deck"/);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Never use `type="text\/html"`/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Do not continue any other project/i);
   });
 

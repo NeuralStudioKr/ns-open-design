@@ -497,11 +497,11 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact co
 
 You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying \`<head>\`, \`<style>\`, scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or comments first.
 
-Emit ONE \`<artifact type="text/html" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
+Emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in Teamver; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
 Required shape (copy the shape, replace every label with real user-specific copy):
 
-\`<artifact type="text/html" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0;background:#0b0c10;color:#111;font:18px/1.5 system-ui,sans-serif"><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><p>실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><ul><li>실제 불릿</li></ul></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0;background:#0b0c10;color:#111;font:18px/1.5 system-ui,sans-serif"><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><p>실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><ul><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
 1. Start the artifact as soon as you can — at most one short sentence of prose before it.

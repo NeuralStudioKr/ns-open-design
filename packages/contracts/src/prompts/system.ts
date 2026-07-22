@@ -56,10 +56,10 @@ Out of scope: standalone image, video, audio, prototype pages, live artifacts, d
 
 For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
 
-- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="text/html">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document.
+- In API mode there are no filesystem write tools, so the normal deliverable path is exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. Teamver supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
-- **Never open \`<artifact type="text/html">\` until the complete deck is ready to stream in one shot.** Opening the artifact and stopping after \`<head>\` is always rejected — if you cannot finish the deck this turn, do not open the artifact at all.
+- **Never open \`<artifact type="deck">\` until the complete deck is ready to stream in one shot.** Opening the artifact and stopping after \`<head>\` is always rejected — if you cannot finish the deck this turn, do not open the artifact at all.
 `;
 
 const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 quick brief (required)
@@ -70,7 +70,7 @@ This is a Teamver slide-only workspace. On the user's **first message** in a new
 - Omit "What are we making?" / task-type routing — this project is always a slide deck.
 - Do NOT emit a slide deck artifact, plan, outline, or TodoWrite on turn 1.
 
-After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete HTML deck — no second discovery form unless truly blocked.
+After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete Teamver deck artifact — no second discovery form unless truly blocked. The deck artifact type must be \`deck\`, never \`text/html\`.
 `;
 
 export interface AudioVoiceOption {
@@ -562,7 +562,7 @@ const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE = `
 
 When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
 
-If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="text/html" identifier="...">...</artifact>\` block. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained HTML slide deck that can be previewed immediately.
+If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="...">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
 
 You may include at most one short sentence before the artifact. Do not stop after "I'll make it", a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
@@ -570,7 +570,7 @@ You may include at most one short sentence before the artifact. Do not stop afte
 
 - ❌ Emitting the framework skeleton with the \`<!-- SLOT: slide N content -->\` HTML comments left in place. The \`<section class="slide">\` blocks MUST contain real headings, paragraphs, lists, or images — not the commented placeholders. A skeleton with unfilled comment slots is a **broken deliverable**, not a starting point the host will fill in later.
 - ❌ Closing the artifact after only \`<!doctype html><html lang="en"><head>…</head></html>\` with an empty \`<body>\` (or no body at all). The body MUST include at least two \`<section class="slide">\` blocks with visible copy.
-- ❌ Emitting a second \`<artifact type="text/html">\` block **after** a full deck. The web UI persists the last artifact of the turn; an empty follow-up shell silently overwrites the real deck. Ship exactly one artifact per turn.
+- ❌ Emitting a second \`<artifact type="deck">\` block **after** a full deck. The web UI persists the last artifact of the turn; an empty follow-up shell silently overwrites the real deck. Ship exactly one artifact per turn.
 - ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
 
 **Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
@@ -582,11 +582,11 @@ const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
 The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
 
-- Do NOT open \`<artifact type="text/html">\` until the complete filled deck is ready in one shot.
+- Do NOT open \`<artifact type="deck">\` until the complete filled deck is ready in one shot.
 - Do NOT emit a head-only scaffold (\`<!doctype html><html><head>\` with no body slides) and stop — that is always rejected.
 - Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. In API mode, avoid \`<head>\` and \`<style>\` entirely unless absolutely necessary; write visible \`<body><section class="slide">...\` content first.
-- Your response should contain exactly ONE \`<artifact type="text/html" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
-- Prefer starting directly with \`<artifact type="text/html"\` (at most one short sentence before it).
+- Your response should contain exactly ONE \`<artifact type="deck" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
+- Prefer starting directly with \`<artifact type="deck"\` (at most one short sentence before it). Never start a Teamver deck with \`<artifact type="text/html"\`.
 - The artifact MUST end with \`</html>\` and \`</artifact>\` in this same turn.
 `;
 
@@ -612,7 +612,7 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
-- A final \`<artifact type="text/html">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
+- A final \`<artifact type="deck">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
 
 For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.
@@ -638,7 +638,7 @@ You are running through the Open Design BYOK proxy. The following tools ARE wire
 **Allowed output:**
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
 - Real tool calls to the functions listed above (e.g. \`web_fetch\`, \`generate_image\`).
-- A final \`<artifact type="text/html">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
+- A final \`<artifact type="deck">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
 
 For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.${options.teamverSlideOnly ? TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE : ''}`;
@@ -1079,10 +1079,10 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 
 **Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is **exactly one** streaming artifact:
 
-\`<artifact type="text/html" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
-1. You MAY open \`<artifact type="text/html">\` at the very start (at most one short sentence before it).
+1. You MAY open \`<artifact type="deck">\` at the very start (at most one short sentence before it). Do not use \`type="text/html"\`.
 2. The first bytes inside the artifact MUST be \`<!doctype html><html><body><section class="slide">\` with **real slide copy** — never \`<head>\`, never \`<style>\`, never empty scaffolding.
 3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
 4. Close with \`</body></html></artifact>\` in this same turn.

@@ -219,7 +219,7 @@ export function buildEmergencyArtifactFromMessages(
   if (!html) return null;
   return {
     identifier: 'deck',
-    artifactType: 'text/html',
+    artifactType: 'deck',
     title: 'deck',
     html,
   };

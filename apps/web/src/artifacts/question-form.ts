@@ -675,7 +675,7 @@ function parseDirectionCards(raw: unknown): DirectionCard[] | undefined {
 
 /** Appended when every discovery answer was skipped in slide-only embed. */
 export const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE =
-  '\n\n[Deliverable instruction] All discovery questions were skipped — choose reasonable defaults and emit ONE complete HTML slide deck in this same response inside `<artifact type="text/html" identifier="...">...</artifact>`. Do not stop after a plan, outline, or promise; the deck artifact is required now.';
+  '\n\n[Deliverable instruction] All discovery questions were skipped — choose reasonable defaults and emit ONE complete Teamver deck in this same response inside `<artifact type="deck" identifier="...">...</artifact>`. Do not use `type="text/html"`. Do not stop after a plan, outline, or promise; the deck artifact is required now.';
 
 export function isAllFormAnswersSkipped(
   form: QuestionForm,

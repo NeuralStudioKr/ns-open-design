@@ -195,6 +195,11 @@ function artifactExtensionForAttrs(attrs: Record<string, string>): '.html' | '.j
   return '.html';
 }
 
+function isStreamingCodeArtifactType(type: string): boolean {
+  if (!type) return true;
+  return type === 'deck' || /html|text\//i.test(type);
+}
+
 // Mirrors ProjectView's artifactBaseNameFor: the slug the persist path derives
 // the file name from.
 function artifactBaseNameForAttrs(attrs: Record<string, string>): string {
@@ -305,7 +310,7 @@ function artifactTranscriptSummary(
 ): string {
   const id = attrs['identifier'] ?? '';
   const title = attrs['title'] ?? '';
-  const type = attrs['type'] ?? 'text/html';
+  const type = attrs['type'] ?? 'deck';
   const meta = [
     id ? `identifier="${id}"` : '',
     title ? `title="${title}"` : '',
@@ -364,10 +369,10 @@ export function splitStreamingArtifact(content: string): {
   if (findUnskipped(content, CLOSE, gt, ranges) !== -1) return { head: content, live: null };
   const attrs = parseArtifactAttrs(content.slice(open, gt));
   const artifactType = attrs['type'] ?? '';
-  // Only HTML/text artifacts read as code. An unknown type (attrs not fully
+  // Only deck/HTML/text artifacts read as code. An unknown type (attrs not fully
   // parsed, or omitted) is treated as code-eligible since the dominant case is
   // text/html; media/binary types fall through and render as raw text.
-  if (artifactType && !/html|text\//i.test(artifactType)) return { head: content, live: null };
+  if (!isStreamingCodeArtifactType(artifactType)) return { head: content, live: null };
   return {
     head: content.slice(0, open).replace(/\s+$/, ''),
     live: {

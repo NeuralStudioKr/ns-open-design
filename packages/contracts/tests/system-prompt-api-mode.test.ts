@@ -141,9 +141,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
-      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
+      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="...">...</artifact>` block');
+      expect(prompt).toContain('Never start a Teamver deck with `<artifact type="text/html"`');
       expect(prompt).toContain('Teamver API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
+      expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
@@ -236,7 +238,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // media is disabled and the deliverable is always an HTML deck).
       expect(prompt).toContain('unified streaming rule');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
-      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
+      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="...">...</artifact>` block');
       expect(prompt).not.toContain('API mode — BYOK tools available');
     });
   });

@@ -40,7 +40,7 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '직전 응답이 완성된 HTML 슬라이드 덱을 남기지 못했습니다 (빈 뼈대만 있음). ' +
   '계획을 다시 설명하거나 사용자에게 재확인하지 말고, ' +
   '이 대화에 이미 있는 요청·목차만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
-  '출력 형식은 반드시 하나의 `<artifact type="text/html" identifier="...">...</artifact>` ' +
+  '출력 형식은 반드시 하나의 `<artifact type="deck" identifier="...">...</artifact>` ' +
   '블록이며, 그 내부에 `<!doctype html>`부터 `</html>`까지 자체 완결형(self-contained) HTML이 들어가야 합니다. ' +
   '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
   '길게 만들다가 끊기지 않도록 6~8장 사이의 간결한 HTML 덱으로 작성하세요. ' +
@@ -48,7 +48,7 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '이 대화에 슬라이드 목차가 없다면 임원 대상 6슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
   'The previous turn in THIS chat produced no usable slide deck — emit one complete self-contained ' +
-  'HTML deck of 6-8 concise slides inside a single `<artifact type="text/html">...</artifact>` block now, with no planning, no framework skeleton, no SLOT comments, and no tool calls.)';
+  'deck of 6-8 concise slides inside a single `<artifact type="deck">...</artifact>` block now, with no planning, no framework skeleton, no SLOT comments, and no tool calls. Never use `type="text/html"`.)';
 
 /** True when a user-message body is the automatic-continue recovery prompt. */
 export function isAutoContinueIncompleteOutputPrompt(content: string | null | undefined): boolean {
@@ -66,7 +66,7 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   `${AUTO_CONTINUE_PROMPT_SENTINEL}\n` +
   '[FINAL RETRY] 이 대화(현재 프로젝트)의 이전 자동 이어쓰기도 사용 가능한 슬라이드 덱을 만들지 못했습니다. ' +
   '다른 프로젝트·다른 대화의 슬라이드를 이어 쓰지 마세요. ' +
-  '이번 응답은 반드시 `<artifact type="text/html" identifier="...">`로 시작해서 `</artifact>`로 끝나야 합니다. ' +
+  '이번 응답은 반드시 `<artifact type="deck" identifier="...">`로 시작해서 `</artifact>`로 끝나야 합니다. `type="text/html"`은 금지입니다. ' +
   '인사, 사과, 계획, 목차 나열, "만들겠습니다" 약속, question-form은 금지입니다. ' +
   '응답 전체가 하나의 완전한 `<!doctype html>…</html>` 덱이어야 합니다. ' +
   // Token-budget escape hatch: previous full-scope attempts likely died at
@@ -110,7 +110,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
   if (context.truncatedByMaxTokens) {
     parts.push(
       'The previous response hit the output token limit while the HTML artifact was still streaming. ' +
-        'Continue from the partial HTML below and finish ONE complete `<artifact type="text/html">...</artifact>` deck in this turn. ' +
+        'Continue from the partial HTML below and finish ONE complete `<artifact type="deck">...</artifact>` deck in this turn. Never use `type="text/html"`. ' +
         'Do not restart with a new empty `<head>` shell.\n',
     );
   }

@@ -2626,7 +2626,7 @@ export function ProjectView({
       }
       // Pre-write structural gate for HTML artifacts (#50, #1143). Reject
       // bodies that obviously aren't a complete document — usually a one-line
-      // prose summary the model emitted inside `<artifact type="text/html">`
+      // prose summary the model emitted inside a deck artifact
       // when only Edit-tool changes happened this turn. Without this guard,
       // such content lands as a phantom HTML file in the project panel.
       if (ext === '.html') {
@@ -2911,7 +2911,7 @@ export function ProjectView({
     if (!html) return null;
     return {
       identifier: 'response',
-      artifactType: 'text/html',
+      artifactType: 'deck',
       title: 'Response',
       html,
     };
@@ -5191,7 +5191,7 @@ export function ProjectView({
       // (phantom guard); API mode writes the empty assistant shell after the
       // user row lands. Merge-order repair covers the rare user-PUT failure.
       if (!retryTarget) {
-        void saveMessage(project.id, runConversationId, userMsg)
+        void Promise.resolve(saveMessage(project.id, runConversationId, userMsg))
           .then(() => {
             persistMessage(assistantMsg);
           })
@@ -9003,7 +9003,7 @@ export function resolveTerminalArtifactToPersist(
   if (doctypeTail) {
     const base: Artifact = {
       identifier: 'response',
-      artifactType: 'text/html',
+      artifactType: 'deck',
       title: 'Response',
       html: doctypeTail,
     };
