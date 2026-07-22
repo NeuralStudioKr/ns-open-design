@@ -39,6 +39,7 @@ import {
   splitOnQuestionForms,
   stripUserVisibleQuestionFormProtocolText,
   stripTrailingOpenQuestionForm,
+  type FormSegment,
   type QuestionForm,
 } from "../artifacts/question-form";
 import {
@@ -2056,7 +2057,7 @@ function ProseBlock({
       { slideOnlyMvp, enabled: teamverEmbedEnabled },
       { locale },
     );
-    const filtered = raw.flatMap((seg) => {
+    const filtered: FormSegment[] = raw.flatMap<FormSegment>((seg) => {
       if (seg.kind === "text" && seg.text.includes(INVALID_QUESTION_FORM_FALLBACK)) {
         return [];
       }
