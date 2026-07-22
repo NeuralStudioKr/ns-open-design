@@ -310,4 +310,37 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 400));
     expect(stage?.style.transform).toBe(centered);
   });
+
+  it('host next/prev changes computed visibility after stacked stage letterbox wraps slides', async () => {
+    const slides = Array.from({ length: 3 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win, parentPostMessage } = setupDeckBridge(slides);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const slideEls = Array.from(
+      win.document.querySelectorAll('#od-stacked-deck-stage > .slide'),
+    ) as HTMLElement[];
+    expect(slideEls).toHaveLength(3);
+    expect(win.getComputedStyle(slideEls[0]!).display).not.toBe('none');
+    expect(win.getComputedStyle(slideEls[1]!).display).toBe('none');
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+
+    expect(win.getComputedStyle(slideEls[0]!).display).toBe('none');
+    expect(win.getComputedStyle(slideEls[1]!).display).not.toBe('none');
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+
+    postSlide(win, 'prev');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+
+    expect(win.getComputedStyle(slideEls[0]!).display).not.toBe('none');
+    expect(win.getComputedStyle(slideEls[1]!).display).toBe('none');
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+  });
 });

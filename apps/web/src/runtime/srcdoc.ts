@@ -2001,7 +2001,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   top: 0 !important;
   left: 0 !important;
   overflow: hidden !important;
-  display: flex !important;
+  display: flex;
   flex-direction: column !important;
   justify-content: center !important;
 }
@@ -2386,6 +2386,17 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     if (prev) prev.toggleAttribute('disabled', i <= 0);
     if (next) next.toggleAttribute('disabled', i >= count - 1);
   }
+  function setSlideDisplayed(el, visible) {
+    if (!el || !el.style) return;
+    var parent = el.parentElement;
+    var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
+    if (stacked) {
+      if (visible) el.style.removeProperty('display');
+      else el.style.setProperty('display', 'none', 'important');
+      return;
+    }
+    el.style.display = visible ? '' : 'none';
+  }
   function setActive(i){
     var list = slides();
     if (!list.length) return false;
@@ -2409,7 +2420,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
         else list[k].setAttribute('hidden', '');
       }
       if (usesInlineDisplay && list[k].style) {
-        list[k].style.display = k === target ? '' : 'none';
+        setSlideDisplayed(list[k], k === target);
       }
       if (usesInlineVisibility && list[k].style) {
         list[k].style.visibility = k === target ? '' : 'hidden';
@@ -2430,7 +2441,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
         list[k].classList.remove('active', 'is-active', 'current');
         if (k === target) list[k].classList.add(activeClass);
       }
-      list[k].style.display = k === target ? '' : 'none';
+      setSlideDisplayed(list[k], k === target);
     }
     updateDeckChrome(target, list.length);
     report();
