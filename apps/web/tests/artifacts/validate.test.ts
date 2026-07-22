@@ -100,10 +100,27 @@ describe('validateHtmlArtifact', () => {
     expect(isIncompleteHtmlDocumentShell(nearFloor)).toBe(false);
   });
 
-  it('does not treat slide-shaped empty sections as incomplete shells', () => {
-    const shell =
+  it('classifies empty slide sections / SLOT-only shells as incomplete', () => {
+    // Empty <section class="slide"> used to pass because any structural tag
+    // counted as content — persist then opened a blank white iframe ("완료됨"
+    // with empty preview). SLOT comments are stripped before the emptiness
+    // check, so comment-only slides must also fail.
+    const emptySection =
       '<!doctype html><html><head><meta charset="utf-8"></head><body><section class="slide"></section></body></html>';
-    expect(isIncompleteHtmlDocumentShell(shell)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(emptySection)).toBe(true);
+
+    const slotOnly =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><!-- SLOT: slide 1 content --></section>'
+      + '<section class="slide"><!-- SLOT: slide 2 content --></section>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(slotOnly)).toBe(true);
+
+    const filled =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>Cover</h1><p>Real copy for the deck.</p></section>'
+      + '</body></html>';
+    expect(isIncompleteHtmlDocumentShell(filled)).toBe(false);
   });
 
   it('rejects a long prose blob that lacks any HTML structural markers', () => {

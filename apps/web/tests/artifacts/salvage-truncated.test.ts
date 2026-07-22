@@ -26,6 +26,14 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(salvageTruncatedHtmlDocument(shell)).toBeNull();
   });
 
+  it("does not salvage SLOT-comment-only slide skeletons", () => {
+    const slotOnly = `<!doctype html><html lang="ko"><head><meta charset="utf-8" /><title>Deck</title>
+<style>.slide{padding:40px}</style></head><body>
+<section class="slide"><!-- SLOT: slide 1 content --></section>
+<section class="slide"><!-- SLOT: slide 2 content --></section>`;
+    expect(salvageTruncatedHtmlDocument(slotOnly)).toBeNull();
+  });
+
   it("does not touch an already-closed complete document", () => {
     const complete = `<!doctype html><html><head><title>ok</title></head><body>
 <section class="slide"><h1>Done</h1><p>Complete slide copy here.</p></section>

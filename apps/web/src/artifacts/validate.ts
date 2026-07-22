@@ -135,9 +135,12 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
-  // Structural / media tags count as real deliverable content even without text.
+  // Media / replaced elements count as deliverable content even without text.
+  // Empty containers (`<section class="slide"></section>`, SLOT-comment-only
+  // sections after comment strip) must NOT — those were the demo failure mode
+  // where persist succeeded and the iframe showed a blank white deck.
   if (
-    /<(img|video|audio|canvas|svg|iframe|picture|object|embed|section|article|main|nav|aside|header|footer|table|ul|ol|dl|h[1-6]|p|pre|blockquote|figure|form|button|a)\b/i
+    /<(img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i
       .test(withoutNoise)
   ) {
     return false;

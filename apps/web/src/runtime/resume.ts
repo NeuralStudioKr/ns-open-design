@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../types';
+import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
@@ -129,12 +130,26 @@ export function buildAutoContinueIncompleteOutputPrompt(
   }
 
   let partial = context.partialHtml?.trim();
-  // Re-feeding the 40-byte head-only shell on retry anchors the model to
-  // repeat the same failure; omit it from attempt 2+.
-  if (partial && attempt >= 2 && isIncompleteHtmlDocumentShell(partial)) {
-    partial = null;
-  }
-  if (partial && partial.length >= 128) {
+  if (partial && isIncompleteHtmlDocumentShell(partial)) {
+    // Truncated decks with real slide copy are still worth fencing so the
+    // model can continue from the cut. Empty / SLOT-only shells must not be
+    // re-fed — that anchors the next turn to the same blank deliverable.
+    const salvaged = salvageTruncatedHtmlDocument(partial);
+    if (salvaged) {
+      parts.push(
+        '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
+          + '```html\n'
+          + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
+          + '\n```',
+      );
+    } else {
+      parts.push(
+        '\n\n[이전 HTML은 빈 document shell / 미완성 덱에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
+          + partial.slice(0, 160)
+          + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 6~8장으로 즉시 작성하세요.',
+      );
+    }
+  } else if (partial && partial.length >= 128) {
     parts.push(
       '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
         + '```html\n'

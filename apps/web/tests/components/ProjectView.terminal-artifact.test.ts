@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  resolveTerminalArtifactToPersist,
   shouldFailSlideRunForMissingHtmlDeliverable,
   shouldFailSlideRunWithoutHtmlDeliverable,
 } from "../../src/components/ProjectView";
@@ -111,6 +112,24 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
     ).toBe(true);
   });
 
+  it("fails when SLOT-only / empty slide sections streamed with nothing on disk", () => {
+    const slotOnly =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><!-- SLOT: slide 1 content --></section>'
+      + '<section class="slide"><!-- SLOT: slide 2 content --></section>'
+      + '</body></html>';
+    expect(
+      shouldFailSlideRunForMissingHtmlDeliverable({
+        slideOnlyMvp: true,
+        producedHtmlToOpen: null,
+        parsedArtifact: { html: slotOnly },
+        liveHtml: slotOnly,
+        finalText: "슬라이드 완성했습니다",
+        terminalArtifactPersistFailed: false,
+      }),
+    ).toBe(true);
+  });
+
   it("does not double-count when persist already failed", () => {
     expect(
       shouldFailSlideRunForMissingHtmlDeliverable({
@@ -122,5 +141,29 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
         terminalArtifactPersistFailed: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveTerminalArtifactToPersist", () => {
+  it("salvages a doctype tail when the parser missed the unclosed artifact body", () => {
+    const finalText =
+      "좋아요. 바로 작성합니다.\n"
+      + '<artifact type="text/html" identifier="deck">\n'
+      + '<!doctype html><html><head><meta charset="utf-8"><title>Deck</title></head><body>'
+      + '<section class="slide"><h1>AI 도입 효과</h1><p>업무 생산성과 비용 절감을 설명합니다.</p></section>';
+
+    const resolved = resolveTerminalArtifactToPersist(null, finalText, () => null);
+    expect(resolved?.html).toContain("<h1>AI 도입 효과</h1>");
+    expect(resolved?.html).toContain("</html>");
+  });
+
+  it("does not salvage SLOT-only doctype tails as successful artifacts", () => {
+    const finalText =
+      '<artifact type="text/html" identifier="deck">\n'
+      + '<!doctype html><html><head><meta charset="utf-8"><title>Deck</title></head><body>'
+      + '<section class="slide"><!-- SLOT: slide 1 content --></section>';
+
+    const resolved = resolveTerminalArtifactToPersist(null, finalText, () => null);
+    expect(resolved).toBeNull();
   });
 });

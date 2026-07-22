@@ -8879,6 +8879,20 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   });
 }
 
+const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
+
+function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
+  const salvaged = salvageTruncatedHtmlDocument(html);
+  if (
+    salvaged
+    && !isIncompleteHtmlDocumentShell(salvaged)
+    && validateHtmlArtifact(salvaged).ok
+  ) {
+    return { ...base, html: salvaged };
+  }
+  return null;
+}
+
 /** Pick the best HTML artifact candidate for terminal persist / auto-open. */
 export function resolveTerminalArtifactToPersist(
   parsedArtifact: Artifact | null,
@@ -8887,12 +8901,11 @@ export function resolveTerminalArtifactToPersist(
 ): Artifact | null {
   const standalone = fromStandalone(finalText);
   const parsed = parsedArtifact?.html ? parsedArtifact : null;
+  const doctypeTail = finalText.match(DOCTYPE_HTML_TAIL_RE)?.[0] ?? null;
 
   if (parsed?.html && isIncompleteHtmlDocumentShell(parsed.html)) {
-    const salvaged = salvageTruncatedHtmlDocument(parsed.html);
-    if (salvaged && !isIncompleteHtmlDocumentShell(salvaged) && validateHtmlArtifact(salvaged).ok) {
-      return { ...parsed, html: salvaged };
-    }
+    const salvagedParsed = artifactFromSalvagedHtml(parsed.html, parsed);
+    if (salvagedParsed) return salvagedParsed;
     if (
       standalone?.html
       && !isIncompleteHtmlDocumentShell(standalone.html)
@@ -8900,9 +8913,32 @@ export function resolveTerminalArtifactToPersist(
     ) {
       return standalone;
     }
+    // Unclosed artifact body often lands in assistant text after parser.flush();
+    // salvage the doctype tail when the live parsed shell is empty/truncated.
+    if (doctypeTail) {
+      const salvagedText = artifactFromSalvagedHtml(doctypeTail, parsed);
+      if (salvagedText) return salvagedText;
+    }
     return parsed;
   }
   if (parsed?.html) return parsed;
+  if (
+    standalone?.html
+    && !isIncompleteHtmlDocumentShell(standalone.html)
+    && validateHtmlArtifact(standalone.html).ok
+  ) {
+    return standalone;
+  }
+  if (doctypeTail) {
+    const base: Artifact = {
+      identifier: 'response',
+      artifactType: 'text/html',
+      title: 'Response',
+      html: doctypeTail,
+    };
+    const salvagedText = artifactFromSalvagedHtml(doctypeTail, base);
+    if (salvagedText) return salvagedText;
+  }
   return standalone;
 }
 

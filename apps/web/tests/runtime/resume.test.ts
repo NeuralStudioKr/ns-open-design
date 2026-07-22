@@ -77,7 +77,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('슬라이드 구성');
   });
 
-  it('omits head-only partial shells from escalated retries', () => {
+  it('omits head-only partial shells from every automatic-continue attempt', () => {
     const shell = '\n<!doctype html>\n<html lang="ko">\n<head>';
     const first = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,
@@ -87,11 +87,37 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       attempt: 2,
       partialHtml: shell,
     });
-    // Tiny shells are never fenced as "continue this HTML" — they get a
-    // discard notice on attempt 1 and are omitted entirely on attempt 2+.
+    // Tiny / empty shells are never fenced as "continue this HTML".
     expect(first).not.toContain('```html');
     expect(first).toContain('빈 document shell');
     expect(second).not.toContain('```html');
+    expect(second).toContain('빈 document shell');
+  });
+
+  it('discards closed SLOT-only decks instead of fencing them', () => {
+    const slotOnly =
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><!-- SLOT: slide 1 content --></section>'
+      + '<section class="slide"><!-- SLOT: slide 2 content --></section>'
+      + '</body></html>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: slotOnly,
+    });
+    expect(prompt).not.toContain('```html');
+    expect(prompt).toContain('버리세요');
+  });
+
+  it('still fences truncated decks that already have real slide copy', () => {
+    const truncated =
+      '<!doctype html><html><head><title>Deck</title></head><body>'
+      + '<section class="slide"><h1>Partial</h1><p>Started content that is long enough to continue safely.</p></section>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: truncated,
+    });
+    expect(prompt).toContain('```html');
+    expect(prompt).toContain('<h1>Partial</h1>');
   });
 
   it('prepends truncation guidance when the prior turn hit max_tokens', () => {

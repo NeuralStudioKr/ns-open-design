@@ -14,8 +14,25 @@ const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 const HAS_BODY_CLOSE_RE = /<\/body\s*>/i;
-const HAS_REAL_SLIDE_CONTENT_RE =
-  /<(?:section|article|main|h[1-6]|p|ul|ol|li|table|img|svg|div)\b[^>]*>[\s\S]{8,}/i;
+const HAS_MEDIA_CONTENT_RE = /<(?:img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
+// Visible text inside a content-ish tag (not merely nested empty containers).
+const HAS_VISIBLE_TEXT_CONTENT_RE =
+  /<(?:h[1-6]|p|li|td|th|dt|dd|blockquote|figcaption|label|button|a|span|strong|em|b|i|code|pre)\b[^>]*>\s*[^<\s][\s\S]*?<\/(?:h[1-6]|p|li|td|th|dt|dd|blockquote|figcaption|label|button|a|span|strong|em|b|i|code|pre)\s*>/i;
+
+function hasSalvageableSlideContent(html: string): boolean {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  if (HAS_MEDIA_CONTENT_RE.test(withoutComments)) return true;
+  if (HAS_VISIBLE_TEXT_CONTENT_RE.test(withoutComments)) return true;
+  // Fallback: any non-trivial text node left after stripping tags/scripts/styles.
+  const text = withoutComments
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length >= 8;
+}
 
 function findLastArtifactOpen(sourceText: string, identifier?: string): number {
   if (!identifier) return sourceText.lastIndexOf('<artifact');
@@ -140,7 +157,10 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   if (trimmed.length < 128) return null;
   if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
   if (HAS_HTML_CLOSE_RE.test(trimmed) && HAS_BODY_CLOSE_RE.test(trimmed)) return null;
-  if (!HAS_REAL_SLIDE_CONTENT_RE.test(trimmed)) return null;
+  // Strip SLOT / placeholder comments before the content sniff — otherwise a
+  // skeleton with only `<!-- SLOT: slide N -->` looks "long enough" to salvage
+  // into a closed blank deck.
+  if (!hasSalvageableSlideContent(trimmed)) return null;
 
   let out = trimmed;
   // Drop a trailing partial tag the stream was cut mid-attribute on
@@ -168,6 +188,6 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
 
   if (!validateHtmlArtifact(out).ok) return null;
   // Still refuse empty shells that only got closers appended.
-  if (!HAS_REAL_SLIDE_CONTENT_RE.test(out)) return null;
+  if (!hasSalvageableSlideContent(out)) return null;
   return out;
 }
