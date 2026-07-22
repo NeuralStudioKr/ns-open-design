@@ -5,6 +5,7 @@ import { setHostPetVisible } from '@open-design/host';
 import { RUNS_CHANGED_EVENT, listProjectRuns } from '../../providers/daemon';
 import { loadConfig } from '../../state/config';
 import { listProjects } from '../../state/projects';
+import { isTeamverEmbedMode } from '../../teamver/designApiBase';
 import type { AppConfig } from '../../types';
 import { PetOverlay, type PetTaskCenter } from './PetOverlay';
 import { buildPetTaskCenter } from './taskCenter';
@@ -13,6 +14,11 @@ const CONFIG_POLL_MS = 1500;
 const TASK_POLL_MS = 2000;
 
 export function DesktopPetSurface() {
+  if (isTeamverEmbedMode()) return null;
+  return <DesktopPetSurfaceInner />;
+}
+
+function DesktopPetSurfaceInner() {
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
   const [taskCenter, setTaskCenter] = useState<PetTaskCenter>({
     running: [],

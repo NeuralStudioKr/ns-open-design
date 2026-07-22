@@ -30,7 +30,9 @@ import type {
   SseErrorPayload,
 } from '@open-design/contracts';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { isDesignAuthRefreshDeclined } from '../teamver/designBffClient';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
 import { stripInternalOpenDesignMarkup } from '../runtime/internalAgentMarkup';
 import type { StreamHandlers } from './anthropic';
 
@@ -905,15 +907,23 @@ export function resetListProjectRunsInflightForTests(): void {
 }
 
 export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
+  if (
+    isTeamverEmbedMode()
+    && (!isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined())
+  ) {
+    return [];
+  }
   if (listProjectRunsInflight) return listProjectRunsInflight;
   listProjectRunsInflight = (async () => {
     try {
-      const resp = await fetchTeamverDaemon('/api/runs');
+      const resp = await fetchTeamverDaemon('/api/runs', { skipEmbedAuthRecovery: true });
       if (!resp.ok) {
-        console.warn('[teamver] listProjectRuns non-ok', {
-          status: resp.status,
-          redirected: resp.type === 'opaqueredirect',
-        });
+        if (!(isTeamverEmbedMode() && resp.status === 401)) {
+          console.warn('[teamver] listProjectRuns non-ok', {
+            status: resp.status,
+            redirected: resp.type === 'opaqueredirect',
+          });
+        }
         return [];
       }
       const body = (await resp.json()) as ChatRunListResponse;

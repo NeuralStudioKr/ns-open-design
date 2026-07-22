@@ -9,6 +9,10 @@ vi.mock('../../src/teamver/teamverEmbedSession', () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => true),
 }));
 
+vi.mock('../../src/teamver/designBffClient', () => ({
+  isDesignAuthRefreshDeclined: vi.fn(() => false),
+}));
+
 vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
   fetchTeamverDaemon: vi.fn(),
   buildTeamverDaemonRequestHeaders: vi.fn(async () => ({})),
@@ -28,6 +32,7 @@ vi.mock('../../src/teamver/projectRegistry', () => ({
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
 import { isTeamverEmbedSessionAuthenticated } from '../../src/teamver/teamverEmbedSession';
+import { isDesignAuthRefreshDeclined } from '../../src/teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../../src/teamver/activeTeamverWorkspace';
 import { resetDaemonAppVersionCacheForTests, fetchDaemonAppVersion } from '../../src/teamver/daemonAppVersion';
 import {
@@ -60,6 +65,7 @@ describe('boot fetch dedup', () => {
     vi.stubGlobal('fetch', vi.fn());
     vi.mocked(readActiveTeamverWorkspaceId).mockResolvedValue('ws-1');
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -131,7 +137,25 @@ describe('boot fetch dedup', () => {
     const second = listProjectRuns();
     await Promise.all([first, second]);
     expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
-    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/runs');
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith('/api/runs', {
+      skipEmbedAuthRecovery: true,
+    });
+  });
+
+  it('skips listProjectRuns network calls before embed auth is ready', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
+
+    await expect(listProjectRuns()).resolves.toEqual([]);
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
+  });
+
+  it('skips listProjectRuns network calls while auth refresh is declined', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(true);
+
+    await expect(listProjectRuns()).resolves.toEqual([]);
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
   });
 
   it('coalesces concurrent listTemplates calls', async () => {
