@@ -325,6 +325,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('inline layout vocabulary');
+      expect(prompt).toContain('split thesis, timeline, quote');
+      expect(prompt).toContain('template/design-system feel');
       expect(prompt).toContain('bind quick-brief answers');
       expect(prompt).toContain('theme rhythm');
       expect(prompt).not.toContain('assets/template.html');
@@ -368,6 +370,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Theme rhythm');
       expect(prompt).toContain('Alternate light and dark slides');
       expect(prompt).toContain('compact inline layout vocabulary');
+      expect(prompt).toContain('typography mood');
+      expect(prompt).toContain('avoid generic title-plus-bullets repetition');
       expect(prompt).not.toContain('Read assets/template.html');
       expect(prompt).not.toContain('See references/layouts.md for cover');
       expect(prompt).toContain('you cannot Read that file in API mode');

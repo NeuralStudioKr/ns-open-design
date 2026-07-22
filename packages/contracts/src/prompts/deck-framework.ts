@@ -495,26 +495,35 @@ When the brief is "make me a deck", your output is this skeleton with theme toke
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY = `# Compact API — inline layout vocabulary (no <head>, no shared CSS)
 
-Each slide is rendered on a **1920×1080** canvas in the host viewer. Use large, presentation-scale typography (not web-page 16–18px defaults). Fill the canvas: center content vertically with \`display:flex;flex-direction:column;justify-content:center\` on the slide, and use generous padding (64–96px).
+Each slide is rendered on a **1920×1080** canvas. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
 
-Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, and **density** across slides (alternate light/dark surfaces — never 4+ identical slides in a row).
+Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, **composition**, and **density** across slides (alternate light/dark surfaces — never 3+ identical slides in a row). A good Teamver deck should look like a designed presentation, not a web article split into full-screen rows.
 
 **Cover** — big title + one lead line:
-\`<section class="slide" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><p style="margin:0 0 20px;font:600 18px/1.2 sans-serif;letter-spacing:.08em;text-transform:uppercase;opacity:.75">컨텍스트</p><h1 style="margin:0 0 28px;font:700 72px/1.05 serif;max-width:16ch">실제 헤드라인</h1><p style="margin:0;font:400 28px/1.45 sans-serif;max-width:48rem;opacity:.9">한 줄 리드.</p></section>\`
+\`<section class="slide" style="min-height:100vh;padding:96px 88px;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><p style="font:600 18px sans-serif;letter-spacing:.08em">컨텍스트</p><h1 style="font:700 72px/1.05 serif">실제 헤드라인</h1><p style="font:28px/1.45 sans-serif">한 줄 리드.</p></section>\`
 
 **Body** — eyebrow + headline + paragraph or bullets:
-\`<section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:center"><p style="margin:0 0 16px;font:600 16px/1.2 sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#64748b">섹션 라벨</p><h2 style="margin:0 0 24px;font:700 52px/1.1 sans-serif;max-width:18ch">핵심 메시지</h2><ul style="margin:0;padding-left:1.35rem;font:26px/1.55 sans-serif;max-width:52rem"><li>구체적 불릿</li></ul></section>\`
+\`<section class="slide" style="min-height:100vh;padding:80px 88px;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:center"><p style="font:600 16px sans-serif;letter-spacing:.06em;color:#64748b">섹션 라벨</p><h2 style="font:700 52px/1.1 sans-serif">핵심 메시지</h2><ul style="font:26px/1.55 sans-serif"><li>구체적 불릿</li></ul></section>\`
 
 **Big stat** — one number + caption (centered):
 \`<section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font:700 120px/1 sans-serif">38<span style="font-size:.45em">%</span></div><p style="margin:28px 0 0;max-width:36rem;font:26px/1.5 sans-serif;opacity:.85">수치가 의미하는 한 줄 설명.</p></section>\`
 
 **Three-column** — headline + 3 points (use flex, keep copy short):
-\`<section class="slide" style="min-height:100vh;padding:72px 80px;box-sizing:border-box;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 36px;font:700 48px/1.15 sans-serif;max-width:20ch">세 가지 포인트</h2><div style="display:flex;gap:28px;align-items:stretch"><div style="flex:1"><h3 style="margin:0 0 12px;font:700 26px/1.3 sans-serif">포인트 1</h3><p style="margin:0;font:22px/1.55 sans-serif">2문장 이내.</p></div><div style="flex:1;border-left:4px solid #2563eb;padding-left:20px"><h3 style="margin:0 0 12px;font:700 26px/1.3 sans-serif">포인트 2</h3><p style="margin:0;font:22px/1.55 sans-serif">2문장 이내.</p></div><div style="flex:1"><h3 style="margin:0 0 12px;font:700 26px/1.3 sans-serif">포인트 3</h3><p style="margin:0;font:22px/1.55 sans-serif">2문장 이내.</p></div></div></section>\`
+\`<section class="slide" style="min-height:100vh;padding:72px 80px;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:center"><h2 style="font:700 48px/1.15 sans-serif">세 가지 포인트</h2><div style="display:flex;gap:28px"><p>포인트 1</p><p>포인트 2</p><p>포인트 3</p></div></section>\`
+
+**Split thesis** — left headline, right evidence cards:
+Use CSS grid .9fr/1.1fr: strong left claim + two right evidence cards.
+
+**Timeline / pipeline** — 4 steps across the canvas:
+Use 4 numbered horizontal steps; each step gets one short label and one evidence line.
+
+**Quote / principle** — one strong sentence with attribution:
+Use a 56–72px blockquote/principle sentence with small attribution.
 
 **Closing** — recap CTA:
 \`<section class="slide" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#1e293b;color:#fff;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 20px;font:700 56px/1.1 sans-serif;max-width:16ch">다음 단계</h2><p style="margin:0;font:26px/1.5 sans-serif;max-width:40rem">행동을 유도하는 마무리 한두 문장.</p></section>\`
 
-Quality bar: 6–8 slides, each with a distinct layout role (cover → 3–5 body/stat/column mixes → closing). Bind active design-system colors into these inline styles when provided.
+Quality bar: 6–8 slides, each with a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). Bind active design-system colors into these inline styles when provided. Do not use the example colors literally when an active design system or selected template supplies a stronger visual direction.
 `;
 
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
@@ -532,7 +541,8 @@ Rules:
 2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
 3. Prefer 6–8 slides over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
-5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background on every slide.
+5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background/composition on every slide.
+6. Preserve the selected template/design-system feel: palette, typography mood, density, accent treatment, and slide rhythm must be recognizable even in compact inline HTML.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
 `;

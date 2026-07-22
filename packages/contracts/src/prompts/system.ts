@@ -1128,13 +1128,15 @@ function summarizeApiModeSkillBody(skillBody: string): string {
   ].slice(0, 16);
   const summary = prioritized.join('\n');
   const layoutHint = /references\/layouts\.md|layout vocabulary|slide layouts/i.test(skillBody)
-    ? 'The skill ships layout patterns in references/layouts.md — you cannot Read that file in API mode. Use the compact inline layout vocabulary from the deck contract instead (cover, body, big-stat, three-column, closing).'
+    ? 'The skill ships layout patterns in references/layouts.md — you cannot Read that file in API mode. Use the compact inline layout vocabulary from the deck contract instead (cover, body, big-stat, split thesis, timeline, quote, three-column, closing).'
     : '';
   return [
     'API-safe skill summary only. Ignore the seed/template copy workflow.',
     layoutHint,
     summary || 'Use the active deck skill only as broad visual inspiration.',
-    'Apply theme rhythm: alternate light/dark surfaces across slides; never repeat the same background on 4+ slides in a row.',
+    'Apply theme rhythm: alternate light/dark surfaces across slides; never repeat the same background/composition on 3+ slides in a row.',
+    'Preserve template/design-system feel: palette, typography mood, density, accent treatment, and slide rhythm.',
+    'Build a slide arc before emitting: cover, 4–6 varied evidence/story slides, closing; avoid generic title-plus-bullets repetition.',
     'Output a compact no-head HTML deck artifact with varied inline layouts and visible slide content first.',
   ]
     .filter(Boolean)
@@ -1172,7 +1174,7 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 - **tone** — visual and copy style: \`professional\` = restrained palette and formal copy; \`tech_modern\` = high contrast, crisp sans, product-demo feel; \`friendly\` = warm accents and plain language.
 - **must_include** — each requested topic gets at least one dedicated slide or clearly labeled section; do not omit user-named items.
 
-If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Vary slide layouts per the compact inline layout vocabulary; do not output 6 identical white boxes.`;
+If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the active template/design-system feel, and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
 
 const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 
@@ -1188,7 +1190,7 @@ Your successful response is **exactly one** streaming artifact in this same turn
 3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without 6+ filled slides, or repeating the same layout/background on every slide. Vary layouts per the compact inline layout vocabulary.`;
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without 6+ filled slides, or repeating the same layout/background/composition on every slide. Preserve template/design-system feel and vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
