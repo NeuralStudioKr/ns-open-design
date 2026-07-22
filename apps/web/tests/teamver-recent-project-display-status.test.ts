@@ -37,4 +37,22 @@ describe("resolveRecentProjectDisplayStatus", () => {
       resolveRecentProjectDisplayStatus("p1", undefined, new Map()),
     ).toBe("not_started");
   });
+
+  it("treats visible artifact output as completed when registry is still not_started", () => {
+    expect(
+      resolveRecentProjectDisplayStatus("p1", "not_started", new Map(), {
+        hasArtifactSignal: true,
+      }),
+    ).toBe("succeeded");
+    expect(
+      resolveRecentProjectDisplayStatus("p1", undefined, new Map(), {
+        hasArtifactSignal: true,
+      }),
+    ).toBe("succeeded");
+    expect(
+      resolveRecentProjectDisplayStatus("p1", "failed", new Map(), {
+        hasArtifactSignal: true,
+      }),
+    ).toBe("failed");
+  });
 });

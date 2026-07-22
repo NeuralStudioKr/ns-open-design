@@ -160,6 +160,33 @@ describe('RecentProjectsStrip', () => {
     });
   });
 
+  it('shows completed status when a recent project has a resolved artifact cover', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('<html><head></head><body>Prototype</body></html>')),
+    );
+
+    const { container } = render(
+      <RecentProjectsStrip
+        projects={[
+          project({
+            id: 'project-html',
+            name: 'Finished Prototype',
+            updatedAt: 3,
+            status: { value: 'not_started' },
+          }),
+        ]}
+        onOpen={() => {}}
+        onViewAll={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.recent-projects__card-status-succeeded')).toBeTruthy();
+      expect(container.querySelector('.recent-projects__card-status-not_started')).toBeNull();
+    });
+  });
+
   it('resets cover cache when workspaceScopeKey changes', async () => {
     const onOpen = vi.fn();
     const projects = [

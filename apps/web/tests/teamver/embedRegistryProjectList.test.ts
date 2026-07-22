@@ -70,6 +70,30 @@ describe("embedRegistryProjectList", () => {
     });
   });
 
+  it("normalizes registry lifecycle status when design-api provides a run-like value", () => {
+    expect(
+      mapRegistryRowToProject({
+        odProjectId: "p-complete",
+        title: "Complete",
+        status: "completed",
+      }).status?.value,
+    ).toBe("succeeded");
+    expect(
+      mapRegistryRowToProject({
+        odProjectId: "p-active",
+        title: "Active registry row",
+        status: "active",
+      }).status?.value,
+    ).toBe("not_started");
+    expect(
+      mapRegistryRowToProject({
+        odProjectId: "p-running",
+        title: "Running",
+        status: "in_progress",
+      }).status?.value,
+    ).toBe("running");
+  });
+
   it("does not invent Date.now() for missing registry timestamps", () => {
     const before = Date.now();
     const project = mapRegistryRowToProject({

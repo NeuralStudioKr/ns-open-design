@@ -121,11 +121,12 @@ export function DesignsTab({
 		[activeRunSummaries],
 	);
 	const resolveCardStatus = useCallback(
-		(project: Project): ProjectDisplayStatus =>
+		(project: Project, cover?: ProjectCoverFile | null): ProjectDisplayStatus =>
 			resolveRecentProjectDisplayStatus(
 				project.id,
 				project.status?.value,
 				activeRunStatusByProjectId,
+				{ hasArtifactSignal: Boolean(project.metadata?.entryFile || cover) },
 			),
 		[activeRunStatusByProjectId],
 	);
@@ -679,8 +680,8 @@ export function DesignsTab({
 						}
 
 						const liveCount = liveArtifactsByProject[p.id]?.length ?? 0;
-						const status = resolveCardStatus(p);
 						const previewCover = coverOverrides[p.id] ?? null;
+						const status = resolveCardStatus(p, previewCover);
 						const openProjectCard = () => {
 							onOpen(p.id, projectOpenOptionsFromPreviewCover(p, previewCover));
 						};
@@ -857,7 +858,9 @@ export function DesignsTab({
 					{STATUS_ORDER.map((status) => {
 						const colProjects = filteredProjects.filter(
 							(item) =>
-								normalizeStatus(resolveCardStatus(item.project)) === status,
+								normalizeStatus(
+									resolveCardStatus(item.project, coverOverrides[item.project.id] ?? null),
+								) === status,
 						);
 						return (
 							<div key={status} className="design-kanban-col">

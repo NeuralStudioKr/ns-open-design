@@ -1,6 +1,10 @@
 import type { PetTaskSummary } from "../components/pet/PetOverlay";
 import type { ProjectDisplayStatus } from "../types";
 
+type ResolveRecentProjectDisplayStatusOptions = {
+  hasArtifactSignal?: boolean;
+};
+
 /** Prefer live `/api/runs` active status over stale project-list registry status. */
 export function buildActiveRunStatusByProjectId(
   summaries: readonly PetTaskSummary[],
@@ -18,10 +22,17 @@ export function resolveRecentProjectDisplayStatus(
   projectId: string,
   registryStatus: ProjectDisplayStatus | undefined,
   activeRunStatusByProjectId: ReadonlyMap<string, PetTaskSummary["status"]>,
+  options: ResolveRecentProjectDisplayStatusOptions = {},
 ): ProjectDisplayStatus {
   const active = activeRunStatusByProjectId.get(projectId);
   if (active === "running" || active === "queued") {
     return active;
+  }
+  if (
+    options.hasArtifactSignal === true
+    && (registryStatus === undefined || registryStatus === "not_started")
+  ) {
+    return "succeeded";
   }
   return registryStatus ?? "not_started";
 }

@@ -162,6 +162,7 @@ export function RecentProjectsStrip({
             project.id,
             project.status?.value,
             activeRunStatusByProjectId,
+            { hasArtifactSignal: Boolean(project.metadata?.entryFile || coverOverride) },
           );
           const publishedDesignSystem = isPublishedDesignSystemProject(project, designSystems);
           const isActive =
@@ -298,4 +299,3 @@ function ProjectTag({ category }: { category: ProjectCategory }) {
 function DesignSystemProjectTag() {
   return <span className="design-card-tag tag-design-system">Design System</span>;
 }
-

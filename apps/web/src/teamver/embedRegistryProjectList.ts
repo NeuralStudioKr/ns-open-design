@@ -63,6 +63,36 @@ function parseRegistryTimestamp(raw: unknown, fallback = 0): number {
   return fallback;
 }
 
+function normalizeRegistryDisplayStatus(raw: unknown): Project["status"] | undefined {
+  if (typeof raw !== "string") return undefined;
+  const status = raw.trim().toLowerCase();
+  if (!status || status === "active" || status === "deleted") return undefined;
+  if (status === "starting" || status === "queued") return { value: "queued" };
+  if (status === "running" || status === "processing" || status === "in_progress") {
+    return { value: "running" };
+  }
+  if (status === "awaiting_input" || status === "needs_input") {
+    return { value: "awaiting_input" };
+  }
+  if (
+    status === "succeeded"
+    || status === "success"
+    || status === "completed"
+    || status === "complete"
+    || status === "done"
+    || status === "ready"
+  ) {
+    return { value: "succeeded" };
+  }
+  if (status === "failed" || status === "failure" || status === "error") {
+    return { value: "failed" };
+  }
+  if (status === "canceled" || status === "cancelled") {
+    return { value: "canceled" };
+  }
+  return undefined;
+}
+
 export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project {
   const id = readRegistryOdProjectId(row) ?? "";
   const updatedAt = parseRegistryTimestamp(row.updatedAt);
@@ -79,7 +109,7 @@ export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project 
     designSystemId: null,
     createdAt: safeCreatedAt,
     updatedAt: safeUpdatedAt,
-    status: { value: "not_started" },
+    status: normalizeRegistryDisplayStatus(row.status) ?? { value: "not_started" },
   });
 }
 
