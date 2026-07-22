@@ -124,6 +124,18 @@ describe("FileViewer streaming slide preview", () => {
     expect(Number(debounceMatch![1])).toBeLessThanOrEqual(Number(maxWaitMatch![1]));
   });
 
+  it("uses a narrow preview streaming signal instead of broad action-disabled state", () => {
+    const workspace = readSource("src/components/FileWorkspace.tsx");
+    const projectView = readSource("src/components/ProjectView.tsx");
+
+    expect(workspace).toContain("previewStreaming?: boolean");
+    expect(workspace).toContain("streaming={previewStreaming ?? streaming}");
+    expect(projectView).toContain("streaming={currentConversationActionDisabled}");
+    expect(projectView).toContain(
+      "previewStreaming={currentConversationStreaming || currentConversationAwaitingActiveRunAttach}",
+    );
+  });
+
   it("arms disk wall once per artifact identity (not on refresh churn)", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("previewSourceWallIdentityRef");

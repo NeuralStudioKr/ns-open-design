@@ -111,6 +111,29 @@ describe("backgroundChatRecovery", () => {
     expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(true);
   });
 
+  it("ignores older stale daemon running rows after the latest assistant has completed", () => {
+    const older: ChatMessage = {
+      id: "a-old",
+      role: "assistant",
+      content: "old run",
+      createdAt: 1,
+      runId: "run-old",
+      runStatus: "running",
+    };
+    const latest: ChatMessage = {
+      id: "a-new",
+      role: "assistant",
+      content: "슬라이드 초안이 생성되었습니다.",
+      createdAt: 2,
+      runId: "run-new",
+      runStatus: "succeeded",
+      endedAt: 3,
+    };
+
+    expect(isRecoverableDaemonRunMessage(older)).toBe(true);
+    expect(conversationHasRecoverableBackgroundChat([older, latest], "daemon")).toBe(false);
+  });
+
   it("does not treat ended daemon rows as recoverable even if runStatus is stale running", () => {
     const message: ChatMessage = {
       id: "a1",

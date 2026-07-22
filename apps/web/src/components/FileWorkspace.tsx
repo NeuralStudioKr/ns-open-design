@@ -127,6 +127,7 @@ interface Props {
   isDeck: boolean;
   onExportAsPptx?: ((fileName: string) => void) | undefined;
   streaming?: boolean;
+  previewStreaming?: boolean;
   commentQueueOnSend?: boolean;
   commentSendDisabled?: boolean;
   openRequest?: { name: string; nonce: number; closeTabs?: string[] } | null;
@@ -399,6 +400,7 @@ export function FileWorkspace({
   isDeck,
   onExportAsPptx,
   streaming,
+  previewStreaming,
   commentQueueOnSend = false,
   commentSendDisabled = false,
   openRequest,
@@ -2462,7 +2464,7 @@ export function FileWorkspace({
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
-            streaming={streaming}
+            streaming={previewStreaming ?? streaming}
             commentQueueOnSend={commentQueueOnSend}
             commentSendDisabled={commentSendDisabled}
             previewComments={previewComments.filter((comment) => comment.filePath === resolvedPreviewFile.name)}

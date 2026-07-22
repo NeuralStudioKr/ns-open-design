@@ -92,10 +92,9 @@ export function conversationHasRecoverableBackgroundChat(
   messages: readonly ChatMessage[],
   mode: "daemon" | "api",
 ): boolean {
-  if (mode === "daemon") {
-    return messages.some(isRecoverableDaemonRunMessage);
-  }
-  return findInFlightAssistantMessages(messages).length > 0;
+  const latest = findInFlightAssistantMessages(messages)[0];
+  if (!latest) return false;
+  return isRecoverableBackgroundChatMessage(latest, mode);
 }
 
 function findLatestAssistantMessage(
