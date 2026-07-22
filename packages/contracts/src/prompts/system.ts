@@ -1111,20 +1111,34 @@ function deriveApiModePreflight(skillBody: string): string {
  * and truncating before body slides. Keep only a tiny visual-intent summary.
  */
 function summarizeApiModeSkillBody(skillBody: string): string {
+  const workflowLine =
+    /assets\/template\.html|references\/layouts\.md|SLOT|(?:^|\s)(?:copy|paste|read)\b|复制|粘贴|读取/i;
   const lines = skillBody
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) =>
-      !/assets\/template\.html|references\/layouts\.md|SLOT|copy|paste|read|复制|粘贴|读取/i.test(line),
-    )
-    .slice(0, 12);
-  const summary = lines.join('\n');
+    .filter((line) => !workflowLine.test(line));
+  const layoutPriority = (line: string) =>
+    /layout|theme rhythm|light|dark|hero|cover|stat|pipeline|quote|closing|typography|palette|eyebrow/i.test(
+      line,
+    );
+  const prioritized = [
+    ...lines.filter(layoutPriority),
+    ...lines.filter((line) => !layoutPriority(line)),
+  ].slice(0, 16);
+  const summary = prioritized.join('\n');
+  const layoutHint = /references\/layouts\.md|layout vocabulary|slide layouts/i.test(skillBody)
+    ? 'The skill ships layout patterns in references/layouts.md — you cannot Read that file in API mode. Use the compact inline layout vocabulary from the deck contract instead (cover, body, big-stat, three-column, closing).'
+    : '';
   return [
     'API-safe skill summary only. Ignore the seed/template copy workflow.',
+    layoutHint,
     summary || 'Use the active deck skill only as broad visual inspiration.',
-    'Output a compact no-head HTML deck artifact with visible slide content first.',
-  ].join('\n');
+    'Apply theme rhythm: alternate light/dark surfaces across slides; never repeat the same background on 4+ slides in a row.',
+    'Output a compact no-head HTML deck artifact with varied inline layouts and visible slide content first.',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
@@ -1149,6 +1163,16 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 **Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
+
+const TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE = `# Teamver slide-only API — bind quick-brief answers (turn 2+)
+
+When the user's message starts with \`[form answers — discovery]\`, treat every answered field as **hard constraints** for the deck you emit in that same turn:
+
+- **audience** — vocabulary, depth, and examples must match that audience (e.g. 신입사원 vs 경영진).
+- **tone** — visual and copy style: \`professional\` = restrained palette and formal copy; \`tech_modern\` = high contrast, crisp sans, product-demo feel; \`friendly\` = warm accents and plain language.
+- **must_include** — each requested topic gets at least one dedicated slide or clearly labeled section; do not omit user-named items.
+
+If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Vary slide layouts per the compact inline layout vocabulary; do not output 6 identical white boxes.`;
 
 const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 
@@ -1226,7 +1250,7 @@ export function composeTeamverSlideApiPrompt({
   if (activeDesignSystemBody) {
     parts.push(
       `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''}\n\n`
-        + 'Bind these tokens into inline styles on each slide. Do not invent colors outside this palette.\n\n'
+        + '**Mandatory:** bind these tokens into every slide\'s inline styles (background, text, accent, borders). Do not fall back to generic #fff/#111 when tokens exist.\n\n'
         + activeDesignSystemBody,
     );
   }
@@ -1249,6 +1273,9 @@ export function composeTeamverSlideApiPrompt({
 
   parts.push(DECK_FRAMEWORK_DIRECTIVE_COMPACT);
   parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
+  if (!directDeckGeneration) {
+    parts.push(TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE);
+  }
   parts.push(
     directDeckGeneration
       ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE

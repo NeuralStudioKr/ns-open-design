@@ -150,7 +150,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
-      expect(prompt.length).toBeLessThan(14_000);
+      expect(prompt.length).toBeLessThan(18_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -309,7 +309,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      expect(prompt.length).toBeLessThan(14_000);
+      expect(prompt.length).toBeLessThan(18_000);
     });
 
     it('requires body-first streaming and forbids head-only shells', () => {
@@ -324,6 +324,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');
+      expect(prompt).toContain('inline layout vocabulary');
+      expect(prompt).toContain('bind quick-brief answers');
+      expect(prompt).toContain('theme rhythm');
       expect(prompt).not.toContain('assets/template.html');
     });
 

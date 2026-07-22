@@ -493,6 +493,28 @@ When the brief is "make me a deck", your output is this skeleton with theme toke
  * forever. API mode only needs the structural contract — the host viewer
  * tolerates a simpler static deck better than an empty preview.
  */
+export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY = `# Compact API — inline layout vocabulary (no <head>, no shared CSS)
+
+Do not invent one identical white box for every slide. Pick the closest layout below and vary **background color**, **padding**, and **density** across slides (alternate light/dark surfaces — never 4+ identical slides in a row).
+
+**Cover** — big title + one lead line:
+\`<section class="slide" style="min-height:100vh;padding:80px 72px;box-sizing:border-box;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><p style="margin:0 0 16px;font:600 14px/1.2 sans-serif;letter-spacing:.08em;text-transform:uppercase;opacity:.75">컨텍스트</p><h1 style="margin:0 0 24px;font:700 56px/1.05 serif">실제 헤드라인</h1><p style="margin:0;font:400 22px/1.5 sans-serif;max-width:48rem;opacity:.9">한 줄 리드.</p></section>\`
+
+**Body** — eyebrow + headline + paragraph or bullets:
+\`<section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;color:#111"><p style="margin:0 0 12px;font:600 13px/1.2 sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#64748b">섹션 라벨</p><h2 style="margin:0 0 20px;font:700 40px/1.1 sans-serif">핵심 메시지</h2><ul style="margin:0;padding-left:1.25rem;font:20px/1.6 sans-serif"><li>구체적 불릿</li></ul></section>\`
+
+**Big stat** — one number + caption (centered):
+\`<section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font:700 96px/1 sans-serif">38<span style="font-size:.45em">%</span></div><p style="margin:24px 0 0;max-width:36rem;font:20px/1.5 sans-serif;opacity:.85">수치가 의미하는 한 줄 설명.</p></section>\`
+
+**Three-column** — headline + 3 points (use flex, keep copy short):
+\`<section class="slide" style="min-height:100vh;padding:56px 64px;box-sizing:border-box;background:#f8fafc;color:#0f172a"><h2 style="margin:0 0 28px;font:700 36px/1.15 sans-serif">세 가지 포인트</h2><div style="display:flex;gap:24px"><div style="flex:1"><h3 style="margin:0 0 8px;font:700 20px/1.3 sans-serif">포인트 1</h3><p style="margin:0;font:17px/1.55 sans-serif">2문장 이내.</p></div><div style="flex:1;border-left:3px solid #2563eb;padding-left:16px"><h3 style="margin:0 0 8px;font:700 20px/1.3 sans-serif">포인트 2</h3><p style="margin:0;font:17px/1.55 sans-serif">2문장 이내.</p></div><div style="flex:1"><h3 style="margin:0 0 8px;font:700 20px/1.3 sans-serif">포인트 3</h3><p style="margin:0;font:17px/1.55 sans-serif">2문장 이내.</p></div></div></section>\`
+
+**Closing** — recap CTA:
+\`<section class="slide" style="min-height:100vh;padding:80px 72px;box-sizing:border-box;background:#1e293b;color:#fff;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 16px;font:700 44px/1.1 sans-serif">다음 단계</h2><p style="margin:0;font:22px/1.5 sans-serif;max-width:40rem">행동을 유도하는 마무리 한두 문장.</p></section>\`
+
+Quality bar: 6–8 slides, each with a distinct layout role (cover → 3–5 body/stat/column mixes → closing). Bind active design-system colors into these inline styles when provided.
+`;
+
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
 
 You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying \`<head>\`, \`<style>\`, scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or comments first.
@@ -506,6 +528,9 @@ Required shape (copy the shape, replace every label with real user-specific copy
 Rules:
 1. On deck-delivery turns, start the artifact as soon as you can — at most one short sentence of prose before it. On quick-brief/question-form turns, do not emit an artifact.
 2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
-3. Prefer 5–7 slides over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
+3. Prefer 6–8 slides over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
+5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background on every slide.
+
+${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
 `;

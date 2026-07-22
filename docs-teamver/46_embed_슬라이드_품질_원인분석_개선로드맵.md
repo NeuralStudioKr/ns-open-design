@@ -162,4 +162,4 @@ upstream 선별 반영 이력은 [40 OD upstream main 반영 검토](./40_OD_ups
 
 | 날짜 | 내용 |
 |------|------|
-| 2026-07-22 | 최초 작성 — upstream vs Teamver 원인 분리, Phase 1~3 로드맵 고정 |
+| 2026-07-22 | Phase 1 구현 — compact inline layout vocabulary, skill 요약 완화, quick-brief turn-2 binding, DS mandatory 문구 |
