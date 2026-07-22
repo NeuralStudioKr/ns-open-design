@@ -252,4 +252,23 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(slideEls[0]?.style.display).toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
   });
+
+  it('letterboxes body > .slide min-height decks to a centered 1920x1080 stage', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;background:#0ea5e9;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage).toBeTruthy();
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
+    expect(stage?.style.transform).toMatch(/scale\(|translate\(/);
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
+  });
 });

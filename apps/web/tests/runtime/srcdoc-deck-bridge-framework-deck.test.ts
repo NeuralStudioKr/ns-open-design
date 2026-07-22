@@ -113,4 +113,15 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain('var didRestoreInitialSlide = false;');
     expect(out).toContain('if (findActiveByVisibility(list) < 0) gotoIndex(target);');
   });
+
+  it('injects stacked compact deck letterbox helpers for freeform body slides', () => {
+    const out = buildSrcdoc(
+      '<!doctype html><html><body><section class="slide" style="min-height:100vh">A</section></body></html>',
+      { deck: true },
+    );
+    expect(out).toContain('#od-stacked-deck-stage');
+    expect(out).toContain('data-od-stacked-deck');
+    expect(out).toContain('function runStackedDeckFit');
+    expect(out).toContain('function shouldUseStackedDeckStage');
+  });
 });

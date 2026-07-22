@@ -1979,6 +1979,29 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     : `<style data-od-deck-fix>
 html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
 .stage, .deck-stage, .deck-shell { place-content: center !important; }
+html[data-od-stacked-deck], html[data-od-stacked-deck] body {
+  width: 100% !important;
+  height: 100% !important;
+  background: #0b0c10 !important;
+}
+#od-stacked-deck-stage {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: top left;
+}
+#od-stacked-deck-stage > .slide {
+  box-sizing: border-box !important;
+  width: 1920px !important;
+  height: 1080px !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  overflow: hidden !important;
+}
 </style>`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
@@ -1986,6 +2009,75 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   function frameworkDeckStage() {
     return document.getElementById('deck-stage');
+  }
+  function stackedDeckStage() {
+    return document.getElementById('od-stacked-deck-stage');
+  }
+  function shouldUseStackedDeckStage() {
+    if (frameworkDeckStage()) return false;
+    if (stackedDeckStage()) return true;
+    var direct = document.querySelectorAll('body > .slide');
+    if (!direct.length) return false;
+    if (isScrollDeck()) return false;
+    try {
+      var bodyStyle = window.getComputedStyle(document.body);
+      if (/\\b(?:flex|grid)\\b/i.test(bodyStyle.display)) return false;
+      if (isScrollableOverflowMode(String(bodyStyle.overflowX || '').toLowerCase())) return false;
+    } catch (_) {}
+    var list = [];
+    for (var d = 0; d < direct.length; d++) list.push(direct[d]);
+    if (transformTrack(list)) return false;
+    var stackedViewport = false;
+    for (var i = 0; i < direct.length; i++) {
+      var inline = String(direct[i].getAttribute('style') || '');
+      if (/min-height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)) {
+        stackedViewport = true;
+        break;
+      }
+    }
+    if (!stackedViewport) {
+      try {
+        for (var j = 0; j < direct.length; j++) {
+          var cs = window.getComputedStyle(direct[j]);
+          if (/100(?:vh|dvh|svh|lvh)/i.test(String(cs.minHeight || ''))) {
+            stackedViewport = true;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+    return stackedViewport;
+  }
+  function ensureStackedDeckStage() {
+    var existing = stackedDeckStage();
+    if (existing) return existing;
+    if (!shouldUseStackedDeckStage()) return null;
+    var direct = document.querySelectorAll('body > .slide');
+    if (!direct.length) return null;
+    var stage = document.createElement('div');
+    stage.id = 'od-stacked-deck-stage';
+    stage.setAttribute('data-od-stacked-deck-stage', '');
+    document.body.insertBefore(stage, direct[0]);
+    for (var i = 0; i < direct.length; i++) {
+      stage.appendChild(direct[i]);
+    }
+    document.documentElement.setAttribute('data-od-stacked-deck', '');
+    return stage;
+  }
+  function runStackedDeckFit() {
+    var stage = stackedDeckStage() || ensureStackedDeckStage();
+    if (!stage) return false;
+    var vp = frameworkDeckViewport();
+    var sw = vp.w;
+    var sh = vp.h;
+    if (sw <= 0 || sh <= 0) return false;
+    var pad = 32;
+    var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
+    if (!isFinite(s) || s <= 0) s = 1;
+    var tx = (sw - 1920 * s) / 2;
+    var ty = (sh - 1080 * s) / 2;
+    stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+    return true;
   }
   function frameworkDeckViewport() {
     var iw = Math.max(0, window.innerWidth || 0);
@@ -2022,6 +2114,7 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
   }
   function nudgeDeckFit() {
     if (runFrameworkDeckFit()) return;
+    if (runStackedDeckFit()) return;
     try { window.dispatchEvent(new Event('resize')); }
     catch (_) {}
   }
@@ -2048,7 +2141,7 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
     // fall back to all .slide only when nothing structured matched, so
     // freeform decks that nest slides under an extra wrapper still report
     // the real count instead of leaving the host counter at 1 / 0.
-    var structured = document.querySelectorAll('.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, body > .slide');
+    var structured = document.querySelectorAll('.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide');
     if (structured.length) return structured;
     return document.querySelectorAll('.slide');
   }
@@ -2217,6 +2310,10 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
     var first = list[0];
     var node = first && first.parentElement;
     while (node && node !== document.body && node !== document.documentElement) {
+      if (node.id === 'od-stacked-deck-stage' || node.getAttribute('data-od-stacked-deck-stage') !== null) {
+        node = node.parentElement;
+        continue;
+      }
       try {
         var directSlides = 0;
         for (var i=0; i<node.children.length; i++) {
@@ -2251,7 +2348,7 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
   function transformGo(i){
     var list = slides();
     var track = transformTrack(list);
-    if (!track) return false;
+    if (!track || track.id === 'od-stacked-deck-stage') return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
     var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
     track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
@@ -2300,6 +2397,7 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
     }
     updateDeckChrome(target, list.length);
     report();
+    nudgeDeckFit();
     return true;
   }
   function forceRevealSlide(i){
@@ -2316,6 +2414,7 @@ html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
     }
     updateDeckChrome(target, list.length);
     report();
+    nudgeDeckFit();
     return true;
   }
   function scrollGo(i){
