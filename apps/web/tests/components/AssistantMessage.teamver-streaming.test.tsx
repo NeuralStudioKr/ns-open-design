@@ -50,4 +50,36 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText(/<!doctype html/)).toBeNull();
     expect(screen.queryByText('Waiting for first output')).toBeNull();
   });
+
+  it('does not render an empty assistant row while a question form is still streaming', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '<question-form id="discovery" title="Quick brief">{"questions":[{"id":"audience","label":"누가 발표를 보나요?"',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Waiting for first output')).toBeTruthy();
+    expect(screen.queryByText(/<question-form/)).toBeNull();
+  });
+
+  it('falls back to a visible waiting state when the streamed text is hidden protocol only', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '[Deliverable instruction] emit ONE complete Teamver deck in this same response inside `<artifact type="deck">`.',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Waiting for first output')).toBeTruthy();
+    expect(screen.queryByText(/Deliverable instruction/)).toBeNull();
+  });
 });

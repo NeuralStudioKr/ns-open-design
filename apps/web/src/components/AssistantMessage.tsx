@@ -390,6 +390,56 @@ function areAssistantMessagePropsEqual(prev: Props, next: Props): boolean {
  */
 export const AssistantMessage = memo(AssistantMessageImpl, areAssistantMessagePropsEqual);
 
+function hasVisibleAssistantTextOutput(
+  text: string,
+  {
+    streaming,
+    hideRecoveredHtmlFallback,
+    hideStreamingCodeFences,
+    hideAssistantThinkingDetails,
+    slideOnlyMvp,
+    teamverEmbedEnabled,
+    locale,
+  }: {
+    streaming: boolean;
+    hideRecoveredHtmlFallback: boolean;
+    hideStreamingCodeFences: boolean;
+    hideAssistantThinkingDetails: boolean;
+    slideOnlyMvp: boolean;
+    teamverEmbedEnabled: boolean;
+    locale: string;
+  },
+): boolean {
+  const stripped = stripAllClosedArtifacts(text);
+  const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
+  const cleaned = sanitizeAssistantProseForDisplay(base, {
+    streaming,
+    stripCodeFences: hideStreamingCodeFences || (hideAssistantThinkingDetails && !slideOnlyMvp),
+  });
+  const { text: visibleText, hadOpenForm } = streaming
+    ? stripTrailingOpenQuestionForm(cleaned)
+    : { text: cleaned, hadOpenForm: false };
+  if (hadOpenForm) return true;
+  const { head, live } = streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null };
+  if (live) return true;
+  const raw = splitOnQuestionForms(head);
+  const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
+  if (slideOnlyGate) {
+    const resolved = resolveSlideOnlyQuestionFormFromContent(
+      head,
+      { slideOnlyMvp, enabled: teamverEmbedEnabled },
+      { locale },
+    );
+    if (resolved.usedFallback && resolved.form) return true;
+  }
+  return raw.some((seg) => {
+    if (seg.kind === "form") return true;
+    const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
+    if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
+    return visibleSegmentText.trim().length > 0;
+  });
+}
+
 /**
  * Renders an assistant message as an interleaved flow of:
  *   - prose blocks (consecutive `text` events merged)
@@ -434,6 +484,7 @@ function AssistantMessageImpl({
   toolboxSkillNames,
 }: Props) {
   const t = useT();
+  const { locale } = useI18n();
   const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle, enabled: teamverEmbedEnabled } =
     useTeamverBranding();
   const events = message.events ?? [];
@@ -660,7 +711,19 @@ function AssistantMessageImpl({
   // start so switching project tabs or remounting the message cannot restart it.
   // TodoWrite alone counts as activity even when tool cards are hidden in embed.
   const hasContent =
-    blocks.some((b) => b.kind !== "status")
+    blocks.some((b) => {
+      if (b.kind === "status") return false;
+      if (b.kind !== "text") return true;
+      return hasVisibleAssistantTextOutput(b.text, {
+        streaming,
+        hideRecoveredHtmlFallback: teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude",
+        hideStreamingCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
+        hideAssistantThinkingDetails,
+        slideOnlyMvp,
+        teamverEmbedEnabled,
+        locale,
+      });
+    })
     || streamingDeckArtifactActive
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
@@ -2119,7 +2182,7 @@ function ProseBlock({
       }));
     }
   );
-  if (renderable.length === 0 && !live) return null;
+  if (renderable.length === 0 && !live && !hadOpenForm) return null;
   return (
     <div className="prose-block" data-stream-cursor={showStreamCursor && !live ? "true" : undefined}>
       {renderable.map((seg) => {
