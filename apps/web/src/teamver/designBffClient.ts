@@ -1047,6 +1047,7 @@ export type FetchTeamverRuntimeConfigOptions = {
 
 let runtimeConfigInflight: Promise<TeamverRuntimeConfigResponse | null> | null = null;
 let cachedRuntimeConfig: { value: TeamverRuntimeConfigResponse | null; at: number } | null = null;
+let runtimeConfigSessionProbeInflight: Promise<boolean> | null = null;
 /**
  * After a 401/session_expired on `/runtime-config`, skip opportunistic refetches
  * (visibility/pageshow) until embed session is authenticated again. Avoids
@@ -1074,6 +1075,16 @@ export function resetTeamverRuntimeConfigCacheForTests(): void {
   runtimeConfigInflight = null;
   cachedRuntimeConfig = null;
   runtimeConfigAuthBlocked = false;
+  runtimeConfigSessionProbeInflight = null;
+}
+
+async function confirmRuntimeConfigSessionAlive(): Promise<boolean> {
+  if (runtimeConfigSessionProbeInflight) return runtimeConfigSessionProbeInflight;
+  runtimeConfigSessionProbeInflight = probeDesignBffSessionAuthenticated()
+    .finally(() => {
+      runtimeConfigSessionProbeInflight = null;
+    });
+  return runtimeConfigSessionProbeInflight;
 }
 
 export async function fetchTeamverRuntimeConfig(
@@ -1107,12 +1118,19 @@ export async function fetchTeamverRuntimeConfig(
 
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
+      if (isTeamverEmbedMode()) {
+        const sessionAlive = await confirmRuntimeConfigSessionAlive();
+        if (!sessionAlive) {
+          noteRuntimeConfigUnauthorized();
+          return cachedRuntimeConfig?.value ?? null;
+        }
+      }
       // Never run withDesignBffCookieAuthRecovery here. force=true used to POST
       // /auth/refresh + session-probe×2 on every dead-cookie reload (workspace /
-      // session-changed), flooding DevTools while sticky was still clear. Also
-      // do not preflight with /auth/session-probe: a dead cookie makes that
-      // endpoint return a visible 401 in DevTools. One runtime-config 401 is
-      // enough to enter backoff.
+      // session-changed), flooding DevTools while sticky was still clear. The
+      // read-only session gate above intentionally prefers a cheap probe over a
+      // visible `/runtime-config` 401 body because users inspect that endpoint
+      // directly in DevTools during auth/Drive debugging.
       const getOnce = () =>
         client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
           ...TEAMVER_BFF_REQUEST_OPTIONS,
