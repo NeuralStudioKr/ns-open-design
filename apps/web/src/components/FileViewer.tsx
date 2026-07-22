@@ -124,6 +124,7 @@ import {
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
 import { postDeckPreviewPanBy, resetDeckPreviewPan, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
+import { looksLikeCompactApiStackedDeck } from '../runtime/compact-api-stacked-deck';
 import {
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
@@ -5666,7 +5667,11 @@ function HtmlViewer({
     );
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
-  const deckPreviewPanActive = effectiveDeck
+  const compactApiStackedDeck = useMemo(
+    () => (source != null && looksLikeCompactApiStackedDeck(source)),
+    [source],
+  );
+  const deckPreviewPanActive = compactApiStackedDeck
     && mode === 'preview'
     && !drawOverlayOpen
     && !boardMode
@@ -6130,9 +6135,9 @@ function HtmlViewer({
   ]);
 
   useEffect(() => {
-    if (!effectiveDeck || previewScale !== 1) return;
+    if (!compactApiStackedDeck || previewScale !== 1) return;
     resetDeckPreviewPan(iframeRef.current);
-  }, [effectiveDeck, previewScale, previewStateKey, srcDocTransportResetKey]);
+  }, [compactApiStackedDeck, previewScale, previewStateKey, srcDocTransportResetKey]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;

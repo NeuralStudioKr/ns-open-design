@@ -22,6 +22,7 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
+import { looksLikeCompactApiStackedDeck } from './compact-api-stacked-deck.js';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -127,7 +128,10 @@ export function buildSrcdoc(
   if (options.exportDocument) {
     return withArtifactGuard;
   }
-  const withDeck = options.deck ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex) : withArtifactGuard;
+  const compactStackedDeck = options.deck ? looksLikeCompactApiStackedDeck(wrapped) : false;
+  const withDeck = options.deck
+    ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex, compactStackedDeck)
+    : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
   // to either the comment popover (annotate) or the inspect panel
@@ -1969,20 +1973,29 @@ html[data-od-inspect-mode] body iframe { pointer-events: none !important; }
 // the scaled stage lands ~1000px off-screen and the user sees a mostly-
 // black preview with a sliver of slide content in the top-left. Skip the
 // override whenever the framework's marker id is present.
-function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
+function injectDeckBridge(
+  doc: string,
+  initialSlideIndex = 0,
+  compactStackedDeck = looksLikeCompactApiStackedDeck(doc),
+): string {
   const safeInitialSlideIndex = Number.isFinite(initialSlideIndex)
     ? Math.max(0, Math.floor(initialSlideIndex))
     : 0;
   const isFrameworkDeck = /\bid\s*=\s*["']deck-stage["']/i.test(doc);
-  const styleFix = isFrameworkDeck
+  const isCompactStackedDeck = compactStackedDeck;
+  const legacyDeckFix = isFrameworkDeck
     ? ''
     : `<style data-od-deck-fix>
-html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
 .stage, .deck-stage, .deck-shell { place-content: center !important; }
+</style>`;
+  const compactStackedDeckFix = isCompactStackedDeck
+    ? `<style data-od-deck-stacked-fix>
 html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   width: 100% !important;
   height: 100% !important;
   background: #0b0c10 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
 }
 #od-stacked-deck-stage {
   position: relative;
@@ -2001,13 +2014,13 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   top: 0 !important;
   left: 0 !important;
   overflow: hidden !important;
-  display: flex;
-  flex-direction: column !important;
-  justify-content: center !important;
 }
-</style>`;
+</style>`
+    : '';
+  const styleFix = `${legacyDeckFix}${compactStackedDeckFix}`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
+  var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
   var didRestoreInitialSlide = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   var deckPanX = 0;
@@ -2034,6 +2047,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     return document.getElementById('od-stacked-deck-stage');
   }
   function shouldUseStackedDeckStage() {
+    if (!compactStackedDeckEnabled) return false;
     if (frameworkDeckStage()) return false;
     if (stackedDeckStage()) return true;
     var direct = document.querySelectorAll('body > .slide');

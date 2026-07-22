@@ -120,7 +120,9 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
       { deck: true },
     );
     expect(out).toContain('#od-stacked-deck-stage');
+    expect(out).toContain('data-od-deck-stacked-fix');
     expect(out).toContain('data-od-stacked-deck');
+    expect(out).toContain('var compactStackedDeckEnabled = true');
     expect(out).toContain('function runStackedDeckFit');
     expect(out).toContain('function shouldUseStackedDeckStage');
     expect(out).toContain("data.type === 'od:preview-scroll-by'");
