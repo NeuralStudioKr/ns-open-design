@@ -18,14 +18,18 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "and do not merely rename or lightly restyle it. Create a proper deck using the simple-deck " +
   "framework (1920×1080 slides with section.slide structure, nav, and print). " +
   "Preserve the source structure, headings, callouts, tables, images, and smart blocks " +
-  "(FAQ/KPI/timeline); prefer clear slide sectioning over literal page layout.";
+  "(FAQ/KPI/timeline); prefer clear slide sectioning over literal page layout. " +
+  "You MUST write/save the final deliverable as a complete .html deck file in the project. " +
+  "Do not finish with prose only, do not leave the source HTML as the only file, and do not stop before the closing </html>.";
 
 /** User-visible first message for Canvas / Drive → create-slides. */
 export const CANVAS_CREATE_SLIDES_PROMPT =
   "캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.";
 
-export function canvasCreateSlidesRunPrompt(): string {
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}`;
+export function canvasCreateSlidesRunPrompt(templateTitle?: string | null): string {
+  const title = templateTitle?.trim();
+  const templateHint = title ? `\nSelected slide template/style: ${title}.` : "";
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}`;
 }
 
 export type TeamverCanvasSlideTemplateOption = {

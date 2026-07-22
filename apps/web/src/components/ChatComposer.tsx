@@ -1689,19 +1689,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
           const baseMeta = currentRunContextMeta();
-          sendComposedTurn(canvasCreateSlidesRunPrompt(), attachments, [], {
-            ...baseMeta,
-            designSystemId: designSystemIdForRun,
-            context: {
-              ...(baseMeta?.context ?? {}),
-              pluginIds: [
-                selectedCanvasSlideTemplate.id,
-                ...((baseMeta?.context?.pluginIds ?? []).filter(
-                  (id) => id !== selectedCanvasSlideTemplate.id,
-                )),
-              ],
+          sendComposedTurn(
+            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
+            attachments,
+            [],
+            {
+              ...baseMeta,
+              designSystemId: designSystemIdForRun,
+              context: {
+                ...(baseMeta?.context ?? {}),
+                pluginIds: [
+                  selectedCanvasSlideTemplate.id,
+                  ...((baseMeta?.context?.pluginIds ?? []).filter(
+                    (id) => id !== selectedCanvasSlideTemplate.id,
+                  )),
+                ],
+              },
             },
-          });
+          );
           return;
         }
 
@@ -1736,19 +1741,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setCanvasSlideLaunchError(null);
         {
           const baseMeta = currentRunContextMeta();
-          sendComposedTurn(canvasCreateSlidesRunPrompt(), attachments, [], {
-            ...baseMeta,
-            designSystemId: designSystemIdForRun,
-            context: {
-              ...(baseMeta?.context ?? {}),
-              pluginIds: [
-                selectedCanvasSlideTemplate.id,
-                ...((baseMeta?.context?.pluginIds ?? []).filter(
-                  (id) => id !== selectedCanvasSlideTemplate.id,
-                )),
-              ],
+          sendComposedTurn(
+            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
+            attachments,
+            [],
+            {
+              ...baseMeta,
+              designSystemId: designSystemIdForRun,
+              context: {
+                ...(baseMeta?.context ?? {}),
+                pluginIds: [
+                  selectedCanvasSlideTemplate.id,
+                  ...((baseMeta?.context?.pluginIds ?? []).filter(
+                    (id) => id !== selectedCanvasSlideTemplate.id,
+                  )),
+                ],
+              },
             },
-          });
+          );
         }      } catch (err) {
         if (isMainSsoUserMismatchError(err)) {
           void beginMainSsoMismatchRecovery();

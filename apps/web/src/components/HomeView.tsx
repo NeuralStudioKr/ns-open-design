@@ -1763,7 +1763,7 @@ export function HomeView({
           null;
         const submitResult = await Promise.resolve(
           onSubmit({
-            prompt: canvasCreateSlidesRunPrompt(),
+            prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
@@ -1795,7 +1795,7 @@ export function HomeView({
       const asset = canvasSlideLaunch.asset;
       const submitResult = await Promise.resolve(
         onSubmit({
-          prompt: canvasCreateSlidesRunPrompt(),
+          prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
           pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
           skillId: null,
