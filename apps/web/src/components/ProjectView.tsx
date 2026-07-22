@@ -5098,6 +5098,15 @@ export function ProjectView({
       }
       setChatSeed(null);
       const runConversationId = activeConversationId;
+      // Manual retries and fresh user turns get a full auto-continue budget.
+      // Without this reset, a conversation that exhausted the cap on earlier
+      // incomplete_output rows would never auto-recover on the next real send.
+      const isAutoContinueSend =
+        meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
+        || isAutoContinueIncompleteOutputPrompt(prompt);
+      if (!isAutoContinueSend) {
+        conversationAutoContinueCountRef.current.set(runConversationId, 0);
+      }
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
@@ -5377,10 +5386,16 @@ export function ProjectView({
             if (!isLatestTerminalAutoOpen()) return;
 
             const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-            const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+            let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
               ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
                 branding: { slideOnlyMvp },
               });
+            if (slideOnlyMvp && producedHtmlToOpen) {
+              producedHtmlToOpen = await verifySlideProducedHtmlDeliverable(
+                producedHtmlToOpen,
+                readProjectHtml,
+              );
+            }
             const shouldFailMissingSlideHtml = shouldFailSlideRunForMissingHtmlDeliverable({
               slideOnlyMvp,
               producedHtmlToOpen,
@@ -8958,6 +8973,22 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
     looksLikeOutline
     || promiseOnly
   );
+}
+
+/**
+ * Slide-only terminal recovery must not treat a stale or shell-only `.html`
+ * sibling as a successful deliverable just because `computeProducedFiles` saw
+ * a new mtime. Re-read disk and apply the same preview gate as persist.
+ */
+export async function verifySlideProducedHtmlDeliverable(
+  fileName: string | null,
+  readProjectHtml: (name: string) => Promise<string | null>,
+): Promise<string | null> {
+  if (!fileName) return null;
+  const html = await readProjectHtml(fileName);
+  if (!html) return null;
+  if (isIncompleteHtmlDocumentShell(html) || !validateHtmlArtifact(html).ok) return null;
+  return fileName;
 }
 
 /** Terminal slide-only run with no previewable HTML on disk must fail (last-wins auto-open). */

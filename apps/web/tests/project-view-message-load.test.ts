@@ -268,6 +268,7 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("htmlAutoOpenGenerationRef");
     expect(autoOpenBlock).toContain("isLatestTerminalAutoOpen");
     expect(autoOpenBlock).toContain("shouldFailSlideRunForMissingHtmlDeliverable(");
+    expect(autoOpenBlock).toContain("verifySlideProducedHtmlDeliverable(");
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");
@@ -306,5 +307,10 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).not.toContain("embedSubmitDisabledAtFire: embedSubmitDisabled");
     expect(source).toContain("const handleSendRef = useRef(handleSend)");
     expect(source).toContain("handleSendRef.current = handleSend");
+    const handleSendStart = source.indexOf("const handleSend = useCallback(");
+    expect(handleSendStart).toBeGreaterThan(0);
+    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 4200);
+    expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
+    expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
   });
 });
