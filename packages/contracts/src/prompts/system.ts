@@ -181,6 +181,51 @@ function normalizePromptText(value: string): string {
     .trim();
 }
 
+function uniqueMatches(value: string, pattern: RegExp, limit: number): string[] {
+  const out: string[] = [];
+  for (const match of value.matchAll(pattern)) {
+    const raw = match[1] ?? match[0];
+    const item = raw.trim();
+    if (!item || out.includes(item)) continue;
+    out.push(item);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function renderTeamverTemplateVisualSignature(template: ProjectTemplate | undefined): string {
+  if (!template) return '';
+  const files = template.files.slice(0, 2);
+  const combined = files
+    .map((file) => `${file.name}\n${file.content.slice(0, 6000)}`)
+    .join('\n');
+  const colors = uniqueMatches(combined, /(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/g, 10);
+  const fonts = uniqueMatches(combined, /font-family\s*:\s*([^;}\n]+)/gi, 5)
+    .map((font) => normalizePromptText(font).slice(0, 80));
+  const classes = uniqueMatches(combined, /class=["']([^"']{1,120})["']/gi, 12)
+    .flatMap((value) => value.split(/\s+/))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .slice(0, 16);
+  const layoutHints = uniqueMatches(
+    combined,
+    /\b(?:grid-template-columns|display\s*:\s*grid|display\s*:\s*flex|border-radius|letter-spacing|text-transform|backdrop-filter|mix-blend-mode)\b/gi,
+    10,
+  );
+  const lines = [
+    `## Selected template visual signature — ${template.name}`,
+    template.description ? normalizePromptText(template.description).slice(0, 240) : '',
+    files.length > 0 ? `files: ${files.map((file) => file.name).join(', ')}` : '',
+    colors.length > 0 ? `palette cues: ${colors.join(', ')}` : '',
+    fonts.length > 0 ? `font cues: ${fonts.join(' | ')}` : '',
+    classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
+    layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
+    'Use these as a compact visual signature only. Do not copy the full template skeleton or emit long CSS/head/script blocks.',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
 export function formatElevenLabsVoiceOptionsErrorForPrompt(
   error: string | undefined,
 ): string | undefined {
@@ -1265,6 +1310,11 @@ export function composeTeamverSlideApiPrompt({
     { skipDiscoveryBrief: directDeckGeneration },
   );
   if (metaBlock) parts.push(metaBlock);
+
+  const templateVisualSignature = renderTeamverTemplateVisualSignature(template);
+  if (templateVisualSignature) {
+    parts.push(templateVisualSignature);
+  }
 
   if (skillBody?.trim()) {
     parts.push(

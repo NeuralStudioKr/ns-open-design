@@ -376,5 +376,40 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('See references/layouts.md for cover');
       expect(prompt).toContain('you cannot Read that file in API mode');
     });
+
+    it('adds a compact selected-template visual signature without pasting the template', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+        template: {
+          id: 'zhangzara-capsule',
+          name: 'Html Ppt Zhangzara Capsule',
+          description: 'Warm paper editorial deck with capsule labels and centered serif moments.',
+          createdAt: 1,
+          files: [
+            {
+              name: 'example.html',
+              content:
+                '<!doctype html><html><head><style>'
+                + ':root{--paper:#F3E7D0;--ink:#17130F;--accent:#FACC15}'
+                + 'body{font-family:"Pretendard", sans-serif}.slide{display:grid;grid-template-columns:1fr 1fr;border-radius:18px;letter-spacing:.02em}'
+                + '</style></head><body>'
+                + '<section class="slide capsule hero"><h1>Do not paste this exact headline</h1></section>'
+                + '</body></html>',
+            },
+          ],
+        },
+      });
+
+      expect(prompt).toContain('Selected template visual signature — Html Ppt Zhangzara Capsule');
+      expect(prompt).toContain('palette cues: #F3E7D0, #17130F, #FACC15');
+      expect(prompt).toContain('font cues: "Pretendard", sans-serif');
+      expect(prompt).toContain('class/style cues: slide, capsule, hero');
+      expect(prompt).toContain('layout cues: display:grid, grid-template-columns, border-radius, letter-spacing');
+      expect(prompt).toContain('Do not copy the full template skeleton');
+      expect(prompt).not.toContain('Do not paste this exact headline');
+      expect(prompt.length).toBeLessThan(18_000);
+    });
   });
 });
