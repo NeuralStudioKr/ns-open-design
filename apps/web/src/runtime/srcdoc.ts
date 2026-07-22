@@ -1977,6 +1977,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   const styleFix = isFrameworkDeck
     ? ''
     : `<style data-od-deck-fix>
+html, body { margin: 0 !important; overflow: hidden !important; height: 100%; }
 .stage, .deck-stage, .deck-shell { place-content: center !important; }
 </style>`;
   const script = `<script data-od-deck-bridge>(function(){
@@ -2301,6 +2302,22 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     report();
     return true;
   }
+  function forceRevealSlide(i){
+    var list = slides();
+    if (!list.length) return false;
+    var target = Math.max(0, Math.min(list.length - 1, i));
+    var activeClass = activeClassName(list);
+    for (var k=0; k<list.length; k++) {
+      if (list[k].classList) {
+        list[k].classList.remove('active', 'is-active', 'current');
+        if (k === target) list[k].classList.add(activeClass);
+      }
+      list[k].style.display = k === target ? '' : 'none';
+    }
+    updateDeckChrome(target, list.length);
+    report();
+    return true;
+  }
   function scrollGo(i){
     var list = slides();
     var next = Math.max(0, Math.min(list.length - 1, i));
@@ -2333,6 +2350,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     }
     if (canSetActive(list) && setActive(target)) return;
     if (transformGo(target)) return;
+    if (!transformTrack(list) && forceRevealSlide(target)) return;
     if (action === 'next') dispatchKey('ArrowRight');
     else if (action === 'prev') dispatchKey('ArrowLeft');
     else if (action === 'first') dispatchKey('Home');
@@ -2346,6 +2364,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
     if (transformGo(target)) return;
+    if (!transformTrack(list) && forceRevealSlide(target)) return;
     var current = activeIndex(list);
     var diff = target - current;
     if (!diff) { report(); return; }

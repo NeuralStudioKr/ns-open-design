@@ -192,9 +192,16 @@ export function inferLegacyManifest(input: {
   const kind = inferKindFromEntry(input.entry);
   if (!kind) return null;
   const lowerEntry = input.entry.toLowerCase();
+  const metaArtifactType =
+    typeof input.metadata?.artifactType === 'string'
+      ? input.metadata.artifactType.toLowerCase()
+      : '';
   const isDeck =
     kind === 'html' &&
-    (lowerEntry.includes('deck') || lowerEntry.includes('slides') || lowerEntry.includes('pitch'));
+    (lowerEntry.includes('deck') ||
+      lowerEntry.includes('slides') ||
+      lowerEntry.includes('pitch') ||
+      metaArtifactType === 'deck');
   const renderer: ArtifactRendererId =
     isDeck
       ? 'deck-html'

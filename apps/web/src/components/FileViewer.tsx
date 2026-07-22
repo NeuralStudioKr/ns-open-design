@@ -5633,7 +5633,10 @@ function HtmlViewer({
   // never surface and the deck becomes a static, unnavigable preview.
   const looksLikeDeck = useMemo(() => {
     if (!source) return false;
-    return /class\s*=\s*['"][^'"]*\bslide\b/i.test(source);
+    return (
+      /\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(source)
+      || /<section[^>]*\bclass\s*=\s*['"]slide['"]/i.test(source)
+    );
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
   const livePreviewSource = inlinedSource ?? source;

@@ -233,4 +233,23 @@ describe('deck bridge — nested slide markup (#1530)', () => {
 
     expect((win.document.getElementById('deck-progress') as HTMLElement).style.width).toBe('66.66666666666666%');
   });
+
+  it('reveals one stacked section.slide at a time for freeform min-height decks', async () => {
+    const slides = Array.from({ length: 3 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win, parentPostMessage } = setupDeckBridge(slides);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+
+    const slideEls = Array.from(win.document.querySelectorAll('.slide')) as HTMLElement[];
+    expect(slideEls.filter((el) => el.style.display !== 'none').length).toBe(1);
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+
+    expect(slideEls[1]?.style.display).not.toBe('none');
+    expect(slideEls[0]?.style.display).toBe('none');
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+  });
 });
