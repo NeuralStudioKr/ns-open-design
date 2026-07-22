@@ -32,6 +32,28 @@ function streamingMessage(content: string): ChatMessage {
   } as ChatMessage;
 }
 
+function completedMessage(content: string): ChatMessage {
+  return {
+    id: 'assistant-1',
+    role: 'assistant',
+    content,
+    runStatus: 'succeeded',
+    startedAt: 1700000000,
+    endedAt: 1700000005,
+    events: [{ kind: 'text', text: content } as ChatMessage['events'][number]],
+    producedFiles: [
+      {
+        name: 'deck.html',
+        path: 'deck.html',
+        size: 1024,
+        mtime: 1700000005,
+        kind: 'html',
+        mime: 'text/html',
+      },
+    ],
+  } as ChatMessage;
+}
+
 describe('AssistantMessage Teamver streaming visibility', () => {
   it('shows live artifact progress even when raw code/thinking details are hidden', () => {
     render(
@@ -82,5 +104,21 @@ describe('AssistantMessage Teamver streaming visibility', () => {
 
     expect(screen.getByText('Waiting for first output')).toBeTruthy();
     expect(screen.queryByText(/Deliverable instruction/)).toBeNull();
+  });
+
+  it('keeps a natural-language completion line after an artifact-only turn finishes', () => {
+    render(
+      <AssistantMessage
+        message={completedMessage(
+          '<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Done</h1></section></body></html></artifact>',
+        )}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
+    expect(screen.queryByText(/<!doctype html/)).toBeNull();
   });
 });

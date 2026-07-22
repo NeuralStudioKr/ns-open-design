@@ -710,8 +710,7 @@ function AssistantMessageImpl({
   // flips to "Working". The elapsed clock stays anchored to the persisted run
   // start so switching project tabs or remounting the message cannot restart it.
   // TodoWrite alone counts as activity even when tool cards are hidden in embed.
-  const hasContent =
-    blocks.some((b) => {
+  const hasVisibleAssistantTextBlocks = blocks.some((b) => {
       if (b.kind === "status") return false;
       if (b.kind !== "text") return true;
       return hasVisibleAssistantTextOutput(b.text, {
@@ -723,11 +722,22 @@ function AssistantMessageImpl({
         teamverEmbedEnabled,
         locale,
       });
-    })
+    });
+  const hasContent =
+    hasVisibleAssistantTextBlocks
     || streamingDeckArtifactActive
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
+  const shouldShowTeamverCompletedArtifactLead =
+    !streaming
+    && !hasVisibleAssistantTextBlocks
+    && (slideOnlyMvp || teamverEmbedEnabled)
+    && /<artifact\b/i.test(message.content)
+    && displayedProduced.length > 0;
+  const teamverCompletedArtifactLead = locale.startsWith("ko")
+    ? "슬라이드 초안이 생성되었습니다."
+    : "The slide deck draft is ready.";
 
   // Index of the trailing text block — the streaming caret rides the end of
   // the last prose block so it tracks the final character as tokens arrive.
@@ -749,6 +759,11 @@ function AssistantMessageImpl({
         {streaming && !hasContent ? (
           <div className="assistant-waiting-output shimmer-text shimmer-prepare" role="status">
             {t("assistant.waitingFirstOutput")}
+          </div>
+        ) : null}
+        {shouldShowTeamverCompletedArtifactLead ? (
+          <div className="prose-block">
+            <p className="teamver-streaming-lead">{teamverCompletedArtifactLead}</p>
           </div>
         ) : null}
         {fileOps.length > 0 && !(hideAssistantThinkingDetails && streaming) ? (
@@ -2182,12 +2197,12 @@ function ProseBlock({
       }));
     }
   );
-  if (renderable.length === 0 && !live && !hadOpenForm) return null;
   const shouldShowTeamverLiveArtifactLead =
     !!live && renderable.length === 0 && (slideOnlyMvp || teamverEmbedEnabled);
   const teamverLiveArtifactLead = locale.startsWith("ko")
     ? "슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요."
     : "Creating the slide deck now. Please wait a moment.";
+  if (renderable.length === 0 && !live && !hadOpenForm) return null;
   return (
     <div className="prose-block" data-stream-cursor={showStreamCursor && !live ? "true" : undefined}>
       {renderable.map((seg) => {
