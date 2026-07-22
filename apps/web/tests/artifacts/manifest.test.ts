@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   artifactManifestNameFor,
+  createArtifactManifest,
   createHtmlArtifactManifest,
   inferLegacyManifest,
   parseArtifactManifest,
@@ -131,5 +132,35 @@ describe('createHtmlArtifactManifest', () => {
     expect(out.title).toBe('Landing');
     expect(typeof out.createdAt).toBe('string');
     expect(typeof out.updatedAt).toBe('string');
+  });
+});
+
+describe('createArtifactManifest', () => {
+  it('creates deck manifest shape for Teamver deck artifacts stored as html files', () => {
+    const out = createArtifactManifest({
+      entry: 'ai-adoption-deck.html',
+      title: 'AI Adoption',
+      artifactType: 'deck',
+      metadata: { identifier: 'ai-adoption-deck', artifactType: 'deck' },
+    });
+
+    expect(out.kind).toBe('deck');
+    expect(out.renderer).toBe('deck-html');
+    expect(out.exports).toEqual(['html', 'pdf', 'pptx', 'zip']);
+    expect(out.primary).toBe(true);
+    expect(out.entry).toBe('ai-adoption-deck.html');
+    expect(out.metadata?.artifactType).toBe('deck');
+  });
+
+  it('keeps html manifest shape for non-deck html artifacts', () => {
+    const out = createArtifactManifest({
+      entry: 'landing.html',
+      title: 'Landing',
+      artifactType: 'text/html',
+    });
+
+    expect(out.kind).toBe('html');
+    expect(out.renderer).toBe('html');
+    expect(out.exports).toEqual(['html', 'pdf', 'zip']);
   });
 });

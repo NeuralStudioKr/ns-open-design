@@ -28,7 +28,22 @@ export interface ArtifactRenderMatch {
 }
 
 function resolveManifest(file: ProjectFile): ArtifactManifest | null {
-  return file.artifactManifest ?? inferLegacyManifest({ entry: file.name });
+  const manifest = file.artifactManifest ?? inferLegacyManifest({ entry: file.name });
+  if (!manifest) return null;
+  if (manifest.metadata?.artifactType === 'deck' && manifest.kind === 'html') {
+    return {
+      ...manifest,
+      kind: 'deck',
+      renderer: 'deck-html',
+      exports: ['html', 'pdf', 'pptx', 'zip'],
+      primary: manifest.primary ?? true,
+      metadata: {
+        ...manifest.metadata,
+        artifactType: 'deck',
+      },
+    };
+  }
+  return manifest;
 }
 
 export const HtmlRenderer: ArtifactRenderer = {

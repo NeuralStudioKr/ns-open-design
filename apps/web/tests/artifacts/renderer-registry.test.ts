@@ -105,6 +105,27 @@ describe('RendererRegistry', () => {
     expect(registry.resolve({ file, isDeckHint: false })).toBeNull();
   });
 
+  it('normalizes legacy html manifests with deck artifact metadata to deck renderer', () => {
+    const file = baseFile({
+      name: 'ai-adoption-deck.html',
+      artifactManifest: {
+        version: 1,
+        kind: 'html',
+        title: 'AI Adoption Deck',
+        entry: 'ai-adoption-deck.html',
+        renderer: 'html',
+        exports: ['html', 'pdf', 'zip'],
+        metadata: { identifier: 'ai-adoption-deck', artifactType: 'deck' },
+      },
+    });
+
+    const match = registry.resolve({ file, isDeckHint: false });
+    expect(match?.renderer.id).toBe('deck-html');
+    expect(match?.manifest.kind).toBe('deck');
+    expect(match?.manifest.renderer).toBe('deck-html');
+    expect(match?.manifest.exports).toEqual(['html', 'pdf', 'pptx', 'zip']);
+  });
+
   it('exposes conservative streaming contract values', () => {
     expect(HtmlRenderer.supportsStreaming).toBe(false);
     expect(DeckHtmlRenderer.supportsStreaming).toBe(false);

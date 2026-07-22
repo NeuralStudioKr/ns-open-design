@@ -12,7 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { createHtmlArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
+import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
 import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
@@ -2676,9 +2676,10 @@ export function ProjectView({
       };
       const manifest =
         ext === '.html'
-          ? createHtmlArtifactManifest({
+          ? createArtifactManifest({
               entry: fileName,
               title,
+              artifactType: artifactToPersist.artifactType,
               sourceSkillId: project.skillId ?? undefined,
               designSystemId: project.designSystemId,
               metadata,
