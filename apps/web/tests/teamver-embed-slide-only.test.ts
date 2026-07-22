@@ -144,6 +144,8 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(homeView).toContain('getInstalledPlugin');
     expect(projectView).toContain('resolveArtifactPersistFileName');
     expect(projectView).toContain('artifactVersionTabsToClose');
+    expect(projectView).toContain('preferDeck: slideOnlyMvp');
+    expect(projectView).toContain("project.metadata?.kind === 'deck'");
     expect(homeView).toContain('pluginIdsBoundToHomeHeroChips');
     expect(homeView).toContain('HOME_COMMUNITY_PLUGIN_PAGE_SIZE');
     expect(homeView).toContain('query: communityPluginQuery.trim()');

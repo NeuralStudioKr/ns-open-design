@@ -163,4 +163,18 @@ describe('createArtifactManifest', () => {
     expect(out.renderer).toBe('html');
     expect(out.exports).toEqual(['html', 'pdf', 'zip']);
   });
+
+  it('forces deck manifest when preferDeck is set even for text/html stream tags', () => {
+    const out = createArtifactManifest({
+      entry: 'legacy-deck.html',
+      title: 'Legacy deck',
+      artifactType: 'text/html',
+      preferDeck: true,
+      metadata: { identifier: 'legacy-deck', artifactType: 'deck' },
+    });
+
+    expect(out.kind).toBe('deck');
+    expect(out.renderer).toBe('deck-html');
+    expect(out.metadata?.artifactType).toBe('deck');
+  });
 });

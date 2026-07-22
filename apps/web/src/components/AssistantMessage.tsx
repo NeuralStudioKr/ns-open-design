@@ -455,7 +455,7 @@ function AssistantMessageImpl({
       stripInternalMarkupFromProseBlocks(
         suppressDuplicateQuestionForms(rawBlocks),
         streaming,
-        hideAssistantThinkingDetails,
+        hideAssistantThinkingDetails && !slideOnlyMvp,
       ),
     );
     const visible = placeConversationTodoCard(sanitized, {
@@ -478,8 +478,18 @@ function AssistantMessageImpl({
     showConversationTodoCard,
     conversationTodoInput,
     hideAssistantThinkingDetails,
+    slideOnlyMvp,
     streaming,
   ]);
+  const streamingDeckArtifactActive = useMemo(() => {
+    if (!streaming || !slideOnlyMvp) return false;
+    for (let i = blocks.length - 1; i >= 0; i -= 1) {
+      const block = blocks[i];
+      if (block?.kind !== 'text' || !block.text.trim()) continue;
+      return splitStreamingArtifact(block.text).live !== null;
+    }
+    return false;
+  }, [blocks, slideOnlyMvp, streaming]);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
   // Streaming progress reads TodoWrite from events (not filtered blocks) so
   // Teamver embed can show N/M + current task while tool cards stay hidden.
@@ -644,6 +654,7 @@ function AssistantMessageImpl({
   // TodoWrite alone counts as activity even when tool cards are hidden in embed.
   const hasContent =
     blocks.some((b) => b.kind !== "status")
+    || streamingDeckArtifactActive
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
@@ -685,7 +696,7 @@ function AssistantMessageImpl({
                 key={i}
                 text={b.text}
                 hideRecoveredHtmlFallback={teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude"}
-                hideStreamingCodeFences={hideAssistantThinkingDetails}
+                hideStreamingCodeFences={hideAssistantThinkingDetails && !slideOnlyMvp}
                 assistantMessageId={message.id}
                 isLastAssistant={!!isLast}
                 streaming={streaming}
@@ -2005,7 +2016,7 @@ function ProseBlock({
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
     return sanitizeAssistantProseForDisplay(base, {
       streaming,
-      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
+      stripCodeFences: hideStreamingCodeFences || (hideAssistantThinkingDetails && !slideOnlyMvp),
     });
   }, [hideAssistantThinkingDetails, hideRecoveredHtmlFallback, hideStreamingCodeFences, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,

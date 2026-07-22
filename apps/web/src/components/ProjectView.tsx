@@ -2669,9 +2669,9 @@ export function ProjectView({
       const title = art.title || art.identifier || fileName;
       const htmlBody =
         ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
-      const metadata = {
+      metadata: {
         identifier: art.identifier,
-        artifactType: art.artifactType,
+        artifactType: slideOnlyMvp ? 'deck' : art.artifactType,
         inferred: false,
       };
       const manifest =
@@ -2680,6 +2680,7 @@ export function ProjectView({
               entry: fileName,
               title,
               artifactType: artifactToPersist.artifactType,
+              preferDeck: slideOnlyMvp,
               sourceSkillId: project.skillId ?? undefined,
               designSystemId: project.designSystemId,
               metadata,
@@ -2795,7 +2796,7 @@ export function ProjectView({
         };
       }
     },
-    [project.id, project.designSystemId, project.skillId, requestOpenFile],
+    [project.id, project.designSystemId, project.skillId, requestOpenFile, slideOnlyMvp],
   );
 
   // Auth-recovery replay: when the embed cookie is refreshed after a session
@@ -4078,7 +4079,7 @@ export function ProjectView({
           flushAndPersistNow: () => persistNow({ keepalive: true }),
           onContentDelta: applyContentDelta,
           onContentRewrite: rewriteLiveContent,
-          stripCodeFences: hideAssistantThinkingDetails,
+          stripCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
         });
         reattachTextBuffersRef.current.add(textBuffer);
         const unregisterTextBuffer = () => {
@@ -5795,7 +5796,7 @@ export function ProjectView({
         flushAndPersistNow: persistAssistantNowKeepalive,
         onContentDelta: applyContentDelta,
         onContentRewrite: rewriteLiveContent,
-        stripCodeFences: hideAssistantThinkingDetails,
+        stripCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
       });
       sendTextBufferRef.current = textBuffer;
       const releaseOwnTextBuffer = () => {
@@ -7631,9 +7632,11 @@ export function ProjectView({
 
   const isDeck = useMemo(
     () =>
-      (skills.find((s) => s.id === project.skillId) ??
+      slideOnlyMvp
+      || project.metadata?.kind === 'deck'
+      || (skills.find((s) => s.id === project.skillId) ??
         designTemplates.find((s) => s.id === project.skillId))?.mode === 'deck',
-    [skills, designTemplates, project.skillId],
+    [slideOnlyMvp, project.metadata?.kind, skills, designTemplates, project.skillId],
   );
   const chatResizeLabel = t('project.resizeChatPanel');
   const workspacePanelTrack =

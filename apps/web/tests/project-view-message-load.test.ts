@@ -238,9 +238,10 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 4200);
+    const persistBlock = source.slice(persistStart, persistStart + 5200);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
+    expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
     expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // Validation refusals still surface a refusal banner; incomplete shells

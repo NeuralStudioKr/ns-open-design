@@ -144,6 +144,18 @@ describe('splitStreamingArtifact', () => {
     expect(live?.content).toBe('\n<h1>Hi');
   });
 
+  it('surfaces deck artifact streams the same way as html for live preview', () => {
+    const input =
+      'Preparing\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide">A';
+    const { head, live } = splitStreamingArtifact(input);
+    expect(head).toBe('Preparing');
+    expect(live).toMatchObject({
+      artifactType: 'deck',
+      identifier: 'deck',
+      content: '<!doctype html><html><body><section class="slide">A',
+    });
+  });
+
   it('defers a completed artifact to stripArtifact (no live box)', () => {
     const input = 'Done.\n<artifact identifier="x" type="text/html" title="X">\n<h1>x</h1>\n</artifact>';
     const { head, live } = splitStreamingArtifact(input);

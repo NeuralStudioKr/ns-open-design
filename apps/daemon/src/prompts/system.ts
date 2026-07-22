@@ -336,7 +336,7 @@ Deck work inside the project workspace remains fully supported.
 For every slide deck creation or edit request, the turn is successful only if it leaves a previewable HTML deck in the project workspace.
 
 - Preferred path: write or edit the canonical \`.html\` deck file with filesystem tools, then briefly name that file.
-- Fallback path: if filesystem tools are unavailable or the file write did not happen, end with exactly one complete \`<artifact type="text/html">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document.
+- Fallback path: if filesystem tools are unavailable or the file write did not happen, end with exactly one complete \`<artifact type="deck">\` block whose body starts with \`<!doctype html>\` and contains the full standalone deck document. Teamver supports deck artifacts only; never use \`type="text/html"\` for the artifact contract.
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
 

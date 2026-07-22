@@ -98,12 +98,14 @@ export function createArtifactManifest(input: {
   entry: string;
   title: string;
   artifactType?: string | null;
+  /** Teamver slide-only: always persist deck manifests regardless of stream tag. */
+  preferDeck?: boolean;
   metadata?: Record<string, unknown>;
   sourceSkillId?: string;
   designSystemId?: string | null;
 }): ArtifactManifest {
   const artifactType = (input.artifactType || '').toLowerCase();
-  if (artifactType === 'deck') {
+  if (input.preferDeck || artifactType === 'deck') {
     const now = new Date().toISOString();
     return {
       version: MANIFEST_VERSION,
