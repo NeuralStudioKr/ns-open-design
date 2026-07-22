@@ -6,6 +6,23 @@ interface ArtifactPersistShape {
   artifactType?: string | null;
 }
 
+/**
+ * Teamver slide-only runs accept only `type="deck"` in the stream contract.
+ * Models still occasionally emit `text/html`; normalize at parse/persist time.
+ */
+export function normalizeSlideOnlyArtifactContractType(
+  artifactType: string | null | undefined,
+  slideOnlyMvp: boolean,
+): string {
+  if (!slideOnlyMvp) {
+    const trimmed = (artifactType || '').trim();
+    return trimmed || 'text/html';
+  }
+  const lower = (artifactType || '').toLowerCase();
+  if (!lower || lower === 'deck' || /html|text\//i.test(lower)) return 'deck';
+  return artifactType || 'deck';
+}
+
 /** Whether `tabName` is `baseName.ext` or a numbered sibling `baseName-2.ext`. */
 export function isArtifactVersionSiblingTab(
   tabName: string,

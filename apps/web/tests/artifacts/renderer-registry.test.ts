@@ -126,6 +126,24 @@ describe('RendererRegistry', () => {
     expect(match?.manifest.exports).toEqual(['html', 'pdf', 'pptx', 'zip']);
   });
 
+  it('normalizes deck kind with html renderer to deck-html', () => {
+    const file = baseFile({
+      name: 'deck.html',
+      artifactManifest: {
+        version: 1,
+        kind: 'deck',
+        title: 'Deck',
+        entry: 'deck.html',
+        renderer: 'html',
+        exports: ['html', 'pdf', 'zip'],
+      },
+    });
+
+    const match = registry.resolve({ file, isDeckHint: false });
+    expect(match?.renderer.id).toBe('deck-html');
+    expect(match?.manifest.renderer).toBe('deck-html');
+  });
+
   it('exposes conservative streaming contract values', () => {
     expect(HtmlRenderer.supportsStreaming).toBe(false);
     expect(DeckHtmlRenderer.supportsStreaming).toBe(false);

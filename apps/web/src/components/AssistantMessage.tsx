@@ -2030,7 +2030,7 @@ function ProseBlock({
         : { text: cleaned, hadOpenForm: false },
     [cleaned, isLastAssistant, streaming],
   );
-  // While an `<artifact type="text/html">` is still streaming (no closing tag
+  // While an open `<artifact type="deck">` (or legacy `text/html`) is still streaming
   // yet), surface its body in a live code panel instead of leaking the raw
   // tag + half-written HTML as Markdown text. Once it closes, stripArtifact
   // removes it and the file/preview panel takes over — so this only fires

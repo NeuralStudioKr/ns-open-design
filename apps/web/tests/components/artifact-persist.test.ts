@@ -4,9 +4,25 @@ import {
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
   isArtifactVersionSiblingTab,
+  normalizeSlideOnlyArtifactContractType,
   preferredArtifactVersionTab,
   resolveArtifactPersistFileName,
 } from '../../src/components/artifact-persist';
+
+describe('normalizeSlideOnlyArtifactContractType', () => {
+  it('passes through non-slide-only types unchanged', () => {
+    expect(normalizeSlideOnlyArtifactContractType('text/html', false)).toBe('text/html');
+    expect(normalizeSlideOnlyArtifactContractType('deck', false)).toBe('deck');
+    expect(normalizeSlideOnlyArtifactContractType(null, false)).toBe('text/html');
+  });
+
+  it('normalizes slide-only stream tags to deck', () => {
+    expect(normalizeSlideOnlyArtifactContractType('text/html', true)).toBe('deck');
+    expect(normalizeSlideOnlyArtifactContractType('deck', true)).toBe('deck');
+    expect(normalizeSlideOnlyArtifactContractType('', true)).toBe('deck');
+    expect(normalizeSlideOnlyArtifactContractType(null, true)).toBe('deck');
+  });
+});
 
 describe('resolveArtifactPersistFileName', () => {
   const deck = {

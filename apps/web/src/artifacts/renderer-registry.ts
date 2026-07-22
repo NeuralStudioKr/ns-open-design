@@ -30,7 +30,10 @@ export interface ArtifactRenderMatch {
 function resolveManifest(file: ProjectFile): ArtifactManifest | null {
   const manifest = file.artifactManifest ?? inferLegacyManifest({ entry: file.name });
   if (!manifest) return null;
-  if (manifest.metadata?.artifactType === 'deck' && manifest.kind === 'html') {
+  const needsDeckUpgrade =
+    (manifest.metadata?.artifactType === 'deck' && manifest.kind === 'html')
+    || (manifest.kind === 'deck' && manifest.renderer === 'html');
+  if (needsDeckUpgrade) {
     return {
       ...manifest,
       kind: 'deck',

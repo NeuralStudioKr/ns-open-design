@@ -297,6 +297,7 @@ import {
 import {
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
+  normalizeSlideOnlyArtifactContractType,
   resolveArtifactPersistFileName,
 } from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
@@ -2669,9 +2670,13 @@ export function ProjectView({
       const title = art.title || art.identifier || fileName;
       const htmlBody =
         ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
-      metadata: {
+      const contractArtifactType = normalizeSlideOnlyArtifactContractType(
+        artifactToPersist.artifactType,
+        slideOnlyMvp,
+      );
+      const metadata = {
         identifier: art.identifier,
-        artifactType: slideOnlyMvp ? 'deck' : art.artifactType,
+        artifactType: contractArtifactType,
         inferred: false,
       };
       const manifest =
@@ -2679,7 +2684,7 @@ export function ProjectView({
           ? createArtifactManifest({
               entry: fileName,
               title,
-              artifactType: artifactToPersist.artifactType,
+              artifactType: contractArtifactType,
               preferDeck: slideOnlyMvp,
               sourceSkillId: project.skillId ?? undefined,
               designSystemId: project.designSystemId,
@@ -4026,7 +4031,7 @@ export function ProjectView({
               liveHtml = '';
               parsedArtifact = {
                 identifier: ev.identifier,
-                artifactType: ev.artifactType,
+                artifactType: normalizeSlideOnlyArtifactContractType(ev.artifactType, slideOnlyMvp),
                 title: ev.title,
                 html: '',
               };
@@ -5716,7 +5721,7 @@ export function ProjectView({
             liveHtml = '';
             parsedArtifact = {
               identifier: ev.identifier,
-              artifactType: ev.artifactType,
+              artifactType: normalizeSlideOnlyArtifactContractType(ev.artifactType, slideOnlyMvp),
               title: ev.title,
               html: '',
             };

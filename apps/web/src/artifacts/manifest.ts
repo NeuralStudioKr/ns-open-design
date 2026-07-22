@@ -120,7 +120,10 @@ export function createArtifactManifest(input: {
       updatedAt: now,
       sourceSkillId: input.sourceSkillId,
       designSystemId: input.designSystemId,
-      metadata: input.metadata,
+      metadata: {
+        ...input.metadata,
+        artifactType: 'deck',
+      },
     };
   }
   return createHtmlArtifactManifest(input);
