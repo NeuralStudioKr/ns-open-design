@@ -22,7 +22,7 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
-import { looksLikeCompactApiStackedDeck } from './compact-api-stacked-deck.js';
+import { looksLikeCompactApiStackedDeck } from './compact-api-stacked-deck';
 
 export type SrcdocOptions = {
   deck?: boolean;
