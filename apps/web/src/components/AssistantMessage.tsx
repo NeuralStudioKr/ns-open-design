@@ -37,6 +37,7 @@ import {
 import {
   INVALID_QUESTION_FORM_FALLBACK,
   splitOnQuestionForms,
+  stripUserVisibleQuestionFormProtocolText,
   stripTrailingOpenQuestionForm,
   type QuestionForm,
 } from "../artifacts/question-form";
@@ -2059,6 +2060,10 @@ function ProseBlock({
       if (seg.kind === "text" && seg.text.includes(INVALID_QUESTION_FORM_FALLBACK)) {
         return [];
       }
+      if (seg.kind === "text") {
+        const text = stripUserVisibleQuestionFormProtocolText(seg.text);
+        return text ? [{ ...seg, text }] : [];
+      }
       return [seg];
     });
     if (resolved.usedFallback && resolved.form && !filtered.some((seg) => seg.kind === "form")) {
@@ -2103,8 +2108,9 @@ function ProseBlock({
         }
         return [{ key: `f-${idx}`, kind: "form", form }];
       }
-      if (seg.text.trim().length === 0) return [];
-      const sub = splitSystemReminders(seg.text);
+      const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
+      if (visibleSegmentText.trim().length === 0) return [];
+      const sub = splitSystemReminders(visibleSegmentText);
       return sub.map((s, j) => ({
         key: `t-${idx}-${j}`,
         kind: s.kind,

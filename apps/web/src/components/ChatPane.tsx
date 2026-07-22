@@ -43,6 +43,7 @@ import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, Cha
 import { exactDateTime, messageTime, shortTime } from '../utils/chatTime';
 import { commentTargetDisplayName, commentsToAttachments, simplePositionLabel } from '../comments';
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
+import { stripUserVisibleQuestionFormProtocolText } from '../artifacts/question-form';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
@@ -3327,9 +3328,10 @@ function UserMessageImpl({
   }, []);
 
   async function handleCopy() {
-    if (!message.content) return;
+    const visibleContent = stripUserVisibleQuestionFormProtocolText(message.content);
+    if (!visibleContent) return;
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    const ok = await copyToClipboard(message.content);
+    const ok = await copyToClipboard(visibleContent);
     if (!ok) return;
     setCopied(true);
     copyTimerRef.current = setTimeout(() => {
@@ -3339,6 +3341,7 @@ function UserMessageImpl({
   }
 
   const isDesignSystemWorkspaceRequest = isDesignSystemWorkspacePrompt(message.content);
+  const visibleUserContent = stripUserVisibleQuestionFormProtocolText(message.content);
   const ts = messageTime(message);
 
   return (
@@ -3432,7 +3435,7 @@ function UserMessageImpl({
           ))}
         </div>
       ) : null}
-      {message.content && isDesignSystemWorkspaceRequest ? (
+      {visibleUserContent && isDesignSystemWorkspaceRequest ? (
         <div className="user-text-wrap user-status-wrap">
           <div className="user-status-card design-system-generation-status">
             <span className="user-status-card__icon">
@@ -3444,9 +3447,9 @@ function UserMessageImpl({
             </span>
           </div>
         </div>
-      ) : message.content ? (
+      ) : visibleUserContent ? (
         <div className="user-text-wrap">
-          <div className="user-text user-bubble">{message.content}</div>
+          <div className="user-text user-bubble">{visibleUserContent}</div>
           <div className="user-actions">
             {ts ? (
               <time

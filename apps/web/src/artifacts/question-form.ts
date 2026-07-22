@@ -712,6 +712,11 @@ function parseDirectionCards(raw: unknown): DirectionCard[] | undefined {
 export const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE =
   '\n\n[Deliverable instruction] All discovery questions were skipped — choose reasonable defaults and emit ONE complete Teamver deck in this same response inside `<artifact type="deck" identifier="...">...</artifact>`. Do not use `type="text/html"`. Do not stop after a plan, outline, or promise; the deck artifact is required now.';
 
+const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE_RE =
+  /\n*\[Deliverable instruction\][\s\S]*$/i;
+const QUESTION_FORM_PROTOCOL_FRAGMENT_LINE_RE =
+  /^\s*<\/?(?:question(?:-form)?|ask(?:-question)?)\b[^>\n]*(?:>\s*)?$/i;
+
 export function isAllFormAnswersSkipped(
   form: QuestionForm,
   answers: Record<string, string | string[]>,
@@ -747,14 +752,17 @@ export function formatFormAnswers(
     else display = '(skipped)';
     lines.push(`- ${q.label}: ${display}`);
   }
-  let text = lines.join('\n');
-  if (
-    options?.appendSlideDeliverableDirective
-    && isAllFormAnswersSkipped(form, answers)
-  ) {
-    text += SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE;
-  }
-  return text;
+  void options;
+  return lines.join('\n');
+}
+
+export function stripUserVisibleQuestionFormProtocolText(content: string | null | undefined): string {
+  const withoutDirective = String(content ?? '').replace(SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE_RE, '');
+  return withoutDirective
+    .split(/\r?\n/)
+    .filter((line) => !QUESTION_FORM_PROTOCOL_FRAGMENT_LINE_RE.test(line))
+    .join('\n')
+    .trim();
 }
 
 function formOptionDisplayForValue(

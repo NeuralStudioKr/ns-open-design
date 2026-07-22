@@ -520,6 +520,26 @@ describe('AssistantMessage question forms', () => {
       form: expect.objectContaining({ id: 'discovery', title: 'Quick brief — tailored' }),
     }));
   });
+
+  it('hides partial question-form protocol fragments from chat prose', () => {
+    render(
+      <AssistantMessage
+        message={baseMessage({
+          content: '<question',
+          events: [
+            {
+              kind: 'text',
+              text: '<question',
+            } as ChatMessage['events'][number],
+          ],
+        })}
+        streaming={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText('<question')).toBeNull();
+  });
 });
 
 describe('AssistantMessage recovered produced files', () => {

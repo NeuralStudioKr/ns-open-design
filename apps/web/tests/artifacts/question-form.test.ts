@@ -4,6 +4,7 @@ import {
   formatFormAnswers,
   isAllFormAnswersSkipped,
   SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE,
+  stripUserVisibleQuestionFormProtocolText,
   splitOnQuestionForms,
   parsePartialQuestionForm,
 } from '../../src/artifacts/question-form';
@@ -81,7 +82,7 @@ describe('splitOnQuestionForms', () => {
     expect(text).toContain('- Primary surface: Mobile (iOS/Android) [value: mobile]');
   });
 
-  it('appends a slide deliverable directive when every answer was skipped', () => {
+  it('does not append internal slide deliverable directives to visible answer text', () => {
     const form = {
       id: 'discovery',
       title: 'Quick brief',
@@ -93,7 +94,20 @@ describe('splitOnQuestionForms', () => {
     expect(isAllFormAnswersSkipped(form, {})).toBe(true);
     const text = formatFormAnswers(form, {}, { appendSlideDeliverableDirective: true });
     expect(text).toContain('(skipped)');
-    expect(text).toContain(SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE);
+    expect(text).not.toContain(SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE);
+    expect(text).not.toContain('[Deliverable instruction]');
+  });
+
+  it('strips legacy internal directives and partial question tags from visible chat text', () => {
+    const text = [
+      '<question',
+      '[form answers — discovery]',
+      '- 대상 독자: (skipped)',
+      SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE.trim(),
+    ].join('\n');
+
+    const visible = stripUserVisibleQuestionFormProtocolText(text);
+    expect(visible).toBe('[form answers — discovery]\n- 대상 독자: (skipped)');
   });
 
   it('parses the canonical <question-form> tag', () => {
