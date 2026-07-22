@@ -78,7 +78,7 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
-  CANVAS_CREATE_SLIDES_PROMPT,
+  canvasCreateSlidesRunPrompt,
   canvasSlideTemplateOptions,
 } from '../teamver/canvasSlideLaunch';
 import {
@@ -1689,7 +1689,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
           const baseMeta = currentRunContextMeta();
-          sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
+          sendComposedTurn(canvasCreateSlidesRunPrompt(), attachments, [], {
             ...baseMeta,
             designSystemId: designSystemIdForRun,
             context: {
@@ -1736,7 +1736,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setCanvasSlideLaunchError(null);
         {
           const baseMeta = currentRunContextMeta();
-          sendComposedTurn(CANVAS_CREATE_SLIDES_PROMPT, attachments, [], {
+          sendComposedTurn(canvasCreateSlidesRunPrompt(), attachments, [], {
             ...baseMeta,
             designSystemId: designSystemIdForRun,
             context: {

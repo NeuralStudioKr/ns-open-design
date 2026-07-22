@@ -5,8 +5,10 @@ import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
+  canvasCreateSlidesRunPrompt,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
+import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 
 describe("canvasSlideLaunch", () => {
   it("keeps the user-visible Canvas handoff prompt short", () => {
@@ -22,6 +24,13 @@ describe("canvasSlideLaunch", () => {
       designSystem: "Template",
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
+  });
+
+  it("sends hidden deliverable instructions to the model while keeping user display clean", () => {
+    const runPrompt = canvasCreateSlidesRunPrompt();
+    expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_PROMPT);
+    expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
+    expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
   });
 
   it("binds create-slides to the deck scenario plugin", () => {

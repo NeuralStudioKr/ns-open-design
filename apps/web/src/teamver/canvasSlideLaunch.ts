@@ -24,6 +24,10 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
 export const CANVAS_CREATE_SLIDES_PROMPT =
   "캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.";
 
+export function canvasCreateSlidesRunPrompt(): string {
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}`;
+}
+
 export type TeamverCanvasSlideTemplateOption = {
   id: string;
   title: string;

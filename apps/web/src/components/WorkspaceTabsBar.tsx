@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
 import { navigate, type EntryHomeView, type Route } from '../router';
 import type { Project } from '../types';
+import { stripUserVisibleQuestionFormProtocolText } from '../artifacts/question-form';
 import { Icon, type IconName } from './Icon';
 
 type WorkspaceChromeTab =
@@ -1107,7 +1108,9 @@ function describePreviewDetail(
   if (tab.kind === 'project') {
     if (tab.fileName) return tab.fileName;
     const project = projectById.get(tab.projectId);
-    const brief = project?.pendingPrompt?.trim() || project?.customInstructions?.trim();
+    const brief =
+      stripUserVisibleQuestionFormProtocolText(project?.pendingPrompt)?.trim()
+      || project?.customInstructions?.trim();
     if (brief) {
       return brief.length > 120 ? `${brief.slice(0, 117)}…` : brief;
     }

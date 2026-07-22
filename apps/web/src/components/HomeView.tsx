@@ -131,7 +131,7 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
-  CANVAS_CREATE_SLIDES_PROMPT,
+  canvasCreateSlidesRunPrompt,
   canvasSlideTemplateOptions,
   canvasCreateSlidesPluginInputs,
 } from '../teamver/canvasSlideLaunch';
@@ -1763,7 +1763,7 @@ export function HomeView({
           null;
         const submitResult = await Promise.resolve(
           onSubmit({
-            prompt: CANVAS_CREATE_SLIDES_PROMPT,
+            prompt: canvasCreateSlidesRunPrompt(),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
@@ -1795,7 +1795,7 @@ export function HomeView({
       const asset = canvasSlideLaunch.asset;
       const submitResult = await Promise.resolve(
         onSubmit({
-          prompt: CANVAS_CREATE_SLIDES_PROMPT,
+          prompt: canvasCreateSlidesRunPrompt(),
           pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
           skillId: null,
