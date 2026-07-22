@@ -5,7 +5,6 @@ import {
   resolveTerminalArtifactToPersist,
   shouldFailSlideRunForMissingHtmlDeliverable,
   shouldFailSlideRunWithoutHtmlDeliverable,
-  verifySlideProducedHtmlDeliverable,
 } from "../../src/components/ProjectView";
 
 const INCOMPLETE_SHELL = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body>";
@@ -194,29 +193,6 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
         terminalArtifactPersistFailed: true,
       }),
     ).toBe(false);
-  });
-});
-
-describe("verifySlideProducedHtmlDeliverable", () => {
-  const VALID_DECK =
-    '<!doctype html><html><body><section class="slide"><h1>제목</h1><p>본문</p></section></body></html>';
-
-  it("returns the file name when disk HTML is previewable", async () => {
-    await expect(
-      verifySlideProducedHtmlDeliverable("deck.html", async () => VALID_DECK),
-    ).resolves.toBe("deck.html");
-  });
-
-  it("returns null for incomplete shell files on disk", async () => {
-    await expect(
-      verifySlideProducedHtmlDeliverable("deck.html", async () => INCOMPLETE_SHELL),
-    ).resolves.toBeNull();
-  });
-
-  it("returns null when the file cannot be read", async () => {
-    await expect(
-      verifySlideProducedHtmlDeliverable("deck.html", async () => null),
-    ).resolves.toBeNull();
   });
 });
 

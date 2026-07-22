@@ -216,7 +216,7 @@ describe("ProjectView message loading", () => {
       "messagesConversationIdRef.current !== activeConversationId",
     );
     expect(block).toContain("autoOpenRecoveredHtmlOutput(");
-    expect(block).toContain("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
+    expect(block).toContain("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(");
     expect(block).toContain("if (openedRecoveredHtml) return");
     // Ordering matters — autoOpenRecoveredHtmlOutput short-circuits on the
     // first match so the newest completion must be tried first.
@@ -226,16 +226,16 @@ describe("ProjectView message loading", () => {
 
   it("auto-continues a recovered incomplete-output row after reload when no HTML exists", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
+    const start = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(");
     expect(start).toBeGreaterThan(0);
     const block = source.slice(start, start + 7000);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
-    expect(block).toContain("conversationAutoContinueCountRef.current.set(");
-    expect(block).toContain("nextAutoContinueCount >= AUTO_CONTINUE_MAX_PER_CONVERSATION");
-    expect(block).toContain("message.runStatus === 'failed'");
-    expect(block).toContain("message.resumable === true");
-    expect(block).toContain("event.code === 'incomplete_output'");
+    expect(block).toContain("syncAutoContinueCountFromMessages(");
+    expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
+    expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
+    expect(block).toContain("attemptEmergencySlideDeckRecovery(");
+    expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(block).toContain("appendErrorStatusEvent(");
     expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
@@ -248,16 +248,16 @@ describe("ProjectView message loading", () => {
 
   it("auto-continues a background-recovered incomplete-output row once proxy streams drain", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    const start = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(");
-    const secondStart = source.indexOf("const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(", start + 1);
+    const start = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(");
+    const secondStart = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(", start + 1);
     expect(secondStart).toBeGreaterThan(0);
-    const block = source.slice(secondStart, secondStart + 5600);
+    const block = source.slice(secondStart, secondStart + 7200);
 
     expect(block).toContain("const proxyStillActive = matchingActiveStreams.length > 0");
     expect(block).toContain("!openedRecoveredHtml && !stillInflight && !proxyStillActive");
-    expect(block).toContain("trackedAssistantIds.has(message.id)");
-    expect(block).toContain("event.code === 'incomplete_output'");
-    expect(block).toContain("AUTO_CONTINUE_MAX_PER_CONVERSATION");
+    expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
+    expect(block).toContain("restrictToMessageIds: trackedAssistantIds");
+    expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(block).toContain("saveMessage(project.id, recoveryConversationId, updatedAssistant");
     expect(block).toContain("finishRecovery()");
@@ -316,7 +316,9 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");
+    expect(autoOpenBlock).toContain("syncAutoContinueCountFromMessages(");
     expect(autoOpenBlock).toContain("shouldAutoContinueForIncompleteOutput({");
+    expect(autoOpenBlock).toContain("attemptEmergencySlideDeckRecovery(");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(autoOpenBlock).toContain("buildAutoContinueIncompleteOutputPrompt");

@@ -29,7 +29,6 @@ import {
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
 import {
-  buildEmergencyArtifactFromMessages,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   looksLikeSlideOutline,
 } from '../artifacts/emergency-deck';
@@ -143,6 +142,13 @@ import {
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
+import {
+  attemptEmergencySlideDeckRecovery,
+  canFireAutoContinueForConversation,
+  findIncompleteSlideAssistantForRecovery,
+  syncAutoContinueCountFromMessages,
+  verifySlideProducedHtmlDeliverable,
+} from '../runtime/slide-deliverable-recovery';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -2099,49 +2105,72 @@ export function ProjectView({
               : await refreshProjectFiles().catch(() => [] as ProjectFile[]);
             if (cancelled) return;
             if (messagesConversationIdRef.current !== activeConversationId) return;
-            const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(
+            const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(
               mergedMessages,
               terminalAssistantIds,
               filesForRecovery,
             );
             if (openedRecoveredHtml) return;
-            // Sync the per-conversation auto-continue cap from persisted
-            // status events, then fire the same capped recovery as terminal
-            // onDone. ChatPane hides the model-facing prompt, so reentry can
-            // salvage a failed row without leaking the directive as a user bubble.
-            const autoContinueAttempts = mergedMessages.reduce((count, message) => {
-              const attempted = message.events?.some((event) =>
-                event.kind === 'status' && event.code === AUTO_CONTINUE_STATUS_CODE,
-              );
-              return attempted ? count + 1 : count;
-            }, 0);
-            const currentAutoContinueCount =
-              conversationAutoContinueCountRef.current.get(activeConversationId) ?? 0;
-            const nextAutoContinueCount = Math.max(currentAutoContinueCount, autoContinueAttempts);
-            conversationAutoContinueCountRef.current.set(
+            if (pendingAutoContinueConversationIdRef.current === activeConversationId) return;
+            const autoContinueCount = syncAutoContinueCountFromMessages(
+              conversationAutoContinueCountRef.current,
               activeConversationId,
-              nextAutoContinueCount,
+              mergedMessages,
             );
-            if (nextAutoContinueCount >= AUTO_CONTINUE_MAX_PER_CONVERSATION) return;
-            const incompleteAssistant = mergedMessages
-              .slice()
-              .reverse()
-              .find((message) =>
-                message.role === 'assistant'
-                && message.runStatus === 'failed'
-                && message.resumable === true
-                && message.events?.some((event) =>
-                  event.kind === 'status'
-                  && (
-                    event.code === 'incomplete_output'
-                    || event.code === AUTO_CONTINUE_STATUS_CODE
-                  ),
-                ),
-              );
+            const incompleteAssistant = findIncompleteSlideAssistantForRecovery(mergedMessages);
+            if (!canFireAutoContinueForConversation(autoContinueCount)) {
+              if (incompleteAssistant && slideOnlyMvp) {
+                const incompleteIndex = mergedMessages.findIndex(
+                  (message) => message.id === incompleteAssistant.id,
+                );
+                const beforeFileNames = resolveTurnStartFileBaseline(
+                  incompleteAssistant.preTurnFileNames,
+                  filesForRecovery,
+                );
+                const emergency = await attemptEmergencySlideDeckRecovery({
+                  slideOnlyMvp,
+                  producedHtmlToOpen: null,
+                  outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
+                  finalText: incompleteAssistant.content,
+                  projectFiles: filesForRecovery,
+                  beforeFileNames,
+                  startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
+                  persistArtifact,
+                  refreshProjectFiles,
+                  readProjectHtml,
+                  computeProducedFiles,
+                });
+                if (emergency.recovered && emergency.htmlToOpen) {
+                  const emergencyNotice = formatEmergencyDeckFallbackNotice();
+                  const updatedAssistant = {
+                    ...appendErrorStatusEvent(
+                      incompleteAssistant,
+                      emergencyNotice,
+                      EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+                    ),
+                    producedFiles: emergency.produced,
+                    runStatus: 'succeeded' as const,
+                    resumable: false,
+                    endedAt: incompleteAssistant.endedAt ?? Date.now(),
+                  };
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === updatedAssistant.id ? updatedAssistant : message,
+                    ),
+                  );
+                  void saveMessage(project.id, activeConversationId, updatedAssistant, {
+                    telemetryFinalized: true,
+                  });
+                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                  requestOpenFile(emergency.htmlToOpen);
+                }
+              }
+              return;
+            }
             if (!incompleteAssistant) return;
             conversationAutoContinueCountRef.current.set(
               activeConversationId,
-              nextAutoContinueCount + 1,
+              autoContinueCount + 1,
             );
             const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
             const updatedAssistant = appendErrorStatusEvent(
@@ -3456,11 +3485,11 @@ export function ProjectView({
     [refreshConversationMessagesFromServer],
   );
 
-  const autoOpenRecoveredHtmlOutput = useCallback((
+  const autoOpenRecoveredHtmlOutput = useCallback(async (
     messagesSnapshot: readonly ChatMessage[],
     assistantMessageIds: ReadonlySet<string>,
     filesSnapshot: readonly ProjectFile[],
-  ) => {
+  ): Promise<boolean> => {
     for (const assistantMessageId of assistantMessageIds) {
       if (htmlAutoOpenClaimedRef.current.has(assistantMessageId)) continue;
       const message = messagesSnapshot.find((item) => item.id === assistantMessageId);
@@ -3471,11 +3500,15 @@ export function ProjectView({
             resolveTurnStartFileBaseline(message.preTurnFileNames, filesSnapshot),
             filesSnapshot,
           ) ?? [];
-      const htmlToOpen = selectAutoOpenProducedHtml(produced)
+      let htmlToOpen = selectAutoOpenProducedHtml(produced)
         ?? selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot, {
           branding: { slideOnlyMvp },
         });
       if (!htmlToOpen) continue;
+      if (slideOnlyMvp) {
+        htmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, readProjectHtml);
+        if (!htmlToOpen) continue;
+      }
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
       requestOpenFile(htmlToOpen);
@@ -3490,7 +3523,7 @@ export function ProjectView({
       return true;
     }
     return false;
-  }, [project.id, requestOpenFile, slideOnlyMvp, updateMessageById]);
+  }, [project.id, readProjectHtml, requestOpenFile, slideOnlyMvp, updateMessageById]);
 
   const markStreamingConversation = useCallback((conversationId: string) => {
     streamingConversationIdRef.current = conversationId;
@@ -4295,10 +4328,16 @@ export function ProjectView({
                 }
                 const diff = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                 const produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
-                const producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+                let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
                   ?? selectTouchedHtmlOutputFromEvents(message.events, nextFiles, {
                     branding: { slideOnlyMvp },
                   });
+                if (slideOnlyMvp && producedHtmlToOpen) {
+                  producedHtmlToOpen = await verifySlideProducedHtmlDeliverable(
+                    producedHtmlToOpen,
+                    readProjectHtml,
+                  );
+                }
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
                   requestOpenFile(producedHtmlToOpen);
@@ -4716,7 +4755,7 @@ export function ProjectView({
         return;
       }
       if (cancelled) return;
-      const openedRecoveredHtml = autoOpenRecoveredHtmlOutput(
+      const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(
         mergedMessages,
         trackedAssistantIds,
         nextFiles,
@@ -4724,127 +4763,156 @@ export function ProjectView({
 
       const proxyStillActive = matchingActiveStreams.length > 0;
       if (!openedRecoveredHtml && !stillInflight && !proxyStillActive) {
-        // Sync the auto-continue budget from persisted events and let tracked
-        // failed rows recover after reentry/background polling.
-        const autoContinueAttempts = mergedMessages.reduce((count, message) => {
-          const attempted = message.events?.some((event) =>
-            event.kind === 'status' && event.code === AUTO_CONTINUE_STATUS_CODE,
-          );
-          return attempted ? count + 1 : count;
-        }, 0);
-        const currentAutoContinueCount =
-          conversationAutoContinueCountRef.current.get(recoveryConversationId) ?? 0;
-        const nextAutoContinueCount = Math.max(currentAutoContinueCount, autoContinueAttempts);
-        conversationAutoContinueCountRef.current.set(
+        if (pendingAutoContinueConversationIdRef.current === recoveryConversationId) {
+          finishRecovery();
+          return;
+        }
+        const autoContinueCount = syncAutoContinueCountFromMessages(
+          conversationAutoContinueCountRef.current,
           recoveryConversationId,
-          nextAutoContinueCount,
+          mergedMessages,
         );
-        if (nextAutoContinueCount < AUTO_CONTINUE_MAX_PER_CONVERSATION) {
-          const incompleteAssistant = mergedMessages
-            .slice()
-            .reverse()
-            .find((message) =>
-              trackedAssistantIds.has(message.id)
-              && message.role === 'assistant'
-              && message.runStatus === 'failed'
-              && message.resumable === true
-              && message.events?.some((event) =>
-                event.kind === 'status'
-                && (
-                  event.code === 'incomplete_output'
-                  || event.code === AUTO_CONTINUE_STATUS_CODE
-                ),
-              ),
+        const incompleteAssistant = findIncompleteSlideAssistantForRecovery(
+          mergedMessages,
+          { restrictToMessageIds: trackedAssistantIds },
+        );
+        if (!canFireAutoContinueForConversation(autoContinueCount)) {
+          if (incompleteAssistant && slideOnlyMvp) {
+            const incompleteIndex = mergedMessages.findIndex(
+              (message) => message.id === incompleteAssistant.id,
             );
-          if (incompleteAssistant) {
-            conversationAutoContinueCountRef.current.set(
-              recoveryConversationId,
-              nextAutoContinueCount + 1,
+            const beforeFileNames = resolveTurnStartFileBaseline(
+              incompleteAssistant.preTurnFileNames,
+              nextFiles,
             );
-            const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-            const updatedAssistant = appendErrorStatusEvent(
-              incompleteAssistant,
-              autoContinueNotice,
-              AUTO_CONTINUE_STATUS_CODE,
-            );
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === updatedAssistant.id ? updatedAssistant : message,
-              ),
-            );
-            void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
-              telemetryFinalized: true,
+            const emergency = await attemptEmergencySlideDeckRecovery({
+              slideOnlyMvp,
+              producedHtmlToOpen: null,
+              outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
+              finalText: incompleteAssistant.content,
+              projectFiles: nextFiles,
+              beforeFileNames,
+              startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
+              persistArtifact,
+              refreshProjectFiles,
+              readProjectHtml,
+              computeProducedFiles,
             });
-            finishRecovery();
-            if (autoContinueTimerRef.current !== null) {
-              window.clearTimeout(autoContinueTimerRef.current);
-            }
-            const scheduledProjectId = project.id;
-            const scheduledConversationId = recoveryConversationId;
-            pendingAutoContinueConversationIdRef.current = scheduledConversationId;
-            autoContinueTimerRef.current = window.setTimeout(() => {
-              autoContinueTimerRef.current = null;
-              pendingAutoContinueConversationIdRef.current = null;
-              if (project.id !== scheduledProjectId) {
-                rollbackAutoContinueCount(
-                  conversationAutoContinueCountRef.current,
-                  scheduledConversationId,
-                );
-                return;
-              }
-              if (messagesConversationIdRef.current !== scheduledConversationId) {
-                rollbackAutoContinueCount(
-                  conversationAutoContinueCountRef.current,
-                  scheduledConversationId,
-                );
-                return;
-              }
-              if (
-                isLiveLocalStreamBlockingAutoContinue({
-                  abortController: abortRef.current,
-                  streamingConversationId: streamingConversationIdRef.current,
-                  targetConversationId: scheduledConversationId,
-                })
-              ) {
-                rollbackAutoContinueCount(
-                  conversationAutoContinueCountRef.current,
-                  scheduledConversationId,
-                );
-                return;
-              }
-              const sendNow = handleSendRef.current;
-              if (!sendNow) {
-                rollbackAutoContinueCount(
-                  conversationAutoContinueCountRef.current,
-                  scheduledConversationId,
-                );
-                return;
-              }
-              const attempt =
-                conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
-              const autoContinueCtx =
-                extractAutoContinueContextFromAssistant(incompleteAssistant);
-              const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
-                attempt,
-                ...autoContinueCtx,
-              });
-              const started = sendNow(
-                autoContinuePrompt,
-                [],
-                [],
-                { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+            if (emergency.recovered && emergency.htmlToOpen) {
+              const emergencyNotice = formatEmergencyDeckFallbackNotice();
+              const updatedAssistant = {
+                ...appendErrorStatusEvent(
+                  incompleteAssistant,
+                  emergencyNotice,
+                  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+                ),
+                producedFiles: emergency.produced,
+                runStatus: 'succeeded' as const,
+                resumable: false,
+                endedAt: incompleteAssistant.endedAt ?? Date.now(),
+              };
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === updatedAssistant.id ? updatedAssistant : message,
+                ),
               );
-              void Promise.resolve(started).then((ok) => {
-                if (ok === false) {
-                  rollbackAutoContinueCount(
-                    conversationAutoContinueCountRef.current,
-                    scheduledConversationId,
-                  );
-                }
+              void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
+                telemetryFinalized: true,
               });
-            }, 600);
-            return;
+              maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+              requestOpenFile(emergency.htmlToOpen);
+              finishRecovery();
+              return;
+            }
           }
+        } else if (incompleteAssistant) {
+          conversationAutoContinueCountRef.current.set(
+            recoveryConversationId,
+            autoContinueCount + 1,
+          );
+          const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+          const updatedAssistant = appendErrorStatusEvent(
+            incompleteAssistant,
+            autoContinueNotice,
+            AUTO_CONTINUE_STATUS_CODE,
+          );
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === updatedAssistant.id ? updatedAssistant : message,
+            ),
+          );
+          void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
+            telemetryFinalized: true,
+          });
+          finishRecovery();
+          if (autoContinueTimerRef.current !== null) {
+            window.clearTimeout(autoContinueTimerRef.current);
+          }
+          const scheduledProjectId = project.id;
+          const scheduledConversationId = recoveryConversationId;
+          pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+          autoContinueTimerRef.current = window.setTimeout(() => {
+            autoContinueTimerRef.current = null;
+            pendingAutoContinueConversationIdRef.current = null;
+            if (project.id !== scheduledProjectId) {
+              rollbackAutoContinueCount(
+                conversationAutoContinueCountRef.current,
+                scheduledConversationId,
+              );
+              return;
+            }
+            if (messagesConversationIdRef.current !== scheduledConversationId) {
+              rollbackAutoContinueCount(
+                conversationAutoContinueCountRef.current,
+                scheduledConversationId,
+              );
+              return;
+            }
+            if (
+              isLiveLocalStreamBlockingAutoContinue({
+                abortController: abortRef.current,
+                streamingConversationId: streamingConversationIdRef.current,
+                targetConversationId: scheduledConversationId,
+              })
+            ) {
+              rollbackAutoContinueCount(
+                conversationAutoContinueCountRef.current,
+                scheduledConversationId,
+              );
+              return;
+            }
+            const sendNow = handleSendRef.current;
+            if (!sendNow) {
+              rollbackAutoContinueCount(
+                conversationAutoContinueCountRef.current,
+                scheduledConversationId,
+              );
+              return;
+            }
+            const attempt =
+              conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
+            const autoContinueCtx =
+              extractAutoContinueContextFromAssistant(incompleteAssistant);
+            const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
+              attempt,
+              ...autoContinueCtx,
+            });
+            const started = sendNow(
+              autoContinuePrompt,
+              [],
+              [],
+              { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
+            );
+            void Promise.resolve(started).then((ok) => {
+              if (ok === false) {
+                rollbackAutoContinueCount(
+                  conversationAutoContinueCountRef.current,
+                  scheduledConversationId,
+                );
+              }
+            });
+          }, 600);
+          return;
         }
       }
       if (trackedAssistantIds.size === 0 && !proxyStillActive) {
@@ -5479,8 +5547,11 @@ export function ProjectView({
             const endedAt = Date.now();
             if (terminalArtifactPersistFailed) {
               const deliverableError = formatProjectRunDeliverableMissingError();
-              const autoContinueCount =
-                conversationAutoContinueCountRef.current.get(runConversationId) ?? 0;
+              const autoContinueCount = syncAutoContinueCountFromMessages(
+                conversationAutoContinueCountRef.current,
+                runConversationId,
+                messagesRef.current,
+              );
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
@@ -5491,40 +5562,28 @@ export function ProjectView({
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
-              // Synthesize a previewable deck on the FIRST incomplete turn —
-              // waiting for auto-continue cap exhaustion leaves the canvas
-              // blank through three identical head-shell failures.
               if (slideOnlyMvp && !producedHtmlToOpen) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
                   : [...historyBase, userMsg, latestAssistantMsg];
-                const emergencyArtifact = buildEmergencyArtifactFromMessages(
+                const emergency = await attemptEmergencySlideDeckRecovery({
+                  slideOnlyMvp,
+                  producedHtmlToOpen,
                   outlineMessages,
                   finalText,
-                );
-                if (emergencyArtifact) {
-                  const emergencyPersist = await persistArtifact(
-                    emergencyArtifact,
-                    nextFiles,
-                    finalText,
-                    startedAt,
-                  );
-                  const emergencyPersistOk = emergencyPersist?.kind === 'persisted'
-                    || emergencyPersist?.kind === 'pointer'
-                    || emergencyPersist?.kind === 'skipped-duplicate'
-                    || emergencyPersist?.kind === 'auth-replay-queued';
-                  if (emergencyPersistOk) {
-                    emergencyRecovered = true;
-                    nextFiles = await refreshProjectFiles();
-                    emergencyProduced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-                    const emergencyHtml = selectAutoOpenProducedHtml(emergencyProduced)
-                      ?? emergencyPersist?.fileName
-                      ?? null;
-                    if (emergencyHtml && runIsVisible()) {
-                      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergencyHtml);
-                      requestOpenFile(emergencyHtml);
-                    }
-                  }
+                  projectFiles: nextFiles,
+                  beforeFileNames,
+                  startedAt,
+                  persistArtifact,
+                  refreshProjectFiles,
+                  readProjectHtml,
+                  computeProducedFiles,
+                });
+                emergencyRecovered = emergency.recovered;
+                emergencyProduced = emergency.produced;
+                if (emergency.htmlToOpen && runIsVisible()) {
+                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                  requestOpenFile(emergency.htmlToOpen);
                 }
               }
 
@@ -9042,22 +9101,6 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   );
 }
 
-/**
- * Slide-only terminal recovery must not treat a stale or shell-only `.html`
- * sibling as a successful deliverable just because `computeProducedFiles` saw
- * a new mtime. Re-read disk and apply the same preview gate as persist.
- */
-export async function verifySlideProducedHtmlDeliverable(
-  fileName: string | null,
-  readProjectHtml: (name: string) => Promise<string | null>,
-): Promise<string | null> {
-  if (!fileName) return null;
-  const html = await readProjectHtml(fileName);
-  if (!html) return null;
-  if (isIncompleteHtmlDocumentShell(html) || !validateHtmlArtifact(html).ok) return null;
-  return fileName;
-}
-
 /** Terminal slide-only run with no previewable HTML on disk must fail (last-wins auto-open). */
 export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
   slideOnlyMvp: boolean;
@@ -9161,6 +9204,9 @@ export function resolveTerminalArtifactToPersist(
 }
 
 export { computeProducedFiles } from '../produced-files';
+export {
+  verifySlideProducedHtmlDeliverable,
+} from '../runtime/slide-deliverable-recovery';
 
 // Reattach with a recovered (on-disk) artifact must still include any
 // other files the turn produced before the artifact write — replacing
