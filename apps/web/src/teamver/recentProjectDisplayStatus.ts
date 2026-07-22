@@ -1,5 +1,6 @@
 import type { PetTaskSummary } from "../components/pet/PetOverlay";
-import type { ProjectDisplayStatus } from "../types";
+import type { Project, ProjectDisplayStatus } from "../types";
+import type { ProjectCoverFile } from "./projectPreviewFile";
 
 type ResolveRecentProjectDisplayStatusOptions = {
   hasArtifactSignal?: boolean;
@@ -35,4 +36,11 @@ export function resolveRecentProjectDisplayStatus(
     return "succeeded";
   }
   return registryStatus ?? "not_started";
+}
+
+export function hasProjectArtifactSignal(
+  project: Pick<Project, "metadata">,
+  cover?: ProjectCoverFile | null,
+): boolean {
+  return Boolean(project.metadata?.entryFile || cover);
 }

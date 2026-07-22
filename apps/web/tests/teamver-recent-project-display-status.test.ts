@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildActiveRunStatusByProjectId,
+  hasProjectArtifactSignal,
   resolveRecentProjectDisplayStatus,
 } from "../src/teamver/recentProjectDisplayStatus";
 import type { PetTaskSummary } from "../src/components/pet/PetOverlay";
@@ -54,5 +55,29 @@ describe("resolveRecentProjectDisplayStatus", () => {
         hasArtifactSignal: true,
       }),
     ).toBe("failed");
+  });
+
+  it("keeps live active run status above artifact completion inference", () => {
+    const byProject = buildActiveRunStatusByProjectId([
+      summary({ projectId: "p1", status: "running" }),
+    ]);
+    expect(
+      resolveRecentProjectDisplayStatus("p1", "not_started", byProject, {
+        hasArtifactSignal: true,
+      }),
+    ).toBe("running");
+  });
+
+  it("detects artifact signals from entry files or resolved covers", () => {
+    expect(hasProjectArtifactSignal({ metadata: { kind: "deck", entryFile: "deck.html" } })).toBe(
+      true,
+    );
+    expect(
+      hasProjectArtifactSignal(
+        { metadata: { kind: "other" } },
+        { kind: "html", name: "index.html", version: 1 },
+      ),
+    ).toBe(true);
+    expect(hasProjectArtifactSignal({ metadata: { kind: "other" } })).toBe(false);
   });
 });

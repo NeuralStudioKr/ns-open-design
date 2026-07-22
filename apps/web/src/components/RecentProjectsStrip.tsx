@@ -26,6 +26,7 @@ import { prefetchLatestPublishSummaries } from '../teamver/latestPublishSummary'
 import type { PetTaskSummary } from './pet/PetOverlay';
 import {
   buildActiveRunStatusByProjectId,
+  hasProjectArtifactSignal,
   resolveRecentProjectDisplayStatus,
 } from '../teamver/recentProjectDisplayStatus';
 
@@ -162,7 +163,7 @@ export function RecentProjectsStrip({
             project.id,
             project.status?.value,
             activeRunStatusByProjectId,
-            { hasArtifactSignal: Boolean(project.metadata?.entryFile || coverOverride) },
+            { hasArtifactSignal: hasProjectArtifactSignal(project, coverOverride) },
           );
           const publishedDesignSystem = isPublishedDesignSystemProject(project, designSystems);
           const isActive =

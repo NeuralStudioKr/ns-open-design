@@ -36,6 +36,7 @@ import { prefetchDesignsTabViewport } from "../teamver/prefetchDesignsTabViewpor
 import { PROJECT_LIST_VIEWPORT_BATCH } from "../teamver/projectListLimits";
 import {
 	buildActiveRunStatusByProjectId,
+	hasProjectArtifactSignal,
 	resolveRecentProjectDisplayStatus,
 } from "../teamver/recentProjectDisplayStatus";
 import type { PetTaskSummary } from "./pet/PetOverlay";
@@ -126,7 +127,7 @@ export function DesignsTab({
 				project.id,
 				project.status?.value,
 				activeRunStatusByProjectId,
-				{ hasArtifactSignal: Boolean(project.metadata?.entryFile || cover) },
+				{ hasArtifactSignal: hasProjectArtifactSignal(project, cover) },
 			),
 		[activeRunStatusByProjectId],
 	);

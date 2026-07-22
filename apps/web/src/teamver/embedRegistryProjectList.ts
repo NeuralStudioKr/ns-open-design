@@ -93,6 +93,21 @@ function normalizeRegistryDisplayStatus(raw: unknown): Project["status"] | undef
   return undefined;
 }
 
+function mergeProjectDisplayStatus(
+  registryStatus: Project["status"] | undefined,
+  daemonStatus: Project["status"] | undefined,
+): Project["status"] | undefined {
+  if (!daemonStatus) return registryStatus;
+  if (
+    daemonStatus.value === "not_started"
+    && registryStatus
+    && registryStatus.value !== "not_started"
+  ) {
+    return registryStatus;
+  }
+  return daemonStatus;
+}
+
 export function mapRegistryRowToProject(row: TeamverRegisteredProject): Project {
   const id = readRegistryOdProjectId(row) ?? "";
   const updatedAt = parseRegistryTimestamp(row.updatedAt);
@@ -133,7 +148,7 @@ export function mergeDaemonFieldsOntoRegistryProjects(
       name: resolveProjectDisplayName(daemon, registry.name),
       skillId: daemon.skillId ?? registry.skillId,
       designSystemId: daemon.designSystemId ?? registry.designSystemId,
-      status: daemon.status ?? registry.status,
+      status: mergeProjectDisplayStatus(registry.status, daemon.status),
       metadata: daemon.metadata ?? registry.metadata,
       createdAt: registry.createdAt || daemon.createdAt,
       updatedAt: Math.max(registry.updatedAt, daemon.updatedAt),

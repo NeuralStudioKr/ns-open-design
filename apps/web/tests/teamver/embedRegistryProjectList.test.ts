@@ -191,6 +191,61 @@ describe("embedRegistryProjectList", () => {
     });
   });
 
+  it("keeps registry terminal status when daemon status hint is stale not_started", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "completed",
+        title: "Completed Deck",
+        status: "completed",
+        updatedAt: 100,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "completed",
+        name: "completed-deck",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 120,
+        status: { value: "not_started" as const },
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged[0]).toMatchObject({
+      id: "completed",
+      name: "Completed Deck",
+      status: { value: "succeeded" },
+      updatedAt: 120,
+    });
+  });
+
+  it("still lets live daemon progress override a registry terminal status", () => {
+    const registry = [
+      mapRegistryRowToProject({
+        odProjectId: "running",
+        title: "Running Deck",
+        status: "completed",
+        updatedAt: 100,
+      }),
+    ];
+    const daemon = [
+      {
+        id: "running",
+        name: "running-deck",
+        skillId: null,
+        designSystemId: null,
+        createdAt: 1,
+        updatedAt: 130,
+        status: { value: "running" as const },
+      },
+    ];
+
+    const merged = mergeDaemonFieldsOntoRegistryProjects(registry, daemon);
+    expect(merged[0]?.status?.value).toBe("running");
+  });
+
   it("does not let daemon artifact slugs replace registry names in lists", () => {
     const registry = [
       mapRegistryRowToProject({
