@@ -66,7 +66,8 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     expect(httpGet).not.toHaveBeenCalled();
   });
 
-  it("skips runtime-config GET when session-probe is dead (stale-grace memory)", async () => {
+  it("does not preflight runtime-config with session-probe when stale-grace memory is present", async () => {
+    const { NetworkError } = await import("@teamver/app-sdk");
     const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
       await import("../src/teamver/teamverEmbedSession");
     const {
@@ -81,18 +82,22 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     setTeamverEmbedSessionAuthenticated(true);
 
     const fetchMock = stubSessionProbe(401);
+    httpGet.mockRejectedValueOnce(
+      new NetworkError({ status: 401, message: "session_expired" }),
+    );
+
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
-    expect(httpGet).not.toHaveBeenCalled();
+    expect(httpGet).toHaveBeenCalledTimes(1);
     expect(isTeamverRuntimeConfigAuthBlocked()).toBe(true);
-    // Probe-miss must not soft-sticky (would seed force-POST cooldown).
+    // Runtime-config miss must not soft-sticky (would seed force-POST cooldown).
     expect(isDesignAuthRefreshDeclined()).toBe(false);
     expect(
       fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session-probe")),
-    ).toBe(true);
+    ).toBe(false);
 
     // Backoff: no second probe/GET while blocked.
     expect(await fetchTeamverRuntimeConfig({ force: true })).toBeNull();
-    expect(httpGet).not.toHaveBeenCalled();
+    expect(httpGet).toHaveBeenCalledTimes(1);
   });
 
   it("blocks opportunistic refetch after 401 until session re-auth", async () => {

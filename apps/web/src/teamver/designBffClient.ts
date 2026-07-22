@@ -1055,28 +1055,8 @@ let cachedRuntimeConfig: { value: TeamverRuntimeConfigResponse | null; at: numbe
  */
 let runtimeConfigAuthBlocked = false;
 const RUNTIME_CONFIG_CACHE_MS = 60_000;
-/**
- * `/auth/session` can return authenticated via stale grace while nginx
- * auth_request is already dead. A recent live session-probe avoids a doomed
- * GET /runtime-config 401 (often interleaved with refresh + probe×2).
- */
-let runtimeConfigNginxLiveAt = 0;
-const RUNTIME_CONFIG_NGINX_LIVE_TTL_MS = 30_000;
-
-async function assertRuntimeConfigNginxLive(): Promise<boolean> {
-  if (Date.now() - runtimeConfigNginxLiveAt < RUNTIME_CONFIG_NGINX_LIVE_TTL_MS) {
-    return true;
-  }
-  if (await probeDesignBffSessionAuthenticated()) {
-    runtimeConfigNginxLiveAt = Date.now();
-    return true;
-  }
-  return false;
-}
-
 function noteRuntimeConfigUnauthorized(): void {
   runtimeConfigAuthBlocked = true;
-  runtimeConfigNginxLiveAt = 0;
 }
 
 /** Clear 401 backoff — called when embed session becomes authenticated. */
@@ -1094,7 +1074,6 @@ export function resetTeamverRuntimeConfigCacheForTests(): void {
   runtimeConfigInflight = null;
   cachedRuntimeConfig = null;
   runtimeConfigAuthBlocked = false;
-  runtimeConfigNginxLiveAt = 0;
 }
 
 export async function fetchTeamverRuntimeConfig(
@@ -1128,18 +1107,12 @@ export async function fetchTeamverRuntimeConfig(
 
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
-      // Stale-grace /auth/session can leave memory authenticated while nginx
-      // auth_request is dead. Probe first — never open the DevTools quartet
-      // GET /runtime-config 401 → POST /auth/refresh → session-probe×2 from a
-      // doomed config fetch (recovery belongs to C1 / explicit retry).
-      if (isTeamverEmbedMode() && !(await assertRuntimeConfigNginxLive())) {
-        noteRuntimeConfigUnauthorized();
-        return cachedRuntimeConfig?.value ?? null;
-      }
-
       // Never run withDesignBffCookieAuthRecovery here. force=true used to POST
       // /auth/refresh + session-probe×2 on every dead-cookie reload (workspace /
-      // session-changed), flooding DevTools while sticky was still clear.
+      // session-changed), flooding DevTools while sticky was still clear. Also
+      // do not preflight with /auth/session-probe: a dead cookie makes that
+      // endpoint return a visible 401 in DevTools. One runtime-config 401 is
+      // enough to enter backoff.
       const getOnce = () =>
         client.http.get<TeamverRuntimeConfigResponse>("/runtime-config", {
           ...TEAMVER_BFF_REQUEST_OPTIONS,
@@ -1172,7 +1145,6 @@ export async function fetchTeamverRuntimeConfig(
         }
       }
       runtimeConfigAuthBlocked = false;
-      runtimeConfigNginxLiveAt = Date.now();
       cachedRuntimeConfig = { value, at: Date.now() };
       return value;
     } catch (err) {
