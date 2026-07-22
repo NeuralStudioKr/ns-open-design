@@ -41,7 +41,10 @@ import {
   type QuestionForm,
 } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
-import { questionFormForSlideOnlyDisplay } from '../teamver/branding/embedSlideOnlyQuestionForm';
+import {
+  questionFormForSlideOnlyDisplay,
+  resolveSlideOnlyQuestionFormFromContent,
+} from '../teamver/branding/embedSlideOnlyQuestionForm';
 import { useI18n } from '../i18n';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { streamMessage } from '../providers/anthropic';
@@ -295,10 +298,12 @@ import {
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
 import {
+  artifactBaseNameForPersist,
   artifactVersionTabsToClose,
   collapseArtifactVersionOpenTabs,
   normalizeSlideOnlyArtifactContractType,
   resolveArtifactPersistFileName,
+  shouldDeferSlideOnlyDiscoveryArtifactPersist,
 } from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
 import { collectReferencedJsxNames } from '../runtime/jsx-module-refs';
@@ -1103,7 +1108,8 @@ type ArtifactPersistResult =
   | { kind: 'skipped-incomplete'; fileName: string }
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
-  | { kind: 'auth-replay-queued'; fileName: string };
+  | { kind: 'auth-replay-queued'; fileName: string }
+  | { kind: 'skipped-discovery-turn'; fileName: string };
 
 function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
   // A truncated shell, a structural refusal, or a real write failure must
@@ -1221,6 +1227,8 @@ export function ProjectView({
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [messageLoadRetryNonce, setMessageLoadRetryNonce] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
   const [forkingMessageId, setForkingMessageId] = useState<string | null>(null);
   const [activePluginActionPaths, setActivePluginActionPaths] = useState<Set<string>>(() => new Set());
   const [hiddenAssistantPluginActionPaths, setHiddenAssistantPluginActionPaths] = useState<Set<string>>(() => new Set());
@@ -1640,14 +1648,15 @@ export function ProjectView({
     lastAssistantIndex >= 0 ? messages[lastAssistantIndex]?.content ?? '' : '';
   const lastAssistantMessageId =
     lastAssistantIndex >= 0 ? messages[lastAssistantIndex]?.id ?? null : null;
-  const questionForm: QuestionForm | null = useMemo(
+  const resolvedQuestionForm = useMemo(
     () =>
-      questionFormForSlideOnlyDisplay(
-        findFirstQuestionForm(lastAssistantContent)?.form ?? null,
-        { slideOnlyMvp, enabled: teamverEmbedEnabled },
-      ),
-    [lastAssistantContent, slideOnlyMvp, teamverEmbedEnabled],
+      resolveSlideOnlyQuestionFormFromContent(lastAssistantContent, {
+        slideOnlyMvp,
+        enabled: teamverEmbedEnabled,
+      }, { locale }),
+    [lastAssistantContent, slideOnlyMvp, teamverEmbedEnabled, locale],
   );
+  const questionForm: QuestionForm | null = resolvedQuestionForm.form;
   const questionFormSubmittedAnswers = useMemo(() => {
     if (!questionForm) return undefined;
     for (let i = lastAssistantIndex + 1; i < messages.length; i++) {
@@ -1658,20 +1667,16 @@ export function ProjectView({
     }
     return undefined;
   }, [questionForm, lastAssistantIndex, messages]);
-  const questionsGenerating =
-    (currentConversationStreaming || currentConversationHasActiveRun)
-    && hasUnterminatedQuestionForm(lastAssistantContent);
-  // While the form is still streaming, parse it tolerantly so the Questions tab
-  // can show a frame (title) immediately and fill questions in as they arrive.
+  const questionsGenerating = resolvedQuestionForm.generating;
   const questionFormPreview = useMemo(
     () =>
       questionsGenerating
         ? questionFormForSlideOnlyDisplay(parsePartialQuestionForm(lastAssistantContent), {
             slideOnlyMvp,
             enabled: teamverEmbedEnabled,
-          })
+          }, { locale, allowFallback: true })
         : null,
-    [questionsGenerating, lastAssistantContent, slideOnlyMvp, teamverEmbedEnabled],
+    [questionsGenerating, lastAssistantContent, slideOnlyMvp, teamverEmbedEnabled, locale],
   );
   // The active (latest, unanswered) form stays editable the whole time it's on
   // screen — while it streams in AND while the turn is still busy — so it never
@@ -2596,6 +2601,14 @@ export function ProjectView({
       sourceText?: string,
       activityStartedAt?: number,
     ): Promise<ArtifactPersistResult> => {
+      if (
+        shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
+          slideOnlyMvp,
+          skipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+        })
+      ) {
+        return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
+      }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
         artifactHtml: art.html,
         identifier: art.identifier,
@@ -2801,7 +2814,7 @@ export function ProjectView({
         };
       }
     },
-    [project.id, project.designSystemId, project.skillId, requestOpenFile, slideOnlyMvp],
+    [project.id, project.designSystemId, project.skillId, project.metadata?.skipDiscoveryBrief, requestOpenFile, slideOnlyMvp],
   );
 
   // Auth-recovery replay: when the embed cookie is refreshed after a session

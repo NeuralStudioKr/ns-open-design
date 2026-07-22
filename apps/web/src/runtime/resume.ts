@@ -197,6 +197,7 @@ export type AutoContinuePersistResultKind =
   | 'pointer'
   | 'skipped-duplicate'
   | 'auth-replay-queued'
+  | 'skipped-discovery-turn'
   | null;
 
 /**

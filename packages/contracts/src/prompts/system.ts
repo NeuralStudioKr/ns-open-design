@@ -122,6 +122,21 @@ function renderUiLocalePrompt(locale: string | undefined): string {
       '- constraints label/placeholder: `还有什么需要知道的吗？` / `真实文案、必须使用的字体、需要避免的内容、截止时间…`',
     );
   }
+  if (normalized === 'ko' || normalized === 'ko-KR') {
+    lines.push(
+      '',
+      'For the default quick brief in Korean, use copy like:',
+      '- title: `간단한 정보 확인 — 30초`',
+      '- description: `생성 전에 몇 가지만 확인할게요. 해당 없는 항목은 건너뛰어도 됩니다.`',
+      '- audience label/placeholder: `대상 독자` / `예: 신입사원, 투자자, 내부 임원`',
+      '- tone label/options: `시각적 톤` / `모던 미니멀`, `친근한 / 일러스트`, `전문적 / 비즈니스`, `에디토리얼`',
+      '- scale label/placeholder: `슬라이드 분량` / `예: 8~10장, 15분 발표`',
+      '- constraints label/placeholder: `추가로 알려주실 내용` / `반드시 포함할 내용, 피해야 할 것, 브랜드 가이드…`',
+      '- Omit "What are we making?" / task-type routing — this project is always a slide deck.',
+      '- Keep every `id`, `type`, and option `value` in English. Only localize user-facing labels/placeholders.',
+      '- Body must be valid JSON with no comments and no trailing commas.',
+    );
+  }
   return lines.join('\n');
 }
 

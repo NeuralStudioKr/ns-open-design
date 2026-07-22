@@ -242,6 +242,33 @@ describe('splitOnQuestionForms', () => {
       expect(out[1].form.id).toBe('x');
     }
   });
+
+  it('parses question-form bodies with trailing commas', () => {
+    const body = `{
+  "questions": [
+    { "id": "audience", "label": "Audience", "type": "text", },
+  ],
+}`;
+    const out = splitOnQuestionForms(`<question-form id="discovery">${body}</question-form>`);
+    expect(out.map((s) => s.kind)).toEqual(['form']);
+    if (out[0]?.kind === 'form') {
+      expect(out[0].form.questions[0]?.id).toBe('audience');
+    }
+  });
+
+  it('parses question-form bodies when a deck artifact was emitted inside the block', () => {
+    const body = `{
+  "questions": [
+    { "id": "audience", "label": "Audience", "type": "text" }
+  ]
+}
+<artifact type="deck" identifier="deck"><!doctype html><html><body></body></html></artifact>`;
+    const out = splitOnQuestionForms(`<question-form id="discovery">${body}</question-form>`);
+    expect(out.map((s) => s.kind)).toEqual(['form']);
+    if (out[0]?.kind === 'form') {
+      expect(out[0].form.questions[0]?.id).toBe('audience');
+    }
+  });
 });
 
 describe('parsePartialQuestionForm (true token-by-token streaming)', () => {

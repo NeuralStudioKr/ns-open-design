@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FormOption, QuestionForm } from '../src/artifacts/question-form';
 import {
   questionFormForSlideOnlyDisplay,
+  resolveSlideOnlyQuestionFormFromContent,
   sanitizeQuestionFormForSlideOnlyEmbed,
 } from '../src/teamver/branding/embedSlideOnlyQuestionForm';
 
@@ -210,5 +211,39 @@ describe('embedSlideOnlyQuestionForm', () => {
         ],
       }),
     ).toBeNull();
+  });
+
+  it('falls back to a client-side Quick brief when sanitization removes every question', () => {
+    const display = questionFormForSlideOnlyDisplay(
+      {
+        id: 'discovery',
+        title: 'Brief',
+        questions: [
+          {
+            id: 'output',
+            label: '어떤 형태로 만들까요?',
+            type: 'radio',
+            options: [opt('슬라이드 덱'), opt('웹 프로토타입')],
+          },
+        ],
+      },
+      { slideOnlyMvp: true, enabled: false },
+      { locale: 'ko', allowFallback: true },
+    );
+    expect(display?.id).toBe('discovery');
+    expect(display?.questions.some((q) => q.id === 'audience')).toBe(true);
+  });
+
+  it('resolves a fallback form when model JSON is malformed in slide-only embed', () => {
+    const content = `간단한 정보를 알려주세요.
+<question-form id="discovery" title="Quick brief">not json</question-form>`;
+    const resolved = resolveSlideOnlyQuestionFormFromContent(
+      content,
+      { slideOnlyMvp: true, enabled: false },
+      { locale: 'ko' },
+    );
+    expect(resolved.usedFallback).toBe(true);
+    expect(resolved.form?.title).toContain('30');
+    expect(resolved.form?.questions.length).toBeGreaterThan(0);
   });
 });

@@ -1,4 +1,5 @@
 import type { ProjectFile } from '../types';
+import type { ChatMessage } from '../types';
 
 interface ArtifactPersistShape {
   identifier?: string | null;
@@ -173,4 +174,21 @@ export function collapseArtifactVersionOpenTabs(
 
   if (toClose.size === 0) return [...tabs];
   return tabs.filter((tab) => !toClose.has(tab));
+}
+
+/** Block turn-1 deck writes while Quick brief is still outstanding. */
+export function shouldDeferSlideOnlyDiscoveryArtifactPersist(
+  messages: readonly ChatMessage[],
+  options: { slideOnlyMvp: boolean; skipDiscoveryBrief?: boolean },
+): boolean {
+  if (!options.slideOnlyMvp) return false;
+  if (options.skipDiscoveryBrief) return false;
+  const hasFormAnswers = messages.some(
+    (message) =>
+      message.role === 'user'
+      && /\[form answers — [^\]]+\]/.test(message.content ?? ''),
+  );
+  if (hasFormAnswers) return false;
+  const userTurns = messages.filter((message) => message.role === 'user').length;
+  return userTurns <= 1;
 }

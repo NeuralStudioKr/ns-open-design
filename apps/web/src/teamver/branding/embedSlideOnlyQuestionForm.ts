@@ -1,6 +1,13 @@
 import type { FormOption, FormQuestion, QuestionForm } from '../../artifacts/question-form';
+import {
+  findFirstQuestionForm,
+  hasBrokenQuestionFormMarkup,
+  hasUnterminatedQuestionForm,
+  parsePartialQuestionForm,
+} from '../../artifacts/question-form';
 import { isTeamverEmbedMode } from '../designApiBase';
 import type { TeamverBrandingConfig } from './config';
+import { slideOnlyDiscoveryFallbackForm } from './slideOnlyDiscoveryFallbackForm';
 
 /** Question ids that route artifact kind — hidden in embed slide-only MVP. */
 const ROUTING_QUESTION_IDS = new Set([
@@ -140,8 +147,65 @@ export function sanitizeQuestionFormForSlideOnlyEmbed(
 export function questionFormForSlideOnlyDisplay(
   form: QuestionForm | null | undefined,
   branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp' | 'enabled'>,
+  options?: { locale?: string | null; allowFallback?: boolean },
 ): QuestionForm | null {
   if (!form) return null;
   if (!shouldApplySlideOnlyQuestionFormGate(branding)) return form;
-  return sanitizeQuestionFormForSlideOnlyEmbed(form);
+  const sanitized = sanitizeQuestionFormForSlideOnlyEmbed(form);
+  if (sanitized) return sanitized;
+  if (options?.allowFallback === false) return null;
+  return slideOnlyDiscoveryFallbackForm(options?.locale);
+}
+
+export interface ResolvedSlideOnlyQuestionForm {
+  form: QuestionForm | null;
+  usedFallback: boolean;
+  generating: boolean;
+}
+
+/**
+ * Resolve the active Quick brief for slide-only embed, including a client-side
+ * fallback when model JSON is malformed or every question was sanitized away.
+ */
+export function resolveSlideOnlyQuestionFormFromContent(
+  content: string,
+  branding: Pick<TeamverBrandingConfig, 'slideOnlyMvp' | 'enabled'>,
+  options?: { locale?: string | null },
+): ResolvedSlideOnlyQuestionForm {
+  if (!shouldApplySlideOnlyQuestionFormGate(branding)) {
+    const parsed = findFirstQuestionForm(content);
+    return { form: parsed?.form ?? null, usedFallback: false, generating: false };
+  }
+
+  const generating = hasUnterminatedQuestionForm(content);
+  if (generating) {
+    const preview = questionFormForSlideOnlyDisplay(parsePartialQuestionForm(content), branding, {
+      locale: options?.locale,
+      allowFallback: true,
+    });
+    return { form: preview, usedFallback: false, generating: true };
+  }
+
+  const parsed = findFirstQuestionForm(content);
+  if (parsed?.form) {
+    const display = questionFormForSlideOnlyDisplay(parsed.form, branding, {
+      locale: options?.locale,
+      allowFallback: true,
+    });
+    return {
+      form: display,
+      usedFallback: display !== null && sanitizeQuestionFormForSlideOnlyEmbed(parsed.form) === null,
+      generating: false,
+    };
+  }
+
+  if (hasBrokenQuestionFormMarkup(content)) {
+    return {
+      form: slideOnlyDiscoveryFallbackForm(options?.locale),
+      usedFallback: true,
+      generating: false,
+    };
+  }
+
+  return { form: null, usedFallback: false, generating: false };
 }

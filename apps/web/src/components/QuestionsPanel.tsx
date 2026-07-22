@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { questionsFormTrackingId } from '@open-design/contracts/analytics';
-import { useT } from '../i18n';
+import { useT, useI18n } from '../i18n';
 import { useAnalytics } from '../analytics/provider';
 import { trackQuestionsFormClick, trackQuestionsFormSurfaceView } from '../analytics/events';
 import type { QuestionForm } from '../artifacts/question-form';
@@ -69,11 +69,12 @@ export function QuestionsPanel({
   onSubmit,
 }: Props) {
   const t = useT();
+  const { locale } = useI18n();
   const analytics = useAnalytics();
   const branding = useTeamverBranding();
   const displayForm = useMemo(
-    () => questionFormForSlideOnlyDisplay(incomingForm, branding),
-    [incomingForm, branding],
+    () => questionFormForSlideOnlyDisplay(incomingForm, branding, { locale, allowFallback: true }),
+    [incomingForm, branding, locale],
   );
   const form = displayForm;
   const formRef = useRef<QuestionFormHandle>(null);

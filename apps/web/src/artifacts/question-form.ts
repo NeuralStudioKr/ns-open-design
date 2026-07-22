@@ -92,7 +92,7 @@ export type FormSegment =
   | { kind: 'text'; text: string }
   | { kind: 'form'; form: QuestionForm; raw: string };
 
-const INVALID_QUESTION_FORM_FALLBACK =
+export const INVALID_QUESTION_FORM_FALLBACK =
   'The assistant sent a question form that could not be rendered. Please ask it to resend the questions.';
 
 // `question-form` is the canonical tag; `ask-question` is an alias the
@@ -183,6 +183,15 @@ export function findFirstQuestionForm(
   return null;
 }
 
+/** True when a question-form open tag is present but no form could be parsed. */
+export function hasBrokenQuestionFormMarkup(input: string): boolean {
+  if (!OPEN_RE.test(input)) return false;
+  if (findFirstQuestionForm(input)) return false;
+  if (hasUnterminatedQuestionForm(input)) return false;
+  return input.includes(INVALID_QUESTION_FORM_FALLBACK)
+    || /<\/(?:question-form|ask-question)>/i.test(input);
+}
+
 // Drop a trailing, not-yet-closed question-form block from streaming text so
 // the chat doesn't flash raw `<question-form>{…` markup before the JSON
 // finishes. Returns the visible text plus whether such an open block existed
@@ -247,21 +256,47 @@ interface FormParseResult {
   reason?: FormParseFailureReason;
 }
 
+/** Strip nested artifact blocks models sometimes emit inside a form body. */
+function stripEmbeddedArtifactsFromFormBody(body: string): string {
+  return body.replace(/<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi, '').trim();
+}
+
+/** Best-effort JSON parse for model-emitted question-form bodies. */
+function parseQuestionFormJson(stripped: string): unknown | null {
+  const candidates = [
+    stripped,
+    stripped.replace(/,\s*([}\]])/g, '$1'),
+    stripEmbeddedArtifactsFromFormBody(stripped),
+    stripEmbeddedArtifactsFromFormBody(stripped).replace(/,\s*([}\]])/g, '$1'),
+  ];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = candidate.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    try {
+      return JSON.parse(normalized);
+    } catch {
+      const repaired = parsePartialJson(normalized);
+      if (repaired !== null) return repaired;
+    }
+  }
+  return null;
+}
+
 function parseForm(body: string, attrs: Record<string, string>): FormParseResult {
   const trimmed = body.trim();
   if (!trimmed) return { form: null, reason: 'empty-body' };
   // Allow the JSON to be wrapped in a fenced ```json block — common when
   // the model echoes its own indented body.
-  const stripped = trimmed
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-  let data: unknown;
-  try {
-    data = JSON.parse(stripped);
-  } catch {
-    return { form: null, reason: 'invalid-json' };
-  }
+  const stripped = stripEmbeddedArtifactsFromFormBody(
+    trimmed
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim(),
+  );
+  const data = parseQuestionFormJson(stripped);
+  if (data === null) return { form: null, reason: 'invalid-json' };
   if (!data || typeof data !== 'object') return { form: null, reason: 'unsupported-payload' };
   const obj = Array.isArray(data) ? {} : (data as Record<string, unknown>);
   const rawQuestions = Array.isArray(data)

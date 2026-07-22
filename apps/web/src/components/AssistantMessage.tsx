@@ -35,11 +35,16 @@ import {
   type TrackingProjectKind,
 } from "@open-design/contracts/analytics";
 import {
+  INVALID_QUESTION_FORM_FALLBACK,
   splitOnQuestionForms,
   stripTrailingOpenQuestionForm,
   type QuestionForm,
 } from "../artifacts/question-form";
-import { questionFormForSlideOnlyDisplay } from "../teamver/branding/embedSlideOnlyQuestionForm";
+import {
+  questionFormForSlideOnlyDisplay,
+  resolveSlideOnlyQuestionFormFromContent,
+} from "../teamver/branding/embedSlideOnlyQuestionForm";
+import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import {
@@ -2010,6 +2015,7 @@ function ProseBlock({
   onRequestOpenFile?: (name: string) => void;
 }) {
   const t = useT();
+  const { locale } = useI18n();
   const { slideOnlyMvp, hideAssistantThinkingDetails, enabled: teamverEmbedEnabled } = useTeamverBranding();
   const cleaned = useMemo(() => {
     const stripped = stripAllClosedArtifacts(text);
@@ -2039,7 +2045,27 @@ function ProseBlock({
     () => (streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null }),
     [visibleText, streaming]
   );
-  const segments = useMemo(() => splitOnQuestionForms(head), [head]);
+  const segments = useMemo(() => {
+    const raw = splitOnQuestionForms(head);
+    const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
+    if (!slideOnlyGate) return raw;
+
+    const resolved = resolveSlideOnlyQuestionFormFromContent(
+      head,
+      { slideOnlyMvp, enabled: teamverEmbedEnabled },
+      { locale },
+    );
+    const filtered = raw.flatMap((seg) => {
+      if (seg.kind === "text" && seg.text.includes(INVALID_QUESTION_FORM_FALLBACK)) {
+        return [];
+      }
+      return [seg];
+    });
+    if (resolved.usedFallback && resolved.form && !filtered.some((seg) => seg.kind === "form")) {
+      return [...filtered, { kind: "form" as const, form: resolved.form, raw: "" }];
+    }
+    return filtered;
+  }, [head, locale, slideOnlyMvp, teamverEmbedEnabled]);
   // Route relative file-link clicks (`template.html`, `subdir/hero.html`)
   // through the workspace tab opener. Without this, Electron's window-open
   // handler creates a new app window whose relative href can't resolve, and
@@ -2070,7 +2096,7 @@ function ProseBlock({
           questionFormForSlideOnlyDisplay(seg.form, {
             slideOnlyMvp,
             enabled: teamverEmbedEnabled,
-          }) ?? null;
+          }, { locale, allowFallback: true }) ?? null;
         if (!form) return [];
         if (suppressDirectionForms && isDirectionForm(form)) {
           return [{ key: `f-${idx}`, kind: "suppressed-direction" }];

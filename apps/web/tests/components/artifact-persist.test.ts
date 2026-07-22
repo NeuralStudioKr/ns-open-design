@@ -7,6 +7,7 @@ import {
   normalizeSlideOnlyArtifactContractType,
   preferredArtifactVersionTab,
   resolveArtifactPersistFileName,
+  shouldDeferSlideOnlyDiscoveryArtifactPersist,
 } from '../../src/components/artifact-persist';
 
 describe('normalizeSlideOnlyArtifactContractType', () => {
@@ -134,5 +135,40 @@ describe('artifact version tab helpers', () => {
         'ai-adoption-effect-3.html',
       ),
     ).toEqual(['design-files', 'ai-adoption-effect-3.html', 'notes.md']);
+  });
+});
+
+describe('shouldDeferSlideOnlyDiscoveryArtifactPersist', () => {
+  it('blocks turn-1 deck writes before Quick brief answers', () => {
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: '신입사원 온보딩 ppt 만들어줘' },
+      { id: 'a1', role: 'assistant' as const, content: '<question-form id="discovery">{}</question-form>' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, { slideOnlyMvp: true }),
+    ).toBe(true);
+  });
+
+  it('allows persist after form answers arrive', () => {
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: 'deck please' },
+      { id: 'a1', role: 'assistant' as const, content: '<question-form id="discovery">{}</question-form>' },
+      { id: 'u2', role: 'user' as const, content: '[form answers — discovery]\n- audience: new hires' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, { slideOnlyMvp: true }),
+    ).toBe(false);
+  });
+
+  it('does not defer when skipDiscoveryBrief is set', () => {
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: 'deck please' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, {
+        slideOnlyMvp: true,
+        skipDiscoveryBrief: true,
+      }),
+    ).toBe(false);
   });
 });

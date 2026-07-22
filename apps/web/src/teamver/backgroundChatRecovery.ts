@@ -2,6 +2,7 @@ import type { ChatRunStatusResponse } from "@open-design/contracts";
 import type { ChatMessage } from "../types";
 import {
   findFirstQuestionForm,
+  hasBrokenQuestionFormMarkup,
   hasUnterminatedQuestionForm,
 } from "../artifacts/question-form";
 import { appendErrorStatusEvent } from "../runtime/chat-events";
@@ -118,15 +119,20 @@ export function conversationAwaitingQuestionFormAnswer(
   if (!assistant) return false;
   const content = assistant.content ?? "";
   const parsed = findFirstQuestionForm(content);
-  if (!parsed?.form) return false;
+  const form = parsed?.form;
+  const hasFormIntent =
+    form != null
+    || hasBrokenQuestionFormMarkup(content)
+    || (/<(?:question-form|ask-question)\b/i.test(content) && !hasUnterminatedQuestionForm(content));
+  if (!hasFormIntent) return false;
   if (hasUnterminatedQuestionForm(content)) return false;
-  const form = parsed.form;
+  const formId = form?.id ?? "discovery";
   const assistantIndex = messages.findIndex((message) => message.id === assistant.id);
   if (assistantIndex < 0) return true;
   for (let i = assistantIndex + 1; i < messages.length; i += 1) {
     const message = messages[i];
     if (message?.role !== "user") continue;
-    if ((message.content ?? "").includes(`[form answers — ${form.id}]`)) {
+    if ((message.content ?? "").includes(`[form answers — ${formId}]`)) {
       return false;
     }
   }
