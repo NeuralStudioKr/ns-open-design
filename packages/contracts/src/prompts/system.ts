@@ -322,6 +322,26 @@ export function composeSystemPrompt({
   // later" header.
   const isTeamverSlideOnly = (mediaExecution?.mode ?? 'enabled') === 'disabled';
 
+  // Teamver slide-only API runs use a dedicated ~4KB prompt. Stacking the
+  // full Open Design charter + discovery + skill seed copy workflow caused
+  // the Jul 2026 regression where claude-sonnet-4-6 opens
+  // `<artifact>…<head>` and stops before body slides.
+  if (streamFormat === 'plain' && isTeamverSlideOnly && sessionMode !== 'chat') {
+    return composeTeamverSlideApiPrompt({
+      skillBody,
+      skillName,
+      designSystemBody,
+      designSystemTitle,
+      metadata,
+      template,
+      audioVoiceOptions,
+      audioVoiceOptionsError,
+      locale,
+      userInstructions,
+      projectInstructions,
+    });
+  }
+
   if (streamFormat === 'plain') {
     if (byokToolNames && byokToolNames.length > 0) {
       parts.push(BYOK_TOOLS_OVERRIDE(byokToolNames, { teamverSlideOnly: isTeamverSlideOnly }));
@@ -1045,4 +1065,106 @@ function summarizeApiModeSkillBody(skillBody: string): string {
     summary || 'Use the active deck skill only as broad visual inspiration.',
     'Output a compact no-head HTML deck artifact with visible slide content first.',
   ].join('\n');
+}
+
+/**
+ * Final authority for Teamver slide-only API runs. Resolves the historical
+ * conflict between "artifact last" (daemon charter), "start artifact ASAP"
+ * (compact deck), and "never open until complete" (deliverable override).
+ */
+const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — unified streaming rule (READ LAST — beats every rule above)
+
+Your successful response is **exactly one** streaming artifact:
+
+\`<artifact type="text/html" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+
+**How to stream it (non-negotiable):**
+1. You MAY open \`<artifact type="text/html">\` at the very start (at most one short sentence before it).
+2. The first bytes inside the artifact MUST be \`<!doctype html><html><body><section class="slide">\` with **real slide copy** — never \`<head>\`, never \`<style>\`, never empty scaffolding.
+3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
+4. Close with \`</body></html></artifact>\` in this same turn.
+
+**Forbidden:** question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.
+
+If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
+
+/**
+ * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
+ * Avoids discovery, BASE_SYSTEM_PROMPT artifact-handoff, and raw skill seed
+ * copy workflows that cannot run without daemon tools.
+ */
+export function composeTeamverSlideApiPrompt({
+  skillBody,
+  skillName,
+  designSystemBody,
+  designSystemTitle,
+  metadata,
+  template,
+  audioVoiceOptions,
+  audioVoiceOptionsError,
+  locale,
+  userInstructions,
+  projectInstructions,
+}: Pick<
+  ComposeInput,
+  | 'skillBody'
+  | 'skillName'
+  | 'designSystemBody'
+  | 'designSystemTitle'
+  | 'metadata'
+  | 'template'
+  | 'audioVoiceOptions'
+  | 'audioVoiceOptionsError'
+  | 'locale'
+  | 'userInstructions'
+  | 'projectInstructions'
+>): string {
+  const parts: string[] = [];
+  const activeDesignSystemBody = designSystemBody?.trim();
+
+  parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: true }));
+  parts.push(TEAMVER_SLIDE_ONLY_SCOPE.trim());
+  parts.push(TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE.trim());
+
+  const localePrompt = renderUiLocalePrompt(locale);
+  if (localePrompt) parts.push(localePrompt);
+
+  if (userInstructions?.trim()) {
+    parts.push(
+      `## Custom instructions (user-level)\n\n${userInstructions.trim()}`,
+    );
+  }
+  if (projectInstructions?.trim()) {
+    parts.push(
+      `## Custom instructions (project-level)\n\n${projectInstructions.trim()}`,
+    );
+  }
+  if (activeDesignSystemBody) {
+    parts.push(
+      `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''}\n\n`
+        + 'Bind these tokens into inline styles on each slide. Do not invent colors outside this palette.\n\n'
+        + activeDesignSystemBody,
+    );
+  }
+
+  const metaBlock = renderMetadataBlock(
+    metadata,
+    template,
+    audioVoiceOptions,
+    audioVoiceOptionsError,
+  );
+  if (metaBlock) parts.push(metaBlock);
+
+  if (skillBody?.trim()) {
+    parts.push(
+      `## Visual style reference${skillName ? ` — ${skillName}` : ''}\n\n`
+        + summarizeApiModeSkillBody(skillBody),
+    );
+  }
+
+  parts.push(DECK_FRAMEWORK_DIRECTIVE_COMPACT);
+  parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
+  parts.push(TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE);
+
+  return parts.join('\n\n---\n\n');
 }

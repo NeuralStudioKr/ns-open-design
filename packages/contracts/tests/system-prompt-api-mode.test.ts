@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { composeSystemPrompt, SKIP_DISCOVERY_BRIEF_OVERRIDE } from '../src/prompts/system.js';
+import { composeSystemPrompt, composeTeamverSlideApiPrompt, SKIP_DISCOVERY_BRIEF_OVERRIDE } from '../src/prompts/system.js';
 
 /**
  * Regression coverage for #313 — Anthropic API mode renders TodoWrite /
@@ -133,32 +133,23 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
-      expect(prompt).toContain('Teamver slide-only — skip discovery');
+      expect(prompt).toContain('unified streaming rule');
       expect(prompt).not.toContain('# OD core directives');
-      expect(prompt).toContain('Never open `<artifact type="text/html">` until the complete deck is ready');
+      expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
-      expect(prompt).toContain('Do not finish a slide request with only a plan');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
-      expect(prompt).toContain('You may include at most one short sentence before the artifact');
       expect(prompt).toContain('Teamver API — deck framework emission override');
-      expect(prompt).toContain('Do NOT open `<artifact type="text/html">` until the complete filled deck is ready');
-      // API mode must use the compact deck contract — the full ~11KB skeleton
-      // copy workflow truncates Messages-API output before </html>.
       expect(prompt).toContain('API compact contract');
-      expect(prompt).toContain('Do NOT paste or recreate a large framework skeleton');
-      expect(prompt).toContain('avoid `<head>` and `<style>` entirely');
+      expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
-      expect(prompt).not.toContain('<meta charset="utf-8" />');
+      expect(prompt.length).toBeLessThan(14_000);
     });
 
-    it('keeps compact deck + skill-seed override when skillBody mentions template.html', () => {
-      // Teamver often binds simple-deck; hasSkillSeed used to SKIP compact
-      // entirely and leave only "Read assets/template.html" Pre-flight —
-      // the live auto_continue_incomplete_output loop.
+    it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
       const prompt = composeSystemPrompt({
         streamFormat: 'plain',
         skillMode: 'deck',
@@ -170,14 +161,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('Teamver API — deck framework emission override');
-      expect(prompt).toContain('Teamver API — skill seed override');
-      expect(prompt).toContain('API-mode pre-flight');
-      expect(prompt).toContain('Do NOT Read or paste');
+      expect(prompt).toContain('Visual style reference');
       expect(prompt).toContain('API-safe skill summary only');
-      expect(prompt).toContain('compact no-head HTML deck artifact');
-      expect(prompt).not.toContain('Pre-flight (do this before any other tool)');
-      expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
-      expect(prompt).not.toContain('Copy assets/template.html and fill SLOT comments');
+      expect(prompt).not.toContain('Read `assets/template.html`');
+      expect(prompt).not.toContain('Teamver API — skill seed override');
     });
 
     // Regression coverage for the unified ask-user flow: API/BYOK mode must
@@ -244,12 +231,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         mediaExecution: { mode: 'disabled' },
       });
 
-      expect(prompt).toContain('API mode — BYOK tools available');
-      expect(prompt).toContain('For slide deck / presentation / PPT requests in API mode');
-      expect(prompt).toContain('the plan is not the deliverable');
-      expect(prompt).toContain('include the complete HTML deck artifact in this same response');
+      // Slide-only runs use the dedicated lean composer (no BYOK tool list —
+      // media is disabled and the deliverable is always an HTML deck).
+      expect(prompt).toContain('unified streaming rule');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="text/html" identifier="...">...</artifact>` block');
+      expect(prompt).not.toContain('API mode — BYOK tools available');
     });
   });
 
@@ -298,6 +285,40 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
       expect(prompt).toContain('Example prompt mode — full-quality direct generation');
       expect(prompt).not.toContain(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+    });
+  });
+
+  describe('composeTeamverSlideApiPrompt (dedicated slide-only API path)', () => {
+    const simpleDeckSkill =
+      '# simple-deck\n\nRead assets/template.html and copy SLOT comments.\n'
+      + 'Use references/layouts.md for structure.\n';
+
+    it('routes composeSystemPrompt through the dedicated lean composer', () => {
+      const prompt = composeSystemPrompt({
+        streamFormat: 'plain',
+        skillMode: 'deck',
+        skillName: 'simple-deck',
+        skillBody: simpleDeckSkill,
+        mediaExecution: { mode: 'disabled' },
+      });
+      expect(prompt).toContain('unified streaming rule');
+      expect(prompt).not.toContain('# OD core directives');
+      expect(prompt).not.toContain('Artifact handoff');
+      expect(prompt).not.toContain('Read `assets/template.html`');
+      expect(prompt.length).toBeLessThan(14_000);
+    });
+
+    it('requires body-first streaming and forbids head-only shells', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck' },
+      });
+      expect(prompt).toContain('unified streaming rule');
+      expect(prompt).toContain('never `<head>`');
+      expect(prompt).toContain('abandon that output');
+      expect(prompt).toContain('API compact contract');
+      expect(prompt).not.toContain('assets/template.html');
     });
   });
 });
