@@ -3112,6 +3112,17 @@ export function ProjectView({
         : null,
     });
   }, [designSystems, designTemplates, project.designSystemId, project.skillId, skills]);
+  const chatComposerSkills = useMemo(() => {
+    if (designTemplates.length === 0) return skills;
+    const seen = new Set<string>();
+    const combined: SkillSummary[] = [];
+    for (const skill of [...skills, ...designTemplates]) {
+      if (seen.has(skill.id)) continue;
+      seen.add(skill.id);
+      combined.push(skill);
+    }
+    return combined;
+  }, [designTemplates, skills]);
   const previousPromptContextSignatureRef = useRef(activePromptContextSignature);
   useEffect(() => {
     if (previousPromptContextSignatureRef.current === activePromptContextSignature) return;
@@ -3187,6 +3198,7 @@ export function ProjectView({
   const composedSystemPrompt = useCallback(async (
     sessionModeOverride: ChatSessionMode = activeSessionMode,
     designSystemIdOverride?: string | null,
+    skillIdOverride?: string | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -3194,25 +3206,26 @@ export function ProjectView({
     let designSystemBody: string | undefined;
     let designSystemTitle: string | undefined;
 
-    if (project.skillId) {
-      // project.skillId can resolve to either root after the
+    const effectiveSkillId = skillIdOverride ?? project.skillId;
+    if (effectiveSkillId) {
+      // effectiveSkillId can resolve to either root after the
       // skills/design-templates split; check both lists so a template-backed
       // project keeps composing its template body when running in API mode.
       const summary =
-        skills.find((s) => s.id === project.skillId) ??
-        designTemplates.find((s) => s.id === project.skillId);
+        skills.find((s) => s.id === effectiveSkillId) ??
+        designTemplates.find((s) => s.id === effectiveSkillId);
       skillName = summary?.name;
       skillMode = summary?.mode;
-      const cached = skillCache.current.get(project.skillId);
+      const cached = skillCache.current.get(effectiveSkillId);
       if (cached !== undefined) {
         skillBody = cached;
       } else {
         const detail =
-          (await fetchSkill(project.skillId)) ??
-          (await fetchDesignTemplate(project.skillId));
+          (await fetchSkill(effectiveSkillId)) ??
+          (await fetchDesignTemplate(effectiveSkillId));
         if (detail) {
           skillBody = detail.body;
-          skillCache.current.set(project.skillId, detail.body);
+          skillCache.current.set(effectiveSkillId, detail.body);
         }
       }
     }
@@ -6321,7 +6334,12 @@ export function ProjectView({
           }
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
-        const systemPrompt = await composedSystemPrompt(runSessionMode, effectiveDesignSystemId);
+        const effectiveSkillId = Array.isArray(meta?.skillIds) ? meta.skillIds[0] ?? null : null;
+        const systemPrompt = await composedSystemPrompt(
+          runSessionMode,
+          effectiveDesignSystemId,
+          effectiveSkillId,
+        );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
         const apiHistory = await historyWithApiAttachmentContext(
           historyWithApiWebFetchContext(
@@ -8289,7 +8307,7 @@ export function ProjectView({
               hasActiveDesignSystem={!!project.designSystemId}
               activeDesignSystem={chatDesignSystemSummary}
               projectFileNames={projectFileNames}
-              skills={skills}
+              skills={chatComposerSkills}
               onEnsureProject={handleEnsureProject}
               previewComments={previewComments}
               attachedComments={attachedComments}

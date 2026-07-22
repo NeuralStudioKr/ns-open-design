@@ -129,6 +129,39 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("project.metadata?.kind === 'template' && tplId");
   });
 
+  it("uses this turn's selected skillIds when composing API-mode prompts", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const signature = source.indexOf("skillIdOverride?: string | null");
+    expect(signature).toBeGreaterThan(0);
+    const composeBlock = source.slice(signature, signature + 1700);
+
+    expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
+    expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
+    expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
+
+    const callStart = source.indexOf("const effectiveSkillId = Array.isArray(meta?.skillIds)");
+    expect(callStart).toBeGreaterThan(0);
+    const callBlock = source.slice(callStart, callStart + 450);
+    expect(callBlock).toContain("meta.skillIds[0] ?? null");
+    expect(callBlock).toContain("composedSystemPrompt(");
+    expect(callBlock).toContain("effectiveSkillId");
+  });
+
+  it("passes design templates into the project chat composer skill picker", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const memoStart = source.indexOf("const chatComposerSkills = useMemo");
+    expect(memoStart).toBeGreaterThan(0);
+    const memoBlock = source.slice(memoStart, memoStart + 700);
+
+    expect(memoBlock).toContain("for (const skill of [...skills, ...designTemplates])");
+    expect(memoBlock).toContain("seen.has(skill.id)");
+
+    const paneStart = source.indexOf("<ChatPane");
+    expect(paneStart).toBeGreaterThan(0);
+    const paneBlock = source.slice(paneStart, paneStart + 1600);
+    expect(paneBlock).toContain("skills={chatComposerSkills}");
+  });
+
   it("replays stashed artifact writes without shifting write arguments", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const replay = async () =>");
