@@ -1955,7 +1955,6 @@ export function HomeView({
                   submittedActive?.projectMetadata ?? fallbackProjectMetadata ?? null,
                 )),
             kind: 'deck' as const,
-            skipDiscoveryBrief: true,
           }
         : submittedActive?.mediaSurface
           ? metadataForHomeMediaComposer(submittedActive.mediaSurface, submittedActive.inputs, promptTemplates)
