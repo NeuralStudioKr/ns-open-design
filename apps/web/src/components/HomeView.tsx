@@ -355,7 +355,7 @@ export function HomeView({
   const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverCanvasSlideLaunchSource | null>(null);
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
-  const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+  const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideTemplatePlugins, setCanvasSlideTemplatePlugins] = useState<InstalledPluginRecord[]>([]);
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(

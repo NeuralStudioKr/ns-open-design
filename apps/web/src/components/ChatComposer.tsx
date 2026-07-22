@@ -513,7 +513,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
     const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
     const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
-    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
