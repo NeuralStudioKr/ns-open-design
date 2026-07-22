@@ -39,10 +39,11 @@ export function findInFlightAssistantMessages(
 /** Daemon-mode rows eligible for `/api/runs/:id/events` reattach. */
 export function isRecoverableDaemonRunMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") return false;
+  if (message.endedAt !== undefined) return false;
+  if (isTerminalRunStatus(message.runStatus)) return false;
   if (isActiveRunStatus(message.runStatus)) return true;
   if (!message.runId) return false;
-  if (isTerminalRunStatus(message.runStatus)) return false;
-  return message.endedAt === undefined;
+  return true;
 }
 
 /**

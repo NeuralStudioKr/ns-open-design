@@ -111,6 +111,22 @@ describe("backgroundChatRecovery", () => {
     expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(true);
   });
 
+  it("does not treat ended daemon rows as recoverable even if runStatus is stale running", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "done",
+      createdAt: 1,
+      startedAt: 1,
+      endedAt: 2,
+      runId: "run-1",
+      runStatus: "running",
+    };
+    expect(isRecoverableDaemonRunMessage(message)).toBe(false);
+    expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(false);
+    expect(conversationHasRecoverableBackgroundChat([message], "daemon")).toBe(false);
+  });
+
   it("skips full replay when a checkpoint or saved content exists", () => {
     expect(
       shouldFullReplayReattachedRun({

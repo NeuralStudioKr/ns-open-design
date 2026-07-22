@@ -71,7 +71,8 @@ describe("mergeServerMessagesIntoConversation", () => {
     };
     const merged = mergeServerMessagesIntoConversation([local], [server]);
     expect(merged[0]?.content).toBe("All done!");
-    expect(merged[0]?.runStatus).toBe("running");
+    expect(merged[0]?.runStatus).toBe("succeeded");
+    expect(merged[0]?.endedAt).toBe(2);
   });
 
   it("prefers shorter sanitized local content when terminal server row still has leak residue", () => {

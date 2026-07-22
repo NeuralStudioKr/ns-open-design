@@ -402,6 +402,8 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   } else if (
     local.runStatus
     && isActiveRunStatus(local.runStatus)
+    && !isTerminalRunStatus(server.runStatus)
+    && server.endedAt === undefined
     && (!server.runStatus || !isActiveRunStatus(server.runStatus))
   ) {
     merged.runStatus = local.runStatus;
