@@ -8905,10 +8905,14 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   const text = finalText.trim();
   if (!text) return false;
 
+  const promiseOnly =
+    /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|here it is|will create|will build|I'll|I will)/i.test(text)
+    || /(바로\s*)?(만들어|만들겠|작성하겠|생성하겠|수정하겠|반영하겠|제작하|결정하겠|확정|채우|출력|완료|완성|마쳤|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠|올렸|넣었|드렸)/i.test(text);
+
   const deckIntent =
     /\b(deck|slide|slides|presentation|ppt|keynote|html)\b/i.test(text)
     || /(슬라이드|발표\s*자료|프레젠테이션|피피티|덱|HTML)/i.test(text);
-  if (!deckIntent) return false;
+  if (!deckIntent && !promiseOnly) return false;
 
   if (looksLikeSlideOutline(text)) return true;
 
@@ -8918,8 +8922,7 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
 
   return (
     looksLikeOutline
-    || /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|here it is|will create|will build|I'll|I will)/i.test(text)
-    || /(만들겠|작성하겠|생성하겠|수정하겠|반영하겠|제작하|결정하겠|확정|채우|출력|완료|완성|마쳤|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠|올렸|넣었|드렸)/i.test(text)
+    || promiseOnly
   );
 }
 

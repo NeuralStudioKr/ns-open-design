@@ -461,7 +461,9 @@ export function composeSystemPrompt({
     }
   }
 
-  const metaBlock = renderMetadataBlock(metadata, template, audioVoiceOptions, audioVoiceOptionsError);
+  const metaBlock = renderMetadataBlock(metadata, template, audioVoiceOptions, audioVoiceOptionsError, {
+    skipDiscoveryBrief: metadata?.skipDiscoveryBrief === true || metadata?.examplePrompt === true,
+  });
   if (metaBlock) parts.push(metaBlock);
 
   // Decks have a load-bearing framework (nav, counter, scroll JS, print
@@ -657,13 +659,21 @@ function renderMetadataBlock(
   template: ProjectTemplate | undefined,
   audioVoiceOptions: AudioVoiceOption[] | undefined,
   audioVoiceOptionsError: string | undefined,
+  options: { skipDiscoveryBrief?: boolean } = {},
 ): string {
   if (!metadata) return '';
   const lines: string[] = [];
+  const skipDiscoveryBrief = options.skipDiscoveryBrief === true;
   lines.push('\n\n## Project metadata');
-  lines.push(
-    'These are the structured choices the user made (or skipped) when creating this project. Treat known fields as authoritative; for any field marked "(unknown — ask)" you MUST include a matching question in your turn-1 discovery form.',
-  );
+  if (skipDiscoveryBrief) {
+    lines.push(
+      'These are the structured choices the user made (or skipped) when creating this project. Treat known fields as authoritative; for unknown fields, choose reasonable defaults and proceed without asking a discovery form.',
+    );
+  } else {
+    lines.push(
+      'These are the structured choices the user made (or skipped) when creating this project. Treat known fields as authoritative; for any field marked "(unknown — ask)" you MUST include a matching question in your turn-1 discovery form.',
+    );
+  }
   lines.push('');
   lines.push(`- **kind**: ${metadata.kind}`);
   if (metadata.platform) {
@@ -730,10 +740,10 @@ function renderMetadataBlock(
   }
   if (metadata.kind === 'deck') {
     lines.push(
-      `- **slideCount**: ${metadata.slideCount ?? '(unknown — ask only if the Active plugin / Plugin inputs block does not already include slideCount)'}`,
+      `- **slideCount**: ${metadata.slideCount ?? (skipDiscoveryBrief ? '(unknown — choose 6-8 slides by default)' : '(unknown — ask only if the Active plugin / Plugin inputs block does not already include slideCount)')}`,
     );
     lines.push(
-      `- **speakerNotes**: ${typeof metadata.speakerNotes === 'boolean' ? metadata.speakerNotes : '(unknown — ask: include speaker notes?)'}`,
+      `- **speakerNotes**: ${typeof metadata.speakerNotes === 'boolean' ? metadata.speakerNotes : (skipDiscoveryBrief ? '(unknown — omit unless requested)' : '(unknown — ask: include speaker notes?)')}`,
     );
   }
   if (metadata.kind === 'template') {
@@ -1091,6 +1101,22 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
+const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
+
+This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do NOT emit \`<question-form>\`, do NOT show "Quick brief — 30 seconds", and do NOT wait for another user message.
+
+Your successful response is **exactly one** streaming artifact in this same turn:
+
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
+
+**How to stream the deck (non-negotiable):**
+1. You MAY open \`<artifact type="deck">\` at the very start (at most one short sentence before it). Do not use \`type="text/html"\`.
+2. The first bytes inside the artifact MUST be \`<!doctype html><html><body><section class="slide">\` with **real slide copy** — never \`<head>\`, never \`<style>\`, never empty scaffolding.
+3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
+4. Close with \`</body></html></artifact>\` in this same turn.
+
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.`;
+
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
  * Avoids discovery, BASE_SYSTEM_PROMPT artifact-handoff, and raw skill seed
@@ -1124,10 +1150,16 @@ export function composeTeamverSlideApiPrompt({
 >): string {
   const parts: string[] = [];
   const activeDesignSystemBody = designSystemBody?.trim();
+  const directDeckGeneration =
+    metadata?.skipDiscoveryBrief === true || metadata?.examplePrompt === true;
 
   parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: true }));
   parts.push(TEAMVER_SLIDE_ONLY_SCOPE.trim());
-  parts.push(TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE.trim());
+  if (directDeckGeneration) {
+    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+  } else {
+    parts.push(TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE.trim());
+  }
 
   const localePrompt = renderUiLocalePrompt(locale);
   if (localePrompt) parts.push(localePrompt);
@@ -1155,6 +1187,7 @@ export function composeTeamverSlideApiPrompt({
     template,
     audioVoiceOptions,
     audioVoiceOptionsError,
+    { skipDiscoveryBrief: directDeckGeneration },
   );
   if (metaBlock) parts.push(metaBlock);
 
@@ -1167,7 +1200,11 @@ export function composeTeamverSlideApiPrompt({
 
   parts.push(DECK_FRAMEWORK_DIRECTIVE_COMPACT);
   parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
-  parts.push(TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE);
+  parts.push(
+    directDeckGeneration
+      ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
+      : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
+  );
 
   return parts.join('\n\n---\n\n');
 }

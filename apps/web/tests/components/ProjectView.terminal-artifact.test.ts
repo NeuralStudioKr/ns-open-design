@@ -18,6 +18,14 @@ describe("shouldFailSlideRunWithoutHtmlDeliverable", () => {
     ).toBe(true);
   });
 
+  it("fails promise-only Korean replies even without explicit deck words", () => {
+    expect(
+      shouldFailSlideRunWithoutHtmlDeliverable("바로 만들어 드리겠습니다!", {
+        slideOnlyMvp: true,
+      }),
+    ).toBe(true);
+  });
+
   it("fails Korean completion claims that previously slipped past the gate", () => {
     expect(
       shouldFailSlideRunWithoutHtmlDeliverable("슬라이드를 완성했습니다.", {

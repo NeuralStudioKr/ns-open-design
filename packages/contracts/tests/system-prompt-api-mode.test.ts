@@ -325,5 +325,26 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('API compact contract');
       expect(prompt).not.toContain('assets/template.html');
     });
+
+    it('uses direct deck generation when discovery is intentionally skipped', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+
+      expect(prompt).toContain(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+      expect(prompt).toContain('direct deck generation rule');
+      expect(prompt).toContain('Do NOT emit `<question-form>`');
+      expect(prompt).toContain('<artifact type="deck" identifier="deck">');
+      expect(prompt).toContain('Do not use `type="text/html"`');
+      expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
+      expect(prompt).toContain('choose 6-8 slides by default');
+      expect(prompt).toContain('omit unless requested');
+      expect(prompt).not.toContain('unified streaming rule');
+      expect(prompt).not.toContain('Turn 1 (first user message, no prior form answers)');
+      expect(prompt).not.toContain('unknown — ask');
+      expect(prompt).not.toContain('assets/template.html');
+    });
   });
 });
