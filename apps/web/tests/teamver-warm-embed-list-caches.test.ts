@@ -3,15 +3,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../src/types";
 import { warmEmbedProjectListCaches } from "../src/teamver/warmEmbedProjectListCaches";
 
-const prefetchDesignsTabViewport = vi.fn();
-const isTeamverEmbedMode = vi.fn(() => true);
-
-vi.mock("../src/teamver/designApiBase", () => ({
-  isTeamverEmbedMode: () => isTeamverEmbedMode(),
+const mocks = vi.hoisted(() => ({
+  prefetchHomeProjectCovers: vi.fn(),
+  isTeamverEmbedMode: vi.fn(() => true),
 }));
 
-vi.mock("../src/teamver/prefetchDesignsTabViewport", () => ({
-  prefetchDesignsTabViewport: (projects: Project[]) => prefetchDesignsTabViewport(projects),
+vi.mock("../src/teamver/designApiBase", () => ({
+  isTeamverEmbedMode: () => mocks.isTeamverEmbedMode(),
+}));
+
+vi.mock("../src/teamver/prefetchHomeProjectCovers", () => ({
+  prefetchHomeProjectCovers: (projects: Project[]) => mocks.prefetchHomeProjectCovers(projects),
 }));
 
 const sampleProject: Project = {
@@ -25,19 +27,19 @@ const sampleProject: Project = {
 
 describe("warmEmbedProjectListCaches", () => {
   afterEach(() => {
-    prefetchDesignsTabViewport.mockClear();
-    isTeamverEmbedMode.mockReturnValue(true);
+    mocks.prefetchHomeProjectCovers.mockClear();
+    mocks.isTeamverEmbedMode.mockReturnValue(true);
   });
 
-  it("prefetches DesignsTab viewport hints in embed mode", () => {
+  it("prefetches bounded home project covers in embed mode", () => {
     warmEmbedProjectListCaches([sampleProject]);
-    expect(prefetchDesignsTabViewport).toHaveBeenCalledWith([sampleProject]);
+    expect(mocks.prefetchHomeProjectCovers).toHaveBeenCalledWith([sampleProject]);
   });
 
   it("skips when not in embed mode or list is empty", () => {
-    isTeamverEmbedMode.mockReturnValue(false);
+    mocks.isTeamverEmbedMode.mockReturnValue(false);
     warmEmbedProjectListCaches([sampleProject]);
     warmEmbedProjectListCaches([]);
-    expect(prefetchDesignsTabViewport).not.toHaveBeenCalled();
+    expect(mocks.prefetchHomeProjectCovers).not.toHaveBeenCalled();
   });
 });

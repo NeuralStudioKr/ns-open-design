@@ -27,6 +27,7 @@ import {
   resolveProjectCoverFile,
   resolveProjectCoverFiles,
   resolveProjectCoverOptionsForListSurface,
+  seedProjectCoverHints,
 } from "../src/teamver/projectCoverLoader";
 import { isTeamverEmbedMode } from "../src/teamver/designApiBase";
 import { isTeamverEmbedDesignSurfaceEnabled } from "../src/teamver/teamverDesignAccess";
@@ -262,6 +263,65 @@ describe("projectCoverLoader", () => {
       name: "deck.html",
     });
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces a cached hints-only miss when a later cover hint appears", async () => {
+    vi.useFakeTimers();
+    fetchCoverHintsMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+    fetchCoverHintsMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        hints: [
+          {
+            projectId: "p1",
+            entryFile: "deck.html",
+            coverKind: "html",
+            coverPath: "deck.html",
+            coverVersion: 20,
+          },
+        ],
+      }),
+    });
+
+    const deck = project({ id: "p1", metadata: { kind: "deck" } });
+
+    await expect(
+      resolveProjectCoverFile(deck, { allowFilesFallback: false }),
+    ).resolves.toBeNull();
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(61_000);
+    await expect(
+      resolveProjectCoverFile(deck, { allowFilesFallback: false }),
+    ).resolves.toEqual({
+      kind: "html",
+      name: "deck.html",
+      version: 20,
+    });
+    vi.useRealTimers();
+    expect(fetchProjectFilesMock).not.toHaveBeenCalled();
+  });
+
+  it("updates seeded hints when the same cover file receives a newer version", async () => {
+    seedProjectCoverHints({
+      p1: { kind: "html", name: "deck.html", version: 1 },
+    });
+    seedProjectCoverHints({
+      p1: { kind: "html", name: "deck.html", version: 2 },
+    });
+
+    await expect(
+      resolveProjectCoverFile(project({ id: "p1", metadata: { kind: "deck" } }), {
+        allowFilesFallback: false,
+      }),
+    ).resolves.toEqual({
+      kind: "html",
+      name: "deck.html",
+      version: 2,
+    });
   });
 
   it("does not re-hint after prefetch until hint TTL expires", async () => {

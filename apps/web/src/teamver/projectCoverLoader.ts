@@ -78,7 +78,12 @@ export function clearProjectCoverCache(projectId?: string): void {
 export function seedProjectCoverHints(covers: Record<string, ProjectCoverFile | null>): void {
   const now = Date.now();
   for (const [projectId, cover] of Object.entries(covers)) {
-    if (coverCache.has(projectId)) continue;
+    const existing = coverCache.get(projectId);
+    if (existing?.cover && !cover) continue;
+    if (existing?.cover && cover && projectCoverFileEqual(existing.cover, cover)) {
+      coverCache.set(projectId, { ...existing, at: now });
+      continue;
+    }
     coverCache.set(projectId, {
       cover,
       at: now,
@@ -156,6 +161,15 @@ async function ensureCoverHintBatch(): Promise<void> {
     });
   }
   await activeHintBatch;
+}
+
+function projectCoverFileEqual(
+  left: ProjectCoverFile | null | undefined,
+  right: ProjectCoverFile | null | undefined,
+): boolean {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return left.kind === right.kind && left.name === right.name && left.version === right.version;
 }
 
 /** @internal vitest only */

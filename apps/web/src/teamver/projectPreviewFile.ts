@@ -98,7 +98,7 @@ export function projectCoverFilesEqual(
 ): boolean {
   if (!left && !right) return true;
   if (!left || !right) return false;
-  return left.kind === right.kind && left.name === right.name;
+  return left.kind === right.kind && left.name === right.name && left.version === right.version;
 }
 
 function basename(path: string): string {
