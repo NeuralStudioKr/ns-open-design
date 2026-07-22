@@ -2152,12 +2152,14 @@ function ProseBlock({
           />
         );
       })}
-      {live && !hideAssistantThinkingDetails ? (
+      {live ? (
         <StreamingCodeCard
           titleLabel={t("tool.write")}
           metaLabel={live.title || live.identifier || undefined}
           code={live.content}
           hideCodeBody={
+            hideAssistantThinkingDetails
+            ||
             slideOnlyMvp
             || shouldMinimizeEmbedLiveToolCode(
               { slideOnlyMvp },
