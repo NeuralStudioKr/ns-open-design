@@ -9,7 +9,7 @@ function readSource(relativePath: string): string {
 }
 
 describe("embed in-project run success publish flow (loop 403)", () => {
-  it("arms publish menu and opens download menu with last target focus on preview", () => {
+  it("arms publish state but does not auto-open Drive modal on file route entry", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
     const fileViewer = readSource("src/components/FileViewer.tsx");
 
@@ -18,6 +18,9 @@ describe("embed in-project run success publish flow (loop 403)", () => {
       /maybeArmTeamverPublishMenuAfterRunSuccess[\s\S]*?requestOpenFile\(producedHtmlToOpen\)/,
     );
     expect(projectView).toMatch(
+      /consumeTeamverPublishMenuArm\(project\.id, routeFileName\);/,
+    );
+    expect(projectView).not.toMatch(
       /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
     expect(projectView).not.toContain("maybeOneClickPublishToDrive");
@@ -29,7 +32,7 @@ describe("embed in-project run success publish flow (loop 403)", () => {
 });
 
 describe("embed background run success publish flow (loop 398)", () => {
-  it("arms publish menu from App completion toast and ProjectView opens download on preview", () => {
+  it("arms publish menu from App completion toast without opening Drive modal on route entry", () => {
     const app = readSource("src/App.tsx");
     const projectView = readSource("src/components/ProjectView.tsx");
 
@@ -37,6 +40,9 @@ describe("embed background run success publish flow (loop 398)", () => {
     expect(app).toContain("미리보기 · Drive 발행");
     expect(projectView).toContain("consumeTeamverPublishMenuArm");
     expect(projectView).toMatch(
+      /consumeTeamverPublishMenuArm\(project\.id, routeFileName\);/,
+    );
+    expect(projectView).not.toMatch(
       /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
     expect(projectView).not.toContain("maybeOneClickPublishToDrive");

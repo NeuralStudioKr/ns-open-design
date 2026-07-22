@@ -9,7 +9,7 @@ function readSource(relativePath: string): string {
 }
 
 describe("embed background run success publish flow (loop 398)", () => {
-  it("arms publish menu from App completion toast and ProjectView opens deploy on preview", () => {
+  it("arms publish menu from App completion toast without opening Drive modal on route entry", () => {
     const app = readSource("src/App.tsx");
     const projectView = readSource("src/components/ProjectView.tsx");
 
@@ -17,6 +17,9 @@ describe("embed background run success publish flow (loop 398)", () => {
     expect(app).toContain("미리보기 · Drive 발행");
     expect(projectView).toContain("consumeTeamverPublishMenuArm");
     expect(projectView).toMatch(
+      /consumeTeamverPublishMenuArm\(project\.id, routeFileName\);/,
+    );
+    expect(projectView).not.toMatch(
       /consumeTeamverPublishMenuArm[\s\S]*?setShareRequest\(\{ name: routeFileName, nonce:/,
     );
     expect(projectView).not.toContain("maybeOneClickPublishToDrive");

@@ -3098,8 +3098,11 @@ export function ProjectView({
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     if (!routeFileName) return;
-    if (!consumeTeamverPublishMenuArm(project.id, routeFileName)) return;
-    setShareRequest({ name: routeFileName, nonce: Date.now() });
+    // Consume stale post-run publish arms on file deep-link entry, but do not
+    // open Drive UI automatically. Drive publish is a user-initiated action;
+    // otherwise simply entering `/files/deck.html` can surface the modal even
+    // when no Drive button was clicked.
+    consumeTeamverPublishMenuArm(project.id, routeFileName);
   }, [project.id, routeFileName]);
 
   // Sync the URL when the active tab changes, so reload + share-link both
