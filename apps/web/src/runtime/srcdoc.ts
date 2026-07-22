@@ -22,7 +22,11 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
+<<<<<<< HEAD
 import { looksLikeCompactApiStackedDeck } from './compact-api-stacked-deck';
+=======
+import { looksLikeCompactApiStackedDeck, wrapPreviewHtmlShell } from './compact-api-stacked-deck';
+>>>>>>> 2ebbbc2c3 (fix(teamver): harden compact deck detection and fix web build import)
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -97,21 +101,7 @@ export function buildSrcdoc(
   options: SrcdocOptions = {}
 ): string {
   const repaired = repairArtifactDocumentHead(html);
-  const head = repaired.trimStart().slice(0, 64).toLowerCase();
-  const isFullDoc = head.startsWith("<!doctype") || head.startsWith("<html");
-  let wrapped = isFullDoc
-    ? repaired
-    : `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-  </head>
-  <body>${repaired}</body>
-</html>`;
-  if (!isFullDoc) {
-    wrapped = repairArtifactDocumentHead(wrapped);
-  }
+  const wrapped = wrapPreviewHtmlShell(repaired);
   const withOdIds = annotateMissingOdIds(wrapped);
   const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
@@ -1976,7 +1966,7 @@ html[data-od-inspect-mode] body iframe { pointer-events: none !important; }
 function injectDeckBridge(
   doc: string,
   initialSlideIndex = 0,
-  compactStackedDeck = looksLikeCompactApiStackedDeck(doc),
+  compactStackedDeck = false,
 ): string {
   const safeInitialSlideIndex = Number.isFinite(initialSlideIndex)
     ? Math.max(0, Math.floor(initialSlideIndex))

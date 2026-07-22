@@ -124,7 +124,7 @@ import {
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
 import { postDeckPreviewPanBy, resetDeckPreviewPan, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
-import { looksLikeCompactApiStackedDeck } from '../runtime/compact-api-stacked-deck';
+import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
@@ -5667,10 +5667,28 @@ function HtmlViewer({
     );
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
+  const livePreviewSource = inlinedSource ?? source;
+  // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
+  // source rewrite during edit (1.5s debounced set-style patches) stays
+  // invisible to the iframe — live updates flow through od-edit-preview-style
+  // postMessage instead, so the canvas never has to reload.
+  useEffect(() => {
+    if (manualEditMode && manualEditFrozenSource === null && livePreviewSource != null) {
+      setManualEditFrozenSource(livePreviewSource);
+    }
+  }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
+  const previewSource = (manualEditMode && manualEditFrozenSource !== null)
+    ? manualEditFrozenSource
+    : livePreviewSource;
   const compactApiStackedDeck = useMemo(
-    () => (source != null && looksLikeCompactApiStackedDeck(source)),
-    [source],
+    () => (previewSource != null && looksLikeCompactApiStackedDeckForPreview(previewSource)),
+    [previewSource],
   );
+  const frameworkDeckPreview = useMemo(
+    () => (previewSource != null && /\bid\s*=\s*["']deck-stage["']/i.test(previewSource)),
+    [previewSource],
+  );
+  const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview;
   const deckPreviewPanActive = compactApiStackedDeck
     && mode === 'preview'
     && !drawOverlayOpen
@@ -5722,19 +5740,6 @@ function HtmlViewer({
       // Pointer may already be released.
     }
   }, []);
-  const livePreviewSource = inlinedSource ?? source;
-  // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
-  // source rewrite during edit (1.5s debounced set-style patches) stays
-  // invisible to the iframe — live updates flow through od-edit-preview-style
-  // postMessage instead, so the canvas never has to reload.
-  useEffect(() => {
-    if (manualEditMode && manualEditFrozenSource === null && livePreviewSource != null) {
-      setManualEditFrozenSource(livePreviewSource);
-    }
-  }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
-  const previewSource = (manualEditMode && manualEditFrozenSource !== null)
-    ? manualEditFrozenSource
-    : livePreviewSource;
   const [redirectLoopBlocked, setRedirectLoopBlocked] = useState(false);
   useEffect(() => {
     setRedirectLoopBlocked(false);
@@ -6119,10 +6124,10 @@ function HtmlViewer({
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
 
   useEffect(() => {
-    if (!effectiveDeck || mode !== 'preview') return;
+    if (!needsDeckHostViewportFit || mode !== 'preview') return;
     return scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale);
   }, [
-    effectiveDeck,
+    needsDeckHostViewportFit,
     mode,
     zoom,
     overlayPreviewScale,
@@ -9408,7 +9413,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           }}
                         />
                       ) : (
@@ -9434,7 +9439,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
                           }}
                         />
                       )}

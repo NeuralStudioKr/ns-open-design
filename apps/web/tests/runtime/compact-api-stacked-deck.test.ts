@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergency-deck';
-import { looksLikeCompactApiStackedDeck } from '../../src/runtime/compact-api-stacked-deck';
+import {
+  looksLikeCompactApiStackedDeck,
+  looksLikeCompactApiStackedDeckForPreview,
+  wrapPreviewHtmlShell,
+} from '../../src/runtime/compact-api-stacked-deck';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
@@ -20,6 +24,13 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
   });
 
+  it('detects compact fragments after the same preview shell wrap as buildSrcdoc', () => {
+    const fragment = '<section class="slide" style="min-height:100vh">A</section>';
+    expect(looksLikeCompactApiStackedDeck(fragment)).toBe(false);
+    expect(looksLikeCompactApiStackedDeckForPreview(fragment)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(wrapPreviewHtmlShell(fragment))).toBe(true);
+  });
+
   it('rejects framework decks with #deck-stage', () => {
     const html = readFileSync(resolve(repoRoot, 'templates/deck-framework.html'), 'utf8');
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
@@ -27,6 +38,16 @@ describe('looksLikeCompactApiStackedDeck', () => {
 
   it('rejects horizontal scroll-snap simple-deck templates', () => {
     const html = readFileSync(resolve(repoRoot, 'design-templates/simple-deck/assets/template.html'), 'utf8');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+  });
+
+  it('rejects decks wrapped in a .deck container under body', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<div class="deck">',
+      '<section class="slide" style="min-height:100vh">A</section>',
+      '</div></body></html>',
+    ].join('');
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
