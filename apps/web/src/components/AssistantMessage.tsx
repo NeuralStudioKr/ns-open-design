@@ -2108,9 +2108,9 @@ function ProseBlock({
           />
         );
       })}
-      {live && !hideAssistantThinkingDetails ? (
+      {live && (!hideAssistantThinkingDetails || slideOnlyMvp) ? (
         <StreamingCodeCard
-          titleLabel={t("tool.write")}
+          titleLabel={slideOnlyMvp ? t("examples.tagSlideDeck") : t("tool.write")}
           metaLabel={live.title || live.identifier || undefined}
           code={live.content}
           hideCodeBody={

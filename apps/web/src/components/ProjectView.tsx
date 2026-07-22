@@ -12,7 +12,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { createHtmlArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
+import {
+  createDeckArtifactManifest,
+  createHtmlArtifactManifest,
+  inferLegacyManifest,
+} from '../artifacts/manifest';
 import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
@@ -2676,13 +2680,21 @@ export function ProjectView({
       };
       const manifest =
         ext === '.html'
-          ? createHtmlArtifactManifest({
-              entry: fileName,
-              title,
-              sourceSkillId: project.skillId ?? undefined,
-              designSystemId: project.designSystemId,
-              metadata,
-            })
+          ? slideOnlyMvp
+            ? createDeckArtifactManifest({
+                entry: fileName,
+                title,
+                sourceSkillId: project.skillId ?? undefined,
+                designSystemId: project.designSystemId,
+                metadata,
+              })
+            : createHtmlArtifactManifest({
+                entry: fileName,
+                title,
+                sourceSkillId: project.skillId ?? undefined,
+                designSystemId: project.designSystemId,
+                metadata,
+              })
           : inferLegacyManifest({
               entry: fileName,
               title,
@@ -7630,9 +7642,11 @@ export function ProjectView({
 
   const isDeck = useMemo(
     () =>
-      (skills.find((s) => s.id === project.skillId) ??
+      slideOnlyMvp
+      || project.metadata?.kind === 'deck'
+      || (skills.find((s) => s.id === project.skillId) ??
         designTemplates.find((s) => s.id === project.skillId))?.mode === 'deck',
-    [skills, designTemplates, project.skillId],
+    [slideOnlyMvp, project.metadata?.kind, skills, designTemplates, project.skillId],
   );
   const chatResizeLabel = t('project.resizeChatPanel');
   const workspacePanelTrack =

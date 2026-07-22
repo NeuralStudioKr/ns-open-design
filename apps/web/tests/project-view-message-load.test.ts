@@ -240,7 +240,8 @@ describe("ProjectView message loading", () => {
     expect(persistStart).toBeGreaterThan(0);
     const persistBlock = source.slice(persistStart, persistStart + 4200);
 
-    expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
+    expect(persistBlock).toContain("createDeckArtifactManifest");
+    expect(persistBlock).toContain("slideOnlyMvp");
     expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // Validation refusals still surface a refusal banner; incomplete shells

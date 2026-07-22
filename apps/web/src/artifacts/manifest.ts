@@ -94,6 +94,31 @@ export function createHtmlArtifactManifest(input: {
   };
 }
 
+export function createDeckArtifactManifest(input: {
+  entry: string;
+  title: string;
+  metadata?: Record<string, unknown>;
+  sourceSkillId?: string;
+  designSystemId?: string | null;
+}): ArtifactManifest {
+  const now = new Date().toISOString();
+  return {
+    version: MANIFEST_VERSION,
+    kind: 'deck',
+    title: input.title,
+    entry: input.entry,
+    renderer: 'deck-html',
+    status: 'complete',
+    exports: exportsForKind('deck'),
+    primary: true,
+    createdAt: now,
+    updatedAt: now,
+    sourceSkillId: input.sourceSkillId,
+    designSystemId: input.designSystemId,
+    metadata: input.metadata,
+  };
+}
+
 export function serializeArtifactManifest(manifest: ArtifactManifest): string {
   return JSON.stringify(manifest, null, 2);
 }

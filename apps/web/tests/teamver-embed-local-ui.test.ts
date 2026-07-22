@@ -28,7 +28,7 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(assistant).toContain('block.kind !== "status"');
     expect(assistant).toContain('block.kind !== "plugin-candidate"');
     expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
-    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
+    expect(assistant).toContain("live && (!hideAssistantThinkingDetails || slideOnlyMvp)");
   });
 
   it("hides recovered raw HTML fallback prose for every Teamver embed agent", () => {

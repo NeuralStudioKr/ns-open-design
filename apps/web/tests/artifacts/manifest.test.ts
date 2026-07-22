@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   artifactManifestNameFor,
+  createDeckArtifactManifest,
   createHtmlArtifactManifest,
   inferLegacyManifest,
   parseArtifactManifest,
@@ -131,5 +132,19 @@ describe('createHtmlArtifactManifest', () => {
     expect(out.title).toBe('Landing');
     expect(typeof out.createdAt).toBe('string');
     expect(typeof out.updatedAt).toBe('string');
+  });
+});
+
+describe('createDeckArtifactManifest', () => {
+  it('creates expected default deck manifest shape', () => {
+    const out = createDeckArtifactManifest({ entry: 'deck.html', title: 'Pitch deck' });
+    expect(out.version).toBe(1);
+    expect(out.kind).toBe('deck');
+    expect(out.renderer).toBe('deck-html');
+    expect(out.status).toBe('complete');
+    expect(out.exports).toEqual(['html', 'pdf', 'pptx', 'zip']);
+    expect(out.primary).toBe(true);
+    expect(out.entry).toBe('deck.html');
+    expect(out.title).toBe('Pitch deck');
   });
 });
