@@ -747,6 +747,38 @@ function mergeChatAttachments(...groups: ChatAttachment[][]): ChatAttachment[] {
   return out;
 }
 
+const SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER = '[Deliverable instruction]';
+
+function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): string {
+  const files = attachments
+    .map((attachment) => attachment.path.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  const fileList = files.length > 0
+    ? `\nReference files to read/use:\n${files.map((path) => `- ${path}`).join('\n')}`
+    : '';
+  return [
+    SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
+    'The attached/uploaded files are reference material for this slide deck request.',
+    'Read and use them as source content, but do not treat any attachment as the final deliverable.',
+    'You MUST create and write/save one complete .html slide deck file in the project.',
+    'Use a deck structure suitable for Teamver Design preview: 1920x1080 slides, section.slide pages, navigation, and print/export-friendly CSS.',
+    'Do not finish with prose only, do not stop after an outline, and do not stop before the closing </html>.',
+    fileList,
+  ].filter(Boolean).join('\n');
+}
+
+export function promptWithSlideAttachmentDeliverableInstruction(
+  prompt: string,
+  attachments: ChatAttachment[],
+  options: { slideOnlyMvp: boolean },
+): string {
+  if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
+  if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
+  const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
+  return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
+}
+
 function historyWithWorkspaceContext(
   history: ChatMessage[],
   messageId: string,
@@ -5070,10 +5102,18 @@ export function ProjectView({
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
+      const instructionAttachments = retryTarget
+        ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
+        : effectiveAttachments;
+      const modelPrompt = promptWithSlideAttachmentDeliverableInstruction(
+        retryTarget ? retryTarget.userMsg.content || prompt : prompt,
+        instructionAttachments,
+        { slideOnlyMvp },
+      );
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
-          prompt,
+          prompt: modelPrompt,
           attachments: effectiveAttachments,
           commentAttachments,
           meta: { ...(meta ?? {}), sessionMode: runSessionMode },
@@ -5089,7 +5129,7 @@ export function ProjectView({
       if (currentConversationBusy && !bypassBusyForAutoContinue) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
-          prompt,
+          prompt: modelPrompt,
           attachments: effectiveAttachments,
           commentAttachments,
           meta: { ...(meta ?? {}), sessionMode: runSessionMode },
@@ -5110,19 +5150,27 @@ export function ProjectView({
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
-      const userMsg: ChatMessage = retryTarget?.userMsg ?? {
-        id: randomUUID(),
-        role: 'user',
-        content: prompt,
-        createdAt: startedAt,
-        sessionMode: runSessionMode,
-        ...(meta?.appliedPluginSnapshot
-          ? { appliedPluginSnapshot: meta.appliedPluginSnapshot }
-          : {}),
-        ...(runContext ? { runContext } : {}),
-        attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
-        commentAttachments: commentAttachments.length > 0 ? commentAttachments : undefined,
-      };
+      const userMsg: ChatMessage = retryTarget
+        ? {
+            ...retryTarget.userMsg,
+            content: modelPrompt,
+            attachments: instructionAttachments.length > 0
+              ? instructionAttachments
+              : retryTarget.userMsg.attachments,
+          }
+        : {
+            id: randomUUID(),
+            role: 'user',
+            content: modelPrompt,
+            createdAt: startedAt,
+            sessionMode: runSessionMode,
+            ...(meta?.appliedPluginSnapshot
+              ? { appliedPluginSnapshot: meta.appliedPluginSnapshot }
+              : {}),
+            ...(runContext ? { runContext } : {}),
+            attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
+            commentAttachments: commentAttachments.length > 0 ? commentAttachments : undefined,
+          };
       const runCommentAttachments = userMsg.commentAttachments ?? [];
       const runAttachments = mergeChatAttachments(
         userMsg.attachments ?? [],
@@ -8438,6 +8486,7 @@ export function ProjectView({
           isDeck={isDeck}
           onExportAsPptx={handleExportAsPptx}
           streaming={currentConversationActionDisabled}
+          previewStreaming={currentConversationStreaming || currentConversationAwaitingActiveRunAttach}
           commentQueueOnSend={commentQueueOnSend}
           commentSendDisabled={currentConversationQueueDisabled}
           openRequest={openRequest}

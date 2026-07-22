@@ -4,8 +4,42 @@ import {
   mergeMissingActiveRunAssistantMessages,
   mergeServerMessagesIntoConversation,
   orderConversationMessages,
+  promptWithSlideAttachmentDeliverableInstruction,
 } from "../src/components/ProjectView";
+import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 import type { ChatMessage } from "../src/types";
+
+describe("promptWithSlideAttachmentDeliverableInstruction", () => {
+  it("adds a hidden deliverable contract for slide-only attachment runs", () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "발표 대본 참고해서 ppt 디자인 해줘",
+      [{ path: "refs/drive/deck-brief.md", name: "deck-brief.md", kind: "file" }],
+      { slideOnlyMvp: true },
+    );
+
+    expect(prompt).toContain("[Deliverable instruction]");
+    expect(prompt).toContain("refs/drive/deck-brief.md");
+    expect(prompt).toContain("write/save one complete .html slide deck file");
+    expect(stripUserVisibleQuestionFormProtocolText(prompt)).toBe("발표 대본 참고해서 ppt 디자인 해줘");
+  });
+
+  it("does not add the hidden contract outside slide-only or when already present", () => {
+    expect(
+      promptWithSlideAttachmentDeliverableInstruction(
+        "make a deck",
+        [{ path: "refs/file.md", name: "file.md", kind: "file" }],
+        { slideOnlyMvp: false },
+      ),
+    ).toBe("make a deck");
+    expect(
+      promptWithSlideAttachmentDeliverableInstruction(
+        "make a deck\n\n[Deliverable instruction]\nexisting",
+        [{ path: "refs/file.md", name: "file.md", kind: "file" }],
+        { slideOnlyMvp: true },
+      ).match(/\[Deliverable instruction\]/g),
+    ).toHaveLength(1);
+  });
+});
 
 describe("mergeServerMessagesIntoConversation", () => {
   it("keeps local active runStatus when server row is stale", () => {
