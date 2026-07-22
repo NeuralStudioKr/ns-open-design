@@ -14,7 +14,10 @@ async function coverVersionForPath(
   coverPath: string,
 ): Promise<number | undefined> {
   try {
-    const st = await stat(path.join(projectDir, coverPath));
+    const root = path.resolve(projectDir);
+    const target = path.resolve(root, coverPath);
+    if (target !== root && !target.startsWith(root + path.sep)) return undefined;
+    const st = await stat(target);
     return Math.round(st.mtimeMs);
   } catch {
     return undefined;
@@ -34,7 +37,8 @@ async function withCoverVersion(
 function coverHintFromEntry(
   entryFile: string,
   projectKind: unknown,
-): ResolvedProjectCoverHint {
+): ResolvedProjectCoverHint | null {
+  if (!isSafeProjectRelativePath(entryFile)) return null;
   if (projectKind === "image") {
     return { entryFile, coverKind: "image", coverPath: entryFile };
   }
@@ -45,6 +49,14 @@ function coverHintFromEntry(
     return { entryFile, coverKind: "html", coverPath: entryFile };
   }
   return { entryFile, coverPath: entryFile };
+}
+
+function isSafeProjectRelativePath(value: string): boolean {
+  if (!value || path.isAbsolute(value) || /^[a-z][a-z0-9+.-]*:/iu.test(value)) {
+    return false;
+  }
+  const parts = value.split(/[\\/]+/u);
+  return parts.every((part) => part && part !== "." && part !== "..");
 }
 
 async function detectLogoCoverPath(projectDir: string): Promise<string | null> {
@@ -78,6 +90,7 @@ export async function resolveProjectCoverHint(
 
   if (typeof metadata.entryFile === "string" && metadata.entryFile.trim()) {
     const hint = coverHintFromEntry(metadata.entryFile.trim(), metadata.kind);
+    if (!hint) return null;
     return withCoverVersion(projectDir, hint);
   }
 

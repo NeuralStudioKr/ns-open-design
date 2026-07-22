@@ -9,15 +9,25 @@ export function projectCoverFileFromHint(hint: ProjectCoverHint): ProjectCoverFi
       ? hint.coverVersion
       : undefined;
   if (hint.coverPath && hint.coverKind) {
+    if (!isSafeProjectRelativePath(hint.coverPath)) return null;
     return { kind: hint.coverKind, name: hint.coverPath, version };
   }
   if (hint.entryFile) {
+    if (!isSafeProjectRelativePath(hint.entryFile)) return null;
     const kind = hint.coverKind ?? (/\.html?$/i.test(hint.entryFile) ? "html" : "image");
     if (kind === "html" || kind === "image" || kind === "video" || kind === "logo") {
       return { kind, name: hint.entryFile, version };
     }
   }
   return null;
+}
+
+function isSafeProjectRelativePath(value: string): boolean {
+  if (!value || value.startsWith("/") || /^[a-z][a-z0-9+.-]*:/iu.test(value)) {
+    return false;
+  }
+  const parts = value.split(/[\\/]+/u);
+  return parts.every((part) => part && part !== "." && part !== "..");
 }
 
 export async function fetchProjectCoverHints(

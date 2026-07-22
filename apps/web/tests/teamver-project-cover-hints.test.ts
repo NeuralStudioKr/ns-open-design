@@ -14,7 +14,7 @@ vi.mock("../src/teamver/teamverDaemonHeaders", () => ({
   fetchTeamverDaemon: (...args: unknown[]) => fetchDaemonMock(...args),
 }));
 
-import { fetchProjectCoverHints } from "../src/teamver/projectCoverHints";
+import { fetchProjectCoverHints, projectCoverFileFromHint } from "../src/teamver/projectCoverHints";
 
 describe("fetchProjectCoverHints (loop 400)", () => {
   beforeEach(() => {
@@ -48,5 +48,29 @@ describe("fetchProjectCoverHints (loop 400)", () => {
     );
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"));
     expect(body.projectIds).toEqual(["p1", "p2"]);
+  });
+
+  it("drops unsafe cover hint paths before building project raw URLs", () => {
+    expect(
+      projectCoverFileFromHint({
+        projectId: "p1",
+        coverKind: "html",
+        coverPath: "../outside.html",
+      }),
+    ).toBeNull();
+    expect(
+      projectCoverFileFromHint({
+        projectId: "p1",
+        coverKind: "html",
+        entryFile: "https://example.com/deck.html",
+      }),
+    ).toBeNull();
+    expect(
+      projectCoverFileFromHint({
+        projectId: "p1",
+        coverKind: "html",
+        coverPath: "slides/deck.html",
+      }),
+    ).toEqual({ kind: "html", name: "slides/deck.html", version: undefined });
   });
 });
