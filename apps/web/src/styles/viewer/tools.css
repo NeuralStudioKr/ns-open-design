@@ -2020,6 +2020,40 @@
   line-height: 1.4;
   opacity: 0.92;
 }
+.teamver-canvas-slide-launch-template {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-subtle) 72%, transparent);
+}
+.teamver-canvas-slide-launch-template-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.teamver-canvas-slide-launch-template-select,
+.teamver-canvas-slide-launch-template-static {
+  min-width: 0;
+  width: 100%;
+  color: var(--text-strong);
+  font-size: 13px;
+}
+.teamver-canvas-slide-launch-template-select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.teamver-canvas-slide-launch-template-static {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .teamver-canvas-slide-launch-outline {
   margin: 0;
   padding: 0 0 0 1.15rem;

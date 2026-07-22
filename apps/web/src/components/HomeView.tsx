@@ -132,6 +132,7 @@ import {
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
+  canvasSlideTemplateOptions,
   canvasCreateSlidesPluginInputs,
 } from '../teamver/canvasSlideLaunch';
 import {
@@ -354,6 +355,7 @@ export function HomeView({
   const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverCanvasSlideLaunchSource | null>(null);
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
+  const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -364,6 +366,14 @@ export function HomeView({
       }),
     [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
   );
+  const canvasSlideTemplates = useMemo(
+    () => canvasSlideTemplateOptions(plugins, locale),
+    [locale, plugins],
+  );
+  const selectedCanvasSlideTemplate =
+    canvasSlideTemplates.find((option) => option.id === canvasSlideTemplateId)
+    ?? canvasSlideTemplates[0]
+    ?? { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: '기본 슬라이드 템플릿' };
   useEffect(() => {
     if (!teamverDriveImportEnabled) return;
     let cancelled = false;
@@ -1754,13 +1764,13 @@ export function HomeView({
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: CANVAS_CREATE_SLIDES_PROMPT,
-            pluginId: CANVAS_CREATE_SLIDES_PLUGIN_ID,
+            pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
             appliedPluginSnapshotId: null,
-            pluginTitle: null,
+            pluginTitle: selectedCanvasSlideTemplate.title,
             taskKind: null,
-            pluginInputs: canvasCreateSlidesPluginInputs(topicHint),
+            pluginInputs: canvasCreateSlidesPluginInputs(topicHint, selectedCanvasSlideTemplate.title),
             projectKind: 'deck',
             projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
             designSystemId: submittedDesignSystemId,
@@ -1786,13 +1796,16 @@ export function HomeView({
       const submitResult = await Promise.resolve(
         onSubmit({
           prompt: CANVAS_CREATE_SLIDES_PROMPT,
-          pluginId: CANVAS_CREATE_SLIDES_PLUGIN_ID,
+          pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
-          pluginTitle: null,
+          pluginTitle: selectedCanvasSlideTemplate.title,
           taskKind: null,
-          pluginInputs: canvasCreateSlidesPluginInputs(asset.filename ?? asset.assetId),
+          pluginInputs: canvasCreateSlidesPluginInputs(
+            asset.filename ?? asset.assetId,
+            selectedCanvasSlideTemplate.title,
+          ),
           projectKind: 'deck',
           projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
           designSystemId: slideOnlyMvp
@@ -2149,6 +2162,9 @@ export function HomeView({
           source={canvasSlideLaunch}
           confirming={canvasSlideLaunchBusy}
           errorMessage={canvasSlideLaunchError}
+          templateOptions={canvasSlideTemplates}
+          selectedTemplateId={selectedCanvasSlideTemplate.id}
+          onTemplateChange={setCanvasSlideTemplateId}
           onClose={() => {
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {

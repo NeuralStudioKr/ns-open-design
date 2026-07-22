@@ -1,16 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
+  canvasCreateSlidesPluginInputs,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
 
 describe("canvasSlideLaunch", () => {
-  it("exports the slide-generation prompt for Canvas handoff", () => {
-    expect(CANVAS_CREATE_SLIDES_PROMPT).toMatch(/multi-slide|presentation deck/i);
-    expect(CANVAS_CREATE_SLIDES_PROMPT).toMatch(/source|not.*deliverable|do NOT use/i);
-    expect(CANVAS_CREATE_SLIDES_PROMPT.length).toBeGreaterThan(20);
+  it("keeps the user-visible Canvas handoff prompt short", () => {
+    expect(CANVAS_CREATE_SLIDES_PROMPT).toContain("슬라이드");
+    expect(CANVAS_CREATE_SLIDES_PROMPT).not.toMatch(/Build a new multi-slide|do NOT use/i);
+  });
+
+  it("keeps source handling rules in plugin inputs instead of the chat bubble", () => {
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/multi-slide|presentation deck/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/source|not.*deliverable|do NOT use/i);
+    expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
+      topic: "canvas",
+      designSystem: "Template",
+      sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
+    });
   });
 
   it("binds create-slides to the deck scenario plugin", () => {

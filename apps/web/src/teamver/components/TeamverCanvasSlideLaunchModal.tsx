@@ -8,6 +8,7 @@ import {
 } from "../canvasLaunchHandoff";
 import { fetchTeamverCanvasPreview } from "../fetchCanvasPreview";
 import { driveImportAssetIconName } from "../driveFileVisual";
+import type { TeamverCanvasSlideTemplateOption } from "../canvasSlideLaunch";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -20,6 +21,9 @@ type Props = {
   errorMessage?: string | null;
   /** When set with an error, show Main re-login CTA (Main SSO gate). */
   onRelogin?: (() => void) | null;
+  templateOptions?: TeamverCanvasSlideTemplateOption[];
+  selectedTemplateId?: string;
+  onTemplateChange?: (templateId: string) => void;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
 };
@@ -55,6 +59,9 @@ export function TeamverCanvasSlideLaunchModal({
   confirming = false,
   errorMessage = null,
   onRelogin = null,
+  templateOptions = [],
+  selectedTemplateId,
+  onTemplateChange,
   onConfirm,
   onClose,
 }: Props) {
@@ -117,6 +124,8 @@ export function TeamverCanvasSlideLaunchModal({
 
   const showTitleSkeleton = isCanvas && enriching && !handoff?.title?.trim();
   const showPreviewSkeleton = isCanvas && enriching && !preview;
+  const selectedTemplate =
+    templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
 
   if (!open) return null;
 
@@ -163,6 +172,34 @@ export function TeamverCanvasSlideLaunchModal({
           <p className="teamver-canvas-slide-launch-hint">
             {t("teamver.canvasSlideLaunch.hint")}
           </p>
+
+          {templateOptions.length > 0 ? (
+            <label className="teamver-canvas-slide-launch-template">
+              <span className="teamver-canvas-slide-launch-template-label">슬라이드 템플릿</span>
+              {templateOptions.length > 1 ? (
+                <select
+                  className="teamver-canvas-slide-launch-template-select"
+                  value={selectedTemplate?.id ?? ""}
+                  disabled={confirming}
+                  data-testid="teamver-canvas-slide-launch-template"
+                  onChange={(event) => onTemplateChange?.(event.currentTarget.value)}
+                >
+                  {templateOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span
+                  className="teamver-canvas-slide-launch-template-static"
+                  data-testid="teamver-canvas-slide-launch-template"
+                >
+                  {selectedTemplate?.title}
+                </span>
+              )}
+            </label>
+          ) : null}
 
           <article
             className="teamver-canvas-slide-launch-card"

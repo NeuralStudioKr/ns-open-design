@@ -79,6 +79,7 @@ import {
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
+  canvasSlideTemplateOptions,
 } from '../teamver/canvasSlideLaunch';
 import {
   canvasImportedToChatAttachments,
@@ -511,6 +512,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
     const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
     const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
+    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
@@ -522,6 +524,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // the @-mention picker. Both surfaces share the same list so applying
     // a plugin from either path lands on the same project context.
     const [installedPlugins, setInstalledPlugins] = useState<InstalledPluginRecord[]>([]);
+    const canvasSlideTemplates = useMemo(
+      () => canvasSlideTemplateOptions(installedPlugins, locale),
+      [installedPlugins, locale],
+    );
+    const selectedCanvasSlideTemplate =
+      canvasSlideTemplates.find((option) => option.id === canvasSlideTemplateId)
+      ?? canvasSlideTemplates[0]
+      ?? { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: '기본 슬라이드 템플릿' };
     // Detail modal — opened from a context chip click (kind === 'plugin')
     // or from the tools-menu "Details" affordance.
     const [detailsRecord, setDetailsRecord] = useState<InstalledPluginRecord | null>(null);
@@ -738,10 +748,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // deferred fetches below run exactly once, when they are actually needed.
     useEffect(() => {
       if (composerEngaged) return;
-      if (draft.trim().length > 0 || mention || slash) {
+      if (draft.trim().length > 0 || mention || slash || canvasSlideLaunch) {
         setComposerEngaged(true);
       }
-    }, [composerEngaged, draft, mention, slash]);
+    }, [canvasSlideLaunch, composerEngaged, draft, mention, slash]);
 
     // Lazy-fetch the user's external MCP servers list (once engaged) so the
     // `/mcp …` slash palette and the composer's MCP button popover have
@@ -1685,9 +1695,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             context: {
               ...(baseMeta?.context ?? {}),
               pluginIds: [
-                CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                selectedCanvasSlideTemplate.id,
                 ...((baseMeta?.context?.pluginIds ?? []).filter(
-                  (id) => id !== CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                  (id) => id !== selectedCanvasSlideTemplate.id,
                 )),
               ],
             },
@@ -1732,9 +1742,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             context: {
               ...(baseMeta?.context ?? {}),
               pluginIds: [
-                CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                selectedCanvasSlideTemplate.id,
                 ...((baseMeta?.context?.pluginIds ?? []).filter(
-                  (id) => id !== CANVAS_CREATE_SLIDES_PLUGIN_ID,
+                  (id) => id !== selectedCanvasSlideTemplate.id,
                 )),
               ],
             },
@@ -2947,6 +2957,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             source={canvasSlideLaunch}
             confirming={canvasSlideLaunchBusy}
             errorMessage={canvasSlideLaunchError}
+            templateOptions={canvasSlideTemplates}
+            selectedTemplateId={selectedCanvasSlideTemplate.id}
+            onTemplateChange={setCanvasSlideTemplateId}
             onRelogin={
               canvasSlideLaunchAuthRelogin ? redirectToTeamverLoginFromEmbed : null
             }

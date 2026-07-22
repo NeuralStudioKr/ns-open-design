@@ -1,6 +1,7 @@
-import { defaultScenarioPluginIdForKind } from "@open-design/contracts";
+import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@open-design/contracts";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
+import { localizePluginTitle } from "../components/plugins-home/localization";
 
 /** Deck scenario for Canvas / Drive → create-slides (not od-default). */
 export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
@@ -11,13 +12,22 @@ export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
  * The attached HTML is a **source document**, not the deliverable — the agent must build a new
  * multi-slide deck (simple-deck framework), not leave/copy the source HTML as the project output.
  */
-export const CANVAS_CREATE_SLIDES_PROMPT =
+export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Build a new multi-slide presentation deck from the attached canvas HTML source. " +
   "The attachment is research/source material only — do NOT use that HTML file as the deliverable, " +
   "and do not merely rename or lightly restyle it. Create a proper deck using the simple-deck " +
   "framework (1920×1080 slides with section.slide structure, nav, and print). " +
   "Preserve the source structure, headings, callouts, tables, images, and smart blocks " +
   "(FAQ/KPI/timeline); prefer clear slide sectioning over literal page layout.";
+
+/** User-visible first message for Canvas / Drive → create-slides. */
+export const CANVAS_CREATE_SLIDES_PROMPT =
+  "캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.";
+
+export type TeamverCanvasSlideTemplateOption = {
+  id: string;
+  title: string;
+};
 
 export function isCanvasSlideOneConfirmLaunch(
   intent: TeamverDriveLaunchIntent | null,
@@ -26,8 +36,30 @@ export function isCanvasSlideOneConfirmLaunch(
   return intent === "create-slides" && asset != null;
 }
 
+export function canvasSlideTemplateOptions(
+  plugins: readonly InstalledPluginRecord[],
+  locale: string,
+): TeamverCanvasSlideTemplateOption[] {
+  const seen = new Set<string>();
+  const options: TeamverCanvasSlideTemplateOption[] = [];
+  for (const plugin of plugins) {
+    const id = plugin.id?.trim();
+    if (!id || seen.has(id)) continue;
+    if (plugin.manifest?.od?.mode !== "deck") continue;
+    seen.add(id);
+    options.push({ id, title: localizePluginTitle(locale, plugin) || id });
+  }
+  if (!seen.has(CANVAS_CREATE_SLIDES_PLUGIN_ID)) {
+    options.unshift({ id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿" });
+  }
+  return options;
+}
+
 /** Plugin inputs for example-simple-deck on create-slides one-confirm. */
-export function canvasCreateSlidesPluginInputs(topicHint?: string | null): Record<string, unknown> {
+export function canvasCreateSlidesPluginInputs(
+  topicHint?: string | null,
+  templateTitle?: string | null,
+): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the attached canvas document";
   return {
     deckType: "presentation from canvas",
@@ -35,6 +67,7 @@ export function canvasCreateSlidesPluginInputs(topicHint?: string | null): Recor
     audience: "stakeholders",
     slideCount: "8-15 pages",
     speakerNotes: "no speaker notes",
-    designSystem: "the active project design system",
+    designSystem: (templateTitle ?? "").trim() || "the active project design system",
+    sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   };
 }

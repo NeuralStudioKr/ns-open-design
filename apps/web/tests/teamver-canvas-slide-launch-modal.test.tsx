@@ -105,4 +105,28 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("lets the user choose a slide template before confirming", () => {
+    const onTemplateChange = vi.fn();
+
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{ kind: "drive", asset: { assetId: "AST-3", filename: "canvas.html" } }}
+        templateOptions={[
+          { id: "example-simple-deck", title: "기본 슬라이드" },
+          { id: "html-ppt-hermes", title: "Hermes Cyber Terminal" },
+        ]}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={onTemplateChange}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("teamver-canvas-slide-launch-template"), {
+      target: { value: "html-ppt-hermes" },
+    });
+    expect(onTemplateChange).toHaveBeenCalledWith("html-ppt-hermes");
+  });
 });
