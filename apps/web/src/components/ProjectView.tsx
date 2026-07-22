@@ -4193,6 +4193,10 @@ export function ProjectView({
                   return true;
                 };
                 if (artifactToPersist?.html) {
+                  if (isQuestionFormTurnContent(replayedContent)) {
+                    await auditDesignSystemWorkspaceAfterRun(message.id);
+                    return;
+                  }
                   const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                   const runStartedAt = status.createdAt || message.startedAt || message.createdAt;
                   recoveredExistingArtifact = findExistingArtifactProjectFile(
@@ -5302,6 +5306,10 @@ export function ProjectView({
             const finalText = latestAssistantMsg.content?.trim()
               ? latestAssistantMsg.content
               : (streamedText || fullText);
+            if (isQuestionFormTurnContent(finalText)) {
+              await auditDesignSystemWorkspaceAfterRun(latestAssistantMsg.id);
+              return;
+            }
             let terminalArtifactPersistFailed = false;
             // Track the *kind* of the persist result separately so the
             // auto-continue gate below can distinguish "content is bad"
@@ -8976,6 +8984,17 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 }
 
 const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
+const QUESTION_FORM_TAG_RE = /<\/?(?:question-form|ask-question)\b/i;
+
+export function isQuestionFormTurnContent(content: string | null | undefined): boolean {
+  const text = String(content ?? '');
+  if (!text.trim()) return false;
+  return (
+    findFirstQuestionForm(text) !== null
+    || hasUnterminatedQuestionForm(text)
+    || QUESTION_FORM_TAG_RE.test(text)
+  );
+}
 
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
   const salvaged = salvageTruncatedHtmlDocument(html);

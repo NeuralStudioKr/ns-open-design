@@ -497,14 +497,14 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact co
 
 You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying \`<head>\`, \`<style>\`, scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or comments first.
 
-Emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in Teamver; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
+When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in Teamver; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
 Required shape (copy the shape, replace every label with real user-specific copy):
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0;background:#0b0c10;color:#111;font:18px/1.5 system-ui,sans-serif"><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><p>실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:64px 72px;box-sizing:border-box;background:#fff;page-break-after:always"><h1>실제 제목</h1><ul><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
-1. Start the artifact as soon as you can — at most one short sentence of prose before it.
+1. On deck-delivery turns, start the artifact as soon as you can — at most one short sentence of prose before it. On quick-brief/question-form turns, do not emit an artifact.
 2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
 3. Prefer 5–7 slides over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.

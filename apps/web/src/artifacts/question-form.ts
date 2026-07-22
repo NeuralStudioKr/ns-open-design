@@ -93,7 +93,7 @@ export type FormSegment =
   | { kind: 'form'; form: QuestionForm; raw: string };
 
 export const INVALID_QUESTION_FORM_FALLBACK =
-  'The assistant sent a question form that could not be rendered. Please ask it to resend the questions.';
+  '질문 양식을 표시하지 못했습니다. 다시 요청해 주세요.';
 
 // `question-form` is the canonical tag; `ask-question` is an alias the
 // model occasionally drifts to (issue #1194). The close tag must match

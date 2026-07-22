@@ -66,9 +66,43 @@ const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 
 
 This is a Teamver slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
 
-- Emit at most one short line of prose, then exactly one \`<question-form id="discovery" title="Quick brief — 30 seconds">\` block.
+- Emit at most one short Korean prose line, then exactly one valid JSON \`<question-form id="discovery" title="빠른 질문">\` block.
 - Omit "What are we making?" / task-type routing — this project is always a slide deck.
 - Do NOT emit a slide deck artifact, plan, outline, or TodoWrite on turn 1.
+- Do NOT put markdown, HTML, prose, bullets, or comments inside \`<question-form>\`; the body must be parseable JSON only.
+
+Use this exact schema shape and localize all labels to Korean:
+
+\`<question-form id="discovery" title="빠른 질문">
+{
+  "description": "덱을 더 정확히 만들기 위해 필요한 정보만 확인할게요.",
+  "submitLabel": "이대로 만들기",
+  "questions": [
+    {
+      "id": "audience",
+      "label": "누가 이 발표를 보나요?",
+      "type": "text",
+      "placeholder": "예: 신입사원, 경영진, 고객사"
+    },
+    {
+      "id": "tone",
+      "label": "원하는 톤은 무엇인가요?",
+      "type": "radio",
+      "options": [
+        { "label": "전문적이고 깔끔하게", "value": "professional" },
+        { "label": "테크/모던하게", "value": "tech_modern" },
+        { "label": "친근하고 쉽게", "value": "friendly" }
+      ]
+    },
+    {
+      "id": "must_include",
+      "label": "반드시 포함할 내용이 있나요?",
+      "type": "textarea",
+      "placeholder": "예: 회사 미션, 조직 구조, 업무 프로세스"
+    }
+  ]
+}
+</question-form>\`
 
 After the user submits \`[form answers — discovery]\` (skipped fields are fine), your **next** response must deliver the complete Teamver deck artifact — no second discovery form unless truly blocked. The deck artifact type must be \`deck\`, never \`text/html\`.
 `;
@@ -1100,7 +1134,7 @@ function summarizeApiModeSkillBody(skillBody: string): string {
  */
 const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — unified streaming rule (READ LAST — beats every rule above)
 
-**Turn 1 (first user message, no prior form answers):** emit the quick-brief \`<question-form id="discovery">\` only. No HTML artifact on turn 1.
+**Turn 1 (first user message, no prior form answers):** emit the Korean quick-brief \`<question-form id="discovery" title="빠른 질문">\` JSON block only. No HTML artifact on turn 1.
 
 **Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is **exactly one** streaming artifact:
 

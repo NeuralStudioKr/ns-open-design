@@ -1,12 +1,33 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isQuestionFormTurnContent,
   resolveTerminalArtifactToPersist,
   shouldFailSlideRunForMissingHtmlDeliverable,
   shouldFailSlideRunWithoutHtmlDeliverable,
 } from "../../src/components/ProjectView";
 
 const INCOMPLETE_SHELL = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body></body>";
+
+describe("isQuestionFormTurnContent", () => {
+  it("treats valid and malformed question-form turns as non-artifact turns", () => {
+    expect(
+      isQuestionFormTurnContent(
+        '<question-form id="discovery">{"questions":[{"id":"audience","label":"대상","type":"text"}]}</question-form>',
+      ),
+    ).toBe(true);
+    expect(
+      isQuestionFormTurnContent(
+        "<question-form id=\"discovery\">간단한 정보를 알려주세요</question-form>",
+      ),
+    ).toBe(true);
+    expect(
+      isQuestionFormTurnContent(
+        '<!doctype html><html><body><section class="slide"><h1>Deck</h1></section></body></html>',
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("shouldFailSlideRunWithoutHtmlDeliverable", () => {
   it("fails plan-only Korean slide claims with no HTML on disk", () => {

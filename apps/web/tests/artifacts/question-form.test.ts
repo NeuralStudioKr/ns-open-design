@@ -218,7 +218,7 @@ describe('splitOnQuestionForms', () => {
     expect(out.map((s) => s.kind)).toEqual(['text']);
     expect(out[0]).toMatchObject({
       kind: 'text',
-      text: 'The assistant sent a question form that could not be rendered. Please ask it to resend the questions.',
+      text: '질문 양식을 표시하지 못했습니다. 다시 요청해 주세요.',
     });
     expect(out[0]?.kind === 'text' ? out[0].text : '').not.toContain('<ask-question>');
     expect(out[0]?.kind === 'text' ? out[0].text : '').not.toContain('not json');
