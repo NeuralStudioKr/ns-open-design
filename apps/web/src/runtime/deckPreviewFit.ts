@@ -8,6 +8,25 @@ export type DeckPreviewFitOptions = {
   layoutFit?: boolean;
 };
 
+/** Post pan delta so the deck bridge can move the letterboxed stage. */
+export function postDeckPreviewPanBy(
+  target: DeckPreviewFitTarget,
+  left: number,
+  top: number,
+): void {
+  const win = target?.contentWindow;
+  if (!win) return;
+  const dx = Number.isFinite(left) ? left : 0;
+  const dy = Number.isFinite(top) ? top : 0;
+  if (!dx && !dy) return;
+  win.postMessage({ type: 'od:preview-scroll-by', left: dx, top: dy }, '*');
+}
+
+/** Reset deck pan to the centered letterbox position. */
+export function resetDeckPreviewPan(target: DeckPreviewFitTarget): void {
+  target?.contentWindow?.postMessage({ type: 'od:deck-pan-reset' }, '*');
+}
+
 /** Post the iframe's visual box so the deck bridge can refit when innerWidth is inflated. */
 export function postDeckHostViewportToIframe(
   target: DeckPreviewFitTarget,

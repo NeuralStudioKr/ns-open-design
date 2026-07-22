@@ -164,6 +164,7 @@ upstream 선별 반영 이력은 [40 OD upstream main 반영 검토](./40_OD_ups
 |------|------|
 | 2026-07-22 | Phase 1 구현 — compact inline layout vocabulary, skill 요약 완화, quick-brief turn-2 binding, DS mandatory 문구 |
 | 2026-07-22 | Phase 1 리뷰 — slideCount 6–8 정합, wireframe 예시·layout vocabulary 충돌 완화, deliverable directive 데드코드 제거, 회귀 테스트 추가 |
+| 2026-07-22 | 미리보기 UX — stacked deck pan(휠/드래그), center zoom origin, slide flex center, compact vocabulary 타이포 1920×1080 상향 |
 
 ---
 

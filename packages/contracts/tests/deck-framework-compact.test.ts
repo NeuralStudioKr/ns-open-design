@@ -21,5 +21,7 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Three-column**');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('**Closing**');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('never 4+ identical slides');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('1920×1080');
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('72px/1.05');
   });
 });

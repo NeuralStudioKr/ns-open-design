@@ -123,7 +123,7 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
-import { scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
+import { postDeckPreviewPanBy, resetDeckPreviewPan, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import {
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
@@ -722,6 +722,26 @@ function previewScaleShellStyle(
     height: 'var(--preview-viewport-height)',
     transform: 'scale(var(--preview-scale, 1))',
     transformOrigin: '0 0',
+  };
+}
+
+function deckPreviewScaleShellStyle(
+  viewport: PreviewViewportId,
+  previewScale: number,
+): CSSProperties & Record<string, string | number> {
+  if (viewport === 'desktop') {
+    return {
+      width: `${100 / previewScale}%`,
+      height: `${100 / previewScale}%`,
+      transform: `scale(${previewScale})`,
+      transformOrigin: 'center center',
+    };
+  }
+  return {
+    width: 'var(--preview-viewport-width)',
+    height: 'var(--preview-viewport-height)',
+    transform: 'scale(var(--preview-scale, 1))',
+    transformOrigin: 'center center',
   };
 }
 
@@ -4926,6 +4946,13 @@ function HtmlViewer({
   const [commentPortalHost, setCommentPortalHost] = useState<HTMLElement | null>(null);
   const [previewBodyRef, previewBodySize] = usePreviewCanvasSize<HTMLDivElement>();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const deckPanDragRef = useRef<{
+    active: boolean;
+    pointerId: number | null;
+    lastX: number;
+    lastY: number;
+  }>({ active: false, pointerId: null, lastX: 0, lastY: 0 });
+  const [deckPanning, setDeckPanning] = useState(false);
   const urlPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const srcDocPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
@@ -5639,6 +5666,57 @@ function HtmlViewer({
     );
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
+  const deckPreviewPanActive = effectiveDeck
+    && mode === 'preview'
+    && !drawOverlayOpen
+    && !boardMode
+    && !manualEditMode
+    && !inspectMode;
+  const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (!deckPreviewPanActive) return;
+    const frame = iframeRef.current;
+    if (!frame) return;
+    postDeckPreviewPanBy(frame, e.deltaX, e.deltaY);
+    e.preventDefault();
+  }, [deckPreviewPanActive]);
+  const onDeckPreviewPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!deckPreviewPanActive) return;
+    const wantsPan = e.button === 1 || (e.button === 0 && (previewScale !== 1 || e.shiftKey));
+    if (!wantsPan) return;
+    deckPanDragRef.current = {
+      active: true,
+      pointerId: e.pointerId,
+      lastX: e.clientX,
+      lastY: e.clientY,
+    };
+    setDeckPanning(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, [deckPreviewPanActive, previewScale]);
+  const onDeckPreviewPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = deckPanDragRef.current;
+    if (!deckPreviewPanActive || !drag.active || drag.pointerId !== e.pointerId) return;
+    const dx = e.clientX - drag.lastX;
+    const dy = e.clientY - drag.lastY;
+    if (!dx && !dy) return;
+    drag.lastX = e.clientX;
+    drag.lastY = e.clientY;
+    const frame = iframeRef.current;
+    if (frame) postDeckPreviewPanBy(frame, dx, dy);
+    e.preventDefault();
+  }, [deckPreviewPanActive]);
+  const onDeckPreviewPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = deckPanDragRef.current;
+    if (!drag.active || drag.pointerId !== e.pointerId) return;
+    drag.active = false;
+    drag.pointerId = null;
+    setDeckPanning(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Pointer may already be released.
+    }
+  }, []);
   const livePreviewSource = inlinedSource ?? source;
   // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
   // source rewrite during edit (1.5s debounced set-style patches) stays
@@ -6050,6 +6128,11 @@ function HtmlViewer({
     useUrlLoadPreview,
     srcDocTransportResetKey,
   ]);
+
+  useEffect(() => {
+    if (!effectiveDeck || previewScale !== 1) return;
+    resetDeckPreviewPan(iframeRef.current);
+  }, [effectiveDeck, previewScale, previewStateKey, srcDocTransportResetKey]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
@@ -9236,15 +9319,27 @@ function HtmlViewer({
             {manualEditPanel}
             {manualEditHoverAffordance}
             <div
-              className={manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas'}
+              className={[
+                manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas',
+                deckPreviewPanActive ? 'deck-preview-pannable' : '',
+                deckPreviewPanActive && previewScale !== 1 ? 'deck-preview-pannable--zoomed' : '',
+                deckPanning ? 'deck-preview-pannable--panning' : '',
+              ].filter(Boolean).join(' ')}
               data-testid={manualEditMode ? undefined : 'comment-preview-canvas'}
+              onWheel={deckPreviewPanActive ? onDeckPreviewWheel : undefined}
+              onPointerDown={deckPreviewPanActive ? onDeckPreviewPointerDown : undefined}
+              onPointerMove={deckPreviewPanActive ? onDeckPreviewPointerMove : undefined}
+              onPointerUp={deckPreviewPanActive ? onDeckPreviewPointerUp : undefined}
+              onPointerCancel={deckPreviewPanActive ? onDeckPreviewPointerUp : undefined}
             >
               <div className={manualEditMode ? undefined : 'comment-frame-clip'} style={manualEditMode ? { height: '100%' } : undefined}>
                 <div
                   style={
                     manualEditMode
                       ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
-                      : previewScaleShellStyle(previewViewport, previewScale)
+                      : deckPreviewPanActive
+                        ? deckPreviewScaleShellStyle(previewViewport, previewScale)
+                        : previewScaleShellStyle(previewViewport, previewScale)
                   }
                 >
                   <PreviewDrawOverlay

@@ -2001,12 +2001,32 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   top: 0 !important;
   left: 0 !important;
   overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
 }
 </style>`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var didRestoreInitialSlide = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
+  var deckPanX = 0;
+  var deckPanY = 0;
+  function resetDeckPan() {
+    deckPanX = 0;
+    deckPanY = 0;
+    nudgeDeckFit();
+  }
+  function deckPanBy(left, top) {
+    var dx = Number(left || 0);
+    var dy = Number(top || 0);
+    if (!Number.isFinite(dx)) dx = 0;
+    if (!Number.isFinite(dy)) dy = 0;
+    if (!dx && !dy) return;
+    deckPanX += dx;
+    deckPanY += dy;
+    nudgeDeckFit();
+  }
   function frameworkDeckStage() {
     return document.getElementById('deck-stage');
   }
@@ -2074,8 +2094,8 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     var pad = 32;
     var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
     if (!isFinite(s) || s <= 0) s = 1;
-    var tx = (sw - 1920 * s) / 2;
-    var ty = (sh - 1080 * s) / 2;
+    var tx = (sw - 1920 * s) / 2 + deckPanX;
+    var ty = (sh - 1080 * s) / 2 + deckPanY;
     stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
     return true;
   }
@@ -2107,8 +2127,8 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     var pad = 32;
     var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
     if (!isFinite(s) || s <= 0) s = 1;
-    var tx = (sw - 1920 * s) / 2;
-    var ty = (sh - 1080 * s) / 2;
+    var tx = (sw - 1920 * s) / 2 + deckPanX;
+    var ty = (sh - 1080 * s) / 2 + deckPanY;
     stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
     return true;
   }
@@ -2443,6 +2463,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
+    if (target !== activeIndex(list)) resetDeckPan();
     if (isScrollDeck()) {
       scrollGo(target);
       return;
@@ -2460,6 +2481,8 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, i));
+    var prev = activeIndex(list);
+    if (target !== prev) resetDeckPan();
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
     if (transformGo(target)) return;
@@ -2534,6 +2557,8 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
       return;
     }
     if (data.type === 'od:deck-nudge-fit') { nudgeDeckFit(); return; }
+    if (data.type === 'od:preview-scroll-by') { deckPanBy(data.left, data.top); return; }
+    if (data.type === 'od:deck-pan-reset') { resetDeckPan(); return; }
     if (data.type !== 'od:slide') return;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);

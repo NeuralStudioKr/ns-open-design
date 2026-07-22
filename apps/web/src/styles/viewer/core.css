@@ -1121,6 +1121,15 @@
   min-height: 0;
   overflow: hidden;
 }
+.deck-preview-pannable {
+  touch-action: none;
+}
+.deck-preview-pannable--zoomed {
+  cursor: grab;
+}
+.deck-preview-pannable--panning {
+  cursor: grabbing;
+}
 .comment-preview-layer-with-side-dock .comment-preview-canvas {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

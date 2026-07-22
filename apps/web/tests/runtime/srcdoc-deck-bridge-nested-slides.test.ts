@@ -271,4 +271,43 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(slideEls).toHaveLength(2);
     expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
   });
+
+  it('accumulates deck pan offsets via od:preview-scroll-by and resets on slide change', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;background:#0ea5e9">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage?.style.transform).toBeTruthy();
+    const centered = stage?.style.transform ?? '';
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:preview-scroll-by', left: 40, top: -20 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(stage?.style.transform).not.toBe(centered);
+    expect(stage?.style.transform).toContain('translate(');
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-pan-reset' },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(stage?.style.transform).toBe(centered);
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:preview-scroll-by', left: 12, top: 8 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    const panned = stage?.style.transform ?? '';
+    expect(panned).not.toBe(centered);
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 400));
+    expect(stage?.style.transform).toBe(centered);
+  });
 });
