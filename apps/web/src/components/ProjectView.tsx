@@ -28,6 +28,11 @@ import {
   recoverHtmlArtifactFromPrecedingDocument,
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
+import {
+  buildEmergencyArtifactFromMessages,
+  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+  looksLikeSlideOutline,
+} from '../artifacts/emergency-deck';
 import { createArtifactParser } from '../artifacts/parser';
 import {
   findFirstQuestionForm,
@@ -235,6 +240,7 @@ import {
   formatProjectArtifactStubWarning,
   formatProjectRunDeliverableMissingError,
   formatAutoContinueIncompleteOutputNotice,
+  formatEmergencyDeckFallbackNotice,
   extractProjectRunErrorCode,
   formatProjectRunErrorForUser,
   formatProjectForkConversationError,
@@ -5363,13 +5369,6 @@ export function ProjectView({
             const endedAt = Date.now();
             if (terminalArtifactPersistFailed) {
               const deliverableError = formatProjectRunDeliverableMissingError();
-              // Decide whether to fire the capped automatic continue BEFORE
-              // we finalize the assistant card, so the status event we append
-              // matches the branch we actually take. Both branches leave the
-              // run as failed+resumable — the manual "다시 시도" affordance
-              // stays available regardless — but the visible status label
-              // changes (auto-continue notice vs. plain deliverable-missing
-              // error).
               const autoContinueCount =
                 conversationAutoContinueCountRef.current.get(runConversationId) ?? 0;
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
@@ -5379,6 +5378,69 @@ export function ProjectView({
                 hadIncompleteParsedArtifact,
                 shouldFailMissingSlideHtml,
               });
+
+              let emergencyRecovered = false;
+              let emergencyProduced = produced;
+              if (
+                !canAutoContinue
+                && slideOnlyMvp
+                && !producedHtmlToOpen
+              ) {
+                const outlineMessages = retryTarget
+                  ? [...historyBase, latestAssistantMsg]
+                  : [...historyBase, userMsg, latestAssistantMsg];
+                const emergencyArtifact = buildEmergencyArtifactFromMessages(
+                  outlineMessages,
+                  finalText,
+                );
+                if (emergencyArtifact) {
+                  const emergencyPersist = await persistArtifact(
+                    emergencyArtifact,
+                    nextFiles,
+                    finalText,
+                    startedAt,
+                  );
+                  const emergencyPersistOk = emergencyPersist?.kind === 'persisted'
+                    || emergencyPersist?.kind === 'pointer'
+                    || emergencyPersist?.kind === 'skipped-duplicate'
+                    || emergencyPersist?.kind === 'auth-replay-queued';
+                  if (emergencyPersistOk) {
+                    emergencyRecovered = true;
+                    nextFiles = await refreshProjectFiles();
+                    emergencyProduced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+                    const emergencyHtml = selectAutoOpenProducedHtml(emergencyProduced)
+                      ?? emergencyPersist?.fileName
+                      ?? null;
+                    if (emergencyHtml && runIsVisible()) {
+                      maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergencyHtml);
+                      requestOpenFile(emergencyHtml);
+                    }
+                  }
+                }
+              }
+
+              if (emergencyRecovered) {
+                const emergencyNotice = formatEmergencyDeckFallbackNotice();
+                updateAssistant((prev) => ({
+                  ...appendErrorStatusEvent(
+                    prev,
+                    emergencyNotice,
+                    EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+                  ),
+                  producedFiles: emergencyProduced,
+                  runStatus: resolveSucceededRunStatus(prev.runStatus),
+                  resumable: false,
+                  endedAt: prev.endedAt ?? endedAt,
+                }));
+                updateConversationLatestRun('succeeded', endedAt);
+              } else {
+              // Decide whether to fire the capped automatic continue BEFORE
+              // we finalize the assistant card, so the status event we append
+              // matches the branch we actually take. Both branches leave the
+              // run as failed+resumable — the manual "다시 시도" affordance
+              // stays available regardless — but the visible status label
+              // changes (auto-continue notice vs. plain deliverable-missing
+              // error).
               // When auto-continue is armed, suppress the top-of-page
               // "결과물이 생성되지 않았습니다" banner — it contradicts the
               // assistant-card "이어쓰기 시도 중" notice and trains the user
@@ -5503,6 +5565,7 @@ export function ProjectView({
                     }
                   });
                 }, 600);
+              }
               }
             } else {
               updateAssistant((prev) => ({
@@ -8845,6 +8908,8 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
     /\b(deck|slide|slides|presentation|ppt|keynote|html)\b/i.test(text)
     || /(슬라이드|발표\s*자료|프레젠테이션|피피티|덱|HTML)/i.test(text);
   if (!deckIntent) return false;
+
+  if (looksLikeSlideOutline(text)) return true;
 
   const looksLikeOutline =
     /슬라이드\s*구성|목차\s*:|구성\s*:/.test(text)

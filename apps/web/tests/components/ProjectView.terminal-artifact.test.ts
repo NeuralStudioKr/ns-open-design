@@ -67,6 +67,15 @@ describe("shouldFailSlideRunWithoutHtmlDeliverable", () => {
       ),
     ).toBe(true);
   });
+
+  it("fails pure slide outlines with three or more items and no HTML", () => {
+    expect(
+      shouldFailSlideRunWithoutHtmlDeliverable(
+        "슬라이드 구성:\n01 표지\n02 시장 현황\n03 핵심 전략",
+        { slideOnlyMvp: true },
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {

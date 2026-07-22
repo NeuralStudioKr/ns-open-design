@@ -164,6 +164,13 @@ export function formatAutoContinueIncompleteOutputNotice(): string {
     : "The deliverable is incomplete — trying an automatic continue…";
 }
 
+/** Shown when a client-side outline deck is synthesized after auto-continue exhausts. */
+export function formatEmergencyDeckFallbackNotice(): string {
+  return isTeamverEmbedMode()
+    ? "모델 응답이 완료되지 않아 목차 기반 초안 슬라이드를 자동 생성했습니다. 내용을 확인한 뒤 수정하세요."
+    : "The model did not finish — a draft deck was generated from the outline. Review and edit as needed.";
+}
+
 /** Resolve structured proxy/daemon error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
