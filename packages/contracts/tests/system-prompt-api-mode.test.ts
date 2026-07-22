@@ -339,7 +339,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
       expect(prompt).toContain(SKIP_DISCOVERY_BRIEF_OVERRIDE);
       expect(prompt).toContain('direct deck generation rule');
-      expect(prompt).toContain('Do NOT emit `<question-form>`');
+      expect(prompt).toContain('inline layout vocabulary');
+      expect(prompt).not.toContain('bind quick-brief answers');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('Do not use `type="text/html"`');
       expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
@@ -349,6 +350,27 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Turn 1 (first user message, no prior form answers)');
       expect(prompt).not.toContain('unknown — ask');
       expect(prompt).not.toContain('assets/template.html');
+    });
+
+    it('preserves theme-rhythm hints from skill body while stripping copy workflow lines', () => {
+      const skillWithRhythm =
+        '# simple-deck\n\nRead assets/template.html first.\n'
+        + '## Theme rhythm\n'
+        + 'Alternate light and dark slides — no 3+ light slides in a row.\n'
+        + 'See references/layouts.md for cover and big-stat layouts.\n';
+
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: skillWithRhythm,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck' },
+      });
+
+      expect(prompt).toContain('Theme rhythm');
+      expect(prompt).toContain('Alternate light and dark slides');
+      expect(prompt).toContain('compact inline layout vocabulary');
+      expect(prompt).not.toContain('Read assets/template.html');
+      expect(prompt).not.toContain('See references/layouts.md for cover');
+      expect(prompt).toContain('you cannot Read that file in API mode');
     });
   });
 });

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   formatFormAnswers,
   isAllFormAnswersSkipped,
-  SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE,
   stripUserVisibleQuestionFormProtocolText,
   splitOnQuestionForms,
   parsePartialQuestionForm,
@@ -92,18 +91,19 @@ describe('splitOnQuestionForms', () => {
       ],
     };
     expect(isAllFormAnswersSkipped(form, {})).toBe(true);
-    const text = formatFormAnswers(form, {}, { appendSlideDeliverableDirective: true });
+    const text = formatFormAnswers(form, {});
     expect(text).toContain('(skipped)');
-    expect(text).not.toContain(SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE);
     expect(text).not.toContain('[Deliverable instruction]');
   });
 
   it('strips legacy internal directives and partial question tags from visible chat text', () => {
+    const legacyDirective =
+      '[Deliverable instruction] All discovery questions were skipped — emit ONE complete Teamver deck.';
     const text = [
       '<question',
       '[form answers — discovery]',
       '- 대상 독자: (skipped)',
-      SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE.trim(),
+      legacyDirective,
     ].join('\n');
 
     const visible = stripUserVisibleQuestionFormProtocolText(text);

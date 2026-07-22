@@ -163,3 +163,29 @@ upstream 선별 반영 이력은 [40 OD upstream main 반영 검토](./40_OD_ups
 | 날짜 | 내용 |
 |------|------|
 | 2026-07-22 | Phase 1 구현 — compact inline layout vocabulary, skill 요약 완화, quick-brief turn-2 binding, DS mandatory 문구 |
+| 2026-07-22 | Phase 1 리뷰 — slideCount 6–8 정합, wireframe 예시·layout vocabulary 충돌 완화, deliverable directive 데드코드 제거, 회귀 테스트 추가 |
+
+---
+
+## 9. Phase 1 리뷰 메모 (2026-07-22)
+
+### 확인된 아키텍처
+
+- Teamver embed slide-only **API 모드**는 `apps/web` `ProjectView`가 `@open-design/contracts` `composeSystemPrompt()`를 **클라이언트에서** 호출한다. Phase 1 prompt 변경은 이 경로에 직접 적용된다.
+- `apps/daemon` `composeSystemPrompt()`는 CLI/plain-stream 에이전트용 별도 구현이며 `composeTeamverSlideApiPrompt`를 **아직 사용하지 않는다**. embed API 경로와 무관하나, 향후 daemon plain+slide-only 정합이 필요하면 contracts composer를 import하거나 동일 분기를 포팅해야 한다.
+
+### 수정한 불일치·개선
+
+| 이슈 | 조치 |
+|------|------|
+| slideCount `5–7` vs `6–8` 혼재 | `deriveApiModePreflight`, skill seed override를 **6–8**로 통일 |
+| compact wireframe 예시가 두 개의 동일 흰 슬라이드 | dark/light 2장 wireframe + “literal 복사 금지” 문구 |
+| `SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE` 데드코드 | 제거; legacy strip regex만 유지 |
+| `appendSlideDeliverableDirective` prop 무효 | `QuestionForm` / `QuestionsPanel`에서 제거 |
+| 테스트 공백 | `deck-framework-compact.test.ts`, skill rhythm 보존 테스트 추가 |
+
+### 검증
+
+- `pnpm --filter @open-design/contracts test` — 323 tests passed
+- `pnpm --filter @open-design/web exec vitest run tests/artifacts/question-form.test.ts tests/components/QuestionForm.test.tsx` — 40 tests passed
+- `pnpm guard` — 기존 repo-wide 위반(잔여 JS, dependency exact pin, cross-app test import)은 **이번 변경과 무관**한 선행 이슈

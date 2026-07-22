@@ -282,7 +282,6 @@ export function QuestionsPanel({
               submittedAnswers={submittedAnswers}
               draftAnswers={draftAnswers}
               hideInternalSubmit
-              appendSlideDeliverableDirective={branding.slideOnlyMvp}
               onReadyChange={setReady}
               onDraftChange={updateDraftAnswers}
               onAnswerChange={handleAnswerChange}

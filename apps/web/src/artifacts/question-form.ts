@@ -708,10 +708,7 @@ function parseDirectionCards(raw: unknown): DirectionCard[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-/** Appended when every discovery answer was skipped in slide-only embed. */
-export const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE =
-  '\n\n[Deliverable instruction] All discovery questions were skipped — choose reasonable defaults and emit ONE complete Teamver deck in this same response inside `<artifact type="deck" identifier="...">...</artifact>`. Do not use `type="text/html"`. Do not stop after a plan, outline, or promise; the deck artifact is required now.';
-
+/** Legacy user-message suffix stripped at display time for messages saved before the prompt-owned deck path. */
 const SLIDE_SKIP_ALL_DELIVERABLE_DIRECTIVE_RE =
   /\n*\[Deliverable instruction\][\s\S]*$/i;
 const QUESTION_FORM_PROTOCOL_FRAGMENT_LINE_RE =
@@ -737,7 +734,6 @@ export function isAllFormAnswersSkipped(
 export function formatFormAnswers(
   form: QuestionForm,
   answers: Record<string, string | string[]>,
-  options?: { appendSlideDeliverableDirective?: boolean },
 ): string {
   const lines: string[] = [];
   lines.push(`[form answers — ${form.id}]`);
@@ -752,7 +748,6 @@ export function formatFormAnswers(
     else display = '(skipped)';
     lines.push(`- ${q.label}: ${display}`);
   }
-  void options;
   return lines.join('\n');
 }
 

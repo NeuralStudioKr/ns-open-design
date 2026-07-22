@@ -647,7 +647,7 @@ const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
 The active skill mentions \`assets/template.html\`. **In this API run that file is not readable** (no Read/Bash tools). Ignore every instruction to copy, Read, or paste the seed template verbatim.
 
-Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. Prefer 5–7 slides with real copy. Never leave \`<!-- SLOT -->\` placeholders. Do not start by writing a \`<head>\` block; start the visible \`<body><section class="slide">\` content immediately.
+Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. Prefer 6–8 slides with real copy. Never leave \`<!-- SLOT -->\` placeholders. Do not start by writing a \`<head>\` block; start the visible \`<body><section class="slide">\` content immediately.
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
@@ -1098,7 +1098,7 @@ function deriveApiModePreflight(skillBody: string): string {
     + 'Do NOT Read or paste `assets/template.html` / `references/layouts.md` — '
     + 'no filesystem tools are available in this run. Infer layout intent from '
     + 'the skill body text only, then emit ONE compact filled HTML deck artifact '
-    + 'in this same response (prefer 5–7 slides, real copy in every '
+    + 'in this same response (prefer 6–8 slides, real copy in every '
     + '`<section class="slide">`, no SLOT comments, no verbatim skeleton paste, '
     + 'no `<head>`/`<style>`-first output).'
   );
@@ -1188,7 +1188,7 @@ Your successful response is **exactly one** streaming artifact in this same turn
 3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.`;
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without 6+ filled slides, or repeating the same layout/background on every slide. Vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
