@@ -356,6 +356,7 @@ export function HomeView({
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+  const [canvasSlideTemplatePlugins, setCanvasSlideTemplatePlugins] = useState<InstalledPluginRecord[]>([]);
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -367,8 +368,8 @@ export function HomeView({
     [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
   );
   const canvasSlideTemplates = useMemo(
-    () => canvasSlideTemplateOptions(plugins, locale),
-    [locale, plugins],
+    () => canvasSlideTemplateOptions(canvasSlideTemplatePlugins, locale),
+    [canvasSlideTemplatePlugins, locale],
   );
   const selectedCanvasSlideTemplate =
     canvasSlideTemplates.find((option) => option.id === canvasSlideTemplateId)
@@ -396,6 +397,17 @@ export function HomeView({
       unsubscribe();
     };
   }, [teamverDriveImportEnabled]);
+  useEffect(() => {
+    if (!canvasSlideLaunch) return;
+    let cancelled = false;
+    void listPluginsPage({ mode: 'deck', limit: HOME_COMMUNITY_PLUGIN_PAGE_SIZE }).then((page) => {
+      if (cancelled) return;
+      setCanvasSlideTemplatePlugins(page.plugins);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canvasSlideLaunch]);
   useEffect(() => {
     if (!teamverDriveImportEnabled) return;
     return subscribeTeamverDesignAccessChanged(() => {

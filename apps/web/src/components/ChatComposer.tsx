@@ -435,6 +435,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     ref
   ) {
     const t = useTeamverT();
+    const { locale } = useI18n();
     const branding = useTeamverBranding();
     const {
       hideLocalWorkspaceControls,
@@ -783,7 +784,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     useEffect(() => {
       if (!projectId || !composerEngaged) return;
       let cancelled = false;
-      void listPlugins().then((rows) => {
+      void listPlugins({ mode: 'deck', limit: 24 }).then((rows) => {
         if (cancelled) return;
         setInstalledPlugins(rows);
       });

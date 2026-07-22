@@ -2183,6 +2183,11 @@ function ProseBlock({
     }
   );
   if (renderable.length === 0 && !live && !hadOpenForm) return null;
+  const shouldShowTeamverLiveArtifactLead =
+    !!live && renderable.length === 0 && (slideOnlyMvp || teamverEmbedEnabled);
+  const teamverLiveArtifactLead = locale.startsWith("ko")
+    ? "슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요."
+    : "Creating the slide deck now. Please wait a moment.";
   return (
     <div className="prose-block" data-stream-cursor={showStreamCursor && !live ? "true" : undefined}>
       {renderable.map((seg) => {
@@ -2215,6 +2220,9 @@ function ProseBlock({
           />
         );
       })}
+      {shouldShowTeamverLiveArtifactLead ? (
+        <p className="teamver-streaming-lead">{teamverLiveArtifactLead}</p>
+      ) : null}
       {live ? (
         <StreamingCodeCard
           titleLabel={t("tool.write")}

@@ -45,8 +45,9 @@ describe('AssistantMessage Teamver streaming visibility', () => {
       />,
     );
 
+    expect(screen.getByText('Creating the slide deck now. Please wait a moment.')).toBeTruthy();
     expect(screen.getByText('Write')).toBeTruthy();
-    expect(screen.getByText(/deck/)).toBeTruthy();
+    expect(screen.getByText(/deck · \d+ lines/)).toBeTruthy();
     expect(screen.queryByText(/<!doctype html/)).toBeNull();
     expect(screen.queryByText('Waiting for first output')).toBeNull();
   });
